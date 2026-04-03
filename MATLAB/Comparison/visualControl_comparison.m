@@ -424,7 +424,12 @@ for idx = 1:N_steps
         if isempty(rho_p0_lin)
             e_p_init   = (I_p_c - x_t(1:3,idx)) - K_ctrl.r_pt_des;
             rho_p0_lin = abs(e_p_init) + K_ctrl.rho_p0_margin;
-            rho_v0_lin = abs(I_v_c)    + K_ctrl.rho_v0_margin;
+            % Compute initial virtual velocity so rho_v0 covers e_v at t=0
+            xi_p_init  = max(min(e_p_init ./ rho_p0_lin, 0.999), -0.999);
+            eps_p_init = 0.5 * log((1 + xi_p_init) ./ (1 - xi_p_init));
+            q_p_init   = 1 ./ ((1 + xi_p_init) .* (1 - xi_p_init));
+            vhat_init  = -K_ctrl.k1 * (q_p_init .* eps_p_init);
+            rho_v0_lin = abs(I_v_c - vhat_init) + K_ctrl.rho_v0_margin;
         end
         rho_p     = (rho_p0_lin - K_ctrl.rho_inf_p) .* ...
                      exp(-K_ctrl.l_p * tRange(idx)) + K_ctrl.rho_inf_p;

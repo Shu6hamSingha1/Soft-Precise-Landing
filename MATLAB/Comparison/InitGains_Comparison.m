@@ -67,9 +67,9 @@ kOmega_shared = diag([0.15, 0.15, 0.08]);
 % =========================================================================
 K_Lin2022 = struct();
 
-% k1=2.0, k2=8.0 → ω_n≈2.75 rad/s, ζ≈0.69 (near-critical, well-damped)
-% Position bandwidth (~2.75 rad/s) is well below attitude loop (~5.6 rad/s)
-K_Lin2022.k1 = 2.0;
+% k1=0.5, k2=8.0 → ω_n≈1.38 rad/s, ζ≈1.38 (overdamped, no oscillation)
+% k1 reduced from 2.0: limits vhat_z at t=0 to ~4.4 m/s so rho_v0 stays valid
+K_Lin2022.k1 = 0.5;
 K_Lin2022.k2 = 8.0;
 
 K_Lin2022.rho_inf_p     = 0.05;
