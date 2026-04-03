@@ -126,11 +126,11 @@ K_Chen2025 = struct();
 % kr=-8 gives +4.8*e_x = +1.92N -> toward target. z unaffected (e_z~0 at t=0).
 K_Chen2025.kr     = -8;
 K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 20;
-K_Chen2025.k3_obs = 2;
+K_Chen2025.k2_obs = 1.0;
+K_Chen2025.k3_obs = 0.5;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 10.0;
-K_Chen2025.q_d    = [0; 0; 1];
+K_Chen2025.zstar0 = 5.0;
+K_Chen2025.q_d    = [0; 0; 0];
 K_Chen2025.psi_des = 0;
 
 K_Chen2025.kR     = kR_shared;
@@ -145,8 +145,8 @@ K_Cho2022 = struct();
 % has downward-looking camera -> vd_ibvs had wrong sign in all 3 axes.
 % UAV saturated at v_sat=[-3,-3,-0.5] flying away from target indefinitely.
 % Negating lambda flips vd sign -> UAV converges toward target.
-K_Cho2022.lambda_IBVS = [-2.0; -2.0; -8.0; 0; 0; -0.2];
-K_Cho2022.v_sat       = [3.0; 3.0; 0.5; 0.5];
+K_Cho2022.lambda_IBVS = [-0.3; -0.3; -1.5; 0; 0; -0.05];
+K_Cho2022.v_sat       = [0.5; 0.5; 0.3; 0.2];
 K_Cho2022.k_sigmoid   = 0.002;
 K_Cho2022.use_sq_comp = true;
 K_Cho2022.Kv          = diag([2.0, 2.0, 2.0]);
