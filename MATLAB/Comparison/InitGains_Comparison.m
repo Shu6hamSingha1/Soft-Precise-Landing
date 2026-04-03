@@ -26,29 +26,29 @@ K_PLASMC.gamma_1  = [0.5, 0.5];
 K_PLASMC.p_10     = K.p_10;
 K_PLASMC.p_1inf   = [0.2; 0.2];
 
-K_PLASMC.zp = diag([5.0, 5.0]);
-K_PLASMC.zi = diag([0.5, 0.5]);
-K_PLASMC.zd = diag([0.1, 0.1]);
+K_PLASMC.zp = diag([7.5, 7.5]);
+K_PLASMC.zi = diag([0.1, 0.1]);
+K_PLASMC.zd = diag([1.2, 1.2]);
 
 K_PLASMC.gamma_2  = [0.5, 0.5, 0.5];
 K_PLASMC.p_20     = [10.0; 10.0; 10.0];
-K_PLASMC.p_2inf   = [2.0;  2.0;  2.0];
+K_PLASMC.p_2inf   = [1.0;  1.0;  1.0];
 
-K_PLASMC.Omega   = diag([0.01, 0.01, 0.01]);
-K_PLASMC.Gamma   = diag([0.01, 0.01, 0.01]);
-K_PLASMC.P       = diag([0.1,  0.1,  0.1 ]);
-K_PLASMC.N       = diag([0.01, 0.01, 0.01]);
+K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
+K_PLASMC.Gamma   = diag([0.2,   0.2,   0.1  ]);
+K_PLASMC.P       = diag([2.0,   2.0,   5.0  ]);
+K_PLASMC.N       = diag([0.05,  0.05,  0.05 ]);
 K_PLASMC.kappa_0 = [0.1; 0.1; 0.1];
-K_PLASMC.E       = diag([2.0,  2.0,  2.0 ]);
+K_PLASMC.E       = diag([1.5,   1.5,   0.5  ]);
 
 % Shared attitude-PID inner loop (PLASMC only)
 K_PLASMC.ep = diag([5.0, 5.0, 1.0]);
-K_PLASMC.ei = diag([0.1, 0.1, 0.01]);
-K_PLASMC.ed = diag([0.01, 0.01, 0.01]);
+K_PLASMC.ei = diag([0.1, 0.1, 0.5]);
+K_PLASMC.ed = diag([0.1, 0.1, 0.3]);
 K_PLASMC.wp = diag([5.0, 5.0, 5.0]);
-K_PLASMC.wi = diag([0.1, 0.1, 0.1]);
-K_PLASMC.wd = diag([0.04, 0.04, 0.01]);
-K_PLASMC.ff = diag([0.8,  0.8,  0.8 ]);
+K_PLASMC.wi = diag([0.01, 0.01, 0.1]);
+K_PLASMC.wd = diag([0.1,  0.1,  0.2]);
+K_PLASMC.ff = diag([0.1,  0.1,  0.1]);
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)
