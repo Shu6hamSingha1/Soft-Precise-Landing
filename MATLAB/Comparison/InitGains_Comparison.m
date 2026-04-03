@@ -97,16 +97,21 @@ K_Lin2022.kOmega = kOmega_shared;
 % =========================================================================
 K_Zhang2026 = struct();
 
-K_Zhang2026.Kc1 = diag([0.2, 0.2, 0.6]);
-K_Zhang2026.Kc2 = diag([1.8, 1.8, 2.6]);
-K_Zhang2026.Kc3 = diag([0.8, 0.8, 2.4]);
+% z-axis Kc reduced: original Kc1z*Kc3z+Kc2z=4.04 nearly cancels gravity
+% at re_z=-5 -> T=5.5N (almost free-fall). New z gains give Fc_z=-14N, T=15N<weight.
+K_Zhang2026.Kc1 = diag([0.2, 0.2, 0.3]);
+K_Zhang2026.Kc2 = diag([1.8, 1.8, 1.0]);
+K_Zhang2026.Kc3 = diag([0.8, 0.8, 1.0]);
 
-K_Zhang2026.lAF1      = 4;
-K_Zhang2026.lAF2      = 4;
-K_Zhang2026.omega_AFm = 1.0;
-K_Zhang2026.PNF_poly  = [0.008, 0.028, 0.026];
+% lAF1/lAF2 halved, PNF_poly raised to 50 N^2 (actual noise force std ~3N,
+% so noise power ~9-30 N^2): prevents omega_AF spiking to 5.8 rad/s on step 1
+% which caused alternating-sign AEDO oscillations diverging in 7 steps.
+K_Zhang2026.lAF1      = 2;
+K_Zhang2026.lAF2      = 2;
+K_Zhang2026.omega_AFm = 0.5;
+K_Zhang2026.PNF_poly  = [0, 0, 50];
 K_Zhang2026.xhat_AF0  = zeros(6,1);
-K_Zhang2026.omega_AF0 = 1.0;
+K_Zhang2026.omega_AF0 = 0.5;
 
 K_Zhang2026.kR     = kR_shared;
 K_Zhang2026.kOmega = kOmega_shared;
@@ -116,7 +121,10 @@ K_Zhang2026.kOmega = kOmega_shared;
 % =========================================================================
 K_Chen2025 = struct();
 
-K_Chen2025.kr     = 8;
+% kr negated: with kr=+8 f_out = -8*3*k1*e drove UAV AWAY from target
+% (horizontal force was -4.8*e_x = -1.92N when e_x=+0.4 -> wrong sign).
+% kr=-8 gives +4.8*e_x = +1.92N -> toward target. z unaffected (e_z~0 at t=0).
+K_Chen2025.kr     = -8;
 K_Chen2025.k1_obs = 0.2;
 K_Chen2025.k2_obs = 20;
 K_Chen2025.k3_obs = 2;
@@ -133,7 +141,11 @@ K_Chen2025.kOmega = kOmega_shared;
 % =========================================================================
 K_Cho2022 = struct();
 
-K_Cho2022.lambda_IBVS = [2.0; 2.0; 8.0; 0; 0; 0.2];
+% lambda signs negated: Jacobian uses -f/z (forward-camera) but simulation
+% has downward-looking camera -> vd_ibvs had wrong sign in all 3 axes.
+% UAV saturated at v_sat=[-3,-3,-0.5] flying away from target indefinitely.
+% Negating lambda flips vd sign -> UAV converges toward target.
+K_Cho2022.lambda_IBVS = [-2.0; -2.0; -8.0; 0; 0; -0.2];
 K_Cho2022.v_sat       = [3.0; 3.0; 0.5; 0.5];
 K_Cho2022.k_sigmoid   = 0.002;
 K_Cho2022.use_sq_comp = true;
