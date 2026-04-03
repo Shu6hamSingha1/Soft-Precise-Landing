@@ -67,20 +67,21 @@ kOmega_shared = diag([0.15, 0.15, 0.08]);
 % =========================================================================
 K_Lin2022 = struct();
 
-% k1=0.5, k2=8.0 → ω_n≈1.38 rad/s, ζ≈1.38 (overdamped, no oscillation)
-% k1 reduced from 2.0: limits vhat_z at t=0 to ~4.4 m/s so rho_v0 stays valid
-K_Lin2022.k1 = 0.5;
-K_Lin2022.k2 = 8.0;
+% k1=0.1, k2=2.0: vhat_z(t=0)=0.88 m/s, F_z(t=0)=-19.3 N (upward, <0) so
+% T=19.4 N < weight=20.6 N and UAV physically descends from the first step.
+% k1=0.5/k2=8.0 caused F_z>0 (inverted-UAV demand) → xi_v diverged in 3 steps.
+K_Lin2022.k1 = 0.1;
+K_Lin2022.k2 = 2.0;
 
 K_Lin2022.rho_inf_p     = 0.05;
 K_Lin2022.rho_inf_v     = 0.05;
-% l_p=0.15: rho_p decays to ~0.5 m by t≈15 s, giving the UAV time to
-% descend 4.6 m before the performance constraint becomes tight
-K_Lin2022.l_p           = 0.15;
-K_Lin2022.l_v           = 0.15;
-% Larger margin so the initial error doesn't immediately saturate xi_p
-K_Lin2022.rho_p0_margin = 0.5;
-K_Lin2022.rho_v0_margin = 0.5;
+% l_p/l_v=0.05: slow decay gives the UAV time to build velocity before the
+% performance constraint tightens (0.15 was too fast relative to actuator limits)
+K_Lin2022.l_p           = 0.05;
+K_Lin2022.l_v           = 0.05;
+% Larger margin so xi_p/xi_v stay well within (-1,1) throughout
+K_Lin2022.rho_p0_margin = 1.0;
+K_Lin2022.rho_v0_margin = 1.0;
 
 % r_pt_des = [0;0;0]: target the landing point exactly (NED).
 % [0;0;-0.4] was causing the UAV to hover 0.4 m above target and never land.
