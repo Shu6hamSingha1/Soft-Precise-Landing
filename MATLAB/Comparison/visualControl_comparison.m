@@ -155,17 +155,19 @@ if CTRL_SEL == 2
 end
 
 if CTRL_SEL == 3
-    xhat_AF  = K_ctrl.xhat_AF0;
-    omega_AF = K_ctrl.omega_AF0;
-    F_c_prev = [0; 0; -m * 9.81];
+    xhat_AF     = K_ctrl.xhat_AF0;
+    omega_AF    = K_ctrl.omega_AF0;
+    F_c_prev    = [0; 0; -m * 9.81];
+    I_vm_c_prev = x_c(8:10);   % previous measured velocity for AEDO finite difference
 end
 
 if CTRL_SEL == 4
-    e_hat_chen   = zeros(3,1);
-    vvs_hat_chen = zeros(3,1);
-    v0_chen      = zeros(3,1);
-    zstar_hat    = K_ctrl.zstar0;
-    izeta_obs    = zeros(3,1);
+    e_hat_chen    = zeros(3,1);
+    vvs_hat_chen  = zeros(3,1);
+    v0_chen       = zeros(3,1);
+    zstar_hat     = K_ctrl.zstar0;
+    izeta_obs     = zeros(3,1);
+    V_s_prev_chen = zeros(3,1);   % previous V_s for trapezoidal integral
 end
 
 %% =========================================================================
@@ -443,28 +445,32 @@ for idx = 1:N_steps
         %------------------------------------------------------------------
         case 3   % Zhang 2026 — AEDO backstepping + geometric inner loop
         %------------------------------------------------------------------
-        zpq     = abs(I_p_c(3) - x_t(3,idx));
-        P_NF_in = polyval(K_ctrl.PNF_poly, zpq);
+        zpq         = abs(I_p_c(3) - x_t(3,idx));
+        P_NF_in     = polyval(K_ctrl.PNF_poly, zpq);
         I_vm_c_curr = x_c(8:10) + 0.015*randn(3,1);
 
         [u_2, xhat_AF, omega_AF, I_a_cd(:,idx)] = ...
             ctrl_Zhang2026(I_p_c, I_v_c, x_t(1:3,idx), dx_t(1:3,idx), ...
-                           I_vm_c_curr, F_c_prev, ...
+                           I_vm_c_prev, F_c_prev, ...
                            xhat_AF, P_NF_in, omega_AF, dt, ...
                            I_R_C, B_w_c, K_ctrl, m, J, g, e3, ...
                            tau_xy_max, tau_z_max, T_max, T_min);
-        % F_c_prev = net control force for AEDO virtual measurement next step
-        F_c_prev = m * (I_a_cd(:,idx) + g);
+        % Update AEDO variables: I_vm_c_prev stores last measured velocity
+        % for finite-difference acceleration estimate in next step
+        I_vm_c_prev = I_vm_c_curr;
+        F_c_prev    = m * (I_a_cd(:,idx) + g);
 
         %------------------------------------------------------------------
         case 4   % Chen 2025 — IBVS observer + geometric inner loop
         %------------------------------------------------------------------
         psi_dot_curr = B_w_c(3);
         if idx == 1
-            izeta_obs = dt * (V_s(1:3) - K_ctrl.q_d) / 2;
+            izeta_obs     = dt * (V_s(1:3) - K_ctrl.q_d) / 2;
+            V_s_prev_chen = V_s(1:3);
         else
-            izeta_obs = izeta_obs + ...
-                dt*(V_s(1:3) + V_s(1:3) - 2*K_ctrl.q_d)/2;
+            izeta_obs     = izeta_obs + ...
+                dt*(V_s_prev_chen + V_s(1:3) - 2*K_ctrl.q_d)/2;
+            V_s_prev_chen = V_s(1:3);
         end
         [u_2, e_hat_chen, vvs_hat_chen, v0_chen, zstar_hat, I_a_cd(:,idx)] = ...
             ctrl_Chen2025(V_s(1:3), K_ctrl.q_d, ...
