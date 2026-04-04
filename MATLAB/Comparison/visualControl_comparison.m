@@ -346,9 +346,9 @@ for idx = 1:N_steps
                                    dt*(zeta_1(:,idx-1) + zeta_1(:,idx))/2;
             raw_dzeta_1(:,idx+3) = (zeta_1(:,idx) - zeta_1(:,idx-1)) / dt;
         end
-        dzeta_1  = smooth4(raw_dzeta_1(:,end-3:end));
+        dzeta_1  = smooth4(raw_dzeta_1(:,idx:idx+3));
         dzeta_1d = -K_ctrl.zp*zeta_1(:,idx) - K_ctrl.zi*izeta_1(:,idx) ...
-                   -K_ctrl.zd*raw_dzeta_1(:,idx+3);
+                   -K_ctrl.zd*dzeta_1;
 
         % Desired optical flow h_d  (V_s is column vector, not indexed)
         V_ds_d       = [G_1(:,:,idx)\dzeta_1d + S_1(:,:,idx)*dp_1(:,idx); 0.0];
@@ -389,7 +389,7 @@ for idx = 1:N_steps
         else
             raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1)) / dt;
         end
-        V_dh_d = smooth4(raw_dh_d(:,end-3:end));
+        V_dh_d = smooth4(raw_dh_d(:,idx:idx+3));
 
         c_dyn = cross(V_dw, V_s(1:3)) ...
               + cross(V_w, cross(V_w, V_s(1:3))) ...

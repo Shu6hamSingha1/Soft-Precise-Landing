@@ -28,7 +28,7 @@ K_PLASMC.p_1inf   = [0.2; 0.2];
 
 K_PLASMC.zp = diag([7.5, 7.5]);
 K_PLASMC.zi = diag([0.1, 0.1]);
-K_PLASMC.zd = diag([1.2, 1.2]);
+K_PLASMC.zd = diag([3.0, 3.0]);   % zeta=3/(2*sqrt(7.5))=0.548 (prev 0.22)
 
 K_PLASMC.gamma_2  = [0.5, 0.5, 0.5];
 K_PLASMC.p_20     = [10.0; 10.0; 10.0];
