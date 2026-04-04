@@ -192,7 +192,7 @@ for idx = 1:N_steps
 % *************************************************************************
 % Target trajectory  (Circular in _temp.m)
 % *************************************************************************
-    traj_t      = traj_Gen((idx-1)*dt, "Static");
+    traj_t      = traj_Gen((idx-1)*dt, "Linear");
     x_t(:,idx)  = traj_t(:,1);
     dx_t(:,idx) = traj_t(1:end-1, 2);
     I_R_T       = quat2rotm(x_t(4:7,idx)');
@@ -473,6 +473,8 @@ for idx = 1:N_steps
         if idx == 1
             izeta_obs     = dt * (V_s_chen - K_ctrl.q_d) / 2;
             V_s_prev_chen = V_s_chen;
+            e_hat_chen    = V_s_chen;   % sync observer to first measurement so
+                                        % zeta_e=0 at t=0; prevents k2*(e-0) blowup
         else
             izeta_obs     = izeta_obs + ...
                 dt*(V_s_prev_chen + V_s_chen - 2*K_ctrl.q_d)/2;
