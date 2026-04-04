@@ -70,8 +70,12 @@ K_Lin2022 = struct();
 % k1=0.1, k2=2.0: vhat_z(t=0)=0.88 m/s, F_z(t=0)=-19.3 N (upward, <0) so
 % T=19.4 N < weight=20.6 N and UAV physically descends from the first step.
 % k1=0.5/k2=8.0 caused F_z>0 (inverted-UAV demand) → xi_v diverged in 3 steps.
-K_Lin2022.k1 = 0.1;
-K_Lin2022.k2 = 2.0;
+% k1 raised 0.1→0.3, k2 2.0→3.0: with k1=0.1 the prescribed velocity
+% vhat_z≈0.023 m/s near z=0 → UAV stalls 0.18m above ground at t=40s.
+% k1=0.3 gives vhat_z≈0.068 m/s, landing ~t=38s; rho_v0 re-computed from
+% vhat_init so initial xi_v stays well within ±0.999.
+K_Lin2022.k1 = 0.3;
+K_Lin2022.k2 = 3.0;
 
 K_Lin2022.rho_inf_p     = 0.05;
 K_Lin2022.rho_inf_v     = 0.05;
@@ -97,21 +101,24 @@ K_Lin2022.kOmega = kOmega_shared;
 % =========================================================================
 K_Zhang2026 = struct();
 
-% z-axis Kc reduced: original Kc1z*Kc3z+Kc2z=4.04 nearly cancels gravity
-% at re_z=-5 -> T=5.5N (almost free-fall). New z gains give Fc_z=-14N, T=15N<weight.
-K_Zhang2026.Kc1 = diag([0.2, 0.2, 0.3]);
-K_Zhang2026.Kc2 = diag([1.8, 1.8, 1.0]);
-K_Zhang2026.Kc3 = diag([0.8, 0.8, 1.0]);
+% Redesigned for zeta=0.7 (near-critical damping) to eliminate overshoot:
+%   xy: pos_gain=Kc1*Kc3+Kc2=1.035 N/m, vel_gain=m*Kc1+Kc3=2.06 N/(m/s)
+%       omega_n=0.70 rad/s, zeta=0.70 -> overshoot<5% (was ~50% with old gains)
+%    z: pos_gain=2.10 N/m, vel_gain=2.92 N/(m/s), omega_n=1.0, zeta=0.70
+%   T at t=0: Fc_z=-10.1N -> T=10.9N < weight=20.6N -> descends correctly.
+K_Zhang2026.Kc1 = diag([0.1,  0.1,  0.2 ]);
+K_Zhang2026.Kc2 = diag([0.85, 0.85, 1.6 ]);
+K_Zhang2026.Kc3 = diag([1.85, 1.85, 2.5 ]);
 
-% lAF1/lAF2 halved, PNF_poly raised to 50 N^2 (actual noise force std ~3N,
-% so noise power ~9-30 N^2): prevents omega_AF spiking to 5.8 rad/s on step 1
-% which caused alternating-sign AEDO oscillations diverging in 7 steps.
-K_Zhang2026.lAF1      = 2;
-K_Zhang2026.lAF2      = 2;
-K_Zhang2026.omega_AFm = 0.5;
-K_Zhang2026.PNF_poly  = [0, 0, 50];
+% AEDO: lAF1/2 and PNF tightened further (prev PNF=50 still caused
+% omega_AF to drift high enough to produce 7 post-landing oscillations).
+% lAF1=1,lAF2=0.5 slows observer; PNF=150 keeps bandwidth near omega_AFm.
+K_Zhang2026.lAF1      = 1;
+K_Zhang2026.lAF2      = 0.5;
+K_Zhang2026.omega_AFm = 0.3;
+K_Zhang2026.PNF_poly  = [0, 0, 150];
 K_Zhang2026.xhat_AF0  = zeros(6,1);
-K_Zhang2026.omega_AF0 = 0.5;
+K_Zhang2026.omega_AF0 = 0.3;
 
 K_Zhang2026.kR     = kR_shared;
 K_Zhang2026.kOmega = kOmega_shared;
@@ -145,8 +152,12 @@ K_Cho2022 = struct();
 % has downward-looking camera -> vd_ibvs had wrong sign in all 3 axes.
 % UAV saturated at v_sat=[-3,-3,-0.5] flying away from target indefinitely.
 % Negating lambda flips vd sign -> UAV converges toward target.
-K_Cho2022.lambda_IBVS = [-0.3; -0.3; -1.5; 0; 0; -0.05];
-K_Cho2022.v_sat       = [0.5; 0.5; 0.3; 0.2];
+% lambda(6)=0: removes yaw-rate command that was causing a slow spiral.
+% lambda_xy raised -0.3→-0.8: -0.3 was too small (UAV approached at only
+% ~0.06 m/s, risking non-landing within 40s). -0.8 gives ~0.2 m/s typical
+% approach (landing ~t=18s) while reducing overshoot oscillation vs old -2.0.
+K_Cho2022.lambda_IBVS = [-0.8; -0.8; -2.0; 0; 0; 0];
+K_Cho2022.v_sat       = [1.0; 1.0; 0.4; 0.2];
 K_Cho2022.k_sigmoid   = 0.002;
 K_Cho2022.use_sq_comp = true;
 K_Cho2022.Kv          = diag([2.0, 2.0, 2.0]);
