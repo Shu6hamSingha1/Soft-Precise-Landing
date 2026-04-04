@@ -133,8 +133,8 @@ K_Chen2025 = struct();
 % kr=-8 gives +4.8*e_x = +1.92N -> toward target. z unaffected (e_z~0 at t=0).
 K_Chen2025.kr     = -8;
 K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 1.0;
-K_Chen2025.k3_obs = 0.5;
+K_Chen2025.k2_obs = 15.0;  % raised 1.0->15.0: observer bandwidth k1*k2=3.0 rad/s
+K_Chen2025.k3_obs = 1.0;   % raised 0.5->1.0: faster depth adaptation for moving target
 K_Chen2025.k4_obs = 0.4;
 K_Chen2025.zstar0 = 5.0;
 K_Chen2025.q_d    = [0; 0; 0];
@@ -153,10 +153,11 @@ K_Cho2022 = struct();
 % UAV saturated at v_sat=[-3,-3,-0.5] flying away from target indefinitely.
 % Negating lambda flips vd sign -> UAV converges toward target.
 % lambda(6)=0: removes yaw-rate command that was causing a slow spiral.
-% lambda_xy raised -0.3→-0.8: -0.3 was too small (UAV approached at only
-% ~0.06 m/s, risking non-landing within 40s). -0.8 gives ~0.2 m/s typical
-% approach (landing ~t=18s) while reducing overshoot oscillation vs old -2.0.
-K_Cho2022.lambda_IBVS = [-0.8; -0.8; -2.0; 0; 0; 0];
+% lambda_xy reduced -0.8->-0.5: effective IBVS gain = |lambda|/z grows as UAV
+% descends. At z=0.5m, gain was 0.8/0.5=1.6 -> overshoot -> oscillation.
+% -0.5 caps effective gain to 1.0 at z=0.5m while keeping adequate far-field
+% convergence (effective gain 0.5/5=0.1 at z=5m, same as before at 0.8/8).
+K_Cho2022.lambda_IBVS = [-0.5; -0.5; -2.0; 0; 0; 0];
 K_Cho2022.v_sat       = [1.0; 1.0; 0.4; 0.2];
 K_Cho2022.k_sigmoid   = 0.002;
 K_Cho2022.use_sq_comp = true;

@@ -89,7 +89,8 @@ function [u_2, I_a_cd, V_vd_ff, e_feat] = ...
     vd_ibvs(1:3) = max(min(vd_ibvs(1:3),  K.v_sat(1:3)), -K.v_sat(1:3));
     vd_ibvs(6)   = max(min(vd_ibvs(6),    K.v_sat(4)),   -K.v_sat(4));
 
-    V_vd_ff = vd_ibvs + [I_v_t(1:2); 0; 0; 0; 0];
+    V_v_t   = I_R_V' * I_v_t;                     % inertial → virtual frame
+    V_vd_ff = vd_ibvs + [V_v_t; 0; 0; 0];
 
     % Desired velocity in NED
     I_v_des = I_R_V * V_vd_ff(1:3);
