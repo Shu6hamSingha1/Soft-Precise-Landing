@@ -124,6 +124,15 @@ V_w     = zeros(3, 1);
 V_dw    = zeros(3, 1);
 
 %% =========================================================================
+%  PRE-ALLOCATE u_2 BUFFER FOR DELAY (controllers 2-5)
+% =========================================================================
+if CTRL_SEL > 1
+    u_2_buf = zeros(4, N_steps);
+    % Default hover command for pre-delay steps
+    u_2_hover = [zeros(3,1); m*norm(g)];
+end
+
+%% =========================================================================
 %  PRE-ALLOCATE PLASMC-SPECIFIC ARRAYS  (only if CTRL_SEL == 1)
 % =========================================================================
 if CTRL_SEL == 1
@@ -440,8 +449,17 @@ for idx = 1:N_steps
         rho_v_dot = -(rho_v0_lin - K_ctrl.rho_inf_v) .* K_ctrl.l_v .* ...
                      exp(-K_ctrl.l_v * tRange(idx));
 
+        % PBVS measurement noise on 3D position/velocity
+        if NOISE
+            I_p_cm = I_p_c + sigma_pos * randn(3,1);
+            I_v_cm = I_v_c + sigma_vel * randn(3,1);
+        else
+            I_p_cm = I_p_c;
+            I_v_cm = I_v_c;
+        end
+
         [u_2, I_a_cd(:,idx), ~] = ...
-            ctrl_Lin2022(I_p_c, I_v_c, x_t(1:3,idx), ...
+            ctrl_Lin2022(I_p_cm, I_v_cm, x_t(1:3,idx), ...
                          rho_p, rho_p_dot, rho_v, rho_v_dot, ...
                          K_ctrl.r_pt_des, K_ctrl.psi_des, ...
                          I_R_C, B_w_c, K_ctrl, m, J, g, e3, ...
@@ -450,12 +468,21 @@ for idx = 1:N_steps
         %------------------------------------------------------------------
         case 3   % Zhang 2026 — AEDO backstepping + geometric inner loop
         %------------------------------------------------------------------
-        zpq         = abs(I_p_c(3) - x_t(3,idx));
+        % PBVS measurement noise on 3D position/velocity
+        if NOISE
+            I_p_cm = I_p_c + sigma_pos * randn(3,1);
+            I_v_cm = I_v_c + sigma_vel * randn(3,1);
+        else
+            I_p_cm = I_p_c;
+            I_v_cm = I_v_c;
+        end
+
+        zpq         = abs(I_p_cm(3) - x_t(3,idx));
         P_NF_in     = polyval(K_ctrl.PNF_poly, zpq);
-        I_vm_c_curr = x_c(8:10) + 0.015*randn(3,1);
+        I_vm_c_curr = x_c(8:10) + sigma_vel*randn(3,1);
 
         [u_2, xhat_AF, omega_AF, I_a_cd(:,idx)] = ...
-            ctrl_Zhang2026(I_p_c, I_v_c, x_t(1:3,idx), dx_t(1:3,idx), ...
+            ctrl_Zhang2026(I_p_cm, I_v_cm, x_t(1:3,idx), dx_t(1:3,idx), ...
                            I_vm_c_prev, F_c_prev, ...
                            xhat_AF, P_NF_in, omega_AF, dt, ...
                            I_R_C, B_w_c, K_ctrl, m, J, g, e3, ...
@@ -498,6 +525,24 @@ for idx = 1:N_steps
                          tau_xy_max, tau_z_max, T_max, T_min, K_ctrl.psi_des);
 
     end   % switch CTRL_SEL
+
+% *************************************************************************
+% GROUND EFFECT + COMPUTATIONAL DELAY  (controllers 2-5)
+% *************************************************************************
+    if CTRL_SEL > 1
+        % Ground effect on thrust
+        if GE
+            u_2(4) = 1/(1-(r/(4*x_c(3)))^2) * u_2(4);
+        end
+
+        % Store in buffer and apply delay
+        u_2_buf(:,idx) = u_2;
+        if idx > delay
+            u_2 = u_2_buf(:, idx - delay);
+        else
+            u_2 = u_2_hover;
+        end
+    end
 
 % *************************************************************************
 % SAFETY CHECK  (on I_a_cd for all; on u_2 for cases 2-5)

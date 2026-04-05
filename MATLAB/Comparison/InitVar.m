@@ -1,8 +1,12 @@
 %% Simulation conditions
-NOISE = 0; GE = 0; delay = 0;
+NOISE = 1; GE = 1; delay = 1;
 ZOH = 1;
 % ZOH = floor(100/30);
-ACTUAL = 0;
+ACTUAL = 1;
+
+%% Sensor noise standard deviations for PBVS controllers (active when NOISE = 1)
+sigma_pos = 0.01;     % position measurement noise std [m]
+sigma_vel = 0.02;     % velocity measurement noise std [m/s]
 
 %% Initialization Time Trajectory
 % step size
