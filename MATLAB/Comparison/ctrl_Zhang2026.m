@@ -32,7 +32,7 @@
 %   B_w_c         - Body angular velocity                   [rad/s]
 %   K             - gains struct
 %   m, J          - mass, inertia
-%   g_vec, e3     - gravity vector, vertical unit vector
+%   g_vec         - gravity vector [0;0;9.81]
 %   tau_xy_max, tau_z_max, T_max, T_min - saturation limits
 %
 % OUTPUTS:
@@ -45,7 +45,7 @@ function [u_2, xhat_AF_new, omega_AF_new, I_a_cd] = ...
           ctrl_Zhang2026(I_p_c, I_v_c, I_p_t, I_v_t, ...
                          I_vm_c, F_c_prev, ...
                          xhat_AF, P_NF_in, omega_AF, dt, ...
-                         R_c, B_w_c, K, m, J, g_vec, e3, ...
+                         R_c, B_w_c, K, m, J, g_vec, ...
                          tau_xy_max, tau_z_max, T_max, T_min)
 
     I3 = eye(3);  O3 = zeros(3);
@@ -55,7 +55,7 @@ function [u_2, xhat_AF_new, omega_AF_new, I_a_cd] = ...
     % AEDO: Adaptive Extended Disturbance Observer  (Eqs. 11-16)
     % ---------------------------------------------------------------
     L_AF     = [l1*w*I3; l2*w^2*I3];
-    Fdm      = m * ((I_v_c - I_vm_c) / dt) + F_c_prev;
+    Fdm      = m * ((I_v_c - I_vm_c) / dt) - F_c_prev;
     AF       = [O3, I3; O3, O3];
     CF       = [I3, O3];
     innov    = Fdm - CF * xhat_AF;
