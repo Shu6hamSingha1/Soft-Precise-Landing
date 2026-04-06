@@ -128,14 +128,17 @@ K_Zhang2026.kOmega = kOmega_shared;
 % =========================================================================
 K_Chen2025 = struct();
 
-% Gains from paper Sec. V (simulation): kr=8, k1=0.2, k2=20, k3=2, k4=0.4
-K_Chen2025.kr     = 8;
+% Paper gains: kr=8, k1=0.2, k2=20, k3=2, k4=0.4
+% kr negated for NED convention: paper's virtual-frame force f acts with
+% opposite sign to our inertial force mapping I_F = I_R_V*f_out - m*g.
+% q_d=[0;0;0] with depth-ratio qz=z/z0 (see visualControl_comparison case 4).
+K_Chen2025.kr     = -5;
 K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 20;
-K_Chen2025.k3_obs = 2.0;
+K_Chen2025.k2_obs = 8;
+K_Chen2025.k3_obs = 1.0;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 5.0;      % initial depth estimate z_hat(0)
-K_Chen2025.q_d    = [0; 0; 1]; % Eq. 14: qd = [0, 0, 1]
+K_Chen2025.zstar0 = 2.5;      % normalisation height [m] (lower → stronger z drive)
+K_Chen2025.q_d    = [0; 0; 0]; % depth-ratio mode: e_z = z/z0 -> 0 at landing
 K_Chen2025.psi_des = 0;
 
 K_Chen2025.kR     = kR_shared;
