@@ -9,68 +9,67 @@
 %
 % PIPELINE:
 %   Outer loop (Eqs. 15-33):
-%     Image moment error → IBVS force f_out (virtual frame)
-%     Observer update: e_hat, vvs_hat, v0, zstar_hat
-%   Inner loop (Eq. 49 + standard attitude PD):
-%     f_out → I_F (inertial force) = I_R_V * f_out
-%     I_F  → T (thrust), Rd (desired attitude)
-%     eR, eΩ → τ
-%
-% COORDINATE CONVENTION:
-%   Inertial frame: NED  (x=North, y=East, z=Down)
-%   Virtual frame:  NED, yaw-decoupled
-%   Body frame:     FRD
-%   g_vec = [0;0;9.81]
-%
-%   The virtual-frame force f_out includes gravity compensation.
-%   Inertial force: I_F = I_R_V * f_out
-%   Desired acceleration: I_a_cd = I_F/m  (same as I_R_V*f_out/m - g_vec
-%   via the original convention, but here we absorb g into f_out upstream)
+%     Image moment error  e = q - qd                       (15)
+%     Auxiliary variables:
+%       zeta  = e - e_hat                                   (22)
+%       eps   = de + k1*e                                   (23)
+%       s     = vvs_hat - k1*e + de                         (24)
+%       r     = -dzeta - k1*zeta + 3*de                     (25)
+%     Controller: f = -kr*(r - s + eps) - zhat*M1*e1
+%                     + (zhat/k1)*M2*e1                     (33)
+%     Observer update: e_hat, vvs_hat, v0, zstar_hat     (26, 32)
+%   Inner loop:
+%     f_out -> I_F = I_R_V * f_out - m*g
+%     I_F  -> T, Rd -> eR, eOmega -> tau
 %
 % INPUTS:
-%   V_s, V_s_d    - image moments (current, desired)       [3x1]
+%   V_s, V_s_d   - image moments q, qd                    [3x1]
 %   e_hat, vvs_hat, v0 - observer states
-%   zstar_hat     - depth estimate
-%   izeta_obs     - integral of image error
-%   psi_dot       - yaw rate                               [rad/s]
-%   dt            - time step                              [s]
-%   R_c           - rotation matrix body→inertial          [3x3]
-%   I_R_V         - rotation virtual→inertial              [3x3]
-%   B_w_c         - body angular velocity                  [rad/s]
-%   K             - gains struct
-%   m, J          - mass, inertia
-%   g_vec, e3     - gravity, vertical unit
+%   zstar_hat    - depth estimate (1/z*)
+%   de           - edot (finite difference of e)            [3x1]
+%   dzeta        - zetadot (finite difference of zeta)      [3x1]
+%   psi_dot      - yaw rate                                [rad/s]
+%   dt           - time step                               [s]
+%   R_c          - rotation matrix body->inertial          [3x3]
+%   I_R_V        - rotation virtual->inertial              [3x3]
+%   B_w_c        - body angular velocity                   [rad/s]
+%   K            - gains struct
+%   m, J         - mass, inertia
+%   g_vec, e3    - gravity, vertical unit
 %   tau_xy_max, tau_z_max, T_max, T_min
-%   psi_des       - desired yaw                            [rad]
+%   psi_des      - desired yaw                             [rad]
 %
 % OUTPUTS:
-%   u_2           - [4x1] = [tau_x; tau_y; tau_z; T]
-%   e_hat_new, vvs_hat_new, v0_new, zstar_new - updated observer states
-%   I_a_cd        - [3x1] desired acceleration (for logging)
+%   u_2          - [4x1] = [tau_x; tau_y; tau_z; T]
+%   e_hat_new, vvs_hat_new, v0_new, zstar_new
+%   I_a_cd       - [3x1] desired acceleration (for logging)
 % *************************************************************************
 function [u_2, e_hat_new, vvs_hat_new, v0_new, zstar_new, I_a_cd] = ...
           ctrl_Chen2025(V_s, V_s_d, ...
                         e_hat, vvs_hat, v0, zstar_hat, ...
-                        izeta_obs, psi_dot, dt, ...
+                        de, dzeta, psi_dot, dt, ...
                         R_c, I_R_V, B_w_c, K, m, J, g_vec, e3, ...
                         tau_xy_max, tau_z_max, T_max, T_min, psi_des)
 
     %% ---------------------------------------------------------------
-    % OUTER LOOP: IBVS with robust observer
+    % OUTER LOOP: IBVS with robust observer  (Eqs. 15-33)
     % ---------------------------------------------------------------
-    e     = V_s - V_s_d;
+    e     = V_s - V_s_d;              % Eq. 15
     e3_   = [0;0;1];
     Spsi  = skew_sym(psi_dot * e3_);
-    M1    = 2 * Spsi;
-    M2    = Spsi * Spsi;
+    M1    = 2 * Spsi;                 % Eq. 18
+    M2    = Spsi * Spsi;              % Eq. 18
     k1    = K.k1_obs;
     k2    = K.k2_obs;
 
-    e1       = k1 * e;
-    zeta_1   = k1 * (e - e_hat);
-    epsilon  = e1 + izeta_obs;
-    s        = vvs_hat - e1 + epsilon;
-    r        = -zeta_1 + 3 * epsilon;
+    e1    = k1 * e;                   % e1 = k1*e
+    zeta  = e - e_hat;                % Eq. 22
+
+    % Auxiliary variables  (Eqs. 23-25)
+    % NOTE: s and r use edot (de), NOT epsilon
+    epsilon = de + e1;                % Eq. 23: eps = edot + k1*e
+    s       = vvs_hat - e1 + de;      % Eq. 24: s = vvs_hat - e1 + edot
+    r       = -dzeta - k1*zeta + 3*de; % Eq. 25: r = -zetadot - zeta1 + 3*edot
 
     % IBVS force (virtual frame)  (Eq. 33)
     f_out = -K.kr * (r - s + epsilon) ...
@@ -91,8 +90,8 @@ function [u_2, e_hat_new, vvs_hat_new, v0_new, zstar_new, I_a_cd] = ...
     zstar_new = zstar_hat + dt * dzstar;
 
     % Inertial force
-    I_F    = I_R_V * f_out - m * g_vec;   % [3x1] NED, gravity compensated
-    I_a_cd = I_F / m;                      % for logging
+    I_F    = I_R_V * f_out - m * g_vec;
+    I_a_cd = I_F / m;
 
     %% ---------------------------------------------------------------
     % INNER LOOP: attitude PD + feedforward

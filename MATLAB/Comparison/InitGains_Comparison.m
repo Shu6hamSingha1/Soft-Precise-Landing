@@ -128,16 +128,14 @@ K_Zhang2026.kOmega = kOmega_shared;
 % =========================================================================
 K_Chen2025 = struct();
 
-% kr negated: with kr=+8 f_out = -8*3*k1*e drove UAV AWAY from target
-% (horizontal force was -4.8*e_x = -1.92N when e_x=+0.4 -> wrong sign).
-% kr=-8 gives +4.8*e_x = +1.92N -> toward target. z unaffected (e_z~0 at t=0).
-K_Chen2025.kr     = -8;
+% Gains from paper Sec. V (simulation): kr=8, k1=0.2, k2=20, k3=2, k4=0.4
+K_Chen2025.kr     = 8;
 K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 8.0;   % raised 1.0->8.0: observer bandwidth k1*k2=1.6 rad/s
-K_Chen2025.k3_obs = 1.0;   % raised 0.5->1.0: faster depth adaptation for moving target
+K_Chen2025.k2_obs = 20;
+K_Chen2025.k3_obs = 2.0;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 5.0;
-K_Chen2025.q_d    = [0; 0; 0];
+K_Chen2025.zstar0 = 5.0;      % initial depth estimate z_hat(0)
+K_Chen2025.q_d    = [0; 0; 1]; % Eq. 14: qd = [0, 0, 1]
 K_Chen2025.psi_des = 0;
 
 K_Chen2025.kR     = kR_shared;

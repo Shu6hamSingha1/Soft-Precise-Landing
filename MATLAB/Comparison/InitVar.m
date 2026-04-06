@@ -53,6 +53,11 @@ V_nP_d = (f/zf)*V_nP3(1:2,:);
 % Computing desired Features Parameters in Image Plane (without 'z')
 V_s_d = image_feature(V_nP_d/f);
 
+% Desired area moment a* for Chen2025 (Eq. 8-9: a* = mu_20 + mu_02 at desired pose)
+nP_d_norm = V_nP_d / f;                     % normalised desired feature points
+cg_d      = mean(nP_d_norm, 2);             % centroid
+a_star    = sum(sum((nP_d_norm - cg_d).^2));  % mu_20 + mu_02
+
 %% Data Logging
 U_DS = [];
 X_DS = x_c;

@@ -498,11 +498,11 @@ for idx = 1:N_steps
         psi_dot_curr = B_w_c(3);
 
         % Image moment vector q = [qz*xhat; qz*yhat; qz] (Eq. 8)
-        % qz = sqrt(a/a*) where a = mu_20 + mu_02 from virtual image
+        % qz = sqrt(a*/a) where a = mu_20 + mu_02 from virtual image
         nP_norm = V_nP_i / f;
         cg_i    = mean(nP_norm, 2);
         a_curr  = sum(sum((nP_norm - cg_i).^2));
-        qz      = sqrt(a_curr / a_star);
+        qz      = sqrt(a_star / a_curr);
         V_s_chen = [qz * V_s(1:2); qz];
 
         % Error and finite differences for ε, s, r  (Eqs. 22-25)
