@@ -21,7 +21,7 @@
 % COORDINATE CONVENTION:
 %   Inertial frame: NED  (x=North, y=East, z=Down)
 %   Body frame:     FRD
-%   g_vec = [0;0;9.81],  e3 = [0;0;1] (points down, = body thrust axis)
+%   g_vec = [0;0;9.81] (gravity vector, points down)
 %   NED gravity adaptation:
 %     Paper (ENU): F = -k2*Qv*εv + m*g*i3  (i3 up)
 %     Here (NED):  F = -k2*Qv*εv - m*g_vec (g_vec down) → same direction
@@ -29,7 +29,7 @@
 % INPUTS:
 %   I_p_c, I_v_c  - UAV position, velocity in NED          [m], [m/s]
 %   I_p_t         - Target position in NED                 [m]
-%   rho_p, rho_p_dot, rho_v, rho_v_dot - perf. functions
+%   rho_p, rho_v              - perf. functions
 %   r_pt_des      - Desired relative position (NED)        [m]
 %   psi_des       - Desired yaw                            [rad]
 %   R_c           - Current rotation matrix body→inertial  [3x3]
@@ -37,7 +37,7 @@
 %   K             - gains struct (k1,k2,kR,kOmega)
 %   m, J          - mass [kg], inertia [3x3]
 %   g_vec         - [0;0;9.81]
-%   e3            - [0;0;1]
+%   (e3 removed — unused)
 %   tau_xy_max, tau_z_max, T_max, T_min - saturation limits
 %
 % OUTPUTS:
@@ -47,9 +47,9 @@
 % *************************************************************************
 function [u_2, I_a_cd, Rd] = ...
           ctrl_Lin2022(I_p_c, I_v_c, I_p_t, ...
-                       rho_p, rho_p_dot, rho_v, rho_v_dot, ...
+                       rho_p, rho_v, ...
                        r_pt_des, psi_des, ...
-                       R_c, B_w_c, K, m, J, g_vec, e3, ...
+                       R_c, B_w_c, K, m, J, g_vec, ...
                        tau_xy_max, tau_z_max, T_max, T_min)
 
     %% ---------------------------------------------------------------

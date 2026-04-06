@@ -175,8 +175,8 @@ if CTRL_SEL == 4
     vvs_hat_chen  = zeros(3,1);
     v0_chen       = zeros(3,1);
     zstar_hat     = K_ctrl.zstar0;
-    izeta_obs     = zeros(3,1);
-    V_s_prev_chen = zeros(3,1);   % previous V_s for trapezoidal integral
+    e_prev_chen   = zeros(3,1);   % previous e for finite difference (ε = ė + k₁e)
+    zeta_prev_chen = zeros(3,1);  % previous ζ for finite difference (r uses ζ̇)
 end
 
 %% =========================================================================
@@ -460,9 +460,9 @@ for idx = 1:N_steps
 
         [u_2, I_a_cd(:,idx), ~] = ...
             ctrl_Lin2022(I_p_cm, I_v_cm, x_t(1:3,idx), ...
-                         rho_p, rho_p_dot, rho_v, rho_v_dot, ...
+                         rho_p, rho_v, ...
                          K_ctrl.r_pt_des, K_ctrl.psi_des, ...
-                         I_R_C, B_w_c, K_ctrl, m, J, g, e3, ...
+                         I_R_C, B_w_c, K_ctrl, m, J, g, ...
                          tau_xy_max, tau_z_max, T_max, T_min);
 
         %------------------------------------------------------------------
@@ -496,21 +496,34 @@ for idx = 1:N_steps
         case 4   % Chen 2025 — IBVS observer + geometric inner loop
         %------------------------------------------------------------------
         psi_dot_curr = B_w_c(3);
-        V_s_chen = [V_s(1:2); V_s_tc(3) / K_ctrl.zstar0];
+
+        % Image moment vector q = [qz*xhat; qz*yhat; qz] (Eq. 8)
+        % qz = sqrt(a/a*) where a = mu_20 + mu_02 from virtual image
+        nP_norm = V_nP_i / f;
+        cg_i    = mean(nP_norm, 2);
+        a_curr  = sum(sum((nP_norm - cg_i).^2));
+        qz      = sqrt(a_curr / a_star);
+        V_s_chen = [qz * V_s(1:2); qz];
+
+        % Error and finite differences for ε, s, r  (Eqs. 22-25)
+        e_chen    = V_s_chen - K_ctrl.q_d;
+        zeta_chen = e_chen - e_hat_chen;
         if idx == 1
-            izeta_obs     = dt * (V_s_chen - K_ctrl.q_d) / 2;
-            V_s_prev_chen = V_s_chen;
-            e_hat_chen    = V_s_chen;   % sync observer to first measurement so
-                                        % zeta_e=0 at t=0; prevents k2*(e-0) blowup
+            de_chen    = zeros(3,1);
+            dzeta_chen = zeros(3,1);
+            e_hat_chen = e_chen;   % sync observer so zeta=0 at t=0
+            zeta_chen  = zeros(3,1);
         else
-            izeta_obs     = izeta_obs + ...
-                dt*(V_s_prev_chen + V_s_chen - 2*K_ctrl.q_d)/2;
-            V_s_prev_chen = V_s_chen;
+            de_chen    = (e_chen - e_prev_chen) / dt;
+            dzeta_chen = (zeta_chen - zeta_prev_chen) / dt;
         end
+        e_prev_chen    = e_chen;
+        zeta_prev_chen = zeta_chen;
+
         [u_2, e_hat_chen, vvs_hat_chen, v0_chen, zstar_hat, I_a_cd(:,idx)] = ...
             ctrl_Chen2025(V_s_chen, K_ctrl.q_d, ...
                           e_hat_chen, vvs_hat_chen, v0_chen, zstar_hat, ...
-                          izeta_obs, psi_dot_curr, dt, ...
+                          de_chen, dzeta_chen, psi_dot_curr, dt, ...
                           I_R_C, I_R_V, B_w_c, K_ctrl, m, J, g, e3, ...
                           tau_xy_max, tau_z_max, T_max, T_min, K_ctrl.psi_des);
 
