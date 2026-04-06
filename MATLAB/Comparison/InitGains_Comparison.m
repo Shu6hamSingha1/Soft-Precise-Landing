@@ -137,7 +137,7 @@ K_Chen2025.k1_obs = 0.2;
 K_Chen2025.k2_obs = 8;
 K_Chen2025.k3_obs = 1.0;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 2.5;      % normalisation height [m] (lower → stronger z drive)
+K_Chen2025.zstar0 = 5.0;      % normalisation height [m] (lower values destabilise observer)
 K_Chen2025.q_d    = [0; 0; 0]; % depth-ratio mode: e_z = z/z0 -> 0 at landing
 K_Chen2025.psi_des = 0;
 
