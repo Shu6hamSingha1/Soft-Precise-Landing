@@ -24,7 +24,6 @@
 %   V_nP_i, V_nP_d - image feature points (current, desired) [2xN]
 %   C_s_tc         - target pos in camera frame               [3x1]
 %   I_v_t          - target velocity in NED                   [m/s]
-%   E_cr           - Euler angles [roll; pitch; yaw]
 %   f_cam          - focal length                             [pixels]
 %   lambda_IBVS    - IBVS gains
 %   k_sigmoid, use_sq_comp - adaptive gain params
@@ -34,7 +33,7 @@
 %   B_w_c          - body angular velocity                    [rad/s]
 %   K              - gains struct (Kv, kR, kOmega, v_sat)
 %   m, J           - mass, inertia
-%   g_vec, e3      - gravity, vertical unit
+%   g_vec          - gravity vector [0;0;9.81]
 %   tau_xy_max, tau_z_max, T_max, T_min
 %   psi_des        - desired yaw                              [rad]
 %
@@ -45,9 +44,9 @@
 %   e_feat  - [2Nx1] feature error
 % *************************************************************************
 function [u_2, I_a_cd, V_vd_ff, e_feat] = ...
-          ctrl_Cho2022(V_nP_i, V_nP_d, C_s_tc, I_v_t, E_cr, ...
+          ctrl_Cho2022(V_nP_i, V_nP_d, C_s_tc, I_v_t, ...
                        f_cam, lambda_IBVS, k_sigmoid, use_sq_comp, ...
-                       I_v_c, R_c, I_R_V, B_w_c, K, m, J, g_vec, e3, ...
+                       I_v_c, R_c, I_R_V, B_w_c, K, m, J, g_vec, ...
                        tau_xy_max, tau_z_max, T_max, T_min, psi_des)
 
     N = size(V_nP_i, 2);

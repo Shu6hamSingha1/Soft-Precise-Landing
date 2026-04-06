@@ -497,13 +497,11 @@ for idx = 1:N_steps
         %------------------------------------------------------------------
         psi_dot_curr = B_w_c(3);
 
-        % Image moment vector q = [qz*xhat; qz*yhat; qz] (Eq. 8)
-        % qz = sqrt(a*/a) where a = mu_20 + mu_02 from virtual image
-        nP_norm = V_nP_i / f;
-        cg_i    = mean(nP_norm, 2);
-        a_curr  = sum(sum((nP_norm - cg_i).^2));
-        qz      = sqrt(a_star / a_curr);
-        V_s_chen = [qz * V_s(1:2); qz];
+        % Image moment vector q (Eq. 8): qz = sqrt(a*/a) ~ z*/z
+        % For the extreme altitude range in landing (5m -> 0.1m), the pure
+        % image moment qz blows up (~50x). Use depth-ratio approximation
+        % which is equivalent for planar targets (a ~ 1/z^2).
+        V_s_chen = [V_s(1:2); K_ctrl.zstar0 / V_s_tc(3)];
 
         % Error and finite differences for ε, s, r  (Eqs. 22-25)
         e_chen    = V_s_chen - K_ctrl.q_d;
@@ -532,9 +530,9 @@ for idx = 1:N_steps
         %------------------------------------------------------------------
         [u_2, I_a_cd(:,idx), ~, ~] = ...
             ctrl_Cho2022(V_nP_i, V_nP_d, C_s_tc, dx_t(1:3,idx), ...
-                         E_cr', f, K_ctrl.lambda_IBVS, K_ctrl.k_sigmoid, ...
+                         f, K_ctrl.lambda_IBVS, K_ctrl.k_sigmoid, ...
                          K_ctrl.use_sq_comp, I_v_c, ...
-                         I_R_C, I_R_V, B_w_c, K_ctrl, m, J, g, e3, ...
+                         I_R_C, I_R_V, B_w_c, K_ctrl, m, J, g, ...
                          tau_xy_max, tau_z_max, T_max, T_min, K_ctrl.psi_des);
 
     end   % switch CTRL_SEL
