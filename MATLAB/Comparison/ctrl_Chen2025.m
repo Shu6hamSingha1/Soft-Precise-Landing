@@ -67,8 +67,9 @@ function [u_2, e_hat_new, vvs_hat_new, v0_new, zstar_new, I_a_cd] = ...
 
     % Auxiliary variables  (Eqs. 23-25)
     % NOTE: s and r use edot (de), NOT epsilon
-    epsilon = de + e1;                % Eq. 23: eps = edot + k1*e
-    s       = vvs_hat - e1 + de;      % Eq. 24: s = vvs_hat - e1 + edot
+    vvs_cur = v0 - k2 * zeta;         % Eq. 24 (algebraic): recompute with current v0, ζ
+    epsilon = de + e1;                 % Eq. 23: eps = edot + k1*e
+    s       = vvs_cur - e1 + de;       % Eq. 24: s = vvs - e1 + edot
     r       = -dzeta - k1*zeta + 3*de; % Eq. 25: r = -zetadot - zeta1 + 3*edot
 
     % IBVS force (virtual frame)  (Eq. 33)
@@ -77,11 +78,10 @@ function [u_2, e_hat_new, vvs_hat_new, v0_new, zstar_new, I_a_cd] = ...
             + (zstar_hat / k1) * (M2 * e1);
 
     % Observer update  (Eq. 26)
-    zeta_e      = e - e_hat;
-    e_hat_dot   = -Spsi*e - vvs_hat - epsilon;
+    e_hat_dot   = -Spsi*e - vvs_cur - epsilon;
     e_hat_new   = e_hat + dt * e_hat_dot;
-    vvs_hat_new = v0 - k2 * zeta_e;
-    v0_dot      = -Spsi*(vvs_hat_new + k1*zeta_e + epsilon) - k1*k2*zeta_e;
+    vvs_hat_new = vvs_cur;            % algebraic output for next step
+    v0_dot      = -Spsi*(vvs_cur + k1*zeta + epsilon) - k1*k2*zeta;
     v0_new      = v0 + dt * v0_dot;
 
     % Depth update  (Eq. 32)
@@ -89,8 +89,8 @@ function [u_2, e_hat_new, vvs_hat_new, v0_new, zstar_new, I_a_cd] = ...
     dzstar    = K.k3_obs * (epsilon' + s' + r') * Mk;
     zstar_new = zstar_hat + dt * dzstar;
 
-    % Inertial force
-    I_F    = I_R_V * f_out - m * g_vec;
+    % Inertial force: ξ̈ = -Rψ f (Eq. 2,17), so I_F = mξ̈ - mg = -m Rψ f - mg
+    I_F    = -m * I_R_V * f_out - m * g_vec;
     I_a_cd = I_F / m;
 
     %% ---------------------------------------------------------------
