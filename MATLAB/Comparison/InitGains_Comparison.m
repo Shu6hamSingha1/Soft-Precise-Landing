@@ -26,29 +26,37 @@ K_PLASMC.gamma_1  = [0.5, 0.5];
 K_PLASMC.p_10     = K.p_10;
 K_PLASMC.p_1inf   = [0.2; 0.2];
 
-K_PLASMC.zp = diag([7.5, 7.5]);
+K_PLASMC.zp = diag([5.0, 5.0]);
 K_PLASMC.zi = diag([0.1, 0.1]);
-K_PLASMC.zd = diag([3.0, 3.0]);   % zeta=3/(2*sqrt(7.5))=0.548 (prev 0.22)
+K_PLASMC.zd = diag([1.2, 1.2]);
 
-K_PLASMC.gamma_2  = [0.5, 0.5, 0.5];
+K_PLASMC.gamma_2  = [0.5, 0.5, 0.2];
 K_PLASMC.p_20     = [10.0; 10.0; 10.0];
-K_PLASMC.p_2inf   = [1.0;  1.0;  1.0];
+K_PLASMC.p_2inf   = [2.5;  2.5;  4.0];
 
 K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_PLASMC.Gamma   = diag([0.2,   0.2,   0.1  ]);
-K_PLASMC.P       = diag([2.0,   2.0,   5.0  ]);
-K_PLASMC.N       = diag([0.05,  0.05,  0.05 ]);
+K_PLASMC.Gamma   = diag([0.2,   0.2,   0.3  ]);
+K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
+K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
 K_PLASMC.kappa_0 = [0.1; 0.1; 0.1];
-K_PLASMC.E       = diag([1.5,   1.5,   0.5  ]);
+K_PLASMC.E       = diag([2.5,   2.5,   0.5  ]);
 
-% Shared attitude-PID inner loop (PLASMC only)
-K_PLASMC.ep = diag([5.0, 5.0, 1.0]);
-K_PLASMC.ei = diag([0.1, 0.1, 0.5]);
-K_PLASMC.ed = diag([0.1, 0.1, 0.3]);
+% Attitude PID inner loop — roll/pitch only (PLASMC only)
+K_PLASMC.ep = diag([5.0, 5.0]);
+K_PLASMC.ei = diag([0.1, 0.1]);
+K_PLASMC.ed = diag([0.1, 0.1]);
 K_PLASMC.wp = diag([5.0, 5.0, 5.0]);
 K_PLASMC.wi = diag([0.01, 0.01, 0.1]);
 K_PLASMC.wd = diag([0.1,  0.1,  0.2]);
 K_PLASMC.ff = diag([0.1,  0.1,  0.1]);
+
+% Yaw adaptive SMC (replaces PID yaw channel)
+K_PLASMC.Omega_a   = 1;
+K_PLASMC.Gamma_a   = 0.1;
+K_PLASMC.n_a       = 0.05;
+K_PLASMC.p_a       = 2;
+K_PLASMC.kappa_a_0 = 0.1;
+K_PLASMC.E_a       = 1.5;
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)
@@ -129,16 +137,20 @@ K_Zhang2026.kOmega = kOmega_shared;
 K_Chen2025 = struct();
 
 % Paper gains: kr=8, k1=0.2, k2=20, k3=2, k4=0.4
-% kr negated for NED convention: paper's virtual-frame force f acts with
-% opposite sign to our inertial force mapping I_F = I_R_V*f_out - m*g.
-% q_d=[0;0;0] with depth-ratio qz=z/z0 (see visualControl_comparison case 4).
-K_Chen2025.kr     = -5;
+% Force mapping corrected: I_F = -m*I_R_V*f - m*g (from ξ̈ = -Rψ f).
+% Gains reduced from paper values: pixel noise (awgn SNR=50) amplified
+% through finite-diff de (noise ~ 1/z^2). At alt<2m, de noise produces
+% force > thrust capacity via r-s+eps ~ 3*de. No safe kr exists:
+% kr=0.7 stalls 0.34m, kr=1.0 stalls 0.41m, kr=1.2 oscillates 0.5m,
+% kr=1.5 reaches ground at 11m/s impact. Structural limitation.
+% q_d(3) = zf/zstar0 so error is exactly zero at landing height zf=0.1m.
+K_Chen2025.kr     = 1.0;
 K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 8;
-K_Chen2025.k3_obs = 1.0;
+K_Chen2025.k2_obs = 5;
+K_Chen2025.k3_obs = 0.5;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 5.0;      % normalisation height [m] (lower values destabilise observer)
-K_Chen2025.q_d    = [0; 0; 0]; % depth-ratio mode: e_z = z/z0 -> 0 at landing
+K_Chen2025.zstar0 = 1.5;      % normalisation height [m]
+K_Chen2025.q_d    = [0; 0; 0.0667]; % zf/zstar0 = 0.1/1.5; e_z=0 at landing alt
 K_Chen2025.psi_des = 0;
 
 K_Chen2025.kR     = kR_shared;

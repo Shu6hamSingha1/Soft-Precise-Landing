@@ -1,7 +1,7 @@
 %% Simulation conditions
 NOISE = 1; GE = 1; delay = 1;
-ZOH = 1;
-% ZOH = floor(100/30);
+% ZOH = 1;
+ZOH = floor(100/30);
 ACTUAL = 1;
 
 %% Sensor noise standard deviations for PBVS controllers (active when NOISE = 1)
@@ -18,7 +18,7 @@ tRange = t0:dt:tend;
 
 %% Initializing State
 % Initial Absolute Pose of Camera wrt Global Origin in Inertial Reference Frame
-I_px_c = -2.0; I_py_c = -2.0; I_pz_c = -5.0;
+I_px_c = 2.0; I_py_c = 2.0; I_pz_c = -5.0;
 I_p_c = [I_px_c; I_py_c; I_pz_c];
 q_cw = 1.0; q_cx = 0.0; q_cy = 0.0; q_cz = 0.0;
 q_c = [q_cw; q_cx; q_cy; q_cz];

@@ -64,22 +64,25 @@ end
 loaded = ctrl_list(cellfun(@(x) ~isempty(x), D(ctrl_list)));
 if isempty(loaded), error('No result files found.'); end
 
-ref = D{loaded(1)};
+% pick the controller (from loaded) with largest idx
+idxValues = cellfun(@(s) s.idx, D(loaded));
+[~, k] = max(idxValues);            % k is index into loaded
+ref = D{ loaded(k) };
 
 %% =========================================================================
 %  FIGURE 10 – 3-D TRAJECTORIES
 % =========================================================================
-fig10 = figure(10); clf(fig10); fig10.Color = 'w';
+fig10 = figure(10); clf(fig10); fig10.Color = 'k';
 fig10.Position = [50, 50, 720, 560];
 ax10 = axes(fig10); hold(ax10, 'on');
 
 n0 = ref.idx;
-plot3(ax10, ref.x_t(1,1:n0), ref.x_t(2,1:n0), ref.x_t(3,1:n0), ...
+plot3(ax10, ref.x_t(1,1:n0), ref.x_t(2,1:n0), -ref.x_t(3,1:n0), ...
       '.r', 'MarkerSize', 4, 'DisplayName', 'Target');
 
 for c = loaded
     d = D{c};  n = d.idx;
-    plot3(ax10, d.X_DS(1,1:n), d.X_DS(2,1:n), d.X_DS(3,1:n), ...
+    plot3(ax10, d.X_DS(1,1:n), d.X_DS(2,1:n), -d.X_DS(3,1:n), ...
           styles{c}, 'Color', colours{c}, 'LineWidth', lw(c), ...
           'DisplayName', ctrl_names{c});
 end
@@ -97,7 +100,7 @@ view(ax10, 45, 25);  set(ax10,'FontSize',11);
 pos_labels = {"$^Ix$ (m)", "$^Iy$ (m)", "$^Iz$ (m)"};
 pos_titles = {"$^Ix$ vs $t$ Plot","$^Iy$ vs $t$ Plot","$^Iz$ vs $t$ Plot"};
 
-fig11 = figure(11); clf(fig11); fig11.Color = 'w';
+fig11 = figure(11); clf(fig11); fig11.Color = 'k';
 fig11.Position = [780, 50, 800, 600];
 sgtitle(fig11,'\textbf{UAV Position vs Time}','Interpreter','latex','FontSize',12);
 
@@ -124,7 +127,7 @@ end
 vel_labels = {"$^Iv_x$ (m/s)","$^Iv_y$ (m/s)","$^Iv_z$ (m/s)"};
 vel_titles = {"$^Iv_x$ vs $t$ Plot","$^Iv_y$ vs $t$ Plot","$^Iv_z$ vs $t$ Plot"};
 
-fig12 = figure(12); clf(fig12); fig12.Color = 'w';
+fig12 = figure(12); clf(fig12); fig12.Color = 'k';
 fig12.Position = [50, 650, 800, 600];
 sgtitle(fig12,'\textbf{UAV Velocity vs Time}','Interpreter','latex','FontSize',12);
 
@@ -138,7 +141,7 @@ for ax_i = 1:3
              'Color',colours{c},'LineWidth',lw(c),'DisplayName',ctrl_names{c});
     end
     grid on;
-    yline(0,'--k','LineWidth',0.8,'HandleVisibility','off');
+    yline(0,'--w','LineWidth',0.8,'HandleVisibility','off');
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel(vel_labels{ax_i},'Interpreter','latex');
     title(vel_titles{ax_i},'Interpreter','latex');
@@ -155,13 +158,13 @@ feat_labels = {"$\hat{x}(t)$ (rad)","$\hat{y}(t)$ (rad)","$\alpha(t)$ (rad)"};
 feat_titles = {"$\hat{x}$ vs $t$ Plot","$\hat{y}$ vs $t$ Plot","$\alpha$ vs $t$ Plot"};
 s_d_vals    = [ref.V_s_d(1), ref.V_s_d(2), ref.V_s_d(4)];
 
-fig13 = figure(13); clf(fig13); fig13.Color = 'w';
+fig13 = figure(13); clf(fig13); fig13.Color = 'k';
 fig13.Position = [780, 650, 800, 600];
 sgtitle(fig13,'\textbf{Image Features vs Time}','Interpreter','latex','FontSize',12);
 
 for ax_i = 1:3
     subplot(3,1,ax_i); hold on;
-    yline(s_d_vals(ax_i),'--k','LineWidth',1.2,'DisplayName','Desired');
+    yline(s_d_vals(ax_i),'--w','LineWidth',1.2,'DisplayName','Desired');
     for c = loaded
         d = D{c};  n = d.idx;
         plot(d.tRange(1:n), d.V_X_DS(feat_rows(ax_i),1:n), styles{c}, ...
@@ -183,7 +186,7 @@ h_rows   = [16, 17, 18];
 h_labels = {"$h_x(t)$ (rad/s)","$h_y(t)$ (rad/s)","$h_r(t)$ (rad/s)"};
 h_titles = {"$h_x$ vs $t$ Plot","$h_y$ vs $t$ Plot","$h_r$ vs $t$ Plot"};
 
-fig14 = figure(14); clf(fig14); fig14.Color = 'w';
+fig14 = figure(14); clf(fig14); fig14.Color = 'k';
 fig14.Position = [50, 50, 800, 600];
 sgtitle(fig14,'\textbf{Optical Flow vs Time}','Interpreter','latex','FontSize',12);
 
@@ -196,7 +199,7 @@ for ax_i = 1:3
              'Color',colours{c},'LineWidth',lw(c),'DisplayName',ctrl_names{c});
         % Desired (dashed black, first loaded only to avoid legend clutter)
         if c == loaded(1) && isfield(d,'V_h_d') && ~isempty(d.V_h_d)
-            plot(d.tRange(1:n), d.V_h_d(ax_i,1:n), '--k','LineWidth',1.0, ...
+            plot(d.tRange(1:n), d.V_h_d(ax_i,1:n), '--w','LineWidth',1.0, ...
                  'DisplayName','Desired');
         end
     end
@@ -215,7 +218,7 @@ end
 euler_labels = {"$\phi(t)$ (rad)","$\theta(t)$ (rad)","$\psi(t)$ (rad)"};
 euler_titles = {"$\phi$ vs $t$ Plot","$\theta$ vs $t$ Plot","$\psi$ vs $t$ Plot"};
 
-fig15 = figure(15); clf(fig15); fig15.Color = 'w';
+fig15 = figure(15); clf(fig15); fig15.Color = 'k';
 fig15.Position = [780, 50, 800, 600];
 sgtitle(fig15,'\textbf{Euler Angles vs Time}','Interpreter','latex','FontSize',12);
 
@@ -248,7 +251,7 @@ u_rows    = [4, 1, 2, 3];
 u_labels  = {"$T(t)$ (N)","$\tau_x(t)$ (N\,m)","$\tau_y(t)$ (N\,m)","$\tau_z(t)$ (N\,m)"};
 u_titles  = {"$T$ vs $t$","$\tau_x$ vs $t$","$\tau_y$ vs $t$","$\tau_z$ vs $t$"};
 
-fig16 = figure(16); clf(fig16); fig16.Color = 'w';
+fig16 = figure(16); clf(fig16); fig16.Color = 'k';
 fig16.Position = [50, 650, 900, 600];
 sgtitle(fig16,'\textbf{Control Inputs vs Time}','Interpreter','latex','FontSize',12);
 
@@ -271,7 +274,7 @@ end
 %% =========================================================================
 %  FIGURE 17 – UAV-TO-TARGET DISTANCE  (key comparison metric)
 % =========================================================================
-fig17 = figure(17); clf(fig17); fig17.Color = 'w';
+fig17 = figure(17); clf(fig17); fig17.Color = 'k';
 fig17.Position = [780, 650, 720, 400];
 ax17 = axes(fig17); hold(ax17,'on');
 
@@ -282,7 +285,7 @@ for c = loaded
          'Color',colours{c},'LineWidth',lw(c),'DisplayName',ctrl_names{c});
 end
 grid(ax17,'on');
-yline(ax17, 0.1, '--k', 'LineWidth', 1.0, 'DisplayName', 'Landing threshold');
+yline(ax17, 0.1, '--w', 'LineWidth', 1.0, 'DisplayName', 'Landing threshold');
 xlabel(ax17,"$t$ (s)",'Interpreter','latex');
 ylabel(ax17,"$\|r_e\|$ (m)",'Interpreter','latex');
 title(ax17,'\textbf{UAV-to-Target Distance vs Time}','Interpreter','latex');

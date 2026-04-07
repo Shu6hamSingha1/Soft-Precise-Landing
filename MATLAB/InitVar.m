@@ -56,6 +56,7 @@ V_X_DS = [];
 D_DS = [];
 
 kappa = K.kappa_0;
+kappa_a = K.kappa_a_0;
 
 %% Constants related to Low-pass filter for B_w_c
 tau_w   = 0.08;        % time constant [s] (20–50 ms recommended)

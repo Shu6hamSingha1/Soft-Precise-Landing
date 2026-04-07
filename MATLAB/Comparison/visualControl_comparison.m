@@ -153,6 +153,9 @@ if CTRL_SEL == 1
     raw_dh_d    = zeros(3, N_steps + 3);
     V_s_e       = zeros(2, N_steps);
     kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
+    kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
+    e_a         = zeros(1, N_steps);
+    ie_a        = zeros(1, N_steps);
 end
 
 %% =========================================================================
@@ -185,6 +188,7 @@ end
 % Safe default u_2 before loop (hover thrust, zero torques)
 u_2 = [zeros(3,1); m*norm(g)];
 
+landed = false;
 for idx = 1:N_steps
 
 % *************************************************************************
@@ -201,7 +205,7 @@ for idx = 1:N_steps
 % *************************************************************************
 % Target trajectory  (Circular in _temp.m)
 % *************************************************************************
-    traj_t      = traj_Gen((idx-1)*dt, "Linear");
+    traj_t      = traj_Gen((idx-1)*dt, "Static");
     x_t(:,idx)  = traj_t(:,1);
     dx_t(:,idx) = traj_t(1:end-1, 2);
     I_R_T       = quat2rotm(x_t(4:7,idx)');
@@ -497,11 +501,10 @@ for idx = 1:N_steps
         %------------------------------------------------------------------
         psi_dot_curr = B_w_c(3);
 
-        % Image moment vector q (Eq. 8): qz = sqrt(a*/a) ~ z*/z
-        % For the extreme altitude range in landing (5m -> 0.1m), the pure
-        % image moment qz blows up (~50x). Use depth-ratio approximation
-        % which is equivalent for planar targets (a ~ 1/z^2).
-        V_s_chen = [V_s(1:2); K_ctrl.zstar0 / V_s_tc(3)];
+        % Depth-ratio image feature: qz = z/z0 (normalised by initial depth)
+        % Paper's qz = sqrt(a*/a) = z/z* blows up for extreme landing ratios
+        % (5m->0.1m gives qz~50). Use z/z0 with q_d=[0;0;0] instead.
+        V_s_chen = [V_s(1:2); V_s_tc(3) / K_ctrl.zstar0];
 
         % Error and finite differences for ε, s, r  (Eqs. 22-25)
         e_chen    = V_s_chen - K_ctrl.q_d;
@@ -541,9 +544,10 @@ for idx = 1:N_steps
 % GROUND EFFECT + COMPUTATIONAL DELAY  (controllers 2-5)
 % *************************************************************************
     if CTRL_SEL > 1
-        % Ground effect on thrust
+        % Ground effect on thrust (clamp altitude to avoid singularity at z→0)
         if GE
-            u_2(4) = 1/(1-(r/(4*x_c(3)))^2) * u_2(4);
+            z_ge = -max(abs(x_c(3)), r);
+            u_2(4) = 1/(1-(r/(4*z_ge))^2) * u_2(4);
         end
 
         % Store in buffer and apply delay
@@ -562,42 +566,61 @@ for idx = 1:N_steps
     if CTRL_SEL > 1 && (any(isnan(u_2)) || norm(u_2) > 1e4), break; end
 
 % *************************************************************************
-% SHARED: Attitude PID inner loop — PLASMC (case 1) only
+% SHARED: Attitude control inner loop — PLASMC (case 1) only
+%   Roll/pitch: PID   |   Yaw: adaptive sliding mode control
 % *************************************************************************
     if CTRL_SEL == 1
 
-    if abs(cos(yaw)*I_a_cd(1,idx) + sin(yaw)*I_a_cd(2,idx)) < 1e-4
+    % Desired roll/pitch from acceleration command (use -V_s(4) for heading)
+    if abs(cos(-V_s(4))*I_a_cd(1,idx) + sin(-V_s(4))*I_a_cd(2,idx)) < 1e-4
         theta_cd = 0;
     else
-        theta_cd = atan2(-cos(yaw)*I_a_cd(1,idx) - sin(yaw)*I_a_cd(2,idx), ...
+        theta_cd = atan2(-cos(-V_s(4))*I_a_cd(1,idx) - sin(-V_s(4))*I_a_cd(2,idx), ...
                          -I_a_cd(3,idx));
     end
-    if abs(sin(yaw)*I_a_cd(1,idx) - cos(yaw)*I_a_cd(2,idx)) < 1e-4
+    if abs(sin(-V_s(4))*I_a_cd(1,idx) - cos(-V_s(4))*I_a_cd(2,idx)) < 1e-4
         phi_cd = 0;
     else
-        phi_cd = atan2(-sin(yaw)*I_a_cd(1,idx) + cos(yaw)*I_a_cd(2,idx), ...
+        phi_cd = atan2(-sin(-V_s(4))*I_a_cd(1,idx) + cos(-V_s(4))*I_a_cd(2,idx), ...
                        -I_a_cd(3,idx)/cos(E_cr(2)));
     end
-    E_crd = [phi_cd; theta_cd];
+    E2_crd = [phi_cd; theta_cd];
 
-    E_e(:,idx) = [E_cr(1:2)'; -V_s(4)] - [E_crd; -V_s_d(4)];
+    % Roll/pitch PID (2-DOF)
+    E2_e(:,idx) = E_cr(1:2)' - E2_crd;
 
     if idx == 1
-        iE_e(:,idx)       = dt * E_e(:,idx) / 2;
-        raw_dE_e(:,idx+3) = zeros(3,1);
-        B_w_cf(:,idx)     = B_w_c;
-        B_dw_cf           = zeros(3,1);
+        iE2_e(:,idx)       = dt * E2_e(:,idx) / 2;
+        raw_dE2_e(:,idx+3) = zeros(2,1);
+        B_w_cf(:,idx)      = B_w_c;
+        B_dw_cf            = zeros(3,1);
     else
-        iE_e(:,idx)       = iE_e(:,idx-1) + dt*(E_e(:,idx-1)+E_e(:,idx))/2;
-        raw_dE_e(:,idx+3) = (E_e(:,idx) - E_e(:,idx-1)) / dt;
-        B_w_cf(:,idx)     = alpha_w*B_w_cf(:,idx-1) + (1-alpha_w)*B_w_c;
-        B_dw_cf           = alpha_dw*B_dw_cf + ...
-                            (1-alpha_dw)*(B_w_cf(:,idx)-B_w_cf(:,idx-1))/dt;
+        iE2_e(:,idx)       = iE2_e(:,idx-1) + dt*(E2_e(:,idx-1)+E2_e(:,idx))/2;
+        raw_dE2_e(:,idx+3) = (E2_e(:,idx) - E2_e(:,idx-1)) / dt;
+        B_w_cf(:,idx)      = alpha_w*B_w_cf(:,idx-1) + (1-alpha_w)*B_w_c;
+        B_dw_cf            = alpha_dw*B_dw_cf + ...
+                             (1-alpha_dw)*(B_w_cf(:,idx)-B_w_cf(:,idx-1))/dt;
     end
-    dE_e(:,idx) = smooth4(raw_dE_e(:,end-3:end));
 
-    dE_cd = -K_ctrl.ep*E_e(:,idx) - K_ctrl.ei*iE_e(:,idx) ...
-            -K_ctrl.ed*raw_dE_e(:,idx+3);
+    dE2_cd = -K_ctrl.ep*E2_e(:,idx) - K_ctrl.ei*iE2_e(:,idx) ...
+             -K_ctrl.ed*raw_dE2_e(:,idx+3);
+
+    % Yaw adaptive SMC
+    e_a(idx) = V_s(4) - V_s_d(4);
+    if idx == 1
+        ie_a(idx) = dt * e_a(idx);
+    else
+        ie_a(idx) = ie_a(idx-1) + dt*(e_a(idx-1) + e_a(idx))/2;
+    end
+    sigma_a = e_a(idx) + K_ctrl.Omega_a * ie_a(idx);
+
+    const_kappa_a = [K_ctrl.n_a; K_ctrl.p_a];
+    kappa_a(idx+1) = RK5(@(t,X) kappa_a_Solver(t, X, sigma_a, const_kappa_a), ...
+                         t0, kappa_a(idx), dt);
+    u_a = K_ctrl.Gamma_a*sigma_a + sat(sigma_a/K_ctrl.E_a)*kappa_a(idx+1) ...
+          + K_ctrl.Omega_a*e_a(idx);
+
+    dE_cd = [dE2_cd; u_a];
     if norm(dE_cd) > 1e2, break; end
 
     W = [1,  0,              -sin(E_cr(2));
@@ -607,7 +630,8 @@ for idx = 1:N_steps
 
     B_T_cd(idx) = -m * I_a_cd(3,idx) / (cos(E_cr(1))*cos(E_cr(2)));
     if GE
-        B_T_cd(idx) = 1/(1-(r/(4*x_c(3)))^2) * B_T_cd(idx);
+        z_ge_1 = -max(abs(x_c(3)), r);
+        B_T_cd(idx) = 1/(1-(r/(4*z_ge_1))^2) * B_T_cd(idx);
     end
 
     if idx > delay
@@ -663,8 +687,8 @@ for idx = 1:N_steps
     %   rows 12-14: B_w_cd (desired body rate)
     %   rows 15-17: B_dw_cd (desired body angular accel)
     if CTRL_SEL == 1
-        % All fields populated by the shared attitude-PID inner loop
-        D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); E_crd; ...
+        % All fields populated by the shared attitude control inner loop
+        D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); E2_crd; ...
                        dE_cd; B_w_cd(:,idx); B_dw_cd];
     else
         % Cases 2-5: inner loop runs inside controller function.
@@ -696,8 +720,9 @@ for idx = 1:N_steps
 % *************************************************************************
 % Termination  (0.1 m in _temp.m, not 0.18 m)
 % *************************************************************************
-    if norm(I_p_c - x_t(1:3,idx)) <= 0.1
+    if norm(I_p_c - x_t(1:3,idx)) <= 0.2
         fprintf('Landed at t = %.2f s\n', tRange(idx));
+        landed = true;
         break;
     end
 
@@ -705,7 +730,11 @@ for idx = 1:N_steps
 
 end   % main loop
 
-idx = idx - 1;
+% Safety/NaN breaks exit before logging completes at idx — last valid data
+% is at idx-1. Landing break exits after logging — data at idx is complete.
+if ~landed
+    idx = idx - 1;
+end
 
 %% =========================================================================
 %  SAVE AND PLOT

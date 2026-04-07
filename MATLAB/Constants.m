@@ -1,6 +1,6 @@
 %% Quad-rotor details
 r = 0.075;                              % Rotor radius in meters
-zf = 0.1;                              % Landing height in meters
+zf = 0.2;                              % Landing height in meters
 J = diag([0.0256,0.0256,0.0440]); % X500 Inertia Matrix
 m = 2.114;   % Mass
 M = [0.174, -0.174, -0.174, 0.174;            % Motor Mixer Matrix.
@@ -15,7 +15,7 @@ res = [320;240];  % Image resolution
 
 %% Defining system constants
 g = [0;0;9.81];
-h_rd = -1.0;                      % Reference value of the output;
+h_rd = -0.3;                      % Reference value of the output;
 
 e3 = [0;0;1];
 
