@@ -22,23 +22,23 @@
 % =========================================================================
 K_PLASMC = struct();
 
-K_PLASMC.gamma_1  = [0.5, 0.5];
+K_PLASMC.gamma_1  = [0.2, 0.2];
 K_PLASMC.p_10     = K.p_10;
 K_PLASMC.p_1inf   = [0.2; 0.2];
 
 K_PLASMC.zp = diag([5.0, 5.0]);
 K_PLASMC.zi = diag([0.1, 0.1]);
-K_PLASMC.zd = diag([1.2, 1.2]);
+K_PLASMC.zd = diag([1.3, 1.3]);
 
-K_PLASMC.gamma_2  = [0.5, 0.5, 0.2];
-K_PLASMC.p_20     = [10.0; 10.0; 10.0];
-K_PLASMC.p_2inf   = [2.5;  2.5;  4.0];
+K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];
+K_PLASMC.p_20     = [12.0; 12.0; 5.0];
+K_PLASMC.p_2inf   = [1.5;  1.5;  2.0];
 
 K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_PLASMC.Gamma   = diag([0.2,   0.2,   0.3  ]);
+K_PLASMC.Gamma   = diag([0.25,  0.25,  0.4  ]);
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
-K_PLASMC.kappa_0 = [0.1; 0.1; 0.1];
+K_PLASMC.kappa_0 = [0.1; 0.1; 0.2];
 K_PLASMC.E       = diag([2.5,   2.5,   0.5  ]);
 
 % Attitude PID inner loop — roll/pitch only (PLASMC only)
@@ -51,12 +51,12 @@ K_PLASMC.wd = diag([0.1,  0.1,  0.2]);
 K_PLASMC.ff = diag([0.1,  0.1,  0.1]);
 
 % Yaw adaptive SMC (replaces PID yaw channel)
-K_PLASMC.Omega_a   = 1;
-K_PLASMC.Gamma_a   = 0.1;
+K_PLASMC.Omega_a   = 1.5;
+K_PLASMC.Gamma_a   = 0.3;
 K_PLASMC.n_a       = 0.05;
 K_PLASMC.p_a       = 2;
 K_PLASMC.kappa_a_0 = 0.1;
-K_PLASMC.E_a       = 1.5;
+K_PLASMC.E_a       = 2.5;
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)
