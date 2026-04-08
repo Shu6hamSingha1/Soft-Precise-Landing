@@ -35,5 +35,15 @@ for k = 1:numRuns
     results(k) = tmp;
 end
 
+%% Save results for later analysis
+% Stored under Datasets/<trajType>_multi_init.mat alongside metadata.
+datasetDir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
+if ~exist(datasetDir, 'dir')
+    mkdir(datasetDir);
+end
+saveFile = fullfile(datasetDir, sprintf('%s_multi_init.mat', trajType));
+save(saveFile, 'results', 'p0', 'trajType', 'numRuns');
+fprintf('\nSaved results to %s\n', saveFile);
+
 plot_multi_3D(results);
 plot_multi_image_plane(results);

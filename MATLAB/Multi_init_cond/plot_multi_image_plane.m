@@ -9,9 +9,10 @@ for k = 1:N
     subplot(ceil(sqrt(N)), ceil(sqrt(N)), k);
     hold on; grid on;
 
+    idx_k = results(k).data.idx;
     P = results(k).data.P_DS;
-    nP = P(:,9:12,:);
-    
+    nP = P(:, 9:12, 1:idx_k+1);
+
     for i = 1:4
         x = squeeze(nP(1,i,:));
         y = squeeze(nP(2,i,:));
@@ -36,7 +37,7 @@ for k = 1:N
 
     %% Desired pixels
     P_d = results(k).data.V_nP_d;
-    nP_d = P_d(:,1:4,:);
+    nP_d = P_d(:, 1:4, 1:min(idx_k, size(P_d,3)));
 
     h_des = scatter(squeeze(nP_d(1,:,:)), ...
                     squeeze(nP_d(2,:,:)), ...
