@@ -32,7 +32,7 @@ K_ctrl.gamma_1  = [0.2, 0.2];
 K_ctrl.p_10     = K.p_10;
 K_ctrl.p_1inf   = [0.2; 0.2];
 
-K_ctrl.zp = diag([5.0, 5.0]);
+K_ctrl.zp = diag([4.0, 4.0]);
 K_ctrl.zi = diag([0.1, 0.1]);
 K_ctrl.zd = diag([1.3, 1.3]);
 
@@ -41,7 +41,7 @@ K_ctrl.p_20     = [12.0; 12.0; 5.0];
 K_ctrl.p_2inf   = [1.5;  1.5;  2.0];
 
 K_ctrl.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_ctrl.Gamma   = diag([0.25,  0.25,  0.4  ]);
+K_ctrl.Gamma   = diag([0.25,  0.25,  0.5  ]);
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
 K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
 K_ctrl.kappa_0 = [0.1; 0.1; 0.2];

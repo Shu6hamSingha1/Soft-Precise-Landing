@@ -15,7 +15,7 @@ res = [320;240];  % Image resolution
 
 %% Defining system constants
 g = [0;0;9.81];
-h_rd = -1.0;                      % Reference value of the output;
+h_rd = -0.8;                      % Reference value of the output (synced to multi-init; PLASMC only)
 
 e3 = [0;0;1];
 

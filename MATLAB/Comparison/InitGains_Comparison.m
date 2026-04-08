@@ -26,7 +26,7 @@ K_PLASMC.gamma_1  = [0.2, 0.2];
 K_PLASMC.p_10     = K.p_10;
 K_PLASMC.p_1inf   = [0.2; 0.2];
 
-K_PLASMC.zp = diag([5.0, 5.0]);
+K_PLASMC.zp = diag([4.0, 4.0]);   % synced to multi-init: softer lateral, kills cone-clamp climb-coupling on Run 5
 K_PLASMC.zi = diag([0.1, 0.1]);
 K_PLASMC.zd = diag([1.3, 1.3]);
 
@@ -35,7 +35,7 @@ K_PLASMC.p_20     = [12.0; 12.0; 5.0];
 K_PLASMC.p_2inf   = [1.5;  1.5;  2.0];
 
 K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_PLASMC.Gamma   = diag([0.25,  0.25,  0.4  ]);
+K_PLASMC.Gamma   = diag([0.25,  0.25,  0.5  ]);   % synced to multi-init: faster vertical sliding mode
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
 K_PLASMC.kappa_0 = [0.1; 0.1; 0.2];
