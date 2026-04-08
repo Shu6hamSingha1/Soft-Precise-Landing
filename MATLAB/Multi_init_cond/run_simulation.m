@@ -1,6 +1,10 @@
-function result = run_simulation(x0, trajType)
+function result = run_simulation(x0, trajType, K_override)
+    if nargin < 3, K_override = []; end
     load("bestParam.mat");
-    rng('shuffle');
+    % Sweep mode (K_override given): caller controls RNG seed for repro
+    if isempty(K_override)
+        rng('shuffle');
+    end
 
     Constants;
     InitVar;
@@ -54,6 +58,14 @@ function result = run_simulation(x0, trajType)
     K_ctrl.p_a       = 2;
     K_ctrl.kappa_a_0 = 0.1;
     K_ctrl.E_a       = 2.5;
+
+    % Apply optional gain overrides (used by sweep harness)
+    if ~isempty(K_override)
+        ovr_fields = fieldnames(K_override);
+        for ii = 1:numel(ovr_fields)
+            K_ctrl.(ovr_fields{ii}) = K_override.(ovr_fields{ii});
+        end
+    end
 
     %% =====================================================================
     %  PRE-ALLOCATE ARRAYS
@@ -312,9 +324,10 @@ function result = run_simulation(x0, trajType)
         p_2(:,idx) = expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * (K_ctrl.p_20 - K_ctrl.p_2inf) + K_ctrl.p_2inf;
         dp_2(:,idx) = -diag(K_ctrl.gamma_2) * expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * (K_ctrl.p_20 - K_ctrl.p_2inf);
 
+        S_2_margin = 0.05;   % funnel saturation guard: keeps |zeta_2|<=3.66, G_2 finite
         for j=1:3
             S_2(j,j,idx) = V_h_e(j,idx) / p_2(j,idx);
-            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+eps), 1-eps);
+            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+S_2_margin), 1-S_2_margin);
             zeta_2(j,idx) = log((1+S_2(j,j,idx))/(1-S_2(j,j,idx)));
             G_2(j, j,idx) = (exp(zeta_2(j,idx)) + 1)^2/(2*exp(zeta_2(j,idx))*p_2(j,idx));
         end
@@ -531,8 +544,11 @@ function result = run_simulation(x0, trajType)
          t0 = t0+dt;
     end
 
-    result.success = landed;
+    result.success     = landed;
     result.final_error = norm(I_p_c - x_t(1:3,idx));
+    result.final_t     = tRange(idx);
+    result.final_xy    = norm(I_p_c(1:2) - x_t(1:2,idx));
+    result.final_alt   = abs(I_p_c(3) - x_t(3,idx));
 
     if ~landed
         idx = idx - 1;

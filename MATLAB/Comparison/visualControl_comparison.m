@@ -394,9 +394,10 @@ for idx = 1:N_steps
                        (K_ctrl.p_20 - K_ctrl.p_2inf);
 
         % Transformation S_2, zeta_2  (clamp, no flag-break)
+        S_2_margin = 0.05;   % funnel saturation guard: keeps |zeta_2|<=3.66, G_2 finite
         for j = 1:3
             S_2(j,j,idx) = V_h_e(j,idx) / p_2(j,idx);
-            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+eps), 1-eps);
+            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+S_2_margin), 1-S_2_margin);
             zeta_2(j,idx) = log((1 + S_2(j,j,idx)) / (1 - S_2(j,j,idx)));
             G_2(j,j,idx)  = (exp(zeta_2(j,idx)) + 1)^2 / ...
                              (2 * exp(zeta_2(j,idx)) * p_2(j,idx));
