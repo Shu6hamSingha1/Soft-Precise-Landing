@@ -450,7 +450,7 @@ for idx = 1:N_steps
         I_a_cd(:,idx) = I_R_V * V_a_cd - g;
         % Cone clamp: keep acceleration vector within max attitude angle
         % Ensures az < 0 (thrust upward in NED) and |a_xy/az| <= tan(att_max)
-        att_cone = deg2rad(30);
+        att_cone = deg2rad(35);
         if I_a_cd(3,idx) >= 0
             I_a_cd(3,idx) = -1.0;   % force upward if ASMC demands downward
         end
