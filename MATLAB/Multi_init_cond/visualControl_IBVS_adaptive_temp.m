@@ -41,10 +41,10 @@ K_ctrl.p_20     = [12.0; 12.0; 5.0];
 K_ctrl.p_2inf   = [1.5;  1.5;  2.0];
 
 K_ctrl.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_ctrl.Gamma   = diag([0.25,  0.25,  0.5  ]);
+K_ctrl.Gamma   = diag([0.1875, 0.25, 0.5]);   % deep-sweep: x-lateral softened from 0.25 -> tighter xy
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
 K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
-K_ctrl.kappa_0 = [0.1; 0.1; 0.2];
+K_ctrl.kappa_0 = [0.125; 0.125; 0.25];        % deep-sweep: init adaptation x1.25 -> faster land, tighter xy
 K_ctrl.E       = diag([2.5,   2.5,   0.5  ]);
 
 % Attitude PID inner loop — roll/pitch only

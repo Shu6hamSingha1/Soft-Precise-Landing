@@ -1,6 +1,6 @@
 %% Quad-rotor details
 r = 0.075;                              % Rotor radius in meters
-zf = 0.1;                              % Landing height in meters
+zf = 0.2;                              % Landing height in meters (synced to multi-init)
 J = diag([0.0256,0.0256,0.0440]); % X500 Inertia Matrix
 m = 2.114;   % Mass
 M = [0.174, -0.174, -0.174, 0.174;            % Motor Mixer Matrix.

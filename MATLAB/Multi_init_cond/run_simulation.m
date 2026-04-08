@@ -1,5 +1,6 @@
-function result = run_simulation(x0, trajType, K_override)
+function result = run_simulation(x0, trajType, K_override, speed_mult)
     if nargin < 3, K_override = []; end
+    if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
     load("bestParam.mat");
     % Sweep mode (K_override given): caller controls RNG seed for repro
     if isempty(K_override)
@@ -36,10 +37,10 @@ function result = run_simulation(x0, trajType, K_override)
     K_ctrl.p_2inf   = [1.5;  1.5;  2.0];
 
     K_ctrl.Omega   = diag([0.005, 0.005, 0.01 ]);
-    K_ctrl.Gamma   = diag([0.25,  0.25,  0.5  ]);
+    K_ctrl.Gamma   = diag([0.1875, 0.25, 0.5]);   % deep-sweep: x-lateral softened from 0.25 -> tighter xy
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
-    K_ctrl.kappa_0 = [0.1; 0.1; 0.2];
+    K_ctrl.kappa_0 = [0.125; 0.125; 0.25];        % deep-sweep: init adaptation x1.25 -> faster land, tighter xy
     K_ctrl.E       = diag([2.5,   2.5,   0.5  ]);
 
     % Attitude PID inner loop — roll/pitch only
@@ -168,7 +169,7 @@ function result = run_simulation(x0, trajType, K_override)
     % *********************************************************************
     % Simulating moving target
     % *********************************************************************
-        traj_t = traj_Gen((idx-1)*dt, trajType);
+        traj_t = traj_Gen((idx-1)*dt, trajType, speed_mult);
 
         x_t(:,idx) = traj_t(:,1);
         dx_t(:,idx) = traj_t(1:end-1,2);

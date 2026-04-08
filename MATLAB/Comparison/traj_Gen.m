@@ -43,8 +43,8 @@ function [X] = traj_Gen(t, type)
         %% ===================== 3. CIRCULAR =====================
         case "Circular"
 
-            r  = 10.0;        % radius
-            wz = 0.1;        % angular rate
+            r  = 5.0;         % radius (synced to multi-init)
+            wz = 0.11;        % angular rate (synced to multi-init; chase v = r*wz = 0.55 m/s)
             vz = 0.0;
 
             p = [-r*(cos(wz*t)-1);

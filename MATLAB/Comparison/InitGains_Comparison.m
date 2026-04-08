@@ -35,10 +35,10 @@ K_PLASMC.p_20     = [12.0; 12.0; 5.0];
 K_PLASMC.p_2inf   = [1.5;  1.5;  2.0];
 
 K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_PLASMC.Gamma   = diag([0.25,  0.25,  0.5  ]);   % synced to multi-init: faster vertical sliding mode
+K_PLASMC.Gamma   = diag([0.1875, 0.25, 0.5]);   % deep-sweep: x-lateral softened from 0.25 -> tighter xy
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
-K_PLASMC.kappa_0 = [0.1; 0.1; 0.2];
+K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];        % deep-sweep: init adaptation x1.25 -> faster land, tighter xy
 K_PLASMC.E       = diag([2.5,   2.5,   0.5  ]);
 
 % Attitude PID inner loop — roll/pitch only (PLASMC only)

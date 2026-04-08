@@ -19,7 +19,11 @@
 % dx = [v; w; 0]
 % *************************************************************************
 
-function [X] = traj_Gen(t, type)
+function [X] = traj_Gen(t, type, speed_mult)
+
+    if nargin < 3 || isempty(speed_mult)
+        speed_mult = 1.0;
+    end
 
     switch type
 
@@ -34,7 +38,7 @@ function [X] = traj_Gen(t, type)
         %% ===================== 2. LINEAR =====================
         case "Linear"
 
-            v = [0.5; 0.5; 0.0];
+            v = [0.5; 0.5; 0.0] * speed_mult;
             p = v * t;
 
             w = [0; 0; 0];
@@ -43,8 +47,8 @@ function [X] = traj_Gen(t, type)
         %% ===================== 3. CIRCULAR =====================
         case "Circular"
 
-            r  = 5.0;         % radius (was 10.0; halved to keep lateral chase v=r*wz within cone-clamp)
-            wz = 0.11;        % angular rate (slight bump from 0.10 keeps yaw discipline test)
+            r  = 5.0;                        % radius (fixed)
+            wz = 0.11 * speed_mult;          % angular rate (scaled -> chase v = r*wz also scales)
             vz = 0.0;
 
             p = [-r*(cos(wz*t)-1);
@@ -82,9 +86,9 @@ function [X] = traj_Gen(t, type)
         %% ===================== 5. SINUSOIDAL =====================
         case "Sinusoidal"
 
-            A = 0.5;
-            w0 = 0.8;
-            v0 = 0.1;
+            A  = 0.5;
+            w0 = 0.8 * speed_mult;   % x-axis oscillation frequency
+            v0 = 0.1 * speed_mult;   % y-axis drift velocity
 
             p = [A*sin(w0*t);
                  v0*t;
@@ -100,10 +104,10 @@ function [X] = traj_Gen(t, type)
         %% ===================== 6. LISSAJOUS =====================
         case "Lissajous"
 
-            A = 0.5;
-            B = 0.8;
-            w1 = -0.8;
-            w2 = 0.5;
+            A  = 0.5;
+            B  = 0.8;
+            w1 = -0.8 * speed_mult;
+            w2 =  0.5 * speed_mult;
 
             p = [A*sin(w1*t);
                  B*sin(w2*t);
