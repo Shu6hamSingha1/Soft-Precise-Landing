@@ -4,9 +4,10 @@ NOISE = 1; GE = 1; delay = 1;
 ZOH = floor(100/30);
 ACTUAL = 1;
 
-%% Sensor noise standard deviations for PBVS controllers (active when NOISE = 1)
-sigma_pos = 0.01;     % position measurement noise std [m]
-sigma_vel = 0.02;     % velocity measurement noise std [m/s]
+%% Sensor noise parameters (active when NOISE = 1)
+SNR_IBVS  = 50;       % IBVS pixel noise SNR [dB] for awgn (50=original, 60=baseline)
+sigma_pos = 0.01;     % PBVS position measurement noise std [m]
+sigma_vel = 0.02;     % PBVS velocity measurement noise std [m/s]
 
 %% Initialization Time Trajectory
 % step size

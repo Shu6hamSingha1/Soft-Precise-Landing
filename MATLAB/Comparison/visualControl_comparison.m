@@ -203,9 +203,12 @@ for idx = 1:N_steps
     I_R_V = rotz(rad2deg(yaw));
 
 % *************************************************************************
-% Target trajectory  (Circular in _temp.m)
+% Target trajectory  (set TRAJ_TYPE in workspace, defaults to "Circular")
 % *************************************************************************
-    traj_t      = traj_Gen((idx-1)*dt, "Static");
+    if ~exist('TRAJ_TYPE', 'var')
+        TRAJ_TYPE = "Static";
+    end
+    traj_t      = traj_Gen((idx-1)*dt, TRAJ_TYPE);
     x_t(:,idx)  = traj_t(:,1);
     dx_t(:,idx) = traj_t(1:end-1, 2);
     I_R_T       = quat2rotm(x_t(4:7,idx)');
@@ -229,7 +232,7 @@ for idx = 1:N_steps
 
         % Noise  (awgn in _temp.m, not randi+round)
         if NOISE
-            C_nP = awgn(C_nP, 50, 'measured');
+            C_nP = awgn(C_nP, SNR_IBVS, 'measured');
         end
 
         % Virtual image plane transform
@@ -308,19 +311,31 @@ for idx = 1:N_steps
             V_dw = mean(V_dw_raw(:, 1:idx), 2);
         else
             V_s_vec  = sgolayfilt(V_s_raw(:,  idx-FILTER_WINDOW+1:idx), 2, FILTER_WINDOW, [], 2);
-            V_s      = V_s_vec(:,  floor(FILTER_WINDOW/2 + 1));
+            V_s      = V_s_vec(:,  end);
             V_h_vec  = sgolayfilt(V_h_raw(:,  idx-FILTER_WINDOW+1:idx), 2, FILTER_WINDOW, [], 2);
-            V_h      = V_h_vec(:,  floor(FILTER_WINDOW/2 + 1));
+            V_h      = V_h_vec(:,  end);
             V_w_vec  = sgolayfilt(V_w_raw(:,  idx-FILTER_WINDOW+1:idx), 2, FILTER_WINDOW, [], 2);
-            V_w      = V_w_vec(:,  floor(FILTER_WINDOW/2 + 1));
+            V_w      = V_w_vec(:,  end);
             V_dw_vec = sgolayfilt(V_dw_raw(:, idx-FILTER_WINDOW+1:idx), 2, FILTER_WINDOW, [], 2);
-            V_dw     = V_dw_vec(:, floor(FILTER_WINDOW/2 + 1));
+            V_dw     = V_dw_vec(:, end);
         end
     else
         V_s  = V_s_a;
         V_h  = V_h_a;
         V_w  = V_w_a;
         V_dw = V_dw_a;
+    end
+
+% *************************************************************************
+% Early landing check (before controller can violate barrier at boundary)
+% *************************************************************************
+    alt_above = abs(I_p_c(3) - x_t(3,idx));
+    xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
+    if alt_above <= 0.20 && xy_err <= 0.3
+        fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm)\n', ...
+                tRange(idx), alt_above, xy_err);
+        landed = true;
+        break;
     end
 
 % *************************************************************************
@@ -394,6 +409,9 @@ for idx = 1:N_steps
             izeta_2(:,idx) = izeta_2(:,idx-1) + ...
                              dt*(zeta_2(:,idx-1) + zeta_2(:,idx))/2;
         end
+        % Anti-windup: clamp izeta_2 to prevent spike accumulation
+        izeta_2_max = 5.0;
+        izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
         sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega * izeta_2(:,idx);
 
         % Known dynamics c
@@ -430,6 +448,17 @@ for idx = 1:N_steps
 
         V_a_cd        = -G_2(:,:,idx) \ (u_sw + u_eq);
         I_a_cd(:,idx) = I_R_V * V_a_cd - g;
+        % Cone clamp: keep acceleration vector within max attitude angle
+        % Ensures az < 0 (thrust upward in NED) and |a_xy/az| <= tan(att_max)
+        att_cone = deg2rad(30);
+        if I_a_cd(3,idx) >= 0
+            I_a_cd(3,idx) = -1.0;   % force upward if ASMC demands downward
+        end
+        a_xy_limit = abs(I_a_cd(3,idx)) * tan(att_cone);
+        a_xy_norm  = norm(I_a_cd(1:2,idx));
+        if a_xy_norm > a_xy_limit
+            I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
+        end
 
         %------------------------------------------------------------------
         case 2   % Lin 2022 — outer loop + geometric SO(3) inner loop
@@ -720,8 +749,11 @@ for idx = 1:N_steps
 % *************************************************************************
 % Termination  (0.1 m in _temp.m, not 0.18 m)
 % *************************************************************************
-    if norm(I_p_c - x_t(1:3,idx)) <= 0.2
-        fprintf('Landed at t = %.2f s\n', tRange(idx));
+    alt_above = abs(I_p_c(3) - x_t(3,idx));
+    xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
+    if alt_above <= 0.20 && xy_err <= 0.3
+        fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm)\n', ...
+                tRange(idx), alt_above, xy_err);
         landed = true;
         break;
     end

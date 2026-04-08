@@ -6,20 +6,35 @@
 % .mat file, then calls plotter_comparison.m.
 %
 % USAGE:
-%   run_comparison          % runs controllers 1-5
-%   run_comparison([1 3])   % runs only controllers 1 and 3
+%   run_comparison                       % all 5 controllers, Static target
+%   run_comparison([1 3])                % only controllers 1 and 3, Static
+%   run_comparison(1:5, "Circular")      % all 5, Circular target
+%   run_comparison([1], "Sinusoidal")    % only PLASMC, Sinusoidal
+%
+% OUTPUTS:
+%   result_ctrl_<c>.mat                       — per-controller (cwd, legacy)
+%   Datasets/<trajType>_comparison.mat        — combined results for all
+%                                                controllers in this run
 % =========================================================================
 
-function run_comparison(ctrl_list)
+function run_comparison(ctrl_list, trajType)
 
-if nargin < 1
+if nargin < 1 || isempty(ctrl_list)
     ctrl_list = 1:5;
 end
+if nargin < 2 || isempty(trajType)
+    trajType = "Static";
+end
+trajType = string(trajType);
 
 ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
               'Zhang 2026',        'Chen 2025', 'Cho 2022'};
 
-fprintf('=== Comparative Study: %d controllers ===\n\n', numel(ctrl_list));
+fprintf('=== Comparative Study: %d controllers on %s target ===\n\n', ...
+        numel(ctrl_list), trajType);
+
+% Pre-allocate combined results struct array (indexed by controller id 1-5)
+all_results(5) = struct('ctrl_id', [], 'ctrl_name', '', 'data', []);
 
 %% =========================================================================
 %  RUN EACH CONTROLLER
@@ -28,19 +43,16 @@ for c = ctrl_list
 
     fprintf('--- Running Controller %d: %s ---\n', c, ctrl_names{c});
 
-    % Full workspace reset between runs
-    clearvars -except c ctrl_list ctrl_names;
+    % Full workspace reset between runs (preserve loop vars + trajType)
+    clearvars -except c ctrl_list ctrl_names trajType all_results;
     rng('shuffle');
 
-    CTRL_SEL = c;                    %#ok<NASGU>
+    CTRL_SEL  = c;          %#ok<NASGU>
+    TRAJ_TYPE = trajType;   %#ok<NASGU>
     visualControl_comparison;        % runs simulation, leaves workspace populated
 
     % ------------------------------------------------------------------
-    % Pack results — variable list updated to match _temp.m structure:
-    %   V_s / V_h / V_w are column vectors (not 2-D logged arrays)
-    %   V_X_DS is [24 x N]
-    %   P_DS   is [2 x 12 x N]
-    %   V_s_raw / V_h_raw etc. are [rows x N] logged matrices
+    % Pack results
     % ------------------------------------------------------------------
     result = struct();
 
@@ -76,20 +88,38 @@ for c = ctrl_list
     if exist('zeta_1','var'), result.zeta_1 = zeta_1; else, result.zeta_1 = []; end
 
     % Time bookkeeping
-    result.tRange = tRange;
-    result.dt     = dt;
-    result.idx    = idx;
+    result.tRange   = tRange;
+    result.dt       = dt;
+    result.idx      = idx;
 
-    % Controller identity and gains
+    % Controller identity, gains, trajectory
     result.ctrl_id   = c;
     result.ctrl_name = ctrl_names{c};
     result.K         = K_ctrl;
+    result.trajType  = trajType;
 
+    % Per-controller .mat (legacy filename used by plotter_comparison)
     fname = sprintf('result_ctrl_%d.mat', c);
     save(fname, '-struct', 'result');
     fprintf('    Saved %s  (%d steps)\n\n', fname, idx);
 
+    % Add to combined struct array
+    all_results(c).ctrl_id   = c;
+    all_results(c).ctrl_name = ctrl_names{c};
+    all_results(c).data      = result;
+
 end
+
+%% =========================================================================
+%  SAVE COMBINED DATASET
+% =========================================================================
+datasetDir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
+if ~exist(datasetDir, 'dir')
+    mkdir(datasetDir);
+end
+saveFile = fullfile(datasetDir, sprintf('%s_comparison.mat', trajType));
+save(saveFile, 'all_results', 'ctrl_list', 'ctrl_names', 'trajType');
+fprintf('\nSaved combined results to %s\n\n', saveFile);
 
 %% =========================================================================
 %  PLOT ALL RESULTS TOGETHER

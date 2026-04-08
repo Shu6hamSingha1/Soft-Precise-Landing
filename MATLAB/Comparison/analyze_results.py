@@ -20,7 +20,7 @@ import numpy as np
 NAMES = ['PLASMC', 'Lin2022', 'Zhang2026', 'Chen2025', 'Cho2022']
 DT = 0.01
 N_MAX = 4000
-LAND_THRESHOLD = 0.2  # m — must match visualControl_comparison.m
+LAND_THRESHOLD = 0.5  # m — alt<=0.4 && xy<=0.5 in MATLAB; use 3D proxy
 
 
 def load_ctrl(ctrl_id):
@@ -38,24 +38,37 @@ def load_ctrl(ctrl_id):
     omega = X[10:13, :idx+1]
 
     tgt_pos = xt[0:3, :idx+1]
+    tgt_quat = xt[3:7, :idx+1]
+    # If loop broke at idx, x_t(:,idx) may be uninitialized (zeros).
+    # Use idx-1 target position for the final step if target looks zero.
+    if idx > 0 and np.linalg.norm(tgt_pos[:, -1]) == 0 and np.linalg.norm(tgt_pos[:, -2]) > 0:
+        tgt_pos[:, -1] = tgt_pos[:, -2]
+        tgt_quat[:, -1] = tgt_quat[:, -2]
     rel_pos = pos - tgt_pos
 
-    # Quaternion -> Euler
+    # Quaternion -> Euler (UAV)
     qw, qx, qy, qz_ = quat[0], quat[1], quat[2], quat[3]
     roll  = np.arctan2(2*(qw*qx + qy*qz_), 1 - 2*(qx**2 + qy**2))
     pitch = np.arcsin(np.clip(2*(qw*qy - qz_*qx), -1, 1))
     yaw   = np.arctan2(2*(qw*qz_ + qx*qy), 1 - 2*(qy**2 + qz_**2))
+
+    # Target yaw
+    tqw, tqx, tqy, tqz = tgt_quat[0], tgt_quat[1], tgt_quat[2], tgt_quat[3]
+    tgt_yaw = np.arctan2(2*(tqw*tqz + tqx*tqy), 1 - 2*(tqy**2 + tqz**2))
 
     thrust  = U[3, :idx+1]
     torques = U[0:3, :idx+1]
     t = tR[:idx+1]
 
     # Determine termination type
-    final_dist = float(np.linalg.norm(rel_pos[:, -1]))
+    final_rel = rel_pos[:, -1]
+    final_alt = float(abs(final_rel[2]))
+    final_xy  = float(np.linalg.norm(final_rel[:2]))
+    final_dist = float(np.linalg.norm(final_rel))
     if idx >= N_MAX:
         status = 'TIMEOUT'
-    elif final_dist <= LAND_THRESHOLD * 1.5:
-        # Within ~1.5x threshold: landed (accounts for off-by-one in X_DS)
+    elif final_alt <= 0.35 and final_xy <= 0.4:
+        # Match MATLAB: alt<=0.4 && xy<=0.5, with margin for off-by-one
         status = 'LANDED'
     else:
         # Broke early but far from target: safety break / crash
@@ -63,6 +76,7 @@ def load_ctrl(ctrl_id):
 
     return dict(
         pos=pos, vel=vel, omega=omega, roll=roll, pitch=pitch, yaw=yaw,
+        tgt_yaw=tgt_yaw,
         thrust=thrust, torques=torques, t=t, idx=idx, tR=tR,
         rel_pos=rel_pos, tgt_pos=tgt_pos, raw=d, status=status,
     )
@@ -103,7 +117,11 @@ def print_summary(ctrl_id, c):
     print(f'  Final rel pos: [{final_rel[0]:.4f}, {final_rel[1]:.4f}, {final_rel[2]:.4f}] m  (norm={np.linalg.norm(final_rel):.4f})')
     print(f'  Final velocity: [{final_v[0]:.4f}, {final_v[1]:.4f}, {final_v[2]:.4f}] m/s  (|v|={np.linalg.norm(final_v):.4f})')
     print(f'  Final alt above tgt: {alt[-1]:.4f} m  |  Final XY err: {np.linalg.norm(final_rel[0:2]):.4f} m')
+    yaw_d = c['yaw'] * 180 / np.pi
+    tgt_yaw_d = c['tgt_yaw'] * 180 / np.pi
+    yaw_err = yaw_d - tgt_yaw_d
     print(f'  Max |roll|: {np.max(np.abs(roll))*180/np.pi:.2f} deg  |  Max |pitch|: {np.max(np.abs(pitch))*180/np.pi:.2f} deg')
+    print(f'  Yaw: final={yaw_d[-1]:.1f} deg  |  Tgt yaw: {tgt_yaw_d[-1]:.1f} deg  |  Yaw err: mean={np.mean(yaw_err):.2f}, max|err|={np.max(np.abs(yaw_err)):.2f} deg')
     print(f'  Thrust: mean={np.mean(T):.2f}, max={np.max(T):.2f}, min={np.min(T):.2f} N')
     print(f'  Max |tau_xy|: {np.max(np.abs(tau[0:2,:])):.4f} Nm  |  Max |tau_z|: {np.max(np.abs(tau[2,:])):.4f} Nm')
     print(f'  Max speed: {np.max(np.linalg.norm(vel, axis=0)):.3f} m/s  |  Max Vz_down: {np.max(vel_z):.3f} m/s')
@@ -132,16 +150,21 @@ def print_detail(ctrl_id, c):
     print(f'\n--- Detailed analysis: {NAMES[ctrl_id-1]} (ctrl {ctrl_id}) ---\n')
 
     # ---- Phase analysis ----
+    yaw_d_phase = np.degrees(c['yaw'])
+    tgt_yaw_phase = np.degrees(c['tgt_yaw'])
+    yaw_err_phase = yaw_d_phase - tgt_yaw_phase
+
     print('Phase analysis (2s windows):')
     print(f'{"t[s]":>6} {"alt[m]":>7} {"vz[m/s]":>8} {"xy[m]":>7} {"spd[m/s]":>8} '
-          f'{"roll":>7} {"pitch":>8} {"T[N]":>6} {"Tstd":>6}')
+          f'{"roll":>7} {"pitch":>8} {"yaw_err":>8} {"T[N]":>6} {"Tstd":>6}')
     win = 200  # 2s
     for j in range(0, idx+1, win):
         sl = slice(j, min(j+win, idx+1))
         print(f'{t[j]:6.1f} {np.mean(alt[sl]):7.2f} {np.mean(vel_z[sl]):8.3f} '
               f'{np.mean(xy_err[sl]):7.3f} {np.mean(speed[sl]):8.3f} '
               f'{np.mean(roll_d[sl]):7.1f} {np.mean(pitch_d[sl]):8.1f} '
-              f'{np.mean(T[sl]):6.1f} {np.std(T[sl]):6.2f}')
+              f'{np.mean(yaw_err_phase[sl]):+8.2f} '
+              f'{np.mean(T[sl]):6.1f} {np.std(T[sl]):6.02f}')
 
     # ---- Stability diagnostics ----
     print('\nStability diagnostics:')
@@ -228,6 +251,30 @@ def print_detail(ctrl_id, c):
                       f'{max_ratio[1]:.4f} @ t={max_ratio_t[1]:.2f}s, '
                       f'{max_ratio[2]:.4f} @ t={max_ratio_t[2]:.2f}s]')
 
+    # ---- Yaw control analysis ----
+    yaw_d = np.degrees(c['yaw'])
+    tgt_yaw_d = np.degrees(c['tgt_yaw'])
+    yaw_err = yaw_d - tgt_yaw_d
+    omega_z = np.degrees(c['omega'][2])
+    tau_z = c['torques'][2]
+
+    print('\nYaw control:')
+    print(f'  UAV yaw: [{np.min(yaw_d):.1f}, {np.max(yaw_d):.1f}] deg  |  '
+          f'Tgt yaw: [{np.min(tgt_yaw_d):.1f}, {np.max(tgt_yaw_d):.1f}] deg')
+    print(f'  Yaw error: mean={np.mean(yaw_err):+.2f}, std={np.std(yaw_err):.2f}, '
+          f'max|err|={np.max(np.abs(yaw_err)):.2f} deg')
+    print(f'  Yaw rate: max|wz|={np.max(np.abs(omega_z)):.2f} deg/s  |  '
+          f'Yaw torque: max|tau_z|={np.max(np.abs(tau_z)):.4f}, mean|tau_z|={np.mean(np.abs(tau_z)):.4f} Nm')
+
+    print(f'  {"t[s]":>6} {"uav_yaw":>8} {"tgt_yaw":>8} {"yaw_err":>8} '
+          f'{"wz":>8} {"|tau_z|":>8}')
+    win = 200
+    for j in range(0, idx+1, win):
+        sl = slice(j, min(j+win, idx+1))
+        print(f'  {t[j]:6.1f} {np.mean(yaw_d[sl]):+8.1f} {np.mean(tgt_yaw_d[sl]):+8.1f} '
+              f'{np.mean(yaw_err[sl]):+8.2f} '
+              f'{np.mean(omega_z[sl]):+8.2f} {np.mean(np.abs(tau_z[sl])):8.4f}')
+
     # ---- Crash diagnostics ----
     if c['status'] == 'CRASHED':
         print('\nCRASH DIAGNOSTICS:')
@@ -267,7 +314,11 @@ def plot_detail(ctrl_id, c):
     pitch_d = np.degrees(c['pitch'])
     xy_err = np.linalg.norm(rel[0:2], axis=0)
 
-    fig, axes = plt.subplots(3, 2, figsize=(14, 10), sharex=True)
+    yaw_d = np.degrees(c['yaw'])
+    tgt_yaw_d = np.degrees(c['tgt_yaw'])
+    yaw_err = yaw_d - tgt_yaw_d
+
+    fig, axes = plt.subplots(4, 2, figsize=(14, 13), sharex=True)
     fig.suptitle(f'{NAMES[ctrl_id-1]} (ctrl {ctrl_id}) [{c["status"]}]', fontsize=14)
 
     axes[0, 0].plot(t, alt); axes[0, 0].set_ylabel('Altitude [m]')
@@ -284,10 +335,18 @@ def plot_detail(ctrl_id, c):
     axes[1, 1].set_ylabel('Attitude [deg]'); axes[1, 1].legend()
 
     axes[2, 0].plot(t, T); axes[2, 0].set_ylabel('Thrust [N]')
-    axes[2, 0].set_xlabel('Time [s]')
 
     axes[2, 1].plot(t, np.linalg.norm(vel, axis=0)); axes[2, 1].set_ylabel('Speed [m/s]')
-    axes[2, 1].set_xlabel('Time [s]')
+
+    axes[3, 0].plot(t, yaw_d, label='UAV')
+    axes[3, 0].plot(t, tgt_yaw_d, '--', label='Target')
+    axes[3, 0].set_ylabel('Yaw [deg]'); axes[3, 0].legend()
+    axes[3, 0].set_xlabel('Time [s]')
+
+    axes[3, 1].plot(t, yaw_err)
+    axes[3, 1].set_ylabel('Yaw error [deg]')
+    axes[3, 1].axhline(0, color='k', ls=':', lw=0.5)
+    axes[3, 1].set_xlabel('Time [s]')
 
     plt.tight_layout()
     fname = f'diag_ctrl_{ctrl_id}.png'
