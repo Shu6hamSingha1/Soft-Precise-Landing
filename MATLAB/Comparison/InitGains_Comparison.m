@@ -8,13 +8,13 @@
 %   g = [0;0;9.81] m/s^2  (gravity points in +z = downward)
 %   UAV initial altitude: I_pz_c = -5.0 m  (above ground → negative z)
 %
-% Controllers 1 (PLASMC):
-%   Outputs I_a_cd → shared attitude-PID inner loop in main script
+% Controller 1 (PLASMC):
+%   Outputs I_a_cd → yaw ASMC heading generator → geometric SO(3) inner loop
+%   (kR, kOmega) inline in visualControl_comparison.m.
 %
 % Controllers 2-5 (Lin, Zhang, Chen, Cho):
 %   Each controller produces u_2 = [tau; T] directly via its own
-%   geometric SO(3) inner loop (kR, kOmega gains below).
-%   The shared attitude-PID inner loop in the main script is BYPASSED.
+%   geometric SO(3) inner loop (kR_shared, kOmega_shared gains below).
 % =========================================================================
 
 %% =========================================================================
@@ -24,39 +24,34 @@ K_PLASMC = struct();
 
 K_PLASMC.gamma_1  = [0.2, 0.2];
 K_PLASMC.p_10     = K.p_10;
-K_PLASMC.p_1inf   = [0.2; 0.2];
+K_PLASMC.p_1inf   = [0.08; 0.08];
 
-K_PLASMC.zp = diag([4.0, 4.0]);   % synced to multi-init: softer lateral, kills cone-clamp climb-coupling on Run 5
+K_PLASMC.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
 K_PLASMC.zi = diag([0.1, 0.1]);
 K_PLASMC.zd = diag([1.3, 1.3]);
 
-K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];
-K_PLASMC.p_20     = [12.0; 12.0; 5.0];
-K_PLASMC.p_2inf   = [1.5;  1.5;  2.0];
+K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];           % prior 25/25 baseline
+K_PLASMC.p_20     = [25.0; 25.0; 8.0];  % widened for faster traj_Gen targets
+K_PLASMC.p_2inf   = [0.8;  0.8;  1.0];         % prior 25/25 baseline
 
-K_PLASMC.Omega   = diag([0.005, 0.005, 0.01 ]);
-K_PLASMC.Gamma   = diag([0.1875, 0.25, 0.5]);   % deep-sweep: x-lateral softened from 0.25 -> tighter xy
+K_PLASMC.Omega   = diag([0.003, 0.003, 0.006]);
+K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
-K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];        % deep-sweep: init adaptation x1.25 -> faster land, tighter xy
-K_PLASMC.E       = diag([2.5,   2.5,   0.5  ]);
+K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
+K_PLASMC.E       = diag([1.0,   1.0,   0.5  ]);
 
-% Attitude PID inner loop — roll/pitch only (PLASMC only)
-K_PLASMC.ep = diag([5.0, 5.0]);
-K_PLASMC.ei = diag([0.1, 0.1]);
-K_PLASMC.ed = diag([0.1, 0.1]);
-K_PLASMC.wp = diag([5.0, 5.0, 5.0]);
-K_PLASMC.wi = diag([0.01, 0.01, 0.1]);
-K_PLASMC.wd = diag([0.1,  0.1,  0.2]);
-K_PLASMC.ff = diag([0.1,  0.1,  0.1]);
+% Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
+K_PLASMC.kR     = diag([1.5, 1.5, 0.5]);
+K_PLASMC.kOmega = diag([0.3, 0.3, 0.1]);
 
-% Yaw adaptive SMC (replaces PID yaw channel)
-K_PLASMC.Omega_a   = 1.5;
-K_PLASMC.Gamma_a   = 0.3;
-K_PLASMC.n_a       = 0.05;
+% Yaw adaptive SMC — heading-rate generator (SO(3) baseline)
+K_PLASMC.Omega_a   = 0.5;
+K_PLASMC.Gamma_a   = 0.5;
+K_PLASMC.n_a       = 1.0;
 K_PLASMC.p_a       = 2;
-K_PLASMC.kappa_a_0 = 0.1;
-K_PLASMC.E_a       = 2.5;
+K_PLASMC.kappa_a_0 = 2.0;
+K_PLASMC.E_a       = 3.0;
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)

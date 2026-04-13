@@ -38,7 +38,7 @@ function [X] = traj_Gen(t, type, speed_mult)
         %% ===================== 2. LINEAR =====================
         case "Linear"
 
-            v = [0.5; 0.5; 0.0] * speed_mult;
+            v = [1.0; 1.0; 0.0] * speed_mult;
             p = v * t;
 
             w = [0; 0; 0];
@@ -47,8 +47,8 @@ function [X] = traj_Gen(t, type, speed_mult)
         %% ===================== 3. CIRCULAR =====================
         case "Circular"
 
-            r  = 5.0;                        % radius (fixed)
-            wz = 0.11 * speed_mult;          % angular rate (scaled -> chase v = r*wz also scales)
+            r  = 0.5;                        % rescaled to match prior 5/5 multi-init baseline
+            wz = 0.3 * speed_mult;         % tempered further: c-feedforward scales with wz^2
             vz = 0.0;
 
             p = [-r*(cos(wz*t)-1);
@@ -88,7 +88,7 @@ function [X] = traj_Gen(t, type, speed_mult)
 
             A  = 0.5;
             w0 = 0.8 * speed_mult;   % x-axis oscillation frequency
-            v0 = 0.1 * speed_mult;   % y-axis drift velocity
+            v0 = 0.3 * speed_mult;   % y-axis drift velocity
 
             p = [A*sin(w0*t);
                  v0*t;
@@ -106,8 +106,8 @@ function [X] = traj_Gen(t, type, speed_mult)
 
             A  = 0.5;
             B  = 0.8;
-            w1 = -0.8 * speed_mult;
-            w2 =  0.5 * speed_mult;
+            w1 = -0.65 * speed_mult;
+            w2 =  0.65 * speed_mult;
 
             p = [A*sin(w1*t);
                  B*sin(w2*t);

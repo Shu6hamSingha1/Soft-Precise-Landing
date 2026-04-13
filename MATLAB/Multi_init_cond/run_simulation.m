@@ -1,14 +1,25 @@
-function result = run_simulation(x0, trajType, K_override, speed_mult)
+function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_override, seed)
     if nargin < 3, K_override = []; end
     if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
+    if nargin < 5, cfg_override = []; end
+    if nargin < 6, seed = []; end
     load("bestParam.mat");
-    % Sweep mode (K_override given): caller controls RNG seed for repro
-    if isempty(K_override)
+    if ~isempty(seed)
+        rng(seed);
+    elseif isempty(K_override)
         rng('shuffle');
     end
 
     Constants;
     InitVar;
+
+    % Optional environment override (NOISE / GE / delay) for sweep harnesses
+    % that need to disable disturbances without editing InitVar.m.
+    if ~isempty(cfg_override)
+        if isfield(cfg_override, 'NOISE'), NOISE = cfg_override.NOISE; end
+        if isfield(cfg_override, 'GE'),    GE    = cfg_override.GE;    end
+        if isfield(cfg_override, 'delay'), delay = cfg_override.delay; end
+    end
 
     % Override initial state — also re-derive component variables
     % so the first loop iteration sees the correct IC.
@@ -20,45 +31,43 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     X_DS  = x_c;
 
     %% =====================================================================
-    %  PLASMC GAINS (from InitGains_Comparison.m — tuned for comparison)
+    %  PLASMC GAINS — Geometric SO(3) inner-loop baseline (2026-04-13)
     % =====================================================================
     K_ctrl = struct();
 
     K_ctrl.gamma_1  = [0.2, 0.2];
     K_ctrl.p_10     = K.p_10;
-    K_ctrl.p_1inf   = [0.2; 0.2];
+    K_ctrl.p_1inf   = [0.08; 0.08];
 
-    K_ctrl.zp = diag([4.0, 4.0]);
+    K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
     K_ctrl.zi = diag([0.1, 0.1]);
     K_ctrl.zd = diag([1.3, 1.3]);
 
-    K_ctrl.gamma_2  = [0.2, 0.2, 0.2];
-    K_ctrl.p_20     = [12.0; 12.0; 5.0];
-    K_ctrl.p_2inf   = [1.5;  1.5;  2.0];
+    K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
+    K_ctrl.p_20     = [25.0; 25.0; 8.0];  % widened for faster traj_Gen targets
+    K_ctrl.p_2inf   = [0.8;  0.8;  1.0];          % prior 25/25 baseline
 
-    K_ctrl.Omega   = diag([0.005, 0.005, 0.01 ]);
-    K_ctrl.Gamma   = diag([0.1875, 0.25, 0.5]);   % deep-sweep: x-lateral softened from 0.25 -> tighter xy
+    K_ctrl.Omega   = diag([0.003, 0.003, 0.006]);
+    K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
-    K_ctrl.kappa_0 = [0.125; 0.125; 0.25];        % deep-sweep: init adaptation x1.25 -> faster land, tighter xy
-    K_ctrl.E       = diag([2.5,   2.5,   0.5  ]);
+    K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
+    K_ctrl.E       = diag([1.0,   1.0,   0.5  ]);
 
-    % Attitude PID inner loop — roll/pitch only
-    K_ctrl.ep = diag([5.0, 5.0]);
-    K_ctrl.ei = diag([0.1, 0.1]);
-    K_ctrl.ed = diag([0.1, 0.1]);
-    K_ctrl.wp = diag([5.0, 5.0, 5.0]);
-    K_ctrl.wi = diag([0.01, 0.01, 0.1]);
-    K_ctrl.wd = diag([0.1,  0.1,  0.2]);
-    K_ctrl.ff = diag([0.1,  0.1,  0.1]);
+    % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
+    K_ctrl.kR     = diag([1.5, 1.5, 0.5]);
+    K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
 
-    % Yaw adaptive SMC (replaces PID yaw channel)
-    K_ctrl.Omega_a   = 1.5;
-    K_ctrl.Gamma_a   = 0.3;
-    K_ctrl.n_a       = 0.05;
+    % Yaw adaptive SMC — generates heading reference psi_d (no compass)
+    % e_a = V_s(4) - V_s_d(4) = alpha - alpha_d (image-based)
+    % psi_d(t) = psi_d(t-1) + u_a*dt (integrated ASMC rate)
+    % R_d uses psi_d as heading vector; geometric controller tracks R_d
+    K_ctrl.Omega_a   = 0.5;
+    K_ctrl.Gamma_a   = 0.5;
+    K_ctrl.n_a       = 1.0;
     K_ctrl.p_a       = 2;
-    K_ctrl.kappa_a_0 = 0.1;
-    K_ctrl.E_a       = 2.5;
+    K_ctrl.kappa_a_0 = 2.0;                       % pre-seed for high-wz rotating targets
+    K_ctrl.E_a       = 3.0;                       % wide boundary layer smooths sat*kappa_a
 
     % Apply optional gain overrides (used by sweep harness)
     if ~isempty(K_override)
@@ -76,7 +85,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     U_DS      = zeros(4,  N_steps);
     X_DS      = zeros(13, N_steps + 1);   X_DS(:,1) = x_c;
     V_X_DS    = zeros(24, N_steps);
-    D_DS      = zeros(17, N_steps);
+    D_DS      = zeros(15, N_steps);       % [V_h_d(3); I_a_cd(3); e_R(3); tau(3); T(1); psi_d(1); u_a(1)]
     P_DS      = zeros(2,  12, N_steps);
 
     x_t       = zeros(7,  N_steps);
@@ -86,15 +95,15 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     V_h_e     = zeros(3,  N_steps);
     I_a_cd    = zeros(3,  N_steps);
 
-    % Inner-loop logging
-    E2_e      = zeros(2,  N_steps);
-    iE2_e     = zeros(2,  N_steps);
-    raw_dE2_e = zeros(2,  N_steps + 3);
-    w_e       = zeros(3,  N_steps);
-    iw_e      = zeros(3,  N_steps);
-    B_w_cd    = zeros(3,  N_steps);
-    B_w_cf    = zeros(3,  N_steps);
-    B_T_cd    = zeros(1,  N_steps);
+    % Inner-loop logging (geometric SO(3))
+    eR_log       = zeros(3, N_steps);
+    B_tau_cd_log = zeros(3, N_steps);
+    B_T_cd       = zeros(1, N_steps);
+    psi_d_log    = zeros(1, N_steps);
+    u_a_log      = zeros(1, N_steps);
+
+    % Delay buffer for u_2 = [tau; T]
+    u_2_buf      = zeros(4, N_steps);
 
     % Raw visual signal storage for Savitzky-Golay filter (ACTUAL mode)
     V_s_raw   = zeros(4,  N_steps);
@@ -109,7 +118,18 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     V_2nP_i_prev = zeros(8, 1);
     V_w_i_prev   = zeros(3, 1);
     V_w_a_prev   = zeros(3, 1);
-    B_dw_cf      = zeros(3, 1);
+
+    % Initial desired heading = current UAV yaw
+    yaw_init = atan2(2*(q_c(1)*q_c(4) + q_c(2)*q_c(3)), ...
+                     1 - 2*(q_c(3)^2 + q_c(4)^2));
+    psi_d    = yaw_init;
+
+    % I_a_cd low-pass filter state (matches tau_w=0.08s ~ 2Hz cutoff);
+    % mimics the PID cascade's implicit filtering budget so R_d/e_R
+    % don't chatter on noisy outer-loop output
+    tau_ia      = 0.08;   % LPF tau on I_a_cd (noise absorption dominates phase lag)
+    alpha_ia    = tau_ia / (tau_ia + dt);
+    I_a_cd_filt = -g;   % hover initial condition
 
     % Initialise image-block variables so they persist across ZOH steps
     V_nP_i  = zeros(2, 4);
@@ -280,9 +300,12 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     % *********************************************************************
         alt_above = abs(I_p_c(3) - x_t(3,idx));
         xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
-        if alt_above <= 0.20 && xy_err <= 0.3
-            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm)\n', ...
-                    tRange(idx), alt_above, xy_err);
+        rel_vel  = norm(I_v_c - dx_t(1:3,idx));
+        if alt_above <= zf
+            precise = xy_err <= 0.05;
+            soft    = rel_vel <= 0.2;
+            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
+                    tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
             landed = true;
             break;
         end
@@ -386,52 +409,26 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
         % Cone clamp
         att_cone = deg2rad(35);
         if I_a_cd(3,idx) >= 0
-            I_a_cd(3,idx) = -1.0;
+            I_a_cd(3,idx) = -3.0;
         end
         a_xy_limit = abs(I_a_cd(3,idx)) * tan(att_cone);
         a_xy_norm  = norm(I_a_cd(1:2,idx));
         if a_xy_norm > a_xy_limit
             I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
         end
+        I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
+
+        % Low-pass filter I_a_cd before feeding R_d construction.
+        % Matches tau_w=0.08s: absorbs pixel-noise spikes propagated
+        % through L_s^-1 at low altitude; raw I_a_cd still logged.
+        I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
 
     % *********************************************************************
-    % Attitude control: 2-DOF PID (roll/pitch) + Yaw ASMC
+    % Yaw adaptive SMC — drives alpha -> alpha_d, outputs rate u_a
     % *********************************************************************
-        if abs(cos(-V_s(4))*I_a_cd(1,idx) + sin(-V_s(4))*I_a_cd(2,idx)) < 1e-4
-            theta_cd = 0;
-        else
-            theta_cd = atan2(-cos(-V_s(4))*I_a_cd(1,idx) - sin(-V_s(4))*I_a_cd(2,idx), ...
-                             -I_a_cd(3,idx));
-        end
-        if abs(sin(-V_s(4))*I_a_cd(1,idx) - cos(-V_s(4))*I_a_cd(2,idx)) < 1e-4
-            phi_cd = 0;
-        else
-            phi_cd = atan2(-sin(-V_s(4))*I_a_cd(1,idx) + cos(-V_s(4))*I_a_cd(2,idx), ...
-                           -I_a_cd(3,idx)/cos(E_cr(2)));
-        end
-        E2_crd = [phi_cd; theta_cd];
-
-        % Roll/pitch PID (2-DOF)
-        E2_e(:,idx) = E_cr(1:2)' - E2_crd;
-
-        if idx == 1
-            iE2_e(:,idx)       = dt * E2_e(:,idx) / 2;
-            raw_dE2_e(:,idx+3) = zeros(2,1);
-            B_w_cf(:,idx)      = B_w_c;
-            B_dw_cf            = zeros(3,1);
-        else
-            iE2_e(:,idx)       = iE2_e(:,idx-1) + dt*(E2_e(:,idx-1)+E2_e(:,idx))/2;
-            raw_dE2_e(:,idx+3) = (E2_e(:,idx) - E2_e(:,idx-1)) / dt;
-            B_w_cf(:,idx)      = alpha_w*B_w_cf(:,idx-1) + (1-alpha_w)*B_w_c;
-            B_dw_cf            = alpha_dw*B_dw_cf + ...
-                                 (1-alpha_dw)*(B_w_cf(:,idx)-B_w_cf(:,idx-1))/dt;
-        end
-
-        dE2_cd = -K_ctrl.ep*E2_e(:,idx) - K_ctrl.ei*iE2_e(:,idx) ...
-                 -K_ctrl.ed*raw_dE2_e(:,idx+3);
-
-        % Yaw adaptive SMC
-        e_a(idx) = V_s(4) - V_s_d(4);
+        % alpha has period pi -> wrap e_a to [-pi/2, pi/2]
+        e_raw    = V_s(4) - V_s_d(4);
+        e_a(idx) = atan2(sin(2*e_raw), cos(2*e_raw)) / 2;
         if idx == 1
             ie_a(idx) = dt * e_a(idx);
         else
@@ -445,64 +442,71 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
         u_a = K_ctrl.Gamma_a*sigma_a + sat(sigma_a/K_ctrl.E_a)*kappa_a(idx+1) ...
               + K_ctrl.Omega_a*e_a(idx);
 
-        dE_cd = [dE2_cd; u_a];
-        if norm(dE_cd) > 1e02
-            fprintf('  BREAK: dE_cd norm=%.2f at idx=%d (t=%.2f)\n', norm(dE_cd), idx, tRange(idx));
+        if ~isfinite(u_a)
+            fprintf('  BREAK: u_a non-finite at idx=%d (t=%.2f)\n', idx, tRange(idx));
             break;
         end
 
-        W = [1 , 0, -sin(E_cr(2)); ...
-            0, cos(E_cr(1)), sin(E_cr(1))*cos(E_cr(2)); ...
-            0, -sin(E_cr(1)), cos(E_cr(1))*cos(E_cr(2))];
+        % Integrate ASMC rate into desired heading (replaces compass)
+        psi_d = psi_d + u_a * dt;
+        psi_d = atan2(sin(psi_d), cos(psi_d));
 
-        B_w_cd(:,idx) = W*dE_cd;
+    % *********************************************************************
+    % Construct R_d from filtered I_a_cd (roll/pitch) + psi_d (heading)
+    % *********************************************************************
+        I_F   = m * I_a_cd_filt;
+        f_mag = norm(I_F);
+        T_cd  = f_mag;
 
-    % Thrust
-        B_T_cd(idx) = - m*(I_a_cd(3,idx))/(cos(E_cr(1))*cos(E_cr(2)));
+        if f_mag < 1e-6
+            R_d = eye(3);
+        else
+            rd3 = -I_F / f_mag;
+            a_h = [cos(psi_d); sin(psi_d); 0];
+            rd2_raw = cross(rd3, a_h);
+            n2 = norm(rd2_raw);
+            if n2 < 1e-6, rd2_raw = [0;1;0]; n2 = 1; end
+            rd2 = rd2_raw / n2;
+            rd1 = cross(rd2, rd3);
+            R_d = [rd1, rd2, rd3];
+        end
 
-    % Ground effect
+    % *********************************************************************
+    % Geometric SO(3) attitude controller
+    % *********************************************************************
+        eR_mat = 0.5 * (R_d' * I_R_C - I_R_C' * R_d);
+        e_R    = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];   % vee map
+        e_Omega = B_w_c;                                    % Omega_d = 0
+
+        B_tau_cd = -K_ctrl.kR*e_R - K_ctrl.kOmega*e_Omega + cross(B_w_c, J*B_w_c);
+
+    % Ground effect on thrust
         if GE
             z_ge = -max(abs(x_c(3)), r);
-            B_T_cd(idx) = 1/(1-(r/(4*z_ge))^2)*B_T_cd(idx);
+            T_cd = 1/(1-(r/(4*z_ge))^2) * T_cd;
         end
 
-    % *********************************************************************
-    % Computational Delay and Input Saturation
-    % *********************************************************************
-        if idx > delay
-            u_1 = [B_w_cd(:,idx - delay); B_T_cd(idx - delay)];
-        else
-            u_1 = [zeros(3,1);m*dot(g, I_R_C(:,3));];
-        end
-
-        u_1(4) = max(min(u_1(4), T_max), T_min);
-        u_1(1:3) = max(min(u_1(1:3), w_max), -w_max);
-
-    % *********************************************************************
-    % Attitude Rate Control
-    % *********************************************************************
-        w_e(:,idx) = B_w_c - u_1(1:3);
-
-        if idx == 1
-            iw_e(:,idx) = dt*w_e(:,idx)/2;
-        else
-            iw_e(:,idx) = iw_e(:,idx-1) + (w_e(:,idx-1) + w_e(:,idx))*dt/2;
-        end
-
-        B_dw_cd = -K_ctrl.wp * w_e(:,idx) - K_ctrl.wi * iw_e(:,idx) - K_ctrl.wd * B_dw_cf + K_ctrl.ff * u_1(1:3);
-
-        B_tau_cd = J * B_dw_cd + cross(B_w_c, J * B_w_c);
-
+    % Saturate torques and thrust
         B_tau_cd(1:2) = min(max(B_tau_cd(1:2), -tau_xy_max), tau_xy_max);
-        B_tau_cd(3)   = min(max(B_tau_cd(3),   -tau_z_max), tau_z_max);
+        B_tau_cd(3)   = min(max(B_tau_cd(3),   -tau_z_max),  tau_z_max);
+        T_cd          = max(min(T_cd, T_max), T_min);
 
-        anti_windup_factor = abs(B_tau_cd) >= [tau_xy_max; tau_xy_max; tau_z_max];
-        iw_e(:,idx) = iw_e(:,idx) .* (~anti_windup_factor);
+        B_T_cd(idx) = T_cd;
 
     % *********************************************************************
-    % UAV Flight Dynamics
+    % Computational Delay
     % *********************************************************************
-        u_2 = [B_tau_cd; u_1(4)];
+        u_2_buf(:,idx) = [B_tau_cd; T_cd];
+        if idx > delay
+            u_2 = u_2_buf(:, idx - delay);
+        else
+            u_2 = [zeros(3,1); m*norm(g)];
+        end
+
+        if any(isnan(u_2)) || norm(u_2) > 1e4
+            fprintf('  BREAK: u_2 invalid at idx=%d (t=%.2f)\n', idx, tRange(idx));
+            break;
+        end
 
         x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
 
@@ -527,7 +531,11 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
         U_DS(:,idx) = u_2;
         X_DS(:,idx+1) = x_c;
         V_X_DS(:,idx) = [V_s_i(1:2); V_s_i(4); V_h_i; V_w_i; V_dw_i; V_s_a(1:2); V_s_a(4); V_h_a; V_w_a; V_dw_a];
-        D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); E2_crd; dE_cd; B_w_cd(:,idx); B_dw_cd];
+        eR_log(:,idx) = e_R;
+        B_tau_cd_log(:,idx) = B_tau_cd;
+        psi_d_log(idx) = psi_d;
+        u_a_log(idx)   = u_a;
+        D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); e_R; B_tau_cd; T_cd; psi_d; u_a];
         P_DS(:,:,idx) = [V_nP_i, V_nP_a, C_nP];
 
     % *********************************************************************
@@ -535,9 +543,12 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     % *********************************************************************
         alt_above = abs(I_p_c(3) - x_t(3,idx));
         xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
-        if alt_above <= 0.20 && xy_err <= 0.3
-            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm)\n', ...
-                    tRange(idx), alt_above, xy_err);
+        rel_vel  = norm(I_v_c - dx_t(1:3,idx));
+        if alt_above <= zf
+            precise = xy_err <= 0.05;
+            soft    = rel_vel <= 0.2;
+            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
+                    tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
             landed = true;
             break;
         end
@@ -550,6 +561,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult)
     result.final_t     = tRange(idx);
     result.final_xy    = norm(I_p_c(1:2) - x_t(1:2,idx));
     result.final_alt   = abs(I_p_c(3) - x_t(3,idx));
+    result.final_rel_vel = norm(I_v_c - dx_t(1:3,idx));
+    result.precise     = landed && (result.final_xy <= 0.05);
+    result.soft        = landed && (result.final_rel_vel <= 0.2);
 
     if ~landed
         idx = idx - 1;
