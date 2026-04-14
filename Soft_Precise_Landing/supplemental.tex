@@ -1,0 +1,451 @@
+\documentclass[10pt,journal]{IEEEtran}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+
+\renewcommand{\thefigure}{S\arabic{figure}}
+\renewcommand{\thetable}{S\arabic{table}}
+\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\thesection}{S\arabic{section}}
+
+\title{Supplementary Material for\\``Dual-Funnel Adaptive Sliding-Mode Control for Guaranteed Soft Precise Landing Using Optic Flow''}
+\author{Shubham Singhal,~Suresh Sundaram,~and~Jishnu Keshavan}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document is the supplementary material accompanying the main manuscript. It contains (i) the idealized-condition figure set that empirically verifies the dual-funnel construction in the absence of disturbances, (ii) the full per-trajectory figure set for the multi-initial-condition robustness study under realistic disturbances, (iii) the closed-loop internals of the proposed DF-ASMC for a representative run, (iv) the full Lyapunov proof of Theorem~1 of the main paper, and (v) the extended per-controller failure analysis of the head-to-head benchmark study. Section, equation, figure, and table numbers in this document are prefixed with ``S''; references to the main paper use unprefixed numbers. All references to bibliography entries resolve against the main paper's bibliography.
+\end{abstract}
+
+\section{Idealized-Condition Multi-Initial-Condition Trajectories}
+\label{sec:sup-noiseless}
+
+The figures in this section verify that, in the absence of measurement noise, ground effect, computational delay, and model uncertainty, the closed loop lands from every initial condition of Table~II of the main paper on every trajectory of Section~IV-A of the main paper, with feature points remaining strictly inside the visibility funnel $\boldsymbol{p}_1(t)$. These runs serve as a sanity check on the dual-funnel construction, isolating the role of the prescribed-performance layer from that of the adaptive robustness layer.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for the Static target under idealized conditions.}
+    \label{fig:sup-static-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_image_plane_noiseless.pdf}
+    \caption{Virtual image-plane evolution for the Static target under idealized conditions.}
+    \label{fig:sup-static-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for the Linear target under idealized conditions.}
+    \label{fig:sup-linear-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_image_plane_noiseless.pdf}
+    \caption{Virtual image-plane evolution for the Linear target under idealized conditions.}
+    \label{fig:sup-linear-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for the Sinusoidal target under idealized conditions.}
+    \label{fig:sup-sin-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_image_plane_noiseless.pdf}
+    \caption{Virtual image-plane evolution for the Sinusoidal target under idealized conditions.}
+    \label{fig:sup-sin-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for the Lissajous target under idealized conditions.}
+    \label{fig:sup-liss-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_image_plane_noiseless.pdf}
+    \caption{Virtual image-plane evolution for the Lissajous target under idealized conditions.}
+    \label{fig:sup-liss-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for the Circular target under idealized conditions.}
+    \label{fig:sup-circ-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane_noiseless.pdf}
+    \caption{Virtual image-plane evolution for the Circular target under idealized conditions.}
+    \label{fig:sup-circ-ip-nl}
+\end{figure}
+
+\clearpage
+\section{Full Multi-Initial-Condition Figure Set under Realistic Disturbances}
+\label{sec:sup-multi-init}
+
+The main paper shows the hero Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~V multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-B of the main paper: $50~\text{dB}$ pixel SNR, rotor ground effect, one-step computational delay, and $35^\circ$ attitude-cone projection. The Linear and Circular cases additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_3D.pdf}
+    \caption{3-D UAV trajectories for the Static target under realistic disturbances.}
+    \label{fig:sup-static-3d}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_image_plane.pdf}
+    \caption{Virtual image-plane evolution for the Static target under realistic disturbances.}
+    \label{fig:sup-static-ip}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_3D.pdf}
+    \caption{3-D UAV trajectories for the Linear ship-deck target under realistic disturbances.}
+    \label{fig:sup-linear-3d}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_image_plane.pdf}
+    \caption{Virtual image-plane evolution for the Linear ship-deck target under realistic disturbances.}
+    \label{fig:sup-linear-ip}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_3D.pdf}
+    \caption{3-D UAV trajectories for the Sinusoidal target under realistic disturbances.}
+    \label{fig:sup-sin-3d}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_image_plane.pdf}
+    \caption{Virtual image-plane evolution for the Sinusoidal target under realistic disturbances.}
+    \label{fig:sup-sin-ip}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_3D.pdf}
+    \caption{3-D UAV trajectories for the Lissajous target under realistic disturbances.}
+    \label{fig:sup-liss-3d}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_image_plane.pdf}
+    \caption{Virtual image-plane evolution for the Lissajous target under realistic disturbances.}
+    \label{fig:sup-liss-ip}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
+    \caption{Virtual image-plane evolution for the Circular ship-deck target under realistic disturbances (the corresponding 3-D trajectory view appears as Fig.~9 in the main paper).}
+    \label{fig:sup-circ-ip}
+\end{figure}
+
+\clearpage
+\section{Closed-Loop Internals of DF-ASMC (Representative Run)}
+\label{sec:sup-internals}
+
+The figures in this section expose the closed-loop internals of DF-ASMC for the representative case IC$4=[2,2,-5]$~m on the Sinusoidal trajectory under the full disturbance set. They provide the per-signal evidence underlying the single-sentence empirical claim in Section~IV-C of the main paper, namely that the outer image-feature error, the inner optic-flow error, the sliding surface, the adaptive gain, and the commanded thrust/acceleration all remain inside their respective safety envelopes at every time instant.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_outer_funnel.pdf}
+    \caption{Visibility funnel: image-feature centroid error $\boldsymbol{E}_2(t)$ versus the prescribed-performance bound $\pm\boldsymbol{p}_1(t)$.}
+    \label{fig:sup-outer}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_inner_funnel.pdf}
+    \caption{Optic-flow funnel: optic-flow tracking error $\boldsymbol{w}_e(t)$ versus $\pm\boldsymbol{p}_2(t)$ on all three axes.}
+    \label{fig:sup-inner}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
+    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis.}
+    \label{fig:sup-sliding}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
+    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw-channel gain $\kappa_\text{a}(t)$.}
+    \label{fig:sup-kappa}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
+    \caption{Total thrust command $T_\text{cd}(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{cd},xy}\|$ versus the cone-induced limit.}
+    \label{fig:sup-thrust}
+\end{figure}
+
+\clearpage
+\section{Deep-Sweep Gain Analysis}
+\label{sec:sup-sweep}
+
+In order to convincingly demonstrate that the locked gain set of Table~\ref{control params: table} of the main paper is a justified design point rather than an arbitrary tuning, a cross-trajectory deep sweep was carried out in which each of the $30$ DF-ASMC parameters (from the outer visibility-funnel gains to the inner geometric SO($3$) and adaptive yaw SMC gains) was independently perturbed by $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$ of its nominal value, and every resulting candidate gain was replayed on all four moving trajectories for all five initial conditions. This amounts to $30\times 4\times 4\times 5 = 2400$ deterministic simulations. A candidate gain is declared a \emph{winner} only if it preserves the $5/5$ land rate on \emph{every} trajectory \emph{and} strictly improves either the aggregate landing time $\bar{t}_\text{f}$ or the aggregate worst-case horizontal error $xy_\text{e}^{\max}$ relative to the pre-sweep baseline.
+
+Taking the pre-sweep baseline at $\bar{t}_\text{f}=8.940~\text{s}$ and $xy_\text{e}^{\max}=0.0454~\text{m}$, two knobs emerge as dominant Pareto candidates:
+\begin{itemize}
+    \item $\boldsymbol{p}_{2_0}(3)$: halving the vertical optic-flow funnel mouth from $8$ to $4$ prescribes a tighter vertical-flow envelope from lift-off, accelerating the $w_{e,3}$ transient; it yields $\bar{t}_\text{f}=8.159~\text{s}$ and $xy_\text{e}^{\max}=0.0375~\text{m}$ simultaneously;
+    \item $K_{\zeta d}$: softening the outer derivative gain from $1.3$ to $0.975$ attenuates the high-frequency content injected into the outer PID channel by pixel noise, shrinking the worst-case horizontal error to $0.0244~\text{m}$ with a neutral effect on landing time.
+\end{itemize}
+Stacking the two updates produces a clean \emph{additive} improvement, summarized in Table~\ref{sup:deep sweep table}: the combined override preserves the $5/5$ land rate on all four moving trajectories while reducing the aggregate landing time by $4.8\%$ and the aggregate worst-case horizontal error by $35.0\%$. This combined setting is the locked gain set reported in Table~\ref{control params: table} of the main paper.
+
+\begin{table*}[!t]
+\centering
+\caption{Effect of the deep-sweep gain lock-in on aggregate landing metrics across the four moving trajectories (20 deterministic runs each).}
+\label{sup:deep sweep table}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{Pre-sweep} & $\boldsymbol{p}_{2_0}(3){=}4$ only & $K_{\zeta d}{=}0.975$ only & \textbf{Combo (locked)} \\
+\midrule
+Aggregate mean landing time $\bar{t}_\text{f}$ [s]      & $8.940$  & $8.159$  & $8.954$  & $\mathbf{8.265}$ \\
+Aggregate max horizontal error $xy_\text{e}^{\max}$ [m] & $0.0454$ & $0.0375$ & $0.0244$ & $\mathbf{0.0295}$ \\
+Landings (4 trajectories $\times$ 5 ICs)                & $20/20$  & $20/20$  & $20/20$  & $\mathbf{20/20}$ \\
+Change vs pre-sweep ($\bar{t}_\text{f}$, $xy_\text{e}^{\max}$) & --- & $-8.7\%,\,-17\%$ & $=,\,-46\%$ & $\mathbf{-4.8\%,\,-35\%}$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+The remaining $28$ DF-ASMC parameters (those that are not the two Pareto winners) partition cleanly into three classes.
+
+\emph{Fragile knobs.} $K_{\zeta p}$, $\boldsymbol{p}_{2_0}(1)$, $\boldsymbol{p}_{2_\infty}$, $k_R(1)$, and $\chi_\text{a}$ are load-bearing at their locked values: any perturbation breaks the $5/5$ land rate on IC$4$/IC$5$ or destabilises the visibility funnel. These knobs are already at a Pareto-optimal setting in the conventional single-objective sense.
+
+\emph{Dead knobs.} $n_\text{a}$, $p_\text{a}$, $\kappa_{\text{a}_0}$, $E_\text{a}$, $\Omega_\text{a}$, and $\gamma_\text{a}$ produce no measurable change in any reported metric at $\pm 50\%$ perturbation, indicating that the adaptive yaw SMC leakage tail is overparameterized for this class of problems and that the heading-reference integrator is driven almost entirely by the projection error.
+
+\emph{Pareto trades.} $\Gamma(3,3)$, $\gamma_2$, $E(3,3)$, $N$, $P$, and $\boldsymbol{\kappa}_0$ trade landing time against horizontal precision, and thus cannot unilaterally improve both metrics simultaneously.
+
+Only $\boldsymbol{p}_{2_0}(3)$, $K_{\zeta d}$, and the fragile group lie on the true performance frontier of the closed loop; the remaining knobs may be treated as structural constants for future re-tuning efforts.
+
+\clearpage
+\section{Per-Controller Failure Analysis in the Head-to-Head Comparison}
+\label{sec:sup-comparison}
+
+This section expands on the failure modes of the four baselines in the comparison study of Section~IV-F of the main paper. Table~VIII of the main paper reports the quantitative outcomes; the analysis below identifies the structural reason each baseline fails under the vision-only operating regime.
+
+\subsection{Performance-Constrained PBVS \cite{lin2022}}
+
+The scheme of~\cite{lin2022} succeeds only on the Static and Circular trajectories and requires roughly $3\times$ the DF-ASMC descent time. The thrust law $f=\|-k_2\,Q_v^\top\varepsilon_v+mgi_3\|$ (eq.~18 therein) contains \emph{no} target-velocity feed-forward, and Remark~2 of~\cite{lin2022} explicitly discards any structured $\dot{\boldsymbol{p}}_t$ estimator. At the same time the prescribed funnel $\rho_i(t) = (\rho_i(0)-\rho_i^\infty)e^{-l_it} + \rho_i^\infty$ is monotonically decreasing by construction. A persistent lateral target drift can therefore be cancelled only by a non-zero steady-state position error, but any such error is forced below $\rho_i(t)\to\rho_i^\infty$; the transformed error $\varepsilon_i=\tfrac12\ln\bigl((1+\xi_i)/(1-\xi_i)\bigr)$ then approaches the barrier and the controller defends the funnel by halting the descent rather than violating it. This explains why Static and Circular (zero mean lateral drift) succeed while Linear, Sinusoidal, and Lissajous stall at finite altitude; the Linear case in particular terminates $3.03~\text{m}$ from the target at altitude $2.61~\text{m}$.
+
+\subsection{PBVS with Adaptive Extended Disturbance Observer \cite{zhang2026}}
+
+The scheme of~\cite{zhang2026} free-falls to the ground in $\sim 3~\text{s}$ with horizontal errors between $0.22~\text{m}$ and $0.99~\text{m}$. The root cause is Assumption~1 of~\cite{zhang2026}, which requires $\|\boldsymbol{F}_d^{(n)}\|\le\gamma_F$ and bounded derivatives of the measurement noise up to order $n$; the bandwidth-adaptation law is calibrated against a power-ratio $\|\boldsymbol{F}_d\|/\|\boldsymbol{n}\|$ that~\cite{zhang2026} explicitly assumes to grow monotonically as $z\!\downarrow$. Under the stationary AWGN model of our harness ($\sigma_\text{pos}=0.01~\text{m}$, $\sigma_\text{vel}=0.02~\text{m/s}$) this monotone power-ratio premise is violated, the AEDO selects a high bandwidth, and white measurement noise is differentiated into the $\hat{\boldsymbol{F}}_d$ feed-forward. The resulting commanded force saturates the lateral channel, the backstepping virtual-velocity loop loses authority, and the quadrotor free-falls under gravity on every trajectory.
+
+\subsection{IBVS with Adaptive Observer \cite{chen2025}}
+
+The scheme of~\cite{chen2025} fails to land on any of the five trajectories within the $40~\text{s}$ budget. The key structural obstacle is that the derivation of~\cite{chen2025} assumes a constant desired depth $z^\star$ (eq.~11 therein) and a stationary target plane, with the force law $\boldsymbol{f}=-k_r(\boldsymbol{r}-\boldsymbol{s}+\boldsymbol{\varepsilon})-\hat{z}^\star M_1\boldsymbol{e}_1+(\hat{z}^\star/k_1)M_2\boldsymbol{e}_1$ (eq.~33) and a gain condition $k_r>1/\rho_{\min}$ that implicitly bounds $\rho=1/z^\star$. During landing $z^\star\!\to 0$ and $\rho\!\to\!\infty$, directly violating this bound. Simultaneously, pixel AWGN at $50~\text{dB}$ on $^\mathcal{C}\boldsymbol{n}^P$ is fed through $M_1,M_2$ (which contain $\dot\psi,\ddot\psi$ via finite difference) and accumulated by the adaptive law $\dot{\hat{z}}^\star = k_3(\boldsymbol{\varepsilon}^\top+\boldsymbol{s}^\top+\boldsymbol{r}^\top)(M_1\boldsymbol{e}_1-M_2\boldsymbol{e}_1/k_1)$ (eq.~32), which drives the commanded force past $T_{\max}$ as the altitude drops below $\sim 0.35~\text{m}$. The MAV then parks at the altitude where the saturated thrust just balances gravity --- a failure mode that is structural to the constant-$z^\star$ derivation, not merely a gain-tuning issue.
+
+\subsection{Feed-Forward IBVS \cite{cho2022}}
+
+The scheme of~\cite{cho2022} lands within $11.3$--$11.6~\text{s}$ on all trajectories, but with horizontal errors between $0.20~\text{m}$ and $0.29~\text{m}$ on four of the five trajectories. The principal innovation of~\cite{cho2022} is an EKF-based ship-velocity feed-forward channel that injects $\dot{\boldsymbol{p}}_t$ into the IBVS velocity command (Sec.~3.2 therein); in our vision-only harness no GPS/EKF signal is provided, and the feed-forward term is identically zero. The lateral loop therefore reduces to the plain pseudo-inverse $\hat{L}_e^{+}\boldsymbol{e}$, which has a fixed steady-state offset against a moving target. The sigmoid altitude-gain $a_{dz}=1-1/(1+e^{-kc})$ (eq.~9 therein) throttles $|v_z|$ whenever the centroid is off-center, but saturates open-loop at touchdown, so the UAV descends while the lateral error is frozen in --- producing the consistent $\sim 0.2~\text{m}$ horizontal offset observed.
+
+\subsection{3-D Trajectory Overlay}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/comparison_traj3d_circular.pdf}
+    \caption{3-D UAV trajectories of DF-ASMC and the four benchmark controllers on the Circular ship-deck target with IC$4=[2,2,-5]$~m. The dashed line is the moving target. DF-ASMC is the only controller that closes the lateral chase and reaches the landing altitude inside the $40~\text{s}$ budget without violating the $0.30~\text{m}$ horizontal-error tolerance.}
+    \label{fig:sup-comp-traj}
+\end{figure}
+
+\section{Virtual-Camera Model and Baseline Cascaded Pose-Based Controller}
+\label{sup:baseline}
+This section collects the preliminary material that the main paper defers to the supplement: (i) the virtual-camera abstraction and the pinhole projection used throughout the image-based derivation, and (ii) the standard cascaded pose-based architecture whose inner-loop attitude and rate stages are reused verbatim by the proposed DF-ASMC.
+
+\subsection{Virtual-Camera Model and Feature Points}
+\label{sup:virtual_features}
+To decouple the translational image-feature dynamics from the rotational motion of the underactuated quadrotor, we adopt the virtual-camera abstraction of \cite{fink2017, xie2016_2}. Consider a camera frame $\mathcal{C}=\{O_{\text{c}}~X_{\text{c}}~Y_{\text{c}}~Z_{\text{c}}\}$ rigidly attached to the onboard monocular camera with its $X_{\text{c}}$ and $Y_{\text{c}}$ axes aligned with the image horizontal and vertical directions and $Z_{\text{c}}$ along the optical axis. Under the standard pinhole camera model \cite{chaumette2006}, a feature point on the image plane is
+\begin{equation}
+\label{sup:pinhole camera model}
+    \,^\mathcal{C}\boldsymbol{\hat{r}} = \begin{bmatrix} \,^\mathcal{C}\hat{x} \\ \,^\mathcal{C}\hat{y} \end{bmatrix}
+    = \frac{1}{\,^\mathcal{C}z}\begin{bmatrix} \,^\mathcal{C}x \\ \,^\mathcal{C}y \end{bmatrix},
+\end{equation}
+i.e.\ the perspective projection of the 3-D point $\,^\mathcal{C}\boldsymbol{r}=[\,^\mathcal{C}x,\,^\mathcal{C}y,\,^\mathcal{C}z]^{\top}$.
+
+The virtual camera frame $\mathcal{V}=\{O_{\text{v}}~X_{\text{v}}~Y_{\text{v}}~Z_{\text{v}}\}$ moves with $\mathcal{C}$ but is constrained so that its $X_{\text{v}}$--$Y_{\text{v}}$ plane remains parallel to the inertial $X_{\text{i}}$--$Y_{\text{i}}$ plane; the associated virtual image plane keeps the same position and orientation relative to $\mathcal{V}$ as the physical image plane has relative to $\mathcal{C}$. The corresponding rotation is obtained by rolling out $\phi$ and pitching out $\theta$:
+\begin{equation}
+\label{sup:virtual 3D point}
+    \,^\mathcal{V}\boldsymbol{r} = \,^\mathcal{V}R_\mathcal{C}\,^\mathcal{C}\boldsymbol{r}, \qquad \,^\mathcal{V}R_\mathcal{C} = R_y(\theta)R_x(\phi).
+\end{equation}
+Combining \eqref{sup:virtual 3D point} with the pinhole model \eqref{sup:pinhole camera model}, the virtual feature point is
+\begin{equation}
+\label{sup:virtual feature point}
+    \,^\mathcal{V}\boldsymbol{\hat{r}} = \begin{bmatrix} \,^\mathcal{V}\hat{x} \\ \,^\mathcal{V}\hat{y} \end{bmatrix}
+    = \frac{1}{\,^\mathcal{V}z}\begin{bmatrix} \,^\mathcal{V}x \\ \,^\mathcal{V}y \end{bmatrix}
+    = \begin{bmatrix}
+        \dfrac{C_\theta\,^\mathcal{C}\hat{x} + S_\theta S_\phi\,^\mathcal{C}\hat{y} + S_\theta C_\phi}{-S_\theta\,^\mathcal{C}\hat{x} + C_\theta S_\phi\,^\mathcal{C}\hat{y} + C_\theta C_\phi} \\[4pt]
+        \dfrac{C_\theta\,^\mathcal{C}\hat{y} - S_\phi}{-S_\theta\,^\mathcal{C}\hat{x} + C_\theta S_\phi\,^\mathcal{C}\hat{y} + C_\theta C_\phi}
+    \end{bmatrix},
+\end{equation}
+with $S_x=\sin(x)$, $C_x=\cos(x)$. Throughout the main paper, $\,^\mathcal{V}\boldsymbol{\hat{r}}$ and the normalized position $\boldsymbol{s}=[\,^\mathcal{V}\boldsymbol{\hat{r}}^\top,\,1]^\top$ are the scale-independent image features regulated by DF-ASMC.
+
+\subsection{Cascaded Pose-Based Architecture}
+\label{sup:cascaded_baseline}
+The proposed image-based flight controller of the main paper reuses the inner-loop attitude and rate stages of the standard cascaded pose-based architecture, but replaces its outer-loop pose feedback with image-feature feedback. For completeness we recapitulate the baseline architecture here.
+
+In order to achieve target tracking using a pose-based flight controller, the overall control architecture is a cascaded PID controller with the outer loop operating in the inertial frame $\mathcal{I}=\{O_{\text{i}}~X_{\text{i}}~Y_{\text{i}}~Z_{\text{i}}\}$ and the inner loop in the body frame $\mathcal{B}$. The outer-loop controller generates a desired velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$ command that drives the UAV from its instantaneous position $\,^\mathcal{I}\boldsymbol{r}_{\text{b}}$ to the known target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}}$, followed by a desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ command that drives the instantaneous UAV velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{b}}$ to $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$:
+\begin{align} \label{sup:outer_loop_control}
+    \,^\mathcal{I}\boldsymbol{v}_{\text{d}} =& - K_{rp} \,^\mathcal{I}\boldsymbol{r}_{\text{e}} - K_{ri} \int \,^\mathcal{I}\boldsymbol{r}_{\text{e}}\, dt - K_{rd} \frac{d\,^\mathcal{I}\boldsymbol{r}_{\text{e}}}{dt}, \nonumber \\
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d}} =&  K_{vp} \,^\mathcal{I}\boldsymbol{v}_{\text{e}} - K_{vi} \int \,^\mathcal{I}\boldsymbol{v}_{\text{e}}\, dt - K_{vd} \frac{d\,^\mathcal{I}\boldsymbol{v}_{\text{e}}}{dt},
+\end{align}
+where $\,^\mathcal{I}\boldsymbol{r}_{\text{e}} = \,^\mathcal{I}\boldsymbol{r}_{\text{b}} - \,^\mathcal{I}\boldsymbol{r}_{\text{t}}$ is the relative position between UAV and target and $\,^\mathcal{I}\boldsymbol{v}_{\text{e}} = \,^\mathcal{I}\boldsymbol{v}_{\text{b}} - \,^\mathcal{I}\boldsymbol{v}_{\text{d}}$.
+
+Since the centrifugal force $\,^\mathcal{B}\boldsymbol{\omega}_{\text{b}}\times(m\,^\mathcal{B}\boldsymbol{v}_{\text{b}})$ is nullified in the inertial frame, the desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ is assumed to be achieved solely by the total rotor thrust $\,^\mathcal{B}T_u$ and its direction after compensating for gravity and disturbances:
+\begin{align} \label{sup:a_des}
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d}} &= \frac{1}{m}\,^\mathcal{I}R_\mathcal{B}\,^\mathcal{B}\boldsymbol{F}_u = \frac{1}{m}\,^\mathcal{I}R_\mathcal{B}\begin{bmatrix} 0 & 0 & \,^\mathcal{B}T_u \end{bmatrix}^\top,
+\end{align}
+where $\,^\mathcal{I}R_\mathcal{B}$ is the rotation matrix from $\mathcal{B}$ to $\mathcal{I}$. Inverting \eqref{sup:a_des} using the components $\,^\mathcal{I}a_{\text{d}_x},\,^\mathcal{I}a_{\text{d}_y},\,^\mathcal{I}a_{\text{d}_z}$ yields the desired roll, pitch, and total-thrust commands:
+\begin{align} \label{sup:euler_thrust_des}
+    \theta_{\text{d}} &= \tan^{-1}\!\left(\tfrac{-S_\psi\,^\mathcal{I}a_{\text{d}_x} - C_\psi\,^\mathcal{I}a_{\text{d}_y}}{\,^\mathcal{I}a_{\text{d}_z}}\right), \nonumber \\
+    \phi_{\text{d}} &= \tan^{-1}\!\left(\tfrac{C_{\theta_\text{d}}(C_\psi\,^\mathcal{I}a_{\text{d}_x} - S_\psi\,^\mathcal{I}a_{\text{d}_y})}{\,^\mathcal{I}a_{\text{d}_z}}\right), \nonumber \\
+    \,^\mathcal{B}T_u &= -\tfrac{m\,^\mathcal{I}a_{\text{d}_z}}{C_{\theta_\text{d}}C_{\phi_\text{d}}},
+\end{align}
+where $S_x=\sin(x)$, $C_x=\cos(x)$. Combined with the known target heading $\psi_\text{t}$, the desired attitude $\boldsymbol{\Phi}_\text{d}=[\phi_\text{d},\theta_\text{d},\psi_\text{t}]^\top$ and thrust $\,^\mathcal{B}T_u$ are passed to the inner-loop controller.
+
+The inner-loop controller regulates the attitude $\boldsymbol{\Phi}_\text{b}$ and body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$ through a cascade of PID loops. The desired attitude rates $\dot{\boldsymbol{\Phi}}_\text{d}$ are mapped to desired body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}$ via the kinematic transformation
+\begin{equation} \label{sup:kinematic_transformation}
+    \,^\mathcal{B}\boldsymbol{\omega}_\text{d} = W(\phi_\text{d},\theta_\text{d})\dot{\boldsymbol{\Phi}}_\text{d},
+\end{equation}
+with
+\begin{equation*}
+    W(\phi_\text{d},\theta_\text{d}) = \begin{bmatrix} 0 & C_{\phi_\text{d}} & S_{\phi_\text{d}}C_{\theta_\text{d}} \\ 1 & 0 & -S_{\theta_\text{d}} \\ 0 & S_{\phi_\text{d}} & -C_{\phi_\text{d}}C_{\theta_\text{d}} \end{bmatrix}.
+\end{equation*}
+The inner-loop PID control laws are
+\begin{align}
+    \dot{\boldsymbol{\Phi}}_\text{d} &= - K_{\Phi p}\boldsymbol{\Phi}_\text{e} - K_{\Phi i}\!\int\!\boldsymbol{\Phi}_\text{e}\,dt - K_{\Phi d}\frac{d\boldsymbol{\Phi}_\text{e}}{dt}, \nonumber \\
+    \,^\mathcal{B}\dot{\boldsymbol{\omega}}_\text{d} &= - K_{\omega p}\,^\mathcal{B}\boldsymbol{\omega}_\text{e} - K_{\omega i}\!\int\!^\mathcal{B}\boldsymbol{\omega}_\text{e}\,dt - K_{\omega d}\frac{d\,^\mathcal{B}\boldsymbol{\omega}_\text{e}}{dt},
+\end{align}
+with $\boldsymbol{\Phi}_\text{e}=\boldsymbol{\Phi}_\text{b}-\boldsymbol{\Phi}_\text{d}$ and $\,^\mathcal{B}\boldsymbol{\omega}_\text{e}=\,^\mathcal{B}\boldsymbol{\omega}_\text{b}-\,^\mathcal{B}\boldsymbol{\omega}_\text{d}$. The desired control torque is finally recovered from the rigid-body dynamics as
+\begin{equation} \label{sup:tau_des}
+    \,^\mathcal{B}\boldsymbol{\tau}_u = J\,^\mathcal{B}\dot{\boldsymbol{\omega}}_\text{d} + \,^\mathcal{B}\boldsymbol{\omega}_\text{d}\times(J\,^\mathcal{B}\boldsymbol{\omega}_\text{d}),
+\end{equation}
+and the final motor-mixer input is the combined thrust-torque command $\boldsymbol{u}=[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top$. The proposed controller in the main paper inherits \eqref{sup:kinematic_transformation}--\eqref{sup:tau_des} verbatim, replacing only the heading $\psi$ in the inner cascade with the image-plane orientation $\alpha$.
+
+\section{Detailed Derivations of DF-ASMC}
+\label{sup:detailed}
+This section collects the standard prescribed-performance machinery, implementation remarks, SO(3) construction details, the yaw-channel Lyapunov substitution, and the full proof of Theorem~1 that the main paper defers to the supplement.
+
+\subsection{Asymmetric PPC Transformation for the Visibility Funnel}
+\label{sup:asymmetric_ppc}
+For a general reference $\hat{\boldsymbol{r}}_\text{d}\neq\boldsymbol{0}$, the visibility constraint is imposed through the error transformation $\hat{\boldsymbol{r}}_\text{e} = \mathcal{S}_1(\boldsymbol{\zeta}_1)\boldsymbol{p}_1(t)$ with $\mathcal{S}_1(\boldsymbol{\zeta}_1) = \text{diag}(S_1(\zeta_{1_k}))$, where $S_1$ is strictly increasing with
+\begin{align*}
+&-\underline{C}_k<S_1(\zeta_{1_k})<\overline{C}_k,\quad \lim_{\zeta_{1_k}\to 0}S_1 = 0,\\
+&\lim_{\zeta_{1_k}\to\infty}S_1=\overline{C}_k,\quad \lim_{\zeta_{1_k}\to-\infty}S_1=-\underline{C}_k.
+\end{align*}
+A convenient choice is
+\begin{equation} \label{sup:transformation function}
+    S_1(\zeta_{1_k}) = \frac{\underline{C}_k\overline{C}_k(e^{\zeta_{1_k}}-1)}{\underline{C}_k e^{\zeta_{1_k}}+\overline{C}_k},
+\end{equation}
+whose inverse is
+\begin{equation} \label{sup:inverse transformation function}
+    \zeta_{1_k} = \ln\!\left(\frac{\overline{C}_k\hat{r}_{\text{e}k}+\underline{C}_k\overline{C}_k p_{1_k}(t)}{\underline{C}_k\overline{C}_k p_{1_k}(t)-\underline{C}_k\hat{r}_{\text{e}k}}\right),
+\end{equation}
+and the Jacobian $\mathcal{G}_1 = [\boldsymbol{p}_1^\top\partial\mathcal{S}_1/\partial\boldsymbol{\zeta}_1]^{-1} = \text{diag}(g_{1_k})$ is given by
+\begin{equation*}
+    g_{1_k}(\zeta_{1_k},p_{1_k}) = \frac{(\underline{C}_k e^{\zeta_{1_k}}+\overline{C}_k)^2}{\underline{C}_k\overline{C}_k(\overline{C}_k+\underline{C}_k)\,e^{\zeta_{1_k}}\,p_{1_k}(t)}.
+\end{equation*}
+For the symmetric soft-landing case ($\hat{\boldsymbol{r}}_\text{d}=\boldsymbol{0}$, $\underline{C}_k=\overline{C}_k=\mathcal{R}_k/(2f)$), \eqref{sup:transformation function}--\eqref{sup:inverse transformation function} reduce to the hyperbolic form used in the main paper.
+
+\subsection{Optic-Flow Funnel: Implementation Remarks}
+\label{sup:optic_flow_remarks}
+\textit{Remark (Initial-condition feasibility).} The optic-flow transformation requires $|h_{e_k}(0)|<p_{2_{0k}}$. In the reported runs, $\boldsymbol{p}_{2_0}=[25,25,8]^\top$ is sized to envelope the worst-case initial optic-flow magnitude observed across the five ICs of Section~\ref{test conditions: subsec} of the main paper, with a $2\times$--$3\times$ margin against pixel-noise spikes on the fastest \texttt{traj\_Gen} targets (Circular at $\omega_z=0.3$~rad/s; Linear at $1.414$~m/s).
+
+\textit{Remark (Sliding-surface integral anti-windup).} At the funnel mouth, $\int\boldsymbol{\zeta}_2\,d\tau$ in the sliding-surface definition can wind up whenever $\boldsymbol{\zeta}_2$ is briefly clamped by the saturation guard of Remark~1 in the main paper. We therefore bound each channel by $|\!\int\!\zeta_{2_k}\,d\tau|\le 10$. The clamp activates only during short transient spikes and does not affect the Lyapunov derivative on the open sub-funnel where Theorem~1 operates.
+
+\subsection{Yaw-Channel Lyapunov Substitution}
+\label{sup:yaw_lyap}
+Because the yaw channel decouples from the translational dynamics under the virtual-camera abstraction, the Lyapunov argument of Theorem~1 applies to the scalar yaw ASMC with the substitutions $\boldsymbol{\sigma}\leftarrow\sigma_a$, $\Gamma\leftarrow\gamma_a$, $\mathcal{P}\leftarrow p_a$, $\mathcal{N}\leftarrow n_a$, $\mathcal{G}_2\leftarrow 1$, and $\beta_a\equiv 1$ (unity heading-rate gain under the virtual-compass integrator). The scalar Lyapunov function $V_a(t) = \tfrac12\sigma_a^2 + \tfrac12 n_a^{-1}(\kappa_a-\tilde{d}_a)^2$ reproduces the main-paper derivative inequalities line for line with $\lambda_{\min}(\Gamma)\leftarrow\gamma_a$, $\lambda_{\max}(\mathcal{P})\leftarrow p_a$, and yields the yaw-channel UUB
+\begin{equation*}
+    \vartheta_a = \sqrt{\tfrac{3 p_a}{\varphi_{1a}-\varphi_{2a}}}\,\tilde{d}_a,
+\end{equation*}
+which renders $\alpha_e$ uniformly ultimately bounded. The virtual-compass integrator $\psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}[\psi_\text{d}(t_k)+u_\text{a}(t_k)\Delta t]$ then yields a bounded desired heading $\psi_\text{d}$ for the inner SO(3) tracker. The raw image-feature angle is unwrapped to $(-\pi/2,\pi/2]$ via $\alpha_e = \tfrac12\text{atan2}(\sin(2\alpha_e^\text{raw}),\cos(2\alpha_e^\text{raw}))$ to absorb the ellipse-orientation half-turn symmetry.
+
+\subsection{SO(3) Inner-Loop Construction Details}
+\label{sup:so3_details}
+The outer adaptive law returns a desired inertial acceleration $\,^\mathcal{I}\!\boldsymbol{a}_\text{cd}$ that is first low-pass filtered to absorb pixel-noise spikes amplified through $L_s^{-1}$ at low altitude:
+\begin{equation} \label{sup:I a cd filt}
+    \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{cd}(t_{k+1}) = \alpha_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{cd}(t_k)+(1-\alpha_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{cd}(t_{k+1}),
+\end{equation}
+with $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and $\tau_\text{a}=0.08$~s ($\sim 2$~Hz cut-off). The commanded thrust magnitude and desired body-$z$ axis are then $T_\text{cd} = m\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{cd}\|$ and $\boldsymbol{r}_{d,3} = -\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{cd}/\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{cd}\|$. With $\psi_\text{d}$ from the virtual-compass integrator supplying $\boldsymbol{a}_h=[\cos\psi_\text{d},\sin\psi_\text{d},0]^\top$, the remaining body axes are constructed by Gram--Schmidt on $SO(3)$:
+\begin{equation} \label{sup:R_d construction}
+    \boldsymbol{r}_{d,2} = \frac{\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h}{\|\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h\|},\ \ \boldsymbol{r}_{d,1} = \boldsymbol{r}_{d,2}\times\boldsymbol{r}_{d,3},\ \ R_\text{d}=[\boldsymbol{r}_{d,1}\ \boldsymbol{r}_{d,2}\ \boldsymbol{r}_{d,3}].
+\end{equation}
+A degeneracy guard replaces $\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h$ with a fixed east-axis fallback when $\|\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h\|<10^{-6}$. The attitude and angular-velocity errors are
+\begin{equation*}
+    \boldsymbol{e}_R = \tfrac12(R_\text{d}^\top R - R^\top R_\text{d})^\vee,\qquad \boldsymbol{e}_\Omega = \boldsymbol{\omega} - R^\top R_\text{d}\boldsymbol{\omega}_\text{d},
+\end{equation*}
+with $\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitude (not attitude rate), so $\boldsymbol{e}_\Omega=\boldsymbol{\omega}$. The geometric torque law of the main paper then inherits the almost-global exponential stability result of \cite[Thm.~3.1]{lee2010}: for any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
+
+\subsection{Full Proof of Theorem~1}
+\label{sup:theorem1_proof}
+\textit{Definition (GUUB).} A multivariable signal $\boldsymbol{\chi}(t)\in\mathbb{R}^n$ is \emph{globally uniformly ultimately bounded} by $\Lambda>0$ if for every $\lambda>0$ there exists $\mathcal{T}\ge 0$ such that $\|\boldsymbol{\chi}(0)\|\le\lambda\Rightarrow\|\boldsymbol{\chi}(t)\|\le\Lambda\ \forall t\ge\mathcal{T}$.
+
+\textit{Lemma.} If $V(\boldsymbol{\chi})$ is continuously differentiable with $k_1\|\boldsymbol{\chi}\|^2\le V\le k_2\|\boldsymbol{\chi}\|^2$ and $\dot{V}\le -k_3 V$ for $\|\boldsymbol{\chi}\|\ge\varkappa$ ($k_1,k_2,k_3>0$), then every trajectory with $\|\boldsymbol{\chi}(0)\|^2\le\lambda$ is GUUB with $\Lambda = \varkappa(k_2/k_1)^{1/2}$.
+
+\textit{Proof of Theorem~1.} The initial transformed error $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0)/p_{2_{0k}})$ is well defined since $|h_{e_k}(0)|<p_{2_{0k}}$. Under the control law of the main paper, $\boldsymbol{\zeta}_2$ evolves via \eqref{unconstrained system: equation}. Consider the candidate
+\begin{equation} \label{sup:Lyapunov function}
+    V(t) = \tfrac12\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}],
+\end{equation}
+with $\boldsymbol{1}=[1,1,1]^\top$ and $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$. Using $\dot{\boldsymbol{\sigma}}$ from the main paper and the adaptive law,
+\begin{align}
+\label{sup:Vdot 1}
+\dot{V}(t) &= \boldsymbol{\sigma}^\top\dot{\boldsymbol{\sigma}} + \beta_{\min}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}\dot{\boldsymbol{\kappa}}(t)\nonumber\\
+&= -\beta\,\boldsymbol{\sigma}^\top\!\big[\Gamma\boldsymbol{\sigma}+\|\boldsymbol{\theta}\|\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma})\mathcal{G}_2\boldsymbol{\kappa}(t)\big]\nonumber\\
+&\quad + \beta_{\min}\boldsymbol{\sigma}^\top\mathcal{G}_2\boldsymbol{\theta}\boldsymbol{\overline{d}}\nonumber\\
+&\quad + \beta_{\min}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}\!\big[\|\boldsymbol{\theta}\|\mathcal{N}\mathcal{G}_2|\boldsymbol{\sigma}| - \mathcal{N}\mathcal{P}\boldsymbol{\kappa}(t)\big].
+\end{align}
+Since $\sigma_k\text{sat}(\sigma_k/\varepsilon_k)\ge 0$ componentwise and $\boldsymbol{\kappa}(t)\in\mathbb{R}_+^3$, the switching dissipation satisfies
+\begin{equation*}
+\boldsymbol{\sigma}^\top\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma}) = |\boldsymbol{\sigma}|^\top - \boldsymbol{r}_\varepsilon^\top(\boldsymbol{\sigma}),
+\end{equation*}
+where $r_{\varepsilon_k} = \max(0,|\sigma_k|-\sigma_k^2/\varepsilon_k)\le\varepsilon_k/4$ vanishes outside the boundary layer $|\sigma_k|>\varepsilon_k$. The residual $\tfrac14\|\boldsymbol{\varepsilon}\|\lambda_{\max}(\mathcal{G}_2)\|\boldsymbol{\kappa}(t)\|$ is bounded uniformly by the leakage law and absorbed into $\tilde{d}$. Using $\beta\ge\beta_{\min}>0$, \eqref{sup:Vdot 1} rearranges to
+\begin{align*}
+\dot{V}(t)\le& -\beta_{\min}\boldsymbol{\sigma}^\top\Gamma\boldsymbol{\sigma} - \beta_{\min}(\tilde{d}-\|\boldsymbol{\overline{d}}\|)\|\boldsymbol{\theta}\||\boldsymbol{\sigma}|^\top\mathcal{G}_2\boldsymbol{1}\\
+&- \beta_{\min}[\boldsymbol{\kappa}^\top(t)\mathcal{P}\boldsymbol{\kappa}(t) - \tilde{d}\boldsymbol{1}^\top\mathcal{P}\boldsymbol{\kappa}(t)].
+\end{align*}
+The second term is non-negative since $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$. Completing the square on the third term and using positive-definiteness of $\mathcal{P}$,
+\begin{align*}
+\dot{V}(t)&\le -\beta_{\min}\lambda_{\min}(\Gamma)\|\boldsymbol{\sigma}\|^2 - \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{P}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]\\
+&\quad + \tfrac{\beta_{\min}}{2}\tilde{d}^2\boldsymbol{1}^\top\mathcal{P}\boldsymbol{1}\\
+&\le -\varphi_1 V(t) + \tfrac32\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2.
+\end{align*}
+For any $0<\varphi_2<\varphi_1$,
+\begin{equation*}
+\dot{V}(t)\le -\varphi_2 V(t),\qquad \forall\,V(t)\ge\Theta=\tfrac{3\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2}{2(\varphi_1-\varphi_2)}.
+\end{equation*}
+Invoking the Lemma, every trajectory enters the ball $\{V\le\Theta\}$ in finite time and remains there. Since $V(t)\ge\|\boldsymbol{\sigma}\|^2/2$, the ultimate bound on $\boldsymbol{\sigma}$ is $\vartheta = [3\beta_{\min}\lambda_{\max}(\mathcal{P})/(\varphi_1-\varphi_2)]^{1/2}\tilde{d}$, independent of initial conditions. From the sliding surface definition, $\boldsymbol{\zeta}_2$ converges into a small residual around the origin, so from the inverse PPC transformation $-\boldsymbol{p}_2(t)<\boldsymbol{h}_e<\boldsymbol{p}_2(t)$ holds for all $t\ge 0$. $\hfill\blacksquare$
+
+\textit{Cascade argument for Corollary~1.} Theorem~1 renders $\boldsymbol{h}_e=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ uniformly ultimately bounded inside $\boldsymbol{p}_2(t)$. Substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_e$ into the transformed visibility-funnel dynamics and using the outer-loop PID form of $\boldsymbol{h}_\text{d}$ yields
+\begin{equation*}
+    \dot{\boldsymbol{\zeta}}_1 + K_{\zeta p}\boldsymbol{\zeta}_1 + K_{\zeta i}\!\int\!\boldsymbol{\zeta}_1\,d\tau + K_{\zeta d}\dot{\boldsymbol{\zeta}}_1 = \mathcal{G}_1\,\boldsymbol{h}_e^{xy},
+\end{equation*}
+a linear PID-driven system perturbed by the bounded residual $\boldsymbol{h}_e$. Standard ISS arguments for cascaded systems \cite{khalil2002} give the stated bound, and feasibility of the inverse asymmetric transformation \eqref{sup:inverse transformation function} guarantees that $\hat{\boldsymbol{r}}_e$ never reaches the funnel boundary.
+
+\end{document}

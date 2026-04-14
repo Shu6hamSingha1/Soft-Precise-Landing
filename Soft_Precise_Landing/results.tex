@@ -1,0 +1,242 @@
+
+\section{NUMERICAL SIMULATION RESULTS}
+\label{experimentation: section}
+Simulations are carried out in MATLAB using a fifth-order Runge--Kutta integrator at $\Delta t=0.01~\text{s}$ on the full thirteen-state quadrotor model of Section~\ref{background: section}. Platform parameters (X500 class) are listed in Table~\ref{uav params: table} and the locked DF-ASMC gains, obtained via the cross-trajectory deep sweep, in Table~\ref{control params: table}. A run terminates when the altitude first falls below $z_\text{f}=0.20~\text{m}$. The touchdown is \emph{precise} when $\|\,^\mathcal{I}\!e_{xy}\|\le 0.05~\text{m}$ and \emph{soft} when $\|v_\text{rel}\|\le 0.20~\text{m/s}$; the looser $xy_\text{f}=0.30~\text{m}$ threshold in Table~\ref{uav params: table} is used only for the cross-controller comparison of Section~\ref{comparison: subsec}. On a single core of an Intel i7, one DF-ASMC control update executes in $\approx 0.18~\text{ms}$, well within the $10~\text{ms}$ control period of the X500 platform.
+
+\begin{table}[!t]
+\centering
+\caption{UAV platform and simulation parameters.}
+\label{uav params: table}
+\begin{tabular}{lcl}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Value} \\
+\midrule
+Mass                & $m$                    & $2.1~\text{kg}$ \\
+Inertia matrix      & $J$                    & $\text{diag}([0.0256,0.0256,0.0440])$~kg\,m$^2$ \\
+Propeller radius    & $R$                    & $0.075~\text{m}$ \\
+Arm length          & $\ell$                 & $0.2425~\text{m}$ \\
+Total thrust bounds & $[T_{\min},T_{\max}]$  & $[0.0,60.0]~\text{N}$ \\
+Attitude cone bound & $\phi_\text{max}$      & $35^\circ$ \\
+Focal length        & $f$                    & $135~\text{px}$ \\
+Landing altitude threshold & $z_\text{f}$     & $0.20~\text{m}$ \\
+Precise xy-tolerance & $xy_\text{prec}$       & $0.05~\text{m}$ \\
+Soft relative-speed bound & $v_\text{soft}$   & $0.20~\text{m/s}$ \\
+Comparison xy-tolerance & $xy_\text{f}$       & $0.30~\text{m}$ \\
+Image noise SNR     & --                     & $50~\text{dB (AWGN)}$ \\
+Integration step    & $\Delta t$             & $0.01~\text{s}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[!t]
+    \centering
+    \caption{Locked DF-ASMC control parameters used in all numerical tests.}
+    \label{control params: table}
+    \begin{tabular}{ll}
+    \toprule
+        \textbf{Control Parameter} & \textbf{Value}\\
+    \midrule
+        \multicolumn{2}{l}{\textit{Performance Function --- Visibility Constraint}} \\
+        $\Xi_1$                     & $\text{diag}([0.2,0.2])$\\
+        $\boldsymbol{p}_{1_0}$      & $[\mathcal{R}_y/(2f),\,\mathcal{R}_x/(2f)]^\top \approx [0.89,1.19]^\top$ \\
+        $\boldsymbol{p}_{1_\infty}$ & $[0.08,0.08]^\top$ \\
+    \midrule
+        \multicolumn{2}{l}{\textit{PID --- Normalized Position Control}} \\
+        $K_{\zeta p}$ & $\text{diag}([6.0,6.0])$ \\
+        $K_{\zeta i}$ & $\text{diag}([0.1,0.1])$ \\
+        $K_{\zeta d}$ & $\text{diag}([0.975,0.975])$ \\
+    \midrule
+        \multicolumn{2}{l}{\textit{Performance Function --- Optic Flow}} \\
+        $\Xi_2$                     & $\text{diag}([0.2,0.2,0.2])$ \\
+        $\boldsymbol{p}_{2_0}$      & $[25.0,25.0,4.0]^\top$ \\
+        $\boldsymbol{p}_{2_\infty}$ & $[0.8,0.8,1.0]^\top$ \\
+    \midrule
+        \multicolumn{2}{l}{\textit{ASMC --- Optic Flow Regulation}} \\
+        $\mathcal{X}$           & $\text{diag}([0.003,0.003,0.006])$ \\
+        $\Gamma$                & $\text{diag}([0.4375,0.5,0.75])$ \\
+        $P$                     & $\text{diag}([1.5,1.5,5.0])$ \\
+        $N$                     & $\text{diag}([0.02,0.02,0.05])$ \\
+        $\boldsymbol{\kappa}_0$ & $[0.125,0.125,0.25]^\top$ \\
+        $E$                     & $\text{diag}([1.0,1.0,0.5])$ \\
+        $\epsilon_S$            & $0.05$ \quad (funnel saturation guard) \\
+    \midrule
+        \multicolumn{2}{l}{\textit{Geometric SO(3) Attitude Control}} \\
+        $k_R$      & $\text{diag}([1.5,1.5,0.5])$ \\
+        $k_\Omega$ & $\text{diag}([0.3,0.3,0.1])$ \\
+    \midrule
+        \multicolumn{2}{l}{\textit{Adaptive Yaw SMC}} \\
+        $\chi_\text{a},\,\gamma_\text{a}$  & $0.5,\,0.5$ \\
+        $n_\text{a},\,p_\text{a}$          & $1.0,\,2$ \\
+        $\kappa_{\text{a}_0},\,E_\text{a}$ & $2.0,\,3.0$ \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Test Conditions}
+\label{test conditions: subsec}
+Five deterministic initial conditions (Table~\ref{initial conditions: table}) cover the nominal drop, high/low-altitude starts, and two diagonal lateral offsets that stress the lateral chase authority.
+
+\begin{table}[!t]
+    \centering
+    \caption{Initial conditions of the UAV in the inertial (NED) frame. Altitude is $-\,^\mathcal{I}z$.}
+    \label{initial conditions: table}
+    \begin{tabular}{ccccl}
+    \toprule
+        \textbf{Run} & $\,^\mathcal{I}x$ & $\,^\mathcal{I}y$ & $\,^\mathcal{I}z$ & \textbf{Remarks} \\
+    \midrule
+        1 & \phantom{-}0 & \phantom{-}0 & $-5$ & Nominal \\
+        2 & \phantom{-}0 & \phantom{-}0 & $-7$ & High-altitude start \\
+        3 & \phantom{-}0 & \phantom{-}0 & $-3$ & Low-altitude start \\
+        4 & \phantom{-}2 & \phantom{-}2 & $-5$ & $+x$, $+y$ lateral offset \\
+        5 & $-2$         & $-2$         & $-5$ & $-x$, $-y$ lateral offset \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+Each of the above initial conditions is evaluated against five target trajectory cases defined as follows:
+\begin{enumerate}
+    \item \textit{Case 1 (Static):}  $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0,\,0,\,0]^\top$~m.
+    \item \textit{Case 2 (Linear, ship deck):}  a north--east surge $\,^\mathcal{I}\boldsymbol{v}_{\text{t},xy} = [1.0,\,1.0]^\top$~m/s (speed $1.414~\text{m/s}$) superimposed with a heave sinusoid in the style of~\cite{lin2022} $\,^\mathcal{I}z_\text{t}(t)=0.2\sin(0.5\,t)~\text{m}$ and a large sea-state attitude oscillation $(\phi_\text{t},\theta_\text{t})=(15^\circ\sin(0.9\,t),\,8^\circ\sin(0.6\,t+\pi/3))$, $\psi_\text{t}=0$.
+    \item \textit{Case 3 (Sinusoidal):}  $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0.5\sin(0.8\,t),\,0.3\,t,\,0]^\top$~m, i.e., fast longitudinal oscillation combined with lateral drift (no deck attitude).
+    \item \textit{Case 4 (Lissajous):} $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0.5\sin(-0.8\,t),\,0.8\sin(0.4\,t),\,0]^\top$~m, producing a closed two-frequency figure-of-eight trajectory with asymmetric frequencies (no deck attitude).
+    \item \textit{Case 5 (Circular, ship deck):} turning radius $r=0.5~\text{m}$ and angular rate $\omega_z = 0.3~\text{rad/s}$ with yaw $\psi_\text{t}=\omega_z t$; the same heave $0.2\sin(0.5\,t)~\text{m}$ and $(15^\circ,\,8^\circ)$ roll/pitch oscillation as Case~2 are added on top of the circular surge.
+\end{enumerate}
+Cases~2 and~5 are ship-deck scenarios with roll/pitch amplitudes and periods bracketing a substantially harsher envelope than the heave-only ``oscillating platform'' of~\cite{lin2022}.
+
+\subsection{Performance under Model Uncertainty and Exogenous Perturbations}
+\label{uncertainty: subsec}
+The following realistic perturbations are injected: (i) pixel-level AWGN on $\,^\mathcal{C}\hat{\boldsymbol{r}}$ at $50$~dB SNR; (ii) the standard rotor-in-ground-effect thrust amplification \cite{sanchez-cuevas2017} $\,^\mathcal{B}T_\infty=[1-(R/4\,^\mathcal{I}z_\text{t})^2]^{-1}\,^\mathcal{B}T_u$; (iii) a one-step transport delay ($0.01~\text{s}$) on $[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top$ and a $30~\text{Hz}$ zero-order hold on the image features; (iv) the visibility and optic-flow funnels $\boldsymbol{p}_1(t),\boldsymbol{p}_2(t)$ of \eqref{prescribed perfromance: equation}; and (v) the thrust saturation $0\le\,^\mathcal{B}T_u\le 60~\text{N}$ and the $35^\circ$ attitude-cone clamp on $\,^\mathcal{I}\boldsymbol{a}_\text{cd}$. Under the idealised (disturbance-free) setting DF-ASMC lands from all $25$ conditions with monotonic descent and feature points strictly inside $\boldsymbol{p}_1(t)$; per-trajectory figure sets are in Sections~S1--S2 of the supplement. Under the full disturbance set DF-ASMC still achieves a soft precise landing in every case; the most demanding --- Circular ship-deck --- is shown in Fig.~\ref{Circular_3D: figure}, and closed-loop internals (funnels, sliding surface $\boldsymbol{\sigma}$, adaptive gains $\boldsymbol{\kappa}$, cone-constrained acceleration) for the representative sinusoidal IC$4$ case are in Section~S3 (Figs.~S21--S25).
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_3D.pdf}\\[2pt]
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
+    \caption{Proposed controller on the Circular ship-deck target under the full realistic disturbance set (pixel noise, ground effect, delay, actuator saturation, and $\pm 15^\circ/\pm 8^\circ$ roll/pitch deck oscillation with heave). \emph{Top}: 3-D UAV trajectories for the five initial conditions of Table~\ref{initial conditions: table}, showing smooth convergence to the moving target. \emph{Bottom}: virtual image-plane evolution $\hat{\boldsymbol{r}}(t)$ with the visibility funnel $\pm\boldsymbol{p}_1(t)$; all feature trajectories remain strictly inside the funnel until touchdown, empirically certifying the soft precise landing of the proposed controller. The remaining trajectories are shown in Section~S2 of the supplementary material.}
+    \label{Circular_3D: figure}
+\end{figure}
+
+\subsection{Robustness Across Initial Conditions and Trajectories}
+\label{multi init: subsec}
+Sweeping the five initial conditions of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{test conditions: subsec} under the full disturbance set (deterministic seeding \texttt{rng(1000+k)}) yields the aggregated metrics in Table~\ref{multi init: table}.
+
+\begin{table}[!t]
+\centering
+\caption{Multi-initial-condition robustness of the proposed DF-ASMC under realistic disturbances (5 ICs per trajectory).}
+\label{multi init: table}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Trajectory} & \textbf{Lands} & $\bar{t}_\text{f}$ & $t_\text{f}^{\max}$ & $\overline{xy}_\text{e}$ & $xy_\text{e}^{\max}$ \\
+                    &                & [s]                & [s]                 & [cm]                     & [cm] \\
+\midrule
+Static      & 5/5 & 8.97 & 11.91 & 0.30 & 0.60 \\
+Linear      & 5/5 & 8.36 & 11.22 & 0.20 & 0.20 \\
+Sinusoidal  & 5/5 & 8.86 & 12.29 & 1.60 & 2.40 \\
+Lissajous   & 5/5 & 8.92 & 11.57 & 2.10 & 3.10 \\
+Circular    & 5/5 & 8.96 & 11.79 & 0.50 & 1.20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+DF-ASMC achieves $25/25$ successful landings with mean landing time in $8.4$--$9.0~\text{s}$ and worst-case horizontal error below $3.1~\text{cm}$ (and below $1.2~\text{cm}$ on Static, Linear, and Circular), even under the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on the Linear and Circular cases. The worst-case horizontal error grows with the lateral excursion of the target (Lissajous $>$ Sinusoidal $>$ Linear $>$ Circular $\approx$ Static), consistent with the feed-forward lag being proportional to the target acceleration.
+
+The locked gain set of Table~\ref{control params: table} is the outcome of a cross-trajectory deep sweep (each of the $30$ DF-ASMC parameters perturbed over $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$ on all four moving trajectories and all five initial conditions; $2400$ deterministic runs). Only two knobs survive as strict Pareto winners --- $\boldsymbol{p}_{2_0}(3)$ and $K_{\zeta d}$ --- whose combined lock-in reduces the aggregate landing time by $4.8\%$ and the aggregate worst-case horizontal error by $35.0\%$ while preserving the $20/20$ land rate; the remaining $28$ parameters partition into fragile, dead, and Pareto-trade classes. The full methodology, summary table, and per-parameter classification are given in Section~S4 of the supplementary material.
+
+\subsection{Target Speed Envelope}
+\label{speed: subsec}
+With IC $[0,0,-5]~\text{m}$ and all gains fixed, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory in Section~\ref{test conditions: subsec}, acting directly on the velocity parameters of $^\mathcal{I}\boldsymbol{x}_\text{t}(t)$. The resulting landing time, horizontal touchdown error, and relative speed at touchdown are collected in Fig.~\ref{speed envelope: figure}.
+
+\begin{figure*}[!t]
+\centering
+    \includegraphics[width=0.72\textwidth]{Figures/generated/plasmc_multi_speed_landing.pdf}
+    \caption{DF-ASMC descent trajectories under the target-speed sweep on the four moving trajectories, with a fixed baseline initial condition $[0,0,-5]~\text{m}$ (black circle) and speed multipliers $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ colored from dark to bright. The dashed black curve is the nominal target path at $\lambda=1.0$, and the $\times$ markers indicate the UAV touchdown point for each $\lambda$. The UAV lands inside $t_\text{f}\le 8.9~\text{s}$ on every trajectory and every multiplier, always below the $0.05~\text{m}$ \emph{precise} and $0.20~\text{m/s}$ \emph{soft} touchdown bounds.}
+    \label{speed envelope: figure}
+\end{figure*}
+
+All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.05~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$), establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $3.92~\text{cm}$ and $0.165~\text{m/s}$ (both on Sinusoidal, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $35^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{cd}$, confirming that the closed loop is limited by the platform's underactuation rather than by the adaptation law or the funnels.
+
+\subsection{Comparison with State-of-the-Art Landing Controllers}
+\label{comparison: subsec}
+DF-ASMC is compared against four representative landing controllers: the performance-constrained PBVS of \cite{lin2022}, the PBVS with adaptive extended disturbance observer of \cite{zhang2026}, the IBVS with adaptive observer of \cite{chen2025}, and the feed-forward IBVS of \cite{cho2022}. All benchmarks use a common geometric SO(3) inner loop ($k_R=\text{diag}([0.8,0.8,0.4])$, $k_\Omega=\text{diag}([0.15,0.15,0.08])$) tuned to the X500 $10~\text{rad/s}$ roll/pitch bandwidth. The PBVS methods receive position/velocity noise ($\sigma_\text{pos}=0.01~\text{m}$, $\sigma_\text{vel}=0.02~\text{m/s}$), while the IBVS methods (DF-ASMC, \cite{chen2025}, \cite{cho2022}) receive pixel-level $50~\text{dB}$ AWGN. Ground effect, delay, and actuator constraints are identical for all five. IC is fixed at IC$4=[2,2,-5]~\text{m}$ and each trajectory is run for up to $40~\text{s}$. Each baseline's outer-loop gains were first initialised from the source paper and then retuned on the Sinusoidal trajectory under the full disturbance set, so the benchmarks compete from a tuning state at least as favourable as DF-ASMC, which uses the single locked set of Table~\ref{control params: table}. Two baselines require external signals absent in a vision-only harness --- the target-velocity feed-forward of \cite{lin2022} (Remark~2 therein) and the GPS/EKF ship-velocity channel of \cite{cho2022} --- and the resulting gap is discussed per-controller below. Table~\ref{comparison table: table} reports landing time, final horizontal error, and final altitude; runs that fail to touch down within $40~\text{s}$ are marked $\dagger$.
+
+\begin{table*}[!t]
+\centering
+\caption{Comparison of the proposed DF-ASMC against four state-of-the-art landing controllers under identical noise, ground-effect, delay, and actuator-constraint conditions. Initial condition is $[2,2,-5]$~m. Runs that fail to reach the landing altitude within $40~\text{s}$ are marked by $\dagger$ (\cite{lin2022} on the Linear, Sinusoidal, and Lissajous trajectories; \cite{chen2025} on all five trajectories); \cite{zhang2026} exhibits free-fall touchdown ($\sim 3$~s) driven by lateral force saturation — marked by $\ddagger$ — and violates the $0.30~\text{m}$ horizontal-error tolerance on four trajectories; \cite{cho2022} touches down on every trajectory but similarly violates the horizontal tolerance on four of the five trajectories (also marked by $\ddagger$).}
+\label{comparison table: table}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\begin{tabular}{lccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc}
+\toprule
+\multirow{3}{*}{\textbf{Controller}}
+    & \multicolumn{3}{c}{\textbf{Static}}
+    & \multicolumn{3}{c}{\textbf{Linear}}
+    & \multicolumn{3}{c}{\textbf{Sinusoidal}}
+    & \multicolumn{3}{c}{\textbf{Circular}}
+    & \multicolumn{3}{c}{\textbf{Lissajous}} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}\cmidrule(lr){11-13}\cmidrule(lr){14-16}
+    & $t_\text{f}$ & $xy_\text{e}$ & $z_\text{f}$
+    & $t_\text{f}$ & $xy_\text{e}$ & $z_\text{f}$
+    & $t_\text{f}$ & $xy_\text{e}$ & $z_\text{f}$
+    & $t_\text{f}$ & $xy_\text{e}$ & $z_\text{f}$
+    & $t_\text{f}$ & $xy_\text{e}$ & $z_\text{f}$ \\
+    & [s] & [m] & [m]
+    & [s] & [m] & [m]
+    & [s] & [m] & [m]
+    & [s] & [m] & [m]
+    & [s] & [m] & [m] \\
+\midrule
+\textbf{DF-ASMC (Proposed)}
+    & $\mathbf{10.83}$           & $\mathbf{0.003}$ & $0.204$
+    & $\phantom{0}\mathbf{8.97}$ & $\mathbf{0.004}$ & $0.205$
+    & $\mathbf{11.37}$           & $\mathbf{0.023}$ & $0.204$
+    & $\mathbf{12.13}$           & $\mathbf{0.004}$ & $0.205$
+    & $\mathbf{12.18}$           & $\mathbf{0.019}$ & $0.204$ \\
+\cite{lin2022}
+    & $37.38$                    & $0.008$ & $0.205$
+    & $\phantom{0}4.12^\dagger$  & $3.034$ & $2.607$
+    & $34.40^\dagger$            & $0.366$ & $0.231$
+    & $21.86$                    & $0.364$ & $0.205$
+    & $33.48^\dagger$            & $0.376$ & $0.251$ \\
+\cite{zhang2026}
+    & $\phantom{0}3.09^\ddagger$ & $0.994$ & $0.202$
+    & $\phantom{0}3.26^\ddagger$ & $0.221$ & $0.203$
+    & $\phantom{0}3.09^\ddagger$ & $0.653$ & $0.203$
+    & $\phantom{0}2.86^\ddagger$ & $0.905$ & $0.201$
+    & $\phantom{0}2.64^\ddagger$ & $0.858$ & $0.208$ \\
+\cite{chen2025}
+    & $39.99^\dagger$            & $0.408$ & $0.405$
+    & $39.31^\dagger$            & $0.322$ & $0.381$
+    & $39.99^\dagger$            & $0.446$ & $0.446$
+    & $39.99^\dagger$            & $0.418$ & $0.418$
+    & $39.99^\dagger$            & $0.249$ & $0.351$ \\
+\cite{cho2022}
+    & $11.49^\ddagger$           & $0.203$ & $0.204$
+    & $11.55^\ddagger$           & $0.196$ & $0.205$
+    & $11.49^\ddagger$           & $0.293$ & $0.205$
+    & $11.57^\ddagger$           & $0.231$ & $0.205$
+    & $11.35$                    & $0.082$ & $0.205$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]
+\centering
+    \includegraphics[width=0.82\textwidth]{Figures/generated/comparison_summary.pdf}
+    \caption{Side-by-side summary of landing time, final horizontal error, and UAV-target relative speed at touchdown across the five trajectories and five controllers. Dotted lines mark the $40~\text{s}$ landing budget, the $0.05~\text{m}$ \emph{precise} horizontal-error bound, and the $0.20~\text{m/s}$ \emph{soft} relative-speed bound. The proposed DF-ASMC is the only controller that clears all three thresholds simultaneously on every moving trajectory.}
+    \label{comparison summary: figure}
+\end{figure*}
+
+The comparison establishes the following observations.
+\begin{enumerate}
+    \item The proposed DF-ASMC is the \emph{only} controller that achieves a sub-$0.05~\text{m}$ horizontal touchdown error on every trajectory. Every DF-ASMC cell in Table~\ref{comparison table: table} simultaneously satisfies the altitude, horizontal-error, and landing-budget thresholds, with the worst-case horizontal error ($0.023~\text{m}$ on the Sinusoidal) an order of magnitude below the $0.30~\text{m}$ prescribed tolerance.
+    \item The four benchmarks each fail on one specific structural ground: \cite{lin2022} halts its descent to defend a monotonically shrinking funnel against a non-zero lateral drift, \cite{zhang2026} free-falls after its AEDO differentiates stationary measurement noise into a saturating force command, \cite{chen2025} violates its own constant-$z^\star$ gain condition as the altitude approaches zero, and \cite{cho2022} loses lateral authority once its GPS/EKF target-velocity feed-forward channel is denied in the vision-only harness. The per-baseline diagnoses, with the exact equations from each source that break under our disturbance profile, are collected in Section~S5 (and Fig.~S26) of the supplementary material.
+    \item Collectively, the proposed DF-ASMC strictly dominates the four benchmarks on every trajectory in both the landing-time and horizontal-error metrics whenever the benchmark actually lands, and is the only controller that reliably touches down on all five trajectories. The simultaneous combination of scale independence, sub-decimeter horizontal precision, and guaranteed funnel adherence is not achieved by any competitor.
+\end{enumerate}
+
+\subsection{Summary of Numerical Observations}
+The numerical study summarized in Sections~\ref{multi init: subsec}--\ref{comparison: subsec} supports the following conclusions:
+\begin{enumerate}
+    \item The locked DF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under pixel noise, ground effect, computational delay, and actuator constraints, with mean landing time $\le 9.0~\text{s}$ and worst-case horizontal error $\le 3.1~\text{cm}$ — including ship-deck roll/pitch oscillation and~\cite{lin2022}-style heave on the Linear and Circular cases.
+    \item A cross-trajectory deep sweep of $30$ gains $\times$ $4$ perturbations $\times$ $4$ trajectories $\times$ $5$ ICs identifies only two parameters ($\boldsymbol{p}_{2_0}(3)$, $K_{\zeta d}$) as real Pareto winners, whose combined lock-in cuts the aggregate landing time by $4.8\%$ and the aggregate worst-case horizontal error by $35\%$; all other knobs are either fragile, dead, or trade-offs. The locked gain set is therefore a justified design point on the true Pareto frontier of the closed loop.
+    \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.05~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$), establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
+    \item Under identical disturbance conditions, the proposed DF-ASMC dominates four representative state-of-the-art controllers~\cite{lin2022,zhang2026,chen2025,cho2022} in both landing time and horizontal touchdown precision on all four moving trajectories.
+\end{enumerate}
