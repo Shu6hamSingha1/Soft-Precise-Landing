@@ -1,0 +1,1028 @@
+VISION-AIDED RELATIVE STATE ESTIMATION FOR APPROACH AND
+LANDING ON A MOVING PLATFORM WITH INERTIAL MEASUREMENTS
+PREPRINT⋆
+Tarek Bouazza
+I3S, CNRS, Université Côte d’Azur
+06900 Sophia Antipolis, France
+bouazza@i3s.unice.fr
+Alessandro Melis
+I3S, CNRS, Université Côte d’Azur
+06900 Sophia Antipolis, France
+melis@i3s.unice.fr
+Soulaimane Berkane
+Département d’informatique et d’ingénierie,
+Université du Québec en Outaouis
+and Department of Electrical Engineering,
+Lakehead University
+Gatineau, QC J8X 3X7, Canada
+soulaimane.berkane@uqo.ca
+Robert Mahony
+Systems Theory and Robotics Group
+Australian National University
+ACT, 2601, Australia
+Robert.Mahony@anu.edu.au
+Tarek Hamel
+I3S, CNRS, Université Côte d’Azur
+and Institut Universitaire de France (IUF)
+06900 Sophia Antipolis, France
+thamel@i3s.unice.fr
+December 23, 2025
+ABSTRACT
+This paper tackles the problem of estimating the relative position, orientation, and velocity between a UAV
+and a planar platform undergoing arbitrary 3D motion during approach and landing. The estimation relies
+on measurements from Inertial Measurement Units (IMUs) mounted on both systems, assuming there is a
+suitable communication channel to exchange data, together with visual information provided by an onboard
+monocular camera, from which the bearing (line-of-sight direction) to the platform’s center and the normal
+vector of its planar surface are extracted. We propose a cascade observer with a complementary filter on SO(3)
+to reconstruct the relative attitude, followed by a linear Riccati observer for relative position and velocity
+estimation. Convergence of both observers is established under persistently exciting conditions, and the
+cascade is shown to be almost globally asymptotically and locally exponentially stable. We further extend the
+design to the case where the platform’s rotation is restricted to its normal axis and show that its measured linear
+acceleration can be exploited to recover the remaining unobservable rotation angle. A sufficient condition to
+ensure local exponential convergence in this setting is provided. The performance of the proposed observers is
+validated through extensive simulations.
+Keywords: Nonlinear observers and filter design, Estimation and filtering, Information and sensor fusion, UAVs, Mobile robots.
+1
+Introduction
+Autonomous landing of Unmanned Aerial Vehicles (UAVs) has been a popular research topic for over two decades. Early
+work primarily focused on static targets such as runways or landing pads. The UAV state was typically estimated using Global
+Positioning Systems (GPS), possibly augmented by onboard cameras that detect fiducial markers or structured visual features
+to determine the relative position of the landing target. However, GPS signals are unreliable in many relevant scenarios and
+even when available they are imprecise and subject to time-lag. The question of precision can be address using real-time
+kinematic GPS (GPS-RTK) Kang et al. [2018] if such a system is available. Alternatively, motion-capture systems Mellinger
+et al. [2010] have been used to provide relative state estimation, however, such infrastructure is expensive, especially for landing
+on moving targets in outdoor environments. As a consequence, most research in approach and landing for moving targets has
+⋆Under review
+arXiv:2512.19245v1  [eess.SY]  22 Dec 2025
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+exploited vision-based techniques, where the UAV detects and tracks the platform using an onboard camera Falanga et al. [2017].
+Visual servoing techniques are frequently used to control the UAV using image feedback Lee et al. [2012], Serra et al. [2016].
+To improve robustness, some approaches equip the platform with additional sensors, such as infrared markers Wenzel et al.
+[2011]. When the target undergoes arbitrary motion, estimating the relative states becomes significantly more challenging, as
+the platform’s dynamics must be explicitly accounted for in the estimator. Cooperative strategies, in which the UAV leverages
+measurements from ground or marine vehicles to assist in relative motion estimation, have been explored in Borowczyk et al.
+[2017], Acuna et al. [2018], Cui et al. [2023]. While effective, these methods implicitly constrain the platform’s motion to the
+kinematic models used in their filters and do not address the general free motion case.
+In this work, we consider the estimation problem for the approach and landing of a UAV on a moving target. The goal is to
+recover the relative pose and velocity of the UAV with respect to the target using IMU measurements from both systems and
+monocular vision. We assume that the vision system provides the bearing to the landing platform’s center and the normal to the
+platform surface. We propose a cascade observer architecture that first estimates the relative attitude through a complementary
+filter on SO(3), and subsequently reconstructs the relative position and velocity using a linear Riccati observer. Convergence is
+established under persistently exciting conditions, and the cascade interconnection is shown to achieve almost global asymptotic
+and local exponential stability. An extension is developed for the case where the target undergoes no rotational motion, which
+exploits the target’s linear acceleration to estimate the yaw rotation angle and derive sufficient conditions for local exponential
+convergence.
+The remainder of the paper is organized as follows. Section 2 introduces notation and preliminaries. Section 3 formulates the
+problem with the available inertial and visual measurements and derives relative UAV-target dynamics. Section 4 develops the
+cascade observer, first under persistent excitation of the target-plane normal, and then extends the design to the case where this
+excitation condition is not satisfied. Simulation results are reported in Section 5, and Section 6 concludes the paper. Proofs of the
+lemmas are provided in the Appendix.
+2
+Preliminary Material
+2.1
+Notation
+The n-dimensional Euclidean space is denoted by Rn. The Euclidean norm of a vector x = (x1, . . . , xn) ∈Rn is ∥x∥:=
+pPn
+1 x2
+i . For any vector ω := (ω1, ω2, ω3) ∈R3, the skew-symmetric matrix associated with the vector (cross) product is
+defined as
+ω× =
+" 0
+−ω3
+ω2
+ω3
+0
+−ω1
+−ω2
+ω1
+0
+#
+.
+The unit n-sphere Sn := {u ∈Rn+1 | |u| = 1} denotes the set of unit vectors in in Rn+1. For any u ∈S2, the projection
+operator πu := I3 −uu⊤projects any x ∈R3 to the plane orthogonal to u.
+We denote by Rm×n the set of real m × n matrices. The set of n × n positive definite matrices is denoted by S+(n), and the
+identity matrix is denoted by In ∈Rn×n. We denote by A ⊗B the Kronecker product of two matrices A and B.
+The special orthogonal group, denoted as SO(3), is the matrix Lie group of 3D rotations given by
+SO(3) := {R ∈R3×3 | R⊤R = RR⊤= I3, det(R) = 1}.
+Its associated Lie algebra is defined as
+so(3) := {ω× ∈R3×3 | ω ∈R3}.
+The exponential map exp : so(3) →SO(3) defines a local diffeomorphism from a neighbourhood of 0 ∈so(3) to a
+neighbourhood of I3 ∈SO(3). It allows us to define the composition map exp ◦(·)× : R3 →SO(3), which provides a
+convenient parametrization of rotations. For any vector θu ∈R3, with angle θ and axis u ∈S2, this map can be computed
+explicitly via Rodrigues’ formula:
+exp(θu×) = I3 + sin(θ)u× + (1 −cos(θ))u×u×.
+(1)
+2.2
+Stability and Observability Definitions
+Consider a generic linear time-varying (LTV) system:
+˙x = A(t)x + B(t)u,
+(2a)
+y = C(t)x,
+(2b)
+where x ∈Rn denotes the system state, u ∈Rs the system input, and y ∈Rm the system output. The following definition of
+observability for this system is borrowed from Aeyels et al. [1998], Chen [1984].
+2
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+Definition 1 (Uniform Observability). The system (2) is said to be uniformly observable if there exist constants δ, µ > 0 such
+that, for all t ≥0:
+W(t, t + δ) ⪰µIn ≻0,
+(3)
+where
+W(t, t + δ) := 1
+δ
+Z t+δ
+t
+Φ⊤(s, t)C⊤(s)C(s)Φ(s, t) ds
+(4)
+is the observability Gramian, and Φ(s, t) denotes the state transition matrix associated with A(t), defined by:
+d
+dtΦ(s, t) =
+A(t)Φ(s, t), Φ(t, t) = In. If condition (3) holds, the pair (A(t), C(t)) is said to be uniformly observable.
+Definition 2 (Almost global asymptotic stability). An equilibrium point of a nonlinear system is said to be almost globally
+asymptotically stable if it is locally stable and its basin of attraction contains all initial conditions except for a set of measure
+zero.
+3
+Problem description
+This work aims to design an observer that estimates the robot’s relative pose and velocity with respect to a moving landing
+platform. Both the robot and the platform are equipped with onboard IMUs that provide their angular velocity and linear
+acceleration measurements. While these measurements capture their individual dynamics, the relative states are required to
+perform a successful landing.
+Let {B}, {T } and {I} denote, respectively, the UAV body frame, the target (platform) frame, and an inertial reference frame
+(see Fig. 1). The orientation of frame {B} (resp. {T }) w.r.t. frame {I} is represented by the rotation matrix QB ∈SO(3) (resp.
+QT ∈SO(3)). Denote as pB ∈R3 (resp. pT ∈R3) and vB ∈R3 (resp. vT ∈R3) the position and linear velocity of the body
+(resp. target) expressed in the inertial frame I.
+{I}
+{B}
+{T }
+(R, ξ, v)
+Figure 1: Illustration of the relative extended pose (R, ξ, v) estimation problem, where both the UAV body frame {B} and the
+target frame {T } are moving with respect to the inertial frame {I}.
+We suppose that both the UAV and the platform are equipped with an IMU. Let ωB ∈R3 (resp. ωT ∈R3) represent the angular
+velocity of the body (resp. target) expressed in frame B (resp. T ), and let aB ∈R3 (resp. aT ∈R3) denote the specific linear
+acceleration measured by the accelerometer of the body (resp. target), expressed in frame B (resp. T ). Then, their rigid motion
+evolves according to the following equations:
+
+
+
+˙QB = QBω×
+B
+˙pB = vB
+˙vB = QBaB + ge3,
+
+
+
+˙QT = QT ω×
+T
+˙pT = vT
+˙vT = QT aT + ge3,
+(5)
+where g ≈9.81m/s2 the gravity constant and e3 = (0, 0, 1)⊤the vertical direction.
+3
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+The position of frame {B} w.r.t. frame {T } expressed in the frame {B} is represented by ξ ∈R3, such that
+ξ = Q⊤
+B(pB −pT ).
+(6)
+From (6), the relative linear position evolution is
+˙ξ = −ω×
+BQ⊤
+B(pB −pT ) + Q⊤
+B( ˙pB −˙pT )
+= −ω×
+BQ⊤
+B(pB −pT ) + Q⊤
+B(vB −vT )
+= −ω×
+Bξ + v,
+(7)
+where v := Q⊤
+B(vB −vT ) represents the relative the body-target linear velocity expressed in frame B. From (5), the relative
+linear velocity dynamics are given by
+˙v = −ω×
+BQ⊤
+B(vB −vT ) + Q⊤
+B( ˙vB −˙vT )
+= −ω×
+Bv + Q⊤
+B(QBaB + ge3 −QT aT −ge3)
+= −ω×
+Bv + aB −Q⊤
+BQT aT
+= −ω×
+Bv + aB −R⊤aT .
+(8)
+where R := Q⊤
+T QB ∈SO(3) denotes the orientation of frame B with respect to frame T , with dynamics
+˙R = −ω×
+T R + Rω×
+B.
+(9)
+We assume the UAV is equipped with an onboard monocular camera observing at least four landmarks on the target (e.g.,
+ArUco or AprilTag corners). Given these landmarks, a PnP algorithm [Lepetit et al., 2009] can be used to extract relative pose
+information. In particular, we consider a hierarchical measurement structure as proposed in Bouazza et al. [2025]. This approach
+provides three key pieces of information, recovered hierarchically:
+1. Bearing vector: The unit vector pointing from the camera to the target center,
+yξ := ξ
+|ξ| ∈S2,
+(10)
+can be reliably estimated even when the camera is far from the target, providing robust long-range direction information.
+2. Normal vector to the target plane: Once the target appears clearly in the image, the unit vector normal to the target
+plane can be recovered from one of several sets of four landmarks,
+η := R⊤e3 ∈S2,
+(11)
+where e3 is the vertical direction in T . This measurement refines the estimate of the relative pose.
+3. Full orientation and scale: Finally, the remaining degrees of freedom, including the full orientation of the target and
+its scale, can be extracted once sufficient geometric information is available.
+A key advantage of this hierarchical approach is that partial pose information (e.g., the bearing vector) can be accurately
+recovered even when the UAV is far from the target. In contrast, the normal vector and the remaining components are estimated
+only when the target is clearly visible. To ensure robust estimation across a wide range of distances, we formulate the estimation
+problem using only the bearing (10) and the target’s normal direction (11).
+4
+Cascade observer design
+We proceed by designing an observer for the relative attitude dynamics of R. The resulting estimate is then injected, in a cascade
+fashion, into the (ξ, v)-subsystem. The latter becomes an LTV system parametrized by the estimate ˆR ∈SO(3), for which we
+subsequently construct a linear Riccati observer (see Fig. 2).
+4.1
+Attitude observer
+We define the relative attitude estimate ˆR ∈SO(3) for R, and propose an observer of the form
+˙ˆR = −ω×
+T ˆR + ˆRω×
+B + σ×
+R ˆR,
+ˆR(0) = ˆR0,
+(12)
+4
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+Camera
+Visual
+Estimator
+Body-fixed
+IMU
+Target-fixed
+IMU
+Riccati
+Observer
+Relative
+Attitude
+Observer
+ωB
+ωT
+aB
+aT
+η
+ξ
+|ξ|
+ˆv
+ˆ
+R
+ˆξ
+Figure 2: Diagram of the cascade observer architecture. The relative attitude R is estimated via a complementary filter on SO(3)
+using the normal measurement η, and then together with the bearing and UAV-target IMU measurements, is used in a Riccati
+observer to reconstruct the relative position and velocity (ξ, v).
+where σR ∈R3 denotes an innovation term to be designed to ensure convergence of ˆR to R.
+Consider the classical right-invariant error ˜R := ˆRR⊤on SO(3). Using (9) and (12), one verifies that ˜R satisfies
+˙˜R = (−ω×
+T ˆR + ˆRω×
+B + σ×
+R ˆR)R⊤+ ˆR(R⊤ω×
+T −ω×
+BR⊤)
+= ˜Rω×
+T −ω×
+T ˜R −σ×
+R ˜R
+= [ ˜R, ω×
+T ] + σ×
+R ˜R.
+(13)
+where [·, ·] is the matrix commutator (Lie bracket).
+Lemma 1. Consider the attitude error dynamics (31) with measurement (11) and innovation term
+σR = 2kR(( ˆRη) × e3),
+kR > 0.
+(14)
+Assume that ωB and ωT are bounded and uniformly continuous, and that the normal direction to the target expressed in the
+inertial frame ηI := QT e3 ∈S2 is persistently exciting. That is, there exist µ, δ > 0 such that for all t ≥0,
+Z t+δ
+t
+πηI(s)ds =
+Z t+δ
+t
+(I3 −ηI(s)ηI(s)⊤)ds ⪰µI3.
+(15)
+Then, the error ˜R is almost-globally asymptotically and locally exponentially stable at the identity I3. The stable and unstable
+equilibria of (31) are
+Es = {I3},
+Eu = {U ∈SO(3) | tr(U) = −1}.
+Remark 1. It is well known that almost–global asymptotic stability is the strongest form of stability that can be achieved by a
+smooth attitude observer due to the topological obstruction on SO(3) Bhat and Bernstein [2000].
+Condition (15) is equivalent to requiring that the time-derivative ˙ηI is uniformly persistently exciting, i.e., there exist constants
+δ, ϵ > 0 such that, for all t ≥0, | ˙ηI(s)| > ϵ for some s ∈[t, t + δ]. Since ηI evolves according to ˙ηI = ˙QT e3 = QT ω×
+T e3, a
+necessary condition for (15) is that there must exist δ and ϵ such that for all t ≥0,
+∥ωT (s) × e3∥> ϵ,
+s ∈[t, t + δ].
+The case where this is not satisfied is considered in Subsection 4.4.
+4.2
+Relative position and velocity observer
+Let ˆξ, ˆv ∈R3 denote the estimates of the relative position ξ and velocity v, respectively. From the dynamics in (7)-(8), the
+observer is defined as
+(˙ˆξ = −ω×
+Bˆξ + ˆv + σξ
+˙ˆv = −ω×
+B ˆv + aB −ˆR⊤aT + σv,
+(16)
+5
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+with innovation terms σξ, σv ∈R3 to be determined.
+Define the errors ˜ξ = ξ −ˆξ ∈R3 and ˜v = v −ˆv ∈R3. Their dynamics then follow as
+˙˜ξ = −ω×
+B˜ξ + ˜v −σξ.
+(17)
+˙˜v = −ω×
+B ˜v −R⊤aT + ˆR⊤aT −σv
+= −ω×
+B ˜v −σv + ˆR⊤(I3 −˜R)aT .
+(18)
+These dynamics show that the residual term ˆR⊤(I3 −˜R)aT represents the effect of the unknown rotation error on the velocity
+dynamics that vanishes as ˜R →I3. Introducing the error x = (˜ξ, ˜v) ∈R6, (17)-(18) can be written as
+˙x = A(t)x −
+
+σξ
+σv
+
++ r( ˜R, ˆR, aT ),
+(19)
+where
+A(t) =
+
+−ω×
+B
+I3
+03,3
+−ω×
+B
+
+,
+r( ˜R, ˆR, aT ) =
+
+03,1
+ˆR⊤(I3 −˜R)aT
+
+.
+The available measurement is the bearing (10). Using the identity πyξξ = 0, it follows that πyξ(ˆξ + ˜ξ) = 0, which yields the
+output equation
+y = C(t)x,
+(20)
+with y(t) = −πyξˆξ, and C(t) =
+πyξ
+03,3
+
+.
+Therefore, equations (19)-(20) define an LTV system forced by the external perturbation r( ˜R, ˆR, aT ) induced by the attitude
+error ˜R.
+We first consider the unforced system obtained by setting r( ˜R, ˆR, aT ) ≡0, corresponding to the case where the attitude observer
+(12) has converged, as guaranteed by Lemma 1. Then, the innovation terms can be designed to stabilize the error dynamics and
+drive x →0 using a Riccati-based observer gain as follows
+σξ = Kξy,
+σv = Kvy,
+(21)
+with the gain matrix given by K = [K⊤
+ξ , K⊤
+v ]⊤= PC⊤D, where P is the solution to the continuous Riccati equation
+˙P = AP + PA⊤−PC⊤DCP + S,
+P(0) ∈S+(6),
+(22)
+with S ∈S+(6) and D ∈S+(3) bounded and continuous symmetric positive definite matrix-valued functions. The resulting
+closed-loop error dynamics are
+˙x = (A(t) −K(t)C(t))x.
+(23)
+Provided that the pair (A(t), C(t)) is uniformly observable, and under the positive definiteness assumptions on S and D, the
+Riccati equation (22) admits a unique solution P(t) that remains bounded, uniformly positive definite, and well-conditioned for
+all t ≥0 (cf. [Hamel and Samson, 2017a, Lemma 2.5, Lemma 2.6]). This, in turn, guarantees global exponential stability of the
+equilibrium x = 0.
+The following lemma (see Appendix for proof) establishes a persistently exciting condition that guarantees uniform observability
+of the pair (A(t), C(t)).
+Lemma 2. Assume that the angular velocities ωB and ωT are uniformly continuous and bounded, and that the bearing vector
+in the inertial-frame yI
+p := QByp ∈S2 is persistently exciting in the sense that there exist δ, µ > 0 such that, for all t ≥0,
+1
+δ
+Z t+δ
+t
+πyI
+ξ (s)ds ⪰µI3.
+(24)
+Then, the pair (A(t), C(t)) is uniformly observable, and x = 0 is globally exponentially stable.
+4.3
+Cascade observer
+We now combine the results in Lemmas 1 and 2 to examine the interconnection.
+6
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+Theorem 1. Consider the attitude observer (12) with innovation (14) and the Riccati observer (19) with innovations (21).
+Assume the angular velocities ωB and ωT are uniformly continuous and bounded, and the target acceleration aT is bounded.
+Under the persistently exciting conditions (15) and (24), the equilibrium ( ˜R, x) = (I3, 0) of the interconnection system
+˙˜R = [ ˜R, ω×
+T ] + 2kR(( ˆRη) × η0)× ˜R
+˙x = (A(t) −K(t)C(t))x + r( ˜R, ˆR, aT )
+(25)
+is almost globally asymptotically stable and locally exponentially stable.
+Proof. Condition (24) in Lemma 2 guarantees that the equilibrium (˜ξ, ˜v) = (0, 0) of the unforced subsystem (19) (when the
+external perturbation satisfies r( ˜R, ˆR, aT ) ≡0) is uniformly globally exponentially stable. Moreover, since the acceleration
+aT (t) is bounded and both ˜R and ˆR remain bounded on the compact set SO(3), the forced system (19) is input-to-state stable
+(ISS) w.r.t. the equilibrium (˜ξ, ˜v) = (0, 0) and the input r( ˜R, ˆR, aT ) (see [Khalil, 2002, Lemma 4.6]).
+Since the x-dynamics are globally ISS w.r.t. the equilibrium (˜ξ, ˜v) = (0, 0) and the input r( ˜R, ˆR, aT ), and the ˜R-dynamics are
+almost globally asymptotically stable w.r.t. the equilibrium ˜R = I3, the almost global asymptotic stability claim of the overall
+interconnection follows directly.
+Local exponential stability follows by invoking standard results. The unforced x-dynamics, with r( ˜R, ˆR, aT ) ≡0, are locally
+exponentially stable and thus locally exponentially ISS with respect to r( ˜R, ˆR, aT ). The cascade interconnection of a locally
+exponentially stable system with a locally exponentially ISS system is locally exponentially stable.
+4.4
+Observer design with coupled dynamics
+In the previous section, the stability of the Riccati observer relied on the assumption that the inertial normal direction ηI
+satisfies the persistently exciting condition (15). In many practical landing scenarios, however, ηI may remain constant or slowly
+time-varying. In such cases, the attitude and translational dynamics cannot be fully decoupled.
+If the persistence of excitation condition given in Lemma 1 is not satisfied then the proposed complementary filter ensures only
+that ˜Re3 →e3. It is possible to overcome this challenge by constructing an innovation along the normal direction e3 based on a
+condition (30).
+Recall the attitude observer (12) with a new scalar innovation σθ in direction e3:
+˙ˆR = −ωT ˆR + ˆRω×
+B + (σR −σθe3)× ˆR.
+(26)
+Let us rewrite the velocity error dynamics as follows:
+˙˜v = −ω×
+B ˜v −σv + ˆR⊤(I3 −˜R)aT
+= −ω×
+B ˜v −σv + ˆR⊤(I3 −˜R)(e3e⊤
+3 + πe3)aT
+= −ω×
+B ˜v −σv + ˆR⊤(I3 −˜R)πe3aT + re3( ˜R, ˆR, aT ).
+where re3( ˜R, ˆR, aT ) = ˆR⊤(e3 −˜Re3)e⊤
+3 aT goes to zero as ˜Re3 →e3 and can be treated as a vanishing perturbation.
+The component σθe3 is orthogonal to σR by construction and therefore does not affect the convergence of ˜Re3 to e3. From
+there, σR as defined in (14) ensures that ˜R converges to a rotation ˜R⋆= exp(˜θe×
+3 ) ∈SO(3) for some constant angle ˜θ ∈S1
+around the e3 axis. Assuming that re3 ≡0 (i.e, ˜R →˜R⋆), one can write
+˙˜v = −ω×
+B ˜v −σv + ˆR⊤(I3 −exp(˜θe×
+3 ))aT .
+Using Rodrigues’ formula (1), we obtain the first-order approximation exp(˜θe×
+3 ) = I3 + ˜θe×
+3 + O(|˜θ|2). Then, noting that
+e×
+3 πe3 = e×
+3 , the velocity error dynamics can be approximated as
+˙v = −ω×
+B ˜v −σv −ˆR⊤(˜θe×
+3 )aT + O(|θ|2)
+= −ω×
+B ˜v −σv + ˆR⊤a×
+T e3˜θ + O(|˜θ|2)
+(27)
+Defining xθ = (˜ξ, ˜v, ˜θ) ∈R6 × R, and σ = (σξ, σv, σθ), the full error dynamics can be written as
+˙xθ = Aθ(x, t)xθ −σ + O(|θ|2)
+(28)
+y = Cθ(t)xθ,
+7
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+where
+Aθ(t) =
+
+
+−ω×
+B
+I3
+03,1
+03,3
+−ω×
+B
+ˆR⊤a×
+T e3
+01,3
+01,3
+0
+
+, Cθ(t) =
+πyp
+03,4
+
+,
+with innovations chosen as
+σξ = Kξy,
+σv = Kvy,
+σθ = Kθy.
+(29)
+where K = [K⊤
+ξ , K⊤
+v , K⊤
+θ ]⊤= PC⊤
+θ D, with P ∈S+(7) solution to the continuous Riccati equation (22) associated with the
+matrices Aθ and Cθ.
+Assumption 1. Assume that aT is continuous and bounded and define b(t) := aI
+T × ηI, with aI
+T = QT aT the target’s specific
+acceleration expressed in the inertial frame. Suppose that b(t) admits the decomposition b(t) = b0 + b1(t), such that b0 ∈R3
+is a (non-zero) constant vector, and b1(t) is the time-varying component of b that satisfies for constants δ, µ > 0 defined in (24)
+and for all t ≥0:
+1
+δ
+Z t+δ
+t
+∥πyI
+ξ b1(t)∥2ds ≤µ
+4 ∥b0∥2.
+(30)
+The next lemma (see Appendix for proof) provides sufficient conditions to ensure uniform observability of (Aθ, Cθ), which in
+turn guarantees the local exponential stability of system (28) at xθ = 0.
+Lemma 3. Consider system (28) and assume that the angular velocities ωB and ωT are uniformly continuous and bounded.
+Suppose that there exist constants δ, µ > 0 such that condition (24) in Lemma 2 holds, and assume further that Assumption 1
+holds. Then, the pair (Aθ, Cθ) is uniformly observable and the equilibrium (˜ξ, ˜v, ˜θ) = 0 is locally exponentially stable.
+The cascade formed by subsystems ˜Re3 and xθ can be examined similarly to the analysis in Theorem 1. Since the ˜Re3-
+dynamics are locally exponentially stable, and the unforced subsystem (28) is locally exponentially stable (and therefore locally
+exponentially ISS with respect to the bounded vanishing perturbation re3), the equilibrium of the overall cascade is locally
+exponentially stable.
+5
+Simulation Results
+In this section, we provide simulation results to evaluate the performance of the observers presented in Section 4.
+We simulate the cascade observer (12)–(16) under the following motion scenario: The UAV follows a circular horizontal path
+with measured angular rate and specific acceleration set to ωB = [0, 0, 0.5]⊤, aB = ω×
+BvB −gQ⊤
+Be3. The target undergoes an
+oscillatory (roll) motion with angular velocity ωT = [−1.5 sin(t), 0, 0]⊤, which ensures the p.e. condition (15) is satisfied, and
+has no translational motion, i.e., the specific acceleration is aT = −gQ⊤
+T e3. The attitude observer gain is set to kR = 1.5. For
+the Riccati observer (16): P(0) = 2I6, D = 10I3 and S(t) = diag(0.05I3, 0.05γI3), with γ = ∥aT ∥2(1 −ˆη⊤η + 10−2). This
+choice of S allows us to avoid relying on the model initially when ˆR is inaccurate to reduce the effect of large perturbations, and
+increases it as the attitude converges.
+For the observer with coupled dynamics proposed in subsection 4.4, the target’s motion is defined as follows: ωT =
+[0, 0, −0.8]⊤and aT
+= ω×
+T vT −gQ⊤
+T e3.
+The Riccati initial state and gains are: P(0) = 2I7, D = 10I3 and
+S(t) = diag(0.05I3, 0.05γI3, 0.05).
+We perform 50 Monte Carlo runs for each scenario. Initial estimation errors are randomly generated from Gaussian distributions:
+the initial relative attitude ˆR(0) corresponds to an average error of 45◦per rotation axis with a 30◦standard deviation, the
+average initial relative position is ˆξ(0) = [−4.5, −5, 6]⊤with standard deviation 3 per axis, and the average initial relative
+velocity is ˆv(0) = [1, −1.5, 0.5]⊤with standard deviation 1 per axis.
+5.1
+Results and discussion
+Fig. 3 illustrates the normal direction and orientation estimation errors computed respectively as 1 −e⊤
+3 ˆRη, and tr(I3 −ˆRR⊤)
+on the left side. The right-hand plots display the squared errors on the relative position ∥ξ −ˆξ∥2 and velocity ∥v −ˆv∥2. The
+shaded areas illustrate the 5th-95th percentile of error across all initial conditions. The plots show that the normal and attitude
+errors converge to zero. A short transient increase is visible in the position and velocity errors, which is expected before ˆR has
+converged to R. Once the attitude error decays, the perturbation vanishes and the position-velocity estimates rapidly converge.
+Overall, all error trajectories converge to zero, confirming the asymptotic stability of the proposed observer.
+8
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+The estimation errors for the observer with coupled position-velocity and yaw dynamics are illustrated in Fig. 4. It can be
+seen that although the normal ηI does not satisfy the p.e. condition (15), the full attitude estimate ˆR converges to R (as ˜θ
+converges to zero). Additionally, the position and velocity estimates converge to the true states, which demonstrates the observer’s
+performance.
+Figure 3: Observer (12)-(16). (left) Time evolution of the reduced attitude (normal) and attitude errors. (right) Time evolution of
+the errors of position and velocity.
+6
+Conclusion
+The problem of estimating the relative pose and velocity between a UAV and a moving planar platform was addressed using
+dual-IMU and monocular vision sensing. A cascade observer was proposed, combining a relative attitude observer on SO(3)
+and a Riccati-based estimator for position and velocity. The approach was shown to achieve almost global asymptotic and locally
+exponential convergence under persistent excitation, and an additional analysis demonstrated that, when the platform rotates
+only about its surface normal, its measured linear acceleration can be used to recover the remaining unobservable angle. The
+effectiveness of the proposed architecture was validated through extensive simulations.
+Future work will focus on integrating the observer into a control framework for autonomous approach and landing, and on
+validating its performance on UAV-landing pad experiments under realistic conditions. Further efforts will focus on improving
+robustness to communication delays and to IMU imperfections, including sensor biases and synchronization errors.
+References
+Youngshin Kang, Bum-Jin Park, Am Cho, Chang-Sun Yoo, Yushin Kim, Seongwook Choi, Sam-Ok Koo, and Soohun Oh.
+A precision landing test on motion platform and shipboard of a tilt-rotor uav based on rtk-gnss. International Journal of
+Aeronautical and Space Sciences, 19(4):994–1005, 2018.
+Daniel Mellinger, Michael Shomin, and Vijay Kumar. Control of quadrotors for robust perching and landing. In Proceedings of
+the international powered lift conference, pages 205–225, 2010.
+Davide Falanga, Alessio Zanchettin, Alessandro Simovic, Jeffrey Delmerico, and Davide Scaramuzza. Vision-based autonomous
+quadrotor landing on a moving platform. In 2017 IEEE International Symposium on Safety, Security and Rescue Robotics
+(SSRR), pages 200–207. IEEE, 2017.
+9
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+Figure 4: Observer (26). (left) Time evolution of the reduced attitude (normal) and attitude errors. (right) Time evolution of the
+errors of position and velocity.
+Daewon Lee, Tyler Ryan, and H Jin Kim. Autonomous landing of a vtol uav on a moving platform using image-based visual
+servoing. In 2012 IEEE international conference on robotics and automation, pages 971–976. IEEE, 2012.
+Pedro Serra, Rita Cunha, Tarek Hamel, David Cabecinhas, and Carlos Silvestre. Landing of a quadrotor on a moving target
+using dynamic image-based visual servo control. IEEE Transactions on Robotics, 32(6):1524–1535, 2016.
+Karl Engelbert Wenzel, Andreas Masselli, and Andreas Zell. Automatic take off, tracking and landing of a miniature uav on a
+moving carrier vehicle. Journal of intelligent & robotic systems, 61(1):221–238, 2011.
+Alexandre Borowczyk, Duc-Tien Nguyen, André Phu-Van Nguyen, Dang Quang Nguyen, David Saussié, and Jerome Le Ny.
+Autonomous landing of a multirotor micro air vehicle on a high velocity ground vehicle. Ifac-Papersonline, 50(1):10488–10494,
+2017.
+Raul Acuna, Ding Zhang, and Volker Willert. Vision-based uav landing on a moving platform in gps denied environments using
+motion prediction. In 2018 Latin American Robotic Symposium, 2018 Brazilian Symposium on Robotics (SBR) and 2018
+Workshop on Robotics in Education (WRE), pages 515–521. IEEE, 2018.
+Qiangqiang Cui, Min Liu, Xiaoyin Huang, and Ming Gao. Coarse-to-fine visual autonomous unmanned aerial vehicle landing on
+a moving platform. Biomimetic Intelligence and Robotics, 3(1):100088, 2023.
+D. Aeyels, R. Sepulchre, and J. Peuteman. Asymptotic stability for time-variant systems and observability: Uniform and
+nonuniform criteria. Mathematics of Control, Signals, and Systems, 11:1–27, 3 1998.
+Chi-Tsong. Chen. Linear system theory and design. Saunders College Publishing, 1984.
+Vincent Lepetit, Francesc Moreno-Noguer, and Pascal Fua. Ep n p: An accurate o (n) solution to the p n p problem. International
+journal of computer vision, 81(2):155–166, 2009.
+Tarek Bouazza, Tarek Hamel, and Claude Samson. A simple algebraic solution for estimating the pose of a camera from planar
+point features. arXiv preprint arXiv:2508.01836, 2025.
+Sanjay P Bhat and Dennis S Bernstein. A topological obstruction to continuous global stabilization of rotational motion and the
+unwinding phenomenon. Systems & control letters, 39(1):63–70, 2000.
+Tarek Hamel and Claude Samson. Position estimation from direction or range measurements. Automatica, 82:137–144, 2017a.
+10
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+H. K. Khalil. Nonlinear Systems. Prentice Hall, 3rd edition, 2002. ISBN 9780130673893.
+Jochen Trumpf, Robert Mahony, Tarek Hamel, and Christian Lageman. Analysis of non-linear attitude observers for time-varying
+reference measurements. IEEE Transactions on Automatic Control, 57(11):2789–2800, 2012.
+Tarek Hamel and Claude Samson. Riccati observers for the nonstationary pnp problem. IEEE Transactions on Automatic
+Control, 63(3):726–741, 2017b.
+Pascal Morin, Alexandre Eudes, and Glauco Scandaroli. Uniform observability of linear time-varying systems and application to
+robotics problems. In International conference on geometric science of information, pages 336–344. Springer, 2017.
+A
+Proofs
+Proof of Lemma 1. To show that ˜R converges to I3 almost globally asymptotically and locally exponentially under the persistently
+exciting condition (15), we exploit the closure of SO(3) under conjugation and define the following transformed attitude error
+˜RQT := QT ˆRR⊤Q⊤
+T = QT ˜RQ⊤
+T ∈SO(3),
+such that convergence of ˜RQT to I3 is equivalent to the convergence of ˜R to I3, because conjugation by QT is an isometry of
+SO(3). Using (5)-(13), the dynamics of ˜RQT are
+˙˜RQT = QT
+
+[ ˜R, ω×
+T ] + σ×
+R ˜R
+
+Q⊤
+T + QT (ω×
+T ˜R −˜Rω⊤
+T )Q⊤
+T
+= QT [ ˜R, ω×
+T ]Q⊤
+T −QT [ ˜R, ω×
+T ]Q⊤
+T + QT σ×
+R ˜RQ⊤
+T
+= QT σ×
+RQ⊤
+T QT ˜RQ⊤
+T
+= ¯σ×
+R ˜RQT .
+(31)
+where ¯σR := QT σR, which can be further expressed as
+¯σR = 2kRQT (( ˆRη) × e3) = 2kR(QT ( ˆRη) × Q⊤
+T QT e3)
+= 2kR(ˆηI × ηI).
+with ˆηI := QT ˆRη denoting the estimate of the normal to the target expressed in the inertial frame. Then, this is a classical
+problem of ensuring ˜RQT →I3 given the time-variyng reference direction measurement ηI [Trumpf et al., 2012]. Consider the
+Lyapunov function ¯VR( ˜RQT ) := tr(I3 −˜RQT ), which is smooth on SO(3) and satisfies ¯VR( ˜RQT ) = 0 if and only if ˜RQT = I3.
+computing its time derivative yields
+˙¯VR = −tr( ˙˜RQT ) = −2kRtr
+
+(ˆηI × ηI)× ˜RQT
+
+,
+Using the identity (a × b)× = ba⊤−ab⊤, we obtain
+˙VR = −2kRtr
+
+(ηI ˆη⊤
+I −ˆηIη⊤
+I ) ˜RQT
+
+,
+= −2kRtr(ηIη⊤
+I −˜RQT ηIη⊤
+I ˜RQT ),
+= −2kRη⊤
+I (I3 −˜R2
+QT )ηI,
+= −kRη⊤
+I (I3 −˜R2
+QT )⊤(I3 −˜R2
+QT )ηI,
+= −kR∥(I3 −˜R2
+QT )ηI∥2 ≤0.
+(32)
+This shows that ¯VR is non-increasing and that ˙¯VR = 0 only when (I3 −˜R2
+QT )ηI = 0. The remainder of the proof is a direct
+application of [Trumpf et al., 2012, Proposition 4.6]. Under the persistently exciting condition (15), the only stable equilibrium
+is ˜RQT = I3, all antipodal equilibria are unstable, and the identity is locally exponentially stable. Therefore, ˜RQT →I3 almost
+globally, and by extension, ˜R →I3 almost globally and locally exponentially.
+Proof of Lemma 2. We first compute the state transition matrix of A(t) by writing it as A(t) = ¯A + S(t) with
+S(t) = −I2 ⊗ω×
+B,
+¯A =
+
+03,3
+I3
+03,3
+03,3
+
+.
+11
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+Consider the uniformly invertible change of coordinates ¯x = T(t)x with T(t) = I2 ⊗QB(t). Under this transformation,
+for any t ≥0, the dynamics reduce to the time-invariant system ˙¯x = ¯A¯x, which implies that ¯x(s) = ¯Φ(s, t)¯x(t), with
+¯Φ(s, t) = exp( ¯A(s −t)). Therefore, the transition matrix of the original state satisfies Φ(s, t) = T(s)⊤¯Φ(s, t)T(t). The
+Gramian of (A(t), C(t)) satisfies W(t, t + δ) = T(t)⊤¯W(t, t + δ)T(t), where
+¯W(t, t + δ) = 1
+δ
+Z t+δ
+t
+¯Φ⊤(s, t) ¯C⊤(s) ¯C(s)¯Φ(s, t)ds,
+(33)
+with ¯C(t) = QBC(t)T ⊤=
+
+QBπyξQ⊤
+B 03,3
+
+= [πyI
+ξ 03,3]. This matrix admits the factorization ¯C(t) = πyI
+ξ (t)H, H :=
+[I3 03,3]. Since rank
+  H
+H ¯
+A
+
+= 6, the ( ¯A, H) is Kalman observable. Thus, under the p.e. assumption 1
+δ
+R t+δ
+t
+πyI
+ξ (s)ds ≥¯µI3
+for all t ≥0, Lemma 2.7 in Hamel and Samson [2017a] implies that the Gramian (33) satisfies ¯W(t, t + δ) ≥¯µI3, ∀t ≥0 and
+the pair ( ¯A, ¯C(t)) is uniformly observable. Therefore, the original pair (A(t), C(t)) is uniformly observable as well. This in
+turn guarantees that the unforced error dynamics (19) are globally exponentially stable at the equilibrium x = 0.
+Proof of Lemma 3. To examine uniform observability of (Aθ, Cθ), we first define the matrix A⋆
+θ(t), corresponding to the
+linearization w.r.t. the true relative attitude R. One easily verifies that this matrix is
+A⋆
+θ(t) =
+
+
+−ω×
+B
+I3
+03,1
+03,3
+−ω×
+B
+R⊤a×
+T e3
+01,3
+01,3
+0
+
+=
+
+
+A(t)
+03,1
+R⊤a×
+T e3
+01,3
+01,3
+0
+
+.
+Uniform observability of (A⋆
+θ(t), Cθ(t)) extends locally to (Aθ(t), Cθ(t)) by uniform continuity, as established in Hamel and
+Samson [2017b].
+To simplify the forthcoming computations, we perform the following change of coordinates ¯xθ = ¯T(t)xθ with
+¯T(t) =
+
+I2 ⊗QB(t)
+06,1
+01,6
+1
+
+.
+Under this transformation, the dynamics become
+˙¯x = ¯Aθ(t) ˙¯x + O(|˜θ|2),
+¯Aθ(t) =
+"03,3
+I3
+03,1
+03,3
+03,3
+b(t)
+01,3
+01,3
+0
+#
+Let β(s, t) =
+R s
+t (s −τ)b(τ)dτ. The state transition matrix of ¯Aθ(t) satisfies ¯xθ(s) = ¯Φ(s, t)¯xθ(t) and is given by
+¯Φθ(s, t) =
+
+
+I3
+(s −t)I3
+β(s, t)
+03,3
+I3
+R s
+t b(τ)dτ
+01,3
+01,3
+1
+
+.
+(34)
+Then, similarly to the proof of Lemma 2, we show the observability of (Aθ, Cθ) via the observability Gramian ¯Wθ(t, t + δ) =
+1
+δ
+R t+δ
+t
+¯Φ⊤
+θ (s, t) ¯C⊤
+θ (s) ¯Cθ(s)¯Φθ(s, t)ds, with
+¯Cθ(t) = QB(t) [C, 03,1] ¯T(t)⊤=
+h
+πyI
+ξ , 03,4
+i
+.
+(35)
+Using the expression (34) of ¯Φθ(s, t), the Gramian takes the form
+¯Wθ = 1
+δ
+Z t+δ
+t
+
+
+I3
+(s −t)I3
+β(s, t)⊤
+
+πyI
+ξ [I3
+(s −t)I3
+β(s, t)] ds.
+¯Wθ satisfying (3) is equivalent to requiring that, for all t ≥0 and all ζ ∈S6 ⊂R7, ζ⊤¯Wθ(t, t + δ)ζ ≥ϵ > 0.
+Let f(s, t, ζ) = ¯Cθ(t)¯Φθ(s, t)ζ. From (34) and (35), we can write f(t, s, ζ) = πyI
+ξ (ζ1 + (s −tk)ζ2 + β(s, tk)ζ3).
+Following Morin et al. [2017], we argue by contradiction. Suppose that (3) does not hold. That is, for all δ, µ > 0 there exists a
+sequence {tk}k∈N, and ζ = (ζ1, ζ2, ζ3) ∈S6 such that
+lim
+k→+∞
+Z tk+¯δ+δ
+tk
+∥f(tk, s, ζ)∥2ds = 0,
+(36)
+12
+
+Vision-Aided Relative State Estimation for Approach and Landing on a Moving Platform with Inertial MeasurementsPREPRINT
+with ¯δ > 0 as large as desired.
+Using the fact that b(t) = b0 + b1(t), we have directly
+β(s, t) = 1
+2(s −t)2b0 +
+Z s
+t
+(s −τ)b1(τ)dτ.
+Accordingly, since the quadratic term in s of β(s, t)ζ3 dominates the other terms by a factor s, the satisfaction of (36) implies
+that they can be neglected when ¯δ becomes sufficiently large. Let us now rewrite f as f(t, s, ζ) = πyI
+ξ β(s, t)ζ3, then
+Z t+¯δ+δ
+t
+∥πyI
+ξ β(s, t)ζ3∥2ds =
+Z t+¯δ+δ
+t
+πyI
+ξ
+(s −t)2
+2
+b0 +
+Z s
+t
+(s −τ)b1(τ)dτ
+
+ζ3
+
+2
+ds,
+≥
+Z ¯δ+δ
+0
+1
+8∥s2ζ3πyI
+ξ b0∥2ds −
+Z t+¯δ+δ
+t
+∥ζ3πyI
+ξ
+Z s
+t
+(s −τ)b1(τ)dτ∥2ds,
+Condition (24) implies
+R ¯δ+δ
+¯δ
+∥πyI
+ξ b0∥2ds ≥δµ∥b0∥2. Thus,
+Z ¯δ+δ
+0
+∥s2πyI
+ξ b0ζ3∥2ds ≥1
+δ |ζ3|2
+Z ¯δ+δ
+0
+s4ds
+Z ¯δ+δ
+0
+∥πyI
+ξ b0∥2ds
+≥1
+5(¯δ + δ)5µ∥b0∥2|ζ3|2.
+On the other hand, we can write
+Z t+¯δ+δ
+t
+ζ3
+Z s
+0
+(s −τ)πyI
+ξ b1(τ)dτ
+
+2
+ds ≤|ζ3|2
+Z t+¯δ+δ
+t
+Z s
+t
+(s −τ)2dτ
+ Z s
+t
+∥πyI
+ξ b1(τ)∥2dτ
+
+ds
+≤|ζ3|2
+Z t+¯δ+δ
+t
+(s −t)3
+3
+Z s
+t
+∥πyI
+ξ b1(τ)∥2dτ
+
+ds.
+Since
+R s
+t ∥πyI
+ξ b1(τ)∥2dτ ≤
+R t+δ
+t
+∥πyI
+ξ b1(τ)∥2dτ ≤δµ
+4 ∥b0∥2, one deduces that
+Z t+¯δ+δ
+t
+ζ3
+Z s
+0
+(s −τ)πyI
+ξ b1(τ)dτ
+
+2
+ds ≤δµ
+12 ∥b0∥2|ζ3|2
+Z ¯δ+δ
+0
+s3ds
+≤1
+48(¯δ + δ)4δµ∥b0∥2|ζ3|2.
+Finally, it follows that
+Z t+¯δ+δ
+t
+∥f(t, s, ζ)∥2ds ≥
+(¯δ + δ)5
+40
+−(¯δ + δ)4δ
+48
+
+µ∥b0∥2|ζ3|2
+≥1
+40(¯δ + δ)4¯δµ∥b0∥2|ζ3|2.
+Then, the convergence of limk→+∞
+R tk+¯δ+δ
+tk
+∥f(tk, s, ζ)∥2ds to zero when ¯δ is large implies that |ζ3| →0. By the expression
+of f, the vanishing of ζ3 forces all other components of ζ to vanish as well. However, ζ is assumed to be a unit vector, i.e.,
+|ζ| = 1, which leads to a contradiction. One concludes that the pair (Aθ, Cθ) is uniformly observable.
+13
+

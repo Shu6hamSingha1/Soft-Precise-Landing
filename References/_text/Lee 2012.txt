@@ -1,0 +1,2548 @@
+Adaptive Image-Based Visual Servoing for an Underactuated
+Quadrotor System
+Daewon Lee,∗Hyon Lim,† H. Jin Kim,‡ and Youdan Kim§
+Seoul National University, Seoul 151-742, Republic of Korea
+and
+Kie Jeong Seong¶
+Korea Aerospace Research Institute, Daejeon 305-806, Republic of Korea
+DOI: 10.2514/1.52169
+This paper presents an adaptive image-based visual servoing (IBVS) integrated with adaptive sliding mode control
+for a vision-based operation of a quadrotor unmanned aerial vehicle (UAV). For a seamless integration with
+underactuated quadrotor dynamics, roll and pitch channels are decoupled from the other channels using virtual
+features. This allows a simple and accurate algorithm for estimating depth information and successful application of
+the proposed guidance and control algorithm. By employing an adaptive gain in the IBVS control method, the chance
+of image feature loss is reduced, and performance and stability of the vision-guided UAV control system are
+improved. The overall setup allows image features to be placed at the desired position in the image plane of a camera
+mounted on the quadrotor UAV. Stability of the IBVS system with the controller is proved using Lyapunov stability
+analysis. Performance of the overall approach is validated by numerical simulation, vision integrated hardware-in-
+the-loop simulation, and experiments. The results conﬁrm that the target image is successfully placed at the desired
+position of the image plane and the quadrotor state variables are properly regulated, showing robustness in the
+presence of sensor noise, parametric uncertainty, and vibration from motors.
+Nomenclature
+A
+=
+ground effect constant, N  m2
+a, b, c, d
+=
+constants for adaptive gain setting
+C1, C2
+=
+input gain matrix, input gain vector
+Er
+=
+diagonal matrix with entry of [1, 1, 1,
+0, 0, 1]
+E4, E5
+=
+0; 0; 0; 1; 0; 0T and 0; 0; 0; 0; 1; 0T
+e
+=
+task function for the image-based
+visual servo control
+ez
+=
+unit vector in the vertical upward
+direction in inertial coordinate frame
+Fgr
+=
+ground effect force, N
+Fi
+=
+thrust force of the ith rotor, N
+f
+=
+focal length of camera, pixel
+fex
+=
+external disturbance vector
+g
+=
+gravity, m=s2
+H_x
+=
+Gaussian radial basis kernel function
+vector
+Jp
+=
+image Jacobian matrix associated to
+image point p
+Jx, Jy, Jz
+=
+moment of inertia, kg  m2
+k, k
+=
+proportional gains for velocity
+references in roll and pitch channels
+L
+=
+Lyapunov function
+Lc, Ls
+=
+length of the marker deﬁned in camera
+frame, and image frame, respectively
+l
+=
+length of the bar from the center of the
+quadrotor to each rotor, m
+m
+=
+mass of the quadrotor, kg
+N
+=
+number of neurons in the neural
+networks system
+Pi, pi
+=
+ith image feature deﬁned in camera
+frame, and image frame, respectively
+Pr
+i, pr
+i
+=
+ith image feature deﬁned in imaginary
+camera frame in the roll- and pitch-
+compensated camera frame, and image
+frame, respectively
+Ps
+i
+=
+ith image feature deﬁned in imaginary
+camera frame in the rotated offset
+translation compensated camera frame
+Pv
+i , pv
+i
+=
+ith image feature deﬁned in camera
+frame, and image frame, respectively
+RI
+B
+=
+coordinate transformation matrix from
+body frame to inertial frame
+R1; ,
+R2; 
+=
+rotation matrices for  and ,
+respectively
+S
+=
+sliding surface in system control design
+T
+=
+translational velocity, m=s
+u1, u2,
+u3, u4
+=
+quadrotor control inputs for altitude,
+roll, pitch, and yaw
+W, Wad
+=
+diagonal weighting matrix and adaptive
+weighting matrix for visual servoing
+wi, wadi
+=
+elements of the weighting matrix
+x, y, z
+=
+x, y, z position, m
+x
+=
+system state vector
+zc
+=
+depth of the feature in the camera
+coordinate frame, m
+
+=
+update rate in adaptive control system
+
+=
+uncertain term in the control system
+x, y, z
+=
+offset from the origin of the quadrotor
+body frame to the origin of the camera
+frame
+i, 
+=
+weights, weighting vector for neural
+networks
+_x; i
+=
+Gaussian radial basis kernel function
+Received 13 September 2010; revision received 25 August 2011; accepted
+for publication 23 September 2011. Copyright © 2011 by the American
+Institute of Aeronautics and Astronautics, Inc. All rights reserved. Copies of
+this paper may be made for personal or internal use, on condition that the
+copier pay the $10.00 per-copy fee to the Copyright Clearance Center, Inc.,
+222 Rosewood Drive, Danvers, MA 01923; include the code 0731-5090/12
+and $10.00 in correspondence with the CCC.
+∗Graduate Student, School of Mechanical and Aerospace Engineering;
+dwsh001@snu.ac.kr.
+†Graduate Student, School of Mechanical and Aerospace Engineering;
+hyonlim@snu.ac.kr.
+‡Associate Professor, School of Mechanical and Aerospace Engineering;
+hjinkim@snu.ac.kr.
+§Professor,
+School
+of
+Mechanical
+and
+Aerospace
+Engineering;
+ydkim@snu.ac.kr.
+¶Principal Research Engineer, Flight Control and Avionics Team;
+kjseong@kari.re.kr.
+JOURNAL OF GUIDANCE, CONTROL, AND DYNAMICS
+Vol. 35, No. 4, July–August 2012
+1335
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+i
+=
+center of the receptive ﬁeld of the
+Gaussian kernel
+	
+=
+force-to-moment scaling factor, m
+
+=
+width of the Gaussian function
+, ,  
+=
+roll, pitch, yaw angle, rad
+
+=
+rotational velocity, rad=s
+Subscripts and Superscripts
+C
+=
+deﬁned in camera coordinate frame
+d
+=
+desired value of variable
+r
+=
+reference signal
+S
+=
+slack variable
+v
+=
+deﬁned in virtual coordinate frame
+^
+=
+estimation value of variable 
+~
+=
+error between estimation and true value
+I.
+Introduction
+V
+ISUAL-INFORMATION-BASED control, or visual servoing,
+is a method of controlling a robotic system to its desired states
+using visual feedback obtained from a camera [1,2]. It has received
+growing interest during the recent decades and has been applied to
+various robotic systems [3–14].
+Visual servo systems are often divided into two categories,
+namely, position-based visual servo (PBVS) systems and image-
+based visual servoing (IBVS) systems [2]. PBVS systems estimate
+state variables, i.e., position and attitude, of the target of interest with
+respect to the camera coordinate frame using the visual information.
+Error between the current and the desired states in the Cartesian
+coordinate space is deﬁned as the task space to control the camera
+state. The fact that the task space can be deﬁned in this way, which is
+commonly usedin roboticsand control, is one of themain advantages
+of the position-based servoing. On the other hand, the sensitivity of
+the state estimation to the camera calibration error is a disadvantage.
+Various methods to compute the relative position and attitude of the
+target with respect to the camera have been researched in computer
+vision and robotics [15–17], as well as applications of PBVS control
+for unmanned aerial vehicles (UAVs) [3,4,18–20]. These appli-
+cations used PBVS as sensors rather than tightly integrating vision in
+the feedback control loop. Most conventional cameras capture 30
+frames per second and the computation rate for estimation of the
+position and attitude is usually less than 30 Hz. This is not fast
+enough to stabilize the UAV (for example, inertial sensors provide
+attitude information of UAV at 100 Hz or faster, and control
+command is also given at a high frequency), so PBVS is used for
+position guidance only in many UAVapplications.
+A linear pose estimation algorithm has been proposed for landing
+an UAV [21]. For real time, vision-based landing of an autonomous
+helicopter [22], invariant moments have been used to estimate the
+yaw-axis orientation with respect to the helipad. As a visual
+odometer for an autonomous helicopter [23], a template method has
+been used to ﬁnd target displacement from an input image. Then it
+has been used to estimate translational displacement for a six-degree-
+of-freedom testbed. A pose estimation method using two cameras,
+one of which is a pan-tilt [24], has been implemented on a tethered
+quadrotor system. For PBVS-based position control of a quadrotor
+[25], two pose estimation methods have been tested: a perspective N-
+points method and a homography-based method. Both algorithms
+showed satisfactory results, however, the algorithms were sensitive
+to the camera calibration result.
+IBVS systems use the error between the current image and the
+desired image features in image space, rather than in Cartesian space,
+as a task space to control the camera state. Since IBVS systems use
+the position of image features in image space directly, the estimation
+of the camera state is not necessary thereby increasing robustness to
+the camera calibration error. Furthermore, because three-dimen-
+sional reconstruction is not required in IBVS, the computational load
+of IBVS is lighter than PBVS. This allows the IBVS system to be
+implemented with an inexpensive micro processing unit and run in
+real time. Although IBVS is known to have difﬁculties with camera
+retreat, techniques to avoid it have been proposed such as using
+polar coordinates [26]. Further discussions on the IBVS, PBVS,
+and the hybrid approach combining those two can be found
+elsewhere [27].
+In optical ﬂow-based IBVS-based control approaches, an image
+Jacobian matrix plays a signiﬁcant role. It links the velocities in the
+camera coordinate to the velocities in the image coordinate and is
+used to derive velocity references for the camera or to obtain the
+camera state. Various strategies that make use of the image Jacobian
+matrix have been researched for robotic manipulators with a camera
+ﬁxed on an end-effector of the manipulators [1,2,6–11]. The optical
+ﬂow-based IBVS system generates velocity references so that the
+end-effector can be placed at the desired position and attitude by
+tracking the references. This can be easily done for robotic
+manipulator systems because they can usually control the position
+and attitude state variables independently to minimize the state error.
+However, because of the highly-coupled complexity of the image
+Jacobian matrix, it is difﬁcult to integrate the IBVS within system
+controllers having limited degrees of freedom. By concentrating on
+the image plane, IBVS might cause improper or unnecessary
+motions. So far, there have been only a few IBVS implementations
+for real plants. IBVS has been employed invarious work [14,28–30].
+IBVS has been considered for an indoor blimp [28] and a robotic
+airship [29]. A pan-tilt camera has been used for a ground robot [30].
+IBVS has been used to locate the center of the UAVat the centroid of
+feature points [14]. A rule for generating the steering velocity
+command for a ground robot, which minimizes the visual target
+tracking error, has been presented [12]. Similarly, the object location
+in the image has been used to generate the separate velocity
+references in the lateral and vertical directions for an autonomous
+helicopter [31]. Then a separate proportional-integral-derivative
+(PID) controller was designed for each attitude control channel. Even
+fewer reports exist on integrated IBVS systems with nonlinear
+controllers for underactuated dynamic systems. The position of the
+image centeroid of a given target in the camera ﬁxed frame has been
+presented for IBVS [13,14]. The desired image dynamics was chosen
+to inherit the orientation of the camera, and a backstepping controller
+for a quadrotor is proposed. IBVS provides the position in the image
+plane and additional sensors were used to measure angular and
+translational velocities.
+This paper concerns two issues in applying an optical ﬂow-based
+IBVS [1] to an underactuated system. The ﬁrst issue is that it is
+difﬁcult to apply an optical ﬂow-based IBVS for a system that has
+limited degrees of freedom. The optical ﬂow-based IBVS method
+generates six references (three for velocities and another three for
+angular velocities) simultaneously using image velocity, so many
+researchers apply it to a fully-actuated system such as a robotic
+manipulator. The second issue of combining the IBVS with an
+underactuated system is that the image features may leave the image
+plane during operation, in which case visual servoing cannot be
+implemented. For example, let the underactuated system be a
+rotorcraft UAV and a camera be mounted on the center of UAV,
+looking downward. Suppose that the desired positions of image
+features are placed at the center of the image plane and the current
+image features are on the right side of the image plane. To move the
+image feature to its desired position the UAV should move to right,
+which means tilting to right, so that the image feature may leave the
+image plane.
+In this paper, an optical ﬂow-based IBVS control method is
+integrated with an underactuated quadrotor system (Fig. 1).
+Quadrotor UAV systems possess great maneuverability and are
+potentially simpler to manufacture. Because of these advantages,
+quadrotor helicopters have received much interest in UAV research.
+Previously, linear and nonlinear controllers for a quadrotor system
+have been proposed. Proportional-derivative and PID controllers
+have been considered to control roll and pitch angles with
+consideration for blade ﬂapping, and to control altitude and position,
+respectively [32]. These controllers operate at a high speed in the
+presence of wind disturbance. A nested-saturation technique has
+been introduced to control a chain of integrators bounded input [33].
+The controller uses three torques with respect to x, y, and z axes for
+1336
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+roll, pitch, and yaw control, and the total thrust for altitude control.
+Also, x and y axes are controlled by roll and pitch control. The overall
+control system has been decomposed into several single input/single
+output controllers and a sliding mode controller using a sliding mode
+disturbance observer has been presented to overcome uncertainties,
+so that the position of a quadrotor system can be controlled [34]. An
+adaptive sliding mode controller has been proposed for the
+underactuated quadrotor dynamics [35]. This controller uses slack
+variables to overcome the underactuated property of a quadrotor
+system and it is robust to internal and external uncertainties.
+In this study, an optical ﬂow-based IBVS control method is
+successfully integrated with adaptive sliding mode control for an
+underactuated quadrotor system such that a target will be placed at
+the desired position and attitude with respect to a camera ﬁxed on the
+quadrotor system. The adaptive sliding mode controller is designed
+using augmented slack variables to overcome the underactuated
+property of the quadrotor. Adaptive rules for this controller are
+developed to strengthen the robustness to external disturbances and
+internal uncertainties. Also, to achieve tight integration with an
+optical ﬂow-based IBVS method, the proposed IBVS uses an image
+Jacobian matrix to generate the velocity references for the
+underactuated system with decoupled roll and pitch angles. This
+decoupling can be easily donewith a pan-tilt camera. However, small
+UAVs such as the indoor quadrotor considered in this paper have a
+limitation on takeoff weight and space to mount the gimbal
+equipment. To decouple roll and pitch from the other channels with a
+ﬁxed camera, virtual image features are deﬁned from a virtual
+coordinate frame. The vertical axis of the virtual coordinate frame is
+always aligned with the vertical axis of the inertial coordinate frame
+so that the roll and pitch angles with respect to the inertial frame are
+zero. The virtual image features can be derived from the coordinate
+rotation, translation, and depth estimation. By using IBVS as a
+guidance block (rather than a controller), and using the virtual
+coordinate frame, the proposed approach is not susceptible to the
+problems of the conventional approach that might cause improper or
+unnecessary motions. By using the image Jacobian matrix associated
+with thevirtual image features, reference signals for the roll and pitch
+angular velocity are decoupled so that the proposed visual servo
+control method can be applied to the underactuated quadrotor
+dynamics. Acquisition of the depth information from a single camera
+is one of many signiﬁcant problems currently under study in the
+machine vision ﬁeld. In this paper, a simple and accurate depth
+estimation algorithm for IBVS in quadrotor system is presented.
+To our knowledge, the only study aimed to keep the image features
+in the image plane for underactuated systems is concerned with
+unmanned ground vehicles (UGVs), not UAV. For that purpose,
+multiple reference features have been used [36]. If so, even when one
+reference object moves out of the ﬁeld of view (FOV), another
+reference objects remain within (or enter) the FOV. Therefore the
+UGV can operate without losing stability. In this paper, an adaptive
+IBVS strategy is proposed to prevent the loss of the image feature for
+the quadrotor. By using the adaptive IBVS as a guidance command
+for control, image features are kept in the image plane during
+operation so reliability of the IBVS system is improved.
+The underactuated UAV systems need position guidance to control
+their position state. One of the usual approaches for UAV position
+guidance is based on the Global Positioning System (GPS). How-
+ever, the position data from a stand-alone GPS usually contain error
+in the order of several meters, which is not enough for precise landing
+of a small quadrotor or helicopter. Differential GPS can guarantee
+position accuracy to the few centimeter level, but it requires a
+stationary station. Also, for object tracking missions, there is no way
+to obtain a guidance to track the object without visual information.
+Therefore, there could be two stages of guidance for UAVoperations:
+one using a GPS or other position sensor for rough guidance (or
+patrol), and the other using a camera for accurate guidance such as
+landing (or tracking). So once the landing pad or the target is detected
+in image space during the ﬁrst stage, then the accurate UAV
+movements are controlled by switching to the second stage. This
+paper is mainly interested in the second stage, and adaptive visual
+guidance is proposed and validated by real experiments.
+Figure 2 presents the control architecture for the quadrotor system
+using the proposed IBVS method in the control loop. Target features
+are extracted from the camera images and modiﬁed to overcome the
+underactuated property of the system. Also, a depth estimation
+algorithm is presented in order to implement the IBVS guidance,
+which is rendered simple yet effective due to the decoupling of roll
+and pitch axes. The IBVS generates reference velocities to place the
+target at the desired position in the image plane. Then the proposed
+adaptive sliding mode controller derives control inputs to track the
+references, and the position and angular rate data from a motion
+capture system (from VICON) and inertial measurement unit (IMU)
+are used for the control.
+This paper is organized as follows. In Sec. II, the operating
+principle of a quadrotor and its dynamic equations are presented. In
+Sec. III, visual servoing is brieﬂy reviewed and the image-based
+control strategy for an underactuated system is proposed. In Sec. IV,
+the adaptive sliding mode controller and the corresponding error
+analysis is presented. Section V presents experimental and simu-
+lation results and Sec. VI contains concluding remarks.
+II.
+Quadrotor Helicopter Model
+The quadrotor helicopters considered in this paper have four ﬁxed-
+pitch-angle blades as shown in Fig. 1, unlike classic helicopters that
+have variable-pitch-angle blades. The quadrotor helicopter is
+controlled by varying the speed of each rotor. The concept of
+operating the quadrotor helicopter is depicted in Fig. 3. Each rotor
+produces lift force and moment. The two pairs of rotors, i.e., rotors 1
+and 3, and rotors 2 and 4 in Fig. 3, rotate in opposite direction so as to
+cancel the moment produced by the other pair. To make a roll angle
+() with respect to the x-axis of the body frame, the angular velocity
+of the rotor 2 can be increased and the angular velocity of the rotor 4
+can be decreased while keeping the total thrust constant. Likewise,
+the angular velocity of the rotor 3 is increased and the angular
+velocity of the rotor 1 is decreased to produce a pitch angle () with
+respect to the y-axis of the body frame. To perform yawing motion
+( ) with respect to the z-axis of the body frame, the speed of the
+rotors 1 and 3 are increased and the speed of the rotors 2 and 4 are
+decreased.
+The equations of motion for the quadrotor without consideration
+of air drag can be presented as follows [18,35]:
+Fig. 1
+Quadrotor helicopter under consideration.
+Fig. 2
+Structure of the IBVS for the quadrotor helicopter.
+LEE ET AL.
+1337
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+x
+y
+z
+2
+4
+3
+5  1
+m
+X
+4
+i1
+Fi
+
+RI
+Bez 
+Fgrz
+m
+ g
+
+ez
+(1)
+  lF2  F4=J1
+  lF1  F3=J2
+  	F1  F2  F3  F4=J3
+(2)
+Here, ez denotes the unit vector in the vertical direction in the
+inertial coordinate frame, x; y; z denotes the position of the
+quadrotor in the inertial frame, and ; ;   are roll, pitch, and yaw
+angles, respectively, deﬁned in the body frame. RI
+B represents the
+coordinate transformation matrix from body frame to inertial frame
+and g denotes gravity. Each rotor is located at the end of the bars,
+whose length from the center of gravity is l. Ji is the moment of
+inertia with respect to each axis and 	 is the force-to-moment scaling
+factor. The quadrotor helicopter is assumed to be symmetric with
+respect to the x and y axes so that the center of gravity is located at the
+center of the quadrotor. The physical control inputs for motors are
+pulse-positive modulation (PPM) signals that are proportional to
+rotations per minute (RPM), and there is a one-to-one relationship
+between RPM and motor thrust. Therefore, for simplicity of
+expression and easier understanding, we express the quadrotor
+system dynamics using the thrust forces, denoted as F1;    ; F4,
+which are perpendicular to the x-y plane as shown in Fig. 3.
+The term Fgrz represents the ground effect near the surface. It is
+assumed that the ground effect acts on the UAV when the UAV is
+below a certain altitude, z0:
+Fgrz 
+
+A
+zzcg2 
+A
+z0zcg2
+0 < z 	 z0
+0
+else
+(3)
+where A is theground effect constant and zcg is the zcomponent of the
+center of gravity. Because it is very difﬁcult to derive the exact
+expression for the ground effect, the term Fgrz is considered an
+unknown perturbation when designing the controller, which requires
+adaptation.
+To simplify Eqs. (1) and (2), input terms are deﬁned asEq. (4). u1 is
+the control input of the total lift force, and u2, u3, and u4 correspond
+to the control inputs of roll, pitch, and yaw moments, respectively:
+u1  F1  F2  F3  F4=m
+u2  F2  F4=Jx
+u3  F1  F3=Jy
+u4  	F1  F2  F3  F4=Jz
+(4)
+Then the equations of motion can be represented as Eqs. (5–10):
+x  u1cos  sin  cos   sin  sin  
+(5)
+y  u1cos  sin  sin   sin  cos  
+(6)
+z  u1cos  cos   g  Fgrz
+(7)
+  u2l
+(8)
+  u3l
+(9)
+  u4
+(10)
+or,
+equivalently,
+using
+x  x; y; z; ; ;  T
+and
+u
+u1; u2; u3; u4T, in the vector form as Eq. (11):
+x  fx  gxu  fexx
+fx 
+0
+0
+g
+0
+0
+0
+2
+66666666664
+3
+77777777775
+gx 
+cos  sin  cos   sin  sin  
+0
+0
+0
+cos  sin  sin   sin  cos  
+0
+0
+0
+cos  cos 
+0
+0
+0
+0
+l
+0
+0
+0
+0
+l
+0
+0
+0
+0
+1
+2
+66666666664
+3
+77777777775
+fexx 
+0
+0
+Fgrz
+0
+0
+0
+2
+66666666664
+3
+77777777775
+(11)
+III.
+Adaptive Visual Servo Control
+for a Quadrotor Helicopter
+This section ﬁrst presents a brief review of the camera geometry
+then, based on the analysis of the image dynamics for an
+underactuated system, a control law for the control reference signal is
+proposed to minimize the image location error in the image plane.
+A.
+Background
+Visual-information-based control strategies require understanding
+of the camera geometry, which maps the three-dimensional world
+coordinates to the two-dimensional image plane. The camera
+geometry we consider in this paper is based on a pinhole camera
+model as shown in Fig. 4.
+Let XI; YI; ZIT be the axes of the inertial coordinate frame
+representing the three-dimensional space I, and Xcam; Ycam; ZcamT
+be the position vector in the camera frame C, i.e., the coordinate
+frame attached to the camera center Ocam. Let Uimage; VimageT be the
+coordinate axes of the image frame S and OS denote the principal
+point where the z axis of the camera coordinate intersects the image
+plane. The distance f between Ocam and OS is the focal length of the
+camera. The mapping from a point P  xc; yc; zcT 2 C to a point
+p  u; vT 2 S can be written as Eq. (12):
+Fig. 3
+Conﬁguration of the quadrotor helicopter.
+1338
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+p 
+u
+v
+
+
+ f
+zc
+xc
+yc
+
+
+(12)
+Suppose that the camera is moving such that the point P moves
+with translational velocity T  Tx; Ty; TzT and rotational velocity
+  !x; !y; !zT with respect to the camera frame C. The dynamics
+of the point P with respect to C can be expressed as Eqs. (13–15):
+_x c  zc!y  yc!z  Tx
+(13)
+_y c  xc!z  zc!x  Ty
+(14)
+_z c  yc!x  xc!y  Tz
+(15)
+Or, equivalently, Eqs. (13–15) can be written in the vector form:
+_P   
+ P  T
+(16)
+Let us substitute Eq. (12) into Eqs. (13–15) so that the dynamics of
+the point P can be rewritten as Eqs. (17–19) including the image
+frame terms:
+_x c  zc!y  vzc
+f !z  Tx
+(17)
+_y c   uzc
+f !z  zc!x  Ty
+(18)
+_z c   zc
+f v!x  u!y  Tz
+(19)
+From the combination of Eqs. (17–19) and the time derivative of
+Eq. (12), the image dynamics can be derived as Eqs. (20) and (21):
+_u  f zc _xc  xc_zc
+z2
+c
+ f
+z2
+c
+
+zc
+
+zc!y  vzc
+f !z  Tx
+
+ uzc
+f
+
+ zc
+f v!x  u!y  Tz
+
+  f
+zc
+Tx  u
+zc
+Tz  uv
+f !x
+ f2  u2
+f
+!y  v!z
+(20)
+Similarly,
+_v   f
+zc
+Ty  v
+zc
+Tz  f2  v2
+f
+!x  uv
+f !y  u!z
+(21)
+Let _r denote the velocity of the camera:
+_r 
+T
+
+
+
+  Tx;
+Ty;
+Tz;
+!x;
+!y;
+!z T
+(22)
+Then Eqs. (20) and (21) can be represented in the following vector
+form:
+_p  Jp _r
+(23)
+where
+Jp 
+ f
+zc
+0
+u
+zc
+uv
+f
+ f2u2
+f
+v
+0
+ f
+zc
+v
+zc
+f2v2
+f
+ uv
+f
+u
+"
+#
+(24)
+is called the image Jacobian matrix Jp associated with p.
+Equation (23) describes the relationship between the camera velocity
+deﬁned in the camera frame and the image feature velocity deﬁned in
+the image frame.
+Note that Jp is a function of zc, the depth of the features in the
+camera frame. Next, we describe the algorithms for depth estimation
+and adaptive IBVS, where we take into account of the underactuated
+property of quadrotor dynamics.
+B.
+Adaptive Image-Based Visual Servo Method for an
+Underactuated System
+Classical IBVS control schemes that generate six velocity
+reference components have usually been applied to fully actuated
+systems. However, as described in Sec. II, the quadrotor helicopter is
+an underactuated system and the six state variables cannot be
+controlled independently. It is challenging to apply the IBVS control
+method for an underactuated system like the quadrotor. For example,
+suppose that the IBVS generates the positivevelocity reference along
+the xaxis and negativeangular velocity referencewith respect to the y
+axis ( _) simultaneously. Then the quadrotor helicopter cannot be
+controlled to track the references because, as shown in Eqs. (5) and
+(6), the quadrotor cannot move, i.e., the positive x direction with
+negative pitch angle. To overcome the complexity caused by
+coupling, _ and _ reference generation is decoupled with the IBVS
+system.
+Let us deﬁne a virtual coordinate frame V such that position and
+yaw angles with respect to V are inherited from the camera coor-
+dinate frame, C, and the z axis of V is always aligned with the z axis
+of the inertial frame. We estimate the depth between the camera and
+the image features, and the construct a virtual image taken from the
+center of the body frame with   0 and   0 by the following
+process.
+First, consider an imaginary camera framewhich is the same as the
+true camera frame but its roll and angles are modiﬁed as zero. Then,
+the image features from this imaginary camera frame are derived
+using the following equation:
+Pr
+i  R1; R2; Pi
+(25)
+pr
+i  f
+zr
+ci
+xr
+ci
+yr
+ci
+
+
+ f
+ui cos f sin 
+ui cos  sin vi sin f cos  cos 
+ui sin  sin vi cos f sin  cos 
+ui cos  sin vi sin f cos  cos 
+"
+#
+
+ur
+i
+vr
+i
+
+
+(26)
+where
+Fig. 4
+Geometry and coordinate frames for a pinhole camera model.
+LEE ET AL.
+1339
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+R1;  
+1
+0
+0
+0
+cos 
+ sin 
+0
+sin 
+cos 
+2
+4
+3
+5
+R2;  
+cos 
+0
+sin 
+0
+1
+0
+ sin 
+0
+cos 
+2
+4
+3
+5
+Here Pr
+i is the ith feature coordinate deﬁned in imaginary camera
+frame in the roll- and pitch-compensated camera frame, and pr
+i is the
+corresponding image feature coordinate of Pr
+i. More speciﬁcally, we
+are not interested in aggressive maneuvers with large  or , and the
+denominator is nonzero for our operation envelope. Note that under
+normal ﬂying conditions, roll and pitch angles of a UAV cannot reach
+90 deg so none of the three terms in the denominator of Eq. (26) is
+zero. Also, the depth information is not required for Eq. (26). If we
+compute pr
+j, the image coordinate of another feature j, then we can
+measure the distance between the two features in the image frame.
+This gives the measured length of the corresponding length of the
+marker deﬁned in the image frame, which we call Ls. Also, let Lc
+denote the length of the marker deﬁned in the camera frame, which is
+already known. Using these, the depth from the camera to the image
+features can be simply calculated as
+zc  Lc  f
+Ls
+(27)
+From the image feature pr
+i in Eq. (26) and estimated depth zc,
+three-dimensional target coordination Pr
+i can be derived. The
+accuracy of this method depends on the ratio of the image marker size
+to the image plane size. If we use a reasonable marker size (not too
+small), then the accuracy of the depth estimation will be reliable. The
+depth estimation results are shown in Sec. V.
+Suppose that there is an offset from the origin of the quadrotor
+body frame to the origin of the camera frame, which is denoted as
+x; y; zT. Then, now we consider another imaginary camera frame
+which is translated to compensate the distance caused by rotation of
+the offset. The ith feature coordinate deﬁned in this frame is called as
+Ps
+i, and the following relationship holds:
+Ps
+i  Pr
+i  R1; R2; x; y; zT
+(28)
+Now, the only difference between the virtual coordinate frame and
+the imaginary camera frame is the offset position of the camera.
+Therefore, the ith feature coordinate deﬁned in the virtual frame, Pv
+i ,
+is derived as
+Pv
+i  Ps
+i  x; y; zT
+(29)
+pv
+i  f
+Zv
+ci
+xv
+ci
+yv
+ci
+
+
+(30)
+where pv
+i is the corresponding image feature coordinate of Pv
+i . The
+advantage of the proposed algorithm is that the depth of the image
+features can be obtained simply and accurately without using of
+complex depth estimation algorithms. Also, the roll and pitch
+channels are decoupled so that the IBVS algorithm can be integrated
+to the underactuated quadrotor system that has a limited degree of
+freedom. The process of computing the virtual image feature and its
+depth is summarized in Algorithm 1.
+Figure 5 shows an example of the virtual image feature. The initial
+image feature in Fig. 5a is viewed from the state vector x 
+x; y; z; ; ;    0:4 m; 0 m; 2 m; 0 deg; 5 deg; 0 deg repre-
+sented in the inertial coordinate frame. The image feature at the
+center represents the desired position of the target image in the image
+plane, which is viewed from the desired state vector xd
+0 m; 0 m; 2 m; 0 deg; 0 deg; 0 deg. To place the feature at the
+desired position, the reference velocity for _x should be generated to
+move 0.4 m in the positive x direction. Simultaneously, the reference
+angular velocity for _, _, and _ should be negative. However, this
+maneuver cannot be performed by the quadrotor helicopter. On the
+other hand, the initial image feature in Fig. 5b is a virtual image
+feature of Fig. 5a, which is mapped from the virtual states variables,
+xv; yv; zv; v; v;  v  0:4 m; 0 m; 2 m; 0 deg;
+0 deg; 0 deg. Note that the roll and pitch angles of the virtual state
+variables with respect to the inertial frame are zero. To place the
+virtual image at the desired position the camera is moved 1 m in
+the positive x direction without constraints for pitch angle, which the
+quadrotor can perform.
+The task function for the IBVS control can be chosen as
+e  pv  pd
+(31)
+a)
+−200
+−150
+−100
+−50
+0
+50
+100
+150
+200
+−300
+−200
+−100
+0
+100
+200
+300
+Desired Image Feature
+Initial Image Feature
+b)
+−200
+−150
+−100
+−50
+0
+50
+100
+150
+200
+−300
+−200
+−100
+0
+100
+200
+300
+Desired Image Feature
+Initial Image Feature
+from the Virtual State
+Fig. 5
+Initial and virtual image features: a) initial image feature obtained at x; y; z; ; ;    0:4 m; 0 m; 2 m; 0 deg; 5 deg; 0 deg and
+b) virtual image feature obtained at the virtual state xv; yv; zv; v; v;  v  0:4 m; 0 m; 2 m; 0 deg; 0 deg; 0 deg. Desired images in (a) and (b) are
+obtained at x; y; z; ; ;    0 m; 0 m; 2 m; 0 deg; 0 deg; 0 deg, which is a desired state of the quadrotor UAV.
+Algorithm 1
+Calculation of virtual image feature and its depth
+1: pr
+i Orientation of the camera frame compensation using Eq. (26)
+2: zc Depth calculation from pr
+i using Eq. (27)
+3: Pr
+i Calculation using Eqs. (25) and (27)
+4: Ps
+i Offset orientation compensation using Eq. (28)
+5: Pv
+i  Offset position compensation using Eq. (29)
+6: pv
+i  Virtual image calculation using Eq. (30)
+1340
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+Here, pd 2 S is an image feature that is imaged at the desired
+position and attitude of the helicopter. Assuming that _pd  0 and
+using Eqs. (23) and (31), the ﬁrst derivative of the task function can
+be written as
+_e  Jpv _r
+(32)
+where Jpv denotes the image Jacobian matrix associated with the
+virtual image feature, pv.
+The following Lemma provides the velocity references for the
+quadrotor UAV (with consideration of the underactuated property)
+using the image task function in order to place the UAV to the desired
+position.
+Lemma 1. Consider the image-based task function given by
+Eqs. (31) and (32). Let the velocity vector be given by
+_r  WJT
+pve
+(33)
+where W  diagw1; w2; w3; w4; w5; w6j 2 < 2 R6
+6 is a diagonal
+weighting matrix with positive entries wii  1;    ; 4. Then the
+task function in Eq. (31) asymptotically converges to zero.
+Proof. Let a Lyapunov candidate function be
+L  1
+2 eTe
+(34)
+From Eqs. (32) and (33), the time derivative of L can be written as
+_L  eT _e  eTJpvWJpvTe 	 0
+where JpvWJpvT is a full-rank matrix when the image features are
+not colinear. This proves the asymptotic convergence of e to zero. □
+Note that at least three points are required to generate the
+references from IBVS. When only three points are used, the image
+Jacobian matrix Jp can be singular at particular conﬁgurations. Also,
+there exist four local minima that make the error zero [7]. Therefore,
+more than three points are considered to implement the IBVS.
+Fig. 6
+Magnitude of the adaptive gains wad1, wad2.
+−200
+−150
+−100
+−50
+0
+50
+100
+150
+200
+−300
+−200
+−100
+0
+100
+200
+300
+Desired Image
+Initial Image
+Fig. 8
+Views of the landmark in the image plane: the initial and goal
+images.
+Table 1
+Simulation parameters
+Parameter
+Value
+Jx
+2 kg  m2
+Jy
+2 kg  m2
+Jz
+3 kg  m2
+A
+0:5188
+zcg
+0.1 m
+k
+1.5
+W
+diag1; 1; 2; 0:3; 0:3; 1:5
+a
+500
+c
+500
+
+5
+i
+40: 5: 40
+m
+2.5 kg
+l
+1 m
+g
+9:81 m=s2
+z0
+4 m
+	
+0.9 m
+k
+1.5
+C
+diag1; 1:2; 1:2; 1; 1; 1
+b
+300
+d
+300
+
+1
+Fig. 7
+Structure of the adaptive quadrotor helicopter control integrated with the visual servoing scheme.
+LEE ET AL.
+1341
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+The velocity vector given in Eq. (33) is the reference signal for the
+quadrotor system controller (which will be explained in Sec. IV) to
+reduce the error in Eq. (31). However, due to the movement of the
+underactuated quadrotor system, the image features may leave the
+image plane, as mentioned in Sec. I, so previous visual servo
+techniques cannot be implemented. In this study, an adaptive gain
+Wad  diagwad1; wad2; w3; w4; w5; w6 2 R6
+6
+(35)
+is proposed for Eq. (33) to hold the image features inside of the image
+plane. Let umax and vmax be the maximum pixel values in the image
+plane, then the adaptive gains wad1 and wad2 are deﬁned as follows:
+wad1  1  atan
+
+ a
+juj 
+b
+umax  1  juj
+
+1	juj	umax
+(36)
+wad2  1  atan
+
+ c
+jvj 
+d
+vmax  1  jvj
+
+1	jvj	vmax
+(37)
+where a, b, c, d are constant values. The adaptive gain setting is
+dependent more on the camera resolution than the FOV. If the
+resolution of the camera is higher, then the adaptive gains (a, b, c and
+d) can be also increased to reduce the execution time. The ﬁrst two
+elements of [Eq. (35)] will affect x, y, ,  axes. The other gains
+w3;    ; w6 are set to be constants since they are not as crucial as the
+ﬁrst two elements.
+Figure 6 shows that the gains for Tx and Ty decrease rapidly when
+juj and jvj exceed the boundaries which are set as 80 and 60 pixels for
+the u and v axes, respectively. This means when the image features
+are placed on the edge of the image plane, then the quadrotor is
+a)
+0
+5
+10
+15
+20
+−1
+0
+1
+time (sec)
+d)
+0
+5
+10
+15
+20
+−2
+−1
+0
+1
+2
+time (sec)
+b)
+0
+5
+10
+15
+20
+−1
+0
+1
+time (sec)
+e)
+0
+5
+10
+15
+20
+−2
+−1
+0
+1
+2
+time (sec)
+c)
+0
+5
+10
+15
+20
+0
+1
+2
+3
+4
+time (sec)
+f)
+0
+5
+10
+15
+20
+−20
+−10
+0
+10
+20
+time (sec)
+Fig. 10
+Time histories of the state variables of the quadrotor helicopter: a–c) x, y, and z positions and d–f) roll, pitch, and yaw angles.
+−1
+−0.5
+0
+0.5
+1 −1
+0
+1
+0
+1
+2
+3
+y (m)
+x (m)
+z (m)
+Fig. 9
+Trajectory of the quadrotor helicopter in the three-dimensional
+inertial coordinate frame.
+1342
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+penalized
+against performing aggressive maneuvers, thereby
+maintaining the image features inside of the image plane. Note the
+scale difference in two plots.
+IV.
+Adaptive Sliding Mode Controller
+for a Quadrotor Helicopter
+This section describes the adaptive sliding mode control. We
+deﬁne a suitable sliding surface using the velocity references from
+Sec. III and an adaptation rule is designed so that the trajectory of the
+system follows the desired references under ground effects and noisy
+sensors [37].
+Since gx of Eq. (11) is a six-by-four matrix, gx is not
+invertible. By augmenting a six-by-two matrix gs to gx and slack
+variables us to u in order to form a square system we can rewrite the
+system dynamics of Eq. (11) as
+x  fx  GxU    fexx
+(38)
+where G  gx; gs, U  uT; uT
+s T, and   gsus. gs is set to be
+constant and deﬁned in advance to make Gx invertible, and us 
+u5; u6T are the slack variables. If we set
+g s 
+1
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+
+T
+(39)
+then   gsus   u5
+u6
+0
+0
+0
+0 T, so we need to estimate
+the slack variables u5 and u6.
+Let us deﬁne the sliding surface as
+S  s1; s2; s3; s4; s5; s6T  _x  _xr
+(40)
+where _xr is a velocity reference vector, _xr; _yr; _zr; _r; _r; _ rT. The
+quadrotor system is underactuated and the x and y state variables
+cannot be controlled directly from the inputs. Let us deﬁne the
+velocity references for _ and _ as Eqs. (41) and (42) to control the x
+and y positions:
+_ r  y  yr  k_y  _yr
+(41)
+_ r  x  xr  k_x  _xr
+(42)
+where k and k are proportional gains. Then, the reference velocity
+state variable, _xr, is given by
+_x r  Er _r  _rE4  _rE5  ErWJT
+pvQTe  _rE4  _rE5 (43)
+where
+Er  diag1; 1; 1; 0; 0; 1,
+E4  0; 0; 0; 1; 0; 0T
+and
+E5  0; 0; 0; 0; 1; 0T.
+To cancel nonlinear terms in Eq. (38), we need to deﬁne the
+estimated values of  and fexx, which we denote as ^ and ^fgrx,
+a)
+0
+5
+10
+15
+20
+−0.2
+−0.1
+0
+0.1
+0.2
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+d)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+b)
+0
+5
+10
+15
+20
+−0.2
+−0.1
+0
+0.1
+0.2
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+e)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+c)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+f)
+0
+5
+10
+15
+20
+−20
+−10
+0
+10
+20
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+Fig. 11
+Velocities of the quadrotor helicopter (solid line) and its references (dotted line): a–c) _x, _y, and _z translational velocities and d–f) _, _, and _ 
+angular velocities.
+LEE ET AL.
+1343
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+respectively. Let tilde (~) denote the difference between the true and
+estimated values (^).
+The uncertainty term is deﬁned as
+    fex  u5; u6; Fgrz; 0; 0; 0T
+(44)
+Then Eq. (38) becomes
+x  fx  GxU  
+(45)
+Multilayer neural networks guarantee that anonlinear function can
+be approximated to any desired boundary, which is known as the
+universal approximation capability [38]. The nonlinear term  can
+be approximated using multilayer neural networks as
+ 
+X
+N
+i1
+i_x; i  "  TH_x  "
+(46)
+where N is the number of neurons, " is the approximation error with
+bound of j"j 	 "M and    1
+2
+  
+N T 2 RN
+6 are weights
+that satisfy the following assumption.
+Assumption 1: There exists a constant vector of weights T that
+minimizes j"j:
+ ≜arg min
+ sup j  TH_xj
+(47)
+where H_x   _x; 1
+_x; 2
+  
+_x; N T. The uncer-
+tainty () in general situations may depend also on x, in which case x
+also would be fed into the neural network. However, this study does
+not aim to deal with general types of system parametric uncertainties,
+and feeding only _x into the neural network shows satisfactory
+performance to implement the adaptive nonlinear controller.
+In this study, the Gaussian radial basis kernel function is used:
+_x; i  exp
+
+ _x  iT_x  i
+
+2
+
+(48)
+where i is the center of the receptive ﬁeld and 
+ is the width of the
+Gaussian function.
+Lemma 2 gives the adaptive sliding control law for the UAV to
+track the references generated by Lemma 1.
+Lemma 2. Consider the quadrotor system dynamics and sliding
+surface given by Eqs. (38) and (40), respectively. Let the augmented
+input vector be given by Eq. (49):
+U  G1xfx  ^
+TH_x  xr  C1S  C2signS
+(49)
+a)
+0
+5
+10
+15
+20
+8
+9
+10
+11
+time (sec)
+c)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+time (sec)
+b)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+time (sec)
+d)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+time (sec)
+Fig. 12
+Inputs generated by the adaptive sliding mode controller during visual servoing.
+a)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+0.15
+time (s)
+ 
+ 
+b)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+time (s)
+ 
+ 
+Fig. 13
+Slack variables (solid line) and their estimated values (dotted line) according to the adaptive sliding mode controller.
+1344
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+where C1  diagc1; c2; c3; c4; c5; c6 is an input gain matrix with
+positive entries, and C2 is a positive constant gain larger than "M.
+Let the update rule for _^ be
+_^  H_xST
+(50)
+where  is the update rate. Then, _x converges to _xr asymptotically.
+Proof. Let the Lyapunov function be
+L  1
+2 STS  1
+2 tr  ~T ~
+(51)
+_L  ST _S  1
+ tr  ~T _~  STfx  GxU    xr  1
+ tr  ~T _~
+(52)
+By substituting the input U from Eqs. (49) and (52) becomes
+_L  STC1S  C2signS  "  tr
+
+~T
+
+H_xST  1
+
+_^
+
+where "M 	 C2. By updating _^ as shown in Eq. (50), and with
+positive entries in C1, we can write Eq. (52) as
+_L  STC1S  C2signS  " 	 0
+(53)
+Thus,
+the
+trajectory
+goes
+to
+the
+set
+fx 2 RnjSt
+_xt  _xrt  0g, which means that _x converges to _xr
+□.
+According to the preceding analysis, we can only prove the
+boundedness of ~. Now suppose that enough time has passed and the
+Fig. 16
+Block diagram for vision integrated HILS system.
+Fig. 17
+Vision integrated HILS system.
+−1
+−0.5
+0
+0.5
+1 −1
+0
+1
+0
+1
+2
+3
+y (m)
+x (m)
+z (m)
+Fig. 18
+Vision integrated HILS result: trajectory of the quadrotor
+helicopter in the three-dimensional Cartesian coordinates.
+Fig. 14
+Ground effect (solid line) and its estimated value (dotted line)
+with the adaptive sliding mode controller.
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+Fig. 15
+Image history of the four corners of the target in the image
+plane.
+LEE ET AL.
+1345
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+steady state of St  0, 8 t has achieved, and sign0  0. Then
+from Eqs. (45), (46), and (49), we obtain 0  ~TH_xr  ".
+Therefore, for small " and nonzero H_xr, we may havevery small ~.
+In special cases of "  0, Lemma 3 veriﬁes that the uncertain
+parameters converge to their true value under the adaptation rules
+derived from Lemma 2.
+Lemma 3. Consider the dynamics of the quadrotor system and its
+input shown in Eqs. (38) and (49). The estimated slack variables, ^
+and ^fgr, converge to their true value as the system goes to the steady
+state.
+Proof. Combining Eqs. (38) and (49), we have
+x    ^  fex  ^fex  xr  C1S
+(54)
+and Eq. (54) can be rewritten as
+_S  C1S    ^  fex  ^fgr
+(55)
+As proven in Lemma 2, the sliding surface S converges
+asymptotically to zero. This means that, at steady state, Eq. (55)
+yields
+  ^  fex  ^fex
+i:e:
+u5  ^u5
+u6  ^u6
+0
+0
+0
+0
+2
+6666664
+3
+7777775
+
+0
+0
+Fgr  ^Fgr
+0
+0
+0
+2
+6666664
+3
+7777775
+Thus, the estimations ^u5, ^u6, and ^Fgr will converge to their true
+values in steady state
+□.
+If we use the standard sliding mode control rather than performing
+the adaptation for the slack variable  and the ground effect fex as in
+Eq. (44), the uncertain terms u5, u6, and Fgr will be contained in _L of
+Eq. (53) as follows:
+_L nonadaptive  STC1S  C2signS  "  ST  fex < 0
+Thus, in the nonadaptive case, it would be necessary to use an
+input gain, C, large enough to compensate  and fex to make
+_Lnonadaptive < 0. Comparison of _L in the preceding equation and
+Eq. (53) suggests that the adaptive sliding mode controller requires
+smaller input magnitude, which is a clear advantage in terms of
+reduced chattering and power usage.
+a)
+0
+5
+10
+15
+20
+−1
+0
+1
+time (sec)
+d)
+0
+5
+10
+15
+20
+−5
+0
+5
+time (sec)
+b)
+0
+5
+10
+15
+20
+−1
+0
+1
+time (sec)
+e)
+0
+5
+10
+15
+20
+−5
+0
+5
+time (sec)
+c)
+0
+5
+10
+15
+20
+0
+1
+2
+3
+4
+time (sec)
+f)
+0
+5
+10
+15
+20
+−20
+−10
+0
+10
+20
+time (sec)
+Fig. 19
+Vision integrated HILS results, time history of the state variables of the quadrotor helicopter: a–c) x, y, and z positions and d–f) roll, pitch, and
+yaw angles.
+1346
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+V.
+Results
+This section presents two examples that illustrate the performance
+of the proposed image-based servoing method using a camera
+mounted on the quadrotor. Section V.A shows the results of the
+proposed optical ﬂow-based IBVS method integrated with the
+adaptive sliding mode controller. Section V.B presents the results of
+the proposed adaptive IBVS method for an underactuated quadrotor
+system.
+A.
+Integrated Visual Servoing
+The proposed optical ﬂow-based visual servoing method is
+integrated with the adaptive sliding mode controller for the quadrotor
+UAV. The overall performance is tested with numerical simulation,
+vision integrated hardware-in-the-loop simulation (HILS) and
+experiment. From the state of the quadrotor UAV, the coordinate of
+each image feature pi  ui; viT in the image plane can be
+determined using pinhole camera geometry. The desired velocity
+references, _xr; _yr; _zr; _ r, are derived from the visual servo control
+method using the image features as proposed in Sec. III.B. _r and _r
+are derived from _xr and _yr as explained in Sec. IV. Using these as
+references in the adaptive sliding mode controller, the controller
+designed in Sec. IV generates inputs to place the image features at the
+desired position in the image plane.
+Accurate position measurements are provided from the VICON
+system, and the linear velocity can be estimated from this infor-
+mation. The proposed IBVS-based adaptive sliding mode controller
+uses the estimated linear velocity for the velocity control. The
+angular rate is measured from IMU and the Euler angle of the
+quadrotor can be estimated from this measurement. Also, the image
+feature points can be measured from the camera, and the depth
+information is estimated from the image features and the estimated
+Euler angles. This procedure is summarized in Fig. 7.
+The mission of the UAV is to place the landmark at the goal
+position in the image plane as shown in Fig. 8. The initial and goal
+images are obtained from the initial and ﬁnal states, respectively,
+which are
+ x0; y0; z0; 0; 0;  0 T   0:3; 0:5; 2; 0; 0; 10 T
+ xf; yf; zf; f; f;  f T  0; 0; 1; 0; 0; 0T
+The units of position and attitude state variables are meters and
+degrees, respectively.
+1.
+Results with Numerical Simulation
+Parameter settings for these simulations are shown in Table 1.
+Figures 9–15 are simulation results. The trajectory of the quadrotor
+a)
+0
+5
+10
+15
+20
+−0.2
+−0.1
+0
+0.1
+0.2
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+d)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+b)
+0
+5
+10
+15
+20
+−0.2
+−0.1
+0
+0.1
+0.2
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+e)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+c)
+0
+5
+10
+15
+20
+−0.4
+−0.2
+0
+0.2
+0.4
+0.6
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+f)
+0
+5
+10
+15
+20
+−20
+−10
+0
+10
+20
+time (s)
+ 
+ 
+Velocity of UAV
+Velocity reference
+Fig. 20
+Vision integrated HILS results, velocity states (solid line) and references (dotted line) of the quadrotor helicopter: a–c) _x, _y, and _z translational
+velocities and d–f) _, _, and _ angular velocities.
+LEE ET AL.
+1347
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+helicopter is shown in Fig. 9. In Fig. 10, x, y, and z positions
+converged to their desired values within 20 s and , , and  also
+show satisfactory responses. Figure 11 shows that the six velocity
+components of the quadrotor converge totheir desired values. Since _x
+and _y are controlled indirectly, as described by Eqs. (41) and (42),
+they converge slowly to their reference velocities while the state
+variables _z, _, _, and _ , which are directly controlled by the inputs
+u1;    ; u4, converge faster.
+Figure 12 presents the inputs computed by the adaptive sliding
+mode controller designed in Sec. IV. As proven in Lemma 3, the
+adaptive sliding mode controller estimated the auxiliary inputs and
+the ground effect to their true values. These are shown in Figs. 13
+and 14 and, as a result, the control of the UAV can be done more
+precisely during navigation and the overall control system can be
+asymptotically stable. Figure 15 shows the history of the image
+features in the image plane. Each solid line represents an image
+history of the four corners of the target pattern.
+2.
+Results with Vision Integrated Hardware-in-the-Loop Simulation
+It is important that the controller integrated with the visual
+servoing setup shows robust performance against various noise
+associated with cameras and real hardware. To see the effect of noise
+on the proposed controller, the proposed visual servo algorithm is
+validated with a vision integrated HILS system. This system is
+composed of camera, avionics, ﬂight simulator and monitor. As
+shown in Figs. 16 and 17, the virtual image plane depicts an image of
+the target from a camera mounted on the quadrotor UAV. The
+quadrotor ﬂight-control computer computes control inputs using
+visual information from a real vision sensor. Then the quadrotor
+response is simulated using the ﬂight simulator implemented on xPC.
+In Fig. 18, the trajectory shows that the mission of the UAV is
+successfully completed under the HILS system with various noise
+inputs. In the HILS set up, the desired direction of the target image
+would be determined in order to turn a smaller angle. For example,
+when an initial absolute yaw angle of 40 deg relative to the H mark,
+the vehicle would turn 40 deg rather than 140 deg. So there is only
+one solution for the initial condition. For real experiments, we used
+an asymmetric marker unlike the HILS setup. According to Eqs. (41)
+and (42), the reference velocities for _ and _ involve measured state
+variables, _x and _y. Thus, as shown in Figs. 19 and 20, the  and 
+channels are more sensitive to the sensor noise than other channels.
+Figure 21 shows that the magnitude of inputs is increased to
+overcome the sensor noise. Figures 22 and 23 show that the slack
+variables, u5 and u6, and uncertain ground effect, Fgr, are properly
+estimated in the noisy conditions. Figure 24 presents the image
+a)
+c)
+0
+5
+10
+15
+20
+7
+8
+9
+10
+11
+12
+time (sec)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (sec)
+b)
+0
+5
+10
+15
+20
+−1
+−0.5
+0
+0.5
+1
+time (sec)
+d)
+0
+5
+10
+15
+20
+−2
+−1
+0
+1
+2
+time (sec)
+Fig. 21
+Vision integrated HILS results: inputs generated by the adaptive sliding mode controller during visual servoing.
+a)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+time (s)
+ 
+ 
+b)
+0
+5
+10
+15
+20
+−0.1
+−0.05
+0
+0.05
+0.1
+0.15
+0.2
+0.25
+time (s)
+ 
+ 
+Fig. 22
+Vision integrated HILS results: slack variables u5, u6 (solid line) and their estimated values (dotted line) with the adaptive sliding mode
+controller.
+1348
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+history of the image features under the sensor noise. When compared
+with Fig. 15, the trajectories of the four corners show the effects of
+various noise from the hardware system. The IBVS-adaptive control
+setup still shows satisfactory results by bringing the image features
+onto the desired location in the image plane.
+3.
+Experiment
+A quadrotor platform as shown in Fig. 25 is developed to validate
+the proposed algorithm. The quadrotor has tip-to-tip wing span of
+60 cm, height of 12 cm, and weight of about 1250 g including two
+batteries.
+A quadrotor is equipped with 1.2 GHz wireless camera for the
+image transmission. The video is transmitted to a receiver connected
+via a USB image grabber. An image is captured 30 times in a second
+with a width of 320 pixels and a height of 240 pixels, and the FOV is
+about 50 deg.
+Two gyroscope sensors are used to measure angular velocity of the
+quadrotor: one is a single-axis gyroscope to sense yaw rate, the other
+one is a dual-axis sensor to sense roll and pitch rates. A triaxial
+accelerometer is used to fuse with the gyroscopes to estimate roll,
+pitch, and yaw angle in radian units and bias of a gyroscope.
+The attitude of the quadrotor is controlled by an onboard
+microprocessor. A reference velocity is generated from the host
+computer based on two kinds of operation modes: mode 1 is position-
+based hover control to move quadrotor to near to a marker, and mode
+2 is IBVS control which is proposed in this paper to move the
+quadrotor to desired image coordinates. A signal route diagram is
+shown in Fig. 26.
+To make the proposed algorithm work, four image points need to
+be extracted repeatedly. For this, a ﬁducial marker [39] with tracker
+[40] is used. The tracker extracts four corners of a ﬁducial marker
+from a captured image then returns its calibrated image coordinates.
+The processing throughput of thetracker is over 25 frames per second
+which is enough for position guidance and navigation of the
+quadrotor system. A ﬁducial marker and tracking result are shown in
+Fig. 25
+The quadrotor platform used in this experiment.
+Fig. 23
+Vision integrated HILS results: ground effect (solid line) and its
+estimated values (dotted line) with the adaptive sliding mode controller.
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+Fig. 24
+Vision integrated HILS result: image history of the four
+corners of the target in the image plane.
+Fig. 26
+Information ﬂow for the experiments.
+Fig. 27
+A ﬁducial marker and tracking result.
+LEE ET AL.
+1349
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+Fig. 27. The reference velocity components _xr; _yr; _zr; _ r are
+directly generated from IBVS, and the other two components  _r; _r
+can be simply computed from _xr and _yr. Also the data from an IMU
+are used to stabilize the quadrotor orientation.
+The reference velocity is delivered to the quadrotor by using a
+2.4 GHz radio control (RC) transceiver. The RC transmitter accepts
+PPM signal for the external control method (e.g., RC pilot training),
+so we use this functionality to deliver the velocity reference to the
+quadrotor. For the PPM signal generation, PCTx from Endurance
+R/C is used, which provides a USB interface connecting the
+transmitter and computer. The reference velocity is encoded to pulse-
+positive period, then it is decoded by the onboard controller by
+measuring positive period of received pulse. Overall architecture of
+the system is shown in Fig. 28.
+The goal of the experiment is to place the image feature at the
+desired position in the camera image plane. There are two controllers
+Fig. 28
+Overall architecture of the experimental system.
+Fig. 30
+Image error of four corners.
+Fig. 29
+Depth estimation and its true values.
+Fig. 31
+Image history of four corners.
+Fig. 32
+Velocity for x, y and z axes and its references.
+1350
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+for the quadrotor system. The ﬁrst one is for position control to place
+the quadrotor near the target so the quadrotor can obtain the image
+feature of the target. Once the image feature is obtained, control is
+switched to the second controller, which is the IBVS-guided
+controller to minimize the error deﬁned in image space. Position
+information is provided from the VICON system, and the linear
+velocitycan be estimated from thisinformation. The proposed IBVS-
+based adaptive sliding mode controller uses the estimated linear
+velocity for the velocity control. Attitude information is obtained
+from an inertial sensor. The angular rate is measured from the IMU
+and the Euler angles of the quadrotor can be estimated from the
+measurement. Also, the image feature points can be measured from
+the camera, and the depth information is estimated from the image
+features and the estimated Euler angles.
+The proposed depth estimation algorithm requires estimated value
+(roll and pitch angle), so the result shows chattering as shown in
+Fig. 29. However, the error between the estimated and true value is
+less than 6 cm at the altitude of about 1 m, therefore the estimated
+depth is reliable enough to be provided to the controller.
+Control is switched to the second controller at 22 s and all results in
+this section are plotted from 20 to 35 s. The error deﬁned in image
+space is shown in Fig. 30. The image feature converges around 28 s to
+its desired position in image space. Figure 31 shows a history of the
+image features and four corners of the square denotes the desired
+position of the features. Figures 30 and 31 show that the image
+features stay within 20 pixels of its desired position after con-
+vergence. Figure 32 shows the linear velocity of the quadrotor and its
+references and Fig. 33 depicts the position of the quadrotor. The
+proposed sliding mode controller successfully tracks the reference
+velocity under various noise sources such as rotor vibration, model
+parametric uncertainties and signal noise.
+B.
+Adaptive Visual Servoing
+In the second example, the proposed adaptive visual servo control
+strategy for the underactuated quadrotor system is performed. Image
+features should be on the image plane to implement a vision-based
+control. Therefore, the adaptive gains for the visual servo method is
+proposed in Sec. III.B and their performance is validated in this
+section
+In Figs. 34a and 35a, two situations are illustrated in which image
+features leave the image plane during visual servo control using
+constant gain W. This simulation assumes that all image features,
+even these outside of the image plane, can be observed. In Fig. 34a,
+the right corners of the target feature leave the image plane during the
+a)
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+b)
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+Fig. 35
+Image history of the target; initial position (x, y, and z) and attitude (roll, pitch, and yaw) of the quadrotor are 1:1 m; 0:5 m; 2 m and [0 deg,
+0 deg, 0 deg], respectively: a) with constant gain W and b) with adaptive gain Wad.
+Fig. 33
+Position for x, y and z axes and its references.
+a)
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+b)
+−200
+−100
+0
+100
+200
+−300
+−200
+−100
+0
+100
+200
+300
+x pixel
+y pixel
+Image History of Four Corners
+Fig. 34
+Image history of the target; initial position (x, y, and z) and attitude (roll, pitch, and yaw) of the quadrotor are 1 m; 0:5 m; 2 m and [0 deg,
+0 deg, 30 deg], respectively: a) with constant gain W and b) with adaptive gain Wad.
+LEE ET AL.
+1351
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+operation. However, using the proposed adaptive gain, all the image
+features remain in the image plane as shown in Figs. 34b and 35b.
+VI.
+Conclusions
+An adaptive image-based visual servoing (IBVS) control scheme
+is proposed for an underactuated unmanned aerial vehicle (UAV)
+system using optical ﬂow. Generally, for underactuated UAVs, image
+targets may leavethe image plane during the IBVS control, so that the
+system could become unstable. To keep the image feature in the
+image plane, an adaptive gain for IBVS method is presented, which
+maintains the stability of the IBVS-based control scheme. A simple
+depth estimation algorithm is used to implement the IBVS guidance.
+To achieve the expected performance of optical ﬂow-based IBVS for
+underactuated systems, the coupled dynamics of roll and pitch
+channels are considered explicitly. With use of a virtual image,
+velocity references for roll and pitch angles are decoupled so that the
+IBVS control scheme can be successfully applied to the under-
+actuated quadrotor system. The proposed IBVS method is tightly
+integrated with the proposed neural network-based adaptive sliding
+mode controller for the quadrotor UAV. By augmenting inputs to the
+quadrotor with slack variables, the proposed adaptive sliding mode
+controller overcomes the underactuated property. Furthermore, the
+uncertain ground effect and input augmented slack variables are
+estimated so that control can be performed precisely near the ground.
+The vision system is integrated with a hardware-in-the-loop
+simulation setup to test the effect of noise associated with camera and
+hardware. Also indoor hardware experiments have been performed
+to validate the proposed algorithm under vibration from motors,
+image noise, and model uncertainties. The results show satisfactory
+performance of the proposed adaptive IBVS integrated with adaptive
+sliding mode control for the UAV under these conditions.
+Acknowledgments
+This work was supported by a National Research Foundation of
+Korea grant funded by the Korea government (Ministry Of
+Education, Science, and Technology), no. 2011-0001276, the IT
+Research and Developmentprogram of MKE/KEIT (10039988), and
+the New and Renewable Energy Program of a Korea Institute of
+Energy Technology Evaluation and Planning grant funded by the
+Korea
+government
+(Ministry
+of
+Knowledge
+Economy),
+no. 20104010100490.
+References
+[1] Espiau, B., Chaumette, F., and Rives, P., “A New Approach to Visual
+Servoing
+in
+Robotics,”
+IEEE
+Transactions
+on
+Robotics
+and
+Automation, Vol. 8, No. 3, June 1992, pp. 313–326.
+doi:10.1109/70.143350
+[2] Hutchinson, S., Hager, G., and Corke, P., “A Tutorial on Visual Servo
+Control,” IEEE Transactions on Robotics and Automation, Vol. 12,
+No. 5, Oct. 1996, pp. 651–670.
+doi:10.1109/70.538972
+[3] Kojima, H., Aoyama, S., and Yajima, K., “Formation Flight Using
+Feature-Based Visual Servo Technique,” AIAA/AAS Astrodynamics
+Specialist
+Conference
+and
+Exhibit,
+AIAA
+Paper
+2004-4738,
+Aug. 2004
+[4] Yakimenko, O., Kaminer, I., Lentz, W., and Ghyzel, P., “Unmanned
+Aircraft Navigation for Shipboard Landing Using Infrared Vision,”
+IEEE Transactions on Aerospace and Electronic Systems, Vol. 38,
+No. 4, Oct. 2002, pp. 1181–1200.
+doi:10.1109/TAES.2002.1145742
+[5] Papanikolopoulos, N., and Khosla, P., “Adaptive Robotic Visual
+Tracking: Theory and Experiments,” IEEE Transactions on Automatic
+Control, Vol. 38, No. 3, March 1993, pp. 429–445.
+doi:10.1109/9.210141
+[6] Mahony, R., Hamel, T., and Chaumette, F., “A Decoupled Image Space
+Approach to Visual Servo Control of a Robotic Manipulator,” IEEE
+International
+Conference
+on
+Robotics
+and
+Automation,
+’02.
+Proceedings., Vol. 4, 2002, pp. 3781–3786.
+[7] Chaumette, F., “Potential Problems of Stability and Convergence in
+Image-Based and Position-Based Visual Servoing,” The Conﬂuence of
+Vision and Control, edited by D. Kriegman, G. Hager, and A. Morse,
+Vol. 237, Lecture Notes in Control and Information Sciences, Springer,
+Berlin, 1998, pp. 66–78.
+[8] Comport, A., Marchand, E., and Chaumette, F., “Statistically Robust
+2-DVisual Servoing,” IEEE Transactions on Robotics and Automation,
+Vol. 22, No. 2, April 2006, pp. 415–420.
+[9] Hosoda, K., and Asada, M., “Versatile Visual Servoing Without
+Knowledge of True Jacobian,” Proceedings of the IEEE/RSJ/GI
+International Conference on Intelligent Robots and Systems ’94.
+“Advanced Robotic Systems and the Real World”, Vol. 1, Sept. 1994,
+pp. 186–193.
+[10] Collewet, C., and Chaumette, F., “Visual Servoing Based on Structure
+from Controlled Motion or on Robust Statistics,” IEEE Transactions on
+Robotics and Automation, Vol. 24, No. 2, April 2008, pp. 318–330.
+doi:10.1109/TRO.2007.913996
+[11] Hu, G., Gans, N., and Dixon, W., “Quaternion-Based Visual Servo
+Control in the Presence of Camera Calibration Error,” International
+Journal of Robust and Nonlinear Control, Vol. 20, No. 5, 2010,
+pp. 489–503.
+doi:10.1002/rnc.1438
+[12] Monda, M., and Schaub, H., “Hardware Simulation of Relative
+Navigation Using Visual Sensor Information,” AIAA Guidance,
+Navigation, and Control Conference and Exhibit, AIAA Paper 2005-
+5999, Aug. 2005.
+[13] Hamel, T., and Mahony, R., “Image Based Visual Servo Control for a
+Class of Aerial Robotic Systems,” Automatica, Vol. 43, No. 11, 2007,
+pp. 1975–1983.
+doi:10.1016/j.automatica.2007.03.030
+[14] Guenard, N., Hamel, T., and Mahony, R., “A Practical Visual Servo
+Control for an Unmanned Aerial Vehicle,” IEEE Transactions on
+Robotics and Automation, Vol. 24, No. 2, April 2008, pp. 331–340.
+doi:10.1109/TRO.2008.916666
+[15] Quan, L., and Lan, Z., “Linear N-Point Camera Pose Determination,”
+IEEE Transactions on Pattern Analysis and Machine Intelligence,
+Vol. 21, No. 8, Aug. 1999, pp. 774–780.
+doi:10.1109/34.784291
+[16] Gao, X.-S., Hou, X.-R., Tang, J., and Cheng, H.-F., “Complete Solution
+Classiﬁcation
+for
+the
+Perspective-Three-Point
+Problem,”
+IEEE
+Transactions on Pattern Analysis and Machine Intelligence, Vol. 25,
+No. 8, Aug. 2003, pp. 930–943.
+doi:10.1109/TPAMI.2003.1217599
+[17] Nister, D., “An Efﬁcient Solution to the Five-Point Relative Pose
+Problem,” IEEE Transactions on Pattern Analysis and Machine
+Intelligence, Vol. 26, No. 6, June 2004, pp. 756–770.
+doi:10.1109/TPAMI.2004.17
+[18] Altug, E., Ostrowski, J., and Mahony, R., “Control of a Quadrotor
+Helicopter Using Visual Feedback,” IEEE International Conference
+on Robotics and Automation, 2002. Proceedings., Vol. 1, 2002,
+pp. 72–77.
+[19] Chatterji, G., Menon, P., and Sridhar, B., “GPS/Machine Vision
+Navigation System for Aircraft,” IEEE Transactions on Aerospace and
+Electronic Systems, Vol. 33, No. 3, July 1997, pp. 1012–1025.
+doi:10.1109/7.599326
+[20] Wu, A. D., Johnson, E. N., and Proctor, A. A., “Vision-Aided Inertial
+Navigation for Flight Control,” AIAA Guidance, Navigation, and
+Control Conference and Exhibit, AIAA Paper 2005-5998, Aug. 2005.
+[21] Shakernia, O., Ma, Y., Koo, T., and Sastry, S., “Landing an
+Unmanned Air Vehicle: Vision Based Motion Estimation and
+Nonlinear Control,” Asian Journal of Control, Vol. 1, No. 3,
+Sept. 1999, pp. 128–145.
+doi:10.1111/j.1934-6093.1999.tb00014.x
+[22] Saripalli, S., Montgomery, J., and Sukhatme, G., “Visually Guided
+Landing of an Unmanned Aerial Vehicle,” IEEE Transactions on
+Robotics and Automation, Vol. 19, No. 3, June 2003, pp. 371–380.
+doi:10.1109/TRA.2003.810239
+[23] Amidi, O., Kanade, T., and Fujita, K., “A Visual Odometer for
+Autonomous Helicopter Flight,” Robotics and Autonomous Systems,
+Vol. 28, Aug. 1999, pp. 185–193.
+doi:10.1016/S0921-8890(99)00016-0
+[24] Altug, E., Ostrowski, J. P., and Taylor, C. J., “Control of a Quadrotor
+Helicopter Using Dual Camera Visual Feedback,” International
+Journal of Robotic Research, Vol. 24, No. 5, 2005, pp. 329–341.
+doi:10.1177/0278364905053804
+[25] Romero, H., Benosman, R., and Lozano, R., “Stabilization and
+Location of a Four Rotor Helicopter Applying Vision,” American
+Control Conference, June 2006, p. 6.
+[26] Corke, P. I., Spindler, F., C. F., Combining Cartesian and Polar
+Coordinates in IBVS, 2009, pp. 5962–5967.
+[27] Gans, N. R., and Hutchinson, S. A., “Stable Visual Servoing Through
+Hybrid Switched-System Control,” IEEE Transactions on Robotics and
+1352
+LEE ET AL.
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+
+Automation, Vol. 23, No. 3, 2007, pp. 530–540.
+doi:10.1109/TRO.2007.895067
+[28] Zhang, H., and Ostrowski, J., “Visual Servoing with Dynamics: Control
+of an Unmanned Blimp,” 1999 IEEE International Conference on
+Robotics and Automation. Proceedings., Vol. 1, 1999, pp. 618–623.
+[29] Azinheira, J., Rives, P., Carvalho, J., Silveira, G., de Paiva, E., and
+Bueno, S., “Visual Servo Control for The Hovering of All Outdoor
+Robotic Airship,” IEEE International Conference on Robotics and
+Automation, 2002. Proceedings., Vol. 3, 2002, pp. 2787–2792.
+[30] Nierobisch, T., W. F., and Hoffmann, F., Large View Visual Servoing of
+a Mobile Robot with a Pan-Tilt Camera, 2006, pp. 3307–3312.
+[31] Mejas, L., Saripalli, S., Campoy, P., and Sukhatme, G. S., “Visual
+Servoing of an Autonomous Helicopter in Urban Areas Using Feature
+Tracking,” Journal of Field Robotics, Vol. 23, Nos. 3–4, 2006, pp. 185–
+199.
+doi:10.1002/rob.20115
+[32] Hoffmann, G., Huang, H., Waslander, S., and Tomlin, C., “Quadrotor
+Helicopter Flight Dynamics and Control: Theory and Experiment,”
+AIAA Guidance, Navigation and Control Conference and Exhibit,
+AIAA Paper 2007-6461, Aug. 2007.
+[33] Kendoul, F., Lara, D., Coichot, I. F., and Lozano, R., “Real-Time
+Nonlinear
+Embedded
+Control
+for
+an
+Autonomous
+Quadrotor
+Helicopter,” Journal of Guidance, Control, and Dynamics, Vol. 30,
+No. 4, 2007, pp. 1049–1061.
+doi:10.2514/1.27882
+[34] Besnard, L., Shtessel, Y., and Landrum, B., “Control of a Quadrotor
+Vehicle Using Sliding Mode Disturbance Observer,” AIAA Guidance,
+Navigation and Control Conference and Exhibit, AIAA Paper 2007-
+6316, Aug. 2007.
+[35] Lee, D., Kim, H., and Sastry, S., “Feedback Linearization vs. Adaptive
+Sliding Mode Control for a Quadrotor Helicopter,” International
+Journal of Control, Automation, and Systems, Vol. 7, No. 3, 2009,
+pp. 419–428.
+doi:10.1007/s12555-009-0311-8
+[36] Mehta, S. S., Hu, G., Dani, A. P., and Dixon, W. E., “Multi-Reference
+Visual Servo Control of an Unmanned Ground Vehicle,” AIAA
+Guidance, Navigation, and Control Conference and Exhibit, AIAA
+Paper 2008-7447, 2008.
+[37] Sastry, S., Nonlinear Systems: Analysis, Stability and Control,
+Springer–Verlag, New York, 1999.
+[38] Hornik, K., Stinchcombe, M., and White, H., “Multilayer Feedforward
+Networks are Universal Approximators,” Neural Networks, Vol. 2,
+No. 5, 1989, pp. 359–366.
+doi:10.1016/0893-6080(89)90020-8
+[39] Fiala, M., “ARTag, a Fiducial Marker System Using Digital
+Techniques,” IEEE Computer Society Conference on Computer Vision
+and Pattern Recognition. CVPR 2005., Vol. 2, June 2005, pp. 590–
+596.
+[40] Daniel, W., and Dieter, S., ARToolKitPlus for Pose Tracking on Mobile
+Devices, Feb. 2007, pp. 139–146.
+LEE ET AL.
+1353
+Downloaded by Indian Institute of Science on November 17, 2025 | http://arc.aiaa.org | DOI: 10.2514/1.52169 
+

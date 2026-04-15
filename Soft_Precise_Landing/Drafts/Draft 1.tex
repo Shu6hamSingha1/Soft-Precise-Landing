@@ -1,0 +1,764 @@
+\documentclass{IEEEtaes}
+
+\usepackage{color,array,amsthm}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[nice]{nicefrac}
+\usepackage[center]{caption}
+\usepackage{subcaption}
+\bibliographystyle{IEEEtaes.bst}
+
+\jvol{XX}
+\jnum{XX}
+\jmonth{XXXXX}
+\paper{1234567}
+\pubyear{2020}
+\doiinfo{TAES.2020.Doi Number}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\setcounter{page}{1}
+%% \setcounter{secnumdepth}{0}
+
+
+
+\begin{document}
+
+
+\title{Performance-Constrained Adaptive Sliding Mode Control for Guaranteed Soft Landing Using Optic Flow} 
+
+
+\author{SHUBHAM SINGHAL}
+\member{Member, IEEE}
+\affil{Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India} 
+
+\author{SURESH SUNDARAM}
+\member{Member, IEEE}
+\affil{Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India.} 
+
+\author{JISHNU KESHAVAN}
+\member{Member, IEEE}
+\affil{Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India.}
+
+\receiveddate{Manuscript received XXXXX 00, 0000; revised XXXXX 00, 0000; accepted XXXXX 00, 0000.\\
+This work was supported in part by the SERB Core Research Grant CRG/2021/006872 and the Space Technology Cell Grant STC/P-486.}
+%% \accepteddate{XXXXX XX XXXX}
+%% \publisheddate{XXXXX XX XXXX}
+
+\corresp{Corresponding author: Shubham Singhal}
+
+\authoraddress{Shubham Singhal, Suresh Sundaram and Jishnu Keshavan are with the Robert Bosch Centre for Cyber-Physical Systems (RBCCPS), Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India (e-mail: \href{mailto:shubhamsing2@iisc.ac.in}{shubhamsing2@iisc.ac.in}; \href{mailto:vssuresh@iisc.ac.in}{vssuresh@iisc.ac.in}; \href{mailto:kjishnu@iisc.ac.in}{kjishnu@iisc.ac.in}).
+Suresh Sundaram is also with the Department of Aerospace Engineering, Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India.
+Jishnu Keshavan is also with the Department of Mechanical Engineering, Indian Institute of Science (IISc), Bengaluru, Karnataka 560012, India.}
+
+% \editor{Mentions of supplemental materials and animal/human rights statements can be included here.}
+\supplementary{For more information, the supplemental document can be accessed using this link: \url{https://indianinstituteofscience-my.sharepoint.com/:b:/g/personal/shubhamsing2_iisc_ac_in/Ed0YsCugvyxPtGxtl5ObQf0BwLf9nSnS4uWZqAVGEfLM0w?e=I2iX8H}. The experimental results can be found in this video: \url{https://youtu.be/Zq4_IzkpDTc}.} 
+
+
+\markboth{SINGHAL ET AL.}{SLIDING MODE CONTROL FOR GUARANTEED SOFT LANDING USING OPTIC FLOW}
+\maketitle
+
+
+\begin{abstract}This paper proposes a novel \emph{scale-independent} adaptive control strategy that allows a quadrotor to rely on optic flow to achieve a soft vertical landing on stationary surfaces. Most prior schemes based on a fixed-gain approach to regulate optic flow suffer from instabilities induced during the vertical landing. To overcome this drawback, this scheme proposes an adaptive sliding mode control strategy with theoretical stability guarantees that incorporates performance and input constraints to achieve desired transient and steady-state performance in the presence of uncertainty arising from wind gusts, ground effects, and possible actuator faults. Lyapunov stability analysis is undertaken to demonstrate that the optic flow error achieves exponential convergence to a small prescribed bound in steady-state, which is shown to be the key to achieving the functional requirement for soft landing. Extensive experimental results substantiate the efficacy of the proposed strategy using a micro-quadrotor in a controlled environment and demonstrate laterally stabilized soft landing using a mini-quadrotor in a real-world setting with an aggressive descent behavior. Performance comparison studies with an optic flow-based fixed-gain proportional-integral control strategy and an altitude-based vertical velocity control strategy are also included, demonstrating the superior performance of the proposed strategy in comparison with these alternative designs.
+\end{abstract}
+
+\begin{IEEEkeywords}optic flow, soft landing, adaptive sliding mode control, Lyapunov stability, prescribed performance constraint
+\end{IEEEkeywords}
+
+\section{INTRODUCTION}
+T{\scshape he} deployment of unmanned aerial vehicles (UAVs) for logistical purposes has significantly increased, in part driven by advancements in contactless delivery technologies \cite{engesser2023}.
+These missions often involve transporting fragile payloads, such as medical supplies \cite{amukele2017}, landing in disaster-affected regions without damage \cite{chowdhury2017}, and performing precise landings on recharging stations without rebound \cite{cocchioni2014}.
+Achieving a guaranteed soft landing, characterized by smooth convergence of altitude and vertical velocity to a small vicinity around the origin when the vehicle is close to the ground, is crucial in such missions.
+Deviations, such as residual altitude with near-zero vertical velocity indicating an incomplete landing or negative vertical velocity upon touchdown indicating a crash, are unacceptable.
+The challenge of meeting these functional requirements is further compounded by the limited sensing capabilities of cost-efficient, low-size, weight, and power (low-SWaP) UAV platforms.
+Hence, a robust landing controller is required to ensure accurate guidance to touchdown while satisfying the functional requirements for soft landing and physical constraints of the UAV.
+
+Most prior autonomous landing controllers rely on metric scale information, such as distance estimates relative to the landing surface, to generate suitable vertical control commands \cite{gautam2014}.
+Such altitude-based landing controller primarily employs an inertial navigation system (INS) supplemented by a global navigation satellite system (GNSS) to compensate for the unbounded low-frequency drift in the localization data of the inertial measurement unit (IMU) \cite{bruggemann2011}.
+However, GNSS signals degrade drastically indoors and in clustering environments like cities and forests, and they might only sometimes be available in many isolated areas \cite{zhang2015}.
+In GNSS-denied environments, alternative distance sensors like rangefinders and ultrasonic sensors offer cost-efficient solutions \cite{zhao2012}.
+However, these sensors only provide single-point distance measurements, lacking comprehensive spatial awareness.
+Thus, they can overlook surrounding anomalies, leading to a high signal-to-noise ratio (SNR), especially near the ground.
+Furthermore, they suffer from high quantization errors and low sampling rates; any mitigation attempt has proven costly.
+Hence, the distance sensor-based landing approaches are practically not viable for solving the soft landing problem, given the physical constraints of the cost-efficient UAV platform.
+Moreover, in practice, these approaches often necessitate cutting off the throttle near the ground, leading to mechanical deformation of the landing gear.
+On the other hand, studies like \cite{gautam2014, zhang2015, lin2022} recommend vision sensors because they have comparatively lower quantization error, higher sampling rate, and reduced SNR.
+Therefore, they are well-suited to meet the functional requirements for soft landing.
+
+The recent advancements in vision technology have led to the development of cost-efficient, compact, and lightweight cameras that align with the physical constraints of the UAV platform. 
+These multi-point sensors provide richer information about the surrounding environment, compensating for the increased computational rate of real-time image processing.
+As a result, visual servo control algorithms have been extensively developed over the past few decades for the autonomous navigation of UAV platforms.
+Pose-based visual servoing (PBVS) approaches, as proposed in various studies \cite{shakernia1999, wenzel2011, benini2018, lin2022}, rely on image features captured using an image camera for distance and velocity estimation.
+However, the impact of the system uncertainties on the landing performance of the classical linear landing controllers employed in \cite{wenzel2011, benini2018} must be adequately addressed.
+Hence, robust nonlinear landing controllers have been proposed based on differential flatness \cite{shakernia1999} and backstepping control \cite{lin2022} to tackle this issue.
+Despite this, the PBVS approaches rely on accurate image scale information, making them sensitive to camera calibration errors and image noise.
+Moreover, these approaches do not effectively compensate for estimation errors caused by large and non-uniform scale variations, frequently occurring when images are sparsely captured or the camera undergoes rapid movement toward the target.   
+To mitigate these challenges, optic flow, a scale-independent parameter, is used to enhance the accuracy of monocular distance estimation in \cite{deCroon2016}.
+
+Nevertheless, the altitude-based landing approaches remain vulnerable to sensor measurement noise due to a declining SNR of distance estimates as the UAV approaches zero altitude during the terminal landing phase.
+The dependency of these approaches on metric scale information complicates the extraction of true estimates from the actual sensor signal, compromising their reliability in achieving the functional requirements for soft landing.
+In contrast to the PBVS approaches, image-based visual servoing (IBVS) approaches \cite{izzo2011, herisse2012, alkowatly2015, ho2018, cho2022} circumvent the necessity of extracting metric scale information from images.
+They directly employ image features or intensity to formulate control laws, showcasing robustness to camera calibration errors and image noise.
+Research on honeybee landing behavior in \cite{baird2013} demonstrates that the optic flow inherently controls both approach distance and velocity relative to the landing surface, making it a natural sensing modality for satisfying the functional requirements for soft landing.
+Inspired by this research work, the study in \cite{izzo2011} applies Pontryagin’s maximum principle to derive optimal control strategies for maintaining constant optic flow descent trajectories.
+Other optic flow-based landing controllers \cite{herisse2012, alkowatly2015, ho2018} typically implement fixed-gain control strategies.
+Recent studies like \cite{deCroon2016, ho2018} suggest that the control gain parameter should be proportional to the altitude during descent, advocating for smaller gain parameters during the final landing phase to ensure stability.
+Consequently, an ad-hoc adaptive gain tuning strategy has been proposed in \cite{ho2018} to facilitate soft landing.
+
+The optic flow-based landing dynamics is highly nonlinear and influenced by factors like camera resolution, frame rate, field-of-view (FoV), and the SNR of the optic flow estimates.
+It can even become unbounded due to model uncertainties arising from noisy visual data, low frame rate and computational delays, and exogenous perturbations caused by wind gusts and ground effects, particularly near the ground.
+However, these nonlinear dynamics is not addressed effectively in the aforementioned optic flow-based landing approaches. 
+Although these approaches provide landing capability, they typically lack formal stability guarantees to ensure the functional requirements for soft landing while satisfying the physical constraints of the UAV.
+Moreover, these approaches usually neglect actuator nonlinearities, such as actuator faults and input saturation, which are prevalent in common aerial platforms.
+Apart from their individual limitations, PBVS and IBVS approaches share common drawbacks, such as the need for special landing pads \cite{wenzel2011}, the extraction of custom-designed features such as AprilTag \cite{lin2022}, and ArUco \cite{salehi2021} markers, and the reliance on expensive and time-consuming control parameter tuning.
+Although the study in \cite{ladosz2024} addresses these limitations, it requires extensive offline training to implement an end-to-end vision-based deep reinforcement learning (RL) approach using raw images from the camera.
+Moreover, this study does not address stability, a crucial factor for ensuring a guaranteed soft landing.
+To the best of the authors' knowledge, developing a robust landing controller that provides stability guarantees while addressing system uncertainties due to actuator nonlinearities such as actuator faults and input saturation, model uncertainties arising from noisy visual data, low frame rate and computational delays, and exogenous perturbations caused by wind gusts and ground effect, remains an open research area.
+To this end, this paper implements an optic flow-based Adaptive Sliding Mode Control (ASMC) strategy to achieve robust constrained control for safe and soft landing.
+
+However, conventional ASMC strategies require structural knowledge of the system uncertainties, such as the magnitude of their upper bounds, rendering practical deployment challenging.
+To mitigate this drawback, a variant of ASMC strategy is introduced in \cite{singhal2023}.
+Similar to \cite{li2022} and contrasting with \cite{nekoo2021}, this control strategy guarantees a soft landing by adapting to the system uncertainties without prior knowledge of their magnitude and precluding control chattering.
+Moreover, unlike strategies used in \cite{chang2023}, it alleviates the adverse impacts of actuator faults and input saturation by synthesizing constrained control commands using the performance-constrained system output.
+As an extension to \cite{singhal2023}, this paper proposes a Performance-constrained Leakage-type Adaptive Sliding Mode Control (PLASMC) strategy that precludes dependency on the initial UAV altitude.
+The PLASMC strategy incorporates two essential features for guaranteed soft landing:
+i) predefined performance constraints to maintain the boundedness of the system output until the touchdown of the UAV with the landing surface while ensuring the desired transient and steady-state performance, and
+ii) leakage-type ASMC law to ensure convergence of the system output and to provide robustness against the system uncertainties.
+These uncertainties could otherwise cause unbounded behavior in the highly nonlinear dynamics inherent in optic flow-guided landing, especially near the ground.
+Extensive experimental results validate that the PLASMC strategy satisfies the functional requirement of soft landing and physical constraints of the UAV platform in the presence of these uncertainties.
+The results encompass four key analyses:
+1)  evaluation of the effects of highly nonlinear dynamics on the landing performance of the optic flow-based PLASMC strategy near the ground,
+2) examination of the impact of perturbations and uncertainties on the nonlinear dynamics near the ground,
+3) an ablation study to determine the effectiveness of imposing prescribed performance constraints on the system output, and
+4) assessment of the landing performance of an altitude-based vertical velocity control strategy.
+
+The main contributions of this paper are summarized as follows:
+\begin{enumerate} 
+    \item[(a)] A novel scale-independent optic flow-based adaptive control strategy is designed to ensure smooth convergence of the altitude and vertical velocity relative to the landing surface to a small vicinity around the origin.
+    \item[(b)] An innovative, feature-agnostic optic flow estimator is developed, which leverages a compact, cost-efficient monocular camera and a low-complexity visual processing technique, offering a potential fail-safe when other critical sensors fail.
+    \item[(c)] A robust PLASMC strategy is proposed that mitigates the influence of unknown system uncertainties (without any prior knowledge of their upper bounds) on the highly nonlinear optic flow-based landing dynamics through continuous control action.
+    The performance constraints are integrated within the Lyapunov stable control law to guarantee the global exponential convergence of the optic flow error to a small Uniform Ultimate Bound (UUB) around the origin while attenuating the impact of actuator faults and input saturation.
+    \item[(d)] Laboratory tests are conducted in a controlled environment using a micro-quadrotor UAV to substantiate the efficacy of the PLASMC strategy in achieving the functional requirement for soft landing while meeting the physical constraints of the cost-efficient, low-SWaP UAV platform.
+    Furthermore, field tests are carried out in a real-world setting using a mini-quadrotor UAV to demonstrate laterally stabilized soft landing even in the presence of system uncertainties and with aggressive descent behavior.
+    The computational efficiency of the proposed landing controller is analyzed to identify the bottleneck in achieving higher loop-closure rates.
+\end{enumerate}
+The rest of the paper is structured as follows. Section \ref{background: section} presents the mathematical description of the optic flow-guided soft landing challenge for quadrotor UAVs, and Section \ref{control strategy: section} outlines the control design and associated stability analysis for regulation of optical flow induced by vertical motion. The details of the experimental setup and the experimental results, validating the performance and robustness of the proposed control strategy, are provided in Section \ref{experimentation: section}. Finally, Section \ref{conclusion: section} presents the conclusions of this study.
+
+\section{SCALE-INDEPENDENT OPTIC FLOW-GUIDED SOFT LANDING} \label{background: section}
+This section discusses the optic flow-based landing dynamics and formulates a suitable problem statement to address the practical challenges inherent in implementing the optic flow-guided soft landing approach.
+
+\subsection{Dynamics of Optic Flow-Guided Landing} \label{optic flow: section}
+Supplemental Data S1 provides an innovative feature-agnostic estimation technique for optic flow $y_r$, which can be mathematically expressed as the following scale-independent ratio
+\begin{equation}
+\label{optic flow: equation}
+    y_r(t) = \frac{v_z(t)}{z(t)}.
+\end{equation}
+Since $z(t) > 0$, $v_z(t) < 0$ during the terminal landing phase, it follows from \eqref{optic flow: equation} that $y_r(t) < 0$.
+Consequently, selecting a suitably negative constant $y_c$ for optic flow ensures that both $z(t)$ and $v_z(t)$ simultaneously approach a small vicinity around the origin as $t \to \infty$.
+Hence, optic flow serves as a natural sensing modality to satisfy the functional requirements for soft landing as per \textit{Supplemental Definition S1} given in Supplemental Data S1.
+Although the optic flow-based approach provides an effective control that can guarantee soft landing in concurrence with \cite{baird2013}, practical implementation of this approach on a cost-efficient quadrotor UAV platform presents challenges. 
+First, maintaining a constant optic flow during the landing phase is challenging.
+Thus, a feedback landing controller is required which can provide suitable vertical control in terms of vertical acceleration command $a_{zu}(t)$ to ensure $y_r(t) \to y_c$ as $t \to \infty$, while satisfying
+\begin{equation} \label{radial optic flow derivative: equation}
+\dot{y}_r(t) = -y_r^2(t) + \frac{a_z(t)}{z(t)},
+\end{equation}
+where $\dot{y}_r(t)$ is well-defined $\forall \, z(t)>0$. The vertical acceleration $a_z(t)=T(t)/m-g$ is assumed to be bounded, with $T(t)$ being the generated thrust force of the UAV and $g$ the gravitational acceleration.
+Although the landing gear of height $z_0$ prevents the singularity condition $z(t) = 0$ in practical deployment by ensuring $z(t) \geq z_0 > 0 \, \forall \, t\geq 0$, the nonlinearity inherent in the optic flow-based landing dynamics \eqref{radial optic flow derivative: equation} complicates the development of the landing controller.
+
+Moreover, in the development of any practical controller, there will always be a discrepancy between the actual system and its mathematical model used for the design of the controller. These discrepancies (or system uncertainties) arise from actuator nonlinearities, model uncertainties and exogenous perturbations as enlisted below:
+\begin{enumerate}
+    \item[(a)] Small, cost-efficient UAVs are generally driven by Lithium-ion polymer (LiPo) batteries due to their high charge and discharge rates, affordable cost, long lifetime, and high energy density.
+    However, the inherent dynamics of LiPo batteries is not linear during discharge and affects the actuator effectiveness \cite{podhradský2014}.
+    Moreover, a real rotorcraft UAV has physical limitations on the actuator RPM, and hence on the generated thrust force, resulting in input saturation.
+    The actuator control command with actuator nonlinearities, such as actuator faults and input saturation, can be defined as \cite{liu2023}
+    \begin{equation} \label{actuator nonlinearities: equation}
+        u_{\text{act}}(t) = E(t)\,\text{sat}[a_{zu}(t)] + u_{\text{f}}(t),
+    \end{equation}
+    where $u_{\text{act}}(t)=T_{\text{des}}(t)/m-g$ is the vertical acceleration experienced by the UAV when the actuators receive the vertical acceleration command $a_{zu}(t)$ to produce the desired thrust $T_{\text{des}}(t)$ and $E(t)$ is the actuator effectiveness satisfying $0<E(t)\leq 1$. The additive fault $u_{\text{f}}(t)$ represents the uncontrollable portion of the vertical control command that is immeasurable and time-varying, such as mechanical damping from motor friction, or the force bias induced by the electric regulator of the motor.
+    \item[(b)] The experimental limitations, such as sensor measurement noise, relatively low sensor sampling rate, and large time latency in the closed-loop control systems, induce model uncertainties in the system dynamics that can impact the stability of the landing controller \cite{herisse2012}.
+    \item[(c)] The dynamic response of a UAV is significantly affected by exogenous perturbations caused due to the wind gusts and ground effect in the case of rotorcraft systems \cite{nekoo2021}.
+    Despite numerous attempts to correlate ground effect measurements with rotor performance, an accurate model establishing good correlation is still missing  \cite{sanchez-cuevas2017}.
+    In order to overcome this drawback, the ground effect parameter, defined as $\delta(t)=T(t)/T_{\text{des}}(t)$, can be leveraged since this parameter compares the thrust $T(t)$ generated near the ground to the desired thrust $T_{\text{des}}(t)$ (computed without accounting for ground effect), and satisfies the inequality $\delta(t)\geq 1\,\forall\,t\geq 0$.
+\end{enumerate}
+
+\subsection{Problem Statement} \label{problem statement: section}
+Before developing an appropriate landing controller, it is important to define a suitable problem statement that addresses the aforementioned challenges associated with the optic flow-guided soft landing approach.
+In order to address the actuator saturation constraints shown in Eq. \eqref{actuator nonlinearities: equation}, a nonlinear equality transformation is used to convert the constrained command signal $a_{zu}(t)$ into an unconstrained command signal ${\mu}(t)\in\mathbb{R}$ as given below:
+\begin{eqnarray}
+ \label{saturated input: equation}
+ \text{sat}[a_{zu}(t)]={\Sigma}[\mu(t)]\,\mu(t)
+\end{eqnarray}
+with the coefficient ${\Sigma}[\mu(t)]$ defined as \cite{Shao:2022}:
+\begin{align}
+    \label{sat_fun}
+    {\Sigma}[\mu(t)]=\begin{cases}
+    a_{\text{max}}/\lvert \mu(t) \rvert,~~\text{if}~~\mu(t)\in\mathcal{U}_{S}\\
+    1,~~\qquad\qquad\text{if}~~\mu(t)\in\mathcal{U}_{N}\\
+    \end{cases}
+\end{align}
+where $\mathcal{U}_S$ denotes the saturated set $\mathcal{U}_{S}=\{\mu(t)\in\mathbb{R}:{\lvert \mu(t) \rvert}\,>\,a_{\text{max}}\}$, and $\mathcal{U}_{N}$ denotes the unsaturated set $\mathcal{U}_{N}=\{\mu(t)\in\mathbb{R}:-a_{\text{max}}\leq \mu(t) \leq a_{\text{max}}\}$ respectively, with $a_{\text{max}}$ denoting the upper bound of $a_{zu}(t)$.
+
+Moreover, to incorporate unknown model uncertainties and exogenous perturbations, the optic flow-based landing dynamics \eqref{radial optic flow derivative: equation} is transformed into the following perturbed nonlinear landing dynamics:
+\begin{align} 
+\label{perturbed system dynamics: equation}
+    \dot{y}_e(t) =& - y_r^2(t)+\frac{\delta(t)}{z(t)} u_{\text{act}}(t) + \frac{[\delta(t){-}1]}{z(t)}g - \frac{1}{z(t)}a_{\text{wg}}(t)
+    \nonumber\\ & + \Delta_{\text{mod}}(t)
+    \nonumber\\=& -y_r^2(t) + \beta(t) \mu(t) + \Delta(t)
+\end{align}
+where $y_e(t) = y_r(t) - y_c$ is the optic flow error such that $\dot{y}_e(t) = \dot{y}_r(t)$ since $y_c$ is a constant, $\beta(t)$ is the uncertainty parameter given by $\beta(t) = E(t)[\delta(t)/z(t)]\Sigma>0$, and $\Delta(t)=\{[\delta(t){-}1]/z(t)\}g-[1/z(t)]a_{\text{wg}}(t)+\Delta_{\text{mod}}(t)+[\delta(t)/z(t)]u_{\text{f}}(t)$ is the lumped perturbation term arising due to a combination of the ground effect, vertical wind gust acceleration $a_{\text{wg}}(t)$, model error $\Delta_{\text{mod}}(t)$ due to low frame rate and large computational time, and actuator faults $u_{\text{f}}(t)$. 
+Driven by practical considerations, the following assumption is invoked:
+
+\textit{Assumption 1}: The perturbation $\Delta(t)$ in Eq. \eqref{perturbed system dynamics: equation} is a uniformly bounded function with an unknown upper bound $\Delta_{\text{max}}$, i.e. $\lvert \Delta(t) \rvert \leq \Delta_{\text{max}}$.  Moreover, the parameter $\beta(t)$ satisfies the inequality $0 < \beta_{\text{min}} \leq\beta(t)\leq \beta_{\text{max}}$, where the constants $\beta_{\text{min}},\,\beta_{\text{max}}$ exist but are unknown.
+
+Thus, the problem statement is to determine a constrained vertical acceleration command $a_{zu}(t)$ such that the output error $y_e(t)$ is driven to a small residual bound, thereby guaranteeing a soft landing in the presence of system uncertainties in the nonlinear landing dynamics \eqref{perturbed system dynamics: equation}. 
+However, the key to achieving a soft landing is to ensure that the system output, i.e. optic flow $y_r(t)$, remains bounded throughout the landing phase.
+Hence, the optic flow error $y_e(t)$ is constrained using a prescribed performance function $p(t)$ as shown below
+\begin{equation}
+    \label{error transformation: equation}
+    y_e(t) = \mathcal{S}(\zeta) p(t),
+\end{equation}
+where $\mathcal{S}(\zeta): \mathbb{R} \rightarrow ({-}1, 1)$ is a smooth, monotonically-increasing hyperbolic-tangent function given by $\mathcal{S}(\zeta) = [\text{exp}(\zeta){-}1]/[\text{exp}(\zeta){+}1]$. $p(t): \mathbb{R}_+ \rightarrow \mathbb{R}_+$ is a smooth, strictly decreasing, bounded and continuously differentiable function of time defined as $p(t) = (p_{0}{-}p_{\infty}) \, \text{exp}({-}\gamma t) + p_{\infty}$ such that $\lim_{t \to \infty} p(t) = p_{\infty} >0$ and $p_0=|y_e(0)|+\alpha_p$.  Note that $\alpha_p,~p_{\infty},~\gamma$ are predefined positive constants that represent the maximum allowable overshoot, the steady-state residual set and the minimum convergence rate of $y_e(t)$ respectively. An appropriate selection of these design variables imposes prescribed behavioral bounds on the optic flow error, which enhances the landing performance of the quadrotor UAV. 
+
+From \eqref{error transformation: equation}, it is evident that $y_e(t) \rightarrow 0$ if $\zeta(t) \to 0$. Additionally, the prescribed performance is ensured only if the unconstrained variable $\zeta(t)$ is shown to be UUB. By substituting \eqref{perturbed system dynamics: equation} in the time-derivative of \eqref{error transformation: equation}, the following unconstrained and perturbed landing dynamics is obtained:
+\begin{equation} \label{unconstrained system: equation}
+    \dot{\zeta}(t) {=} \nu(\zeta,t) \left[{-}y_r^2(t) {+} \beta(t) \mu(t) {+} \Delta(t) {-} \eta(t) \dot{p}(t) \right],
+\end{equation}
+where $\eta(t)=y_e(t)/p(t)$. The state-dependent coefficient $\nu(\zeta,t)$ is defined as $\nu(\zeta,t) = [\text{exp}(\zeta){+}1]^2/[2\,\text{exp}(\zeta) p(t)]$ satisfying $\nu(\zeta,t)>0\,\forall\,t\geq 0$.
+Moreover, for a smooth landing, it is crucial to eliminate any lateral motion between the UAV and the landing surface before touchdown.
+Thus, the problem statement translates to the formulation of a suitable control law to synthesize a constrained vertical acceleration command $a_{zu}(t)$ (while
+accomplishing laterally stabilized control) that drives the nonlinear map-based transformed output variable $\zeta(t)$ to a small UUB around the origin through online rejection of unknown system uncertainties parameters $\beta(t)$ and $\Delta(t)$ present in the nonlinear landing dynamics \eqref{unconstrained system: equation}.
+
+\section{CONTROL AND STABILITY OF LATERALLY STABILIZED SOFT LANDING} \label{control strategy: section}
+This section provides a brief insight into the system dynamics and control strategy for achieving a laterally stabilized landing of a quadrotor UAV. It includes the formulation of PLASMC strategy for vertical control that satisfies the functional requirements for soft landing of the quadrotor UAV by guaranteeing the boundedness and convergence of the optic flow error $y_e(t)$ to a small bound around the origin in finite time.
+
+\subsection{Dynamics and Control of Underactuated Quadrotor UAV} \label{quadrotor dynamics: section}
+Achieving a laterally stabilized soft landing requires a thorough understanding of the system dynamics and control architecture of a quadrotor UAV. Accordingly, consider a rigid body model of the quadrotor UAV in three-dimensional (3-D) space with a body-fixed frame $\mathcal{B} = \{O_b~X_b~Y_b~Z_b\}$ attached to the center of mass (CoM). Using the Newton-Euler formulation, the dynamics of the quadrotor UAV can be expressed in terms of six degrees-of-freedom (6-DOF) motion (three translational motions defined by linear velocity vector $\boldsymbol{v} = [v_x, v_y, v_z]^\top \in \mathbb{R}^3$ and three rotational motions defined by angular velocity vector $\boldsymbol{\omega} = [\omega_x, \omega_y, \omega_z]^\top \in \mathbb{R}^3$) in the body-fixed frame as follows \cite{poultney2018}:
+\begin{align}
+\label{quadrotor dynamics: equation}
+    m \dot{\boldsymbol{v}} &= \boldsymbol{F_{\text{ext}}} - m \boldsymbol{\omega} \times ~\boldsymbol{v}  \nonumber \\
+    I \dot{\boldsymbol{\omega}} &= \boldsymbol{\tau_{\text{ext}}} - \boldsymbol{\omega} \times (I \boldsymbol{\omega})
+\end{align}
+where $m$ is the mass,  and $I = \text{diag}(I_{xx}~I_{yy}~I_{zz})$ is the body frame inertia matrix. The external force vector $\boldsymbol{F_{\text{ext}}}$ and moment vector $\boldsymbol{\tau_{\text{ext}}}$ defined in the body-fixed frame include gravitational force $\boldsymbol{F_{\text{g}}}$, the total thrust force vector $\boldsymbol{F_{\text{t}}}$, the net control moments of the four rotors $\boldsymbol{\tau}_u$, and the unknown model uncertainties and disturbances $\boldsymbol{F_{\text{d}}}$ and $\boldsymbol{\tau_{\text{d}}}$ such that
+$\boldsymbol{F_{\text{ext}}} = \boldsymbol{F_{\text{g}}} + \boldsymbol{F_{\text{t}}} + \boldsymbol{F_{\text{d}}}$ and $\boldsymbol{\tau_{\text{ext}}} = \boldsymbol{\tau}_u + \boldsymbol{\tau_{\text{d}}}$.
+
+For governing the 6-DOF motion, the flight controller of the underactuated quadrotor UAV employs an outer-loop controller that generates only four control commands: two lateral commands, one vertical command, and one heading command.
+Now, for laterally stabilized control, a simple lateral proportional-integral (PI) controller is implemented to neutralize the lateral velocity $\boldsymbol{v}_{l} = [v_{x}, ~v_{y}]^\top$ of the UAV by generating a lateral acceleration command signal $\boldsymbol{a}_{lu} = [a_{xu}, ~a_{yu}]^\top$ during the landing maneuver as follows:
+\begin{equation}
+\label{lateral control signal: equation}
+    \boldsymbol{a}_{lu}(t) = - K_{pl} \boldsymbol{v}_{l}(t) - K_{il} \int_0^t \boldsymbol{v}_{l}(\tau) d\tau,
+\end{equation}
+where $K_{pl} = \text{diag}(k_{px}$, $k_{py})$ is proportional gain matrix and $K_{il} = \text{diag}(k_{ix}$, $k_{iy})$ is integral gain matrix. 
+Similarly, the heading command signal $\psi_u$ is set to the instantaneous yaw angle $\psi$ to hold the vehicle heading while the landing maneuver is performed.
+For achieving optic flow-guided soft landing, a vertical acceleration command signal $a_{zu}$ is synthesized using the optic flow estimates as discussed in the next subsection.
+Finally, the laterally stabilized soft landing is achieved by providing body acceleration and heading command signal $\boldsymbol{u} = [\boldsymbol{a}_{lu}^\top, ~a_{zu}, ~\psi_{u}]^\top$ to an inner-loop controller.
+The inner-loop controller is used to stabilize the fast rotational dynamics of the quadrotor UAV and provides the ability to control the translational dynamics by tracking the command signal $\boldsymbol{u}$.
+
+\subsection{Performance-Constrained Leakage-Type Adaptive Sliding Mode Control Strategy}
+\label{adaptive controller: section}
+Achieving a guaranteed soft landing critically depends on ensuring the boundedness and convergence of the optic flow error $y_e(t)$ to a small bound around the origin in finite time. To this end, the PLASMC strategy is formulated for vertical control such that it incorporates the following two essential features:
+\begin{enumerate}
+    \item a robust, adaptive, and Lyapunov stable control law ensuring exponential convergence of the output error to a small UUB around the origin.
+    \item predefined performance constraints within the control law to maintain the boundedness of the output error while achieving the desired transient and steady-state performance.
+\end{enumerate}
+Moreover, the control law compensates for the system uncertainties, including actuator nonlinearities, model uncertainties and exogenous perturbations, without prior knowledge of their upper bounds, and accounts for nonlinearity inherent in the optic flow-based landing dynamics.
+Consequently, the following first-order PI sliding surface is now introduced:
+\begin{equation} \label{sigma: equation}
+    \sigma(t) = \zeta(t) + \Omega \int_{0}^t \zeta(\tau)\,d\tau
+\end{equation}
+with $\Omega > 0$. Then, the time-derivative of $\sigma(t)$ is obtained from Eqs. \eqref{unconstrained system: equation} and \eqref{sigma: equation} as
+\begin{align}
+    \label{sigma derivative: equation 1}
+    \dot{\sigma}(t) =~& \nu(\zeta,t) \left[{-}y_r^2(t) {+} \beta(t) \mu(t) {+} \Delta(t) {-} \eta(t) \dot{p}(t) \right]+ \Omega\zeta(t) \nonumber\\
+    =~& \beta(t)\left\{\nu(\zeta,t)\mu(t)-\nu(\zeta,t)\left[y_r^2(t) {+} \eta(t) \dot{p}(t)\right]\right.\nonumber\\
+    &{+}\left.\Omega\zeta(t)\right\}+\beta_{\text{min}}\boldsymbol{F}(\zeta,t)\tilde{\boldsymbol{\Delta}}(t),
+\end{align}
+where $\tilde{\boldsymbol{\Delta}}(t)=\beta_{\text{min}}^{-1}\begin{bmatrix}
+\Delta(t)  & \beta(t){-}1 \end{bmatrix}^{\top}$.
+Invoking \textit{Assumption 1}, it clearly follows that there exists an unknown positive constant $\Delta^{*} = \beta_{\text{min}}^{-1} (\Delta_{\text{max}}+\text{max}\{|\beta_{\text{max}}{-}1|,|\beta_{\text{min}}{-}1|\})$ such that $\lVert\tilde{\boldsymbol{\Delta}}(t)\rVert_2\leq\Delta^{*}$.
+The uncertainty coefficient term $\boldsymbol{F}(\zeta,t)$ is defined as
+\begin{equation}
+\boldsymbol{F}(\zeta,t) = \begin{bmatrix}
+\nu(\zeta,t) & \nu(\zeta,t)[y_r^2(t) {+} \eta(t) \dot{p}(t)] - \Omega\zeta(t) \end{bmatrix}.
+\end{equation}
+ 
+Next, note that $\boldsymbol{F}(\zeta,t)$ is also state-dependent and available for feedback. The following continuous (chatter-free) sliding mode control law is now proposed to compute the unconstrained command signal $\mu(t)$:
+\begin{subequations}  \label{control law: equation}
+    \begin{align}
+        \label{control_policy}
+        \mu(t)=~&\nu(\zeta,t)^{-1}\left[\mu_{\text{sw}}(t){+}\mu_{\text{eq}}(t)\right], \nonumber\\
+        \mu_{\text{sw}}(t)=&-\Gamma \sigma(t)-\kappa(t) \lVert \boldsymbol{F}(\zeta,t) \rVert_2 \,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right], \nonumber\\
+        \mu_{\text{eq}}(t)=~&\nu(\zeta,t)[y_r^2(t) {+} \eta(t) \dot{p}(t)] - \Omega\zeta(t),
+    \end{align} 
+where $\Gamma>0$. The saturation function $\text{sat}({\sigma}/\epsilon)$ is defined as
+\begin{align}
+\label{sat_fn}
+\text{sat}({\sigma}/\epsilon)=\begin{cases}
+    {\sigma}/\epsilon,~~\,\text{if}~~|{\sigma}|\,<\,\epsilon\\
+    \lceil {\sigma}\rfloor^0,~\text{otherwise}
+    \end{cases}
+\end{align}
+with $\lceil {\sigma}\rfloor^0$ representing the sign function of $\sigma$. The constant parameter $\epsilon$, which is chosen such that $0 < \epsilon << 1$, represents the sensitivity of the smooth transition across the sliding surface. The adaptive gain $\kappa(t)$ is updated as:
+\begin{equation} \label{adaptive law: equation}
+    \dot{\kappa}(t) =  \eta_{\text{c}} \lvert \sigma(t) \rvert \, \lVert \boldsymbol{F}(\zeta,t) \rVert_2 - \rho \eta_{\text{c}} \kappa(t),\,\kappa(0) > 0
+\end{equation} 
+\end{subequations}
+where $\rho$, $\eta_{\text{c}}$ are positive gains. Finally, the constrained command signal $a_{zu}(t)$ (bounded by a known upper limit $a_{\text{max}}$) is computed from $\mu(t)$ using Eq. \eqref{saturated input: equation}. Fig. \ref{schematic diagram: figure} highlights the robust adaptive vertical control pipeline for laterally stabilized soft landing of a UAV.
+
+\begin{figure*}[ht!]
+\centering
+    \includegraphics[width=\textwidth]{Figures/Schematic Diagram.pdf}
+    \caption{Block diagram illustrating the control pipeline for laterally stabilized soft landing of a UAV, highlighting the robust adaptive vertical control pipeline implemented in the companion computer.} 
+    \label{schematic diagram: figure}
+\end{figure*}
+
+\textit{Remark 1}: The control law \eqref{control law: equation} performs the following control actions on the system dynamics \eqref{unconstrained system: equation} \cite{eker2010}:
+\begin{enumerate}
+    \item The term $\mu_{\text{sw}}(t)$ executes \textit{switching control} by ensuring discontinuity of the control law across the sliding surface, adapting to system uncertainties without prior knowledge of their upper bounds. It includes a standard PI action $\Gamma \sigma(t)$ and an adaptive action $\kappa(t) \lVert \boldsymbol{F}(\zeta,t) \rVert_2$ for the sliding mode term sat$[{\sigma(t)}/{\epsilon}]$. It uses a smooth saturation function, instead of a standard sign function, with its sensitivity governed by $\epsilon$ to avoid chattering. 
+    \item The term $\mu_{\text{eq}}(t)$, representing \textit{equivalent control}, is responsible for the main control action to drive output error to the smooth sliding surface. Once the error has reached the vicinity of the sliding surface, the control action forces it to evolve near the surface, while allowing asymptotic convergence of the sliding variable to a small UUB around the origin. This term also provides feedback linearization to compensate for the known nonlinearity present in the landing dynamics and alleviates the adverse effects of the unknown actuator nonlinearities, such as actuator faults and input saturation, by imposing prescribed performance constraints on the system output.
+\end{enumerate}
+
+\textit{Remark 2}: From the time-integral of Eq. \eqref{adaptive law: equation}, the following expression is obtained:
+\begin{equation} \label{kappa: equation}
+    \kappa(t) = e^{{-}\rho \eta_{\text{c}} t} \kappa(0) + \int_{t_0}^{t} e^{{-}\rho \eta_{\text{c}} (t {-} \tau)} \lvert \sigma(\tau) \rvert \,\lVert \boldsymbol{F}(\zeta,\tau) \rVert_2 \,d\tau
+\end{equation}
+where $\lvert \sigma(t) \rvert$ encapsulates the cumulative system output error as shown in Eq. \eqref{sigma: equation}, while $\lVert \boldsymbol{F}(\zeta,t) \rVert_2$ captures the variation in the amplitudes of the system uncertainties $\tilde{\boldsymbol{\Delta}}(t)$. From this equation, it can be deduced that $\kappa(t) > 0, \forall \, t \geq 0$, since $\kappa(0) > 0$ and $\lvert \sigma(t) \rvert \,\lVert \boldsymbol{F}(\zeta,t) \rVert_2 \geq 0$. In the leakage-type adaptive law \cite{shao2021}, the leak is represented by the second term on the RHS of Eq. \eqref{adaptive law: equation} such that a small $\rho$ implies a faster update of $\kappa(t)$ for approximating the amplitudes of the system uncertainties and output error, whereas a large value for $\rho$ leads to a slow adaptation but a decreased control energy as indicated in Eq. \eqref{control_policy}.
+
+\textit{Remark 3}: Note that the computation of vertical acceleration command $a_{zu}(t)$ is independent of the instantaneous altitude $z(t)$ and vertical velocity $v_z(t)$ of the UAV and depends on the optic flow $y_r(t)$.
+Hence, instead of a large suite of sensors, only a monocular camera is enough to execute this landing controller.
+Moreover, unlike conventional ASMC strategies, the control law \eqref{control law: equation} of the PLASMC strategy is independent of prior knowledge of the uncertainty bounds $\beta_{\text{max}}$, $\Delta_{\text{max}}$.
+
+Now, Eq. \eqref{control_policy} is incorporated in Eq. \eqref{sigma derivative: equation 1} to obtain the following expression:
+\begin{align}
+\label{sigma derivative: equation 2}
+\dot{\sigma}(t)=~&\beta(t) \left\{{-}\Gamma\sigma(t){-}\kappa(t) \lVert \boldsymbol{F}(\zeta,t) \rVert_2 \,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right]\right\}\nonumber\\
+&+\beta_{\text{min}}\boldsymbol{F}(\zeta,t)\tilde{\boldsymbol{\Delta}}(t)
+\end{align}
+The next section provides theoretical proof for the Lyapunov stability of the closed-loop system \eqref{sigma derivative: equation 2} in the presence of unknown system uncertainties $\tilde{\boldsymbol{\Delta}}(t)$. 
+
+\subsection{Lyapunov Stability Analysis}
+The stability analysis starts with the following definition of global uniform ultimate boundedness of the signal $\boldsymbol{\chi}(t)$:
+
+\textit{Definition 1}: \cite{li2022} Consider a multi-variable signal $\boldsymbol{\chi}(t) \in \mathbb{R}^n, ~n \in [0, \infty)$. Assume that $\exists$ $\lambda, ~ \lambda_{\text{u}} \in \mathbb{R}_+$, where $\lambda, ~ \lambda_{\text{u}}$ are positive constants and $\forall \, 0 < \lambda < \lambda_{\text{u}}$, $\exists ~ \mathcal{T} \geq 0$ and $\Lambda > 0$ such that
+\begin{equation} \label{GUUB: Definition}
+    \lVert \boldsymbol{\chi}(0) \rVert_2 \leq \lambda ~\implies~ \lVert \boldsymbol{\chi}(t) \rVert_2 \leq \Lambda,  \, \forall \, t \geq \mathcal{T}
+\end{equation}
+\noindent and $\lambda$ can be arbitrarily large. Then, the signal $\boldsymbol{\chi}(t)$ is said to be \textit{global uniformly ultimately bounded} by the ultimate bound $\Lambda$.
+
+\textit{Lemma 1}: \cite{khalil2002} Let $V$ be a continuously differentiable function such that 
+\begin{align}
+    k_1 \lVert \boldsymbol{\chi} \rVert^2_2 \leq V(\boldsymbol{\chi}) \leq k_2 \lVert \boldsymbol{\chi} \rVert^2_2, ~ \dot{V}(\boldsymbol{\chi}) \leq - k_3 V(\boldsymbol{\chi}),\\ \forall \, \lVert \boldsymbol{\chi} \rVert_2 \geq \varkappa \nonumber
+\end{align}
+\noindent with $k_1$, $k_2$, $k_3 > 0$. Consider a ball $\mathcal{B}_r$ of radius $r$ and let $\varkappa \leq r (k_1/k_2)^{\nicefrac{1}{2}} \triangleq \lambda$.
+\noindent Then, for every initial state $\boldsymbol{\chi}(0)$ satisfying $\lVert \boldsymbol{\chi}(0) \rVert^2_2 \leq \lambda$, $\exists$ $\mathcal{T} \geq 0$, such that \eqref{GUUB: Definition} holds true with $\Lambda \triangleq \varkappa (k_2/k_1)^{\nicefrac{1}{2}}$ and an arbitrarily large $\lambda$. 
+
+\textit{Theorem 1}: Consider the nonlinear system \eqref{perturbed system dynamics: equation} such that the initial value of the flow error $y_e(0)$ is within the constrained region, i.e., ${-}p_0 < y_e(0) < p_0$. Then, under \textit{Assumption 1}, system \eqref{perturbed system dynamics: equation} under the proposed control law \eqref{control law: equation} accomplishes exponential convergence of $\zeta(t)$ to a UUB given by
+\begin{equation}
+    \varpi = \sqrt{\frac{\rho\beta_{\text{min}}}{\omega_1 {-} \omega_2}}\Delta^{*},
+\end{equation}
+where $\omega_1 \triangleq \beta_{\text{min}} \text{ min}(\Gamma,\rho/2)/\text{max}(1/2,\beta_{\text{min}}/2 \eta_{\text{c}})>0$, $0<\omega_2<\omega_1$. Moreover, the control law \eqref{control law: equation} ensures that the trajectory of the system \eqref{perturbed system dynamics: equation} lies within the prescribed constraint set ${-}p(t) < y_e(t) < p(t) \, \forall \, t \geq 0$.
+
+\textit{Proof}: As a first step, observe that $\zeta(0) = \mathcal{S}^{-1} [\eta(0)]$ is well-defined for $\lvert \eta(0) \rvert < 1$, where $\eta(0) = y_e(0)/p_0$. The dynamics of $\zeta(t)$ then evolves according to the system \eqref{unconstrained system: equation} under the control law \eqref{control law: equation} of the PLASMC strategy.
+
+\noindent The following candidate Lyapunov function $V(t)$ is now considered for subsequent analysis:
+\begin{equation} \label{Lyapunov: equation}
+    V(t) = \frac{1}{2}\sigma^2(t) + \frac{\beta_{\text{min}}}{2\eta_{\text{c}}} \left[\kappa(t) {-} \Delta^{*}\right]^2,
+\end{equation}
+where the unknown positive constant $\Delta^{*}$ satisfies $\lVert\tilde{\boldsymbol{\Delta}}(t)\rVert_2\leq\Delta^{*}$.
+
+\noindent Using \eqref{adaptive law: equation} and \eqref{sigma derivative: equation 2}, the time-derivative of \eqref{Lyapunov: equation} can be written as
+\begin{align}
+\label{Lyapunov derivative: equation 1}
+   \dot{V}(t)=~&\sigma(t) \dot{\sigma}(t) + \frac{\beta_{\text{min}}}{\eta_{\text{c}}} \left[\kappa(t) {-} \Delta^{*}\right] \dot{\kappa}(t)\nonumber\\
+   =~&\beta(t)\left\{-\Gamma\sigma^2(t)-\kappa(t)\lVert \boldsymbol{F}(\zeta,t) \rVert_2 \,\sigma(t) \,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right]\right\}\nonumber\\
+   &{+}\,\beta_{\text{min}}\,\sigma(t)\boldsymbol{F}(\zeta,t)\tilde{\boldsymbol{\Delta}}(t)+\frac{\beta_{\text{min}}}{\eta_{\text{c}}} \left[\kappa(t) {-} \Delta^{*}\right]\nonumber\\
+   &{\times}\left[\eta_{\text{c}} \lvert \sigma(t) \rvert\, \lVert \boldsymbol{F}(\zeta,t) \rVert_2 {-} \rho \eta_{\text{c}} \kappa(t)\right].
+\end{align} 
+
+As $\beta(t)\geq\beta_{\text{min}}$, by introducing $\alpha(t)=\beta(t)/\beta_{\text{min}}-1\geq 0$, \eqref{Lyapunov derivative: equation 1} can be rewritten as
+\begin{align}
+\label{Lyap_deriv_2}
+    \dot{V}(t)~{=}~&\beta_{\text{min}}\biggl({-}\Gamma\sigma^2(t){-}\kappa(t)\lVert \boldsymbol{F}(\zeta,t) \rVert_2\, \sigma(t) \,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right]\nonumber\\
+    &{+}\sigma(t)\boldsymbol{F}(\zeta,t)
+    \tilde{\boldsymbol{\Delta}}(t){+}\alpha(t)\biggl\{{-}\Gamma\sigma^2(t)\nonumber    
+    \end{align}
+    \begin{align}
+    &{-}\kappa(t)\lVert \boldsymbol{F}(\zeta,t) \rVert_2\, \sigma(t)\,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right]\biggr\}{+}\left[\kappa(t) {-} \Delta^{*}\right]\nonumber\\
+    &{\times}\left[ \lvert \sigma(t) \rvert \,\lVert \boldsymbol{F}(\zeta,t) \rVert_2 {-} \rho \kappa(t)\right]\biggr).
+\end{align}
+
+Using the definition of the saturation function, observe that $\alpha(t)\left\{\Gamma\sigma^2(t){+}\kappa(t)\lVert \boldsymbol{F}(\zeta,t) \rVert_2\, \sigma(t) \,\text{sat} \left[{\sigma}(t)/{\epsilon} \right]\right\}\geq 0$ so that
+\begin{align}
+\label{Lyap_deriv_3}
+    \dot{V}(t)\leq~&\beta_{\text{min}}\biggl\{{-}\Gamma\sigma^2(t){-}\kappa(t)\lVert \boldsymbol{F}(\zeta,t) \rVert_2 \,\sigma(t) \,\text{sat} \left[\frac{\sigma(t)}{\epsilon} \right]\nonumber\\
+    &{+}\sigma(t)\boldsymbol{F}(\zeta,t)\tilde{\boldsymbol{\Delta}}(t){+}\left[\kappa(t) {-} \Delta^{*}\right]\nonumber\\
+    &{\times}\left[ \lvert \sigma(t) \rvert\, \lVert \boldsymbol{F}(\zeta,t) \rVert_2 {-} \rho \kappa(t)\right]\biggr\}\nonumber\\
+   \leq~& \beta_{\text{min}}\left\{{-}\Gamma\sigma^2(t){+}\lvert \sigma(t) \rvert \,\lVert \boldsymbol{F}(\zeta,t) \rVert_2 \,\lVert \tilde{\boldsymbol{\Delta}}(t)\rVert_2\right.\nonumber\\
+   &{-}\rho\kappa(t) \left[\kappa(t) {-} \Delta^{*}\right]{-}\lvert \sigma(t) \rvert\, \lVert \boldsymbol{F}(\zeta,t) \rVert_2 \left.\Delta^{*}\right\}.
+\end{align}
+As $\lVert \tilde{\boldsymbol{\Delta}}(t)\rVert_2\leq\Delta^{*}$,  the following inequality is valid:
+\begin{eqnarray}
+\label{Lyap_deriv_4}
+    \dot{V}(t)~{\leq}~\beta_{\text{min}}\left\{{-}\Gamma\sigma^2(t){-}\rho\kappa(t) \left[\kappa(t) {-} \Delta^{*}\right]\right\}.
+\end{eqnarray}
+Then, using the inequality relation that $\kappa^2(t)-\kappa(t) \Delta^{*}\geq\left\{\left[\kappa(t)-\Delta^{*}\right]^2-\Delta^{*2}\right\}/2$
+\begin{flalign}
+\label{Lyap_deriv_5}
+\dot{V}(t)~&{\leq}-\beta_{\text{min}}\Gamma{\sigma}^2(t)-\frac{1}{2}\rho\beta_{\text{min}}[\kappa(t){-}\Delta^{*}]^2+\frac{1}{2}\rho\beta_{\text{min}}\, \Delta^{*2}\nonumber\\
+~&{\leq} -\omega_1 V(t)+\frac{1}{2}\rho\beta_{\text{min}} \,\Delta^{*2},
+\end{flalign}
+where $\omega_1 \triangleq \beta_{\text{min}} \text{ min}(\Gamma,\rho/2)/\text{max}(1/2,\beta_{\text{min}}/2 \eta_{\text{c}})>0$. For the choice of a scalar $\omega_2$ satisfying $0<\omega_2<\omega_1$, the above inequality \eqref{Lyap_deriv_5} is rewritten as
+\begin{flalign}
+\label{Lyap_deriv_6}
+\dot{V}(t)&\leq-\omega_2 V(t)-(\omega_1{-}\omega_2) V(t)+\frac{1}{2}\rho\beta_{\text{min}} \,\Delta^{*2}\nonumber\\
+&\leq-\omega_2 V(t)\qquad\forall\, V(t)\geq \Theta=\frac{\rho\beta_{\text{min}} \,\Delta^{*2}}{2(\omega_1{-}\omega_2)}.
+\end{flalign}
+
+Invoking \textit{Lemma 1}, any trajectory enters the ball $\mathcal{B}_r = \left \{ \left ( \sigma, ~ \kappa \right ) \in \mathbb{R}^2 | V \leq \Theta \right\}$ exponentially in finite-time and stays in $\mathcal{B}_r$ for all future time. Note that the size of the ball can be made suitably small through a suitable selection of the controller parameters $\rho$, $\eta_{\text{c}}$ and $\Gamma$, so that by recognizing that $V(t) \geq \sigma ^2/2$, one has the ultimate bound for $\sigma(t)$ as $\lvert \sigma(t) \rvert \leq \varpi {=} \left[\rho \beta_{\text{min}}/\left(\omega_1 {-} \omega_2\right)\right]^{\nicefrac{1}{2}}\Delta^{*}$. This bound is uniform as it is independent of initial conditions. 
+Consequently, it follows from \eqref{sigma: equation} that the output error variable $\zeta(t)$ converges to a small bound around the origin so that, from \eqref{error transformation: equation}, ${-}p(t) < y_e(t) < p(t)$ is satisfied. Thus the prescribed performance constraint is ensured $\forall \, t \geq 0$. This concludes the proof.
+
+\textit{Remark 4}: The first term on the RHS of \eqref{Lyapunov: equation} serves as a candidate Lyapunov function for the nominal $\sigma$-dynamics without uncertainty, whereas the second term represents a candidate Lyapunov function for the error dynamics associated with the system uncertainties.
+Hence, from \textit{Theorem 1}, it can deduced that the PLASMC strategy will guarantee exponential convergence of the system output error to a small UUB and ensure that the adaptive control parameter $\kappa(t)$ effectively adapts online to the variation in the peak values of the system uncertainties $\tilde{\boldsymbol{\Delta}}(t)$.
+
+\textit{Remark 5}: In the absence of performance constraints, note that the unconstrained sliding variable can be constructed as $\tilde{\sigma}(t) = y_e(t) + \Omega \int_0^t y_e(\tau)~d\tau$. Consequently, similar to \eqref{control law: equation}, a new control law can be formulated for Leakage-type Adaptive Sliding Mode Control (LASMC) strategy without constraining the optic flow error $y_e(t)$ as follows: 
+\begin{align} 
+\label{second control law: equation}
+    \mu(t) =& -\Gamma\tilde{\sigma}(t)-\kappa_1(t)||\tilde{\boldsymbol{F}}(t)||_2\,\text{sat}\left[\frac{\tilde{\sigma}(t)}{\epsilon}\right]+y_r^2(t)\nonumber\\
+    &-\Omega y_e(t) \nonumber\\
+   \dot{\kappa}_1(t) =&~\eta_{\text{c}} \lvert \tilde{\sigma}(t) \rvert \,\lVert \tilde{\boldsymbol{F}}(t) \rVert_2 - \rho \eta_{\text{c}} \kappa_1(t),\,\kappa_1(0) > 0
+\end{align}
+with $\tilde{\boldsymbol{F}}(t)=\begin{bmatrix}
+1 & y_r^2(t) {-} \Omega\,y_e(t) \end{bmatrix}$. Using the proof of \textit{Theorem 1}, it can again be shown that the trajectory of optic flow error system \eqref{perturbed system dynamics: equation} achieves uniform exponential convergence under the control law \eqref{second control law: equation}. However, in the absence of performance constraints, note that the LASMC strategy realizes exponential convergence of the sliding mode $\tilde{\sigma}$ to the bound $\varpi$ that is proportional to the magnitude of the uncertainty bound $\Delta^{*}$. In contrast, by incorporating the performance constraints, the proposed control law \eqref{control law: equation} of PLASMC strategy guarantees convergence of the optic flow error to the prescribed bound $\lim_{t\rightarrow\infty}\lvert y_e(t) \rvert\leq p_{\infty}$ while ensuring the desired transient and steady-state performance.
+
+\section{EXPERIMENTATION}
+\label{experimentation: section}
+The section provides details on two distinct quadrotor UAV platforms utilized to conduct landing experiments in indoor and outdoor environments.
+It also discusses the visual processing required for robust optic flow estimation from image sequences captured by a cost-efficient monocular camera.
+The PLASMC strategy outlined in Sec. \ref{adaptive controller: section} is validated through numerical simulations in \cite{singhal2023}, while this section provides the experimental results from both laboratory and field tests.
+The efficiency of the proposed landing controller is also assessed based on the computational times of visual processing and control algorithms.
+Moreover, Supplemental Video S1\footnote{This video is also available at \url{https://youtu.be/Zq4_IzkpDTc}.} provides video of the landing experiments for further insights, including the visualization of spatially distributed radial optic flow computed onboard using the visual processing technique discussed in Sec. \ref{visual processing: section}.
+
+\subsection{Experimental Details} \label{experimental details: section}
+\subsubsection{Experimental Setup} \label{experimental setup: section}
+
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.38\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Crazyflie.pdf}
+    \caption{Crazyflie 2.1 micro-quadrotor UAV} 
+    \label{crazyflie: figure}
+    \end{subfigure} 
+    \hspace{3em}
+    \begin{subfigure}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/In-house Quadrotor.pdf}
+    \caption{Customized mini-quadrotor UAV} 
+    \label{customized quadrotor: figure}
+    \end{subfigure}
+\caption{The components of micro- and mini-UAVs used for laboratory and field tests, respectively.}
+\label{quadrotors: figure}
+\end{figure*}
+A Bitcraze Crazyflie 2.1 micro-quadrotor UAV, depicted in Fig. \ref{crazyflie: figure}, is selected for laboratory (indoor) tests, and a Bitcraze Flow deck V2 is employed for robust state estimation needed for lateral and heading stability of the micro-UAV. 
+All the control commands are transmitted from a companion computer running on Ubuntu 20.04 OS to the micro-UAV via a Bitcraze Crazyradio PA, which is a long-range open USB radio dongle with an antenna.
+For field (outdoor) tests, a customized mini-quadrotor UAV, shown in Fig. \ref{customized quadrotor: figure}, is assembled around an F330 quadrotor frame using readily available off-the-shelf (OTS) components.
+A PX4 flight stack runs onboard a CubePilot Cube Orange flight controller, fusing the data from a Benewake TF02-Pro LiDAR rangefinder and a CubePilot Here3 GPS sensor for robust state estimation using extended Kalman filter algorithm.
+However, these state estimation data are not incorporated into the control command; they are used only for logging altitude and vertical velocity data.
+For autonomous control, a Raspberry Pi 4B mini-computer running on Ubuntu 20.04 OS is added as a companion computer complemented by a single downward-facing Raspberry Pi V2 monocular camera.
+The Supplemental Data S1 outlines the experimental procedures employed for laboratory and field tests. 
+
+\subsubsection{Visual Processing Technique for Robust Optic Flow Estimation} \label{visual processing: section}
+
+\begin{figure*}[ht!]
+\centering
+    \includegraphics[width=\textwidth]{Figures/Controller Block Diagram.pdf}
+    \caption{Low-complexity visual processing pipeline for robust optic flow estimation.} 
+    \label{Controller Block Diagram}
+\end{figure*}
+Fig. \ref{Controller Block Diagram} presents the low-complexity visual processing technique implemented for robust optic flow estimation using a sequence of real-time poor-quality images captured from the cost-efficient monocular camera. 
+As the UAV autonomously approaches the landing surface, the downward-facing camera captures images in RGB 320×240 format at a rate of about 60 frames per second using an onboard Python script.
+Each frame is first pre-processed to extract a grayscale image because only the luminance channel is required to compute the optic flow using the iterative pyramidal Lucas–Kanade algorithm \cite{lucas1981}. 
+This algorithm employs a gradient-based method with a maximum of 20 iterations at each of three pyramidal levels such that the optic flow computed at a lower resolution is used as input for the next higher resolution level, progressively up to the maximum resolution.
+In order to implement the feature-agnostic optic flow estimator described in the Supplemental Data S1, the optic flow vectors are determined around concentric rings aligned with the image center.
+Radial projections of these vectors are computed at sixty discrete azimuthal stations along five distinct rings of fixed radius to enhance the performance of the estimator in regions with low contrast.
+The radial projections at all discrete stations are then averaged to eliminate the lateral optic flow, isolating the radial optic flow for each ring.
+Finally, the overall radial optic flow signal $y_r(t)$ is obtained by spatially averaging the radial optic flow values across all rings.
+The $y_r(t)$ signal is subsequently used to generate suitable vertical control commands for the landing controller.
+However, the raw $y_r(t)$ signal obtained using the iterative algorithm may contain outliers due to temporary violations of the assumptions underlying the optic flow estimation method and the inherently noisy nature of digital visual information, particularly close to the ground.
+These outliers, if left unchecked, could adversely affect the landing performance of the control strategy.
+Hence, these outliers are identified and eliminated in real-time by imposing the prescribed bound on the optic flow error signal $\lvert y_e(t) \rvert\leq p(t) \, \forall \, t \geq 0$ before incorporating the flow estimates into the control strategy described in Sec. \ref{adaptive controller: section}.
+Experimental results in the next subsection manifest that the visual processing technique provides robust optic flow estimates against model uncertainties arising from noisy visual data and low frame rates, ensuring reliable control performance for a guaranteed soft landing.
+
+\subsection{Experimental Results from Laboratory Tests} 
+\label{indoor tests results: section}
+The primary objectives of the landing experiments conducted using the micro-UAV in a controlled laboratory environment are:
+1) to validate the proposed PLASMC strategy for achieving optic flow-guided soft landing, and
+2) to assess the impact of the nonlinearity inherent in the optic flow-based landing dynamics on the landing performance.
+Additional experiments are planned to analyze the effects of varying initial altitude and vertical velocity on the nonlinear landing dynamics, particularly near the ground.
+
+\subsubsection{Efficacy of PLASMC Strategy for Soft Landing}
+\label{validation of PLASMC: section}
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.32\textwidth}
+    \includegraphics[width=\textwidth]{Figures/Case 2 - adaptive.pdf}
+    \caption{Nominal initial conditions:\\$z(0) = 2.0\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$} 
+    \label{Case 2 - Indoor Adaptive}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \includegraphics[width=\textwidth]{Figures/Case 1 - adaptive.pdf}
+    \caption{Reduced initial altitude:\\$z(0) = 1.5\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$} 
+    \label{Case 1 - Indoor Adaptive}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \includegraphics[width=\textwidth]{Figures/Case 3 - adaptive.pdf}
+    \caption{Reversed initial vertical velocity:\\$z(0) = 2.5\text{ m, } v_z(0) = 0.2\text{ m s}^{-1}$} 
+    \label{Case 3 - Indoor Adaptive}
+    \end{subfigure} 
+    \hfill
+\caption{Response of micro-UAV for laboratory tests with the proposed PLASMC strategy using the nominal optic flow reference $\boldsymbol{y_c \text{ = -0.20 s}^{-1}}$ for different initial conditions.}
+\label{Indoor Test - Adaptive}
+\end{figure*}
+
+In order to implement the PLASMC strategy proposed in Sec. \ref{adaptive controller: section} on the micro-UAV, the optic flow error $y_e(t)$ is constrained by a prescribed performance function $p(t)$, as shown in Eq. \eqref{error transformation: equation}, using design constants $\gamma = 0.5$, $p_0 = 5.0$, and $p_{\infty} = 1.0$.
+The control law \eqref{control law: equation} synthesizes the constrained vertical acceleration command signal $a_{zu}(t)$ to provide real-time vertical control.
+The control parameters are set to $\Omega = 0.3$, $\rho = 85.0$, $\eta_{\text{c}} = 5.0$, $\epsilon = 0.88$, $\Gamma = 0.12$, and $\kappa(0) = 25.0$, based on rigorous numerical simulations in MATLAB and laboratory landing trials using the micro-UAV.
+Fig. \ref{Indoor Test - Adaptive} presents the response of the micro-UAV in a controlled laboratory environment using the proposed PLASMC strategy.
+With the nominal initial altitude of 2.0 m and the nominal initial vertical velocity of -0.2 m s$^{-1}$, the micro-UAV achieves a soft landing despite the nonlinear optic flow-based landing dynamics.
+As depicted in Fig. \ref{Case 2 - Indoor Adaptive}, both altitude $z(t)$ and vertical velocity $v_z(t)$ converge smoothly to a small vicinity around the origin, satisfying the functional requirements for a soft landing as per \textit{Supplemental Definition S1} given in Supplemental Data S1.
+The optic flow error $y_e(t)$ remains within the prescribed bound $p(t)$ throughout the landing process, i.e. $\lvert y_e(t) \rvert\leq p(t) \, \forall \, t \geq 0$.
+This observation confirms the stability of the control law \eqref{control law: equation} in the presence of nonlinearity, especially near the ground.
+
+Fig. \ref{Case 1 - Indoor Adaptive} demonstrates that reducing the initial altitude to 1.5 m does not adversely affect the nonlinear landing dynamics, even near the ground, and results in nearly halving the landing time compared to the nominal case.
+Similarly, the PLASMC strategy satisfies the soft landing requirements when the initial vertical velocity is reversed to 0.2 m s$^{-1}$.
+In this case, the micro-UAV ascends to some height above the initial altitude of 2.5 m before reversing direction to commence the descent, as depicted in Fig. \ref{Case 3 - Indoor Adaptive}.
+These results confirm that variations in initial altitude and vertical velocity do not have an adverse impact on the landing performance due to the robustness of the PLASMC strategy against nonlinear dynamics.
+Despite the constraint imposed by the maximum feasible vertical acceleration of the micro-UAV in all cases, as shown in the $a_{zu}(t)$ subplots in Fig. \ref{Indoor Test - Adaptive}, the PLASMC strategy effectively mitigates the adverse effects of input saturation in line with \textit{Remark 1}.
+The successful soft landing of the micro-UAV with the proposed PLASMC strategy demonstrates that the optic flow-based landing controller satisfies the physical constraints of the cost-efficient, low-SWaP UAV platform.
+
+\subsubsection{Impact of Nonlinearity on Landing Performance}
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 2 - fixed.pdf}
+    \caption{Nominal initial conditions:\\$z(0) = 2.0\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$} 
+    \label{Case 2 - Indoor Fixed}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 1 - fixed.pdf}
+    \centering
+    \caption{Reduced initial altitude:\\$z(0) = 1.5\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$} 
+    \label{Case 1 - Indoor Fixed}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 3 - fixed.pdf}
+    \caption{Reversed initial vertical velocity:\\$z(0) = 2.5\text{ m, } v_z(0) = 0.2\text{ m s}^{-1}$} 
+    \label{Case 3 - Indoor Fixed}
+    \end{subfigure}     
+    \hfill
+\caption{Response of micro-UAV for laboratory tests with the fixed-gain PI control strategy \cite{ho2018} using the nominal optic flow reference $\boldsymbol{y_c \text{ = -0.20 s}^{-1}}$ for different initial conditions.}
+\label{Indoor Test - Fixed}
+\end{figure*}
+Optic flow-based fixed-gain control strategies, such as those proposed in \cite{herisse2012, alkowatly2015, ho2018}, may be inadequate for achieving soft landing due to the highly nonlinear dynamics associated with optic flow-guided landing, particularly near the ground.
+To validate this argument, a performance comparative study is performed using a fixed-gain PI control strategy with proportional gain $k_p = 0.6$ and integral gain $k_i = 0.1$ as suggested in \cite{ho2018}.
+Fig. \ref{Indoor Test - Fixed} presents the results from landing experiments conducted with the fixed-gain PI control strategy in a controlled laboratory environment.
+For the nominal case, the altitude $z(t)$ converges to a small vicinity around the origin, as shown in Fig. \ref{Case 2 - Indoor Fixed}, indicating a smooth vertical descent.
+However, the vertical velocity $v_z(t)$ does not converge to zero, resulting in a negative velocity at touchdown and, thus, a hard landing.
+This behavior occurs because the linear control command produced by the fixed-gain PI control strategy is insufficient to manage the highly nonlinear landing dynamics near the ground.
+
+Fig. \ref{Case 1 - Indoor Fixed} shows that while the UAV can achieve a safe landing from a reduced altitude of 1.5 m, small oscillations are observed near the ground, as depicted in the enlarged view in the $z(t)$ subplot.
+When the initial vertical velocity is modified to 0.2 m s$^{-1}$, the controller becomes unstable after reversing the direction of motion, leading to a crash landing as depicted in Fig. \ref{Case 3 - Indoor Fixed}.
+Although the optic flow-based fixed-gain control strategy exhibits landing capability, it cannot handle nonlinearity effectively, resulting in unpredictable and potentially dangerous landing behavior.
+In contrast, the proposed PLASMC strategy offers effective feedback linearization to compensate for nonlinearity in the landing dynamics, as described in \textit{Remark 1}, ensuring compliance with the functional requirements for soft landing.
+Overall, the experimental results in Figs. \ref{Indoor Test - Adaptive} and \ref{Indoor Test - Fixed} highlight the superior performance of the proposed PLASMC strategy over the fixed-gain PI control strategy for achieving optic-flow guided soft landing in a controlled environment. 
+
+\subsection{Experimental Results from Field Tests} \label{outdoor tests results: section}
+The nonlinear optic flow-based landing dynamics can become unbounded amid perturbations and uncertainties, especially near the ground, adversely affecting the landing performance of the proposed PLASMC strategy.
+Hence, the objective is to evaluate the influence of such perturbations and uncertainties on the nonlinear dynamics under more challenging outdoor conditions.
+To this end, landing experiments are conducted in a real-world environment with exogenous perturbations, such as wind gusts, and model uncertainties arising from noisy visual data and low frame rates.
+Given that the optic flow-based fixed-gain control strategy has already demonstrated inadequate landing performance in the controlled laboratory setting due to its failure to handle nonlinear landing dynamics, its performance is not considered in the more challenging outdoor scenarios.
+In order to further assess the proposed PLASMC strategy, the field tests analyze the effect of varying initial altitude and vertical velocity, as well as the impact of different descent behaviors on the landing performance.
+An ablation study is also conducted to evaluate the effectiveness of imposing prescribed performance constraints on the system output error $y_e(t)$.
+Additional experiments are planned to demonstrate the limitations of an altitude-based vertical velocity control strategy in addressing the soft landing problem.
+Following comprehensive numerical simulations in MATLAB and field landing trials using the mini-UAV, the prescribed performance function $p(t)$ is designed with the constants: $\gamma = 1.5$, $p_0 = 5.0$, and $p_{\infty} = 0.75$ and the control parameters for the control law \eqref{control law: equation} are set as follows: $\Omega = 0.08$, $\rho = 20.0$, $\eta_{\text{c}} = 0.1$, $\epsilon = 0.1$, $\Gamma = 0.1$, and $\kappa(0) = 0.10$.
+
+\subsubsection{Effect of Perturbations and Uncertainties on Landing Performance.}
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 2b.pdf}
+    \caption{Nominal initial conditions:\\$z(0) = 2.0\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$}
+    \label{Case 2 - Outdoor Nominal}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 1b.pdf}
+    \caption{Reduced initial altitude:\\$z(0) = 1.5\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$} 
+    \label{Case 1 - Outdoor Nominal}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 3b.pdf}
+    \caption{Reversed initial vertical velocity:\\$z(0) = 2.5\text{ m, } v_z(0) = 0.2\text{ m s}^{-1}$} 
+    \label{Case 3 - Outdoor Nominal}
+    \end{subfigure} 
+    \hfill
+\caption{Response of mini-UAV for field tests with the proposed PLASMC strategy using the nominal optic flow reference $\boldsymbol{y_c \text{ = -0.30 s}^{-1}}$ for different initial conditions.}
+\label{Outdoor Test - Adaptive Nominal}
+\end{figure*}
+Fig. \ref{Outdoor Test - Adaptive Nominal} depicts the response of the mini-UAV during field tests conducted with the proposed PLASMC strategy using nominal optic flow reference $y_c$ = -0.30 s$^{-1}$.
+Unlike the laboratory tests shown in Fig. \ref{Indoor Test - Adaptive}, fluctuations, especially in $v_z(t)$ plots, highlight the influence of exogenous perturbations and model uncertainties on landing dynamics.
+Despite these challenges, both the altitude $z(t)$ and vertical velocity $v_z(t)$ converge smoothly to a small vicinity around the origin under nominal initial conditions, satisfying the functional requirements for a soft landing, as illustrated in Fig. \ref{Case 2 - Outdoor Nominal}.
+Consistent with the laboratory tests, the optic flow error $y_e(t)$ remains within the prescribed bound $p(t)$, i.e. $\lvert y_e(t) \rvert\leq p(t) \, \forall \, t \geq 0$, even under more challenging outdoor conditions.
+This insight demonstrates the robustness of the PLASMC strategy against system uncertainties, including actuator nonlinearities, model uncertainties and exogenous perturbations.
+Furthermore, reducing the initial altitude to 1.5 m or reversing the direction of the initial vertical velocity does not adversely affect the landing performance of the PLASMC strategy, confirming compliance with the soft landing requirements in both scenarios, as shown in Figs. \ref{Case 1 - Outdoor Nominal} and \ref{Case 3 - Outdoor Nominal}.
+Although perturbations and uncertainties can potentially lead to unbounded behavior in the nonlinear landing dynamics, especially near the ground, the mini-UAV successfully achieves soft landings in all cases with nominal descent.
+These results also validate that the visual processing technique explained in Sec. \ref{visual processing: section} offers robust optic flow estimates against model uncertainties arising from noisy visual data and a low frame rate of 60 Hz, effectively eliminating outliers and ensuring reliable control performance for a guaranteed soft landing.
+
+\subsubsection{Impact of Descent Behavior on Landing Performance}
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 2c.pdf}
+    \caption{Nominal initial conditions:\\$z(0) = 2.0\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$}
+    \label{Case 2 - Outdoor Aggressive}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 1c.pdf}
+    \caption{Reduced initial altitude:\\$z(0) = 1.5\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$}
+    \label{Case 1 - Outdoor Aggressive}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 3c.pdf}
+    \caption{Reversed initial vertical velocity:\\$z(0) = 2.5\text{ m, } v_z(0) = 0.2\text{ m s}^{-1}$}
+    \label{Case 3 - Outdoor Aggressive}
+    \end{subfigure} 
+    \hfill
+\caption{Response of mini-UAV for field tests with the proposed PLASMC strategy using more negative optic flow reference $\boldsymbol{y_c \text{ = -0.45 s}^{-1}}$ for different initial conditions.}
+\label{Outdoor Test - Adaptive Aggressive}
+\end{figure*}
+
+Landing experiments are conducted to verify that the optic flow reference $y_c$ can control the descent behavior, with a more negative $y_c$ leading to an aggressive descent behavior and thereby reduced landing time.
+In order to analyze the impact of an aggressive descent on the landing performance of the proposed PLASMC strategy amid perturbations and uncertainties, field tests are conducted using a more negative optic flow reference $y_c$ = -0.45 s$^{-1}$.
+For all three cases \textemdash nominal initial conditions, reduced initial altitude, and reversed initial vertical velocity \textemdash the proposed PLASMC strategy has satisfied the functional requirements for soft landing, as shown in Fig. \ref{Outdoor Test - Adaptive Aggressive}.
+These results indicate that the mini-UAV can successfully achieve a soft landing with at least a 30\% reduction in flight time compared to the nominal descent when a 50\% more negative $y_c$ is employed.
+
+Similarly, a less negative optic flow reference $y_c$ = -0.15 s$^{-1}$ is tested to evaluate landing performance with a more gradual descent.
+As shown in Fig. \ref{Outdoor Test - Adaptive Mild}, the PLASMC strategy ensures compliance with soft landing requirements under all three initial conditions, similar to the case of aggressive descent.
+Although the mini-UAV takes almost twice the time to achieve a soft landing compared to the nominal descent case, it requires minimal control input.
+The fluctuations in vertical velocity $v_z(t)$ and the optic flow error $y_e(t)$ are significantly reduced compared to the other descent behaviors.
+These results suggest that with a less negative $y_c$, the PLASMC strategy enables the mini-UAV to achieve soft landing with lower thrust requirements, even in the presence of perturbations and uncertainties.
+
+\begin{figure*}[ht!] 
+\centering
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 2a.pdf}
+    \caption{Nominal initial conditions:\\$z(0) = 2.0\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$}
+    \label{Case 2 - Outdoor Mild}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 1a.pdf}
+    \caption{Reduced initial altitude:\\$z(0) = 1.5\text{ m, } v_z(0) = -0.2\text{ m s}^{-1}$}
+    \label{Case 1 - Outdoor Mild}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]{Figures/Case 3a.pdf}
+    \caption{Reversed initial vertical velocity:\\$z(0) = 2.5\text{ m, } v_z(0) = 0.2\text{ m s}^{-1}$}
+    \label{Case 3 - Outdoor Mild}
+    \end{subfigure} 
+    \hfill
+\caption{Response of mini-UAV for field tests with the proposed PLASMC strategy using less negative optic flow reference $\boldsymbol{y_c \text{ = -0.15 s}^{-1}}$ for different initial conditions.}
+\label{Outdoor Test - Adaptive Mild}
+\end{figure*}
+
+\subsubsection{Supplemental Results \& Discussion}
+Supplemental Data S1 presents an ablation study using the LASMC strategy without imposing performance constraints (as discussed in \textit{Remark 5}) and evaluates the landing performance of altitude-based vertical velocity control strategy governed by the control law: $v_z(t) = y_c z(t)$.
+The ablation results indicate that the LASMC strategy does not meet the functional requirements for soft landing.
+This observation highlights the essential role of prescribed performance constraints to effectively eliminate outliers in the optic flow estimates $y_e(t)$, thereby ensuring a guaranteed soft landing.
+Similarly, the altitude-based vertical velocity control strategy leads to incomplete landings.
+This insight emphasizes the importance of adopting a scale-independent control strategy based on optic flow regulation to meet soft landing requirements.
+
+\subsection{Computational Analysis of Landing Controller}
+
+\begin{table}[!hbt]
+    \centering
+    \caption{Average computational time for each stage of the visual processing and control algorithms}
+    \begin{center}
+    \begin{tabular}{>{\centering\arraybackslash}m{3.85em} >{\centering\arraybackslash}m{4.35em} >{\centering\arraybackslash}m{4.2em} >{\centering\arraybackslash}m{5.25em} >{\centering\arraybackslash}m{4.2em}}
+    \hline \hline
+        Processes&Optic Flow Estimation&Radial Optic Flow Extraction&Vertical Control Command Computation&Total Computation per Iteration\\ 
+        \hline
+        Time, ms & 13.068 & 4.611 & 0.461 & 18.975 \\ 
+    \hline \hline
+    \end{tabular}
+    \label{processing time: table}
+    \end{center}
+\end{table}
+
+The computational time for each intensive stage of the visual processing and control algorithms is measured onboard the mini-UAV during flight tests to analyze the computational efficiency of the proposed landing controller.
+These stages include optic flow estimation, radial optic flow extraction, and vertical control command computation, and the average computational time for each stage is listed in Table \ref{processing time: table}.
+The results indicate that the control computation is approximately 38 times faster than the visual processing thread, with the total computational time per iteration being 18.975 ms (corresponding to a closed-loop update rate of 52.7 Hz).
+The primary bottleneck in achieving higher loop-closure rates is the time required for image acquisition and visual processing for optic flow estimation.
+The computational burden associated with these steps can be significantly alleviated using the analog very-large-scale-integrated (VLSI) circuit developed in \cite{xu2011}, possibly resulting in higher-order loop-closure rates.
+Overall, the proposed visual processing and feedback control architecture is highly computationally efficient and can be readily deployed onboard a low-SWaP UAV platform to accomplish a seamless landing.
+
+\section{CONCLUSION}
+\label{conclusion: section}
+This study proposes the development of a novel optic flow-based landing controller designed to achieve soft landing on stationary surfaces using an innovative feature-agnostic optic flow estimator and a robust PLASMC strategy. 
+The proposed estimator leverages a compact, cost-efficient monocular camera, aligning with the physical constraints of the UAV, and a low-complexity visual processing technique to provide robust optic flow estimates against model uncertainties arising from noisy visual data and low frame rate.
+The key to achieving the functional requirement for soft landing using optic flow is to ensure the boundedness and convergence of the optic flow error to a small bound around the origin. 
+Laboratory tests conducted using a micro-UAV substantiate the efficacy of the proposed PLASMC strategy in achieving this objective while meeting the physical constraints of the cost-efficient, low-SWaP UAV platform.
+Moreover, reducing the initial altitude or reversing the initial vertical velocity has no adverse impact on the landing performance of the PLASMC strategy.
+On the contrary, the optic flow-based fixed-gain control strategy fails to handle the nonlinear landing dynamics, leading to unpredictable and potentially dangerous landing behavior.
+Field tests further demonstrate laterally stabilized soft landing with a mini-UAV in the presence of system uncertainties that could otherwise cause unbounded behavior in the highly nonlinear landing dynamics, especially near the ground.
+The experimental results show that the PLASMC strategy achieves soft landing with the aggressive descent behavior, reducing the flight time by at least 30 \% compared to the nominal descent behavior.
+The performance comparison with the altitude-based vertical velocity control strategy highlights the importance of adopting the optic flow-based control strategy for the soft landing problem.
+The computational analysis of the proposed landing controller identifies image acquisition and visual processing for optic flow estimation as the primary bottleneck in achieving higher loop-closure rates. 
+Future research will focus on extending this laterally stabilized landing strategy to moving platforms.
+
+\bibliography{bibliography}
+
+% \begin{IEEEbiography}{Shubham Singhal}{\space}(Graduate Student Member, IEEE) received the degree of Bachelor of Technology in Mechanical Engineering from the Delhi Technological University, Delhi, India in 2017. He worked as a Mechanical Design Engineer in the Defence Unit of Larsen & Toubro Limited for four years before joining as a direct Ph.D. scholar in 2021. He is currently working toward a degree of Doctor of Philosophy in Cyber-Physical Systems with the Indian Institute of Science, Bengaluru, Karnataka, India. He is a fellow member of the Prime Minister Research Fellowship. His current research interests include robust control, adaptive non-linear control, and their applications to unmanned vehicles.
+% \end{IEEEbiography}%
+
+% \begin{IEEEbiography}{Suresh Sundaram}(Senior Member, IEEE) received the Ph.D. degree in aerospace engineering from the Indian Institute of Science, Bengaluru, India, in 2005.
+
+% He is currently a Professor at the Department of Aerospace Engineering, Indian Institute of Science. His research interests include flight control, unmanned aerial vehicle design, machine learning, optimization, and computer vision.
+
+% received the Ph.D. degree in aerospace engineering from the Indian Institute of Science Bengaluru, Bengaluru, India, in 2005.
+% He is currently an Associate Professor with
+% the Department of Aerospace Engineering, Indian
+% Institute of Science Bengaluru. From 2010 to 2018,
+% he was an Associate Professor with the School
+% of Computer Science and Engineering, Nanyang
+% Technological University, Singapore. His research
+% interests include flight control, unmanned aerial
+% vehicle design, machine learning, optimization, and computer vision
+% \end{IEEEbiography}
+
+% \begin{IEEEbiography}{Jishnu Keshavan} (Member, IEEE)  received the B.Tech. degree in aerospace engineering from the Indian Institute of Technology Bombay, Mumbai, India, in 2004, and the M.S. and Ph.D. degrees in aerospace engineering from the University of Maryland at College Park, College Park, MD, USA, in 2007 and 2012, respectively.
+
+% He is an Assistant Professor of Mechanical Engineering with the Indian Institute of Science, Bengaluru, India. His research interests are broadly in the areas of dynamical systems theory, data-driven nonlinear dynamics and control, and autonomous vision
+% \end{IEEEbiography}
+\end{document}

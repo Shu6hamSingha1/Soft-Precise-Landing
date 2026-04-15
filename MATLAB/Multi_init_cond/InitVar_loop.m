@@ -44,7 +44,7 @@ T_nP3 = T_nP3-mean(T_nP3,2);
 V_nP3 = T_nP3;
 
 % Computing desired Feature Points in Image Plane    
-V_nP_d = (f/zf)*V_nP3(1:2,:);
+V_nP_d = (f/(2*zf))*V_nP3(1:2,:);
 
 % Computing desired Features Parameters in Image Plane (without 'z')
 V_s_d = image_feature(V_nP_d/f);

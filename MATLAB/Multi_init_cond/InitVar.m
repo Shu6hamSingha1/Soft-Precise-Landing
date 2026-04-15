@@ -14,7 +14,7 @@ tRange = t0:dt:tend;
 
 %% Initializing State
 % Initial Absolute Pose of Camera wrt Global Origin in Inertial Reference Frame
-I_px_c = -0.0; I_py_c = -0.0; I_pz_c = -5.0;
+I_px_c = 2.0; I_py_c = 2.0; I_pz_c = -5.0;
 I_p_c = [I_px_c; I_py_c; I_pz_c];
 q_cw = 1.0; q_cx = 0.0; q_cy = 0.0; q_cz = 0.0;
 q_c = [q_cw; q_cx; q_cy; q_cz];
@@ -44,7 +44,7 @@ T_nP3 = T_nP3-mean(T_nP3,2);
 V_nP3 = T_nP3;
 
 % Computing desired Feature Points in Image Plane    
-V_nP_d = (f/zf)*V_nP3(1:2,:);
+V_nP_d = (f/(2*zf))*V_nP3(1:2,:);
 
 % Computing desired Features Parameters in Image Plane (without 'z')
 V_s_d = image_feature(V_nP_d/f);

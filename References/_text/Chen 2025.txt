@@ -1,0 +1,1200 @@
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+1995
+Image-Based Visual Servoing of Micro Aerial
+Vehicles With Robust Observation and
+Output Feedback
+Yongcong Chen , Baoquan Li , Senior Member, IEEE, Wuxi Shi , and Xuebo Zhang , Senior Member, IEEE
+Abstract—An output feedback control method is proposed in
+the article with state observers for robust image-based visual
+servoing (IBVS) regarding micro aerial vehicles (MAVs). Specif-
+ically, image features are ﬁrst selected from the perspective
+image moments and are projected onto a suitably deﬁned image
+plane so as to provide decoupled kinematics for translational
+motion. In order to address the problem of low quality and
+even unavailability of linear velocity information, the image
+moment error observer is designed as a foundation based on
+an image ﬁlter, and then the MAV body velocities are estimated
+by designing a robust observer to obtain translational optical ﬂow
+of virtual image features. An adaptive law is proposed for the
+unknown depth information of the visual target and is combined
+with observers in output feedback controller design to enhance
+system robustness. Stability analysis shows that all states of the
+system are uniformly ultimately bounded (UUB) and converge to
+zero asymptotically. Comparative simulation and experimental
+results demonstrate the performance of the proposed method.
+Index Terms—Depth adaptation, image-based visual servoing
+(IBVS), robust velocity observer, translational optical ﬂow, micro
+aerial vehicles (MAVs).
+I. INTRODUCTION
+N
+OWADAYS, with the rapid development of micro aerial
+vehicles (MAVs) in practical applications, researchers
+have continued to design new models and advanced controllers
+to enhance the reliability of MAVs in various potential applica-
+tions. MAVs can be used for aerial vision, such as providing a
+wide variety of aerial footage, and can perform tasks in danger-
+ous and hard-to-reach areas, such as infrastructure inspections.
+In addition, MAVs play a signiﬁcant role in reconnaissance and
+rescue missions, enabling rapid response to emergencies and
+providing important information and support [1], [2]. MAV
+researches generally include developing eﬃcient actuators,
+Received 28 October 2024; revised 22 February 2025; accepted 19 April
+2025. Date of publication 29 May 2025; date of current version 23 October
+2025. This work was supported in part by the National Natural Science
+Foundation of China under Grant 62473282, Grant 62303349, and Grant
+62203326; and in part by Tianjin Natural Science Foundation under Grant
+20JCYBJC00180. Recommended by Associate Editor C. Yang. (Correspond-
+ing author: Baoquan Li.)
+Yongcong Chen, Baoquan Li, and Wuxi Shi are with the School of
+Control Science and Engineering, and Tianjin Key Laboratory of Autonomous
+Intelligent Technology and Systems, Tiangong University, Tianjin 300387,
+China (e-mail: 22312511@tiangong.edu.cn; libq@tiangong.edu.cn; shiwuxi@
+163.com).
+Xuebo Zhang is with the Institute of Robotics and Automatic Information
+Systems, and Tianjin Key Laboratory of Intelligent Robotics, Nankai Univer-
+sity, Tianjin 300071, China (e-mail: zhangxuebo@nankai.edu.cn).
+Digital Object Identiﬁer 10.1109/TCST.2025.3570243
+using accurate sensors, and designing reliable controllers. The
+sensor system of a MAV usually includes an inertial measure-
+ment unit (IMU) and a global positioning system (GPS). While
+the IMU system can provide reliable angular velocity and
+attitude information for the MAV, it cannot accurately estimate
+translational position and linear velocity [3], [4]. Additionally,
+GPS provides relatively high-accuracy positioning information
+but does not operate eﬀectively in indoor and urban canyon
+environments, and obtaining linear velocity in GPS-free areas
+is a challenging problem [5], [6].
+Much research has been conducted recently aiming at
+providing environmental and motion information to MAVs,
+especially in the case of workspaces without GPS sig-
+nals. In this context, solutions have emerged for MAV
+systems by suﬃciently using visual sensors. The vision sen-
+sor is a reliable and low-cost device that can be fused
+with IMU data to provide eﬀective translational velocity
+information, and it can also be eﬀectively used for MAV
+localization relative to the environment [7], [8]. Application
+of MAV vision systems includes obstacle avoidance [9],
+[10], attitude estimation [11], [12], simultaneous localiza-
+tion and mapping (SLAM) [13], [14], path planning [15],
+and so on.
+MAV control based on vision systems mainly consists
+of two patterns: position-based visual servoing (PBVS) and
+image-based visual servoing (IBVS). PBVS estimates the
+3-D Cartesian space information of a target object through
+the visual sensor and determines MAV motion based on
+this information [16]. IBVS uses image information of target
+features to form closed-loop control directly, and it is robust
+for camera models and without 3-D reconstruction. Compared
+with PBVS, IBVS does not need to calculate the position
+of the target under 3-D coordinates; instead, it relies on the
+projection relationship between the camera and the target
+for calculation and control. IBVS can better adapt to fast
+motion in the scene, uncertainty of target motion direction, and
+distance change [17]. Considering the underactuated traits of
+quadrotor MAVs and coupling dynamics on the image plane,
+the IBVS approach for quadrotor MAVs is, moreover, more
+challenging than that for fully actuated systems [18]. Rotation
+and translation degrees of freedom need to be decoupled and
+independently controlled under IBVS frameworks. In [19]
+and [20], IBVS frameworks are designed by selecting image
+features with passive traits for decoupling MAV kinematics,
+1063-6536 © 2025 IEEE. All rights reserved, including rights for text and data mining, and training of artiﬁcial intelligence and
+similar technologies. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+1996
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+and then controllers can be concisely designed regarding
+translation and yaw movement, respectively.
+The IBVS control pattern based on the virtual camera
+has gradually become a research hotspot in recent years. In
+order to solve the problem that the visual object leaves the
+camera ﬁeld of view (FOV), Xie and Lynch [21] propose
+an input saturation control law to ensure that roll, pitch,
+and thrust are within speciﬁed ranges. In order to handle
+the visibility constraint, Zhang et al. [22] developed a robust
+nonlinear model predictive control scheme for MAV IBVS
+control such that the visual target can stay within camera FOV.
+Huang et al. [23] designed a visual servoing scheme based on
+hierarchical homography, which is used for pose extraction to
+solve the under-actuation problem of the MAV. In order to
+solve the problem of manually operating for observing visual
+targets, Shi et al. [24] design an integrated IBVS ﬂight system
+including target search and IBVS stages.
+MAV linear velocities are usually measured by auxiliary
+devices such as IMUs in the IBVS framework, but mea-
+surement accuracy is easily aﬀected by error accumulation
+and large vibrations. In order to dispose the limitation, Asl
+and Yoon [25] designed a controller according to the optical
+ﬂow on the image plane that does not require linear velocity
+information of the MAV. Fink et al. [26] designed a virtual-
+camera-based visual servoing approach by using simpliﬁed
+models, where the linear velocity of the MAV is provided by
+an external motion capture system. Hashim [27] designed a Lie
+group-based full-state observer for controlling MAV motion,
+which does not need angular and linear velocity measurements.
+Depth information needs to be considered in IBVS con-
+troller design, and it is an unknown parameter when the
+geometric model of the target is not available. Asl et al. [28]
+proposed an adaptive IBVS scheme to compensate for depth
+uncertainty, where a linear observer is designed to estimate the
+velocity of image features regarding the stationary target. Gao
+et al. [29] proposed an IBVS strategy based on hierarchical
+images, using a distance sensor to estimate object depth. Zheng
+et al. [30] designed a visual servoing controller by using the
+backstepping pattern, and the depth as part of the control gain
+is set in a certain range, eliminating the need to know the depth
+information of feature points. It is, however, still challenging to
+eﬃciently improve the robustness of MAVs in unknown depth
+environments and address low quality and even unavailability
+of linear velocities obtained by IMUs.
+In the article, the image moment error observer is ﬁrst
+constructed based on an image ﬁlter. Then, for MAV body
+velocity estimation, a robust observer is designed to obtain
+the translational optical ﬂow of virtual image features. An
+adaptive control law is proposed for the uncertainty of image
+feature depth, which makes the controller robust to unknown
+depth information. Stability analysis proves that system states
+are bounded and the error signals converge to zero. Compar-
+ative simulation and experiment are conducted to verify the
+performance of the proposed method. The main contribution
+of the article is to design an output feedback control strategy
+regarding unknown linear velocity and unknown depth infor-
+mation, where velocity observer and depth adaptive law are
+constructed for robust MAV control.
+II. KINEMATICS AND DYNAMICS MODEL
+In order to describe kinematics and dynamics of a MAV,
+two frames are introduced, where the world frame Fw is ﬁxed
+on the ground with directions of north-east-down and the body
+frame Fr is located at the MAV centroid with directions of
+forward-bottom-right. The position of Fr origin under Fw is
+denoted as ξ(t) = [x(t), y(t), z(t)]T. Transformation from Fw
+to Fr consists of a rotation matrix R(t) and a translation
+vector T(t). The rotation matrix R(t) is composed of entities of
+the Euler angle vector η(t) = [ϕ(t), θ(t), ψ(t)]T, which denote
+MAV roll, pitch, and yaw, respectively. The Euler angles rotate
+orderly to form R(t) as follows:
+R = R(ψ)R(θ)R(ϕ)
+=
+2
+4
+cθcψ −cϕsψ + cψsϕsθ sϕsψ + cϕcψsθ
+cθsψ cϕcψ + sψsϕsθ −cψsϕ + cϕsψsθ
+−sθ
+cθsϕ
+cθcϕ
+3
+5
+(1)
+where sϕ = sin ϕ(t), cϕ = cos ϕ(t), tϕ = tanϕ(t), and so on.
+The kinematics and dynamics of the quadrotor MAV can be
+expressed as follows [24]:
+˙ξ = Rv
+(2)
+˙R = Rsk(w)
+(3)
+m˙v = −mw × v + F
+(4)
+J ˙w = −w × Jw + τ
+(5)
+F = −U1e3 + mgRTe3
+(6)
+where m is MAV mass, J ∈R3×3 is the constant inertia
+matrix, g is the gravitational acceleration, v(t) = [vx(t), vy(t),
+vz(t)]T and w(t) = [ωx(t), ωy(t), ωz(t)]T denote MAV linear and
+angular velocities, respectively, F(t) ∈R3 and τ(t) ∈R3 repre-
+sent resulting external force and torque under Fr, respectively,
+U1(t) is total thrust, symbol sk(·) denotes the skew-symmetric
+matrix, and e3 = [0, 0, 1]T denotes a unit vector.
+The Jacobian matrix between the variation of Euler angle
+vector η(t) and angular velocity vector w(t) is given by
+2
+4
+˙ϕ
+˙θ
+˙ψ
+3
+5 =
+2
+4
+1 sϕtθ
+cϕtθ
+0
+cϕ
+−sϕ
+0 sϕ/cθ cϕ/cθ
+3
+5
+2
+4
+ωx
+ωy
+ωz
+3
+5 .
+(7)
+III. IMAGE FEATURE DYNAMICS
+Perspective projection patterns are widely discussed to con-
+duct visual servoing of MAVs, where appropriately deﬁned
+image moments are mainly adopted as visual features. By
+using MAV roll and pitch angles, image data are reprojected
+to a virtual image plane, which is parallel to the object. The
+image moments can avoid the inﬂuence of single-point fea-
+tures from environmental noise and dynamic interference and
+provide stable image feature measurement. The mathematical
+form of image moments can be directly used in control design.
+Based on image moments selected in the virtual image plane,
+image-based full-actuation controllers can be designed for the
+MAV to maintain good behavior in Cartesian space.
+The horizontal virtual camera model is introduced with
+the same optical center and parameters as the downward
+camera, whose frame is denoted as Fv. Considering there are
+N stationary point features located in a horizontal plane in
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHEN et al.: IBVS OF MAVs WITH ROBUST OBSERVATION AND OUTPUT FEEDBACK
+1997
+Fw, it can have the same depth regarding Fv. In order to
+achieve MAV translational control, an image moment vector
+q(t) = [qx(t), qy(t), qz(t)]T is selected and computed as fol-
+lows [24]:
+qx = qz
+vug
+λ ,
+qy = qz
+vng
+λ , qz =
+r
+a∗
+a
+(8)
+where
+vug = 1
+N
+N
+X
+k=1
+vuk,
+vng = 1
+N
+N
+X
+k=1
+vnk, a = vµ20 + vµ02
+(9)
+vµi j =
+N
+X
+k=1
+ vuk −vug
+i  vnk −vng
+ j
+(10)
+where vuk(t) and vnk(t) are the ﬁrst and second components
+of the coordinate of the kth point in the virtual image plane,
+respectively, vug(t) and vng(t) are the coordinates of the target
+centroid in the virtual image plane, and vµij(t) corresponds to
+the virtual pixel distance between the center of visual feature
+points and the target center. In (10), λ is camera focal length,
+and a∗is the desired value of a(t) when the MAV reaches the
+desired pose.
+Dynamics of q(t) on the virtual image plane can be obtained
+as [24]
+˙q = −sk( ˙ψe3)q −1
+z∗
+vv
+(11)
+where z∗denotes constant depth of the target plane to the cam-
+era center when the MAV is at the desired pose. The parameter
+z∗is unknown when the target model is not available, and the
+proposed controller needs to handle the uncertainty. Only an
+ideal image of the target is available for general IBVS tasks.
+The image feature qψ(t) for controlling the MAV yaw
+motion is deﬁned as follows:
+qψ = 1
+2 arctan
+2vµ11
+vµ20 −vµ02
+(12)
+and the time derivative of qψ(t) is
+˙qψ = −˙ψ.
+(13)
+Formula (11) implies that decoupled and linear relationship
+exists between virtual image space and Cartesian coordinates
+in MAV translational motion; thus, only translation and yaw
+motion of the MAV needs to be controlled to complete IBVS
+tasks.
+IV. OBSERVER AND CONTROLLER DESIGN
+The control task is to adjust the attitude and position of the
+MAV according to the actual image moment and the desired
+image moment while realizing the output feedback control
+based on the image moment error. For controller design, it
+is aﬃrmed that the camera frame Fc coincides with the MAV
+body frame Fr, and only constant transformation between the
+two frames is required if they do not coincide. The desired
+image moment vector is ﬁrst deﬁned as
+qd =
+
+qd
+x, qd
+y, qd
+z
+T = [0, 0, 1]T
+(14)
+where the value [0, 0, 1]T means that the visual target is in
+the virtual image plane center, and the MAV is stabilized at
+a particular height over the target. The image moment error
+vector e(t) is deﬁned to control MAV translational motion as
+follows:
+e = q −qd.
+(15)
+Taking the time derivative of e(t) and using (11), one obtains
+˙e = −sk( ˙ψe3)e −1
+z∗
+vv.
+(16)
+In order to derive translational dynamics of image features
+regarding the virtual image plane, MAV translational dynamics
+(4) is re-expressed under Fv as
+v˙v = −sk( ˙ψe3)vv −f
+(17)
+where vv(t) = Rϕθ(t)v(t) is the MAV linear velocity under
+Fv, f(t) is the resultant external force acting on the MAV
+expressed under Fv. It deﬁnes f(t) = [ fx, fy, fz]T = −RϕθF(t)
+and Rϕθ(t) is expressed as Rϕθ(t) = Rθ(t)Rϕ(t).
+In order to design the IBVS controller regarding dynamics
+(16) and (17), measurement for the velocity vv(t) is required.
+In this regard, estimated translational optical ﬂow is used to
+calculate velocity information, which makes it possible to take
+advantage of the passivity of image error dynamics in IBVS
+controller design.
+Translational optical ﬂow is directly related to linear veloc-
+ities of camera motion, facilitating the introduction of energy
+ﬂow in controller design. By mapping optical ﬂow to image
+errors, the controller can address translational image errors
+separately.
+By diﬀerentiating (16) and then substituting (17), system
+dynamics containing MAV translation and image feature can
+be presented as follows:
+¨e + M1˙e + M2e = 1
+z∗f
+(18)
+where M1 = 2sk( ˙ψe3) and M2 = sk( ¨ψe3) + sk( ˙ψe3)sk( ˙ψe3).
+In order to facilitate controller and observer design, a
+variable vector vvs(t) associated with the linear velocity is
+deﬁned as
+vvs = ρvv
+(19)
+where it denotes ρ = 1/z∗. It is noted that symbol vvs(t) is
+translational optical ﬂow on the virtual image plane, and it is
+also a scaled linear velocity. Then, (16) is updated by (19),
+and dynamics of translational optical ﬂow vvs(t) is obtained
+by (17) and (19) as follows, respectively,
+˙e = −sk( ˙ψe3)e −vvs
+(20)
+v˙vs = −sk( ˙ψe3)vvs −ρf.
+(21)
+The following auxiliary variables are, moreover, constructed
+for controller design:
+ζ = e −ˆe
+(22)
+ε = ˙e + e1
+(23)
+s = vˆvs −e1 + ˙e
+(24)
+r = −˙ζ −ζ1 + 3˙e
+(25)
+where ˆe(t) and ˆvs(t) are estimates for e(t) and vvs(t), respec-
+tively, e1(t) = k1e(t), ζ1(t) = k1ζ(t), and k1 is a positive
+constant gain.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+1998
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+It is noted that the auxiliary vector ζ(t) relates to image
+moment estimation errors regarding translational motion and
+ε(t) denotes a ﬁlter for the image moment error vector.
+The vector s(t) includes translational optical ﬂow and image
+moment error with its derivative. The vector r(t) is designed
+for ˙ζ(t) convergence analysis, and it includes image moment
+error derivative, image moment estimation error. In (24) and
+(25), the proportional coeﬃcients of ˙e(t) are determined by
+the method of indeterminate coeﬃcients regarding following
+Lyapunov derivative. With the constructed auxiliary variables,
+velocity observer and depth adaptive law can be incorporated
+into controller design, and then the MAV thrust can be
+calculated.
+A nonlinear observer is designed to estimate e(t), as shown
+in the ﬁrst expression of the following formula. A nonlinear
+observer is, moreover, developed to estimate vvs(t), as shown
+in the second and third expressions of the following formula:
+8
+ˆ<
+ˆ:
+˙ˆe = −sk( ˙ψe3)e −v ˆvs −ε
+vˆvs = vv0 −k2ζ
+v˙v0 = −sk( ˙ψe3)(vˆvs + k1ζ + ε) −k1k2ζ
+(26)
+where k2 is a positive constant. Based on (20) and (26), we
+have derivative for the auxiliary vector ζ(t) as
+˙ζ = ˙e −˙ˆe = vˆvs −vvs + ε.
+(27)
+Considering (26) and (27), the time derivative of vˆvs(t) is
+v˙ˆvs = v˙v0 −k2˙ζ
+= −sk( ˙ψe3)(vˆvs + k1ζ + ε) + k2r −3k2ε + 3k1k2e.
+(28)
+By diﬀerentiating (23) and substituting (18), the time deriva-
+tive of ε(t) is obtained as
+˙ε = ¨e + k1˙e
+= −M1ε + k1M1e −M2e + ρf + k1ε −k2
+1e.
+(29)
+Taking the time derivative of s(t) given by (24), and substitut-
+ing (18), (20), and (21), it can get
+˙s = v˙ˆvs −k1˙e + ¨e
+= −sk( ˙ψe3)s −2sk( ˙ψe3)e1 −sk( ˙ψe3)ζ1 + k2r −3k2ε
++ 3k2e1 −k1ε + k1e1 −M1ε + M1e1 −M2
+e1
+k1
++ ρ f. (30)
+Using (18), (25)–(27), time derivative of r(t) in (25) is
+˙r = −¨ζ −k1˙ζ + 3¨e
+= −sk( ˙ψe3)r + 3sk( ˙ψe3)ε −3sk( ˙ψe3)e1 −k2r
++ 3k2ε −3k2e1 + k1r + k1ζ1 −4k1ε + 4k1e1
+−2M1ε + 2M1e1 −2M2
+e1
+k1
++ ρ f.
+(31)
+It sets that ||M1|| ≤µ1 and ||M2|| ≤µ2, where µ1 and µ2 are
+positive constants. It sets that ρmin and ρmax are the minimum
+and maximum values of ρ, respectively.
+The estimate of z∗is deﬁned as ˆz∗(t), and is updated with
+the designed adaptive law as
+˙ˆz∗= k3
+ εT + sT + rT 
+M1e1 −M2
+e1
+k1
+
+(32)
+where k3 is a positive constant. It deﬁnes the depth estimation
+error ˜z∗(t) = z∗−ˆz∗(t).
+Based on the above analysis, the following IBVS controller
+is proposed with output feedback:
+f = −kr(r −s + ε) −ˆz∗M1e1 + ˆz∗
+k1
+M2e1.
+(33)
+The designed controller (33), moreover, does not need the
+desired depth z∗, which is replaced by ˆz∗(t) that is updated
+by (32); thus, the controller is robust to unknown image depth
+information, without using a certain value to replace z∗.
+The controller and observer gains kr, k1, and k2 are, more-
+over, selected to fulﬁll the following conditions:
+kr > max
+ 1
+ρmin
+
+k1 −3µ1
+8
+−µ2
+4k1
+
+,
+1
+ρmin
+k1
+3 −µ1
+6
+
+kr <
+1
+ρmin
+k2
+2 −5µ1
+4
+
+k2 <
+1
+1 −3k1
+
+5krρmax + µ1 + µ2
+k1
+−3k1
+
+.
+(34)
+Theorem 1: Consider the dynamic system deﬁned by (18),
+(20), and (21), and it has states e(t), ε(t), ζ(t), s(t), r(t) and
+input f(t). By the designed controller (33) and adaptive law
+(32) with parameters (34), the system states e(t), ε(t), ζ(t),
+s(t), r(t) are uniformly ultimately bounded (UUB) and the
+depth error ˜z∗(t) is bounded, and the states e(t), ε(t), ζ(t), s(t),
+r(t) converge asymptotically to zero.
+Proof: With deﬁnition, the convergence of the states e1(t)
+and ζ1(t) to zero is equivalent to the convergence of the states
+e(t) and ζ(t). In order to prove the stability of the system, we
+consider the following Lyapunov function:
+V =
+1
+2k1
+ρkreT
+1 e1 + 1
+2εTε + 1
+2k1
+ρkrζT
+1 ζ1
++ 1
+2 sT s + 1
+2 rT r +
+1
+2k3z∗˜z∗˜z∗
+(35)
+where the time derivative of ˜z∗(t) is
+˙˜z∗= −˙ˆz∗.
+(36)
+Taking the time derivative of (35), ˙V(t) can be obtained as
+follows:
+˙V = 1
+k1
+ρkreT
+1 ˙e1 + εT ˙ε + 1
+k1
+ρkrζT
+1 ˙ζ1
++ sT ˙s + rT ˙r +
+1
+k3z∗˜z∗˙˜z∗.
+(37)
+Then, substituting (23), (25), (29), and (36) into (37), it can
+get
+˙V = ρkreT
+1 (ε −e1)
++ εT
+
+−M1ε + M1e1 −M2
+e1
+k1
++ ρ f + k1ε −k1e1
+
++ ρkrζT
+1
+ −r −ζ1 + 3ε −3e1
+
++ sT ˙s + rT ˙r−˜z∗
+k3z∗˙ˆz∗.
+(38)
+Combing
+˙s(t)
+result
+in
+(30)
+and
+˙r(t)
+result
+in
+(31),
+and
+substituting
+control
+law
+(33)
+and
+adaptive
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHEN et al.: IBVS OF MAVs WITH ROBUST OBSERVATION AND OUTPUT FEEDBACK
+1999
+updating
+law
+(32)
+into
+(38),
+it
+can
+obtain
+˙V(t)
+as
+˙V = eT
+1 (ρkrε −ρkre1)
++ εT ((k1 −ρkr) ε −k1e1 −ρkrr + ρkrs)
++ ζT
+1
+ −ρkrζ1 −ρkrr + 3ρkrε −3ρkre1
+
++ sT  ρkrs −0.5M1ζ1 + (k1 + 3k2 −M1) e1
+−(k1 + 3k2 + M1 + ρkr) ε + (k2 −ρkr) r)
++ rT
+
+ρkrs + k1ζ1 −(k2 −k1 + ρkr) r
++ (3k2 −4k1 −0.5M1 −ρkr) ε
+−
+
+3k2 −4k1 + 0.5M1 + M2
+1
+k1
+
+e1
+
+.
+(39)
+Using the bounds µ1 and µ2 deﬁned by the norm of the
+matrices M1 and M2, and using Young’s inequality, ˙V(t) can
+be bounded as follows:
+˙V ≤−Ap||e1||2 −Bp||ε||2 −Cp||ζ1||2 −Dp||s||2
+−Ep||r||2
+(40)
+where the parameters are denoted as
+Ap = 2ρkr + 3µ1
+4
++ µ2
+2k1
+−2k1,
+Bp = 3µ1
+4
++ 2k1
+Cp = 3ρkr
+2
++ µ1
+4 −k1
+2 ,
+Dp = 5µ1
+4
+−k2
+2 −ρkr
+Ep = 5ρkr
+2
++ k2
+2 + µ1
+2 + µ2
+2k1
+−3k1
+2 .
+(41)
+In (40), by adjusting the coeﬃcient of ˜z∗(t) to zero, the
+eﬀect of the depth estimation error on system stability can
+be avoided.
+Then, a vector is deﬁned as Ω(t) = [eT
+1 (t), εT(t), ζT
+1 (t),
+sT(t), rT(t)]T, and gains kr, k1, and k2 are selected by satisfying
+the constraints of (34); therefore, (40) can be reorganized as
+˙V ≤−β||Ω||2 ≤0
+(42)
+where β = min{Ap, Bp,Cp, Dp, Ep}, and (42) shows that e(t),
+ε(t), ζ(t), s(t), r(t), ˜z∗(t) ∈L∞. Since ˜z∗(t) ∈L∞, it can obtain
+that ˜z∗(t) is bounded.
+Since e(t) and ε(t) are bounded, one gets ˙e(t) ∈L∞by
+combining (23). Then, combining ζ(t), r(t) ∈L∞, it has
+˙ζ(t) ∈L∞. Since ε(t), s(t), r(t) ∈L∞, after substituting (33)
+into (29)–(31), it can obtain that ˙ε(t) ∈L∞, ˙s(t) ∈L∞, and
+˙r(t) ∈L∞, respectively.
+Since ˙e(t), ˙ε(t), ˙ζ(t), ˙s(t), ˙r(t) ∈L∞, one obtains ˙Ω(t) ∈L∞,
+and thus Ω(t) is uniformly continuous. The following relation-
+ship can, therefore, be obtained with (42):
+lim
+t→∞β
+Z t
+t0
+ΩTΩdτ ≤V(∞) −V(t0) < ∞.
+(43)
+Considering (43) and applying Barbalat’s lemma, one gets
+e(t), ε(t), ζ(t), s(t), r(t) converge to zero asymptotically
+lim
+t→∞e, ε, ζ, s, r = 0.
+(44)
+Since ˙e(t), ˙ε(t), ˙ζ(t), ˙s(t), ˙r(t) ∈L∞, we can obtain that e(t),
+ε(t), ζ(t), s(t), r(t) are UUB.
+According to (22) and (44), it has
+lim
+t→∞ˆe = lim
+t→∞e.
+(45)
+Using (23) and (44), one obtains
+lim
+t→∞˙e = 0.
+(46)
+Then, according to (25), (44), and (46), it can obtain that
+lim
+t→∞
+˙ζ = 0.
+(47)
+Thus, combing (44) and (47), it has
+lim
+t→∞
+vˆvs = lim
+t→∞
+vvs.
+(48)
+It is, therefore, known that vˆvs(t) converges to vvs(t) asymp-
+totically, which implies that MAV velocities are estimated.□
+It is noted that the MAV is a two-loop control system with
+required thrust inputting into the outer loop, and inner loop
+objective is Euler angle control. Attitude control frequency of
+the inner loop is higher than that of the outer loop. Usually,
+commercial MAVs directly receive Euler angles as inner loop
+inputs to realize attitude tracking.
+We can, therefore, directly design the desired thrust and
+Euler angles required by the MAV, which are treated as
+control inputs to achieve the purpose of IBVS ﬂight control.
+Speciﬁcally, MAV ﬂight inputs that are thrust U1(t) and Euler
+angle vector η(t) can be calculated from the controller f(t) as
+follows [31]:
+2
+4
+fx
+fy
+fz
+3
+5 = U1
+m
+2
+4
+sin θd cos ϕd
+−sin ϕd
+cos θd cos ϕd
+3
+5 −
+2
+4
+0
+0
+g
+3
+5 .
+(49)
+According to (49), under small angle approximation, the MAV
+thrust U1(t) can be obtained from fz(t) as
+U1 ≈m( fz + g).
+(50)
+By using (49), the desired roll angle ϕd(t) and pitch angle
+θd(t) can, moreover, be calculated as follows:
+θd = arctan
+fx
+fz + g,
+ϕd = arctan −fy cos θd
+fz + g
+.
+(51)
+The yaw angular velocity of MAV is controlled using the
+proportional control law
+uψ = k4(ψd −ψ)
+(52)
+where ψd(t) is the desired yaw angle.
+During executing an IBVS task, it is noted that the adaptive
+law (32) does not satisfy the conditions of UUB, and there-
+fore, it cannot guarantee the parameter ˆz∗(t) to converge to
+truth value. The designed adaptive law, however, enables the
+controller act without requiring the desired depth z∗.
+V. SIMULATION RESULTS
+In the section, the ﬁrst simulation is conducted to verify
+feasibility of the proposed observer-based visual servoing
+controller. Then, the second simulation shows the results of
+the compared method [25].
+Simulation 1: Feature point coordinates on the horizontal
+target plane are set under Fw initially as (0.25, 0.2, 0 m),
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+2000
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+Fig. 1.
+Simulation 1: Variation of MAV states and system errors (top-left:
+MAV positions, top-right: MAV Euler angles, bottom-left: error vector norms
+on the virtual image plane, bottom-right: MAV resultant external forces).
+Fig. 2. Simulation 1: Paths of image features in the IBVS stage (left: on the
+real image plane, right: on the virtual image plane, circles: start pixels, stars:
+ﬁnal pixels).
+(0.25, −0.2, 0 m), (−0.25, 0.2, 0 m), and (−0.25, −0.2, 0 m),
+which are used to compute image moment features deﬁned in
+(8). The camera has a focal length of 1.8 mm, and a sampling
+time is 0.01 s. MAV mass is 4.55 kg, and g = 9.81 m/s2.
+Parameters ρmin and ρmax are considered to be 0.08 m−1 and
+2 m−1, respectively, corresponding to 12.5 and 0.5 m distances
+from the target, respectively. Controller and observer gains are
+chosen as kr = 8, k1 = 0.2, k2 = 20, k3 = 2, and k4 = 0.4. The
+initial value of ˆz∗(t) is set as ˆz∗(0) = 10 m for the adaptive
+law (32).
+The MAV is set at a hovering position initially with the
+desired target in camera FOV, and the initial MAV hovering
+position is set as (−0.4, −0.1, 7 m) with the Euler angle as
+(0◦, 0◦, 10◦) under Fw. Desired image moments are set as
+(qd
+x, qd
+y, qd
+z) = (0, 0, 1) with the parameter a∗= 8.3 × 10−8,
+implying that the MAV ﬁnal position is (0, 0, 4 m) with
+zero Euler angles. White Gaussian noises of 5 dBW power
+are, moreover, added to target positions to simulate actual
+disturbance. By adding noises, the anti-interference ability
+of the system is tested with disturbed image data and target
+position.
+Fig. 1 shows the variation of MAV states and error vectors,
+where the top-left displays the positions of the MAV, top-
+right shows Euler angles of the MAV, bottom-left provides the
+norms of image moment error and image moment estimation
+error on the virtual image plane, and the bottom-right shows
+the MAV resultant external forces. Fig. 2 gives paths of feature
+points on real and virtual image planes. Figs. 3 and 4 demon-
+Fig. 3. Simulation 1: Observation ˆe(t) for the image moment error e(t) on the
+virtual image plane (solid lines: estimation values, dashed lines: truth values).
+Fig. 4. Simulation 1: Observation for MAV velocities (solid lines: estimation
+values, dashed lines: truth values).
+Fig. 5.
+Simulation 2: Variation of MAV states and system errors by [25]
+(top-left: MAV positions, top-right: MAV Euler angles, bottom-left: error
+vector norms on the virtual image plane, bottom-right: MAV resultant external
+forces).
+strate the eﬀectiveness of the proposed observers regarding
+image errors and MAV velocities, respectively. As shown in
+the two ﬁgures, the proposed observers make estimated signals
+converge to their truth values in about 5 s.
+Simulation 2: The method from [25] is implemented for
+comparison, and target parameters and initial conditions are
+kept identical to those in Simulation 1. Control gains are
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHEN et al.: IBVS OF MAVs WITH ROBUST OBSERVATION AND OUTPUT FEEDBACK
+2001
+Fig. 6.
+Simulation 2: Paths of image features in the IBVS stage by [25]
+(left: on the real image plane, right: on the virtual image plane, circles: start
+pixels, stars: ﬁnal pixels).
+Fig. 7.
+Simulation 2: Observation for the image moment error on the virtual
+image plane by [25] (solid lines: estimated values, dashed lines: truth values).
+Fig. 8.
+Simulation 2: Observation for MAV velocities by [25] (solid lines:
+estimated values, dashed lines: truth values).
+tuned as kr = 8, k1 = 0.25, k2 = 25, and k4 = 0.4 for good
+performance. Fig. 5 shows the evolution of MAV states and
+system errors, and Fig. 6 shows the paths of image features.
+Figs. 7 and 8 provide observation results for image moment
+error and MAV velocity, and it is seen that image feature errors
+and MAV velocities also converge to truth values.
+Compared with [25], the proposed method converges
+slightly slower regarding MAV position errors but provides
+smaller control inputs and has less position ﬂuctuation. The
+proposed method makes smoother image paths on both vir-
+tual and real image planes, which implies that the MAV
+ﬂies steadily and its thrust and attitude are without sudden
+Fig. 9. Experiment 1: Several photos of the overall ﬂight process.
+adjustment. The proposed method, moreover, makes more pre-
+cise observations for image moment error and MAV velocity.
+VI. EXPERIMENTAL RESULTS
+In experiments, a DJI-M100 MAV equipped with dual
+cameras is used as the experimental platform, and a detailed
+structure is given in our previous work [32]. The experiments
+also consist of two stages of take-oﬀand target search, which
+is presented in our previous work [24]. The proposed method
+and the compared method [25] are both treated as the IBVS
+stage. The forward camera is used to record MAV poses
+throughout the ﬂight, and the downward camera is used during
+the IBVS stage. During the take-oﬀand target search stages,
+the geometric controller [33] uses state information provided
+by the VINS-Mono algorithm [34] to control MAV ﬂight,
+and then the MAV is controlled by the proposed controller
+in the IBVS stage. The ﬁrst experiment is conducted to verify
+the eﬀectiveness of the proposed controller, and the second
+experiment shows the results of the compared method [25].
+Experiment 1: The target plane is placed on the ground,
+and the origin of the world frame is set at the centroid of four
+circles. The coordinates of circle centers are set arbitrarily as
+(0.25, 0.25, 0 m), (−0.25, 0.25, 0 m), (−0.25, −0.25, 0 m),
+and (0.25, −0.25, 0 m). The camera focal length is 1.8 mm.
+The desired image moments are set as (qd
+x, qd
+y, qd
+z) = (0, 0, 1)
+with a∗= 9.1×10−7, which represents the MAV ﬁnal position
+(0, 0, 1 m) with zero Euler angles under Fw. MAV mass is
+4.55 kg, and g = 9.81 m/s2. Parameters ρmin and ρmax are set as
+0.08 m−1 and 2 m−1, respectively, corresponding to 12.5 and
+0.5 m distances from the target, respectively. The sampling
+time of the closed-loop is 0.05 s and satisﬁes the real-time
+requirement.
+Controller and observer gains are set as kr = 12.2, k1 = 0.25,
+k2 = 24.6, k3 = 5.8, and k4 = 0.4. Initial value of ˆz∗(t) is
+set as ˆz∗(0) = 10m for the adaptive update law (32). Initial
+ﬂight position is set at (−1.2, 0.1, 0 m) with zero Euler angles
+under Fw.
+Several photos of the overall ﬂight process are provided
+in Fig. 9. Fig. 10 shows the positions of the MAV and the
+proposed controller (33) makes the MAV stable at the desired
+position. The ﬁrst 10 s are take-oﬀand target search stages
+controlled by the MAV geometric controller [33]. Fig. 11
+shows the control inputs of Euler angles and thrust for the
+MAV. Fig. 12 shows the norms of image moment error e(t)
+and image moment estimation error ζ(t) on the virtual image
+plane. Fig. 13 provides the paths of feature points on real and
+virtual image planes in the IBVS stage, respectively.
+The truth values for MAV velocities are obtained from the
+VINS-Mono strategy [34] for evaluating observation accuracy.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+2002
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+Fig. 10. Experiment 1: Evolution of MAV positions in overall ﬂight (dashed
+lines: desired positions, solid lines: current positions).
+Fig. 11. Experiment 1: Control inputs of Euler angles and thrust for the MAV.
+Fig. 12. Experiment 1: Norms of image error vectors on the virtual image
+plane (dashed line: expected zero values, solid lines: current values of error
+vector norms).
+Figs. 14 and 15 represent the outputs of the proposed observers
+for image moment error and MAV velocity, respectively.
+As shown in the two ﬁgures, the proposed observers make
+estimated signals converge to their truth values precisely in a
+short period of time.
+Experiment 2: The method proposed in [25] is conducted
+as a comparison, and target parameters and initial conditions
+are kept identical to those in Experiment 1. Control gains are
+Fig. 13. Experiment 1: Paths of image features in the IBVS stage (left: on
+the image plane, right: on the virtual image plane, circles: start pixels, stars:
+ﬁnal pixels).
+Fig. 14. Experiment 1: Observation for the image moment error on the virtual
+image plane (solid lines: estimated values, dashed lines: truth values).
+Fig. 15. Experiment 1: Observation for MAV velocities (solid lines: estimated
+values, dashed lines: truth values).
+selected as kr = 15, k1 = 0.4, k2 = 25, and k4 = 0.4 for good
+performance.
+Fig. 16 shows positions of the MAV, and the IBVS stage
+is conducted by [25]. Fig. 17 shows control inputs of Euler
+angles and thrust for the MAV. It is seen that the thrust by the
+proposed method is smaller than that by the compared method,
+and the yaw angular velocity input is less chattering with the
+proposed method. Figs. 18 and 19 represent observation for
+image moment error and MAV velocity, respectively.
+Consequently, depth adaptation is incorporated in design of
+the proposed IBVS controller, which improves robustness of
+the visual servoing controller in unknown depth environments.
+From experimental results, it can be seen that the proposed
+method makes the MAV hover stably at the desired position
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHEN et al.: IBVS OF MAVs WITH ROBUST OBSERVATION AND OUTPUT FEEDBACK
+2003
+Fig. 16.
+Experiment 2: Evolution of MAV positions in overall ﬂight by 0
+(dashed lines: desired positions, solid lines: actual positions).
+Fig. 17.
+Experiment 2: Control inputs of Euler angles and thrust for the
+MAV by [25].
+Fig. 18.
+Experiment 2: Observation for the image moment error on the
+virtual image plane by [25] (solid lines: estimated values, dashed lines: truth
+values).
+and attitude, and the proposed observers make more accurate
+estimation for the MAV velocity.
+VII. CONCLUSION
+In the article, an output feedback IBVS method is proposed
+with state observers for controlling quadrotor MAV motion.
+By deﬁning appropriate image moment features on the virtual
+Fig. 19.
+Experiment 2: Observation for MAV velocities by [25] (solid lines:
+estimated values, dashed lines: truth values).
+image plane, it aims to obtain satisﬁed regulation trajectories
+in both image and Cartesian space. IMUs commonly used in
+MAV motion do not provide accurate linear velocity informa-
+tion and suﬀer from accumulated errors. The ﬂow of image
+features is, thus, used as the linear velocity cue in the article,
+which is estimated from selected visual features by designing
+nonlinear observers. An adaptive law is designed for unknown
+image depth information, which is combined with observers
+in output feedback IBVS controller design to enhance system
+robustness. Stability analysis shows that all states of the
+system are bounded, and the error signals converge to zero.
+Simulation and experimental results show that the proposed
+method responds well in both image space and Cartesian space
+and provides accurate estimation for image moment errors
+and MAV velocities. In the future, linear velocity observers
+will be designed regarding both MAV and dynamic targets
+so as to achieve image-based visual servo tracking tasks with
+robustness.
+REFERENCES
+[1]
+J. Wu et al., “An adaptive conversion speed Q-learning algorithm for
+search and rescue UAV path planning in unknown environments,” IEEE
+Trans. Veh. Technol., vol. 72, no. 12, pp. 15391–15404, Dec. 2023.
+[2]
+T. Yang, Z. Jiang, R. Sun, N. Cheng, and H. Feng, “Maritime search and
+rescue based on group mobile computing for unmanned aerial vehicles
+and unmanned surface vehicles,” IEEE Trans. Ind. Informat., vol. 16,
+no. 12, pp. 7700–7708, Dec. 2020.
+[3]
+H. Xie, A. F. Lynch, K. H. Low, and S. Mao, “Adaptive output-feedback
+image-based visual servoing for quadrotor unmanned aerial vehicles,”
+IEEE Trans. Control Syst. Technol., vol. 28, no. 3, pp. 1034–1041, May
+2020.
+[4]
+W. Xu, D. He, Y. Cai, and F. Zhang, “Robots’ state estimation and
+observability analysis based on statistical motion models,” IEEE Trans.
+Control Syst. Technol., vol. 30, no. 5, pp. 2030–2045, Sep. 2022.
+[5]
+J. Thomas, J. Welde, G. Loianno, K. Daniilidis, and V. Kumar,
+“Autonomous ﬂight for detection, localization, and tracking of moving
+targets with a small quadrotor,” IEEE Robot. Autom. Lett., vol. 2, no. 3,
+pp. 1762–1769, Jul. 2017.
+[6]
+R. Mebarki, V. Lippiello, and B. Siciliano, “Nonlinear visual control of
+unmanned aerial vehicles in GPS-denied environments,” IEEE Trans.
+Robot., vol. 31, no. 4, pp. 1004–1017, Aug. 2015.
+[7]
+J. Zheng, T. Yang, H. Liu, T. Su, and L. Wan, “Accurate detection
+and localization of unmanned aerial vehicle swarms-enabled mobile
+edge computing system,” IEEE Trans. Ind. Informat., vol. 17, no. 7,
+pp. 5059–5067, Jul. 2021.
+[8]
+J. Ye, C. Fu, F. Lin, F. Ding, S. An, and G. Lu, “Multi-regularized
+correlation ﬁlter for UAV tracking and self-localization,” IEEE Trans.
+Ind. Electron., vol. 69, no. 6, pp. 6004–6014, Jun. 2022.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+
+2004
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 33, NO. 6, NOVEMBER 2025
+[9]
+J. Lin, Z. Miao, Y. Wang, H. Wang, X. Wang, and R. Fierro,
+“Vision-based safety-critical landing control of quadrotors with exter-
+nal uncertainties and collision avoidance,” IEEE Trans. Control Syst.
+Technol., vol. 32, no. 4, pp. 1310–1322, Jul. 2024.
+[10] L. Xu, T. Wang, J. Wang, J. Liu, and C. Sun, “Attention-based
+policy distillation for UAV simultaneous target tracking and obstacle
+avoidance,” IEEE Trans. Intell. Vehicles, vol. 9, no. 2, pp. 3768–3781,
+Feb. 2024.
+[11] L. Yu, E. Yang, B. Yang, Z. Fei, and C. Niu, “A robust learned feature-
+based visual odometry system for UAV pose estimation in challenging
+indoor environments,” IEEE Trans. Instrum. Meas., vol. 72, pp. 1–11,
+2023.
+[12] L. Teixeira, F. Maﬀra, M. Moos, and M. Chli, “VI-RPE: Visual-inertial
+relative pose estimation for aerial vehicles,” IEEE Robot. Autom. Lett.,
+vol. 3, no. 4, pp. 2770–2777, Oct. 2018.
+[13] Y. Chen, S. Huang, and R. Fitch, “Active SLAM for mobile robots with
+area coverage and obstacle avoidance,” IEEE/ASME Trans. Mechatron-
+ics, vol. 25, no. 3, pp. 1182–1192, Jun. 2020.
+[14] F. Romanelli, F. Martinelli, and E. D. Giampaolo, “Robust simultaneous
+localization and mapping using range and bearing estimation of radio
+ultra high frequency identiﬁcation tags,” IEEE Trans. Control Syst.
+Technol., vol. 31, no. 2, pp. 772–785, Mar. 2023.
+[15] Z. Wang, X. Li, Y. Zhang, and P. Huang, “Localization, planning, and
+control of a UAV for rapid complete coverage bridge inspection in
+large-scale intermittent GPS environments,” IEEE Trans. Control Syst.
+Technol., vol. 32, no. 4, pp. 1357–1369, Jul. 2024.
+[16] X. Zhang, Y. Fang, X. Zhang, J. Jiang, and X. Chen, “Dynamic image-
+based output feedback control for visual servoing of multirotors,” IEEE
+Trans. Ind. Informat., vol. 16, no. 12, pp. 7624–7636, Dec. 2020.
+[17] H. Jabbari, G. Oriolo, and H. Bolandi, “An adaptive scheme for image-
+based visual servoing of an underactuated UAV,” Int. J. Robot. Autom.,
+vol. 29, no. 1, pp. 92–104, May 2014.
+[18] A. Yesildirek and B. Imran, “Nonlinear control of quadrotor using multi
+Lyapunov functions,” in Proc. Amer. Control Conf., Portland, OR, USA,
+Jun. 2014, pp. 3844–3849.
+[19] R. Ozawa and F. Chaumette, “Dynamic visual servoing with image
+moments for an unmanned aerial vehicle using a virtual spring
+approach,” Adv. Robot., vol. 27, no. 9, pp. 683–696, Jun. 2013.
+[20] H. de Plinval, P. Morin, P. Mouyon, and T. Hamel, “Visual servoing for
+underactuated VTOL UAVs: A linear, homography-based framework,”
+Int. J. Robust Nonlinear Control, vol. 24, no. 16, pp. 2285–2308, Nov.
+2014.
+[21] H. Xie and A. F. Lynch, “Input saturated visual servoing for unmanned
+aerial vehicles,” IEEE/ASME Trans. Mechatronics, vol. 22, no. 2,
+pp. 952–960, Apr. 2017.
+[22] K. Zhang, Y. Shi, and H. Sheng, “Robust nonlinear model predictive
+control based visual servoing of quadrotor UAVs,” IEEE/ASME Trans.
+Mechatronics, vol. 26, no. 2, pp. 700–708, Apr. 2021.
+[23] Y. Huang, M. Zhu, T. Chen, and Z. Zheng, “Robust homography-based
+visual servo control for a quadrotor UAV tracking a moving target,”
+J. Franklin Inst., vol. 360, no. 3, pp. 1953–1977, Feb. 2023.
+[24] L. Shi, B. Li, W. Shi, and X. Zhang, “Visual servoing of quadrotor UAVs
+for slant targets with autonomous object search,” Proc. Inst. Mech. Eng.,
+I, J. Syst. Control Eng., vol. 237, no. 5, pp. 791–804, Jan. 2023.
+[25] H. J. Asl and J. Yoon, “Vision-based control of a ﬂying robot without
+linear velocity measurements,” in Proc. IEEE Int. Conf. Adv. Intell.
+Mechatronics (AIM), Jul. 2015, pp. 1670–1675.
+[26] G. Fink, H. Xie, A. F. Lynch, and M. Jagersand, “Experimental valida-
+tion of dynamic visual servoing for a quadrotor using a virtual camera,”
+in Proc. Int. Conf. Unmanned Aircr. Syst. (ICUAS), Denver, CO, USA,
+Jun. 2015, pp. 1231–1240.
+[27] H. A. Hashim, “Exponentially stable observer-based controller for
+VTOL-UAVs without velocity measurements,” Int. J. Control, vol. 96,
+no. 8, pp. 1946–1960, Aug. 2023.
+[28] H. J. Asl, G. Oriolo, and H. Bolandi, “Output feedback image-
+based visual servoing control of an underactuated unmanned aerial
+vehicle,” Proc. Inst. Mech. Eng. I, J. Syst. Control Eng., vol. 228, no. 7,
+pp. 435–448, Aug. 2014.
+[29] J. Gao, A. A. Proctor, Y. Shi, and C. Bradley, “Hierarchical model
+predictive image-based visual servoing of underwater vehicles with
+adaptive neural network dynamic control,” IEEE Trans. Cybern., vol. 46,
+no. 10, pp. 2323–2334, Oct. 2016.
+[30] D. Zheng, H. Wang, J. Wang, S. Chen, W. Chen, and X. Liang, “Image-
+based visual servoing of a quadrotor using virtual camera approach,”
+IEEE/ASME Trans. Mechatronics, vol. 22, no. 2, pp. 972–982, Apr.
+2017.
+[31] L. Shi, B. Li, and W. Shi, “Vision-based UAV adaptive tracking
+control for moving targets with velocity observation,” Trans. Inst. Meas.
+Control, vol. 46, no. 12, pp. 2255–2265, Aug. 2024.
+[32] C. An, B. Li, W. Shi, and X. Zhang, “Autonomous quadrotor UAV
+systems for dynamic platform landing with onboard sensors,” Int.
+J. Robot. Autom., vol. 38, no. 4, pp. 296–305, 2023.
+[33] T. Lee, M. Leok, and N. H. McClamroch, “Geometric tracking control
+of a quadrotor UAV on SE(3),” in Proc. 49th IEEE Conf. Decis. Control
+(CDC), Atlanta, GA, USA, Dec. 2010, pp. 5420–5425.
+[34] T. Qin, P. Li, and S. Shen, “VINS-mono: A robust and versatile
+monocular visual-inertial state estimator,” IEEE Trans. Robot., vol. 34,
+no. 4, pp. 1004–1020, Aug. 2018.
+Yongcong Chen received the B.Eng. degree in
+automation from the School of Control Science and
+Engineering, Tiangong University, Tianjin, China, in
+2022, where he is currently pursuing the M.S. degree
+in control science and control engineering with the
+School of Control Science and Engineering, and
+Tianjin Key Laboratory of Autonomous Intelligence
+Technology and Systems.
+His current research interests include nonlinear
+control and micro aerial vehicles.
+Baoquan Li (Senior Member, IEEE) received the
+B.Eng. degree in automation and the Ph.D. degree in
+control theory and control engineering from Nankai
+University, Tianjin, China, in 2010 and 2015, respec-
+tively.
+From 2013 to 2014, he was a joint Ph.D. student
+with Nanyang Technological University, Central
+Area, Singapore, awarded by China Scholarship
+Council. He is currently a Professor with the School
+of Control Science and Engineering, and Tianjin Key
+Laboratory of Autonomous Intelligence Technology
+and Systems, Tiangong University, Tianjin. His research interests cover
+computer vision, micro aerial vehicle, and mobile robots.
+Wuxi Shi received the B.S. degree in mathematics
+from Beijing Normal University, Beijing, China, in
+1989, and the M.S. and Ph.D. degrees in control
+theory and control engineering from Beihang Uni-
+versity, Beijing, in 1999 and 2003, respectively.
+He is currently a Professor with the School of
+Control Science and Engineering, and Tianjin Key
+Laboratory of Autonomous Intelligence Technology
+and Systems, Tiangong University, Tianjin, China.
+His research interests include fuzzy control theory
+and fuzzy predictive control.
+Xuebo Zhang (Senior Member, IEEE) received the
+B.Eng. degree in automation from Tianjin Univer-
+sity, Tianjin, China, in 2006, and the Ph.D. degree in
+control theory and control engineering from Nankai
+University, Tianjin, in 2011.
+From 2014 to 2015, he was a Visiting Scholar
+with the Department of Electrical and Computer
+Engineering, University of Windsor, Windsor, ON,
+Canada. He was a Visiting Scholar with the Depart-
+ment of Mechanical and Biomedical Engineering,
+City University of Hong Kong, Hong Kong, in 2017.
+He is currently a Professor with the Institute of Robotics and Automatic
+Information System, and Tianjin Key Laboratory of Intelligent Robotics,
+Nankai University. His research interests include planning and control of
+autonomous robotics and mechatronic system with focus on time optimal
+planning and visual servo control, intelligent perception including robot vision,
+visual servo networks, simultaneous localization and mapping (SLAM),
+reinforcement learning, and game theory.
+Dr. Zhang is a Technical Editor of IEEE/ASME TRANSACTIONS ON
+MECHATRONICS and an Associate Editor of ASME Journal of Dynamic
+Systems, Measurement, and Control.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 06,2026 at 18:48:06 UTC from IEEE Xplore.  Restrictions apply. 
+

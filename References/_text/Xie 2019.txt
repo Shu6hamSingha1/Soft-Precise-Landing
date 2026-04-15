@@ -1,0 +1,1046 @@
+1034
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 28, NO. 3, MAY 2020
+Adaptive Output-Feedback Image-Based Visual Servoing for
+Quadrotor Unmanned Aerial Vehicles
+Hui Xie
+, Alan F. Lynch
+, Member, IEEE, Kin Huat Low, and Shixin Mao
+Abstract—This brief presents an adaptive output feedback
+image-based
+visual
+servoing
+(IBVS)
+law
+for
+a
+quadrotor
+unmanned aerial vehicle. The control objective is to regulate the
+relative 3-D position and yaw of the vehicle to a planar horizontal
+visual target consisting of multiple points. The control is imple-
+mented using a minimal number of commonly available low-cost
+on-board sensors including a strapdown inertial measurement
+unit and a monocular camera. The IBVS method relies on
+moment image features which are deﬁned using a virtual camera.
+Output feedback introduces a ﬁlter to the control which removes
+the common requirement for linear velocity measurement. The
+method is adaptive and compensates for a constant force dis-
+turbance appearing the translational dynamics and parameter
+uncertainty in thrust constant, desired feature depth, and mass.
+Exponential stability of the outer loop and combined inner–outer
+closed-loop error dynamics is proven. Flight tests demonstrate the
+proposed method’s motion control performance and its ability
+to compensate parametric uncertainty and reject constant force
+disturbances.
+Index
+Terms—Image-based
+visual
+servoing
+(IBVS),
+output-feedback control, unmanned aerial vehicles (UAVs).
+I. INTRODUCTION
+C
+URRENTLY, there is a strong interest in computer vision
+systems mounted on-board unmanned aerial vehicles
+(UAVs) to provide passive, inexpensive, and lightweight sens-
+ing of the environment. Adding vision improves the autonomy
+of the vehicle, e.g., ego-motion estimation and planning can
+be performed in areas where GPS is unavailable [1], [2].
+Vision can be integrated into the closed-loop motion control
+of the vehicle, and this is referred to as visual servoing.
+Visual servoing is usually categorized into two approaches:
+Manuscript received August 16, 2018; accepted December 25, 2018. Date
+of publication January 28, 2019; date of current version April 13, 2020.
+Manuscript received in ﬁnal form January 5, 2019. This work was supported in
+part by the National Science Foundation of China under Grant 51705086 and
+in part by the Trafﬁc Management of Unmanned Aerial Systems Project
+under Grant NTU-ATMRI 2016-D3-LOW. Recommended by Associate Editor
+G. Hu. (Corresponding author: Shixin Mao.)
+H. Xie is with the School of Computing, Engineering and Mathemat-
+ics, Western Sydney University, Penrith, NSW 2751, Australia (e-mail:
+hui.xie@westernsydney.edu.au).
+A. F. Lynch is with the Department of Electrical and Computer Engi-
+neering, University of Alberta, Edmonton, AB T6G 1H9, Canada (e-mail:
+alan.lynch@ualberta.ca).
+K. H. Low is with the School of Mechanical and Aerospace Engi-
+neering, Nanyang Technological
+University, Singapore 639798 (e-mail:
+mkhlow@ntu.edu.sg).
+S. Mao is with the School of Mechanical and Aerospace Engineering,
+Nanyang Technological University, Singapore 63978, and also with the Nan-
+jing University of Aeronautics and Astronautics Shenzhen Institute, Shenzhen
+518057, China (e-mail: maosx618@126.com).
+Color versions of one or more of the ﬁgures in this article are available
+online at http://ieeexplore.ieee.org.
+Digital Object Identiﬁer 10.1109/TCST.2019.2892034
+position-based visual servoing (PBVS) and image-based visual
+servoing (IBVS) [3]. This brief focuses on IBVS where the
+error signal to be stabilized is deﬁned in the image plane.
+Unlike PBVS, IBVS avoids pose reconstruction which requires
+accurate camera calibration and a prior 3-D model of the
+target. In general, IBVS is simpler to implement and rela-
+tively insensitive to camera calibration error [4]. The control
+objective considered in this brief is to regulate the relative
+3-D position and yaw between the vehicle and a horizontal
+planar target consisting of multiple points. We choose an
+IBVS approach for a quadrotor UAV with a single on-board
+downward-facing camera. Traditionally, IBVS for ﬁxed-base
+manipulator robots is developed using image feature kinemat-
+ics [3]. However, the dynamics of a robot should be considered
+for high-speed tasks or when the system is underactuated [5].
+We consider a traditional quadrotor which is underactuated,
+and the IBVS law presented directly accounts for its dynamics.
+In addition, a primary focus of this brief is to eliminate the
+need for linear velocity measurement, and this requires the
+UAV dynamics to be included in the control design. An IBVS
+law based on a robot’s dynamics is referred to as a dynamic
+IBVS [6].
+Work [6] categorizes existing dynamic IBVS methods
+for underactuacted UAVs into four groups: the spherical
+image moment-based design [7], [8], the homography-based
+method [9], [10], the virtual spring approach [11], [12],
+and the virtual camera approach [13], [14]. Other than the
+virtual spring approach which is based on an output feedback
+design, the work mentioned earlier assumes linear velocity
+measurement. To avoid this assumption, some IBVS designs
+use optical ﬂow. For example, [15] and [16] use spherical
+image moment features from [7] and optical ﬂow to estimate
+a scaled linear velocity. A nonlinear adaptive control design
+is proposed to ensure global asymptotic stability (GAS) of the
+outer closed loop. In [17], spherical optical ﬂow and an attitude
+estimate are combined to estimate scaled linear velocity.
+A GAS adaptive controller is applied to landing on a moving a
+platform. Instead of requiring additional sensors or software to
+compute optical ﬂow, some approaches use output feedback.
+Work in [18] and [19] uses spherical image moment features
+and an observer to estimate linear velocity. Both simulation
+and experimental results show the observer’s robustness to
+unknown depth information. However, a robustness analysis
+is not provided. In [20], spherical image moment features
+are adopted and an adaptive output feedback backstepping
+controller is used for IBVS. Although a GAS result is provided
+for the outer loop, this brief is not experimentally validated.
+1063-6536 © 2019 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE et al.: ADAPTIVE OUTPUT-FEEDBACK IBVS FOR QUADROTOR UAV
+1035
+Recently, attention has focused on output feedback methods
+with moment features using a virtual camera. Moment features
+originate from [21] and have a simple decoupled image feature
+kinematics which facilitates controller design. Work in [22]
+uses image moments of points viewed in a virtual camera
+with zero roll and pitch relative to the visual target plane
+but whose yaw motion follows the real camera. A uniformly
+ultimately bounded output feedback IBVS law is proposed
+using the image moment as state coordinates. Work in [22]
+is one of the few known papers which analyze the stability
+of the moving target case with no assumptions made about
+the target motion. Other work [23] presents an observer-
+based backstepping controller with the same virtual camera
+as in [22]. The depth of the desired image is assumed known
+a priori. Experimental results show the performance of the
+proposed approach. In [24], an output feedback backstepping
+controller with the image moment features from a virtual
+camera deﬁned in [22] is developed. This approach is adaptive
+to uncertainties in thrust constant and attitude bias which have
+a noticeable effect on UAV motion and create steady-state
+error [6]. Alternatively, in [25], the image moment features
+and a virtual camera with no rotational motion are used. As
+in [23], the desired image depth is assumed known and only
+asymptotic stability is proven.
+Using the virtual camera and image moment features
+in [22]–[24], this brief proposes a novel output feedback
+control. As mentioned earlier, output feedback eliminates
+the need for linear velocity measurement. Relative to [24],
+the proposed method improves the stability property of the
+closed-loop from asymptotically stable (AS) to exponentially
+stable (ES). ES is important as it ensures bounded tracking
+error for moving targets. Another contribution is to provide
+ES in the presence of constant force disturbances entering
+the translational dynamics and to compensate for parametric
+uncertainty in thrust constant, mass, and desired depth. Taking
+desired image depth as unknown makes the method more
+broadly applicable compared to [23] and [25]. Estimating
+desired depth is inconvenient and requires reconstruction
+which assumes known target geometry and intrinsic camera
+parameters. Robustness to constant force disturbance, thrust
+constant, and mass is not present in [22], [23], and [25]. Flight
+tests are an important component of this brief and validate
+the performance of the proposed control. This should be
+compared to the related work [22], [25] where only simulations
+are provided. The modiﬁed PX4 autopilot source has been
+released to the community to promote further collaborative
+development.
+This brief is organized as follows. Section II describes the
+system modeling. Section III presents the output feedback-
+based IBVS control. Experimental results are in Section IV,
+and concluding remarks are in Section V.
+II. DYNAMIC IBVS MODELING
+In this section, we present a summary of the open-loop
+modeling of the UAV and vision system. More details can be
+found in [6]. As shown in Fig. 1, the visual target considered
+in this brief lies in a horizontal plane and is composed of
+N > 1 coplanar feature points. A navigation frame N is
+Fig. 1.
+Deﬁnition of reference frames. Although V and C share the same
+origin, for clarity they are shown with a position offset.
+assumed to be inertial and ﬁxed to a point on the Earth.
+As mentioned in Section I, a virtual camera with zero roll and
+pitch is employed to deﬁne image features for visual servoing.
+To describe the IBVS modeling, a virtual camera frame V
+and a real camera frame C are introduced with their origin
+attached to the optical center of the real camera. Expressed
+in N, the displacement from the origin of N to the origin of C
+is denoted tn
+nc = [t1, t2, t3]T . As in [6], we use the point image
+moment feature denoted by vector s = [sT
+l , sh, sψ]T , where
+sl ∈R2. Then, the dynamic IBVS model can be written as
+˙sl = −λvl/Zv∗−Ssl ˙ψ
+(1a)
+˙sh = −vv
+3/Zv∗
+(1b)
+˙sψ = −˙ψ
+(1c)
+˙vv = −[ ˙ψ E3]×vv + gE3 −(Fv + )/m
+(1d)
+˙R = R[ωc]×
+(1e)
+˙ωc = −J −1[ωc]×Jωc + J −1τ c
+(1f)
+where λ is the focal length of the camera; Zv∗is the desired
+depth of the target plane in V; g is the gravity constant; m
+is the mass of the vehicle; J is the inertia of the vehicle;
+E3 = [0, 0, 1]T ; the orientation between N and C is denoted
+by R
+∈
+SO(3) and parameterized by the Euler angles
+η = [φ, θ, ψ]T , with φ denoting roll, θ pitch, and ψ yaw;
+the vector vv
+= [vT
+l , vv
+3]T
+= [vv
+1, vv
+2, vv
+3]T is the linear
+velocity of the camera expressed in V; ωc is the angular
+velocity of the camera in C; S =
+ 0 −1
+1
+0
+
+; [x]×y = x × y;
+
+=
+[1, 2, 3]T
+is an unknown disturbance force;
+Fv = −Rθφ E3TM; TM = KT uh is the total thrust; KT is
+the thrust constant and the rotation Rθφ is R with zero yaw;
+τ c = Mτ ¯τ c is the moment created by the propellers; and
+Mτ = diag {KTl/(2
+√
+2), KT l/(2
+√
+2), Kτ } where l is the arm
+length and Kτ is the counter torque constant. Although these
+force and torque models are approximate, they are commonly
+used [26]. The normalized inputs uh and ¯τ c for (1a) can be
+expressed as
+uh
+¯τ c
+
+= 1
+2
+⎡
+⎢⎢⎢⎢⎣
+1
+2
+1
+2
+1
+2
+1
+2
+−1
+1
+1
+−1
+1
+−1
+1
+−1
+−1
+−1
+1
+1
+⎤
+⎥⎥⎥⎥⎦
+⎡
+⎢⎢⎣
+˜W 2
+1
+˜W 2
+2
+˜W 2
+3
+˜W 2
+4
+⎤
+⎥⎥⎦
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+1036
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 28, NO. 3, MAY 2020
+Fig. 2.
+Dynamic visual servoing with an inner–outer control loop structure.
+where
+˜Wi is the normalized pulsewidth given by
+˜Wi
+=
+(Wi −Wmin)/(Wmax −Wmin), Wi is the pulsewidth modulation
+signal to the electronic speed controller (ESC) driving the
+ith motor, Wmin and Wmax are the minimum and maximum
+usable values, respectively. From the deﬁnition of uh and ¯τ c,
+it can be shown that uh ∈[0, 1] and ¯τ c
+i ∈[−1, 1], i = 1, 2, 3
+Fv = −KT uh
+cφsθ, −sφ, cφcθ
+
+≈KT uh
+−θ, φ, −1
+(2)
+where s∗= sin(∗) and c∗= cos(∗). We remark this small
+angle approximation is not necessary and can be removed
+to prove outer loop stability in a straightforward manner.
+However, we take the approximation for a number of reasons.
+First, in practice, roll and pitch are small and the linear
+approximation is sufﬁcient to obtain good performance. The
+low-cost camera used on the experimental platform has a
+small ﬁeld of view (FoV) and small roll and pitch ensure the
+target remains in its FoV. Second, it simpliﬁes the discussion
+regarding the entire (i.e., inner and outer) closed-loop stability.
+Most of the papers mentioned in Section I do not take a small
+roll and pitch approximation in the stability analysis of the
+outer loop. However, they do not perform an entire closed-loop
+analysis. An exception is [25] which considers the stability
+analysis of the entire closed loop. However, this last work does
+not provide experimental validation or the same robustness
+to uncertainty and force disturbance as the proposed method.
+As conﬁrmed in [6], a constant bias in the measurement
+of φ and θ, and the variation in thrust constant KT results
+in nonzero steady-state image feature error. In this brief,
+the effect of measurement error in φ and θ is included in
+disturbance  in (1d). The disturbance can also include other
+effects such as wind gusts. As in [17], disturbance  is
+assumed constant. The control objective is to regulate the
+image feature s to its desired value s∗while being robust to
+additive disturbance  and uncertainty in KT , m, and Zv∗.
+III. DYNAMIC IBVS CONTROL
+A. Two-Loop Structure
+As in [6] and shown in Fig. 2, we adopt a cascade two-loop
+control structure. To regulate the image feature error to zero,
+the outer IBVS loop takes the image feature s as input and
+provides attitude reference R∗to the inner loop and normalized
+thrust uh to the Mixer. The inner attitude loop tracks the
+reference R∗from the outer IBVS loop by outputting a
+normalized torque ¯τ c to the Mixer. The normalized signals
+uh, ¯τ c pass through the Mixer to determine the ESC inputs
+Wi. The justiﬁcation and beneﬁts of choosing this structure
+are given in [6]. In this brief, the high bandwidth of the inner
+attitude loop is achieved by a proportional–integral–derivative
+(PID) controller. As mentioned earlier, unlike [6], the outer
+IBVS loop does not require a measurement of linear velocity
+since an output feedback design is employed.
+B. Output Feedback Dynamic IBVS Control
+Based on (1b), (1d), and (2), the height subsystem is written
+as
+˙sh = −vv
+3/Zv∗
+(3a)
+˙vv
+3 = g −(KT uh −3)/m
+(3b)
+where uh is the input for subsystem (3). When the vehicle
+hovers at the desired height, the image feature sh = 1. Hence,
+the objective for the height subsystem is to regulate the image
+feature error esh = sh −1 to zero. Inspired by the work
+in [27], where an output feedback control law was developed
+to control the motion of robot arms, the control law for the
+height subsystem is designed as
+uh = kh(ϑh2 −ϑh1) + ˆCg + Cg0
+(4)
+with ϑh1 = ˙esh + αhesh, ϑh2 = ˙˜esh + lhd ˜esh, ˜esh = esh −ˆesh
+and
+˙ˆesh = −ˆvh + lh ˜esh
+(5a)
+˙ˆvh = −lhdlh ˜esh
+(5b)
+˙ˆCg = −γh(ϑh1 + ϑh2)
+(5c)
+where αh, kh, lh, lhd, and γh are the positive control gains; ˆesh
+is the estimate of esh; ˆvh is the estimate of vv
+3/Zv∗; Cg0 is a
+constant estimate of Cg = (mg + 3)/KT which is the thrust
+input to compensate gravity and 3; and ˆCg is the estimate of
+Cg −Cg0. We note that although ϑh1 and ϑh2 are not directly
+measured, using (5a), the control (4) can written in terms of
+measured variables as
+uh = kh(ˆvh + (lhd −lh)˜esh −αhesh) + Cg0
+−γh(esh + ˜esh) −γh
+ t
+0
+(αhesh + lhd ˜esh)dξ.
+(6)
+From (1a), (1d), and (2), the lateral subsystem is
+˙sl = −λvl/Zv∗−Ssl ˙ψ
+(7a)
+˙vl = KT uhSη1/m −Svl ˙ψ + 12
+(7b)
+where η1 = [φ, θ]T is the input to subsystem (7), and 12 =
+[1, 2]T . Without loss of generality, the desired value of sl
+is taken as zero, i.e., the image feature error is esl = sl. Similar
+to the height subsystem, the desired value of η1 denoted by
+η∗
+1 = [φ∗, θ∗]T is chosen as
+η∗
+1 = klS(ϑl2 −ϑl1) + S ˆl
+(8)
+with ϑl1 = ˙esl + αlesl, ϑl2 = ˙˜esl + lld ˜esl, ˜esl = esl −ˆesl and
+˙ˆesl = −ˆvl + ll ˜esl
+(9a)
+˙ˆvl = −lllld ˜esl
+(9b)
+˙ˆl = −γl(ϑl1 + ϑl2)
+(9c)
+where αl, kl, ll, lld, and γl are the positive control gains,
+ˆl is the estimate of l = m12/KT and its initial value
+is chosen as zero. The control law (8) can be expressed in
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE et al.: ADAPTIVE OUTPUT-FEEDBACK IBVS FOR QUADROTOR UAV
+1037
+terms of known states esl, ˆesl, and ˆvsl. As in [6], to make sψ
+exponentially converge to zero, the yaw reference is taken as
+ψ∗= kψ
+ t
+0
+sψ(ξ)dξ,
+kψ > 0.
+(10)
+Theorem 1: Consider system (1c), (3), and (7), where
+ is an unknown constant disturbance, and parameters
+Zv∗, KT , and m are unknown constants. The equilibrium
+[sh −1, vv
+3, sl, vl, sψ]T = 0 of the closed loop with control
+(4), (8), and (10) is ES if positive control gains satisfy
+bhkh −αh > 0,
+lh −lhd −bhkh > 0
+blkl −αl > 0,
+ll −lld −blkl > 0
+(11)
+where bh = KT /(mZv∗), bl = λKT Cg/(mZv∗), and we
+assume η tracks η∗= [(η∗
+1)T , ψ∗]T perfectly, i.e., η1 = η∗
+1
+and ψ = ψ∗.
+Proof: Using kinematics (1c) and control (10), the closed-
+loop system for yaw is ES
+˙sψ = −kψsψ.
+(12)
+With (3), (4), and (5a), the closed-loop height subsystem is
+˙ϑh1 = bhkhϑh2 −(bhkh −αh)ϑh1 −α2
+hesh + bh ˜Cg
+(13a)
+˙ϑh2 = bh ˜Cg−bhkhϑh1−(lh −lhd −bhkh)ϑh2 −l2
+hd ˜esh
+(13b)
+˙esh = ϑh1 −αhesh
+(13c)
+˙˜esh = ϑh2 −lhd ˜esh
+(13d)
+˙˜Cg = −γh(ϑh1 + ϑh2)
+(13e)
+with
+˜Cg
+=
+ˆCg + Cg0 −Cg. A Lyapunov function can-
+didate for (13) is Vh = (ϑ2
+h1 + ϑ2
+h2 + α2
+he2
+sh + l2
+hd ˜e2
+sh +
+bh ˜C2
+g/γh)/2, whose time derivative is
+˙Vh
+=
+−(bhkh −
+αh)ϑ2
+h1 −(lh −lhd −bhkh)ϑ2
+h2 −α3
+he2
+sh −l3
+hd ˜e2
+sh. If the control
+gains αh, kh,lh, and lhd satisfy (11), we have
+˙Vh ≤0.
+Hence, the closed loop is stable, which implies state xh =
+[ϑh1, ϑh2, esh, ˜esh, ˜Cg]T is bounded. Also, it is easy to show
+that equilibrium xh = 0 is the only invariant set in E = {xh ∈
+R5 : ˙Vh(xh) = 0}. Hence, applying LaSalle’s theorem, we can
+show the equilibrium xh = 0 of the closed loop (13) is AS.
+Since (13) is linear time-invariant, we have proven ES. As ϑh1
+and esh are exponentially convergent, we can show ˙esh is ES.
+Hence, using (3), we conclude sh −1 and vv
+3 exponentially
+converge to zero.
+With the control (4) and (8), the lateral subsystem (7) is
+¨sl = blkl(ϑl2 −ϑl1) + bl ˜l + dl(t) + Bη1(t)eη1
+(14)
+where ˜l = ˆl −l, eη1 = η1 −η∗
+1, Bη1(t) = −uhblS/Cg,
+and
+dl(t) = Bud(xl)ud = Bxl(ud)xl + B ˜uh
+(15)
+with Bud(t) = [bud1, bud2, bud3, bud4], ud = [˜uh, ˙ψ2, ˙ψ, ¨ψ]T ,
+˜uh = uh −Cg, bud1 = bl(kl(ϑl2 −ϑl1) + ˜l + l)/Cg,
+bud2 = esl, bud3 = 2S(αlesl −ϑl1), bud4 = −Sesl, Bxl(t) =
+[Bxl1, Bxl2, Bxl3, 0, Bxl5],
+xl
+=
+[ϑT
+l1, ϑT
+l2, eT
+sl, ˜eT
+sl, ˜T
+l ]T ,
+Bxl1 = −bl ˜uhkl/Cg −2S ˙ψ, Bxl2 = bl ˜uhkl I2/Cg, Bxl3 =
+2αl S ˙ψ −S ¨ψ + ˙ψ2I2, Bxl5 = −bl ˜uh/Cg, and B = bll/Cg.
+With (10) and (12), we can write ψ(t) = sψ0(1−e−kψt), where
+sψ0 is the initial value of sψ. Hence, ˙ψ and ¨ψ exponentially
+converge to zero. The control (4) can be written as uh =
+kh(ϑh2 −ϑh1) + ˜Cg + Cg. As shown earlier, the error signals
+ϑh1, ϑh2, and ˜Cg exponentially converge to zero, therefore,
+˜uh exponentially converges to zero. Thus, we conclude that
+ud and Bxl exponentially converge to zero. With (9), (14),
+(15), and assuming the inner loop tracks its reference perfectly,
+the closed loop for the lateral subsystem is
+˙xl = Aclxl + Bdud = Aclxl + Blxl + Bl ˜uh
+(16)
+where Bd = [BT
+ud, BT
+ud, 0, 0, 0]T , Bl = [BT
+xl, BT
+xl, 0, 0, 0]T ,
+Bl = [BT
+, BT
+, 0, 0, 0]T , Acl = Al ⊗I2, with ⊗denoting
+the Kronecker product operator, and
+Al = −
+⎡
+⎢⎢⎢⎢⎣
+(blkl −αl)
+−blkl
+α2
+l
+0
+−bl
+blkl
+(ll −lld −blkl)
+0
+l2
+ld
+−bl
+−1
+0
+αl
+0
+0
+0
+−1
+0
+lld
+0
+γl
+γl
+0
+0
+0
+⎤
+⎥⎥⎥⎥⎦
+.
+The structure of Aclxl is the same as the system matrix
+corresponding to (13). Hence, we conclude that if the control
+gains kl, ll, and lld satisfy (11), the matrix Acl is Hurwitz.
+Since Acl is Hurwitz, Bl exponentially converges to zero,
+Bl is a constant matrix, and ˜uh exponentially converges to
+zero, we can show the trajectories of xl are bounded using a
+converse Lyapunov theorem [28, Th. 4.14]. Since Bd is linear
+in xl, we can also show the boundedness of Bd. Since ud
+exponentially converges to zero and Bd is bounded, using [29,
+Lemma III.1], it can be shown that the origin of (16) is ES.
+From the deﬁnitions and exponential stability of ϑl1 and esl,
+we have shown sl and vl exponentially converge to zero.
+C. Inner–Outer Loop Stability Analysis
+In the previous section, the closed-loop lateral subsystem
+was proven ES for perfect inner loop tracking. In this section,
+we consider the effect of inner loop tracking error on the
+stability of the entire closed loop. There exists a rich literature
+on the stability analysis of cascaded-controlled UAVs, for
+example, [25] and [30]. In principle, if the bandwidth of the
+inner loop is sufﬁciently large, the entire closed loop is stable.
+To show this, the stability analysis is conducted by considering
+a simpliﬁed inner attitude dynamics. This simpliﬁcation is
+practical as visual servoing is mainly about hover.
+Using (14) and (16), the closed-loop of the outer loop can
+be written as
+˙xl = Aclxl + Bdud + Beηeη1
+(17)
+where
+Beη
+=
+[BT
+η1, BT
+η1, 0, 0, 0]T . With (8) and (17),
+the time derivative of η∗
+m1 is ˙η∗
+m1 = Cη Aclxl, where Cη =
+[−klS, kl S, 0, 0, I2]. As in [6], we take a linear approximation
+of (1e), (1f) about zero roll and pitch. The linearized inner
+loop is ˙eη1 = ˙ηm1 −˙η∗
+m1 and ¨ηm1 = J −1
+12 τ c
+12, where we have
+assumed a diagonal inertia matrix with nonzero components
+Ji, i = 1, 2, 3, J12 = diag([J1, J2]), and τ c
+12 is a vector of the
+ﬁrst two components of τ c. We remark that the same practical
+justiﬁcation for a small angle approximation is given as for (2).
+Deﬁning δ1 =
+ t
+0 eη1dτ, δ2 = eη1/k1 + δ1, δ3 = ˙ηm1/k2 + δ2,
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+1038
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 28, NO. 3, MAY 2020
+Fig. 3.
+Custom quadrotor UAV with visual servoing capability.
+xδ = [δT
+1 , δT
+2 , δT
+3 ]T , and choosing the control τ c
+12 = −k3δ3,
+we have
+˙xδ = Aδxδ −Bδxl/k1
+(18)
+where
+Aδ =
+⎡
+⎢⎢⎢⎢⎣
+−k1I2
+k1I2
+0
+−k1I2
+−k2 −k2
+1
+k1
+I2
+k2
+k1
+I2
+−k1I2
+−k2 −k2
+1
+k1
+I2
+−k3
+k2
+J −1
+12 + k2
+k1
+I2
+⎤
+⎥⎥⎥⎥⎦
+and Bδ = [0, AT
+clCT
+η , AT
+clCT
+η ]T . As shown earlier, the nominal
+system (16) of (17) is ES. Hence, we apply the converse
+Lyapunov theorem [28, Th. 4.14] which ensures there exists
+a function Vn(t, xl) satisfying
+c1∥xl∥2 ≤Vn(t, x1) ≤c2∥xl∥2
+(19a)
+∂Vn/∂t + ∂Vn/∂t(Aclxl + Bdud) ≤−c3∥xl∥2
+(19b)
+∥∂Vn/∂xl∥≤c4∥xl∥
+(19c)
+for some positive constants ci, i =1, 2, 3, and 4. Considering a
+Lyapunov function candidate V = Vn(t, xl)+xT
+δ xδ/2 and with
+(18) and (19), we can show the time derivative of V satisﬁes
+˙V ≤−c3∥xl∥2 + c4∥xl∥∥Beηeη1∥−xT
+l Bδxδ/k1 + xT
+δ (AT
+δ +
+Aδ)xδ/2. We can choose appropriate gains ki such that AT
+δ +
+Aδ = −Qδ, where Qδ > 0. Since Beη, Bδ are independent of
+gains ki, i = 1, 2, 3, eη1 is linear in xδ, and applying Young’s
+inequality, we can show that ˙V ≤−c5∥xlδ∥2 for some constant
+c5 > 0, where xlδ = [xT
+l , xT
+δ ]T , and if the eigenvalues of Qδ
+are taken sufﬁciently large. Hence, we conclude that if the
+bandwidth of the inner loop is sufﬁciently large, the entire
+closed-loop is ES. We remark that the control for the roll and
+pitch channels have a PID structure and can be written as
+τ12 = −k3δ3 = −k3 ˙ηm1/k2 −k3eη1/k1 −k3
+ t
+0
+eη1dτ.
+IV. EXPERIMENTAL RESULTS
+A. Experimental Platform
+To validate the proposed IBVS, a quadrotor platform shown
+in Fig. 3 was developed.
+1) Hardware: The UAV is built on a generic carbon ﬁber
+frame and includes a CMUcam5 Pixy computer vision system1
+and the PX4v2 Pixhawk autopilot hardware.2 The Pixhawk
+autopilot contains a 3-D accelerometer, a 3-D gyroscope, and
+a 3-D magnetometer. The Pixy camera is downward facing and
+mounted to the bottom of the vehicle. It has a focal length of
+λ = 2.8 mm and a 1/4′′ image sensor. The lens mounted on
+1http://www.cmucam.org/projects/cmucam5/wiki
+2https://pixhawk.org/
+Fig. 4.
+Simpliﬁed PX4 autopilot software structure used for IBVS.
+Rectangles: data sources such as sensors or devices. Ovals: software
+modules.
+the Pixy camera has 75◦horizontal and 47◦vertical FoV. The
+Pixy transmits image point coordinates at a rate of 25 Hz with
+a resolution of 320×200 pixels. Four ESCs are used to control
+four 840-rpm/V brushless motors with 10 × 3.8" multirotor
+propellers. The arm length of the frame is l = 0.2 m. Power
+is supplied by two 11.1-V 2600-mAh LiPo batteries. An Xbee
+radio provides a link to a Vicon capture system and is used
+for ground truth and for input to a backup controller for
+safety. The entire vehicle system weight including battery and
+computer vision system is about 1.2 kg.
+2) Software: To test the proposed visual servoing algorithm,
+the open-source PX4 autopilot ﬂight stack and device driver
+code were modiﬁed and developed. The PX4 autopilot runs
+on the real-time operating system NuttX3 and has a modular
+structure which is enabled by a publish-subscribe interprocess
+communication microobject request broker (μORB). Fig. 4
+shows how the essential PX4 modules (i.e., applications)
+communicate through μORB for the proposed control. Rec-
+tangles denote data sources such as sensors or devices, ovals
+denote software modules. For simplicity of presentation, not
+all components of the system are shown. A Pixy module
+was developed to receive the salient image point coordinates
+via a Universal Asynchronous Receiver/Transmitter interface.
+This module publishes this data to a topic called pixy. The
+module feature extraction subscribes to the pixy topic and
+computes the image moments and then publishes this data
+under the topic called image_features. The visual servoing
+module (IBVS) subscribes to the image_features topic and
+computes the reference attitude which is published for the
+inner attitude controller module. For safety (e.g., when the
+target leaves the FoV in IBVS), the existing position control
+module was modiﬁed to enable switching from visual servoing
+to position control using Vicon position and velocity data. The
+source code for the modiﬁed autopilot code has been released
+publicly4 to encourage research collaboration.
+B. Experimental Results
+Although Theorem 1 guarantees the stability of the closed
+loop, the transient performance of the IBVS law needs to be
+adjusted by tuning its control gains in the experiment. Suit-
+able transient performance ensures the visual target does not
+leave the camera FoV. Alternately, a camera with large FoV,
+e.g., a ﬁsheye camera, could be used to avoid FoV problems.
+The values of the control gains for the outer loop are in Table I.
+3http://www.nuttx.org/
+4https://github.com/huixie-robot/VisualServoing
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE et al.: ADAPTIVE OUTPUT-FEEDBACK IBVS FOR QUADROTOR UAV
+1039
+TABLE I
+CONTROL GAINS
+TABLE II
+STATISTICS OF es , ed , AND eψ
+The constant estimate of Cg is Cg0 = 0.5. The effectiveness of
+the proposed law to compensate for the uncertainty described
+in Section II is shown by comparing its performance to the
+case where the adaptive laws (5c) and (9c) are disabled. Such
+a comparison shows the need for modeling and compensating
+the system uncertainty considered. As well, the proposed
+method is compared to a PID control law obtained by remov-
+ing the observer estimation error ˜esh. This leads to a height
+control
+uh = −(khαh + γh)esh + kh ˆvh −γhαh
+ t
+0
+eshdξ + Cg0
+(20)
+where ˆvh is same as in (6) and obtained from ﬁlter (5a)
+and (5b). Similarly, for the lateral system, a PID controller-
+based visual servoing law can be obtained by removing the
+term ˜esl in (8). The objective of the second comparison is to
+demonstrate the improved stability margin and ease of tuning
+of the proposed control relative to a PID law. To ensure a
+sensible comparison, all control gains for the three designs
+are taken the same.
+The visual target consists of two points separated by about
+0.36 m and located on the horizontal ground. The desired
+value of the image feature is s∗= [0, 0, 1, 0] with the desired
+height of the vehicle determining the expression for sh [6].
+The image feature error is denoted es = [es1, es2, es3, es4]T =
+s −s∗. Fig. 5 shows the trajectories of es for the three cases.
+The trajectories of 3-D position and yaw tracking errors are
+denoted as et = [et1, et2, et3, et4]T = tn
+nc −tn∗
+nc and eψ =
+ψ −ψ∗, respectively, where tn∗
+nc and ψ∗correspond to the
+values of tn
+nc and ψ when es = 0. The Vicon system provides
+the ground truth tn
+nc. Fig. 6 shows the graphs of et and eψ.
+Fig. 7 presents the outer loop input trajectories, and Fig. 8
+illustrates the estimates ˆl = [ ˆl1, ˆl2]T and ˆCg using the
+adaptive law (5c) and (9c). The trajectories of image points
+are given in Fig. 9.
+As seen from Figs. 5(a) and 6(a), all error signals reach a
+steady state at about 10 s for the adaptive IBVS. The average
+and standard deviation of es, et, and eψ after 10 s are given
+in Table II. The statistics of the steady-state error are similar
+to those in [6]. However, it is important to note that unlike [6]
+Fig. 5.
+Trajectories of image feature error es. (a) Proposed adaptive IBVS.
+(b) Nonadaptive IBVS. (c) PID IBVS.
+velocity measurements from GPS or a motion capture system
+are not required. Figs. 5(b) and 6(b) show the error signal
+for the nonadaptive IBVS where uncertainty in KT and 
+are not compensated. We observe that feature error es3 and
+vertical motion error et3 reach their steady state at about
+10 s but with signiﬁcant steady-state error compared to the
+adaptive IBVS. This steady error comes from uncompensated
+positive Cg0−(mg+3)/KT . The steady-state error gradually
+decreases as KT decreases. Because of the decreasing vehicle
+height and the inability to compensate l, the lateral error
+signals es1, es2, et1, and et2 vary slowly and monotonically.
+The monotonic variation in image feature error es in steady
+state is also seen in the image plane in Fig. 9(b). For the
+adaptive IBVS, the control signal uh increases gradually to
+compensate decreases in KT . This can be seen from Figs.
+7(a) and 8 where the estimate of Cg −Cg0 increases to
+compensate the decrease in KT . The nonzero estimate of l
+in Fig. 8 and almost zero steady error es1, es2 in Fig. 5(a)
+also show the importance of accounting for lateral additive
+disturbance arising from system uncertainties such as attitude
+bias. It can be readily shown analytically that the nonadaptive
+control has nonzero steady-state error independent of the
+choice of control gains and accuracy of the initial estimate
+Cg0. Although in theory, high control gains could reduce
+steady-state error, this is not feasible in practice due to
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+1040
+IEEE TRANSACTIONS ON CONTROL SYSTEMS TECHNOLOGY, VOL. 28, NO. 3, MAY 2020
+Fig. 6.
+3-D position error et and yaw error eψ . (a) Proposed adaptive IBVS.
+(b) Nonadaptive IBVS. (c) PID IBVS.
+Fig. 7.
+Outer loop inputs. (a) Proposed adaptive IBVS. (b) Nonadaptive
+IBVS. (c) PID IBVS.
+noisy image signals and the need to keep the target in the
+camera FoV.
+It can be shown from Figs. 5(c)–7(c) and 9(c), the closed-
+loop system is unstable for the PID IBVS using the gains
+Fig. 8.
+Estimated parameters ˆl and ˆCg.
+Fig. 9.
+Image points trajectories. (a) Proposed adaptive IBVS. (b) Nonadap-
+tive IBVS. (c) PID IBVS.
+Fig. 10.
+Image feature error with a moving target.
+Fig. 11.
+Position and yaw of moving target and quadrotor. The target’s 3-D
+position is denoted tnv = [tv1, tv2, tv3]T and yaw is denoted ψv.
+in Table I. We speculate that it may be possible to tune
+the PID control law to stabilize the system. However, our
+experience has shown successful tuning is difﬁcult in practice.
+This is possibly due to the fact that the calculation of the time
+derivative is inexact (i.e., a ﬁlter is used in the experiment).
+The gain of the observer cannot be chosen arbitrarily large
+due to noise in the image features, and thus the estimated time
+derivative of error signals is delayed, and this destabilizes the
+closed loop. On the other hand, we can easily tune the control
+parameters of the proposed control to stabilize the system.
+A simple rule is to choose small αh, αl and large lh −lhd,
+ll −lld keeping kh, kl ﬁxed. Hence, the comparison isolates the
+role of the additional terms contained in the proposed control
+which is to clearly improve the stability margin of the system.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE et al.: ADAPTIVE OUTPUT-FEEDBACK IBVS FOR QUADROTOR UAV
+1041
+A video of the three experiments is available.5 The proposed
+adaptive IBVS is shown to outperform the other designs.
+Finally, a
+moving target experiment was
+considered.
+In Section III, the closed-loop system was proven to be ES
+for the case of a stationary target. When the target moves,
+its velocity acts as an additive disturbance to the closed loop.
+Using the converse Lyapunov stability theorem [28, Th. 4.14],
+we can show tracking error is bounded for bounded target
+acceleration. In this test, we dragged the target along the
+ground starting at about 8 s with a speed of approximately
+0.25 m/s. The yaw of the target was also varied. The image
+feature error trajectories are shown in Fig. 10. As expected,
+the image feature errors remain bounded. Fig. 11 presents the
+3-D position and yaw of the vehicle and target. It can be seen
+that the quadrotor successfully follows the target at a constant
+height of about 1.55 m.
+V. CONCLUSION
+This brief presents an adaptive output feedback dynamic
+IBVS control which makes use of commonly found low-
+cost sensors: an inertial measurement unit and monocular
+computer vision system. The main beneﬁt of output feedback
+is that it avoids directly measuring linear velocity or computing
+optical ﬂow. An adaptive control method ensures robustness to
+constant force disturbances; and uncertainty in desired depth,
+mass, and thrust coefﬁcient. This brief provides experimental
+results which show the proposed method accurately controls
+the relative pose of the vehicle to the horizontal target. In par-
+ticular, steady-state performance is obtained as the method
+compensates for variation in thrust constant and constant bias
+in attitude measurement which is modeled by a constant force
+disturbance. Local exponential stability of the outer loop and
+the entire closed loop is proven. Future work focuses on
+time-varying external disturbances and incorporating attitude
+bounds to ensure the visual feature remains in the camera
+FoV [31]. Finally, improving the entire closed-loop stability
+analysis from a local to global result should be investigated.
+REFERENCES
+[1] S.
+M.
+Weiss,
+“Vision
+based
+navigation
+for
+micro
+helicopters,”
+Ph.D. dissertation, Dept. Mech. Process Eng., ETH, Zürich, Switzerland,
+2012.
+[2] S. Shen, “Autonomous navigation in complex indoor and outdoor
+environments with micro aerial vehicles,” Ph.D. dissertation, Dept. Elect.
+Syst. Eng., Univ. Pennsylvania, Philadelphia, PA, USA, 2014.
+[3] F. Chaumette and S. Hutchinson, “Visual servo control. I: Basic
+approaches,” IEEE Robot. Automat. Mag., vol. 13, no. 4, pp. 82–90,
+Dec. 2006.
+[4] B. Espiau, “Effect of camera calibration errors on visual servoing in
+robotics,” in
+Experimental Robotics III, vol. 200, T. Yoshikawa and
+F. Miyazaki, Eds. Berlin, Germany: Springer, 1994, pp. 182–192.
+[5] F. Chaumette and S. Hutchinson, “Visual servo control. II. Advanced
+approaches,” IEEE Robot. Autom. Mag., vol. 14, no. 1, pp. 109–118,
+Mar. 2007.
+[6] H. Xie, “Dynamic visual servoing of rotary wing unmanned aerial
+vehicles,” Ph.D. dissertation, Dept. Elect. Comput. Eng., Univ. Alberta,
+Edmonton, AB, Canada, 2016.
+[7] T. Hamel and R. Mahony, “Visual servoing of an under-actuated dynamic
+rigid-body system: An image-based approach,” IEEE Trans. Robot.
+Autom., vol. 18, no. 2, pp. 187–198, Apr. 2002.
+5https://youtu.be/tCA2oNs-5mI
+[8] O. Bourquardez, R. Mahony, N. Guenard, F. Chaumette, T. Hamel, and
+L. Eck, “Image-based visual servo control of the translation kinematics
+of a quadrotor aerial vehicle,” IEEE Trans. Robot., vol. 25, no. 3,
+pp. 743–749, Jun. 2009.
+[9] N. Metni, T. Hamel, and F. Derkx, “Visual tracking control of aerial
+robotic systems with adaptive depth estimation,” in Proc. 44th IEEE
+Conf. Decis. Control, Seville, Spain, Dec. 2005, pp. 6078–6084.
+[10] H. de Plinval, P. Morin, P. Mouyon, and T. Hamel, “Visual servoing for
+underactuated VTOL UAVs: A linear, homography-based framework,”
+Int. J. Robust Nonlinear control, vol. 24, no. 16, pp. 2285–2308,
+Nov. 2014.
+[11] R. Ozawa and F. Chaumette, “Dynamic visual servoing with image
+moments for a quadrotor using a virtual spring approach,” in Proc.
+IEEE Int.
+Conf.
+Robot. Automat.,
+Shanghai,
+China,
+May 2011,
+pp. 5670–5676.
+[12] R. Ozawa and F. Chaumette, “Dynamic visual servoing with image
+moments for an unmanned aerial vehicle using a virtual spring
+approach,” Adv. Robot., vol. 27, no. 9, pp. 683–696, Apr. 2013.
+[13] D. Lee, H. Lim, H. J. Kim, Y. Kim, and K. J. Seong, “Adaptive image-
+based visual servoing for an underactuated quadrotor system,” J. Guid.,
+Control, Dyn., vol. 35, no. 4, pp. 1335–1353, Jul. 2012.
+[14] H. Jabbari, G. Oriolo, and H. Bolandi, “An adaptive scheme for image-
+based visual servoing of an underactuated UAV,” Int. J. Robot. Autom.,
+vol. 29, no. 1, pp. 92–104, Jan. 2014.
+[15] R. Mahony, P. Corke, and T. Hamel, “Dynamic image-based visual servo
+control using centroid and optic ﬂow features,” J. Dyn. Syst., Meas.,
+Control, vol. 130, no. 1, Jan. 2007, Art. no. 011005.
+[16] F. Le Bras, R. Mahony, T. Hamel, and P. Binetti, “Dynamic image-based
+visual servo control for an aerial robot: Theory and experiments,” Int.
+J. Optomechatron., vol. 2, no. 3, pp. 296–325, Jul. 2008.
+[17] B. Herissé, T. Hamel, R. Mahony, and F.-X. Russotto, “Landing a VTOL
+unmanned aerial vehicle on a moving platform using optical ﬂow,” IEEE
+Trans. Robot., vol. 28, no. 1, pp. 77–89, Feb. 2012.
+[18] R. Mebarki and B. Siciliano, “Velocity-free image-based control of
+unmanned aerial vehicles,” in Proc. IEEE/ASME Int. Conf. Adv. Intell.
+Mechatronics, Jul. 2013, pp. 1522–1527.
+[19] R. Mebarki, V. Lippiello, and B. Siciliano, “Nonlinear visual control
+of unmanned aerial vehicles in GPS-denied environments,” IEEE Trans.
+Robot., vol. 31, no. 4, pp. 1004–1017, Aug. 2015.
+[20] F. Le Bras, T. Hamel, R. Mahony, and A. Treil, “Output feedback
+observation and control for visual servoing of VTOL UAVs,” Int.
+J. Robust Nonlinear Control, vol. 21, no. 9, pp. 1008–1030, Jun. 2011.
+[21] O. Tahri and F. Chaumette, “Point-based and region-based image
+moments for visual servoing of planar objects,” IEEE Trans. Robot.,
+vol. 21, no. 6, pp. 1116–1127, Dec. 2005.
+[22] H. J. Asl, G. Oriolo, and H. Bolandi, “Output feedback image-based
+visual servoing control of an underactuated unmanned aerial vehicle,”
+Proc. Inst. Mech. Eng. I, J. Syst. Control Eng., vol. 228, no. 7,
+pp. 435–448, May 2014.
+[23] D. Zheng, H. Wang, J. Wang, S. Chen, W. Chen, and X. Liang,
+“Image-based visual servoing of a quadrotor using virtual cam-
+era approach,” IEEE/ASME Trans. Mechatronics, vol. 22, no. 2,
+pp. 972–982, Apr. 2017.
+[24] H. Xie, K. H. Low, and Z. He, “Adaptive visual servoing of
+unmanned aerial vehicles in GPS-denied environments,” IEEE/ASME
+Trans. Mechatronics, vol. 22, no. 6, pp. 2554–2563, Dec. 2017.
+[25] A. Abdessameud and F. Janabi-Shariﬁ, “Image-based tracking control
+of VTOL unmanned aerial vehicles,” Automatica, vol. 53, pp. 111–119,
+Mar. 2015.
+[26] P. Castillo, R. Lozano, and A. E. Dzul, Modelling and Control of Mini-
+Flying Machines. London, U.K.: Springer, 2005.
+[27] H. Berghuis and H. Nijmeijer, “Robust control of robots via linear
+estimated state feedback,” IEEE Trans. Autom. Control, vol. 39, no. 10,
+pp. 2159–2162, Oct. 1994.
+[28] H. K. Khalil, Nonlinear Systems, 3rd ed. Upper Saddle River, NJ, USA:
+Prentice-Hall, 2001.
+[29] R. Marino and P. Tomei, “Adaptive observers with arbitrary exponential
+rate of convergence for nonlinear systems,” IEEE Trans. Autom. Control,
+vol. 40, no. 7, pp. 1300–1304, Jul. 1995.
+[30] Y. Yu and X. Ding, “A global tracking controller for underactuated
+aerial vehicles: Design, analysis, and experimental tests on quadro-
+tor,” IEEE/ASME Trans. Mechatronics, vol. 21, no. 5, pp. 2499–2511,
+Oct. 2016.
+[31] H. Xie and A. F. Lynch, “Input saturated visual servoing for unmanned
+aerial vehicles,”
+IEEE/ASME Trans. Mechatronics, vol. 22, no. 2,
+pp. 952–960, Apr. 2017.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:13:27 UTC from IEEE Xplore.  Restrictions apply. 
+

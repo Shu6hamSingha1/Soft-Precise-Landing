@@ -1,0 +1,795 @@
+\documentclass[lettersize,journal]{IEEEtran} 
+\usepackage[colorlinks=true]{hyperref} 
+% \usepackage{orcidlink} 
+\usepackage[english]{babel} 
+\usepackage{graphicx} 
+% \graphicspath{{ {./images/} }} 
+\usepackage{amsmath,amsfonts}
+\usepackage{amssymb} 
+\usepackage{subcaption} 
+\usepackage{cite}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{mathtools}
+% \usepackage[compact]{titlesec} 
+% \usepackage{ragged2e}
+% \AtBeginDocument{
+% \setlength\abovedisplayskip{3pt}  
+% \setlength\belowdisplayskip{3pt}} 
+% \setlength{\textfloatsep}{1pt} 
+% \usepackage[font=small]{caption}
+% \captionsetup[figure]{labelfont=small,name={Fig.},labelsep=period}
+
+\begin{document}
+
+\title{Image-based Visual Servoing Scheme for Soft Precise Landing on Mobile Platform}
+
+\author{Shubham~Singhal}
+
+% \markboth{Data-driven learning}%
+% {}
+
+\maketitle
+\section*{Nomenclature}
+
+\begin{tabular}{@{}l @{\quad=\quad} l@{}}
+$t$ & time, s \\
+$m$ & mass, kg \\
+$\boldsymbol{r}$ & radial position vector, m \\
+$\boldsymbol{v}$ & linear velocity vector, m/s \\
+$\boldsymbol{\omega}$ & angular velocity vector, rad/s \\
+$\boldsymbol{F}$ & force vector, N \\
+$J$ & moment of inertia matrix, kg m$^2$ \\
+$\boldsymbol{\tau}$ & torque vector, N m \\
+$T$ & total thrust of the rotors, N \\
+$\hat{\boldsymbol{r}}$ & image point \\
+$\boldsymbol{s}$ & normalized position vector, rad \\
+$\alpha$ & image orientation, rad \\
+$\boldsymbol{h}$ & optical flow, rad/s \\
+$\boldsymbol{q}$ & system output vector \\
+$\boldsymbol{u}$ & system input vector \\
+$\beta$ & uncertainty parameter \\
+$\boldsymbol{c}$ & vector representing known system dynamics \\
+$\boldsymbol{d}$ & vector representing unknown system dynamics \\
+$\boldsymbol{p}$ & performance function vector \\
+$V$ & Lyapunov function
+\end{tabular}
+
+\section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
+This section outlines the system dynamics and control strategy of an underactuated quadrotor UAV platform using scale-independent target parameters and formulates the problem to address the challenges in vision-based precise landing.
+
+\subsection{Dynamics of Quadrotor-Target System} \label{quadrotor dynamics: section}
+Achieving soft precise landing on a moving target requires a thorough understanding of the system dynamics and control architecture of an underactuated quadrotor UAV platform. 
+First, consider a body-fixed frame $\mathcal{B}=\{O_{\text{b}} ~X_{\text{b}} ~Y_{\text{b}} ~Z_{\text{b}}\}$ rigidly attached to the UAV in forward-right-down (FRD) configuration.
+Let the linear and angular velocities of the UAV be denoted as $\,^\mathcal{B} \boldsymbol{v}_{\text{b}}$ and $\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$ respectively.
+Now, using the Newton-Euler formulation, the UAV flight dynamics can be expressed as follows:
+\begin{align}
+\label{quadrotor dynamics: equation}
+    m \,^\mathcal{B} \dot{\boldsymbol{v}}_{\text{b}} &= \,^\mathcal{B} \boldsymbol{F_{\text{ext}}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times (m \,^\mathcal{B} \boldsymbol{v}_{\text{b}})  \nonumber \\
+    J \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{b}} &= \,^\mathcal{B} \boldsymbol{\tau_{\text{ext}}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times (J \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}),
+\end{align}
+where $m$ is the mass,  and $J = \text{diag}(J_{xx}~J_{yy}~J_{zz})$ is the inertia matrix.
+The external force $\,^\mathcal{B} \boldsymbol{F_{\text{ext}}}$ includes gravitational force $\,^\mathcal{B} \boldsymbol{F_{\text{g}}}$, the total body thrust $\,^\mathcal{B} \boldsymbol{F_{\text{t}}} = \begin{bmatrix} 0 & 0 & \,^\mathcal{B} T_u\end{bmatrix}^\top $ with $\,^\mathcal{B} T_u$ being the total rotor control thrust, and the unknown model uncertainties and disturbances $\,^\mathcal{B} \boldsymbol{F_{\text{d}}}$ such that $\,^\mathcal{B} \boldsymbol{F_{\text{ext}}} = \,^\mathcal{B} \boldsymbol{F_{\text{g}}} + \,^\mathcal{B} \boldsymbol{F_{\text{t}}} + \,^\mathcal{B} \boldsymbol{F_{\text{d}}}$.
+Similarly, the external moment $\,^\mathcal{B} \boldsymbol{\tau_{\text{ext}}}$ includes the net control moments of the four rotors $\,^\mathcal{B} \boldsymbol{\tau}_u$, and the unknown model uncertainties and disturbances $\,^\mathcal{B} \boldsymbol{\tau_{\text{d}}}$ such that $\,^\mathcal{B} \boldsymbol{\tau_{\text{ext}}} = \,^\mathcal{B} \boldsymbol{\tau}_u + \,^\mathcal{B} \boldsymbol{\tau_{\text{d}}}$.
+Next, consider a target located at point $\,^\mathcal{B} \boldsymbol{r}_{\text{t}}$ with respect to the origin $O_{\text{b}}$ in body frame $\mathcal{B}$. It moves with a relative velocity $\,^\mathcal{B} \boldsymbol{v}_{\text{t/b}}$ and relative acceleration $\,^\mathcal{B} \boldsymbol{a}_{\text{t/b}}$. Then, the target kinematics in frame $\mathcal{B}$ is obtained as follows:
+\begin{align} \label{target kinematics: equation}
+    \,^\mathcal{B} \dot{\boldsymbol{r}}_{\text{t}} &= \,^\mathcal{B} \boldsymbol{v}_{\text{t/b}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{r}_{\text{t}}, \nonumber \\
+    \,^\mathcal{B} \dot{\boldsymbol{v}}_{\text{t}} &= \,^\mathcal{B} \boldsymbol{a}_{\text{t/b}} - \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{r}_{\text{t}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \left( \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{r}_{\text{t}} \right) \nonumber \\
+    &~~~ - 2 \left( \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{v}_{\text{t/b}} \right)
+\end{align}
+
+\subsection{Pose-based Flight Controller}
+In order to achieve target tracking using a pose-based flight controller, the overall control architecture is a cascaded PID controller with outer-loop operating in the inertial frame $\mathcal{I}=\{O_{\text{i}} ~X_{\text{i}} ~Y_{\text{i}} ~Z_{\text{i}}\}$ and the inner-loop in the body frame $\mathcal{B}$.
+The outer-loop controller is designed to generate desired velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$ command that drives the UAV from the instantaneous position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}$ to the known target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}}$.
+Then, it generates desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ command that drives the instantaneous UAV velocity $\,^\mathcal{I} \boldsymbol{v}_{\text{b}}$ to the desired velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$.
+The control laws are shown below:
+\begin{align} \label{outer_loop_control: equation}
+    \,^\mathcal{I}\boldsymbol{v}_{\text{d}} =& - K_{rp} \,^\mathcal{I}\boldsymbol{r}_{\text{e}} - K_{ri} \int \,^\mathcal{I}\boldsymbol{r}_{\text{e}} dt - K_{rd} \frac{d\,^\mathcal{I}\boldsymbol{r}_{\text{e}}}{dt} \nonumber \\
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d}} =&  K_{vp} \,^\mathcal{I}\boldsymbol{v}_{\text{e}} - K_{vi} \int \,^\mathcal{I}\boldsymbol{v}_{\text{e}} dt - K_{vd} \frac{d\,^\mathcal{I}\boldsymbol{v}_{\text{e}}}{dt},
+\end{align}
+where $\,^\mathcal{I}\boldsymbol{r}_{\text{e}} = \,^\mathcal{I}\boldsymbol{r}_{\text{b}} - \,^\mathcal{I}\boldsymbol{r}_{\text{t}}$ represents the relative position between the UAV and the target and $\,^\mathcal{I}\boldsymbol{v}_{\text{e}} = \,^\mathcal{I}\boldsymbol{v}_{\text{b}} - \,^\mathcal{I}\boldsymbol{v}_{\text{d}}$.
+
+Since the centrifugal force $\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times (m \,^\mathcal{B} \boldsymbol{v}_{\text{b}})$, given in \eqref{quadrotor dynamics: equation}, is nullified in the inertia frame, the desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ is assumed to be achieved solely by the total rotor control thrust $\,^\mathcal{B} T_u$ and its direction, after compensating for gravity and disturbances.
+The relationship between the desired acceleration ($\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$) and the thrust force applied along the desired body Z-axis ($\,^\mathcal{B} T_u$) is derived as:
+\begin{align} \label{a_des: equation}
+    \,^\mathcal{I} \boldsymbol{a}_{\text{d}} &=  \,^\mathcal{I}R_{\mathcal{B}} \,^\mathcal{B} \boldsymbol{F}_{\text{t}}/m = \,^\mathcal{I}R_{\mathcal{B}} \begin{bmatrix} 0 & 0 & \,^\mathcal{B} T_u /m\end{bmatrix}^\top \nonumber \\
+    &= \frac{\,^\mathcal{B} T_u}{m}\begin{bmatrix} S_\psi S_{\theta} C_{\phi} -C_\psi S_{\phi} \\ C_\psi S_{\theta} C_{\phi} +S_\psi S_{\phi} \\- C_{\theta} C_{\phi} \end{bmatrix},
+\end{align}
+where the rotation matrix $^\mathcal{I}R_\mathcal{B}$ transforms vectors from body frame ($\mathcal{B}, FRD$) to the inertial frame ($\mathcal{I}, ENU$), is given as.
+\begin{align}
+\label{I_R_B: equation}
+    ^\mathcal{I}R_\mathcal{B} = & ^{ENU}R_{NED} R_z(\psi) R_y(\theta) R_x(\phi) \nonumber \\
+    = & \begin{bmatrix} S_\psi C_\theta &S_\psi S_\theta S_\phi +C_\psi C_\phi &S_\psi S_\theta C_\phi -C_\psi S_\phi \\C_\psi C_\theta &C_\psi S_\theta S_\phi -S_\psi C_\phi &C_\psi S_\theta C_\phi +S_\psi S_\phi \\ S_\theta &- C_\theta S_\phi & - C_\theta C_\phi \end{bmatrix},
+\end{align}
+in which $S_x = sin(x)$ and $C_x = cos(x)$.
+
+The desired roll (${\phi}_{\text{d}}$), pitch (${\theta}_{\text{d}}$), and total thrust ($\,^\mathcal{B} T_u$) commands are then analytically derived by inverting the acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ in \eqref{a_des: equation} using its components ($\,^\mathcal{I} {a}_{\text{d}_x}, \,^\mathcal{I} {a}_{\text{d}_y}, \,^\mathcal{I} {a}_{\text{d}_z}$):
+\begin{align}
+\label{euler_thrust_des: equation}
+    {\theta}_{\text{d}} = & \tan^{-1}\left(\frac{- S_\psi \,^\mathcal{I} {a}_{\text{d}_x} - C_\psi \,^\mathcal{I} {a}_{\text{d}_y}}{\,^\mathcal{I} {a}_{\text{d}_z}} \right) \nonumber \\
+    {\phi}_{\text{d}} = & \tan^{-1}\left(\frac{C_{\theta_{\text{d}}} \left(C_\psi \,^\mathcal{I} {a}_{\text{d}_x} - S_\psi \,^\mathcal{I} {a}_{\text{d}_y} \right)}{\,^\mathcal{I} {a}_{\text{d}_z}} \right) \nonumber \\
+    \,^\mathcal{B} {T}_u = & - \frac{m \,^\mathcal{I} {a}_{\text{d}_z}}{C_{\theta_{\text{d}}} C_{\phi_{\text{d}}}},
+\end{align}
+Combining the derived attitude ($\phi_{\text{d}}, \theta_{\text{d}}$) with the known target heading $\psi_{\text{t}}$, the desired attitude $\boldsymbol{\Phi}_{\text{d}} = [\phi_{\text{d}}, \theta_{\text{d}}, \psi_{\text{t}}]^\top$ and thrust ($\,^\mathcal{B} T_u$) commands are then passed to the inner-loop controller to execute the required control effort.
+
+The inner-loop controller uses a cascade of PID loops to regulate the attitude ($\boldsymbol{\Phi}_{\text{b}}$) and angular body rates ($\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$) of the UAV.
+The goal is to generate desired attitude rates ($\dot{\boldsymbol{\Phi}}_{\text{d}}$) command that helps the UAV to accurately follow the desired attitude ($\boldsymbol{\Phi}_{\text{d}}$) command generated by the outer-loop controller.
+The desired attitude rates ($\dot{\boldsymbol{\Phi}}_{\text{d}}$) are transformed into the desired angular body rates ($\,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$) using the kinematic transformation matrix $W(\phi_{\text{d}} ,\theta_{\text{d}} )$:
+\begin{equation}
+\label{kinematic transformation: equation}
+    \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}} = W(\phi_{\text{d}} ,\theta_{\text{d}} ) \dot{\boldsymbol{\Phi}}_{\text{d}},
+\end{equation}
+where matrix $W(\phi_{\text{d}} ,\theta_{\text{d}} )$ relates the inertial Euler rates to the body frame angular rates, based on the desired roll ($\phi_{\text{d}}$) and pitch ($\theta_{\text{d}}$) angles as shown below:
+\begin{equation}
+    W(\phi_{\text{d}} ,\theta_{\text{d}} )=\begin{bmatrix} 0 & C_{\phi_{\text{d}}} & S_{\phi_{\text{d}}} C_{\theta_{\text{d}}} \\ 1 & 0 & -S_{\theta_{\text{d}}} \\ 0 & S_{\phi_{\text{d}}} & - C_{\phi_{\text{d}}} C_{\theta_{\text{d}}} \end{bmatrix}
+\end{equation}
+
+Then, the inner-loop controller generates desired angular acceleration $\,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}}$ command that drives the current body rate $\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$ of the UAV to the desired body rate $\,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$.
+The control laws are shown below:
+\begin{align}
+    \dot{\boldsymbol{\Phi}}_{\text{d}} =& - K_{\Phi p} \boldsymbol{\Phi}_{\text{e}} - K_{\Phi i} \int \boldsymbol{\Phi}_{\text{e}} dt - K_{\Phi d} \frac{d\boldsymbol{\Phi}_{\text{e}}}{dt} \nonumber \\
+    \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}} =& - K_{\omega p} \,^\mathcal{B} \boldsymbol{\omega}_{\text{e}} - K_{\omega i} \int \,^\mathcal{B} \boldsymbol{\omega}_{\text{e}} dt - K_{\omega d} \frac{d\,^\mathcal{B} \boldsymbol{\omega}_{\text{e}}}{dt},
+\end{align}
+where $\boldsymbol{\Phi}_{\text{e}} = \boldsymbol{\Phi}_{\text{b}} - \boldsymbol{\Phi}_{\text{d}}$ and $\boldsymbol{\omega}_{\text{e}} = \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$.
+The desired angular acceleration $\,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}}$ is then used with the rigid body dynamics equation \eqref{quadrotor dynamics: equation} to calculate the necessary desired control torque ($\,^\mathcal{B} \boldsymbol{\tau}_u$):
+\begin{equation}
+\label{tau_des: equation}
+    \,^\mathcal{B} \boldsymbol{\tau}_u = J \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}} + \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}} \times (J \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}})
+\end{equation}
+The final commands sent to the motor mixing algorithm are the combined thrust-torque command $\boldsymbol{u} = [\,^\mathcal{B} {T}_u, \,^\mathcal{B} \boldsymbol{\tau}_u^\top]^\top$.
+
+\subsection{Virtual Feature Points}
+Consider a camera frame $\mathcal{C}=\{O_{\text{c}} ~X_{\text{c}} ~Y_{\text{c}} ~Z_{\text{c}}\}$ rigidly attached to a monocular camera such that its $X_{\text{c}}$ and $Y_{\text{c}}$ axes are aligned with the image horizontal and vertical directions respectively and its $Z_{\text{c}}$ axis is aligned with the optical axis of the camera, pointing towards the scene.
+Assume that the camera captures a feature point $\,^\mathcal{C} \boldsymbol{\hat{r}}$ in the image plane, which can be represented using the common pinhole camera model as:
+\begin{equation}
+\label{pinhole camera model}
+    \,^\mathcal{C} \boldsymbol{\hat{r}} = \begin{bmatrix} \,^\mathcal{C} \hat{x} \\ \,^\mathcal{C} \hat{y} \end{bmatrix}
+    = \frac{1}{\,^\mathcal{C} z} \begin{bmatrix} \,^\mathcal{C} x \\ \,^\mathcal{C} y\end{bmatrix},
+\end{equation}
+where the feature point $\,^\mathcal{C} \boldsymbol{\hat{r}}$ is the perspective projection of a 3-D point in the camera frame $\,^\mathcal{C} \boldsymbol{r} = [\,^\mathcal{C} x, \,^\mathcal{C} y, \,^\mathcal{C} z]^{\top}$ on the image plane.
+
+Now consider a virtual camera frame $\mathcal{V}=\{O_{\text{v}} ~X_{\text{v}} ~Y_{\text{v}} ~Z_{\text{v}}\}$, which moves with the camera frame $\mathcal{C}$ but in such a way that the $X_{\text{v}}$--$Y_{\text{v}}$ plane is always horizontal, i.e., parallel to the $X_{\text{i}}$--$Y_{\text{i}}$ plane.
+Associated with $\mathcal{V}$, let us also define a virtual image plane, whose position and orientation w.r.t. $\mathcal{V}$ is the same as the actual image plane w.r.t. $\mathcal{C}$.
+The virtual image plane transformation is conducted by using the roll $\phi$ and pitch $\theta$ angles of the UAV.
+The 3-D point in the camera frame $\,^\mathcal{C} \boldsymbol{r}$ is expressed in the virtual coordinate frame as $\,^\mathcal{V} \boldsymbol{r} = [\,^\mathcal{V} x, \,^\mathcal{V} y, \,^\mathcal{V} z]^{\top}$. The relationship between $\,^\mathcal{C} \boldsymbol{r}$ and $\,^\mathcal{V} \boldsymbol{r}$ can be expressed as:
+\begin{equation}
+\label{virtual 3D point}
+    \,^\mathcal{V} \boldsymbol{r} = ^\mathcal{V}R_\mathcal{C} \,^\mathcal{C} \boldsymbol{r},
+\end{equation}
+where the rotation matrix $^\mathcal{V}R_\mathcal{C} = R_y(\theta) R_x(\phi)$ transforms vectors from camera frame $\mathcal{C}$ to the virtual camera frame $\mathcal{V}$.
+Using \eqref{virtual 3D point} and the pinhole camera model \eqref{pinhole camera model}, virtual feature point $\,^\mathcal{V} \boldsymbol{\hat{r}}$ is computed in the virtual image plane as:
+\begin{equation}
+\label{virtual feature point}
+    \,^\mathcal{V} \boldsymbol{\hat{r}} = \begin{bmatrix} \,^\mathcal{V} \hat{x} \\ \,^\mathcal{V} \hat{y} \end{bmatrix}
+    = \frac{1}{\,^\mathcal{V} z} \begin{bmatrix} \,^\mathcal{V} x \\ \,^\mathcal{V} y\end{bmatrix} = \begin{bmatrix}
+        \frac{C_\theta \,^\mathcal{C} \hat{x} + S_\theta S_\phi \,^\mathcal{C} \hat{y} + S_\theta C_\phi}{- S_\theta \,^\mathcal{C} \hat{x} + C_\theta S_\phi \,^\mathcal{C} \hat{y} + C_\theta C_\phi} \\ 
+        \frac{C_\theta \,^\mathcal{C} \hat{y} - S_\phi}{- S_\theta \,^\mathcal{C} \hat{x} + C_\theta S_\phi \,^\mathcal{C} \hat{y} + C_\theta C_\phi}
+    \end{bmatrix}
+\end{equation}
+
+\subsection{Problem Statement} \label{problem statement: section}
+This study proposes an image-based flight controller that uses scale-independent target parameters, instead of scale-dependent state variables $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}$ and $\,^\mathcal{I} \boldsymbol{v}_{\text{b}}$ given in \eqref{outer_loop_control: equation}, to maneuver the UAV towards the target without explicitly knowing the target position or heading.
+These target parameters are obtained using a downward-facing monocular camera mounted onboard the UAV platform. 
+Assuming the optical axis of the camera is aligned with the $Z_{\text{b}}$ axis of body frame $\mathcal{B}$, the camera continuously captures a collection of $N$ feature points of the target in the image plane.
+Note that the origin of the image plane is aligned with the image center and the feature points are normalized to camera focal length $f = 1$ m.
+These feature points are transformed to virtual feature points in the virtual image plane using \eqref{virtual feature point}. 
+The geometric center of these virtual points is considered as the target image point in the virtual frame $\,^\mathcal{V} \hat{\boldsymbol{r}} = [\,^\mathcal{V} \hat{x}, \,^\mathcal{V} \hat{y}]^{\top}$, which is estimated as follows:
+\begin{equation}
+\label{image point: equation}
+    \,^\mathcal{V} \hat{\boldsymbol{r}} = \begin{bmatrix} \frac{m_{10}}{m_{00}},\,\frac{m_{01}}{m_{00}} \end{bmatrix}^{\top}, 
+\end{equation}
+where $m_{ij}$ are the image moments given as $m_{ij} = \sum^{N}_{k=1} \,^\mathcal{V} \hat{x}_k^i \,^\mathcal{V} \hat{y}_k^j$ with the $k^{th}$ virtual feature point represented as $\,^\mathcal{V} \hat{\boldsymbol{r}}_k = [\,^\mathcal{V} \hat{x}_k, \,^\mathcal{V} \hat{y}_k]^{\top}$.
+
+Using the common pinhole camera model \eqref{pinhole camera model}, the normalized target position $\boldsymbol{s}$ can be obtained using the target image point $\,^\mathcal{V} \hat{\boldsymbol{r}}$, given in \eqref{image point: equation}, as shown below:
+\begin{equation} \label{normalized_pos: equation}
+    \boldsymbol{s} = \begin{bmatrix} \,^\mathcal{V} \hat{\boldsymbol{r}} \\ 1\end{bmatrix} = \frac{\,^\mathcal{V} \boldsymbol{r}_{\text{t}}}{\,^\mathcal{V} z_{\text{t}}},
+\end{equation}
+where $\boldsymbol{s}$ represents the perspective projection of the target point in the virtual frame $\,^\mathcal{V} \boldsymbol{r}_{\text{t}} = [\,^\mathcal{V} x_{\text{t}}, \,^\mathcal{V} y_{\text{t}}, \,^\mathcal{V} z_{\text{t}}]^{\top}$ on the virtual image plane.
+Since the onboard camera has limited capabilities, the target image point $\,^\mathcal{V} \hat{\boldsymbol{r}}$ is visible to it only when the target stays within its field of view.
+Hence, $\,^\mathcal{V} \hat{\boldsymbol{r}}$ is subjected to the following visibility constraints:
+\begin{equation} \label{visibility_constraints}
+    -\frac{\mathcal{R}}{2f} \leq \,^\mathcal{V} \hat{\boldsymbol{r}} \leq \frac{\mathcal{R}}{2f},
+\end{equation}
+ where $\mathcal{R} = [r_h, r_w]^\top$ represents image resolution in pixels.
+
+Using \eqref{target kinematics: equation} and \eqref{normalized_pos: equation}, the visual kinematics is given as:
+\begin{align} \label{s_dot: equation}
+    \dot{\boldsymbol{s}} &= \frac{1}{\,^\mathcal{V} z_{\text{t}}}\,^\mathcal{V} \dot{\boldsymbol{r}}_{\text{t}} - \frac{\,^\mathcal{V} \dot{z_{\text{t}}}}{\,^\mathcal{V} z_{\text{t}}^2}\,^\mathcal{V} \boldsymbol{r}_{\text{t}} = \frac{1}{\,^\mathcal{V} z_{\text{t}}} \,^\mathcal{V} \dot{\boldsymbol{r}}_{\text{t}} - \frac{(\,^\mathcal{V} \dot{\boldsymbol{r}}_{\text{t}} \cdot \hat{\boldsymbol{e}}_3)}{\,^\mathcal{V} z_{\text{t}}^2}\,^\mathcal{V} \boldsymbol{r}_{\text{t}} \nonumber \\
+    &= \frac{1}{\,^\mathcal{V} z_{\text{t}}} \big( \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{r}_{\text{t}}\big) - \bigg[\frac{1}{\,^\mathcal{V} z_{\text{t}}} \big( \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} \nonumber \\
+    &~~~ - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{r}_{\text{t}}\big) \cdot \hat{\boldsymbol{e}}_3 \bigg] \frac{\,^\mathcal{V} \boldsymbol{r}_{\text{t}}}{\,^\mathcal{V} z_{\text{t}}} \nonumber \\
+    &= \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} - \left[\left( \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{s},
+\end{align}
+where $\boldsymbol{h} = \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}}/\,^\mathcal{V} z_{\text{t}}$ is the optical flow representing visual velocity of the target and  $\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} = [0, 0, -\dot{\psi}]^\top$ is the angular rate of the virtual plane in the virtual frame $\mathcal{V}$.
+Given the desired normalized target position as $\boldsymbol{s}_\text{d} = [\hat{\boldsymbol{r}}_\text{d}^\top, \, 1]^\top$, the normalized position error $\boldsymbol{s}_\text{e}$ is defined as $\boldsymbol{s}_\text{e} = \boldsymbol{s} - \boldsymbol{s}_\text{d}$.
+Since $\dot{\boldsymbol{s}}_\text{d} = \boldsymbol{0}_{3 \times 1}$, the visual error kinematics is derived using \eqref{s_dot: equation} as:
+\begin{equation} \label{s_e_dot: equation}
+    \dot{\boldsymbol{s}}_\text{e} = \dot{\boldsymbol{s}} = \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} - \left[\left( \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{s},
+\end{equation}
+Using \eqref{s_e_dot: equation}, the desired optical flow $\boldsymbol{h}_\text{d}$ is derived as:
+\begin{equation} \label{h_des: equation}
+    \boldsymbol{h}_\text{d} = \dot{\boldsymbol{s}}_\text{e} + \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} + \left[h_\text{rd} - \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{s},
+\end{equation}
+where $h_\text{rd}$ is the desired radial optical flow, which is a predefined constant.
+Now, in designing the outer-loop control law, the first objective is to generate suitable optical flow $\boldsymbol{h}_\text{d}$ command such that the position error $\boldsymbol{s}_\text{e}$ asymptotically converges to the origin when subjected to the visibility constraint \eqref{visibility_constraints}.
+
+Using \eqref{target kinematics: equation}, the optical flow kinematics is given as:
+\begin{align}
+    \dot{\boldsymbol{h}} &= \frac{1}{\,^\mathcal{V} z_{\text{t}}}\,^\mathcal{V} \dot{\boldsymbol{v}}_{\text{t/v}} - \frac{\,^\mathcal{V} \dot{z_{\text{t}}}}{\,^\mathcal{V} z_{\text{t}}^2}\,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} = \frac{1}{\,^\mathcal{V} z_{\text{t}}}\,^\mathcal{V} \dot{\boldsymbol{v}}_{\text{t/v}} - \frac{(\,^\mathcal{V} \dot{\boldsymbol{r}}_{\text{t}} \cdot \hat{\boldsymbol{e}}_3)}{\,^\mathcal{V} z_{\text{t}}^2}\,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} \nonumber \\
+    &= \frac{1}{\,^\mathcal{V} z_{\text{t}}} \Big[ \,^\mathcal{V} \boldsymbol{a}_{\text{t/v}} - \,^\mathcal{V} \dot{\boldsymbol{\omega}}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{r}_{\text{t}} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{r}_{\text{t}} \right) \nonumber \\
+    &~~~ - 2 \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} \right) \Big] \nonumber \\
+    &~~~ - \bigg[\frac{1}{\,^\mathcal{V} z_{\text{t}}} \big( \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \,^\mathcal{V} \boldsymbol{r}_{\text{t}}\big) \cdot \hat{\boldsymbol{e}}_3 \bigg] \frac{\,^\mathcal{V} \boldsymbol{v}_{\text{t/v}}}{\,^\mathcal{V} z_{\text{t}}} \nonumber \\
+    &= \frac{\,^\mathcal{V} \boldsymbol{a}_{\text{t/v}}}{\,^\mathcal{V} z_{\text{t}}} - \,^\mathcal{V} \dot{\boldsymbol{\omega}}_{\text{v}} \times \boldsymbol{s} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) - 2 \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{h} \right) \nonumber \\
+    &~~~ - \left[\left( \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{h},
+\end{align}
+Using $\boldsymbol{h}_\text{d}$ from \eqref{h_des: equation}, the optical flow error $\boldsymbol{h}_\text{e}$ is estimated as $\boldsymbol{h}_\text{e} = \boldsymbol{h} - \boldsymbol{h}_\text{d}$. Then, the optical flow error kinematics is given as:
+\begin{align} \label{h_e_dot: equation}
+    \dot{\boldsymbol{h}}_\text{e} &= \dot{\boldsymbol{h}} - \dot{\boldsymbol{h}}_\text{d} \nonumber \\
+    &= \frac{\,^\mathcal{V} \boldsymbol{a}_{\text{t/v}}}{\,^\mathcal{V} z_{\text{t}}} - \,^\mathcal{V} \dot{\boldsymbol{\omega}}_{\text{v}} \times \boldsymbol{s} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) - 2 \left( \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{h} \right) \nonumber \\
+    &~~~ - \left[\left( \boldsymbol{h} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{h} - \dot{\boldsymbol{h}}_\text{d},
+\end{align}
+
+Using \eqref{quadrotor dynamics: equation} and \eqref{a_des: equation}, the relative acceleration of the target $\,^\mathcal{V}\boldsymbol{a}_{\text{t/v}}$ can be expressed in terms of the desired acceleration $^\mathcal{I}\boldsymbol{a}_{\text{d}}$ as:
+\begin{align}
+    \label{a_tb: equation}
+    \,^\mathcal{V}\boldsymbol{a}_{\text{t/v}} &= \,^\mathcal{V}\boldsymbol{a}_{\text{t}} -\,^\mathcal{V}\boldsymbol{a}_{\text{v}} = \,^\mathcal{V}\boldsymbol{a}_{\text{t}} - \,^\mathcal{B}R_\mathcal{V}^\top \,^\mathcal{B}\boldsymbol{a}_{\text{b}} \nonumber \\
+    &= \,^\mathcal{V}\boldsymbol{a}_{\text{t}} - \,^\mathcal{B}R_\mathcal{V}^\top \left(\frac{\,^\mathcal{B} \boldsymbol{F_{\text{ext}}}}{m} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{v}_{\text{b}} \right) \nonumber \\
+    &= - \,^\mathcal{B}R_\mathcal{V}^\top \frac{\,^\mathcal{B} \boldsymbol{F_{\text{t}}}}{m} + \,^\mathcal{V}\boldsymbol{a}_{\text{t}} - \bigg(\frac{\,^\mathcal{V} \boldsymbol{F_{\text{g}}} + \,^\mathcal{V} \boldsymbol{F_{\text{d}}}}{m} \nonumber \\
+    &~~~ - \,^\mathcal{V} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{V} \boldsymbol{v}_{\text{b}} \bigg) \nonumber \\
+    &= - \,^\mathcal{I}R_\mathcal{V}^\top \, ^\mathcal{I}\boldsymbol{a}_{\text{d}} + \,^\mathcal{V}\boldsymbol{a}_{\text{t}} - \bigg(\frac{\,^\mathcal{V} \boldsymbol{F_{\text{g}}} + \,^\mathcal{V} \boldsymbol{F_{\text{d}}}}{m} \nonumber \\
+    &~~~ - \,^\mathcal{V} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{V} \boldsymbol{v}_{\text{b}} \bigg)
+\end{align}
+
+Substituting \eqref{a_tb: equation} in \eqref{h_e_dot: equation}, the perturbed error dynamics of the optical flow is given as:
+\begin{equation} \label{h_e_dot_1: equation}
+    \dot{\boldsymbol{h}}_\text{e} = \beta \boldsymbol{u}_\text{a} + \boldsymbol{c} + \boldsymbol{d},
+\end{equation}
+where 
+\begin{align*}
+    \boldsymbol{u}_\text{a} &= - \,^\mathcal{I}R_\mathcal{V}^\top \, ^\mathcal{I}\boldsymbol{a}_{\text{d}}, \,
+    \beta = \frac{1}{z_{\text{t}}}, \\
+    \boldsymbol{c} &=  - \,^\mathcal{V}\dot{\boldsymbol{\omega}}_{\text{v}} \times \boldsymbol{s} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{v}} \times \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) - 2 \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{b}} \times \boldsymbol{h} \right) \nonumber \\
+    &~~~ - \left[\left( \boldsymbol{h} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{h} - \dot{\boldsymbol{h}}_\text{d} \\
+    \boldsymbol{d} &= \frac{\,^\mathcal{V}\boldsymbol{a}_{\text{t}}}{\,^\mathcal{V}z_{\text{t}}} - \left(\frac{\,^\mathcal{V}\boldsymbol{F_{\text{g}}} + \,^\mathcal{V}\boldsymbol{F_{\text{d}}}}{m \,^\mathcal{V}z_{\text{t}}} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{b}} \times \frac{\,^\mathcal{V}\boldsymbol{v}_{\text{b}}}{\,^\mathcal{V}z_{\text{t}}} \right).
+\end{align*}
+Note that the function $\boldsymbol{c}$ is known and can be estimated for feedback linearization. Whereas, parameter $\beta$ and function $\boldsymbol{d}$ are unknown.
+
+\textit{Assumption 1}: Given that $\boldsymbol{u}_\text{a}$ is bounded, the disturbance $\boldsymbol{d}$ in \eqref{h_e_dot_1: equation} is a uniformly bounded function with an unknown upper bound vector $\boldsymbol{d}_{\max}$, i.e. $\lvert \boldsymbol{d} \rvert \leq \boldsymbol{d}_{\max}$.
+Moreover, the parameter $\beta$ satisfies the inequality $0 < \beta_{\min} \leq\beta\leq \beta_{\max}$, where the constants $\beta_{\min},\,\beta_{\max}$ exist but are unknown.
+
+Now, in designing the outer-loop control law, the second objective is to generate suitable control signal $\boldsymbol{u}_\text{a}$, and hence the desired acceleration $^\mathcal{I}\boldsymbol{a}_{\text{d}}$ command, such that the optical flow error $\boldsymbol{h}_\text{e}$ asymptotically converges to the origin in the presence of uncertainty parameter $\beta$ and disturbance term $\boldsymbol{d}$.
+Then, the desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ is used to estimate desired roll (${\phi}_{\text{d}}$), pitch (${\theta}_{\text{d}}$), and total thrust ($\,^\mathcal{B} T_u$) commands using \eqref{euler_thrust_des: equation}.
+
+In order to achieve orientation alignment without explicit knowledge of the target heading $\psi_t$, the proposed flight controller relies on the target image orientation $\alpha$ defined as:
+\begin{equation} \label{target orientation: equation}
+    \alpha = \frac{1}{2} \text{tan}^{-1}\left( \frac{2 \mu_{11}}{\mu_{20} - \mu_{02}}\right),
+\end{equation}
+where $\mu_{ij}$ are the centered moments given as $\mu_{ij} = \sum^{N}_{k=1} (\hat{x}_k - \hat{x})^i (\hat{y}_k - \hat{y})^j$.
+Using \eqref{target orientation: equation}, the time derivative of $\alpha$ is given as:
+\begin{equation}
+    \dot{\alpha} = - \,^\mathcal{V} \omega_{\text{v}z}
+\end{equation}
+where $\,^\mathcal{V} \omega_{\text{v}z}$ is the third component of the angular rate $\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}}$ of the virtual plane in the virtual frame $\mathcal{V}$. Since $\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} = [0, 0, -\dot{\psi}]^\top$, this implies that $\dot{\alpha} = \dot{\psi}$.
+
+Hence, the outer-loop of the proposed flight controller passes the desired attitude command given by $\boldsymbol{\Phi}_{\text{d}} = [\phi_{\text{d}}, \theta_{\text{d}}, \alpha_{\text{d}}]^\top$ to the inner-loop controller to regulates the UAV attitude given by $\boldsymbol{\Phi}_{\text{b}} = [\phi_{\text{b}}, \theta_{\text{b}}, \alpha]^\top$.
+Note that the inner-loop control architecture of the proposed flight controller mirrors that of the pose-based controller, given by \eqref{kinematic transformation: equation}-\eqref{tau_des: equation}, but replaces UAV heading $\psi$  with target image orientation $\alpha$  to achieve orientation alignment without explicit knowledge of the target heading $\psi_t$.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/Block Diagram_v2.pdf}
+    \caption{Block diagram illustrating the control pipeline for soft precise landing of a UAV on a mobile target.} 
+    \label{block diagram: figure}
+\end{figure*}
+
+\section{Formulation of Control Strategy} \label{control strategy: section}
+The proposed flight controller replaces the scale-dependent state variables $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}$ and $\,^\mathcal{I} \boldsymbol{v}_{\text{b}}$, given in \eqref{outer_loop_control: equation}, with the scale-independent target parameters $\,^\mathcal{V} \boldsymbol{s}$ and $\,^\mathcal{V} \boldsymbol{h}$.
+As mentioned in the previous section, the adoption of these target parameters poses challenges, rendering conventional PID controllers unsuitable.
+
+\subsection{Performance Control for Visibility Constraints}
+Based on the visual error kinematics \eqref{s_e_dot: equation} developed in the previous section, the prescribed performance control technique is utilized here to achieve predefined dynamic and steady-state response for visual error, as well as satisfy the visibility constraints \eqref{visibility_constraints}.
+Defining image error as $\hat{\boldsymbol{r}}_\text{e} = \,^\mathcal{V} \hat{\boldsymbol{r}} - \hat{\boldsymbol{r}}_\text{d}$, the visibility constraint \eqref{visibility_constraints} can be rewritten in terms of $\hat{\boldsymbol{r}}_\text{e}$ as:
+\begin{equation} \label{visibility_constraints_1}
+    -\frac{\mathcal{R}}{2f} - \hat{\boldsymbol{r}}_\text{d} \leq \hat{\boldsymbol{r}}_\text{e} \leq \frac{\mathcal{R}}{2f} - \hat{\boldsymbol{r}}_\text{d},
+\end{equation}
+A controller achieves the prescribed performance when the image error $\hat{\boldsymbol{r}}_\text{e}$ converges to a predefined residual set that is bounded by absolutely decaying function of time. Typically, the prescribed performance can be mathematically expressed by the following inequalities:
+\begin{equation}
+\label{prescribed perfromance: equation}
+    -\underline{C}_{k} p_{1k}(t) < \hat{r}_{\text{e}k} < \overline{C}_{k} p_{1k}(t),
+\end{equation}
+where $k = \{1, 2\}$, $\underline{C}_{k}$ and $\overline{C}_{k}$ are positive parameters, and the performance function $p_{1k}(t)$ is defined by:
+\begin{equation} \label{performance function: equation}
+    p_{1_k}(t) = \left(1 - \frac{p_{1_\infty k}}{\max{\underline{C}_{k}, \overline{C}_{k}}}\right) e^{-\xi_{1_k} t} + \frac{p_{1_\infty k}}{\max{\underline{C}_{k}, \overline{C}_{k}}},
+\end{equation}
+where the constant $\xi_{1_k} > 0$ denotes the convergence rate of the tracking error, and $p_{1_\infty k} > 0$ represents the steady-state performance specification, which can be set small enough to meet performance requirements.
+The visibility constraint \eqref{visibility_constraints_1} is ensured by selecting $\underline{C}_{k}$ and $\overline{C}_{k}$ as:
+\begin{equation}
+    \underline{C} =  \frac{\mathcal{R}}{2f} + \hat{\boldsymbol{r}}_\text{d}, \, \overline{C} =  \frac{\mathcal{R}}{2f} - \hat{\boldsymbol{r}}_\text{d}, 
+\end{equation}
+
+To achieve target tracking with prescribed performance \eqref{prescribed perfromance: equation}, an error transformation first is introduced. The transformation function $\mathcal{S}_1(\boldsymbol{\zeta}_1)$ is defined such that
+\begin{equation}
+    \label{error transformation: equation}
+    \hat{\boldsymbol{r}}_\text{e} = \mathcal{S}_1(\boldsymbol{\zeta}_1) \boldsymbol{p}_1(t), \, \mathcal{S}_1(\boldsymbol{\zeta}_1) = \text{diag}(S_1(\zeta_{1_k})),
+\end{equation}
+where function $S_1(\zeta_{1_k})$ is strictly increasing and satisfies the following requirements:
+\begin{align*}
+&-\underline{C}_{k} < S_1(\zeta_{1_k}) < \overline{C}_{k}, \\ 
+&\lim_{\zeta_{1_k} \to \infty} S_1(\zeta_{1_k}) = \overline{C}_{k}, \\
+&\lim_{\zeta_{1_k} \to -\infty} S_1(\zeta_{1_k}) = -\underline{C}_{k}.
+\end{align*}
+According to the above mentioned requirements, the error transformation function $S_1(\zeta_{1_k})$ can be chosen as:
+\begin{equation}
+    \label{transformation function: equation}
+    S_1(\zeta_{1_k}) = \left(\frac{e^{\zeta_{1_k}} \overline{C}_{k} - \underline{C}_{k}}{e^{\zeta_{1_k}} + 1} \right).
+\end{equation}
+Since $S_1(\zeta_{1_k})$ is strictly increasing, its inverse function always exists. 
+The inverse function $S_1^{-1}(\hat{r}_{\text{e}k}, p_{1_k})$ can be described by:
+\begin{equation} \label{inverse transformation function: equation}
+    S_1^{-1}(\hat{r}_{\text{e}k}, p_{1_k}) = \zeta_{1_k} = \ln{\left(\frac{\hat{r}_{\text{e}k} + \underline{C}_{k} p_{1_k}(t)}{\overline{C}_{k} p_{1k}(t) - \hat{r}_{\text{e}k}} \right)}.
+\end{equation}
+The time-derivative of transformed error $\zeta_{1_k}$ is given as:
+\begin{equation} \label{transformed error derivative: equation}
+    \dot{\boldsymbol{\zeta}}_1 = \mathcal{G}_1 \big[ \dot{\hat{\boldsymbol{r}}}_{\text{e}} - \mathcal{S}_1(\boldsymbol{\zeta}_1) \dot{\boldsymbol{p}}_1(t)\big],    
+\end{equation}
+where
+\begin{align*}
+    \mathcal{G}_1 &= \left[\boldsymbol{p}_1(t)^{\top} \frac{\partial \mathcal{S}_1(\boldsymbol{\zeta}_1)}{\partial \boldsymbol{\zeta}_1}\right]^{-1} = \text{diag}(g_{1_k}(\zeta_{1_k}, p_{1_k})), \nonumber \\
+    g_{1_k}(\zeta_{1_k}, p_{1_k}) &= \frac{(e^{\zeta_{1_k}}+1)^2}{2\,e^{\zeta_{1_k}} p_{1_k}(t)}.
+\end{align*}
+
+Now, the the visual error kinematics on the unconstrained error is considered. Hence, using \eqref{transformed error derivative: equation}, $\dot{\boldsymbol{s}}_\text{e}$ can be analytically computed as:
+\begin{equation} \label{s_e_d_dot: equation}
+    \dot{\boldsymbol{s}}_\text{e} = \begin{bmatrix} \dot{\hat{\boldsymbol{r}}}_{\text{e}} \\ 0 \end{bmatrix} = \begin{bmatrix} \mathcal{G}_1^{-1} \dot{\boldsymbol{\zeta}}_{1} + \mathcal{S}_1(\boldsymbol{\zeta}_1) \dot{\boldsymbol{p}}_1(t) \\ 0 \end{bmatrix}.   
+\end{equation}
+Substituting \eqref{s_e_d_dot: equation} in \eqref{h_des: equation}, we obtain
+\begin{align} \label{h_des_1: equation}
+    \boldsymbol{h}_\text{d} &= \begin{bmatrix} \mathcal{G}_1^{-1} \dot{\boldsymbol{\zeta}}_{1} + \mathcal{S}_1(\boldsymbol{\zeta}_1) \dot{\boldsymbol{p}}_1(t) \\ 0 \end{bmatrix} - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \nonumber \\
+    &~~~ - \left[h_\text{rd} - \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{s},
+\end{align}
+
+So, the first objective translates to the formulation of a control law that synthesizes suitable optical flow $\boldsymbol{h}_\text{d}$ command such that the unconstrained error $\boldsymbol{\zeta}_{1}$ asymptotically converges to the origin. To this end, a simple PID control law is proposed as given below:
+\begin{equation} \label{zeta_e_dot_d: equation}
+    \dot{\boldsymbol{\zeta}}_{1} = - K_{\zeta p} \boldsymbol{\zeta}_{1} - K_{\zeta i} \int \boldsymbol{\zeta}_{1} dt - K_{\zeta d} \frac{d\boldsymbol{\zeta}_{1}}{dt}.
+\end{equation}
+Substituting \eqref{zeta_e_dot_d: equation} in \eqref{h_des_1: equation}, we obtain:
+\begin{align} \label{h_des_2: equation}
+    \boldsymbol{h}_\text{d} &= \begin{bmatrix} - \mathcal{G}_1^{-1} \left(K_{\zeta p} \boldsymbol{\zeta}_{1} + K_{\zeta i} \int \boldsymbol{\zeta}_{1} dt + K_{\zeta d} \frac{d\boldsymbol{\zeta}_{1}}{dt}\right) + \mathcal{S}_1(\boldsymbol{\zeta}_1) \dot{\boldsymbol{p}}_1(t) \\ 0 \end{bmatrix} \nonumber \\
+    &~~~ - \,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} - \left[h_\text{rd} - \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{s}.
+\end{align}
+
+\subsection{Performance Function for Optical Flow}
+Based on the perturbed error dynamics \eqref{h_e_dot_1: equation} developed in the previous section, the prescribed performance control technique is utilized here to achieve predefined dynamic and steady-state response for optical flow error, as well as ensure the boundedness during landing.
+To this end, the optical flow error $\boldsymbol{h}_{e}$ is constrained as:
+\begin{equation}
+    h_{e_k} \in (- p_{2_k}(t), \, p_{2_k}(t)),
+\end{equation}
+where $k = \{1, 2, 3\}$ and the performance function $\boldsymbol{p}_{2}(t))$ is defined by:
+\begin{equation}
+    \boldsymbol{p}_2(t) = e^{-\Xi_i t} (\boldsymbol{p}_{2_0} - \boldsymbol{p}_{2_\infty}) + \boldsymbol{p}_{2_\infty}   
+\end{equation}
+such that
+$\lim_{\text{t} \to \infty} p_{2_k}(t) = p_{2_\infty k} > 0$. Here, $p_{2_0 k}$, $p_{2_\infty k}$, and matrix $\Xi_2 = \text{diag}(\xi_{2_k})$ are predefined positive constants, which represent the maximum allowable overshoot, the steady-state residual set and the minimum convergence rate of $\boldsymbol{h}_{e}$, respectively.
+
+A non-linear transformation is formulated to map the constrained output error $\boldsymbol{h}_{e}$ onto a new unconstrained variable $\boldsymbol{\zeta}_{2}$ such that:
+\begin{align}
+    \label{optical flow error transformation: equation}
+    \boldsymbol{h}_{e} &= \mathcal{S}_2(\boldsymbol{\zeta}_2) \boldsymbol{p}_2(t), \, \mathcal{S}_2(\boldsymbol{\zeta}_2) = \text{diag}(S_2(\zeta_{2_k})), \nonumber \\
+    S_2(\zeta_{2_k}) &= \left(\frac{e^{\zeta_{2_k}} - 1}{e^{\zeta_{2_k}} + 1} \right)
+\end{align}
+with $S_2(\zeta_{2_k})$ possessing the following properties:
+\begin{enumerate}
+    \item[I.] $ -1 < S_2(\zeta_{2_k}) < 1 $, $\forall~\zeta_{2_k}(t) \in \mathbb{R},$ 
+    \item[II.] $\lim_{\zeta_{2_k} \to \infty} S_2(\zeta_{2_k}) = 1$,
+    \item[III.] $\lim_{\zeta_{2_k} \to -\infty} S_2(\zeta_{2_k}) = -1$
+\end{enumerate}
+
+Moreover, the components of the unconstrained output $\boldsymbol{\zeta}_2$ can be expressed as:
+\begin{equation} \label{inverse transformation function for inner loop}
+    \zeta_{2_k} = S^{-1}_2(h_{e_k}, p_{2_k}) = ln \left(\frac{p_{2_k} + h_{e_k}}{p_{2_k} - h_{e_k}} \right).
+\end{equation}
+Note that the inverse transformation $\mathcal{S}_2^{-1}: (-1, 1) \to \mathbb{R}$ is well-defined, provided $\zeta_{2_k}(t) \in \mathbb{R}$.
+
+Differentiating Eq. \eqref{optical flow error transformation: equation} and rearranging, we have:
+\begin{equation} \label{transformed error derivative: equation 2}
+    \dot{\boldsymbol{\zeta}}_2 = \mathcal{G}_2 \big[\dot{\boldsymbol{h}}_{e} - \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t)\big],    
+\end{equation}
+where
+\begin{align*}
+    \mathcal{G}_2 &= \left[\boldsymbol{p}_2(t)^{\top} \frac{\partial \mathcal{S}_2(\boldsymbol{\zeta}_2)}{\partial \boldsymbol{\zeta}_2}\right]^{-1} = \text{diag}(g_{2_k}(\zeta_{2_k}, p_{2_k}), \nonumber \\
+    g_{2_k}(\zeta_{2_k}, p_{2_k}) &= \frac{(e^{\zeta_{2_k}}+1)^2}{2\,e^{\zeta_{2_k}} p_{2_k}(t)}
+\end{align*}
+Substituting \eqref{h_e_dot_1: equation} in the above equation \eqref{transformed error derivative: equation 2} to derive an unconstrained perturbed system equation enveloped with prescribed performance as shown below:
+\begin{equation} \label{unconstrained system: equation}
+    \dot{\boldsymbol{\zeta}}_2 = \mathcal{G}_2 \big[\beta \boldsymbol{u}_\text{a} + \boldsymbol{c} + \boldsymbol{d} - \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t) \big]
+\end{equation}
+
+\subsection{Adaptive Control Law} \label{adaptive controller for inner loop : section}
+The second objective translates to the formulation of a control law that synthesizes suitable control signal $\boldsymbol{u}_\text{a}(t)$ to drive the non-linear map-based transformed output $\boldsymbol{\zeta}_2$ to a small uniform ultimate bound (UUB) around the origin in finite time through online estimation and rejection of unknown bounded uncertainty parameters $\beta$, $\boldsymbol{d}$ shown in Eq. \eqref{unconstrained system: equation}.
+To this end, an adaptive first-order sliding mode control (AFOSMC) strategy is designed that compensates for the system uncertainty without any a priori knowledge of its upper bound.
+This control strategy accounts for non-linearity and singularity inherent to optical flow-guided landing and alleviates the adverse effects of actuator faults and input saturation.
+
+Similar to the outer loop controller, the following first-order PI sliding surface $\boldsymbol{\sigma}$ is defined for the inner loop output error vector $\boldsymbol{\zeta}_2$:
+\begin{equation} \label{sigma: equation}
+    \boldsymbol{\sigma} = \boldsymbol{\zeta}_2 + \mathcal{X} \int_{\text{t}_0}^t \boldsymbol{\zeta}_2~d\tau,
+\end{equation}
+where the sliding surface $\sigma_{k}$ represents the exponentially converging dynamics of output error $\zeta_{2_k}(t)$ with a decaying rate $\chi_{2_k} > 0$ for $k = \{1, 2, 3\}$ such that $\mathcal{X} = \text{diag}(\chi_{k})$.
+The time-derivative of $\boldsymbol{\sigma}$ can be computed as:
+\begin{equation} \label{sigma derivative: equation 1}
+    \dot{\boldsymbol{\sigma}} = \dot{\boldsymbol{\zeta}}_2 + \mathcal{X}~\boldsymbol{\zeta}_2
+\end{equation}
+The following equation can be obtained by substituting  \eqref{unconstrained system: equation} in the above Eq. \eqref{sigma derivative: equation 1}:
+\begin{align}
+    \label{sigma derivative: equation 2}
+    \dot{\boldsymbol{\sigma}} =& ~\mathcal{G}_2 \big[\beta \boldsymbol{u}_\text{a} + \boldsymbol{c} + \boldsymbol{d} - \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t) \big] + \mathcal{X}~\boldsymbol{\zeta}_2 \nonumber \\
+    = &~ \beta \mathcal{G}_2 \big[\boldsymbol{u}_\text{a} +  \boldsymbol{c} - \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t) + \mathcal{G}_2^{-1} \mathcal{X}\,\boldsymbol{\zeta}_2 \big] + \beta_{\min} \, \mathcal{D} \boldsymbol{\theta}, 
+\end{align}
+where 
+\begin{align*}
+    \mathcal{D} &= \beta_{\min}^{-1} \, \begin{bmatrix} \beta - 1 & \lVert \mathcal{G}_2 \rVert^{-1} \mathcal{G}_2 \boldsymbol{d} \end{bmatrix}, \\
+    \boldsymbol{\theta} &= \begin{bmatrix}
+    \mathcal{G}_2 \big[- \boldsymbol{c} + \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t) - \mathcal{G}_{2}^{-1} \mathcal{X}\,\boldsymbol{\zeta}_2 \big] \\ \lVert \mathcal{G}_2 \rVert
+    \end{bmatrix},
+\end{align*}
+There exists an unknown positive constant $\tilde{d} = \beta_{\min}^{-1} \Big[\text{max}\{|\beta_{\max}{-}1|,|\beta_{\min}{-}1|\} + \lVert \boldsymbol{d}_{\max} \rVert \Big]$ such that $\lVert\mathcal{D}\rVert\leq\tilde{d}$.
+ 
+Finally, the following control law has been proposed:
+\begin{align} \label{adaptive control law: equation}
+    \boldsymbol{u}_\text{a} =&~ \mathcal{G}_2^{-1} \big[ \boldsymbol{u}_{\text{sw}} + \boldsymbol{u}_{\text{eq}} \big], \nonumber \\
+    \boldsymbol{u}_{\text{sw}} =& - \Gamma \boldsymbol{\sigma} - \lVert \boldsymbol{\theta} \rVert \, \text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma}) \boldsymbol{\kappa}(t)\nonumber\\
+    \boldsymbol{u}_{\text{eq}} =&~\mathcal{G}_2 \big[- \boldsymbol{c} + \mathcal{S}_2(\boldsymbol{\zeta}_2) \dot{\boldsymbol{p}}_2(t) - \mathcal{G}_{2}^{-1} \mathcal{X}\,\boldsymbol{\zeta}_2 \big],
+\end{align}
+where $\Gamma = \text{diag}(\gamma_{k})$  is the proportional control matrix with positive constants $\gamma_{k}$ and $\boldsymbol{\kappa}(t)$ is the adaptive sliding mode control parameter.
+The design matrix $\mathcal{E}_i$ is defined as $\mathcal{E} = \text{diag}(\varepsilon_{k})$ such that $0 < \varepsilon_{k} << 1$, where the design constants $\varepsilon_{k}$ represent the sensitivity of the smooth transition across the sliding surface for sliding mode control.
+the sliding surface for sliding mode control.
+The saturation matrix $\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma}) = \text{diag}(\text{sat}(\sigma_{k}/\varepsilon_{k}))$, where the saturation function sat($\sigma_k/\epsilon_k$) is defined as
+\begin{align}
+\label{sat_fn}
+\text{sat}(\sigma_k/\epsilon_k)=\begin{cases}
+    \sigma_k/\epsilon_k,~~\,\text{if}~~\rvert\sigma_k\rvert\,<\,\epsilon_k\\
+    \lceil \sigma_k\rfloor^0,~\text{otherwise}
+    \end{cases}
+\end{align}
+with $\lceil \sigma_k \rfloor^0$ representing the sign function.
+The adaptive gain $\boldsymbol{\kappa}(t)$ is updated as:
+\begin{equation} \label{adaptive law: equation}
+    \dot{\boldsymbol{\kappa}}(t) =  \lVert \boldsymbol{\theta} \rVert \mathcal{N} \lvert \boldsymbol{\sigma} \rvert - \mathcal{N} \mathcal{P} \boldsymbol{\kappa}(t), \, \boldsymbol{\kappa}(0) \in \mathbb{R}_+^3,
+\end{equation}
+where $\lvert \boldsymbol{\sigma} \rvert  = \left[\lvert \sigma_{1} \rvert,\, \lvert \sigma_{2} \rvert,\, \lvert \sigma_{3} \rvert\right]^{\top}$. Also, $\mathcal{N} = \text{diag}(\eta_{k})$ and $\mathcal{P} = \text{diag}(\rho_{k})$ are positive gain matrices.
+
+Eq. \eqref{adaptive control law: equation} is incorporated in Eq. \eqref{sigma derivative: equation 2} to obtain the following expression:
+\begin{align}
+    \label{sigma derivative: equation 3}
+    \dot{\boldsymbol{\sigma}} =&~ - \beta \big[\Gamma \boldsymbol{\sigma} + \lVert \boldsymbol{\theta} \rVert \, \text{sat}( \mathcal{E}^{-1}\boldsymbol{\sigma}) \boldsymbol{\kappa}(t)\big] + \beta_{\min} \, \mathcal{D} \boldsymbol{\theta},
+\end{align}
+
+\subsection{Lyapunov Stability Analysis}
+The stability analysis starts with the following definition of global uniform ultimate boundedness of the signal $\boldsymbol{\chi}(t)$:
+
+\textit{Definition 1}:
+ Consider a multi-variable signal $\boldsymbol{\chi}(t) \in \mathbb{R}^n, ~n \in [0, \infty)$. Assume that $\exists$ $\lambda, ~ \lambda_{\text{u}} \in \mathbb{R}_+$, where $\lambda, ~ \lambda_{\text{u}}$ are positive constants and $\forall \, 0 < \lambda < \lambda_{\text{u}}$, $\exists ~ \mathcal{T} \geq 0$ and $\Lambda > 0$ such that
+\begin{equation} \label{GUUB: Definition}
+    \lVert \boldsymbol{\chi}(0) \rVert \leq \lambda ~\implies~ \lVert \boldsymbol{\chi}(t) \rVert \leq \Lambda,  \, \forall \, t \geq \mathcal{T}
+\end{equation}
+\noindent and $\lambda$ can be arbitrarily large. Then, the signal $\boldsymbol{\chi}(t)$ is said to be \textit{global uniformly ultimately bounded} by the ultimate bound $\Lambda$.
+
+\textit{Lemma 1}:
+Let $V$ be a continuously differentiable function such that 
+\begin{align}
+    k_1 \lVert \boldsymbol{\chi} \rVert^2_2 \leq V(\boldsymbol{\chi}) \leq k_2 \lVert \boldsymbol{\chi} \rVert^2_2, ~ \dot{V}(\boldsymbol{\chi}) \leq - k_3 V(\boldsymbol{\chi}),\\ \forall \, \lVert \boldsymbol{\chi} \rVert \geq \varkappa \nonumber
+\end{align}
+\noindent with $k_1$, $k_2$, $k_3 > 0$. Consider a ball $\mathcal{B}_r$ of radius $r$ and let $\varkappa \leq r (k_1/k_2)^{\frac{1}{2}} \triangleq \lambda$.
+\noindent Then, for every initial state $\boldsymbol{\chi}(0)$ satisfying $\lVert \boldsymbol{\chi}(0) \rVert^2_2 \leq \lambda$, $\exists$ $\mathcal{T} \geq 0$, such that \eqref{GUUB: Definition} holds true with $\Lambda \triangleq \varkappa (k_2/k_1)^{\frac{1}{2}}$ and an arbitrarily large $\lambda$. 
+
+\textit{Theorem 1}:
+Consider the perturbed nonlinear system \eqref{h_e_dot_1: equation} such that the initial value of the optical flow error $\boldsymbol{h}_{e}(0)$ is within the constrained region, i.e., $- \boldsymbol{p}_{2_0} < \boldsymbol{h}_{e}(0) < \boldsymbol{p}_{2_0}$. Then, under \textit{Assumption 1}, system \eqref{unconstrained system: equation} under the proposed control law \eqref{adaptive control law: equation} accomplishes exponential convergence of $\boldsymbol{\zeta}_2$ to a UUB given by
+\begin{equation}
+    \vartheta = \sqrt{\frac{3 \beta_{\min}\lambda_{\max}(\mathcal{P})}{\left(\varphi_1 - \varphi_2\right)}} \tilde{d},
+\end{equation}
+where $\varphi_1 \triangleq \beta_{\min} \frac{\text{ min}\big(2 \lambda_{\min}\left(\Gamma \right),\lambda_{\min}\left(\mathcal{P} \right)\big)}{\text{max}\big(1,\beta_{\min} \lambda_{\max}\left(\mathcal{N}^{-1} \right)\big)}>0$, $0<\varphi_2<\varphi_1$.
+Moreover, the control law \eqref{adaptive control law: equation} ensures that the trajectory of the system \eqref{h_e_dot_1: equation} lies within the prescribed constraint sets $- \boldsymbol{p}_{2}(t) < \boldsymbol{h}_{e} < \boldsymbol{p}_{2}(t) \, \forall \, t \geq 0$.
+
+\textit{Proof:}
+As a first step, observe that $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0) / p_{2_0 k})$ is well-defined for $\lvert h_{e_k}(0) \rvert < p_{2_0 k}$ for $k = \{1, 2, 3\}$. The dynamics of $\boldsymbol{\zeta}_2$ then evolves according to the system \eqref{unconstrained system: equation} under the control law \eqref{adaptive control law: equation} of the PLASMC strategy.
+
+\noindent The following candidate Lyapunov function $V(t)$ is now considered for subsequent analysis:
+\begin{align} \label{Lyapunov function: equation}
+    V(t) =&~ \frac{1}{2}\boldsymbol{\sigma}^{\top}\boldsymbol{\sigma} + \frac{\beta_{\min}}{2} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top}  \mathcal{N}^{-1} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right],
+\end{align}
+where the unknown positive constant $\tilde{d}$ satisfies $\lVert\mathcal{D}\rVert \leq \tilde{d}$ and $\boldsymbol{1} = [1,\,1,\,1]^{\top}$.
+
+Using \eqref{sigma derivative: equation 3} and \eqref{adaptive law: equation}, the time-derivative of \eqref{Lyapunov function: equation} can be written as
+\begin{align}
+\label{Lyapunov derivative: equation 1}
+    \dot{V}(t)=~&\boldsymbol{\sigma}^{\top} \dot{\boldsymbol{\sigma}} + \beta_{\min} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top} \mathcal{N}^{-1} \dot{\boldsymbol{\kappa}}(t)\nonumber\\
+    = & - \beta \, \boldsymbol{\sigma}^{\top} \Big[\Gamma \boldsymbol{\sigma} + \lVert \boldsymbol{\theta} \rVert \, \text{sat}( \mathcal{E}^{-1}\boldsymbol{\sigma}) \boldsymbol{\kappa}(t)\Big] + \beta_{\min} \, \boldsymbol{\sigma}^{\top} \mathcal{D} \boldsymbol{\theta} \nonumber\\
+    & + \beta_{\min} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top} \mathcal{N}^{-1} \Big[\lVert \boldsymbol{\theta} \rVert \mathcal{N} \lvert \boldsymbol{\sigma} \rvert - \mathcal{N} \mathcal{P} \boldsymbol{\kappa}(t) \Big].
+\end{align} 
+Since the diagonal matrix $\Gamma$ is positive-definite, it can be shown that $\boldsymbol{\sigma}^{\top} \Gamma \boldsymbol{\sigma} > 0$.
+Moreover, $\boldsymbol{\sigma}^{\top} \text{sat}( \mathcal{E}^{-1}\boldsymbol{\sigma}) \approx \lvert \boldsymbol{\sigma} \rvert^{\top} \in \mathbb{R}_+^3$ and $\boldsymbol{\kappa}(t) \in \mathbb{R}_+^3$ from Eq. \eqref{adaptive law: equation}.
+% Therefore, $\boldsymbol{\sigma}^{\top} \text{sat}( \mathcal{E}^{-1}\boldsymbol{\sigma}) \boldsymbol{\kappa}(t) > 0$.
+Since $\beta \geq \beta_{\min} > 0$, \eqref{Lyapunov derivative: equation 1} can be rewritten as:
+\begin{align}
+\label{Lyapunov derivative: equation 2}
+    \dot{V}(t)~{\leq}~& - \beta_{\min} \boldsymbol{\sigma}^{\top} \Gamma \boldsymbol{\sigma} - \beta_{\min} \lVert \boldsymbol{\theta} \rVert \lvert \boldsymbol{\sigma} \rvert^{\top} \boldsymbol{\kappa}(t) \nonumber \\
+    & + \beta_{\min} \lVert\mathcal{D}\rVert \lVert \boldsymbol{\theta} \rVert \lvert \boldsymbol{\sigma} \rvert^{\top} \boldsymbol{1} \nonumber \\
+    & + \beta_{\min} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top} \left[\lVert \boldsymbol{\theta} \rVert \lvert \boldsymbol{\sigma} \rvert - \mathcal{P} \boldsymbol{\kappa}(t) \right] \nonumber \\
+    \leq ~ & - \beta_{\min} \boldsymbol{\sigma}^{\top} \Gamma \boldsymbol{\sigma} - \beta_{\min} \left( \tilde{d} - \lVert\mathcal{D}\rVert \right) \lVert \boldsymbol{\theta} \rVert \lvert \boldsymbol{\sigma} \rvert^{\top} \boldsymbol{1} \nonumber \\
+    & - \beta_{\min} \left[\boldsymbol{\kappa}^{\top}(t) \mathcal{P} \boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}^{\top} \mathcal{P} \boldsymbol{\kappa}(t) \right]
+\end{align}
+Given that $\lVert\mathcal{D}\rVert \leq \tilde{d}$, it can be shown that $\beta_{\min} \left( \tilde{d} - \lVert\mathcal{D}\rVert \right) \lVert \boldsymbol{\theta} \rVert \lvert \boldsymbol{\sigma} \rvert^{\top} \boldsymbol{1} \geq 0$.
+Moreover, since $\mathcal{P}$ is a positive-definite matrix, $\beta_{\min} \left[\boldsymbol{\kappa}^{\top}(t) \mathcal{P} \boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}^{\top} \mathcal{P} \boldsymbol{\kappa}(t) \right] > \frac{\beta_{\min}}{2} \left\{\left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top} \mathcal{P} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right] - \tilde{d}^2 \boldsymbol{1}^{\top} \mathcal{P} \boldsymbol{1} \right\}$.
+Hence,
+\begin{align}
+\label{Lyapunov derivative: equation 3}
+\dot{V}(t) ~ \leq ~ &-\beta_{\min}\lambda_{\min}(\Gamma) \lVert \boldsymbol{\sigma} \rVert^2 \nonumber\\
+& - \frac{\beta_{\min} }{2}\left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right]^{\top} \mathcal{P} \left[\boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1}\right] \nonumber\\
+& +\frac{\beta_{\min} }{2}\tilde{d}^2 \boldsymbol{1}^{\top} \mathcal{P} \boldsymbol{1} \nonumber \\
+\leq ~ &-\beta_{\min} \Big[ \lambda_{\min}(\Gamma) \lVert \boldsymbol{\sigma} \rVert^2 + \frac{1}{2}\lambda_{\min}(\mathcal{P}) \lVert \boldsymbol{\kappa}(t) - \tilde{d} \boldsymbol{1} \rVert^2 \nonumber\\
+& - \frac{3}{2} \lambda_{\min}(\mathcal{P}) \tilde{d}^2 \Big] \nonumber \\
+\leq~ &-\varphi_1 V(t) + \frac{3}{2} \beta_{\min} \lambda_{\max}(\mathcal{P}) \tilde{d}^2,
+\end{align}
+where $\varphi_1 \triangleq \beta_{\min} \frac{\text{ min}\big(2 \lambda_{\min}\left(\Gamma \right),\lambda_{\min}\left(\mathcal{P} \right)\big)}{\text{max}\big(1,\beta_{\min} \lambda_{\max}\left(\mathcal{N}^{-1} \right)\big)}>0$.
+For the choice of a scalar $\varphi_2$ satisfying $0<\varphi_2<\varphi_1$, the above inequality \eqref{Lyapunov derivative: equation 3} is rewritten as:
+\begin{align}
+\label{Lyapunov derivative: equation 4}
+\dot{V}(t)\leq~&-\varphi_2 V(t)-(\varphi_1-\varphi_2) V(t) + \frac{3}{2} \beta_{\min} \lambda_{\max}(\mathcal{P}) \tilde{d}^2 \nonumber\\
+\leq ~&-\varphi_2 V(t), \, \forall\, V(t)\geq \Theta=\frac{3 \beta_{\min} \lambda_{\max}(\mathcal{P}) \tilde{d}^2}{2(\varphi_1-\varphi_2)}
+\end{align}
+
+Invoking \textit{Lemma 1}, any trajectory enters the ball $\mathcal{B}_{r} = \left \{ \left ( \boldsymbol{\sigma}, \, \boldsymbol{\kappa} \right ) \in \mathbb{R}^8 | V \leq \Theta \right\}$ exponentially in finite-time and stays in $\mathcal{B}_{r}$ for all future time. Note that the size of the ball can be made suitably small through a suitable selection of the control parameters $\lambda_{\min}(\mathcal{P})$, $\lambda_{\max}(\mathcal{P})$, $\lambda_{\max}(\mathcal{N}^{-1}) $ and $\lambda_{\min}(\Gamma)$, so that by recognizing that $V(t) \geq \lVert \boldsymbol{\sigma} \rVert^2/2$, one has the ultimate bound for $\boldsymbol{\sigma}$ as $\lVert \boldsymbol{\sigma} \rVert \leq \vartheta = \left[3\beta_{\min}\lambda_{\max}(\mathcal{P})/\left(\varphi_1 - \varphi_2\right)\right]^{\frac{1}{2}}  \tilde{d}$. This bound is uniform as it is independent of initial conditions. 
+Consequently, it follows from \eqref{sigma: equation} that the output error variable $\boldsymbol{\zeta}_2$ converges to a small bound around the origin so that from \eqref{optical flow error transformation: equation}, $- \boldsymbol{p}_{2}(t) < \boldsymbol{h}_{e} < \boldsymbol{p}_{2}(t)$ is satisfied. Thus the prescribed performance constraint is ensured $\forall \, t \geq 0$. This ends the proof.
+
+\section{Numerical Simulation Results}
+This section provides numerical simulation results for soft precise landing on both stationary and mobile platform.
+
+The control parameters are tabulated in \textit{Table} \ref{control params: table}. For all the test cases, the initial position of the UAV is $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m and the initial heading is $\psi(0) = 10.0^\circ$.
+Each figure has been configured as given below:
+\begin{enumerate}
+    \item The first two rows show state, input and output plots regarding the UAV lateral control.
+    \item The third row show plots regarding the UAV vertical control.
+    \item The last two row shows plots regarding the UAV lateral control.
+\end{enumerate}
+
+\begin{table}
+    \centering
+    \begin{tabular}{|c|c|}
+    \hline
+        \textbf{Control} & \multirow{2}{*}{\textbf{Control Values}}\\
+         \textbf{Parameter} & \\ \hline
+         \multicolumn{2}{|c|}{\textbf{Performance Function for Visibility Constraint}} \\ \hline
+         $\Xi_1$ & $\text{diag}([0.1, 0.1])$\\
+         $\boldsymbol{p}_{1_\infty}$ & $[0.1, 0.1]^\top$ \\ [0.3em] \hline 
+         \multicolumn{2}{|c|}{\textbf{PID-based Normalized Position Control}} \\ \hline
+         $K_{\zeta p}$ & $\text{diag}([2.0, 2.0])$ \\
+         $K_{\zeta i}$ & $\text{diag}([2.0, 2.0])$ \\
+         $K_{\zeta d}$ & $\text{diag}([0.1, 0.01])$ \\ [0.3em] \hline 
+         \multicolumn{2}{|c|}{\textbf{Performance Function for Optical Flow}} \\ \hline
+         $\Xi_2$ & $\text{diag}([0.2, 0.2, 0.3])$ \\
+         $\boldsymbol{p}_{2_0}$ & $[50.0, 50.0, 10.0]^\top$ \\
+         $\boldsymbol{p}_{2_\infty}$ & $[0.1, 0.1, 0.5]^\top$ \\ [0.3em] \hline
+         \multicolumn{2}{|c|}{\textbf{ASMC-based Optical Flow Control}} \\ \hline
+         $\Omega$ & $\text{diag}([0.01, 0.12, 0.1])$ \\
+         $\Gamma$ & $\text{diag}([0.0003, 0.0008, 4.2])$ \\
+         $P$ & $\text{diag}([0.02, 0.01, 0.01])$ \\ 
+         $N$ & $\text{diag}([0.01, 0.01, 0.02])$ \\ 
+         $\boldsymbol{\kappa}$ & $\text{diag}([0.003, 0.01, 0.002])$ \\
+         $E$ & $\text{diag}([0.8, 0.5, 0.6])$ \\ [0.3em] \hline
+         \multicolumn{2}{|c|}{\textbf{PID-based Attitude Control}} \\ \hline
+         $K_{\Phi p}$ & $\text{diag}([1.0, 9.0, 5.0])$ \\
+         $K_{\Phi i}$ & $\text{diag}([0.004, 0.01, 0.01])$ \\
+         $K_{\Phi d}$ & $\text{diag}([0.03, 0.3, 0.2])$ \\ [0.3em] \hline
+         \multicolumn{2}{|c|}{\textbf{PID-based Attitude Rate Control}} \\ \hline
+         $K_{\omega p}$ & $\text{diag}([1.0, 9.0, 2.0])$ \\
+         $K_{\omega i}$ & $\text{diag}([0.003, 0.1, 1.4])$ \\
+         $K_{\omega d}$ & $\text{diag}([0.1, 0.1, 0.1])$ \\ \hline
+    \end{tabular}
+    \caption{List of all control parameters, along with their values, used in the proposed flight controller}
+    \label{control params: table}
+\end{table}
+These simulation results are for the following three cases:
+\begin{enumerate}
+    \item \textit{Case 1:} When the target is stationary at position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}} = [0.0, 0.0, 0.0]^\top$ m in the inertial frame $\mathcal{I}$.
+    \item \textit{Case 2:} When the target is moving with a constant linear velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{t}} = [0.5, -0.5, 0.1]^\top$ m/s.
+    \item \textit{Case 3:} When the target is undergoing circular motion on a horizontal plane with a turning radius of $1$ m and turning speed of $0.1$ rad/s.
+\end{enumerate}
+
+\subsection{Simulation without Uncertainty and Perturbation}
+The performance of the proposed flight controller is first assessed under idealized conditions, with varying initial states and no model uncertainties or external disturbances.
+
+\subsubsection{When the target is stationary}
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/Linear_state_wo_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is stationary. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Stationary_linear_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_linear_wo_d: figure} shows that the UAV has successfully maneuvered from the initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m and the initial heading $\psi(0) = 10.0^\circ$ to the stationary target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}} = [0.0, 0.0, 0.0]^\top$ m and the target heading $\psi_\text{t} = 0.0^\circ$, hence demonstrating precise target tracking and orientation alignment using the proposed flight controller.
+It also shows that the UAV linear velocity $\,^\mathcal{I} \boldsymbol{v} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z]^\top$ and yaw rate $\dot{\psi}$ simultaneously converges to the origin, hence demonstrating soft landing of the UAV using the proposed flight controller.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/Image_state_wo_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is stationary. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Stationary_image_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_image_wo_d: figure} shows the performance constrained target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$.
+The convergence of $\hat{\boldsymbol{r}}$ to $[0.0, 0.0]^{\top}$ showcases precise target tracking, while simultaneous convergence of $\boldsymbol{h}$ to $[0.0, 0.0, -0.3]^{\top}$ demonstrate soft precise landing using these scale-independent target parameters as control feedback to the outer-loop controller.
+Moreover, convergence of the target orientation $\alpha$ to the desired value $\alpha_\text{d}$ showcases UAV orientation alignment with that of the target without explicit knowledge of the target heading $\psi_t$.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/3d_wo_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is stationary.} 
+    \label{Stationary_3d_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_3d_wo_d: figure} shows a 3-D plot depicting UAV motion from initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m to the stationary target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}} = [0.0, 0.0, 0.0]^\top$ m.
+
+\subsubsection{ When the target is moving with a constant linear velocity}
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/Linear_state_wo_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is moving linearly with constant velocity. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Linear_linear_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Linear_linear_wo_d: figure} shows that the UAV has successfully maneuvered from initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m to the target moving with a constant linear velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{t}} = [0.5, -0.5, 0.1]^\top$ m/s. This graph demonstrates precise target tracking capability of the proposed flight controller, even when the target is not stationary.
+It also shows that the UAV linear velocity $\,^\mathcal{I} \boldsymbol{v}$ successfully converges to the target velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{t}}$, hence demonstrating soft landing of the UAV using the proposed flight controller when the target is not stationary.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/Image_state_wo_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is moving linearly with constant velocity. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Linear_image_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Linear_image_wo_d: figure} shows the performance constrained target normalized position $\hat{\boldsymbol{r}}$ and optical flow $\boldsymbol{h}$.
+Similar to Fig. \ref{Stationary_image_wo_d: figure}, the scale-independent target parameters $\hat{\boldsymbol{r}}$ and $\boldsymbol{h}$ converge to $[0.0, 0.0]^{\top}$ and $[0.0, 0.0, -0.3]^{\top}$, respectively. This convergence demonstrates successful soft precise landing of the UAV on the mobile platform using the proposed flight controller.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/3d_wo_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is moving linearly with constant velocity.} 
+    \label{Linear_3d_wo_d: figure}
+\end{figure*}
+
+Fig. \ref{Linear_3d_wo_d: figure} shows a 3-D plot depicting UAV motion from initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m to the target moving with a constant linear velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{t}} = [0.5, -0.5, 0.1]^\top$ m/s.
+
+\subsubsection{When the target is undergoing circular motion on a horizontal plane}
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/Linear_state_wo_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is undergoing circular motion on a horizontal plane. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Circular_linear_wo_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/Image_state_wo_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is undergoing circular motion on a horizontal plane. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Circular_image_wo_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/3d_wo_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is undergoing circular motion on a horizontal plane.} 
+    \label{Circular_3d_wo_d: figure}
+\end{figure*}
+
+Similar to the previous two cases, Figs. \ref{Circular_linear_wo_d: figure} - \ref{Circular_3d_wo_d: figure} shows that the UAV can achieve soft precise landing using the proposed flight controller when the target is undergoing circular motion on a horizontal plane.
+
+\subsection{Simulation with Uncertainty and Perturbation}
+In order to simulate more realistic scenarios, the following real-world settings are added in the numerical simulation is conducted in MATLAB under following scenarios:
+\begin{enumerate}
+    \item \underline{Measurement Noise}: The estimated optical flow $\boldsymbol{h}$ is corrupted using additive Gaussian white noise with $\mu$ = 0.1 rad/s and $\sigma$ = 0.05 rad/s.
+    \item \underline{Ground Effect}: The ground effect factor is added to the the total rotor control thrust $\,^\mathcal{B} T_u$ as given below:
+    \begin{equation} \label{ground effect: equation}
+        \,^\mathcal{B} T_{\infty} = \frac{1}{1- \left(\frac{R}{4\,^\mathcal{I} z_{\text{t}}} \right)^2} \,^\mathcal{B} T_u, \forall~t \geq 0,
+    \end{equation}
+    where  $R$ is the propeller radius.
+    \item \underline{Computational Delay}: A delay of 1 time step is added during the computation of the combined thrust-torque command $\boldsymbol{u} = [\,^\mathcal{B} {T}_u, \,^\mathcal{B} \boldsymbol{\tau}_u^\top]^\top$.
+    \item \underline{Visibility Constraint}: The target image error $\hat{\boldsymbol{r}}_\text{e}$ is constrained using the performance function $\boldsymbol{p}_1(t)$ as shown in \eqref{prescribed perfromance: equation}.
+    \item \underline{Input Constraint}: Given the motor-mixing matrix $M$, the motor thrust vector $\boldsymbol{T}(t)$ is computed as:
+    \begin{equation}
+        \boldsymbol{T}(t) = M^{-1}\boldsymbol{u},
+    \end{equation}
+    where $T_{\min} \leq T_k(t) \leq T_{\max}$, for motor $k = \{1,2,3,4\}$, with $T_{\min} = 0.01 Nm$ and $T_{\max} = 7.0 Nm$.
+\end{enumerate}
+
+\subsubsection{When the target is stationary}
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/Linear_state_w_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is stationary. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Stationary_linear_w_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_linear_w_d: figure} shows that fluctuation in the desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ plot, depicting the impact of introducing model uncertainty and exogenous perturbation in the system dynamics. In spite of these fluctuations, the UAV has successfully maneuvered from the initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m and the initial heading $\psi(0) = 10.0^\circ$ to the stationary target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}} = [0.0, 0.0, 0.0]^\top$ m and the target heading $\psi_\text{t} = 0.0^\circ$. This demonstrates robust performance of the proposed flight controller in precise target tracking and orientation alignment.
+Similarly, the UAV linear velocity $\,^\mathcal{I} \boldsymbol{v} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z]^\top$ and yaw rate $\dot{\psi}$ simultaneously converges to the origin, hence demonstrating robust performance of the proposed flight controller in achieving soft landing.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/Image_state_w_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is stationary. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Stationary_image_w_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_image_w_d: figure} validates that the scale-independent target parameters  $\hat{\boldsymbol{r}}$ and $\boldsymbol{h}$ satisfy the prescribed-performance constraints, even in the presence of model uncertainty and exogenous perturbation in the system dynamics.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Stationary/3d_w_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is stationary.} 
+    \label{Stationary_3d_w_d: figure}
+\end{figure*}
+
+Fig. \ref{Stationary_3d_wo_d: figure} shows a 3-D plot depicting smooth UAV motion from initial position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}(0) = [1.0, -1.0, 5.0]^\top$ m to the stationary target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}} = [0.0, 0.0, 0.0]^\top$ m, even in the presence of model uncertainty and exogenous perturbation in the system dynamics.
+
+\subsubsection{ When the target is moving linearly with constant velocity}
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/Linear_state_w_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is moving linearly with constant velocity. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Linear_linear_w_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/Image_state_w_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is moving linearly with constant velocity. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Linear_image_w_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Linear_positive/3d_w_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is moving linearly with constant velocity.} 
+    \label{Linear_3d_w_d: figure}
+\end{figure*}
+
+The simulation results shown in Figs. \ref{Linear_linear_w_d: figure}-\ref{Linear_3d_w_d: figure} validate that the proposed flight controller is robust against model uncertainty and exogenous perturbation in achieving soft precise landing when the target has linear motion.
+
+\subsubsection{When the target is undergoing circular motion on a horizontal plane}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/Linear_state_w_d.png}
+    \caption{This graph shows the evolution of controllable UAV pose $\,^\mathcal{I} \boldsymbol{q} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z, \psi]^\top$, along with its first derivative $\,^\mathcal{I} \dot{\boldsymbol{q}} = [\,^\mathcal{I} v_x, \,^\mathcal{I} v_y, \,^\mathcal{I} v_z, \dot{\psi}]^\top$, when the target is undergoing circular motion on a horizontal plane. It also shows output of the outer loop controller, $\,^\mathcal{I} \boldsymbol{a}_\text{d} = [\,^\mathcal{I} {a}_{x\text{d}}, \,^\mathcal{I} {a}_{y\text{d}}, \,^\mathcal{I} {a}_{z\text{d}}]^\top$ and $[\phi_{\text{d}}, \theta_{\text{d}}, T_u]^\top$} 
+    \label{Circular_linear_w_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/Image_state_w_d.png}
+    \caption{This graph shows the evolution of target normalized position $\hat{\boldsymbol{r}} = [\hat{x}, \hat{y}]^{\top}$ and optical flow $\boldsymbol{h} = [h_{x}, h_{y}, h_{r}]^{\top}$, along with the evolution of their respective performance-constrained errors, when the target is undergoing circular motion on a horizontal plane. 
+    The last row shows evolution of target orientation $\alpha$, along with its first derivative since $\dot{\alpha} = \dot{\psi}$.}
+    \label{Circular_image_w_d: figure}
+\end{figure*}
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=1.0 \textwidth]{Figures/01122025/Circular/3d_w_d.png}
+    \caption{This 3-D plot shows the evolution of evolution of UAV position in inertial frame $\,^\mathcal{I} \boldsymbol{r} = [\,^\mathcal{I} x, \,^\mathcal{I} y, \,^\mathcal{I} z]^\top$, when the target is undergoing circular motion on a horizontal plane.} 
+    \label{Circular_3d_w_d: figure}
+\end{figure*}
+
+The simulation results shown in Figs. \ref{Circular_linear_w_d: figure}-\ref{Circular_3d_w_d: figure} validate that the proposed flight controller is robust against model uncertainty and exogenous perturbation in achieving soft precise landing when the target has circular motion.
+
+% \begin{thebibliography}{99}
+
+% % \bibitem{Keshavan} 
+% % J.~Keshavan, ``Adaptive Visual Control Strategies for Autonomous Landing of Quadrotor Platforms,".
+
+% \bibitem{Lin} 
+% J.~Lin, Y. Wang, Z. Miao, R. Fierro, "Low-complexity control for vision-based landing of Quadrotor UAV on unknown platform."
+
+% \end{thebibliography}
+
+\end{document}

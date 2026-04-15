@@ -1,0 +1,1104 @@
+952
+IEEE/ASME TRANSACTIONS ON MECHATRONICS, VOL. 22, NO. 2, APRIL 2017
+Input Saturated Visual Servoing for Unmanned
+Aerial Vehicles
+Hui Xie and Alan F. Lynch, Member, IEEE
+Abstract—This paper presents an input saturated visual
+servoing controller for a quadrotor unmanned aerial vehicle
+(UAV). The controller regulates relative pose between the
+vehicle and a planar horizontal visual target. In order to sim-
+plify the control design, the method uses a virtual camera to
+deﬁne a set of image moment features. The image feature
+kinematics is independent of roll and pitch motion. Since
+the image feature error is stabilized in the virtual camera,
+the visual target potentially leaves the real camera’s ﬁeld
+of view (FoV). To keep the visual target in the camera FoV,
+an input saturated law is proposed to sufﬁciently bound
+the roll and pitch of the vehicle. Furthermore, an adaptive
+input saturated control law is proposed to ensure positive
+thrust. Experimental and simulation results are provided to
+demonstrate controller performance.
+Index
+Terms—Bounded
+control,
+image-based
+visual
+servoing (IBVS), image moments, virtual camera.
+I. INTRODUCTION
+V
+ISUAL servoing of unmanned aerial vehicles (UAVs) in-
+volves using feedback from computer vision to perform
+motion control. Visual servoing techniques allow a UAV to ﬂy
+in GPS-denied environments [1] or can be applied to control rel-
+ative position to a visual target as in autonomous landing [2]. In
+this paper, we consider visual servoing of a quadrotor UAV with
+a single downward facing camera and the proposed visual ser-
+voing law regulates the quadrotor’s relative pose to a stationary
+planar horizontal target. Visual servoing laws usually are cate-
+gorized into two approaches: 1) position-based visual servoing
+(PBVS); and 2) image-based visual servoing (IBVS) [3]. In this
+paper, we focus on IBVS methods where the error signal to be
+stabilized is directly deﬁned in the image plane. Unlike PBVS,
+IBVS avoids the need for pose reconstruction which requires
+accurate camera calibration and a prior three-dimensional (3-D)
+model of the target. In general, IBVS is simple to implement
+and is relatively insensitive to camera calibration [4].
+Previous work on IBVS for UAVs can be classiﬁed into four
+categories: 1) the spherical image moment-based design [5],
+Manuscript received January 5, 2016; revised June 14, 2016; accepted
+August 11, 2016. Date of publication September 13, 2016; date of current
+version April 14, 2017. Recommended by Technical Editor H. Qiao. This
+work was supported by the Natural Sciences and Engineering Research
+Council of Canada. (Corresponding author: Alan F. Lynch.)
+The authors are with the Department of Electrical and Computer Engi-
+neering, University of Alberta, Edmonton, AB T6G 1H9, Canada (e-mail:
+xie1@ualberta.ca; alan.lynch@ualberta.ca).
+Color versions of one or more of the ﬁgures in this paper are available
+online at http://ieeexplore.ieee.org.
+Digital Object Identiﬁer 10.1109/TMECH.2016.2608862
+[6]; 2) homography-based methods [7], [8]; 3) the virtual spring
+approach [9], [10]; and 4) the virtual camera approach [11]–[14].
+A summary of these approaches can be found in our previous
+work [15]. In this paper, we follow [11]–[14] and employ a
+virtual camera that has the same position and yaw as the real
+camera but with zero roll and pitch. The image features for
+visual servoing are deﬁned in the virtual camera image plane.
+Hence, a transformation is required to convert the image fea-
+tures in the real camera image plane into the image feature in the
+virtual camera plane. The expression for this transformation can
+be derived from geometry as mentioned in [12] and [13], or by
+solving a system of ﬁrst-order homogeneous partial differential
+equations [15]. The transformation depends on an attitude mea-
+surement that is commonly available from an onboard attitude
+and heading reference system (AHRS). Since the virtual camera
+has zero roll and pitch motion, the image feature kinematics is
+independent of roll and pitch rates. This independence is crucial
+for simplifying the image feature kinematics and facilitating the
+control design.
+Although the image feature error deﬁned in the virtual camera
+image can be stabilized, there is no guarantee that the visual tar-
+get remains in the real camera’s ﬁeld of view (FoV). Hence, the
+control gains in our previous work [13], [15], [16] were chosen
+small to avoid aggressive motion that makes the visual target
+leave the camera FoV. The problem of keeping the visual target
+in the camera FoV has been considered in the literature. In [17],
+an output constraint method from [18] is used for landing a UAV
+with parallel line image features. An alternative approach is to
+constrain the vehicle’s attitude (e.g., [19] and [20]). Although
+this approach has no rigorous proof that the visual targets re-
+main in the camera FoV, it is simpler to implement relative to
+[17]. In this paper, we propose a new control law based on an
+input constraint method.
+The proposed approach uses an inner–outer loop control
+structure. The inner loop tracks an attitude reference from the
+outer IBVS loop that regulates the image feature error in the
+virtual camera image. We assume the inner loop has been ap-
+propriately designed and focus on the outer loop IBVS design.
+The main contribution of this paper is a new nested saturation
+control for the outer loop to ensure the roll, pitch, and thrust
+inputs lie within speciﬁed bounds. Bounds on roll and pitch
+keep the visual target in the camera FoV, and positive thrust is a
+constraint for typical quadrotors. Compared with the commonly
+used nested saturation approach mentioned in [21] and its vari-
+ations such as [22] and [23], the proposed method beneﬁts from
+being able to use less conservative (i.e., lower) input bounds
+1083-4435 © 2016 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See http://www.ieee.org/publications standards/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE AND LYNCH: INPUT SATURATED VISUAL SERVOING FOR UNMANNED AERIAL VEHICLES
+953
+Fig. 1.
+Frame deﬁnitions and the pinhole camera model.
+when input disturbances are present. As discussed in [24], the
+reason for this improved performance is due to not requiring
+the state transformation used in [21]. In this paper, the pro-
+peller thrust is modeled by the product of a thrust gain and the
+square of the physical input: pulse-width modulation (PWM)
+voltage to the electronic speed controller (ESC). As mentioned
+in our previous work [15], the thrust gain gradually decreases
+as the battery voltage drops, and this noticeably affects the UAV
+motion. Another contribution of this paper is that the nested
+saturation IBVS can compensate for variation in thrust gain.
+Furthermore, the proposed control law is also adaptive to uncer-
+tainty in mass and desired depth. As is well known, the proposed
+IBVS law provides high gain when the system state approaches
+its equilibrium. This high-gain control gain helps to reduce the
+steady-state error resulting from bias attitude measurement that
+is considered in [25]. In order to validate the performance of
+the proposed control, we implement it in simulation and exper-
+iment. This should be compared to the related work [19], [20]
+where only simulation results are provided.
+This paper is organized as follows. Section II describes the
+camera model, image features, kinematics of the image features,
+and UAV dynamics. Section III gives the details of the input
+saturation controller design and the proof of stability for the
+closed-loop. Section IV shows both simulation and experimental
+results using the proposed control. Finally, concluding remarks
+are provided in Section V.
+II. DYNAMIC VISUAL SERVOING MODELING
+A. Reference Frames
+As shown in Fig. 1, we ﬁrst introduce three coordinate frames
+used for modeling. A navigation frame N is assumed to be in-
+ertial and ﬁxed to a point on the Earth with a basis {n1, n2, n3}
+oriented north, east, and down, respectively. A downward look-
+ing camera is rigidly attached to the quadrotor and the camera’s
+optical center is assumed to coincide with the center of mass
+(CoM) of the vehicle. Hence, a camera frame C is introduced
+with its origin ﬁxed at the camera’s optical center and basis
+{c1, c2, c3} oriented forward, right, down, respectively. The vec-
+tor dn
+nc = [d1, d2, d3]T denotes the displacement of the origin
+of C in N. The orientation of C relative to N is represented by
+a rotation matrix R, which is parametrized by the ZYX Euler
+angles η = [φ, θ, ψ]T as R = Rn3 (ψ)Rn2 (θ)Rn1 (φ), where
+Rnk denotes an elementary rotation about the nk axis. We
+note that the Euler angle representation is singular at θ =
+(2k + 1)π/2, k ∈Z. However, singularities are normally en-
+countered only in acrobatic ﬂight that is not typical in visual
+servoing. Lastly, a virtual camera with frame A is introduced.
+The frame A has the same origin as C and a basis {ca
+1, ca
+2, ca
+3},
+where ca
+3 is aligned with the virtual camera’s optical axis. The
+virtual camera has zero roll and pitch, which means that ca
+3 is
+parallel to n3.
+B. Image Feature and Kinematics
+In this paper, the pinhole camera model is used, as shown in
+Fig. 1. In the image plane, a 2-D image frame Y is introduced
+with basis {Y1, Y2} parallel to c1 and c2, respectively. A 3-D
+point with coordinates P = [X1, X2, X3]T in C is projected
+onto a point in the image plane with coordinates p = [y1, y2]T =
+λ[X1/X3, X2/X3]T , where λ is the focal length of the camera.
+The 3-D point expressed in A is given by P a = [Xa
+1 , Xa
+2 , Xa
+3 ]T
+and its image in the virtual image plane is pa = [ya
+1 , ya
+2 ]T =
+λ[Xa
+1 /Xa
+3 , Xa
+2 /Xa
+3 ]T . The transformation from p to pa can be
+found in [15].
+Assumption 1: The target is planar and parallel to the n1-n2
+plane. The target consists of N > 1 points.
+As mentioned in [15], the features for visual servoing adopted
+here are
+slp = [y1g, y2g]T shp
+(1a)
+shp =
+
+a∗/a
+(1b)
+sψp = arctan (2μ11/(μ20 −μ02)) /2
+(1c)
+where y1g = 1
+N
+N
+k=1 ya
+1k, ya
+ij
+is the ith component of
+the jth point, y2g = 1
+N
+N
+k=1 ya
+2k, a = μ20 + μ02, μij =
+N
+k=1
+
+ya
+1k −ya
+1g
+i 
+ya
+2k −ya
+2g
+j, and a∗is the value of a when
+the vehicle is in its desired pose. The features slp, shp, and
+sψp are used to control the vehicle’s lateral displacement,
+height, and yaw motion, respectively. The kinematics using
+features (1) is
+˙slp = −λva
+l /Xa∗
+3 −Sslp ˙ψ
+(2a)
+˙shp = −va
+3 /Xa∗
+3
+(2b)
+˙sψp = −˙ψ
+(2c)
+where Xa∗
+3
+is the desired value of Xa
+3 , S =
+ 0
+1
+−1
+0
+
+, va
+l =
+[va
+1 , va
+2 ]T , and va = [va
+1 , va
+2 , va
+3 ]T is camera’s linear velocity ex-
+pressed in A.
+C. Quadrotor Dynamics
+We write the quadrotor’s translational dynamics in A and its
+rotational dynamics in C as
+˙va = −
+
+˙ψE3
+	
+× va + gn3 + F a/m
+(3a)
+˙R = R [ωc]×
+(3b)
+˙ωc = −J−1 [ωc]× Jωc + J−1τ c
+(3c)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+954
+IEEE/ASME TRANSACTIONS ON MECHATRONICS, VOL. 22, NO. 2, APRIL 2017
+Fig. 2.
+Input forces fi and torques τi acting on the quadrotor.
+where E3 = [0, 0, 1]T , g is the gravity constant, m is the mass
+of the vehicle, and F a is the applied force on the vehicle
+expressed in A
+[x]× =
+⎡
+⎢⎣
+0
+−x3
+x2
+x3
+0
+−x1
+−x2
+x1
+0
+⎤
+⎥⎦
+ωc is the angular velocity of the camera, J is the inertia of the
+vehicle, and τ c is the applied torque on the vehicle expressed
+in C. As shown in Fig. 2, the quadrotor has four ﬁxed-pitch
+propellers in a cross conﬁguration with adjacent propellers ro-
+tating in opposite directions. Each propeller creates thrust fi and
+countertorque τi. We assume the four motors are identical, and
+approximate fi = KT ˜W 2
+i , τi = Kτ ˜W 2
+i , where KT , Kτ are
+aerodynamic constants, ˜Wi = Wi −Wmin, Wi is the PWM sig-
+nal sent to the ESC driving ith motor, and Wmin is the minimum
+pulse width to rotate the motor. The applied force F a and torque
+τ c are given by
+F a = −TM Rθφc3
+(4a)
+τ c =
+⎡
+⎢⎣
+ℓ(f2 + f3 −f1 −f4) /
+√
+2
+ℓ(f1 + f3 −f2 −f4) /
+√
+2
+4
+i=1(−1)iτi
+⎤
+⎥⎦
+(4b)
+where TM = 4
+i=1 fi is the thrust created by all propellers,
+Rθφ = Rn2 (θ)Rn1 (φ), and ℓis the distance from the motor to
+the CoM of the vehicle. Here, we choose commonly used simple
+models for F a and τ c [5], [15]. In visual servoing of UAVs, the
+speed of the vehicle is slow and aggressive motion is avoided.
+The vehicle usually ﬂies near a hover conﬁguration. As pointed
+in [26] and [27], in hover small body forces and drag forces are
+negligible, and gyroscopic effects due to propeller inertia cancel.
+Hence, small body forces, drag forces, and gyroscopic forces
+are ignored in the model. The model chosen has the beneﬁt of
+leading to a simple control law as mentioned in [15].
+III. CONTROLLER DESIGN
+A. Saturation Functions
+To present the control design this section presents three sat-
+uration functions. The ﬁrst saturation function σi : R →R has
+the following properties.
+1) xσi(x) > 0, x ∈R \ {0}.
+2) 0 ≤dσi
+dx (x) ≤ki, x ∈R.
+3) σi(x) = kix, |x| ≤li.
+4) |σi(x)| ≤Mi, |x| ≥li.
+Fig. 3.
+Vectors δ and ζ.
+The controller design given below uses three saturation
+functions
+σi, i = 1, 2, 3
+and
+the
+conditions
+for
+closed-
+loop asymptotic stability will depend on their parameters
+li, ki, Mi, i = 1, 2, 3. The second saturation function Σi : R2 →
+R2 is deﬁned as
+Σi(ζ) = [σi(ζ1), σi(ζ2)]T
+where ζ ∈R2 and ζ = [ζ1, ζ2]T .
+Lemma III.1: Given δ, ζ ∈R2, if ∥δ∥< li/2 and ∥ζ∥>
+li/2, where ∥· ∥is the Euclidean norm, then ζT Σi (ζ + δ) > 0
+Proof: The vector ζ is parametrized by θ and αζ as ζ =
+αζ li[cθ, sθ]T /2 where |αζ | > 1, cx = cos x, and sx = sin x. As
+shown in Fig. 3, the angle between δ and ζ is χ, and the vector
+δ can be written as
+δ = αδli
+2
+
+cχ
+
+cθ
+sθ
+
++ sχ
+
+sθ
+−cθ
+
+where |αδ| < 1. Then, we have
+ζT Σi (ζ + δ) = αζ liϕ(θ, αζ , χ, αδ)/2
+where
+ϕ(θ, αζ , χ, αδ) =
+
+cθ
+sθ
+
+Σi (ζ + δ).
+Proving
+ζT Σi (ζ + δ) > 0 is equivalent to proving ϕ(θ, αζ , χ, αδ) > 0.
+For the case 0 ≤θ < π/2, from the nondecreasing Property 2)
+of σi we have
+ϕ(θ, αζ , χ, αδ) ≥
+
+cθ sθ
+
+Σi
+
+li
+2
+
+cθ + αδ (cχcθ + sχsθ)
+sθ + αδ (cχsθ −sχcθ)
+
+.
+Because |αδ| < 1, we have cθ + αδ (cχcθ + sχsθ) ≤2 and
+sθ + αδ (cχsθ −sχcθ) ≤2. We conclude that every element
+of the function Σi lies in the linear region and
+ϕ(θ, αζ , χ, αδ) ≥li (1 + αδcχ)/2.
+Since |αδ| < 1, we have ϕ(θ, αζ , χ, αδ) > 0. For the case
+π/2 ≤θ < 2π, a similar procedure to that presented above
+can
+be
+used
+to
+show
+ϕ(θ, αζ , χ, αδ) > 0.
+This
+proves
+ζT Σi (ζ + δ) > 0.
+■
+The third saturation function introduced is h : R2 →R2
+deﬁned as
+h(ζ) = ζ/(1 + ζT ζ),
+ζ ∈R2.
+(5)
+It can be easily shown that ∥h(ζ)∥< 1, ζ ∈R2.
+B. Inner–Outer Loop Control Structure
+Similar to the work [15] and [16], we adopt an inner–outer
+loop structure in this paper, as shown in Fig. 4. The inner loop
+tracks an attitude reference denoted by R∗, and the outer loop
+provides this reference to the inner loop in order to regulate
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE AND LYNCH: INPUT SATURATED VISUAL SERVOING FOR UNMANNED AERIAL VEHICLES
+955
+Fig. 4.
+Inner–outer control loop structure.
+the image feature error. A main reason for using this structure
+is that it provides a reliable and simple solution for motion
+control. Each loop is effectively fully actuated and this sim-
+pliﬁes the control design. The visual servoing problem nat-
+urally ﬁts this structure since the AHRS measurements are
+relatively fast compared to the image feedback. The relatively
+low sampling rate of the image due to its acquisition and pro-
+cessing limits the bandwidth of the outer loop. The stability of
+the closed-loop system requires the inner loop to have a rel-
+atively high bandwidth, which is usually achieved by a high-
+gain controller. A stability analysis of this structure can be
+found in [28] and [15]. In this paper, we only consider the con-
+troller design for the outer loop and assume the inner loop has
+sufﬁcient bandwidth to ensure the stability of the closed-loop
+system.
+C. Outer Loop Controller Design
+To keep the target in the camera FoV using the virtual cam-
+era approach, roll and pitch are kept small. Therefore, using
+the small angle approximation, the expression of F a in (4a)
+becomes
+F a = KT u[−sθcφ, sφ, −cθcφ]T ≈KT u[−θ, φ, −1]
+(6)
+where u = 4
+i=1 ˜W 2
+i . The control design is divided into two
+components: the height control, and the control for lateral and
+yaw motion.
+1) Height Control: Using (2b), (3a), and (6), we have the
+height subsystem
+˙shp = −b1va
+3
+(7a)
+˙va
+3 = b2(dg −u)
+(7b)
+where b1 = 1/Xa∗
+3 , b2 = KT /m, and dg = mg/KT . We treat
+b1, b2, and dg as unknown constants, and assume dg lies in the
+compact set
+Ωdg := {dg : |dg −dg0| ≤dgm}
+where dg0 is an initial estimate of dg, and every element in Ωdg
+is greater than zero. Deﬁning
+δh1 = shp −1
+(8a)
+δh2 = va
+3 −σ1(δh1)
+(8b)
+and using (7) we have
+˙δh1 = −b1(σ1(δh1) + δh2)
+(9a)
+˙δh2 = b2(dg −u) + b1
+dσ1
+dδh1
+(σ1(δh1) + δh2).
+(9b)
+For the subsystem (7), the control law is chosen as
+u = σ2(δh2) + ˆdg + dg0
+(10)
+where ˆdg is an estimate of dg −dg0 and updated by
+˙ˆdg = Proj(μ, ˆdg) = μ −
+ν1ν2▽pd( ˆdg)
+4 (ϵ2 + 2ϵ (dgm −ϵ))n+1 (dgm −ϵ)2
+(11)
+where μ = kdgδh2, pd( ˆdg) = ˆd2
+g −(dgm −ϵ)2, ▽pd( ˆdg) =
+2 ˆdg, n is an nonnegative integer
+ν1 =
+
+pn+1
+d
+( ˆdg),
+if pd( ˆdg) > 0
+0,
+otherwise
+ν2 = ˆdgμ +
+
+ˆdgμ
+2
++ δ2, and ϵ, δ are arbitrary positive con-
+stants. The function Proj(·) is a projection operator from [29]
+which is n times continuously differentiable and guarantees that
+ˆdg lies in the compact set
+¯Ωdg =
+
+ˆdg : | ˆdg| < dgm
+
+.
+(12)
+Theorem III.1: The equilibrium point [δh1, δh2]T = 0 of the
+system (7) with the input (10) and (11) is asymptotically stable
+if the control parameters satisfy
+−(b2k2 −b1k1) l2 + 2b2dgm + b1k1M1 < 0
+(13a)
+k1l1 > l2
+(13b)
+k2l2/2 > dgm
+(13c)
+and the control u lies in the compact set
+Ωu = {u ∈R : dg0 −dgm −M2 ≤u ≤dg0 + dgm + M2} .
+Proof: Using the law (11), we have | ˜dg| < 2dgm, where ˜dg =
+dg −ˆdg −dg0. Using the control law (10), (7b) becomes
+˙va
+3 = −b2(σ2(δh2) −˜dg).
+When δh2 ≥l2, using (13c) we obtain σ2(δh2) −˜dg ≥k2l2 −
+2dgm > 0. Hence, we have
+va
+3 (t) ≤va
+3 (0) −b2(k2l2 −2dgm)t.
+(14)
+From the deﬁnition of δh2 in (8b), inequality (14) becomes
+δh2 + σ1(δh1) ≤δh2(0) + σ1(0) −b2(k2l2 −dm)t.
+From Property 4) of σi, we have
+δh2 ≤δh2(0) + 2M1 −b2(k2l2 −2dgm)t.
+Hence, when
+t > T2 = δh2(0) + 2M1 −l2
+b2(k2l2 −2dgm)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+956
+IEEE/ASME TRANSACTIONS ON MECHATRONICS, VOL. 22, NO. 2, APRIL 2017
+δh2 enters the linear region of σ2. If the initial value of δh2(0) =
+l2, we have
+˙δh2 = −b2(k2l2 −˜dg) + b1
+dσ1
+dδ1
+(σ1(δ1) + l2).
+If (13a) is satisﬁed, we have ˙δh2 < 0. Similarly, we can show
+that when δh2 < −l2, δh2 will enter the linear region in ﬁnite
+time, and ˙δh2 > 0 when δh2 = −l2. Hence, we conclude that δh2
+will enter the linear region in ﬁnite time Th2 and remain there
+for t > Th2. Using (9a) and the fact that |δh2(t)| ≤l2, t > Th2,
+it can be shown that when (13b) is satisﬁed, δh1 will enter the
+linear region of σ1 at ﬁnite time Th1. Hence, after a ﬁnite time,
+the system (9) becomes
+˙δh1 = −b1(k1δh1 + δh2)
+(15a)
+˙δh2 = −b2(k2δh2 −˜dg) + b1k1(k1δh1 + δh2).
+(15b)
+To show the stability of the closed-loop system (15), the Lya-
+punov function candidate is chosen as
+Vh = k2
+1δ2
+h1/2 + δ2
+h2/2 + b2 ˜d2
+g/(2kdg).
+(16)
+Using (15), the time derivative (16) is given as
+˙Vh =−b1k3
+1δ2
+h1 −(b2k2 −b1k1) δ2
+h2 −b2 ˜dg
+ ˙ˆdg/kdg −δh2
+
+.
+From [29], the projection operator satisﬁes
+˜dgProj(μ, ˆdg) ≥˜dgμ.
+Hence,
+˙Vh ≤−b1k3
+1δ2
+h1 −(b2k2 −b1k1) δ2
+h2.
+From inequality (13a), we have
+b2k2 −b1k1 > (2b2dgm + b1k1M1)/l2 > 0.
+According to the LaSalle–Yoshizawa theorem [30, Th. 2.1]
+we have shown equilibrium [δh1, δh2]T = 0 is asymptotically
+stable.
+■
+2) Lateral and Yaw Motion Control: Using (2a), (3a),
+and (6), the lateral subsystem using point image moment fea-
+tures is
+˙slp = −λb1va
+l −Sslp ˙ψ
+(17a)
+˙va
+l = b2 ¯u −Sva
+l ˙ψ
+(17b)
+where ¯u = uSη1 is the input and η1 = [φ, θ]T . For the lateral
+subsystem (17), the control law is chosen as
+¯u = −Σ3 (va
+l −k4h(βslp))
+(18)
+where k4, β are positive constants and h is deﬁned in (5). The
+derivative of h(βslp) at zero is proportional to β. The parameter
+β is used to tune the convergence rate of the closed-loop. The
+yaw control for (2c) is
+˙ψ = Kψsψp.
+(19)
+Hence, the closed-loop for yaw becomes
+˙sψp = −Kψsψp.
+(20)
+Theorem III.2: The equilibrium [slp, va
+l , sψp]T = 0 of sys-
+tem (17), (2c) with input (18) and (19) is asymptotically stable
+if the controller parameters satisfy
+k4 < l3/2
+(21)
+Kψ, k3 > 0, and the magnitude of each element of the control
+input is less than M3.
+Proof: The ﬁrst step is to show that the saturation function
+Σ3 will enter its linear region in ﬁnite time. To prove this, we
+introduce an energy storage function
+Vl2 = (va
+l )T va
+l /2.
+Using the control law (18) and (17b), the time derivative of Vl2
+is
+˙Vl2 = −b2va
+l Σ3 (va
+l −k4h(βslp)) .
+From the Lemma III.1, we can conclude that ˙Vl2 < 0 when
+∥va
+l ∥> l2/2 and (21) is satisﬁed. Hence, the saturation function
+Σ3 enters its linear region in ﬁnite time. The closed-loop system
+becomes
+˙slp = −λb1va
+l −Sslp ˙ψ
+˙va
+l = b2 (−k3va
+l + k3k4h (βslp)) −Sva
+l ˙ψ.
+The Lyapunov function candidate is chosen as
+Vl =
+1
+λb1β
+
+1 + β2sT
+lpslp −1
+
++
+1
+2b2k3k4
+(va
+l )T va
+l
+whose time derivative is
+˙Vl = −(va
+l )T va
+l /k4.
+(22)
+To control yaw motion, we consider the Lyapunov function
+candidate
+Vs = Vl + s2
+ψp/2
+Using (20) and (22), the time derivative of Vs is
+˙Vs = −(va
+l )T va
+l /k4 −Kψs2
+ψp.
+Hence, using LaSalle’s invariance theorem we conclude that the
+equilibrium [slp, va
+l , sψp]T = 0 of the closed-loop is asymptot-
+ically stable.
+■
+IV. SIMULATION AND EXPERIMENTAL RESULTS
+A. Experimental Platform
+We validate the proposed control on the indoor Applied Non-
+linear Control Lab (ANCL) quadrotor platform. The ANCL
+quadrotor UAV is shown in Fig. 5. The ANCL quadrotor UAV
+consists of a 3-D robotics vehicle frame, a CMUcam5 Pixy on-
+board computer vision system [31], and a PX4 autopilot [32].
+The PX4 contains a 3-D accelerometer, a 3-D gyroscope, and
+a 3-D magnetometer. An extended Kalman ﬁlter-based AHRS
+fuses the PX4 sensor data to provide an estimate of attitude and
+angular velocity. The PX4 computes the proposed IBVS law
+and generates the PWM signals for the four ESCs that power
+four 1100 kV brushless motors with 11 × 4.5 inch multirotor
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE AND LYNCH: INPUT SATURATED VISUAL SERVOING FOR UNMANNED AERIAL VEHICLES
+957
+Fig. 5.
+ANCL quadrotor UAV.
+TABLE I
+QUADROTOR AND CAMERA MODEL PARAMETERS
+m
+1.6 kg
+J
+diag([0.03, 0.03, 0.05]) kg· m2
+λ
+2.8 mm
+Image sensor size
+1/4′′
+Image resolution
+320 × 200 pixels
+FoV
+75° horizontal and 47° vertical
+ℓ
+0.25 m
+propellers. The Pixy camera is mounted on the bottom of the
+quadrotor and connected to the PX4 via a serial connection. It
+transmits image point features at a rate of about 25 Hz with a
+resolution of 320 × 200 pixels. The lens mounted on the Pixy
+has 75° horizontal and 47° vertical FoV. An eight-camera Bonita
+Vicon motion capture system measures and sends the vehicle’s
+translational velocity to the PX4 via a radio at about 100 Hz.
+The Vicon system has millimetre position accuracy. Power is
+supplied by two 11.1 V 2600 mAh LiPo batteries. The entire
+vehicle system weight including the battery and the computer
+vision system is 1.6 kg. Table I summarizes the quadrotor and
+camera model parameters.
+B. Simulation Results
+We use the model parameters in Table I for simulation
+and take KT = 40 N/ms2. The desired value of the image
+feature s = [slp, shp, sψp]T is chosen as s∗= [0, 0, 1, 0], and
+the image feature error denoted as es = [es1, es2, es3, es4]T =
+s −s∗. The desired 3-D translational displacement in N is
+dn∗
+nc = [0,0,-1.5]T m, which corresponds to the value of dn
+nc
+when es = 0. The initial displacement of the vehicle in N
+is [0.55,-0.55,-2.3]T
+m with zero roll and pitch, and the
+initial value of yaw is π/3 rad. The initial velocities are
+va(0) = [-0.4,-0.4,0.2]T m/s and ωc(0) = 0. The visual target
+consists of two points located at coordinates [-0.18,0,0]T m
+and [0.18,0,0]T
+m in N. The saturation function σi is
+chosen as
+σi(x) =
+
+kix,
+if
+|x| < li
+sign (x) (kili + c1i arctan (c2i (|x| −li))) ,
+otherwise
+(23)
+where c1i = 2(Mi −kili)/π and c2i = ki/c1i. Fig. 6 shows
+the shape of σi. The parameters for the saturation functions σi,
+i = 1, 2, 3, are given in Table II. The other control parame-
+ters are selected as k4 = 0.06, kdg = 0.04, Kψ = 0.1, and the
+Fig. 6.
+Saturation function σ(x).
+TABLE II
+PARAMETERS FOR SATURATION FUNCTIONS σi, i = 1, 2, 3
+Gains
+ki
+li
+M i
+i = 1
+1
+0.5
+0.55
+i = 2
+0.4
+0.42
+0.17
+i = 3
+0.5
+0.16
+0.1
+parameters in (11) are chosen as n = 1, ϵ = 0.001, and δ =
+0.01. From the value of dn∗
+nc, we get Xa∗
+3
+= 1.5 m. From the
+value of KT and m, we obtain dg = 0.3924. The initial value
+of ˆdg is 0.38, i.e., dg0 = 0.38, and the estimate ˆdg is limited to
+set ¯Ωdg deﬁned in (12) with dgm = 0.04. It is straightforward
+to show that these control gains satisfy (13) and (21).
+To verify that the input saturation helps keep the visual target
+in the FoV of the camera, we considered two cases in the simula-
+tion. In the ﬁrst case, we applied the input saturation control (10)
+and (18). In the second case, we removed all saturation func-
+tions in (10) and (18). To do this, we choose the linear region
+expression of (10)
+u = k2δh2l + dg0 + ˆdgl
+(24)
+where δh2l = va
+3 −k1δh1, and ˆdgl is updated by
+˙ˆdgl = kdgδh2l.
+(25)
+It can be easily veriﬁed that the origin of the closed-loop sys-
+tem (7) with inputs (24) and (25) are globally exponentially
+stable. To remove the saturation function from controller (18),
+we linearize (18) at the origin and obtain
+¯u = −k3(va
+l −k4βslp).
+(26)
+We readily prove that the origin of system (17) with input (26)
+is exponentially stable.
+Fig. 7 shows the trajectories of es, ed = dn
+nc −dn∗
+nc, and
+eψ = ψ −ψ∗for both controllers, where ψ∗is the desired
+yaw of the vehicle. In both cases, the image feature error and
+the position error converge to zero. The difference between
+the two cases is that error signals es and ed asymptotically
+converge with controller (10) and (18), whereas exponential
+convergence is obtained using controllers (24) and (26). As ex-
+pected, the control signal u lies in Ωu = {u : 0.17 ≤u ≤0.59}
+using the control (10) and (18). Fig. 8(a) shows the trajectory
+of the control signal u, and it remains in Ωu as expected. The
+dotted line in Fig. 8(a) denotes the boundary of Ωu. Fig. 8(b)
+shows the trajectory of u with control (24) and (26). In this case,
+u leaves Ωu.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+958
+IEEE/ASME TRANSACTIONS ON MECHATRONICS, VOL. 22, NO. 2, APRIL 2017
+Fig. 7.
+Trajectories of image feature error es, vehicle’s 3-D position
+error ed , and eψ . (a) With input saturation and (b) without input saturation.
+Fig. 8.
+Trajectories of the input signal u. (a) With input saturation and
+(b) without input saturation.
+Fig. 9.
+Trajectories of the input signals φ and θ. (a) With input saturation
+and (b) without input saturation.
+Fig. 9 shows the trajectories of the reference input η1 for
+the outer loop for the two cases. It can be seen that the input
+signal, i.e., the roll and pitch lie in Ωφ = {φ : |φ| ≤0.1} and
+Ωθ = {θ : |θ| ≤0.1} when input saturation is considered. The
+reference roll and pitch signal leave Ωφ and Ωθ using (24) and
+(26). Fig. 10 shows the image for the two cases where the
+rectangle denotes the boundary of the camera’s image plane. It
+can be seen that when input saturation is considered the image
+is kept in the FoV of the camera. The image of one of the two
+points leaves the FoV of the camera when input saturation is
+off.
+C. Experimental Results
+The experiment considers a target consisting of two points:
+[0.2,0,0]T m and [-0.2,0,0]T m. The saturation function σi is
+Fig. 10.
+Image trajectories of the target points. (a) With input saturation
+and (b) without input saturation.
+Fig. 11.
+Experimental trajectories of image feature error es.
+Fig. 12.
+Experimental trajectories of vehicle’s 3-D position error ed and
+yaw error eψ .
+(23) which is the same as the one used in simulation. The val-
+ues of the control parameters ki, li, Mi, i = 1, 2, 3, kdg, k4,
+Kψ, ϵ, δ, and dgm are the same, as mentioned in Section IV-B.
+The inner loop attitude control is the PID controller given
+in [15]. Fig. 11 shows the trajectory of image feature error sig-
+nal es. The corresponding 3-D trajectories of translational error
+ed = [ed1 , ed2 , ed3 ]T = dn
+nc −dn∗
+nc and yaw error eψ = ψ −ψ∗
+are shown in Fig. 12. Simulation results with appropriately cho-
+sen initial conditions were superimposed on the experimen-
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+XIE AND LYNCH: INPUT SATURATED VISUAL SERVOING FOR UNMANNED AERIAL VEHICLES
+959
+TABLE III
+STATISTICS OF es, ed , AND eψ
+Image Feature
+Mean
+Standard Deviation
+es 1 (mm)
+0.04
+0.04
+es 2 (mm)
+0.01
+0.05
+es 3
+−0.02
+0.01
+es 4 (rad)
+0.01
+0.03
+ed 1 m
+−0.014
+0.016
+ed 2 (m)
+−0.006
+0.015
+ed 3 (m)
+0.028
+0.011
+eψ (rad)
+0.004
+0.019
+Fig. 13.
+Experimental trajectories of outer loop inputs.
+Fig. 14.
+Image points trajectories.
+tal results in Figs. 11 and 12. We observe that the results are
+close. This illustrates that the model of the closed-loop system
+analyzed in Section III is accurate, and justiﬁes the approxi-
+mations made in the open-loop modeling in Section II-A. We
+assume
+dn∗
+nc = [0.0766, −0.0781, −1.1399]T m
+and ψ∗= 1.1567 rad. In order to measure steady-state per-
+formance of the controller, we compute the time at which
+the error signals es and ed reach steady-state. We denote
+this steady-state time by tss. The value of tss is obtained
+by computing the difference in mean values of the error
+signals in the two intervals [tss, te] and [(tss + te)/2, te],
+where te = 40 s is the time at which the IBVS law is
+turned off. The value of tss is determined by the small-
+est time after which this difference remains negligible.
+Using this method we obtain tss = 14 s. The average and stan-
+dard deviation of es, ed, and eψ in steady-state, i.e., on the time
+interval [tss, te] = [14,40] s are given in Table III. The small
+values demonstrate steady-state tracking performance of the
+proposed control. Although small, we remark that steady-state
+errors are still nonzero due to unknown attitude measurement
+bias. One approach to account for this bias is given in [15], but
+there input constraints are not necessarily satisﬁed. Steady-state
+error of the proposed control is signiﬁcantly smaller than that
+of the PD control given in [15], which does not compensate for
+bias. This is because the proposed saturation controller provides
+high gain when the error signal is close to zero, and this reduces
+steady-state error.
+The experimental and simulated trajectories of the control
+input for the outer loop are shown in Fig. 13. As expected, u,
+the reference roll and pitch signals lie in Ωu, Ωφ, and Ωθ. Fig. 14
+shows the image points trajectories, where the square and circle
+markers denote the initial and ﬁnal image points, respectively.
+As can be seen, the trajectories remain in the camera FoV.
+V. CONCLUSION
+An input saturation visual servoing law is proposed to con-
+trol the height, lateral, and yaw motion of a quadrotor UAV.
+The control law is proven to asymptotically stabilize the closed-
+loop. The control law for the height subsystem restricts thrust
+to a predeﬁned compact set. The positive thrust is guaranteed
+by setting a positive lower bound for the compact set. The con-
+trol law for the lateral subsystem bounds the reference roll and
+pitch to a compact set. This avoids large roll and pitch when the
+image feature error is large, and this helps to keep the visual
+target in the camera FoV. The saturation controller proposed
+in this paper provides high gain when the image feature error
+approaches zero and therefore reduces the steady-state error of
+the image feature. Both simulation and experimental work val-
+idate the performance of the proposed input saturation control
+on the ANCL quadrotor test stand. Future work includes gen-
+eralizing the method to moving and nonhorizontal targets. We
+plan to develop the theory to explicitly account for attitude bias
+input disturbances to the lateral subsystem. Improvements to
+the onboard vision computer are planned which should improve
+the performance of the outer loop. For example, reduced image
+processing delay leads to improved outer loop bandwidth.
+REFERENCES
+[1] F. Fraundorfer, L. Heng, D. Honegger, G. Lee, L. Meier, P. Tanskanen,
+and M. Pollefeys, “Vision-based autonomous mapping and exploration
+using a quadrotor MAV,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst.,
+Vilamoura, Portugal, Oct. 2012, pp. 4557–4564.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+
+960
+IEEE/ASME TRANSACTIONS ON MECHATRONICS, VOL. 22, NO. 2, APRIL 2017
+[2] B. Heriss´e, T. Hamel, R. Mahony, and F.-X. Russotto, “Landing a VTOL
+unmanned aerial vehicle on a moving platform using optical ﬂow,” IEEE
+Trans. Robot., vol. 28, no. 1, pp. 77–89, Feb. 2012.
+[3] F. Chaumette and S. Hutchinson, “Visual servo control part I: Basic ap-
+proaches,” IEEE Robot. Autom. Mag., vol. 13, no. 4, pp. 82–90, Dec. 2006.
+[4] B. Espiau, “Effect of camera calibration errors on visual servoing in
+robotics,” in Experimental Robotics III, (ser. Lecture Notes in Control
+and Information Sciences), T. Yoshikawa and F. Miyazaki, Eds. Berlin,
+Germany: Springer-Verlag, 1994, vol. 200, pp. 182–192.
+[5] T. Hamel and R. Mahony, “Visual servoing of an under-actuated dynamic
+rigid-body system: An image-based approach,” IEEE Trans. Robot. Au-
+tom., vol. 18, no. 2, pp. 187–198, Apr. 2002.
+[6] O. Bourquardez, R. Mahony, N. Guenard, F. Chaumette, T. Hamel, and
+L. Eck, “Image-based visual servo control of the translation kinematics of
+a quadrotor aerial vehicle,” IEEE Trans. Robot., vol. 25, no. 3, pp. 743–
+749, Jun. 2009.
+[7] N. Metni, T. Hamel, and F. Derkx, “Visual tracking control of aerial robotic
+systems with adaptive depth estimation,” in Proc. 44th IEEE Conf. Decis.
+Control/ Eur. Control Conf., Seville, Spain, Dec. 2005, pp. 6078–6084.
+[8] H. de Plinval, P. Morin, P. Mouyon, and T. Hamel, “Visual servoing for
+underactuated VTOL UAVs: A linear, homography-based framework,”
+Int. J. Robust Nonlinear, vol. 24, no. 16, pp. 2285–2308, 2013.
+[9] R. Ozawa and F. Chaumette, “Dynamic visual servoing with image mo-
+ments for a quadrotor using a virtual spring approach,” in Proc. IEEE Int.
+Conf. Robot. Autom, Shanghai, China, May 2011, pp. 5670–5676.
+[10] R. Ozawa and F. Chaumette, “Dynamic visual servoing with image mo-
+ments for an unmanned aerial vehicle using a virtual spring approach,”
+Adv. Robot., vol. 27, no. 9, pp. 683–696, 2013.
+[11] H. Jabbari, G. Oriolo, and H. Bolandi, “An adaptive scheme for image-
+based visual servoing of an underactuated UAV,” Int. J. Robot. Autom.,
+vol. 29, no. 1, pp. 92–104, 2014.
+[12] D. Lee, H. Lim, K. H., Y. Kim, and K. Seong, “Adaptive image-based
+visual servoing for an underactuated quadrotor system,” J. Guid. Control
+Dyn., vol. 35, no. 4, pp. 1335–1353, 2012.
+[13] H. Xie, A. F. Lynch, and M. Jagersand, “Dynamic IBVS of a rotary wing
+UAV using line features,” Robotica, vol. 34, pp. 2009–2026, 2016.
+[14] A. Abdessameud and F. Janabi-Shariﬁ, “Image-based tracking control
+of VTOL unmanned aerial vehicles,” Automatica, vol. 53, pp. 111–119,
+2015.
+[15] H. Xie and A. Lynch, “State transformation based dynamic visual ser-
+voing for an unmanned aerial vehicle,” Int. J. Control, vol. 89, no. 5,
+pp. 892–908, 2016.
+[16] G. Fink, H. Xie, A. F. Lynch, and M. Jagersand, “Nonlinear dynamic
+image-based visual servoing of a quadrotor,” J. Unmanned Veh. Syst.,
+vol. 3, no. 1, pp. 1–21, 2015.
+[17] L. Burlion and H. de Plinval, “Keeping a ground point in the camera
+ﬁeld of view of a landing UAV,” in Proc. IEEE Int. Conf. Robot. Autom.,
+Karlsruhe, Germany, May 2013, pp. 5763–5768.
+[18] L. Burlion, “A new saturation function to convert an output constraint into
+an input constraint,” in Proc. 20th Mediterranean Conf. Control Autom.,
+Barcelona, Spain, Jul. 2012, pp. 1217–1222.
+[19] N. Metni and T. Hamel, “A UAV for bridge inspection: Visual servoing
+control law with orientation limits,” Autom. Construct., vol. 17, no. 1,
+pp. 3–10, 2007.
+[20] H. de Plinval and L. Burlion, “Nonlinear visual servoing control for VTOL
+UAVs with ﬁeld of view constraint,” in Advances in Aerospace Guidance,
+Navigation and Control, J. Bordeneuve-Guib´e, A. Drouin, and C. Roos,
+Eds. New York, NY, USA: Springer, 2015, pp. 531–548.
+[21] A. R. Teel, “Global stabilization and restricted tracking for multiple
+integrators with bounded controls,” Syst. Control Lett., vol. 18, no. 3,
+pp. 165–171, 1992.
+[22] N. Cao and A. F. Lynch, “Inner-outer loop control for quadrotor UAVs with
+input and state constraints,” IEEE Trans. Control Syst. Technol., vol. 24,
+no. 99, pp. 1797–1804, Sep. 2016.
+[23] H. Xie and A. F. Lynch, “Dynamic image-based visual servoing for
+unmanned aerial vehicles with bounded inputs,” in Proc. 29th IEEE Can.
+Conf. Elect. Comput. Eng., Vancouver, Canada, May 2016, pp. 106–110.
+[24] S. Gayaka, L. Lu, and B. Yao, “Global stabilization of a chain of integrators
+with input saturation and disturbances: A new approach,” Automatica,
+vol. 48, no. 7, pp. 1389–1396, 2012.
+[25] H. Xie, G. Fink, A. F. Lynch, and M. Jagersand, “Adaptive dynamic
+visual servoing of a UAV,” IEEE Trans. Aerosp. Electron. Syst., 2016, to
+be published.
+[26] P. Castillo, R. Lozano, and A. E. Dzul, Modelling and Control of Mini-
+Flying Machines, M. J. Grimble and M. A. Johnson, Eds. New York, NY,
+USA: Springer, 2005.
+[27] S. Bouabdallah, “Design and control of quadrotors with application to
+autonomous ﬂying,” Ph.D. dissertation, Dept. Mech. Process Eng., ´Ecole
+Polytechnique F´ed´erale de Luasanne, Lausanne, Switzerland, 2007.
+[28] F. Kendoul, I. Fantoni, and R. Lozano, “Asymptotic stability of hierarchi-
+cal inner-outer loop-based ﬂight controllers,” in Proc. IFAC World Congr.,
+Seoul, Korea, Jul. 2008, pp. 1741–1746.
+[29] Z. Cai, M. de Queiroz, and D. Dawson, “A sufﬁciently smooth projec-
+tion operator,” IEEE Trans. Autom. Control, vol. 51, no. 1, pp. 135–139,
+Jan. 2006.
+[30] M. Krstic, P. V. Kokotovic, and I. Kanellakopoulos, Nonlinear and Adap-
+tive Control Design, 1st ed. Hoboken, NJ, USA: Wiley, 1995.
+[31] Pixy CMUcam5, 2016. [Online]. Available: http://www.cmucam.org/
+projects/cmucam5/wiki. Accessed on: Sep. 1, 2016.
+[32] PX4 Autopilot. Zurich, Switzerland: Institute for Visual Comput-
+ing, Swiss Federal Institute of Technology, 2014. [Online]. Available:
+http://pixhawk.org/. Accessed on: July 9, 2014.
+Hui Xie received the B.Sc. degree in mechanical
+engineering from the Harbin Engineering Uni-
+versity, Harbin, China, in 2007, the M.Sc. de-
+gree in mechatronics engineering from Harbin
+Institute of Technology, Harbin, in 2009, and the
+Ph.D. degree in electrical and computer engi-
+neering from the University of Alberta, Edmon-
+ton, AB, Canada, in 2016. Currently, he is a re-
+search fellow in the School of Mechanical and
+Aerospace Engineering at Nanyang Technolog-
+ical University, Singapore.
+His research interests include nonlinear control theory, state esti-
+mation, and vision-based control with applications to unmanned aerial
+vehicles and mobile robots.
+Alan F. Lynch (S’89–M’99) received the B.A.Sc.
+degree in engineering science (electrical op-
+tion) from the University of Toronto, Toronto, ON,
+Canada, in 1991; the M.A.Sc. degree in elec-
+trical engineering from the University of British
+Columbia, Vancouver, BC, Canada, in 1994;
+and the Ph.D. degree in electrical and computer
+engineering from the University of Toronto, in
+1999.
+Since 2001, he has been a Faculty Mem-
+ber with the Department of Electrical and Com-
+puter Engineering, University of Alberta, Edmonton, AB, Canada, where
+he is currently a Full Professor. His interests include nonlinear con-
+trol and its applications to electrical and electromechanical systems in-
+cluding power converters, unmanned aerial vehicles, and self-bearing
+motors.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 22,2024 at 14:14:24 UTC from IEEE Xplore.  Restrictions apply. 
+

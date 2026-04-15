@@ -1,0 +1,1583 @@
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+77
+Landing a VTOL Unmanned Aerial Vehicle on a
+Moving Platform Using Optical Flow
+Bruno H´eriss´e, Tarek Hamel, Robert Mahony, and Franc¸ois-Xavier Russotto
+Abstract—This paper presents a nonlinear controller for a ver-
+tical take-off and landing (VTOL) unmanned aerial vehicle (UAV)
+that exploits a measurement optical ﬂow to enable hover and land-
+ing control on a moving platform, such as, for example, the deck of a
+sea-going vessel. The VTOL vehicle is assumed to be equipped with
+a minimum sensor suite [i.e., a camera and an inertial measure-
+ment unit (IMU)], manoeuvring over a textured ﬂat target plane.
+Two different tasks are considered in this paper. The ﬁrst concerns
+the stabilization of the vehicle relative to the moving platform that
+maintains a constant offset from a moving reference. The second
+concerns regulation of automatic vertical landing onto a moving
+platform. Rigorous analysis of system stability is provided, and
+simulations are presented. Experimental results are provided for
+a quadrotor UAV to demonstrate the performance of the proposed
+control strategy.
+Index Terms—Automatic landing, nonlinear control, optical
+ﬂow, unmanned aerial vehicle (UAV).
+I. INTRODUCTION
+R
+ECENT advances in technology and a long list of potential
+applications have led to a growing interest in aerial robotic
+vehicles [1]. Unmanned aerial vehicles (UAVs) are an ideal so-
+lution for many indoor and outdoor applications that presently
+jeopardize human or material safety, such as, for example, mon-
+itoring trafﬁc congestion, regular inspection of infrastructure
+such as bridges, dam walls, and power cables, investigation of
+hazardous environments, etc. An important capability for a sub-
+set of potential applications, particularly those associated with
+maritime scenarios, is the ability to autonomously land the vehi-
+cle on a moving platform such as the deck of a sea-going vessel,
+or, indeed, any landing pad that is attached to a moving vehicle.
+The associated capability of stabilizing the motion of the UAV
+Manuscript received July 6, 2010; revised March 30, 2011; accepted July 27,
+2011. Date of publication September 12, 2011; date of current version Febru-
+ary 9, 2012. This paper was recommended for publication by Associate Editor
+M. Sitti and Editor G. Oriolo upon evaluation of the reviewers’ comments.
+This work was supported in part by Naviﬂow grant, by Agence Nationale de
+la Recherche project SCUAV (ANR-06-ROBO-0007), and by the Australian
+Research Council through the ARC Discovery Project DP0880509 entitled
+“Image-based teleoperation of semi-autonomous robotic vehicles.”
+B. H´eriss´e is with the ONERA—The French Aerospace Lab, Palaiseau Cedex
+F-91123, France (e-mail: bruno.herisse@onera.fr).
+T. Hamel is with the I3S UNSA-CNRS Laboratory, University of Nice Sophia
+Antipolis, Sophia Antipolis Cedex 06903, France (e-mail: thamel@i3s.unice.fr).
+R.
+Mahony
+is
+with
+the
+Research
+School
+of
+Engineering,
+Aus-
+tralian
+National
+University,
+Canberra,
+A.C.T
+0200,
+Australia
+(e-mail:
+Robert.Mahony@anu.edu.au).
+F.-X. Russotto is with the CEA List, Interactive Robotics Laboratory
+Fontenay-aux-Roses 92265, France (e-mail: francois-xavier.russotto@cea.fr).
+This
+paper
+has
+supplementary
+downloadable
+material
+available
+at
+http://ieeexplore.ieee.org.
+Color versions of one or more of the ﬁgures in this paper are available online
+at http://ieeexplore.ieee.org.
+Digital Object Identiﬁer 10.1109/TRO.2011.2163435
+with respect to a dynamic moving environment is itself of signiﬁ-
+cance in a wide range of more general applications. Autonomous
+landing of UAV on moving platforms has been investigated us-
+ing a model of the vertical motion of landing platform [2], [3], a
+tether guide [4], or known target motion [5], [6]. The main idea
+of prior work is based on obtaining a prediction of the motion of
+the moving landing pad to provide a feed-forward compensation
+during the landing manoeuvre. This approach has the advantage
+that, should a reliable predictive model of the motion of the land-
+ing pad be determined, the resulting performance of the landing
+manoeuvre is of high quality. The approach suffers from the dis-
+advantage that in many applications of interest, it is difﬁcult to
+determine a reliable predictive model of the motion of the land-
+ing pad either because the motion of the landing pad is primarily
+stochastic, and no predictive model is valid, or because of the
+limited amount of data available to the UAV during the land-
+ing manoeuvre. In such situations, the vehicle control algorithm
+must fall back on feedback-control strategies. An approach that
+stems from the insight into the behavior of ﬂying insects and
+animals uses visual ﬂow [7] as feedback for aerial vehicles in
+the control of motion in dynamic environments. Since optical
+ﬂow provides relative velocity and proximity information with
+respect to the local environment [8], it is an ideal cue that can be
+used to perform landing-control strategies [7], [9], as well as ob-
+stacle avoidance [10]–[12], terrain following [13]–[15], visual
+servo control [16], or even in both localization and control [17].
+It is rare that moving obstacles are considered in prior literature
+using optical ﬂow; however, it is well known that insects show
+great capabilities in achieving landing tasks on moving objects
+such as, for example, a bee landing on a ﬂower. Moreover, the
+full vehicle dynamics analysis is rarely discussed in the majority
+of work on the analysis of insect ﬂight behavior, since the ﬂight
+regime of insects is highly damped due to their high drag-to-
+mass ratios. The control strategies that have been observed in
+the various biological studies do not necessarily generalize to
+high-inertia, low-drag aerial vehicles.
+In this paper, an optical-ﬂow-based control law for hovering
+ﬂight and landing manoeuvre on a moving platform is proposed
+using only on inertial measurement unit (IMU) and optical-ﬂow
+measurements. The image information that is considered is the
+average optical ﬂow that is obtained from a textured target plane,
+using additional information provided by an embedded IMU for
+derotation of the ﬂow. A nonlinear proportional-integral (PI)-
+type controller is designed for hovering ﬂight, while another
+nonlinear controller, exploiting the vertical optical ﬂow (similar
+to the inverse of the well-known time-to-contact), is proposed for
+vertical landing. It is necessary to assume bounded dynamics of
+the moving platform; however, no predictive model of the plat-
+form is required to obtain the desired closed-loop performance.
+1552-3098/$26.00 © 2011 IEEE
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+78
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+To prove global stability and convergence of the closed-loop
+system, Lyapunov analysis is used both for the stabilization of
+the hovering ﬂight relative to a static plane and for the verti-
+cal landing relative to a horizontal plane moving with unknown
+(bounded) dynamics in the vertical direction. In practice, the
+stabilization and vertical landing also work with lateral motion.
+Experimental results are obtained on a quad-rotor UAV capable
+of quasi-stationary ﬂight that is developed at French Atomic
+Energy Commission (CEA). A “high-gain” controller is used to
+stabilize the orientation dynamics of the vehicle, an approach
+classically known in aeronautics as guidance and control (or hi-
+erarchical control) [18], and the stabilization and landing control
+are developed for the resulting reduced translational dynamics of
+the vehicle. The proposed closed-loop control schemes demon-
+strate efﬁciency and performance for the hovering ﬂight and
+vertical landing manoeuvre.
+The material presented in this paper is an extension of the
+prior work [19]. It incorporates the ground effect, considers
+the situation of target is moving, contains detailed proof of the
+system stability, and incorporates additional simulations and
+experiments.
+This paper consists of six sections followed by a conclusion.
+Section II presents the fundamental equations of motion for an
+X4-ﬂyer UAV. In Section III, fundamental equations of opti-
+cal ﬂow are presented. Sections IV and V present the proposed
+control strategies for hovering and vertical landing manoeu-
+vre, respectively. Section VI describes simulations results, and
+Section VII describes the experimental results that are obtained
+on the quad-rotor vehicle.
+II. UNMANNED AERIAL VEHICLE DYNAMIC MODEL AND
+TIME-SCALE SEPARATION
+The vertical take-off and landing (VTOL) UAV is represented
+by a rigid body of mass m and of tensor of inertia I along with
+external forces due to gravity and forces and torques provided by
+rotors. To describe the motion of the UAV, two reference frames
+are introduced: an inertial reference frame I associated with the
+vector basis [e1, e2, e3] and a body-ﬁxed frame B attached to the
+UAV at the center of mass and associated with the vector basis
+[eb
+1, eb
+2, eb
+3]. The position and the linear velocity of the UAV in
+I are, respectively, denoted ξ = (x, y, z)T and v = ( ˙x, ˙y, ˙z)T .
+The orientation of the UAV is given by the orientation matrix
+R ∈SO(3) from B to I. Finally, let Ω = (Ω1, Ω2, Ω3)T be the
+angular velocity of the UAV that is deﬁned in B.
+A translational force F and a control torque Γ are applied
+to the UAV. The translational force F combines thrust, lift,
+drag, and gravity components. For a miniature VTOL UAV in
+quasi-stationary ﬂight, one can reasonably assume that the aero-
+dynamic forces are always in direction eb
+3, since the thrust force
+predominates over other components [20]. The gravitational
+force can be separated from other forces, and the dynamics of
+the VTOL UAV can be written as
+˙ξ = v
+(1)
+m˙v = −TRe3 + mge3 + Δ
+(2)
+ϵ ˙R = R¯Ω×,
+¯Ω = ϵΩ
+(3)
+ϵI ˙¯Ω = −¯Ω × I¯Ω + ¯Γ,
+¯Γ = ϵ2Γ.
+(4)
+In the aforementioned notation, g is the acceleration due to
+gravity, and T is a scalar input that is termed the thrust or heave,
+which is applied in direction eb
+3 = Re3, i.e., the third-axis unit
+vector. The term Δ represents constant (or slowly time-varying
+unmodeled) forces. The matrix Ω× denotes the skew-symmetric
+matrix associated with the vector product Ω×x := Ω × x for any
+x.
+The positive parameter 0 < ϵ < 1 is introduced for time-scale
+separation between the translation and orientation dynamics. It
+means that the orientation dynamics of the VTOL UAV are
+compensated with separate high-gain control loop (Γ = ¯Γ/ϵ2).
+For this hierarchical control, the time-scale separation between
+the translational dynamics (slow time scale) and the orienta-
+tion dynamics (fast time scale) can be used to design position
+and orientation controllers under simplifying assumptions. Al-
+though reduced-order subsystems can, hence, be considered for
+control design, the stability must be analyzed by considering the
+complete closed-loop system [18]. In this paper, however, we
+will focus on the control design for the translational dynamics.
+Thus, the full vectorial term TRe3 will be considered as
+control input for these dynamics. We will assign its desired
+value u ≡(TRe3)d = T dRde3. Assuming that actuator dynam-
+ics can be neglected, the value T d is considered to be instanta-
+neously reached by T. For the orientation dynamics of (3) and
+(4), a high-gain controller is used to ensure that the orientation
+R of the UAV converges to the desired orientation Rd. The
+resulting control problem is simpliﬁed to
+˙ξ = v, m˙v = −u + mge3 + Δ.
+(5)
+Thus, we consider only control of the translational dynamics
+(5) with a direct control input u. This common approach is used
+in practice and may be justiﬁed theoretically using singular
+perturbation theory [21].
+III. OPTICAL-FLOW EQUATIONS
+In this section, image plane kinematics and spherical optical
+ﬂow are derived. The camera is assumed to be attached to the
+center of mass of the vehicle so that the camera frame coincides
+with the body-ﬁxed frame.
+A. Kinematics of an Image Point Under Spherical Projection
+We compute optical ﬂow in spherical coordinates in order to
+exploit the passivity-like property that is discussed in [22]. The
+main advantage is that, in spherical coordinates, the optical ﬂow
+is expressed in a simple form. Moreover, it is shown in [23]
+that optical-ﬂow equations can be numerically computed from
+an image plane to a spherical retina. A Jacobian matrix relates
+temporal derivatives (velocities) in the spherical coordinate sys-
+tem to those in the image frame. Motivated by this discussion,
+we make the assumption that the image surface of the camera is
+spherical with unit image radius.
+Deﬁne P = (X, Y, Z) ∈R3 as a visible target point, possibly
+moving, expressed in the camera frame. The image point that
+is observed by the spherical camera is denoted p and is the
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+79
+Fig. 1.
+Quadrotor UAV developed in Centre d’Energie Atomique and used for
+the experimental results in this paper.
+Fig. 2.
+Deﬁnition of the body-ﬁxed frame B and the inertial frame I.
+projection of P onto the image surface S2 of the camera. Thus
+p =
+P
+∥P∥.
+(6)
+The time derivative ˙p is the kinematics of the image point, which
+is also called optical-ﬂow equations, on the spherical surface.
+The kinematics of an image point for a spherical camera of
+image surface radius unity are [8], [22]
+˙p = −Ω × p −πp
+∥P∥(V −VP )
+(7)
+where πp = (I3 −pp⊤) is the projection πp : R3 →TpS2, i.e.,
+the tangent space of the sphere S2 at the point p ∈S2. The
+vectors V = R⊤v and VP are expressed in the body-ﬁxed frame
+and represent, respectively, the translational velocity of the cen-
+ter of mass of the vehicle and the translational velocity of the
+target point P.
+Let η ∈I denote the unit normal of a target plane [16] (see
+Fig. 3). Deﬁne d := d(t) to be the orthogonal distance from the
+target surface to the origin of frame B that is measured as a
+positive scalar. Thus, for any point P on the target surface
+d(t) = ⟨P, R⊤η⟩
+where P is expressed in the body-ﬁxed frame, and η is expressed
+in the inertial frame. For a target point, one has
+∥P∥=
+d(t)
+⟨p, R⊤η⟩=
+d(t)
+cos (θ)
+where θ is the angle between the inertial direction η and the
+observed target point p. Substitution of this relationship into (7)
+Fig. 3.
+Image kinematics for spherical camera image geometry.
+yields
+˙p = −Ω×p −cos (θ)
+d(t) πp(V −VP ).
+(8)
+B. Average Optical Flow
+Measuring the optical ﬂow is a key aspect of the practical
+implementation of the control algorithms that are proposed in
+the sequel. The optical ﬂow ˙p can be computed using a range
+of algorithms (such as correlation-based techniques, features-
+based approaches, differential techniques, etc.) [24]. Note that
+because of the rotational ego-motion of the camera, (8) involves
+the angular velocity as well as the linear velocity [8]. For the
+control problem, we deﬁne an inertial average optical ﬂow from
+the integral of all observed optical ﬂow that is corrected for
+rotational angular velocity. By integrating optical ﬂow over an
+aperture, which in this case is a solid angle on the sphere, we
+obtain information on the scaled velocity of the vehicle.
+We assume that the target is a textured plane moving with a
+pure translational velocity Vt ∈B (no rotational velocity). Thus,
+for any target points P on the plane, VP = Vt. We also assume
+that the normal direction η is known and the available data are ˙p,
+R, and Ω, where R and Ω are estimated from the IMU data [25].
+The average optical ﬂow is obtained by integrating the observed
+optical ﬂow over a solid angle W2 of the sphere around the pole
+normal to the target plane (see Fig. 3). The average of the optical
+ﬂow on the solid angle W2 is given by (see the Appendix for
+more details)
+φ =
+
+W2 ˙p dp = −π (sin θ0)2 Ω × R⊤η −Q(V −Vt)
+d
+(9)
+where the parameter θ0 and the matrix Q depend on the size of
+the solid angle W2. It can be veriﬁed that Q = R⊤(RtΛR⊤
+t )R is
+a symmetric positive-deﬁnite matrix. The matrix Λ is a constant
+diagonal matrix that depends on parameters of the solid angle
+W2, and Rt represents the orientation matrix of the target plane
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+80
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+with respect to the inertial frame. For instance, if W2 is the
+hemisphere centered at η, corresponding to the visual image of
+the inﬁnite target plane, it can be shown that [16]
+Λ = π
+4
+⎛
+⎝
+3
+0
+0
+0
+3
+0
+0
+0
+2
+⎞
+⎠.
+(10)
+From (9), it is straightforward to obtain a measurement of
+the inertial average optical ﬂow corrected for rotational angular
+velocity
+w = −(RtΛ−1R⊤
+t )R(φ + π (sin θ0)2 Ω × R⊤η).
+(11)
+By expressing with respect to the rigid-body motion, it yields
+w = v −vt
+d
++ noise
+(12)
+where vt = RVt is the translational velocity of the target plane
+that is expressed in the inertial frame. Note that for theoretical
+analysis that is provided in Sections IV and V, the noise of
+(12) is ignored. Its effects on the convergence is considered in
+Section VI.
+Remark 3.1: In the particular situation where the target plane
+is stationary (vt = 0), (12) becomes
+w = v
+d + noise.
+(13)
+IV. STABILIZATION OF THE HOVERING FLIGHT OVER A
+TEXTURED TARGET
+In this section, a control design that ensures hovering ﬂight
+over a textured ﬂat plane is proposed. The control problem that
+is considered is the stabilization of the linear velocity about zero
+despite unmodeled constant (or slowly time-varying) dynamics.
+In particular, the velocity of the target will be assumed to be
+constant (˙vt ≡0). A PI-type nonlinear controller that depends
+only on the measurable variable w = (v −vt)/d = ˜v/d (12) is
+proposed for the translational dynamics (5). The result is stated
+in the following theorem.
+Theorem 4.1: Assume that η is known and invariant, and Δ
+is a constant. Consider the dynamics (5), and assume that the
+control input u is chosen as
+u = kP w + kI
+ t
+0
+wdτ + mge3, kP , kI > 0.
+(14)
+Then, for any initial conditions d0 = d(0) > 0, the linear veloc-
+ity error ˜v converges asymptotically to zero. More precisely, we
+have the following
+1)
+˙d = −⟨˜v, η⟩converges to 0 and d(t) > 0, ∀t ≥0.
+2) The horizontal velocity ˜v∥= πη ˜v converges to zero.
+Proof:
+Proof of item 1: Recall the dynamics of the vehicle (5) and
+consider the component ˜v⊥= ⟨˜v, η⟩in direction η. One obtains
+m˙˜v
+⊥= −kP
+˜v⊥
+d −kI
+ t
+0
+˜v⊥
+d dτ + ⟨Δ, η⟩.
+(15)
+Note that ˜v⊥= −˙d. Equation (15) can also be written as
+follows:
+m ¨d = −kP
+˙d
+d −kI
+ t
+0
+˙d
+ddτ −⟨Δ, η⟩
+(16)
+= −kP
+˙d
+d −kI ln
+ d
+d∞
+
+(17)
+where d∞= d0e−⟨Δ,η⟩/kI . Note that the control law is well
+deﬁned and smooth for d > 0. For any initial conditions, such
+that d0 = d(0) > 0, deﬁne the Lyapunov function candidate Lη
+by
+Lη =
+m
+2d∞
+˙d2 + kI
+	 d
+d∞
+
+ln
+ d
+d∞
+
+−1
+
++ 1
+
+≥0.
+(18)
+Since
+function
+u →(u(ln u −1) + 1) ≥0 ∀u > 0,
+it
+is
+straightforward to verify that Lη ≥0. Differentiating Lη and
+recalling (17), one obtains
+˙Lη = −kP
+˙d2
+dd∞
+.
+(19)
+This implies that Lη < Lη(0), as long as d(t) > 0. Two dif-
+ferent cases may occur depending on the initial value of Lη:
+Lη(0) < kI and Lη(0) ≥kI . From the expression of the Lya-
+punov function (18), the ﬁrst case (Lη(0) < kI ) implies that
+there exists ε > 0 such that d(t) > ε > 0 ∀t. Consequently, d
+remains strictly positive, and (17) is well deﬁned for all time.
+Application of LaSalle’s principle shows that the invariant set is
+contained in the set that is deﬁned by ˙Lη = 0. This implies that
+˙d ≡0 in the invariant set. Recalling (17), it is straightforward
+to show that d converges asymptotically to d∞.
+For the second situation (Lη(0) ≥kI ), we have to show that
+d ̸= 0 for all time. Assume that there exists a ﬁrst time t1 such
+that ˙d(t1) < 0 and 0 < d(t1) < d∞. If we show that there exists
+a second time t2 > t1 such that ˙d(t2) = 0 and d(t2) > 0, then
+Lη(t2) < kI and conditions of the ﬁrst case are veriﬁed, and
+the result follows. We proceed using a proof by contradiction.
+Assume that for all time t > t1, ˙d(t) < 0. This implies d(t) <
+d(t1) < d∞∀t > t1. Thus, recalling (17), it follows that there
+exists ε > 0 such that ¨d(t) > ε > 0 ∀t > t1. As a consequence,
+there exists a time T > t1 such that d converges to 0 (d ≥0)
+when t tends to T. Recalling (17), it yields
+¨d > −kP
+m
+˙d
+d > 0
+∀t > t1.
+(20)
+Integrating this equation, it follows that
+˙d −˙d(t1) > −kP
+m ln
+
+d
+d(t1)
+
+∀t > t1.
+(21)
+Since d converges to 0, ˙d converges to +∞. This contradicts
+the fact that ˙d < 0 ∀t > t1. It follows that d(t) > 0 ∀t ≥0, and
+consequently, d(t) converges to d∞.
+Proof of item 2: Let ˜v∥be the planar velocity πη ˜v ∈I. Con-
+sider the component perpendicular to η of the control law (14)
+u∥= πηu = kP
+˜v∥
+d + kI
+ t
+0
+˜v∥
+d dτ + mgπηe3.
+(22)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+81
+Recall the dynamics of the vehicle (5) and consider the compo-
+nent perpendicular to η. Substituting the control law (22) into
+(5), one obtains
+m˙˜v
+∥= −kP
+˜v∥
+d −kI
+ t
+0
+˜v∥
+d dτ + Δ∥
+(23)
+where Δ∥= πηΔ. Let δ1 be the following variable:
+δ1 =
+ t
+0
+˜v∥
+d dτ −Δ∥
+kI
+.
+(24)
+Differentiating δ1, it yields
+˙δ1 = ˜v∥
+d .
+(25)
+Consider the following Lyapunov function candidate:
+Lπη = kI
+∥δ1∥2
+2
++ m∥δ2∥2
+2
+(26)
+where δ2 = ˜v∥/
+√
+d. Differentiating Lπη and recalling (23), one
+obtains
+˙Lπη = −∥δ2∥2
+
+kP + m ˙d/2
+
+d
+(27)
+Using the fact that (d, ˙d) converges to (d∞, 0), one can ensure
+that there exists a time T and ε > 0 such that
+(kP + m ˙d/2)
+d
+> ε > 0
+∀t > T.
+Therefore, ˙Lπη < −ε ∥δ2∥2 , ∀t > T. Moreover, it is straight-
+forward to verify that Lπη remains bounded in [0, T] by noticing
+that
+˙Lπη < | ˙d|max
+dmin
+Lπη
+∀t ∈[0, T].
+This implies that Lπη (t) < Lπη (T), ∀t > T. To show that δ2
+converges to 0, we need to show that ˙Lπη is uniformly con-
+tinuous. Then, application of Barbalat’s Lemma (see [21]) will
+conclude the proof. To this purpose, it is sufﬁcient to show that
+¨Lπη is bounded. Since ˙d and ¨d are bounded, it remains to show
+that δ2 and ˙δ2 are bounded to satisfy the condition. δ1 and δ2 are
+bounded since Lπη is bounded. Moreover, it is straightforward
+to show that ˙δ2 is bounded using its expression:
+˙δ2 = −kP
+mdδ2 −
+kI
+m
+√
+d
+δ1 −1
+2
+˙d
+dδ2.
+Thus, ˙Lπη is uniformly continuous; hence, δ2 converges to 0.
+Finally, using the fact that ˜v = ˜v⊥η + ˜v∥, it follows that ˜v
+converges to zero.
+■
+V. LANDING CONTROL ON A MOVING TEXTURED TARGET
+In this section, we consider the landing manoeuvre of the
+aerial robot on a horizontal plane that moves vertically. The
+primary goal is to address the question of the vertical landing on
+a moving platform (target) with unknown dynamics. The most
+important application concerns landing on a deck of a ship in
+high seas and tough weather [2], [4]–[6]. A common model of
+the vertical motion zG of the platform as the motion of the ship
+involved by the sea waves is [2]
+zG =
+n
+
+i=1
+ai cos (ωit + φi)
+(28)
+where ai, ωi, and φi are unknown constants. The classical ap-
+proach estimates the parameters of motion and uses these to add
+a feed-forward compensation term in the control input. In this
+paper, we consider a more general vertical motion zG of the
+platform with respect to the inertial frame I. We assume that
+zG is a smooth function of class C2 (zG and ˙zG are continuous
+functions of time t) such that ¨zG is bounded by a known value.
+We assume that the target plane belongs to the plane x–y
+of the inertial frame so that d ≡h is the height of the vehicle
+with respect to the moving platform. The vertical velocity of the
+target plane is ˙zGe3. Consequently, from (12) with v⊥
+t = ˙zGe3,
+it is straightforward to verify that
+w⊥= ⟨w, e3⟩= v⊥−˙zGe3
+h
+.
+Hence
+wz = w⊥= −
+˙h
+h.
+(29)
+Deﬁne
+wd = (0, 0, ω∗)T , ω∗> 0
+as the desired average optical ﬂow. Note that the vertical com-
+ponent of the inertial average optical ﬂow acts analogously to
+optical-ﬂow divergence. It is straightforward to show that if
+w ≡wd, one has (vx, vy) = (0, 0) and vz = h0ω∗exp(−ω∗t).
+Consequently, h(t) = h0 exp(−ω∗t) that ensures a smooth ver-
+tical landing. In practice, it is impossible to exactly track ω∗,
+and it is necessary to implement a feedback system.
+We propose to use the previous control law (14) for the x–y
+dynamics to stabilize the vehicle over the landing pad. We still
+need to provide a control scheme for the remaining degree of
+freedom (h ≡|z −zG|). In particular, we ﬁx a desired set point
+ω∗for the ﬂow divergence (i.e., the ﬂow in the normal direction
+to the target plane, which is equal to the inverse of the time-
+to-contact) and design a control law that regulates (˙h/h + ω∗)
+around 0. The controller is a direct application of the controller
+that is proposed in [26], along with a complete and more rigorous
+proof of the exponential convergence and stability of (h, ˙h) to
+(0, 0) despite unknown dynamics and unknown terms. Consider
+the dynamics
+m˙v = −b(t)u + mge3 + Δ(t)
+(30)
+where b(t) is a slowly time-varying parameter that models the
+ground effect (b ≥1). An approximate model for b(t) can be
+found in [20], [27]
+1
+b(t) = 1 −
+
+D0
+h(t) + l0
+2
+(31)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+82
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+Fig. 4.
+Ground effect b with l0 = 0.5 m and D0 = 0.15 m.
+where l0 and D0 can be identiﬁed on a physical system. Note
+that l0 > D0 so that b > 1 when h = 0 (see Fig. 4). Note also
+that max(b(t)) = bmax is obtained when h = 0.
+Theorem 5.1: Consider the dynamics of the vertical compo-
+nent of (30), and assume that the vertical component uz of the
+thrust vector u is the control input. Choose uz as
+uz = mk(wz −ω∗) + mg.
+(32)
+Assume that zG is at least C2, assume that ¨zG, Δ(t) are bounded
+and uniformly continuous, and assume that b(t) ≥1. Choose the
+control gain k such that
+k > |Δz|max + m|¨zG|max + mg |bmax −1|
+mω∗
+.
+(33)
+Then, for all initial conditions, such that h0 > 0 (h0 ≡|z(0) −
+zG(0)|), we have the following.
+1) The third component of the differential equation (30) along
+with (32) is smooth and nonsingular. This implies that the
+solution (h(t), ˙h(t)) is well deﬁned for all time t ≥0.
+2) h(t) > 0 remains positive, and (h, ˙h) converge exponen-
+tially to zero.
+3) The control law (32) is bounded for all time and ¨h →0.
+Proof: In the ﬁrst step, we prove that the third component
+of the differential equation (30) along with (32) is smooth and
+nonsingular while h(t) > 0. This implies that there exists a time
+Tmax > 0 such that the solution (h(t), ˙h(t)) exists and is well
+deﬁned on t ∈[0, Tmax). In a second step, we prove item 2 while
+showing that Tmax = ∞, and ﬁnally, we will prove item 3.
+Proof of item 1 for t ∈[0, Tmax):
+First, recall that the dynamics of the considered system are
+decoupled, and recall the dynamics of the third component of
+(30)
+m˙vz = −b(t)uz + mg + Δz(t).
+(34)
+It follows that the height dynamics can be written as follows:
+m¨h = mkb(t)(wz −ω∗) −Δz + (b(t) −1)mg + m¨zG
+(35)
+= −mkb(t)
+ ˙h
+h + α(t)
+
+(36)
+where
+α(t) =
+
+ω∗+
+Δz
+mkb(t) −(b(t) −1)
+g
+kb(t) −
+¨zG
+kb(t)
+
+.
+(37)
+Recalling condition (33), it is straightforward to show that α(t)
+is a positive and bounded function (α(t) > 0, ∀t ≥0).
+The dynamics (36) are well deﬁned as long as h(t) > 0;
+hence, there exists a ﬁrst time Tmax, possibly inﬁnite, such that
+(h, ˙h) is well deﬁned on [0, Tmax).
+Proof of item 2 for t ∈[0, Tmax):
+Deﬁne the following virtual state on [0, Tmax)
+ζ(t) = h(t) exp
+ t
+0
+¨h(τ)
+kb(τ) dτ
+
+.
+(38)
+Differentiating ζ and recalling (36) yields
+˙ζ = −αζ.
+(39)
+Since ζ0 = h0, it follows that on [0, Tmax)
+h0 exp (−αmaxt) < ζ(t) < h0 exp (−αmint).
+It remains to show that
+
+ t
+0
+¨h(τ )
+kb(τ ) dτ
+ is bounded on [0, Tmax) to
+ensure, using (38), that there exist ϵ1, ϵ2 > 0 such that
+ϵ1h0 exp (−αmaxt) < h(t) < ϵ2h0 exp (−αmint)
+for all time t ∈[0, Tmax). We will show that Tmax = ∞using
+continuity. This will ensure that (h, ˙h) is well deﬁned on [0, ∞)
+and that h(t) converges exponentially to 0.
+To do this, we must prove that
+
+ t
+0
+¨h(τ )
+kb(τ ) dτ
+ is bounded by
+studying the evolution of (˙h, ¨h).
+Proof that the sign of ˙h(t) does not change more than once
+and |˙h(t)| is bounded. Two situations may occur.
+1) ˙h(0) ≥0: To show that there exists a time T on [0, Tmax)
+such that ˙h(T) < 0, assume the converse, that is, ˙h ≥0
+for all time t. Thus, from (36) where α(t) > 0, ¨h < 0 and,
+by exploiting (38) where b ≥1
+ζ(t) ≥h exp
+ ˙h(t) −˙h0
+k
+
+≥h0 exp
+
+−
+˙h0
+k
+
+.
+Since
+˙ζ < −αminζ, it follows that ζ
+is exponen-
+tially decreasing. Therefore, there exists a time T
+such that ζ(T) < h0 exp (−˙h0/k). This contradicts the
+assumption.
+2) ˙h(0) < 0: to show that ˙h < 0, ∀t ∈[0, Tmax), assume the
+converse; that is, there exists T such that ˙h(T) = 0 and
+˙h(t) < 0, ∀t < T. Since ˙h is continuous and recalling
+(36), it follows that there exists δ > 0 and ϵ > 0 such that
+¨h(t) < −ϵ, ∀t ∈[T −δ, T]. Recalling (38), one has that
+ζ(t) = h(t) exp
+ T −δ
+0
+¨h(τ)
+kb(τ) dτ +
+ t
+T −δ
+¨h(τ)
+kb(τ) dτ
+
+.
+Using the fact that ¨h(t) < −ϵ ∀t ∈[T −δ, T], it follows
+that
+ζ(t) < h(t) exp
+ T −δ
+0
+¨h(τ)
+kb(τ) dτ
+
+∀t ∈[T −δ, T] .
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+83
+Moreover, since b(t) ≥1 ∀t ∈[0, Tmax)
+ζ(t) ≥h(t) exp
+ T −δ
+0
+¨h(τ)
+kb(τ) dτ +
+ t
+T −δ
+¨h(τ)
+k
+dτ
+
+≥h(t) exp
+ T −δ
+0
+¨h(τ)
+kb(τ) dτ
+
+exp
+ ˙h(t)
+k
+
+.
+Using the fact that ˙h(T) = 0, one obtains
+ζ(T) ≥h(T) exp
+ T −δ
+0
+¨h(τ)
+kb(τ) dτ
+
+.
+This proves the contradiction.
+To show that ˙h is lower bounded, let J be the following
+storage function:
+J = 1
+2
+˙h2.
+(40)
+Differentiating J and recalling (36) yields
+˙J = −kb(t)
+˙h
+h
+
+˙h + αh
+
+.
+(41)
+It follows that J is negative as long as |˙h| > αh. Since there
+exists a time T such that ˙h < 0 ∀t > T, it follows that h > 0 is
+upper bounded. Consequently, ˙h is bounded.
+Because of the variation of b(t), boundedness of ˙h is not
+sufﬁcient to conclude that
+
+ t
+0
+¨h(τ )
+kb(τ ) dτ
+ is bounded. Therefore,
+it is necessary to study the evolution of ¨h.
+Proof that the sign of ¨h does not change more than once. In
+the following, we assume without loss of generality that ˙h0 < 0;
+therefore, ˙h(t) < 0 for all time.
+1) ¨h(0) ≤0: To show that there exists a time T such that
+¨h(T) > 0, assume the converse; that is, ¨h ≤0 for all time
+t. Since ˙h is negative and decreasing, it follows that h
+is strictly monotonically decreasing and cannot have a
+positive limit. Consequently, from (36), there exists a time
+T such that ˙h(T)/h(T) < −α. Hence, ¨h(T) > 0, and the
+contradiction follows.
+2) ¨h(0) > 0: To show that ¨h(t) ≥0 for all time, assume
+the converse; that is, there exists T and δ > 0 such
+that ¨h(T −δ) = 0 and ¨h < 0 ∀t ∈(T −δ, T]. This im-
+plies that (˙h/h)(T −δ) = −α and ˙h/h > −α ∀t ∈(T −
+δ, T]. Using the fact that ˙h/h = −α at time (T −δ) and
+|˙h/h| < α ∀t ∈(T −δ, T] while ˙h is negative and de-
+creasing and h is positive and decreasing, the contradiction
+follows.
+Using the fact that there exists a time T ∈[0, Tmax) from
+which ˙h < 0 is bounded and ¨h ≥0, ∀t ∈[T, Tmax), it is
+straightforward to verify that
+
+ t
+0
+¨h(τ )
+kb(τ ) dτ
+ remains bounded on
+[T, Tmax). Therefore, since ζ is exponentially decreasing, one
+can ensure that h remains positive and exponentially decreasing
+on [T, Tmax).
+Now, we prove that Tmax = ∞and, thus, that ζ is well deﬁned
+on [0, ∞). Assume that Tmax ̸= ∞, it means that there exists
+a positive number δ such that h(t) > 0 (by continuity) and
+such that
+
+ t
+0
+¨h(τ )
+kb(τ ) dτ
+ is unbounded on [Tmax, Tmax + δ). This
+contradicts the earlier discussion. It follows that h converges
+exponentially to 0. Moreover, using (40) and (41) with direct
+application of the input-to-state-stable argument, it follows that
+˙h is exponentially stable.
+Proof of item 3 for t ∈[0, ∞):
+Now, we prove that the controller (32) is bounded by proving
+that ¨h →0. Analogously to the proof of Barbalat’s Lemma, we
+proceed by contradiction. Assume that ¨h does not converge to
+0. Since
+ t
+0 (¨h/kb)(τ) dτ and b(t) are bounded and there exists a
+time T such that ¨h ≥0 ∀t > T, it follows that there exists ϵ > 0
+and two sequences (Tn)n≥1 ∈R+ and (δn)n≥1 ∈R∗
++ such that
+we have the following.
+1) Tn →+∞as n →+∞.
+2)
+¨h
+kb (Tn −δn) = ϵ/2 and
+¨h
+kb (Tn) = ϵ.
+3) ϵ/2 ≤
+¨h
+kb (t) ≤ϵ, ∀t ∈[Tn −δn, Tn].
+We need to show that (δn)n≥1 is lower bounded by a
+strictly positive number. Using the fact that ¨h/kb ≤ϵ ∀t ∈
+[Tn −δn, Tn] and recalling (36), one has
+ ˙h
+h + α
+
+≥−ϵ.
+Integrating this inequality within [Tn −δn, Tn], one obtains
+ln
+
+h(t)
+h(Tn −δn)
+
+≥−
+ t
+Tn −δn
+(α + ϵ) dτ.
+Given that
+−
+ t
+Tn −δn
+(α + ϵ) dτ ≥−
+ t
+Tn −δn
+(αmax + ϵ) dτ
+one has
+ln
+
+h(t)
+h(Tn −δn)
+
+≥−(αmax + ϵ) δn.
+Hence, h(t) ≥h(Tn −δn) exp (−(αmax + ϵ)δn) ∀t ∈[Tn −
+δn, Tn], and therefore, using the fact that ˙h < 0 and increasing
+(¨h ≥0)
+˙h
+h ≥
+˙h
+h(Tn −δn) exp ((αmax + ϵ) δn)
+˙h
+h ≥
+˙h(Tn −δn)
+h(Tn −δn) exp ((αmax + ϵ) δn) .
+(42)
+Using (¨h/kb)(Tn −δn) = ϵ/2 and (¨h/kb)(Tn) = ϵ, one also
+has
+˙h
+h(Tn) = −ϵ −α(Tn)
+˙h
+h(Tn −δn) = −ϵ
+2 −α(Tn −δn).
+Recalling inequality (42), it follows that
+exp ((αmax + ϵ) δn) ≥
+ϵ + α(Tn)
+ϵ/2 + α(Tn −δn).
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+84
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+Now, we need the uniform continuity of α(t). To show this,
+we ﬁrst need to show that 1/b(t) is itself uniformly continu-
+ous [see (37)]. The result is straightforward to show using (31)
+and the fact that (h, ˙h) converge to 0 (˙b/b2 is bounded, and
+then, 1/b is uniformly continuous). Using assumptions of the
+theorem and the fact that 1/b is uniformly continuous, it fol-
+lows that α(t) is uniformly continuous. Thus, there exists γ > 0
+such that |Tn −t| ≤γ ⇒|α(Tn) −α(t)| ≤ϵ/4. Considering
+the case δn < γ, one obtains α(Tn) ≥α(Tn −δn) −ϵ/4 and,
+therefore
+exp ((αmax + ϵ) δn) ≥3ϵ/4 + α(Tn −δn)
+ϵ/2 + α(Tn −δn) .
+Using the fact that α(t) is bounded, it is straightforward to verify
+that
+3ϵ/4 + α(t)
+ϵ/2 + α(t) ≥3ϵ/4 + αmax
+ϵ/2 + αmax
+∀t > 0.
+This implies that
+exp ((αmax + ϵ) δn) ≥3ϵ/4 + αmax
+ϵ/2 + αmax
+> 1
+∀n ≥1.
+Consequently, there exists δ > 0 such that δn ≥δ for all n ≥1.
+The next step of the proof is a direct application of the proof
+of Barbalat’s Lemma. By deﬁnitions (2) and (3) for all t ∈
+[Tn −δn, Tn] and for all n ≥1, we have
+¨h
+kb(t) =
+
+¨h
+kb(t)
+ =
+
+¨h
+kb(Tn) −
+ ¨h
+kb(Tn) −
+¨h
+kb(t)
+
+≥
+
+¨h
+kb(Tn)
+ −
+
+ ¨h
+kb(Tn) −
+¨h
+kb(t)
+
+≥ϵ −ϵ
+2
+≥ϵ
+2.
+As a consequence,
+ t
+0 (¨h/kb)(τ) dτ converges to +∞which
+contradicts the hypothesis.
+Using the fact that ¨h(t) converges to 0, it is straightforward
+to verify the following.
+1) ˙h/h ≡−α(t) when t tends to +∞. This means that the
+descent speed depends on α(t).
+2) ¨h is bounded, and therefore, the control law (32) is
+bounded.
+■
+Remark 5.2: Note that the stability of the control law (14) that
+is used for the lateral dynamics during the landing manoeuvre
+can also be proved in the case where Δ∥and b are constant; the
+proof is similar to the second part of the proof of Theorem 4.1,
+using the fact that ˙h is bounded and converges to 0. The authors
+do not have a formal proof of stability in the case where both b(t)
+and Δ∥(t) vary over time or in case where the lateral dynamics of
+the target plane is not zero. Nevertheless, if these variables vary
+sufﬁciently slowly (˙b(t) ≈0, ˙Δ∥(t) ≈0, and ˙vt ≈0), then the
+robustness of Theorem 4.1 will ensure stability. To characterize
+the stability conditions is a difﬁcult problem that remains open.
+Fig. 5.
+Simulation of vertical landing on a static platform using controller
+(32).
+VI. SIMULATIONS
+In order to evaluate the efﬁciency of the proposed servo con-
+trol technique, MATLAB simulations of the vertical landing of
+an idealized quadrotor (34) on static or moving platform are
+presented. The presented simulations consider only the verti-
+cal landing problem of the vehicle on a static and a moving
+platform.
+The mass of the vehicle is chosen m = 0.85 kg. It corre-
+sponds to the physical mass of the quadrotor that is used for
+experiments. The control gain is set to k = 10, and the error
+Δz is chosen Δz = −0.3. For the parameter b deﬁned in (31),
+incorporating the ground effect, we have chosen l0 = 0.5 m and
+D0 = 0.15 m. The desired set point ω∗is set to 0.5 s−1. Using
+the previous values of the different parameters that are involved
+in the vertical motion (36), it is straightforward to show that
+condition (33) is veriﬁed. Fig. 5 shows the closed-loop trajec-
+tory of the vertical motion of the vehicle. One can verify that
+the vertical optical ﬂow wz remains positive for all time, even
+if it does not reach ω∗and the height h = −z + zG converges
+exponentially to 0. We also notice that the height remains posi-
+tive during the manoeuvre, which implies that the vehicle does
+not collide with the platform.
+Fig. 6 shows the result with a moving platform. We keep the
+same parameters as earlier. The vertical motion of the platform
+is chosen as
+zG = aG sin (2πfGt) with aG = 0.1m and fG = 0.3 s−1.
+It is straightforward to verify that condition (33) holds. Note that,
+during the simulation, zG is assumed to be unknown. This means
+that no feed-forward compensations are performed. Fig. 6 shows
+the closed-loop trajectory of the vertical motion of the vehicle.
+Observe that the vertical optical ﬂow remains positive for all
+time, even if it does not reach ω∗, and the height h = −z + zG
+converges exponentially to 0, despite the fact that the vertical
+motion of the platform is unknown. Fig. 7 shows the same
+result with an additional noise on the measured optical ﬂow.
+One observes that the convergence is not affected, even close to
+the touchdown.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+85
+Fig. 6.
+Simulation of vertical landing on an oscillating platform using con-
+troller (32).
+Fig. 7.
+Simulation of vertical landing on an oscillating platform with noisy
+optical ﬂow.
+Fig. 8 shows the result with a stochastically moving platform.
+The vertical motion of the platform is now the sum of n = 7
+sinusoidal signals [see (28)], where parameters ai ∈[0, 0.1],
+ωi ∈[1, 6] and φi ∈[0, 2π] are chosen stochastically. The
+bounds of the parameters are chosen to ensure that the condition
+(33) is veriﬁed. During the simulation, zG is still assumed to be
+unknown. Once again, one observes the expected behavior: The
+height h = −z + zG converges exponentially to 0 despite the
+unknown motion of the platform.
+In Fig. 9, a phase diagram for different trajectories is pre-
+sented. For each trajectory, parameters are chosen stochastically
+and analogously to the previous simulation. Δz ∈[−2, 2] is also
+chosen stochastically. As for the set point ω∗and initial condi-
+tions, they are chosen such that the ﬁgure is understandable:
+h0 ∈[1, 4], ˙h0 ∈[−4, 6], and ω∗∈[0.5, 4.5]. Fig. 9 shows ro-
+bustness of the approach since the expected behavior is observed
+for all trajectories. One can observe that the trajectories satisfy
+the result of Theorem 5.1, i.e., h(t) > 0 remains positive for all
+time and (h, ˙h) converge to zero. One also veriﬁes that there
+Fig. 8.
+Simulation of vertical landing on a stochastically moving platform
+using controller (32).
+Fig. 9.
+Phase diagram of the dynamical system for nine independent
+simulations.
+exists a time T ≥0 such that ˙h < 0 ∀t ≥T (see the proof of
+the theorem).
+VII. EXPERIMENTAL RESULTS
+In this section, we present two experiments that demonstrate
+the performance of the proposed control scheme on a physical
+vehicle. The UAV that is used for the experimentation is the
+quadrotor, constructed by the CEA (see Fig. 1), a VTOL vehicle
+that is ideally suited for stationary and quasi-stationary ﬂight
+[28].
+A. Prototype Description
+The X4-ﬂyer is equipped with a set of four electronic boards
+that are designed by the CEA. Each electronic board includes
+a microcontroller and has a particular function. The ﬁrst board
+integrates motor controllers that regulate the rotation speed of
+the four propellers. The second board integrates an IMU that
+consists of three low-cost microelectromechanical systems ac-
+celerometers, which give the gravity components in the body
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+86
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+Fig. 10.
+Hovering ﬂight above the landing pad.
+frame, three angular rate sensors, and two magnetometers. On
+the third board, a digital signal processing (DSP), which is
+running at 150 MIPS, is embedded and performs the control
+algorithm of the orientation dynamics and ﬁltering computa-
+tions. The ﬁnal board provides a serial wireless communication
+between the operator’s joystick and the vehicle. An embed-
+ded camera with a view angle of 70◦pointing directly down
+transmits video to a ground station (PC) via a wireless 2.4-
+GHz analog link. A lithium-polymer battery provides nearly
+10 min of ﬂight time. The loaded weight of the prototype is
+about 850 g. In parallel the video signal, the X4-ﬂyer sends
+inertial data to the ground station at a frequency of 15 Hz. The
+data are processed by the ground station PC and incorporated
+into the control algorithm. Desired orientation and desired thrust
+are generated on the ground station PC and sent to the drone.
+A key challenge for the implementation lies in the relatively
+large time latency between the inertial data and visual features.
+For orientation dynamics, an embedded “high-gain” controller
+in the DSP, which is running at 166 Hz, independently ensures
+the exponential stability of the orientation toward the desired
+set point.
+B. Experiments
+The target plane that is used is a large board painted with
+random contrast textures (see Fig. 10). It is held and moved
+manually. A Pyramidal implementation of the Lucas–Kanade
+[29] algorithm is used to compute the optical ﬂow. The efﬁciency
+of the algorithm is increased by defocusing the camera to low-
+pass ﬁlter images. The ﬁeld of view of the aperture is of 30◦
+around the direction of observation η. Optical ﬂow is computed
+on 210 points on this aperture and a least-squares estimation of
+motion parameters is used to obtain robust measurements of the
+average optical ﬂow w [30].
+Given that the divergent ﬂow magnitude is relatively small
+compared with the lateral ﬂow in the forward and backward
+directions [31] and since only the divergent ﬂow is used for
+landing manoeuvre, the control approach is split into two se-
+quential phases. In the ﬁrst phase, the vehicle is stabilized over
+Fig. 11.
+Vertical landing on a moving platform.
+the landing plane. Once the velocity has stablized to zero, the
+landing phase is initiated. During the experiments, the yaw ve-
+locity is also separately regulated to zero. This has no effect on
+the proposed control scheme. The landing pad has been moved
+both vertically and laterally to show performances of the con-
+trol algorithms. For the vertical landing, the desired set point
+wd is set to (0, 0, 0.1)T . This ensures a relatively rapid descent
+(approximatively in 10 s).
+Note that no measurements of the relative position ˜ξ =
+ξ −ξG of the UAV with respect to the platform are available.
+Nevertheless, an estimation of the UAV’s relative position can
+be computed from the average optical ﬂow using
+˜ξ −˜ξ0
+h0
+=
+ t
+0
+wγ(τ) dτ =
+ t
+0
+w exp
+
+−
+ τ
+0
+wz dδ
+
+dτ
+where ˜ξ denotes the relative position of the UAV with respect
+to the platform: ˜ξ = ξ −ξG. Note that
+γ(τ) = exp
+
+−
+ τ
+0
+wz dδ
+
+= exp
+ τ
+0
+˙h
+h dδ
+
+= h(τ)
+h0
+.
+In Figs. 11 and 12, three components of the relative position
+(˜ξ −˜ξ0)/h0 are presented. Fig. 11 shows the result using con-
+troller (14) for the stabilization of the X4-ﬂyer with respect to
+the platform (from 0 to 140 s) and controller (32) for the verti-
+cal landing manoeuvre (from 140 s). For the stabilization phase,
+the platform is moving laterally (from 0 to 100 s) and vertically
+(from 100 to 140 s). During the landing manoeuvre (t ≥140 s),
+the platform is moving only vertically. Note that during the
+landing phase, controller (14) is still used for the x–y dynamics.
+This ensures that the vehicle remains stable over the landing
+pad. Fig. 11 shows the exponential descent of the height, while
+the lateral position remains stable. Note that the relative posi-
+tion (y −yG)/h0 converges around −1 because of an initial
+bias of the inertial measurements in y-direction that has been
+compensated by the integral term in the controller (14). Note
+also that, contrary to what was expected, the height h is slowly
+oscillating during the landing phase. This implies that condition
+(33) is not veriﬁed for all time t, and therefore, the positivity of
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+87
+Fig. 12.
+Vertical landing with high oscillations.
+α(t) (see Section V) is not always guaranteed. This problem is
+mainly because of the fact that experimental constraints (large
+time latency and outer loop’s sampling time which is of 15 Hz)
+prevent us from choosing a higher gain k which strictly respect
+the condition. The vehicle lands at time 180 s. We notice that,
+because of the landing gear, the ﬁnal position is not h ≡0.
+Fig. 12 shows the result when the landing pad is moving with
+high oscillations. The controller for the stabilization of the X4-
+ﬂyer with respect to the platform is used from 0 to 55 s, and the
+controller for landing is used from t = 55 s, while oscillations
+start from 30 s. During landing manoeuvre, the height h is highly
+oscillating, which means that the gain k is not high enough to
+compensate the oscillations. Nevertheless, the distance with the
+ground remains positive which ensures the noncollision with
+the moving target, and the UAV is even able to land with a
+satisfactory behavior.
+These results can be watched on the video accompanying this
+paper or at the following url:
+http://www.youtube.com/watch?v=hl18Fykax8M.
+VIII. CONCLUDING REMARKS
+This paper presented a nonlinear controller for vertical land-
+ing of a VTOL UAV using the measurement of average optical
+ﬂow on a spherical camera along with the IMU data. The origi-
+nality of our approach lies in the fact that neither linear velocity
+nor distance with the target is reconstructed. Inertial data are
+used only for derotation of the ﬂow, and the proposed approach
+is an image-based visual control algorithm. Both stabilization
+and vertical landing with respect to a moving platform were con-
+sidered, and a rigorous analysis of the stability of the closed-loop
+systems was provided. Simulations provide a clear picture of the
+predicted response of the proposed algorithm. The experimental
+results indicate some of the difﬁculties with obtaining high-gain
+feedback control and show that the proposed scheme is effec-
+tive, even if the assumptions in the theorems do not necessarily
+hold.
+There are several directions in which further work is of inter-
+est. The practical limitations of real-world systems limit mag-
+nitude of the feedback gain that can be applied and lead to
+limitations in the applicability of the approach in the presence
+of aggressive motion of the environment. Improving the time
+response of the optical sensors would already provide a major
+improvement in the closed-loop response and alleviate much of
+this difﬁculty. The consideration of a feed-forward compensa-
+tion could alleviate the dependence on high-gain feedback when
+the environmental motion can be modeled. How to accomplish
+this within the image-based paradigm is a challenge. Finally,
+although the robustness of the proposed approach indicates that
+small variation of orientation and error in estimation of the nor-
+mal direction will not destroy the obtained stability analysis, it
+is of interest to consider the situation where the platform orien-
+tation is time varying and where the normal of the platform is
+not assumed to be known.
+APPENDIX
+In this Appendix, we provide derivation of optical-ﬂow inte-
+gration that is described in (9) and used in Section III-B. Using
+the notations of Section III, consider the average of the optical
+ﬂow in the direction η over a solid angle W2 of S2. Deﬁne
+(αe, αa) to be the spherical coordinates of η where αe is the
+elevation angle and αa is the azimuth angle. With these param-
+eters, deﬁne Rt to be the orientation matrix from a frame of
+reference with η in the z-axis assuming no yaw rotation to the
+inertial frame I1
+Rt =
+⎛
+⎝
+c(αe)c(αa)
+−s(αa)
+s(αe)c(αa)
+c(αe)s(αa)
+c(αa)
+s(αe)s(αa)
+−s(αe)
+0
+c(αe)
+⎞
+⎠.
+Deﬁne θ0 as the angle associated with the apex angle 2θ0 of the
+solid angle W2. Then
+φ =
+
+W2 ˙p dp = −π (sin θ0)2 Ω × R⊤η −Q(V −Vt)
+d
+where Q = R⊤(RtΛR⊤
+t )R is a symmetric positive-deﬁnite ma-
+trix. The matrix Λ is a positive diagonal matrix depending on
+the solid angle W2. It can be written as
+Λ =
+
+W2 πq⟨p, R⊤η⟩dq
+=
+ θ0
+θ=0
+ 2π
+φ=0
+(I −qq⊤)⟨q, R⊤
+t η⟩sin θ dθ dφ
+where q⊤= (s(θ)c(φ), s(θ)s(φ), c(θ)). Eventually, straightfor-
+ward but tedious calculations verify that
+Λ = π (sin θ0)4
+4
+⎛
+⎜
+⎝
+1
+λ
+0
+0
+0
+1
+λ
+0
+0
+0
+2
+⎞
+⎟
+⎠
+where λ =
+(sin θ0 )2
+4−(sin θ0 )2 .
+1for all x ∈R, s(x) = sin(x), c(x) = cos(x), t(x) = tan(x).
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+88
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 28, NO. 1, FEBRUARY 2012
+REFERENCES
+[1] K. P. Valavanis, Advances in Unmanned Aerial Vehicles.
+New York:
+Springer-Verlag, 2007.
+[2] L. Marconi, A. Isidori, and A. Serrani, “Autonomous vertical landing on
+an oscillating platform: An internal-model based approach,” Automatica,
+vol. 38, pp. 21–32, 2002.
+[3] X. Yang, H. Pota, M. Garratt, and V. Ugrinovskii, “Prediction
+of vertical motions for landing operations of UAVs,” presented
+at the 47th IEEE Conf. Decision Control, Cancun, Mexico, Dec.
+2008.
+[4] S.-R. Oh, K. Pathak, S. K. Agrawal, H. R. Pota, and M. Garratt, “Ap-
+proaches for a tether-guided landing of an autonomous helicopter,” IEEE
+Trans. Robot., vol. 22, no. 3, pp. 536–544, Jun. 2006.
+[5] S. Saripalli, J. F. Montgomery, and G. S. Sukhatme, “Visually-guided
+landing of an unmanned aerial vehicle,”
+IEEE Trans. Robot. Autom.,
+vol. 19, no. 3, pp. 371–380, Jun. 2003.
+[6] C. S. Sharp, O. Shakernia, and S. S. Sastry, “A vision system for landing
+an unmanned aerial vehicle,” in Proc. IEEE Int. Conf. Robot. Autom.,
+2001, pp. 1720–1727.
+[7] M. V. Srinivasan, S. W. Zhang, J. S. Chahl, E. Barth, and S. Venkatesh,
+“How honeybees make grazing landings on ﬂat surfaces,” Biol. Cybern.,
+vol. 83, pp. 171–183, 2000.
+[8] J. Koenderink and A. van Doorn, “Facts on optic ﬂow,” Biol. Cybern.,
+vol. 56, pp. 247–254, 1987.
+[9] F. Rufﬁer and N. Franceschini, “Visually guided micro-aerial vehicle:
+Automatic take off, terrain following, landing and wind reaction,” in Proc.
+Int. Conf. Robot. Autom., New Orleans, LA, Apr. 2004, pp. 2339–2346.
+[10] G. L. Barrows, J. S. Chahl, and M. V. Srinivasan, “Biomimetic visual
+sensing and ﬂight control,” presented at the Proc. 17th Int. Unmanned Air
+Veh. Syst. Conf., Bristol, U.K., Apr. 2002.
+[11] A. Beyeler, J.-C. Zufferey, and D. Floreano, “Vision-based control of
+near-obstacle ﬂight,” Auton. Robots, vol. 27, no. 3, pp. 201–219, 2009.
+[12] W. E. Green and P. Y. Oh, “Optic ﬂow based collision avoidance,” IEEE
+Robot. Autom. Mag., vol. 15, no. 1, pp. 96–103, Mar. 2008.
+[13] M. A. Garratt and J. S. Chahl, “Vision-based terrain following for an
+unmanned rotorcraft,” J. Field Robot., vol. 25, pp. 284–301, 2008.
+[14] J. S. Humbert, R. M. Murray, and M. H. Dickinson, “Pitch-altitude control
+and terrain following based on bio-inspired visuomotor convergence,”
+presented at the Proc. AIAA Conf. Guid., Navigat. Control, San Francisco,
+CA, 2005.
+[15] F. Rufﬁer and N. Franceschini, “Optic ﬂow regulation: The key to aircraft
+automatic guidance,” Robot. Auton. Syst., vol. 50, pp. 177–194, 2005.
+[16] R. Mahony, P. Corke, and T. Hamel, “Dynamic image-based visual servo
+control using centroid and optic ﬂow features,” J. Dyn. Syst. Meas. Con-
+trol, vol. 130, no. 1, 011005 (12 pp.), 2008.
+[17] F. Kendoul, I. Fantoni, and K. Nonami, “Optic ﬂow-based vision system
+for autonomous 3D localization and control of small aerial vehicles,”
+Robot. Auton. Syst., vol. 57, no. 6–7, pp. 591–602, 2009.
+[18] S. Bertrand, T. Hamel, and H. Piet-Lahanier, “Stability analysis of an UAV
+controller using singular perturbation theory,” presented at the 17th IFAC
+World Congr., Seoul, Korea, Jul. 2008.
+[19] B. H´eriss´e, T. Hamel, R. Mahony, and F-X. Russotto, “The landing prob-
+lem of a VTOL unmanned aerial vehicle on a moving platform using
+optical ﬂow,” in Proc. IEEE/RSJ Int. Conf. Intell. Robots Syst., Taipei,
+Taiwan, Oct. 2010, pp. 1600–1605.
+[20] R. Mahony and T. Hamel, “Robust trajectory tracking for a scale model
+autonomous helicopter,”
+Int. J. Non-linear Robust Control, vol. 14,
+pp. 1035–1059, 2004.
+[21] H. K. Khalil, Nonlinear Systems, 2nd ed.
+Englewood Cliffs, NJ:
+Prentice-Hall, 1996.
+[22] T. Hamel and R. Mahony, “Visual servoing of an under-actuated dynamic
+rigid-body system: An image based approach,” IEEE Trans. Robot. Au-
+tom., vol. 18, no. 2, pp. 187–198, Apr. 2002.
+[23] R. F. Vassallo, J. Santos-Victor, and H. J. Schneebeli, “A general ap-
+proach for egomotion estimation with omnidirectional images,” in Proc.
+Omnidirectional Vis., Copenhagen, Denmark, Jun. 2002, pp. 97–103.
+[24] J. L. Barron, D. J. Fleet, and S. S. Beauchemin, “Performance of optical
+ﬂow techniques,” Int. J. Comput. Vis., vol. 12, no. 1, pp. 43–77, 1994.
+[25] N. Metni, J. M. Pﬂimlin, T. Hamel, and P. Souares, “Attitude and gyro
+bias estimation for a ﬂying UAV,” in Proc. IEEE Int. Conf. Intell. Robots
+Syst., Edmonton, AB, Canada, 2005, pp. 1114–1120.
+[26] C. McCarthy, N. Barnes, and R. Mahony, “A robust docking strategy for
+a mobile robot using ﬂow ﬁeld divergence,” IEEE Trans. Robot., vol. 24,
+no. 4, pp. 832–842, Aug. 2008.
+[27] N. Guenard, Optimisation et impl´ementation de lois de commande em-
+barqu´ees pour la t´el´eop´eration intuitive de micro drones a´eriens “X4-
+ﬂyer,” Ph.D. dissertation, Univ. Nice Sophia Antipolis, Sophia Antipolis,
+France, 2007.
+[28] N. Guenard, T. Hamel, and R. Mahony, “A practical visual servo control
+for an unmanned aerial vehicle,”
+IEEE Trans. Robot., vol. 24, no. 2,
+pp. 331–340, Apr. 2008.
+[29] B. Lucas and T. Kanade, “An iterative image registration technique with
+an application to stereo vision,” in Proc. 7th Int. Joint Conf. Artif. Intell.,
+Vancouver, BC, Canada, 1981, pp. 674–679.
+[30] S. Umeyama, “Least-squares estimation of transformation parameters
+between two point patterns,” IEEE Trans. Pattern Anal. Mach. Intell.,
+vol. 13, no. 4, pp. 376–380, Apr. 1991.
+[31] J. S. Chahl and M. V. Srinivasan, S. W. Zhang, “Landing strategies in
+honeybees and applications to uninhabited airborne vehicles,”
+Int. J.
+Robot. Res., vol. 23, no. 2, pp. 101–110, 2004.
+Bruno H´eriss´e received the Engineer degree from the
+´Ecole Sup´erieure d’´Electricit´e (SUPELEC), a French
+“Grande ´Ecole” of Engineering in energy and infor-
+mation science, Paris, France, in 2007, and the Re-
+search Master degree in signal, telecommunications,
+and image processing from SUPELEC in joint au-
+thorization with the University of Rennes 1, Rennes,
+France, in 2007. After three years of research with
+the Interactive Robotics Laboratory at CEA List, he
+received the Ph.D. degree in robotics from the Uni-
+versity of Nice Sophia Antipolis, Sophia Antipolis,
+France, in 2010.
+He has been a Research Engineer with ONERA, the French Aerospace Lab,
+Palaiseau, France, since 2011. His current research interests include localization
+and navigation of unmanned aerial vehicles.
+Tarek Hamel received the Engineer degree in au-
+tomatic control from the Institut d’Electronique et
+d’Automatique d’Annaba, Annaba, Algeria, in 1991
+and the Ph.D. degree in robotics from the University
+of Technologie of Compi`egne, Compi`egne, France in
+1995.
+After two years as a Research Assistant with the
+University of Technology of Compi`egne, he joined
+the Centre d’Etudes de M`ecanique d’Iles de France
+in 1997 as an Associate Professor. In 2001/2002,
+he spent one year as a CNRS Researcher with the
+Heudiasyc Laboratory. Since 2003, he has been a Full Professor with the I3S
+UNSA-CNRS Laboratory, University of Nice Sophia Antipolis, Sophia An-
+tipolis, France. His research interests include control theory and robotics with
+particular focus on nonlinear control, vision-based control, and estimation and
+ﬁltering on Lie groups. He is involved in applications of these techniques to the
+control of unmanned aerial vehicles and mobile robots.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+
+H´ERISS´E et al.: LANDING A VTOL UNMANNED AERIAL VEHICLE ON A MOVING PLATFORM USING OPTICAL FLOW
+89
+Robert Mahony received the Bachelor of Sci-
+ence degree from the Australian National University
+(ANU), Canberra, Australia, in 1989, where he stud-
+ied applied mathematics and geology. After work-
+ing for a year as a geophysicist processing marine
+seismic data, he returned to study at ANU and re-
+ceived the Ph.D. degree in systems engineering in
+1994.
+Between 1994 and 1997, he was a Research Fel-
+low with the Cooperative Research Centre for Robust
+and Adaptive Systems based in the Research School
+of Information Sciences and Engineering, ANU. From 1997 to 1999, he was a
+Postdoctoral Fellow with the CNRS Laboratory for Heuristics Diagnostics and
+Complex Systems, Compiegne University of Technology, Compiegne, France.
+Between 1999 and 2001, he held a Logan Fellowship with the Department of
+Engineering and Computer Science, Monash University, Melbourne, Australia.
+In July 2001, he took a faculty position with the Research School of Engineering,
+ANU. His research interests include nonlinear control theory with applications
+in mechanical systems and motion systems, mathematical systems theory and
+geometric optimization techniques with applications in linear algebra, and dig-
+ital signal processing.
+Franc¸ois-Xavier Russotto received the Gradu-
+ate Engineering degree from the ´Ecole Sup´erieure
+d’´Electricit´e (SUPELEC), a French “Grande ´Ecole”
+of Engineering in Energy and Information Science,
+Paris, France, in 1997.
+He worked for four years as a Design Engineer
+at Thales Optronics SA (TOSA), on the design of
+servomechanisms for aircraft embedded systems. In
+2001, he joined Peugeot Citroen Automobiles SA
+(PSA) as a Project Manager, working on design of
+innovative prototypes of by-wire Man-Machine In-
+terface for tourism vehicles. Since 2002, he has been at CEA LIST Labs, ﬁrst
+as a project manager in Robotics R&D, where he started working on the design
+of embedded control software for computer aided teleoperation systems. Since
+2006, he has held the position of technical project manager responsible for
+R&D activity focused on virtual reality-based supervisory control software for
+teleoperation systems.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 03,2024 at 07:10:39 UTC from IEEE Xplore.  Restrictions apply. 
+

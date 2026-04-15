@@ -1,0 +1,2715 @@
+International Journal of Control
+ISSN: 0020-7179 (Print) 1366-5820 (Online) Journal homepage: www.tandfonline.com/journals/tcon20
+State transformation-based dynamic visual
+servoing for an unmanned aerial vehicle
+Hui Xie & Alan F. Lynch
+To cite this article: Hui Xie & Alan F. Lynch (2016) State transformation-based dynamic visual
+servoing for an unmanned aerial vehicle, International Journal of Control, 89:5, 892-908, DOI:
+10.1080/00207179.2015.1104554
+To link to this article:  https://doi.org/10.1080/00207179.2015.1104554
+Published online: 03 Dec 2015.
+Submit your article to this journal 
+Article views: 569
+View related articles 
+View Crossmark data
+Citing articles: 5 View citing articles 
+Full Terms & Conditions of access and use can be found at
+https://www.tandfonline.com/action/journalInformation?journalCode=tcon20
+
+INTERNATIONAL JOURNAL OF CONTROL, 
+VOL. , NO. , –
+http://dx.doi.org/./..
+State transformation-based dynamic visual servoing for an unmanned aerial
+vehicle
+Hui Xie and Alan F. Lynch
+Department of Electrical and Computer Engineering, University of Alberta, Edmonton, Canada
+ARTICLE HISTORY
+Received May 
+Accepted October 
+KEYWORDS
+State transformation; partial
+diﬀerential equations;
+image-based visual servoing;
+unmanned aerial vehicles
+(UAVs)
+ABSTRACT
+In this paper, we propose a visual servoing control for a quadrotor unmanned aerial vehicle (UAV)
+which is based on a state transformation technique. The UAV is equipped with a single downwards
+facing camera, and the motion control objective is the regulation of relative displacement and yaw
+to a stationary visual target located on the ground. The state transformation is defined by a system
+of partial differential equations (PDEs) which eliminate roll and pitch rate dependence in the trans-
+formed image feature kinematics. A method for computing the general solutions of these PDEs is
+given, and we show a particular solution reduces to an established virtual camera approach. We treat
+point and line cases and introduce image moment features defined in the virtual camera image plane.
+Robustness of the control design is improved by accounting for attitude measurement bias, and
+uncertainty in thrust gain, mass, and image feature depth. The asymptotic stability of the closed-loop
+is proven. The method is based on a simple proportional-integral-derivative (PID) structure which can
+be readily implemented on-board. Experimental results show improved performance relative to pre-
+vious work.
+1. Introduction
+Visual servoing involves using computer vision feedback
+to help guide a robot’s motion (Chaumette & Hutchinson,
+2006). Recently, there has been a particular interest in
+applying visual servoing to motion control of unmanned
+aerial vehicles (UAVs). Visual servoing can allow a UAV
+to explore locations where global positioning system
+(GPS) is unavailable (Fraundorfer et al., 2012) or solve
+a specific relative positioning task such as automated
+landing (Ma, Soatto, Kosecka, & Sastry, 2003). In this
+paper, we focus on visual servoing for a quadrotor UAV
+with a single onboard downward facing camera, and
+the control objective is to regulate the UAV’s relative
+displacement and yaw to a visual target defined by point
+or line features and located on the ground. Conven-
+tionally, a visual seroving law relies on kinematics of
+an error signal which depends on an image measure-
+ment. The resulting control structure is divided into
+two feedback loops (Chaumette & Hutchinson, 2006).
+An outer loop uses low-rate video camera feedback to
+compute a velocity reference based on the kinematics,
+and a high-bandwidth inner loop tracks this reference.
+This two-loop structure is natural due to the difference
+in sampling rates of the loops. The structure simpli-
+fies the control design by assuming perfect inner-loop
+CONTACT Alan F. Lynch
+alan.lynch@ualberta.ca
+The underlying research materials for this article can be accessed at https://www.youtube.com/watch?v=kuyswJOJNo
+https://www.youtube.com/watch?v=NuiVZDs
+tracking. However, as pointed out in Chaumette and
+Hutchinson (2007) and Jabbari, Oriolo, and Bolandi
+(2014), when high-performance motion control is
+required or the system is underactuated, the dynamics of
+the robot should be considered. Dynamic visual servoing
+directly accounts for the robot’s dynamics and is a chal-
+lenging problem due to the nonlinearity of the model.
+Visual servoing is normally categorised into two basic
+approaches: position-based visual servoing and image-
+based visual servoing (IBVS). PBVS methods reconstruct
+the vehicle pose from image measurements and control
+the motion directly in SE(3), e.g. (Azrad, Kendoul, &
+Nonami, 2010; Mejias, Saripalli, Campoy, & Sukhatme,
+2006; Shakernia, Ma, Koo, & Sastry, 1999). A benefit of
+PBVS is that non-vision based motion controllers can
+be used. In this paper, we take an IBVS approach where
+the feature error is directly computed from the image
+measurements. This avoids three-dimensional (3D)
+position reconstruction which requires accurate camera
+calibration and a prior 3D model of a target. In general,
+IBVS is relatively insensitive to camera calibration error
+even though the IBVS law can depend on the camera’s
+intrinsic parameters (Espiau, 1994). Another feature of
+IBVS is that the target object tends not to leave the field
+of view (FoV) since the design minimises image feature
+error. However, the image feature kinematics in IBVS
+© Taylor & Francis
+
+INTERNATIONAL JOURNAL OF CONTROL
+893
+is usually nonlinear and this complicates the control
+design.
+A number of IBVS approaches have been proposed
+for UAVs. The seminal work in Hamel and Mahony
+(2002) shows that a perspective projection camera model
+destroys the triangular structure of the system dynamics.
+Hence, a spherical projection camera model is introduced
+to give the image feature kinematics a passivity-like prop-
+erty, i.e., the time derivative of the norm of the error func-
+tion is independent of angular velocity. By introducing
+first-order moment point features, a backstepping con-
+troller is proposed. As the features in Hamel and Mahony
+(2002) are insensitive to vertical motion due to an ill-
+conditioned interaction matrix, work in Bourquardez,
+Mahony, Hamel, and Chaumette (2006) modifies them by
+rescaling and partitioning. In Bourquardez et al. (2009),
+the modified image moment features are applied to visual
+servoing of a UAV. A similar approach to Hamel and
+Mahony (2002) is in Mahony and Hamel (2005) where
+first-order line image moment features are proposed for
+applications with linear structure such as following power
+lines or pipelines. We remark that in the spherical pro-
+jection approach, it is hard to propose a feature to con-
+trol yaw. It is well known that a homography matrix
+embeds information about the relative pose between
+two camera frames (Ma et al., 2003). Hence, in Metni,
+Hamel, and Derkx (2005), de Plinval, Morin, Mouyon,
+and Hamel (2011), and de Plinval, Morin, Mouyon, and
+Hamel (2013) a visual servoing scheme is proposed using
+image features extracted from the homography matrix
+which maps image points between the desired and cur-
+rent image planes. Compared to approaches using spher-
+ical moment features, this approach only works for pla-
+nar targets. Work in Metni et al. (2005), de Plinval et al.
+(2011), and de Plinval et al. (2013) either controls partial
+motion of the UAV or is limited to a small range of image
+feature error. With the assumption that the image and
+target planes remain parallel during motion of the vehi-
+cle, point moment features and a virtual spring concept
+lead to a design which accounts for the non-passive prop-
+erty of the kinematics (Ozawa & Chaumette, 2011, 2013).
+The assumption in this approach is potentially restrictive
+for more aggressive UAV maneuvers since lateral motion
+leads to non-parallel image and target planes. The atti-
+tude of a UAV is commonly estimated using an attitude
+and heading reference system (AHRS) which is integrated
+into most UAV autopilots. Measurement of a vehicle’s atti-
+tude makes it possible to define a virtual camera with
+zero roll and pitch which can be used for visual servoing,
+e.g. Jabbari et al. (2014), Lee, Lim, H., Kim, and Seong
+(2012), and Xie, Lynch, and Jagersand (2014). In the vir-
+tual camera approach, features used for visual servoing
+are computed in the virtual camera frame. The image
+kinematics is simpler since it is independent of roll and
+pitch rates. In Xie et al. (2014), an adaptive IBVS con-
+troller for linear structure is proposed based on a virtual
+camera. In Abdessameud and Janabi-Sharifi (2015), a vir-
+tual camera with no rotational motion is proposed and an
+output feedback controller from Abdessameud and
+Tayebi (2010) is modified to achieve visual servoing for a
+moving target. Le Bras, Hamel, Mahony, and Treil (2011)
+utilise a virtual plane which is parallel to the target plane
+and tangent to the unit sphere in the spherical projection.
+The area of the convex hull of the image points in the vir-
+tual camera and the first-order image moment are used
+to form the image feature for visual servoing. An adap-
+tive output feedback backstepping controller is developed
+which does not require velocity measurement.
+In this paper, we adopt a different two-loop struc-
+ture for dynamic visual servoing. The outer loop design
+is based on the UAV translational dynamics not its
+kinematics. The inner loop tracks the reference attitude
+signal from the outer loop. The control design is com-
+plicated due to the appearance of the derivative of atti-
+tude in the outer loop. To eliminate this dependence
+in the outer loop, we introduce new state coordinates.
+The new state is defined by a system of first-order lin-
+ear homogeneous partial differential equations (PDEs)
+whose general solution can be obtained. We show the vir-
+tual camera approach proposed in Jabbari et al. (2014),
+Lee et al. (2012), and Xie et al. (2014) is a particular
+solution to the PDEs. Hence, the proposed scheme gen-
+eralises the virtual camera approach. A constant rota-
+tion is used to generalise the virtual camera in Jabbari
+et al. (2014), Lee et al. (2012), and Xie et al. (2014). We
+introduce commonly used moment features to simplify
+the image feature kinematics so that they have linear
+dependence on velocity. The proposed control is robust
+to system uncertainty in thrust gain, mass, and image
+feature depth. We also account for attitude measurement
+bias which leads to non-zero steady-state error as shown
+in Fink, Xie, Lynch, and Jagersand (2015). For simplic-
+ity of on-board implementation, our approach is based
+on a proportional-integral-derivative (PID) structure. We
+achieve the same level of robustness as more complex
+adaptive methods such as Jabbari et al. (2014), Xie et al.
+(2014). Another important contribution of our work
+lies in its experimental validation. This should be com-
+pared to Jabbari et al. (2014) and Xie et al. (2014) where
+only simulation results are provided. To the best of the
+authors’ knowledge, this is the first experimental vali-
+dation of visual servoing with a virtual camera for line
+structures.
+The paper is organised as follows. Section 2 describes
+the quadrotor dynamics, basic point and line image mea-
+surements and their kinematics. Section 3 describes the
+
+894
+H. XIE AND A. F. LYNCH
+dn
+nc
+f1
+f2
+f3
+f4
+c1
+c2
+c3
+τ1
+τ2
+τ3
+τ4
+φ
+θ ψ
+δ
+n1
+n2
+n3
+C
+N
+Figure . Quadrotor modelling.
+state transformation scheme and presents image moment
+features in the virtual camera. We present the system
+uncertainty and robust dynamic IBVS law in Section 4.
+Experimental validation is given in Section 5.
+2. Modelling
+In this section, we introduce the dynamic model of a
+quadrotor used for dynamic IBVS. Basic image features
+for points and lines and their kinematics are described.
+2.1. Quadrotor dynamics
+As shown in Figure 1, two reference frames are used to
+describe the dynamics of a quadrotor. A navigation frame
+N is assumed to be inertial and is fixed to a point on the
+Earth with a basis {n1, n2, n3} whose elements are ori-
+ented north, east, and down, respectively. A downward
+looking pinhole camera is fixed at the centre of mass of
+the vehicle, and a camera frame C is defined with its ori-
+gin fixed at the camera’s optical centre and has a basis
+{c1, c2, c3} oriented forward, right, and down, respectively.
+The vector c3 is aligned with the optical axis. The vector
+dc
+nc = [d1, d2, d3]T denotes the displacement of the vehi-
+cle in N. The dynamics of the UAV is
+˙vc = −[ωc]×vc + gRTE3 + Fc/m
+(1a)
+˙R = R[ωc]×
+(1b)
+˙ωc = −J−1[ωc]×Jωc + J−1τ c
+(1c)
+where vc, ωc are the linear and angular velocity of the
+camera in C, respectively, [a]×b = a × b, g is the grav-
+ity constant, m is the mass of the vehicle, J is the iner-
+tia of the vehicle, E3 = [0, 0, 1]T, Fc is the external force
+expressed in C, τ c is the external torque expressed in C,
+and R is the rotation matrix which represents the rela-
+tive orientation of N and C. The rotation matrix R is
+parametrised by the ZYX Euler angles η = [φ, θ, ψ]T as
+R = Rn3(ψ)Rn2(θ)Rn1(φ) where Rnk denotes an elemen-
+tary rotation about the nk axis. We remark that the Euler
+angle parametrisation of the rotation matrix has singu-
+larities. However, singularities are normally only encoun-
+tered in acrobatic flight which is not typical in visual ser-
+voing where visual targets must remain in the camera’s
+FoV. Euler angles are a common choice in field-tested
+autopilots, e.g. (Godbolt, 2013; Lim, Park, Lee, & Kim,
+2012; PX4, 2014). The angular velocity ωc is related to the
+Euler angle rate by
+ωc = W (η) ˙η
+(2)
+where
+W (η) =
+⎡
+⎣
+1
+0
+−sθ
+0
+cφ
+sφcθ
+0
+−sφ
+cφcθ
+⎤
+⎦
+and cξ = cos ξ, sξ = sin ξ. Ignoring small body force,
+gyroscopic force, motor system inertia, we approximate
+the external force as Fc = E3TM, where TM = 4
+i=1 fi, and
+fi is the thrust created by the ith propeller. Each motor
+is driven by an electronic speed controller (ESC) that
+takes a Pulse Width Modulation (PWM) signal Wi as its
+input. We approximate the relation between fi and Wi as
+fi = KT ˜W 2
+i , where ˜Wi = Wi −Wmin, Wmin is the mini-
+mum pulse width to rotate the propeller, and KT is the
+thrust coefficient. We approximate τ c as
+τ c =
+⎡
+⎢⎣
+δ
+
+f2 + f3 −f1 −f4
+	
+/
+√
+2
+δ
+
+f1 + f3 −f2 −f4
+	
+/
+√
+2
+−Kτ
+
+˜W 2
+1 + ˜W 2
+2 −˜W 2
+3 −˜W 2
+4
+
+⎤
+⎥⎦
+where δ is the distance from the motor to the centre of
+mass of the vehicle, and Kτ is an aerodynamic constant.
+2.2. Basic image measurements and their image
+kinematics
+In this section, we describe two basic image measure-
+ments for points and lines. These measurements will be
+combined to form an m-vector image feature s ∈Rm. In
+this paper, we assume the target is static and so the tra-
+jectory of s depends only on camera motion. The image
+feature kinematics can be written as
+˙s = Lvvc + Lωωc
+(3)
+where Lv and Lω are the image Jacobians or interaction
+matrices. The measurement for a 3-D point target P with
+coordinates [X1, X2, X3]T in C is its image coordinates p =
+[p1, p2]T = [λX1/X3, λX2/X3]T, where λ is the focal length
+of the camera. As in Chaumette and Hutchinson (2006),
+
+INTERNATIONAL JOURNAL OF CONTROL
+895
+Camera
+Outer Dynamic
+Visual Servoing Loop
+Controller
+Vehicle
+TM
+Inner Attitude
+Loop Controller
+R∗
+τ c
+R
+R, v
+R, dn
+nc
+s
+Figure . Inner–outer control loop structure.
+the kinematics of p is
+˙p = Lv pvc + Lωpωc
+(4)
+where
+Lv p =
+
+−λ/X3
+0
+p1/X3
+0
+−λ/X3
+p2/X3
+
+,
+Lωp =
+
+p1p2/λ
+−(p2
+1 + λ2)/λ
+p2
+(p2
+2 + λ2)/λ
+−p1p2/λ
+−p1
+
+.
+A
+3D
+straight
+line
+denoted as ℓexpressed in C is the intersection of two
+planes
+hT
+i P + Di = AiX1 + BiX2 + CiX3 + Di = 0,
+i = 1, 2
+where hi = [Ai Bi Ci]T is the normal vector of ith plane
+expressed in C. The projection of ℓcan be parametrised
+by l = [l1, l2]T = [α, ρ]T as p1sα + p2cα −ρ = 0, where
+p1 and p2 are the image coordinates of a point in the line.
+As in Xie et al. (2014), the kinematics of l is
+˙l = Lvlvc + Lωlωc
+(5)
+where
+Lvl =
+
+μαλsα
+μαλcα
+−μαρ
+μρλsα
+μρλcα
+−μρρ
+
+,
+Lωl =
+
+ρsα/λ
+ρcα/λ
+1
+(λ + ρ2/λ)cα
+−(λ + ρ2/λ)sα
+0
+
+, and μα = −(Aicα −
+Bisα)/(Diλ), μρ = (Aiρsα + Biρcα + Ciλ)/(Diλ).
+3. The state transformation approach
+In this section, we justify the inner–outer loop controller
+structure used and explain how a state transformation
+approach eliminates input derivatives in the outer-loop.
+The approach is illustrated on a simple planar vertical
+take-off and landing (PVTOL) vehicle. Next, we con-
+sider point and line basic measurements, introduce image
+moment features in the new states, and provide the result-
+ing kinematics.
+3.1. General philosophy
+As discussed in Section 1, the classical IBVS approach
+cannot be applied to an underactuated UAV where the
+velocities vc and ωc are not independently controlled. In
+this paper, we consider a different two-loop structure as
+shown in Figure 2. The inner loop tracks an attitude ref-
+erence denoted R∗, and the outer-loop provides this ref-
+erence to the inner loop in order to regulate the image
+feature error es = s −s∗, where s denotes the image fea-
+ture to be chosen below and s∗denotes the desired value
+of s. A main reason for adopting this control structure is
+that it provides a reliable and simple solution for motion
+control. Each loop becomes fully actuated and this sim-
+plifies the control design and gain tuning to optimise
+performance. A similar two-loop structure for conven-
+tional position control is found in many autopilots, e.g.
+Godbolt (2013), PX4 (2014). Stability of the closed-loop
+system requires the inner loop to have a relatively high
+bandwidth. The visual servoing problem naturally fits the
+inner–outer loop structure since AHRS measurements
+are relatively fast compared to image feedback. Further-
+more, the inner loop uses a relatively high-gain control to
+ensures closed-loop stability. We discuss the conditions
+for stability in Section 4.4.3. One alternative is to use ωc
+as the control for the outer loop, e.g. Guenard, Hamel, and
+Mahony (2008). However, a benefit of the proposed struc-
+ture is its direct control of attitude which ensure attitude
+remains in a safe region. It also makes it easier to keep the
+target in the camera’s FoV.
+If we take the inner–outer loop structure as shown
+in Figure 2 for visual servoing, the outer-loop dynam-
+ics (1a) and (3) contains the attitude input and its deriva-
+tive. The appearance of the input derivative makes the
+control design challenging. One way to solve this problem
+is to lower the input derivative by a state transformation.
+This approach was first proposed in Fink et al. (2015) for
+visual servoing of lateral motion. This paper extends the
+work in Fink et al. (2015) to the general motion of the
+UAV. From (1a), (2), and (3), the outer loop is
+˙s = Lvvc + Lη1 ˙η1 + Lη2 ˙ψ
+(6a)
+˙vc = Hu + Hη1 ˙η1 + Hη2 ˙ψ
+(6b)
+where
+[Lη1, Lη2] = LωW,
+Hu
+=
+gRTE3
++
+Fc/m,
+[Hη1, Hη2] = [vc]×W, and η1 = [φ, θ]T. The control
+variables for (6) are Fc, η1, and ψ. The yaw angle ψ can
+be controlled independently. We define a state transfor-
+mation sa(s, η1) and va(vc, η1) with dependence on input
+η1. The time derivative of the state transformation is
+˙sa = ∂sa
+∂s Lvvc +
+∂sa
+∂s Lη1 + ∂sa
+∂η1
+
+˙η1 + ∂sa
+∂s Lη2 ˙ψ
+˙va = ∂va
+∂vc Hu +
+∂va
+∂vc Hη1 + ∂va
+∂η1
+
+˙η1 + ∂va
+∂vc Hη2 ˙ψ
+
+896
+H. XIE AND A. F. LYNCH
+If sa and va satisfy the system of first-order linear homo-
+geneous PDEs
+∂sa
+∂s Lη1 + ∂sa
+∂η1
+= 0
+(8a)
+∂va
+∂vc Hη1 + ∂va
+∂η1
+= 0
+(8b)
+the input derivative in (6) can be eliminated and the
+dynamics (6) expressed in the new state is
+˙sa = ∂sa
+∂s Lvvc + ∂sa
+∂s Lη2 ˙ψ
+˙va = ∂va
+∂vc Hu + ∂va
+∂vc Hη2 ˙ψ
+3.2. Example: the PVTOL vehicle
+In this section, we consider a PVTOL vehicle ignoring lat-
+eral coupling to illustrate the basic philosophy of the state
+transformation approach with a point measurement. The
+PVTOL dynamics is obtained by setting ωc
+1, ωc
+3, vc
+2, φ, ψ,
+p2 in (4) and (1a) to zero, we obtain the PVTOL vehicle
+model
+˙p1 =
+
+−λ/X3
+p1/X3
+vc
+1
+vc
+3
+
+−p2
+1 + λ2
+λ
+ω2
+(10a)
+ ˙vc
+1
+˙vc
+3
+
+= −ω2
+ 0
+1
+−1
+0
+vc
+1
+vc
+3
+
++ g
+−sθ
+cθ
+
++
+
+0
+−TM/m
+
+(10b)
+Relative to the 3D UAV model, (10) has fewer states, but
+keeps the essential structure of (4) and (1a).
+The PDEs (8) become
+∂pa
+1
+∂p1
+p2
+1 + λ2
+λ
+−∂pa
+1
+∂θ = 0,
+∂va
+i
+∂vc
+1
+vc
+3 −∂va
+i
+∂vc
+3
+vc
+1 −∂va
+i
+∂θ = 0
+(11)
+where i = 1, 3. The general solutions of (11) are
+pa
+1 = κ1(arctan(p1/λ) + θ)
+(12)
+va
+i = κ2i
+
+vc
+1
+	2 +
+
+vc
+3
+	2, arctan
+
+vc
+1/vc
+3
+	
++ θ
+	
+(13)
+where κ1 and κ2 are smooth functions in their arguments.
+In Fink et al. (2015), κ1 in (12) is chosen as κ1(ζ) = ζ. By
+assuming vc
+3 = 0 for the hovering case, the outer-loop in
+the new coordinates is
+˙pa
+1 = vc
+1 cos2 
+pa
+1 −θ
+	
+/X3
+(14a)
+˙vc
+1 = −g sin θ
+(14b)
+ca
+1
+ca
+3
+c3
+c1
+P = [X1, X3]T
+λ
+p
+pa
+λ
+Figure . Virtual camera for the PVTOL example.
+As in Fink et al. (2015), backstepping can used
+to stabilise system (14). If we choose κ1(ζ) = tan ζ,
+κ21(ζ1, ζ2) = ζ1sζ2, κ22(ζ1, ζ2) = ζ1cζ2, the state transfor-
+mation is
+pa
+1 = λ(cθ p1 + sθλ)/(−sθ p1 + cθλ)
+va
+1
+va
+3
+
+=
+ cθ
+sθ
+−sθ
+cθ
+vc
+1
+vc
+3
+
+and the outer loop expressed in the new state is
+˙pa
+1 =
+λ
+X3
+
+−sθ p1 + cθλ
+	
+−λ pa
+1
+va
+1
+va
+3
+
+(16a)
+ ˙va
+1
+˙va
+3
+
+= g
+0
+1
+
+−TM
+m
+ sθ
+cθ
+
+(16b)
+As shown in Figure 3, we define a virtual camera frame
+A with basis
+
+ca
+1, ca
+3
+
+, which has the same translational
+motion as C but with zero pitch. Any point in A has coor-
+dinates
+Pa =
+Xa
+1
+Xa
+3
+
+=
+ cθ
+sθ
+−sθ
+cθ
+
+P
+The term λ/(X3(−sθp1 + cθλ)) in (16a) can be written as
+1/(X3cθ −X1sθ) whose denominator is the depth Xa
+3 of
+the target in the virtual camera frame. Since the vehicle
+always hovers above the target Xa
+3 > 0. We also observe
+pa
+1 = λ X3sθ+X1cθ
+X3cθ−X1sθ = λ Xa
+1
+Xa
+3 , which is the image point in the
+virtual camera plane. Hence, the state transformation
+approach includes the virtual camera approach in Jabbari
+et al. (2014) as a special case.
+3.3. State transformation for a 3D point and 3D line
+The state transformations for the point feature case are
+denoted as pa
+i (p1, p2, φ, θ), va
+i (v1, v2, φ, θ), i = 1, 2.
+From (4), (6), (8a), the new state pa
+i has to satisfy follow-
+ing PDEs
+G jp(pa
+i ) = 0,
+j, i = 1, 2
+(17)
+
+INTERNATIONAL JOURNAL OF CONTROL
+897
+where
+vector
+fields
+G1p = p1p2
+λ
+∂
+∂p1 + p2
+2+λ2
+λ
+∂
+∂p2 + ∂
+∂φ,
+G2p =
+
+p2
+1+λ2
+λ
+cφ + p2sφ
+
+∂
+∂p1 +
+ p1p2cφ
+λ
+−p1sφ
+	
+∂
+∂p2 −∂
+∂θ .
+As discussed in Appendix A, a solution to (17) exists
+and we follow the method presented there to compute a
+general solution
+pa
+i = κ3i
+sφcθ p2 + λcφcθ −p1sθ
+λsφ −p2cφ
+, sφsθ p2 + cφsθλ + p1cθ
+λsφ −p2cφ
+
+(18)
+where i = 1, 2, and κ3i is an arbitrary smooth function in
+its arguments. The PDEs (8b) are
+G jv(va
+i ) = 0,
+j = 1, 2, i = 1, 2, 3
+(19)
+where G1v = vc
+3
+∂
+∂vc
+2 −vc
+2
+∂
+∂vc
+3 +
+∂
+∂φ, G2v = −(vc
+3cφ +
+vc
+2sφ) ∂
+∂vc
+1 + vc
+1sφ ∂
+∂vc
+2 + vc
+1cφ ∂
+∂vc
+3 + ∂
+∂θ . As with (17), we
+obtain the general solution
+va
+i = κ4i(v2cφ −v3sφ, v1cθ + v2sφsθ + v3cφsθ,
+−v1sθ + v2sφcθ + v3cφcθ )
+(20)
+where i = 1, 2, 3, and κ4i is an arbitrary smooth function.
+We take
+κ31(ζ1, ζ2) = λET
+1 Rcq
+ET
+3 Rcq,
+and
+κ32(ζ1, ζ2) = λET
+2 Rcq
+ET
+3 Rcq
+(21)
+where q = [ζ 2, −1, ζ 1]T, Rc is a constant rotation matrix,
+E1 = [1, 0, 0]T, E2 = [0, 1, 0]T, and
+κ4i(ζ1, ζ2, ζ3) = ET
+i Rc[ζ1, ζ2, ζ3]T, i = 1, 2, 3
+(22)
+The outer loop transformed in the new coordinates is
+ ˙pa
+1
+˙pa
+2
+
+= La
+v pva + La
+η2RT
+c E3 ˙ψ
+(23a)
+˙va =
+ ˙ψRT
+c E3
+
+× va + Fa
+(23b)
+where
+La
+v p =
+
+−λ/Xa
+3
+0
+pa
+1/Xa
+3
+0
+−λ/Xa
+3
+pa
+2/Xa
+3
+
+,
+La
+η2 =
+
+pa
+1pa
+2/λ
+−((pa
+1)2 + λ2)/λ
+pa
+2
+((pa
+2)2 + λ2)/λ
+−pa
+1pa
+2/λ
+−pa
+1
+
+and Fa = RcRθφg1(Fc,
+η), Xa
+3 = ET
+3 RcRθφP. The state transformations (21)
+and (22) generalise the work in Jabbari et al. (2014) to
+convert the point coordinates in the real camera image to
+the coordinates of a point projected to a virtual camera
+with zero roll and pitch. It can readily be shown that if Rc
+in (21) and (22) is replaced with RcRn3(ψ), the yaw rate
+˙ψ in (23) will disappear and this is the virtual camera
+used in Abdessameud and Janabi-Sharifi (2015).
+The state transformation for a line feature is
+la
+i (α, ρ, φ, ψ). Using (5) and (6), (8a) becomes
+G jl(la
+i ) = 0,
+j, i = 1, 2
+(24)
+where
+G1l = ρsα
+λ
+∂
+∂α+
+
+λ+ ρ2
+λ
+
+cα ∂
+∂ρ + ∂
+∂φ, G2l =
+ ρcα
+λ cφ
+−sφ
+	 ∂
+∂α −
+
+λ + ρ2
+λ
+
+sαcφ ∂
+∂ρ + ∂
+∂θ . Following the same
+procedure used to solve (17) and (19), we can obtain a
+general solution to (24). The particular solution similar
+to (21) is given by
+la =
+αa
+ρa
+
+=
+ arctan (le1/le2)
+−le3/
+
+l2
+e1 + l2
+e2
+
+(25)
+where
+le = [le1, le2, le3]T = BRcRθφB−1[sα, cα, −ρ]T
+(26)
+and B = diag([0, 0, λ]). According to (8), the state
+transformation for velocity va should satisfy the same
+PDEs (19). If the same solution in (22) is chosen, the new
+outer loop with the state la and va is
+˙la = La
+vlva + La
+η2RT
+c E3 ˙ψ
+(27a)
+˙va =
+ ˙ψRcE3
+
+× va + RcRθφg1
+
+Fc, η
+	
+(27b)
+where
+La
+vl =
+
+μa
+αλsαa
+μa
+αλcαa
+−μa
+αρa
+μa
+ρλsa
+α
+μa
+ρλcαa
+−μρaρa
+
+,
+La
+η2 =
+
+ρasαa/λ
+ρacαa/λ
+1
+
+λ + (ρa)2/λ
+	
+cαa
+−
+
+λ + (ρa)2/λ
+	
+sαa
+0
+
+,
+μa
+α = −(Aa
+i cαa −
+Ba
+i sαa)/(Da
+i λ),
+μa
+ρ = (Aa
+i ρsα + Ba
+i ρcαa + Ca
+i λ)/(Da
+i λ),
+[Aa
+i , Ba
+i ,Ca
+i ]T = RcRθφ[Ai, Bi,Ci]T, Da
+i = Di. It can be
+shown that if Rc is chosen as a function of ψ that makes
+Aa
+i = Ba
+i = 0, we can simplify (27a) by setting μa
+α = 0,
+μa
+ρ = −1/Xa
+3 , where Xa
+3 is the depth of any point in the
+line.
+3.4. Moment features for visual servoing
+If a set of 3D target points or parallel lines is located in a
+plane, general and useful features for visual servoing are
+the moment features given in Chaumette (2004). If the
+orientation of the target plane in N is known, Rc can be
+taken as the product of Rn3 and the rotation matrix rep-
+resenting the orientation of the plane in N. The motion
+of the new states for both point image coordinates pa
+and image line parametrisation la is independent of the
+yaw motion. Point image moments in Chaumette (2004)
+and line image moments in Xie et al. (2014) for parallel
+lines can be used for regulating the translational motion
+of the vehicle. However, the feature to regulate the yaw
+motion of the vehicle for a non-horizontal plane remains
+
+898
+H. XIE AND A. F. LYNCH
+an open problem. One particular case is for horizontal
+target planes where Rc can be set to the identity matrix
+in (21), (22), (26) and the feature for regulating the yaw
+motion can be found according to Chaumette (2004).
+Assumption 1: The target is planar and parallel to the
+n1 −n2 plane. The target consists of either N > 1 points
+or lines.
+As in Jabbari et al. (2014), the moment feature for
+points adopted here is
+slp = [p1g, p2g]Tshp
+(28a)
+shp =
+
+a∗/a
+(28b)
+sψ p = arctan (2μ11/(μ20 −μ02)) /2
+(28c)
+where p1g = 1
+N
+N
+k=1 pa
+1k, pa
+ij is the ith component of
+the jth point, p2g = 1
+N
+N
+k=1 pa
+2k, a = μ20 + μ02, μij =
+N
+k=1(pa
+1k −pa
+1g)i(pa
+2k −pa
+2g) j, and a∗is the value of a
+when the vehicle is in its desired pose. Here, the feature
+slp is used to control the lateral motion of the vehicle, shp
+is used for height control, and sψp is for controlling the
+yaw motion. The kinematics using features (28) is
+˙slp = −λ
+Xa∗
+3
+va
+1
+va
+2
+
+−
+ 0
+1
+−1
+0
+
+slp ˙ψ
+(29a)
+˙shp = −va
+3/Xa∗
+3
+(29b)
+˙sψ p = −˙ψ
+(29c)
+As in Xie et al. (2014), the selected moment features for a
+set of parallel lines is
+sll = ρgshl
+(30a)
+shl =
+
+μ∗
+2/μ2
+(30b)
+sψl =
+N
+
+k=1
+αa
+k
+(30c)
+where ρg = N
+k=1 ρa
+k, ρa
+k is the offset of the kth line, μ2 =
+N
+k=1
+
+ρa
+k −ρg
+	2, μ∗
+2 is the desired value of μ2 when the
+vehicle is at its desired pose, and αk is the angle of kth line.
+The kinematics using features (30) is
+˙sll = −λ
+Xa∗
+3
+
+sa
+α ca
+α
+va
+1
+va
+2
+
+(31a)
+˙shl = −va
+3/Xa∗
+3
+(31b)
+˙sψl = ˙ψ
+(31c)
+4. Controller design
+The objective of IBVS is to minimise an image feature
+error es. In this section, we propose a PID controller for
+the outer-loop based on the image moment features given
+in Section 3. The control design considers system uncer-
+tainties and a stability proof is given.
+4.1. Uncertainty modelling
+During the identification experiments of the UAV’s thrust
+model, we observed a slow decrease in thrust gain KT
+as the battery voltage dropped during flight. In prac-
+tice, the effect of decreased KT is significant as the vehi-
+cle looses altitude. To compensate for this variation, we
+treat KT as an unknown constant parameter. We remark
+that accounting for variation in KT is equivalent to deal-
+ing with uncertainty in mass m as the parameters enter
+as a ratio in the dynamics (1a). We also observed from
+our previous results in Fink et al. (2015) that the image
+feature error converges to a non-zero constant. After an
+exhaustive search for the source of this error, we con-
+cluded the problem is due to Euler angle estimate bias in
+the AHRS output. Even small bias (i.e., 1°) leads to signifi-
+cant steady-state error. To account for this error, we model
+Rθφ as Rθφ = RT
+n1(φe)RT
+n2(θe)Rn2(θm)Rn1(φm), where the
+bias errors φe, θe are taken as constants, and the φm, θm
+are measured roll and pitch angles.
+We observe from our previous work Fink et al. (2015),
+the reference roll-pitch angles have to be limited to a small
+range to avoid the target leaving the camera’s FoV. Given
+the small range of φ and θ, we make a small angle approx-
+imation in the force model Fa given by (23b) as
+Fa = RT
+n1(φe)RT
+n2(θe)Rn2(θm)Rn1(φm)
+
+gRTE3 + Fc/m
+	
+≈KTu
+m
+⎡
+⎣
+−θm + θe
+φm −φe
+−1
+⎤
+⎦+
+⎡
+⎣
+0
+0
+g
+⎤
+⎦
+(32)
+It can be seen from (32) that the bias errors φe, θe enter
+as additive input disturbances to the outer loop, which
+causes the image feature errors to converge to non-zero
+constants.
+The bias angles also create errors using the state trans-
+formation approach. We derive the relation between bias
+angles and image feature transformation error. We con-
+sider a 3D point in C, Pc = [X1, X2, X3]T. We can express
+Pc in the ideal virtual camera coordinates as
+Pa∗= RT
+n1(φe)RT
+n2(θe)Rn2(θm)Rn1(φm)Pc
+(33)
+
+INTERNATIONAL JOURNAL OF CONTROL
+899
+and in the real virtual camera plane coordinates as
+Pa = Rn2(θm)Rn1(φm)Pc
+(34)
+Hence, from (33) and (34) we have
+Pa = Rn2(θe)Rn1(φe)Pa∗
+Assuming small bias angles, we have
+Rn2(θe)Rn1(φe) =
+⎡
+⎣
+cθe
+sθesφe
+sθecφe
+0
+cφe
+−sφe
+−sθe
+cθesφe
+cθecφe
+⎤
+⎦
+≈
+⎡
+⎣
+1
+0
+θe
+0
+1
+−φe
+−θe
+φe
+1
+⎤
+⎦
+Letting Pa∗= [Xa∗
+1 , Xa∗
+2 , Xa∗
+3 ]T, we obtain the depen-
+dence of Pa on the components of Pa∗and bias angles as
+Pa ≈
+⎡
+⎣
+1
+0
+θe
+0
+1 −φe
+−θe φe
+1
+⎤
+⎦
+⎡
+⎣
+Xa∗
+1
+Xa∗
+2
+Xa∗
+3
+⎤
+⎦
+=
+⎡
+⎣
+Xa∗
+1 + θeXa∗
+3
+Xa∗
+2 −φeXa∗
+3
+−θeXa∗
+1 + φeXa∗
+2 + Xa∗
+3
+⎤
+⎦
+Since θe and φe are small and in practise we can assume
+Xa∗
+1
+≪Xa∗
+3 , Xa∗
+2
+≪Xa∗
+3 , and the image coordinates of the
+point P in real camera are approximated as
+ pa
+1
+pa
+2
+
+≈λ
+⎡
+⎢⎢⎣
+Xa∗
+1 + θeXa∗
+3
+−θeXa∗
+1 + φeXa∗
+2 + Xa∗
+3
+Xa∗
+2 −φeXa∗
+3
+−θeXa∗
+1 + φeXa∗
+2 + Xa∗
+3
+⎤
+⎥⎥⎦
+≈λ
+⎡
+⎢⎢⎣
+Xa∗
+1 + θeXa∗
+3
+Xa∗
+3
+Xa∗
+2 −φeXa∗
+3
+Xa∗
+3
+⎤
+⎥⎥⎦=
+ pa∗
+1 + λθe
+pa∗
+2 −λφe
+
+Hence,
+p1g = p∗
+1g + λθe,
+p2g = p∗
+2g −λφe,
+slp =
+s∗
+lp + λ
+
+θe
+−φe
+
+, shp = s∗
+hp, and sφp = s∗
+φp. This implies
+there is a small and almost constant error between the
+features in the real virtual camera and the ideal virtual
+camera under the following assumption
+Assumption 2: The bias angles θe, φe are small and the
+altitude of the vehicle is large relative to its lateral displace-
+ment.
+The kinematics of the real virtual camera is (23) with
+Rc = Rn2(θe)Rn1(φe) and the kinematics of an ideal vir-
+tual camera is (23) with Rc = I. Under Assumption 2, we
+have Rn2(θe)Rn1(φe) ≈I and hence the kinematics of the
+real and ideal virtual camera are almost the same.
+4.2. Yaw motion controller
+For both the point and line case, the kinematics of the
+feature for yaw motion of the vehicle is (29c) and (31c).
+The goal is to regulate sψp and sψl to zero. Thus, the
+image errors are esψ p = sψ p and esψl = sψl. Evidently, the
+controller
+˙ψ = Kψesψ p
+(35)
+for point features and
+˙ψ = −Kψesψl
+for line features, leads to closed-loop dynamics
+˙esψ p = −Kψesψ p
+(36)
+or
+˙eeψl = −Kψesψl
+(37)
+We can easily conclude that the closed-loop dynam-
+ics (36) or (37) is exponentially stable.
+4.3. Height controller
+The desired features shp and shl are set to 1. The image
+errors for both feature are defined as eshp = shp −1 and
+eshl = shl −1. The height subsystems using points and
+lines are the same. Thus, below we use sh to denote both
+shp and shl. The image error of sh is denoted esh = sh −1.
+According to (29b), (31b), (23b), and (32), the open-loop
+height subsystem is
+˙esh = −va
+3/Xa∗
+3
+(38a)
+˙va
+3 = g −KTu/m
+(38b)
+We propose a PID controller
+u = −Khpesh + Khdv3 −Khiξh
+(39)
+where ξh =
+ t
+0 esh(ε)dε. Defining ¯ξh = g/Khi + ξh, the
+closed-loop from (38) and (39) is
+⎡
+⎣
+˙¯ξh
+˙esh
+˙va
+3
+⎤
+⎦=
+⎡
+⎣
+0
+1
+0
+0
+0
+−1/Xa∗
+3
+KTKhi/m KTKhp/m −KTKhd/m
+⎤
+⎦
+⎡
+⎣
+¯ξh
+esh
+va
+3
+⎤
+⎦
+(40)
+It can be shown that when Khp, Khd, Khi > 0 and satisfy
+Khi < KhpKhdKT/m
+(41)
+
+900
+H. XIE AND A. F. LYNCH
+the origin of closed-loop system (40) is exponentially sta-
+ble.
+4.4. Lateral controller design
+Without loss of generality, the desired feature values
+for slp and sll are set to zero. Hence, the image errors
+for lateral motion are eslp = [eslp1, eslp2]T = slp and esll =
+[esll1, esll2]T = sll.
+... Point moment feature
+According to (29a), (23b), and (32), the open-loop lateral
+subsystem in the transformed state coordinates is
+˙eslp = −λ
+Xa∗
+3
+va
+l −
+0
+−1
+1
+0
+
+eslp ˙ψ
+(42a)
+˙va
+l = KTu
+m
+−θm + θe
+φm −φe
+
+−
+0
+−1
+1
+0
+
+va
+l ˙ψ
+(42b)
+where va
+l = [va
+1, va
+2]T. Similarly, we propose a PID con-
+troller as
+u
+ θm
+−φm
+
+= −Klpeslp + Kldva
+l −uKliξlp
+(43)
+where ξl =
+ t
+0 eslp(ε)dε. Defining ug as the value of thrust
+which compensates gravity, and ¯ξlp = ξlp + 1
+Kli
+
+θe
+−φe
+
+, we
+obtain the closed-loop system
+˙xlp = Aclxlp + D(t)xlp
+(44)
+where
+xlp = [ ¯ξ T
+lp, eT
+slp, (va
+l )T]T,
+Acl =
+
+0
+I
+0
+0
+0
+−λI/Xa∗
+3
+KTugKliI/m KTKlpI/m −KTKldI/m
+
+, D(t)=
+
+0
+0
+0
+0
+−˙ψS
+0
+KT ˜uKliI/m
+0
+−˙ψS
+
+,
+S =
+
+0 −1
+1
+0
+
+, ˜u = u −ug. If the PID control parameters
+satisfy
+Kli < KTKlpKld/(ugm)
+(45)
+then Acl is Hurwitz. Because the closed-loops for height
+and yaw are exponentially stable, we have ˙ψ →0 and
+˜u →0. This implies D(t)x →0. Using a converse Lya-
+punov theorem in Khalil (2001, Thm. 4.14), we can con-
+clude that the closed-loop (44) is exponentially stable.
+... Line moment feature
+Based on (31a), (23b), and (32), the lateral subsystem is
+˙esll = −λva
+2/Xa∗
+3 −λ
+
+sa
+αva
+1 +
+
+ca
+α −1
+	
+va
+2
+	
+/Xa∗
+3
+(46a)
+˙va
+2 = KTu (φm −φe) /m −va
+1 ˙ψ
+(46b)
+A PID controller is selected as
+uφm = Klpesll −Kldva
+2 + uKliξll
+(47)
+where ξll =
+ t
+0 esll(ε)dε. Define ¯ξll = −φe/Kli + ξll, the
+closed-loop becomes
+˙xl = Aclxl + Dl(t)
+(48)
+where xll=[ ¯ξll, esll, va
+2]T, Acl=
+
+0
+1
+0
+0
+0
+−λ/Xa∗
+3
+KTugKli/m KTKlp/m −KTKld/m
+
+,
+˜u = u −ug, Dl(t) =
+
+0
+λ
+
+sa
+αva
+1 +
+
+ca
+α −1
+	
+va
+2
+	
+/Xa∗
+3
+KT ˜uKli ¯ξll/m −va
+1 ˙ψ
+
+. Since the
+closed loop for height and yaw are exponentially stable,
+we have α →0, ˜u →0, ˙ψ →0, Dl(t) →0. Using the
+results in Marino and Tomei (1995, Lemma III.1), we
+can conclude that if the PID control gains satisfy (45),
+then (48) is exponentially stable.
+... Inner–outer loop stability analysis
+If the inner loop tracks its reference provided from the
+outer loop (43) or (47), then stability has been proven
+above. In this section, we consider the effect of tracking
+error from the inner loop on the entire closed-loop sta-
+bility.
+Denote
+eη1 = ηm1 −η∗
+m1,
+ηm1 = [φm, θm]T,
+η∗
+m1 =
+[φ∗
+m, θ∗
+m]T, and ηe1 = [φe, θe]T, the open-loop lateral
+subsystem (42) for point features becomes
+˙eslp = −λ
+Xa∗
+3
+va
+l −Seslp ˙ψ
+(49a)
+˙va
+l = KTu
+m S
+
+η∗
+m1 −ηe1
+	
+−Sva
+l ˙ψ + KTu
+m Seη1
+(49b)
+The desired attitude is chosen as
+uSη∗
+m1 = Klpeslp −Kldva
+l + uKliξlp
+(50)
+The outer loop becomes
+˙xlp = Aclxlp + Blpeη1 + Dlp(t)
+(51)
+where Blp = [02, 02, KTug
+m ST]T, Dlp = D(t)xlp+Bu(t)eη1,
+Bu = [02, 02, KT ˜u
+m ST]T. Since the yaw ψ and u exponen-
+tially converge to constants, the term Dlp exponentially
+converges to zero. From (43) we have
+˙uSη∗
+m1 + uS ˙η∗
+m1 = Kl ˙xlp + ˙uKliξlp
+(52)
+
+INTERNATIONAL JOURNAL OF CONTROL
+901
+where Kl = [uKliI2, KlpI2, −KldI2]. Substituting (44)
+into (52), we obtain
+˙η∗
+m1 = 1
+ug
+S−1KlAclxlp + 1
+ug
+S−1KlBlpeη1 + D∗
+ηm1 (t) (53)
+where
+D∗
+ηm1 (t) = 1
+uS−1(KlD(t)xlp + KlBu(t)eη1
++ ˙u
+
+Kliξlp −Sη∗
+m1
+	
+) +
+˜u
+uug
+S−1(KlAclxlp
++ Blpeη1)
+The vector D∗
+ηm1 exponentially converges to zero since
+˙u, ˜u, D, Bu exponentially converge to zero.
+Motivated by Castillo, Lozano, and Dzul (2005), we
+approximate the inner loop as
+˙eη1 = ˙ηm1 −˙η∗
+m1
+(54)
+¨ηm1 = J−1
+12 τ c
+12
+(55)
+where we have assumed a diagonal inertia matrix with
+nonzero components Ji, i = 1, 2, 3, J12 = diag([J1, J2]),
+and τ c
+12 is a vector of the first two components of τ c.
+Following Kendoul, Fantoni, and Lozano (2008), one
+control design is
+τ c
+12 = ¨η∗
+m1 −Kη1peη1 −Kη1d ˙eη1
+(56)
+In this case, we can show that the control gains for the
+inner and outer loops can be independently chosen to
+ensure stability. However, computing the first and sec-
+ond derivative of the reference angle can introduce noise
+and is often omitted in practice (Bouabdallah, Murri-
+eri, & Siegwart, 2004). Noise is especially of concern in
+visual servoing where the reference angle depends on
+noisy image features.
+Defining δ1 =
+ t
+0 eη1dt, δ2 =
+eη1
+k1 + δ1, δ3 =
+˙ηm1
+k2 + δ2,
+xδ = [δT
+1 , δT
+2 , δT
+3 ]T, and choosing the control law as τ c
+12 =
+−k3δ3, we have
+˙xδ = Aδxδ + 1
+k1
+Bδxlp + Dδ(t)
+(57)
+where
+Aη =
+⎡
+⎢⎢⎣
+−k1I2
+k1I2
+0
+−(k1 + KTKld
+m )I2 −
+
+k2−k2
+1
+k1
+−KTKld
+m
+
+I2
+k2
+k1 I2
+−(k1 + KTKld
+m )I2 −
+
+k2−k2
+1
+k1
+−KTKld
+m
+
+I2 −k3
+k2 J−1
+12 + k2
+k1 I2
+⎤
+⎥⎥⎦
+Bδ =
+⎡
+⎢⎢⎣
+0
+−1
+ug S−1KlAcl
+−1
+ug S−1KlAcl
+⎤
+⎥⎥⎦, Dδ(t) = 1
+k1
+⎡
+⎢⎢⎣
+0
+D∗
+ηm1 (t)
+D∗
+ηm1 (t)
+⎤
+⎥⎥⎦
+and Dδ(t) exponentially converges to zero. We define a
+nominal system for closed-loop (44), (57) as
+˙xlp = Aclxlp + Blpeη1
+˙xδ = Aδxδ + 1
+k1
+Bδxlp
+Considering a Lyapunov function candidate as
+V = xT
+lpPlxlp + 1
+2xT
+δ xδ
+(58)
+where Pl > 0, and AT
+clPl + PlAcl = Ql, Ql > 0, its time
+derivative is
+˙V = −xT
+lpQlxlp + 2xT
+lpPlBlpeη1 + 1
+2xT
+δ
+
+AT
+η + Aη
+	
+xδ
++ 1
+2k1
+xT
+lp
+
+Bδ + BT
+δ
+	
+xδ
+(59)
+Since Pl, Blp, and Bδ are independent of gains ki, i = 1,
+2, 3, we can choose appropriate gains ki, i = 1, 2, 3 that
+the AT
+η + Aη < −Qη, where Qη > 0. If the eigenvalues of
+Qη are taken sufficiently large, then we can apply Young’s
+inequality to show ˙V < 0. Since the two terms Dδ and Dlp
+are exponentially convergent, using Marino and Tomei
+(1995, Lemma III.1) shows the entire closed-loop is sta-
+ble. We remark that the control law is given by
+τ c
+12 = −k3δ3 = −k3
+ ˙ηm1
+k2
++ eη1
+k1
++ δ1
+
+= −Kiδ1 −Kpeη1 −Kd ˙ηm1
+(60)
+where Ki = k3, Kp = k3/k1, and Kd = k3/k2. Hence, the
+inner loop controller can be implemented with a PID
+structure.
+5. Experimental work
+In this section, we briefly introduce the experimental
+platform used to validate the performance of the state
+transformation based dynamic visual servoing. Next,
+we present the experimental visual servoing results for
+image point moment features and image line moment
+features.
+
+902
+H. XIE AND A. F. LYNCH
+Propeller
+Motor
+LiPo
+Vicon Marker
+PX4/PX4IO
+ESC
+Pixy Camera
+Figure . The ANCL quadrotor platform.
+Table . Nominal quadrotor and camera model parameters.
+m
+.kg
+J
+diag([0.03, 0.03, 0.05]) kg·m
+λ
+.mm
+Image sensor size
+/”
+Resolution
+(, ) pixels
+δ
+.m
+5.1. Experimental platform
+The indoor Applied Nonlinear Control Lab (ANCL)
+quadrotor platform shown in Figure 4 is used to experi-
+mentally validate the state transformation based dynamic
+visual servoing law.
+The autopilot is based on a customised PX4 sys-
+tem which is an open-hardware and open-source
+project (PX4, 2014). A Kalman filter-based AHRS
+fuses sensor data from the on-board 3D gyroscope, 3D
+accelerometer, and 3D magnetometer to provide atti-
+tude and angular velocity estimates. The vision system
+is a low cost CMUcam5 Pixy which is mounted at the
+bottom of the quadrotor and sends image features to
+the PX4 via a serial connection. An eight camera Bonita
+Vicon motion capture system measures the quadrotor’s
+pose at up to 200 Hz and sends the measurements to a
+ground computer. This computer calculates and sends
+the quadrotor’s translational velocity to the PX4 via a
+radio. Table 1 summarises the quadrotor’s and camera’s
+Table . Outer loop control parameters.
+Gain
+Kψ
+Khp
+Khd
+Khi
+Klp
+Kld
+Kli
+Value
+.
+.
+.
+.
+.
+.
+.
+Table . PID control gains for inner loop attitude tracking.
+Roll
+Pitch
+Yaw
+Kp
+.
+.
+.
+Kd
+.
+.
+.
+Ki
+.
+.
+.
+nominal model parameters. See Fink et al. (2015) for
+more details.
+5.2. Point features
+The proposed controller considered in this section is (36),
+(39), and (43). Two visual target points are put on the hor-
+izontal ground with a displacement of 0.44 m. The control
+gains for the outer loop are shown in Table 2. The inner
+loop attitude controller is a PID controller with gains Kp,
+Kd, and Ki. Their values are shown in Table 3. An exam-
+ple of the roll and pitch tracking performance with this
+PID controller is shown in Figure 5. To check the perfor-
+mance of the integral component of the PID controller to
+compensate the uncertainties on KT, m and the bias in roll
+and pitch angles φe and θe, we consider two cases: a PD
+controller with Kli in (43) and Khi in (39) set to zero; a PID
+controller with Kli and Khi set to values given in Table 2.
+The value of a∗in (28b) is set as 0.4, which is obtained
+from an image when the vehicle hovers at the desired
+height. The trajectory of es = [eT
+slp, eshp, esψ p]T is shown
+in Figure 6, where Figure 6(a) and 6(b) gives the results
+with PD and PID controller, respectively.
+Figure 7(a)
+and 7(b) show the corresponding 3D translational error
+ed = [ed1, ed2, ed3]T = dn
+nc −dn∗
+nc and eψ = ψ −ψ∗for
+two cases, where dn∗
+nc = [0.1080, −0.1314, −1.3927]T m
+and ψ∗= −0.5454 rad correspond to the desired dn
+nc and
+ψ, respectively, when eslp = 0, eshp = 0, and esψ p = 0.
+0
+10
+20
+0
+0.05
+0.1
+0
+10
+20
+-0.1
+-0.05
+0
+0.05
+Figure . Roll and pitch tracking performance.
+
+INTERNATIONAL JOURNAL OF CONTROL
+903
+time (sec)
+0
+10
+20
+es1 (mm)
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+time (sec)
+0
+10
+20
+es2 (mm)
+-0.5
+0
+0.5
+time (sec)
+0
+10
+20
+es3
+-0.4
+-0.2
+0
+time (sec)
+0
+10
+20
+es4 (rad)
+-0.6
+-0.4
+-0.2
+0
+(a) PD.
+time (sec)
+0
+10
+20
+es1 (mm)
+-0.4
+-0.2
+0
+0.2
+0.4
+0.6
+time (sec)
+0
+10
+20
+es2 (mm)
+-0.5
+0
+0.5
+time (sec)
+0
+10
+20
+es3
+-0.4
+-0.2
+0
+time (sec)
+0
+10
+20
+es4 (rad)
+-0.6
+-0.4
+-0.2
+0
+(b) PID.
+Figure . Experimental trajectories of image feature error es with point features.
+Table . Statistical properties of error for point feature IBVS. We
+denote mean as μ and standard deviation as σ.
+PID controller
+PD controller
+Variable
+μ
+σ
+μ
+σ
+eslp1 (mm)
+−.
+.
+−.
+.
+eslp2 (mm)
+.
+.
+−.
+.
+eshp
+−.
+.
+−.
+.
+esψ p (rad.)
+.
+.
+.
+.
+ed1 (m)
+.
+.
+.
+.
+ed2 (m)
+.
+.
+.
+.
+ed3 (m)
+−.
+.
+.
+.
+eψ (rad.)
+−.
+.
+−.
+.
+It can be seen that both cases reach steady-state
+after around 10 seconds. Table 4 gives the averages and
+standard deviations of signals eslp, eshp, esψ p, ed, and eψ after
+10 seconds. It can be seen from Figure 6 and Table 4
+that eslp and eshp are significantly reduced when the inte-
+gral control is added. We can also tell from Figure 6 and
+Table 4 that ed is reduced when the integral control is
+added. The performance of yaw regulation for the two
+cases is the same because the same control law for yaw
+is applied. We also observe that the standard deviations
+for the two cases are similar. Hence, we can conclude that
+the proposed PID controller can efficiently deal with the
+model uncertainties described in Subsection 4.1.
+5.3. Line features
+The proposed controller considered in this section
+is (37), (39), and (47). We use line moment features (31).
+Two parallel visual target lines with a displacement of
+0.2 m are put on the ground. As with the point feature
+
+904
+H. XIE AND A. F. LYNCH
+time (sec)
+0
+10
+20
+ed1 (m)
+-0.2
+0
+0.2
+time (sec)
+0
+10
+20
+ed2 (m)
+-0.4
+-0.2
+0
+0.2
+time (sec)
+0
+10
+20
+ed3 (m)
+0
+0.2
+0.4
+time (sec)
+0
+10
+20
+eA (rad)
+-0.2
+0
+0.2
+0.4
+(a) PD.
+time (sec)
+0
+10
+20
+ed1 (m)
+-0.2
+0
+0.2
+time (sec)
+0
+10
+20
+ed2 (m)
+-0.4
+-0.2
+0
+0.2
+time (sec)
+0
+10
+20
+ed3 (m)
+0
+0.2
+0.4
+time (sec)
+0
+10
+20
+eA (rad)
+-0.2
+0
+0.2
+0.4
+(b) PID.
+Figure . Experimental trajectories of vehicle’s D position error ed and yaw error eψ with point features.
+Table . Outer loop control parameters.
+Gain
+Kψ
+Khp
+Khd
+Khi
+Klp
+Kld
+Kli
+Value
+.
+.
+.
+.
+.
+.
+.
+case, both PID and PD control are implemented to show
+the benefit of the integral term which compensates uncer-
+tainty. The control gains for the outer loop are shown
+in Table 5. The PID control gains for the inner loop are
+the same as for point features and are given in Table 3.
+Hence, the inner loop attitude tracking performance is
+similar to that shown in Figure 5.
+The desired value
+μ∗
+2 in (30b) is set to 0.082 which is acquired from an
+image when the vehicle flies at the desired height. The
+trajectory of image feature error es = [esll, eshl, esψl]T is
+shown in Figure 8, where Figure 8(a) shows the perfor-
+mance of the PD controller and Figure 8(b) shows the
+performance of PID controller. Since it is impossible to
+regulate the 3D position of the vehicle with a set of par-
+allel lines, only partial 3D position errors ed2 = d2 −d∗
+2,
+ed3 = d3 −d∗
+3 and yaw error eψ = ψ −ψ∗are shown
+in Figure 9, where d∗
+2 = −0.1241 m, d∗
+3 = −1.3670 m,
+ψ∗= −0.7526 rad are the desired lateral position in the
+n2 direction, the desired height, and desired yaw, respec-
+tively. We observe from Figures 8 and 9 that the vehicle
+reaches its steady state after around 10 seconds. Table 6
+gives the means and standard deviations of signals es, ed,
+
+INTERNATIONAL JOURNAL OF CONTROL
+905
+time (sec)
+0
+20
+40
+es1 (rad)
+0
+0.2
+0.4
+time (sec)
+0
+20
+40
+es2 (mm)
+-0.5
+0
+0.5
+time (sec)
+0
+20
+40
+es3
+-0.2
+0
+0.2
+(a) PD.
+time (sec)
+0
+20
+40
+es1 (rad)
+0
+0.2
+0.4
+time (sec)
+0
+20
+40
+es2 (mm)
+-0.5
+0
+0.5
+time (sec)
+0
+20
+40
+es3
+-0.2
+0
+0.2
+(b) PID.
+Figure . Experimental trajectories of image feature error es with line features.
+and eψ. It can be seen from Figure 8 and Table 6 that when
+the PID controller is enabled, the means of image feature
+errors esll, eshl are significantly reduced relative to the PD
+controller case. The standard deviations of these signals
+for the two cases are similar. From Figure 9 and Table 6,
+we also observe that the means of the corresponding 3D
+position errors ed2, ed3 are significantly reduced as well.
+The image error esψl and the yaw error eψ = ψ −ψ∗for
+two cases is reduced to a small value from a large initial
+value. The mean and standard deviation of esψl and eψ at
+steady state for the two cases are similar because the same
+control law (37) is used.
+0
+20
+40
+-0.2
+0
+0.2
+0.4
+0
+20
+40
+-0.2
+0
+0.2
+0
+20
+40
+-0.2
+0
+0.2
+(a) PD.
+0
+20
+40
+-0.2
+0
+0.2
+0.4
+0
+20
+40
+-0.2
+0
+0.2
+0
+20
+40
+-0.2
+0
+0.2
+(b) PID.
+Figure . Experimental trajectories of vehicle’s partial D position error ed and yaw error eψ with line features.
+
+906
+H. XIE AND A. F. LYNCH
+Table. Statisticalpropertiesofes,ed,andeψ forlinefeatureIBVS.
+We denote mean as μ and standard deviation as σ.
+PID controller
+PD controller
+Variable
+μ
+σ
+μ
+σ
+esψl (rad.)
+.
+.
+.
+.
+esll (mm)
+.
+.
+−.
+.
+eshl
+−.
+.
+.
+.
+ed2 (m)
+−.
+.
+.
+.
+ed3 (m)
+−.
+.
+−.
+.
+eψ (rad.)
+.
+.
+.
+.
+6. Conclusion
+We have presented a state transformation-based dynamic
+visual servoing scheme for an underactuated quadrotor
+UAV. The state transformation is obtained by solving a
+system of PDEs. A method for computing the general
+solutions is given. A particular solution is given by the
+virtual camera approach. A set of image moment fea-
+tures in the virtual camera is used to derive a dynamic
+visual servoing law. Model uncertainty including thrust
+gain and attitude measurement bias is considered in the
+visual servoing control design. The proposed PID con-
+troller is robust to this uncertainty. In addition, the PID
+controller does not require an estimate of depth, which is
+typically needed in classical IBVS. An indoor quadrotor
+platform is used to validate the proposed control. Exper-
+imental results demonstrate improved performance with
+lower mean image and position error. An analysis of roll
+and pitch bias on the virtual camera transformation error
+is provided.
+Disclosure statement
+No potential conflict of interest was reported by the authors.
+References
+Abdessameud, A., & Janabi-Sharifi, F. (2015). Image-based
+tracking control of VTOL unmanned aerial vehicles. Auto-
+matica, 53, 111–119.
+Abdessameud, A., & Tayebi, A. (2010). Global trajectory track-
+ing control of VTOL-UAVs without linear velocity mea-
+surements. Automatica, 46, 1053–1059.
+Azrad, S., Kendoul, F., & Nonami, K. (2010). Visual servoing
+of quadrotor micro-air vehicle using color-based tracking
+algorithm. Journal of System Design and Dynamics, 4, 255–
+268.
+Bouabdallah, S., Murrieri, P., & Siegwart, R. (2004). Design
+and control of an indoor micro quadrotor. In Proceedings
+of the 2004 IEEE International Conference on Robotics and
+Automation (Vol. 5, pp. 4393–4398). New Orleans, LA:
+IEEE.
+Bourquardez, O., Mahony, R., Guenard, N., Chaumette, F.,
+Hamel, T., & Eck, L. (2009). Image-based visual servo
+control of the translation kinematics of a quadrotor
+aerial vehicle. IEEE Transactions on Robotics, 25, 743–
+749.
+Bourquardez, O., Mahony, R., Hamel, T., & Chaumette, F.
+(2006, October). Stability and performance of image based
+visual servo control using first order spherical image
+moments. In Proceedingsof the 2006 IEEE/RSJ International
+Conference on Intelligent Robots and Systems (pp. 4304–
+4309). Beijing: IEEE.
+Castillo, P., Lozano, R., & Dzul, A.E. (2005). Modelling and con-
+trol of mini-flying machines. London: Springer.
+Chaumette, F. (2004). Image moments: A general and useful
+set of features for visual servoing. IEEE Transactions on
+Robotics, 20, 713–723.
+Chaumette, F., & Hutchinson, S. (2006). Visual servo control
+part I: Basic approaches. IEEE Robotics and Automation
+Magazine, 13, 82–90.
+Chaumette, F., & Hutchinson, S. (2007). Visual servo control
+part II: Advanced approaches. IEEE Robotics and Automa-
+tion Magazine, 14, 109–118.
+de Plinval, H., Morin, P., Mouyon, P., & Hamel, T. (2011, May).
+Visual servoing for underactuated VTOL UAVs: A lin-
+ear, homography-based approach. In Proceedingsof the 2011
+IEEE International Conference on Robotics and Automation
+(pp. 3004–3010). Shanghai: IEEE.
+de Plinval, H., Morin, P., Mouyon, P., & Hamel, T. (2013).
+Visual servoing for underactuated VTOL UAVs: A lin-
+ear, homography-based framework. International Journal of
+Robust and Nonlinear Control, 24(16), 2285–2308.
+Espiau, B. (1994). Effect of camera calibration errors on visual
+servoing in robotics. In T. Yoshikawa & F. Miyazaki (Eds.),
+Experimental robotics III (Vol. 200, pp. 182–192). Berlin:
+Springer.
+Fink, G., Xie, H., Lynch, A.F., & Jagersand, M. (2015). Nonlinear
+dynamic image-based visual servoing of a quadrotor. Jour-
+nal of Unmanned Vehicle Systems, 3, 1–21.
+Fraundorfer, F., Heng, L., Honegger, D., Lee, G., Meier, L., Tan-
+skanen, P., & Pollefeys, M. (2012, October). Vision-based
+autonomous mapping and exploration using a quadrotor
+MAV. In Proceedings of the IEEE/RSJ International Con-
+ference on Intelligent Robots and Systems (pp. 4557–4564).
+Vilamoura: IEEE.
+Godbolt, B. (2013). Experimental nonlinear control of a
+helicopter
+unmanned
+aerial
+vehicle
+(UAV)
+(Unpub-
+lished doctoral dissertation). Department of Electrical
+and
+Computer
+Engineering,
+University
+of
+Alberta,
+Edmonton.
+Guenard, N., Hamel, T., & Mahony, R. (2008). A practical visual
+servo control for an unmanned aerial vehicle. IEEE Trans-
+actions on Robotics, 24, 331–340.
+Hamel, T., & Mahony, R. (2002). Visual servoing of an under-
+actuated dynamic rigid-body system: An image-based
+approach. IEEE Transactions on Robotics and Automation,
+18, 187–198.
+Jabbari, H., Oriolo, G., & Bolandi, H. (2014). An adaptive
+scheme for image-based visual servoing of an underactu-
+ated UAV. International Journal of Robotics and Automa-
+tion, 29, 92–104.
+Kendoul, F., Fantoni, I., & Lozano, R. (2008, July). Asymptotic
+stability of hierarchical inner-outer loop-based flight con-
+trollers. In Proceedings of the 2008 IFAC World Congress
+(pp. 1741–1746). Seoul: Elsevier.
+
+INTERNATIONAL JOURNAL OF CONTROL
+907
+Khalil, H.K. (2001). Nonlinear systems (3rd ed.). Upper Saddle
+River, NJ: Prentice-Hall.
+Le Bras, F., Hamel, T., Mahony, R., & Treil, A. (2011). Out-
+put feedback observation and control for visual servoing of
+VTOL UAVs. International Journal of Robust and Nonlinear,
+21, 1008–1030.
+Lee, D., Lim, H., H., K., Kim, Y., & Seong, K. (2012). Adaptive
+image-based visual servoing for an underactuated quadro-
+tor system. Journal of Guidance Control and Dynamics, 35,
+1335–1353.
+Lee, J.M. (2006). Introduction to smooth manifolds. New York,
+NY: Springer.
+Lim, H., Park, J., Lee, D., & Kim, H.J. (2012). Build your own
+quadrotor: Open-source projects on unmanned aerial vehi-
+cles. IEEE Robotics and Automation Magazine, 19, 33–45.
+Ma, Y., Soatto, S., Kosecka, J., & Sastry, S. (2003). An invitation
+to 3D vision: From images to geometric models. New York,
+NY: Springer.
+Mahony, R., & Hamel, T. (2005). Image-based visual servo con-
+trol of aerial robotic systems using linear image features.
+IEEE Transactions on Robotics, 21, 227–239.
+Marino, R., & Tomei, P. (1995). Adaptive observers with arbi-
+trary exponential rate of convergence for nonlinear sys-
+tems. IEEE Transactions on Automatic Control, 40, 1300–
+1304.
+Mejias, L., Saripalli, S., Campoy, P., & Sukhatme, G.S. (2006).
+Visual servoing of an autonomous helicopter in urban areas
+using feature tracking. Journal of Field Robotics, 23, 185–
+199.
+Metni, N., Hamel, T., & Derkx, F. (2005, December.). Visual
+tracking control of aerial robotic systems with adaptive
+depth estimation. In Proceedings of the 44th IEEE Confer-
+ence Decision and Control, and the European Control Con-
+ference (pp. 6078–6084). Seville: IEEE.
+Ozawa, R., & Chaumette, F. (2011, May). Dynamic visual ser-
+voing with image moments for a quadrotor using a virtual
+spring approach. In Proceedings of the 2011 IEEE Interna-
+tional Conference on Roboticsand Automation (pp. 5670–
+5676). Shanghai: IEEE.
+Ozawa, R., & Chaumette, F. (2013). Dynamic visual servoing
+with image moments for an unmanned aerial vehicle using
+a virtual spring approach. Advanced Robotics, 27, 683–
+696.
+PX4. (2014). PX4 Autopilot. Retrieved July 9, 2014, from
+http://pixhawk.org/
+Shakernia, O., Ma, Y., Koo, T.J., & Sastry, S. (1999). Landing an
+unmanned air vehicle: Vision based motion estimation and
+nonlinear control. Asian Journal of Control, 1, 128–145.
+Xie, H., Lynch, A.F., & Jagersand, M. (2014). Dynamic IBVS of
+a rotary wing UAV using line features. Robotica, pp. 1–18,
+available on CJO2014. doi:10.1017/S0263574714002707.
+Appendix A. Procedure to solve first order linear
+homogeneous PDEs
+A system of q < n linear homogeneous PDEs in a depen-
+dent variable f(x1, x2, ..., xn) is defined as
+Gi( f ) =
+n
+
+j=0
+a ji
+∂f
+∂x j
+= 0,
+1 ≤i ≤q
+(A1)
+where Gi, 1 ࣘi ࣘq are vector fields, and aji is function
+of the n independent variables xi, 1 ࣘi ࣘn. According
+to Lee (2006), there exists n −q independent solutions
+for (A1) if the distribution
+D = span{G1, G2, ..., Gq}
+is q dimensional and involutive. The distribution D is
+involutive if for any two vector fields Gi, G j ∈D, their Lie
+bracket [Gi, G j] ∈D. For our application, q = 2 and it
+can be shown that the Lie brackets [G1p, G2p] = 0 where
+Gip are defined in (17), [G1v, G2v] = 0 where Giv are
+defined in (19), and [G1l, G2l] = 0 where Gil are defined
+in (25). Hence, the distributions Dp = span{G1p, G2p},
+Dv = span{G1v, G2v}, Dl = span{G1l, G2l} are involu-
+tive. We also say the PDEs are complete for the special
+case where the Lie brackets are zero. Hence, there exist
+two independent solutions to PDEs (17), (25), and three
+independent solutions to (19).
+Next, we outline the method to solve (A1) which is
+assumed complete, i.e., Gi, 1 ࣘi ࣘq are independent and
+the Lie bracket [Gi, Gj] = 0, 1 ࣘi, j ࣘq. If y2, ..., yn are
+independent integrals of the Gk(f) = 0, and choose a func-
+tion y1 such that y1, y2, …, yn define new independent
+variables and Gk(f) = 0, for some k, reduces to ࢚f/࢚y1 =
+0. The PDEs expressed in the y-coordinates is
+Li( f ) =
+⎧
+⎪⎪⎪⎨
+⎪⎪⎪⎩
+∂f
+∂y1
+= 0,
+i = k
+n
+
+j=2
+b ji
+∂f
+∂y j
+= 0, i ̸= k
+(A2)
+where bji is a function of the n −1 independent variables
+y2, y3,...,yn. Hence, Li(f) = 0, i ࣔk forms a complete sys-
+tem of q −1 equations and n −1 independent variables.
+By repeating this procedure, the system can be reduced
+to one equation in n −q + 1 independent variables. The
+general solution of this equation is an arbitrary smooth
+function of n −q independent solutions. We illustrate
+this procedure by solving (17). It can be easily obtained
+that the general integral of Ga
+1p(pa
+i ) = 0 is an arbitrary
+smooth function of (p2sφ + λcφ)/p1, (p2cφ −λsφ)/p1, and
+θ. We define a new set of independent variables p11 =
+(p2sφ + λcφ)/p1, p21 = (p2cφ −λsφ)/p1, φ, θ. The PDEs
+(17) become
+∂pa
+i1
+∂φ = 0
+(A3a)
+∂pa
+i1
+∂p11
+
+p2
+11 + 1
+	
++ ∂pa
+i1
+∂p21
+p11p21 + ∂pa
+i1
+∂θ = 0
+(A3b)
+
+908
+H. XIE AND A. F. LYNCH
+where
+the
+new
+dependent
+variable
+is
+denoted
+pa
+i1(p11, p21, φ, θ). Hence, we can conclude that pa
+i1 is not
+a function of φ. The PDE (A3b) has three independent
+variables p11, p21, and θ. The general integral of (A3b)
+is an arbitrary smooth function of (sθ −p11cθ)/p21 and
+(cθ + p11sθ)/p21. Hence, expressed in the original vari-
+ables p1, p2, φ, and θ, the general integral of (17) is
+κ2
+sφcθ p2 + λcφcθ −p1sθ
+λsφ −p2cφ
+, −sφsθ p2 + cφsθλ + p1cθ
+λsφ −p2cφ
+
+

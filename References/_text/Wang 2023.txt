@@ -1,0 +1,467 @@
+PROCEEDINGS OF SPIE
+SPIEDigitalLibrary.org/conference-proceedings-of-spie
+Inspection UAV landing navigation
+system by fusing UWB information
+and height data
+Zongyang Wang, Yingchun Zhong, Heer Huang, Zhiyong
+Luo, Huiqing He, et al.
+Zongyang Wang, Yingchun Zhong, Heer Huang, Zhiyong Luo, Huiqing He, Bo
+Wang, "Inspection UAV landing navigation system by fusing UWB information
+and height data," Proc. SPIE 12462, Third International Symposium on
+Computer Engineering and Intelligent Communications (ISCEIC 2022),
+124620J (2 February 2023); doi: 10.1117/12.2661165
+Event: International Symposium on Computer Engineering and Intelligent
+Communications (ISCEIC 2022), 2022, Xi'an, China
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024  Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+Inspection UAV landing navigation system by fusing UWB 
+information and height Data 
+ 
+Zongyang Wang*a, Yingchun Zhonga, Heer Huangb, Zhiyong Luoc, Huiqing Hed, Bo Wange 
+aSchool of Automation, Guangdong University of Technology, Guangzhou China 510006; 
+ bCollege of Engineering, South China Agricultural University, Guangzhou China 510642; 
+cGuangzhou Ufly Technology Co., Ltd, Guangzhou China 510006;  
+dShangrao power supply branch of State Grid Jiangxi Electric Power Co., Ltd, Shangrao China 
+334000;  
+eDepartment of Electro-mechanical Engineering, Guangdong Machinery Technician College, 
+Guangzhou China 510450 
+* Corresponding author: 597042527@qq.com 
+ABSTRACT   
+When the Unmanned Aerial Vehicle (UAV) is guided by the navigation system that only relies on Ultra Wide Band 
+(UWB), the dynamic error of UAV is too large to avoid the obstacles. Additionally, the navigation system needs eight 
+positioning base stations on ground, which is too expensive to widely use. This paper proposes a navigation system 
+which fuses UWB information and height data in order to reduce the dynamic error and number of positioning stations. 
+First, a height-finding radar is mounted on the UAV to obtain height data; second, a new positioning algorithm by fusing 
+UWB information and height data is designed, and only three UWB ground base stations are needed for positioning. 
+The experimental results show that this navigation system is able to guide the inspection UAV to land precisely at the 
+landing area with a diameter of 60cm, at the same time, compared with the navigation system only by UWB, the average 
+dynamic error is reduced by 10%. 
+Keywords: UAV, UWB, height, landing navigation system 
+ 
+1. INTRODUCTION  
+With the rapid development of power system in China, transmission line inspection is facing the problems such as long 
+operation cycle and poor line environment, and the traditional manual inspection is confronting enormous challenges[1]. 
+With the advantages of low cost and easy operation,the Unmanned Aerial Vehicle(UAV) fully autonomous inspection is 
+playing an increasingly important role in the line inspection work of power companies[2]. In order to meet the needs of 
+high-frequency wild inspection, UAVs are required to land at the wild distributed airports accurately and reliably. 
+Presently the UAV can be guided to land at the wild distributed airports by the Global Positioning System(GPS), image 
+recognition and Ultra Wide Band(UWB). The main problems with the guidance by GPS are that the accuracy of the 
+common GPS module can only reach 2m, and there may be signal interference[3,4]. C.G. Peng[5] Proposed a UAV 
+autonomous landing method based on vision . This method mainly relies on the camera, which is difficult to apply in the 
+absence of light and poor light. Q. L. Tian[6] and B.Y. YANG[7] proposed to apply the UWB to UAV positioning. 
+Experiments show that guiding the UAV by UWB is not restricted by environment or light, but the dynamic error is too 
+large to avoid the obstacles during the landing process. Moreover, there are usually eight UWB ground base stations 
+needed to make the  system more reliable, but it also makes the system more complicated and expensive. 
+In order to reduce the dynamic error and number of positioning base stations in the navigation  system only by UWB, 
+this paper proposes a navigation system which fuses UWB information and height data. In addition, experiments are 
+carried out to verify the feasibility of this system. 
+Third International Symposium on Computer Engineering and Intelligent Communications (ISCEIC 2022), 
+edited by Xianye Ben, Proc. of SPIE Vol. 12462, 124620J · © The Authors. Published under a
+Creative Commons Attribution CC-BY 3.0 License · doi: 10.1117/12.2661165
+Proc. of SPIE Vol. 12462  124620J-1
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+2. STUDIES ON NAVIGATION SYSTEM 
+2.1 General framework 
+The hardware of the UAV autonomous landing navigation system includes inspection UAV, airborne radar and UWB 
+communication positioning modules, etc. The framework is presented in Figure 1. For this navigation system, there are 
+three parts of its work: positioning data acquisition, flight control and UAV landing. 
+During the landing process, the three UWB base stations on the ground communicate with the airborne UWB tag 
+through wireless carriers, and the distances between the tag and each base station are measured[8]. The radar is mounted 
+on the UAV through the serial port, from which the height data can be obtained. After the data collected by the flight 
+control, the three-dimensional coordinate of the UAV can be calculated according to the three-base station positioning 
+algorithm. The flight control outputs different PWM signals based on the coordinate information and PID control 
+algorithm to adjust the speed of the motor, so as to realize the normal flight and attitude adjustment of the inspection 
+UAV. And then, the UAV is guided to approach the predetermined position. After gradual adjustment, the UAV finally 
+lands at the distributed airport. The whole process constitutes a complete inspection UAV landing navigation  system. 
+ 
+Figure 1. Navigation system framework 
+2.2 Positioning Algorithm 
+The traditional UWB positioning algorithm only relies on the distance measurement results of the UWB modules. Due to 
+the error of the distance measurement, it also has a great influence on the positioning result. In order to reduce the error 
+caused by the positioning completely dependent on the UWB, this paper proposes to fuse the  UWB information and 
+height data for positioning. 
+When the positions of the three UWB base stations are known, the distances between the airborne tag and the three base 
+stations can also be known. The three-dimensional coordinate can be calculated by fusing the distance data and the 
+height information of the radar. The schematic diagram of the three-base station positioning algorithm is shown in Figure 
+2. 
+Proc. of SPIE Vol. 12462  124620J-2
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+A, B, and C respectively represent the locations of the three base stations, and D represents the location of the UAV 
+loaded with the UWB tag. The base station A is placed at the origin, the base station B is placed somewhere on the x-
+axis, and the base station C is placed somewhere on the y-axis. 
+ 
+Figure 2. Schematic diagram of  three-base station positioning algorithm 
+If there are two points in the space, the coordinates are 
+)
+,
+,
+(
+z
+y
+x
+and 
+)
+,
+,
+(
+c
+b
+a
+, and the distance between the two points 
+is R . The relationship between R  and the coordinates of these two points can be expressed by formula (1). 
+2
+2
+2
+2
+)
+(
+)
+(
+)
+(
+R
+c
+z
+b
+y
+a
+x
+
+
+
+
+
+
+                                           （1） 
+Assuming that the coordinate of A is
+)
+0,0,0
+(
+, and the distance between A and the tag is 
+1
+R ; the coordinate of B is 
+
+
+0,0,
+1x
+, and the distance between B and  the tag is 
+2
+R ; the coordinate of C is 
+
+0,
+,0
+1y
+, and the distance between C 
+and  the tag is 
+3
+R ; the coordinate of the tag to be solved is 
+z
+y
+x
+,
+,
+. According to the formula （1），there are: 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+2
+3
+2
+2
+1
+2
+2
+2
+2
+2
+2
+1
+2
+1
+2
+2
+2
+)
+(
+)
+(
+R
+z
+y
+y
+x
+R
+z
+y
+x
+x
+R
+z
+y
+x
+                                                  （2） 
+The height measured by radar is h，there is : 
+h
+z 
+                                                                                      (3) 
+Solving formula (2) and (3), we can obtain, 
+
+
+
+
+
+
+
+
+
+
+
+
+h
+z
+y
+y
+R
+R
+y
+x
+x
+R
+R
+x
+1
+2
+1
+2
+3
+2
+1
+1
+2
+1
+2
+2
+2
+1
+2
+/)
+(
+2
+/)
+(
+                                                                (4) 
+3. EXPERIMENTS AND RESULT ANALYSIS 
+3.1 Experimental Configuration and Process 
+The experiments were performed with a 30cm diameter, "X"-shaped quadrotor UAV. The radar and UWB tag are 
+mounted on the UAV through the serial port. The layout of the three UWB ground base stations is shown in Figure 3, 
+which is a right-angled triangle with a right-angled side of 600cm. 
+Proc. of SPIE Vol. 12462  124620J-3
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+The experiments are carried out in poor light (Guangzhou, 19:00-20:00). The UAV takes twelve preset position points as 
+the starting points, and all starting heights are 500cm. The landing points for all experiments are
+)
+0,
+300
+,
+300
+(
+cm
+cm
+ . 
+A piece of graph paper with a diameter of 60cm is placed at the landing point, and it is used as the landing area to record 
+the landing errors. After the flight controller receives the landing signal from the upper computer, the UAV adjusts the x-
+axis and y-axis directions at the same time to land at the landing point safely and accurately. 
+ 
+Figure 3. Layout of UWB ground base stations (unit: cm) 
+The experimental steps are as follows. 
+a) Plug in all UWB base stations and place them in corresponding positions. Observe the data to make sure that each 
+base station is working properly. 
+b) Fly the UAV to the starting point of landing, and after the UAV is stabilized in the air, click on the upper computer 
+to land. 
+c) The experiment is repeated three times for each starting point, and do a total of 36 landing experiments. 
+d) Arrange the layout that uses eight UWB ground base stations, and the UAV is guided to land by the navigation 
+system that only relies on UWB. Repeat the above a-c, comparing with this system. 
+e) Use the GPS and optical flow module to guide the UAV to land respectively, comparing with this system. 
+3.2 Results and Analysis 
+3.2.1 Results and Analysis of Dynamic Errors 
+In order to observe the dynamic errors of the UAV during the landing process, we take the flight experiment with the 
+starting point 
+)
+500
+,
+1300
+,
+1300
+(
+cm
+cm
+cm
+ as an example, and record the position data during the landing process. We 
+can get the landing flight trajectory diagrams of the navigation system only relying on UWB and the navigation system 
+in this paper based on the position data. The flight trajectory diagrams of the two  navigation systems are shown in 
+Figure 4. 
+200
+400
+600
+800
+1000
+1200
+1400
+X(cm)
+200
+400
+600
+800
+1000
+1200
+1400
+actual flight trajectory
+theoretical flight trajectory
+flight direction
+ 
+(a) Navigation system only relying on UWB                            (b) Navigation system in this paper                           
+Figure 4. Landing flight trajectories of two navigation systems 
+Proc. of SPIE Vol. 12462  124620J-4
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+Calculate the dynamic errors according to the formula (5), and the results are shown in Table 1. For the navigation 
+system only relying on UWB, the average dynamic error is 16%, and the maximum is 37%; for the navigation system in 
+this paper, the average dynamic error is 10%, and the maximum is 12%.  
+%
+100
+|
+|
+
+
+
+i
+i
+i
+i
+x
+y
+x
+e
+                                                                    (5) 
+where 
+ix  and 
+iy  are the x-axis coordinate and the y-axis coordinate of a certain point in the flight trajectory.  
+Table 1. Dynamic errors of two systems 
+Navigation system 
+ Average 
+dynamic error 
+ Maximum 
+dynamic error 
+The navigation system 
+only relying on UWB 
+16% 
+37% 
+The navigation system in 
+this paper 
+6% 
+12% 
+Therefore, compared with the navigation system only relying on UWB, the average dynamic error of the navigation 
+system in this paper is reduced by 10%, and the maximum dynamic error is reduced by 25%. 
+3.2.2 Results and Analysis of Dynamic Errors 
+After the UAV has landed on the ground, from a top view, if the UWB tag on the UAV and the origin of the graph paper 
+coincide, the landing error is 0, and the offset between the two is regarded as the landing static error. The results are 
+shown in Table 2. While the optical flow module was used to guide the UAV to land in poor light, the UAV was unable 
+to land and swayed in the air, so the landing error about optical flow module was not counted. 
+Table 2. Landing static errors of two systems 
+Navigation system 
+Average landing 
+static error(cm) 
+Maximum landing 
+static error(cm) 
+The navigation system by GPS 
+219 
+260 
+The navigation system in this paper 
+18 
+26 
+Compared with the navigation system by GPS, the average landing Static error of the navigation system in this paper is 
+reduced by 201cm, and the maximum dynamic error is reduced by 234cm. 
+Count the landing positions of each flight experiment on the graph paper to visually see the distribution of the landing 
+static errors of the navigation system in this paper. It can be seen from Figure 5 that the UAV can land in the landing 
+area with a diameter of 60 cm  in each flight experiment. 
+ 
+Figure 5. Distribution map of landing static errors of the navigation system in this paper 
+Proc. of SPIE Vol. 12462  124620J-5
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+ 
+ 
+ 
+ 
+4. CONCLUSION 
+Based on the existing UAV navigation system only relying on UWB, this essay has presented a new navigation system, 
+which fuses UWB information and height data. Experiments have also been performed to demonstrated the new 
+navigation system. Two significant findings can be drawn here. The first finding is that the new landing system is 
+capable of applying three UWB base stations to provide landing navigation, while reducing the number of base stations 
+required. The second finding is that the new landing system is able to navigate the inspection UAV to land precisely at 
+the designated destination with a diameter of 60cm, at the same time, the dynamic error is less than 12%. It can be 
+concluded that our new UAV landing navigation system contributes significantly to the UAV fully autonomous 
+inspection. 
+REFERENCES 
+[1] X. R. Miao, Z. Y. Liu, and Q. C. Yan.  “Review on UAV intelligent technology for transmission.” Journal of 
+Fuzhou University (Natural Science Edition), 2020, 48(02): 198-209. 
+[2] H. Wu, J. Y. Li, C. H. Hu, C. L. Yu. “A Fault Diagnosis System Based on Case Decision Technology for UAV 
+Inspection of Power Lines.” IOP Conference Series: Earth and Environmental Science, 2021, 32(4): 453-459. 
+[3] X. H. Wu, Q. F. Guo, J. Zhang. “Application of Double GPS Multi-rotor UAV in the Investigation of High 
+Slope Perilous Rock-Mass in An Open Pit Iron Mine.” Geotechnical and geological engineering, 2020, 38(1): 
+71-78. 
+[4] C. H. Papk, S. H. Papk. “Directional Axis Estimation including Wind Velocity for Fixed Wing UAV.” 
+International Journal of Aeronautical and Space Sciences, 2021, 22(4): 995-1003.  
+[5] C. G. Peng. “UAV line inspection command system based on image recognition technology.” Electronic Design 
+Engineering, 2021, 29(4): 53-56, 61. 
+[6] Q. L. Tian, K. I. Wang, Z. Salcic. “An INS and UWB Fusion Approach With Adaptive Ranging Error 
+Mitigation for Pedestrian Tracking.” IEEE sensors journal, 2020, 20(8): 4372-4381.  
+[7] B. Y. Yang, E. F. Yang, L. J. Yu. “Vision and UWB-Based Anchor Self-Localisation System for UAV in GPS-
+Denied Environment.” Journal of Physics: Conference Series, 2021, 22(1):342-350.  
+[8] X. F. Yang, J. Wang, D. P. Song, B. Z. Feng, Y He. “A Novel NLOS Error Compensation Method Based IMU 
+for UWB Indoor Positioning System.” IEEE sensors journal, 2021, 21(9): 11203-11212. 
+Proc. of SPIE Vol. 12462  124620J-6
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+

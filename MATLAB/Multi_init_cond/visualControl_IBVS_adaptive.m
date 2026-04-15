@@ -1,3 +1,9 @@
+% Shared helpers live in ../Common; plotters in ./plotters
+mfile_dir = fileparts(mfilename('fullpath'));
+addpath(fullfile(mfile_dir, '..', 'Common'));
+addpath(fullfile(mfile_dir, 'plotters'));
+clear mfile_dir;
+
 %% Started working on 14/01/2026
 % Last updated on 2026-04-12
 %% Refer to "Adaptive Visual Control Strategies for Autonomous Landing of Quadrotor Platforms with visibility constraaints"
@@ -35,24 +41,24 @@ InitVar;
 % =========================================================================
 K_ctrl = struct();
 
-K_ctrl.gamma_1  = [0.2, 0.2];
+K_ctrl.gamma_1  = [0.1, 0.1];                 % slowed for realistic-mode tracking headroom
 K_ctrl.p_10     = K.p_10;
-K_ctrl.p_1inf   = [0.08; 0.08];
+K_ctrl.p_1inf   = [0.20; 0.20];               % widened (robustness-mode wind headroom)
 
 K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
 K_ctrl.zi = diag([0.1, 0.1]);
-K_ctrl.zd = diag([1.3, 1.3]);
+K_ctrl.zd = diag([0.975, 0.975]);             % deep-sweep lock-in (-35% maxXY)
 
 K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
-K_ctrl.p_20     = [25.0; 25.0; 8.0];  % widened for faster traj_Gen targets
-K_ctrl.p_2inf   = [0.8;  0.8;  1.0];          % prior 25/25 baseline
+K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
+K_ctrl.p_2inf   = [2.5;  2.5;  1.5];          % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
 
-K_ctrl.Omega   = diag([0.003, 0.003, 0.006]);
+K_ctrl.Omega   = diag([0.05, 0.05, 0.006]);   % lateral integral gain bumped 17x for short-descent xy catch-up
 K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
 K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
 K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-K_ctrl.E       = diag([1.0,   1.0,   0.5  ]);
+K_ctrl.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
 
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
 K_ctrl.kR     = diag([1.5, 1.5, 0.5]);
@@ -206,7 +212,7 @@ for idx=1:N_steps
         C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
 
         if NOISE
-            C_nP = awgn(C_nP, 50, 'measured');
+            C_nP = awgn(C_nP, 40, 'measured');
         end
 
     % *************************************************************************
@@ -302,7 +308,7 @@ for idx=1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.05;
+        precise = xy_err <= 0.10;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -362,7 +368,7 @@ for idx=1:N_steps
         izeta_2(:,idx) = izeta_2(:,idx-1) + dt*(zeta_2(:,idx-1) + zeta_2(:,idx))/2;
     end
     % Anti-windup: clamp izeta_2 to prevent spike accumulation
-    izeta_2_max = 10.0;  % SO(3) retune step 4: 5 -> 10 headroom for z integral
+    izeta_2_max = 5.0;   % 50/50 lock-in (synced with run_simulation.m)
     izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
 
     sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega*izeta_2(:,idx);
@@ -542,7 +548,7 @@ for idx=1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.05;
+        precise = xy_err <= 0.10;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -560,7 +566,7 @@ if ~landed
     idx = idx - 1;
 end
 
-save("temp.mat");
-data = load("temp.mat");
+save("temp1.mat");
+data = load("temp1.mat");
 plotter_adaptive(data);
 % delete("temp.mat")

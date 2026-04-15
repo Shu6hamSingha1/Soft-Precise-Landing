@@ -1,0 +1,175 @@
+\documentclass{IEEEtaes}
+
+\usepackage{color,array,amsthm}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[nice]{nicefrac}
+\usepackage[center]{caption}
+\usepackage{subcaption}
+\bibliographystyle{IEEEtaes.bst}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{mathtools}
+
+\jvol{XX}
+\jnum{XX}
+\jmonth{XXXXX}
+\paper{1234567}
+\pubyear{2020}
+\doiinfo{TAES.2020.Doi Number}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\setcounter{page}{1}
+\newtheorem{remark}{Remark}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}{Definition}
+%% \setcounter{secnumdepth}{0}
+
+\begin{document}
+
+\title{Performance-Constrained Adaptive Sliding Mode Control for Guaranteed Soft Precise Landing Using Optic Flow} 
+
+\author{SHUBHAM SINGHAL}
+\member{Graduate Student Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India} 
+
+\author{SURESH SUNDARAM}
+\member{Senior Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India} 
+
+\author{JISHNU KESHAVAN}
+\member{Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India}
+
+\receiveddate{Manuscript received XXXXX 00, 0000; revised XXXXX 00, 0000; accepted XXXXX 00, 0000.\\
+This work was supported in part by the SERB Core Research Grant CRG/2021/006872 and the Space Technology Cell Grant STC/P-486.}
+%% \accepteddate{XXXXX XX XXXX}
+%% \publisheddate{XXXXX XX XXXX}
+
+\corresp{Corresponding author: Shubham Singhal}
+
+\authoraddress{Shubham Singhal, Suresh Sundaram and Jishnu Keshavan are with the Robert Bosch Centre for Cyber-Physical Systems, Indian Institute of Science, Bengaluru, Karnataka 560012, India (e-mail: \href{mailto:shubhamsing2@iisc.ac.in}{shubhamsing2@iisc.ac.in}; \href{mailto:vssuresh@iisc.ac.in}{vssuresh@iisc.ac.in}; \href{mailto:kjishnu@iisc.ac.in}{kjishnu@iisc.ac.in}).
+Suresh Sundaram is also with the Department of Aerospace Engineering, Indian Institute of Science, Bengaluru, Karnataka 560012, India.
+Jishnu Keshavan is also with the Department of Mechanical Engineering, Indian Institute of Science, Bengaluru, Karnataka 560012, India.}
+
+% \editor{Mentions of supplemental materials and animal/human rights statements can be included here.}
+\supplementary{The experimental results can be found in this video: \url{https://youtu.be/1wcuQ9zRay0}.} 
+
+\markboth{SINGHAL ET AL.}{SLIDING MODE CONTROL FOR GUARANTEED SOFT LANDING USING OPTIC FLOW}
+\maketitle
+
+\begin{abstract}This paper proposes a \emph{scale-independent} adaptive control strategy that allows a quadrotor to rely solely on image output to achieve a soft precise landing on mobile platforms. This scheme proposes an adaptive sliding mode control strategy with theoretical stability guarantees that incorporates performance and input constraints to achieve desired transient and steady-state performance in the presence of uncertainty arising from wind gusts, ground effects, and possible actuator saturation. In particular, detailed Lyapunov stability analysis is used to demonstrate that the optic flow error converges exponentially to a small prescribed bound in steady-state, which is shown to be the key to achieving a guaranteed soft touchdown. Extensive experimental results substantiate the efficacy of the proposed strategy using a micro-quadrotor platform in a controlled environment. Moreover, a laterally stabilized soft landing with tailored descent behavior is also shown using a mini-quadrotor platform in real-world (unstructured) settings in the presence of wind gusts. Performance comparison studies with an image-based fixed-gain proportional-integral control strategy and an pose-based  control strategy are also included, demonstrating the superior performance of the proposed strategy in comparison with these alternative designs.
+\end{abstract}
+
+\begin{IEEEkeywords}Optic flow regulation, adaptive sliding mode control, guaranteed precise landing, visual guidance, prescribed performance constraint
+\end{IEEEkeywords}
+
+\section*{Nomenclature}
+
+\begin{tabular}{@{}l @{\quad=\quad} l@{}}
+$t$ & time, s \\
+$m$ & mass, kg \\
+$\boldsymbol{r}$ & radial position vector, m \\
+$\boldsymbol{v}$ & linear velocity vector, m/s \\
+$\boldsymbol{\omega}$ & angular velocity vector, rad/s \\
+$\boldsymbol{F}$ & force vector, N \\
+$J$ & moment of inertia matrix, kg m$^2$ \\
+$\boldsymbol{\tau}$ & torque vector, N m \\
+$T$ & total thrust of the rotors, N \\
+$\hat{\boldsymbol{r}}$ & image point \\
+$\boldsymbol{s}$ & normalized position vector, rad \\
+$\alpha$ & image orientation, rad \\
+$\boldsymbol{h}$ & optical flow, rad/s \\
+$\boldsymbol{q}$ & system output vector \\
+$\boldsymbol{u}$ & system input vector \\
+$\beta$ & uncertainty parameter \\
+$\boldsymbol{c}$ & vector representing known system dynamics \\
+$\boldsymbol{d}$ & vector representing unknown system dynamics \\
+$\boldsymbol{p}$ & performance function vector \\
+$V$ & Lyapunov function
+\end{tabular}
+
+\section{INTRODUCTION}
+U{\scshape nmannned} Aerial Vehicles (UAVs) have emerged as indispensable assets across diverse mission profiles, ranging from defense and disaster relief to logistics and scientific exploration. A critical capability underpinning these applications is the ability to execute soft, precise landings on designated targets, which may themselves be mobile platforms such as ships, vehicles, or ground robots. The need for such landings arises from the dual imperatives of mission reliability and system safety: imprecise or hard landings risk damage to the UAV, payload, or target infrastructure, thereby compromising operational success and increasing maintenance costs.
+
+Autonomous landing of UAVs has been extensively studied, with solutions broadly categorized into position-based and image-based visual servoing (PBVS and IBVS) frameworks. PBVS approaches rely on explicit 3D pose reconstruction using metric scale information obtained from sensors such as LiDAR, stereo cameras, or GPS \cite{salehi2021, cho2022}. While these methods provide accurate pose estimates under ideal conditions, their performance degrades significantly in GPS-denied environments and in the presence of sensor noise, calibration errors, or scale drift.
+
+In contrast, Image-Based Visual Servoing (IBVS) methods directly utilize image features to synthesize control inputs, thereby eliminating the need for explicit 3D reconstruction \cite{chaumette2004, chaumette2006}. Foundational works have established the IBVS framework using the interaction matrix to relate image feature dynamics to camera motion \cite{chaumette2004}. Extensions such as moment-based visual servoing further improve robustness to feature extraction and tracking uncertainties \cite{tahri2005}. However, classical IBVS approaches are primarily developed for robotic manipulators and kinematic systems, and their direct application to UAVs introduces significant challenges due to highly nonlinear dynamics and underactuation.
+
+Several studies have extended IBVS to aerial platforms \cite{jabbari2014, xie2016_2, xie2016, xie2016_1}. These works incorporate UAV dynamics into the visual servoing framework and demonstrate successful landing and tracking performance. Nevertheless, they often rely on implicit or explicit scale information and assume ideal sensing conditions. Moreover, the control designs in these approaches typically lack robustness against external disturbances, actuator saturation, and model uncertainties, which are critical during the terminal landing phase.
+
+More recent works have explored adaptive and learning-based approaches to enhance landing performance \cite{chen2025, bouazza2025, kamath2026, zhang2026}. These methods aim to improve robustness and adaptability under uncertain environments. However, they generally depend on computationally intensive perception pipelines or learning models and often lack rigorous theoretical guarantees for stability and convergence. In particular, the presence of actuator constraints, ground effects, and wind disturbances is either neglected or only partially addressed.
+
+A fundamental limitation across existing visual servoing approaches is the dependence on metric scale or depth estimation, which is inherently ambiguous in monocular vision systems. While some works attempt to mitigate this issue through sensor fusion or estimation techniques, these solutions introduce additional complexity and are sensitive to noise and calibration errors. Furthermore, most existing methods do not explicitly enforce performance constraints required for soft landing, such as bounded velocity near touchdown and avoidance of rebound.
+
+In summary, despite significant progress in visual servoing-based UAV landing, there remains a lack of control strategies that simultaneously achieve scale independence, robustness to uncertainties and disturbances, and rigorous stability guarantees under actuator constraints (refer \textit{Table} \ref{tab:comparison}). This gap motivates the development of the proposed performance-constrained adaptive control framework.
+
+The main contributions of this paper are summarized as follows:
+\begin{enumerate} 
+    \item[(a)] Unlike conventional IBVS and PBVS approaches that rely on metric scale or depth estimation, the proposed method leverages optic flow as the primary feedback variable. Since optic flow inherently encodes the ratio of velocity to distance, it eliminates the need for explicit scale recovery, thereby avoiding issues related to scale ambiguity, calibration errors, and sensor noise.
+    \item[(b)] The proposed Performance-constrained Leakage-type Adaptive Sliding Mode Control (PLASMC) framework explicitly accounts for system uncertainties, including exogenous disturbances (e.g., wind gusts), ground effects, actuator faults, and input saturation. In contrast to existing IBVS-based UAV controllers, which are predominantly designed under idealized assumptions, the proposed approach incorporates these practical nonlinearities directly into the control design.
+    \item[(c)] The control law is synthesized within a Lyapunov-based framework that guarantees global exponential convergence of the optic flow error to a predefined small neighborhood around the origin. The integration of performance constraints ensures that the transient and steady-state behavior of the system satisfies the functional requirements of soft landing, including bounded descent velocity and smooth touchdown. 
+    \item[(d)] The adaptive mechanism does not require prior knowledge of the upper bounds of system uncertainties, thereby enhancing practical deployability. Furthermore, the leakage-type adaptation mitigates parameter drift and ensures boundedness of all closed-loop signals.
+\end{enumerate}
+Collectively, these features enable the proposed approach to achieve robust, scale-free, and constraint-aware control for soft landing, which is not simultaneously addressed in existing literature.
+
+The rest of the paper is structured as follows. Section \ref{background: section} presents the mathematical description of the optic flow-guided soft landing challenge for quadrotor UAVs, and Section \ref{control strategy: section} outlines the control design and associated stability analysis for regulation of optical flow induced by vertical motion. The details of the experimental setup and the experimental results, validating the performance and robustness of the proposed control strategy, are provided in Section \ref{experimentation: section}. Finally, Section \ref{conclusion: section} presents the conclusions of this study.
+
+\begin{table*}[!t]
+\centering
+\caption{Comparison of Visual Servoing-Based UAV Landing Approaches}
+\begin{tabular}{lccccc}
+\hline\hline
+\textbf{Reference} & \textbf{Scale-Free} & \textbf{Robustness} & \textbf{Disturbance Handling} & \textbf{Actuator Constraints} & \textbf{Stability Guarantee} \\
+\hline
+Jabbari \cite{jabbari2014} & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+Xie \cite{xie2016, xie2016_1, xie2016_2} & $\times$ & $\times$ & $\times$ & $\times$ & $\times$ \\
+Salehi \cite{salehi2021} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+Cho \cite{cho2022} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+Chen \cite{chen2025} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+Bouazza \cite{bouazza2025} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+Kamath \cite{kamath2026} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+Zhang \cite{zhang2026} & $\times$ & \checkmark & \checkmark & $\times$ & $\times$ \\
+\textbf{Proposed} & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+\hline\hline
+\end{tabular}
+\label{tab:comparison}
+\end{table*}
+
+\input{control_formulation}
+
+\section{CONCLUSION}
+\label{conclusion: section}
+This study proposes the development of a novel optic flow-based landing controller designed to achieve soft landing on stationary surfaces using a robust PLASMC strategy. 
+A low-complexity visual processing technique leveraging an innovative feature-agnostic optic flow estimator is used to provide robust optic flow estimates.
+Being robust against model uncertainties arising from noisy visual data and low frame rate, this technique is highly effective with a compact, cost-efficient monocular camera. 
+The key to achieving the functional requirements for soft landing using optic flow is to ensure the convergence and boundedness of the optic flow error to a small bound around the origin. 
+Laboratory tests conducted using a micro-UAV platform substantiate the efficacy of the proposed PLASMC strategy in achieving this objective while meeting the physical constraints of the cost-efficient UAV platform.
+Moreover, reducing the initial altitude or reversing the initial vertical velocity has no adverse impact on the landing performance of the PLASMC strategy.
+On the contrary, the optic flow-based fixed-gain control strategy fails to efficiently handle the nonlinear landing dynamics, leading to unpredictable and potentially dangerous landing behavior.
+Field tests further demonstrate laterally stabilized soft landing with a mini-UAV platform in the presence of system uncertainties that could otherwise cause unbounded behavior in the highly nonlinear landing dynamics, especially near the ground.
+The experimental results show that the PLASMC strategy achieves soft (yet aggressive) landing with attendant reduction in the flight time by at least 30 \% compared to the nominal descent behavior.
+The performance comparison with the altitude-based vertical velocity control strategy highlights the importance of adopting the optic flow-based control strategy for the autonomous soft landing problem.
+The computational analysis identifies optic flow estimation rates as the primary bottleneck in achieving higher loop-closure rates potentially leading to further improvement in closed-loop performance of the proposed scheme. 
+Future research will focus on extending this laterally stabilized landing strategy to moving platforms.
+Moreover, the fixed exponential decay of the performance function can be replaced with a state-dependent or adaptive profile to dynamically adjust the convergence rate of the optic flow error under varying disturbances.
+
+\bibliography{IEEEabrv, bibliography}
+
+\begin{IEEEbiography}{Shubham Singhal}{\space}(Graduate Student Member, IEEE) received the B.Tech. degree in mechanical engineering from the Delhi Technological University, Delhi, India, in 2017.  He is currently working toward a Ph.D. degree in cyber-physical systems with the Indian Institute of Science, Bengaluru, Karnataka, India.
+
+From 2017 to 2021, he was a Mechanical Design Engineer at Larsen \& Toubro Limited, Bengaluru, Karnataka, India. His current research interests include robust control, adaptive non-linear control, and their applications to unmanned aerial vehicles.
+\end{IEEEbiography}%
+
+\begin{IEEEbiography}{Suresh Sundaram}(Senior Member, IEEE) received the Ph.D. degree in aerospace engineering from the Indian Institute of Science, Bengaluru, Karnataka, India, in 2005.
+
+He is currently an Associate Professor with the Department of Aerospace Engineering and the Robert Bosch Centre for Cyber-Physical Systems at Indian Institute of Science, Bengaluru, Karnataka, India. From 2010 to 2018, he was an Associate Professor at the School of Computer Science and Engineering at Nanyang Technological University, Singapore. His research interests include flight control, unmanned aerial vehicle design, machine learning, optimization, and computer vision.
+\end{IEEEbiography}
+
+\begin{IEEEbiography}{Jishnu Keshavan} (Member, IEEE)  received the B.Tech. degree in aerospace engineering from the Indian Institute of Technology Bombay, Mumbai, India, in 2004, and the M.S. and Ph.D. degrees in aerospace engineering from the University of Maryland at College Park, College Park, MD, USA, in 2007 and 2012, respectively.
+
+He is an Assistant Professor with the Department of Mechanical Engineering and the Robert Bosch Centre for Cyber-Physical Systems at Indian Institute of Science, Bengaluru, Karnataka, India. His research interests are broadly in the areas of dynamical systems theory, data-driven nonlinear dynamics and control, and autonomous vision.
+\end{IEEEbiography}
+\end{document}

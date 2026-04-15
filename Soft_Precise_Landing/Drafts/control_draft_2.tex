@@ -1,0 +1,690 @@
+\documentclass[lettersize,journal]{IEEEtran} 
+\usepackage[colorlinks=true]{hyperref} 
+% \usepackage{orcidlink} 
+\usepackage[english]{babel} 
+\usepackage{graphicx} 
+% \graphicspath{{ {./images/} }} 
+\usepackage{amsmath,amsfonts}
+\usepackage{amssymb} 
+\usepackage{subcaption} 
+\usepackage{cite}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage{mathtools}
+% \usepackage[compact]{titlesec} 
+% \usepackage{ragged2e}
+% \AtBeginDocument{
+% \setlength\abovedisplayskip{3pt}  
+% \setlength\belowdisplayskip{3pt}} 
+% \setlength{\textfloatsep}{1pt} 
+% \usepackage[font=small]{caption}
+% \captionsetup[figure]{labelfont=small,name={Fig.},labelsep=period}
+
+\begin{document}
+
+\title{Image-based Visual Servoing Scheme for Soft and Precise Landing on Mobile Platform}
+
+\author{Shubham~Singhal}
+
+% \markboth{Data-driven learning}%
+% {}
+
+\maketitle
+\section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
+This section outlines the system dynamics and control strategy of an underactuated quadrotor UAV platform and formulates the problem to address the challenges in image-based precise landing.
+
+\subsection{Dynamics of Quadrotor-Target System} \label{quadrotor dynamics: section}
+Achieving soft precise landing on a moving target requires a thorough understanding of the system dynamics and control architecture of a quadrotor UAV platform. 
+First, consider a body-fixed frame $\mathcal{B}=\{O_{\text{b}} ~X_{\text{b}} ~Y_{\text{b}} ~Z_{\text{b}}\}^{\top}$ rigidly attached to the UAV in forward-right-down (FRD) configuration.
+Let the spatial velocity of the UAV be denoted as $\boldsymbol{\nu}_{\text{b}} = [\boldsymbol{v}_{\text{b}}, \boldsymbol{\omega}_{\text{b}}]^{\top}$ with $\boldsymbol{v}_{\text{b}} = [v_{\text{b}x}, v_{\text{b}y}, v_{\text{b}z}]^{\top}$ and $\boldsymbol{\omega}_{\text{b}} = [\omega_{\text{b}x}, \omega_{\text{b}y}, \omega_{\text{b}z}]^{\top}$ being the instantaneous linear and angular velocities respectively.
+Now, using the Newton-Euler formulation, the UAV flight dynamics can be expressed as follows:
+\begin{align}
+\label{quadrotor dynamics: equation}
+    m \dot{\boldsymbol{v}}_{\text{b}} &= \boldsymbol{F_{\text{ext}}} - m \boldsymbol{\omega}_{\text{b}} \times ~\boldsymbol{v}_{\text{b}}  \nonumber \\
+    J \dot{\boldsymbol{\omega}}_{\text{b}} &= \boldsymbol{\tau_{\text{ext}}} - \boldsymbol{\omega}_{\text{b}} \times (J \boldsymbol{\omega}_{\text{b}}),
+\end{align}
+where $m$ is the mass,  and $J = \text{diag}[J_{xx}~J_{yy}~J_{zz}]$ is the inertia matrix. The external force vector $\boldsymbol{F_{\text{ext}}}$ and moment vector $\boldsymbol{\tau_{\text{ext}}}$ include gravitational force $\boldsymbol{F_{\text{g}}}$, the total thrust force vector $\boldsymbol{F_{\text{t}}}$, the net control moments of the four rotors $\boldsymbol{\tau}_u$, and the unknown model uncertainties and disturbances $\boldsymbol{F_{\text{d}}}$ and $\boldsymbol{\tau_{\text{d}}}$ such that
+$\boldsymbol{F_{\text{ext}}} = \boldsymbol{F_{\text{g}}} + \boldsymbol{F_{\text{t}}} + \boldsymbol{F_{\text{d}}}$ and $\boldsymbol{\tau_{\text{ext}}} = \boldsymbol{\tau}_u + \boldsymbol{\tau_{\text{d}}}$.
+Next, consider a target located at point $\boldsymbol{r}_{\text{t}} = [x_{\text{t}}, y_{\text{t}}, z_{\text{t}}]^{\top}$ in frame $\mathcal{B}$ moving with the spatial velocity $\boldsymbol{\nu}_{\text{t}} = [\boldsymbol{v}_{\text{t}}, \boldsymbol{\omega}_{\text{t}}]^{\top}$, where $\boldsymbol{v}_{\text{t}} = [v_{\text{t}x}, v_{\text{t}y}, v_{\text{t}z}]^{\top}$ and $\boldsymbol{\omega}_{\text{t}} = [\omega_{\text{t}x}, \omega_{\text{t}y}, \omega_{\text{t}z}]^{\top}$ are the instantaneous linear and angular velocities respectively. Then, the target kinematics in frame $\mathcal{B}$ is obtained as follows:
+\begin{equation} \label{Eq. (1)}
+    \dot{\boldsymbol{r}}_{\text{t}} = \boldsymbol{v}_{\text{t}} - \boldsymbol{v}_{\text{b}} - \boldsymbol{\omega}_{\text{b}} \times \boldsymbol{r}_{\text{t}}
+\end{equation}
+
+\subsection{Target Image Parameters}
+In this study, a camera is utilized in the UAV system to obtain the target image parameters to coordinate the UAV motion.
+It is assumed that a downward-facing monocular camera is mounted onboard the UAV such that the optical axis is aligned with the $Z_{\text{b}}$ axis of frame $\mathcal{B}$.
+The camera is used to capture a collection of image feature points of the target. Considered to be the geometric center of these feature points, the target image point $\boldsymbol{\hat{r}} = [\hat{x}, \hat{y}]^{\top}$ is estimated as follows:
+\begin{equation}
+    \boldsymbol{\hat{r}} = \begin{bmatrix} \frac{m_{10}}{m_{00}},\,\frac{m_{01}}{m_{00}} \end{bmatrix}^{\top}, 
+\end{equation}
+where $m_{ij}$ are the image moments given as $m_{ij} = \sum^{N}_{k=1} \hat{x}_k^i \hat{y}_k^j$ with the $k^{th}$ feature point represented as $\boldsymbol{\hat{r}}_k = [\hat{x}_k, \hat{y}_k]^{\top}$.
+
+Using the common pinhole camera model, the target image point $\boldsymbol{\hat{r}}$ represents the projection of the target point $\boldsymbol{r}_{\text{t}}$ in the image plane such that:
+\begin{equation} \label{Eq. (2)}
+    \begin{bmatrix} \hat{x} \\ \hat{y}\end{bmatrix}
+    = \frac{1}{z_{\text{t}}} \begin{bmatrix} x_{\text{t}} \\ y_{\text{t}}\end{bmatrix}
+\end{equation}
+To facilitate lateral control development, the target image point $\boldsymbol{\hat{r}}$ is normalized to camera focal length $f = 1$ m. 
+Since the target is visible only within the field of view (FoV) of the camera, the image coordinates of $\boldsymbol{\hat{r}}$ are subjected to the following visibility constraints:
+\begin{equation} \label{Eq. (3)}
+    \hat{x}_{\text{min}} \leq \hat{x} \leq \hat{x}_{\text{max}},\,
+    \hat{y}_{\text{min}} \leq \hat{y} \leq \hat{y}_{\text{max}}
+\end{equation}
+ where $[\hat{x}_{\text{min}}, \hat{y}_{\text{min}}]^{\top}$ and $[\hat{x}_{\text{max}}, \hat{y}_{\text{max}}]^{\top}$ denote the minimum and maximum values of the image coordinates $[\hat{x}, \hat{y}]^{\top}$, respectively.
+
+The image feature points of the target can also be used to define the target orientation $\alpha$ as:
+\begin{equation} \label{Eq. (4)}
+    \alpha = \frac{1}{2} \text{tan}^{-1}\left( \frac{2 \mu_{11}}{\mu_{20} - \mu_{02}}\right),
+\end{equation}
+where $\mu_{ij}$ are the centered moments given as $\mu_{ij} = \sum^{N}_{k=1} (\hat{x}_k - \hat{x})^i (\hat{y}_k - \hat{y})^j$.
+
+The camera can be used to capture translational optic flow of the target, which is defined as given below:
+\begin{align} \label{optic flow: equation}
+    \boldsymbol{h} =& ~ \frac{\boldsymbol{v}_b - \boldsymbol{v}_t}{z_{\text{t}}},
+\end{align}
+
+\subsection{Problem Statement} \label{problem statement: section}
+Considering the output for the outer loop control to be $\boldsymbol{q}_o = \begin{bmatrix} \hat{x} & \hat{y} & \alpha \end{bmatrix}^{\top}$, the outer-loop dynamics can be derived as:
+\begin{align}
+    \dot{\boldsymbol{q}}_o =& \begin{bmatrix} \dot{\hat{x}} \\ \dot{\hat{y}} \\ \dot{\alpha} \end{bmatrix}
+    = \begin{bmatrix}
+    L_{\boldsymbol{h}} \boldsymbol{h} + L_{\boldsymbol{\omega}} \boldsymbol{\omega}_{\text{b}} \\
+    \boldsymbol{\lambda}_{\boldsymbol{\omega}}^{\top} \left( \boldsymbol{\omega}_{\text{b}} - \boldsymbol{\omega}_{\text{t}} \right)
+    \end{bmatrix}
+\end{align}where 
+\begin{align*}
+    L_{\boldsymbol{h}} &= \begin{bmatrix} - 1 & 0 & \hat{x} \\ 0 & -1 & \hat{y}\end{bmatrix},\\
+    L_{\boldsymbol{\omega}} &= \begin{bmatrix} \hat{x} \hat{y} & - (1 + \hat{x}^2) & \hat{y} \\
+    1 + \hat{y}^2 & - \hat{x} \hat{y} & - \hat{x}\end{bmatrix}, \\
+    \boldsymbol{\lambda}_{\boldsymbol{\omega}} 
+    &= \begin{bmatrix} \frac{\splitfrac{(\mu_{20} - \mu_{02})\left( 2 \mu_{12} + \hat{y} \mu_{11} + \hat{x} \mu_{02} \right) }{ - 2 \mu_{11} \left( \mu_{21} + \hat{x} \mu_{11} - \mu_{03} - \hat{y} \mu_{02} \right)}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ \frac{\splitfrac{ - (\mu_{20} - \mu_{02})\left( 2 \mu_{21} + \hat{x} \mu_{11} + \hat{y} \mu_{20} \right) }{ + 2 \mu_{11} \left[ \mu_{30} + \hat{x} \mu_{20} - \mu_{12} - \hat{y} \mu_{11} ) \right]}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ -1 \end{bmatrix},
+\end{align*}
+The complete derivation is given in Appendix.
+Now, the goal is to design a visual feedback outer-loop controller to provide suitable angular velocity command $\boldsymbol{u}_o$. The command $\boldsymbol{u}_o$ will be fed to an inner-loop controller such that the output $\boldsymbol{q}_o$ converges to a predefined and arbitrarily small neighborhood of $\boldsymbol{q}_o^* = [\hat{x}^*,\, \hat{y}^*,\, \alpha^*]^{\top}$ without violating the visibility constraints, where $\boldsymbol{q}_o^*$ is constant. Hence, we obtain:
+\begin{equation} \label{perturbed system dynamics for outer loop: equation}
+    \dot{\boldsymbol{q}}_{oe} = \dot{\boldsymbol{q}}_o - \dot{\boldsymbol{q}}_o^* = \mathcal{B}_o \boldsymbol{u}_o + \boldsymbol{c}_o + \boldsymbol{d}_o
+\end{equation}
+where
+\begin{align*}
+    \boldsymbol{u}_o = \boldsymbol{\omega}_{\text{b}}^*, 
+    \mathcal{B}_o =\begin{bmatrix} L_{\boldsymbol{\omega}} \\ \boldsymbol{\lambda}_{\boldsymbol{\omega}}^{\top} \end{bmatrix},
+    \boldsymbol{c}_o = \begin{bmatrix} L_{\boldsymbol{h}} \boldsymbol{h} \\ 0 \end{bmatrix}, 
+    \boldsymbol{d}_o = \begin{bmatrix}  O_{2 \times 1} \\ -\boldsymbol{\lambda}_{\boldsymbol{\omega}}^{\top} \boldsymbol{\omega}_{\text{t}} \end{bmatrix}.
+\end{align*}
+Note that the matrix $\mathcal{B}_o(t)$ and function $\boldsymbol{c}_o(t)$ are known and can be estimated for feedback linearization. Whereas, function $\boldsymbol{d}_o(t)$ is unknown.
+
+\textit{Assumption 1}: Given that $\boldsymbol{u}_o(t)$ is bounded, the disturbance $\boldsymbol{d}_o(t)$ in \eqref{perturbed system dynamics for outer loop: equation} is a uniformly bounded function with an unknown upper bound vector $\boldsymbol{d}_{o(\text{max})}$, i.e. $\lvert \boldsymbol{d}_o(t) \rvert \leq \boldsymbol{d}_{o(\text{max})}$.
+
+Next, consider the output for the inner loop control to be $\boldsymbol{q}_i$ as defined below:
+\begin{equation}
+    \boldsymbol{q}_i = \begin{bmatrix} h_r & \boldsymbol{\omega}_{\text{b}}^{\top} \end{bmatrix}^{\top} = \begin{bmatrix} \frac{v_{bz} - v_{tz}}{z_{\text{t}}} & \boldsymbol{\omega}_{\text{b}}^{\top}
+    \end{bmatrix}^{\top},
+\end{equation}
+where $h_r$, which is termed as the radial optic flow, is the third component of $\boldsymbol{h}$.
+Referring to Appendix, the time-derivative of $\boldsymbol{q}_i$ is given as:
+\begin{equation}
+    \dot{\boldsymbol{q}}_i = \begin{bmatrix} \dot{h}_r \\ \dot{\boldsymbol{\omega}}_{\text{b}} \end{bmatrix} = \begin{bmatrix}
+        \frac{\dot{v}_{bz} - \dot{v}_{tz}}{z_{\text{t}}} + \left( h_r + \hat{y} \omega_{\text{b}x} - \hat{x} \omega_{\text{b}y} \right) h_r \\ \dot{\boldsymbol{\omega}}_{\text{b}}
+    \end{bmatrix}
+\end{equation}
+Incorporating flight dynamics \eqref{quadrotor dynamics: equation}, we get:
+\begin{align}
+    \dot{\boldsymbol{q}}_i = \begin{bmatrix}
+        \frac{F_{\text{ext}z}}{m z_{\text{t}}} + h_r^2 + \left( \hat{y} h_r - h_y \right) \omega_{\text{b}x} - \left( \hat{x} h_r - h_x \right) \omega_{\text{b}y} - \frac{\dot{v}_{\text{t}z}}{z_{\text{t}}} \\ J^{-1} \boldsymbol{\tau_{\text{ext}}} - J^{-1} \left[ \boldsymbol{\omega}_{\text{b}} \times (J \boldsymbol{\omega}_{\text{b}}) \right]
+    \end{bmatrix}
+\end{align}
+where $F_{\text{ext}z} = T_u + F_{\text{g}z} + F_{\text{d}z}$ and $\boldsymbol{\tau_{\text{ext}}} = \boldsymbol{\tau}_u + \boldsymbol{\tau_{\text{d}}}$.
+Now to achieve soft precise landing, the goal is to design a visual feedback inner-loop controller to provide suitable optic flow command $\boldsymbol{u}_i$. The command $\boldsymbol{u}_i$ will govern
+the UAV flight dynamics \eqref{quadrotor dynamics: equation} such that the output $\boldsymbol{q}_i$ converges to an arbitrarily small neighborhood of $\boldsymbol{q}_i^* = \begin{bmatrix} h_r^* & \boldsymbol{\omega}_{\text{b}}^{*\top} \end{bmatrix}$, where $h_r^*$ is a constant. Hence, we obtain:
+\begin{equation} \label{perturbed system dynamics for inner loop: equation}
+    \dot{\boldsymbol{q}}_{ie} = \dot{\boldsymbol{q}}_i - \dot{\boldsymbol{q}}_i^* = \mathcal{B}_i \boldsymbol{u}_i + \boldsymbol{c}_i + \boldsymbol{d}_i
+\end{equation}
+\begin{align*}
+    \boldsymbol{u}_i &= \begin{bmatrix} T_{u} & \boldsymbol{\tau}_{u}^{\top} \end{bmatrix}^{\top}, 
+    \mathcal{B}_i = \begin{bmatrix} \frac{1}{m z_{\text{t}}} & O_{1 \times 3} \\ O_{3 \times 1} & J^{-1} \end{bmatrix} = \mathcal{B}_{1} \mathcal{B}_{2}, \\
+    \boldsymbol{c}_i &= \begin{bmatrix} h_r^2 + \left( \hat{y} h_r - h_y \right) \omega_{\text{b}x} - \left( \hat{x} h_r - h_x \right) \omega_{\text{b}y} \\ - J^{-1} \left[ \boldsymbol{\omega}_{\text{b}} \times (J \boldsymbol{\omega}_{\text{b}}) \right] - \dot{\boldsymbol{\omega}}_{\text{b}}^{*\top} \end{bmatrix}, \\
+    \boldsymbol{d}_i &= \begin{bmatrix} \frac{F_{\text{g}z} + F_{\text{d}z}}{m z_{\text{t}}} - \frac{\dot{v}_{\text{t}z}}{z_{\text{t}}} & J^{-1} \boldsymbol{\tau_{\text{d}}} \end{bmatrix}^{\top}, \\
+    \mathcal{B}_{1} &= \begin{bmatrix} \frac{1}{z_{\text{t}}} & O_{1 \times 3} \\ O_{3 \times 1} & I_{3 \times 3} \end{bmatrix}, \mathcal{B}_{2} = \begin{bmatrix} \frac{1}{m} & O_{1 \times 3} \\ O_{3 \times 1} & J^{-1} \end{bmatrix}.
+\end{align*}
+Note that the matrix $\mathcal{B}_{2}$ and the function $\boldsymbol{c}_i(t)$ is known and can be estimated for feedback linearization. Whereas, matrix $\mathcal{B}_{1}(t)$ and function $\boldsymbol{d}_i(t)$ are unknown.
+
+\textit{Assumption 2}: Given that $\boldsymbol{u}_i(t)$ is bounded, the disturbance $\boldsymbol{d}_i(t)$ in \eqref{perturbed system dynamics for inner loop: equation} is a uniformly bounded function with an unknown upper bound vector $\boldsymbol{d}_{i(\text{max})}$, i.e. $\lvert \boldsymbol{d}_i(t) \rvert \leq \boldsymbol{d}_{i(\text{max})}$. Moreover, for any arbitrary vector $\boldsymbol{x} \in \mathbb{R}^{4}$, there exists constant but unknown positive definite diagonal matrices $\mathcal{B}_{\text{min}}$ and $\mathcal{B}_{\text{max}}$ such that $0 < \boldsymbol{x}^{\top} \mathcal{B}_{\text{min}} \boldsymbol{x} \leq \boldsymbol{x}^{\top}  \mathcal{B}_{1}(t) \boldsymbol{x} \leq \boldsymbol{x}^{\top} \mathcal{B}_{\text{max}} \boldsymbol{x}$.
+
+\begin{figure*}[hbt!]
+\centering
+    \includegraphics[width=0.8 \textwidth]{Figures/Block Diagram.png}
+    \caption{Block diagram illustrating the control pipeline for soft precise landing of a UAV on a mobile target.} 
+    \label{block diagram: figure}
+\end{figure*}
+
+\section{Formulation of Control Strategy} \label{control strategy: section}
+\subsection{Performance Function for Visibility Constraints}
+In order to incorporate visibility constraint in the proposed control formulation, the outer-loop output error $\boldsymbol{q}_{oe}(t) = [q_{oe 1}(t), \, q_{oe 2}(t), \, q_{oe 3}(t)]^{\top}$ is constrained as $\boldsymbol{q}_{oe}(t) \in (- \boldsymbol{p}_o(t), \, \boldsymbol{p}_o(t))$, $\forall \, t \geq 0$ with $\boldsymbol{p}_o(t) = [p_{o1}(t), \, p_{o2}(t), \, p_{o2}(t)]^{\top}$.
+Here, the prescribed performance function $\boldsymbol{p}_o: \mathbb{R}_+ \rightarrow \mathbb{R}^4_+$ is a smooth, strictly decreasing, bounded, and continuously differentiable function of time, which can be defined as $\boldsymbol{p}_o(t) = e^{-\Xi_o t} [\boldsymbol{p}_{o(0)} - \boldsymbol{p}_{o(\infty)}] + \boldsymbol{p}_{o(\infty)}$ such that
+$\lim_{\text{t} \to \infty} \boldsymbol{p}_o(t) = \boldsymbol{p}_{o(\infty)} > \boldsymbol{0}_{3 \times 1}$, where predefined positive constants $\boldsymbol{p}_{o(0)} = [p_{o(0) 1}, \, p_{o(0) 2}, \, p_{o(0) 3}]^{\top}$, $\boldsymbol{p}_{o(\infty)} = [p_{o(\infty) 1}, \, p_{o(\infty) 2}, \, p_{o(\infty) 3}]^{\top}$, $\Xi_o = \text{diag}[\xi_{o1}, \, \xi_{o2}, \, \xi_{o3}]$ represent the maximum allowable overshoot, the steady-state residual set and the minimum convergence rate of $\boldsymbol{q}_{oe}(t)$, respectively.
+
+A non-linear transformation is formulated to map the constrained output error $\boldsymbol{q}_{oe}(t)$ onto a new unconstrained variable $\boldsymbol{\zeta}_o(t) = [\zeta_{o1}(t),\, \zeta_{o2}(t),\, \zeta_{o3}(t)]^{\top}$ such that:
+\begin{align}
+    \label{error transformation for outer loop: equation}
+    \boldsymbol{q}_{oe}(t) &= \mathcal{S}_o(\boldsymbol{\zeta}_o) \boldsymbol{p}_o(t), \, \mathcal{S}_o(\boldsymbol{\zeta}_o) = \text{diag}[S_o(\zeta_{ok})], \nonumber \\
+    S_o(\zeta_{ok}) &= \left(\frac{e^{\zeta_{ok}} - 1}{e^{\zeta_{ok}} + 1} \right) \text{ for } k = \{1, 2, 3\}
+\end{align}
+with $S_o(\zeta_{ok})$ possessing the following properties:
+\begin{enumerate}
+    \item[I.] $ -1 < S_o(\zeta_{ok}) < 1 $, $\forall~\zeta_{ok}(t) \in \mathbb{R},$ 
+    \item[II.] $\lim_{\zeta_{ok} \to \infty} S_o(\zeta_{ok}) = 1$,
+    \item[III.] $\lim_{\zeta_{ok} \to -\infty} S_o(\zeta_{ok}) = -1$
+\end{enumerate}
+
+Moreover, the components of the unconstrained output $\boldsymbol{\zeta(t)}_o$ can be expressed as:
+\begin{equation} \label{inverse transformation function for outer loop}
+    \zeta_{ok}(t) = S_o^{-1}(q_{oe k}, p_{ok}) = ln \left(\frac{p_{ok} + q_{oe k}}{p_{ok} - q_{oe k}} \right) \text{ for } k = \{1, 2, 3\}.
+\end{equation}
+Note that the inverse transformation $\mathcal{S}_o^{-1}: (-1, 1) \to \mathbb{R}$ is well-defined, provided $\zeta_{ok}(t) \in \mathbb{R}$.
+
+Differentiating Eq. \eqref{error transformation for outer loop: equation} and rearranging, we have:
+\begin{equation} \label{transformed error derivative for outer loop: equation 2}
+    \dot{\boldsymbol{\zeta}}_o(t) = \mathcal{G}_o(t) \big[\dot{\boldsymbol{q}}_{oe}(t) - \mathcal{S}_o(\boldsymbol{\zeta}_o) \dot{\boldsymbol{p}}_o(t)\big],    
+\end{equation}
+where
+\begin{align*}
+    \mathcal{G}_o(t) &= \left[\boldsymbol{p}_o(t)^{\top} \frac{\partial \mathcal{S}_o(\boldsymbol{\zeta}_o)}{\partial \boldsymbol{\zeta}_o}\right]^{-1} = \text{diag}[g_{ok}(\zeta_{ok}, p_{ok})], \nonumber \\
+    g_{ok}(\zeta_{ok}, p_{ok}) &= \frac{(e^{\zeta_{ok}}+1)^2}{2\,e^{\zeta_{ok}} p_{ok}(t)} \text{ for } k = \{1, 2, 3\}. \nonumber
+\end{align*}
+Substituting  \eqref{perturbed system dynamics for outer loop: equation} in the above equation \eqref{transformed error derivative for outer loop: equation 2} to derive an unconstrained perturbed system equation enveloped with prescribed performance as shown below:
+\begin{equation} \label{unconstrained system for outer loop: equation}
+    \dot{\boldsymbol{\zeta}}_o(t) = \mathcal{G}_o(t) \big[\mathcal{B}_o(t) \boldsymbol{u}_o(t) + \boldsymbol{c}_o(t) + \boldsymbol{d}_o(t) - \mathcal{S}_o(\boldsymbol{\zeta}_o) \dot{\boldsymbol{p}}_o(t) \big]
+\end{equation}
+
+\subsection{Performance Function for Boundedness}
+In order to maintain the boundedness during landing, the inner loop output error $\boldsymbol{q}_{ie}(t) = [q_{ie 1}(t), \, q_{ie 2}(t), \, q_{ie 3}(t), \, q_{ie 4}(t)]^{\top}$ is constrained as $\boldsymbol{q}_{ie}(t) \in (- \boldsymbol{p}_i(t), \, \boldsymbol{p}_i(t))$, $\forall \, t \geq 0$ with $\boldsymbol{p}_i(t) = [p_{i 1}(t), \, p_{i 2}(t), \, p_{i 3}(t), \, p_{i 4}(t)]^{\top}$.
+Here, the prescribed performance function $\boldsymbol{p}_i: \mathbb{R}_+ \rightarrow \mathbb{R}^4_+$ is a smooth, strictly decreasing, bounded, and continuously differentiable function of time, which can be defined as $\boldsymbol{p}_i(t) = e^{-\Xi_i t} (\boldsymbol{p}_{i (0)} - \boldsymbol{p}_{i (\infty)}) + \boldsymbol{p}_{i (\infty)}$ such that
+$\lim_{\text{t} \to \infty} \boldsymbol{p}_i(t) = \boldsymbol{p}_{i (\infty)} > \boldsymbol{0}_{3 \times 1}$, where predefined positive constants $\boldsymbol{p}_{i (0)} = [p_{i(0) 1}, \, p_{i(0) 2}, \, p_{i(0) 3}, \, p_{i(0) 4}]^{\top}$, $\boldsymbol{p}_{i (\infty)} = [p_{i(\infty) 1}, \, p_{i(\infty) 2}, \, p_{i(\infty) 3}, \, p_{i(\infty) 4}]^{\top}$, $\Xi_i = \text{diag}[\xi_{i 1}, \, \xi_{i 2}, \, \xi_{i 3}, \, \xi_{i 4}]$ represent the maximum allowable overshoot, the steady-state residual set and the minimum convergence rate of $\boldsymbol{q}_{ie}(t)$, respectively.
+
+A non-linear transformation is formulated to map the constrained output error $\boldsymbol{q}_{ie}(t)$ onto a new unconstrained variable $\boldsymbol{\zeta}_i(t) = [\zeta_{i 1}(t),\, \zeta_{i 2}(t),\, \zeta_{i 3}(t),\, \zeta_{i 4}(t)]^{\top}$ such that:
+\begin{align}
+    \label{error transformation for inner loop: equation}
+    \boldsymbol{q}_{ie}(t) &= \mathcal{S}_i(\boldsymbol{\zeta}_i) \boldsymbol{p}_i(t), \, \mathcal{S}_i(\boldsymbol{\zeta}_i) = \text{diag}[S_i(\zeta_{ik})], \nonumber \\
+    S_i(\zeta_{ik}) &= \left(\frac{e^{\zeta_{ik}} - 1}{e^{\zeta_{ik}} + 1} \right) \text{ for } k = \{1, 2, 3, 4\}
+\end{align}
+with $S_i(\zeta_{ik})$ possessing the following properties:
+\begin{enumerate}
+    \item[I.] $ -1 < S_i(\zeta_{ik}) < 1 $, $\forall~\zeta_{ik}(t) \in \mathbb{R},$ 
+    \item[II.] $\lim_{\zeta_{ik} \to \infty} S_i(\zeta_{ik}) = 1$,
+    \item[III.] $\lim_{\zeta_{ik} \to -\infty} S_i(\zeta_{ik}) = -1$
+\end{enumerate}
+
+Moreover, the components of the unconstrained output $\boldsymbol{\zeta(t)}$ can be expressed as:
+\begin{equation} \label{inverse transformation function for inner loop}
+    \zeta_{ik}(t) = S^{-1}_i(q_{ie k}, p_{i k}) = ln \left(\frac{p_{i k} + q_{ie k}}{p_{i k} - q_{ie k}} \right) \text{ for } k = \{1, 2, 3, 4\},
+\end{equation}
+Note that the inverse transformation $\mathcal{S}_i^{-1}: (-1, 1) \to \mathbb{R}$ is well-defined, provided $\zeta_{ik}(t) \in \mathbb{R}$.
+
+Differentiating Eq. \eqref{error transformation for inner loop: equation} and rearranging, we have:
+\begin{equation} \label{transformed error derivative for inner loop: equation 2}
+    \dot{\boldsymbol{\zeta}}_i(t) = \mathcal{G}_i(t) \big[\dot{\boldsymbol{q}}_{ie}(t) - \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t)\big],    
+\end{equation}
+where
+\begin{align*}
+    \mathcal{G}_i(t) &= \left[\boldsymbol{p}_i(t)^{\top} \frac{\partial \mathcal{S}_i(\boldsymbol{\zeta}_i)}{\partial \boldsymbol{\zeta}_i}\right]^{-1} = \text{diag}[g_{ik}(\zeta_{ik}, p_{ik})], \nonumber \\
+    g_{ik}(\zeta_{ik}, p_{ik}) &= \frac{(e^{\zeta_{ik}}+1)^2}{2\,e^{\zeta_{ik}} p_{ik}(t)} \text{ for } k = \{1, 2, 3, 4\}. \nonumber
+\end{align*}
+Substituting  \eqref{perturbed system dynamics for inner loop: equation} in the above equation \eqref{transformed error derivative for inner loop: equation 2} to derive an unconstrained perturbed system equation enveloped with prescribed performance as shown below:
+\begin{equation} \label{unconstrained system for inner loop: equation}
+    \dot{\boldsymbol{\zeta}}_i(t) = \mathcal{G}_i(t) \big[\mathcal{B}_i(t) \boldsymbol{u}_i(t) + \boldsymbol{c}_i(t) + \boldsymbol{d}_i(t) - \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t) \big]
+\end{equation}
+
+\subsection{Adaptive Outer Loop Control Law} \label{adaptive controller for outer loop : section}
+The first objective translates to the formulation of a control law that synthesizes suitable outer loop control signal $\boldsymbol{u}_o(t)$ to drive the non-linear map-based transformed output $\boldsymbol{\zeta}_o(t)$ to a small uniform ultimate bound (UUB) around the origin in finite time through online estimation and rejection of unknown bounded perturbation term $\boldsymbol{d}_o(t)$ shown in Eq. \eqref{unconstrained system for outer loop: equation}.
+To this end, an adaptive first-order sliding mode control (AFOSMC) strategy is designed that compensates for the system uncertainty without any a priori knowledge of its upper bound.
+This control strategy accounts for non-linearity inherent to image-based visual servoing.
+
+To construct the controller, the following first-order proportional-integral (PI) sliding surface $\boldsymbol{\sigma}_o(t)$ is defined for the outer loop output error vector $\boldsymbol{\zeta}_o(t)$:
+\begin{equation} \label{sigma for outer loop: equation}
+    \boldsymbol{\sigma}_o(t) = \boldsymbol{\zeta}_o(t) + \mathcal{X}_o \int_{\text{t}_o}^t \boldsymbol{\zeta}_o(\tau)~d\tau,
+\end{equation}
+where the sliding vector $\boldsymbol{\sigma}_o(t)  = [\sigma_{o 1}(t),\, \sigma_{o 2}(t),\, \sigma_{o 3}(t)]^{\top}$ represents the exponentially converging dynamics of output error $\zeta_{o k}(t)$ with a decaying rate $\chi_{o k} > 0$ for $k = \{1, 2, 3\}$ such that $\mathcal{X}_o = \text{diag}[\chi_{o 1},\, \chi_{o 2},\, \chi_{o 3}]$.
+The time-derivative of $\boldsymbol{\sigma}_o(t)$ can be computed as:
+\begin{equation} \label{sigma derivative for outer loop: equation 1}
+    \dot{\boldsymbol{\sigma}}_o(t) = \dot{\boldsymbol{\zeta}}_o(t) + \mathcal{X}_o~\boldsymbol{\zeta}_o(t)
+\end{equation}
+The following equation can be obtained by substituting  \eqref{unconstrained system for outer loop: equation} in the above Eq. \eqref{sigma derivative for outer loop: equation 1}:
+\begin{align}
+    \label{sigma derivative for outer loop: equation 2}
+    \dot{\boldsymbol{\sigma}}_o(t) = &~ \mathcal{G}_o(t) \big[ \mathcal{B}_o(t)\boldsymbol{u}_o(t) + \boldsymbol{c}_o(t) - \mathcal{S}_o(\boldsymbol{\zeta}_o) \dot{\boldsymbol{p}}_o(t) \nonumber \\ 
+    & ~ + \mathcal{G}_o^{-1}(t) \mathcal{X}_o\,\boldsymbol{\zeta}_o(t) \big] + \mathcal{G}_o(t) \boldsymbol{d}_o(t), 
+\end{align}
+ 
+Finally, the following control law has been proposed for the outer loop:
+\begin{align} \label{control law for outer loop: equation}
+    \boldsymbol{u}_o(t) =&~ \mathcal{B}_o^{-1}(t) \big[ \boldsymbol{u}_{o(\text{sw})}(t) + \boldsymbol{u}_{o(\text{eq})}(t) \big], \nonumber \\
+    \boldsymbol{u}_{o(\text{sw})}(t) =& - \mathcal{G}_o^{-1}(t) \Gamma_o \boldsymbol{\sigma}_o(t) - \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] \boldsymbol{\kappa}_o(t) \nonumber\\
+    \boldsymbol{u}_{o(\text{eq})}(t) =&~ - \boldsymbol{c}_o(t) + \mathcal{S}_o(\boldsymbol{\zeta}_o) \dot{\boldsymbol{p}}_o(t) - \mathcal{G}_o^{-1}(t) \mathcal{X}_o\,\boldsymbol{\zeta}_o(t),
+\end{align}
+where $\Gamma_o = \text{diag}[\gamma_{o 1},\, \gamma_{o 2},\, \gamma_{o 3}]$  is the proportional control matrix with positive constants $\gamma_k$ and $\boldsymbol{\kappa}_o(t)$ is the adaptive sliding mode control parameter.
+The design matrix $\mathcal{E}_o$ is defined as $\mathcal{E}_o = \text{diag}[\varepsilon_{o 1}, \, \varepsilon_{o 2}, \, \varepsilon_{o 3}]$ such that $0 < \varepsilon_{ok} << 1$ for $k = \{1, 2, 3\}$, where the design constants $\varepsilon_{ok}$ represent the sensitivity of the smooth transition across the sliding surface for sliding mode control.
+The saturation matrix $\text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] = \text{diag}[\text{sat}(\sigma_{ok}/\varepsilon_{ok})]$ for $k = \{1, 2, 3\}$, where the saturation function sat($\sigma_k/\epsilon_k$) is defined as
+\begin{align}
+\label{sat_fn}
+\text{sat}(\sigma_k/\epsilon_k)=\begin{cases}
+    \sigma_k/\epsilon_k,~~\,\text{if}~~\rvert\sigma_k\rvert\,<\,\epsilon_k\\
+    \lceil \sigma_k\rfloor^0,~\text{otherwise}
+    \end{cases}
+\end{align}
+with $\lceil \sigma_k \rfloor^0$ representing the sign function.
+The adaptive gain $\boldsymbol{\kappa}_o(t)$ is updated as:
+\begin{equation} \label{adaptive law for outer loop: equation}
+    \dot{\boldsymbol{\kappa}}_o(t) =  \mathcal{N}_{o} \mathcal{G}_o \lvert \boldsymbol{\sigma}_o(t) \rvert - \mathcal{N}_{o} \mathcal{P}_{o} \boldsymbol{\kappa}_o(t), \, \boldsymbol{\kappa}_{o}(0)  \in \mathbb{R}_+^3,
+\end{equation}
+where $\lvert \boldsymbol{\sigma}_o(t) \rvert  = \left[\lvert \sigma_{o 1}(t) \rvert,\, \lvert \sigma_{o 2}(t) \rvert,\, \lvert \sigma_{o 3}(t) \rvert\right]^{\top}$. Also, $\mathcal{N}_{o} = \text{diag}[\eta_{o 1},\, \eta_{o 2},\, \eta_{o 3}]$ and $\mathcal{P}_{o} = \text{diag}[\rho_{o 1},\, \rho_{o 2},\, \rho_{o 3}]$ are positive gain matrices.
+
+Eq. \eqref{control law for outer loop: equation} is incorporated in Eq. \eqref{sigma derivative for outer loop: equation 2} to obtain the following expression:
+\begin{align}
+    \label{sigma derivative for outer loop: equation 3}
+    \dot{\boldsymbol{\sigma}}_o(t) =&~ - \Gamma_o \boldsymbol{\sigma}_o(t) - \mathcal{G}_o(t) \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] \boldsymbol{\kappa}_o(t) \nonumber \\ 
+    & ~ + \mathcal{G}_o(t) \boldsymbol{d}_o(t)
+\end{align}
+
+\subsection{Adaptive Inner Loop Control Law} \label{adaptive controller for inner loop : section}
+The second objective translates to the formulation of a control law that synthesizes suitable inner loop control signal $\boldsymbol{u}_i(t)$ to drive the non-linear map-based transformed output $\boldsymbol{\zeta}_i(t)$ to a small uniform ultimate bound (UUB) around the origin in finite time through online estimation and rejection of unknown bounded uncertainty parameters $\mathcal{B}_i(t)$, $\boldsymbol{d}_i(t)$ shown in Eq. \eqref{unconstrained system for inner loop: equation}.
+To this end, an adaptive first-order sliding mode control (AFOSMC) strategy is designed that compensates for the system uncertainty without any a priori knowledge of its upper bound.
+This control strategy accounts for non-linearity and singularity inherent to optical flow-guided landing and alleviates the adverse effects of actuator faults and input saturation.
+
+Similar to the outer loop controller, the following first-order PI sliding surface $\boldsymbol{\sigma}_i(t)$ is defined for the inner loop output error vector $\boldsymbol{\zeta}_i(t)$:
+\begin{equation} \label{sigma for inner loop: equation}
+    \boldsymbol{\sigma}_i(t) = \boldsymbol{\zeta}_i(t) + \mathcal{X}_i \int_{\text{t}_0}^t \boldsymbol{\zeta}_i(\tau)~d\tau,
+\end{equation}
+where the sliding vector $\boldsymbol{\sigma}_i(t)  = [\sigma_{i 1}(t),\, \sigma_{i 2}(t),\, \sigma_{i 3}(t),\, \sigma_{i 4}(t)]^{\top}$ represents the exponentially converging dynamics of output error $\zeta_{i k}(t)$ with a decaying rate $\chi_{i k} > 0$ for $k = \{1, 2, 3, 4\}$ such that $\mathcal{X}_i = \text{diag}[\chi_{i 1},\, \chi_{i 2},\, \chi_{i 3},\, \chi_{i 4}]$.
+The time-derivative of $\boldsymbol{\sigma}_i(t)$ can be computed as:
+\begin{equation} \label{sigma derivative for inner loop: equation 1}
+    \dot{\boldsymbol{\sigma}}_i(t) = \dot{\boldsymbol{\zeta}}_i(t) + \mathcal{X}_i~\boldsymbol{\zeta}_i(t)
+\end{equation}
+The following equation can be obtained by substituting  \eqref{unconstrained system for inner loop: equation} in the above Eq. \eqref{sigma derivative for inner loop: equation 1}:
+\begin{align}
+    \label{sigma derivative for inner loop: equation 2}
+    \dot{\boldsymbol{\sigma}}_i(t) =& ~\mathcal{G}_i(t) \big[\mathcal{B}_i(t) \boldsymbol{u}_i(t) + \boldsymbol{c}_i(t) + \boldsymbol{d}_i(t) - \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t) \big] \nonumber \\
+    &~ + \mathcal{X}_i~\boldsymbol{\zeta}_i(t) \nonumber \\
+    = &~ \mathcal{G}_i(t) \mathcal{B}_i(t) \big[\boldsymbol{u}_i(t) +  \boldsymbol{c}_i(t) - \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t) \nonumber \\ 
+    & ~ + \mathcal{G}_i^{-1}(t) \mathcal{X}_i\,\boldsymbol{\zeta}_i(t) \big] + \mathcal{B}_{\text{min}} \, \tilde{\mathcal{D}}_i(t) \boldsymbol{\theta}_i(t), 
+\end{align}
+where 
+\begin{align*}
+    \tilde{\mathcal{D}}_i(t) &= \mathcal{B}_{\text{min}}^{-1} \, \begin{bmatrix} \mathcal{G}_i(t) \left[ \mathcal{B}_1(t) - \mathcal{B}_{2}^{-1} \right] \, \mathcal{G}_i^{-1}(t)& \mathcal{D}_i(t) \end{bmatrix}, \\
+    \boldsymbol{\theta}_i(t) &= \begin{bmatrix}
+    \mathcal{G}_i(t) \mathcal{B}_{2} \big[- \boldsymbol{c}_i(t) + \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t) - \mathcal{G}_{i}^{-1} \mathcal{X}_i\,\boldsymbol{\zeta}_i(t) \big] \\ \boldsymbol{g}_i(t)
+    \end{bmatrix}, \\
+    \mathcal{D}_i(t) &= \text{diag}[d_{i 1}(t), \, d_{i 2}(t), \, d_{i 3}(t), \, d_{i 4}(t)], \\
+    \boldsymbol{g}_i(t) &= \begin{bmatrix} g_{i 1}(t) & g_{i 2}(t) & g_{i 3}(t) & g_{i 4}(t) \end{bmatrix}^{\top}
+\end{align*}
+There exists an unknown positive constant $\tilde{d}_i = \lVert \mathcal{B}_{\text{min}}^{-1} \rVert_2 \Big[\text{max}\left(|\lVert \mathcal{B}_{\text{max}} \rVert_2 - \lVert \mathcal{B}_{2} \rVert_2^{-1}|,|\lVert \mathcal{B}_{\text{min}} \rVert_2 - \lVert \mathcal{B}_{2} \rVert_2^{-1}|\right) + \lVert \boldsymbol{d}_{i(\text{max})} \rVert_2 \Big]$ such that $\lVert\tilde{\mathcal{D}}_i(t)\rVert_2\leq\tilde{d}_i$.
+ 
+Finally, the following control law has been proposed for the inner loop:
+\begin{align} \label{control law for inner loop: equation}
+    \boldsymbol{u}_i(t) =&~ \mathcal{B}_{2}^{-1} \mathcal{G}_i^{-1}(t) \big[ \boldsymbol{u}_{i (\text{sw})}(t) + \boldsymbol{u}_{i (\text{eq})}(t) \big], \nonumber \\
+    \boldsymbol{u}_{i (\text{sw})}(t) =& - \Gamma_i \boldsymbol{\sigma}_i(t) - \lVert \boldsymbol{\theta}_i(t) \rVert_2 \, \text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] \boldsymbol{\kappa}_i(t)\nonumber\\
+    \boldsymbol{u}_{i (\text{eq})}(t) =&~\mathcal{G}_i(t) \mathcal{B}_{2} \big[- \boldsymbol{c}_i(t) + \mathcal{S}_i(\boldsymbol{\zeta}_i) \dot{\boldsymbol{p}}_i(t) - \mathcal{G}_{i}^{-1} \mathcal{X}_i\,\boldsymbol{\zeta}_i(t) \big],
+\end{align}
+where $\Gamma_i = \text{diag}[\gamma_{i 1},\, \gamma_{i 2},\, \gamma_{i 3},\, \gamma_{i 4}]$  is the proportional control matrix with positive constants $\gamma_{i k}$ and $\boldsymbol{\kappa}_i(t)$ is the adaptive sliding mode control parameter.
+The design matrix $\mathcal{E}_i$ is defined as $\mathcal{E}_i = \text{diag}[\varepsilon_{i 1}, \, \varepsilon_{i 2}, \, \varepsilon_{i 3}, \, \varepsilon_{i 4}]$ such that $0 < \varepsilon_{i k} << 1$ for $k = \{1, 2, 3, 4\}$, where the design constants $\varepsilon_{i k}$ represent the sensitivity of the smooth transition across the sliding surface for sliding mode control.
+the sliding surface for sliding mode control.
+The saturation matrix $\text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] = \text{diag}[\text{sat}(\sigma_{ik}/\varepsilon_{ik})]$ for $k = \{1, 2, 3, 4\}$, where the saturation function sat($\sigma_k/\epsilon_k$) is defined in Eq. \eqref{sat_fn}.
+The adaptive gain $\boldsymbol{\kappa}_i(t)$ is updated as:
+\begin{equation} \label{adaptive law for inner loop: equation}
+    \dot{\boldsymbol{\kappa}}_i(t) =  \lVert \boldsymbol{\theta}_i(t) \rVert_2 \mathcal{N}_{i} \lvert \boldsymbol{\sigma}_i(t) \rvert - \mathcal{N}_{i} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t), \, \boldsymbol{\kappa}_{i}(0) \in \mathbb{R}_+^4,
+\end{equation}
+where $\lvert \boldsymbol{\sigma}_i(t) \rvert  = \left[\lvert \sigma_{i 1}(t) \rvert,\, \lvert \sigma_{i 2}(t) \rvert,\, \lvert \sigma_{i 3}(t) \rvert,\, \lvert \sigma_{i 4}(t) \rvert\right]^{\top}$. Also, $\mathcal{N}_{i} = \text{diag}[\eta_{i 1},\, \eta_{i 2},\, \eta_{i 3},\, \eta_{i 4}]$ and $\mathcal{P}_{i} = \text{diag}[\rho_{i 1},\, \rho_{i 2},\, \rho_{i 3},\, \rho_{i 4}]$ are positive gain matrices.
+
+Eq. \eqref{control law for inner loop: equation} is incorporated in Eq. \eqref{sigma derivative for inner loop: equation 2} to obtain the following expression:
+\begin{align}
+    \label{sigma derivative for inner loop: equation 3}
+    \dot{\boldsymbol{\sigma}}_i(t) =&~ - \mathcal{G}_i(t) \mathcal{B}_{1}(t) \mathcal{G}_i^{-1}(t) \big[\Gamma_i \boldsymbol{\sigma}_i(t) \nonumber \\ 
+    & ~ + \lVert \boldsymbol{\theta}_i(t) \rVert_2 \, \text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] \boldsymbol{\kappa}_i(t)\big] + \mathcal{B}_{\text{min}} \, \tilde{\mathcal{D}}_i(t) \boldsymbol{\theta}_i(t),
+\end{align}
+
+\subsection{Lyapunov Stability Analysis}
+The stability analysis starts with the following definition of global uniform ultimate boundedness of the signal $\boldsymbol{\chi}(t)$:
+
+\textit{Definition 1}:
+ Consider a multi-variable signal $\boldsymbol{\chi}(t) \in \mathbb{R}^n, ~n \in [0, \infty)$. Assume that $\exists$ $\lambda, ~ \lambda_{\text{u}} \in \mathbb{R}_+$, where $\lambda, ~ \lambda_{\text{u}}$ are positive constants and $\forall \, 0 < \lambda < \lambda_{\text{u}}$, $\exists ~ \mathcal{T} \geq 0$ and $\Lambda > 0$ such that
+\begin{equation} \label{GUUB: Definition}
+    \lVert \boldsymbol{\chi}(0) \rVert_2 \leq \lambda ~\implies~ \lVert \boldsymbol{\chi}(t) \rVert_2 \leq \Lambda,  \, \forall \, t \geq \mathcal{T}
+\end{equation}
+\noindent and $\lambda$ can be arbitrarily large. Then, the signal $\boldsymbol{\chi}(t)$ is said to be \textit{global uniformly ultimately bounded} by the ultimate bound $\Lambda$.
+
+\textit{Lemma 1}:
+Let $V$ be a continuously differentiable function such that 
+\begin{align}
+    k_1 \lVert \boldsymbol{\chi} \rVert^2_2 \leq V(\boldsymbol{\chi}) \leq k_2 \lVert \boldsymbol{\chi} \rVert^2_2, ~ \dot{V}(\boldsymbol{\chi}) \leq - k_3 V(\boldsymbol{\chi}),\\ \forall \, \lVert \boldsymbol{\chi} \rVert_2 \geq \varkappa \nonumber
+\end{align}
+\noindent with $k_1$, $k_2$, $k_3 > 0$. Consider a ball $\mathcal{B}_r$ of radius $r$ and let $\varkappa \leq r (k_1/k_2)^{\frac{1}{2}} \triangleq \lambda$.
+\noindent Then, for every initial state $\boldsymbol{\chi}(0)$ satisfying $\lVert \boldsymbol{\chi}(0) \rVert^2_2 \leq \lambda$, $\exists$ $\mathcal{T} \geq 0$, such that \eqref{GUUB: Definition} holds true with $\Lambda \triangleq \varkappa (k_2/k_1)^{\frac{1}{2}}$ and an arbitrarily large $\lambda$. 
+
+\textit{Theorem 1}:
+Consider the nonlinear system \eqref{perturbed system dynamics for outer loop: equation} such that the initial value of the outer loop output error $\boldsymbol{q}_{oe}(0)$ is within the constrained region, i.e., $- \boldsymbol{p}_{o (0)}(t) < \boldsymbol{q}_{oe}(0) < \boldsymbol{p}_{o (0)}(t), \, \forall \, t \geq 0$. Then, under \textit{Assumption 1}, system \eqref{perturbed system dynamics for outer loop: equation} under the proposed control law \eqref{control law for outer loop: equation} accomplishes exponential convergence of $\boldsymbol{\zeta}_o(t)$ to a UUB given by
+\begin{equation}
+    \psi_o {=} \sqrt{\frac{\lambda_{\text{max}}(\mathcal{P}_o)}{\left(\phi_1 - \phi_2\right)}} \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2
+\end{equation}
+where $\phi_1 \triangleq \frac{\text{ min}\big(2 \lambda_{\text{min}}\left(\Gamma_o \right),\lambda_{\text{min}}\left(\mathcal{P}_o \right)\big)}{\text{max}\big(1,\lambda_{\text{max}}\left(\mathcal{N}_o^{-1} \right)\big)}>0$, $0<\phi_2<\phi_1$. Moreover, the control law \eqref{control law for outer loop: equation} ensures that the trajectory of the system \eqref{perturbed system dynamics for outer loop: equation} lies within the prescribed constraint set $- \boldsymbol{p}_{o}(t) < \boldsymbol{q}_{oe}(t) < \boldsymbol{p}_{o}(t), \, \forall \, t \geq 0$.
+
+As a first step, observe that $\zeta_{ok}(0) = S_{ok}^{-1} [q_{oek}(0)/p_{o(0)k}]$ is well-defined for $\lvert q_{oek}(0) \rvert < p_{o(0)k}$ for $k = \{1, 2, 3\}$. The dynamics of $\boldsymbol{\zeta}_o(t)$ then evolves according to the system \eqref{unconstrained system for outer loop: equation} under the control law \eqref{control law for outer loop: equation} of the PLASMC strategy.
+
+\noindent The following candidate Lyapunov function $V_o(t)$ is now considered for subsequent analysis:
+\begin{equation} \label{Lyapunov function for outer loop: equation}
+    V_o(t) = \frac{1}{2}\boldsymbol{\sigma}_o^{\top}(t)\boldsymbol{\sigma}_o(t) + \frac{1}{2} \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right]^{\top} \mathcal{N}_o^{-1} \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right],
+\end{equation}
+where the unknown positive constant vector $\boldsymbol{d}_{o(\text{max})}$ satisfies $\lvert \boldsymbol{d}_o(t) \rvert \leq \boldsymbol{d}_{o(\text{max})}$.
+
+\noindent Using \eqref{sigma derivative for outer loop: equation 2} and \eqref{adaptive law for outer loop: equation}, the time-derivative of \eqref{Lyapunov function for outer loop: equation} can be written as
+\begin{align}
+\label{Lyapunov derivative for outer loop: equation 1}
+   \dot{V}_o(t)=&~\boldsymbol{\sigma}_o^{\top}(t) \dot{\boldsymbol{\sigma}}_o(t) + \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right]^{\top} \mathcal{N}_o^{-1} \dot{\boldsymbol{\kappa}}_o(t)\nonumber\\
+   =&- \boldsymbol{\sigma}_o^{\top}(t) \Big[\Gamma_o \boldsymbol{\sigma}_o(t) + \mathcal{G}_o(t) \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] \boldsymbol{\kappa}_o(t)\Big] \nonumber \\ 
+   &+ \boldsymbol{\sigma}_o^{\top}(t) \, \mathcal{G}_o(t) \boldsymbol{d}_o(t) \nonumber\\
+   ~ & +\left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right]^{\top} \Big[\mathcal{G}_o(t) \lvert \boldsymbol{\sigma}_o(t) \rvert - \mathcal{P}_{o} \boldsymbol{\kappa}_o(t)\Big].
+\end{align} 
+Note that both $\mathcal{G}_o(t)$ and $\text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)]$ are diagonal matrices. Hence, $\mathcal{G}_o(t) \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] = \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] \mathcal{G}_o(t)$.
+Moreover, it can be shown that $\boldsymbol{\sigma}_o^{\top}(t) \text{sat}[ \mathcal{E}_o^{-1}\boldsymbol{\sigma}_o(t)] \approx \lvert \boldsymbol{\sigma}_o(t) \rvert$.
+Hence, \eqref{Lyapunov derivative for outer loop: equation 1} can be rewritten as 
+\begin{align}
+\label{Lyapunov derivative for outer loop: equation 2}
+   \dot{V}_o(t) \leq&- \boldsymbol{\sigma}_o^{\top}(t) \Gamma_o \boldsymbol{\sigma}_o(t) - \big[ \boldsymbol{d}_{o(\text{max})} - \lvert \boldsymbol{d}_o(t) \rvert\big]^{\top} \mathcal{G}_o(t) \lvert \boldsymbol{\sigma}_o(t) \rvert \nonumber\\
+   ~ & - \boldsymbol{\kappa}_o^{\top}(t) \mathcal{P}_{o} \boldsymbol{\kappa}_o(t) + \boldsymbol{d}_{o(\text{max})}^{\top} \mathcal{P}_{o} \boldsymbol{\kappa}_o(t)
+\end{align}
+Given that $\lvert \boldsymbol{d}_o(t) \rvert \leq \boldsymbol{d}_{o(\text{max})}$, it can be shown that $\left[\boldsymbol{d}_{o(\text{max})} -\lvert \boldsymbol{d}_o(t) \rvert\right]^{\top} \mathcal{G}_o(t) \lvert \boldsymbol{\sigma}_o(t) \rvert \geq 0$.
+Moreover, since $\mathcal{P}_{o}$ is positive-definite matrix, $\boldsymbol{\kappa}_o^{\top}(t) \mathcal{P}_{o} \boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}^{\top} \mathcal{P}_{o} \boldsymbol{\kappa}_o(t) > \left\{\left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right]^{\top} \mathcal{P}_{o} \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right] - \boldsymbol{d}_{o(\text{max})}^{\top} \mathcal{P}_{o} \boldsymbol{d}_{o(\text{max})} \right\}/2$.
+Hence,
+\begin{align}
+\label{Lyapunov derivative for outer loop: equation 3}
+    \dot{V}_o(t)~{\leq}~&-\lambda_{\text{min}}(\Gamma_o) \lVert \boldsymbol{\sigma}_o(t) \rVert_2^2 + \frac{1}{2}\boldsymbol{d}_{o(\text{max})}^{\top} \mathcal{P}_{o} \boldsymbol{d}_{o(\text{max})} \nonumber \\ 
+    &- \frac{1}{2} \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right]^{\top} \mathcal{P}_{o} \left[\boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})}\right] \nonumber \\ 
+    {\leq}~& - \lambda_{\text{min}}(\Gamma_o) \lVert \boldsymbol{\sigma}_o(t) \rVert_2^2 - \frac{1}{2} \lambda_{\text{min}}(\mathcal{P}_o) \lVert \boldsymbol{\kappa}_o(t) - \boldsymbol{d}_{o(\text{max})} \rVert_2^2  \nonumber \\
+    & + \frac{1}{2} \lambda_{\text{max}}(\mathcal{P}_o) \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2^2\nonumber\\
+    {\leq}~& -\phi_1 V_o(t) + \frac{1}{2} \lambda_{\text{max}}(\mathcal{P}_o) \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2^2,
+\end{align}
+where $\phi_1 \triangleq \frac{\text{ min}\big(2 \lambda_{\text{min}}\left(\Gamma_o \right),\lambda_{\text{min}}\left(\mathcal{P}_o \right)\big)}{\text{max}\big(1,\lambda_{\text{max}}\left(\mathcal{N}_o^{-1} \right)\big)}>0$. For the choice of a scalar $\phi_2$ satisfying $0<\phi_2<\phi_1$, the above inequality \eqref{Lyapunov derivative for outer loop: equation 3} is rewritten as
+\begin{flalign}
+\label{Lyap_deriv_6}
+\dot{V}_o(t)&\leq-\phi_2 V_o(t)-(\phi_1-\phi_2) V_o(t)  + \frac{1}{2} \lambda_{\text{max}}(\mathcal{P}_o) \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2^2 \nonumber\\
+&\leq-\phi_2 V_o(t)\qquad\forall\, V_o(t)\geq \Theta_o=\frac{\lambda_{\text{max}}(\mathcal{P}_o) \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2^2}{2(\phi_1-\phi_2)}.
+\end{flalign}
+
+Invoking \textit{Lemma 1}, any trajectory enters the ball $\mathcal{B}_{ro} = \left \{ \left ( \boldsymbol{\sigma}_o, \, \boldsymbol{\kappa}_o \right ) \in \mathbb{R}^6 | V_o \leq \Theta_o \right\}$ exponentially in finite-time and stays in $\mathcal{B}_{ro}$ for all future time. Note that the size of the ball can be made suitably small through a suitable selection of the control parameters $\lambda_{\text{min}}(\mathcal{P}_o)$, $\lambda_{\text{max}}(\mathcal{P}_o)$, $\lambda_{\text{max}}(\mathcal{N}_o^{-1}) $ and $\lambda_{\text{min}}(\Gamma_o)$, so that by recognizing that $V_o(t) \geq \lVert \boldsymbol{\sigma}_o(t) \rVert_2^2/2$, one has the ultimate bound for $\boldsymbol{\sigma}_o(t)$ as $\lVert \boldsymbol{\sigma}_o(t) \rVert_2 \leq \psi_o {=} \left[\lambda_{\text{max}}(\mathcal{P}_o)/\left(\phi_1 - \phi_2\right)\right]^{\frac{1}{2}} \lVert \boldsymbol{d}_{o(\text{max})} \rVert_2$. This bound is uniform as it is independent of initial conditions. 
+Consequently, it follows from \eqref{sigma for outer loop: equation} that the output error variable $\boldsymbol{\zeta}_o(t)$ converges to a small bound around the origin so that from \eqref{error transformation for outer loop: equation}, $- \boldsymbol{p}_{o}(t) < \boldsymbol{q}_{oe}(t) < \boldsymbol{p}_{o}(t)$ is satisfied. Thus the prescribed performance constraint is ensured $\forall \, t \geq 0$. This ends the proof.
+
+\textit{Theorem 2}:
+Consider the nonlinear system \eqref{perturbed system dynamics for inner loop: equation} such that the initial value of the inner loop output error $\boldsymbol{q}_{ie}(0)$ is within the constrained region, i.e., $- \boldsymbol{p}_{i (0)}(t) < \boldsymbol{q}_{ie}(0) < \boldsymbol{p}_{i (0)}(t), \, \forall \, t \geq 0$. Then, under \textit{Assumption 2}, system \eqref{perturbed system dynamics for inner loop: equation} under the proposed control law \eqref{control law for inner loop: equation} accomplishes exponential convergence of $\boldsymbol{\zeta}_i(t)$ to a UUB given by
+\begin{equation}
+    \psi_i = 2 \sqrt{\frac{\lambda_{\text{max}}(\mathcal{B}_{\text{min}})\lambda_{\text{max}}(\mathcal{P}_i)}{\left(\phi_3 - \phi_4\right)}} \tilde{d}_{i},
+\end{equation}
+where $\phi_3 \triangleq \lambda_{\text{min}}\left(\mathcal{B}_{\text{min}} \right) \frac{\text{ min}\big(2 \lambda_{\text{min}}\left(\Gamma_i \right),\lambda_{\text{min}}\left(\mathcal{P}_i \right)\big)}{\text{max}\big(1,\lambda_{\text{max}}\left(\mathcal{B}_{\text{min}} \right) \lambda_{\text{max}}\left(\mathcal{N}_i^{-1} \right)\big)}>0$, $0<\phi_4<\phi_3$.
+Moreover, the control law \eqref{control law for inner loop: equation} ensures that the trajectory of the system \eqref{perturbed system dynamics for inner loop: equation} lies within the prescribed constraint sets $- \boldsymbol{p}_{i}(t) < \boldsymbol{q}_{ie}(t) < \boldsymbol{p}_{i}(t) \, \forall \, t \geq 0$.
+
+As a first step, observe that $\zeta_{i k}(0) = S_{i k}^{-1} [q_{ie k}(0) / p_{i (0) k}]$ is well-defined for $\lvert q_{ie k}(0) \rvert < p_{i (0) k}$ for $k = \{1, 2, 3, 4\}$. The dynamics of $\boldsymbol{\zeta}_i(t)$ then evolves according to the system \eqref{unconstrained system for inner loop: equation} under the control law \eqref{control law for inner loop: equation} of the PLASMC strategy.
+
+\noindent The following candidate Lyapunov function $V_i(t)$ is now considered for subsequent analysis:
+\begin{align} \label{Lyapunov function for inner loop: equation}
+    V_i(t) =&~ \frac{1}{2}\boldsymbol{\sigma}_i^{\top}(t)\boldsymbol{\sigma}_i(t) \nonumber \\
+    &+ \frac{1}{2} \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \mathcal{N}_i^{-1} \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right],
+\end{align}
+where the unknown positive constant $\tilde{d}_{i}$ satisfies $\lVert\tilde{\mathcal{D}}_i(t)\rVert_2 \leq \tilde{d}_i$ and $\boldsymbol{1} = [1,\,1,\,1,\,1]^{\top}$.
+
+\noindent Using \eqref{sigma derivative for inner loop: equation 2} and \eqref{adaptive law for inner loop: equation}, the time-derivative of \eqref{Lyapunov function for inner loop: equation} can be written as
+\begin{align}
+\label{Lyapunov derivative for inner loop: equation 1}
+    \dot{V}_i(t)=~&\boldsymbol{\sigma}_i^{\top}(t) \dot{\boldsymbol{\sigma}}_i(t) + \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \mathcal{N}_i^{-1} \dot{\boldsymbol{\kappa}}_i(t)\nonumber\\
+    = & - \boldsymbol{\sigma}_i^{\top}(t) \mathcal{G}_i(t) \mathcal{B}_i(t) \, \mathcal{G}_i^{-1}(t) \Big[\Gamma_i \boldsymbol{\sigma}_i(t) \nonumber \\ 
+    & + \lVert \boldsymbol{\theta}_i(t) \rVert_2 \, \text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] \boldsymbol{\kappa}_i(t)\Big] \nonumber\\
+    & + \boldsymbol{\sigma}_i^{\top}(t) \mathcal{B}_{\text{min}} \, \tilde{\mathcal{D}}_i(t) \boldsymbol{\theta}_i(t) \nonumber\\
+    & + \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \mathcal{N}_i^{-1} \Big[\lVert \boldsymbol{\theta}_i(t) \rVert_2 \mathcal{N}_{i} \lvert \boldsymbol{\sigma}_i(t) \rvert \nonumber\\
+    & - \mathcal{N}_{i} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t) \Big].
+\end{align} 
+Since the diagonal matrices $\mathcal{G}_i(t)$, $\mathcal{B}_{1}$ and $\Gamma_i$ are positive-definite such that $\boldsymbol{\sigma}_i^{\top} \mathcal{B}_{\text{min}} \boldsymbol{\sigma}_i \leq \boldsymbol{\sigma}_i^{\top}  \mathcal{B}_{1}(t) \boldsymbol{\sigma}_i$, it can be shown that $\boldsymbol{\sigma}_i^{\top} \mathcal{B}_{\text{min}} \Gamma_i \boldsymbol{\sigma}_i \leq \boldsymbol{\sigma}_i^{\top}  \mathcal{G}_i(t) \mathcal{B}_{1}(t) \, \mathcal{G}_i^{-1}(t) \Gamma_i \boldsymbol{\sigma}_i$.
+Moreover, $\boldsymbol{\sigma}_i^{\top}(t) \text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] \approx \lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \in \mathbb{R}_+^4$ and $\boldsymbol{\kappa}_i(t) \in \mathbb{R}_+^4$ from Eq. \eqref{adaptive law for inner loop: equation}.
+Therefore, $\lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \mathcal{B}_{\text{min}} \boldsymbol{\kappa}_i(t) \leq \boldsymbol{\sigma}_i^{\top}(t) \mathcal{G}_i(t) \mathcal{B}_{1}(t) \, \mathcal{G}_i^{-1}(t) \text{sat}[ \mathcal{E}_i^{-1}\boldsymbol{\sigma}_i(t)] \boldsymbol{\kappa}_i(t)$.
+Hence, \eqref{Lyapunov derivative for inner loop: equation 1} can be rewritten as:
+\begin{align}
+\label{Lyapunov derivative for inner loop: equation 2}
+    \dot{V}_i(t)~{\leq}~& - \boldsymbol{\sigma}_i^{\top} \mathcal{B}_{\text{min}} \Gamma_i \boldsymbol{\sigma}_i - \lVert \boldsymbol{\theta}_i(t) \rVert_2 \lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \mathcal{B}_{\text{min}} \boldsymbol{\kappa}_i(t) \nonumber \\
+    & + \lVert\tilde{\mathcal{D}}_i(t)\rVert_2 \lVert \boldsymbol{\theta}_i(t) \rVert_2 \lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \mathcal{B}_{\text{min}} \boldsymbol{1} \nonumber \\
+    & + \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \left[\lVert \boldsymbol{\theta}_i(t) \rVert_2 \lvert \boldsymbol{\sigma}_i(t) \rvert - \mathcal{P}_{i} \boldsymbol{\kappa}_i(t) \right] \nonumber \\
+    \leq ~ & - \boldsymbol{\sigma}_i^{\top} \mathcal{B}_{\text{min}} \Gamma_i \boldsymbol{\sigma}_i \nonumber \\
+    & - \left( \tilde{d}_{i} - \lVert\tilde{\mathcal{D}}_i(t)\rVert_2 \right) \lVert \boldsymbol{\theta}_i(t) \rVert_2 \lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \mathcal{B}_{\text{min}} \boldsymbol{1} \nonumber \\
+    & - \boldsymbol{\kappa}_i^{\top}(t) \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t) + \tilde{d}_{i} \boldsymbol{1}^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t)
+\end{align}
+Given that $\lVert\tilde{\mathcal{D}}_i(t)\rVert_2 \leq \tilde{d}_i$, it can be shown that $\left( \tilde{d}_{i} - \lVert\tilde{\mathcal{D}}_i(t)\rVert_2 \right) \lVert \boldsymbol{\theta}_i(t) \rVert_2 \lvert \boldsymbol{\sigma}_i(t) \rvert^{\top} \mathcal{B}_{\text{min}} \boldsymbol{1} \geq 0$.
+Moreover, since both $\mathcal{B}_{\text{min}}$ and $\mathcal{P}_{i}$ are positive-definite matrices, $\boldsymbol{\kappa}_i^{\top}(t) \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{\kappa}_i(t) > \left\{\left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right] - \tilde{d}_{i}^2 \boldsymbol{1}^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{1} \right\}/2$.
+Hence,
+\begin{align}
+\label{Lyapunov derivative for inner loop: equation 3}
+\dot{V}_i(t) ~ \leq ~ &-\lambda_{\text{min}}(\mathcal{B}_{\text{min}})\lambda_{\text{min}}(\Gamma_i) \lVert \boldsymbol{\sigma}_i(t) \rVert_2^2 \nonumber\\
+& - \frac{1}{2}\left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right]^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \left[\boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1}\right] \nonumber\\
+& +\frac{1}{2}\tilde{d}_{i}^2 \boldsymbol{1}^{\top} \mathcal{B}_{\text{min}} \mathcal{P}_{i} \boldsymbol{1} \nonumber \\
+\leq ~ &-\lambda_{\text{min}}(\mathcal{B}_{\text{min}}) \Big[ \lambda_{\text{min}}(\Gamma_i) \lVert \boldsymbol{\sigma}_i(t) \rVert_2^2 \nonumber\\
+& + \frac{1}{2}\lambda_{\text{min}}(\mathcal{P}_{i}) \lVert \boldsymbol{\kappa}_i(t) - \tilde{d}_{i} \boldsymbol{1} \rVert_2^2  - 2 \lambda_{\text{min}}(\mathcal{P}_{i}) \tilde{d}_{i}^2 \Big] \nonumber \\
+\leq~ &-\phi_3 V_i(t) + 2 \lambda_{\text{max}}(\mathcal{B}_{\text{min}}) \lambda_{\text{max}}(\mathcal{P}_{i}) \tilde{d}_{i}^2,
+\end{align}
+where $\phi_3 \triangleq \lambda_{\text{min}}\left(\mathcal{B}_{\text{min}} \right) \frac{\text{ min}\big(2 \lambda_{\text{min}}\left(\Gamma_i \right),\lambda_{\text{min}}\left(\mathcal{P}_i \right)\big)}{\text{max}\big(1,\lambda_{\text{max}}\left(\mathcal{B}_{\text{min}} \right) \lambda_{\text{max}}\left(\mathcal{N}_i^{-1} \right)\big)}>0$.
+For the choice of a scalar $\phi_4$ satisfying $0<\phi_4<\phi_3$, the above inequality \eqref{Lyapunov derivative for inner loop: equation 3} is rewritten as:
+\begin{align}
+\label{Lyapunov derivative for inner loop: equation 4}
+\dot{V}_i(t)\leq~&-\phi_4 V_i(t)-(\phi_3-\phi_4) V_i(t) \nonumber \\
+& + 2 \lambda_{\text{max}}(\mathcal{B}_{\text{min}}) \lambda_{\text{max}}(\mathcal{P}_{i}) \tilde{d}_{i}^2 \nonumber\\
+\leq ~&-\phi_4 V_i(t), \, \forall\, V_i(t)\geq \Theta_i=\frac{2 \lambda_{\text{max}}(\mathcal{B}_{\text{min}}) \lambda_{\text{max}}(\mathcal{P}_{i}) \tilde{d}_{i}^2}{(\phi_3-\phi_4)}
+\end{align}
+
+Invoking \textit{Lemma 1}, any trajectory enters the ball $\mathcal{B}_{r i} = \left \{ \left ( \boldsymbol{\sigma}_i, \, \boldsymbol{\kappa}_i \right ) \in \mathbb{R}^8 | V_i \leq \Theta_i \right\}$ exponentially in finite-time and stays in $\mathcal{B}_{r i}$ for all future time. Note that the size of the ball can be made suitably small through a suitable selection of the control parameters $\lambda_{\text{min}}(\mathcal{P}_i)$, $\lambda_{\text{max}}(\mathcal{P}_i)$, $\lambda_{\text{max}}(\mathcal{N}_i^{-1}) $ and $\lambda_{\text{min}}(\Gamma_i)$, so that by recognizing that $V_i(t) \geq \lVert \boldsymbol{\sigma}_i(t) \rVert_2^2/2$, one has the ultimate bound for $\boldsymbol{\sigma}_i(t)$ as $\lVert \boldsymbol{\sigma}_i(t) \rVert_2 \leq \psi_i = 2 \left[\lambda_{\text{max}}(\mathcal{B}_{\text{min}})\lambda_{\text{max}}(\mathcal{P}_i)/\left(\phi_3 - \phi_4\right)\right]^{\frac{1}{2}}  \tilde{d}_{i}$. This bound is uniform as it is independent of initial conditions. 
+Consequently, it follows from \eqref{sigma for inner loop: equation} that the output error variable $\boldsymbol{\zeta}_i(t)$ converges to a small bound around the origin so that from \eqref{error transformation for inner loop: equation}, $- \boldsymbol{p}_{i}(t) < \boldsymbol{q}_{ie}(t) < \boldsymbol{p}_{i}(t)$ is satisfied. Thus the prescribed performance constraint is ensured $\forall \, t \geq 0$. This ends the proof.
+
+\section*{APPENDIX}
+Consider a frame $\mathcal{C}=\{O_{\text{c}} ~X_{\text{c}} ~Y_{\text{c}} ~Z_{\text{c}}\}^{\top}$ rigidly attached to a monocular camera such that its $X_{\text{c}}$ and $Y_{\text{c}}$ axes are aligned with the image horizontal and vertical directions respectively and its $Z_{\text{c}}$ axis is aligned with the optical axis of the camera, pointing towards a moving target.
+Assume that the camera captures a collection of $N$ image points on the target, which can be represented using the common pinhole camera model as:
+\begin{equation} \label{Eq. (A1)}
+    \boldsymbol{\hat{r}}_k = \begin{bmatrix} \hat{x}_k \\ \hat{y}_k \end{bmatrix}
+    = \frac{1}{z_{k}} \begin{bmatrix} x_{k} \\ y_{k}\end{bmatrix}, \text{ for } k=1,2,...,N,
+\end{equation}
+where the image point $\boldsymbol{\hat{r}}_k$ is the projection of the 3-D point $\boldsymbol{r}_k = [x_k, y_k, z_k]^{\top}$ defined in the camera frame $\mathcal{C}$.
+Now, the image points can be used to define image moments $m_{ij}$ of the target as follows:
+\begin{equation} \label{Eq. (A2)}
+    m_{ij} = \sum^{N}_{k=1} \hat{x}_k^i \hat{y}_k^j,  \text{ for } i,j=1,2,3,...
+\end{equation}
+such that the geometric center of the captured image points can be estimated as:
+\begin{equation} \label{Eq. (A3)}
+    \boldsymbol{\hat{r}}_{\text{t}} = \begin{bmatrix} \hat{x}_{\text{t}},\,\hat{y}_{\text{t}} \end{bmatrix}^{\top}
+    = \begin{bmatrix} \frac{m_{10}}{m_{00}},\,\frac{m_{01}}{m_{00}} \end{bmatrix}^{\top}
+\end{equation}
+% Also, we can define inverse depth-weighted image moments $n_{ij}$ using the image points as:
+% \begin{equation} \label{Eq. (Ax)}
+%     n_{ij} = \sum^{N}_{k=1} \frac{\hat{x}_k^i \hat{y}_k^j}{z_k},  \text{ for } i,j=1,2,3,...
+% \end{equation}
+Now, $\boldsymbol{\hat{r}}_{\text{t}}$ can be used to define centered moments $\mu_{ij}$ as:
+\begin{equation} \label{Eq. (A4)}
+    \mu_{ij} = \sum^{N}_{k=1} (\delta \hat{x}_k)^i (\delta \hat{y}_k)^j,
+\end{equation}
+where $[\delta \hat{x}_k,\,\delta \hat{y}_k]^{\top} \equiv [\hat{x}_k - \hat{x}_{\text{t}},\,\hat{y}_k - \hat{y}_{\text{t}}]^{\top}$. 
+Then, the target orientation $\alpha$ is defined using centered moments $\mu_{ij}$ as:
+\begin{equation} \label{Eq. (A5)}
+    \alpha = \frac{1}{2} \text{tan}^{-1}\left( \frac{2 \mu_{11}}{\mu_{20} - \mu_{02}}\right).
+\end{equation}
+
+Next, consider a target frame $\mathcal{T}=\{O_{\text{t}} ~X_{\text{t}} ~Y_{\text{t}} ~Z_{\text{t}}\}^{\top}$ with its origin located at $\boldsymbol{r}_{\text{t}} = [x_{\text{t}}, y_{\text{t}}, z_{\text{t}}]^{\top}$ in the camera frame $\mathcal{C}$ such that projection of $\boldsymbol{r}_{\text{t}}$ on the image plane is represented by $\boldsymbol{\hat{r}}_{\text{t}}$.
+Let the spatial velocity of the camera be denoted as $\boldsymbol{\nu}_{\text{c}} = [\boldsymbol{v}_{\text{c}}, \boldsymbol{\omega}_{\text{c}}]^{\top}$ with $\boldsymbol{v}_{\text{c}} = [v_{\text{c}x}, v_{\text{c}y}, v_{\text{c}z}]^{\top}$ and $\boldsymbol{\omega}_{\text{c}} = [\omega_{\text{c}x}, \omega_{\text{c}y}, \omega_{\text{c}z}]^{\top}$ being the instantaneous linear and angular velocities respectively.
+Given that the target moves with the spatial velocity $\boldsymbol{\nu}_{\text{t}} = [\boldsymbol{v}_{\text{t}}, \boldsymbol{\omega}_{\text{t}}]^{\top}$, where $\boldsymbol{v}_{\text{t}} = [v_{\text{t}x}, v_{\text{t}y}, v_{\text{t}z}]^{\top}$ and $\boldsymbol{\omega}_{\text{t}} = [\omega_{\text{t}x}, \omega_{\text{t}y}, \omega_{\text{t}z}]^{\top}$ are the instantaneous linear and angular velocities respectively, we can express the motion of the 3-D point $\boldsymbol{r}_k$ in the camera frame of reference as given below:
+\begin{align} \label{Eq. (A6)}
+    \dot{\boldsymbol{r}}_k =& ~\boldsymbol{v}_{\text{t}} - \boldsymbol{v}_{\text{c}} + (\boldsymbol{\omega}_{\text{t}} - \boldsymbol{\omega}_{\text{c}}) \times \boldsymbol{r}_k - \boldsymbol{\omega}_{\text{t}} \times \boldsymbol{r}_{\text{t}} \nonumber \\
+    =& - \boldsymbol{v} - \boldsymbol{\omega} \times \boldsymbol{r}_{k} - \boldsymbol{\omega}_{\text{t}} \times \boldsymbol{r}_{\text{t}}
+\end{align}
+where $\boldsymbol{\nu} = [\boldsymbol{v}, \boldsymbol{\omega}]^{\top} = [\boldsymbol{v}_{\text{c}} - \boldsymbol{v}_{\text{t}}, \boldsymbol{\omega}_{\text{c}} - \boldsymbol{\omega}_{\text{t}}]^{\top}$ is the relative spatial velocity.
+
+Using \eqref{Eq. (A1)} and \eqref{Eq. (A6)}, the kinematics of the $k^{th}$ image point is derived as:
+\begin{align} \label{Eq. (A7)}
+    \begin{bmatrix} \dot{\hat{x}}_{k} \\ \dot{\hat{y}}_{k} \end{bmatrix}
+    =& \frac{1}{z_{k}} \begin{bmatrix} \dot{x}_{k} \\ \dot{y}_{k} \end{bmatrix} - \frac{1}{z_{k}^2} \dot{z}_{k} \begin{bmatrix} x_{k} \\ y_{k} \end{bmatrix} \nonumber \\
+    =& \frac{1}{z_{k}} \begin{bmatrix} - v_{x} - z_{k} \omega_{y} + y_{k} \omega_{z} - z_{\text{t}} \omega_{{\text{t}}y} + y_{\text{t}} \omega_{{\text{t}}z} \\ - v_{y} - x_{k} \omega_{z} + z_{k} \omega_{x} - x_{\text{t}} \omega_{\text{t}z} + z_{\text{t}} \omega_{\text{t}x} \end{bmatrix} \nonumber \\ 
+    &- \frac{1}{z_{k}^2} \left( - v_{z} - y_{k} \omega_{x} + x_{k} \omega_{y} - y_{\text{t}} \omega_{\text{t}x} + x_{\text{t}} \omega_{\text{t}y} \right) \begin{bmatrix} x_{k} \\ y_{k} \end{bmatrix} \nonumber \\
+    =& \begin{bmatrix} - \frac{v_{x}}{z_{k}} + \hat{x}_{k} \frac{v_{z}}{z_{k}} + \hat{x}_{k} \hat{y}_{k} \omega_{x} - (1 + \hat{x}_{k}^2) \omega_{y} + \hat{y}_{k}\omega_z \\
+    - \frac{v_{y}}{z_{k}} + \hat{y}_{k} \frac{v_{z}}{z_{k}} + (1 + \hat{y}_{k}^2) \omega_{x} - \hat{x}_{k} \hat{y}_{k} \omega_{y} - \hat{x}_{k} \omega_z \end{bmatrix} \nonumber \\
+    &+ \frac{z_{\text{t}}}{z_{k}} \begin{bmatrix}
+         \hat{x}_{k} \hat{y}_{\text{t}} \omega_{\text{t}x} - (1 + \hat{x}_{k} \hat{x}_{\text{t}}) \omega_{\text{t}y} + \hat{y}_{\text{t}}\omega_{\text{t}z} \\
+         (1 + \hat{y}_{k} \hat{y}_{\text{t}}) \omega_{\text{t}x} - \hat{y}_{k} \hat{x}_{\text{t}} \omega_{\text{t}y} - \hat{x}_{\text{t}} \omega_{\text{t}z}
+    \end{bmatrix}
+\end{align}
+Defining optic flow for the target in the camera frame of reference as:
+\begin{align} \label{Eq. (A8)}
+    \boldsymbol{h} =& ~ \begin{bmatrix}
+        h_x,\, h_y,\, h_r,\, h_{\phi}, \, h_{\theta}, \, h_{\psi}
+    \end{bmatrix}^{\top} = \begin{bmatrix} 
+        \boldsymbol{h}_{\boldsymbol{v}}^{\top} & \boldsymbol{h}_{\boldsymbol{\omega}}^{\top}
+    \end{bmatrix}^{\top} \nonumber \\
+    =& ~ \begin{bmatrix}
+        \frac{v_x}{z_{\text{t}}},\, \frac{v_y}{z_{\text{t}}},\, \frac{v_z}{z_{\text{t}}},\, \omega_{x}, \, \omega_{y}, \, \omega_{z}
+    \end{bmatrix}^{\top} = \begin{bmatrix} 
+        \frac{\boldsymbol{v}^{\top}}{z_{\text{t}}} & \boldsymbol{\omega}^{\top}
+    \end{bmatrix}^{\top},
+\end{align}
+\eqref{Eq. (A7)} can be simplified as:
+\begin{equation} \label{Eq. (A9)}
+    \begin{bmatrix} \dot{\hat{x}}_{k} \\ \dot{\hat{y}}_{k} \end{bmatrix}
+    = L_{\boldsymbol{h}(k)} \boldsymbol{h} + L_{\boldsymbol{\omega}\text{t}(k)} \boldsymbol{\omega}_{\text{t}},
+\end{equation}
+where
+\begin{align*}
+    L_{\boldsymbol{h}(k)} =& \begin{bmatrix} L_{\boldsymbol{v}(k)} & L_{\boldsymbol{\omega}(k)} \end{bmatrix}, \\
+    L_{\boldsymbol{\omega}\text{t}(k)} =& \frac{z_{\text{t}}}{z_{k}} \begin{bmatrix} \hat{x}_{k} \hat{y}_{\text{t}} & - (1 + \hat{x}_{k} \hat{x}_{\text{t}}) & \hat{y}_{\text{t}} \\
+    1 + \hat{y}_{k} \hat{y}_{\text{t}} & - \hat{y}_{k} \hat{x}_{\text{t}} & - \hat{x}_{\text{t}} \end{bmatrix}, \\
+    L_{\boldsymbol{v}(k)} =& \frac{z_{\text{t}}}{z_{k}} \begin{bmatrix} - 1 & 0 & \hat{x}_k \\ 0 & -1 & \hat{y}_k\end{bmatrix},\\
+    L_{\boldsymbol{\omega}(k)} =& \begin{bmatrix} \hat{x}_k \hat{y}_k & - (1 + \hat{x}_k^2) & \hat{y}_k \\
+    1 + \hat{y}_k^2 & - \hat{x}_k \hat{y}_k & - \hat{x}_k\end{bmatrix}.
+\end{align*}
+Now using \eqref{Eq. (A9)}, differentiation of $\delta \hat{x}_{k}$ can be derived as follows:
+\begin{align} \label{Eq. (A10)}
+    \begin{bmatrix} \delta \dot{\hat{x}}_{k} \\ \delta \dot{\hat{y}}_{k} \end{bmatrix} =& \begin{bmatrix} \dot{\hat{x}}_{k} - \dot{\hat{x}}_{\text{t}} \\ \dot{\hat{y}}_{k} - \dot{\hat{y}}_{\text{t}} \end{bmatrix} \nonumber \\
+    =& (L_{\boldsymbol{h}(k)} - L_{\boldsymbol{h}(\text{t})}) \boldsymbol{h} + (L_{\boldsymbol{\omega}\text{t}(k)} - L_{\boldsymbol{\omega}\text{t}(\text{t})}) \boldsymbol{\omega}_{\text{t}} \nonumber \\
+    =& L_{\boldsymbol{h}(k,\text{t})} \boldsymbol{h} + L_{\boldsymbol{\omega}\text{t}(k,\text{t})} \boldsymbol{\omega}_{\text{t}},
+\end{align}
+where
+\begin{align*}
+    L_{\boldsymbol{h}(k,\text{t})} =& \begin{bmatrix} L_{\boldsymbol{v}(k,\text{t})} & L_{\boldsymbol{\omega}(k,\text{t})} \end{bmatrix},\\
+    % L_{\boldsymbol{\omega}\text{t}(k,\text{t})} =& \begin{bmatrix} \multirow{2}{*}{$\left[\frac{\epsilon_{zk}^2}{\epsilon_{xk}} - 1\right] \hat{x}_{\text{t}} \hat{y}_{\text{t}}$} & \epsilon_{zk} - 1 \\ & + \left[\frac{\epsilon_{zk}^2}{\epsilon_{yk}} - 1\right] \hat{y}_{\text{t}}^2 \\[1.0em] - \left(\epsilon_{zk} - 1 \right) & \multirow{2}{*}{$- \left[\frac{\epsilon_{zk}^2}{\epsilon_{yk}} - 1\right] \hat{x}_{\text{t}} \hat{y}_{\text{t}}$} \\ - \left[\frac{\epsilon_{zk}^2}{\epsilon_{xk}} - 1\right] \hat{x}_{\text{t}}^2 & \\[1.0em] (\epsilon_{zk} - 1) \hat{y}_{\text{t}} & - (\epsilon_{zk} - 1) \hat{x}_{\text{t}} \end{bmatrix}^{\top},\\
+    L_{\boldsymbol{\omega}\text{t}(k,\text{t})} =& \begin{bmatrix} \multirow{2}{*}{$\left[\frac{\epsilon_{zk}^2}{\epsilon_{xk}} - 1\right] \hat{x}_{\text{t}} \hat{y}_{\text{t}}$} & - \left(\epsilon_{zk} - 1 \right) & \multirow{2}{*}{$(\epsilon_{zk} - 1) \hat{y}_{\text{t}}$} \\ & - \left[\frac{\epsilon_{zk}^2}{\epsilon_{xk}} - 1\right] \hat{x}_{\text{t}}^2 & \\[1.0em] \epsilon_{zk} - 1 & \multirow{2}{*}{$- \left[\frac{\epsilon_{zk}^2}{\epsilon_{yk}} - 1\right] \hat{x}_{\text{t}} \hat{y}_{\text{t}}$} & \multirow{2}{*}{$ - (\epsilon_{zk} - 1) \hat{x}_{\text{t}}$} \\ + \left[\frac{\epsilon_{zk}^2}{\epsilon_{yk}} - 1\right] \hat{y}_{\text{t}}^2 & & \end{bmatrix}, \\
+    L_{\boldsymbol{v}(k,\text{t})} =& \begin{bmatrix} - (\epsilon_{zk} - 1) & 0 & \left[\frac{\epsilon_{zk}^2}{\epsilon_{xk}} - 1\right] \hat{x}_{\text{t}} \\ 0 & - (\epsilon_{zk} - 1) & \left[\frac{\epsilon_{zk}^2}{\epsilon_{yk}} - 1\right] \hat{y}_{\text{t}} \end{bmatrix},\\
+    L_{\boldsymbol{\omega}(k,\text{t})} =& \begin{bmatrix} \delta (\hat{x}_k \hat{y}_k) & - \delta (\hat{x}_k^2) & \delta \hat{y}_k \\
+    \delta (\hat{y}_k^2) & - \delta (\hat{x}_k \hat{y}_k) & - \delta \hat{x}_k\end{bmatrix}, \\
+    \epsilon_{xk} =& \frac{x_{\text{t}}}{x_{k}},\quad \epsilon_{yk} = \frac{y_{\text{t}}}{y_{k}},\quad \epsilon_{zk} = \frac{z_{\text{t}}}{z_{k}},  \\
+    \begin{bmatrix} \delta (\hat{x}_k^2) \\ \delta (\hat{y}_k^2) \end{bmatrix} =&
+    \begin{bmatrix} \hat{x}_k^2 - \hat{x}_{\text{t}}^2 \\ \hat{y}_k^2 - \hat{y}_{\text{t}}^2 \end{bmatrix} = \begin{bmatrix} (\delta \hat{x}_k)^2 + 2 \hat{x}_{\text{t}} \delta \hat{x}_k \\ (\delta \hat{y}_k)^2 + 2 \hat{y}_{\text{t}} \delta \hat{y}_k \end{bmatrix}, \\
+    \delta (\hat{x}_k \hat{y}_k) =& ~ \hat{x}_k \hat{y}_k - \hat{x}_{\text{t}} \hat{y}_{\text{t}} = \delta \hat{x}_k \delta \hat{y}_k + \hat{y}_{\text{t}} \delta \hat{x}_k + \hat{x}_{\text{t}} \delta \hat{y}_k.
+\end{align*}
+
+\textit{Assumption A1:} It is assumed that $\epsilon_{zk}^2/\epsilon_{\lambda k} \approx 1$ for $\lambda = x, y, z$.
+
+Using \eqref{Eq. (A9)} along with the \textit{Assumption A1}, differentiation of \eqref{Eq. (A2)} with respect to time gives:
+\begin{align} \label{Eq. (A11)}
+    \dot{m}_{ij} =& \sum^{N}_{k=1} \left( i\hat{x}_k^{i-1} \hat{y}_k^{j} \dot{\hat{x}}_k + j\hat{x}_k^{i} \hat{y}_k^{j-1} \dot{\hat{y}}_k \right) \nonumber \\
+    =& \sum^{N}_{k=1} \begin{bmatrix}
+         i\hat{x}_k^{i-1} \hat{y}_k^{j} & j\hat{x}_k^{i} \hat{y}_k^{j-1}
+    \end{bmatrix} \begin{bmatrix} \dot{\hat{x}}_{k} \\ \dot{\hat{y}}_{k} \end{bmatrix} \nonumber \\
+    =& \sum^{N}_{k=1} \begin{bmatrix}
+         i\hat{x}_k^{i-1} \hat{y}_k^{j} & j\hat{x}_k^{i} \hat{y}_k^{j-1}
+    \end{bmatrix} \left( L_{\boldsymbol{h}(k)} \boldsymbol{h} + L_{\boldsymbol{\omega}\text{t}(k)} \boldsymbol{\omega}_{\text{t}} \right) \nonumber \\
+    =& \boldsymbol{l}_{\boldsymbol{h}(m)}^{\top} \boldsymbol{h} + \boldsymbol{l}_{\boldsymbol{\omega}\text{t}(m)}^{\top} \boldsymbol{\omega}_{\text{t}},
+\end{align}
+where
+% \begin{align*}
+%     L_{\boldsymbol{h}(m)} =& \begin{bmatrix} L_{\boldsymbol{v}(m)} & L_{\boldsymbol{\omega}(m)} \end{bmatrix}, \\
+%     L_{\boldsymbol{\omega}\text{t}(m)} =& z_{\text{t}} \begin{bmatrix} (i+j) \hat{y}_{\text{t}} n_{i,j} + j n_{i,j-1} \\ - i n_{i-1,j} - (i + j) \hat{x}_{\text{t}} n_{i,j} \\ i \hat{y}_{\text{t}} n_{i-1,j} - j \hat{x}_{\text{t}} n_{i,j-1} \end{bmatrix}^{\top}, \\
+%     L_{\boldsymbol{v}(m)} =& z_{\text{t}} \begin{bmatrix} - i n_{i-1,j} & - j n_{i,j-1} & (i + j) n_{i,j} \end{bmatrix},\\
+%     L_{\boldsymbol{\omega}(m)} =& \begin{bmatrix} (i+j) m_{i,j+1} + j m_{i,j-1} \\ - i m_{i-1,j} - (i + j) m_{i+1,j} \\ i m_{i-1,j+1} - j m_{i+1,j-1} \end{bmatrix}^{\top},
+% \end{align*}
+\begin{align*}
+    \boldsymbol{l}_{\boldsymbol{h}(m)} =& \begin{bmatrix} \boldsymbol{l}_{\boldsymbol{v}(m)}^{\top} & \boldsymbol{l}_{\boldsymbol{\omega}(m)}^{\top} \end{bmatrix}^{\top}, \\
+    \boldsymbol{l}_{\boldsymbol{\omega}\text{t}(m)} =& \begin{bmatrix} (i+j) \hat{y}_{\text{t}} m_{i,j} + j m_{i,j-1} \\ - i m_{i-1,j} - (i + j) \hat{x}_{\text{t}} m_{i,j} \\ i \hat{y}_{\text{t}} m_{i-1,j} - j \hat{x}_{\text{t}} m_{i,j-1} \end{bmatrix}, \\
+    \boldsymbol{l}_{\boldsymbol{v}(m)} =& \begin{bmatrix} - i m_{i-1,j} & - j m_{i,j-1} & (i + j) m_{i,j} \end{bmatrix}^{\top},\\
+    \boldsymbol{l}_{\boldsymbol{\omega}(m)} =& \begin{bmatrix} (i+j) m_{i,j+1} + j m_{i,j-1} \\ - i m_{i-1,j} - (i + j) m_{i+1,j} \\ i m_{i-1,j+1} - j m_{i+1,j-1} \end{bmatrix},
+\end{align*}
+
+Invoking \textit{Assumption A1}, the contributions from the terms involving $L_{\boldsymbol{v}(k,\text{t})}$ and $L_{\boldsymbol{\omega}\text{t}(k,\text{t})}$ are considered negligible and are therefore omitted from the subsequent analysis.
+Hence, 
+\begin{equation} \label{Eq. (A12)}
+    \begin{bmatrix} \delta \dot{\hat{x}}_{k} \\ \delta \dot{\hat{y}}_{k} \end{bmatrix} = L_{\boldsymbol{\omega}(k,\text{t})} \boldsymbol{h}_{\boldsymbol{\omega}}
+\end{equation}
+
+Using \eqref{Eq. (A12)}, differentiation of \eqref{Eq. (A4)} with respect to time gives:
+\begin{align} \label{Eq. (A13)}
+    \dot{\mu}_{ij} =& \sum^{N}_{k=1} \left[i(\delta \hat{x}_k)^{i-1} (\delta \hat{y}_k)^j\delta \dot{\hat{x}}_k + j(\delta \hat{x}_k)^{i} (\delta \hat{y}_k)^{j-1} \delta \dot{\hat{y}}_k \right] \nonumber \\
+    =& \sum^{N}_{k=1} \begin{bmatrix}
+    i(\delta \hat{x}_k)^{i-1} (\delta \hat{y}_k)^j & j(\delta \hat{x}_k)^{i} (\delta \hat{y}_k)^{j-1}
+    \end{bmatrix} \begin{bmatrix} \delta \dot{\hat{x}}_{k} \\ \delta \dot{\hat{y}}_{k} \end{bmatrix} \nonumber \\
+    =& \sum^{N}_{k=1} \begin{bmatrix}
+     i(\delta \hat{x}_k)^{i-1} (\delta \hat{y}_k)^j & j(\delta \hat{x}_k)^{i} (\delta \hat{y}_k)^{j-1}
+    \end{bmatrix} L_{\boldsymbol{\omega}(k,\text{t})} \boldsymbol{h}_{\boldsymbol{\omega}} \nonumber \\
+    =& \boldsymbol{l}_{\boldsymbol{\omega}(\mu)}^{\top} \boldsymbol{h}_{\boldsymbol{\omega}},
+\end{align}
+where
+\begin{equation*}
+    \boldsymbol{l}_{\boldsymbol{\omega}(\mu)} = \begin{bmatrix} (i+j) \mu_{i,j+1} + (i + 2j) \hat{y}_{\text{t}} \mu_{i,j} + i \hat{x}_{\text{t}} \mu_{i-1,j+1} \\ - (i+j) \mu_{i+1,j} - (2i + j) \hat{x}_{\text{t}} \mu_{i,j} - j \hat{y}_{\text{t}} \mu_{i+1,j-1} \\ i \mu_{i-1,j+1} - j \mu_{i+1,j-1} \end{bmatrix}.
+\end{equation*}
+Hence,
+\begin{align*}
+    \dot{\mu}_{11} &= \begin{bmatrix}
+        2 \mu_{12} + 3 \hat{y}_{\text{t}} \mu_{11} + \hat{x}_{\text{t}} \mu_{02} \\
+        - 2 \mu_{21} - 3 \hat{x}_{\text{t}} \mu_{11} - \hat{y}_{\text{t}} \mu_{20} \\
+        \mu_{02} - \mu_{20}
+    \end{bmatrix}^{\top} \boldsymbol{h}_{\boldsymbol{\omega}}, \\
+    \dot{\mu}_{20} &= \begin{bmatrix}
+        2 \mu_{21} + 2 \hat{y}_{\text{t}} \mu_{20} + 2 \hat{x}_{\text{t}} \mu_{11} \\
+        - 2 \mu_{30} - 4 \hat{x}_{\text{t}} \mu_{20} \\
+        2 \mu_{11}
+    \end{bmatrix}^{\top} \boldsymbol{h}_{\boldsymbol{\omega}}, \\
+    \dot{\mu}_{02} &= \begin{bmatrix}
+        2 \mu_{03} + 4 \hat{y}_{\text{t}} \mu_{02} \\
+        - 2 \mu_{12} - 2 \hat{x}_{\text{t}} \mu_{02} - 2 \hat{y}_{\text{t}} \mu_{11} \\
+        - 2 \mu_{11}
+    \end{bmatrix}^{\top} \boldsymbol{h}_{\boldsymbol{\omega}},
+\end{align*}
+Using \eqref{Eq. (A13)}, the dynamics of angle $\alpha$ \eqref{Eq. (A5)} will be:
+\begin{align} \label{Eq. (A14)}
+    \dot{\alpha} &= \frac{(\mu_{20} - \mu_{02}) \dot{\mu}_{11} - \mu_{11} (\dot{\mu}_{20} - \dot{\mu}_{02})}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2}\nonumber \\
+    % &= \frac{\splitfrac{(\mu_{20} - \mu_{02})\left[ \sum^{N}_{k=1} (\delta \hat{y}_k\, \delta \dot{\hat{x}}_k + \delta \hat{x}_k\, \delta \dot{\hat{y}}_k)\right] }{ - 2 \mu_{11} \left[\sum^{N}_{k=1} (\delta \hat{x}_k\, \delta \dot{\hat{x}}_k - \delta \hat{y}_k\, \delta \dot{\hat{y}}_k) \right]}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2}\nonumber \\
+    % &= \boldsymbol{l}_t \cdot \boldsymbol{\omega}_t + \boldsymbol{l}_c \cdot \boldsymbol{\omega}_c\nonumber \\
+    &= \boldsymbol{l}_{\boldsymbol{\omega}(\alpha)}^{\top} \boldsymbol{h}_{\boldsymbol{\omega}},
+\end{align}
+where
+\begin{align*}
+    \boldsymbol{l}_{\boldsymbol{\omega}(\alpha)} 
+    % &= \begin{bmatrix} \frac{\splitfrac{(\mu_{20} - \mu_{02})\left( 2 \mu_{12} + 3 \hat{y}_{\text{t}} \mu_{11} + \hat{x}_{\text{t}} \mu_{02} \right) }{ - \mu_{11} \left[ 2 \mu_{21} + 2 \hat{y}_{\text{t}} \mu_{20} + 2 \hat{x}_{\text{t}} \mu_{11} - (2 \mu_{03} + 4 \hat{y}_{\text{t}} \mu_{02}) \right]}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ \frac{\splitfrac{(\mu_{20} - \mu_{02})\left( - 2 \mu_{21} - 3 \hat{x}_{\text{t}} \mu_{11} - \hat{y}_{\text{t}} \mu_{20} \right) }{ - \mu_{11} \left[ - 2 \mu_{30} - 4 \hat{x}_{\text{t}} \mu_{20} - ( - 2 \mu_{12} - 2 \hat{x}_{\text{t}} \mu_{02} - 2 \hat{y}_{\text{t}} \mu_{11} ) \right]}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ \frac{(\mu_{20} - \mu_{02})\left( \mu_{02} - \mu_{20} \right) - \mu_{11} \left[ 2 \mu_{11} - ( - 2 \mu_{11} ) \right]}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \end{bmatrix} \\
+    &= \begin{bmatrix} \frac{\splitfrac{(\mu_{20} - \mu_{02})\left( 2 \mu_{12} + \hat{y}_{\text{t}} \mu_{11} + \hat{x}_{\text{t}} \mu_{02} \right) }{ - 2 \mu_{11} \left( \mu_{21} + \hat{x}_{\text{t}} \mu_{11} - \mu_{03} - \hat{y}_{\text{t}} \mu_{02} \right)}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ \frac{\splitfrac{ - (\mu_{20} - \mu_{02})\left( 2 \mu_{21} + \hat{x}_{\text{t}} \mu_{11} + \hat{y}_{\text{t}} \mu_{20} \right) }{ + 2 \mu_{11} \left[ \mu_{30} + \hat{x}_{\text{t}} \mu_{20} - \mu_{12} - \hat{y}_{\text{t}} \mu_{11} ) \right]}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} \\ -1 \end{bmatrix}.
+\end{align*} 
+% \begin{align*}
+%     \boldsymbol{l}_{\text{t}} &= \begin{bmatrix} \lambda_{\text{t}x} & \lambda_{\text{t}y} & 1 \end{bmatrix}^{\top}, \, \boldsymbol{l}_{\text{c}} = \begin{bmatrix} \lambda_{\text{c}x} & \lambda_{\text{c}y} & -1 \end{bmatrix}^{\top}, \\
+%     \lambda_{\text{t}x} &= \frac{\splitfrac{ - (\mu_{20} - \mu_{02})\left\{ \sum^{N}_{k=1} [(\delta \hat{y}_k)^2\, \hat{x}_k + \delta \hat{x}_k\, \delta \hat{y}_k \, \hat{y}_k ]\right\} }{ + 2 \mu_{11} \left\{\sum^{N}_{k=1} [\delta \hat{x}_k\, \delta \hat{y}_k \, \hat{x}_k - (\delta \hat{y}_k)^2 \, \hat{y}_k] \right\}}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2}, \\
+%     \lambda_{\text{t}y} &= \frac{\splitfrac{(\mu_{20} - \mu_{02})\left\{ \sum^{N}_{k=1} [\delta \hat{x}_k \, \delta \hat{y}_k\, \hat{x}_k + (\delta \hat{x}_k)^2\, \hat{y}_k]\right\} }{ - 2 \mu_{11} \left\{\sum^{N}_{k=1} [(\delta \hat{x}_k)^2\, \hat{x}_k - \delta \hat{x}_k\, \delta \hat{y}_k \hat{y}_k] \right\}}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2}, \\
+%     \lambda_{\text{c}x} &= \frac{\splitfrac{(\mu_{20} - \mu_{02})\left\{ \sum^{N}_{k=1} [\delta \hat{y}_k\, \delta (\hat{x}_k \hat{y}_k) + \delta \hat{x}_k\, \delta (\hat{y}_k^2)]\right\} }{ - 2 \mu_{11} \left\{\sum^{N}_{k=1} [\delta \hat{x}_k\, \delta  (\hat{x}_k \hat{y}_k) - \delta \hat{y}_k\, \delta (\hat{y}_k^2)] \right\}}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2}, \\
+%     \lambda_{\text{c}y} &= \frac{\splitfrac{- (\mu_{20} - \mu_{02})\left\{ \sum^{N}_{k=1} [\delta \hat{y}_k\, \delta (\hat{x}_k^2) + \delta \hat{x}_k\, \delta (\hat{x}_k \hat{y}_k)]\right\} }{ + 2 \mu_{11} \left\{\sum^{N}_{k=1} [\delta \hat{x}_k\, \delta (\hat{x}_k^2) - \delta \hat{y}_k\, \delta (\hat{x}_k \hat{y}_k)] \right\}}}{(\mu_{20} - \mu_{02})^2 + 4 \mu_{11}^2} 
+% \end{align*}
+% with $[\delta (\hat{x}_k^2),\,\delta (\hat{y}_k^2)]^{\top} \equiv [\hat{x}_k^2 - \hat{x}_{\text{t}}^2,\,\hat{y}_k^2 - \hat{y}_{\text{t}}^2]^{\top}$ and $\delta (\hat{x}_k \hat{y}_k) \equiv \hat{x}_k \hat{y}_k - \hat{x}_{\text{t}} \hat{y}_{\text{t}}$.
+
+Now using \eqref{Eq. (A9)}, the kinematics of optic flow \eqref{Eq. (A8)} can be derived as:
+\begin{align} \label{Eq. (A15)}
+    \dot{\boldsymbol{h}} &= 
+    \begin{bmatrix}
+        \frac{1}{z_{\text{t}}} \boldsymbol{a} - \frac{\dot{z}_{\text{t}}}{z_{\text{t}}^2} \boldsymbol{v} \\ \dot{\boldsymbol{\omega}}
+    \end{bmatrix} \nonumber \\
+    &= \begin{bmatrix} 
+        \frac{1}{z_{\text{t}}} \boldsymbol{a} - \frac{1}{z_{\text{t}}^2} \left( - v_{z} - y_{\text{t}} \omega_{x} + x_{\text{t}} \omega_{y} - y_{\text{t}} \omega_{\text{t}x} + x_{\text{t}} \omega_{\text{t}y} \right) \boldsymbol{v} \\ \dot{\boldsymbol{\omega}}
+    \end{bmatrix} \nonumber \\
+    &= \begin{bmatrix}
+        \frac{1}{z_{\text{t}}}\boldsymbol{a} + \left( h_r + \hat{y}_{\text{t}} \omega_{x} - \hat{x}_{\text{t}} \omega_{y} + \hat{y}_{\text{t}} \omega_{\text{t}x} - \hat{x}_{\text{t}} \omega_{\text{t}y} \right) \boldsymbol{h}_{\boldsymbol{v}} \\ \dot{\boldsymbol{\omega}}
+    \end{bmatrix}
+\end{align}
+
+% \begin{thebibliography}{99}
+
+% % \bibitem{Keshavan} 
+% % J.~Keshavan, ``Adaptive Visual Control Strategies for Autonomous Landing of Quadrotor Platforms,".
+
+% \bibitem{Lin} 
+% J.~Lin, Y. Wang, Z. Miao, R. Fierro, "Low-complexity control for vision-based landing of Quadrotor UAV on unknown platform."
+
+% \end{thebibliography}
+
+\end{document}

@@ -1,0 +1,1363 @@
+Available online at www.sciencedirect.com 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+www.elsevier.com/locate/jfranklin 
+Robust visual servoing control for quadrotors landing 
+on a moving target 
+Wanbing Zhao a , b , Hao Liu a , b , ∗, Xinlong Wang a , b 
+a School of Astronautics, Beihang University, Beijing 100191, PR China 
+b Key Laboratory of Spacecraft Design Optimization and Dynamic Simulation Technologies of Ministry of 
+Education, Beihang University, Beijing 100191, PR China 
+Received 22 May 2020; received in revised form 6 November 2020; accepted 8 January 2021 
+Available online 15 January 2021 
+Abstract 
+In this paper, a robust visual servoing control approach is proposed to address the landing problem for 
+quadrotors on a moving platform. A vision system is implemented to estimate the position and velocity of 
+the quadrotor. A robust cascade controller is proposed by following backstepping-like fundamentals and 
+robust compensating theory. The effects of time-varying uncertainties, including parameter uncertainties 
+and external disturbances, and time-varying delays resulted from image acquisition, image processing, 
+and sensor measurement delays can be restrained. Experimental results using a quadrotor to land on a 
+ground moving target illustrate the effectiveness of the proposed approach. 
+© 2021 The Franklin Institute. Published by Elsevier Ltd. All rights reserved. 
+1. Introduction 
+Quadrotors have attracted increased interest due to their capabilities of vertical take-off 
+and landing with a simple structure, and thereby offer advantages when used for routine 
+surveillance, environmental exploration, and target tracking (see, [1–3] ), to mention but a few 
+applications. Accurate measurements of the unmanned aerial vehicle (UAV) states is an open 
+issue on designing controllers. Typical measurement sensors include GPS, Inertial Measure- 
+ment Unit (IMU), and vision systems. GPS has limitations as it does not operate efﬁciently 
+∗Corresponding author at: School of Astronautics, Beihang University, Beijing 100191, PR China. 
+E-mail addresses: zhaowb27@buaa.edu.cn (W. Zhao), liuhao13@buaa.edu.cn (H. Liu), lewis@uta.edu (X. Wang). 
+https://doi.org/10.1016/j.jfranklin.2021.01.008 
+0016-0032/© 2021 The Franklin Institute. Published by Elsevier Ltd. All rights reserved. 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+indoors, nor in cluttered urban areas. An IMU is commonly used to provide UAV attitude 
+and angular velocity data. However, such sensor systems are also shown to be unreliable to 
+provide quadrotor position and velocity data over long periods of time, because of open-loop 
+integration errors; this limitation is crucial during the vehicle landing process. An alternative 
+way is to integrate a vision system along with common sensors such as IMU sensors (see, 
+e.g. , [4–6] . The resulting vision system can provide accurate estimation of quadrotor position 
+and attitude and it is also developed by using low-cost lightweight hardware (due to pay- 
+load limitation). Therefore, it is advantageous on missions such as obstacle avoidance, target 
+tracking, and autonomous landing. 
+Visual servoing regulates the pose of the UAV with respect to a target, using image features 
+extracted from cameras. Visual servoing may be classiﬁed into two branches: position-based 
+visual servoing (PBVS) as illustrated in [7–9] , and image-based visual servoing (IBVS) in 
+[10,11] . PBVS constructs 3D information from 2D image data, then, the constructed 3D 
+information is used in the control law design. The IBVS directly uses image features to 
+design the control law. The PBVS approach has the advantage of separating the vision-based 
+quadrotor state estimation from the quadrotor control law design. But, this approach often 
+depends on knowledge of the geometry of the target; thus, it is computationally expensive in 
+reconstructing the 3D information. Furthermore, In practical landing process of the quadrotor 
+on a ground target using a monocular camera, the ground target in the image is either small 
+in the beginning or partially visible in the end of the landing task. Therefore the geometry 
+of the ground target is not always detectable in the whole landing process of the quadrotor 
+using a monocular camera and thus the typical PBVS methods in [7–9] are not suitable 
+in the landing on a ground moving target task. In contrast, the IBVS approach is robust 
+against camera calibration errors, and it is computationally efﬁcient. But the IBVS approach 
+introduces highly nonlinear and coupled image dynamics, and thereby complicates quadrotor 
+controller design. Besides, the IBVS approach cannot operate in complex environments as 
+shown in [12] . 
+When designing a visual servoing controller for a quadrotor, three challenges should be 
+addressed and overcome: quadrotor highly nonlinear and coupled dynamics; quadrotor param- 
+eter uncertainties and external disturbances (for example, the wind disturbances) related to the 
+translational and rotational dynamics; state and input time delays due to image acquisition and 
+processing [13] , measurement delays from sensors, and the controller operating rate. In fact, 
+the state and input time delays, especially the time delays resulted from the image acquisition 
+and processing, are non-ignorable in the visual servoing controller design. It should be noted 
+that the acquisition and processing of images are computationally expensive and the compu- 
+tational resource of the quadrotor embedded computer is limited, which is the main source 
+of the state time delays in the quadrotor dynamics. The state time delays are unavoidable in 
+practical implementations and can result in the failure of ﬂight mission for quadrotors using 
+the traditional control strategies, as illustrated in [14] . 
+To tackle these challenges, several control approaches were developed following the PBVS 
+approach. In [8] and [15] , vision-based control methods including feedback linearization, 
+backstepping, sliding mode, and nested saturation structure were studied to restrain nonlinear 
+and coupled dynamics. In [16] , the visual servoing control of quadrotors and the tracking of 
+moving targets was achieved in a simulation. However, a simple PD controller was designed 
+to achieve the motion of the quadrotor and the uncertainties and time delays in the quadrotor 
+dynamics were not discussed in [16] . In [9] , the time delay was assumed to be a measurable 
+constant and a RISE controller was designed to restrain nonlinearities and uncertainties in 
+2302 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+quadrotor dynamics. But the nonlinearities were ignored in the simpliﬁed quadrotor model of 
+[9] . The robust compensation theory was studied in [17–20] to restrain the nonlinearities and 
+uncertainties in the robotic system. In [17] , the parametric and unstructured uncertainties were 
+studied and a robust compensator was designed to achieve the robust output tracking control. 
+In [18] , the uncertainties including parameter uncertainties, nonlinear and coupling dynamics, 
+and external disturbances in the quadrotor dynamics were considered and a robust compensator 
+was designed to restrain the impacts of the uncertainties on a single quadrotor system. In [19] , 
+the robust compensator were designed to restrain the nonlinearities and external disturbances 
+in the translational and rotational dynamics of the cooperative quadrotor team. In [20] , a robust 
+formation controller was developed based on the robust compensation theory to restrain the 
+uncertainties in the quadrotor dynamics for the quadrotor team. From [18–20] , the robust 
+compensation theory was successfully used in the robust control design for quadrotors. But 
+the landing of a quadrotor on a ground target using the robust visual servoing controller 
+without knowledge of the position information of the quadrotor or the ground target in the 
+earth-ﬁxed frame was not discussed in [17–20] . 
+In addition, nonlinear controllers were developed following the IBVS approach. In [21] and 
+[22] , integral backstepping was applied in the design of the visual servoing controller to limit 
+nonlinearities impact in the control system. In [23] , a nonlinear controller was developed to 
+tackle time-varying disturbances in the quadrotor dynamics. A robust visual servoing control 
+method was studied in the path-planning task and the uncertainties in the image model were 
+considered in [24] . In [25] , the adaptive backstepping method was followed where quadro- 
+tor uncertainties were treated as unknown system parameters. In [26] , an adaptive control 
+scheme was developed via using dynamic surface control and backstepping to limit external 
+disturbances in the translational and rotational dynamics of the quadrotor. However, the un- 
+certainties impact and time delays on the closed-loop control system was not fully analyzed 
+in [8,9,15,21–26] . In [27] , the time delay of image acquisition and image processing was 
+modeled as a positive constant in the translational dynamics. Then, a nonlinear controller 
+developed in [28] was provided in [27] to compensate for time delay and external distur- 
+bances; the effectiveness of the developed controller was demonstrated in simulations, and 
+the nonlinearities and parameter uncertainties were not further discussed in [27] . In [29] , the 
+ground target tracking was achieved for quadrotors under the effects of nonlinearities, cou- 
+plings, and uncertainties. However, the impacts of time-varying delays resulted from image 
+acquisition, image processing, and sensor measurement delays on the quadrotor dynamics 
+were not discussed and the landing task of quadrotors on a moving ground target was not 
+further investigated in [29] . 
+Although multiple studies have been published on visual servoing control of UAVs, to 
+the best of the authors’ knowledge, quadrotor robust visual servoing control subject to mul- 
+tiple uncertainties and time delays is still an open issue. This paper proposes and applies 
+to a quadrotor a robust visual servoing controller to solve the landing maneuver problem 
+under uncertainties and time delays in the translational and rotational dynamics, based on a 
+backstepping-like method and the robust compensation theory. Uncertainties include parameter 
+uncertainties and external disturbances. Time delays are mainly related to image acquisition, 
+image processing, the controller operating rate, and sensor measurement delays. In the current 
+paper, image features are fused with the IMU sensor data and the sonar sensor to provide 
+quadrotor position and velocity information with respect to the ground target. Similarly to [6] , 
+the sonar sensor is used in our proposed controller to estimate the image depth of the ground 
+2303 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 1. Vision-based landing system of a quadrotor. 
+target. The proposed robust controller includes four parts: a position controller, a velocity 
+controller, an angle controller, and an angular velocity controller. 
+Compared to previous research on the same topic, obtained results include: (i) A vision- 
+based estimation system is developed for the quadrotors to land on the moving target. The 
+estimation procedure is simple and the prior knowledge of the geometry of the target is not re- 
+quired compared to the traditional PBVS control methods as shown in [8,9,15] . The proposed 
+estimation system avoids introducing highly nonlinear image dynamics for the IBVS control 
+method as depicted in [21–23,25–28] . (ii) Nonlinear and coupled terms are fully included in 
+the dynamics of the quadrotor, as opposed to reported research in [9,25,26] , where quadrotor 
+models were simpliﬁed to facilitate the design process of the visual servoing controllers. (iii) 
+Parameter uncertainties, external disturbances, and time delays in the translational and rota- 
+tional quadrotor dynamic are considered in the robust visual servoing controller design process. 
+The robustness properties of the proposed robust visual servoing controller for quadrotor un- 
+der uncertainties and time delays are analyzed and practical landing experimental test of the 
+quadrotor is provided. Note that the impact of uncertainties including parameter uncertainties 
+and external disturbances on quadrotor dynamics was not fully analyzed in [8,15,21,22] and 
+the time delays on the vision-based control system were ignored in [8,9,15,21–23,25,26,29] . 
+The rest of this paper is organized as follows: Section 4.2 elaborates the dynamics model of 
+the quadrotor. In Section 3 , the motion estimation system is brieﬂy described. In Section 4 , the 
+design process of the robust cascade control system is depicted, and the robustness properties 
+of the proposed controller are analyzed. Experimental results are given in Section 5 and 
+conclusions are drawn in Section 6 . 
+2304 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+2. Dynamical model 
+2.1. Quadrotor model 
+The vision-based landing system of quadrotors is shown in Fig. 1 . The ground landing 
+target is moving with a bounded random velocity. Deﬁne ε = 
+
+ˆ 
+e εo , ˆ 
+e εx , ˆ 
+e εy , ˆ 
+e εz 
+
+as the earth- 
+ﬁxed frame, α = 
+
+ˆ 
+e αo , ˆ 
+e αx , ˆ 
+e αy , ˆ 
+e αz 
+
+the local horizontal frame, and β = 
+
+ˆ e βo , ˆ 
+e βx , ˆ 
+e βy , ˆ 
+e βz 
+
+the body frame. ˆ e εo is an earth-ﬁxed point, ˆ e αo the center of the ground target, and ˆ e βo the 
+mass center of the quadrotor. The frame α is aligned with the frame ε for convenience of 
+presentation. Denote  = [ φ, θ, ψ ] T ∈ R 3 ×1 as the Euler angles (the roll angle φ, the pitch 
+angle θ, and the yaw angle ψ), which satisfy that φ ∈ (−π/ 2, π/ 2) and θ ∈ (−π/ 2, π/ 2) . 
+Denote p α = 
+
+p α
+i 
+
+∈ R 3 ×1 as the position of the quadrotor in α, v α = 
+
+v α
+i 
+
+∈ R 3 ×1 the velocity 
+of the quadrotor in α, p ε 
+t = 
+
+p ε 
+ti 
+
+∈ R 3 ×1 the position of the ground target in ε, v ε 
+t = 
+
+v ε 
+ti 
+
+∈ 
+R 3 ×1 the velocity of the ground target in ε, and 
+ = [ 
+i ] ∈ R 3 ×1 the angular velocity of the 
+quadrotor in β. p α and v α are the relative position and velocity of the quadrotor with respect 
+to the ground target in α and are estimated by the motion estimation system as shown in 
+Section 3 . Let R α
+β represent the rotation matrix from β to α and satisfy that 
+R α
+β = 
+⎡ 
+⎣ 
+cos θ cos ψ 
+cos ψ sin θ sin φ −cos φ sin ψ 
+cos θ sin ψ 
+cos φ cos ψ + sin φ sin ψ sin θ
+−sin θ
+cos θ sin φ
+sin φ sin ψ + cos φ cos ψ sin θ
+cos φ sin ψ sin θ −cos ψ sin ψ 
+cos φ cos θ
+⎤ 
+⎦ . 
+Then, one can obtain the dynamical model of the quadrotor as: 
+˙ 
+p α = v α, 
+˙ 
+v α = m −1 (R α
+βT v + ′ v ) , 
+˙ 
+ = R 
+, 
+˙ 
+
+ = J −1 ( τβ −C(, ˙ 
+) ˙ 
+ + ′ 
+) , 
+(1) 
+where C(, ˙ 
+) ˙ 
+ indicates the Coriolis term as illustrated in [18] , m the mass of the quadrotor, 
+J the inertial matrix in β, and R  the matrix given by 
+R  = 
+⎡ 
+⎣ 
+1 
+sin φ tan θ
+cos φ tan θ
+0 
+cos φ
+−sin φ
+0 
+sin φ sec θ
+cos φ sec θ
+⎤ 
+⎦ . 
+′ 
+i ( i = v, 
+) indicates the model mismatches including external disturbances and state and 
+input time delays. Since the image data are used to estimate the quadrotor states, the time 
+delays resulting from image acquisition and image process will result in the quadrotor state 
+time delays, as stated in [9] . The state time delays resulting from image acquisition, image 
+process, and measurement delays of the sonar sensor are considered in ′ 
+p and ′ 
+v . The state 
+time delays related to the IMU and the digital compass are considered in ′ 
+ and ′ 
+
+. The 
+external force T v and the external torque τβ satisfy 
+T v = c 3 , 3 T k −mg (R α
+β) T c 3 , 3 , 
+and 
+τβ = 
+
+τβi 
+
+3 ×1 = 
+⎡ 
+⎣ 
+l b ( T 1 −T 2 −T 3 + T 4 ) / 
+√ 
+2 
+l b ( T 1 + T 2 −T 3 −T 4 ) / 
+√ 
+2 
+k a ( T 1 −T 2 + T 3 −T 4 ) 
+⎤ 
+⎦ , 
+2305 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+respectively, where g is the gravity constant, c n,j an n × 1 vector with 1 on the j -th element 
+and zeros on the others, l b the distance between the rotor and the quadrotor mass center, k a a 
+positive transformation scale, and T k the total force satisfying that T k = T 1 + T 2 + T 3 + T 4 . T i 
+( i = 1 , 2, 3 , 4) indicate the lift force generated from Rotor i and can be given by T i = k ω ω 2 
+i , 
+where k ω is a positive constant. 
+2.2. Control problem description 
+Let p α
+r = 
+
+p α
+ri 
+
+∈ R 3 ×1 , v α
+r = 
+
+v α
+ri 
+
+∈ R 3 ×1 , r = [ φr , θr , ψ r ] T ∈ R 3 ×1 , and 
+r = [ 
+ri ] ∈ 
+R 3 ×1 denote the relative position references in α, the relative velocity references in α, the 
+Euler angle references, and the angular velocity references in β, respectively. In practical 
+landing on a ground target task for a quadrotor, the position of the ground target in frame α
+is considered as the relative position reference p α
+r of the quadrotor, i.e. , p α
+r = 0 3 ×1 . Denote the 
+quadrotor errors as e p = 
+
+e pi 
+
+∈ R 3 ×1 , e v = [ e vi ] ∈ R 3 ×1 , e  = [ e i ] ∈ R 3 ×1 , and e 
+ = [ e 
+i ] ∈ 
+R 3 ×1 , where e p = p α −p α
+r , e v = v α −v α
+r , e  =  −r , and e 
+ = 
+ −
+r . Let u p = 
+
+u pi 
+
+∈ 
+R 3 ×1 , u v = [ u vi ] ∈ R 3 ×1 , u  = [ u i ] ∈ R 3 ×1 , and u 
+ = [ u 
+i ] ∈ R 3 ×1 denote the outputs of 
+the proposed controllers. u p , u , and u vi ( i = 1 , 2) can be viewed as the virtual control 
+inputs, satisfying that v α
+r = u p , φr = u v1 , θr = u v2 , and 
+r = u . u v3 and u 
+ also represent the 
+inputs of a power distribution board, which drives the motors according to the inputs. Denote 
+B v as the matrix satisfying that B v = diag(g, −g, k σt /m) and B 
+ the matrix satisfying that 
+B 
+ = J −1 diag( k σ1 , k σ2 , k σ3 ) . k σ1 , k σ2 , k σ3 , and k σt are positive scaling constants, and satisfy 
+that τβ1 = k σ1 u 
+1 , τβ2 = k σ2 u 
+2 , τβ3 = k σ3 u 
+3 , and T k = k σt u v3 . The parameters B v , B 
+, 
+and J are divided into two parts: the nominal parameter parts B N 
+v , B N 
+
+, J N and the uncertain 
+parameter parts B 
+v , B 
+
+, J  satisfying that B v = B N 
+v + B 
+v , B 
+ = B N 
+
+ + B 
+
+, and J = J N + J . 
+In this paper, the actual quadrotor dynamical system is considered as a nominal system added 
+by the equivalent disturbance. Then, the quadrotor dynamical model can be rewritten by 
+˙ 
+p α = u p + p , 
+˙ 
+v α = B N 
+v u v −g c 3 , 3 + v , 
+˙ 
+ = u  + , 
+˙ 
+
+ = B N 
+
+u 
+ −( J N ) −1 C(, ˙ 
+) ˙ 
+ + 
+, 
+(2) 
+where i ( i = p, v, , 
+) is the equivalent disturbance involving the model mismatches and 
+nonlinearities, satisfying that 
+p = v α −u p , 
+v = m −1 ( Nv + ′ v ) + B 
+v u v −˙ 
+v ε 
+t , 
+ = N, 
+
+ = B 
+
+u 
+ + J −1 ( ′ 
+ −(1 −J ( J N ) −1 ) C(, ˙ 
+) ˙ 
+) , 
+(3) 
+where ˙ 
+v ε 
+t represents the unknown acceleration of the ground target in ε. In practical ap- 
+plications, The unknown acceleration of the ground target ˙ 
+v ε 
+t in frame ε is assumed to be 
+time-varying and bounded. The nonlinear terms Nv and N satisfy that 
+Nv = 
+⎡ 
+⎣ 
+T k ( sin φ sin ψ + cos φ cos ψ sin θ) −mB N 
+v1 u v1 
+T k ( cos ψ sin φ −cos φ sin φ sin ψ ) + mB N 
+v2 u v2 
+m( cos θ cos φB v3 u v3 −B N 
+v3 u v3 ) 
+⎤ 
+⎦ 
+(4) 
+2306 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+and 
+N = 
+⎡ 
+⎣ 
+
+1 + 
+2 sin φ tan θ + 
+3 cos φ tan θ −u 1 
+
+2 cos φ −
+3 sin φ −u 2 
+
+2 sin φ sec θ + 
+3 cos φ sec θ −u 3 
+⎤ 
+⎦ . 
+(5) 
+In practical applications, the quadrotor states are measured by multiple sensors with different 
+time delays, and there also exist time delays in the actuator of the quadrotor. In this paper, the 
+time delays from different sensors and actuator are considered in the equivalent disturbance, 
+which is assumed to be norm bounded with 
+∥ i ∥ ≤
+4 
+
+ 
+j=0 
+ξei j 
+E (t −σj (t)) 
+ + 
+1 
+
+ 
+k=0 
+ξuik 
+u i (t −σ u 
+k (t)) 
+ + h i ( q i ) . 
+(6) 
+where ξei j and ξuik are positive constants, h i ( q i ) is an uniformly bounded function involv- 
+ing the disturbance q i , and E (t) the error vector satisfying that E (t) = [ e i (t) ] ∈ R 12×1 
+( i = p, v, , 
+). σ u 
+k (t) indicates the input delay, resulting from the controller operating rate, 
+and σj (t) the state delay, resulting from the time delays of image acquisition, image process, 
+and measurement delays of the sonar sensor, the IMU, and the digital compass. Let σ u 
+0 (t) = 
+σ0 (t) = 0 and σj (t) and σ u 
+k (t) denote nonnegative and differential functions, which are as- 
+sumed to satisfy that ¯σe = max ( σj (t)) < ∞ , ¯σdu = max ( ˙ 
+σj (t)) < 1 , ¯σu = max (σ u 
+k (t)) < ∞ , 
+and ¯σud = max ( ˙ 
+σ u 
+k (t)) < 1 . It should be noted that the time delays σj (t) ( j = 1 , 2, 3 , 4) and 
+σ u 
+1 (t) can be unequal to each other, in other words, the delay notation can be nonstandard. 
+For example, the time delays resulted from image acquisition, image process, and the mea- 
+surement delays of the sonar sensor are much larger than the time delays resulted from the 
+measurement delays of the IMU and the digital compass. It can be seen from Eqs. (2) –(6) 
+that the quadrotor dynamics is highly nonlinear and coupled, subject to multiple external 
+disturbances, parameter uncertainties, and multiple state and input time delays. It is difﬁcult 
+to design an observer to accurately estimate the effect of each time delay on the quadrotor 
+control system. In this case, in the current paper, these time delays are integrated in the 
+equivalent disturbances and a robust compensator is designed to estimate and restrain these 
+equivalent disturbances. 
+3. Motion estimation 
+In practical applications, the camera is normally equipped below the quadrotor and the 
+camera frame is assumed to coincide with the body frame β for the convenience of repre- 
+sentation. Let χ = 
+
+e χo , e χx , e χy 
+
+denote the image plane with e χo coinciding with e βo and 
+
+e χx , e χy 
+
+aligned with 
+
+e βx , e βy 
+
+. Denote p β
+t = 
+ 
+p β
+ti 
+ 
+∈ R 3 ×1 as the position of the ground 
+target in β. Denote f χ as the focus length of the camera, and p χ
+t = 
+
+p χ
+ti 
+
+∈ R 2×1 the projection 
+position of the ground target in the image plane, satisfying 
+p χ
+t1 = p β
+t1 /p β
+t3 = ( ¯u −c u ) / f χ, 
+p χ
+t2 = p β
+t2 /p β
+t3 = ( ¯v −c v ) / f χ, 
+(7) 
+where ( ¯u , ¯v ) is the coordinate of the ground target with pixel unit in the image and ( c u , c v ) 
+the principal point. It is assumed that the camera parameters c u , c v , f χ are well calibrated by 
+using the traditional camera calibration methods such as the methods in [30,31] . Since the 
+coordinate of the ground target in the image ( ¯u , ¯v ) is known, the projection position p χ
+t in 
+real-time can be obtained from Eq. (7) . In practical applications, the vision system only tracks 
+2307 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+the image points of the ground moving target and locates the center of the ground target in 
+the image plane. Then, one can obtain the following equation as: 
+R α
+β
+
+p χ
+t1 , p χ
+t2 , 1 
+T = 
+ 
+p α
+1 /p β
+t3 , p α
+2 /p β
+t3 , p α
+3 /p β
+t3 
+ T 
+, 
+(8) 
+where p χ
+t1 , p χ
+t2 , and R α
+β can be obtained from the visual measurements and the IMU data, 
+respectively. In the case of ground moving target landing task for quadrotors, the ground 
+target is attached to the ground and thus the position of the quadrotor relative to the ground 
+target p α
+3 is equal to the height of the quadrotor relative to the ground. Since the height of the 
+quadrotor can be obtained directly from the sonar sensor data, the depth of the visual target 
+p β
+t3 can be calculated by using Eq. (8) , and then the position vector p α can be reconstructed. 
+p α is treated as the input of a Kalman ﬁlter to estimate the relative position and velocity of 
+the quadrotor with respect to the ground target. It can be seen from Eq. (8) that only one 
+image center point of the ground target is used and the geometry of the ground target is not 
+required in the estimation process. The estimated position and velocity information of the 
+quadrotor is used in the following controller design. 
+4. Robust vision-based controller design 
+In this section, the proposed robust visual servoing controlled based on the backstepping- 
+like method and the robust compensation theory is organized as the four steps: ﬁrst, a position 
+controller is designed to generate the velocity reference v α
+r ; second, the velocity controller 
+is constructed to control the vertical motion and generate the attitude references φr and θr ; 
+third, the angle controller is used to generate the angular velocity reference 
+r ; fourth, the 
+angular velocity controller is applied to generate the desired torque for the power distribution 
+board to drive the motors. 
+4.1. Control law design 
+The control system scheme of quadrotor is shown in Fig. 2 . A vision system is developed 
+to provide the position and velocity information of the quadrotor. It can be observed from 
+Fig. 2 that the constructed controller is a hierarchical control scheme, where the control inputs 
+of the controllers in the higher level are the references of the controllers in the lower level. 
+Actually, the control inputs u i ( i = p, v, , 
+) in Fig. 2 consist of two parts: the nominal 
+control input u N 
+i and the robust compensating input u R 
+i , with u i = u N 
+i + u R 
+i . u N 
+i is constructed 
+to guarantee the stability of the nominal control system, while u R 
+i is introduced to restrain 
+the impacts of the equivalent disturbances. By ignoring the equivalent disturbances in Eq. (2) , 
+one can obtain the nominal control system and the nominal control inputs u N 
+i ( i = p, v, , 
+) 
+can be designed as 
+u N 
+p = −K pe e p , 
+u N 
+v = (B N 
+v ) −1 (−K ve e v + g c 3 , 3 + ˙ 
+v α
+r ) , 
+u N 
+ = −K e e  + ˙ 
+r , 
+u N 
+
+ = (B N 
+
+) −1 (−K 
+e e 
+ + ( J N ) −1 C(, ˙ 
+) ˙ 
+ + ˙ 
+
+r ) , 
+(9) 
+where the matrix K ie ( i = p, v, , 
+) indicates the nominal feedback controller gains with 
+K ie = diag( k i1 , k i2 , k i3 ) . The derivatives ˙ 
+v α
+r , ˙ 
+r , ˙ 
+
+r in Eq. (9) can be obtained by deriving 
+v α
+r , r , 
+r obtained from the output of the position controller, the velocity controller and 
+2308 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 2. Control system scheme of a quadrotor. 
+the angle controller, respectively. u R 
+i ( i = p, v, , 
+) is the output of the robust compensators 
+and can be given by 
+u R 
+i (s) = −F i (s) i (s) , 
+(10) 
+where F i (s) = diag( F i1 (s) , F i2 (s) , F i3 (s)) and F i j (s) = g i j / ( g i j + s) with positive constants g i j 
+( j = 1 , 2, 3 ) indicating the parameters of the robust compensators. Each robust compensator in 
+Eq. (10) is a disturbance estimator, which can estimate the equivalent disturbances and com- 
+pensate the effects of the equivalent disturbances on the closed-loop control system. However, 
+i ( i = p, v, , 
+) in Eq. (10) is not available in ﬂight test and are derived from Eq. (2) as 
+p = v α −u p , 
+v = ˙ 
+v α + g c 3 , 3 −B N 
+v u v . 
+ = ˙ 
+ −u , 
+
+ = ˙ 
+
+ + ( J N ) −1 C(, ˙ 
+) ˙ 
+ −B N 
+
+u 
+. 
+(11) 
+Let x p denote the state of the robust compensator. From Eqs. (10) and (11) , one can obtain 
+realization of u R 
+p and u R 
+v as: 
+˙ 
+x p = −g p x p + g p e p + u p , 
+u R 
+p = g p ( x p −e p ) , 
+˙ 
+x v = −g v x v + g v e v + B N 
+v u v −c 3 , 3 g −˙ 
+v α
+r , 
+u R 
+v = g v ( x v −e v ) /B N 
+v , 
+(12) 
+where g p = diag( g p1 , g p2 , g p3 ) and g v = diag( g v1 , g v2 , g v3 ) . Let x  denote the attitude state 
+of the robust compensator. Similarly, u R 
+ and u R 
+
+ can be realized by 
+˙ 
+x  = −g x  + g e  + u  −˙ 
+r , 
+u R 
+ = g ( x  −e ) , 
+˙ 
+x 
+ = −g 
+x 
+ + g 
+e 
+ + B N 
+
+u 
+ −˙ 
+
+r , 
+u R 
+
+ = g 
+( x 
+ −e 
+) / B N 
+
+. 
+(13) 
+2309 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+where g  = diag( g 1 , g 2 , g 3 ) and g 
+ = diag( g 
+1 , g 
+2 , g 
+3 ) . u R 
+i ( i = p, v, , 
+) can re- 
+strain the equivalent disturbances, if g i j is selected properly, which will be illustrated in the 
+experiment part. 
+4.2. Robustness properties analysis 
+The robust compensating inputs u R 
+i in Eq. (10) can be depicted by the following state-space 
+forms as: 
+˙ 
+x Ri j = −g i j x Ri j + i j , 
+u R 
+i j = −g i j x Ri j , i = p, v, , 
+; j = 1 , 2, 3 , 
+(14) 
+where x Ri j ∈ R 1 ×1 indicates the state of Eq. (14) . From Eqs. (2), (9) , and (10) , the state-space 
+form of the error model can be obtained as 
+˙ 
+X i j = ¯A i j X i j + ¯B i j i j , 
+(15) 
+where X i j = 
+e i j 
+x Ri j 
+T ∈ R 2×1 and 
+¯A i j = 
+−k i j 
+−g i j 
+0 
+−g i j 
+
+, ¯B i j = 
+1 
+1 
+
+. 
+(16) 
+Let X = [ X i ] ∈ R 24×1 ( i = p, v, , 
+), where X i = 
+
+X i j 
+
+∈ R 6 ×1 ( j = 1 , 2, 3 ). Then, one can 
+obtain the following equation: 
+˙ 
+X i = ¯A i X i + ¯B i i , 
+(17) 
+where ¯B i = diag( ¯B i1 , ¯B i2 , ¯B i3 ) and ¯A i = diag( ¯A i1 , ¯A i2 , ¯A i3 ) . From Eqs. (6), (9) , and (14) , one can 
+obtain positive constants h iq , ξui0 , ξui1 , and ξiK such that 
+∥ i ∥ ≤
+4 
+ 
+j=0 
+ξei j 
+E i (t −σj (t)) 
+ + h iq + 
+1 
+ 
+k=0 
+ξuik 
+
+ξiK 
+E i (t −σ u 
+k (t)) 
+ + g mi 
+ ¯X Ri (t −σ u 
+k (t)) 
+
+, 
+(18) 
+where g mi = ∥ g i ∥ and the matrix ¯X Ri satisﬁes that ¯X Ri = diag( x Ri1 , x Ri2 , x Ri3 ) . It can be seen 
+from Eq. (16) that ¯A i j ( i = p, v, , 
+; j = 1 , 2, 3 ) are Hurwitz. There exist positive deﬁnite 
+matrix ¯P i j such that 
+¯P i j ¯A i j + ¯A T 
+i j ¯P i j = −I 2 . 
+(19) 
+From Lemma 1 of [32] , one can have a bounded matrix M Bi ∈ R 3 ×3 such that M Bi is inde- 
+pendent of the robust compensator parameters g i with ¯P i ¯B i = M Bi g −1 
+i . Then, one can obtain 
+that 
+ ¯P i ¯B i 
+ ≤ξBi g −1 
+mi , 
+(20) 
+where ¯P i = diag( ¯P i1 , ¯P i2 , ¯P i3 ) and ξBi is the maximum eigenvalue of M Bi . ξBi in Eq. (20) is 
+constraint to satisfy 
+2 
+1 
+ 
+k=0 
+ξBi ξuik < 
+ 
+1 −
+1 
+ 
+k=0 
+ξBi ξuik 
+ 
+(1 −¯σdu ) 
+(21) 
+2310 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Theorem 1. Consider the quadrotor model (2) and the proposed visual servoing controller (9) . 
+For a given piecewise continuous and a bounded initial state E (τ ) , τ ∈ [ t 0 −¯σe , t 0 ] , a positive 
+constant ε, and a given initial time t 0 , one can obtain positive constants g ∗
+i j and T ∗such that 
+if g i j ≥g ∗
+i j and t ≥T ∗, E (t) is uniformly bounded and satisﬁes that ∥ E (t) ∥ ≤ε, ∀ t ≥T ∗. 
+Proof. Deﬁne ηeui = 
+ 1 
+k=0 ξBi ξuik , ηesgi = 2 
+ 4 
+j=0 ξBi ξei j , ηγ i = 2 ξBi h iq , and ηegi = 1 
+2 ηesgi + 
+ηeui ξiK . By ignoring all the time delays, the Lyapunov function candidate is chosen as: 
+V 1 (X (t)) = 
+ 
+i= p,v, , 
+X T 
+i (t) ¯P i X i (t) . 
+(22) 
+From Eq. (20) , the differentiation of the Lyapunov function candidate satisﬁes that 
+˙ 
+V 1 (X (t)) = 
+
+ 
+i= p,v, , 
+ ¯A i X i (t) + ¯B i i 
+T ¯P i X i (t) + X T 
+i (t) ¯P i 
+ ¯A i X i (t) + ¯B i i 
+
+= 
+
+ 
+i= p,v, , 
+X T 
+i (t) 
+ ¯A T 
+i ¯P i + ¯P i ¯A i 
+
+X i (t) + T 
+i ¯B T 
+i ¯P i X i (t) + X T 
+i (t) ¯P i ¯B i i 
+(23) 
+Since ¯A i = diag( ¯A i1 , ¯A i2 , ¯A i3 ) and ¯P i = diag( ¯P i1 , ¯P i2 , ¯P i3 ) , one can obtain from Eq. (19) that 
+¯A T 
+i ¯P i + ¯P i ¯A i = −I 6 . Then, one can rewrite Eq. (23) as 
+˙ 
+V 1 (X (t)) = 
+ 
+i= p,v, , 
+−∥ X i (t) ∥ + 2X T 
+i (t) ¯P i ¯B i i 
+(24) 
+Because X i = 
+e i j 
+x Ri j 
+
+∈ R 6 ×1 ( j = 1 , 2, 3 ), one can obtain from Eqs. (20) and (24) that 
+˙ 
+V 1 (X (t)) ≤
+ 
+i= p,v, , 
+ 
+−∥ E i (t) ∥ 2 −
+ ¯X Ri (t) 
+2 + 2 ξBi g −1 
+mi ∥ i ∥ ∥ E i (t) ∥ + 
+ ¯X Ri (t) 
+ 
+. 
+(25) 
+By substituting Eq. (18) into Eq. (25) , one can obtain that 
+˙ 
+V 1 (X (t)) ≤−
+
+ 
+i= p,v, , 
+
+1 −ηeui −ηegi g −1 
+mi 
+∥ E i (t) ∥ 2 −
+
+ 
+i= p,v, , 
+
+1 −ηeui −ηegi g −1 
+im 
+ ¯X Ri (t) 
+2 
++ 
+
+ 
+i= p,v, , 
+ηγ i g −1 
+mi 
+∥ E i (t) ∥ + 
+ ¯X Ri (t) 
+
++ 
+
+ 
+i= p,v, , 
+ηesgi g −1 
+mi 
+E i (t −σj (t)) 
+2 
++ 
+
+ 
+i= p,v, , 
+2 ηeui ξiK g −1 
+mi 
+E i (t −σ u 
+k (t)) 
+2 + 
+
+ 
+i= p,v, , 
+2 ηeui 
+ ¯X Ri (t −σ u 
+k (t)) 
+2 . 
+(26) 
+Furthermore, considering the time delay terms, one can select the Lyapunov function candidate 
+as: 
+V (X (t ) , t ) = 
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNR 
+ t 
+t −σ u 
+k (t ) 
+ ¯X Ri (τ ) 
+2 dτ + 
+ 
+i= p,v, , 
+4 
+ 
+j=0 
+ηNE 
+ t 
+t −σ j (t ) 
+∥ E i (τ ) ∥ 2 dτ
++ 
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNU 
+ t 
+t −σ u 
+k (t ) 
+∥ E i (τ ) ∥ 2 dτ + V 1 (X (t)) , 
+(27) 
+where the positive constants ηNR , ηNE , and ηNU are selected such that 5 ηNE + 2 ηNU < 1 −
+ηeui , 2 ηNR < 1 −ηeui , and ηNR (1 −¯σdu ) > ηeui . By differentiating the ﬁnal Lyapunov function 
+candidate, one can obtain that 
+˙ 
+V (X (t ) , t ) ≤˙ 
+V 1 (X (t)) −
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNR (1 −¯σdu ) 
+ ¯X Ri (t −σ u 
+k (t)) 
+2 
+2311 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+−
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNU (1 −¯σdu ) 
+E i (t −σ u 
+k (t)) 
+2 
+−
+ 
+i= p,v, , 
+4 
+ 
+j=0 
+ηNE (1 −¯σde ) 
+E i (t −σj (t)) 
+2 
++ 
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNR 
+ ¯X Ri (t) 
+2 + 
+ 
+i= p,v, , 
+4 
+ 
+j=0 
+ηNE ∥ E i (t) ∥ 2 
++ 
+ 
+i= p,v, , 
+1 
+ 
+k=0 
+ηNU ∥ E i (t) ∥ 2 
+(28) 
+By substituting Eq. (26) into Eq. (28) , one can obtain that 
+˙ 
+V (X (t ) , t ) ≤−
+
+ 
+i= p,v, , 
+ς Ei ∥ E i (t) ∥ 2 + 
+
+ 
+i= p,v, , 
+ς γ i ∥ E i (t) ∥ −
+
+ 
+i= p,v, , 
+ς U i 
+ ¯X Ri (t) 
+2 
+−
+
+ 
+i= p,v, , 
+ς Esi 
+E i (t −σj (t)) 
+2 −
+
+ 
+i= p,v, , 
+ς Eui 
+E i (t −σ u 
+k (t)) 
+2 
++ 
+
+ 
+i= p,v, , 
+ς γ i 
+ ¯X Ri (t) 
+ −
+
+ 
+i= p,v, , 
+ς U si 
+ ¯X Ri (t −σ u 
+k (t)) 
+2 , 
+(29) 
+where ς γ i = ηγ i g −1 
+mi , ς U si = 2 ηNR (1 −¯σdu ) −2 ηeui , ς Eui = 2 ηNU (1 −¯σdu ) −2 ηeui ξiK g −1 
+mi , 
+ς Esi = 5 ηNE (1 −¯σde ) −ηesgi g −1 
+mi , ς U i = 1 −2 ηNR −ηeui −ηegi g −1 
+mi , and ς Ei = 1 −5 ηNE −
+2 ηNU −ηeui −ηegi g −1 
+mi ( i = p, v, , 
+). One can see that ς Ei and ς U i are positive, and ς Esi , 
+ς γ i , ς Eui , and ς U si are nonnegative on condition that 
+g mi > ηegi / (1 −5 ηNE −2 ηNU −ηeui ) , 
+g mi > ηegi / (1 −2 ηNR −ηeui ) , 
+g mi > ηesgi / 5 ηNE (1 −¯σde ) , 
+g mi > ηeui ξiK / ηNU (1 −¯σdu ) . 
+(30) 
+Therefore, there exist positive constants g ∗
+i j ≥g mi and T ∗such that if g i j ≥g ∗
+i j and t ≥T ∗, 
+E (t) is uniformly bounded and satisﬁes that ∥ E (t) ∥ ≤ε, ∀ t ≥T ∗. □
+5. Experiment results 
+To validate the effectiveness of the proposed robust visual servoing controller, a Tarot 650 
+unmanned quadrotor is constructed. An open-source Pixhawk autopilot is applied to control 
+the quadrotor. The proposed robust visual servoing control algorithm is implemented in the 
+Pixhawk to achieve the desired ﬂight performance. An open-source ground station software 
+named Mission Planner is applied to monitor the quadrotor and generate the control com- 
+mand for the quadrotor. To improve the identiﬁcation capability of the vision system, the 
+ground target is marked with infrared markers. The onboard sensors of the Pixhawk hardware 
+include a 3-D accelerometer, a 3-D gyroscope, a 3-D magnetometer and a pressure sensor. 
+The attitude of the quadrotor is estimated by fusing the data of the IMU and magnetome- 
+ter sensor. The onboard sensors include a vision sensor named CMUcam5 Pixy and a sonar 
+sensor. The camera of CMUcam5 Pixy and the sonar sensor are ﬁxed below the quadrotor, 
+facing downward. The focus length of the camera lens is 3 . 6 × 10 −3 m and the horizontal 
+and vertical ﬁeld of views of the camera is approximately 60 degrees and 35 degrees. The 
+2312 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 3. Horizontal positions. 
+lens of the camera is chosen as Infrared lens to detect the ground target. The CMUcam5 
+Pixy can locate the targets and transmit the image coordinates to the Pixhawk through Inter- 
+Integrated Circuit (I2C) at a rate of 20 Hz. The sonar sensor can measure the height of the 
+quadrotor and transmit the measurements to Pixhawk through the I2C at a rate of 50 Hz. 
+The sampling rates of the digital compass and the IMU sensor are 100 Hz and 400 Hz. The 
+operating rates of the angle controller and the angular velocity controller are 400 Hz. Fur- 
+thermore, the operating rates of the position controller and the velocity controller are 100 Hz. 
+Then, one can observe that the time delays in states and input satisfy that ¯σe ≤50 ms and 
+¯σu ≤10 ms, respectively. The original control scheme in the Pixhawk includes an outer-loop 
+position controller and an inner-loop attitude controller. The traditional cascade PID methods 
+are used in the original control scheme to construct a cascade position PID controller and 
+a cascade attitude PID controller. In the ﬂight test, the robust compensating approaches are 
+applied to both the outer-loop position controller and the inner-loop attitude controller scheme 
+of the Pixhawk. In fact, the designed robust visual servoing controller in Eqs. (9), (12) , and 
+(13) is compatible with the original control scheme in Pixhawk. The proportional and deriva- 
+tive gains in the original controller of Pixhawk can be used to construct the nominal control 
+inputs u N 
+i ( i = p, v, , 
+) in Eq. (9) . Therefore, the proposed robust visual servoing control 
+method can be realized in Pixhawk platform by additionally implementing the designed ro- 
+bust compensator in Eqs. (12) , and (13) to the pixhawk. In the ﬂight test, the accurate system 
+parameters B v , B 
+, J of the quadrotors are unknown and the nominal control parameters K 
+e , 
+K e , K ve , and K pe are manually tuned to achieve a steady ﬂight performance for the nominal 
+closed loop system, satisfying that K 
+e = diag(0. 15 , 0. 15 , 0. 34) , K e = diag(2. 9 , 2. 9 , 2. 9) , 
+K ve = diag(2. 2, 2. 1 , 1 . 2) , and K pe = diag(1 . 6 , 1 . 6 , 3 . 2) . The robust parameters are tuned us- 
+ing an online tuning method as: the gains are tuned from small initial values, and then 
+increased until the desired tracking performance can be achieved. The robust parameters 
+are chosen as: g 
+ = diag(0. 16 , 0. 16 , 0. 16) , g  = diag(4, 4, 4) , g v = diag(1 . 2, 1 . 1 , 0. 3) , and 
+g p = diag(0. 3 , 0. 3 , 0. 2) . Two cases of ﬂight test are carried out in outdoor environment under 
+2313 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 4. Position error comparison in steady state course. 
+Fig. 5. Histograms of position error comparison. 
+2314 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 6. Landing procedure on a ground moving target. 
+Fig. 7. Euler angle responses. 
+wind disturbances. The velocity of the wind disturbances in the nature is measured to be 4 m/s 
+in average. 
+2315 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 8. Control inputs of four rotors in landing process. 
+Case 1: Hovering above a ground target 
+The hovering task is the ﬁrst stage of the landing task for the quadrotor. The proposed 
+robust visual servoing controller and a standard PBVS controller in [33] are implemented 
+to the quadrotor under the same wind disturbances to provide comparing experiment results. 
+Firstly, the quadrotor is manually controlled to ﬂy above the ground target with an initial 
+position error and then switched to the proposed controller to achieve the hovering task. Fur- 
+thermore, the other hovering task is completed using the controller in [33] with the other 
+initial position error. The position of the quadrotor with respect to the ground target is con- 
+trolled with the position reference p α
+r = 
+0 
+0 
+3 T m. The horizontal position of quadrotor 
+using the proposed controller is shown in Fig. 3 . The position errors of the quadrotor under 
+steady state course are compared in Figs. 4 and 5 . For the proposed controller, the maximum 
+values of e p1 , e p2 , and e p3 are 0.12 m, 0.10 m, and 0.13 m, respectively. The root mean square 
+(RMS) values of e p1 , e p2 , and e p3 are 0.035 m, 0.037 m, and 0.036 m, respectively. For the 
+standard visual servoing controller, the maximum values of e p1 , e p2 , and e p3 are 0.35 m, 
+0.41 m, and 0.27 m, respectively. The root mean square (RMS) values of e p1 , e p2 , and e p3 
+are 0.103 m, 0.112 m, and 0.122 m, respectively. It can be observed from Figs. 4 and 5 that 
+the performance of the standard visual servoing controller with parameter uncertainties, wind 
+disturbances, and time-delays is unsatisfactory and even the bias exists in position error e p3 
+under wind disturbances in the outdoor environments. As shown in Figs. 4 and 5 , the per- 
+2316 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+Fig. 9. Position references of quadrotors in local horizontal frame. 
+formance of the quadrotor using the standard controller is different in the three axes. The 
+main reason of this phenomenon is that the direction of the wind disturbances in the outdoor 
+remains unchangeable in a time and the effects of the wind disturbances on the three axes 
+are different. In contrast, From Figs. 4 and 5 , one can see that the performance of the pro- 
+posed controller remains desirable in all the three axes under parameter uncertainties, wind 
+disturbances, and time-delays in the outdoor environments. 
+Case 2: Landing on a Ground Moving Target 
+An outdoor ground moving target landing task for the quadrotor is achieved to illustrate 
+the behavior of the closed-loop control system using the proposed control algorithm. The 
+quadrotor in the landing task is required to track the center of the ground target in the 
+horizontal direction and approach to the ground target in the vertical direction. To guarantee 
+the safety of the quadrotor control system in practical landing task, the vertical landing velocity 
+of the quadrotor is limited. The ground target is manually controlled with the velocity being 
+within 1 m/s. A video recorded by a ground camera is provided in [34] to show the landing 
+of the quadrotor on a ground moving target. Due to the limited ﬁeld of view (FOV) of the 
+ground camera, the ground camera only recorded the scene that the quadrotor approaches to 
+the ground target in the ﬁnal phase of landing ﬂight test. It can be seen from the video that 
+the ground target was pulled in one direction and stopped serval times to show the transient 
+performance of the designed controller. Fig. 6 depicts the landing procedure on a ground 
+moving target. The quadrotor and the ground moving target in Fig. 6 are highlighted with 
+red circles. The evolution of attitude described by the Euler angles is depicted in Fig. 7 . 
+The control inputs of the four rotors in the form of pulse width modulation (PWM) value 
+are shown in Fig. 8 . The horizontal and vertical position responses for the quadrotor in the 
+local horizontal frame α are shown in Fig. 9 . It can be observed from Fig. 9 that the landing 
+2317 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+procedure is triggered at a height of 6.4 m and the vertical position of the quadrotor converges 
+to the position reference within 2 seconds, which indicates a desirable landing performance 
+for the quadrotor in the outdoor environment. The position tracking errors of the quadrotor 
+converge around zero in the land procedure, where the RMS values of position errors e p1 , 
+e p2 , and e p3 are 0.078 m, 0.12 m, and 0.057 m, respectively. 
+6. Conclusion 
+This paper proposes a robust visual servoing control method for quadrotors to land on 
+a moving target, subject to model nonlinearities, coupling, external disturbances, parameter 
+uncertainties, and time delays. The quadrotor position and velocity with respect to the ground 
+target is obtained by using a combination of vision-based sensors. The proof of convergence 
+of the control system is provided. The proposed robust visual servoing controller is compared 
+with a standard visual servoing controller and the obtained experimental results illustrate the 
+advantages of the proposed robust visual servoing algorithm. 
+Declaration of Competing Interest 
+The authors declare that they have no known competing ﬁnancial interests or personal 
+relationships that could have appeared to inﬂuence the work reported in this paper. 
+CRediT authorship contribution statement 
+Wanbing Zhao: Methodology, Investigation, Formal analysis, Writing - original draft, 
+Writing - review & editing, Data curation, Software, Validation. Hao Liu: Conceptualization, 
+Methodology, Investigation, Formal analysis, Writing - review & editing, Resources, Project 
+administration, Funding acquisition. Xinlong Wang: Supervision. 
+Acknowledgement 
+This work was supported by the National Natural Science Foundation of China under 
+Grants nos. 61873012 and 61503012 . 
+References 
+[1] Y. Huang , W. Liu , B. Li , Y. Yang , B. Xiao , Finite-time formation tracking control with collision avoidance for 
+quadrotor UAVs, J. Frankl. Inst. 357 (2020) 4034–4058 . 
+[2] W. Zhao, H. Liu, F. L. Lewis, Robust formation control for cooperative underactuated quadrotors via reinforce- 
+ment learning, IEEE Trans. Neural Netw. Learn. Syst.. In press. 10.1109/TNNLS.2020.3023711 
+[3] W. Cai , J. She , M. Wu , Y. Ohyamac , Quadrotor waypoint-tracking control under exogenous disturbances based 
+on equivalent-input-disturbance approach, J. Frankl. Inst. 357 (2020) 4709–4741 . 
+[4] F.M. Mirzaei , S.I. Roumeliotis , A Kalman ﬁlter-based algorithm for IMU-camera calibration: observability 
+analysis and performance evaluation, IEEE Trans. Rob. 24 (2008) 1143–1156 . 
+[5] A. Martinelli , Vision and IMU data fusion: closed-form solutions for attitude speed absolute scale and bias 
+determination, IEEE Trans. Rob. 28 (2012) 44–60 . 
+[6] J. Gao , A.A. Proctor , Y. Shi , C. Bradley , Hierarchical model predictive image-based visual servoing of under- 
+water vehicles with adaptive neural network dynamic control, IEEE Trans. Cybern. 46 (2016) 2323–2334 . 
+[7] A. Benini , M.J. Rutherford , K.P. Valavanis , Experimental evaluation of a real-time GPU-based pose estimation 
+system for autonomous landing of rotary wings UAVs, Control Theory Technol. 16 (2018) 145–159 . 
+2318 
+
+W. Zhao, H. Liu and X. Wang 
+Journal of the Franklin Institute 358 (2021) 2301–2319 
+[8] L.G. Carrillo , A. Dzul , R. Lozano , Hovering quad-rotor control: a comparison of nonlinear controllers using 
+visual feedback, IEEE Trans. Aerosp. Electron. Syst. 48 (2012) 3159–3170 . 
+[9] X. Zhang , B. Xian , B. Zhao , Y. Zhang , Autonomous ﬂight control of a nano quadrotor helicopter in a GPS-denied 
+environment using on-board vision, IEEE Trans. Ind. Electron. 62 (2015) 6392–6403 . 
+[10] A. Vakanski , F. Janabi-Shariﬁ, I. Mantegh , An image-based trajectory planning approach for robust robot pro- 
+gramming by demonstration, Rob. Auton. Syst. 98 (2017) 241–257 . 
+[11] A. Santamaria-Navarro , P. Grosch , V. Lippiello , J. Sola , J. Andrade-Cetto , Uncalibrated visual servo for un- 
+manned aerial manipulation, IEEE/ASME Trans. Mechatron. 22 (2017) 1610–1621 . 
+[12] S. Jung , S. Cho , D. Lee , H. Lee , D.H. Shim , A direct visual servoing-based framework for the 2016 IROS 
+autonomous drone racing challenge, J. Field Rob. 35 (2018) 146–166 . 
+[13] S. Chroust , M. Vincze , Improvement of the prediction quality for visual servoing with a switching Kalman 
+ﬁlter, Int. J. Rob. Res. 22 (2003) 905–922 . 
+[14] R. Sanz , P. Garcia , Q.C. Zhong , P. Albertos , Predictor-based control of a class of time-delay systems and its 
+application to quadrotors, IEEE Trans. Ind. Electron. 64 (2016) 459–469 . 
+[15] E. Altu˘g , J.P. Ostrowski , C.J. Taylor , Control of a quadrotor helicopter using dual camera visual feedback, Int. 
+J. Rob. Res. 24 (2005) 329–341 . 
+[16] T. Yüksel , An intelligent visual servo control system for quadrotors, Trans. Inst. Meas. Control 41 (2019) 3–13 . 
+[17] Y. Zhong , Robust output tracking control of SISO plants with multiple operating points and with parametric 
+and unstructured uncertainties, Int. J. Control 75 (2002) 219–241 . 
+[18] H. Liu , D. Li , Z. Zuo , Y. Zhong , Robust three-loop trajectory tracking control for quadrotors with multiple 
+uncertainties, IEEE Trans. Ind. Electron. 63 (2016) 2263–2274 . 
+[19] H. Liu , T. Ma , F.L. Lewis , Y. Wan , Robust formation control for multiple quadrotors with nonlinearities and 
+disturbances, IEEE Trans. Cybern. 50 (2020) 1362–1371 . 
+[20] H. Liu, T. Ma, F.L. Lewis, Y. Wan, Robust formation trajectory tracking control for multiple quadrotors with 
+communication delays, IEEE Trans. Control Syst. Technol. In press (2019). 10.1109/TCST.2019.2942277 . 
+[21] D. Zheng , H. Wang , S. Chen , J. Wang , W. Chen , X. Liang , Image-based visual servoing of a quadrotor using 
+virtual camera approach, IEEE/ASME Trans. Mechatron. 22 (2017) 972–982 . 
+[22] R. Mebarki , V. Lippiello , B. Siciliano , Nonlinear visual control of unmanned aerial vehicles in GPS-denied 
+environments, IEEE Trans. Rob. 31 (2016) 1004–1017 . 
+[23] P. Serra , R. Cunha , T. Hamel , D. Cabecinhas , C. Silvestre , Landing of a quadrotor on a moving target using 
+dynamic image-based visual servo control, IEEE Trans. Rob. 32 (2016) 1524–1535 . 
+[24] G. Chesi , T. Shen , Conferring robustness to path-planning for image-based control, IEEE Trans. Control Syst. 
+Technol. 20 (2012) 950–959 . 
+[25] H. Xie , K.H. Low , Z. He , Adaptive visual servoing of unmanned aerial vehicles in GPS-denied environments, 
+IEEE/ASME Trans. Mechatron. 22 (2017) 2554–2563 . 
+[26] J. Ghommam , M. Saad , Autonomous landing of a quadrotor on a moving platform, IEEE Trans. Aerosp. 
+Electron. Syst. 53 (2017) 1504–1519 . 
+[27] H.J. Asl , S.H. Mahdioun , J. Yoon , Vision-based control of an underactuated ﬂying robot with input delay, Trans. 
+Inst. Meas. Control 40 (2018) 446–455 . 
+[28] N. Fischer , A. Dani , N. Sharma , W.E. Dixon , Saturated control of an uncertain nonlinear system with input 
+delay, Automatica 49 (2013) 1741–1747 . 
+[29] W. Zhao , H. Liu , F.L. Lewis , K.P. Valavanis , X. Wang , Robust visual servoing control for ground target tracking 
+of quadrotors, IEEE Trans. Control Syst. Technol. 28 (2020) 1980–1987 . 
+[30] G. Chesi , K. Hashimoto , A simple technique for improving camera displacement estimation in eye-in-hand 
+visual servoing, IEEE Trans. Pattern Anal. Mach. Intell. 26 (2004) 1239–1242 . 
+[31] D. Herrera , J. Kannala , J. Heikkilä, Joint depth and color camera calibration with distortion correction, IEEE 
+Trans. Pattern Anal. Mach. Intell. 34 (2012) 2058–2064 . 
+[32] H. Liu , J. Xi , Y. Zhong , Robust attitude stabilization for nonlinear quadrotor systems with uncertainties and 
+delays, IEEE Trans. Ind. Electron. 64 (2017) 5585–5594 . 
+[33] S. Grzonka , G. Grisetti , W. Burgard , A fully autonomous indoor quadrotor, IEEE Trans. Rob. 28 (2012) 90–100 . 
+[34] https:// v.youku.com/ v _ show/ id _ XNDk0Mzk4NDk3Ng==.html. 
+2319 
+

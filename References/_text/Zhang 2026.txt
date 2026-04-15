@@ -1,0 +1,1749 @@
+6178
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
+Adaptive Extended Disturbance
+Observer-Based Control for Quadrotor Landing
+on Fast Platform
+Yufei Zhang
+and Zhong Wu
+, Member, IEEE
+Abstract—In order to land quadrotor uncrewed aerial
+vehicles precisely and reliably on fast platforms, complex
+aerodynamic disturbances can be estimated by disturbance
+observers with proper bandwidth and then compensated by
+feedforward. However, the observer bandwidth is difﬁcult to
+design since both aerodynamic disturbances and measure-
+ment noises vary signiﬁcantly in the landing process. In this
+article, an adaptive extended disturbance observer-based
+control scheme is proposed to improve disturbance esti-
+mation accuracy and suppress aerodynamic disturbances
+in the landing of quadrotors. First, the time-varying proper-
+ties of aerodynamic disturbances and measurement noises
+are analyzed in the landing process. Then, two adaptive
+extended disturbance observers (AEDOs) are designed for
+translational and rotational subsystems, respectively with
+their bandwidths adaptively tuned according to the power
+ratio of disturbances to measurement noises. Theoretical
+analysis indicates AEDO has higher accuracy in distur-
+bance estimation as well as robustness to measurement
+noises compared with other EDOs. Finally, block backstep-
+ping controllers are designed for the subsystems with the
+outputs of the AEDOs as feedforward compensation. Land-
+ing experiments on a platform of 8.3 m/s demonstrate the ef-
+fectiveness of the proposed scheme in tuning the observer
+bandwidth adaptively according to disturbance and noise
+information and improving the precision of landing points.
+Index Terms—Adaptive observer, autonomous landing,
+disturbance observer, quadrotor, uncrewed aerial vehicles
+(UAVs).
+I. INTRODUCTION
+I
+N the landing of quadrotor uncrewed aerial vehicles (UAVs)
+on moving platforms, aerodynamic disturbances are domi-
+nant factors affecting the precision of landing points and thus
+the landing reliability [1], [2], [3]. Especially with the increase
+of the platform speed, both the strength and frequency content
+of aerodynamic disturbances will become higher due to the
+effect of airﬂow between the quadrotor and platform. These
+characteristics will make it difﬁcult to suppress aerodynamic
+Received 5 March 2025; revised 3 September 2025; accepted 29
+October 2025. Date of publication 5 December 2025; date of current
+version 11 March 2026. Corresponding author: Zhong Wu.)
+The authors are with the School of Instrumentation and Optoelec-
+tronic Engineering, Beihang University, Beijing 100191, China (e-mail:
+zyf123@buaa.edu.cn; wuzhong@buaa.edu.cn).
+Digital Object Identiﬁer 10.1109/TIE.2025.3629369
+TABLE I
+COMPARISON OF LANDING SCHEMES
+Schemes
+Ref.
+Conditions
+Platform
+Speed
+(m/s)
+Landing
+Point
+Error (cm)
+PID
+[4]
+Indoor
+∼1.1
+<10∗
+Backstepping control
+[5]
+Indoor
+0.5
+3.5
+Adaptive control
+[6]
+Outdoor
+≤1∗
+∼30
+Sliding mode control
+[7]
+Indoor
+≤1∗
+∼15∗
+Intelligent control
+[8]
+Indoor
+∼0.3∗
+∼20∗
+HLS + robust control
+[9]
+Outdoor
+∼5.6
+∼75.1
+HLS + PID
+[10]
+Outdoor
+∼13.9
+∼70∗
+DO + robust control
+[16]
+Indoor
+∼0.25∗
+∼3∗
+DO + robust control
+[17]
+Indoor
+∼0.5∗
+∼15∗
+DO + adaptive control
+[18]
+Outdoor
+0.4∗
+∼4∗
+DO + adaptive control
+[19]
+Indoor
+∼1∗
+∼5∗
+ESO + ADRC
+[20]
+Outdoor
+<1∗
+<5∗
+ESO + ADRC
+[21]
+Indoor
+1.6
+∼1.5∗
+EDO + BC
+[22]
+Outdoor
+∼5.6
+8.5
+NREDO + BC
+[23]
+Outdoor
+∼7
+7.1
+Note: ∗Stands for the data obtained from the experimental curves in the
+references.
+disturbances in the landing control. They will deteriorate the
+precision of landing points and even lead to landing failure
+on fast platforms. Therefore, suppressing complex aerodynamic
+disturbances has become one of the key issues in reliable land-
+ing control of quadrotors on fast platforms.
+Feedback control is the most convenient solution to land-
+ing quadrotors on moving platforms, as shown in Table I [4],
+[5], [6], [7], [8]. However, the conventional feedback control
+methods can not deal with strong aerodynamic disturbances in
+the landing process, including PID control [4], backstepping
+control (BC) [5], adaptive control (AC) [6], and sliding mode
+control (SMC) [7]. Especially when a quadrotor approaches
+a fast platform, the aerodynamic disturbances will be further
+strengthened due to the vortices caused by the rotating pro-
+pellers near the platform surface. Even with intelligent control
+[8], there is no signiﬁcant improvement in the anti-disturbance
+performance.
+A simple solution to this problem is to stop propellers when
+the quadrotor reaches a speciﬁed altitude directly above the
+platform, namely the hard landing scheme (HLS). As the aero-
+dynamic disturbances can be signiﬁcantly reduced by propeller
+1557-9948 © 2025 IEEE. All rights reserved, including rights for text and data mining, and training of artiﬁcial intelligence and similar technologies.
+Personal use is permitted, but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index.html
+for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG AND WU: AEDO-BASED CONTROL FOR QUADROTOR FAST PLATFORM LANDING
+6179
+shutdown, the quadrotor can land on the fast platform with this
+strategy. However, the HLS will cause uncontrollable landing
+points and damage to onboard equipments [9], [10].
+To suppress aerodynamic disturbances in the entire landing
+process, they can be estimated by disturbance observers ﬁrst
+and then compensated by feedforward. In this strategy, the key
+to disturbance suppression is accurate estimation [11], [12],
+[13], [14], [15]. Although both disturbance observer (DO) [16],
+[17], [18], [19] and extended state observer (ESO) [20], [21]
+have been employed to estimate aerodynamic disturbances in
+the landing on moving platforms, they are designed based on
+the assumption of slowly-varying disturbances. Therefore, it is
+difﬁcult for them to accurately estimate complex aerodynamic
+disturbances in the landing on fast platforms.
+To accurately estimate complex aerodynamic disturbances,
+extended disturbance observer (EDO) and noise reduction ex-
+tended disturbance observer (NREDO) can be utilized [22],
+[23]. Although NREDO has better noise suppression perfor-
+mance compared with EDO, both of the observers typically
+use ﬁxed bandwidth to tune gains. To ensure accurate esti-
+mation, the bandwidth design should consider the effects of
+aerodynamic disturbances and measurement noises in a bal-
+anced manner. However, aerodynamic disturbances vary with
+the relative height between the propellers and platform when
+the quadrotor is close to the platform. In fact, the measurement
+noises from the measurement of the relative distance between
+the quadrotor and platform varies with the relative distance
+due to the resolution limitations of the vision camera. There-
+fore, it is difﬁcult to ensure accurate estimation with ﬁxed
+bandwidth in the entire process of quadrotors landing on fast
+platforms.
+For disturbance estimation in the presence of time-varying
+disturbances and measurement noises, many studies have been
+reported in other ﬁelds. For example, Kalman ﬁlter [24] and
+α–β–γ ﬁlter [25] have been used in object tracking to cope with
+time-varying disturbances and measurement noises, and their
+bandwidths are tuned automatically according to the statistical
+characteristics of disturbances and the noises. It should be noted
+that their estimation accuracy relies on the Gaussian distribution
+assumption of disturbances and noises. However, aerodynamic
+disturbances do not satisfy the assumption.
+In summary, it remains a critical issue to suppress com-
+plex aerodynamic disturbances for quadrotor UAVs landing
+on fast platforms. The motivation of this article is to han-
+dle the variation of disturbances and measurement noises
+so as to improve estimation accuracy and suppress distur-
+bances in the landing scenario. Inspired by the idea of adap-
+tive bandwidth, an adaptive EDO (AEDO) based control
+scheme is proposed in the landing of quadrotors on fast
+platforms.
+The main contributions of this article are listed as follows.
+1) According to the characteristics of aerodynamic dis-
+turbances and measurement noises in the landing pro-
+cess, two AEDOs are designed for the translational
+and rotational subsystems of a quadrotor to estimate
+force and torque disturbances. With the bandwidth tuned
+automatically based on the power ratio of disturbances
+Fig. 1.
+Coordinate frames in quadrotor UAVs landing on moving plat-
+forms.
+to measurement noises, AEDO can improve disturbance
+estimation accuracy.
+2) Based on the outputs of the AEDOs as feedforward com-
+pensation, backstepping controllers are designed for the
+two subsystems. With the AEDO-based control scheme,
+precise and reliable landing can be achieved.
+II. MATHEMATICAL MODEL AND PROBLEM FORMULATION
+To land a quadrotor on a fast platform, it should approach
+the platform and land precisely on the safe landing zone. To
+describe the landing motion, the coordinate frames in Fig. 1
+are deﬁned: the inertial frame EI, the platform frame EP ,
+and the body-ﬁxed frame EB. Additionally, the variables of
+the quadrotor are used in Fig. 1: l is the length of the arm,
+d denotes the distance between the xB−yB plane and pro-
+peller disk, and li = [l cos[(3 −2i)π/4] l sin[(3 −2i)π/4] −
+d]T presents the position of the ith propeller in EB, where
+i = 1, 2, 3, 4.
+A. Description of Quadrotor Landing on Fast Platform
+Deﬁne the position and velocity of the platform as p and vp,
+then the platform motion can be described as follows:
+
+˙p = vp
+M ˙vp = F pc + F pd + Mg.
+(1)
+Deﬁne the position and velocity of the quadrotor as r and
+v, and its attitude quaternion and angular velocity as q and ω,
+then its dynamics can be expressed as follows:
+⎧
+⎪
+⎪
+⎪
+⎨
+⎪
+⎪
+⎪
+⎩
+˙r = v
+m ˙v = F c + F d
+˙q = q ⊗[0
+ω]T/2
+J ˙ω + ω×Jω = τ c + τ d
+(2)
+where M and m are the masses of the platform and quadro-
+tor. F pc, F c, and τ c are the control inputs. F pd, F d, and
+τ d are the lumped disturbance. F c = Σ4
+i=1RI
+BT i + mg and
+τ c = Σ4
+i=1(τ i + l×
+i T i), where RI
+B is the rotation matrix from
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+6180
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
+EB to EI. l×
+i is the skew-symmetric matrix for li. Furthermore,
+T i and τ i are the thrust and anti-torque of the ith propeller.
+For (1) and (2), F c and τ c need to be designed to make
+r converge to p. However, F d and τ d reduce the conver-
+gence accuracy and may even lead to unreliable landing. F d
+and τ d contain both aerodynamic disturbances and model un-
+certainties, where aerodynamic disturbances are particularly
+complex.
+B. Aerodynamic Disturbances
+As aerodynamic disturbances are complex and affect
+the landing performance, their characteristics should be
+analyzed.
+1) Mechanism: Aerodynamic disturbances refer to aerody-
+namic forces that are typically not modeled in the ﬂight system,
+including translational thrust, propeller disk drag, and parasitic
+drag [26]. Deﬁne the velocity of the airﬂow as va, and the
+velocity of a quadrotor relative to the airﬂow is expressed as
+vr = v + va. For the ith propeller, its translational thrust and
+propeller disk drag are represented as [27]
+T it = [0
+0
+−kzΩivrz −kxy(v2
+rx + v2
+ry)]T
+(3)
+F ib = cb||T i + T it||[vrx
+vry
+0]T
+(4)
+where ∥· ∥denotes the two-norm of a vector, cb, kxy, and kz
+are positive constant coefﬁcients.
+For parasitic drag and drag torque, they are expressed as [27]
+follows:
+F p = KF p[v2
+rx
+v2
+ry
+v2
+rz]T
+(5)
+τ p = Kτp[v2
+rx
+v2
+ry
+v2
+rz]T
+(6)
+where KF p and Kτp are drag and torque coefﬁcient matrices.
+Based on (3) to (6), the total aerodynamic force and torque
+disturbance F a and τ a can be written as follows:
+F a =
+4
+
+i=1
+(F ib + T it) + F p
+(7)
+τ a =
+4
+
+i=1
+[l×
+i (F ib + T it)] + τ p.
+(8)
+2) Inﬂuencing Factors: Due to fast platform speed, wind
+gusts, and uneven ground effects, the disturbances in (3)–(8)
+become more complex.
+For platform speed vp, high vp can lead to high vr which
+amplify the intensity of aerodynamic disturbances in (3)–(8).
+For wind gusts, atmospheric turbulence and wind shear in
+them can cause transient changes in vr [28]. When vp increases,
+the quadrotor encounters the turbulence and wind shear more
+frequently, and this will enhance the dynamics of the vr and
+that of aerodynamic disturbances in (3)–(8).
+For ground effects, they are uneven in the landing scenario
+due to attitude tilting and incomplete projection of propellers on
+the platform [29]. Deﬁne the height of the ith propeller relative
+to the platform as zi, and the force and torque disturbances by
+ground effects are denoted as [30] follows:
+T iGE = [0
+0
+(bi + ki/z2
+i )||T i||]T
+(9)
+Fig. 2.
+Measurement procedures for motion information in the landing.
+τ UGE =
+4
+
+i=1
+li × T iGE
+(10)
+where bi and ki are coefﬁcients related to the attitude tilting
+and the incomplete projection. Under uneven ground effects, the
+total aerodynamic disturbance can be further expressed as F ∗
+a =
+F a + 4
+i=1 T iGE and τ ∗
+a = τ a + τ UGE. When the quadrotor
+approaches the platform, zi decreases, and then T iGE and τ UGE
+intensify, and thus F ∗
+a and τ ∗
+a become stronger.
+Therefore, aerodynamic disturbances not only become
+stronger and have faster dynamics due to increased platform
+speed and wind gusts, but also become further strengthened
+with the quadrotor descent and uneven ground effects.
+3) Assumption of Disturbances: Although aerodynamic dis-
+turbances in the landing scenario are complex, they come from
+continuous physical processes like other disturbances. There-
+fore, they can still be considered as the continuous and bounded
+lumped disturbance along with other disturbances.
+Assumption 1: F d and τ d are continuous and with bounded
+derivatives such that ||F (j)
+d || ≤γF and ||τ (j)
+d || ≤γT , j =1, 2,
+. . ., n, γF , and γT are the upper bounds.
+C. Measurement Noises
+To land on a fast platform, a quadrotor requires not only
+a sensor fusion system to measure its own pose, but also a
+camera positioning system to measure the platform motion [31].
+As the measurement noises in both systems affect the landing
+performance, their characteristics should be analyzed.
+Deﬁne the heading of the platform and quadrotor as β and
+ψ, and denote the acceleration and angular acceleration of the
+quadrotor as a and α, then the measurement procedures of both
+systems are shown in Fig. 2, where the subscripts “raw” and
+“m” represent the raw sensor data and measured value.
+For the sensor fusion system, it estimates the quadrotor pose
+with the data from GPS, IMU, and a magnetometer [32]. Al-
+though much noises have been ﬁltered out by the pose estima-
+tion, residual noises remains in rm, vm, qm, and ωm.
+In the camera positioning system, β and the relative distance
+between the quadrotor and platform Δp = r −p are measured
+by a vision camera according to the speciﬁc marker on the plat-
+form [33]. Due to the limited resolution of the vision camera,
+the increase in Δp will reduce the number of pixels occupied
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG AND WU: AEDO-BASED CONTROL FOR QUADROTOR FAST PLATFORM LANDING
+6181
+by the speciﬁc marker, and thus enhance the measurement noise
+in Δpraw. As pm is calculated using rm, qm, βraw, and Δpraw,
+the increase in Δp will increase the measurement noise in pm.
+In summary, the measurement noises in the quadrotor are
+complex as the intensity of the measurement noises in βm and
+pm varies with Δp. The greater the relative distance Δp, the
+stronger the measurement noises in βm and pm.
+Deﬁne the measurement noises in βm, pm, rm, vm, qm, and
+ωm as nβ, np, nr, nv, nq, and nω, and these measurement
+can be further expressed as βm = β + nβ, pm = p + np, rm =
+r + nr, vm = v + nv, qm = n∗
+q ⊗q, and ωm = ω + nω.
+Assumption 2: nβ, np, nr, nv, nq, and nω are bounded and
+with bounded derivates such that ||n(j)
+β || ≤δβ, ||n(j)
+p || ≤δp,
+||n(j)
+r || ≤δr, ||n(j)
+v || ≤δv, ||n(j)
+q || ≤δq, ||n(j)
+ω || ≤δω, j =0, 1,
+. . ., n, where δβ, δp, δr, δv, δq, and δω are the upper bounds.
+D. Problem Statement
+The aforementioned analysis indicates that the intensity of
+aerodynamic disturbances increases and that of measurement
+noises decreases when the quadrotor descends. Moreover, the
+dynamics of aerodynamic disturbances become faster in the
+landing on fast platforms. In this case, it is difﬁcult for dis-
+turbance observers to ensure accurate estimation with ﬁxed
+bandwidth in the entire landing process. As a result, complex
+aerodynamic disturbances will reduce the precision of landing
+points and make the landing unreliable. Inspired by the charac-
+teristics of aerodynamic disturbances and measurement noises
+in the landing scenario, it is necessary to design disturbance
+observers with variable bandwidths to adaptively handle the
+changes in disturbances and measurement noises and design
+controllers with the outputs of the observers as feedforward
+compensation to suppress complex aerodynamic disturbances
+in the landing scenario.
+III. AEDOS FOR AERODYNAMIC DISTURBANCES
+As the anti-disturbance and dynamic performance of feed-
+back control are limited in the landing scenario, it is necessary
+to estimate and compensate for complex aerodynamic distur-
+bances with disturbance observers. In this section, AEDOs will
+be designed for the translational and rotational subsystems,
+respectively to estimate force and torque disturbances, and their
+performance will be analyzed.
+A. Translational AEDO
+Deﬁne the states of F d as xF i = F (i−1)
+d
+and its state ma-
+trix as xF = [xF 1
+xF 2
+· · ·
+xF n]T, and then the nth-order
+model of F d is constructed as follows:
+˙xF = AF xF + BF F (n)
+d
+(11)
+where
+AF =
+	
+O3(n−1)×3
+I3(n−1)
+O3×3
+O3×3(n−1)
+
+,
+BF =
+	
+O3(n−1)×3
+I3
+
+, i =1, 2, . . ., n.
+According to (2) and vm = v + nv, the virtual measurement
+of F d is obtained by F dm = m ˙vm −F c = F d + m ˙nv. De-
+ﬁne nF = m ˙nv and CF = [I3
+O3×3(n−1)], and then the out-
+put of (11) is written as follows:
+yF = CF xF + nF .
+(12)
+For AEDO, deﬁne the estimate of F d as ˆxAF i = ˆ
+F
+(i−1)
+dA
+, and
+estimate matrix as ˆxAF = [ ˆ
+F dA
+ˆ
+F
+(1)
+dA
+· · ·
+ˆ
+F
+(n−1)
+dA
+]T , and
+then the nth-order translational AEDO is designed as follows:
+ ˙ˆxAF = AF ˆxAF + LAF CF (xF −ˆxAF ) + LAF nF
+ˆyAF = CF ˆxAF
+(13)
+where LAF = [lAF 1ωAF I3 lAF 2ω2
+AF I3 · · · lAF nωn
+AF I3]T
+is the gain matrix, lAF i > 0, ωAF is the variable bandwidth,
+and ˆyAF denotes the estimate of yF .
+As the variations of disturbances and measurement noises
+are the key to the estimation accuracy in the landing process,
+it is necessary to adjust the variable bandwidth ωAF based on
+disturbances and measurement noises. To establish the relation-
+ship between ωAF , disturbances, and measurement noises, a
+uniﬁed standard should ﬁrst be used to describe disturbances
+and measurement noises. As disturbances and measurement
+noises may ﬂuctuate drastically over short periods, their power
+smoothed by mean ﬁlter can be used to stably characterize their
+properties. Deﬁne the power of F (n)
+d
+and nF as ||F (n)
+d ||2 and
+||nF ||2, and the power smoothed by mean ﬁlter as PF and PNF ,
+then PF and PNF are denoted as follows:
+PF =
+ t
+t−Δt
+||F (n)
+d (t)||2dt/Δt
+(14)
+PNF =
+ t
+t−Δt
+||nF (t)||2dt/Δt
+(15)
+where Δt is a sliding window of mean ﬁlter.
+Deﬁne the power ratio between F (n)
+d
+and nF as ηF =
+PF /PNF , and the adaptive tuning rule of ωAF is designed as
+follows:
+ωAF =
+
+(KF ηF )1/2n, (KF ηF )1/2n > ωAF m
+ωAF m, other
+(16)
+where KF =
+
+1,
+ t
+t−Δt ω2
+AF dt/Δt < 1
+ t
+t−Δt ω2
+AF dt/Δt, other
+is a coefﬁcient used
+to accelerate the tuning speed, and ωAF m = min(ωAF ).
+To
+analyze
+the
+observer
+stability,
+deﬁne
+the
+estimation
+error
+of
+the
+translational
+AEDO
+as
+∼xAF = xF −ˆxAF ,
+and
+let
+zAF i =
+∼xAF i/ωi−1
+AF
+and
+zAF = [zAF 1
+zAF 2
+· · ·
+zAF n]T ,
+and
+then
+the
+error
+model of nth-order translational AEDO is expressed as
+follows:
+˙zAF = ωAF (AF −LAF 0CF)zAF +BF F (n)
+d /ωn−1
+AF
+−ωAF LAF 0nF
+(17)
+where LAF 0 = [lAF 1I3
+lAF 2I3
+· · ·
+lAF nI3]T.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+6182
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
+As the system composed of (11) and (12) is observable, LAF 0
+can be found to ensure that AF −LAF 0CF is Hurwitz. Under
+the condition that AF −LAF 0CF is Hurwitz, there exists a
+symmetric matrix P AF > 0 such that
+(AF −LAF 0CF )TP AF + P AF (AF −LAF 0CF ) = −I3n
+(18)
+where P AF is ﬁxed and does not vary with ωAF when n is set.
+Deﬁne Lyapunov function VAF as follows:
+VAF = zT
+AF P AF zAF
+(19)
+and
+let
+μAF = ||P AF ||
+and
+L∗
+AF =
+
+1/3||LAF 0|| =
+(n
+i=1 l2
+AF i)1/2, and then the time derivative of VAF
+is
+calculated as follows:
+˙VAF ≤−ωAF ||zAF ||[||zAF || −2
+√
+3μAF (||F (n)
+d ||ω−n
+AF
++ L∗
+AF ||nF ||)].
+(20)
+When
+||zAF || > 2
+√
+3μAF (||F (n)
+d ||ω−n
+AF + L∗
+AF ||nF ||),
+there is ˙VAF < 0 in (20). According to zAF i =
+∼xAF i/ωi−1
+AF ,
+the upper bound for the estimation error ||
+∼xAF i|| will be
+constrained by
+BAF i = {rAF i|||rAF i|| ≤2
+√
+3μAF (||F (n)
+d ||/ωn−i+1
+AF
++ ωi−1
+AF L∗
+AF ||nF ||)}.
+(21)
+B. Rotational AEDO
+Similar to the design of translational AEDO, the states
+and state matrix of τ d can be denoted as xT i = τ (i−1)
+d
+and xT = [xT 1
+xT 2
+· · ·
+xT n]T , respectively. Based on
+(2) and ωm = ω + nω, the virtual measurement of τ d is
+obtained by τ dm = J ˙ωm + ω×
+mJωm −τ c. Deﬁne CT =
+[I3
+O3×3(n−1)] and the measurement noise in τ dm as nT =
+τ dm −τ d, and then the nth-order model of τ d in state space
+is constructed as follows:
+
+˙xT = AT xT + BT τ (n)
+d
+yT = CT xT + nT
+(22)
+where AT =
+	
+O3(n−1)×3
+I3(n−1)
+O3×3
+O3×3(n−1)
+
+, BT =
+	
+O3(n−1)×3
+I3
+
+,
+i =1, 2, . . ., n.
+For AEDO, deﬁne the estimate of τ d as ˆxAT i = ˆτ (i−1)
+dA
+, and
+its estimate matrix as ˆxAT = [ˆτ dA
+ˆτ (1)
+dA
+· · ·
+ˆτ (n−1)
+dA
+]T , and
+then the nth-order rotational AEDO is designed as follows:
+ ˙ˆxAT = AT ˆxAT + LAT CT (xT −ˆxAT ) + LAT nT
+ˆyAT = CT ˆxAT
+(23)
+where LAT = [lAT 1ωAT I3 lAT 2ω2
+AT I3
+· · ·
+lAT nωn
+AT I3]T
+is the gain matrix, lAT i > 0, ωAT is the variable bandwidth,
+ˆyAT denotes the estimate of yT .
+To establish the adaptive tuning rule of ωAT , deﬁne the
+smoothed power of τ (n)
+d
+and nT as follows:
+PT =
+ t
+t−Δt
+|τ (n)
+d (t)|2dt/Δt
+(24)
+PNT =
+ t
+t−Δt
+|nT (t)|2dt/Δt
+(25)
+and the power ratio as ηT = PT /PNT , then the adaptive tuning
+rule of ωAT is designed as follows:
+ωAT =
+
+(KT ηT )1/2n, (KT ηT )1/2n > ωAT m
+ωAT m, other
+(26)
+where KT =
+
+1,
+ t
+t−Δt ω2
+AT dt/Δt < 1
+ t
+t−Δt ω2
+AT dt/Δt, other
+is used to accelerate
+the tuning speed, and ωAT m = min(ωAT ).
+Similar to translational AEDO, let
+∼xAT = xT −ˆxAT and
+zAT i =
+∼xAT i/ωi−1
+AT , then Lyapunov function VAT is designed
+as follows:
+VAT = zT
+AT P AT zAT
+(27)
+where
+P AT
+satisﬁes
+(AF −LAF 0CF )TP AF +
+P AF (AF −LAF 0CF )
+= −I3n,
+P AT > 0,
+and
+LAT 0 =
+[lAT 1I3
+lAT 2I3
+· · ·
+lAT nI3]T .
+When ||zAT || > 2
+√
+3μAT (||τ (n)
+d ||ω−n
+AT + L∗
+AT ||nT ||), there
+is ˙VAT < 0. Therefore, the upper bound for ||
+∼xAT i|| will be
+constrained by
+BAT i = {rAT i|||rAT i|| ≤2
+√
+3μAT (||τ (n)
+d ||/ωn−i+1
+AT
++ ωi−1
+AT L∗
+AT ||nT ||)}
+(28)
+where μAT = ||P AT || and L∗
+AT = (n
+i=1 l2
+AT i)1/2.
+C. Accuracy Analysis and Comparison
+In this section, AEDO will be compared with the latest dis-
+turbance estimation methods for the landing on fast platforms
+in the literature, namely EDO [22] and NREDO [23], as they
+exhibit superior disturbance suppression performance in the
+landing scenario. The comparison will take the observers for
+the translational subsystem as an example.
+1) Estimation Accuracy of AEDO: Deﬁne the estimation error
+of F d as
+∼
+F dA =
+∼xA1, and the upper bound of
+∼
+F dA is denoted
+based on (21) as follows:
+rAF = 2
+√
+3μAF (||F (n)
+d ||/ωn
+AF + L∗
+AF ||nF ||).
+(29)
+To intuitively reﬂect the effect of the adaptive tuning rule on
+rAF , deﬁne the smoothed power of rAF as follows:
+PRAF =
+ t
+t−Δt
+r2
+AF dt/Δt
+(30)
+and then PRAF can be further expressed based on (29) as
+follows:
+PRAF ≤24μ2
+AF [ω−2n
+AF PF + L∗
+AF
+2PNF ].
+(31)
+Substitute (16) into (31), and PRAF can be denoted as fol-
+lows:
+PRAF ≤
+
+24μ2
+AF (K−1PNF + L∗
+AF
+2PNF ), ωAF ≥ωAF m
+24μ2
+AF (ω−2n
+AF mPF + L∗
+AF
+2PNF ), other.
+(32)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG AND WU: AEDO-BASED CONTROL FOR QUADROTOR FAST PLATFORM LANDING
+6183
+In (32), the upper bound of PRAF depends on PNF rather
+than both PF and PNF when ωAF ≥ωAF m. This implies that
+PF will not affect the upper bound of PRAF once ωAF begins
+to vary according to PF and PNF . As PNF decreases when
+the quadrotor UAV descends, the estimation accuracy of AEDO
+will gradually improve in the landing process according to (32).
+2) Comparison With EDO: Deﬁne the estimate of F d
+in EDO as ˆxEi = ˆ
+F
+(i−1)
+dE
+and its estimate matrix as ˆxE =
+[ˆxE1
+ˆxE2
+· · ·
+ˆxEn]T , then the nth-order EDO is designed
+as follows:
+˙ˆxE = AE ˆxE + LECE(xF −ˆxE) + LEnF
+(33)
+where LE = [lE1ωEI3
+lE2ω2
+EI3
+· · ·
+lEnωn
+EI3]T is the
+gain matrix, lEi > 0, ωE is the ﬁxed bandwidth, and C =
+[I3
+O3×3(n−1)] as well as AE =
+	
+O3(n−1)×3
+I3(n−1)
+O3×3
+O3×3(n−1)
+
+.
+Following the deduction of rAF and PRAF , deﬁne the es-
+timation error for EDO as
+∼
+F dE =
+∼xE1 = xF −ˆxE1, and the
+upper bound of
+∼
+F dE as follows:
+rEF = 2
+√
+3μE(||F (n)
+d ||/ωn
+E + L∗
+E||nF ||)
+(34)
+and then the smoothed power of rEF is denoted as follows:
+PREF ≤24μ2
+E(ω−2n
+E
+PF + L∗
+E
+2PNF )
+(35)
+where L∗
+E = (n
+i=1 l2
+EF i)1/2 and μE is a coefﬁcient related
+to n.
+According to (32) and (35), the difference between AEDO
+and EDO is that the upper bound of PRAF will not be af-
+fected by PF when ωAF ≥ωAF m. When PF increases with
+the descend of the quadrotor, AEDO can maintain consistent
+estimation performance, whereas EDO will have decreased per-
+formance. When PNF decreases in the landing process, AEDO
+will have higher improvement in estimation performance than
+EDO.
+Moreover, PRAF ≤PREF when (KF PF /PNF )1/2n ≥ωE
+and ωAF ≥ωAF m. As PF increases, PNF decreases, and ωE
+is ﬁxed when the quadrotor UAV descends, the condition can
+be satisﬁed in the landing scenario. When the condition is met,
+the estimation accuracy of AEDO is superior to that of EDO.
+3) Comparison
+With
+NREDO:
+According to [23], the
+expanded state of F d is denoted as xF 0 =
+ t
+0 F dm(τ)dτ,
+and
+the
+expanded
+state
+matrix
+of
+F d
+is
+expressed
+as
+xNF = [xF 0
+xF 1
+· · ·
+xF n]T .
+Deﬁne
+the
+estimate and estimate matrix of F d as ˆxNj = xF j and
+ˆxN = [ˆxN0
+ˆxN1
+· · ·
+ˆxNn]T , then the (n + 1)th-order
+NREDO is designed as follows:
+˙ˆxN = AN ˆxN + LNCN(xNF −ˆxN)
+(36)
+where
+LN = [lN0ωNI3
+lN1ω2
+NI3
+· · ·
+lNnωn+1
+N
+I3]T
+is
+the
+gain
+matrix,
+ωN
+is
+the
+bandwidth,
+and
+AN =
+	
+O3n×3
+I3n
+O3×3
+O3×3n
+
+and CN =
+	
+I3
+O3n×3
+
+T
+.
+Similar to rAF and PRAF , deﬁne the estimation error for
+NREDO as
+∼
+F dN =
+∼xN1, and the upper bound of
+∼
+F dN as fol-
+lows:
+rNF = 2
+√
+3μN(||F (n)
+d ||/ωn
+N + ||nF ||)
+(37)
+and the smoothed power of rNF are denoted as follows:
+PRNF ≤24μ2
+N(ω−2n
+N
+PF + PNF )
+(38)
+where L∗
+E = (n
+i=1 l2
+EF i)1/2, μN is a coefﬁcient related to n.
+According to (32) and (38), AEDO and NREDO each have
+their own advantage. For NREDO, the weight coefﬁcient of
+PNF in PRNF is smaller than that in PRAF . However, the
+reduction of PNF in the landing process will weaken this im-
+provement, and the strengthened PF as well as the ﬁxed ωN
+will cause PRNF to be larger.
+In contrast, the advantage of AEDO will not be weakened
+in the landing process. Speciﬁcally, upper bound of PRAF is
+only affected by PNF when ωAF ≥ωAF m. When PF increases
+and PNF decreases in the landing process, the upper bound of
+PRAF will become smaller.
+Furthermore,
+PRAF ≤PRNF
+when
+ωAF ≥ωAF m
+and
+[μ2
+NKF PF /PNF (KF L∗
+A
+2μ2
+A + μ2
+A −KF μ2
+N)]1/2n ≥
+ωN. When the condition is met, the estimation accuracy of
+AEDO is superior to that of NREDO.
+Remark 1: AEDO takes EDO as the basic structure and tunes
+the bandwidth according to the power ratio of disturbances to
+measurement noises. Speciﬁcally, AEDO will adopt a small
+bandwidth when the quadrotor UAV is far from the platform
+due to weak disturbances and strong measurement noises, and
+vice versa. Therefore, the advantage of AEDO lies in the iden-
+tiﬁcation and utilization the characteristics of disturbances and
+measurement noises in the landing process.
+IV. AEDO-BASED CONTROLLER
+In this section, an AEDO-based block backstepping con-
+troller is designed including a position controller, an attitude
+controller, and its stability will be analyzed.
+A. Controller Design
+Deﬁne the expected value of r, q, and ω as rc = pm, qc, and
+ωc, and the error as re = rm −rc, qe = [q0e
+qve]T = q∗
+c ⊗
+qm, and ωe, then F c and τ c are given by
+⎧
+⎨
+⎩
+F c = −(Kc1Kc3+Kc2)re−(mKc1+Kc3) ˙re+m¨rc−ˆ
+F dA
+τ c = −(1 + Kc4Kc5)qve −JKc4 ˙qve −Kc5ωe −ˆτ dA
++ ωm × Jωm + J ˙R
+B
+Cωc + JRB
+C ˙ωc
+(39)
+where Kc1, Kc2, Kc3, Kc4, and Kc5 are the gain matrices,
+ˆ
+F dA and ˆτ dA are obtained from AEDO, and RB
+C denotes the
+rotation of qc relative to q.
+B. Stability Analysis
+First, deﬁne
+∼ve = ve + Kc1re and
+∼ωe = ωe + Kc4qve,and
+a candidate Lyapunov function VC is selected as follows:
+VC = rT
+eKc2re/2 + m
+∼v
+T
+e
+∼ve/2 + qT
+veqve + (1 −q0e)2
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+6184
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
++
+∼ω
+T
+eJJ
+∼ωe/2 + VAF + VAT .
+(40)
+The time derivative of VC is written as follows:
+˙VC =rT
+eKc2ve + m
+∼v
+T
+e
+˙∼ve+qT
+veωe+
+∼ω
+T
+eJJ ˙∼ωe+ ˙VAF + ˙VAT .
+(41)
+Deﬁne N = −ω×
+mJωm −J ˙R
+B
+Dωcm −JRB
+D ˙ωcm and sub-
+stitute (2) into (41), then ˙VC is derived as follows:
+˙VC = −rT
+eKc1Kc2re+
+∼v
+T
+e(mKc1 ˙re + Kc2re
++ F c + F d −m¨rc) + ˙VAF −qT
+veKc4qve
++
+∼ω
+T
+e(JKc4 ˙qve + Jqve + τ c + τ d + N) + ˙VAT .
+(42)
+Deﬁne
+HF =
+∼v
+T
+e(mKc1 ˙re + Kc2re + F c + F d −m¨rc)
+and
+HT =
+∼ω
+T
+e(JKc4 ˙qve + Jqve + τ c + τ d + N),
+and
+substitute (39) into HF and HT individually, then HF and HT
+can be expressed, respectively as follows:
+HF =
+∼v
+T
+e(−Kc1Kc3re −Kc3 ˙re +
+∼
+F dA + ncF )
+= −
+∼v
+T
+eKc3
+∼ve +
+∼v
+T
+e(
+∼
+F dA + ncF )
+(43)
+HT =
+∼ω
+T
+e(−Kc4Kc5qve −Kc5ωe +
+∼τ dA + +ncT )
+= −
+∼ω
+T
+eKc5
+∼ωe +
+∼ω
+T
+e(
+∼τ dA + ncT )
+(44)
+where ncF = m ˙nv and ncT = J ˙nω −n×
+ω Jnω + ω×
+mJnω +
+n×
+ω Jωm.
+Deﬁne λ1, λ2, λ3, λ4, and λ5 as the minimal eigenvalues of
+Kc1, Kc2, Kc3, Kc4, and Kc5, respectively, and ˙VC can be
+derived by substituting (43) and (44) into (42) as follows:
+˙VC = −rT
+eKc1Kc2re−
+∼v
+T
+eKc3
+∼ve+
+∼v
+T
+e(
+∼
+F dA+ncF )+ ˙VAF
+−qT
+veKc4qve−
+∼ω
+T
+eKc5
+∼ωe+
+∼ω
+T
+e(
+∼τ dA+ncT )+ ˙VAT
+≤−λ1λ2||re||2−λ3||ve||2+||
+∼ve||(||
+∼
+F dA||+||ncF ||)
++ ˙VAF −λ4||qve||2−λ5||
+∼ωe||2+||
+∼ωe||(||
+∼τ dA||
++ ||ncT ||) + ˙VAT .
+(45)
+Deﬁne the upper bounds of ncF , ncT , nF , and nT as δncF ,
+δncT , δnF , and δnT , respectively, and substitute (20) into (45),
+then ˙VC can be denoted as follows:
+˙VC ≤−λ1λ2||re||2 −(λ3 −1/2)||ve||2 −||zAF ||2/2
++ 2
+√
+3μAF ||zAT ||(γdT /ωn
+AF + L∗
+AF δnF ) + δncF ||
+∼ve||
+−λ4||qve||2 −(λ5 −1/2)||
+∼ωe||2 −||zAT ||2/2
++ 2
+√
+3μAT ||zAT ||(γdR/ωn
+AT + L∗
+AT δnT ) + δncT ||
+∼ωe||.
+(46)
+Let zT
+cAF = [rT
+e
+vT
+e
+zT
+AF ] and zT
+cAT = [qT
+e
+∼ω
+T
+e
+zT
+AT ]
+be the uniformed error vectors, and deﬁne the uniformed gains
+as ηcF = min(λ1λ2, λ3 −1/2, 1/2) and ηcT = min(λ4, λ5 −
+1/2, 1/2), and then ˙VC can be expressed as follows:
+˙VC ≤2
+√
+3μAF (γdT /ωn
+AF + L∗
+AF δnF )||zAF ||
++ δncF ||zAF || −ηcF ||zAF ||2
+Fig. 3.
+Landing procedures. (a) Quadrotor UAV tracks the landing
+platform horizontally before the landing. (b) Quadrotor UAV approaches
+the platform vertically when the landing starts.
++ 2
+√
+3μAT (γdR/ωn
+AT + L∗
+AT δnT )||zAT ||
++ δncT ||zAT || −ηcT ||zAT ||2.
+(47)
+It is clear that ˙VAC < 0 whenever
+
+||zAF || > [δncF + 2
+√
+3μAF (γdT /ωn
+AF + L∗
+AF δnF )]η−1
+cF
+||zAT || > [δncT + 2
+√
+3μAT (γdR/ωn
+AT + L∗
+AT δnT )]η−1
+cT .
+(48)
+According to (48), re, ve, and
+∼xAF are bounded and con-
+verge to the bounded ball
+BCAF = {r|||r|| ≤[δncF + 2
+√
+3μAF (γdT /ωn
+AF
++ L∗
+AF δnF )]η−1
+cF }.
+(49)
+Since (qe,
+∼ωe) is a linear mapping of (qe, ωe), (qe, ωe) can
+converge into a bounded area. Similarly, (qe, ωe),
+∼ωe, and
+∼xAT
+are bounded and converge to the bounded ball
+BCAT = {r|||r|| ≤[δncT + 2
+√
+3μAT (γdR/ωn
+AT
++ L∗
+AT δnT )]η−1
+cT }.
+(50)
+V. EXPERIMENTAL RESULTS AND DISCUSSION
+A. Experimental System and Conditions
+In order to verify the effectiveness of the proposed strategy,
+landing experiments on a fast platform were conducted on our
+self-assembled quadrotor. The landing platform is shown in
+Fig. 3. The experimental parameters and conditions are given
+in Table II. For a reliable landing on the platform, the quadrotor
+should maintain the same heading as the platform and land
+on the safe landing zone with the maximum error of landing
+points less than 8.5 cm. Moreover, the vision system should
+have sufﬁcient bandwidth to ensure continuous tracking of the
+landing platform.
+For similar initial state and time cost in every experiment, two
+procedures are arranged. In the preparatory stage, the platform
+travels at 8.3 m/s and the quadrotor ﬂies with the platform
+at a height of 1.8 m above. When the experiment starts, the
+quadrotor descends vertically at an expected speed of 0.4 m/s.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG AND WU: AEDO-BASED CONTROL FOR QUADROTOR FAST PLATFORM LANDING
+6185
+TABLE II
+EXPERIMENTAL PARAMETERS AND CONDITIONS
+Category
+Parameter
+Value
+Platform
+Size
+1.2 m × 1.2 m
+Speed
+8.3 m/s
+Direction
+Southeast
+Quadrotor
+Mass
+4.2 kg
+Autopilot
+PIXHAWK
+Arm length
+600 mm
+Propeller size
+15 inches
+Environment
+Maximum wind Speed
+5.94 m/s
+TABLE III
+CONTROL SCHEME GAINS
+Module
+Translational Subsystem
+Rotational Subsystem
+Controller
+Kc1 = diag(0.2 0.2 0.6)
+Kc4 = diag(1.5 1.5 0.6)
+Kc2 = diag(1.8 1.8 2.6)
+Kc5 = diag(0.7 0.7 0.4)
+Kc3 = diag(0.8 0.8 2.4)
+2nd-EDO
+LE = [4I3 4I3]T
+LE = [4I3 4I3]T
+3rd-NREDOs
+LN = [6I3 12I3 8I3]T
+LN = [6I3 12I3 8I3]T
+2nd-AEDO
+PNF = 0.008z2
+pq+0.028zpq+0.026
+PNT = 0.2
+Note: Bandwidths of EDOs and NREDOs are 2 rad/s.
+When the landing is completed, all motors will be turned OFF.
+The procedures are shown in Fig. 3, where vh and vv are
+horizontal and vertical components of v.
+To intuitively reﬂect the disturbance suppression perfor-
+mance of AEDO, 2nd-order EDOs, 3rd-order NREDOs, and
+2nd-order AEDOs are introduced, respectively, into the closed-
+loop system. The EDO and NREDO-based control schemes
+have been presented in [22] and [23]. It should be noted that
+although AEDOs have higher computational complexity com-
+pared with EDOs and NREDOs, PIXHAWK is used as the
+autopilot in the experiments, and it has sufﬁcient computing
+power to ensure the real-time performance of the quadrotor
+system.
+For brevity, “2nd-EDO,” “3rd-NREDO,” and “2nd-AEDO”
+stand for the control based on 2nd-order EDO, 3rd-order
+NREDO, and 2nd-order AEDO. To reduce the effects of mea-
+surement noises, Kci are tuned to ensure that the bandwidth
+is signiﬁcantly lower than the lower frequency limit of mea-
+surement noises, where i = 1, 2, 3, 4, 5. The gains of the
+controller and observers are shown in Table III. For PNF and
+PNT , they have been ﬁtted before the experiments. ωAF m and
+ωAT m are set as 1 rad/s to reduce the effects of measurement
+noises and ensure basic dynamic performance. Δt is set as
+0.5 s to reduce the effects of transient power ﬂuctuations on
+bandwidth variation.
+B. Performance of AEDO-Based Controller
+The performance of the three methods is recorded. The
+curves of ωAF and ωAT are shown in Fig. 4, where zpq is
+deﬁned as the relative height between the platform and quadro-
+tor. The estimate of F d and τ d are shown from Figs. 5–7.
+The curves of re and ve are shown in Fig. 8, where re =
+Fig. 4.
+Bandwidth and relative height. (a) Bandwidth of 2nd-order AE-
+DOs. (b) Relative height between the platform and quadrotor UAV.
+Fig. 5.
+Disturbance force and torque estimated by 2nd-AEDO. (a) Fdx.
+(b) τdx. (c) Fdy. (d) τdy. (e) Fdz. (f) τdz.
+TABLE IV
+STATISTICAL RESULTS
+RMS
+2nd-EDO
+3rd-NREDO
+2nd-AEDO
+rex (m)
+0.0331
+0.0290
+0.0252
+rey (m)
+0.0263
+0.0294
+0.0235
+rez (m)
+0.0777
+0.0502
+0.0381
+vex (m/s)
+0.1611
+0.1253
+0.1068
+vey (m/s)
+0.0922
+0.1185
+0.0558
+vez (m/s)
+0.1393
+0.0858
+0.0805
+ϕe (deg)
+0.5936
+0.7814
+0.4217
+θe (deg)
+0.9498
+1.1100
+0.7945
+ψe (deg)
+0.1097
+0.1230
+0.0348
+ωex (deg/s)
+2.6192
+2.8090
+2.6179
+ωey (deg/s)
+7.0915
+9.0909
+3.7346
+ωez (deg/s)
+1.1710
+1.4671
+1.0819
+[rex
+rey
+rez]T and ve = [vex
+vey
+vez]T . For the quadro-
+tor attitude, deﬁne the errors of roll, pitch, and yaw angles
+as ϕe, θe, ψe with a 3–2–1 rotation sequence, and then their
+cures and the curves of ωe = [ωex
+ωey
+ωez]T are depicted
+in Fig. 9. The statistical results are presented in Table IV.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+6186
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
+Fig. 6.
+Disturbance force and torque estimated by 2nd-EDO. (a) Fdx.
+(b) τdx. (c) Fdy. (d) τdy. (e) Fdz. (f) τdz.
+Fig. 7.
+Disturbance force and torque estimated by 3rd-NREDO. (a) Fdx.
+(b) τdx. (c) Fdy. (d) τdy. (e) Fdz. (f) τdz.
+Fig. 8.
+Errors of position and velocity. (a) rex. (b) vex. (c) rey. (d) vey.
+(e) rez. (f) vez.
+Fig. 9.
+Errors of attitude and angular velocity. (a) ϕe. (b) ωex. (c) θe. (d)
+ωey. (e) ψe. (f) ωez.
+In Fig. 4, the quadrotor transitions from level to descending
+ﬂight within 0–1 s. In this phase, aerodynamic disturbances
+increase and cause variations of ωAF and ωAT . Between 1.5
+and 3.5 s, zpq decreases from 1.4 to 0.5 m. In this phase,
+uneven ground effects have not occurred, and the changes of
+ωAF and ωAT are caused by wind gusts. At 4.4 s, zpq = 0.15 m
+and uneven ground effects manifest. After 4.4 s, ωAF and
+ωAT increase under the combined effects of uneven ground
+effects and wind gusts. As PNF decreases with zpq, the peak
+of ωAF continually increases. As PNT does not vary with zpq,
+the changes in the peak of ωAT are small after 1 s.
+In Figs. 6 and 8, the curves of 2nd-AEDO are smooth and can
+respond more quickly to the changes of disturbances. In Figs. 9
+and 10, the curves of 2nd-AEDO exhibit the best suppression
+of disturbances and its curves have the lowest ﬂuctuation. In
+Table III, the RMSEs of 2nd-AEDO are the smallest. This
+demonstrates that 2nd-AEDO has the best disturbance suppres-
+sion performance among the three methods.
+C. Precision of Landing Points
+To ensure that the differences in disturbance estimation and
+suppression performance among the three methods are not ran-
+dom, their landing point precision will be compared in this
+section. The results of ten repeated experiments for the three
+methods are shown in Fig. 10 and Table V. In Fig. 10, the solid
+line circle indicates the boundary of the safe landing zone. The
+other line styles represent the circular ranges of landing points
+through different methods, and the points with various styles
+indicate the landing points from various methods. In Table V,
+(rP
+ex, rP
+ey) means the landing point is expressed in EP . pcir is
+the center of the circle, and rcir denotes the radius.
+In Fig. 10 and Table V, some landing points of 2nd-EDO
+and 3rd-NREDO are outside the safe landing zone while all
+the landing points of 2nd-AEDO are within the zone. The pcir
+of 2nd-AEDO is the closest to zero among the three methods.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+ZHANG AND WU: AEDO-BASED CONTROL FOR QUADROTOR FAST PLATFORM LANDING
+6187
+Fig. 10.
+Landing point of 30 times experiments.
+TABLE V
+RESULTS OF LANDING POINTS (M)
+Variables
+2nd-EDO
+3rd-NREDO
+2nd-AEDO
+(rP
+ex, rP
+ey)
+(0.0304, −0.0379)
+(0.0186, −0.0030) (−0.0081, −0.0085)
+(0.0355, −0.0381)
+(0.0156, −0.0378) (−0.0068, −0.0232)
+(0.0211, −0.0170) (−0.0039, −0.0462) (0.0211, −0.0149)
+(0.0250, −0.0057)
+(0.0395, −0.0403)
+(0.0148, 0.0316)
+(0.0622, −0.0245) (−0.0112, −0.0602) (−0.0160, −0.0332)
+(0.0439, −0.0943)
+(0.0423, −0.0466) (−0.0318, −0.0262)
+(0.0805, −0.0172)
+(0.0320, −0.0612)
+(0.0438, −0.0179)
+(0.0946, −0.0162)
+(0.0574, −0.0552) (−0.0264, −0.0424)
+(−0.0732, 0.0211)
+(0.0891, 0.0012)
+(−0.0384, 0.0412)
+(0.0257, −0.1644)
+(0.1024, −0.0440)
+(−0.0219, 0.0584)
+pcir
+(−0.0608, −0.0033) (−0.0368, 0.0434)
+(0.0071, −0.0043)
+rcir
+0.1076
+0.0594
+0.0542
+Note: Bold numbers represent landing points out of the safe landing zone.
+As for rcir, 2nd-AEDO has the smallest rcir, and the rcir of 2nd-
+EDO and 3rd-NREDO are almost the same.
+In summary, the aforementioned experimental results further
+validate the superior performance of AEDO in disturbance es-
+timation and suppression and are consistent with the theoretical
+analysis in Section IV. Moreover, the increased computational
+complexity by AEDO does not affect the real-time performance
+of the autopilot in the experiments.
+VI. CONCLUSION
+This article proposes AEDO to estimate complex aerody-
+namic disturbances when quadrotor UAVs land on fast plat-
+forms. Two AEDOs are designed to estimate force and torque
+disturbances for translational and rotational channels of a
+quadrotor UAV. In AEDO, the bandwidth is designed to be
+tuned adaptively according to the power ratio between distur-
+bances and measurement noises. The comparison with other
+EDOs shows that AEDO exhibits higher estimation accuracy
+and robustness to measurement noises. Repeated experiments
+on a 30 km/h platform have validated the effectiveness of
+the proposed strategy. In the experiments, the quadrotor UAV
+consistently lands on the safe landing zone with an error of
+less than 6.3 cm. As the increased computational complexity
+of the AEDO may affect its application in low-cost quadrotor
+UAVs, future work will focus on the reduction of the algorithm
+complexity.
+REFERENCES
+[1] K. Xia, Y. Huang, Y. Zou, and Z. Zuo, “Reinforcement learning control
+for moving target landing of VTOL UAVs with motion constraints,”
+IEEE Trans. Ind. Electron., vol. 71, no. 7, pp. 7735–7744, Jul. 2024.
+[2] A. Ghasemi, F. Parivash, and S. Ebrahimian, “Autonomous landing of
+a quadrotor on a moving platform using vision-based FOFPID control,”
+Robotica, vol. 40, no. 5, pp. 1431–1449, May 2022.
+[3] Y. Zhang and Z. Wu, “Survey on anti-disturbance control of quadrotor
+UAVs landing on moving platform,” J. Vib. Control, early access, Jan.
+1, 2025, doi: 10.1177/10775463251347061.
+[4] S. Liu, Z. Wang, X. Sheng, and W. Dong, “Hitchhiker: A quadrotor
+aggressively perching on a moving inclined surface using compliant
+suction cup gripper,” IEEE Trans. Autom. Sci. Eng., vol. 21, no. 3, pp.
+2552–2563, Jul. 2024.
+[5] J. Lin, Y. Wang, Z. Miao, H. Zhong, and R. Fierro, “Low-complexity
+control for vision-based landing of quadrotor UAV on unknown moving
+platform,” IEEE Trans. Ind. Inform., vol. 18, no. 8, pp. 5348–5358, Aug.
+2022.
+[6] J. W. Kim, Y. D. Jung, D. S. Lee, and D. H. Shim, “Landing control
+on a mobile platform for multi-copters using an omnidirectional image
+sensor,” J. Intell. Robot. Syst., vol. 84, no. 1–4, pp. 529–541, Dec.
+2016.
+[7] E. Ibarra, E. G. Rojo-Rodriguez, M. A. Jimenez-Izarraga, O. Garcia-
+Salazar, and I. Quiroz-Vazquez, “Hopf bifurcation for UAV path plan-
+ning in autonomous surveillance and landing on an UGV,” J. Intell.
+Robot. Syst., vol. 102, no. 2, Jun. 2021. Art. no. 41.
+[8] Q. Cao, Z. Liu, H. Yu, X. Liang, and Y. Fang, “Autonomous landing of
+the quadrotor on the mobile platform via meta reinforcement learning,”
+IEEE Trans. Autom. Sci. Eng., vol. 22, pp. 2269–2280, 2025.
+[9] K. Xia, M. Shin, W. Chung, M. Kim, S. Lee, and H. Son, “Landing a
+quadrotor UAV on a moving platform with sway motion using robust
+control,” Control Eng. Pract., vol. 128, Nov. 2022, Art. no. 105288.
+[10] A. Borowczyk, D.-T. Nguyen, A. P.-V. Nguyen, D. Q. Nguyen, D.
+Saussié, and J. L. Ny, “Autonomous landing of a quadcopter on a high-
+speed ground vehicle,” J. Guid. Control Dyn., vol. 40, no. 9, pp. 2373–
+2380, Sep. 2017.
+[11] X. Yu, J. Yang, and S. Li, “Disturbance observer-based autonomous
+landing control of unmanned helicopters on moving shipboard,” Non-
+linear Dyn., vol. 102, no. 1, pp. 131–150, Sep. 2020.
+[12] N. Xuan-Mung et al., “Quadcopter precision landing on moving tar-
+gets via disturbance observer-based controller and autonomous landing
+planner,” IEEE Access, vol. 10, pp. 83580–83590, 2022.
+[13] Y. Yuan and H. Duan, “Adaptive learning control for a quadrotor
+unmanned aerial vehicle landing on a moving ship,” IEEE Trans. Ind.
+Inform., vol. 20, no. 1, pp. 534–545, Jan. 2024.
+[14] K. Rsetam, M. Al-Rawi, and Z. Cao, “Robust adaptive active disturbance
+rejection control of an electric furnace using additional continuous
+sliding mode component,” ISA Trans., vol. 130, pp. 152–162, Nov. 2022.
+[15] K. Rsetam, Y. Zheng, Z. Cao, and Z. Man, “Adaptive active disturbance
+rejection control for vehicle steer-by-wire under communication time
+delays,” Appl. Syst. Innov., vol. 7, no. 2, Mar. 2024. Art. no 22.
+[16] J. Lin, Z. Miao, Y. Wang, H. Wang, X. Wang, and R. Fierro, “Vision-
+based safety-critical landing control of quadrotors with external uncer-
+tainties and collision avoidance,” IEEE Trans. Control Syst. Technol.,
+vol. 32, no. 4, pp. 1310–1322, Jul. 2024.
+[17] K. Xia, S.-M. Lee, W. Chung, Y. Zou, and H. Son, “Moving target
+landing of a quadrotor using robust optimal guaranteed cost control,”
+IEEE-CAA J. Automatica Sin., vol. 10, no. 3, pp. 819–821, Mar.
+2023.
+[18] J. Lin, Y. Wang, Z. Miao, H. Wang, and R. Fierro, “Robust image-based
+landing control of a quadrotor on an unpredictable moving vehicle using
+circle features,” IEEE Trans. Autom. Sci. Eng., vol. 20, no. 2, pp. 1429–
+1440, Apr. 2023.
+[19] Q. Han, Z. Liu, H. Su, and X. Liu, “Filter-based disturbance observer
+and adaptive control for Euler-Lagrange systems with application to a
+quadrotor UAV,” IEEE Trans. Ind. Electron., vol. 70, no. 8, pp. 8437–
+8445, Aug. 2023.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+
+6188
+IEEE TRANSACTIONS ON INDUSTRIAL ELECTRONICS, VOL. 73, NO. 4, APRIL 2026
+[20] W. Ding and H. Huang, “Research on dynamic landing guidance
+algorithm for the maritime quadrotor,” Ocean Eng., vol. 271, Mar. 2023.
+Art. no. 113775.
+[21] L. Shao, Z. Guo, J. Yang, and S. Li, “Vision-based quadrotor rapid
+landing control with an uncooperative platform: An alternating predic-
+tive observer approach,” IEEE Trans. Intell. Veh., vol. 10, no. 4, pp.
+2665–2678, Apr. 2025.
+[22] Y. Zhang, Z. Wu, and T. Wei, “Precise landing on moving platform for
+quadrotor UAV via extended disturbance observer,” IEEE Trans. Intell.
+Veh., vol. 10, no. 4, pp. 2468–2478, Apr. 2025.
+[23] Y. Zhang, Z. Wu, and T. Wei, “Aerodynamic disturbance estimation
+in quadrotor landing on moving platform via noise reduction extended
+disturbance observer,” IEEE Sensors J., vol. 24, no. 22, pp. 37566–
+37574, Nov. 2024.
+[24] Y. Li, C. Bian, and H. Chen, “Object tracking in satellite videos:
+Correlation particle ﬁlter tracking method with motion estimation by
+Kalman ﬁlter,” IEEE Trans. Geosci. Remote Sens., vol. 60, pp. 1–12,
+2022, Art. no. 5630112.
+[25] P. R. Kalata, “The tracking index: A generalized parameter for α-β
+and α-β-γ target trackers,” IEEE Trans. Aerosp. Electron. Syst., vol.
+AES-20, no. 2, pp. 174–182, Mar. 1984.
+[26] V. Zinage and E. Bakolas, “Koopman operator based modeling for
+quadrotor control on SE (3),” IEEE Control Syst. Lett., vol. 6, pp. 752–
+757, 2022.
+[27] H. Jeon, J. Song, H. Lee, and Y. Eun, “Modeling quadrotor dynamics
+in a wind ﬁeld,” IEEE/ASME Trans. Mechatron., vol. 26, no. 3, pp.
+1401–1411, Jun. 2021.
+[28] J. Shen, B. Wang, B. M. Chen, R. Bu, and B. Jin, “Review on
+wind resistance for quadrotor UAVs: Modeling and controller design,”
+Unmanned Syst., vol. 11, no. 1, pp. 5–15, Jan. 2023.
+[29] J. Cai, S. Gunasekaran, and M. Ol, “Effect of partial ground and partial
+ceiling on propeller performance,” J. Aircr., vol. 60, no. 3, pp. 648–661,
+May 2023.
+[30] K. X. Guo, W. Y. Zhang, Y. K. Zhu, J. D. Jia, X. Yu, and Y. M.
+Zhang, “Safety control for quadrotor UAV against ground effect and
+blade damage,” IEEE Trans. Ind. Electron., vol. 69, no. 12, pp. 13373–
+13383, Dec. 2022.
+[31] J. Lim, T. Lee, S. Pyo, J. Lee, J. Kim, and J. Lee, “Hemispherical
+infrared (IR) marker for reliable detection for autonomous landing on
+a moving ground vehicle from various altitude angles,” IEEE/ASME
+Trans. Mechatron., vol. 27, no. 1, pp. 485–492, Feb. 2022.
+[32] R. Li and B. Xin, “Autonomous navigation of quadrotors in dynamic
+complex environments,” IEEE Trans. Ind. Electron., vol. 72, no. 3, pp.
+2790–2800, Mar. 2025.
+[33] Z. Liu, C. Wang, K. Chen, and W. Meng, “Vision-based autonomous
+landing on unprepared ﬁeld with rugged surface,” IEEE Sensors J., vol.
+22, no. 18, pp. 17914–17923, Sep. 2022.
+Yufei Zhang received the B.E. degree in detec-
+tion guidance and control technology in 2018
+from Beihang University, Beijing, China, where
+he is currently working toward the Ph.D. degree
+in instrumentation science and technology with
+the School of Instrumentation and Optoelec-
+tronic Engineering.
+His research interest includes ﬂight control.
+Zhong Wu (Member, IEEE) received the B.E.
+degree in automatic control from the North Uni-
+versity of China, Taiyuan, China, in 1992, the
+M.E. degree in industrial automation from Tian-
+jin University, Tianjin, China, in 1995, and the
+Ph.D. degree in control theory and control en-
+gineering from Beijing Institute of Control Engi-
+neering, Beijing, China, in 1998.
+He is currently a Professor with the School of
+Instrumentation and Optoelectronics Engineer-
+ing, Beihang University, Beijing. His research
+interests include dynamics and control of aerospace vehicles, and drive
+and control of servo systems.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on March 22,2026 at 08:09:13 UTC from IEEE Xplore.  Restrictions apply. 
+

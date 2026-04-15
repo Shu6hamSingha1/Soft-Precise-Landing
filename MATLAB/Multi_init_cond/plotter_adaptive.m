@@ -22,12 +22,21 @@ function plotter_adaptive(data)
     w_a = data.V_X_DS(19:21,:);
     dw_a = data.V_X_DS(22:24,:);
     
-    h_d = data.D_DS(1:3,:);
-    a_d = data.D_DS(4:6,:);
-    E_d = data.D_DS(7:8,:);  
-    dE_cd = data.D_DS(9:11,:);  
-    C_w_cd = data.D_DS(12:14,:); 
-    C_dw_cd = data.D_DS(15:17,:); 
+    % New geometric SO(3) D_DS layout (15 rows):
+    %   1-3  : V_h_d  (desired optic flow)
+    %   4-6  : I_a_cd (desired inertial accel, includes -g)
+    %   7-9  : e_R    (SO(3) attitude error)
+    %  10-12 : B_tau_cd (commanded body torque)
+    %  13    : T_cd   (commanded thrust)
+    %  14    : psi_d  (integrated ASMC heading reference)
+    %  15    : u_a    (yaw ASMC rate output)
+    h_d       = data.D_DS(1:3,:);
+    a_d       = data.D_DS(4:6,:);
+    e_R_log   = data.D_DS(7:9,:);
+    tau_cd    = data.D_DS(10:12,:);
+    T_cd_log  = data.D_DS(13,:);
+    psi_d_log = data.D_DS(14,:);
+    u_a_log   = data.D_DS(15,:);
 
     V_nP_a = data.P_DS(:,5:8,:);
     V_nP_d = data.V_nP_d;
@@ -481,7 +490,7 @@ function plotter_adaptive(data)
     subplot(4, 4, 15);
     plot(tRange(1:idx), C_w_c(3,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(3,1:idx), '--c');
+    % C_w_cd removed (geometric SO(3): no explicit body-rate reference)
     plot(tRange(1:idx), w_t(3,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel("$\dot{\psi}(t)$ (rad/s)",'Interpreter','latex');
@@ -490,139 +499,127 @@ function plotter_adaptive(data)
     % hold off;
     grid on;
     
-    parameters_3 = {'\textbf{Inner-Loop Control Parameters:}' ['$K_{wp}$ = ' ...
-        'diag([' num2str(K.wp(1,1)) ', ' num2str(K.wp(2,2)) ', ' ...
-        num2str(K.wp(3,3)) ']), $K_{wi}$ = diag([' num2str(K.wi(1,1)) ', ' ...
-        num2str(K.wi(2,2)) ', ' num2str(K.wi(3,3)) ']), $K_{wd}$ = diag([' ...
-        num2str(K.wd(1,1)) ', ' num2str(K.wd(2,2)) ', ' num2str(K.wd(3,3)) '])']};
+    Kc = data.K_ctrl;
+    parameters_3 = {'\textbf{Inner-Loop Control Parameters (Geometric SO(3)):}' ...
+        ['$k_R$ = diag([' num2str(Kc.kR(1,1)) ', ' num2str(Kc.kR(2,2)) ', ' ...
+        num2str(Kc.kR(3,3)) ']), $k_\Omega$ = diag([' num2str(Kc.kOmega(1,1)) ', ' ...
+        num2str(Kc.kOmega(2,2)) ', ' num2str(Kc.kOmega(3,3)) '])']};
     figure(3);
     clf;
     sgtitle(parameters_3,'Interpreter','latex','FontSize',10);
-    
+
+    % --- Row 1: SO(3) attitude error e_R ---
     subplot(4, 4, 1);
+    plot(tRange(1:idx), e_R_log(1,1:idx));
+    yline(0);
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$e_{R,x}$",'Interpreter','latex');
+    title("$e_{R,x}$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    subplot(4, 4, 2);
+    plot(tRange(1:idx), e_R_log(2,1:idx));
+    yline(0);
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$e_{R,y}$",'Interpreter','latex');
+    title("$e_{R,y}$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    subplot(4, 4, 3);
+    plot(tRange(1:idx), e_R_log(3,1:idx));
+    yline(0);
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$e_{R,z}$",'Interpreter','latex');
+    title("$e_{R,z}$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    subplot(4, 4, 4);
+    plot(tRange(1:idx), vecnorm(e_R_log(:,1:idx)));
+    yline(0);
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$\|e_R\|$",'Interpreter','latex');
+    title("$\|e_R\|$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    % --- Row 2: Body rates (actual vs target) ---
+    subplot(4, 4, 5);
     plot(tRange(1:idx), C_w_c(1,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(1,1:idx), '--c');
     plot(tRange(1:idx), w_t(1,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\dot{\phi}(t)$ (rad/s)",'Interpreter','latex');
-    legend("Camera - Actual", "Camera - Desired", "Target",'Location', 'best');
-    title("$\dot{\phi}$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
+    ylabel("$\omega_x$ (rad/s)",'Interpreter','latex');
+    legend("Camera","Target",'Location','best');
+    title("$\omega_x$ vs $t$",'Interpreter','latex');
     grid on;
-    
-    subplot(4, 4, 2);
-    plot(tRange(1:idx), C_w_c(1,1:idx));
-    hold on;
-    plot(tRange(1:idx), C_w_cd(1,1:idx), '--c');
-    % yline(0);
-    xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\omega_x(t)$ (rad/s)",'Interpreter','latex');
-    legend("Actual", "Desired",'Location', 'best');
-    title("$\omega_x$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
-    grid on;
-    
-    % subplot(4, 4, 3);
-    % plot(tRange(1:idx), dC_w_cd(1,1:idx));
-    % xlabel("$t$ (s)",'Interpreter','latex');
-    % ylabel("$\dot{\omega}_{x}(t)$ (rad/s$^2$)",'Interpreter','latex');
-    % title("$\dot{\omega}_{x}$ vs $t$ Plot",'Interpreter','latex');
-    % grid on;
-    
-    subplot(4, 4, 4);
-    plot(tRange(1:idx), tau(1,1:idx));
-    % yline(0);
-    % axis([0 tRange(i) -0.1 2*v_yB(1)]);
-    xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\tau_x(t)$ (N m)",'Interpreter','latex');
-    % legend("Camera", "Target",'Location', 'best');
-    title("$\tau_x$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
-    grid on;
-    
-    subplot(4, 4, 5);
-    plot(tRange(1:idx), C_w_c(2,1:idx));
-    hold on;
-    plot(tRange(1:idx), C_w_cd(2,1:idx), '--c');
-    plot(tRange(1:idx), w_t(2,1:idx), '.r');
-    xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\dot{\theta}(t)$ (rad/s)",'Interpreter','latex');
-    legend("Camera - Actual", "Camera - Desired", "Target",'Location', 'best');
-    title("$\dot{\theta}$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
-    grid on;
-    
+
     subplot(4, 4, 6);
     plot(tRange(1:idx), C_w_c(2,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(2,1:idx), '--c');
-    % yline(0);
+    plot(tRange(1:idx), w_t(2,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\omega_y(t)$ (rad/s)",'Interpreter','latex');
-    legend("Actual", "Desired",'Location', 'best');
-    title("$\omega_y$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
+    ylabel("$\omega_y$ (rad/s)",'Interpreter','latex');
+    legend("Camera","Target",'Location','best');
+    title("$\omega_y$ vs $t$",'Interpreter','latex');
     grid on;
-    
-    % subplot(4, 4, 7);
-    % plot(tRange(1:idx), dC_w_cd(2,1:idx));
-    % xlabel("$t$ (s)",'Interpreter','latex');
-    % ylabel("$\dot{\omega}_{y}(t)$ (rad/s$^2$)",'Interpreter','latex');
-    % title("$\dot{\omega}_{y}$ vs $t$ Plot",'Interpreter','latex');
-    % grid on;
-    
-    subplot(4, 4, 8);
-    plot(tRange(1:idx), tau(2,1:idx));
-    % yline(0);
-    % axis([0 tRange(i) -0.1 2*v_yB(1)]);
-    xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\tau_y(t)$ (N m)",'Interpreter','latex');
-    % legend("Camera", "Target",'Location', 'best');
-    title("$\tau_y$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
-    grid on;
-    
-    subplot(4, 4, 9);
+
+    subplot(4, 4, 7);
     plot(tRange(1:idx), C_w_c(3,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(3,1:idx), '--c');
     plot(tRange(1:idx), w_t(3,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\dot{\psi}(t)$ (rad/s)",'Interpreter','latex');
-    legend("Camera - Actual", "Camera - Desired", "Target",'Location', 'best');
-    title("$\dot{\psi}$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
+    ylabel("$\omega_z$ (rad/s)",'Interpreter','latex');
+    legend("Camera","Target",'Location','best');
+    title("$\omega_z$ vs $t$",'Interpreter','latex');
     grid on;
-    
-    subplot(4, 4, 10);
-    plot(tRange(1:idx), C_w_c(3,1:idx));
+
+    subplot(4, 4, 8);
+    plot(tRange(1:idx), u_a_log(1:idx));
+    yline(0);
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$u_a$ (rad/s)",'Interpreter','latex');
+    title("Yaw ASMC output $u_a = \dot{\psi}_d$",'Interpreter','latex');
+    grid on;
+
+    % --- Row 3: Commanded vs applied torque ---
+    subplot(4, 4, 9);
+    plot(tRange(1:idx), tau_cd(1,1:idx), '--c');
     hold on;
-    plot(tRange(1:idx), C_w_cd(3,1:idx), '--c');
-    % yline(0);
+    plot(tRange(1:idx), tau(1,1:idx));
     xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\omega_z(t)$ (rad/s)",'Interpreter','latex');
-    legend("Actual", "Desired",'Location', 'best');
-    title("$\omega_z$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
+    ylabel("$\tau_x$ (N m)",'Interpreter','latex');
+    legend("Commanded","Applied",'Location','best');
+    title("$\tau_x$ vs $t$",'Interpreter','latex');
     grid on;
-    
-    % subplot(4, 4, 11);
-    % plot(tRange(1:idx), dC_w_cd(3,1:idx));
-    % xlabel("$t$ (s)",'Interpreter','latex');
-    % ylabel("$\dot{\omega}_{z}(t)$ (rad/s$^2$)",'Interpreter','latex');
-    % title("$\dot{\omega}_{z}$ vs $t$ Plot",'Interpreter','latex');
-    % grid on;
-    
-    subplot(4, 4, 12);
-    plot(tRange(1:idx), tau(3,1:idx));
-    % yline(0);
-    % axis([0 tRange(i) -0.1 2*v_yB(1)]);
+
+    subplot(4, 4, 10);
+    plot(tRange(1:idx), tau_cd(2,1:idx), '--c');
+    hold on;
+    plot(tRange(1:idx), tau(2,1:idx));
     xlabel("$t$ (s)",'Interpreter','latex');
-    ylabel("$\tau_z(t)$ (N m)",'Interpreter','latex');
-    % legend("Camera", "Target",'Location', 'best');
-    title("$\tau_z$ vs $t$ Plot",'Interpreter','latex');
-    % hold off;
+    ylabel("$\tau_y$ (N m)",'Interpreter','latex');
+    legend("Commanded","Applied",'Location','best');
+    title("$\tau_y$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    subplot(4, 4, 11);
+    plot(tRange(1:idx), tau_cd(3,1:idx), '--c');
+    hold on;
+    plot(tRange(1:idx), tau(3,1:idx));
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$\tau_z$ (N m)",'Interpreter','latex');
+    legend("Commanded","Applied",'Location','best');
+    title("$\tau_z$ vs $t$",'Interpreter','latex');
+    grid on;
+
+    subplot(4, 4, 12);
+    plot(tRange(1:idx), psi_d_log(1:idx), '--c');
+    hold on;
+    plot(tRange(1:idx), E_c(3,1:idx));
+    plot(tRange(1:idx), E_t(3,1:idx), '.r');
+    xlabel("$t$ (s)",'Interpreter','latex');
+    ylabel("$\psi$ (rad)",'Interpreter','latex');
+    legend("$\psi_d$","$\psi$","Target",'Interpreter','latex','Location','best');
+    title("Heading reference vs actual",'Interpreter','latex');
     grid on;
 
     subplot(4, 4, 14);
@@ -707,7 +704,7 @@ function plotter_adaptive(data)
     subplot(4, 4, 4);
     plot(tRange(1:idx), E_c(1,1:idx));
     hold on;
-    plot(tRange(1:idx), E_d(1,1:idx), '--c');
+    % E_d removed (geometric SO(3): no explicit Euler reference)
     plot(tRange(1:idx), E_t(1,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel("$\phi(t)$ (rad)",'Interpreter','latex');
@@ -753,7 +750,7 @@ function plotter_adaptive(data)
     subplot(4, 4, 8);
     plot(tRange(1:idx), E_c(2,1:idx));
     hold on;
-    plot(tRange(1:idx), E_d(2,1:idx), '--c');
+    % E_d removed (geometric SO(3): no explicit Euler reference)
     plot(tRange(1:idx), E_t(2,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel("$\theta(t)$ (rad)",'Interpreter','latex');
@@ -822,7 +819,7 @@ function plotter_adaptive(data)
     subplot(4, 4, 14);
     plot(tRange(1:idx), C_w_c(3,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(3,1:idx), '--c');
+    % C_w_cd removed (geometric SO(3): no explicit body-rate reference)
     plot(tRange(1:idx), w_t(3,1:idx), '.r');
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel("$\dot{\psi}(t)$ (rad/s)",'Interpreter','latex');
@@ -834,7 +831,7 @@ function plotter_adaptive(data)
     subplot(4, 4, 15);
     plot(tRange(1:idx), C_w_c(3,1:idx));
     hold on;
-    plot(tRange(1:idx), C_w_cd(3,1:idx), '--c');
+    % C_w_cd removed (geometric SO(3): no explicit body-rate reference)
     % yline(0);
     xlabel("$t$ (s)",'Interpreter','latex');
     ylabel("$\omega_z(t)$ (rad/s)",'Interpreter','latex');

@@ -52,8 +52,9 @@ ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
 
 %% Load data
 D = cell(1, 5);
+datasets_dir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
 for c = ctrl_list
-    fname = sprintf('result_ctrl_%d.mat', c);
+    fname = fullfile(datasets_dir, sprintf('result_ctrl_%d.mat', c));
     if ~isfile(fname)
         warning('File %s not found – skipping controller %d.', fname, c);
         continue;

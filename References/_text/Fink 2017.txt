@@ -1,0 +1,2529 @@
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+GeoﬀFink*,‡, Hui Xie*,§, Alan F. Lynch*,¶, Martin Jagersand†,||
+*Department of Electrical and Computer Engineering, University of Alberta
+Edmonton, Canada T6G 2R3
+†Department of Computing Science, University of Alberta
+Edmonton, Canada T6G 2R3
+This paper presents a dynamic image-based visual servoing (IBVS) control law for a quadrotor unmanned aerial vehicle (UAV) equipped
+with a single ﬁxed on-board camera. The motion control problem is to regulate the relative position and yaw of the vehicle to a moving
+planar target located within the camera's ﬁeld of view. The control law is termed dynamic as it's based on the dynamics of the vehicle. To
+simplify the kinematics and dynamics, the control law relies on the notion of a virtual camera and image moments as visual features.
+The convergence of the closed-loop is proven to be globally asymptotically stable for a horizontal target. In the case of nonhorizontal
+targets, we modify the control using a homography decomposition. Experimental and simulation results demonstrate the control law's
+performance.
+Keywords: Unmanned aerial vehicle; visual servoing; nonlinear control; quadrotor; experimental platform.
+1.
+Introduction
+Control of unmanned aerial vehicles (UAVs) is an active
+area of research [1]. These vehicles can be used in many
+applications such as search and rescue, infrastructure in-
+spection, and aerial photography. Traditionally, motion
+control of UAVs uses vehicle position and velocity feedback
+from a global positioning system (GPS). However, depen-
+dence on GPS has a number of limitations. First, GPS is only
+available in outdoor applications with a clear view of the
+sky. Furthermore, GPS cannot provide the relative distance
+to a target of interest unless the target's GPS position is
+accurately known. When the target is moving, it must con-
+tinuously send its GPS position to the UAV. On-board
+computer vision can be used to replace GPS. Vision sensors
+are lightweight and accurate tools which can localize the
+vehicle in its environment. In particular, in this paper they
+can provide the necessary feedback to control the vehicle's
+pose with respect to speciﬁc visual targets of interest.
+Visual servoing methods are divided into two main
+approaches: position-based visual servoing (PBVS) and
+image-based visual servoing (IBVS) [2]. In PBVS the pose of
+the vehicle is extracted from the image and used to eval-
+uate the motion control law [3–9]. In general PBVS requires
+more a priori knowledge such as the camera calibration
+parameters and target geometry. On the other hand, IBVS
+minimizes an error function which is directly computed
+from
+features
+in
+the
+image
+plane.
+By
+avoiding
+the
+pose reconstruction in PBVS, IBVS can reduce sensitivity
+to camera calibration error and does not require a
+target model.
+Traditionally, visual servoing control is divided into at
+least two loops [2]. The outermost loop uses vision sensor
+feedback to provide a velocity reference to the inner loop.
+It typically operates at a relatively low frequency (e.g.,
+30 Hz) due to the rate at which images can be acquired
+and processed. The inner loop regulates the velocity of
+the vehicle by providing force and torque commands to
+the vehicle at a relatively high bandwidth (e.g., 200 Hz).
+It is assumed that the vehicle can track the reference
+Received 31 August 2015; Revised 28 September 2016; Accepted 28
+September 2016; Published 8 February 2017. This paper was recom-
+mended for publication in its revised form by editorial board member,
+Guido de Croon.
+Email Addresses:
+‡gﬁnk@ualberta.ca,
+§xie1@ualberta.ca,
+¶alan.lynch@-
+ualberta.ca, kjag@cs.ualberta.ca
+Unmanned Systems, Vol. 5, No. 1 (2017) 1–17
+#.c World Scientiﬁc Publishing Company
+DOI: 10.1142/S2301385017500017
+1
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+velocity perfectly and design is based on a purely kine-
+matic vehicle model. However, the importance of including
+the dynamics of the vehicle is underlined in [10, 11] for
+both high speed tasks and underactuated systems. With
+respect to underactuated quadrotor UAVs, a constraint
+between angular displacement and linear acceleration
+requires us to use the vehicle's linear velocity dynamics in
+the control design. We refer to visual servoing that directly
+accounts for vehicle dynamics as dynamic visual servoing.
+Dynamic IBVS approaches for UAVs that have appeared in
+the
+literature
+include
+spherical
+image
+moment-based
+designs [12–16], homography-based methods [17–19], a
+virtual spring
+approach [20],
+virtual camera approa-
+ches [11, 21, 22], and a nonlinear generalized state
+transformation approach [23]. Although dynamic visual
+servoing has clear practical signiﬁcance, few published
+works
+have
+thorough
+experimental
+results.
+Notable
+exceptions include [24] and [25].
+This paper takes a dynamic IBVS approach to regulate
+the 3D position and yaw of the UAV relative to a target
+consisting of a point cloud on a plane. To simplify the
+problem we assume initially the target moves but remains
+horizontal. To deﬁne the desired vehicle-to-target yaw and
+position, an image is taken when the camera is co-planar to
+the target and the vehicle is at its desired conﬁguration.
+This can be thought of as showing the controller its goal.
+The target's 3D position and yaw about its center of ge-
+ometry can vary. We assume its linear velocity and yaw
+rate can be measured (e.g., from a motion capture system).
+The controller then regulates the relative position and yaw
+to that deﬁned by the reference image. We provide a proof
+of asymptotic stability of the closed-loop for this case. To
+generalize this problem we also consider the problem of
+more general target motion in SE(3), i.e., 3D position and
+3D orientation about its center. The control objective
+remains the same: to regulate 3D position and yaw to its
+desired value. In this general case, we provide simulation
+results but no stability proof.
+This paper is organized as follows. In Sec. 2, we recall
+a dynamic model for the quadrotor. In Sec. 3, we present
+the camera model and the notion of a virtual camera.
+Next we provide the image feature kinematics of a moving
+point. We deﬁne image moments of a moving horizontal
+target and the corresponding kinematics. In Sec. 4, we
+derive the dynamic IBVS controller and prove its stability
+for the horizontal target case. In order to consider the
+nonhorizontal target case, we introduce a homography
+matrix in Sec. 5. In Sec. 6, we validate the control in sim-
+ulation and experiment. In Sec. 7, we present our conclu-
+sions and future work. In Appendix A, we review the
+deﬁnition of the homography matrix and an algorithm for
+its decomposition.
+2.
+Quadrotor Model
+In this section, we recall an established nonlinear quadrotor
+model. We consider two coordinate frames which are
+shown in Fig. 1: the navigation frame N and the body frame
+B. The navigation frame is assumed inertial and its origin is
+ﬁxed to the surface of the earth. Its basis is the orthonormal
+set of vectors fe1; e2; e3g that are oriented north, east, and
+down, respectively. The body frame has its origin ﬁxed to
+the quadrotor's center of mass and its basis fb1; b2; b3g is
+oriented forward, right, and down, respectively. The navi-
+gation and body frames are related by a translation n ¼
+½ n
+1;  n
+2;  n
+3T and rotation R 2 SOð3Þ.
+The rigid body dynamics expressed in B is
+mv: ¼ m!  v þ F þ mgRTe3;
+ð1aÞ
+R
+: ¼ Rskð!Þ;
+ð1bÞ
+J!: ¼ !  J! þ ;
+ð1cÞ
+where v ¼ ½v1; v2; v3T is the linear velocity of the vehicle
+expressed in B, ! ¼ ½!1; !2; !3T is the angular velocity
+of the vehicle in B, m is the mass of the vehicle, g is the
+acceleration due to gravity, J is the inertia matrix of the
+vehicle, and
+skðxÞ ¼
+0
+x3
+x2
+x3
+0
+x1
+x2
+x1
+0
+2
+4
+3
+5:
+The external force and torque acting on the vehicle are
+denoted by F and , respectively. The axis of rotation of each
+propeller is aligned with the b3 axis and we have
+F ¼ ½F1; F2; F3T ¼
+0; 0; 
+X
+4
+i¼1
+fi
+"
+#T
+;
+ð2Þ
+ξn
+f1
+f2
+f3
+f4
+b1
+b2
+b3
+Ω1
+Ω2
+Ω3
+Ω4
+φ
+θ ψ
+ℓ
+e1
+e2
+e3
+B
+N
+Fig. 1.
+Diagram of a quadrotor showing reference frames N and
+B, Euler angles , and direction of propeller velocities i > 0.
+2
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+where fi ¼ kfiu2
+i is the thrust from Propeller i, ui is the
+control input normalized to ½0; 1 which is proportional to
+the speed i of Propeller i, and kfi > 0 is a constant
+depending on the aerodynamics of the propeller. The posi-
+tion dynamics are omitted in (1) as they are replaced with
+the image feature kinematics that is described in Sec. 3. In
+this paper, we parameterize the rotation matrix by the ZYX
+Euler angles so that
+RðÞ ¼
+cc 
+ssc  cs 
+c sc þ s s
+cs 
+s ss þ c c
+css  sc 
+s
+cs
+cc
+2
+4
+3
+5;
+where
+c ¼ cos ,
+s ¼ sin ,
+ ¼ ½; ;  T,
+and
+; ;  
+denote roll, pitch, and yaw, respectively. Then
+: ¼ W!;
+where
+WðÞ ¼
+1
+st
+ct
+0
+c
+s
+0
+s
+c
+c
+c
+2
+664
+3
+775
+and t ¼ tan . The quadrotor is conﬁgured as shown in
+Fig. 1 where the front of the vehicle is oriented between
+Propellers 3 and 1, and the right of the vehicle lies between
+Propellers 1 and 4. The torque  ¼ ½1; 2; 3T applied to
+the vehicle is
+1 ¼
+‘ﬃﬃﬃ
+2
+p ðf2 þ f3  f1  f4Þ;
+2 ¼
+‘ﬃﬃﬃ
+2
+p ðf1 þ f3  f2  f4Þ;
+3 ¼ k1u2
+1  k2u2
+2 þ k3u2
+3 þ k4u2
+4;
+where ‘ is the distance from the motor to the center of mass
+of the vehicle and ki > 0 is an aerodynamic constant. The
+commonly used simple input models for F and  are chosen
+to obtain a simple control law. These models could be
+generalized to include aerodynamic eﬀects such as blade
+ﬂapping and drag force which have been proven to be im-
+portant experimentally [26, 27]. We have neglected gyro-
+scopic torques due to variation in the angular momentum of
+the propellers. Further details regarding modeling can be
+found in [28–30].
+3.
+Camera Models and Kinematics
+3.1.
+Pinhole camera
+We present a commonly used pinhole camera model found
+in the literature, e.g., [31, 32]. Figure 2 illustrates the model
+with intrinsic parameter matrix
+A ¼
+1
+0
+u0
+0
+2
+v0
+0
+0
+1
+2
+4
+3
+5;
+ð3Þ
+where k ¼ f =k; k ¼ 1; 2 are focal lengths in pixels, f is the
+focal length in meters, 1; 2 are the width and height of the
+pixel in meters, y0 ¼ ½u0; v0T is the principal point and  is
+the image plane.
+The projection of a point P ¼ ½P1; P2; P3T in the camera
+frame C onto the image plane in homogeneous coordinates
+Y  AP;
+where  represents equality up to a scaling of a nonzero
+number and Y ¼ ½yT; 1T is the homogeneous coordinate
+of y. We assume for simplicity of presentation that the
+frames C and B are perfectly aligned, and the camera is
+rigidly attached to the UAV.
+To allow for moving targets we assume that point P can
+vary with time. We denote Pn as the position of P in N and
+assume this position is measured. Without loss of generality
+we assume y0 ¼ 0, and the image coordinates are
+y ¼
+1
+P1
+P3
+;
+2
+P2
+P3
+
+T
+:
+ð4Þ
+The single point image feature kinematics can be found by
+diﬀerentiating (4) with respect to time [2]. We obtain
+y: ¼ Lvðv  vtÞ þ L!!;
+ð5Þ
+y2
+y1
+C
+c1
+c3
+f
+c2
+Image Plane π
+Image Feature
+y = [y1, y2]T
+Visual Feature
+P = [P1, P2, P2]T
+Fig. 2.
+Model of a pinhole camera. A visual feature point P is
+projected onto its image plane coordinates y in pixels.
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+3
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+where
+Lv ¼
+ 1
+P3
+0
+y1
+P3
+0
+ 2
+P3
+y2
+P3
+2
+6664
+3
+7775;
+L! ¼
+y1y2
+2
+ y 2
+1 þ  2
+1
+1
+1
+2
+y2
+y 2
+2 þ 2
+2
+2
+ y1y2
+1
+ 2
+1
+y1
+2
+66664
+3
+77775
+the linear velocity of the camera expressed in C is v ¼ RT
+: n,
+the angular velocity of the camera expressed in C is !, and
+the linear velocity of the target point P expressed in C is
+vt ¼ RTP
+: n.
+3.2.
+Virtual camera
+A classical IBVS control for a fully actuated 6 degrees of
+freedom (DoF) vehicle solves for the desired six-dimen-
+sional velocity screw of the vehicle by using at least K  3
+point features. The image Jacobians in (5) for each point are
+stacked and the 6  2K stacked matrix is inverted to com-
+pute the control law. Such an approach can lead to singu-
+larities and it neglects the dynamics of the vehicle. For the
+case of an underactuated UAV, angular and linear velocity
+cannot be independently speciﬁed. This prevents the clas-
+sical approach from being applied. Hence, we consider a
+control based on a combined dynamics consisting of the
+image kinematics and UAV dynamics. The proposed dy-
+namic IBVS control law uses the concept of a virtual camera
+to simplify the structure of the combined dynamics. The
+virtual camera has the same intrinsic parameters as the real
+camera and the same optical center, but it is oriented such
+that its image plane is parallel to the e1-e2 ground plane.
+That is, the origin of the virtual camera frame, denoted by V,
+is ﬁxed to the origin of C and moves with the vehicle. We
+denote the basis of V as fcv
+1; cv
+2; cv
+3g. The virtual and real
+cameras are shown in Fig. 3.
+The relation between the representations of P in V and C
+is given by
+Pv ¼ ½P v
+1; P v
+2; P v
+3T ¼ RP;
+where
+R ¼
+c
+ss
+cs
+0
+c
+s
+s
+sc
+cc
+2
+4
+3
+5:
+The kinematics of Pv is
+P
+: v ¼  
+:skðe3ÞPv  vv þ v v
+t ;
+ð6Þ
+where vv ¼ ½v v
+1; v v
+2; v v
+3T ¼ Rv is the velocity of the camera
+expressed in V, v v
+t ¼ Rvt is the target velocity expressed
+in V. The corresponding projected image point yv in the
+virtual camera image plane is
+yv ¼ ½y v
+1; y v
+2T ¼
+1
+P v
+1
+P v
+3
+; 2
+P v
+2
+P v
+3
+
+T
+:
+ð7Þ
+The conversion from the real camera image coordinate to
+virtual camera image coordinate is
+yv ¼ 1
+	
+1
+0
+0
+0
+2
+0
+
+
+R
+2y1
+1y2
+12
+2
+4
+3
+5;
+ð8Þ
+where
+	 ¼ eT
+3R
+2y1
+1y2
+12
+2
+4
+3
+5 ¼ 12cc  y12s þ y21sc:
+The matrix R is assumed measured from the on-board
+attitude and heading reference system (AHRS). Based on (6)
+and (7) we can solve for the image kinematics in the virtual
+camera:
+y: v ¼ 1
+P v
+3
+1
+0
+y v
+1
+0
+2
+y v
+2
+
+
+ðvv  v v
+t Þ þ
+1
+12
+2
+1y v
+2
+2
+2y v
+1
+"
+#
+ 
+:
+An important property of these kinematics is that they
+are independent of roll and pitch rates. The kinematics of
+the real camera (5) does not have this independence. In fact,
+the virtual camera can be seen as deﬁning new state
+cv
+1
+c1
+cv
+2
+cv
+3
+c2
+c3
+N
+e3
+e1
+C, V
+e2
+P
+yv
+y
+ψ
+yv
+1
+yv
+2
+y1
+y2
+πv
+π
+ξn
+Fig. 3.
+The real and virtual camera frames C and V, respectively.
+The image plane of the virtual camera v remains horizontal (i.e.,
+parallel to the e1-e2 plane).
+4
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+coordinates in which dependence on roll and pitch rates is
+eliminated. The new coordinates are similar in nature to
+those used in our work in [23, 33] where they were also
+used to eliminate roll and pitch rates.
+3.3.
+Moment features
+To further simplify the interaction matrix we use image
+moments deﬁned in [34, 35]. We assume there are K > 1
+target point correspondences in the images denoted by
+Pk; 1  k  K. These points make up a target which remains
+horizontal and can rotate about its geometric center.
+Figure 4 shows a target composed of four (i.e., K ¼ 4)
+points. A frame T is attached to the target. The origin of T
+is at the geometric center of the target. We denote this
+geometric center by vector P n. The basis of T is ft1; t2; t3g
+which is deﬁned so that the t1  t2 plane is parallel to the
+e1  e2 plane, and t3 ¼ e3. The yaw between N and T is
+denoted by  t and its positive direction is deﬁned in Fig. 4.
+We remark that the image moments deﬁned simplify the
+kinematics in the case where the target plane is parallel to
+the camera image plane. This is ensured by using a
+virtual camera frame. When the target is parallel to the
+camera image plane, all target points have the same depth
+P v
+3 in V. The image moment feature s ¼ ½s1; s2; s3; s4T is a
+function of image coordinates in the virtual camera and is
+deﬁned as
+s1 ¼ s3y v
+1g;
+ð9aÞ
+s2 ¼ s3y v
+2g;
+ð9bÞ
+s3 ¼
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+
+
+20 þ 
+
+02
+
+20 þ 
+02
+s
+;
+ð9cÞ
+s4 ¼ 1
+2 arctan
+2
+1112
+ 2
+2
+20  2
+1
+02
+;
+ð9dÞ
+where y v
+ig ¼ 1
+K
+PK
+k¼1 y v
+ik, y v
+ik is the ith virtual image plane
+coordinate for the kth point, 
+ij ¼ PK
+k¼1 ðy v
+1k  y v
+1gÞiðy v
+2k
+y v
+2gÞj, and 
+
+ij is the desired value of 
+ij which corresponds
+to when the vehicle is in its desired pose. For simplicity we
+assume 1 ¼ 2 so the image kinematics are
+s:
+1
+s:
+2
+s:
+3
+2
+664
+3
+775 ¼ 1
+P v
+3
+
+
+0
+0
+0
+
+0
+0
+0
+1
+2
+64
+3
+75~vv þ
+s2
+s1
+0
+2
+64
+3
+75 
+: ;
+ð10aÞ
+s:
+4 ¼ ~ 
+:
+;
+ð10bÞ
+where P v
+3
+ denotes desired depth and
+~vv ¼ RT
+~ ðvn  v n
+t Þ
+~ ¼    t
+R ¼
+c 
+s 
+0
+s 
+c 
+0
+0
+0
+1
+2
+64
+3
+75
+and the velocity of the target's geometric center is
+v v
+t ¼ 1
+K
+X
+K
+k¼1
+v v
+tk
+and v v
+tk is the linear velocity of the kth point in V. The image
+features s1, s2, s3 are used to control the translational mo-
+tion of the vehicle, and s4 controls the yaw motion. Without
+loss of generality, we regulate the image feature s to a de-
+sired value s ¼ ½0; 0; 1; 0T. This ensures that the vehicle's
+lateral position tracks the target's geometric center, its yaw
+is the same as the target, and its height above the target is
+P v
+3 . Nonzero s
+1 and s
+2 values can be chosen, but are less
+practically relevant since we require the target to remain in
+the camera's limited ﬁeld of view. The values of s
+3 and s
+4
+can be chosen to regulate speciﬁc desired heights and yaw.
+We remark in practice that the choice of s
+1 ¼ s
+2 ¼ 0 does
+not imply that the camera is directly above the geometric
+center of the target. An oﬀset can exist due to misalignment
+between the body and camera frames; and the center of
+mass and geometric center.
+4.
+Dynamic IBVS Control for Moving Horizontal
+Targets
+The control of UAVs is typically divided into an inner and
+outer loop. We adopt this structure here as shown in Fig. 5.
+This inner-outer loop structure is often used independent of
+the sensors employed (e.g., camera or GPS). The inner loop
+tracks an orientation reference of the vehicle, and the outer
+loop provides a roll, pitch, and yaw reference to the inner
+e1
+e2
+P n
+1
+¯P n
+t1
+t2
+ψt
+P3
+P2
+P4
+P1
+t3
+e3
+Fig. 4.
+Horizontal target composed of K ¼ 4 points denoted
+Pk; 1  k  4. The position of the geometric center is denoted
+P n ¼ PK
+k¼1 P n
+k, where P n
+k is Pk expressed in N . The angle between
+target frame T and N is  t.
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+5
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+loop in order to achieve control of translational and yaw
+motion. This structure arises in part from a diﬀerence in
+sensor frequencies and provides a practical solution to
+motion control found in many autopilots [36]. The multi-
+loop structure is useful for saturating the reference angles
+to avoid unsafe large roll and pitch angles. In the case of
+visual servoing, the decoupled control structure is natural
+due to the low frequency at which the camera acquires and
+processes images. On the other hand, the relatively fast IMU
+sensors driving the inner attitude control allow it to run at a
+higher rate. The control objective in this paper is to develop
+a control law that regulates the image feature s to a desired
+value s. To derive the control we make two practical
+assumptions. The ﬁrst is a small angle approximation i.e.,
+we assume that the roll and pitch angles are small. Hence,
+thrust in the virtual camera frame V is
+F v ¼ F3½sc; s; ccT  F3½; ; 1T:
+ð11Þ
+This is a practical assumption as small roll and pitch is
+required to keep the target in the camera's ﬁeld of view. The
+second assumption is that the inertia matrix is diagonal
+J ¼ diagðJ1; J2; J3Þ i.e., the quadrotor's mass is symmetrically
+distributed.
+The dynamics of the quadrotor and the target in the
+virtual camera frame V is
+~v
+: v ¼ ~ 
+:
+skðe3Þ~vv þ ge3 þ F v=m  a v
+t;
+ð12Þ
+where a v
+t is the acceleration of the target.
+Here we use the previously made assumption that the
+camera frame C and the body frame B are identical. The
+assumption is realistic in our experimental platform as we
+have placed the camera as close to the center of mass as
+possible. The frames are only oﬀset slightly in the b3 di-
+rection. We assume knowledge of  
+:
+t and v v
+t (e.g., trans-
+mitted from a friendly vehicle or measured from optical
+ﬂow). To derive a control law we write the dynamics (12)
+with the image moment kinematics (10) as
+s:
+1 ¼ kp~v v
+1 þ s2 
+: ;
+ð13aÞ
+s:
+2 ¼ kp~v v
+2  s1 
+: ;
+ð13bÞ
+s:
+3 ¼ kp~v v
+3;
+ð13cÞ
+~v
+: v
+1 ¼ ~v v
+2 
+:
+þ u;
+ð13dÞ
+~v
+: v
+2 ¼ ~v v
+1 
+: þ u;
+ð13eÞ
+~v
+: v
+3 ¼ uF;
+ð13fÞ
+s:
+4 ¼ u ;
+ð13gÞ
+where 3 ¼ s3  1, kp ¼ 1=P v
+3
+, and the inputs are u ¼
+F v
+3=m  ~v2 
+:
+t  a v
+t1,
+u ¼ F v
+3=m þ ~v1 
+:
+t  a v
+t2,
+uF ¼
+F v
+3=m þ g  a v
+t3, and u ¼ ~ 
+:
+.
+Theorem 4.1. Subsystem (13a)–(13f) is globally asympto-
+tically stable and subsystem (13g) is globally exponentially
+stable with input
+uF ¼ khdv v
+3  khp3  khi
+Z t
+0
+3ðÞd;
+ð14aÞ
+u ¼ k‘2ð~v v
+1=k‘1  s1Þ;
+ð14bÞ
+u ¼ k‘2ð~v v
+2=k‘1  s2Þ;
+ð14cÞ
+u ¼ k s4;
+ð14dÞ
+where khp, khd, khi, k‘1, k‘2, and k are positive constant gains
+such that khi < khpkhd and P v
+3
+k‘2 > k 2
+‘1.
+Proof. First we consider the height motion subsystem (13c)
+and (13f) and we deﬁne the error signal
+3 ¼ s3  1:
+In addition, we augment the state by with an integral
+ ¼
+Z t
+0
+3ðÞd:
+Let
+uF ¼ khp3  khd~v
+: v
+3 þ khi
+then
+the
+closed
+loop
+dynamics are
+
+:
+3
+v: v
+3
+
+:
+2
+664
+3
+775 ¼
+0
+kp
+0
+khp
+khd
+khi
+1
+0
+0
+2
+4
+3
+5
+3
+~v v
+3
+
+2
+4
+3
+5:
+Then if khp; khd; khi > 0 and khi < kpkhpkhd the closed loop
+origin of the height motion subsystem is globally exponen-
+tially stable. Next, we consider the translational motion
+subsystem (13a), (13b), (13c), and (13d). Deﬁne error
+variables
+1 ¼ 1
+ s1
+2 ¼ 1
+ s2
+4 ¼ ~v v
+1=k‘1  1
+5 ¼ ~v v
+2=k‘1  2
+and consider the Lyapunov function candidate
+V ¼ 1
+2  2
+1 þ 1
+2  2
+2 þ 1
+2  2
+4 þ 1
+2  2
+5
+Camera
+Outer Loop:
+Dynamic VS
+Inner Loop
+Vehicle
+F
+y
+η∗
+η
+v, η
+τ
+P n, η
+Fig. 5.
+Inner-outer loop Dynamic IBVS control structure.
+6
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+then
+V
+: ¼ ðu4 þ u5Þ=k‘1 þ k‘1kpð 2
+1   2
+2 þ  2
+4 þ  2
+5Þ:
+Letting u ¼ k‘24 and u ¼ k‘25 then
+V
+: ¼ k‘1kpð 2
+1 þ  2
+2Þ  ðk‘2  kpk 2
+‘1Þð 2
+4 þ  2
+5Þ=k‘1:
+If k‘2 > k 2
+‘1kp then V
+:
+2 is negative deﬁnite. Therefore, the
+translational subsystem (13a)–(13f) is globally asymptoti-
+cally stable. For the yaw subsystem (13g) we substitute the
+control law (14d) into the dynamics (10b) and obtain
+s:
+4 ¼ k s4
+which is globally exponentially stable.
+The control law requires an initialization and main
+phase. In the initialization phase the quadrotor is manually
+hovered so that the target is in the camera's ﬁeld of view.
+The user then selects the target, indicates its orientation in
+the camera frame and the desired distance to the target.
+Note that the desired distance to the target is not speciﬁed
+in meters, but is an image feature. That is, the user selects
+the desired scale in the image: larger (closer), the same
+(maintain distance), or smaller (further away). This feature
+can be changed at anytime during ﬂight.
+5.
+Nonhorizontal Targets
+In previous work [11, 25] it was assumed that the planar
+target was horizontal. This assumption was made so that the
+concept of a virtual camera as used in [25] could be applied.
+If the virtual camera is applied to nonhorizontal targets it
+has been shown that steady state error results in the image
+features, especially in the third component s3 which is re-
+lated to relative height. In this paper, we compensate for
+nonhorizontal target planes using a homography decompo-
+sition which can be used to estimate the orientation between
+the camera image plane and target plane.
+5.1.
+Applying the homography
+After computing the homography decomposition as de-
+scribed in Appendix A we use it to deﬁne a new virtual
+camera frame V 0. The following discussion explains how
+this new frame compensates for nonhorizontal targets. The
+following assumptions are made to provide a precise de-
+scription of the pose of V 0 without having to know the ge-
+ometry of the target and the relative pose from the camera
+to the target.
+Assumptions:
+(1) The target rotates about its geometric center.
+(2) The target plane in the desired image is parallel to the
+camera plane, i.e., n1 ¼ ½0; 0; 1T.
+(3) The camera is centered laterally above the target, i.e.,
+the geometric center of the target lies on the c3 axis.
+The frame V 0 has the same lateral position and orientation
+relative to the target as the camera to the desired scene.
+That is, only the height of the camera can diﬀer relative to
+the desired case. Using V 0 we can estimate the area of the
+target independent of the target and camera's orientation.
+We remark that virtual camera V introduced in Sec. 3.2
+remains parallel to the ground. Using a combination of V
+and V 0 we can deﬁne image features that behave as if the
+target is always parallel to the ground.
+Figure 6 illustrates the idea when relative motion is re-
+stricted to 1 DoF in the c3 direction, and the target plane can
+rotate by an angle . The 3D case is restricted to relative
+camera motion in the c3 direction, and the target can rotate
+in 2 rotational DoF. The extension of the 2D case to the 3D
+case is straightforward. In the ﬁgure an initial desired image
+Y 1 is taken from the camera C1 of the target in its desired
+position (green). Next, suppose the target rotates about its
+geometric center (denoted by a red \x") by an angle . At
+this point if another image were taken with C1 then the
+length (area in 3D) of the target in the image will have
+decreased. Given this condition, the control law would at-
+tempt to lower the camera to increase the length of the
+target. However, the control objective is to regulate the
+height above the target independent of the target's orien-
+tation. To solve this problem a homography matrix H is
+estimated between the desired image (camera C1 with a
+horizontal target) and the current image (camera C1 with a
+nonhorizontal target). Next, the homography is decomposed
+into the rotation and scaled translation of the camera. Since
+the decomposition and estimation of the homography
+assumes the target is static and only the camera moves,
+we can eﬀectively rotate the camera about the target's
+d1
+θ
+r1
+3
+C1
+C2
+V′1
+V′2
+Fig. 6.
+An initial desired image is taken from C1 of the horizontal
+target. The virtual camera associated with C1 and the rotated
+target is V 0 1. The virtual camera associated with C2 and the ro-
+tated target is V 0 2.
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+7
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+geometric center by an angle  to V 0 1. An image taken from
+virtual camera V 0 1 will show the same target length as the
+desired image and thus the control law will not command
+the camera to move. If at some point in time the camera
+were to move to C2 and take an image of the nonhorizontal
+target, the length of the target in the vehicle could be ex-
+actly the same as its length in the desired image. A control
+law based on the original virtual camera V would incor-
+rectly not command the camera to move upward. A homo-
+graphy is calculated between the image taken in C1 of the
+horizontal target and the image in C2 of the nonhorizontal
+target. This homography is decomposed to deﬁne the vir-
+tual camera V 0 2. The length of the target in V 0 2 will be less
+than in the desired image and the camera will be com-
+manded to rise.
+The image Y 0 2 R3 in the virtual camera frame V 0 is
+approximately given by
+Y 0  A
+1
+0
+0
+0
+1
+0
+0
+0
+1 
+1
+d1 r 1
+3
+
+2
+2
+6664
+3
+7775A1Y ;
+ð15Þ
+where Y  2 R3 denotes the image in the desired camera
+frame. The scaled displacement
+1
+d 1 r 1
+3 is obtained from the
+homography decomposition as explained in Appendix A.
+Relation (15) is equivalent to
+yv 0 ¼
+1
+1 
+1
+d 1 r 1
+3
+
+2 y;
+ð16Þ
+where yv 0 2 R2 denotes the image in V 0, and y 2 R2 is the
+desired image.
+Motivated by the above discussion, we introduce a
+modiﬁed feature
+s0
+3 ¼
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+
+0
+20 þ 
+ 0
+02
+
+0
+20 þ 
+ 0
+02
+s
+ð17Þ
+which simpliﬁes to
+s0
+3 ¼
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+PK
+k¼1ðy v 0
+1k
+Þ2 þ ðy v 0
+2k
+Þ2
+PK
+k¼1ðy v 0
+1kÞ2 þ ðy v 0
+2kÞ2
+v
+u
+u
+t
+since y v 0
+1g ¼ y v 0
+2g ¼ 0 by assumption. The kinematics of the
+feature is
+s: 0
+3 ¼ v v 0
+3
+P v 0
+3
+ :
+ð18Þ
+Both virtual camera frames V and V 0 rely on assump-
+tions. That is, V assumes that the target is horizontal, but
+makes no assumptions about the pose of the camera. On the
+other hand V 0 allows for nonhorizontal targets, but assumes
+the camera is constrained to move vertically above the
+target. In order to exploit the beneﬁts of both virtual frames,
+we combine the area moment features into one feature ~s3.
+The resulting image feature vector ~s is deﬁned as
+~s1 ¼ s0
+3s1=s3;
+~s2 ¼ s0
+3s2=s3;
+~s3 ¼ s3 þ ð1  Þs0
+3;
+~s4 ¼ s4;
+ð19Þ
+where  2 ½0; 1 is a tuning parameter. In practice we have
+found that an equal weighting (i.e.,  ¼ 1=2) of the two
+features to yield good results. The algorithm is summarized
+in Algorithm 1.
+Algorithm 1 Dynamic Visual Servoing
+1: function Main Loop
+2:
+Takeoﬀ
+3:
+Hover
+4:
+while User wishes to track object do
+5:
+{y1, n1, a∗} ←Ini()
+6:
+Track({y1, n1, a∗})
+7:
+end while
+8:
+Land
+9: end function
+Initialization Phase:
+10: function ini
+11:
+y1 ←User select target in image
+12:
+n1 ←User select orientation of target in image
+13:
+a∗←User selects desired distance of target
+14: end function
+Main Phase:
+15: function TRACK({y1, n1, a∗})
+16:
+y ←Take Image
+Eq. (4)
+17:
+y2 ←Track points in image(y)
+18:
+H ←Estimate Homography(y1,y2)
+19:
+R, 1
+d1 r1 ←Decompose Homography (H,n1)
+20:
+Rθφ ←Get attitude from AHRS
+21:
+s ←Calc Image Features(y2,Rθφ)
+Eq. (9)
+22:
+s ←Estimate target area(y1, 1
+dr1)
+Eq. (15)
+23:
+˜s ←Update Image Features(s,s )
+Eq. (19)
+24:
+F b,η∗←Outer Loop(˜s,vv,vv∗, ˙ψ∗)
+Eq. (14)
+25:
+τ ←Inner Loop(η,η∗,ω)
+Eq. (20)
+26:
+Repeat
+27: end function
+8
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+6.
+Validation of Dynamic IBVS Control
+Physical experiments and simulations were performed to
+validate the proposed controllers. Due to limitations with
+the experimental test stand we restrict validation to the
+horizontal target case in experiment. In simulation we val-
+idate the nonhorizontal target case. We use the quadrotor
+and camera parameters in Table 1. In both experiment and
+simulation we used a proportional-integral-derivative (PID)
+inner loop control for attitude:
+1 ¼ kpe þ ki
+Z t
+0
+eðÞd þ kd _e;
+2 ¼ kpe þ ki
+Z t
+0
+eðÞd þ kd _e;
+3 ¼ kp e þ ki 
+Z t
+0
+e ðÞd þ kd _e ;
+ð20Þ
+where e ¼   ; e ¼   ; e ¼
+R t
+0 ~ 
+:
+ðÞd, and  and
+ denote reference angles provided by the outer loop
+control. The control law (20) combined with uF determine
+the propeller velocities based on the model in Sec. 2.
+6.1.
+Experimental validation
+6.1.1.
+Experimental platform
+In order to eﬃciently perform experimental research on
+nonlinear control and visual servoing of UAVs, we devel-
+oped the indoor Applied Nonlinear Control Lab (ANCL)
+quadrotor platform. The platform includes a Vicon motion
+capture system that can calculate the pose of the vehicle at
+up to 200 Hz with millimeter accuracy. In this paper, we use
+the Vicon system to provide the vehicle an estimate of its
+velocity. The quadrotor weighs about 1.6 kg including the
+battery and measures about 25 cm from the center of the
+vehicle to the motor shafts. The custom developed quad-
+rotor is shown in Fig. 7. We use a PX4 autopilot which is an
+open-hardware and open-source project [37]. The computer
+vision system is a CMUcam5 Pixy which is a low cost vision
+sensor [38]. It has a focal length of f ¼ 2:8 mm, an image
+sensor size of 1=4" and a maximum resolution of 1280 
+800 pixels. It can ﬁnd hundreds of objects in each frame at
+up to 50 frames per second. The image sensor is mounted
+on the bottom of the quadrotor and connected to the PX4
+via a serial connection. Currently, it processes a 640  400
+pixel image to ﬁnd image blobs at a rate of about 50 Hz. It
+then transmits an identiﬁcation number of the blob based
+on its color and the center, width, and height of the blob.
+More information about the platform can be found in [23].
+6.1.2.
+Experimental results for a horizontal target
+Due to limitations with the ANCL platform, experimental
+testing was restricted to the horizontal target case. That is,
+we use the proposed control law (14) which is based on a
+horizontal target assumption. We used the same controller
+gains as in Table 2. In the experiment two visual markers
+were placed on the ground 36 cm apart. The quadrotor was
+placed between the two markers and manually ﬂown to
+about ½0:1; 0:1; 1:0 m to ensure that the markers were in
+the camera's ﬁeld of view and to be above any ground
+eﬀects. The initial yaw angle was about 50	. At this time the
+dynamic IBVS controller was turned on and run for about
+60 s. The experimental results are shown in Fig. 8. Figure 8(a)
+shows the components of error in the image features
+Fig. 7.
+The ANCL quadrotor.
+Table 1.
+Quadrotor and camera model parameters.
+m
+1:6 kg
+J
+diagð0:03; 0:03; 0:05Þ kg 
+ m2
+f
+2:8 mm
+ð1; 2Þ
+(2.5, 3.0) 
+m
+Resolution
+640  400 pixels
+‘
+0:25 m
+Table
+2.
+Parameters
+used
+in
+simulation and experiment.
+½khp; khd; khi
+½4:4; 1:0; 1:0
+½k‘1; k‘2
+½1:2; 0:4
+k 
+0:60
+
+0:5
+½kp; ki; kd
+½10; 1; 3
+½kp; ki; kd
+½10; 1; 3
+½kp ; ki ; kd 
+½6; 1; 3
+kf
+18  0:02t N
+nð0Þ
+½0:25; 0:25; 1:0 m
+n 
+½0; 0; 1:5 m
+ ð0Þ
+45	
+ tðtÞ
+0	
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+9
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+es ¼ s  s rapidly converging to a bounded trajectory near
+0. We remark that the oscillations in s1 and s2 are likely
+caused by tracking error in the inner loop control, and the
+performance
+is comparable
+with
+our
+visual
+servoing
+experiments on the same platform in [23]. The error s4
+slowly converges to zero. Figure 8(b) shows convergence of
+error in vehicle position e ¼ ½e1; e2; e3 ¼ n   n to a
+bounded trajectory near zero.
+Table 3 shows the mean and standard deviation of the
+error signals. The magnitude of error is similar to our past
+work [23] where only the two lateral DoF were controlled.
+Here, we control all four DoF (i.e., 3D position and yaw).
+Figure 8(c) shows trajectories for roll and pitch. In Fig. 8(d)
+the error in yaw  converges to zero. Finally, in Fig. 8(e) the
+trajectories of the image point features are shown in the
+image plane in pixels. The image features at time t ¼ 0 s are
+denoted by a circle and at time t ¼ 60 s by a cross.
+As seen in Figs. 8(a) and 8(b), the height of the vehicle
+drops about 10 cm over a period of about one minute. This
+is expected as the integral term in the control law (14a) was
+disabled (i.e., khi ¼ 0). As the battery voltage drops, less
+thrust is generated for the same control signal. Although the
+control signal increases slightly due to the increased error, it
+is insuﬃcient to compensate for the decrease in thrust co-
+eﬃcient. Figures 9(a) and 9(b) show battery voltage and
+thrust input ui, respectively. To estimate the thrust constant
+in force model (2) we assume that each propeller generates
+the
+same
+thrust
+and
+denote
+thrust
+coeﬃcient
+kf ¼ kfi; i ¼ 1; 2; 3; 4. We also assume the quadrotor is
+hovering. In this case the thrust coeﬃcient is given by
+Table 3.
+Mean and standard deviation
+of error for the experimental data.
+Variable
+Mean
+Standard deviation
+es1
+0:12
+0:15
+es2
+0:06
+0:22
+es3
+0:12
+0:04
+es4
+0:05
+0:06
+e1 (cm)
+3:8
+6:8
+e2 (cm)
+0:2
+7:1
+e3 (cm)
+5:4
+4:2
+e (	)
+2:9
+3:7
+(a) Image feature error es
+(b) Position error e
+(c) Roll  and pitch 
+(d) Yaw error ~ 
+(e) Image feature trajectory. The initial and ﬁnal positions of the
+feature are denoted by a circle and a cross, respectively.
+Fig. 8.
+Experimental results of the proposed dynamic IBVS con-
+trol law for a horizontal target.
+(a) Drop in battery voltage
+(b) Control signal ui
+(c) Estimated thrust coeﬃcient
+(red) and data (blue)
+(d) Estimated force f i (blue)
+and hover force mg=4 (red)
+Fig. 9.
+Time varying thrust constant.
+10
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+kf ¼ 0:25mg=u2
+i . We model the dependence of kf on time as
+linear:
+kf ðtÞ ¼ kf 1t þ kf 0:
+ð21Þ
+A least squares ﬁt for the thrust coeﬃcients in model (21) is
+performed. This model is shown in Fig. 9(c). Figure 9(d)
+shows estimated force fi compared to the assumed hover
+force mg=4. In simulation we used (21) to show the integral
+term in (14a) can compensate for a decrease in thrust
+coeﬃcient.
+6.2.
+Simulation results
+In the nonhorizontal target case, complexity of the control
+law increases given the homography decomposition is
+computed. At its current stage of development, these com-
+putations could not be implemented on the ANCL quadrotor
+platform. Hence, a Simulink simulation was used for vali-
+dation. The simulations include the rigid body dynamics
+and kinematics (1), the pinhole camera (4), the virtual
+cameras (8) and (16), the image features (9) and their
+modiﬁcations (19). The algorithm used is described in
+Algorithm 1. We chose the visual target to be a \car" which
+is represented by four points in the shape of an arrow that
+points in the forward direction of the car. There is no re-
+quirement to know additional information about the
+target's geometry such as its dimensions. We simulate a
+control assuming the target acceleration is zero. This avoids
+the requirement of measuring this quantity and makes the
+control more practical.
+In the ﬁrst simulation the quadrotor was initialized di-
+rectly above the stationary car that was rotated by one ra-
+dian (57	) about its roll axis. The control objective was to
+regulate height above the car and the proposed method is
+compared with that previously developed in [25]. The
+camera images for the simulation are given in Fig. 10. The
+motion is such that initial (shown as circle) and ﬁnal images
+(shown as cross) are almost identical. We observe that in
+both the initial real camera image [Fig. 10(b)] and the tra-
+jectory of the virtual camera image for V [Fig. 10(c)], the car
+appears compressed in the vertical axis of the image due to
+the inclined target. This leads to a reduced area which is
+measured by moment feature s3 and thus the quadrotor
+ﬂies closer to the car to increase the target's area in the
+image. Both the desired image [Fig. 10(a)] and the image in
+the new virtual camera V 0 are identical in this case.
+Figure 11 shows height trajectories for a number of
+cases. Figure 11(a) compares height using the proposed
+method (green) and the previous approach (blue). The de-
+sired height is 1.5 m, and the proposed algorithm provides a
+smaller steady state error relative to the previous work.
+Figure 11(b) shows the eﬀect of time varying thrust
+coeﬃcient when an integrator is not used in the control
+(khi ¼ 0). In this case height for both of the algorithms
+drops signiﬁcantly. Figure 11(c) shows the result with the
+integrator enabled (khi ¼ 1). Figure 12 shows the result of
+the homography decomposition with roll and pitch esti-
+mated to less than one degree of error.
+(a) Desired camera image
+(b) Initial real camera image
+(c) Virtual camera V image
+(d) New virtual camera V0 image
+Fig. 10.
+Simulated camera images using the proposed method
+and the approach in [25]. The control objective is to regulate
+height above the target.
+(a) Ideal battery
+0
+5
+10
+15
+t (s)
+1.4
+1.45
+1.5
+−ξ3 (m)
+(b) Real battery without
+integrator compensation
+(c) Real battery with integrator
+compensation
+Fig. 11.
+Simulated height of the camera using the proposed
+method (green) and the previous approach in [25] (blue).
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+11
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+In the second simulation we deﬁne a surface on which
+the car travels:
+zðx; yÞ ¼ c1e
+ðxx01Þ2
+cx1
+þðyy01Þ2
+cy1
+þ c2e
+ðxx02Þ2
+cx2
+þðyy02Þ 2
+cy2
+The car's path P nðtÞ is deﬁned by
+P n
+1ðtÞ ¼
+rt
+t0
+0  t < t0
+r cosðt=ct  t0Þ
+t  t0
+8
+<
+:
+P n
+2ðtÞ ¼
+0
+0  t < t0
+r sinðt=ct  t0Þ
+t  t0
+(
+P n
+3ðtÞ ¼ zð P n
+1ðtÞ; P n
+2ðtÞÞ
+The car's attitude is such that it is level to the tangent of the
+surface z. Its yaw angle is zero until after the car completes
+one full circle then it follows a sine wave. The attitude of the
+car is given by
+ðx; y; tÞ ¼ 2 xðtÞ  x01
+cx1
+þ xðtÞ  x02
+cx2
+
+
+zðxðtÞ; yðtÞÞ
+ðx; y; tÞ ¼ 2 yðtÞ  y01
+cy1
+þ yðtÞ  y02
+cy2
+
+
+zðxðtÞ; yðtÞÞ
+ ðtÞ ¼
+0
+0  t < t1
+sinðt=ct  t1Þ
+t  t1
+(
+The surface z and the car's trajectory ½cx; cy; czT (red) is
+shown in Fig. 13. The constants used are in Table 4.
+We ran the car following simulation using the previous
+algorithm where the velocity of the target is assumed to be
+zero and the target is assumed horizontal [25] and the
+proposed algorithm where the velocity of the target is no
+longer assumed to be zero and the target can be non-
+horiztontal. The result of the simulations are shown in
+Figs. 14 and 16.
+Figure 14 shows relatively poor performance of the
+previous method. From Fig. 14(a) the point features of the
+car in the image exhibit large variation, and this causes
+large error in the moment image features as shown in
+Fig. 14(c). Figure 14(f) shows loss of yaw tracking for t  t1.
+Although in Fig. 14(d) the vehicle shows bounded lateral
+position tracking error, the magnitudes of error are large.
+The nonzero tracking error is from assuming the target
+velocity is zero.
+Figure 16 shows increased tracking performance using
+the proposed method. We observe from Fig. 16(a) that the
+point features of the car exhibit small variation, and image
+feature error is reduced as shown in Fig. 16(c). Figures 16(d)
+and 16(f) show good tracking performance for lateral posi-
+tion and yaw. Figure 15(a) shows the roll and pitch computed
+from the homography decomposition versus actual roll and
+pitch. Figure 15(b) gives the error trajectories for these
+angles, and we observe magnitudes less than about 5	. An-
+other measure of error for a homography matrix is the
+°
+(a) Roll and pitch estimates
+(solid red) and actual
+values (dashed red)
+°
+(b) Error in estimation
+Fig. 12.
+Roll (blue) and pitch (green) estimation using a homo-
+graphy decomposition.
+x (m)
+-1
+-0.5
+0
+0.5
+1
+z (m)
+-0.7
+-0.6
+-0.5
+-0.4
+-0.3
+-0.2
+-0.1
+y = -1.0
+y = -0.5
+y= 0.0
+y = 0.5
+y=1.0
+(a)
+1
+x (m)
+0
+-1
+-1
+0
+y (m)
+-1
+0
+-0.5
+1
+z (m)
+(b)
+Fig. 13.
+The ground plane and the trajectory of the car (red).
+Table
+4.
+Simulation
+parameters
+used to deﬁne ground plane and
+car trajectory.
+Parameter
+Value
+c1
+0:5
+c2
+0:2
+ðx01; y01Þ
+ð0:2; 0:4Þ
+ðy02; y02Þ
+ð0:2; 0:2Þ
+cx1
+0:7
+cy1
+0:8
+cx2
+1
+cy3
+1
+ct
+5
+ct 
+2
+5
+t0
+3
+t1
+2ct þ t0
+r
+0:5
+12
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+backward and forward projection error:
+ef ¼ HY1  Y2;
+eb ¼ H 1Y2  Y1:
+These errors are less than one pixel over the entire
+simulation.
+7.
+Conclusion
+In this work, we investigated a nonlinear dynamic IBVS for a
+quadrotor which regulates the relative position and yaw to
+a moving target. The control relies on four or more visual
+feature points in a plane. These point features are relatively
+easy to track, and the target geometry can be generically
+deﬁned and is not assumed known. The general nature of
+the target makes the visual servoing law broadly applicable.
+The stability of the closed-loop is proven in the horizontal
+target case. Experimental results show the performance of
+(a) Camera image
+(b) Virtual image V
+0
+20
+40
+60
+t (s)
+-1
+-0.5
+0
+0.5
+1
+es (m)
+(c) Image features
+-0.5
+0
+0.5
+[ξn
+1 , ¯P n
+1 ] (m)
+-0.5
+0
+0.5
+[ξn
+2 , ¯P n
+2 ] (m)
+(d) Lateral position
+0
+20
+40
+60
+t (s)
+-5
+0
+5
+[φ, θ] ( )
+°
+(e) Roll and pitch
+0
+20
+40
+60
+t (s)
+-100
+-50
+0
+50
+100
+ψ
+°( )
+(f) Yaw  ,  t
+Fig. 14.
+Simulation using a dynamic IBVS based on the virtual
+camera V. The quadrotor (blue) follows a car (red).
+(a) Roll and pitch estimates (solid)
+and actual values (dashed red)
+(b) Error in estimation
+Fig. 15.
+Roll (blue) and pitch (green) estimation using a homo-
+graphy decomposition.
+(a) Camera image
+(b) Virtual image V
+(c) Image features
+(d) Lateral position
+(e) Roll and pitch
+(f) Yaw  ,  t
+(g) Virtual image V0
+Fig. 16.
+Simulation while using the proposed algorithm where the
+quadrotor (blue) followed a car (red).
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+13
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+the method in [23] for a horizontal target case. These
+results show robustness to unmodeled eﬀects such as
+nonideal inner loop performance, mass imbalances causing
+a nondiagonal inertia matrix J, change in battery voltage
+causing a nonconstant thrust coeﬃcient kf , and relative
+pose between camera frame C and body frame B. For the
+nonhorizontal moving target case, simulation results dem-
+onstrate the proposed algorithm's better performance rel-
+ative to previously published work in [23] where the target
+was assumed horizontal and static.
+Future work includes implementing the computer vision
+system on-board and extending the controller to remove the
+reliance on the Vicon system for linear velocity. Optical ﬂow
+could provide this velocity. We observed experimentally
+that lateral position tracking error was degraded due to
+limited inner loop bandwidth. Future work can focus on
+improving inner loop response.
+Appendix A.
+Homography Matrix and Decomposition
+Following [31, 32], we consider two views of a point on a
+planar target as shown in Fig. A.1. The two camera frames
+C1 ¼ fc1
+1; c1
+2; c1
+3g and C2 ¼ fc2
+1; c2
+2; c2
+3g are related by a
+translation r 1 and rotation R. We denote the image plane
+coordinates of K
+points in the two cameras to be
+y 1
+i ; y 2
+i 2 R2; 1  i  K. The homogeneous representations
+of these vectors are denoted Y 1
+i ; Y 2
+i 2 R3; 1  i  K. A
+homography mapping H 2 R33 is a matrix which trans-
+forms Y 1
+i to Y 2
+i according to
+Y 2
+i  HY 1
+i :
+We note that the matrix H can be arbitrarily scaled, there-
+fore it has eight degrees of freedom. When a homography is
+induced by a static plane it can be decomposed into a
+translation r 1 and a rotation R assuming that the optical
+center of the camera never passes through the plane. Such a
+situation is physically impossible as the camera would have
+to pass through the target. That is, we have
+H ¼ A R þ 1
+d1 r 1n
+1 T
+
+
+A1;
+ðA:1Þ
+where A is the matrix of intrinsic camera parameters, d1 is
+the perpendicular distance from the camera frame C1 to the
+target plane, n1 is the unit normal of the target plane
+expressed in C1, r 1 is the displacement of the origin of C2
+relative to the origin of C1 expressed in C1, and R is the
+rotation matrix which describes the relative orientation of
+C1 and C2. Without loss of generality we take A ¼ I which
+assumes camera calibration has been performed. In prac-
+tice, cameras can be easily calibrated to subpixel error.
+As an alternative, the points in the images can be normal-
+ized using a similarity transform that moves the centroid of
+the points in the images to the origin and scales the average
+distance of the points from the origin to
+ﬃﬃﬃ
+2
+p
+. This approach
+yields acceptable results in practice. Normalization, via ei-
+ther the camera's intrinsic parameters or by a similarity
+transform, is an important step of the algorithm to provide
+suitable accuracy in the estimate of the homography [31].
+The homography
+H ¼
+H11
+H12
+H13
+H21
+H22
+H23
+H31
+H32
+H33
+2
+4
+3
+5
+can be calculated using at least K  4 co-planar point cor-
+respondences in the two images using the planar homo-
+graphy constraint
+skðY 2
+i ÞHY 1
+i ¼ 0;
+1  i  K:
+ðA:2Þ
+Since the constraint is linear we can rewrite it as
+H s ¼ 0;
+ðA:3Þ
+where H s ¼ ½H11; H21; H31; H12; H22; H32; H13; H23; H33T,
+ ¼
+kronðY 1
+1 ; skðY 2
+1 ÞÞT
+kronðY 1
+2 ; skðY 2
+2 ÞÞT
+..
+.
+kronðY 1
+K; skðY 2
+KÞÞT
+2
+666664
+3
+777775
+2 R3K9
+ðA:4Þ
+and kronðA; BÞ 2 Rmknl is the Kronecker product of A 2
+Rmn and B 2 Rkl:
+kronðA; BÞ ¼
+a11B
+a12B
+
+ 
+ 
+a1nB
+a21B
+a22B
+
+ 
+ 
+a2nB
+..
+.
+..
+.
+..
+.
+..
+.
+am1B
+am2B
+
+ 
+ 
+amnB
+2
+66664
+3
+77775
+:
+ðA:5Þ
+Target
+C1
+C2
+π1
+π2
+y1
+i
+y2
+i
+H
+R, r1
+d1
+n1
+Fig. A.1.
+A Homography matrix transforms the image coordinates
+Y 1
+i 2 R3 into Y 2
+i 2 R3 of two views of the same 3D point.
+14
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+To solve (A.3) uniquely (up to a scale factor) we need
+rankðÞ ¼ 8. This is only possible if there exists a set of 4
+points out of K on the plane such that no three of them are
+co-linear. Since Y j
+i contains noise we ﬁnd the optimal  by
+solving
+min
+jjH sjj2¼1 jjH sjj2
+ðA:6Þ
+using linear least squares to obtain H s up to a scale factor.
+To solve (A.6), we compute the SVD of  ¼ U§V T where
+U; V 2 R99 are orthogonal, and § ¼ diagð1; . . . ; 9Þ 2
+R99; 1  
+ 
+ 
+  9 > 0. Since V is orthogonal and deﬁning
+ ¼ V THs then jjHsjj2 ¼ jjVV THsjj2 ¼ jjVjj2 ¼ jjjj2. Hence,
+min
+jjH sjj2¼1 jjHsjj2
+2 ¼
+min
+jjjj 2
+2¼1 jjU§jj2
+2 ¼ min
+jjjj 2
+2¼1 jj§jj2
+2
+¼
+min
+jjjj 2
+2¼1
+2
+1 2
+1 þ 
+ 
+ 
+ þ 2
+9 2
+9 ¼ 2
+9:
+Thus the minimizing  ¼ ½0; 0; . . . ; 0; 1T and
+H s
+l ¼ V½0; 0; . . . ; 0; 1T;
+ðA:7Þ
+i.e., the ninth column of V. We form a scaled homography
+matrix Hl from solution H s
+l , i.e.,
+H ¼ Hl:
+ðA:8Þ
+The magnitude of scale factor  is given by
+jj ¼ 2ðHlÞ;
+ðA:9Þ
+where 2ðHlÞ is the second largest singular value of Hl. To
+ensure the sign of H is correct we verify the constraint
+ðY 2
+i ÞTHY 1
+i > 0;
+1  i  K:
+ðA:10Þ
+A.1.
+Homography decomposition
+There are multiple algorithms to decompose a homography
+matrix [31, 32, 39]. Here we will use a modiﬁed version of
+the SVD algorithm. There are four mathematical solutions to
+the decomposition of H into R,
+1
+d 1 r 1; and n1. Only two of
+these solutions are physically meaningful, and to choose the
+correct solution additional information about the scene is
+required.
+Given that H TH is symmetric we can diagonalize it as
+H TH ¼ V§V T;
+ðA:11Þ
+where V ¼ ½v1 v2 v3 2 SOð3Þ; vi 2 R3, and § ¼ diagð2
+1;
+2
+2; 3
+3Þ, where i; 1  i  3 denote the singular values of
+the estimated H. Next, we deﬁne two unit length vectors u1
+and u2 such that their length is preserved under the map H
+and
+that
+fv2; u1; skðv2Þu1g
+and
+fv2; u2; skðv2Þu2g
+are
+orthonormal bases of R3. We have the expressions
+u1 ¼
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+1  2
+3
+p
+v1 þ
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+2
+1  1
+p
+v3
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+2
+1  2
+3
+p
+u2 ¼
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+1  2
+3
+p
+v1 
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+2
+1  1
+p
+v3
+ﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃﬃ
+2
+1  2
+3
+p
+ðA:12Þ
+We deﬁne the following matrices
+U1 ¼ v2
+u1
+skðv2Þu1
+½
+
+U2 ¼ v2
+u2
+skðv2Þu2
+½
+
+W1 ¼ Hv2
+Hu1
+skðHv2ÞHu1
+½
+
+W2 ¼ Hv2
+Hu2
+skðHv2ÞHu2
+½
+
+ðA:13Þ
+such that
+RU1 ¼ W1
+RU2 ¼ W2
+Due to the sign ambiguity in
+1
+d 1 r 1n1 T we obtain four
+decompositions of H ¼ R þ 1
+d 1 r 1n1 T denoted fRi; 1
+d 1 r 1
+i ; n1
+i g;
+i ¼ 1; 2; 3; 4 as shown in Table A.1. From these four solu-
+tions we can extract two relevant solutions using the posi-
+tive depth constraint
+ðn
+1ÞTe3 > 0
+ðA:14Þ
+to obtain two solutions.
+The control method requires the scaled relative pose
+between the desired and current frames. We propose two
+methods for picking the correct solution from the homo-
+graphy decomposition data. The ﬁrst method computes the
+homography between consecutive images and relies on the
+fact that images vary continuously in time. This implies the
+correct solution for R, n1, and
+1
+d 1 r 1 are also continuous in
+time. The incorrect solution has no guarantee of continuity
+and can make large jumps. Initially we pick one of the
+solutions arbitrarily which we assume is correct. We mon-
+itor both solutions for discontinuities in the parameters. If
+one of the solutions exhibits a discontinuity, we can deter-
+mine the correct solution. This method suﬀers from the
+Table A.1.
+Four solutions of the decomposition of
+H ¼ R þ 1
+d 1 rn1 T into fRi; 1
+d 1 r 1
+i ; n1
+i g; i ¼ 1; 2; 3; 4.
+i
+Ri
+n1
+i
+1
+d 1 r 1
+i
+1
+W1U T
+1
+skðv2Þu1
+ðH  W1U T
+1 Þ skðv2Þu1
+2
+W2U T
+2
+skðv2Þu2
+ðH  W2U T
+2 Þ skðv2Þu2
+3
+R1
+skðu1Þv2
+ðW1U T
+1  HÞ skðv2Þu1
+4
+W2U T
+2
+skðu2Þv2
+ðW2U T
+2  HÞ skðv2Þu2
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+15
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+following limitations. First, it requires slow movement in
+the image and a fast frame rate. Second, the two solutions
+can meet making it impossible to determine the correct
+solution for subsequent time. In this case, the method is
+reset and we must arbitrarily choose a solution. The method
+relies on the robustness of the control law to incorrect
+choices of the solution.
+In this work, we chose a simpler method to pick the
+correct solution which relies on a known target plane nor-
+mal vector n1 in the initial image. Rather than calculating
+the homography between consecutive frames we compute
+the homography between the initial and current images.
+This helps to eliminate any accumulation of error in the
+estimate of the scaled relative pose. The choice of correct
+solution is determined by comparing the estimated normal
+vector with its known value. Assuming a known target
+image and normal is not restrictive in that tracking algo-
+rithms require an initial image. We require additionally that
+the user speciﬁes the initial target orientation. We remark
+that the method does not require any geometric information
+of the target and maintains the beneﬁts of IBVS given that
+the control law is still calculated directly in the image plane.
+References
+[1]
+F. Kendoul, Survey of advances in guidance, navigation, and control
+of unmanned rotorcraft systems, J. Field Robotics 29(2) (2012) 315–
+378.
+[2]
+S. Hutchinson, G. D. Hager and P. I. Corke, A tutorial on visual servo
+control, IEEE Trans. Robot. Autom. 12(5) (1996) 651–670.
+[3]
+O. Shakernia, Y. Ma, T. J. Koo and S. Sastry, Landing an unmanned air
+vehicle: Vision based motion estimation and nonlinear control, Asian
+J. Control 1(3) (1999) 128–145.
+[4]
+E. Altug, J. Ostrowski and C. Taylor, Control of a quadrotor using dual
+camera visual feedback, in Proc. IEEE Int. Conf. on Robotics and Au-
+tomation, Taipei, Taiwan (Sep. 2003), pp. 4294–4299.
+[5]
+A. D. Wu, E. N. Johnson and A. A. Proctor, Vision-aided inertial
+navigation for ﬂight control, J. Aeros. Comp. Inf. Com. 2(9) (2005)
+348–360.
+[6]
+L. Mejias, P. Campoy, S. Saripalli and G. S. Sukhatme, A visual servoing
+approach for tracking features in urban areas using an autonomous
+helicopter, in Proc. IEEE Int. Conf. on Robotics and Automation,
+Orlando, FL (May 2006), pp. 2503–2508.
+[7]
+S. Azrad, F. Kendoul and K. Nonami, Visual servoing of quadrotor
+micro-air vehicle using color-based tracking algorithm, J. Syst. Des.
+Dyn. 4(2) (2010) 255–268.
+[8]
+L. Garcia Carrillo, E. Rondon, A. Sanchez, A. Dzul and R. Lozano,
+Stabilization and trajectory tracking of a quad-rotor using vision, J.
+Intell. Robot. Syst. 61(1) (2011) 103–118.
+[9]
+F. Fraundorfer, L. Heng, D. Honegger, G. Lee, L. Meier, P. Tanskanen
+and M. Pollefeys, Vision-based autonomous mapping and exploration
+using a quadrotor MAV, in Proc. IEEE/RSJ Int. Conf. Intelligent Robots
+and Systems, Vilamoura, Portugal (Oct. 2012), pp. 4557–4564.
+[10]
+F. Chaumette and S. Hutchinson, Visual servo control. II. Advanced
+approaches, IEEE Robot. Autom. Mag. 14(1) (2007) 109–118.
+[11]
+H. Jabbari Asl, G. Oriolo and H. Bolandi, An adaptive scheme for
+image-based visual servoing of an underactuated UAV, Int. J. Robot.
+Autom. 29(1) (2014) 92–104.
+[12]
+T. Hamel and R. Mahony, Visual servoing of an under-actuated dy-
+namic rigid-body system: An image-based approach, IEEE Trans.
+Robot. Autom. 18(2) (2002) 187–198.
+[13]
+O. Bourquardez, R. Mahony, T. Hamel and F. Chaumette, Stability and
+performance of image based visual servo control using ﬁrst order
+spherical image moments, in Proc. IEEE/RSJ Int. Intelligent Robots
+and Systems Conf., Beijing, China (Oct. 2006), pp. 4304–4309.
+[14]
+N. Guenard, T. Hamel and R. Mahony, A practical visual servo control
+for an unmanned aerial vehicle, IEEE Trans. Robot. Autom. 24(2)
+(2008) 331–340.
+[15]
+R. Mahony, P. Corke and T. Hamel, Dynamic image-based visual servo
+control using centroid and optic ﬂow features, J. Dyn. Syst. 130(1)
+(2007) 1–12.
+[16]
+F. L. Bras, R. Mahony, T. Hamel and P. Binetti, Dynamic image-based
+visual servo control for an aerial robot: Theory and experiments, Int.
+J. Optomechatronics 2(3) (2008) 296–325.
+[17]
+N. Metni and T. Hamel, Visual tracking control of aerial robotic sys-
+tems with adaptive depth estimation, Int. J. Control Syst. 5(1) (2007)
+51–60.
+[18]
+H. de Plinval, P. Morin, P. Mouyon and T. Hamel, Visual servoing for
+underactuated VTOL UAVs: A linear, homography-based approach, in
+Proc. IEEE Int. Conf. on Robotics and Automation, Shanghai, China
+(May 2011), pp. 3004–3010.
+[19]
+H. de Plinval, P. Morin, P. Mouyon and T. Hamel, Visual servoing for
+underactuated VTOL UAVs: A linear, homography-based framework,
+Int. J. Robust. Nonlinear Control 24(16) (2013) 2285–2308.
+[20]
+R. Ozawa and F. Chaumette, Dynamic visual servoing with image
+moments for an unmanned aerial vehicle using a virtual spring ap-
+proach, Adv. Robotics 27(9) (2013) 683–696.
+[21]
+D. Lee, T. Ryan and H. Kim, Autonomous landing of a VTOL UAV on a
+moving platform using image-based visual servoing, in Proc. IEEE Int.
+Conf. on Robotics and Automation, Saint Paul, MN (May 2012),
+pp. 971–976.
+[22]
+D. Lee, H. Lim, H. Kim, Y. Kim and K. Seong, Adaptive image-based
+visual servoing for an underactuated quadrotor system, J. Guid.
+Control. Dyn. 35(4) (2012) 1335–1353.
+[23]
+G. Fink, H. Xie, A. F. Lynch and M. Jagersand, Nonlinear dynamic
+visual servoing of a quadrotor, J. Unmanned Vehicle Syst. 3(1) (2015)
+1–21.
+[24]
+O. Bourquardez, R. Mahony, N. Guenard, F. Chaumette, T. Hamel and
+L. Eck, Image-based visual servo control of the translation kinematics
+of a quadrotor aerial vehicle, IEEE Trans. Robot. Autom. 25(3) (2009)
+743–749.
+[25]
+G. Fink, H. Xie, A. F. Lynch and M. Jagersand, Experimental validation
+of dynamic visual servoing for a quadrotor using a virtual camera, in
+Proc. IEEE Int. Conf. Unmanned Aircraft Systems, Denver, CO (June
+2015), pp. 1231–1240.
+[26]
+G. M. Hoﬀmann, H. Huang, S. L. Waslander and C. J. Tomlin, Precision
+ﬂight control for a multi-vehicle quadrotor helicopter testbed, Con-
+trol Eng. Pract. 19(9) (2011) 1023–1036.
+[27]
+S. Omari, M.-D. Hua, G. Ducard and T. Hamel, Nonlinear control
+of VTOL UAVs incorporating ﬂapping dynamics, in Proc. IEEE/RSJ
+Int. Conf. Intelligent Robots and Systems, Tokyo (Nov. 2013), pp. 2419–
+2425.
+[28]
+S. Bouabdallah, Design and control of quadrotors with application to
+autonomous ﬂying, Ph.D. thesis, Ecole Polytechnique Federale de
+Luasanne (2007).
+[29]
+R. Beard and T. McLain, Small Unmanned Aircraft: Theory and
+Practice (Princeton University Press, Princeton, NJ, 2012).
+[30]
+M. Bangura, M. Melega, R. Naldi and R. Mahony, Aerodynamics of
+rotor blades for quadrotors, ArXiv e-print 1601.00733 (Jan. 2016).
+[31]
+R. Hartley and A. Zisserman, Multiple View Geometry in Computer
+Vision, Vol. 1, 2nd edn. (Cambridge University Press, Cambridge,
+England, 2003).
+16
+G. Fink et al.
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+
+[32]
+Y. Ma, S. Soatto, J. Kosecka and S. Sastry, An Invitation to 3D Vision:
+From Images to Geometric Models (Springer, New York, NY, 2003).
+[33]
+H. Xie and A. F. Lynch, State transformation-based dynamic visual
+servoing for an unmanned aerial vehicle, Int J. Control 89(5) (2016)
+892–908.
+[34]
+F. Chaumette, Image moments: A general and useful set of features
+for visual servoing, IEEE Trans. Robotics 20(4) (2004) 713–723.
+[35]
+O. Tahri and F. Chaumette, Point-based and region-based image
+moments for visual servoing of planar objects, IEEE Trans. Robotics
+21(6) (2005) 1116–1127.
+[36]
+H. Lim, J. Park, D. Lee and H. Kim, Build your own quadrotor: Open-
+source projects on unmanned aerial vehicles, IEEE Robotics Autom.
+Maga. 19(3) (2012) 33–45.
+[37]
+L. Meier, D. Honegger and M. Pollefeys, PX4: A node-based multi-
+threaded open source robotics framework for deeply embedded
+platforms, in Proc. IEEE Int. Conf. on Robotics and Automation,
+Seattle, WA (May 2015), pp. 6235–6240.
+[38]
+Pixy CMUcam5, Available at
+http://www.cmucam.org/projects/
+cmucam5/wiki/ [Accessed Sep. 1, 2016].
+[39]
+O. Faugeras, Q.-T. Luong and T. Papadopoulou, The Geometry of
+Multiple Images: The Laws that Govern the Formation of Images of a
+Scene and Some of their Applications (MIT Press, Cambridge, MA,
+USA, 2001).
+GeoﬀFink received his B.Sc. in Computer Engi-
+neering in 2007 from the University of Alberta and
+M.Sc. in Robotics Engineering in 2011 from the
+University of Guadalajara. Since September 2012 he
+has been a Ph.D. student at the University of
+Alberta.
+His current research interests include nonlinear
+control, unmanned aerial vehicles, and visual
+servoing.
+Hui Xie received his B.Sc. degree in mechanical
+engineering from Harbin Engineering University in
+2007, the M.Sc. degree in mechatronics engineering
+from Harbin Institute of Technology in 2009, and
+Ph.D. in Electrical and Computer Engineering from
+the University of Alberta in 2016. Currently, he is a
+research fellow in the School of Mechanical and
+Aerospace Engineering at Nanyang Technological
+University.
+His research interests include nonlinear control
+theory, state estimation, and vision-based control
+with applications to unmanned aerial vehicles and
+mobile robots.
+Alan F. Lynch obtained his B.A.Sc. at the University
+of Toronto in Engineering Science (Electrical Op-
+tion) in 1991, M.A.Sc. in Electrical Engineering from
+University of British Columbia in 1994, and Ph.D. in
+Electrical and Computer Engineering from the
+University of Toronto in 1999. Since 2001 he has
+been a faculty member at the Department of Elec-
+trical
+&
+Computer
+Engineering,
+University
+of
+Alberta and currently holds the rank of Full Pro-
+fessor.
+His interests include nonlinear control and its
+application to electrical and electromechanical systems including power
+converters, unmanned systems, and self-bearing motors.
+Martin Jagersand studied physics at Chalmers
+Sweden (M.Sc. 1991). He was awarded a Fulbright
+fellowship for graduate studies in the United Sates.
+He studied Computer Science at the University of
+Rochester, NY (M.Sc. 1994, Ph.D. 1997). He held an
+NSF CISE postdoc fellowship at Yale University, and
+then was a research faculty in the Engineering
+Research Center for Surgical Systems and Tech-
+nology at Johns Hopkins University. He is now a
+faculty member at the University of Alberta.
+His research interests are in Computer Vision,
+Graphics and Robotics, especially visual servoing.
+Dynamic Visual Servoing for a Quadrotor Using a Virtual Camera
+17
+Un. Sys. Downloaded from www.worldscientific.com
+by CHINESE UNIVERSITY OF HONG KONG on 02/28/17. For personal use only.
+

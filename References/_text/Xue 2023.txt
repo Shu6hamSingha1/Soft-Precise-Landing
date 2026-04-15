@@ -1,0 +1,336 @@
+PROCEEDINGS OF SPIE
+SPIEDigitalLibrary.org/conference-proceedings-of-spie
+Research on intelligent algorithm for
+autonomous landing of quadrotor
+UAV
+Chaohang Xue, Liying Jin, Kelian Hu, Xindong Hu, Yujie
+Shen
+Chaohang Xue, Liying Jin, Kelian Hu, Xindong Hu, Yujie Shen, "Research on
+intelligent algorithm for autonomous landing of quadrotor UAV," Proc. SPIE
+12717, 3rd International Conference on Artificial Intelligence, Automation, and
+High-Performance Computing (AIAHPC 2023), 127171M (21 July 2023); doi:
+10.1117/12.2684775
+Event: 3rd International Conference on Artificial Intelligence, Automation, and
+High-Performance Computing (AIAHPC 2023), 2023, Wuhan, China
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024  Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+Research on Intelligent Algorithm for Autonomous Landing of 
+Quadrotor UAV 
+ 
+Chaohang Xue1, Liying Jin 1,2,*, Kelian Hu3 , Xindong Hu1 , Yujie Shen1 
+1Xiangyang Key Laboratory of Intelligent Manufacturing and Machine Vision, Hubei University of 
+Arts and Science, Xiangyang, Hubei Province, 441053, China 
+2 AVIC AEROSPACE LIFE-SUPPORT INDUSTRIES, LTD. 441003, China 
+3 Hubei Xiangyi New Material Technology Co., LTD. 441003, China 
+* Corresponding author: JLY@hbuas.edu.cn 
+ABSTRACT 
+This paper takes the autonomous landing of four-rotor UAV as the specific research object. Aiming at the problem of 
+identifying the feature points of landing signs and improving the accuracy of autonomous landing, an improved multi-
+objective soft subspace clustering algorithm is proposed. The anti-redundant mutation operator and forward comparison 
+operation are designed, it is proposed to improve the population diversity and convergence speed of the algorithm. The 
+iNSGA-II is used as the base algorithm, and the repair operator and local search operator are designed to reflect the 
+clustering characteristics. An autonomous landing control model based on visual recognition is established. A large number 
+of position feature points are clustered and analyzed to decouple the highly nonlinear mapping relationship in the feature 
+space, and then the redundant information between the dimensions is stripped to achieve the maximum stability of the 
+sampling points, the importance sequence of all features and the accurate classification. 
+Keywords: quadrotor UAV, autonomous landing, improved multi-objective soft subspace clustering algorithm, anti-
+redundancy mutation operator 
+ 
+1. INTRODUCTION 
+With the advancement of vision technology, quadrotor drones have been rapidly developed and widely used. Due to its 
+small size, low cost, and strong mobility, UAVs are favored by military, civilian, and other research fields [1]. The core 
+problem of autonomous landing of quadrotor drones is how to realize target position recognition and position calculation, 
+and then control the flying attitude of drones in real time to meet the requirements of autonomous and precise landing. 
+Traditional UAV autonomous landing navigation methods mainly include: Global Positioning System (Global Positioning 
+System, GPS) navigation landing [2,3] Inertial Navigation System (Inertial Navigation System, INS) landing and INS/GPS 
+integrated navigation and other methods [4 -6] Visual navigation landing methods include pure visual navigation and landing 
+systems and vision-based multi-sensor fusion navigation and landing systems [7-9]. By simulating the autonomous landing 
+process of the UAV, setting the coordinate system of the UAV landing, and cooperating with the algorithm, the selection 
+of the landing target is realized, and the entire landing process is completed. It is highly operable and worthy of promotion. 
+However, in the case of long distance, dim light or small pitch angle, the landing target recognition is not very successful 
+[10]. Therefore, it is necessary to study a clustering algorithm with limited recognition range and accurate target position 
+recognition. 
+2. SOFT SUBSPACE CLUSTERING ALGORITHM 
+Subspace clustering algorithm is a spatial clustering method based on spectral clustering [11,12]. Clustering is to divide 
+similar sample features into different subsets by static classification method, so that the member objects in the same subset 
+have similar attributes (the samples in the class are closely distributed), and the distance between different subsets is farther. 
+Through the feature selection technique, it is represented by its feature information mapping in multiple low-dimensional 
+subspaces, that is, the weight representation method, and the subspace under the weight representation is the soft subspace. 
+The soft subspace clustering algorithm can not only deal with the dimensionality reduction problem of high-dimensional 
+3rd International Conference on Artificial Intelligence, Automation, and High-Performance Computing
+(AIAHPC 2023), edited by Simon X. Yang, Dimitrios A. Karras, Proc. of SPIE Vol. 12717,
+127171M · © 2023 SPIE · 0277-786X · doi: 10.1117/12.2684775
+Proc. of SPIE Vol. 12717  127171M-1
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+data, but also explore the subspace corresponding to each module, and give different types of target location characteristics. 
+The key model of target location feature information and the premise of the feature extraction of the tracking system model, 
+due to the complexity of the collected information, it is not enough to use simple mathematical differential equations for 
+the model. The multi-objective evolutionary algorithm can optimize multiple targets at the same time, which is equivalent 
+to establishing multiple models from different angles to evaluate the quality of features and clustering, so as to accurately 
+identify the target position and improve the accuracy of autonomous landing. 
+The soft subspace clustering algorithm has been widely used in the field of artificial intelligence [13]. Image processing in 
+machine vision is an important research field of artificial intelligence [14-17], and it is also one of the development priorities 
+and fields of the 14th Five-Year Plan of Xiangyang City. The purpose of identifying the target position based on vision 
+technology is to obtain high-quality autonomous landing points, thereby improving landing accuracy. At present, in most 
+cases, pilots are still used for remote control landing, but when the environment does not allow or multiple drones need to 
+be controlled, drone autonomous landing technology is particularly important. The promotion of drone autonomous 
+landing technology can save manpower It can also solve the landing under special circumstances. Therefore, the study of 
+UAV autonomous landing technology is an indispensable link in the UAV operation system. 
+3. IMPROVED SOFT SUBSPACE CLUSTERING ALGORITHM 
+The vision module in the machine vision control system includes industrial computer, industrial camera, line laser, optical 
+filter and vision structure shell, and the improved multi-objective soft subspace clustering is applied on this module. First, 
+according to the four-rotor UAV's five flight attitudes: translational motion, pitching motion (circling Y), rolling motion 
+(circling X), yaw motion (circling Z), and vertical motion, Taking the distance from the target and the measurement of the 
+offset angle as the optimization objects, the objective function of the closeness of the sample distribution within the class 
+is established, a hybrid measurement algorithm is proposed, and an update strategy in the iterative clustering process is 
+deduced; Secondly, using the theory of complex systems, the optimization function based on the Euclidean distance metric 
+criterion is mapped to the Gaussian kernel space, and the second objective function is established; Then use iNSGA-II as 
+the base algorithm, design the repair operator and the local search operator to reflect the clustering characteristics, and use 
+the standard data on the network to verify the feasibility of the improved multi-objective soft subspace clustering; Finally, 
+based on the machine vision and autonomous landing control model, using the distribution information of the images 
+sampled by the airborne camera on each feature, the experiments verify that the algorithm has the performance of 
+dimensionality reduction, redundant data removal, and fast convergence speed. 
+3.1 Anti-redundancy mutation operator 
+The mutation operator is the main source of obtaining new individuals. In order to improve the global search ability and 
+population diversity, an anti-redundancy mutation operator is introduced. For the sample set 𝑋= ሺ𝑥ଵ, 𝑥ଶ, … , 𝑥ேሻ , 
+randomly select an individual  𝑥௜= ሺ𝑥௜ଵ, 𝑥௜ଶ, … , 𝑥௜ெሻ, ሺ𝑖= 1,2, … , 𝑁ሻ from it, randomly select three gene loci a, b, c from 
+this individual and satisfy the condition of . Its calculation formula is as follows (1): 
+൞
+𝑝= 𝑚𝑎𝑥൛𝑐௥௞, 𝑘= 1,2, … , 𝑀＆𝑥௞ୀଵൟ               
+𝑐௥௞=
+∑
+ሺ௬೔ೝି௔ത೙ೝሻ×ሺ௬೔ೖି௔ത೙ೖሻ
+ಿ
+೔సభ
+ට∑
+ሺ௬೔ೝି௔ത೙ೝሻమ
+ಿ
+೔షభ
+×ට∑
+ሺ௬೔ೖି௔ത೙ೖሻమ
+ಿ
+೔షభ
+  
+  
+(1) 
+In the formula (1): 𝑐௥௞-the cross-correlation value of the r-th dimension feature and the k-th dimension feature; 𝑦௜௥ -the 
+value of the r-th dimension feature on the i-th sample; 𝑎ത௡௥ -the average value of the r-th dimension feature of all samples . 
+The parameters of switched flux motor are optimized by NSGA-II and iNSGA-II algorithms, and the parameter settings 
+required by both algorithms are the same during the optimization process, and the Pareto optimal solution obtained by both 
+algorithms is the optimal solution, and there is no absolute relationship between them, as shown in Table 1. 
+Table 1 Parameter optimization results of switched flux motor 
+Parameter / sign 
+Before optimization 
+NSGA-II 
+iNSGA-II 
+brst /mm 
+24.6 
+26. 4 
+25.53 
+brrt /mm 
+26 
+26.2 
+27.1 
+Proc. of SPIE Vol. 12717  127171M-2
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+brpm /mm 
+13 
+13.02 
+12.75 
+T /N•m 
+75 
+75.81 
+74.41 
+k 
+5.81 
+5.48 
+5.46 
+ 
+As can be seen from Table 1, the parameter fluctuation of the optimized hybrid system decreases, indicating that the 
+algorithm has achieved the expected optimization goal. The convergence speed and convergence effect of the NSGA-II 
+and iNSGA-II algorithms on the output torque T and torque fluctuation k are shown in Fig. 1. 
+ 
+Fig. 1 Schematic diagram of the comparison results of the iNSGA-II algorithm and the NSGA-II algorithm 
+3.2 Forward Comparison Operation 
+When sorting in non-dominated sorting individuals, the design of the forward comparison operation is to avoid redundant 
+non-dominated frontiers, so that it has an acceleration effect on all test problems and greatly improves the running speed 
+of multi-objective optimization. The forward comparison operation is to compare the dominance relationship between the 
+currently visited structure set individual and the nearest non-dominated individual. In the frontier stratification, if the 
+cumulative number of samples of non-dominated individuals exceeds the population size, stop the non-dominated sorting, 
+otherwise, continue to execute. 
+3.3 Design local search operator and repair operator 
+Design the repair operator and the local search operator to reflect the clustering characteristics, as shown in the expression 
+(2): 
+𝑣௞௝= ෍
+𝑢௜௞
+ே
+௜ୀଵ
+× 𝑥௜௝× ൬1 ൅
+𝜂
+2 × ‖𝑣௞‖ × ‖𝑥௜‖൰ോ෍
+𝑢௜௞
+ே
+௜ୀଵ
+ 
+ቐ𝑢௜௞= 1, ෍
+𝑤௞௝
+ఉ× 𝐷௞௝൑෍
+𝑤௞௝
+ఉ
+ெ
+௝ୀଵ
+× 𝐷௟௝
+ெ
+௝ୀଵ
+𝑢௜௞= 0  ,   1 ൑𝑙൑𝐶,
+𝑙്𝑘                         
+ 
+𝑤௞௝= 𝑒𝑥𝑝ቆ෍
+ห𝑣௣௝െ𝑣௞௝ห
+௖
+௣ୀଵ
+ቇോ෍
+𝑒𝑥𝑝൬෍
+ห𝑣௞௤െ𝑣௞௝ห
+௖
+௞ୀଵ
+൰
+ெ
+௤ୀଵ
+ 
+In formula (2): 𝐷௞௝= ൫𝑥௜௝െ𝑣௞௝൯
+ఉെ𝜂× ቀ൫𝑣௞௝× 𝑥௜௝൯ോሺ‖𝑣௞‖ × ‖𝑥௜‖ሻെሺ1 𝑀
+⁄
+ሻቁ, when uik is equal to the value 1, it 
+means that the i-th sample xi is assigned to the k-th class vk. 
+3.4 Improved soft subspace clustering algorithm process 
+The improved soft subspace clustering algorithm flow chart is shown in Fig. 2. 
+(2) 
+Proc. of SPIE Vol. 12717  127171M-3
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+Y
+Elite 
+strategy
+Standardized dataset X
+Setting parameters Gen = 1
+Initialization V0、W0
+Calculation objective 
+function
+Merge parent and child
+Fast non-dominated sort,
+Calculate the crowded 
+distance
+Obtain new population
+MaxGen
+END
+Gen
+=
+Gen
++ 
+1
+N
+Import dataset X
+Calculating the child objective function
+Number of samples 
+in data X
+Y
+N
+Parent
+Fast non-dominated sort
+Calculate the 
+crowded distance
+Choice, crossover, variation
+Child
+Local search operator
+Repair operator
+ 
+Fig. 2  Improved soft subspace clustering algorithm flow chart 
+4．APPLICATION of AUTONOMOUS LANDING of QUADROTOR UAV 
+In this paper, the industrial computer is used as the carrier of the control module. Its function is to provide the basis for the 
+huge data processing and information interaction of the vision module and the control module, and realize the processing 
+of the control program. During the landing process, the landing target data is obtained through the vision module, and then 
+sent to the control module, while the pose detection sensor is built into the quadrotor UAV, which can detect the angle 
+information of the UAV's flight attitude in real time, that is to say, the Motor speed v and UAV flight speed V are used as 
+response values, and motor speed v, flight height h and quadrotor UAV flight angle are used as input variables to establish 
+a mathematical model of autonomous landing control parameters. 
+5. CONCLUSIONS 
+In this paper, the control model of the control unit, vision unit and peripheral sensing and driving unit is established, In the 
+drive module, in order to realize the precise measurement and attitude control of various flight attitudes of the quadrotor 
+UAV, Introduce the cosine angle measure into the objective function of the closeness of the sample distribution within the 
+class, Combining Min's distance to build a mathematical model is a new perspective for UAV landing target image 
+recognition. According to the new objective function, the update strategy in the iterative process is deduced, which can 
+better realize the purpose of dimensionality reduction, de-redundancy and de-noising for the landing position image 
+processing. 
+Authors contribution 
+Funding acquisition, Liying Jin; Software, Chaohang Xue; Supervision, Xindong Hu; Validation, Yujie Shen and Kelian 
+Hu. 
+Acknowledgments 
+This work was supported by the Key R&D Plan Projects in Hubei Province (Grant No. 2021BID001), the Research on 
+Multiple Regression and Fitting Technology of Simulation Data for Dynamic Umbrella Opening of Lifesaving Umbrella 
+(Grant No. HX2021157 ). 
+Proc. of SPIE Vol. 12717  127171M-4
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+REFERENCES 
+[1] Jing F Q. (2022) Research on Autonomous Landing Technology of Quadrotor UAV [D]. Guizhou University, 
+2022.DOI: 10.27047/d.cnki.ggudu.2022.000165. 
+[2] SUN Kai, YU Yang，FENG Yingbin. (2022) Research on Target Tracking and Landing Method of Autonomous 
+UAV Based on Vision [J]. Shenyang Ligong University,2022. DOI:10．3969/j．issn．1003-1251．2022．05．004. 
+[3] Nilsson C. C., Heinzen S. N., Halljr C. E., et al. (2003) GPS Auto-Navigation Design for Unmanned Air 
+Vehicles[R]. North Carolina State University: NASA Langley Research Center Flow Physics and Control Branch, 
+2003. 
+[4] Liang Z D, Li H, Guan J. (2013) Research on SINS/GPS integrated navigation system for small UAV [J]. Science 
+Technology and Engineering, 2013,13(03):821-825+834. 
+[5] Shcherbinin V V, Kvetkin G A, Sviyazov A V, et al. (2013) Navigation support of the UAV automated landing 
+system[J]. Gyroscopy & Navigation, 2013, 4(2):104-114. 
+[6] Zhou J M, Kang Y, Liu W. (2015) Applications and Development Analysis of Unmanned Aerial Vehicle 
+(UAV)NavigationTechnology [J]. Journal of CAEIT ,2015. DOI:10．3969/j．issn．1673-5692．2015．03．010 
+[7] Ma L, Mu C X, Yang W K, He H P. (2015) Design of Target Tracking System for Quad-rotor UAV[J]. Control 
+Engineering of China, 2015.DOI: 10.14107/j.cnki.kzgc.140417. 
+[8] Lv Q, Ma J Y, Wang G S. (2016) Research progress on autonomous flight control of small quadrotor UAV based 
+on visual servoing [J]. Technology Herald, ,2016,34(24):68-73; doi:10.3981/j. issn.1000-7857.2016.24.009. 
+[9] Huang A Q, Huang J Q. (2015) Key Technology of Unmanned Aerial Vehicle Integration Navigation for 
+Autonomous Landing Flight[J]. Electronic Science & Technology,2015. DOI: 10.16453/j.issn.2095-
+8595.2015.02.013. 
+[10] Wang L M, Wang Y F, Wang E W, Lai J Z. (2021) Research on Visual Positioning Method of UV Autonomous 
+Landing Process [J]. Electrotechnical,2021. DOI; 10. 19768/j. cnki. dgjs. 2021. 24. 024. 
+[11] Azimi R, Ghayekhloo M, Ghofrani M, et al. (2017) A novel clustering algorithm based on data transformation 
+approaches [J]. Expert Systems with Applications, 2017, 76:59-70. 
+[12] Li D H, Zhao H, Yu X. (2019) Overlapping Green Apple Recognition Based on Improved Spectral Clustering [J]. 
+Spectroscopy and Spectral Analysis,2019. DOI: 10. 3964/i issn. 1000-0593(2019) 09-2974-08. 
+[13] LeCun 
+Y, 
+Bengio 
+Y 
+and 
+Hinton 
+G. 
+(2015) 
+Deep 
+learning. 
+Nature,2015,521(7553):436-444 
+DOI:10.1038/nature14539. 
+[14] Lin C C, Shan C, Zhao G S. (2015) Review of Image Data Augmentation in Computer Vision [J]. Journal of 
+Frontiers of Computer Science and Technology, 2015.DOIi: 10.3778/j.issn.1673-9418.2102015. 
+[15] GARCIA GARCIA A, ORTS ESCOLANO S, OPREA S, et al. (2017) A review on deep learning techniques 
+applied to semantic segmentation [J]. arXivpreprint arXiv: 1704.06857, 2017. 
+[16] Wang Y, Zhang H J, Huang H X. (2019) A survey of image semantic segmentation algorithms based on deep 
+learning 
+[J]. Application 
+of 
+Electronic Technique,2019,45(06):23-27+36.DOI: 
+10.16157/j.issn.0258-
+7998.190010. 
+[17] Tian X, Wang L, Ding Q. (2019) Review of image semantic segmentation based on deep learning. Journal of 
+Software, 2019,30(02): 440-468.DOI: 10.13328/j.cnki.jos.005659.  
+Proc. of SPIE Vol. 12717  127171M-5
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+

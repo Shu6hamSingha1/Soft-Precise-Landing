@@ -13,6 +13,12 @@
 % Python-generated plots.
 clc; clear;
 
+% Shared helpers live in ../Common; plotters live in ./plotters
+mfile_dir = fileparts(mfilename('fullpath'));
+addpath(fullfile(mfile_dir, '..', 'Common'));
+addpath(fullfile(mfile_dir, 'plotters'));
+clear mfile_dir;
+
 trajList = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"];
 
 % Global target-speed multiplier for moving trajectories. Static ignores it.
@@ -20,10 +26,10 @@ speed_mult = 1.0;
 
 p0 = [
     0,0,-5;
-    0,0,-7;
-    0,0,-3;
     2.0,2.0,-5;
-    2.0,-2.0,-5
+    2.0,-2.0,-5;
+    2.0,2.0,-7;
+    2.0,2.0,-3
     ];
 
 numRuns = size(p0,1);

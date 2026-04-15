@@ -1,0 +1,1224 @@
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+1
+Adaptive Integral Sliding Mode Control in the
+Presence of State-Dependent Uncertainty
+Peng Li
+, Di Liu
+, Member, IEEE, and Simone Baldi
+, Senior Member, IEEE
+Abstract—Adaptive
+integral
+sliding
+mode
+control
+(AISMC) is an extension of adaptive sliding mode control
+which is a way to ensure sliding motion while handling
+system
+uncertainties.
+However,
+conventional
+AISMC
+formulations require to different extent a priori knowledge
+of the system uncertainty: either the upper bound of the
+uncertainty or of its time derivative are assumed to be
+bounded a priori, or the uncertainty is assumed to be
+parametrized by some structure-dependent factorization.
+This work proposes a variant of AISMC with reduced a
+priori knowledge of the system uncertainty: it is shown that
+Euler–Lagrange dynamics typical of sliding mode literature
+admit
+a
+structure-independent
+parametrization
+of
+the
+system uncertainty. This parametrization is not the result
+of structural knowledge, but it comes from basic properties
+of Euler–Lagrange dynamics, valid independently on the
+structure of the system. The AISMC control method arising
+from this parametrization is analyzed in the Lyapunov
+stability framework, and validated in systems with different
+structures: a surface vessel and an aerial vehicle.
+Index Terms—Adaptive integral sliding mode, aerial ve-
+hicle, Euler-Lagrange dynamics, state-dependent uncer-
+tainty.
+I. INTRODUCTION
+E
+ULER–LAGRANGE (EL) dynamics can be used to de-
+scribe many real-world systems such as aircrafts [1], ma-
+nipulators [2], mobile robots [3], multiagent networks [4], and
+many more [5], [6]. In these and other applications, the dynamics
+of the system may be not known exactly, e.g., due to unmodeled
+dynamics [7], uncertain parameters [8]–[10], and parametric
+Manuscript received June 30, 2021; revised September 28, 2021
+and December 19, 2021; accepted January 20, 2022. Recommended
+by Technical Editor M. Basin and Senior Editor M. Basin. This work
+was supported in part by the Natural Science Foundation of China
+under Grant 62073074, in part by Double Innovation Plan under Grant
+4207012004, and in part by Special Funding for Overseas under Grant
+6207011901. (Corresponding authors: Simone Baldi; Di Liu.)
+Peng Li is with the School of Cyber Science and Engineering, South-
+east University, Nanjing 210096, China (e-mail: lpeng_2013@163.com).
+Di Liu is with the School of Cyber Science and Engineering, South-
+east University, Nanjing 210096, China, and also with the Bernoulli
+Institute for Mathematics, Computer Science and Artiﬁcial Intelligence,
+University of Groningen, 9747AG Groningen, The Netherlands (e-mail:
+di.liu@rug.nl).
+Simone Baldi is with the School of Cyber Science and Engineering,
+Southeast University, Nanjing 210096, China, and also with the Delft
+Center for Systems and Control, TU Delft, 2628CD Delft, The Nether-
+lands (e-mail: s.baldi@tudelft.nl).
+Color versions of one or more ﬁgures in this article are available at
+https://doi.org/10.1109/TMECH.2022.3145910.
+Digital Object Identiﬁer 10.1109/TMECH.2022.3145910
+variations [11]–[13]. Control of EL systems in the presence of
+such uncertainties is still a challenging subject.
+Robust control of uncertain EL systems based on sliding mode
+control (SMC) is one of the most popular methods to tackle
+uncertainties [14], [15]. The standard SMC for EL systems uses
+a proportional-derivative (PD) sliding surface and drives the
+systemtrajectoriesonthesurfacebyusingasignfunctioncontrol
+action weighted by a ﬁxed control gain. To avoid issues, such
+as chattering, the sliding surface can be replaced by a boundary
+layer by using a saturation function in place of the sign function.
+The control gain of the sign (or of the saturation) function should
+be as big as the upper bound of the uncertainties. Such prior
+knowledge about the bounds of system uncertainties represents
+a recognized drawback of SMC [16]. This has led to proposing
+adaptive sliding mode control (ASMC) methods where, instead
+of being ﬁxed, the control gain of SMC is adapted online to cope
+with the uncertainties.
+ASMC can be divided into three categories, depending on
+the way the control gain is adapted: monotonically increas-
+ing ASMC [17], equivalent control ASMC [18], and increas-
+ing/decreasing ASMC [19]. These methods assume that the
+uncertainties [20] or their time derivative [18] are upper bounded
+a priori by possibly unknown constants. Because uncertainties
+are in practice state dependent, assuming a constant upper bound
+isequivalenttoassumingthatthestateisboundedbeforeactually
+proving stability. Efforts in relaxing this restrictive assump-
+tion require structural knowledge of the system, e.g., linear-in-
+parameters [21], [22] or nonlinear [23] structure. For example,
+linear-in-parameters structure factorizes the uncertainty using a
+constant matrix and a known regressor: such a regressor takes
+a different form for aircrafts, manipulators, mobile robots, etc.,
+and might even be unavailable.
+Integral SMC (ISMC) [24] and PID-based SMC (PID-
+SMC) [25] are other improvements to the standard SMC. Both
+methods use a proportional-integral-derivative (PID) sliding
+surface, i.e., they bring the advantages of integral control in
+achieving smaller steady-state error [26]–[29]. It is worth notic-
+ing that ISMC and PID-SMC are very close to each other: since
+the 1980s, Slotine classiﬁed PID-SMC as an ISMC method [30],
+[31, Ch. 7], and the only difference between the two methods
+is that ISMC can choose the initial conditions to let the system
+trajectory start directly from the sliding surface. See also recent
+ISMC results using linear nominal dynamics perturbed by input
+nonlinearities [32], [33].
+The combination of integral control and adaptation has been
+proposed under the name of adaptive integral sliding mode
+1083-4435 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+2
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+control (AISMC) [15], [34], [35]. Unfortunately, also AISMC
+requires a priori bounded uncertainty [15], [27] or speciﬁc
+structural knowledge [34], [35]. Summarizing, control of EL
+systems with reduced knowledge of system uncertainties is
+largely open. In this article, we propose a novel AISMC method
+based on the following contributions:
+1) the system uncertainty is not taken to be bounded a priori
+by a constant;
+2) the state-dependent structure we propose is not the result
+of some structural knowledge, but it comes directly from
+basic properties of EL dynamics (valid independently on
+the structure of the system);
+3) we show that the proposed AISMC framework provides
+a systematic way to enhance robustness and adaptation in
+PID-based loops.
+Item a) is achieved by showing boundedness after the control
+design (a posteriori), rather than before the control design (a
+priori); item b) is achieved by deriving analytically an upper
+bound structure for the uncertainty solely based on properties
+of EL systems; and item c) derives from the structure of the
+proposed control law: note that the standard SMC (or recent
+advances [16]) cannot be systematically integrated in PID loops
+due to their lack of integral action. The structure-independent
+nature of the proposed method is tested in systems with differ-
+ent structures: a surface vessel case, and software-in-the-loop
+(SITL) experiments for an ArduPilot-based ﬁxed-wing autopi-
+lot. The ArduPilot-based autopilot is based on PID control
+and thus provides an interesting test case for showing how the
+AISMC framework enhances PID-based loops.
+This article is organized as follows. Section II gives the EL
+formulation. Section III covers control design and stability anal-
+ysis. Validations are in Section IV. Finally, Section V concludes
+this article.
+Notations: The sets of real numbers, positive real numbers,
+and real n × m matrices are denoted by R, R+ and Rn×m,
+respectively; In is the n × n identity matrix; a bold notation
+is used for vectors, i.e., σ = [σ1, . . . , σn]T ; ∥(·)∥and λmin(·)
+denote the Euclidean-norm and the minimum eigenvalue of (·),
+respectively.
+II. SYSTEM DYNAMICS AND PROBLEM FORMULATION
+Consider the class of Euler–Lagrange (EL) systems
+M(q)¨q + C(q, ˙q) ˙q + G(q) + F( ˙q) + d = u
+(1)
+where q ∈Rn is the state vector, and ˙q ∈Rn is its time deriva-
+tive; M(q) ∈Rn×n denotes the mass/inertia matrix; C(q, ˙q) ∈
+Rn×n denotes the Coriolis term; G(q) ∈Rn denotes the grav-
+ity term; F( ˙q) ∈Rn denotes the damping and friction forces;
+d ∈Rn denotes bounded external disturbances and u ∈Rn is
+the control input.
+For most real-world mechanical systems, the literature has
+shown that some properties hold for the EL terms in (1) (cf. [1],
+[16],[36]).Thesepropertieswillbeadoptedforcontrollerdesign
+and stability analysis.
+Property 1: There exist cu, gu, fu, du ∈R+ such that
+||C(q, ˙q)|| ≤cu|| ˙q||, ||G(q)|| ≤gu, ||F( ˙q)|| ≤fu|| ˙q|| and
+||d(t)|| ≤du.
+Property 2: Matrix M(q) is symmetric and uniformly posi-
+tive, which implies that ∃mu, ml ∈R+ such that
+0 < mlIn ≤M(q) ≤muIn.
+(2)
+Property3:Matrix ˙M(q) −2C(q, ˙q)isskewsymmetric,i.e.,
+xT ( ˙M(q) −2C(q, ˙q))x = 0 for any nonzero vector x.
+Remark 1 (Uncertainty of the dynamics): Properties 1–3 hold
+independently of the structure of the system: manipulators,
+aircrafts, mobile robots, etc., satisfy the bounds in Properties 1–3
+for possibly unknown constants (cf. [1], [16], [36]). Throughout
+this work, M, C, F, G, d in (1) and mu, ml, cu, gu, fu, du in
+their bounds are considered to be unknown.
+Denote qd ∈Rn as the desired states, which satisfy
+∥˙qd(t)∥≤qu, ∀t and ∥¨qd(t)∥≤quu ∀t. The following question
+arises.
+Problem: Find a control strategy u(·) such that the solutions
+of the EL system (1) track the desired states qd, in the presence
+of uncertainty of the dynamics as in Remark 1.
+In the following, we will illustrate the derivation process of
+the system uncertainty for two kinds of sliding surface: the
+ﬁrst one is commonly referred to as PID-based sliding mode
+control (PID-SMC [25]); the other one is commonly refereed to
+as integral sliding mode control (ISMC [24]). As detailed in [30],
+[31, Ch. 7], the main difference between the two methods is a
+particular choice of the initial conditions.
+A. Uncertainty Structure for PID-Based Sliding Surface
+Let e(t) = qd(t) −q(t) be the tracking error. The PID sliding
+variable σ1 is deﬁned in the literature as
+σ1(t) ≜˙e(t) + Γ1e(t) + Γ2
+ t
+0
+e(τ)dτ
+(3)
+where Γ1, Γ2 ∈Rn×n are positive deﬁnite matrices. Take the
+time derivative of (3) and multiply by M. Using (1), we obtain
+(time and state dependence are omitted for compactness)
+M ˙σ1 = M(¨qd −¨q + Γ1 ˙e + Γ2e)
+= −u −Cσ1 + δ1
+(4)
+where
+δ1 ≜C ˙q + G + F + d
++ M¨qd + MΓ1 ˙e + MΓ2e + Cσ1
+(5)
+represents an aggregate state-dependent uncertainty. Next, we
+aim to ﬁnd an appropriate (state-dependent) bound for such
+uncertainty. By combining (3) and Properties 1 and 2, we obtain
+∥δ1∥≤cu∥˙q∥2 + gu + fu∥˙q∥+ du
++ mu(∥¨qd∥+ ||Γ1||∥˙e∥+ ∥Γ2∥∥e∥)
++ cu∥˙q∥(∥˙e∥+ ∥Γ1∥∥e∥+ ∥Γ2∥∥
+ t
+0
+e(τ)dτ∥).
+(6)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+LI et al.: ADAPTIVE INTEGRAL SLIDING MODE CONTROL IN THE PRESENCE OF STATE-DEPENDENT UNCERTAINTY
+3
+Take
+ξ(t) =
+
+eT (t)
+˙eT (t)
+(
+ t
+0 e(τ)dτ)T T
+.
+Then, the following inequalities hold:
+∥ξ(t)∥≥∥e(t)∥,
+∥ξ(t)∥≥∥˙e(t)∥
+∥ξ(t)∥≥∥
+ t
+0
+e(τ)dτ∥.
+(7)
+Using these inequalities and substituting ˙q = −˙e + ˙qd into (6),
+we have
+∥δ1∥≤κ∗
+0 + κ∗
+1∥ξ(t)∥+ κ∗
+2∥ξ(t)∥2
+(8)
+where κ∗
+0, κ∗
+1, κ∗
+2 are unknown positive constants deﬁned as
+κ∗
+0 ≜cuq2
+u + gu + fuqu + du + muquu
+κ∗
+1 ≜cuqu(3 + ∥Γ1∥+ ∥Γ2∥) + fu
++ mu(∥Γ1∥+ ∥Γ2∥)
+κ∗
+2 ≜cu(2 + ∥Γ1∥+ ∥Γ2∥).
+(9)
+B. Uncertainty Structure for Integral Sliding Surface
+The integral sliding variable σ2 is deﬁned in literature as
+σ2(t) ≜˙e(t) + Ω1e(t)
++ Ω2
+ t
+0
+e(τ)dτ −˙e(0) −Ω1e(0)
+(10)
+where Ω1, Ω2 ∈Rn×n are positive deﬁnite matrices. It is worth
+noticing that the main difference with (3) are the initial con-
+ditions e(0), ˙e(0), which allow σ2(0) = 0, i.e., the system
+starts from the sliding surface. Even for the sliding surface (10),
+an appropriate (state-dependent) upper bound structure for the
+uncertainty will be derived. Take the time derivative of (10) and
+multiply by M. Using (1), we can obtain
+M ˙σ2 = M(¨qd −¨q + Ω1 ˙e + Ω2e)
+= −u −Cσ2 + δ2
+(11)
+where
+δ2 ≜C ˙q + G + F + d
++ M¨qd + MΩ1 ˙e + MΩ2e + Cσ2.
+(12)
+Combining (10) and Properties 1 and 2, we obtain the upper
+bound
+∥δ2∥≤cu∥˙q∥2 + gu + fu∥˙q∥+ du
++ mu(∥¨qd∥+ ||Ω1||∥˙e∥+ ∥Ω2∥∥e∥)
++ cu∥˙q∥(∥˙e∥+ ∥Ω1∥∥e∥+ ∥Ω2∥∥
+ t
+0
+e(τ)dτ∥
++ ∥˙e(0)∥+ ∥Ω1∥∥e(0)∥).
+(13)
+Using (7) and substituting ˙q = −˙e + ˙qd into (13), we have
+∥δ2∥≤ν∗
+0 + ν∗
+1∥ξ(t)∥+ ν∗
+2∥ξ(t)∥2
+(14)
+where ν∗
+0, ν∗
+1, ν∗
+2 are unknown positive constants deﬁned as
+ν∗
+0 ≜cuq2
+u + gu + fuqu + du + muquu
++ cuqu(∥˙e(0)∥+ ∥Ω1∥∥e(0)∥)
+ν∗
+1 ≜cu∥˙qd∥(3 + ∥Ω1∥+ ∥Ω2∥) + fu + mu(∥Ω1∥
++ ∥Ω2∥) + cu(∥˙e(0)∥+ ∥Ω1∥∥e(0)∥)
+ν∗
+2 ≜cu(2 + ∥Ω1∥+ ∥Ω2∥).
+(15)
+We have derived that both sliding surfaces σ1(·) and σ2(·)
+share a similar upper bound structure as (8) and (14). Therefore,
+in the following, we will analyze our proposed adaptive integral
+sliding mode control (AISMC) method by simply using σ(·) to
+denote either σ1(·) or σ2(·). Accordingly, we use
+M ˙σ = −u −Cσ + δ
+(16)
+∥δ∥≤θ∗
+0 + θ∗
+1∥ξ∥+ θ∗
+2∥ξ∥2
+(17)
+that is, θ∗
+i denotes either κ∗
+i in (8) or ν∗
+i in (14), and δ denotes
+either δ1 in (8) or δ2 in (14). For both sliding surfaces, we will
+refer to the proposed method simply as AISMC.
+Remark 2 (No structural knowledge): The state-dependent
+structure (17) is not the result of structural knowledge, but comes
+directly from the basic Properties 1–3 of EL dynamics, which
+are valid independently on the structure of the system.
+Remark 3 (Bounded stability): Of the three families of
+ASMC proposed in the literature (monotonically increasing
+ASMC [17], equivalent control ASMC [18], and increas-
+ing/decreasing ASMC [19]), the last two attain globally uni-
+formly ultimately boundedness (GUUB). Only the ﬁrst one can
+achieve asymptotic tracking, provided a sign function is used
+in the control. However, a sign function with monotonically
+increasing gain can lead to undesirable chattering behavior with
+large amplitude. This work will study stability in the sense of
+GUUB, in line with the stability results of most ASMC designs.
+Deﬁnition 1: (GUUB) Consider a signal σ(·). Assume there
+exists ϑa, ϑc > 0 and for every 0 < ϑa < ϑc there exists T ≥0
+and ϑ > 0 such that ∥σ(t0)∥≤ϑa implies
+∥σ(t)∥≤ϑ
+∀t ≥t0 + T
+(18)
+and ϑa can be arbitrarily large. Then, the signal σ(·) is called
+global uniformly ultimately bounded with ultimate bound ϑ.
+The following is a Lyapunov characterization of GUUB,
+adopted from [37, Ch. 4].
+Lemma 1: Let V be a continuously differentiable function
+such that
+c1∥σ∥2 ≤V (σ) ≤c2∥σ∥2
+˙V (σ) ≤−c3V (σ)
+∀∥σ∥≥μ
+(19)
+with c1, c2, c3 > 0. Take a ball Br of radius r and let
+μ ≤r
+c1
+c2
+1/2
+.
+(20)
+Deﬁne ϑa ≜r(c1/c2)1/2. Then, for every initial state σ(t0)
+satisfying ∥σ(t0)∥2 ≤ϑa there is T ≥0 such that (18) holds
+with ϑ ≜μ(c2/c1)1/2 and ϑa can be arbitrarily large.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+4
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+Fig. 1.
+Block diagram of the proposed control framework.
+III. AISMC DESIGN AND STABILITY ANALYSIS
+To tackle the uncertainty (17), we propose the control law
+u(t) = Υσ(t) + β(t) sat(σ(t)/ϵ)
+(21)
+where Υ is a positive deﬁnite matrix, ϵ is a designed scalar,
+sat(x) is the saturation function
+sat(x) =
+
+x
+if −1 < x < 1
+sign(x) else
+and
+β(t) = ˆθ0(t) + ˆθ1(t)||ξ(t)|| + ˆθ2(t)||ξ(t)||2.
+(22)
+The gains ˆθi (for i = 0, 1, 2) in (22) are the estimates of the
+constants θ∗
+i in (17). These gains are updated according to the
+following adaptive laws:
+˙ˆθi(t) = ηi∥σ(t)∥∥ξ(t)∥i −αiηiˆθi(t)
+(23)
+where ηi, αi (i = 0, 1, 2) are positive gains, and the initial
+conditions satisfy ˆθi(0) > 0.
+For the proposed control framework summarized in Fig. 1,
+the following stability result holds.
+Theorem 1: The trajectories of the EL dynamics (1) with
+Properties 1–3, implementing the control law (21) and (22), with
+adaptive law (23), are GUUB, and an ultimate bound ϑ on σ is
+given by
+ϑ =
+	
+2
+i=0 αiθ∗2
+i
+ml(ς −ω)
+(24)
+where ς ≜mini{λmin(Υ),αi/2}
+max{mu/2,1/2ηi}
+> 0, and 0 < ω < ς.
+Proof: Take the integral of the adaptive law (23) from 0 to t
+ˆθi(t) = e−αiηitˆθi(0)
++
+ t
+0
+e−αi(t−τ)ηi∥σ(t)∥∥ξ(t)∥iηidτ.
+(25)
+Since ˆθi(0) > 0 and ∥σ(t)∥∥ξ(t)∥i is positive, we obtain
+ˆθi(t) ≥0 ∀t ≥0.
+(26)
+Closed-loop stability is analyzed via the Lyapunov function
+V = 1
+2σT Mσ +
+2
+
+i=0
+1
+2ηi
+(θ∗
+i −ˆθi)2.
+(27)
+Using (16), (21), and Property 3, we get the time derivative
+˙V = σT (−u −Cσ + δ) + 1
+2σT ˙Mσ +
+2
+
+i=0
+(ˆθi −θ∗
+i) ˙ˆθi/ηi
+= σT (−Υσ −β sat(σ/ϵ) + δ)
++ 1
+2σT ( ˙M −2C)σ +
+2
+
+i=0
+(ˆθi −θ∗
+i) ˙ˆθi/ηi
+= σT (−Υσ −β sat(σ/ϵ) + δ) +
+2
+
+i=0
+(ˆθi −θ∗
+i) ˙ˆθi/ηi.
+(28)
+Then, using (17) and the fact that β ≥0 from (26), we have
+˙V ≤−σT Υσ −
+2
+
+i=0
+(ˆθi −θ∗
+i)(||ξ||i||σ|| −˙ˆθi/ηi).
+(29)
+Using (23) yields
+(ˆθi −θ∗
+i) ˙ˆθi/ηi = ||σ||(ˆθi −θ∗
+i)||ξ||i + αiˆθiθ∗
+i −αiˆθ2
+i. (30)
+Substituting (30) into (29) gives
+˙V ≤−λmin(Υ)||σ||2 +
+2
+
+i=0
+(αiˆθiθ∗
+i −αiˆθ2
+i)
+≤−λmin(Υ)||σ||2 −
+2
+
+i=0
+αi
+2 ((ˆθi −θ∗
+i)2 −θ∗2
+i )
+(31)
+where we have used the inequality
+ˆθiθ∗
+i −ˆθ2
+i = −
+ ˆθi
+√
+2
+−θ∗
+i
+√
+2
+2
++ θ∗2
+i
+2 −
+ˆθ2
+i
+2
+≤−
+ ˆθi
+√
+2
+−θ∗
+i
+√
+2
+2
++ θ∗2
+i
+2 .
+From Lyapunov function (27), we have
+V ≤mu
+2 ||σ||2 +
+2
+
+i=0
+1
+2ηi
+(ˆθi −θ∗
+i)2
+(32)
+and substituting (32) into (31) gives
+˙V ≤−ςV + 1
+2
+2
+
+i=0
+αiθ∗2
+i
+(33)
+where ς ≜mini{λmin(Υ),αi/2}
+maxi{mu/2,1/2ηi} > 0. Select a scalar 0 < ω < ς,
+˙V can be further simpliﬁed as
+˙V ≤−ωV −(ς −ω)V + 1
+2
+2
+
+i=0
+αiθ∗2
+i .
+(34)
+Deﬁne a scalar Θ ≜
+2
+i=0 αiθ∗2
+i
+2(ς−ω)
+such that, if V ≥Θ, then ˙V (t) ≤
+−ωV . This is indeed the Lyapunov characterization of GUUB
+in Lemma 1 [37, Ch. 4]. We conclude that
+V ≤max{V (0), Θ}
+∀t ≥0
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+LI et al.: ADAPTIVE INTEGRAL SLIDING MODE CONTROL IN THE PRESENCE OF STATE-DEPENDENT UNCERTAINTY
+5
+and that V enters inside the ball Θ exponentially in ﬁnite time
+and stays therein for all future time [37, Sec. 4.8]. From the
+Lyapunov function (27) we have V ≥(ml/2)||σ||2, which can
+be used to obtain the ultimate bound (24) on σ. This bound is
+global and uniform as it is independent on initial conditions.
+Remark 4 (Difference with standard ISMC): The term (22)
+can estimate the state-dependent bound of uncertainty without
+requiring structural knowledge of the system: this marks a
+major difference with standard ISMC [26], [27], or standard
+AISMC [15], [34], [35].
+Remark 5 (PID structure): The proposed control (21) with
+PID-based sliding surface σ1(t) in (3) can be viewed as a PID
+loop with embedded adaptation. More speciﬁcally, the control
+(21) comprises a standard PID action Υσ1(t) and an adaptive
+action β(t) for the sliding mode term sat(σ1(t)/ϵ).
+IV. VALIDATION EXPERIMENTS
+To evaluate the effectiveness of the proposed framework, we
+consider two test cases with different system structures: a surface
+vesseltestcase,andaﬁxed-wingunmannedaerialvehicle(UAV)
+test case. A standard ISMC is used to compare the proposed
+method
+u(t) = Υσ(t) + β sat(σ(t)/ϵ)
+(35)
+the main difference between the AISMC (21) and the standard
+ISMC (35) is the upper bound structure β, which is a constant
+instead of changing online in an adaptive way.
+A. Surface Vessel Test Case
+To illustrate the performance of the proposed controller with
+integral sliding surface σ2 as in (10), consider the simpliﬁed
+dynamics of a surface vehicle as in [31, Ch. 7]
+
+˙q1 = q2
+˙q2 = −cq2|q2|/m + u/m + d(t)
+(36)
+where q1 and q2 are position and speed of the vehicle, respec-
+tively; u is the control input, m is the mass of vehicle, and c
+is the friction coefﬁcient. As explained in [31, Ch. 7], m and
+c are subject to uncertainty in practice. For simulations, we set
+q(0) = [−1, 0]T andweconsider acombinationof thefollowing
+uncertainty scenarios. For the uncertain mass:
+1) M0: constant unknown mass m = 3;
+2) M1: unknown mass changes m = 3 →5 at t = 3 s and
+m = 5 →1 at t = 5 s.
+For the uncertain disturbance and friction:
+1) D0:
+unknown
+c(t)=1.2 + 0.2 sin(|q2|t),
+d(t)=
+3 sin(πt);
+2) D1:
+unknown
+c(t)=1.2 + 0.4 sin(|q2|t),
+d(t)=
+6 sin(πt);
+3) D2: unknown c(t)=1.2 + 0.2|q2|n(t), d(t)=3 sin(πt);
+4) D3: unknown c(t)=1.2 + 0.4|q2|n(t), d(t)=6 sin(πt);
+where n(t) represents a random noise uniformly distributed
+between -1 and 1. The term “unknown” denotes the fact that
+the value of the mass, of the disturbance and of the friction are
+not available for control design. By combining the situations
+above, we obtain eight scenarios, which are also reported in
+Table I. Note that the sinusoidal friction was proposed in [31,
+Ex. 7.4], whereas the noise friction is further introduced for
+additional comparisons: also, cases M1, D1, D2, and D3 have
+been designed explicitly to test the capabilities of the controllers
+to cope with larger uncertainty.
+The desired trajectory qd is also taken from [31, Sec. 7]: it in-
+cludes constant acceleration ˙qd2 = 2 m/s2 at t ∈[0, 2)s, constant
+velocity qd2 = 4m/s at t ∈[2, 4)s, and constant acceleration
+˙qd2 = −2m/s at t ∈[4, 6)s. To construct the proposed AISMC
+in (21) and (10), we set Ω1 = 5.5, Ω2 = 12, e(0) = [1, 0]T ,
+Υ = 50, and ϵ = 0.001. In addition, we set η = 385, α0 =
+10−5, α1 = 250, α2 = 175 for the adaptive law in (23). Sim-
+ulation are carried out using ode45 function in MATLAB with
+maximum step size 0.1 ms.
+For comparison purposes, the standard ISMC as in (35) is used
+with β = 15 or β = 25. For compactness, tracking performance,
+tracking error, and control input are reported in Figs. 2 and 3
+only for the ﬁrst two scenarios of Table I. Figs. 2(a) and 3(a)
+display the position tracking error for the proposed AISMC and
+the standard ISMC with β = 15 or β = 25, under constant mass
+[see Fig. 2(a)] or mass change [see Fig. 3(a)]. For all tracking
+transients arising at t = 2, t = 3 and t = 4 s, the proposed
+AISMC gives a more accurate performance when compared
+to the standard ISMC. This becomes evident from the error
+norms ∥e∥reported in Figs. 2(b) and 3(b), which show that
+the proposed AISMC method has better tracking error with a
+reasonable control effort.
+Table I reports the tracking error costs for all eight scenarios:
+the improvements of AISMC are consistent in all scenarios for
+both types of friction. Most importantly, as compared to ISMC,
+the proposed AISMC gives better percentage performance as
+more and more uncertainty affects the system: the percent-
+age degradation of ISMC increases from +10.9% to +30.2%
+(β = 15), and from +2% to +13.3% (β = 25). This suggests
+that the proposed AISMC can automatically adapt its gain to
+the uncertainty situation, whereas the gain β of ISMC should be
+tuned appropriately.
+B. UAV Test Case
+The proposed AISMC with PID-based sliding surface σ1 (3)
+is tested in SITL environment for an ArduPilot-based autopilot
+for ﬁxed-wing UAV. Using the state variables in Table II, the
+6-DOF motion equations of the UAV are expressed as [38]
+⎛
+⎝
+˙pn
+˙pe
+˙pd
+⎞
+⎠= Rv
+b(φ, θ, ψ)
+⎛
+⎝
+ua
+va
+wa
+⎞
+⎠+
+⎛
+⎝
+wn
+we
+wd
+⎞
+⎠
+(37a)
+⎛
+⎝
+˙ua
+˙va
+˙wa
+⎞
+⎠=
+⎛
+⎝
+rva −qwa
+pwa −rua
+qua −pva
+⎞
+⎠+ 1
+ma
+⎛
+⎝
+fx
+fy
+fz
+⎞
+⎠−Rv
+b(φ, θ, ψ)
+⎛
+⎝
+˙wn
+˙we
+˙wd
+⎞
+⎠
+(37b)
+⎛
+⎝
+˙φ
+˙θ
+˙ψ
+⎞
+⎠=
+⎛
+⎝
+1 sφsθ/cθ cφsθ/cθ
+0
+cφ
+−sφ
+0 sφ/cθ
+cφ/cθ
+⎞
+⎠
+⎛
+⎝
+p
+q
+r
+⎞
+⎠
+(37c)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+6
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+Fig. 2.
+Surface vessel with constant (unknown) mass m = 3. (a) Tracking performance for position and velocity. (b) Norm of the tracking error and
+control input.
+Fig. 3.
+Surface vessel with (unknown) mass changes m = 3 →5 at t = 3 s and m = 5 →1 at t = 5 s. (a) Tracking performance for position and
+velocity. (b) Norm of the tracking error and control input.
+⎛
+⎝
+˙p
+˙q
+˙r
+⎞
+⎠=
+⎛
+⎝
+Γ1pq −Γ2qr
+Γ5pr −Γ6(p2 −r2)
+Γ7pq −Γ1qr
+⎞
+⎠+
+⎛
+⎝
+Γ3l + Γ4n
+1
+Jy m
+Γ4l + Γ8n
+⎞
+⎠
+(37d)
+with body-to-vehicle frame rotation matrix
+Rv
+b(φ, θ, ψ) = (Rb
+v)T (φ, θ, ψ)
+=
+⎛
+⎝
+cθcψ sφsθcψ −cφsψ cφsθcψ + sφsψ
+cθsψ sφsθsψ + cφcψ cφsθsψ −sφcψ
+−sθ
+sφcθ
+cφcθ
+⎞
+⎠
+where ma is the mass of UAV, wn, we, wd are the wind compo-
+nents, fx, fy, fz are the forces exerted on the UAV in terms of its
+body frame, l, m, n denote the three components of the moments
+about the ib, jb, kb axes, Γ1 ∼Γ8 and Jy are inertia terms. We
+used the short notations cx ≜cos x and sx ≜sin x. More details
+about (37) can be found in the literature, such as [38, Ch. 3].
+The aerodynamic forces and moments can be decomposed
+into longitudinal and lateral. Longitudinal aerodynamics include
+lift force Flift, drag force Fdrag, and pitching moment m: they
+can be expressed to be dependent on the angle of attack α, pitch
+rate q and elevator angle δe as
+Flift = 1
+2ρV 2
+a SCL(α, q, δe)
+(38a)
+Fdrag = 1
+2ρV 2
+a SCD(α, q, δe)
+(38b)
+m = 1
+2ρV 2
+a ScCm(α, q, δe)
+(38c)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+LI et al.: ADAPTIVE INTEGRAL SLIDING MODE CONTROL IN THE PRESENCE OF STATE-DEPENDENT UNCERTAINTY
+7
+TABLE I
+SURFACE VESSEL: TRACKING ERROR COSTS (POSITION AND VELOCITY)
+FOR PROPOSED AISMC AND STANDARD ISMC
+TABLE II
+STATE VARIABLES FOR UAV EQUATIONS OF MOTION
+where ρ is air density and Va is the airspeed of UAV, CL, CD,
+and Cm are nondimensional aerodynamic coefﬁcients, S is the
+planform area of the UAV wing, and c is the mean chord of
+the wing. Generally, CL, CD, and Cm are considered uncertain
+because they are signiﬁcantly inﬂuenced by the airfoil shape,
+Mach number, Reynolds number and the angle of attack. Flift
+and Fdrag are related to fx and fz through an appropriate
+transformation [38, Ch. 4]. Also, fx and fz are affected by the
+gravity term, and by the propulsion forces from the throttle δt
+(details not shown for lack of space).
+Lateral aerodynamics include lateral force fy, roll moment l,
+and yaw moment n, which can be expressed depending on the
+sideslip angle β, roll rate p and yaw rate r, aileron angle δa, and
+rudder angle δr as
+fy = 1
+2ρV 2
+a SCY (β, p, r, δa, δr)
+(39a)
+l = 1
+2ρV 2
+a SbCl(β, p, r, δa, δr)
+(39b)
+n = 1
+2ρV 2
+a SbCn(β, p, r, δa, δr)
+(39c)
+where CY , Cl and, Cn are nondimensional aerodynamic coef-
+ﬁcients, and b is the UAV wingspan. Again, the nonlinear rela-
+tionships in the coefﬁcients CL, CD, and Cm are characterized
+by nonlinear functions that are subject to uncertainty.
+As the dynamical equations for UAV are complex, it is cus-
+tomary to develop design models with signiﬁcantly less math-
+ematical complexity, but still capturing the essential behavior
+of the system. In accordance with the literature (details can be
+found in [38, Ch. 6 and 9]) the UAV dynamics are approximated
+with reduced-order models stemming from the design of higher
+level guidance strategies. The guidance models comprise an
+airspeed-hold loop and an altitude-hold loop. The airspeed-hold
+loop is represented by
+˙Va = bVa(V c
+a −Va)
+(40)
+wherebVa is positiveconstant that dependontheimplementation
+of the autopilot and the state estimation scheme. The altitude-
+hold loop is represented by
+¨h = b˙h(˙hc −˙h) + bh(hc −h)
+(41)
+where b˙h, bh are positive constants that depend on the imple-
+mentation of the autopilot and the state estimation schemes.
+The airspeed-hold loop and the altitude-hold loop are adopted
+in a so-called total energy control system (TECS) which aims to
+control the kinetic energy and the potential energy (this is done
+via a double PID loop, called TECS throttle and TECS pitch).
+The constants bVa, b˙h, bh are unknown since they depend on how
+low-level controllers (roll/pitch/yaw loops) have been tuned. In
+addition, unmodeled dynamics (e.g., couplings between velocity
+andaltitude)willcertainlyariseduetothereduced-orderapprox-
+imation. Therefore, the ﬁxed-wing autopilot scenario provides
+a challenging test case for testing the proposed methodology in
+PID-based loops.
+The open-source SITL simulator allows to run autopilots
+directly on PC and test their behavior in a realistic UAV simu-
+lation environment [39]. The GUI of the simulator is shown in
+Fig. 4. There are three windows in the GUI, the map window
+showing the ﬂight path (left), the terminal window used to type
+ﬂight mode commands (upper right), and the console real-time
+feedback of UAV ﬂight status parameters and wind disturbance
+(bottom right). Fig. 5 displays the architecture of the attitude
+controllers in SITL. The attitude controller modules can either
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+8
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+Fig. 4.
+GUI of ArduPlane simulator: Map window, terminal window, and
+console real-time window.
+Fig. 5.
+Architecture of autopilot SITL set-up: TECS, roll controller, pitch
+controller, yaw controller, and simulator.
+TABLE III
+PARAMETERS SELECTION FOR THE PROPOSED AISMC METHOD IN
+ARDUPILOT AUTOPILOT
+contain the original cascaded PID autopilot (original ArduPilot),
+or a user-designed autopilot.
+The original ArduPilot autopilot is used for comparison. The
+TECS in ArduPilot is indeed a PID loop for kinetic energy
+and a PID loop for potential energy. In addition, the low-level
+roll/pitch/yaw loops are also PID loops. All these PID loops
+can be modiﬁed according to the proposed theory, so that the
+standard ISMC approach and the proposed AISMC approach
+can all be used for comparison. Therefore, Υ, Ω1, and Ω2 in (21)
+are chosen as the PID gains set in the ArduPilot code [39]. The
+other parameters for the proposed AISMC approach are listed
+in Table III and β for the standard ISMC are chosen as β = 80,
+β = 100, β = 120. In addition, to the purpose of validating the
+importance of the AISMC idea, we also implement the ASMC
+method recently proposed in [16]: it is clear that, due to the lack
+of integral action, this ASMC or any standard ASMC cannot
+TABLE IV
+TRACKING ERROR COSTS FOR ORIGINAL, PROPOSED AISMC AUTOPILOT,
+AND AN ASMC VERSION
+The improvements for AISMC (or the degradation for ASMC) in the cost are calculated
+with respect to the original ArduPilot.
+be embedded in PID loops. Therefore, the comparisons with
+the ASMC will be useful to validate that the proposed AISMC
+framework provides a systematic way to enhance robustness and
+adaptation in PID-based loops.
+To evaluate the performance of the proposed method in the
+presence of large uncertainty, we change the mass of the UAV
+during the ﬂight (which can simulate a change in the payload
+of the UAV). The initial mass of the UAV is 2 kg: during the
+ﬂight the mass can change to 1 kg (half mass), to 4 kg (double
+mass), or remain 2 kg. The value of the mass and their changes
+are uncertain, i.e., not used in the control design, which further
+contributes to testing robustness to uncertainty of the different
+autopilots. The ﬂight tests include a take-off phase, after which
+the UAV should follow an orbit at constant altitude (the mass
+change occurs while the UAV is orbiting). In Table IV, we report
+the tracking error cost for different autopilots: the tracking error
+costs are ﬁve, one for each PID loop in the autopilot (roll, pitch,
+yaw, TECS throttle, TECS pitch). We use the performance of
+the original ArduPilot cost to normalize other error costs, so
+that the original ArduPilot cost is 5.0. The tracking error costs
+for all the ﬁve cascade loops are shown in Table IV for the orig-
+inal ArduPilot, the proposed AISMC and the ASMC (without
+integral action). The table shows that the tracking error costs of
+the proposed AISMC approach are consistently smaller than the
+original ArduPilot: the proposed method improves performance
+up to 11% without mass change and more than 25% in the
+presenceofmasschange.Inaddition,thetableshowsthatASMC
+in unsuitable for autopilot implementation because the absence
+of integral action makes it impossible to track appropriately the
+desired set points (this explains the large values of the costs at
+the end of Table IV).
+To visualize some of the results, the experiments with half
+mass and double mass are collected in Figs. 6 and 7 for both
+the original autopilot and the proposed AISMC autopilot. As
+shown in Fig. 6(a) and (b) and Fig. 7(a) and (b), the proposed
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+LI et al.: ADAPTIVE INTEGRAL SLIDING MODE CONTROL IN THE PRESENCE OF STATE-DEPENDENT UNCERTAINTY
+9
+Fig. 6.
+UAV, mass change 2.0 kg →1.0 kg: Comparison of original and proposed autopilot. (a) Altitude and altitude error norm. The proposed
+solution has negligible altitude drop after mass change. (b) Airspeed and airspeed error norm. The proposed solution converges faster to the desired
+airspeed after mass change. (c) Aileron and elevator. The improvements of the proposed solution are achieved with all inputs in reasonable range.
+(d) TECS throttle and pitch demand. The proposed solution is more reactive to mass change.
+TABLE V
+ALTITUDE COSTS COMPARISON FOR ORIGINAL, ADAPTIVE (AISMC, ASMC), AND NONADAPTIVE (ISMC) AUTOPILOT
+The percentage degradation for all autopilots is calculated with respect to the proposed AISMC.
+AISMC autopilot has negligible altitude drop after mass change
+as compared to the original autopilot, while the airspeed is
+more reactive and converges faster to the desired airspeed. It
+is also worth mentioning that such an improved performance is
+achieved while all inputs are in a reasonable range: Figs. 6(d)
+and 7(d) show that the aileron and elevator deﬂections used to
+control the UAV all operate in the expected range (e.g., note
+that the elevator is maximum during take-off phase). On the
+other hand, Figs. 6(c) and 7(c) report the TECS throttle and
+pitch demand, i.e., the set points passed to the low-level control
+loops: it can be seen that the demand for the proposed AISMC
+is more reactive during the mass change.
+Finally, since the altitude is another crucial parameter to
+judge performance, Table V shows the altitude error costs
+for all six autopilots (original ArduPilot, proposed AISMC,
+standard ISMC with β = 80, standard ISMC with β = 100,
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+10
+IEEE/ASME TRANSACTIONS ON MECHATRONICS
+Fig. 7.
+UAV, mass change 2.0 kg →4.0 kg: Comparison of original and proposed autopilot. (a) Altitude and altitude error norm. The proposed
+solution has negligible altitude drop after mass change. (b) Airspeed and airspeed error norm. The proposed solution converges faster to the desired
+airspeed after mass change. (c) Aileron and elevator. The improvements of the proposed solution are achieved with all inputs in reasonable range.
+(d) TECS throttle and pitch demand. The proposed solution is more reactive to mass change.
+standard ISMC with β = 120). The proposed AISMC approach
+has better performance than the nonadaptive ISMC, no matter
+how β is chosen. This allows to say, similar to what we have
+concluded in Table I for the surface vehicle, that the proposed
+AISMC can automatically adapt its gain for any uncertain sce-
+nario: on the other hand, the gain β of ISMC should be tuned
+appropriately.
+To conclude, the proposed AISMC outperforms standard
+control approaches for systems with different structures (surface
+vehicle and aerial vehicle), and in different scenarios (with
+uncertain mass and uncertain mass changes).
+V. CONCLUSION
+This work explored a novel AISMC method with reduced a
+priori knowledge of the EL system uncertainty. We have shown
+that a state-dependent system uncertainty merely comes from
+basic properties of EL dynamics, independent of the structure
+of the system. It was shown that the proposed AISMC provides
+a systematic way to enhance robustness and adaptation in PID-
+based loops. Experiments on systems with different structures
+have been presented, i.e., surface vehicle dynamics, and SITL
+aerial vehicle autopilot.
+A relevant future work is studying if reduced structural knowl-
+edge can be tackled even in the presence of high-order sliding
+mode, or in the presence of bounded inputs.
+REFERENCES
+[1] S. Baldi, S. Roy, and K. Yang, “Towards adaptive autopilots for ﬁxed-wing
+unmanned aerial vehicles,” in Proc. 59th IEEE Conf. Decis. Control, 2020,
+pp. 4724–4729.
+[2] K. Shojaei, A. Kazemy, and A. Chatraei, “An observer-based neural
+adaptive PID2 controller for robot manipulators including motor dynamics
+withaprescribedperformance,”IEEE/ASMETrans.Mechatronics,vol.26,
+no. 3, pp. 1689–1699, Jun. 2021.
+[3] K. Dolinský and S. ˇCelikovský, “Application of the method of maximum
+likelihood to identiﬁcation of bipedal walking robots,” IEEE Trans. Con-
+trol Syst. Technol., vol. 26, no. 4, pp. 1500–1507, Jul. 2018.
+[4] M. Ye, B. D. O. Anderson, and C. Yu, “Model-independent trajectory
+tracking of euler-lagrange agents on directed networks,” in Proc. IEEE
+55th Conf. Decis. Control, 2016, pp. 6921–6927.
+[5] C. He and J. Huang, “Leader-following consensus for multiple Euler-
+Lagrange systems by distributed position feedback control,” IEEE Trans.
+Autom. Control, vol. 66, no. 11, pp. 5561–5568, Nov. 2021.
+[6] S. Roy and S. Baldi, “A simultaneous adaptation law for a class of
+nonlinearly parametrized switched systems,” IEEE Control Syst. Lett.,
+vol. 3, no. 3, pp. 487–492, Jul. 2019.
+[7] T. L. Costa, J. C. Vendrichoski, E. S. El’Youssef, and E. R. De Pieri,
+“Modeling and control of an unmanned aerial vehicle with tilt rotors
+equipped with a camera,” in Proc. 19th Int. Conf. Adv. Robot., 2019,
+pp. 1–6.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+This article has been accepted for inclusion in a future issue of this journal. Content is final as presented, with the exception of pagination.
+LI et al.: ADAPTIVE INTEGRAL SLIDING MODE CONTROL IN THE PRESENCE OF STATE-DEPENDENT UNCERTAINTY
+11
+[8] M. A. Santos, D. N. Cardoso, B. S. Rego, G. V. Raffo, and S. Esteban,
+“A discrete robust adaptive control of a tilt-rotor UAV for an enlarged
+ﬂight envelope,” in Proc. IEEE 56th Annu. Conf. Decis. Control, 2017,
+pp. 5208–5214.
+[9] A. Abdessameud, A. Tayebi, and I. G. Polushin, “On the leader-follower
+synchronization of Euler-Lagrange systems,” in Proc. 54th IEEE Conf.
+Decis. Control, 2015, pp. 1054–1059.
+[10] S. Wang and J. Huang, “Adaptive leader-following consensus for multiple
+Euler-Lagrange systems with an uncertain leader system,” IEEE Trans.
+Neural Netw. Learn. Syst., vol. 30, no. 7, pp. 2188–2196, Jul. 2019.
+[11] M. Jin, J. Lee, and N. G. Tsagarakis, “Model-free robust adaptive control of
+humanoid robots with ﬂexible joints,” IEEE Trans. Ind. Electron., vol. 64,
+no. 2, pp. 1706–1715, Feb. 2017.
+[12] H. Zhang, Y. Wang, Y. Wang, and J. Zhang, “A novel sliding mode control
+for a class of stochastic polynomial fuzzy systems based on SOS method,”
+IEEE Trans. Cybern., vol. 50, no. 3, pp. 1037–1046, Mar. 2020.
+[13] M. Jin, S. H. Kang, P. H. Chang, and J. Lee, “Robust control of robot ma-
+nipulators using inclusive and enhanced time delay control,” IEEE/ASME
+Trans. Mechatronics, vol. 22, no. 5, pp. 2141–2152, Oct. 2017.
+[14] Z. Cao, Y. Niu, and J. Song, “Finite-time sliding-mode control of Marko-
+vian jump cyber-physical systems against randomly occurring injection
+attacks,” IEEE Trans. Autom. Control, vol. 65, no. 3, pp. 1264–1271,
+Mar. 2020.
+[15] M. Van, “An enhanced robust fault tolerant control based on an adaptive
+fuzzy PID-nonsingular fast terminal sliding mode control for uncertain
+nonlinear systems,” IEEE/ASME Trans. Mechatronics, vol. 23, no. 3,
+pp. 1362–1371, Jun. 2018.
+[16] S. Roy, S. Baldi, and L. M. Fridman, “On adaptive sliding mode con-
+trol without a priori bounded uncertainty,” Automatica, vol. 111, 2020,
+Art. no. 108650.
+[17] D. Y. Negrete-Chavez and J. A. Moreno, “Second-order sliding mode
+output feedback controller with adaptation,” Int. J. Adaptive Control Signal
+Process., vol. 30, no. 8–10, pp. 1523–1543, 2016.
+[18] C. Edwards and Y. B. Shtessel, “Adaptive continuous higher order sliding
+mode control,” Automatica, vol. 65, pp. 183–190, 2016.
+[19] Y. B. Shtessel, J. A. Moreno, and L. M. Fridman, “Twisting sliding mode
+control with adaptation: Lyapunov design, methodology and application,”
+Automatica, vol. 75, pp. 229–235, 2017.
+[20] S. Laghrouche, M. Harmouche, F. S. Ahmed, and Y. Chitour, “Control of
+PEMFC air-feed system using Lyapunov-based robust and adaptive higher
+order sliding mode control,” IEEE Trans. Control Syst. Technol., vol. 23,
+no. 4, pp. 1594–1601, Jul. 2015.
+[21] S. Roy, S. B. Roy, and I. N. Kar, “Adaptive-robust control of Euler-
+Lagrange systems with linearly parametrizable uncertainty bound,” IEEE
+Trans. Control Syst. Technol., vol. 26, no. 5, pp. 1842–1850, Sep. 2018.
+[22] J. Khawwaf, J. Zheng, R. Chai, R. Lu, and Z. Man, “Adaptive micro-
+tracking control for an underwater IPMC actuator using new hyperplane-
+based sliding mode,” IEEE/ASME Trans. Mechatronics, vol. 24, no. 5,
+pp. 2108–2117, Oct. 2019.
+[23] M. P. Aghababa, “Sliding-mode control composite with disturbance ob-
+server for tracking control of mismatched uncertain nDoF nonlinear
+systems,” IEEE/ASME Trans. Mechatronics, vol. 23, no. 1, pp. 482–490,
+Feb. 2018.
+[24] V. Utkin and J. Shi, “Integral sliding mode in systems operating under
+uncertainty conditions,” in Proc. 35th IEEE Conf. Decis. Control, 1996,
+vol. 4, pp. 4591–4596.
+[25] Y. Stepanenko, Y. Cao, and C. Y. Su, “Variable structure control of robotic
+manipulator with PID sliding surfaces,” Int. J. Robust Nonlinear Control,
+vol. 8, no. 1, pp. 79–90, 1998.
+[26] D. Liu and G. Yang, “Prescribed performance model-free adaptive integral
+sliding mode control for discrete-time nonlinear systems,” IEEE Trans.
+Neural Netw. Learn. Syst., vol. 30, no. 7, pp. 2222–2230, Jul. 2019.
+[27] M. Van, M. Mavrovouniotis, and S. S. Ge, “An adaptive backstepping
+nonsingular fast terminal sliding mode control for robust fault tolerant
+control of robot manipulators,” IEEE Trans. Syst., Man, Cybern. Syst.,
+vol. 49, no. 7, pp. 1448–1458, Jul. 2019.
+[28] Y. Ma, D. Li, Y. Li, and L. Yang, “A novel discrete compound inte-
+gral terminal sliding mode control with disturbance compensation for
+PMSM speed system,” IEEE/ASME Trans. Mechatronics, to be published,
+doi: 10.1109/TMECH.2021.3068192.
+[29] H. Du, L. Wang, J. Chen, H. Huang, and X. Feng, “Integral sliding
+mode tracking control for heavy vehicle electro-hydraulic power steering
+system,” IEEE/ASME Trans. Mechatronics, vol. 26, no. 3, pp. 1455–1466,
+Jun. 2021.
+[30] J.-J. E. Slotine and M. W. Spong, “Robust robot control with bounded
+input torques,” J. Robot. Syst., vol. 2, no. 4, pp. 329–352, 1985.
+[31] J. Slotine and W. P. Li, Applied Nonlinear Control. Englewood Cliffs, NJ,
+USA: Prentice-Hall, 1991.
+[32] J. Song, Y. Niu, and Y. Zou, “Finite-time stabilization via sliding mode
+control,” IEEE Trans. Autom. Control, vol. 62, no. 3, pp. 1478–1483,
+Mar. 2017.
+[33] Y. Wang, B. Zhu, H. Zhang, and W. X. Zheng, “Functional observer-based
+ﬁnite-time adaptive ISMC for continuous systems with unknown nonlinear
+function,” Automatica, vol. 125, 2021, Art. no. 109468.
+[34] Q. Shen, D. Wang, S. Zhu, and E. K. Poh, “Integral-type sliding mode
+fault-tolerant control for attitude stabilization of spacecraft,” IEEE Trans.
+Control Syst. Technol., vol. 23, no. 3, pp. 1131–1138, May 2015.
+[35] P.Li,X.Yu,Y.Zhang,andX.Peng,“AdaptivemultivariableintegralTSMC
+of a hypersonic gliding vehicle with actuator faults and model uncertain-
+ties,” IEEE/ASME Trans. Mechatronics, vol. 22, no. 6, pp. 2723–2735,
+Dec. 2017.
+[36] S. Roy, J. Lee, and S. Baldi, “A new adaptive-robust design for time delay
+control under state-dependent stability condition,” IEEE Trans. Control
+Syst. Technol., vol. 29, no. 1, pp. 420–427, Jan. 2021.
+[37] H. K. Khalil, Nonlinear Systems. Hoboken, NJ, USA: Prentice Hall, 2002.
+[38] R. W. Beard and T. W. Mclain, Small Unmanned Aircraft Theory and
+Practice. Princeton, NJ, USA: Princeton Univ. Press, 2012.
+[39] “GitHub - ArduPilot/ardupilot.” [Online]. Available: https://github.com/
+ArduPilot/ardupilot
+Peng Li received the B.Sc. degree in electronic
+information from the Hubei University of Science
+and Technology, Shijiazhuang, China, in 2013,
+and the M.Tech. degree in electronic science
+and technology from the Wuhan University of
+Technology, Wuhan, China, in 2016. He is cur-
+rently working toward the Ph.D. degree in cyber
+science and engineering with Southeast Univer-
+sity, Nanjing, China.
+His research interests includes adaptive non-
+linear control and its applications to unmanned
+vehicles.
+Di Liu (Member, IEEE) received the B.Sc. de-
+gree in information science from the Hubei
+University of Science and Technology, Shiji-
+azhuang, China, and the M.Sc. degree in control
+science and engineering from the Chongqing
+University of Posts and Telecommunications,
+Chongqing, China, in 2014 and 2017, respec-
+tively, and the Ph.D. degree in cyber science and
+engineering from Southeast University, Nanjing,
+China, in 2021. She is currently working toward
+the second Ph.D. degree in systems and control
+with the Bernoulli Institute for Mathematics, Computer Science, and
+Artiﬁcial Intelligence, University of Groningen, The Netherlands.
+Her research interests include learning systems and control, with
+application in intelligent transportation, automated vehicles, unmanned
+aerial vehicles.
+Simone Baldi (Senior Member, IEEE) received
+the B.Sc. degree in electrical engineering, and
+the M.Sc. and Ph.D. degrees in automatic con-
+trol engineering from the University of Florence,
+Florence, Italy, in 2005, 2007, and 2011, respec-
+tively.
+Currently, he is a Professor with Southeast
+University, Nanjing, China, with a guest position
+at Delft Center for Systems and Control, TU
+Delft, the Netherlands, where he was an As-
+sistant Professor. His research interests include
+adaptive and learning systems with applications in networked systems
+and intelligent vehicles.
+Dr. Baldi was awarded outstanding reviewer of Applied Energy in 2016
+and Automatica in 2017. He is the Subject Editor of International Journal
+of Adaptive Control and Signal Processing and an Associate Editor of
+IEEE Control Systems Letters.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 28,2022 at 18:16:09 UTC from IEEE Xplore.  Restrictions apply. 
+

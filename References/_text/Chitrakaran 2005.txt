@@ -1,0 +1,968 @@
+Vision Assisted Autonomous Landing of an Unmanned Aerial Vehicle.
+Vilas K. Chitrakaran†, Darren M. Dawson, Jian Chen, and Matthew Feemster Member, IEEE
+Abstract—In this paper, a strategy for an autonomous
+landing maneuver for an underactuated, unmanned aerial
+vehicle (UAV) using position information obtained from a single
+monocular on-board camera is presented. Although the UAV
+is underactuated in translational control inputs (i.e., a lift
+force can only be produced), the proposed controller is shown
+to achieve globally uniform ultimate boundedness (GUUB)
+in position regulation error during the landing approach.
+The proposed vision-based control algorithm is built upon
+homography-based techniques and Lyapunov design methods.
+I. INTRODUCTION
+U
+NDERACTUATED autonomous vehicles such as un-
+derwater vehicles, aircrafts, and helicopters are typi-
+cally equipped with a lower number of control inputs than
+degrees of freedom to reduce factors such as weight, com-
+plexity, and power consumption. As a result, these vehicles
+may not be fully equipped with sufﬁcient translational actu-
+ators that allow for independent translation along any given
+direction. Hence, the control design for these underactuated
+vehicles are complicated due to the fact that the rotational
+torques must be coupled with the translational system in
+order to achieve the overall position objective.
+In addition to the challenges involved in the design of a
+control strategy for underactuated dynamic systems, there
+exists the problem of accurate position measurement in
+such machines. Flying machines are usually equipped with
+on-board inertial sensors which only measure the rate of
+motion. The position information is thus obtained from time
+integration of rate data, resulting in potential drift over time
+due to sensor noise. To overcome this problem, the use of
+a vision sensor and computer vision techniques within the
+feedback loop of such systems is becoming increasingly
+attractive, due to their ever decreasing size and cost of
+implementation relative to the computing power required
+for processing the visual data. Performance analysis of a
+visual sensor in the feedback loop has been reported in
+great detail in [10], where visual data was utilized for the
+estimation of position and velocity of a helicopter during
+a landing procedure. Experimental results of this approach
+were subsequently published in [11]. In addition, simulation
+results for the dynamic control of the X4 ﬂyer based on
+visual feedback was presented in [13].
+In this paper, a single calibrated monocular camera is
+utilized as a feedback sensor within a position regulation
+This work was supported in part by two DOC Grants, an ARO Auto-
+motive Center Grant, a DOE Contract, a Honda Corporation Grant, and a
+DARPA Contract.
+Vilas Chitrakaran, Darren Dawson, and Jian Chen are with Clemson
+University, and Matthew Feemster is with the U.S. Naval Academy.
+†Corresponding Author: Phone/Fax: (864) 656-7708/(864) 656-7218,
+Email: cvilas@ces.clemson.edu
+control scheme for an unmanned aerial vehicle (UAV) during
+a landing maneuver. The UAV is assumed to be equipped
+with Inertial Navigation Sensors (INS) from which velocity
+information can be calculated. A homography-based ap-
+proach, described in [12] and reported in such visual servoing
+related works as [2] and [14] has been utilized for the
+determination of the position and orientation of the UAV
+with respect to the landing pad. The homography-based
+approach is well suited for this application, since all visual
+markers are embedded on a ﬂat planar landing pad. Similar
+to the approach followed in [1], a constant design vector is
+integrated within the ﬁltered regulation error signal, resulting
+in an input matrix that facilitates an advantageous coupling
+of translational dynamics of the UAV to the rotational torque
+inputs. Additionally, the null space of this input matrix
+is exploited to achieve a secondary control objective of
+damping the orientation error signal of the UAV to within a
+neighborhood about zero which can be made arbitrarily small
+through the proper selection of design parameters (i.e., global
+uniform ultimate boundedness (GUUB)).
+The remainder of the paper is organized in the following
+manner. In Section II, the geometric relationship between
+the coordinate frames of the UAV and the landing pad are
+expressed in terms of a sequence of images of the landing
+pad acquired from an on-board camera. A simpliﬁed dynamic
+model of a rigid body, underactuated UAV is subsequently
+presented in Section II-B. The problem formulation, assump-
+tions, and position regulation control objective are presented
+in Section III. The control development, based on the rigid
+body dynamics and the position error information determined
+from the vision system, are provided in Section IV along
+with a Lyapunov based stability analysis. Conclusions are
+presented in Section V.
+II. SYSTEM MODEL
+A. Vision System and Geometric Model
+In order to obtain accurate position information, an aerial
+vehicle is outﬁtted with an on-board camera such that the
+optical axis is coincident with the vertical axis of the
+UAV body ﬁxed frame, denoted by B. The landing surface,
+denoted by π, is augmented with many stationary, coplanar
+visual markers Oi, all of them assumed to be in the ﬁeld of
+view of the camera throughout the entire landing approach.
+The Euclidean position of the UAV with respect to the
+inertial frame I is represented by P (t) ∈R3, and the
+orientation of the UAV B is expressed through the rotational
+matrix R(t) ∈SO(3) where R(t) represents the mapping
+R : B →I. Bd represents the desired landing orientation
+of the UAV, Pd ∈R3 denotes the desired, constant position
+Proceedings of the
+44th IEEE Conference on Decision and Control, and
+the European Control Conference 2005
+Seville, Spain, December 12-15, 2005
+MoC03.1
+0-7803-9568-9/05/$20.00 ©2005 IEEE
+1465
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+I
+B
+Bd
+P,R
+,
+Pd Rd
+,
+Pe Re
+Oi
+mi
+-
+mid
+-
+Desired Position
+Current Position
+nπ
+dπ
+π
+Fig. 1.
+The relationship between inertial and body ﬁxed coordinate frames
+for a UAV on a landing approach.
+vector, and Rd ∈SO(3) denotes the constant orthogonal
+rotation matrix with the following mapping characteristics
+Rd : Bd →I. As shown in Figure 1, the translation
+and rotation of the frame Bd relative to B is quantiﬁed by
+Pe(t) ∈R3 and Re(t) ∈SO(3), respectively, where Re
+represents the mapping Re : Bd →B.
+Let ¯mi(t), ¯mid ∈R3 denote the Euclidean coordinates
+of the ith visual marker Oi on the landing surface relative
+to the camera at position B and Bd, respectively. From the
+geometry between the coordinate frames, ¯mi(t) and ¯mid are
+related as follows
+¯mi = Pe + Re ¯mid.
+(1)
+Also illustrated in Figure 1, nπ ∈R3 denotes the known
+constant normal to the plane π expressed in the coordinates
+of Bd, and the constant dπ ̸= 0 ∈R1 denotes the distance
+of the landing surface π from the origin of the frame Bd. It
+can be seen from Figure 1 that for all i visual markers, the
+projection of ¯mid along the unit normal nπ is given by
+dπ = nT
+π ¯mid.
+(2)
+Using (2), the relationship in equation (1) can be expressed
+in the following manner
+¯mi =
+
+Re + 1
+dπ
+PenT
+π
+
+
+
+
+¯mid
+H
+(3)
+where H(t) ∈R3×3 represents a Euclidean Homography
+[12]. To express the above relationship in terms of the
+measurable image space coordinates of the visual markers
+relative to the camera frame, the normalized Euclidean
+coordinates mi(t), mid ∈R3 for the visual markers are
+deﬁned as
+mi = ¯mi
+zi
+,
+mid = ¯mid
+zid
+(4)
+where zi(t) and zid are the third coordinate elements in
+the vectors ¯mi(t) and ¯mid, respectively. The 2D homoge-
+neous image coordinates of the visual markers, denoted by
+pi(t), pid ∈R3, expressed relative to B and Bd, respectively,
+are related to the normalized Euclidean coordinates by the
+pin-hole model of [4] such that
+pi = Ami,
+pid = Amid
+(5)
+where A ∈R3×3 is a known, constant, upper triangular and
+invertible intrinsic camera calibration matrix [14]. Hence the
+relationship in (3) can now be expressed in terms of image
+coordinates of the corresponding feature points in B and B d
+as follows
+pi =
+zid
+zi
+
+A
+
+Re + 1
+dπ
+PenπT
+
+A−1
+
+
+
+pid
+αi
+G
+(6)
+where αi(t) ∈R1 denotes the depth ratio. The matrix G(t) ∈
+R3×3 in (6) is a full rank homogeneous collineation matrix
+deﬁned up to a scale factor [14], and contains the motion
+parameters Pe(t) and Re(t) between the frames B and Bd.
+Given pairs of image correspondences (pi(t), pid) for four
+feature points Oi, at least three of which are non-collinear,
+the set of linear equations in (6) can be solved to compute a
+unique G(t) up to a scale factor [12]. When more than four
+feature point correspondences are available, G(t) can also
+be recovered (again, up to a scale factor) using techniques
+such as least-squares minimization. G(t) can then be used
+to uniquely determine H(t), taking into account its known
+structure to eliminate the scale factor, and the fact that the
+intrinsic camera calibration matrix A is assumed to be known
+[12]. By utilizing various techniques (e.g., see [5], [12],
+[16]), H (t) can be decomposed to recover the rotational
+component Re(t) and the scaled translational component
+1
+dπ
+Pe(t); therefore, Re(t) and 1
+dπ
+Pe(t) are assumed to be
+measurable during the subsequent control development.
+B. Dynamic Model of a UAV
+In this paper, a UAV that is fully actuated with respect to
+orientation but underactuated with respect to translation is
+considered (i.e., the UAV is equipped with only one control
+input (the thrust force) to facilitate translational motion). The
+control development is focused on the rigid body dynamics
+of the UAV. That is, actuator dynamics are not considered
+within the scope of the design. After denoting v(t), ω(t) ∈
+R3 as the translational and rotational velocities of the UAV
+relative to the inertial frame I expressed in the body frame
+B, the rigid body dynamics can be described by the following
+equations [13]
+˙P
+=
+Rv
+(7)
+m˙v
+=
+−mS(ω)v + N1(·) + Ff
+(8)
+˙R
+=
+RS(ω)
+(9)
+J ˙ω
+=
+−S(ω)Jω + N2(·) + Ft
+(10)
+where S(·)
+∈
+R3×3 denotes a skew-symmetric matrix
+deﬁned in [15], J ∈R3×3 denotes the constant moment
+of inertia around the center of mass expressed in body
+frame B, and m ∈R1 represents the constant mass of the
+UAV. The term N1 (P, v, R, t) ∈R3 represents the sum of
+1466
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+gravitational forces and additional time varying unmodeled
+bounded dynamics such as aerodynamic resistance. Simi-
+larly, the term N2 (P, v, R, ω, t) ∈R3 include unmodeled,
+bounded disturbances within the rotational dynamics. The
+forces and torques on the rigid body due to the actuators are
+denoted by Ff(t), Ft(t) ∈R3, respectively, expressed in the
+body frame B, and given as follows
+Ff
+=
+B1u1
+(11)
+Ft
+=
+
+u2
+u3
+u4
+T
+(12)
+where u1(t) ∈R1 denotes the magnitude of the thrust
+force and B1
+=
+
+0
+0
+1
+T
+∈
+R3 is a constant
+unit vector in the body ﬁxed frame B in the direc-
+tion of the thrust force. The force and torque inputs
+ u1(t)
+u2(t)
+u3(t)
+u4(t) T ∈R4 are related to the
+corresponding actuator control signals through dynamics that
+are not considered within the scope of this control design.
+For example, the four rotor velocities ϖi ∈R1 for a Quad-
+Rotor UAV are related to the rigid body forces and torques
+via the following relationship [6]
+⎡
+⎢⎢⎣
+u1
+u2
+u3
+u4
+⎤
+⎥⎥⎦=
+⎡
+⎢⎢⎣
+−b
+−b
+−b
+−b
+0
+db
+0
+−db
+db
+0
+−db
+0
+k
+−k
+k
+−k
+⎤
+⎥⎥⎦
+⎡
+⎢⎢⎣
+ϖ2
+1
+ϖ2
+2
+ϖ2
+3
+ϖ2
+4
+⎤
+⎥⎥⎦
+(13)
+where d ∈R1 denotes the displacement of each rotor
+relative to the center of mass of the airframe, and k, b ∈R1
+are constant parameters that depend on construction and
+aerodynamic properties of the rotor blades.
+III. PROBLEM FORMULATION
+The control design is developed under the assumptions
+that the translational and rotational velocity signals v(t) and
+ω(t), are measurable via on-board sensors and that the UAV
+mass m and the UAV inertia matrix J are assumed to be
+known. In addition, the desired position and orientation at
+landing, deﬁned by Pd and Rd, respectively, are speciﬁed.
+The overall objective is to design the control inputs F f(t)
+and Ft(t) to regulate the UAV position P (t) to the desired
+landing position Pd. Since the UAV has only one transla-
+tional actuator oriented along a ﬁxed direction deﬁned by
+the vector B1, the force input signal Ff(t) must be designed
+in conjunction with the torque input vector F t(t) to achieve
+the desired objective. To this end, the position regulation
+error signal ep(t) ∈R3 is deﬁned to quantify the mismatch
+between the desired and actual position of the UAV as given
+by
+ep = 1
+dπ
+RT (P −Pd) = −1
+dπ
+Pe
+(14)
+where the fact that Pd = P + RPe has been utilized.
+In addition, it is assumed that a reference image (deﬁned
+by image coordinates pid) of all visual markers from the
+on-board camera when the UAV is at the desired landing
+conﬁguration deﬁned by Pd and Rd, and denoted by Bd
+is available. As discussed in Section II-A, the stereo-like
+imaging technique allows us to compute the scaled position
+1
+dπ
+Pe(t) and orientation Re(t) of the UAV relative to the
+frame Bd from a sequence of images from the camera on
+board.
+Remark 1: Since the desired landing conﬁguration deﬁned
+by Pd and Rd, and the normal vector to the landing surface
+nπ are assumed to be known, the distance dπ can be
+computed in the following manner
+dπ = −nT
+π RT
+d Pd.
+(15)
+Hence, the scale ambiguity in 1
+dπ
+Pe(t) from the decomposi-
+tion of homography can be resolved resulting in calculation
+of Pe(t). This allows for the computation of the time varying
+position P (t) and orientation R(t) of the UAV as follows
+R
+=
+RdRT
+e
+(16)
+P
+=
+Pd −RPe.
+(17)
+IV. CONTROL DEVELOPMENT
+After taking the time derivative of (14), and using (7) and
+(9), the open loop error dynamics for ep (t) can be expressed
+as follows
+˙ep = −S(ω)ep + 1
+dπ
+v.
+(18)
+To facilitate the regulation of the position error, a ﬁltered
+regulation error signal r(t) ∈R3 is deﬁned in the following
+manner
+r = v + kpep + δ
+(19)
+where kp ∈R1 denotes a positive, scalar constant, and
+δ =
+
+δ1
+δ2
+δ3
+T ∈R3 represents a constant design
+vector of positive elements that facilitates an advantageous
+coupling of the translational dynamics of the UAV to both
+the translational and rotational control inputs. After taking
+the time derivative of (19), substituting the translational
+dynamics from (8) and the open loop error dynamics from
+(18), the open loop dynamics for the ﬁltered regulation error
+signal r (t) can be developed as follows
+˙r
+=
+˙v + kp ˙ep
+=
+−S(ω)r +
+ 1
+mB1u1 −S(δ)ω
+
++ 1
+mN1 + kp
+dπ
+v
+(20)
+where the term S(ω)δ has been added and subtracted to
+the right hand side of the above equation and the fact
+that S(ω)δ = −S(δ)ω has been utilized. The bracketed
+terms in the above equation can be written in terms of a
+constant auxiliary matrix ¯B ∈R3×4 and an auxiliary vector
+¯U(t) ∈R4 in the following manner
+1
+mB1u1 −S(δ)ω = ¯B ¯U
+(21)
+where
+¯B
+=
+⎡
+⎢⎣
+0
+0
+δ3
+−δ2
+0
+−δ3
+0
+δ1
+1
+m
+δ2
+−δ1
+0
+⎤
+⎥⎦
+(22)
+¯U
+=
+ u1
+ω1
+ω2
+ω3
+T .
+(23)
+1467
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+In order to proceed with the control development, the angular
+velocity error signal η(t) ∈R3 and the desired control signal
+¯Ud(t) ∈R4 are deﬁned in the following manner
+η
+=
+ωd −ω
+(24)
+¯Ud
+=
+
+u1
+ωT
+d
+T
+(25)
+where ωd(t) ∈R3 represents a desired angular velocity
+signal. From (23), (24) and (25), the following relationship
+can be observed
+¯U = ¯Ud −ΠT η
+(26)
+where Π ∈R3×4 denotes the following constant matrix
+Π =
+⎡
+⎣
+0
+1
+0
+0
+0
+0
+1
+0
+0
+0
+0
+1
+⎤
+⎦.
+(27)
+The desired control input signal ¯Ud(t) is designed in the
+following manner
+¯Ud = ¯B+Uaux +
+
+I4 −¯B+ ¯B
+
+Uself
+(28)
+where ¯B+ = ¯BT  ¯B ¯BT −1 ∈R4×3 denotes the pseudo-
+inverse of the constant matrix ¯B, I4 ∈R4×4 represents the
+identity matrix, Uaux(t) ∈R3 and Uself(t) ∈R4 denote
+yet to be designed auxiliary control signals. In order for ¯B+
+to exist, ¯B must be of rank 3 which can be easily satisﬁed
+through proper selection of the auxiliary matrix δ (e.g., δ =
+ 0
+0
+δ3
+T where δ3 ̸= 0).
+Since the term I4 −¯B+ ¯B in (28) projects the vector
+Uself(t) into the null space of ¯B(t), the design of Uself(t)
+has no direct inﬂuence on the dynamics of r(t). Therefore
+from (20), (21), (26) and (28), the open loop dynamics for
+r(t) are given by the following expression
+˙r = −S(ω)r + Uaux −¯BΠT η + kp
+dπ
+v + ¯N1
+(29)
+where,
+¯N1(·) =
+1
+mN1(·) ∈R3, and the following two
+properties of the pseudo-inverse were employed [9]
+¯B ¯B+ = I3
+¯B
+
+I4 −¯B+ ¯B
+
+= 0
+(30)
+where I3 ∈R3×3 represents the identity matrix. Since
+Uself(t) does not appear within the dynamics of (29), the
+auxiliary control input Uself(t) can be designed to achieve
+a secondary control objective, such as the damping of the
+orientation error of the UAV. To this end, orientation error
+signal eθ(t) =
+
+eθ1(t)
+eθ2(t)
+eθ3(t)
+
+∈R3 is deﬁned
+in terms of the axis-angle representation [15] of the orienta-
+tion matrix Re(t) in the following manner
+eθ = µφ
+(31)
+where µ(t) ∈R3 represents a unit axis of rotation, φ(t) ∈R1
+denotes the rotation angle about µ(t) (conﬁned to the region
+−π < φ(t) < π) and is explicitly deﬁned in the following
+manner
+φ = cos−1
+1
+2 (tr(Re) −1)
+
+S (µ) = Re −RT
+e
+2 sin(φ)
+(32)
+where the notation tr(·) denotes the trace of a matrix. After
+taking the time derivative of (31), the kinematics of the
+moving UAV frame is expressed as follows [2]
+˙eθ = −Lωω
+(33)
+where the bounded, invertible, Jacobian like term Lω(t) ∈
+R3×3 is given by the following expression
+Lω = I3 −φ
+2 S (µ) +
+⎛
+⎜
+⎜
+⎝1 −
+sinc (φ)
+sinc2
+φ
+2
+
+⎞
+⎟
+⎟
+⎠S (µ)2 ,
+sinc (φ) = sin (φ)
+φ
+.
+(34)
+For more details on the derivation of (34), the reader is
+referred to [2]. The kinematics for the UAV can be rewritten
+in terms of the backstepping velocity error signal η(t) and
+the desired control signal ¯Ud(t) in the following manner
+˙eθ = Lω
+η −Π ¯Ud
+ .
+(35)
+After substituting for ¯Ud(t) from (28), ˙eθ (t) can be rewritten
+in the following manner
+˙eθ
+=
+
+Lωη −LωΠ ¯B+Uaux
+
+−LωΠ
+
+I4 −¯B+ ¯B
+
+Uself
+=
+−BT
+mUself + N3
+(36)
+where BT
+m(t) ∈R3×4 is a bounded, differentiable matrix
+deﬁned as follows
+BT
+m = LωΠ I4 −¯B+ ¯B
+(37)
+and the bracketed terms in (36) have been redeﬁned by the
+single term N3(·) ∈R3.
+Based on the subsequent stability analysis, the control
+signals Uaux(t) and Uself(t) are designed as follows
+Uaux
+=
+−ep −krr −kp
+dπ
+v −r ζ2
+1
+ε1
+(38)
+Uself
+=
+kθBmTanh (eθ)
+(39)
+where kr, kθ ∈R1 are positive, scalar control gains chosen
+such that kp > kr > 0, ε1 ∈R1 is a positive, scalar constant,
+Tanh(eθ) ∈R3 is a vector function deﬁned in the following
+manner
+Tanh (eθ) =
+
+tanh (eθ1)
+tanh (eθ2)
+tanh (eθ3)
+T
+(40)
+and ζ1(·) ∈R1 is a known positive, scalar, differentiable,
+non-decreasing bounding function selected such that
+ ¯N1
+ ≤ζ1 (∥P ∥s , ∥v∥s)
+(41)
+and the function ∥.∥s is deﬁned in the following manner
+∥y∥s =
+
+yT y + σ, ∀y ∈R3
+(42)
+where σ ∈R1 represents a small positive constant.
+Remark 2: The function in (42) has been utilized instead
+of the standard Euclidean norm to ensure that the time
+1468
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+derivative of ζ1(·) in (41) is well-deﬁned. The time derivative
+of ∥.∥s is expressed as follows
+d
+dt ∥y∥s =
+yT ˙y
+
+yT y + σ
+, ∀y ∈R3.
+(43)
+Remark 3: The subsequent stability analysis will require
+that Uself(t) ∈L∞be independent of the boundedness of
+eθ(t) thus motivating the design of Uself(t) in terms of
+Tanh(eθ) .
+The control force input Ff(t) can be obtained from ¯Ud(t)
+in (28) as follows
+Ff = B2 ¯Ud
+(44)
+where B2 ∈R3×4 is a constant matrix deﬁned as follows
+B2 =
+⎡
+⎣
+0
+0
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+⎤
+⎦.
+In order to design the control torque input F t(t), the open-
+loop dynamics of η(t) are formulated by differentiating (24)
+and substituting the rotational dynamics given in (10) as
+follows
+J ˙η = J ˙ωd + S(ω)Jω −N2 −Ft.
+(45)
+The signal ˙ωd(t) of (45) is computed from the time derivative
+of ¯Ud(t) in (28); moreover the resulting expression can be
+written as a sum of two terms ˙¯U d1(t) ∈R4 and ˙¯U d2(t) ∈R4,
+where ˙¯Ud1(t) is composed of the known terms of ˙¯U(t), and
+˙¯U d2(t) is composed of uncertain terms (see [3] for explicit
+forms of ˙¯U d1(t) and ˙¯U d2(t)). Hence, (45) can be rewritten
+as
+J ˙η = JΠ ˙¯U d1 + S(ω)Jω −¯N2 −Ft
+(46)
+where the uncertain terms have been lumped into a single
+term ¯N2(t) ∈R3 which is deﬁned as follows
+¯N2 = N2 −JΠ ˙¯U d2.
+(47)
+Based on the subsequent stability analysis, the control torque
+input Ft(t) is designed in the following manner
+Ft = JΠ ˙¯U d1 + S(ω)Jω + krη −Π ¯BT r + η ζ2
+2
+ε2
+(48)
+where ε2 ∈R1 represents a positive, scalar constant, and
+ζ2(·) ∈R1 is a known positive, scalar, non-decreasing
+bounding function constructed such that
+ ¯N2
+ ≤ζ2 (∥P ∥, ∥v∥, ∥ω∥) .
+(49)
+A. Stability Analysis
+Theorem 1: Given the error dynamics of (18), (29) and
+(45), the translational force input and the rotational torque
+input developed in (44) and (48), respectively, guarantees
+that the position error signal ep(t) is exponentially regulated
+into a neighborhood about zero (GUUB)
+∥ep(t)∥≤α1 exp (−α2t) + α3
+(50)
+where α1, α2, α3 ∈R1 are adjustable, positive constants.
+Proof: In order to illustrate the position regulation result
+of (50), the following non-negative scalar function is deﬁned
+V = 1
+2dπeT
+p ep + 1
+2rT r + 1
+2ηT Jη.
+(51)
+After taking the time derivative of (51), substituting the
+dynamics for ˙ep(t), ˙r(t) and ˙η(t) from (18), (29) and (45),
+and substituting the expressions for Uaux(t) and Ft(t) from
+(38) and (48), the time derivative for V (t) can be expressed
+in the following manner
+˙V
+≤
+−kr ∥ep∥2 −kr ∥r∥2 −kr ∥η∥2
++
+
+∥r∥ζ1 −∥r∥2 ζ2
+1
+ε1
+
++
+
+∥η∥ζ2 −∥η∥2 ζ2
+2
+ε2
+
++
+
+∥ep∥∥δ∥−k ∥ep∥2
+(52)
+where k = kp−kr ∈R1 is a positive constant (recall that the
+control gain kr in (38) is selected such that kp > kr > 0).
+After applying the nonlinear damping argument from [8],
+each of the bracketed terms in the above expression can be
+upper-bounded as follows
+∥r∥ζ1
+
+1 −∥r∥ζ1
+ε1
+
+≤
+ε1
+∥η∥ζ2
+
+1 −∥η∥ζ2
+ε2
+
+≤
+ε2
+∥ep∥(∥δ∥−k ∥ep∥)
+≤
+∥δ∥2
+k
+(53)
+From (52),
+˙V (t) can be further upper bounded in the
+following manner
+˙V ≤−kr ∥z∥2 + ε
+(54)
+where z =
+ eT
+p
+rT
+ηT T ∈R9 and ε = ε1 + ε2 +
+∥δ∥2
+k
+∈R1. Note that V (t) in (51) satisﬁes the following
+inequality
+β11 ∥z(t)∥2 ≤V (t) ≤β12 ∥z(t)∥2
+(55)
+where the constant parameters β11, β12 ∈R1 are given by
+β11 = min
+1
+2, λmin (J)
+
+, β12 = max
+1
+2, λmax (J)
+
+(56)
+and λmin(J), λmax(J) ∈
+R1 denote the minimum and
+maximum eigenvalues of the inertia matrix J, respectively.
+From (51), (54) and (55), the position error signal e p (t) can
+be upperbounded by the following
+∥ep(t)∥≤V (t) ≤α1 exp(−α2t) + α3
+(57)
+where α1 = V (0), α2 = kr
+β12
+, and α3 =
+ε
+α2
+are positive
+scalar constants.
+From (54) and (55), it is straightforward to see that
+ep(t), r(t), η(t) ∈L∞. Since R(t) ∈L∞and Pd ∈L∞,
+we can conclude that P (t) ∈L∞based on the position
+1469
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+
+error signal deﬁnition of (14). From (19), we observe that
+v(t) ∈L∞, hence, Uaux(t) ∈L∞. Based on the fact
+that ep(t) and v(t) are bounded, we can use (18) to show
+that ˙ep(t) ∈L∞. After utilizing (20), (28) and (29), we
+can determine that ˙r(t), ˙v(t) ∈L∞, and hence, ˙Uaux(t) ∈
+L∞. Since Uself(t) was designed to be bounded through
+the utilization of Tanh(·), it can be shown from (28) that
+¯Ud(t) ∈L∞, and hence, ωd(t), ¯U(t), u1(t), ω(t) ∈L∞.
+Based on the time derivative of Uself(t) in [3], we observe
+that ˙Uself(t) ∈L∞. Hence ˙¯U d(t) ∈L∞, and therefore, it
+can be shown that ˙ωd(t), Ft(t), ˙ω(t), ˙η(t) ∈L∞. From the
+preceding stability trace, we can conclude that Ff(t) ∈L∞
+from (44). Therefore, all signals remain bounded during
+closed loop operation.
+Remark 4: With Uself(t) designed as shown in (39), the
+expression of (36) can now be written as follows
+˙eθ = −kθBT
+mBmTanh (eθ) + N3
+(58)
+It is apparent from (58) that Uself(t) has been designed to
+damp the orientation error signal eθ(t), since Theorem 1 has
+illustrated that N3(·) ∈L∞.
+V. CONCLUSIONS
+In this paper, a nonlinear controller was developed to
+achieve position regulation of a rigid, underactuated aerial
+vehicle during a landing approach using position information
+obtained from an on-board monocular camera. The controller
+was shown to achieve globally uniform ultimate bounded-
+ness (GUUB) in position regulation error despite uncertain
+bounded disturbances in the system dynamics. Additionally,
+the null space of an input matrix in the controller was
+exploited to achieve a secondary control objective of damp-
+ing the orientation error of the UAV relative to the desired
+orientation at landing.
+REFERENCES
+[1] A. Aguiar, and J. Hespanha, “Position Tracking of Underactuated
+Vehicles,” Proceedings of the American Control Conference, pp. 1988-
+1993, Denver, CO, June 2003.
+[2] J. Chen, D. M. Dawson, W. E. Dixon, and A. Behal,“Adaptive
+Homography-Based Visual Servo Tracking for Fixed and Camera-in-
+Hand Conﬁgurations,” IEEE Transactions on Control System Technol-
+ogy, to appear.
+[3] V. K.
+Chitrakaran, D. M. Dawson, J. Chen, and M. Feem-
+ster, “Vision Assisted Landing of an Unmanned Aerial Vehicle,”
+Clemson University CRB Technical Report, CU/CRB/8/8/05/#1,
+http://www.ces.clemson.edu/ece/crb/publictn/tr.htm, Aug. 2005.
+[4] O. Faugeras, Three-Dimensional Computer Vision, The MIT Press,
+ISBN: 0262061589, 1993.
+[5] O. Faugeras, and F. Lustman, “Motion and Structure From Motion
+in a Piecewise Planar Environment,” International Journal of Pattern
+Recognition and Artiﬁcial Intelligence, Vol. 2, No. 3, pp. 485–508,
+1988.
+[6] T. Hamel, R. Mahony, R. Lozano, and J. Ostrowski, “Dynamic Mod-
+elling and Conﬁguration Stabilization for an X-4 Flyer,” Proceedings
+of the IFAC World Congress, Barcelona, Spain, July 2002.
+[7] R. Horn, and C. Johnson, Matrix Analysis, Cambridge University
+Press, ISBN: 0521305861, 1985.
+[8] M. Krsti´c, I. Kanellakopoulos, and P. Kokotovi´c, Nonlinear and
+Adaptive Control Design, New York, NY: John Wiley and Sons, 1995.
+[9] Y. Nakamura, Advanced Robotics: Redundancy and Optimization,
+Addison-Wesley, ISBN: 0201151987, 1991.
+[10] O. Shakernia, Y. Ma, T. J. Koo, and S. Sastry, “Landing an Unmanned
+Air Vehicle: Vision Based Motion Estimation and Nonlinear Control,”
+Asian Journal of Control, Vol. 1, No. 3, pp. 128–145, 1999.
+[11] C. Sharp, O. Shakernia, and S. Sastry, “A Vision System for Landing
+of an Unmanned Aerial Vehicle,” Proceedings of the International
+Conference on Robotics and Automation, Vol. 2, 2001, pp. 1720 -
+1727.
+[12] Y. Ma, S. Soatto, J. Koˇseck´a, and S. Sastry, An Invitation to 3D Vision,
+Springer-Verlag, ISBN: 0387008934, 2003.
+[13] D. Suter, T. Hamel, and R. Mahony, “Visual Servo Control Using
+Homography Estimation for the Stabilization of an X4-Flyer,” Pro-
+ceedings of the IEEE Conference on Decision and Control, Las Vegas,
+NV, 2002, pp. 2872-2877.
+[14] E. Malis and F. Chaumette, “2 1/2 D Visual Servoing with Respect
+to Unknown Objects Through a New Estimation Scheme of Camera
+Displacement,” International Journal of Computer Vision, Vol. 37, No.
+1, 2000, pp. 79–97.
+[15] M. W. Spong, and M. Vidyasagar, Robot Dynamics and Control, John
+Wiley and Sons, ISBN: 047161243, 1989.
+[16] Z. Zhang, and A. R. Hanson, “Scaled Euclidean 3D Reconstruction
+Based on Externally Uncalibrated Cameras,” IEEE Symposium on
+Computer Vision, 1995, pp. 37–42.
+See [3] for appendix A.
+1470
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on April 17,2024 at 10:24:09 UTC from IEEE Xplore.  Restrictions apply. 
+

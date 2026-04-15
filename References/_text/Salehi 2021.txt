@@ -1,0 +1,992 @@
+Constrained Image-Based Visual Servoing using Barrier Functions
+Iman Salehi, Ghananeel Rotithor, Ryan Saltus, Ashwin P. Dani
+Abstract— This paper presents a novel constrained image-
+based visual servoing (IBVS) approach that guarantees target
+features to remain within the camera ﬁeld of view (FOV)
+for the duration of the task. Barrier function (BF) is used
+to transform the feature dynamics on the image plane into
+equivalent dynamics with full state constraints. An IBVS
+controller is designed for the full state constrained system that
+regulates the original system. A stability analysis is provided
+to prove the local asymptotic convergence of the state error in
+the sense of Lyapunov. Simulation and robot implementation
+results show the efﬁciency of the proposed method to reach
+the desired features from any initial conﬁguration while the
+visibility constraints of the feature points are being realized.
+I. INTRODUCTION
+Image-based visual servo (IBVS) is a closed-loop control
+scheme that uses camera image feedback to control the
+motion of the robot. In the popular eye-in-hand conﬁgu-
+ration, the camera is mounted near the end-effector of a
+robot manipulator whose motion can be controlled using the
+information from the images for tasks such as grasping. In
+another scenario, the camera mounted on a mobile robot
+can also use image feedback to regulate its position to a
+desired goal position or for target tracking applications. It is
+essential to control the joint motion of the robot such that
+all the detected feature points remain in the ﬁeld of view
+(FOV) for the continuous availability of image feedback.
+However, maintaining visibility of the feature points is a
+difﬁcult task to achieve due to multiple factors regarding
+the geometry of the scene and the camera [1], [2]. The
+feature points’ dynamics are governed by their time-varying
+distance from the camera, which is an unknown parameter.
+In traditional IBVS control, approximations such as constant
+depth is used [3]. Another source of uncertainty is due to
+inaccurate camera calibration, as intrinsic camera parameters
+are required for the computation of the image Jacobian.
+Such uncertainties in the feature dynamics result in unde-
+sired transients and deformed camera (robot) trajectories,
+leading to loss of visibility of the feature points. A standard
+method to remedy such transients and unwanted trajectories
+in traditional IBVS is to tune the control gains empirically,
+This work was in part supported by a Space Technology Research
+Institutes grant (number 80NSSC19K1076) from NASA Space Technology
+Research Grants Program, in part by Ofﬁce of Naval Research Award No.
+N00014-20-1-2040, and in part by the Ofﬁce of the Secretary of Defense
+under Agreement Number W911NF-17-3-0004.
+Iman
+Salehi,
+Ghananeel
+Rotithor,
+Ryan
+Saltus,
+and
+Ashwin
+P.
+Dani
+are
+with
+the
+Department
+of
+Electrical
+and
+Computer
+Engineering
+at
+University
+of
+Connecticut,
+Storrs,
+CT
+06269.
+Email:
+{iman.salehi; ghananeel.rotithor;
+ryan.saltus; ashwin.dani}@uconn.edu.
+which can be laborious and still may not guarantee the loss of
+features from the FOV. Recently, approaches using switching
+control which switches between image feedback and predic-
+tor methods are proposed in [4], [5]. In [6], a new IBVS
+controller for leader-follower scenario is developed using the
+concept of error transformation [7]. In contrast, this paper
+presents a constrained IBVS method by utilizing advances
+of barrier function (BF) method [8] to design a camera
+velocity controller such that the feature points maintain the
+user prescribed constraints/bounds. The controller stability is
+shown using Lyapunov analysis.
+The unknown parameters in the image Jacobian can be es-
+timated to reduce the uncertainty and improve the IBVS tra-
+jectories. In [9]–[13], observer-based methods are presented
+to estimate the time-varying depth of feature points, which
+can be used to reduce uncertainty in the image Jacobian.
+In [14], the authors propose an adaptive tracking controller,
+which ensures global asymptotic position and orientation
+tracking using an uncalibrated camera. However, the IBVS
+trajectories can be constrained to ensure the feature points
+remain in the FOV without estimating the unknown param-
+eters in the image Jacobian. In [15], an iteratively computed
+trajectory is tracked to maintain the features in the camera
+FOV. In [7], [16], [17], the transient response of the error
+dynamics is constrained through logarithmic transformations
+to ensure that the feature points remain in the camera FOV. In
+[1], a task prioritization based control law is developed that
+maximizes motion perceptibility to keep multiple moving
+targets in the FOV. In [18], a position-based visual servo
+(PBVS) and a backward motion switching controller is used
+to achieve the same objective. A dynamic visibility checking
+algorithm is proposed in [19] to check if the features stay
+in FOV before applying control. In [20], an adaptive image-
+based controller with visibility constraint for leader-follower
+formation is developed considering mobile robot kinematics.
+A convex 3D visible set is in [21] introduced for PBVS, and a
+trajectory in this set is followed to ensure feature visibility. In
+[22], a constrained optimization method is developed to plan
+a trajectory which is then tracked using an IBVS controller.
+The constraints are derived from the workspace objects and
+FOV requirements for feature points. In [23], a homography-
+based visual servo controller is developed for nonholonomic
+mobile robots with FOV constraints.
+Barrier Lyapunov function (BLF) is a method used to de-
+sign controllers for systems with output and state constraints.
+The constraints are, in general, expressed as the system
+state or the output bounds. In [24], BLF is deﬁned only to
+constrain the output or the partial state of the system. The
+control barrier function (CBF) approach is another method
+978-1-7281-9077-8/21/$31.00 ©2021 IEEE
+2021 IEEE International Conference on Robotics and Automation (ICRA 2021)
+May 31 - June 4, 2021, Xi'an, China
+14254
+2021 IEEE International Conference on Robotics and Automation (ICRA) | 978-1-7281-9077-8/21/$31.00 ©2021 IEEE | DOI: 10.1109/ICRA48506.2021.9560983
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+Fig. 1.
+A moving camera looking at a static scene. Fc is the current
+camera frame, Fc∗is the desired coordinate frame, Pi is a static point, pi
+is the current projection of that point, p∗
+i is the desired projection of that
+point.
+to control nonlinear systems. CBF uses a Lyapunov-like
+function to certify a control policy that achieves forward
+invariance of a safe set [25]–[28] by evaluating if solutions
+of the dynamical system remain inside a compact set for
+all time. The CBF approach uses numerical optimization
+to synthesize the controller. In contrast, this paper utilizes
+barrier transformation to constrain the full state of the IBVS
+system, i.e., all the feature point states used in the IBVS task.
+This paper focuses on the development of a constrained
+IBVS controller that guarantees the desired features never
+leave the camera FOV. A BF is used to transform the feature
+dynamics with full-state visibility constraints to an equivalent
+system dynamics with no constraints. An IBVS controller
+is developed for the transformed dynamics that, through
+the stability analysis, is proven to be locally asymptotically
+stable. The proposed method is evaluated through numerical
+simulations, and its performance is demonstrated on a Baxter
+robot to illustrate the method’s ability to adapt to real-world
+applications.
+Throughout this paper, for ease of notation, the time
+dependency argument of the variables is dropped, e.g.,
+pi(t) = pi, unless necessary for clarity.
+II. PERSPECTIVE CAMERA MOTION MODEL AND
+UNCONSTRAINED IBVS
+Consider a moving camera attached to the robot arm in
+eye-in-hand conﬁguration, viewing objects in a static scene.
+Let Fc be a right handed orthogonal coordinate system
+attached to the camera such that the Z axis of Fc is collinear
+with the optical axis of the camera and the origin of Fc is
+at the principal point of the camera. Let Pi ∈R3 be the
+Euclidean coordinates of the static point in Fc and ¯Pi ∈R3
+be the normalized Euclidean coordinates (see Fig. 1).
+Pi = [Xi, Yi, Zi]T ,
+¯Pi =
+Xi
+Zi
+, Yi
+Zi
+, 1
+T
+(1)
+An image plane feature point can be constructed from the
+normalized Euclidean coordinates such that pi = [ Xi
+Zi , Yi
+Zi ] ∈
+S2 ⊂R2. The objective of IBVS is to regulate image plane
+feature error to zero. Let the state vector for the current
+features and goal feature locations in the image plane be
+denoted by s(t) =
+
+p1(t)T
+· · ·
+pm(t)T T ∈S2m ⊂
+R2m and s∗=
+
+p∗T
+1
+· · ·
+p∗T
+m
+T , where m > 3 is
+the number of feature points. The dynamics of the multiple
+feature points s can be expressed as
+˙s = Ls (s, Z) ξ
+(2)
+where Ls ∈R2m×6 is termed as the interaction matrix, ξ =
+
+vT
+ωT T is a vector of the linear and angular camera
+velocities expressed in the camera reference frame, i.e., Fc,
+such that v ∈R3 and ω ∈R3, and Z = [Z1 · · · Zm]T
+are the time-varying depth of the feature points in the
+camera reference frame. The inertial reference frame, FB,
+considered in this paper is the base frame of the robot. The
+camera control velocities ξ are computed relative to the base
+frame by suitable rotation matrix for experimental purposes.
+In the feature dynamics (2), Ls =
+
+LT
+s1
+· · ·
+LT
+sm
+T ,
+where
+Lsi=
+ −1
+Zi
+0
+pi,1
+Zi
+pi,1pi,2
+−(1 + p2
+i,1)
+pi,2
+0
+−1
+Zi
+pi,2
+Zi
+1 + p2
+i,2
+−pi,1pi,2
+−pi,1
+
+, (3)
+with pi,1(t) and pi,2(t) denote the ﬁrst and second element
+of feature point pi(t), ∀i = 1, · · · , m. The corresponding
+error vector between the current and the goal conﬁguration
+is the deﬁned as e(t) = s(t)−s∗. The derivative of the error
+vector can be expressed in terms of camera velocity as
+˙e = Lsξ.
+(4)
+Assuming that 3 or more feature points are available in the
+FOV, the unconstrained IBVS control law is given by
+ξ = −γbL†
+se
+(5)
+where γ ∈R+ is a constant and bLs is an approximation of Ls
+as the true depth Zi, ∀i = 1, · · · , m is unknown. The right
+pseudo-inverse of bLs is given by bL†
+s = (bLT
+s bLs)−1bLT
+s . The
+control law ensures local asymptotic stability when bL†
+sLs >
+0, i.e., 3 or more feature points are available in the FOV for
+all time. If the feature points leave the FOV, the controller
+will fail.
+A Barrier function based transformation is used in the
+following section to design the camera velocity controller
+such that the feature vectors s are regulated to the desired
+constant feature vectors s∗with an additional objective that
+they remain inside the camera FOV by satisfying a user
+prescribed state constraints for all time.
+III. BARRIER FUNCTIONS
+Consider a locally Lipschitz continuous nonlinear dynam-
+ical system of the following form
+˙pi(t) = Lsiξ.
+(6)
+The following logarithmic barrier function candidate
+B (pi,j; ai,j, Ai,j): R →R, is considered in this paper:
+B (pi,j; ai,j, Ai,j) ≜log
+Ai,j
+ai,j
+ai,j −pi,j
+Ai,j −pi,j
+
+,
+(7)
+∀pi,j ∈(ai,j, Ai,j), where ai,j ∈R and Ai,j ∈R are
+lower and upper bounds of each feature point, log(·) is a
+14255
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+natural logarithm, and j = 1, 2. From (7), it can be seen
+that
+lim
+pi,j→ai,j,Ai,jB (pi,j; ai,j, Ai,j) = ±∞. Using (7), the
+system in (6) can be transformed into a constrained state
+xi = [xi,1, xi,2]T ∈S2 ⊂R2 as follows
+xi,j = B (pi,j; ai,j, Ai,j) ,
+(8)
+pi,j = B−1 (xi,j; ai,j, Ai,j) ,
+(9)
+∀i = 1, · · · , m and ∀j = 1, 2, where
+B−1(xi,j; ai,j, Ai,j) =
+ai,jAi,j
+
+−e
+−xi,j
+2
++ e
+xi,j
+2
+
+−Ai,je
+−xi,j
+2
++ ai,je
+xi,j
+2
+.
+(10)
+Note that due to the monotonic characteristic of the natural
+logarithm the inverse function (9) exists within the range of
+its deﬁnition.
+Using the chain rule of differentiation, i.e.,
+dpi,j
+dt
+=
+∂pi,j
+∂xi,j
+dxi,j
+dt , where
+∂pi,j
+∂xi,j
+=
+Ai,ja2
+i,j −ai,jA2
+i,j
+a2
+i,jexi,j −2ai,jAi,j + A2
+i,je−xi,j
+(11)
+after some algebraic manipulations the new dynamics in xi,j
+yields
+˙xi = KiLsiξ,
+(12)
+where Ki ∈R2×2 is given by
+Ki = diag (ki,1, ki,2)
+(13)
+for ki,j =
+
+∂pi,j
+∂xi,j
+−1
+, and Lsi
+ 
+B−1(xi,1), B−1(xi,2)
+
+, Zi
+
+is given by (3).
+Let X =
+
+xT
+1 , · · · xT
+m
+T
+∈R2m be a state vector
+constructed using a collection of constrained feature point
+state. By collecting the individual constrained state dynamics
+in (12), the dynamics of the constrained feature point state
+X is obtained
+˙X = KLsξ,
+(14)
+where K = blkdiag (K1, · · · , Km) ∈R2m×2m with Ki
+given in (13).
+Remark 1: The upper and lower bounds for feature points
+can be selected using the perspective projection formulae,
+i.e., ai,1 = u−cx
+fx , Ai,1 = ¯u−cx
+fx , ai,2 = v−cy
+fy , Ai,2 = ¯v−cy
+fy .
+(u, v) and (¯u, ¯v) are lower and upper bounds on pixel
+coordinates, which can be selected based on the image size.
+(cx, cy) is the center of the image, and fx, fy are the camera
+focal lengths.
+IV. CONSTRAINED IBVS CONTROLLER
+A. Control Development
+A camera velocity controller is developed in this section
+to regulate the state X(t) to a constant value X∗. To achieve
+the control objective, a controller is developed using the
+transformed state space dynamics (14).
+For the system in (14), consider the multiple feature error
+vector ex(t) ∈R2m deﬁned by
+ex(t) = X(t) −X∗,
+(15)
+where the vector X∗contains the desired values of the
+features in the constrained space. Taking the derivative of
+(15) with respect to time and substituting for (14), the
+following error dynamics is obtained:
+˙ex(t) = KLsξ.
+(16)
+The control input is designed to compute camera velocities
+such that the feature points are aligned with the desired
+feature points in the constrained state space. The designed
+velocity control input is given by
+ξ = −γbL†
+sKT ex.
+(17)
+Substituting the controller (17) in (16) yields the following
+closed-loop dynamics
+˙ex(t) = −γKLsbL†
+sKT ex.
+(18)
+B. Stability Analysis
+The stability result of the closed-loop error dynamics (18)
+derived using Lyapunov stability analysis is stated in the
+following Theorem.
+Theorem 1: Given the velocity controller in (17) the
+closed-loop error dynamics in (18) is locally asymptotically
+stable.
+Proof: Consider the auxiliary error system
+e′ = bL†
+sKT ex.
+(19)
+Taking the time derivative of the auxiliary error system and
+using (16) and (17) yields
+˙e′ = bL†
+sKT ˙ex + ˙bL
+†
+sKT ex + bL†
+s
+dKT
+dX ex ◦˙X
+= −γbL†
+sKT KLse′ + ˙bL
+†
+sKT ex −γbL†
+s
+dKT
+dX ex ◦KLse′
+= −γ
+
+bL†
+sKT KLs + G(ex)
+
+e′
+(20)
+where ◦denotes the Hadamard product and G(ex) ∈R6×6
+is a matrix, which is equal to 0 at ex = 0. Using Lyapunov
+analysis of Theorem 4.7 of [29], the error system in (20)
+is locally asymptotically stable with respect to the equilib-
+rium point ex = e′ = 0 if the linearized system matrix
+−bL†
+sKT KLs
+
+s=s∗is Hurwitz. Using the fact that LsbL†
+s ≥0
+in a small region around the origin, rank{LsbL†
+s} = 6,
+rank{K} = 2m, and K = KT , it can be concluded
+that KT LsbL†
+sK
+
+s=s∗has 6 positive eigenvalues (cf. [30])
+and the rest of 2m −6 eigenvalues are zeros. Using The-
+orem 1.3.2 in [30], the 6 × 6 matrix −bL†
+sKT KLs
+
+s=s∗
+has the same eigenvalues as −KT LsbL†
+sK
+
+s=s∗without the
+2m −6 zeros. Using the previous two arguments it can
+be concluded that all eigenvalues of −bL†
+sKT KLs
+
+s=s∗are
+negative; thus it is Hurwitz. As a result, ∃δ > 0 such that
+if ∥e′ (0) ∥< δ then lim
+t→∞∥e′ (t) ∥= 0 and for a sufﬁciently
+small δ, e′ = bL†
+sKT ex ̸= 0 if ex ̸= 0. The conﬁguration
+KT ex ∈Ker
+n
+bL†
+s
+o
+corresponds to local minima and such a
+conﬁguration does not exist in the local region of attraction.
+14256
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+Remark 2: In general, it is difﬁcult to estimate this local
+region of convergence. The matrix bL†
+sKT KLs can be made
+full rank by selecting the appropriate feature points (greater
+than or equal to 3), and by making reasonable approxima-
+tions in bLs.
+Remark 3: Using similar arguments of the result of
+Lemma 3 of [31], the controller designed in (17) regulates
+the feature point state s(t) of the dynamics (2) to the desired
+feature points s∗while maintaining the FOV constraints
+given that the s(t0) are in the FOV.
+0
+5
+10
+15
+20
+25
+30
+35
+40
+45
+50
+-0.5
+-0.4
+-0.3
+-0.2
+-0.1
+0
+0.1
+0.2
+0.3
+(a)
+-200
+0
+200
+400
+600
+-100
+0
+100
+200
+300
+400
+500
+600
+(b)
+Fig. 2.
+Simulation results for the IBVS controller without barrier trans-
+formation. (a) Image plane feature values along with dashed lines showing
+the barrier limits. (b) Pixel trajectories with the box indicating image size.
+V. SIMULATION AND EXPERIMENTAL VALIDATION
+A. Simulation
+A simulation is carried out to verify the efﬁciency of the
+developed constrained IBVS controller. The simulation is
+performed in MATLAB 2018a using the Visual Servoing
+Toolbox in [32] for a total of 50 s with standard four
+(m = 4) co-planar feature points for the IBVS task. The
+feature point locations with respect to the inertial frame FB
+whose origin is at [0, 0, 0]T are P1 = [−0.25, 0, 0.25]T ,
+P2 = [0.25, 0, 0.25]T , P3 = [−0.25, 0, −0.25]T and P4 =
+[0.25, 0, −0.25]T . Note that the known 3D locations of the
+feature points are not used in the IBVS task. A desired pose
+for the camera is randomly selected in the inertial frame FB
+such that the feature points are visible in the image when the
+camera is at the desired pose. The positions of the desired
+image-plane feature coordinates based on the goal pose are
+s∗= [0.1667, −0.1667, 0.1667, 0.1667,
+−0.1667, 0.1667, −0.1667, −0.1667]T
+(21)
+0
+5
+10
+15
+20
+25
+30
+35
+40
+45
+50
+-0.3
+-0.2
+-0.1
+0
+0.1
+0.2
+0.3
+(a)
+0
+200
+400
+600
+-100
+0
+100
+200
+300
+400
+500
+600
+(b)
+Fig. 3.
+Simulation results for the IBVS controller with barrier transfor-
+mation. (a) Image plane feature values along with dashed lines showing the
+barrier limits. (b) Pixel trajectories with the box indicating the image size.
+The initial image plane feature points are given by
+s(t0) = [0.1010, −0.0383, 0.0009, 0.1080
+−0.0896, 0.0340, −0.0008, −0.0958]T
+(22)
+The image resolution is assumed to be 512 × 512. A focal
+length of 1000 pixels in the X and Y direction is used
+and the center pixel is set to (256, 256). The sampling time
+for the simulation is chosen to be 0.03s corresponding to
+30Hz frequency which is a reasonable assumption for the
+current camera hardware. Based on the camera calibration
+matrix C and the resolution of the image, the bounds for
+all the image-plane feature points are chosen to be ai,j =
+−0.256, Ai,j = 0.256
+∀i = 1, · · · , m and j = 1, 2. The
+depth in the approximated interaction matrix bLs is set to
+0.9m. Figs 2(a) and 3(a) show the image plane feature
+trajectories with traditional and constrained IBVS controllers
+respectively. The dashed black lines show the bounds on
+the image plane features derived from the image size and
+the calibration matrix. Fig. 2(a) shows that with the non-
+constrained IBVS controller, the image plane features cross
+the bounds and leave the FOV. At this point, a real servoing
+task is expected to fail. However, for the demonstration, the
+task is continued until the feature points converge the desired
+feature points. On the other hand, as it is shown in Fig.
+4(a), the barrier constrained IBVS controller deforms the
+camera trajectory in such a way that the image plane features
+never cross the dashed black lines. As a result, the features
+always remain in the FOV. A 2D image pixel depiction of the
+feature trajectories is shown in Figs. 2(b) and 3(b). The box
+drawn with black lines represents the size of the image and
+features inside the box are in the FOV. The image feature
+pixel trajectories leave the box and hence the FOV as seen
+from Figure 2(b). However, with the IBVS controller in the
+constrained space, shown in Fig. 3(b), the image feature pixel
+trajectories always stay inside the box and hence remain in
+the FOV.
+B. Robot Implementation
+To demonstrate the utility of the proposed method in
+practice, two sets of robot experiments are carried out. Both
+experiments use a wrist-mounted camera on the right arm of
+a Baxter research robot to observe a planar target at a rate
+of 30 fps with resolution 640 × 400 as depicted in Fig. 6. In
+the ﬁrst robot experiment, the target consists of four white
+circles, which are used against a black background for easy
+thresholding based image segmentation. The white circles are
+segmented from the background and the centroids are used as
+feature points for IBVS. The image processing and controller
+implementation is carried out in real-time using a desktop
+with Intel Core2Duo CPU with a clock speed of 2.26 GHz
+and 4 GB RAM running Ubuntu 14.04. The algorithm is
+implemented in MATLAB 2018a and runs at 30 Hz matching
+the camera frequency. The camera calibration matrix for
+Baxter’s right-hand camera obtained through the Baxter API
+14257
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+0
+20
+40
+60
+80
+100
+0
+20
+40
+60
+80
+100
+(a)
+0
+20
+40
+60
+80
+100
+-0.015
+-0.01
+-0.005
+0
+0.005
+0.01
+(b)
+200
+250
+300
+350
+400
+450
+50
+100
+150
+200
+250
+300
+350
+(c)
+Fig. 4.
+Experimental results for the IBVS controller with barrier transformation applied on four white circles laid on a black surface, where the center
+of each circle denotes the feature image coordinates. (a) Feature error norm. (b) Camera velocities (c) Pixel trajectories with the box indicating the image
+size.
+0
+5
+10
+15
+20
+25
+30
+0
+50
+100
+150
+(a)
+0
+5
+10
+15
+20
+25
+30
+-0.2
+0
+0.2
+0.4
+0.6
+(b)
+200
+300
+400
+100
+150
+200
+250
+300
+350
+(c)
+0
+5
+10
+15
+20
+25
+30
+0
+20
+40
+60
+80
+100
+120
+(d)
+0
+5
+10
+15
+20
+25
+30
+-0.2
+-0.1
+0
+0.1
+0.2
+(e)
+200
+300
+400
+100
+150
+200
+250
+300
+350
+(f)
+Fig. 5.
+Experimental results for the IBVS controller without (top row) and with (bottom row) barrier transformation applied on Aruco’s marker. (a,d)
+Feature error norm for four features. (b,e) Camera velocities (c,f) Pixel trajectories with an arbitrarily selected bounding box.
+and Robot Operating System (ROS) is given by
+C =
+
+
+407.1
+0
+323.4
+0
+407.1
+205.6
+0
+0
+1
+
+
+(23)
+The results of the robot experiment are summarized in Fig.
+4(a-c). The error norm of the individual feature points are
+shown in Fig. 4(a). The error norms of the individual error
+decrease asymptotically and converge at 65s. The corre-
+sponding linear and angular velocities are displayed in Fig.
+4(b). The image pixel trajectories are shown in Fig. 4(c).
+The pixel trajectories remain within the chosen lower and
+upper bound for the u and v pixel coordinates. The upper
+and lower bound for all the u coordinates is chosen as 400
+and 250, respectively. The upper and lower bounds for all
+the v pixels are chosen to be 300 and 100, respectively. To
+implement the control law for image plane coordinates, the
+bounds in pixel units are converted to image plane bounds
+using the calibration matrix.
+In the second robot experiment, the target consists of a
+printed Aruco marker [33] placed on the table in front of
+the Baxter research robot. The experimental setup can be
+seen in Fig. 6. The corners of the Aruco marker are used as
+the feature points, and the pixel coordinates of these corners
+are obtained at every iteration of the algorithm using the
+Aruco module in OpenCV. The barrier is chosen to have
+an upper and lower bound on the u coordinates of 430 and
+222, and an upper and lower bound on the v coordinates of
+324 and 114. The initial robot arm conﬁguration is placed
+so that the feature points are very close to the lower bound
+on the v coordinates. Two experiments are run using this
+setup: one without the barrier and one with the barrier. In
+both experiments, the desired feature points are chosen as
+s∗= [ −0.2367, −0.2065, 0.1489, −0.2335,
+(24)
+0.1760, 0.1644, −0.2268, 0.1840]T
+The control gain is set to γ = 0.2, and was tuned experimen-
+tally. The results of the experiment using the Aruco markers
+can be seen in Fig. 5, where the top row (a-c) are the results
+from the experiment without the barrier, and the bottom row
+(d-f) are the results of the experiment with the barrier. In Fig.
+5(a) and 5(d) the error between the desired feature point
+and the current feature point can be seen for each feature
+point. The error norms of the feature point error decrease
+14258
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+Fig. 6.
+The experimental setup showing Baxter’s end-effector with an eye-
+in-hand conﬁguration observing the Aruco’s marker while moving from an
+initial camera pose (left-most picture) to the desired camera pose (right-most
+picture).
+to zero asymptotically. In Fig. 5(b) and 5(e) the applied
+camera control velocities are shown. During the experiment,
+all control velocities are calculated in the camera frame, and
+then are converted to the joint space by using the inverse
+Jacobian of the Baxter robot right arm. The corresponding
+joint velocities are then applied to each respective arm joint.
+In Fig. 5(c) and 5(f) the trajectories of each feature point in
+the image plane are displayed, with the initial pixel values of
+the feature point shown as black dots and the desired pixel
+values shown as red ×’s. In Fig. 5(c), the trajectory of the
+purple and yellow feature points can clearly be seen leaving
+the barrier region, as there is no barrier function applied to
+this controller. In Fig. 5(f), all feature points remain inside of
+the barrier region throughout the duration of the experiment.
+VI. CONCLUSION
+A constrained IBVS controller is developed in this paper
+which keeps the feature points within the camera FOV. A
+logarithmic barrier function transformation is used to derive a
+new image feature state dynamics. A controller is developed
+using the constrained state space dynamics for which a
+local asymptotic stability is shown using Lyapunov stability
+analysis. The results of the new controller are compared
+to the unconstrained IBVS controller in simulation. The
+results demonstrated the ability of the developed controller
+to maintain all the image plane feature points in the FOV
+in contrast to the unconstrained IBVS controller. A robot
+experiment is carried out to demonstrate the results of the
+constrained controller using the wrist camera of the Baxter
+robot.
+REFERENCES
+[1] N. R. Gans, G. Hu, K. Nagarajan, and W. E. Dixon, “Keeping multiple
+moving targets in the ﬁeld of view of a mobile camera,” IEEE
+Transactions on Robotics, vol. 27, no. 4, pp. 822–828, 2011.
+[2] N. Garc´ıa-Aracil, E. Malis, R. Aracil-Santonja, and C. P´erez-Vidal,
+“Continuous visual servoing despite the changes of visibility in image
+features,” IEEE Transactions on Robotics, vol. 21, no. 6, pp. 1214–
+1220, 2005.
+[3] F. Chaumette and S. Hutchinson, “Visual servo control. i. basic
+approaches,” IEEE Robotics & Automation Magazine, vol. 13, no. 4,
+pp. 82–90, 2006.
+[4] A. Parikh, R. Kamalapurkar, and W. E. Dixon, “Target tracking in the
+presence of intermittent measurements via motion model learning,”
+IEEE Transactions on Robotics, vol. 34, no. 3, pp. 805–819, 2018.
+[5] A. Parikh, T.-H. Cheng, R. Licitra, and W. E. Dixon, “A switched sys-
+tems approach to image-based localization of targets that temporarily
+leave the camera ﬁeld of view,” IEEE Transactions on Control Systems
+Technology, vol. 26, no. 6, pp. 2149–2156, 2017.
+[6] Z. Miao, H. Zhong, J. Lin, Y. Wang, Y. Chen, and R. Fierro, “Vision-
+based formation control of mobile robots with FOV constraints and
+unknown feature depth,” IEEE Transactions on Control Systems Tech-
+nology, 2020.
+[7] C. P. Bechlioulis, S. Heshmati-alamdari, G. C. Karras, and K. J.
+Kyriakopoulos, “Robust image-based visual servoing with prescribed
+performance under ﬁeld of view constraints,” IEEE Transactions on
+Robotics, vol. 35, no. 4, pp. 1063–1070, 2019.
+[8] I. Salehi, G. Rotithor, D. Trombetta, and A. P. Dani, “Safe tracking
+control of an uncertain euler-lagrange system with full-state constraints
+using barrier functions,” in 59th IEEE Conference on Decision and
+Control, 2020, pp. 3310–3315.
+[9] A. Dani, N. Fischer, Z. Kan, and W. Dixon, “Globally exponentially
+stable observer for vision-based range estimation,” Mechatronics,
+vol. 22, no. 4, pp. 381–389, 2012.
+[10] A. De Luca, G. Oriolo, and P. B. Giordano, “Feature depth observation
+for image-based visual servoing: Theory and experiments,” Int J Robot
+Res, vol. 27, no. 10, pp. 1093–1116, 2008.
+[11] A. P. Dani, N. R. Fischer, and W. E. Dixon, “Single camera structure
+and motion,” IEEE Transactions on Automatic Control, vol. 57, no. 1,
+pp. 238–243, 2011.
+[12] R. Spica, P. Robuffo Giordano, and F. Chaumette, “Coupling active
+depth estimation and visual servoing via a large projection operator,”
+The International Journal of Robotics Research, vol. 36, no. 11, pp.
+1177–1194, 2017.
+[13] G. Rotithor, R. Saltus, R. Kamalapurkar, and A. Dani, “Observer
+design for structure from motion using concurrent learning,” in 2019
+American Control Conference (ACC).
+IEEE, 2019, pp. 2384–2389.
+[14] W. E. Dixon, D. M. Dawson, E. Zergeroglu, and A. Behal, “Adaptive
+tracking control of a wheeled mobile robot via an uncalibrated camera
+system,” IEEE Trans. Syst. Man Cybern. Part B Cybern., vol. 31, pp.
+341–352, 2001.
+[15] B. Thuilot, P. Martinet, L. Cordesses, and J. Gallice, “Position based
+visual servoing: keeping the object in the ﬁeld of vision,” in Proceed-
+ings 2002 IEEE International Conference on Robotics and Automation
+(Cat. No. 02CH37292), vol. 2.
+IEEE, 2002, pp. 1624–1629.
+[16] P. D. Triantafyllou, G. A. Rovithakis, and Z. Doulgeri, “Guaranteeing
+ﬁeld of view constraints in visual servoing tasks under uncertain
+dynamics,” IFAC-PapersOnLine, vol. 50, no. 1, pp. 2229–2234, 2017.
+[17] ——, “Constrained visual servoing under uncertain dynamics,” Inter-
+national Journal of Control, vol. 92, no. 9, pp. 2099–2111, 2019.
+[18] G. Chesi, K. Hashimoto, D. Prattichizzo, and A. Vicino, “Keeping
+features in the ﬁeld of view in eye-in-hand visual servoing: A
+switching approach,” IEEE Transactions on Robotics, vol. 20, no. 5,
+pp. 908–914, 2004.
+[19] S. L´eonard, E. A. Croft, and J. J. Little, “Dynamic visibility checking
+for vision-based motion planning,” in 2008 IEEE International Con-
+ference on Robotics and Automation.
+IEEE, 2008, pp. 2283–2288.
+[20] J. Lin, Z. Miao, H. Zhong, W. Peng, Y. Wang, and F. Rafael, “Adaptive
+image-based leader-follower formation control of mobile robots with
+visibility constraints,” IEEE Transactions on Industrial Electronics,
+2020.
+[21] D.-H. Park, J.-H. Kwon, and I.-J. Ha, “Novel position-based visual
+servoing approach to robust global stability under ﬁeld-of-view con-
+straint,” IEEE Transactions on Industrial Electronics, vol. 59, no. 12,
+pp. 4735–4752, 2011.
+[22] G. Chesi and Y. S. Hung, “Global path-planning for constrained and
+optimal visual servoing,” IEEE Transactions on Robotics, vol. 23,
+no. 5, pp. 1050–1060, 2007.
+[23] G. L´opez-Nicol´as, N. R. Gans, S. Bhattacharya, C. Sag¨u´es, J. J.
+Guerrero, and S. Hutchinson, “Homography-based control scheme for
+mobile robots with nonholonomic and ﬁeld-of-view constraints,” IEEE
+Transactions on Systems, Man, and Cybernetics, Part B (Cybernetics),
+vol. 40, no. 4, pp. 1115–1127, 2009.
+[24] K. P. Tee, S. S. Ge, and E. H. Tay, “Barrier lyapunov functions for the
+control of output-constrained nonlinear systems,” Automatica, vol. 45,
+no. 4, pp. 918–927, 2009.
+14259
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+
+[25] A. D. Ames, X. Xu, J. W. Grizzle, and P. Tabuada, “Control barrier
+function based quadratic programs for safety critical systems,” IEEE
+Transactions on Automatic Control, vol. 62, no. 8, pp. 3861–3876,
+2017.
+[26] S. Prajna and A. Jadbabaie, “Safety veriﬁcation of hybrid systems us-
+ing barrier certiﬁcates,” in International Workshop on Hybrid Systems:
+Computation and Control, 2004, pp. 477–492.
+[27] L. Wang, A. D. Ames, and M. Egerstedt, “Safe certiﬁcate-based
+maneuvers for teams of quadrotors using differential ﬂatness,” in
+IEEE International Conference on Robotics and Automation, 2017,
+pp. 3293–3298.
+[28] I. Salehi, G. Yao, and A. P. Dani, “Active sampling based safe
+identiﬁcation of dynamical systems using extreme learning machines
+and barrier certiﬁcates,” in International Conference on Robotics and
+Automation (ICRA), 2019, pp. 22–28.
+[29] H. K. Khalil, Nonlinear Sucstems, 3rd ed.
+Prentice Hall, 2002.
+[30] R. A. Horn and C. R. Johnson, Matrix analysis. Cambridge university
+press, 2012.
+[31] Y. Yang, D.-W. Ding, H. Xiong, Y. Yin, and D. C. Wunsch, “Online
+barrier-actor-critic learning for H∞control with full-state constraints
+and input saturation,” Journal of the Franklin Institute, vol. 357, no. 6,
+pp. 3316–3344, 2020.
+[32] E. Cervera, “Visual servoing toolbox for matlab / simulink,” 2003.
+[33] S. Garrido-Jurado, R. Mu˜noz-Salinas, F. J. Madrid-Cuevas, and M. J.
+Mar´ın-Jim´enez, “Automatic generation and detection of highly reliable
+ﬁducial markers under occlusion,” Pattern Recognition, vol. 47, no. 6,
+pp. 2280–2292, 2014.
+14260
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 29,2024 at 16:25:22 UTC from IEEE Xplore.  Restrictions apply. 
+

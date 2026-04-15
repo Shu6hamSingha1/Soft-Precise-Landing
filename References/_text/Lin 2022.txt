@@ -1,0 +1,1264 @@
+5348
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+Low-Complexity Control for Vision-Based
+Landing of Quadrotor UAV on
+Unknown Moving Platform
+Jie Lin
+, Yaonan Wang
+, Zhiqiang Miao
+, Member, IEEE, Hang Zhong
+, Member, IEEE,
+and Rafael Fierro
+, Senior Member, IEEE
+Abstract—This article addresses the vision-based land-
+ing problem of a low-cost quadrotor on an unknown moving
+platform. A robust landing controller is developed, which
+consists of the design of the low-complexity outer-loop
+controller and the geometric inner-loop attitude controller.
+First, an error transformation based on prescribed perfor-
+mance is designed to guarantee the landing behaviors and
+deal with the intermediate control signal of backstepping
+approaches, resulting in a low-complexity position-based
+visual servoing (PBVS) design. In addition, the proposed
+PBVS controller exhibits strong robustness against an un-
+certain relative dynamic system due to no incorporation
+of any prior knowledge of the moving platform. Next, a
+modiﬁed geometric attitude controller is presented by char-
+acterizing the geometric properties of rotation matrices in-
+trinsically. Finally, the stability analysis is presented using
+Lyapunov stability theory, and the effectiveness of the pro-
+posed control strategy is demonstrated through numerical
+simulations and experiments.
+Index Terms—Autonomous landing, dynamic position-
+based visual servo, low-complexity, prescribed perfor-
+mance, unmanned aerial vehicle (UAV).
+I. INTRODUCTION
+D
+UE to the vertical takeoff and landing (VTOL) as well as
+hovering capabilities, the past few decades have witnessed
+Manuscript received September 15, 2021; revised October 25, 2021;
+accepted November 12, 2021. Date of publication November 22, 2021;
+date of current version May 6, 2022. This work was supported in part
+by the Natural Science Foundation of China under Grant 61733004
+and Grant 61903135, in part by the Natural Science Foundation of
+Hunan Province under Grant 2021JJ20029, in part by the Science
+and Technology Innovation Program of Hunan Province under Grant
+2021RC3060, in part by the Youth Talent Support Project of the Chinese
+Association for Science and Technology, and in part by the Postgraduate
+Scientiﬁc Research Innovation Project of Hunan Province under Grant
+QL20210080. Paper no. TII-21-3992. (Corresponding author: Yaonan
+Wang.)
+Jie Lin, Yaonan Wang, Zhiqiang Miao, and Hang Zhong are
+with the College of Electrical and Information Engineering, Na-
+tional
+Engineering
+Laboratory
+for
+Robot
+Visual
+Perception
+and
+Control, Hunan University, Changsha 410082, China (e-mail: lin-
+jie0275@hnu.edu.cn; yaonan@hnu.edu.cn; miaozhiqiang@hnu.edu.cn;
+zhonghang@hnu.edu.cn).
+Rafael Fierro is with MARHES Lab, Department of Electrical and
+Computer Engineering, University of New Mexico, Albuquerque, NM
+87131 USA (e-mail: rﬁerro@unm.edu).
+This
+article
+has
+supplementary
+material
+provided
+by
+the
+au-
+thors
+and
+color
+versions
+of
+one
+or
+more
+ﬁgures
+available
+at
+https://doi.org/10.1109/TII.2021.3129486.
+Digital Object Identiﬁer 10.1109/TII.2021.3129486
+a growing interest in VTOL unmanned aerial vehicles (UAVs).
+Particularly, quadrotors, with the features of low cost and
+small size, serve as the ideal aerial platforms that have been
+widely employed in military and civilian applications, such as
+border surveillance, disaster monitoring, and search and rescue
+missions [1], [2]. The landing of the quadrotor is a fundamental
+maneuver, but it remains a delicate process during the ﬂight [3],
+since the landing control design suffers from both the limited
+sensing of the quadrotors and the unknown model of the moving
+targets. As a result, the landing control of the low-cost quadrotor
+on the unknown moving target is an extremely challenging and
+valuable problem.
+Sensing the environment to locate itself is a prerequisite for
+the quadrotor autonomous landing. In general, the global pose
+can be provided by a global positioning system (GPS), how-
+ever, the GPS signals degrade severely indoors or in clustering
+environments such as cities and forests. Alternatively, the on-
+board sensors provide robust relative pose information and allow
+moregeneralautonomousnavigation.Thus,somesolutionshave
+been explored based on onboard sensors in the GPS-denied
+environments, including sonar, laser range ﬁnder, LIDAR (light
+detection and ranging), and visual cameras. Among them, the
+visual cameras are of low cost and lightweight that can provide
+richer information [4], making them a very popular option for
+landing control of quadrotors.
+Various vision-based landing control approaches have been
+developed for the quadrotor UAVs, and they can be divided
+into two basic types: image-based visual servo (IBVS) [5]–[7],
+and position-based visual servo (PBVS) [8]–[12]. In IBVS, the
+image features are directly used in the formulation of the control
+laws. Nevertheless, it may produce partly undesired motion
+trajectories in the Cartesian space, especially when it needs a
+large rotation around the optical axis of the camera. The PBVS
+approach requires the explicit calculation of the pose estimation
+based on the image features, but at the same time, it separates the
+controller design problem from the vision-based pose estimation
+problem and leads to a straightforward control design problem
+in the Cartesian space. Owing to the underactuated dynamics of
+the quadrotor UAVs, we are interested in the PBVS schemes that
+avoid the image Jacobian formulation. In this direction, several
+classical linear control methods have been proposed in [8]–[10].
+Since almost all actual dynamic systems have the character-
+istics of uncertainty and nonlinearity, other relevant nonlinear
+1551-3203 © 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+LIN et al.: LOW-COMPLEXITY CONTROL FOR VISION-BASED LANDING
+5349
+controllers that employed nested saturations, backstepping, and
+sliding modes control techniques were presented in [11]. Also, a
+hybrid automaton was designed to change control modes for the
+landing maneuver in [12] to counteract the uncertainty model
+of the slope. However, all the aforementioned PBVS schemes
+were developed for a static landing platform.
+Although the PBVS landing schemes on a static platform
+have achieved many results, for more general applications, the
+challenge of stabilizing the motion of the quadrotors relative
+to the moving platforms is greatly increased. Some interesting
+works about landing on a moving platform have been investi-
+gated. In [13], the velocity of the moving target was assumed
+to be known, but the fact that the motion of the platform is
+not usually available in a real environment. In [14], the PID
+controller has good performance for landing on a high-speed
+vehicle under the premise that the position and the velocity of the
+landing vehicle can be measured. In [15]–[20], several schemes
+based on the model of the landing platform have been developed.
+Usually, a vertical movement of the platform was modeled as a
+superpositionofseveralsinefunctionswithdifferentamplitudes,
+frequencies, and phases [15]–[17], and a horizontal movement
+of the platform was modeled as a car-like model [18]–[20].
+Along the same line, the Kalman ﬁlters [15]–[19] and velocity
+observer [20] were used for motion estimation of a moving plat-
+form. However, the estimation of the model parameters or veloc-
+ity is rather tedious, and the controller design is conservative and
+only available in the presence of the moving platform models.
+For another, some robust control schemes were proposed in [21]
+and [22]. In [21], the invariant ellipsoid technique was proposed
+to reasonably compensate for the ship heave motion up to within
+a certain error bound. The neural network control method was
+usedin[22]toimproverobustnessagainsttheuncertaintiesofthe
+moving platform, but it was difﬁcult to implement on real-time
+control systems due to the complicated control algorithm.
+The motivation of this article is to propose a low-complexity
+dynamic PBVS scheme for landing on an unknown moving
+platform. Aiming at the underactuated nature of the quadrotor,
+our control scheme is decomposed into an outer-loop position
+control and an inner-loop attitude control module. Motivated by
+the prescribed performance control schemes [23]–[25], the error
+transformation based on the performance function is designed to
+guarantee the landing behaviors and handle the uncertain non-
+linear landing systems. Using the Lyapunov stability analysis,
+stability and thus prescribed performance of the autonomous
+landing system can be guaranteed. Compared with the existing
+PBVS landing control schemes, the main contributions of this
+article can be summarized as follows.
+1) A novel low-complexity PBVS controller of the low-cost
+quadrotor is proposed for the landing on the unknown
+moving target. Particularly, the error transformation ap-
+proach is designed to deal with the intermediate signal of
+the backstepping control technique. It completely avoids
+the explosion of the complexity issue raised by tradi-
+tional backstepping-like approaches, without utilizing
+additional ﬁlters. Therefore, this method simpliﬁes the
+control design and performs well in real-time uncertain
+dynamic systems. In contrast, some methods sacriﬁced
+Fig. 1.
+Vision-based landing system and involved coordinate frames.
+computational resources to improve robustness against
+theuncertainrelativedynamicsystems. Themethodofthe
+optimal control was used in [21], and the neural network
+controller was adopted in [22].
+2) The landing controller does not incorporate any prior
+knowledge of the moving platforms, so it exhibits strong
+robustness against the uncertain relative dynamic system.
+Different from methods of cooperative landing [14] and
+known relative dynamic models [15]–[20], the proposed
+method is a noncooperative autonomous landing and it
+is isolated from prior model selections and velocity mea-
+surements of the moving platforms.
+3) By using prescribed performance functions, the landing
+error is regulated to a predeﬁned arbitrarily small residual
+set along with the absolute decaying time function, and
+the maximum overshoot is less than a prescribed value.
+Compared with landing solutions in [13]–[20], the pro-
+posed method can explicitly guarantee the transient and
+steady-state landing behaviors.
+The rest of this article is organized as follows. Section II
+introduces system modeling and problem statements. Section III
+presents the control design and stability analysis. Simulation and
+experimental results to verify the effectiveness of the proposed
+control method are shown in Section IV. Finally, Section V
+concludes this article.
+II. PROBLEM FORMULATION
+A. System Description and Modelling
+Consider the landing system that includes a quadrotor UAV
+equipped with a vision suite and a ﬁducial landmark attached
+to a moving platform, as shown in Fig. 1. The inertial frame W
+is rigidly attached to a position on the earth in East-North-Up
+coordinates. The body-ﬁxed frame B is deﬁned to describe the
+motion equation of the quadrotor. Let C be the camera frame,
+and M be the landmark frame. Let p ∈R3 and v ∈R3 denote
+the position and linear velocity of quadrotor expressed in W,
+R ∈SO(3) is the rotation matrix from B to W, and Ω ∈R3
+is the angular velocity expressed in B. Using the Newton–Euler
+formulation, the dynamics of the quadrotor is given by
+˙p = v
+(1)
+m ˙v = −mgi3 + fRi3
+(2)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+5350
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+˙R = RΩ∧
+(3)
+J ˙Ω = −Ω × JΩ + τ
+(4)
+where m represents the mass; J = [Jx, Jy, Jz]T is the inertia
+matrix of the quadrotor; g is the acceleration of gravity, and i3 =
+[0, 0, 1]T is a unit vector. The thrust force f and the torque vector
+τ = [τx, τy, τz]T are expressed in the frame B. The hat map
+(·)∧: R3 →SO(3) denotes the skew-symmetric matrix such
+that Ω∧x = Ω × x for any x.
+Let pt ∈R3 expressed in W be the origin of the landmark
+frame M attached to the moving platform. Since the landing
+platform is moving, we denote the velocity of the platform as
+˙pt ∈R3. Instead of measuring and estimating the velocity of the
+platform, we only assume that:
+Assumption 1: The velocity of the moving platform ˙pt is
+unknown, but there exist an unknown real positive constant ¯νt
+such that ∥˙pt∥< ¯νt.
+B. Vision-Based Position Estimation
+A perspective camera is attached to the quadrotor to estimate
+its position relative to the landmark during landing. According to
+the pin-hole model, the mapping from a point P c = [X, Y, Z]T
+in the camera frame to an image coordinate s = [u, v]T is
+deﬁned as
+s =
+
+u
+v
+
+= fc
+Z
+
+X
+Y
+
+(5)
+where fc > 0 is the focal length of the camera. We consider a
+squared ﬁducial marker AprilTag [26] as a landmark to estimate
+the relative position. The 3-D position of the square corner of
+the AprilTag is denoted as P m in M, and the corresponding
+position P c expressed in C is given by
+P c = RC
+MP m + tC
+M
+(6)
+where RC
+M ∈SO(3) and tC
+M ∈R3 represent the rotation and
+translation of M relative to C, respectively. They can be esti-
+mated by using the four square corners of the AprilTag, and the
+side length of the AprilTag is the only scale information for the
+entire process. As a result, the position of the quadrotor relative
+to the center of the landmark expressed in W can be obtained as
+rpt = p −pt = −RRB
+CtC
+M
+(7)
+where RB
+C is a known ﬁxed rotational transformation of the
+camera frame relative to the quadrotor body frame.
+C. Problem Statement
+The objective of this article is to design the PBVS controller
+for a quadrotor landing on a moving platform with model
+uncertainty. The relative position between the quadrotor and
+the landmark is estimated by a monocular camera, and the
+linear/angular velocity, as well as attitude angles of a quadrotor,
+are provided by an auxiliary inertial measurement unit (IMU).
+The linear velocity ˙pt and angular velocity ωt of the landmark
+attached to the moving platform cannot be measured or esti-
+mated due to the uncertain model of the moving platform. The
+quadrotor maneuvers itself toward the safe landing point above
+the moving platform, and it performs vertical landing on the
+moving platform by turning OFF motors when the quadrotor is
+sufﬁciently close to the landing point. Speciﬁcally, given the
+desired relative position r∗
+pt, the goal is to design a controller for
+the quadrotor so that rpt converges to a predeﬁned and arbitrarily
+small neighborhood of r∗
+pt.
+III. CONTROL DESIGN
+A. Error Transformation
+In this section, the error transformation for the position con-
+trol is derived. In particular, it quantitatively characterizes the
+landing performance. For completeness and compactness of pre-
+sentation,thepreliminaryknowledgeonprescribedperformance
+is ﬁrst summarized. The prescribed performance means that the
+minimum speed of the convergence, the maximum steady-state
+error, and the maximum allowable overshoot are set a priori.
+Typically, the mathematical expression of the prescribed perfor-
+mance is given by the following inequalities:
+−ρi(t) < ei(t) < ρi(t), ∀t > 0
+(8)
+where ρi(t) is a continuously differentiable, bounded, strictly
+positive, and decreasing function of time, called performance
+function, which can be deﬁned as
+ρi(t) = (ρi(0) −ρ∞
+i )e−lit + ρ∞
+i
+(9)
+where ρi(0) > 0 is a positive parameter indicating the maximum
+allowable size of the tracking error, thus the initial error can
+be guaranteed as 0 ≤∥ei(0)∥< ρi(0). The decreasing rate of
+ρi(t) depends on the constant l > 0, and ρ∞
+i > 0 represents the
+steady-state performance speciﬁcation, which can be set small
+enough to meet performance requirements.
+To achieve landing control with the prescribed performance,
+an error transformation is designed as follows:
+ei = T(εi)ρi(t)
+(10)
+where the error transformation function T(εi) is a smooth
+strictly increasing function with respect to a new error εi, and the
+inverse function of T(εi) for εi exists. Besides, T(εi) satisﬁes
+the following properties:
+1) −1 < T(εi) < 1, ∀εi ∈R
+2) limεi→+∞T(εi) = 1
+3) limεi→−∞T(εi) = −1.
+Based on the above requirements, a hyperbolic-tangent-type
+function can be chosen as the candidate function T(εk) as
+T(εi) = eεi −e−εi
+eεi + e−εi .
+(11)
+If we denote ξi = ei/ρi, then the transformed error εi can be
+expressed via the inverse transformation of (11) as
+εi = 1
+2 ln
+1 + ξi
+1 −ξi
+
+(12)
+where ln(·) denotes the natural logarithm. At this point, it can
+be seen that if ei →0, then εi →0. Furthermore, the prescribed
+performance (8) will be achieved if the transformed error im-
+plemented in the controller design is bounded.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+LIN et al.: LOW-COMPLEXITY CONTROL FOR VISION-BASED LANDING
+5351
+Remark 1: The key idea of the error transformation is to trans-
+form the original nonlinear system with the constrained landing
+error behavior appearing in (8), into an equivalent unconstrained
+one. To this end, several common transformation functions, in-
+cluding the arctangent-type or the hyperbolic-tangent-type [23]–
+[25], are used. Owing to the property of these two kinds of
+functions, both of them are feasible to guarantee the domain of
+the inverse of the transformation function is a bounded open
+interval. As a result, we can achieve the prescribed performance
+constraint |ξi| < 1. Since the hyperbolic-tangent-type method is
+more popular, it is used in the proposed method. Therefore, the
+landing error strictly remains within the prescribed error bound
+as long as the stability of the transformed error system is ensured.
+In the end, the designed controller based on the transformed error
+can explicitly meet the requirements of transient and steady-state
+performance for landing in many applications of interest.
+B. Low Complexity Position Control
+To stabilize the translation dynamic subsystem (1) and (2) and
+guarantee the landing with prescribed performance, the position
+control scheme is proposed based on the aforementioned error
+transformation. Deﬁne the position error ep as
+ep = rpt −r∗
+pt.
+(13)
+Using (12), the position error can be transformed to a new error
+εp = [εp1, εp2, εp3]T , and its derivative is given by
+˙εp = Qp(v −˙pt + ϱp)
+(14)
+where Qp = diag(qp1, qp2, qp3); ϱp = [ϱp1ϱp2, ϱp3]T; qpj and
+ϱpj for j ∈1, 2, 3 are deﬁned as
+qpj = ∂εpj
+∂epj
+=
+1
+(1 + ξpj)(1 −ξpj)
+ϱpj = ∂ξpj
+∂t
+= −˙ρpjξpj.
+Following the backstepping control method, the intermediate
+virtual velocity variable ˆv = [ˆv1, ˆv2, ˆv3]T is introduced to guar-
+antee the stability of εp, and it is designed as
+ˆv = −k1QT
+pεp
+(15)
+where k1 > 0 is a positive gain.
+Deﬁne a linear velocity error signal as
+ev = v −ˆv
+(16)
+where ev = [ev1, ev2, ev3]T . Similarly, the linear velocity error
+can also be transformed to εv = [εv1, εv2, εv3]T . By recalling
+(2), the time derivative of transformed error εv is
+˙εv = Qv(−gi3 + fRi3
+m
+−˙ˆv + ϱv)
+(17)
+where Qv = diag(qv1, qv2, qv3); ϱv = [ϱv1, ϱv2, ϱv3]T; qvj and
+ϱvj are given by
+qvj = ∂εvj
+∂evj
+=
+1
+(1 + ξvj)(1 −ξvj)
+ϱvj = ∂ξvj
+∂t
+= −˙ρvjξvj.
+Now we are ready to design the position control law for the
+translation dynamic subsystem. Utilizing the transformed ve-
+locity error, the thrust magnitude is designed as
+f = ∥F ∥= ∥−k2QT
+vεv + mgi3∥
+(18)
+where F = −k2QT
+vεv + mgi3, and k2 > 0 is a positive gain.
+Remark 2: An important assumption in a classic SE(3) con-
+troller [27] is the availability of the target’s velocity information
+for feedback. Unfortunately, this requirement is not always sat-
+isﬁed in reality because of the inaccurate velocity measurement
+of the target. What’s more, the quadrotors might not be equipped
+with related sensors to reduce the weight and cost. Therefore, the
+unavailability of the target’s velocity makes the landing control
+of quadrotors more challenging. To address the autonomous
+landing problem that target velocity cannot be measured, es-
+timated, or communicated in GPS-denied environments, a low-
+complexity position controller is proposed without the velocity
+and acceleration of the target. Note the thrust force given by (18)
+does not incorporate any prior model knowledge of the moving
+platform. Furthermore, no estimations have been employed to
+acquire the velocity ˙pt of the moving platform. Moreover, it
+avoids the differentiation of the virtual variable ˆv without using
+additional ﬁlters. Different from the tracking control, the landing
+control required a sufﬁciently low desired height to ensure the
+safe landing so that it emphasizes the transient performance of
+the PBVS controller. The proposed method is of signiﬁcance
+in landing control due to it predetermining the convergence
+residual set, convergence rate, and overshoot of the landing
+errors. In short, the proposed low-complexity position controller
+bounds the state response of an uncertain relative dynamic
+system subjected to an unknown platform model, such that it
+is robust to an uncertain relative dynamic landing system within
+the bounded velocity of the moving platform.
+Remark 3: The proposed PBVS method provides a low-
+complexity solution for nonlinear systems. The error trans-
+formation that incorporates the prescribed performance spec-
+iﬁcations is originally used in the PBVS landing control and
+explicitly guarantees the landing behavior, e.g., transient and
+steady-state performance. More signiﬁcantly, with the help of
+the characteristics of the performance function, the designed
+controller avoids the explosion of complexity issues raised by
+traditional backstepping-like approaches. As a result, the control
+design is of considerably low computational complexity without
+utilizing additional ﬁlters.
+Remark 4: A quadrotor is an aircraft that is lifted and pro-
+pelled by four independent actuators. Its dynamics can be seen
+as the interconnection of the under-actuated position and the
+fully actuated attitude subsystems. Due to the highly nonlinear
+dynamics of the quadrotor, the landing control is addressed
+by the design of a low-complexity outer-loop controller and a
+geometric inner-loop attitude controller. In detail, the outer loop
+with slow dynamics generates the thrust and the desired attitude
+for the inner loop. Moreover, the inner loop with fast dynamics
+aims to track an attitude command and generate the required
+torques. Before starting to describe the attitude controller, we
+will give the desired attitude Rd, which can be extracted from
+the intermediary control input F .
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+5352
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+C. Geometric Attitude Control
+A geometric controller for the attitude subsystem (3) and (4)
+is developed to follow a desired yaw angle ψ∗because the angle
+information of the target is unavailable. But it is sufﬁcient to
+perform the landing mission due to the symmetry of the physical
+structure of the quadrotor. The desired attitude Rd is designed on
+SO(3) has the advantage of the large-angle maneuvers. Hence,
+the error function on SO(3) is conﬁgured to stabilize the attitude
+represented by an identity matrix I as
+Υ(R, Rd) = 1
+2tr[I −RT
+d R].
+(19)
+The error function Υ is locally positive-deﬁnite about R = Rd.
+For a given Rd, this set can be represented by the sublevel set
+L = {R ∈SO(3)∥Υ(R, Rd) < 2}. The desired rotation ma-
+trix Rd = [rd1, rd2, rd3] is extracted from F as follows:
+⎧
+⎨
+⎩
+rd1 = rd2 × rd3
+rd2 =
+rd3×a
+∥rd3×a∥
+rd3 =
+F
+∥F ∥
+(20)
+where a = [cos(ψ∗), sin(ψ∗), 0]T . Given Rd and Ωd, the atti-
+tude error and angular velocity error are given by
+eR = 1
+2(RT
+dR −RTRd)∨
+(21)
+eΩ = Ω −RTRdΩd.
+(22)
+Motivated by the standard geometric attitude controller in [27],
+the moment input τ is designed as
+τ = −kReR−kΩeΩ+Ω×JΩ−J(Ω∨RT
+dRΩd−RTRd ˙Ωd)
+(23)
+where the operator (·)∨is the inverse of the (·)∧operator
+such that: SO(3) →R3. The positive constant gains kR, kΩ are
+selected to guarantee stable performance.
+D. Stability Analysis
+Theorem1: Considerthesystem(1)–(4)withthelandingcon-
+trol law for the quadrotor by thrust force (18) and torque inputs
+(23), then the landing error signals (13), (16), and (21), (22) are
+uniformly ultimately bounded, and the prescribed performance
+(8) is guaranteed.
+Proof: We ﬁrst consider the stability of the attitude error
+dynamics. Substituting (23) into (4), then the attitude error
+dynamics is given by
+˙Υ(R, Rd) = eT
+ReΩ
+(24)
+J ˙eΩ = −kReR −kΩeΩ.
+(25)
+Consider the following Lyapunov candidate function as
+V = 1
+2eT
+ΩJeΩ + kRΥ(R, Rd).
+(26)
+Then, the time derivative of V is
+˙V = eT
+ΩJ ˙eΩ + kReT
+ReΩ = −kΩ∥eΩ∥2 ≤0.
+(27)
+Since ˙V is semi-negative deﬁnite, we have eΩ →0 when t →
+∞based on the Lyapunov stability theory. Moreover, it can be
+seen that ˙eΩ is uniformly continuous. Applying the Barbalat’s
+Lemma to (25), we get ˙eΩ →0 as t →∞. therefore eR →0
+when t →∞.
+Next, the stability of the translational error dynamics is pre-
+sented. Substituting (15) into (14), then the time derivative of εp
+is given by
+˙εp = −k1QpQT
+pεp + Qp(ϱp + ev −˙pt)
+(28)
+since Rdi3 = rd3 = F /∥F ∥, the time derivative of velocity
+error dynamics εv can be obtained as
+˙εv = Qv(−gi3 + F
+m + ϱv −˙ˆv + χ)
+(29)
+where χ = f
+m(Ri3 −Rdi3) .
+To prove the stability of the position controller, we should
+show the boundedness of the transformed error εi. Owing to
+the properties of the T-function appearing in (10), it leads to
+proving that ξi = ei/ρi evolves strictly within the open set
+(−1, 1). Therefore, we can further demonstrate all errors achieve
+the predetermined performance speciﬁed by (8) as −ρi(t) <
+ei(t) < ρi(t). In the following, we proceed in three steps to
+prove the stability of the position control law. In step 1, the
+existence and uniqueness of a maximal system solution ξj :
+[0, τmax) →Aξ for some τmax > 0, is guaranteed. In step 2,
+the boundedness of all closed-loop signals is proven, and their
+boundaries belong to a compact subset of Aξ. Consequently, in
+step 3, the points raised in the second step are proven to remain
+when τmax →∞.
+Step 1: Prove the existence and uniqueness of a maximal
+solution over a time interval [0, τmax). We ﬁrst deﬁned the open
+set as follows:
+Aξ = (−1, 1) × (−1, 1).
+(30)
+The set Aξ is nonempty and open. Using (8) and (9), since
+the constructed performance function satisﬁes ∥ρpj(0)∥>
+∥epj(0)∥and ∥ρvj(0)∥> ∥evj(0)∥, therefore, the ∥ξpj(0)∥=
+∥epj(0)/ρpj(0)∥< 1 and ∥ξvj(0)∥= ∥evj(0)/ρvj(0)∥< 1.
+If we deﬁne ξj = [ξpj, ξvj]T , where j = 1, 2, 3. As a result, the
+ξj ∈Aξ. The time derivative of ξj is given by
+˙ξj =
+	
+1
+ρpj ( ˙epj
+ρpj −ξpj ˙ρpj)
+1
+ρvj ( ˙evj
+ρvj −ξvj ˙ρvj)
+
+.
+(31)
+Since the fact that the performance functions ρpj and ρvj are
+bounded, the ˙ρpj, ξpj, ˙ρvj, andξvj areboundedandcontinuously
+differentiable functions of time. Utilizing (15) and (18), the
+intermediate control signal ˆv and control law f are smooth over
+Aξ, then ˙epj and ˙evj are continuously differentiable functions.
+Therefore, ˙ξj is bounded and continuously differentiable as well
+as locally Lipschitz ξj over the set Aξ. Thus, a uniqueness of a
+maximal solution ξj : [0, τmax) →Aξ of ˙ξj over the set Aξ for
+a time interval [0, τmax) is guaranteed, which implies
+ξpj ∈(−1, 1), ˜ξvj ∈(−1, 1), ∀t ∈[0, τmax).
+(32)
+Step 2: The boundedness of all closed-loop signals is proven,
+and their boundaries belongs to a compact subset of Aξ for all
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+LIN et al.: LOW-COMPLEXITY CONTROL FOR VISION-BASED LANDING
+5353
+t ∈[0, τmax). We deﬁne the second Lyapunov function as
+V 1 = 1
+2εT
+p εp.
+(33)
+The time derivative of V 2 is given by
+˙V 1 = −k1εT
+p QpQT
+pεp + εT
+p Qpϖ1
+(34)
+where ϖ1 = ϱp + ev −˙pt. Since the fact that selected per-
+formance function ρpj, ˙ρpj, ρvj, and ˙ρvj are bound, using
+(32), we deduce that the boundedness of ϱpj = −˙ρpjξpj and
+evj = ρvjξvj for all t ∈[0, τmax). Due to ∥˙pt∥< ¯νt is bounded,
+so there exists a constant Δ1 > 0 such that
+∥ϖ1∥≤∥ϱp∥+ ∥ev∥+ ∥˙pt∥≤Δ1
+(35)
+using Young’s inequality, one has
+εT
+p Qpϖ1 ≤σ1∥QT
+p εp∥2 +
+1
+4σ1
+∥ϖ1∥2
+(36)
+where σ1 is a positive constant. Then, (34) can be rewritten as
+˙V 1 ≤−c1V 1 + b1
+(37)
+where c1 = (k1 −σ1)λ2
+min(Qp), and b1 = Δ2
+1/4σ1. Since the
+normalized state error ξpj ∈(−1, 1), then qpj = 1/(1 −ξ2
+vj) ≥
+1 is bounded, so λmin(Qp) ≥1, ∀t ∈[0, τmax). we assume that
+k1 and σ1 are chosen such that k1 ≥σ1, then c1 > 0. Using
+the Lyapunov stability theory, it can be concluded that the
+boundedness of εp such that ∥εpj∥< ¯εpj, where j = 1, 2, 3.
+Furthermore, taking the inverse logarithmic function for (12),
+we get
+−1 < e−2¯εpj −1
+e−2¯εpj + 1 ≤ξpj ≤e2¯εpj −1
+e2¯εpj + 1 < 1
+(38)
+for all t ∈[0, τmax). The time derivative of ˆv is
+˙ˆv = −k1 ˙Q
+T
+pεp −k1QT
+p ˙εp
+(39)
+utilizing (38), it guarantees the boundedness of Qp and ˙Qp, ˙εp
+for all t ∈[0, τmax). Hence, we obtain the boundedness of ˙ˆv,
+∀t ∈[0, τmax).
+We take the third Lyapunov function as
+V 2 = 1
+2εT
+v εv.
+(40)
+The time derivative of V 2 is given by
+˙V 2 = −k2
+mεT
+v QvQT
+vεv + εT
+v Qvϖ2 + εT
+v Qvχ
+(41)
+where ϖ2 = ϱv −˙ˆv. Since the selected performance function
+ρvj, ˙ρvj are bound, using (32), we deduce that the boundedness
+of ϱvj = −˙ρvjξvj for all t ∈[0, τmax). Since the ˙ˆv is bounded,
+there exists a constant Δ2 > 0 such that
+∥ϖ2∥≤∥ϱv∥+ ∥˙ˆv∥≤Δ2.
+(42)
+Moreover, according to Rodrigues’ formula, we obtain ∥eR∥=
+sin∥x∥, when RT
+d R = exp ˆx for x ∈R3. This represents the
+sine of the eigen-axis rotation angle between R and Rd such
+that
+∥(Ri3 −Rdi3)∥≤∥eR∥= β < 1.
+(43)
+The last term of the right-hand side of (41) is bounded as
+∥εT
+v Qvχ∥≤
+
+k2∥QT
+vεv∥2 + ∥QT
+v εv∥∥mgi3∥
+ β
+m.
+(44)
+Using inequalities (42), (44), and applying Young’s inequality,
+then (41) yields
+˙V 2 ≤−k2(1 −β)
+m
+εT
+v QvQT
+vεv + (Δ2 + g)∥QT
+v εv∥
+≤−(k2(1 −β)
+m
+−σ2)∥QT
+v εv∥2 + (Δ2 + g)2
+4σ2
+(45)
+where σ2 is a positive constant. Inequality (45) implies that
+˙V 2 ≤−c2V 2 + b2
+(46)
+where c2 = (k2(1 −β)/m −σ2)λ2
+min(Qv), and b2 = (Δ2+g)2
+4σ2
+.
+Since the normalized state error ξvj ∈(−1, 1), qvj = 1/(1 −
+ξ2
+vj) ≥1, and, therefore, λmin(Qv) ≥1. We assume that k2
+and σ2 are chosen such that k2(1 −β)/m > σ2 and hence
+c2 > 0. Therefore εv is bounded such that ∥εvj∥< ¯εvj, where
+j = 1, 2, 3. Taking the inverse logarithmic function for (12), for
+all t ∈[0, τmax), we obtain
+−1 < e−2¯εvj −1
+e−2¯εvj + 1 ≤ξvj ≤e2¯εvj −1
+e2¯εvj + 1 < 1.
+(47)
+The boundedness of all closed-loop signals of ξj evolves in a
+compact subset of Aξ, so the errors are uniformly ultimately
+bounded for all t ∈[0, τmax).
+Step 3: The points raised in the second step are proven to
+remain when τmax →∞. Using (38) and (47), It’s veriﬁed that
+ξj(t) ∈A′
+ξ forallt ∈[0, τmax),wherethesetA′
+ξ = (ξpj, ¯ξpj) ×
+(ξvj, ¯ξvj) ∈Aξ is nonempty and compact. However, [28] dic-
+tates the existence of a time instant t′ ∈[0, τmax) such that
+ξj(t′) /∈A′
+ξ. Thus, τmax = ∞by contradiction. This completes
+the proof.
+E. Modiﬁed Attitude Control Based on a Command Filter
+To avoid complex calculations in the torque input, a com-
+mand ﬁlter is introduced to compute the ˙F without the dif-
+ferentiation so that ˙Rd can be easily obtained. Based on (20),
+˙Rd = [˙rd1, ˙rd2, ˙rd3] as the derivative of Rd is given by
+⎧
+⎪
+⎨
+⎪
+⎩
+˙rd1 = ˙rd2 × rd3 + rd2 × ˙rd3
+˙rd2 = (I3×3 −rd2rT
+d2) ( ˙rd3×a+rd3× ˙a)
+∥rd3×a∥
+˙rd3 = (I3×3 −rd3rT
+d3)
+˙F
+∥F ∥
+(48)
+whereI3×3 is theidentitymatrix. Introducingthecommandﬁlter
+technology [29], one can be expressed as follows:
+ ˙xi,1 = ωnxi,2
+˙xi,2 = −2ζωnxi,2 −ωn(xi,1 −Fi)
+(49)
+with i ∈1, 2, 3, and the outputs of command ﬁlter are xi,1 = Fi
+and xi,2 = ˙Fi. Filter parameters are designed as ωn > 0 and
+ζ ∈(0, 1]. We design the modiﬁed attitude controller as
+τ = −KReR −KΩeΩ + Ω × JΩ.
+(50)
+Remark 5: Compared with the geometric controller in (23),
+the modiﬁed geometric attitude controller (50) neglects the last
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+5354
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+Fig. 2.
+Simulation results for the ﬁrst comparative example. (a) Trajectories of the quadrotor and the moving platform. (b) and (c) Position errors
+and linear velocity errors of the proposed method (blue) along with corresponding performance functions (red) and comparative method (purple).
+Fig. 3.
+Simulation results for the second comparative example. (a) Trajectories of a quadrotor and a moving platform. (b) and (c) Position errors
+and linear velocity errors of the proposed method (blue) along with corresponding performance functions (red) and comparative method (purple).
+Fig. 4.
+Simulation results for a sinusoidally oscillating platform whose horizontal trajectory is a circle. (a) The trajectories of a quadrotor and a
+moving platform. (b) The time response of position errors. (c) The time response of linear velocity errors.
+two terms in the controller (23). With the help of the higher order
+inertial cancelation terms, this controller in (23) is guaranteed to
+be exponentially stable for almost any rotation. These high-order
+terms are related to Rd and Ωd, and they are usually small
+enough that we can consider them as bounded disturbances.
+Based on the Lyapunov stability theory, the controller in (50)
+can make errors converge to a small neighborhood of zero, and
+so it is stable in the absence of high-order terms. Also, it has been
+mentioned in [30] that the effects of these high-order terms are
+insigniﬁcant. From a practical standpoint, a lot of experiments
+have achieved satisfactory performance by neglecting the higher
+order terms.
+IV. SIMULATION AND EXPERIMENTAL STUDIES
+To verify the effectiveness of the proposed control scheme,
+several
+simulations
+and
+experiments
+were
+presented
+in
+Figs. 4–8. All results were based on the following conﬁguration.
+The system parameters of quadrotor were listed as: m = 2.3
+kg, g = 9.8 m/s2 and J = diag(0.0432, 0.0432, 0.0715) kg·
+m2/rad2. It can be seen from the stability proof that the controller
+gains are chosen such that kΩ > 0, k1 ≥σ1 and k2(1 −β)/m >
+σ2. Since β < 1, m > 0, and σ1, σ2 are arbitrarily small positive
+constants, the control gains are positive and obtained via a trial
+and error approach when satisfactory performance is achieved.
+The parameters of the controllers were set as k1 = 4.5, k2 = 2.0,
+kR = 150 and kΩ = 0.4, and the gains of the ﬁlter were cho-
+sen as ζ = 0.5, ωn = 0.02. The parameters of the performance
+function were given by ρ∞
+pj = 0.05 m, ρ∞
+vj = 0.05 m/s and lpj =
+lvj = 0.5, where j = 1, 2, 3. In addition, an Extend Kalman
+Filter was adopted to integrate the visual information and IMU
+to calculate a more reliable relative position. The desired relative
+position was set as r∗
+pt = (0, 0, 0.4) m. Before investigating
+experimental results by using hardware, the simulation results
+allow us to gain insights into the proposed method in different
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+LIN et al.: LOW-COMPLEXITY CONTROL FOR VISION-BASED LANDING
+5355
+Fig. 5.
+Simulation results with a target having the “8” shaped trajectory, where the measurement noises and the wind disturbances are imposed
+at the side of the quadrotor. (a) The trajectories of a quadrotor and a moving platform, where the purple dotted line is the response curve of
+controller [31], the yellow dot-and-dash line is the response curve of controller [32], the blue solid line is the proposed controller, and the red dashed
+line is the trajectory of the target. (b) The time response of position errors. (c) The time response of linear velocity errors.
+Fig. 6.
+Experimental setup for the vision-based autonomous landing system, and the internal view from the embedded camera.
+scenarios of interest. Hence, these results may be of a larger
+scale than they are possible in the hardware setup, e.g., due to
+restrictions regarding laboratory size.
+A. Simulation Results Considering Two Comparative
+Studies
+In this section, two comparative examples were conducted to
+verify the effectiveness of the proposed controller. In the ﬁrst ex-
+ample, we evaluated the performance of the proposed controller
+by comparing it with a geometric controller [30] with the target’s
+velocity feedback. The linear and angular velocities of the target
+were set as 5 m/s and 0.2 rad/s, respectively. The results are de-
+picted in Fig. 2. Fig. 2(a) shows the trajectories of the quadrotor
+and the target. Though the geometric controller with the target’s
+velocity feedback converges faster, both of their trajectories
+are smooth and have good performance. The time response of
+position and velocity errors are depicted in Fig. 2(b) and (c).
+It can be observed that all errors of the proposed method are
+always guaranteed within the predeﬁned performance bounds,
+so that it has a smaller convergence residual set. It is important
+for landing missions with strict accuracy requirements.
+In the second example, under the same simulation conditions,
+the comparative controller in [30] was implemented without the
+target’s velocity. To ensure the comparative method performs as
+well as possible in this scenario, the linear and angular velocities
+of the landing platform were set as 0.5 m/s and 0.2 rad/s. The
+results are shown in Fig. 3. Fig. 3(a) illustrates the trajectories
+of the quadrotor and the target. It can be easily seen that the
+trajectory of the proposed controller is smoother, while the
+comparative controller oscillates greatly. In Fig. 3(b) and (c),
+the time response of position and velocity errors were pre-
+sented. From the perspective of transient control performance,
+the proposed method has a faster convergence speed and smaller
+overshoot. As far as the actual landing mission is concerned, the
+quadrotor is not allowed to have too much overshoot to cause a
+collision during the landing. Obviously, the comparison method
+is not up to this requirement when the target’s velocity infor-
+mation is missing. More signiﬁcantly, the proposed method is
+adapted to the complex landing environment due to the fact that it
+can freely select the performance boundary. Therefore, the com-
+parative simulation studies verify the effectiveness of the pro-
+posed method without the velocity measurements of the target.
+B. Simulation Results for Targets Moving in 3-D Space
+Based on the horizontal motions of the target, the vertical
+motions have been added to demonstrate the effectiveness of
+the landing controller for a target moving in a 3-D space. The
+linear and angular velocities of the landing platform were set
+as 2 m/s and 0.2 rd/s. The chosen vertical reference trajectory
+can be described as zr = 0.2sin(0.5t). The simulation results
+are shown in Fig. 4. Fig. 4(a) describes the X–Y–Z positions
+of the quadrotor and the target. The time responses of position
+and linear velocity errors are plotted in Fig. 4(b) and (c). It
+can be seen that all errors are always guaranteed within the
+predeﬁned performance bounds. Hence, the quadrotor can track
+the reference trajectory effectively though the target has one
+more degree of freedom in the vertical axis. Therefore, the
+proposed control method can achieve fast and accurate landing
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+5356
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+Fig. 7.
+Experiment 1: Quadrotor lands on a platform moving along a
+straight line: (a) Trajectories of a quadrotor and a moving platform for
+the whole landing process. (b)–(g) The position and linear velocity errors
+(blue) and the corresponding imposed performance bounds (red).
+of the quadrotor on the target moving in 3-D space with the
+designed transient and steady-state performance indicators.
+C. Simulation Results for Strong Robustness Veriﬁcation
+In this simulation, the performance of the proposed controller
+was evaluated for the real application scenarios, such as the
+uncertain target with complex motions, wind disturbances, and
+measurement noises. To ﬁt the real situation, we considered that
+the wind caused a time-varying accelerated speed disturbance as
+0.2cos(0.1t)m/s2 tothex-axis,y-axis,andz-axisintheCartesian
+space; the noise was imposed on the measurements with a
+standard deviation of 0.015 m; the target was endowed with com-
+plex motions involving acceleration and deceleration, and an “8′′
+shapedreferencetrajectorywaschosenasxr = 5sin(0.1t), yr =
+5sin(0.2t). In addition, the following comparison numerical
+simulations have been conducted to further demonstrate the
+strong robustness of the proposed controller. Under the same
+simulation conditions, we compared the results with those of the
+approaches based on an adaptive backstepping controller in [31]
+Fig. 8.
+Experiment 2: Quadrotor lands on a platform moving along a
+circular trajectory: (a) Trajectories of a quadrotor and a moving platform
+for the whole landing process. (b)–(g) The position and linear velocity
+errors (blue) and the corresponding imposed performance bounds (red).
+and based on a boundary layer sliding controller in [32]. The
+control schemes in [31] and [32] are similarly deﬁned for the
+systemmodeledby(1)–(4),buttheybothrequirethevelocityand
+acceleration of the target. Besides, the controller in [32] assumed
+that the total wind speed relative to the UAV is known to estimate
+the acceleration caused by drag. The results are shown in Fig. 5.
+Fig. 5(a) depicts 3-D trajectories of the quadrotor and the target.
+The time responses of the position and linear velocity errors
+are plotted in Fig. 5(b) and (c). From Fig. 5(a), the trajectory of
+the controller in [31] is not satisfactory since it cannot perfectly
+compensate for the inﬂuence of the external wind disturbance.
+The trajectory quality of the controller in [32] has been modiﬁed
+with the help of the observer. In contrast, the proposed controller
+can guarantee the best trajectory according to the prescribed
+transient and steady-state performance although in the absence
+of the target’s velocity and the disturbance observers. It can be
+seen that the frequent variations of target velocities arose certain
+tracking errors and the wind caused a time-varying accelerated
+speed disturbance. However, all errors of the proposed controller
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+LIN et al.: LOW-COMPLEXITY CONTROL FOR VISION-BASED LANDING
+5357
+not only converged quickly but also strictly retained within
+the prescribed performance bounds. These studies show the
+superior robustness of the proposed approach over existing
+controllers in handling model uncertainties and disturbances.
+D. Experimental Results
+Two real-hardware experiments were presented to further
+demonstrate the performance of a proposed control scheme on a
+physical quadrotor P600. As shown in Fig. 6, the experimental
+setup of quadrotor included a downward-looking wide-angle
+camera Realsense T265 with a 163◦ﬁeld of view (FOV) only
+used to get RGB images, a custom-made electronics ﬂight
+controller board Pixhawk 4 (build-in IMUs) provided angle and
+velocity information of quadrotor, and a jetson nano onboard
+computer ran the closed-loop control system at 20 Hz. The
+proposed algorithm was implemented in the robot operating
+system kinetic. A motion capture system was only utilized to
+illustrate the landing trajectories. Two cases of experiments were
+considered as follows:
+Case 1: Quadrotor landed on a platform moving along a
+straight line.
+Case 2: Quadrotor landed on a platform moving along a
+circular trajectory.
+In the ﬁrst case, the linear velocity of the platform was set
+as 0.5 m/s. The results are shown in Fig. 7, Fig. 7(a) depicts
+the 3-D trajectories of the quadrotor and the moving platform
+for the whole landing process. In Fig. 7(b)–(d), it can be seen
+that the position errors converge with a satisfactory accuracy
+range of about 0.035 m. The linear velocity errors remain within
+the predeﬁned region and ensure that they will never violate the
+prescribedtransientboundsinFig.7(e)–(g).Theresultsshowthe
+good stability and performance of the proposed control scheme
+for landing on a moving platform.
+In the second case, the performance of the landing controller
+with nonlinear reference velocity was evaluated. The linear and
+angular velocities of the Husky moving platform were given by
+0.5 m/s and 0.2 rd/s. Experimental results were illustrated in
+Fig. 8. Fig. 8(a) illustrates the 3-D trajectories of the quadrotor
+and the moving platform. One can see that position and linear
+velocity errors are regulated to a predeﬁned arbitrarily small
+residual set along with the absolute decaying time function in
+Fig. 8(b)–(g). The results show that the transient and steady-
+state landing behaviors of the proposed controller are explicitly
+guaranteed and verify the robustness of the proposed controller
+against the uncertain relative dynamic system subjected to un-
+known moving platform models.
+V. CONCLUSION
+ThisarticleaddressedthePBVSlandingcontrolproblemofan
+underactuated quadrotor on an unknown model of moving plat-
+form. The proposed controller is of considerably low computa-
+tionalcomplexity,soitissuitableforthistypeofvehiclewithlow
+cost, real-time operation, and limited computation ability. Under
+the hierarchical control framework involving a position con-
+troller and an attitude controller, the quadrotor underactuation
+was well treated. More signiﬁcantly, the PBVS controller using
+the error transformation technology and the geometric attitude
+controller based on the ﬁlter were designed to overcome the lack
+of the target’s velocity. Therefore, the landing controller exhib-
+ited strong robustness against the uncertain relative dynamic sys-
+tem subjected to an unknown model of moving platform. With
+this method, the transient and steady-state landing behaviors
+were explicitly guaranteed. Hence, the proposed controller could
+meet the landing requirements for many applications of interest.
+Numerical simulations and experiments were conducted to show
+the validity and robustness of the proposed approach. Future
+work is to improve the performance of our landing algorithm
+for considering the FOV constraints of cameras.
+REFERENCES
+[1] V. Kumar and N. Michael, “Opportunities and challenges with autonomous
+micro aerial vehicles,” Int. J. Robot. Res., vol. 31, no. 11, pp. 1279–1291,
+2012.
+[2] H. Liu, X. Wang, and Y. Zhong, “Quaternion-based robust attitude control
+for uncertain robotic quadrotors,” IEEE Trans. Ind. Informat., vol. 11,
+no. 2, pp. 406–415, Apr. 2015.
+[3] A. Gautam, P. Sujit, and S. Saripalli, “A survey of autonomous landing
+techniques for UAVs,” in Proc. Int. Conf. Unmanned Aircr. Syst., 2014,
+pp. 1210–1218.
+[4] X. Zhang, B. Xian, B. Zhao, and Y. Zhang, “Autonomous ﬂight control
+of a nano quadrotor helicopter in a GPS-denied environment using on-
+board vision,” IEEE Trans. Ind. Electron., vol. 62, no. 10, pp. 6392–6403,
+Oct. 2015.
+[5] P. Serra, R. Cunha, T. Hamel, D. Cabecinhas, and C. Silvestre, “Landing
+of a quadrotor on a moving target using dynamic image-based visual servo
+control,” IEEE Trans. Robot., vol. 32, no. 6, pp. 1524–1535, Dec. 2016.
+[6] H. Shi, G. Sun, Y. Wang, and K. S. Hwang, “Adaptive image-based
+visual servoing with temporary loss of the visual signal,” IEEE Trans.
+Ind. Informat., vol. 15, no. 4, pp. 1956–1965, Apr. 2019.
+[7] X. Zhang, Y. Fang, X. Zhang, J. Jiang, and X. Chen, “Dynamic image-
+based output feedback control for visual servoing of multirotors,” IEEE
+Trans. Ind. Informat., vol. 16, no. 12, pp. 7624–7636, Dec. 2020.
+[8] O. Shakernia, Y. Ma, T. J. Koo, and S. S. Sastry, “Landing an unmanned
+air vehicle: Vision-based motion estimation and nonlinear control,” Asian
+J. Control, vol. 1, no. 3, pp. 128–145, 1999.
+[9] O. Shakernia, R. Vidal, C. Sharp, Y. Ma, and S. Sastry, “Multiple view
+motion estimation and control for landing an aerial vehicle,” in Proc. Int.
+Conf. Robot. Autom., 2002, pp. 2793–2798.
+[10] K. E. Wenzel, A. Masselli, and A. Zell, “Automatic take off, tracking and
+landing of a miniature UAV on a moving carrier vehicle,” J. Intell. Robot.
+Syst., Theory Appl., vol. 61, no. 1, pp. 221–238, 2011.
+[11] L. R. Garcia Carrillo, A. Dzul, and R. Lozano, “Hovering quad-rotor
+control: A comparison of nonlinear controllers using visual feedback,”
+IEEE Trans. Aerosp. Electron. Syst., vol. 48, no. 4, pp. 3159–3170,
+Oct. 2012.
+[12] D. Cabecinhas, R. Naldi, C. Silvestre, R. Cunha, and L. Marconi, “Robust
+landing and sliding maneuver hybrid controller for a quadrotor vehi-
+cle,” IEEE Trans. Control Syst. Technol., vol. 24, no. 2, pp. 400–412,
+Mar. 2016.
+[13] J. Thomas, J. Welde, G. Loianno, K. Daniilidis, and V. Kumar, “Au-
+tonomous ﬂight for detection, localization, and tracking of moving tar-
+gets with a small quadrotor,” IEEE Robot. Autom. Lett., vol. 2, no. 3,
+pp. 1762–1769, Jul. 2017.
+[14] A. Borowczyk, D. T. Nguyen, A. P. V. Nguyen, D. Q. Nguyen, D.
+Saussie, and J. L. Ny, “Autonomous landing of a multirotor micro air
+vehicle on a high velocity ground vehicle,” IFAC-PapersOnLine, vol. 50,
+pp. 10488–10494, 2017.
+[15] L. Marconi, A. Isidori, and A. Serrani, “Autonomous vertical landing on
+an oscillating platform: An internal-model based approach,” Automatica,
+vol. 38, no. 1, pp. 21–32, 2002.
+[16] B. Hu, L. Lu, and S. Mishra, “Fast, safe and precise landing of a quadrotor
+on an oscillating platform,” in Proc. Amer. Control Conf., 2015, pp. 3836–
+3841.
+[17] J. L. Sanchez-Lopez, J. Pestana, S. Saripalli, and P. Campoy, “An approach
+toward visual autonomous ship board landing of a VTOL UAV,” J. Intell.
+Robot. Syst., vol. 74, no. 1/2, pp. 113–127, 2014.
+[18] T. Baca et al., “Autonomous landing on a moving vehicle with an un-
+manned aerial vehicle,” J. Field Robot., vol. 36, pp. 874–891, 2019.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+
+5358
+IEEE TRANSACTIONS ON INDUSTRIAL INFORMATICS, VOL. 18, NO. 8, AUGUST 2022
+[19] O. Araar, N. Aouf, and I. Vitanov, “Vision based autonomous landing of
+multirotor UAV on moving platform,” J. Intell. Robot. Syst., vol. 85, no. 2,
+pp. 369–384, 2017.
+[20] J. Ghommam and M. Saad, “Autonomous landing of a quadrotor on a
+moving platform,” IEEE Trans. Aerosp. Electron. Syst., vol. 53, no. 3,
+pp. 1504–1519, Jun. 2017.
+[21] C. K. Tan, J. Wang, Y. C. Paw, and F. Liao, “Autonomous ship deck
+landing of a quadrotor using invariant ellipsoid method,” IEEE Trans.
+Aerosp. Electron. Syst., vol. 52, no. 2, pp. 891–903, Apr. 2016.
+[22] A. Rodriguez-Ramos, C. Sampedro, H. Bavle, P. de la Puente, and P.
+Campoy, “A deep reinforcement learning strategy for UAV autonomous
+landing on a moving platform,” J. Intell. Robot. Syst., vol. 93, no. 1/2,
+pp. 351–366, 2019.
+[23] J. Zhang and G. Yang, “Prescribed performance fault-tolerant control
+of uncertain nonlinear systems with unknown control directions,” IEEE
+Trans. Autom. Control, vol. 62, no. 12, pp. 6529–6535, Dec. 2017.
+[24] P. Marantos, C. P. Bechlioulis, and K. J. Kyriakopoulos, “Robust trajectory
+tracking control for small-scale unmanned helicopters with model uncer-
+tainties,”IEEETrans.ControlSyst.Technol.,vol.25,no.6,pp. 2010–2021,
+Nov. 2017.
+[25] J. Na, Q. Chen, X. Ren, and Y. Guo, “Adaptive prescribed performance
+motion control of servo mechanisms with friction compensation,” IEEE
+Trans. Ind. Electron., vol. 61, no. 1, pp. 486–494, Jan. 2014.
+[26] J. Wang and E. Olson, “AprilTag 2: Efﬁcient and robust ﬁducial detection,”
+in Proc. Int. Conf. Intell. Robot. Syst., 2016, pp. 4193–4198.
+[27] T. Lee, M. Leok, and N. McClamroch, “Geometric tracking control of
+a quadrotor UAV on SE(3),” in Proc. Conf. Decision Control, 2010,
+pp. 5420–5425.
+[28] E. D. Sontag, Mathematical Control Theory: Deterministic Finite Dimen-
+sional Systems. New York, NY, USA: Springer, 1990.
+[29] J. A. Farrell, M. Polycarpou, M. Sharma, and W. Dong, “Command ﬁltered
+backstepping,” IEEE Trans. Autom. Control, vol. 54, no. 6, pp. 1391–1395,
+Jun. 2009.
+[30] R. Mahony, V. Kumar, and P. Corke, “Multirotor aerial vehicles: Modeling,
+estimation, and control of quadrotor,” IEEE Robot. Autom. Mag., vol. 19,
+no. 3, pp. 20–32, Sep. 2012.
+[31] J. Liu, W. Gai, J. Zhang, and Y. Li, “Nonlinear adaptive backstepping
+with ESO for the quadrotor trajectory tracking control in the multiple
+disturbances,” Int. J. Control Autom. Syst., vol. 17, no. 11, pp. 2754–2768,
+2019.
+[32] A. Paris, B. T. Lopez, and J. P. How, “Dynamic landing of an autonomous
+quadrotor on a moving platform in turbulent wind conditions,” in Proc.
+Int. Conf. Robot. Autom., 2020, pp. 9577–9583.
+Jie Lin received the B.S. degree in automation
+from the College of Electrical Engineering and
+Automation, Fuzhou University, Fujian, China, in
+2019. He is currently working toward the Ph.D.
+degree in control science and engineering with
+Hunan University, Changsha, China.
+His current research interests include multi-
+robot systems, visual servoing, and nonlinear
+control.
+Yaonan Wang received the B.S. degree in
+computer engineering from East China Science
+and Technology University (ECSTU), Fuzhou,
+China, in 1981, and the M.S. and Ph.D. degrees
+in electrical engineering from Hunan University,
+Changsha, China, in 1990 and 1994, respec-
+tively.
+From 1994 to 1995, he was a Postdoctoral
+Research Fellow with the National University of
+Defence Technology, Changsha. From 1981 to
+1994, he was with ECSTU. From 1998 to 2000,
+he was a Senior Humboldt Fellow in Germany. From 2001 to 2004,
+he was a Visiting Professor with the University of Bremen, Bremen,
+Germany. He has been a Professor with Hunan University since 1995.
+His current research interests include robotics, intelligent perception and
+control, and computer vision for industrial applications.
+Prof.
+Wang
+is
+an
+Academician
+of
+the
+Chinese
+Academy
+of
+Engineering.
+Zhiqiang Miao (Member, IEEE) received the
+B.S.
+and
+Ph.D.
+degrees
+in
+electrical
+and
+information engineering from Hunan Univer-
+sity, Changsha, China, in 2010 and 2016,
+respectively.
+From 2014 to 2015, he was a Visiting Scholar
+with the University of New Mexico, Albuquerque,
+NM, USA. From 2016 to 2018, he was a Postdoc
+Fellow with the Department of Mechanical and
+Automation Engineering, The Chinese Univer-
+sity of Hong Kong, Hong Kong. He is currently
+an Associate Professor with the College of Electrical and Information En-
+gineering, Hunan University. His research interests include multi-robot
+systems, visual navigation and nonlinear control.
+Prof. Miao was the recipient of the Outstanding Doctoral Dissertation
+Award of Hunan Province in 2018, the Outstanding Doctoral Dissertation
+Nomination Award of Chinese Association of Automation in 2018, the
+Best Paper Honorable Mention Award of IEEE Robotics and Automation
+Letters in 2020, the Best Paper Finalists of the International Conference
+on Advanced Robotics in 2017 and the IEEE International Conference
+on Real-time Computing and Robotics in 2021. He served as the As-
+sociate Editor of the 2022 IEEE International Conference on Robotics
+and Automation (ICRA), the Workshop Associate Editor of the 2020
+IEEE/RSJ International Conference on Intelligent Robots and Systems
+(IROS), and the Technical Committee Member of several international
+conferences.
+Hang Zhong (Member, IEEE) received the B.S.,
+M.S., and Ph.D. degrees in automation sci-
+ence from the College of Electrical and Informa-
+tion Engineering, Hunan University, Changsha,
+China, in 2013, 2016, and 2020 respectively.
+He is currently a Postdoctoral Fellow with Hu-
+nan University. His current research interests
+include robotics modeling and control, visual
+servo control, and path planning of the aerial
+robots.
+Rafael Fierro (Senior Member, IEEE) received
+the M.Sc. degree in control engineering from the
+University of Bradford, Bradford, U.K., in 1990,
+and the Ph.D. degree in electrical engineering
+from the University of Texas at Arlington, Arling-
+ton, TX, USA, in 1997.
+He held a postdoctoral appointment with the
+GRASP Laboratory, University of Pennsylvania,
+Philadelphia, PA, USA, and a Faculty Position
+with the Department of Electrical and Computer
+Engineering, Oklahoma State University, Still-
+water, OK, USA. He has been a Professor with the Department of
+Electrical and Computer Engineering, University of New Mexico, Al-
+buquerque, NM, USA, since 2007, where he directs the Multiagent,
+Robotics, Hybrid and Embedded Systems Laboratory. His current re-
+search interests include hybrid and embedded systems, heterogeneous
+multivehicle coordination, cooperative and distributed control of multia-
+gent systems, mobile sensor networks, and robotics.
+Dr. Fierro was a recipient of the Fulbright Scholarship, the 2004 Na-
+tional Science Foundation CAREER Award, and the 2007 International
+Society of Automation Transactions Best Paper Award. He is serving as
+an Associate Editor for the IEEE TRANSACTIONS ON AUTOMATION SCIENCE
+AND ENGINEERING.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 30,2022 at 16:45:05 UTC from IEEE Xplore.  Restrictions apply. 
+

@@ -19,6 +19,9 @@
 
 function run_comparison(ctrl_list, trajType)
 
+% Shared helpers live in ../Common (collapsed from per-folder duplicates)
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
+
 if nargin < 1 || isempty(ctrl_list)
     ctrl_list = 1:5;
 end
@@ -98,8 +101,8 @@ for c = ctrl_list
     result.K         = K_ctrl;
     result.trajType  = trajType;
 
-    % Per-controller .mat (legacy filename used by plotter_comparison)
-    fname = sprintf('result_ctrl_%d.mat', c);
+    % Per-controller .mat (stored in Datasets/ alongside trajectory results)
+    fname = fullfile(fileparts(mfilename('fullpath')), 'Datasets', sprintf('result_ctrl_%d.mat', c));
     save(fname, '-struct', 'result');
     fprintf('    Saved %s  (%d steps)\n\n', fname, idx);
 

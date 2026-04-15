@@ -1,0 +1,477 @@
+ScienceDirect
+Available online at www.sciencedirect.com
+Procedia Computer Science 171 (2020) 1449–1458
+1877-0509 © 2020 The Authors. Published by Elsevier B.V.
+This is an open access article under the CC BY-NC-ND license (http://creativecommons.org/licenses/by-nc-nd/4.0/)
+Peer-review under responsibility of the scientific committee of the Third International Conference on Computing and Network
+Communications (CoCoNet’19).
+10.1016/j.procs.2020.04.155
+© 2020 The Authors. Published by Elsevier B.V.
+This is an open access article under the CC BY-NC-ND license (http://creativecommons.org/licenses/by-nc-nd/4.0/)
+Peer-review under responsibility of the scientific committee of the Third International Conference on Computing and Network
+Communications (CoCoNet’19).
+Keywords: Fixed-wing Unmanned Aerial Vehicles (UAVs); Bio-inspired optimization algorithms; Bats Optimization Algorithm; Moth Flame 
+Optimization Algorithm; Artificial Bee Colony Algorithm 
+Third International Conference on Computing and Network Communications (CoCoNet’19) 
+A Performance Study of Bio-Inspired Algorithms in Autonomous 
+Landing of Unmanned Aerial Vehicle   
+Harun Surej Ilangoa , Ramanathan R.a 
+aDepartment of Electronics and Communication Engineering,  
+Amrita School of Engineering, Coimbatore, 
+Amrita Vishwa Vidyapeetham– 641112, India 
+harunsurej.edu@gmail.com, r_ramanathan@cb.amrita.edu  
+Abstract 
+The complete operational automation of fixed wing Unmanned Aerial Vehicle (UAV) involves the autonomous operations across 
+take-off, cruising and landing. Among all these stages the landing stage is the most crucial one. During landing, it is important for 
+the UAV to maintain a constant speed and glide slope to ensure the stability and a successful touchdown on the runway. Also, it 
+is important for a UAV to estimate the accurate point of landing in a minimal amount of time. Embedding Bio-inspiring 
+algorithms in UAV control systems helps in accurate estimation of the landing point in a minimal amount of time. In this 
+research work, the Bio-inspired optimization algorithms Bats Optimization Algorithm, Moth Flame Optimization Algorithm and 
+Artificial Bee Colony Algorithm are used in determining the coordinates (points) of the computed path and to determine the 
+optimal point of landing which ensures the above said parameters are within the operational limits of the UAV. The objective of 
+this research work is to determine the path from the computed points and to find the optimal landing point in a minimal amount 
+of time. The difference between the original points of the actual path and the derived computed points of the estimated path is 
+measured as the error rate. The performance of the algorithms is analyzed in terms of two trade-off parameters, the time taken to 
+compute the landing point and the accuracy in predicting the landing point. The empirical results show that the Moth Flame 
+Optimization Algorithm takes less time to compute the optimal point with minimal error among the three optimization algorithms 
+taken up for the study.   
+
+1450	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+1. Introduction 
+The Unmanned Aerial Vehicles also called ‘drones’ are widely used in a number of applications like surveillance, 
+search and rescue operations and for real-time monitoring.  These are currently growing in popularity and recently, 
+Amazon, the world tech giant announced that it will be delivering customer packages to their homes directly through 
+UAVs. Its latest iteration was unveiled in Las Vegas touting the machine’s ability to spot obstacles such as people, 
+dogs, and clotheslines [1]. This conveys that this autonomous technology is still in its rudimentary stage. Fixed-wing 
+UAVs are used for unmanned surveillance which involves a lot of automation. This technology requires multiple 
+control systems to commensurate to build a complete product. Among these control systems, the landing system 
+plays a crucial role as it requires the right direction, glide slope, speed, angle of attack and high precision during the 
+final touchdown. In this research work, the UAV is considered to be a fixed-wing one. In a fixed wing UAV, the 
+machine needs to be moving in order to prevent it from stalling. Its position relative to any point in space keeps 
+changing. An exhaustive search of 3D-space needs to be searched to derive the optimum path to the runway and to 
+determine the optimal point of landing. To determine the optimum path, optimization techniques can be employed. 
+Inspired by nature, three optimization techniques are used in this study, namely, Bats Optimization Algorithm (BA), 
+Moth Flame Optimization Algorithm (MFO) and Artificial Bee Colony Algorithm (ABC). The similarity among 
+these three optimization algorithms is that all the three are avionic. Also, these algorithms avoid converging to a 
+local optimum solution and there is a higher probability of obtaining a global optimum solution. 
+The objective of this work is to design and simulate the landing of a fixed-wing UAV using Bio-inspired 
+optimization algorithms. The embedded Bio-inspired algorithms in the control systems compute points that form the 
+optimal path to the point of landing. The current position of the UAV is taken into account in computing the 
+coordinates of the optimal path and the optimal landing point. The difference between the actual path and the 
+computed path is estimated as the error rate.  So, the algorithm that generates an optimal path close to the actual path 
+is considered as the best one. Also, the time taken by the algorithm to compute the landing point is very crucial. The 
+algorithm that can determine the optimal points in minimum time and accuracy is considered as the best-suited 
+algorithm. The performance of these three optimization algorithms is compared based on the metrics, mean time 
+taken and mean error rate. There is always a trade-off between compute time and the accuracy of the estimated 
+points. The empirical results show that the Moth Flame Optimization algorithm could compute the optimal points 
+with minimal error rate in less time. 
+Nomenclature 
+ABC 
+Artificial Bee Colony 
+BA 
+Bats Algorithm 
+ 
+MFO 
+Moth Flame Optimization Algorithm 
+UAV 
+Unmanned Aerial Vehicle 
+RMSE Root Mean Squared Error 
+2. Background and related work 
+Unmanned Aerial Vehicles are autonomous vehicles which can fly without the help of humans. Most of the UAV 
+autopilots have limited autonomous landing techniques due to high risks and accuracy factors. Landing must be done 
+in a limited amount of time and space. Hence precise sensing techniques and accurate control are required during 
+this process. The difficulties and challenges in the landing of autonomous vehicles are discussed by Gautam et.al [2]. 
+These vehicles need a path planner to determine the optimal path for landing. Many research works have been 
+carried out for determining the 3D path planning of UAVs [3,4,5,6].  Yang et al in their survey have classified the 
+UAV path finding algorithms available in literature as Sampling-Based Algorithms, Node Based Optimal 
+Algorithms, Mathematic Model-Based Algorithms, Bio-inspired Algorithms and Multi-fusion-based Algorithms [7].  
+Bio-inspired algorithms use the biological characteristics of the animals to derive a solution. The biological 
+characteristics of the birds and animals are used by the Bio-inspired algorithms to derive a solution.  The natural 
+ecosystem mechanisms are simulated in these algorithms to derive solutions for the complicated combinatorial 
+
+	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+1451
+optimization problems [8]. A few Bio-inspired algorithms that are applied for the planning of landing unmanned 
+aerial vehicles were clearly discussed in [9].Bio-Inspired techniques like Particle Swarm Optimization(PSO) are 
+used in various other application like MIMO [10]. With the increase in the number of iterations, the convergence 
+rate of the algorithm increases in PSO. One point of concern compared to conventional vehicles is that, autonomous 
+vehicle has to communicate with other vehicles and infrastructure which is external networks and may become a 
+channel for attack and an opportunity for hackers during autonomous operation.[11] 
+3. Problem statement 
+Finding the optimum point of final approach plays a crucial role in maintaining the glide slope, glide speed and 
+angle of attack for a proper landing of UAV. This is further complicated by the practical difficulty that the UAV is 
+moving in 3-dimensional space with external factors such as wind acting on the UAV as it searches for an optimum 
+position. The Bio-inspired optimization techniques namely, Bats Optimization Algorithm, Moth Flame Optimization 
+Algorithm and Artificial Bee Colony Algorithm are employed to compute the point of final approach. Literature 
+shows that these three optimization algorithms are usually employed for small search space simulation problems 
+[12].  
+In this work, the upper and lower bounds of the search space is considered as [-2000,2000], space the UAV is 
+simulated and optimal points are determined. The performance of these optimization algorithms needs to be 
+compared for this large space, based on computing time and accuracy. Using a few numbers of generations and 
+iterations lowers the computing cost as it reduces the time taken for the algorithm to run. But the accuracy of the 
+output takes a huge hit. But increasing the number of generations and iterations increases the compute time but leads 
+to good accuracy. So, it is necessary to have the optimal number of generations and iterations thereby optimizing 
+computing cost and accuracy, the two inversely proportional parameters. The performance of the algorithms needs to 
+be compared based on computing time and accuracy. 
+4. Methodology 
+4.1. Experimental setup 
+ 
+The experiments and simulations were carried out using MATLAB R2019a. The simulation of fixed-wing UAV 
+is done using the Robotics System Toolbox in Simulink. The ‘Tuning Waypoint Follower for Fixed-Wing UAV’ is 
+used as a mainstay for this simulation. The Simulink project is divided into three major blocks. Namely, ‘Waypoint 
+Following Controller’, ‘Low Fidelity Fixed Wing Kinematic Model’ and ‘Visualization and Logging’ block.Fig. 1. 
+Fig1. Low fidelity simulation model of Fixed-wing UAV in Simulink. 
+
+1452	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+The UAV waypoint follower block instructs the UAV to follow a set of waypoints given as an input to the 
+‘Waypoints’ by the user. The ‘Heading Control’ block is used to determine the required roll angle in order to steer 
+the UAV into the desired heading as instructed by the ‘UAV Waypoint Follower’ block. Parameters like speed, look 
+ahead distance, simulated wind speed are automatically managed by the toolbox. 
+The ‘UAV Guidance Model’ block takes in the ‘Environment’ parameters and the ‘Control’ parameters provided 
+by the ‘Heading control’ and ‘Waypoint follower’ block and updates its current position in a 3-dimensional space 
+and outputs the present state of it to the ‘UAV Animation’ block for visualization and logging. The ‘UAV 
+Animation’ block displays the progress of the UAV in the 3-dimensional space in real-time. The Bio-Inspired 
+optimization algorithms are added onto this simulation to find and simulate the optimum pathway to the runway. 
+The optimization techniques take in the current coordinates of the UAV in 3-dimensional space and runway 
+coordinates and compute the point of final approach. The point of final approach is then given to the ‘Waypoint 
+generator’ MATLAB function. This function then computes the set of waypoints that the UAV has to follow and the 
+output of the function is given to the ‘Waypoints’ input of the ‘UAV Waypoint Follower’ block.  
+The optimization techniques are placed in an edge-triggered subsystem which is activated only at t=0s. To 
+determine the optimal number of generations and the iterations, each optimization technique is made to run across a 
+range of possibilities for the number of iterations from 1 to 10000 and the number of generations from 1 to 250. 
+Fig.2. Bio-Inspired Optimization Techniques embedded on Low fidelity simulation model of Fixed-wing UAV in Simulink. 
+The computed optimal coordinates are then fed to another waypoint MATLAB function which then computes the 
+set of waypoints that the UAV has to follow based on parameters like the descent rate, speed and altitude. These 
+waypoints are then fed to the ‘UAV Waypoint Follower’ block after which the simulation runs depicting the path 
+followed by the UAV. 
+4.2. Iterative analysis of the optimization techniques 
+To determine the optimum number of generations for the considered Bio-inspired optimization algorithms, for 
+each value of generation, a graph representing error versus the number of iterations is plotted and a line of best fit is 
+derived. Using the line of best fit, the value of Root Mean Square Error (RMSE) is obtained for each value of 
+generation. The RMSE plot for all the Bio-inspired optimization algorithms is plotted and the minimum RMSE 
+value for each optimization algorithm is considered as the optimum number of generations. To determine the 
+optimum number of iterations for the determined optimum number of generations, the lowest error from the line of 
+best fit is calculated. These two parameters are then used to compute the meantime and mean accuracy of that Bio-
+inspired optimization algorithm. 
+Using the determined optimum values of generations and iterations, the compute time of that algorithm is 
+determined. In order to reduce random errors, the optimization algorithm is called for 100 times and the meantime 
+
+	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+1453
+and accuracy are calculated. For each iteration, the UAV coordinates are randomized. The randomized coordinates 
+follow uniform distribution given by the Equation (1),[13] 
+1
+( )
+f x
+b
+a
+=
+−
+ 
+ 
+ 
+ (1) 
+These parameters are then computed to determine the best Bio-inspired optimization algorithm. The probability 
+density functions for accuracy and time are also plotted for comparative analysis of the performance parameters. 
+The benchmark function that is used to evaluate the performance of the three Bio-inspired optimization 
+techniques is a Sphere function [14] defined by the mathematical definition given in the Equation (2) 
+( )
+2
+1
+d
+i
+i
+f x
+x
+=
+=
+ 
+ 
+ 
+ (2) 
+where d is the number of dimensions in the search space. Sphere function is chosen as it has the search domain as 
+-  xi   that is a large unrestricted search space. 
+a 
+ 
+ 
+ 
+ 
+ 
+           b 
+Fig.3. Sphere function (a) at global minima; (b) shifted to an arbitrary point. 
+The benchmark sphere function used in this optimization algorithms is restricted to d=3 as we are dealing with a 
+UAV in a 3-dimensional space. So, the resulting fitness function is given in equation (3) and the result is shown in 
+Fig.3.(a). 
+( )
+2
+2
+2
+1
+2
+3
+f x
+x
+x
+x
+=
++
++
+ 
+ 
+ 
+ (3) 
+The benchmark function is then further modified to shift the sphere to the required 3-dimensional coordinates 
+ as given in equation (4) as shown in Fig.3.(b) 
+( )
+2
+2
+2
+1
+2
+3
+(
+)
+(
+)
+(
+)
+f x
+x
+a
+x
+b
+x
+c
+=
+−
++
+−
++
+−
+ 
+ 
+ 
+ (4) 
+ 
+ 
+ 
+
+1454	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+ 
+Fig 4. shows the overall process diagram carried out in this work. 
+ 
+Fig. 4. Process flow diagram  
+5. Results and discussion 
+The RMSE curve for all the three Bio-inspired optimization algorithms is shown in Fig.5. Using the RMSE plots 
+for all the three algorithms, the optimum number of generations is derived. 
+ 
+ 
+Fig.5. The plot of the number of generations vs RMSE. 
+ 
+ 
+ 
+
+	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+1455
+Using these optimum number of generation values, the plots for error versus number of iterations for that 
+particular generation is shown in Fig6.(a),(b),(c). 
+a 
+ 
+ 
+ 
+ 
+ 
+ 
+b 
+c 
+Fig.6. Plot of number of generation’s vs RMSE (a) ABC; (b) BA; (c)MFO. 
+The following points are inferred from the above plots: 
+• The error almost instantly converges to zero in less iteration in ABC and MFO algorithms and in BA the 
+convergence occurs after a considerable number of iterations.  
+• The line of best fit passes through a significant number of points in ABC and MFO algorithms whereas in Bat 
+algorithm it is not so.  
+• The optimum number of iterations is determined from the plot of error vs the number of iterations for that 
+particular generation. The point closest to the line of best fit, i.e. the point having the least error with respect to 
+the line of best fit, is considered as the value of optimal iteration. 
+The obtained values of the optimum number of generations and the optimum number of iterations are shown in 
+Table 1. 
+Table 1. The computed optimum number of generations and the optimum number of iterations. 
+Optimization Algorithm 
+The optimum 
+number of 
+generations 
+The optimum 
+number of 
+iterations 
+Bats Optimization Algorithm 
+250 
+8141 
+Artificial Bee Colony Algorithm 
+245 
+668 
+Moth Flame Algorithm 
+249 
+668 
+
+1456	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+The table shows that all the three Bio-inspired optimization algorithms chosen almost have the same number of 
+generations while the optimal number of iterations varies significantly. Bats Optimization Algorithm uses 
+significantly a greater number of iterations to provide the same level of accuracy as the other two.  
+Iterative analysis of the chosen optimum parameters is done and the mean time taken and the mean error are 
+calculated. These values are shown in Table 2. 
+Table 2. Mean time taken and mean error of the iterative analysis. 
+Optimization Algorithm 
+Mean time taken (s) 
+Mean error 
+Bats Optimization Algorithm 
+11.42714 
+1.37782E-05 
+Artificial Bee Colony Algorithm 
+10.33553 
+3.08649E-09 
+Moth Flame Algorithm 
+0.41068 
+0.628269 
+Also from the data of iterative analysis, the probability distribution of the error and the time elapsed can be 
+computed with which we can say, with what probability that the algorithm will be able to satisfy a given condition 
+say,  P(error) > 0.5 or P(time elapsed) > 2s. Figure 7 shows the normal distribution of the error and the time taken 
+for each algorithm.  
+a 
+ 
+ 
+ 
+ 
+ 
+b 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+c                                                                                            d 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+e 
+ 
+ 
+ 
+ 
+ 
+f 
+ 
+ 
+ 
+ 
+ 
+Fig. 7. Probability density function (a) Artificial Bee Colony (ABC)–error; (b) Artificial Bee Colony (ABC)–time elapsed;(c) Bats Algorithm 
+(BA)–error; (d) Bats Algorithm (BA)–time elapsed;(e) Moth Flame Optimization Algorithm (MFO)–error; (f) Moth Flame Optimization 
+Algorithm (MFO) – time elapsed. 
+
+	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+1457
+The time taken parameter is considered as a significant parameter over the error parameter as the search space is 
+significantly huge and an error less than 1 still holds good. A mean of error less than 1 does not significantly affect 
+UAV’s landing performance and accuracy close to zero is hence not required. Another practical issue that reinforces 
+that we prioritise mean time taken for computation is that the UAV is a fixed-wing type that has to be moving with 
+considerable speed in order to prevent it from stalling. If the time taken is considerable, the UAV would have moved 
+from the position from which it has started computing the optimised values and would end up in a wrong point of 
+final approach which impacts the landing hugely. The experimental results show that the Moth Flame Algorithm 
+takes the least time and also provides a tolerable accuracy. 
+Fig. 8. Simulated UAV trajectory 
+Fig. 8shows the final result of the simulation after the computed optimal value of generations and iterations are 
+plugged into the respective optimization algorithms. The black line shows the path that the UAV followed to the 
+runway. 
+6. Conclusion 
+This research work focuses on the application of Bio-inspired optimization algorithms to find the optimal path for 
+landing. Three Bio-inspired optimization algorithms which have similar biological behaviour viz., Bat Optimization 
+Algorithm, Moth Flame Algorithm, and Artificial Bee Colony Algorithm are considered for the study. The 
+performance of the algorithms is analysed in terms of two trade-off parameters the time taken to compute the 
+landing point and the accuracy in predicting the landing point. The experimental results show that among the three 
+algorithms the Moth Flame Algorithm takes less time to compute the optimum point with a tolerable accuracy when 
+used in a large search space. 
+ 
+ 
+References 
+[1]. 
+"Amazon to deliver by drone 'within months'", BBC News, 2019. [Online]. Available: https://www.bbc.com/news/technology-
+48536319. [Accessed: 21- Oct- 2019]. 
+[2]. 
+A. Gautam, P. B. Sujit, and S. Saripalli. (2014) “A survey of autonomous landing techniques for UAVs.” IEEE International 
+Conference on Unmanned Aircraft Systems (ICUAS), Orlando, USA, pp. 1210-1218, 2014.doi:10.1109/icuas.2014.6842377. 
+[3]. 
+Choset, Howie M., et.al.(2005)“Principles of robot motion: theory, algorithms, and implementations.”Cambridge, Mass: MIT Press. 
+Online ISBN:9780262255912. 
+
+1458	
+Harun Surej Ilango  et al. / Procedia Computer Science 171 (2020) 1449–1458
+[4]. 
+Schøler, F. (2012) “3D Path Planning for Autonomous Aerial Vehicles in Constrained Spaces.” Section of Automation & Control, 
+Department of Electronic Systems, Aalborg University. 
+[5]. 
+LaValle S M. (2006) “Planning algorithms.”Cambridge university press, New York NY, USA.ISBN:0521862051 
+[6]. 
+Karaman S, Frazzoli E.(2011)“Sampling-based algorithms for optimal motion planning.”The International Journal of Robotics 
+Research30(7): 846-894 
+[7]. 
+Yang, Liang et al. (2014). “A literature review of UAV 3D path planning.” Proceeding of the 11th World Congress on Intelligent 
+Control and Automation: 2376-2381. Doi:10.1109/wcica.2014.7053093. 
+[8]. 
+Bonabeau, E., et al. (2000) “Inspiration for Optimization from Social Insect Behaviour.” Nature, 406(6791):39–
+42.Doi:10.1038/35017500. 
+[9]. 
+Mirjalili 
+S, 
+Song 
+Dong 
+J, 
+Lewis 
+A. 
+(2019). 
+“Nature-Inspired 
+Optimizers”. 
+Springer 
+International 
+Publishing 
+AG.ISBN:9783030121266. Doi:10.1007/978-3-030-12127-3. 
+[10]. Saravanamuthu, K and Ramanathan, R. (2018). “A Particle Swarm Approach to Target Detection in MIMO Radar.”Proceedings of the 
+International Conference on 
+Advances 
+in 
+Computing, 
+Communications 
+and 
+Informatics 
+(ICACCI-2018):1601-1607. 
+Doi:10.1109/ICACCI.2018.8554569. 
+[11]. Kumar, A.D., Chebrolu, K.N., Vinayakumar, R., &Soman, K.P. (2018). “A Brief Survey on Autonomous Vehicle Possible Attacks, 
+Exploits and Vulnerabilities.”ArXiv, abs/1810.04144.  
+[12]. Maitra, A., Prasath, S. R., &Padhi, R. (2016). “A Brief Survey on Bio-inspired Algorithms for Autonomous Landing.”In: 4thIFAC 
+Conference on Advances in Control and Optimization of Dynamical Systems (ACODS 2016): 407. Doi: 10.1016/j.ifacol.2016.03.088. 
+[13]. "Uniform Distribution -- from Wolfram MathWorld", Mathworld.wolfram.com, 2019. [Online]. Available: 
+http://mathworld.wolfram.com/UniformDistribution.html. [Accessed: 21- Oct- 2019]. 
+[14]. "Sphere Function", Sfu.ca, 2019. [Online]. Available: http://www.sfu.ca/~ssurjano/spheref.html. [Accessed: 21- Oct- 2019]. 
+ 
+

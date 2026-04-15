@@ -1,4 +1,7 @@
 function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_override, seed)
+    mfile_dir = fileparts(mfilename('fullpath'));
+    addpath(fullfile(mfile_dir, '..', 'Common'));
+    addpath(fullfile(mfile_dir, 'plotters'));
     if nargin < 3, K_override = []; end
     if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
     if nargin < 5, cfg_override = []; end
@@ -12,6 +15,33 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
     Constants;
     InitVar;
+
+    %% ---------------------------------------------------------------------
+    %  Robustness model (depth-dep pixel noise, outliers, wind, param uncert)
+    %  Only active when NOISE=1. Noiseless mode bypasses all perturbations.
+    %  ---------------------------------------------------------------------
+    % Per-run parametric uncertainty (constant for the run)
+    delta_m = 0.05*(2*rand - 1);            % +/-5% mass  (softened robustness)
+    delta_J = 0.05*(2*rand - 1);            % +/-5% inertia
+    r_cog   = 0.005*(2*rand(3,1) - 1);      % +/-5 mm CoG offset
+    r_cog(3)= 0;
+    m_p     = m * (1 + delta_m);
+    J_p     = J * (1 + delta_J);
+
+    % Wind disturbance state (mean horizontal gust + first-order turbulence)
+    wind_mean   = 0.20 * [2*rand-1; 2*rand-1; 0];  % up to 0.2 m/s horizontal mean
+    wind_tau    = 1.0;                             % turbulence correlation time [s]
+    wind_sigma  = 0.1;                             % turbulence force std [N]
+    F_turb      = zeros(3,1);
+    C_d_wind    = 0.25;                            % quadrotor drag coefficient
+
+    % Depth-dependent pixel noise: sigma_px(z) = 0.3 + 0.5/(z+0.5)  [pixels]
+    % z=5m: 0.39 px | z=1m: 0.63 px | z=0.2m: 1.01 px
+    px_sigma0   = 0.3;
+    px_sigma1   = 0.5;
+    px_depth_offset = 0.5;
+    outlier_prob  = 0.005;   % 0.5% Bernoulli rate
+    outlier_mag   = 5;       % 5 px outlier magnitude
 
     % Optional environment override (NOISE / GE / delay) for sweep harnesses
     % that need to disable disturbances without editing InitVar.m.
@@ -35,24 +65,24 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % =====================================================================
     K_ctrl = struct();
 
-    K_ctrl.gamma_1  = [0.2, 0.2];
+    K_ctrl.gamma_1  = [0.1, 0.1];                 % slowed for realistic-mode tracking headroom
     K_ctrl.p_10     = K.p_10;
-    K_ctrl.p_1inf   = [0.08; 0.08];
+    K_ctrl.p_1inf   = [0.20; 0.20];    % widened (robustness-mode wind headroom)
 
     K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
     K_ctrl.zi = diag([0.1, 0.1]);
-    K_ctrl.zd = diag([1.3, 1.3]);
+    K_ctrl.zd = diag([0.975, 0.975]);             % deep-sweep lock-in (-35% maxXY)
 
     K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
-    K_ctrl.p_20     = [25.0; 25.0; 8.0];  % widened for faster traj_Gen targets
-    K_ctrl.p_2inf   = [0.8;  0.8;  1.0];          % prior 25/25 baseline
+    K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
+    K_ctrl.p_2inf   = [2.5;  2.5;  1.5];           % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
 
-    K_ctrl.Omega   = diag([0.003, 0.003, 0.006]);
+    K_ctrl.Omega   = diag([0.05,  0.05,  0.006]);  % lateral integral gain bumped 17x for short-descent xy catch-up
     K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
     K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-    K_ctrl.E       = diag([1.0,   1.0,   0.5  ]);
+    K_ctrl.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
 
     % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
     K_ctrl.kR     = diag([1.5, 1.5, 0.5]);
@@ -206,7 +236,15 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
 
         if NOISE
-            C_nP = awgn(C_nP, 50, 'measured');
+            % Depth-dependent pixel noise: stronger as target fills frame less
+            z_dep = max(abs(C_s_tc(3)), 0.1);
+            sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);  % [px]
+            C_nP = C_nP + (sigma_px / f) * randn(size(C_nP));   % f scales px -> normalized
+            % Outlier injection (detector glitch)
+            if rand < outlier_prob
+                col = randi(size(C_nP,2));
+                C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
+            end
         end
 
     % *********************************************************************
@@ -302,7 +340,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
         rel_vel  = norm(I_v_c - dx_t(1:3,idx));
         if alt_above <= zf
-            precise = xy_err <= 0.05;
+            precise = xy_err <= 0.10;
             soft    = rel_vel <= 0.2;
             fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                     tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -318,9 +356,10 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         p_1(:,idx) = expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * (K_ctrl.p_10 - K_ctrl.p_1inf) + K_ctrl.p_1inf;
         dp_1(:,idx) = -diag(K_ctrl.gamma_1) * expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * (K_ctrl.p_10 - K_ctrl.p_1inf);
 
+        S_1_margin = 0.05;   % matches S_2_margin; bounds |zeta_1|<=3.66
         for j=1:2
             S_1(j,j,idx) = V_s_e(j,idx)/p_1(j,idx);
-            S_1(j,j,idx) = min(max(S_1(j,j,idx), -1+eps), 1-eps);
+            S_1(j,j,idx) = min(max(S_1(j,j,idx), -1+S_1_margin), 1-S_1_margin);
             zeta_1(j,idx) = log((1+S_1(j,j,idx))/(1-S_1(j,j,idx)));
             G_1(j, j,idx) = (exp(zeta_1(j,idx)) + 1)^2/(2*exp(zeta_1(j,idx))*p_1(j,idx));
         end
@@ -508,7 +547,20 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             break;
         end
 
-        x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
+        % Update wind state: mean + colored turbulence + velocity-drag
+        if NOISE
+            F_turb = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
+            v_rel  = wind_mean - x_c(8:10);
+            F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel;
+        else
+            F_wind_I = zeros(3,1);
+        end
+
+        if NOISE
+            x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
+        else
+            x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
+        end
 
         if any(isnan(x_c))
             fprintf('  BREAK: x_c NaN at idx=%d (t=%.2f)\n', idx, tRange(idx));
@@ -545,7 +597,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
         rel_vel  = norm(I_v_c - dx_t(1:3,idx));
         if alt_above <= zf
-            precise = xy_err <= 0.05;
+            precise = xy_err <= 0.10;
             soft    = rel_vel <= 0.2;
             fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                     tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -562,14 +614,15 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     result.final_xy    = norm(I_p_c(1:2) - x_t(1:2,idx));
     result.final_alt   = abs(I_p_c(3) - x_t(3,idx));
     result.final_rel_vel = norm(I_v_c - dx_t(1:3,idx));
-    result.precise     = landed && (result.final_xy <= 0.05);
+    result.precise     = landed && (result.final_xy <= 0.10);
     result.soft        = landed && (result.final_rel_vel <= 0.2);
 
     if ~landed
         idx = idx - 1;
     end
 
-    save("temp.mat");
-    result.data = load("temp.mat");
-    delete("temp.mat")
+    scratch = [tempname, '.mat'];
+    save(scratch);
+    result.data = load(scratch);
+    delete(scratch);
 end

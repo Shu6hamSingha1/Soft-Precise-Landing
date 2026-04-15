@@ -1,0 +1,1097 @@
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+713
+Image Moments: A General and Useful
+Set of Features for Visual Servoing
+François Chaumette, Member, IEEE
+Abstract—In this paper, we determine the analytical form of the
+interaction matrix related to any moment that can be computed
+from segmented images. The derivation method we present is
+based on Green’s theorem. We apply this general result to classical
+geometrical primitives. We then consider using moments in
+image-based visual servoing. For that, we select six combinations
+of moments to control the six degrees of freedom of the system.
+These features are particularly adequate, if we consider a planar
+object and the configurations such that the object and camera
+planes are parallel at the desired position. The experimental
+results we present show that a correct behavior of the system is
+obtained if we consider either a simple symmetrical object or a
+planar object with complex and unknown shape.
+Index Terms—Image moments, visual servoing.
+I. INTRODUCTION
+I
+MAGE MOMENTS have been widely used in computer vi-
+sion for a very long time, especially for pattern-recognition
+applications [11], [15], [17]. It would be interesting to use them
+in visual servoing since they provide a generic representation
+of any object, with simple or complex shapes, that can be seg-
+mented in an image. They also provide a more geometric and
+intuitive meaning than the features that have been proposed in
+[5] from the contour of an object. Attempts to use moments in
+image-based visual servoing have already been presented in the
+past. The problem was that the analytical form of the interac-
+tion matrix related to image moments was not available. How-
+ever, this matrix is essential to design a visual-servoing con-
+trol scheme [8], [12]. That is why, in [1], if the idea of using
+image moments was expressed rigorously, very coarse approxi-
+mations were performed in practice to control only four degrees
+of freedom (DOFs) of a robot using the area, the centroid, and
+the main orientation of an object in the image. Similarly, in [24],
+a neural network has been developed to numerically estimate
+this interaction matrix. Finally, in [2], the interaction matrix re-
+lated to the moments of order less than three has been deter-
+mined, but the result was only valid for an ellipse in the image.
+The first contribution of this paper is that it presents a method to
+determine the analytical form of the interaction matrix related
+to any image moment.
+A second objective of using moments in image-based visual
+servoing is to try to determine features that avoid the potential
+Manuscript received December 10, 2002; revised July 25, 2003. This paper
+was recommended by Associate Editor Y.-H. Liu and Editor S. Hutchinson upon
+evaluation of the reviewers’ comments.
+The author is with IRISA/INRIA Rennes, 35 042 Rennes Cedex, France
+(e-mail: Francois.Chaumette@irisa.fr).
+Digital Object Identifier 10.1109/TRO.2004.829463
+problems that may appear when redundant image points coor-
+dinates are used; local minimum and coupled features that lead
+to inadequate robot trajectories, for example [3]. In fact, we
+would like to find again the nice properties of 2 1/2D visual
+servoing [14], but using visual features extracted only from the
+current image (to avoid any partial pose estimation at each iter-
+ation of the control scheme, which introduces some sensitivity
+to image noise). A nice step in that direction has been recently
+presented in [6]. More precisely, we search for six independent
+visual features, such that the corresponding interaction matrix
+has a maximal decoupled structure, without any singularity, and
+such that its condition number is as low as possible (to improve
+the robustness and the numerical stability of the system [9], [16],
+[19]). The second contribution of this paper is concerned with
+this objective.
+In the next section, we present a method based on Green’s the-
+orem to determine the analytical form of the interaction matrix
+related to any moment. The most simple case of a planar object
+is described in text, while the more general case is considered
+in the Appendix. In Section II-B, we consider more particularly
+the area and the coordinates of the center of gravity of the ob-
+ject, which are the moments of lowest order zero and one. We
+then determine the interaction matrix of the centered moments,
+from which we deduce the one related to the main orientation
+of the object. In Section III, all of these general results that are
+valid for objects of any shape are applied to the most simple
+and usual geometrical primitives: segments, straight lines, cir-
+cles, spheres, and cylinders. Indeed, the method we propose al-
+lows revisiting, in an easy way, the previous works dealing with
+the modeling of the interaction matrix. After these modeling is-
+sues, we propose in Section IV six visual features to control the
+six DOFs of the system. We will see that the selected features
+allows the system to have a nice decoupling behavior, if we con-
+sider a planar object and the most usual case where the object
+and camera planes are parallel at the desired position. The ex-
+perimental results described in Section V validate the proposed
+choice. Finally, concluding remarks are given in Section VI.
+II. INTERACTION MATRIX OF IMAGE MOMENTS
+A. Modeling
+Let
+be the observed object and
+the image acquired by
+the camera at time . We denote
+the part of
+where the
+object projects, and
+the contour of
+. As explained at the
+end of this section, we do not consider the intensity level of each
+pixel, which means that either binary images are acquired or a
+spatial segmentation algorithm, providing binary images, is first
+1042-296X/04$20.00 © 2004 IEEE
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+714
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+Fig. 1.
+(a) Time variation of contour C(t). (b) A more detailed view.
+performed on the acquired images. In that case, the moments
+of
+in the image are defined by
+(1)
+where
+. We are interested in determining the
+analytical form describing the time variation
+of moment
+in the function of the relative kinematic screw
+between the camera and the object, where
+and
+represent the
+translational and rotational velocity components, respectively.
+As for classical geometrical features, we will obtain a linear link
+that can be expressed in the form [8]
+(2)
+where
+is the interaction matrix related to
+.
+In (1), the only part that is a function of time
+is
+. The
+time variation of
+can thus be obtained from the variation of
+. More precisely, we have [10]
+(3)
+where
+is the velocity of contour point
+is the
+unitary vector normal to
+at point
+, and
+is an infinites-
+imal element of contour
+. From a geometrical point of view
+(see Fig. 1), the variation of
+is given by computing
+on the infinitesimal area between
+and
+, which is
+nothing but integrating along
+the product of
+(to compute
+the moment) by the scalar product between
+and
+(so that
+reaches
+).
+If the following conditions are satisfied (which is the case
+in practice):
+1)
+is continuous by parts;
+2) vector
+is tangent to
+and continuously dif-
+ferentiable,
+;
+we can use the famous Green’s theorem [21] and write (3) in
+the form
+(4)
+By developing (4), we finally obtain
+(5)
+This derivation, usual in physics and mechanics, has also al-
+ready been used in computer vision. In [4], low-order moments
+have been considered to estimate the time-to-collision and the
+surface orientation of an object observed by a moving camera.
+However, an affine-motion model was used in the derivation,
+which was not able to handle the perspective projection model
+of a camera exactly. The same application has been considered
+in [7], but using a spherical projection model. Finally, in [18],
+change in image moments under Lie group transformations has
+been studied, with a special attention to affine motion. In the
+following derivations, we consider a full and complete perspec-
+tive projection model, as well as the six DOFs of the system.
+Furthermore, moments of any order are addressed in a general
+way.
+In (5), the terms
+, and
+can be linearly
+expressed to the kinematic screw
+. Indeed, for any point with
+coordinates
+in the image whose corresponding three-
+dimensional (3-D) point has depth
+, we have the well-known
+relation
+(6)
+where
+(7)
+At this step, we consider that the 3-D observed object belongs to
+a continuous surface, which means that we assume that it does
+not present any depth discontinuity. In that case, the depth
+of
+any 3-D object point can be expressed as a continuous function
+of its image coordinates
+and
+, as follows:
+(8)
+For instance, if the object is planar or has a planar limb sur-
+face (see [8] for more details), whose equation expressed in the
+camera frame is given by
+then we have
+(9)
+where
+, and
+.
+We give in the Appendix the analytical form of the interac-
+tion matrix for the general case (8). However, in the following,
+we will only consider planar objects. Equation (9) will thus
+be used, instead of (8), to simplify the mathematical develop-
+ments. Furthermore, even if the general form is available, the
+exact analytical form we obtain for planar objects can be seen
+as an approximation for objects with more complex 3-D sur-
+faces. Such approximation is generally sufficiently accurate in
+practice, thanks to the robustness of the visual-servoing scheme
+with respect to modeling errors.
+Using (9) in (7), (6) can finally be written as
+(10)
+from which we deduce
+(11)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHAUMETTE: IMAGE MOMENTS: A GENERAL AND USEFUL SET OF FEATURES FOR VISUAL SERVOING
+715
+Substituting
+(10)
+and
+(11)
+into
+(5),
+and
+remem-
+bering that
+, and
+, we can express (5) under the expected
+form (2). We obtain, after simple developments
+(12)
+where
+The time variation of a moment of order
+can thus be ex-
+pressed from the moments of order up to
+and, as far
+as the translational terms are concerned, from the 3-D parame-
+ters
+, and
+. This nice property will allow us to easily use
+image moments in image-based visual servoing.
+In fact, all the derivations presented above are valid for the
+more general definition of image-based moments, that is
+where
+is the intensity level of image point with coor-
+dinates
+and
+, and where the integration is performed on all
+the image plane
+. The assumption that the intensity level of a
+point is not modified during any rigid motion has to be done (i.e.,
+). This assumption is usual in computer vi-
+sion in almost all works dealing with image-motion analysis.
+It seems possible to use the previous theoretical results on any
+image (and not only on binary or segmented ones). The problem
+that occurs in practice lies in the parts of the image that appear
+or disappear from one image to the next one, which makes the
+moments non-differentiable on all of the image plane. A region
+or its contour
+(or a set of regions or contours) has to be ex-
+tracted and tracked to provide a global matching, ensuring that
+the moments are well defined and differentiable. We can note
+that a local matching, linking any physical point of the contour
+to its corresponding point in the next image, is not necessary
+at all. This is a classical interest of using moments in computer
+vision. Finally, it may be interesting, in practice, to take into
+account a normalized intensity level of points in the tracked re-
+gion for the computation of moments, in order to increase the
+robustness and stability of the computed values with respect to
+segmentation noise.
+B. Zeroth- and First-Order Moments
+From the general form given in (12), we can deduce the form
+for any particular moment by just selecting the value of
+and
+. We first consider the most simple case
+that will
+give us the interaction matrix related to the area
+of the
+object. We obtain directly from (12)
+(13)
+where
+. We can note that
+depends
+linearly on
+(we have, of course,
+, if
+). Furthermore,
+when the object is centered and parallel to the image plane
+, we have
+for all camera motions but
+the expected translation
+along the optical axis.
+Similarly, by considering the first-order moments
+and
+, it is easy to determine the interaction matrix related to the
+coordinates
+and
+of the center
+of gravity of an object in the image. We obtain
+(14)
+where
+where
+, and
+are the normalized centered moments
+of order 2, defined as follows:
+with
+(15)
+From this result, we can see that the interaction matrix re-
+lated to the coordinates of the center of gravity of the object
+is a generalization of the interaction matrix (7) related to the
+coordinates of a point. Indeed, for a physical point, we have
+, and we can set
+in (14)
+to exactly obtain the classical equation (7).
+From another point of view, all previous works in visual ser-
+voing that used the coordinates of the center of gravity of an
+object as visual features (for instance, [6]), in fact used with
+(7) an approximation of the real interaction matrix. However,
+it was not a crucial problem, since closed-loop visual-servoing
+schemes are well known to be robust with respect to such mod-
+eling errors.
+Finally, it is well known and clear from (14) that
+and
+are mainly related to translational motion
+, along the
+camera
+axis and rotational motion
+around the
+axis (for
+), and to
+translational motion
+and rotational motion
+(for
+).
+C. Centered Moments
+We now consider the centered moments
+, defined by
+(16)
+Knowing the relation between
+and the moments
+of
+order up to
+, given as follows:
+(17)
+we can determine the interaction matrix related to
+, using
+(12). We can even obtain the analytical form of this matrix ex-
+pressed with the centered moments by using the reciprocal re-
+lation to (17) that links any
+to the centered moments up to
+order
+(18)
+After some (tedious) developments, we obtain the following
+simple form:
+(19)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+716
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+where
+This result can also be obtained by applying Green’s theorem
+directly to the definition of the centered moments (16). Indeed,
+we thus obtain
+(20)
+from which, using (10) and (14), we find again (19).
+From the analytical form of
+and
+, we can note that
+all centered moments are invariant with respect to translational
+motions parallel to the image plane only if the image plane is
+parallel to the object (
+when
+).
+If we consider the centered moments of order 2, that is,
+, and
+, we obtain from (19)
+(21)
+with
+where centered moments of order 3 are given by [see (17)]
+In visual servoing, we could hope that, using as visual
+features
+the six moments of order less than 3 (that is,
+), the six DOF of the system could
+be controlled. However, the interaction matrix
+related to
+is always of maximal rank 5 when an object appears with a
+symmetrical shape in the image, such as ellipses, squares, or
+rectangles. Furthermore, for nonsymmetrical objects, even if
+is of full rank 6, its condition number is really too high to
+provide satisfactory results (the control scheme is unstable).
+As will be shown in Section IV, few moments of order at least
+Fig. 2.
+Orientation  of an object is defined as the orientation of the ellipse
+obtained using the value of the object moments of order less than 3.
+equal to 3 thus have to be involved in the selection of the visual
+features.
+Despite this, an interesting feature can be selected from the
+moments of order 2. It is the well-known object orientation
+defined by (see [15] and Fig. 2)
+(22)
+Since
+, we have
+where
+. Using (21), we obtain
+(23)
+with
+We can note that
+is invariant with respect to any translational
+motion when the object plane is parallel to the image plane
+(
+when
+). Of course, we
+can also note the direct link between the variation of
+and the
+rotational motions
+around the optical axis.
+From the previous results, we have exhibited four visual fea-
+tures that have a direct and intuitive link with particular 3-D
+motions. They are the area
+, the coordinates
+and
+of the
+center of gravity of the object, and the orientation
+. We will
+see in Section IV how to select two supplementary visual fea-
+tures when we are interested in controlling the six DOFs of
+the system. In the next section, we consider very particular and
+simple cases.
+III. FROM MOMENTS TO SIMPLE GEOMETRICAL PRIMITIVES
+We have already seen in Section II-B that a point can be re-
+trieved from the center of gravity of an object whose area is null.
+In this section, we will see that the interaction matrix related
+to simple geometrical primitives can be obtained easily from
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHAUMETTE: IMAGE MOMENTS: A GENERAL AND USEFUL SET OF FEATURES FOR VISUAL SERVOING
+717
+Fig. 3.
+Usual representation of an ellipse.
+the general previous results. We first consider ellipses, and then
+segments and straight lines. These primitives have already been
+studied in the past [2], [8]. We here revisit the obtained results
+with a completely different and systematic approach.
+A. Ellipses
+The equation of an ellipse is given by (see Fig. 3)
+where
+and
+are the coordinates of the center of gravity of
+the ellipse,
+and
+are its major and minor axes, respectively,
+and is directly linked to its orientation (more precisely, we have
+). This representation is degenerated when the ellipse
+becomes a circle (in that case,
+is no longer defined). That is
+why it is better to represent an ellipse with the coordinates of its
+center of gravity and the normalized centered moments of order
+2 defined in (15). These moments can easily be expressed from
+the parameters
+, and . Indeed, we have
+(24)
+from which we can determine the reciprocal relations
+From this equation, the link between the area
+of the el-
+lipse and the normalized centered moments is easily obtained
+as follows:
+Furthermore, the equation of an ellipse can be expressed using
+the minimal, complete, and nonambiguous representation
+in the following form:
+(25)
+The interaction matrix related to the coordinates of the center
+of gravity of the ellipse are given in (14). As for the normalized
+centered moments, we obtain from their definition (15)
+Using (21) and (13) and knowing that the centered moments
+of order 3 are all equal to zero in the case of an ellipse (i.e.,
+), we finally obtain
+(26)
+where
+We find again the analytical form presented in [2]. We recall
+that, if the ellipse in the image results from the projection of a
+3-D circle, the 3-D parameters
+, and
+are directly obtained
+from the parameters of the plane which the circle belongs to
+[see (9)]. In that case, the interaction matrix
+related to the
+five parameters
+is always of full rank 5, but in the case where
+the 3-D circle is parallel to the image plane
+and
+centered. In that particular case, the ellipse becomes a centered
+circle (such that
+and
+) and the
+rank of
+is only 3 (since
+and
+).
+In the case where the ellipse in the image results from the
+projection of a sphere, we have [2]
+where
+, and
+are the coordinates of the center of the
+sphere and
+is its radius. In that case, the interaction matrix
+related to
+is always of rank 3, which means that only three
+parameters are necessary and sufficient to represent the image of
+a sphere. This result is intuitive, since a sphere is represented by
+only four independent parameters. In order to obtain a minimal
+and robust representation, we recommend simply using the area
+and the coordinates of the center of gravity of the ellipse when a
+sphere is considered. Indeed, in that case, the related interaction
+matrix is always of full rank 3.
+B. Segments
+A segment of length
+can be seen as an ellipse with major
+axis
+equal to /2 and minor axis
+equal to 0 (see Fig. 3).
+Of course, the middle of the segment corresponds exactly to the
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+718
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+center of gravity of that particular ellipse, and similarly, the ori-
+entation of the segment is nothing but the orientation of the el-
+lipse. We deduce from (24) the value of the normalized centered
+moments in the case of a segment, as follows:
+(27)
+from which we deduce
+. We can thus deter-
+mine the interaction matrix related to
+from
+and
+.
+More precisely, we have
+(28)
+Using (27) in (14), (23), and (28), we finally obtain a simple
+form for the interaction matrix related to the four parameters of
+a segment, as follows:
+(29)
+where
+,
+and
+and
+are the depth of the end points
+and
+of the segment, and
+is the depth of the middle point
+of the segment. Furthermore,
+we have
+As expected, we find again the analytical form given in [8] for
+a segment, and we can note that the interaction matrix given by
+(29) is always of full rank 4, and has a quite nice decoupling
+form when the segment is parallel to the image plane (in which
+case,
+).
+C. Straight Lines
+A straight line in the image can be seen as a segment of infi-
+nite length and whose center of gravity belongs to the straight
+line (see Fig. 4). Using the
+representation that defines the
+configuration of the straight line by
+we have
+(30)
+(31)
+The coordinates
+and
+have the following form:
+(32)
+Fig. 4.
+Representation of a straight line.
+where
+is unknown (see Fig. 4). Let us note that the derivations
+described briefly below are simpler if we consider
+, but
+that is not necessary at all (and not perfectly justified from a
+theoretical point of view), and we will see that all of the terms
+in which
+is induced disappear, as expected.
+First, from (30), we deduce directly
+. Using the
+interaction matrix
+related to the orientation of a segment,
+given in (29), and using
+and
+(32), we directly obtain
+(33)
+where
+, and
+.
+Furthermore, we obtain, by differentiating (31) to yield
+Using (14), (33), and noting from (27) that
+we obtain, after simple developments
+(34)
+where
+. As expected, we thus find
+again the analytical form of
+and
+given in [8].
+If the considered 3-D object is a straight line, parameters
+, and
+are directly obtained from the equation of a plane
+to which the 3-D straight line belongs. The only condition is
+that the chosen plane does not contain the camera optical center.
+If the considered 3-D object is a cylinder, its projection in the
+image can be represented by two straight lines (in all nondegen-
+erated cases) and parameters
+, and
+can have the same
+value for both lines. More precisely, we have [2]
+where
+is the radius of the cylinder, and where
+, and
+are the coordinates of the point of the cylinder axis nearest
+to the camera optical center.
+We have shown in this section how the interaction matrix re-
+lated to simple and classical geometrical primitives can be de-
+termined by considering particular forms of moments. We now
+come back to the general case by searching for adequate com-
+binations of moments able to control the six DOFs of a robot by
+image-based visual servoing.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHAUMETTE: IMAGE MOMENTS: A GENERAL AND USEFUL SET OF FEATURES FOR VISUAL SERVOING
+719
+IV. SELECTION OF FEATURES FOR VISUAL SERVOING
+From the results of Section II, four adequate visual features
+are available from moments of order less than 3: coordinates
+and
+of the center of gravity; area
+; and orientation
+. They
+are particularly interesting, since they are closely related to
+and
+and
+, and
+, respectively. In fact, these four
+features have already been used in the partitioned system pre-
+sented in [6] (with a more intuitive and approximative modeling
+of the interaction matrix). The question is now to determine sup-
+plementary visual features in order to decouple
+from
+and
+from
+. We have already seen in Section II-C that using
+only moments of order less than 3 was not possible. This is why
+we propose to select two combinations of moments of order up
+to 3 and not combinations of moments of higher order. Indeed, it
+seems preferable to use moments of order as low as possible to
+reduce the sensitivity of the control scheme to image noise. For
+that, the well-known skewness terms defined by
+and
+could be used [17], [24]. However, a better
+decoupled behavior will be obtained if we are able to determine
+invariants to translational motions and rotational motion around
+the optical axis (since we already have visual features to control
+these motions). Determining such invariants is a very difficult
+problem [22]. Our choice is based on the famous Hu’s invari-
+ants to image-based motion [11]. We recall three of them, given
+as follows:
+(35)
+where
+These invariants can be combined using products and ratios to
+also obtain invariants to scale. In such a way, we propose using
+(36)
+Indeed, when the object is parallel to the image plane, the inter-
+action matrix related to any of these two features, denoted
+,
+has the expected form
+(37)
+Unfortunately, the value of
+and
+(whose analytical form
+is too complex to be given here) is equal to 0 for
+and
+when a centered symmetrical object is observed in the image. In
+fact, this problem appears for all of Hu’s invariants. A different
+set has to be selected for symmetrical objects in order to avoid
+this isolated singularity. In that case, from the form of Hu’s in-
+variants (which look like the basic trigonometric equation), we
+propose using
+(38)
+where
+, and
+.
+These features have been obtained by looking for the analytical
+and numerical forms of the interaction matrix related to several
+possible trigonometric combinations and several possible nor-
+malizations. More precisely, we have chosen two invariants to
+2D rotations and scale, valid for symmetrical objects (such that
+), such that the first one is as inde-
+pendent as possible from
+, while the second is as independent
+as possible from
+. For the proposed features and for the con-
+figurations where the object is parallel to the image plane, the
+interaction matrix
+has the same nice form as (37). For non-
+symmetrical objects,
+and
+are not invariant to 2D rotations,
+since they do not correspond to combinations of Hu’s invariants.
+This implies that the coefficient of their interaction matrix cor-
+responding to
+is no more equal to 0. That is why we propose
+using
+and
+only for symmetrical objects, and
+and
+in
+all other cases.
+Finally, we have to note that the translational terms of the
+interaction matrix related to
+and
+(and to
+and
+for
+a symmetrical object) are equal to 0 only when the object is
+parallel to the image plane. The behavior far away from these
+configurations may be unsatisfactory. However, as we will see
+in the next section, where we have considered the case where
+object and image planes are parallel at the desired position, the
+results are satisfactory, even if the object is not parallel to the
+image plane at the beginning of the positioning task.
+V. EXPERIMENTAL RESULTS
+In the presented experimental results, obtained with a 6-DOFs
+eye-in-hand system, we have used the classical control law
+(39)
+where
+is the camera kinematic screw sent to the low-level
+robot controller,
+is a positive gain, and
+is the inverse
+of the interaction matrix related to
+computed for the desired
+value
+. We recall that
+exists, since the six visual fea-
+tures we have selected are such that
+is of full rank 6.
+Using this control scheme, only the local stability of the system
+is demonstrated, since the sufficient positivity condition
+is only ensured in a neighborhood of
+(see [8] for more
+details). Using
+instead of
+in control scheme (39)
+would possibly give even better results, but we currently have
+no way to estimate the 3-D parameters
+, and
+involved
+in the interaction matrix when objects of unknown shape are
+considered.
+A. Case of a Simple Symmetrical Object
+We first consider a simple rectangular object whose corners
+can easily be tracked in the acquired images. The desired camera
+position is such that the rectangle is parallel to the image plane,
+at a range of 50 cm from the camera optical center
+, and such that the rectangle is centered and hori-
+zontal in the image [see Fig. 5(a)]. The displacement that the
+camera has to realize is approximately composed of a rotation of
+, and
+around camera axis
+, and , respec-
+tively, and of a translation of
+and
+cm along these
+axes. The image acquired at the initial camera position is dis-
+played in Fig. 5(b).
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+720
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+Fig. 5.
+(a) Desired image. (b) Initial image.
+Using the coordinates
+and
+of the four corners as visual
+features, the numerical value of the interaction matrix for the
+desired position is given by
+As usual, this matrix does not present any interesting decou-
+pling properties, and we can note that its condition number is
+approximately equal to 180. The results obtained are depicted
+in Fig. 7. Hopefully, the camera reaches its desired position, but
+we can see that the corner trajectories in the image, as well as
+the camera trajectory (that can be extrapolated from the com-
+puted velocity), are not particularly satisfactory.
+We now describe the results obtained for the same experi-
+ment exactly, but using the six visual features based on image
+moments selected in Section IV. In practice, we determine the
+shape of the quadrilateral that corresponds to the image of the
+rectangle from the position of the corners, and then compute
+the moments of the quadrilateral [20]. We thus have as visual
+features
+whose desired value
+is given by
+We can note that the selected visual features allow one to
+specify, easily and in an intuitive way, the desired position
+or the desired image to be reached. For example, modifying
+the depth between the camera and the object can be specified
+by modifying only the desired value of the object area
+in
+the image. That is a supplementary advantage of determining
+a minimal set of visual features directly related to the 3-D
+translational and rotational motions.
+At the desired value
+, the interaction matrix presents excel-
+lent decoupling properties, since it is upper triangular with only
+two non-null values in the upper part. More precisely, we have
+Fig. 6.
+Results for the rectangle using image moments as visual features:
+image moments error (m).
+whose condition number is now equal to 17.1. The numerical
+stability of the system is thus greatly improved using moments-
+based features instead of points features (gain with scale equal to
+more than 10). We also note that the numerical value of
+is directly obtained from the analytical forms determined in this
+paper. More precisely, it just needs the numerical value of the
+moments of order up to 4 and
+. Since computing moments
+of a quadrilateral is very easy [20], the rate of the control loop
+is the same using image moments or image-points coordinates
+(that is, 50 Hz). The obtained results are depicted in Figs. 6 and
+8. By comparing Figs. 7 and 8, we can immediately observe the
+improvements obtained in the camera and image-corners trajec-
+tories, even at the beginning of the camera displacement (where
+the value and form of the current interaction matrix
+is com-
+pletely different from
+).
+B. Case of a Complex Object: The “Whale”
+We finally present the results obtained for a nonsymmetrical
+planar object whose shape is quite complex [see Fig. 9(a) and
+(b)]. In practice, the moments are now computed by simple sum-
+mations on the binarized images. This simple image processing
+and all of the computations involved in an iteration of the con-
+trol loop are again performed at the video rate. We now use as
+visual features
+The numerical value of the interaction matrix computed from
+the desired image depicted in Fig. 9(a) is given by
+We can note that
+is no longer purely triangular (such
+a form has not been reached yet) and presents more non-null
+values in the upper part than previously (mainly because the
+“whale” is not centered in the desired image). The condition
+number of
+is now equal to 42.1, which is still far better
+than using points coordinates in
+(it would be impossible to use
+points coordinates in that case).
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHAUMETTE: IMAGE MOMENTS: A GENERAL AND USEFUL SET OF FEATURES FOR VISUAL SERVOING
+721
+Fig. 7.
+Results for the rectangle using point coordinates as visual features. (a) Point coordinates error (pixels) versus iteration number. (b) Computed camera
+velocity (cm/s and dg/s) versus iteration number. (c) Image points trajectory.
+Fig. 8.
+Results for the rectangle using image moments as visual features. (a) Point coordinates error (pixels). (b) Computed camera velocity (cm/s and dg/s).
+(c) Image points trajectory.
+Fig. 9.
+Results for the “whale.” (a) Desired image. (b) Initial image. (c) Image moments error (m). (d) Computed camera velocity (cm/s and dg/s).
+The results obtained for the same displacement to realize
+as before are depicted in Fig. 9. Even if the decreasing be-
+havior of the visual features is similar for the rectangle and
+for the “whale” [compare Figs. 6 and 9(c)], the camera tra-
+jectory is a little bit less satisfactory [compare Figs. 8(b) and
+9(d)]. However, the convergence is obtained, even for the large
+considered displacement, and all of the “whale” remains in the
+camera field of view during the positioning task. We can fi-
+nally note that the small white part outside the “whale” [see
+Fig. 9(a) and (b)], which is taken into account in the compu-
+tation of the moments, does not perturb the behavior of the
+system at all.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+722
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 20, NO. 4, AUGUST 2004
+VI. CONCLUSION
+This paper has presented a first step to using image moments
+in visual servoing. The improvements with respect to classical
+visual servoing seem to be significant, since we obtained
+a generic representation able to handle simple geometrical
+primitives, but also complex objects with unknown shapes. The
+visual features we have selected by combinations of moments
+present nice decoupling and stability properties. However, a
+great deal of work remains to be done. First, we would like
+to adapt our selection of visual features to the case where the
+object and camera planes are not parallel at the desired position.
+Indeed, in that case, since the interaction matrix related to the
+selected visual features has no particular decoupling form, the
+obtained behavior is satisfactory for small displacements to
+realize, but may be unsatisfactory when large displacements
+around
+and
+camera axes have to be realized (as for all
+existing image-based visual-servoing schemes). Future work
+will be also devoted to studying the robustness of our scheme
+with respect to calibration errors and to partial occlusions.
+We also would like to try to demonstrate the global stability
+of the system. This will certainly be quite complex, but may
+be possible, thanks to the selection of a minimal number of
+decoupled features. We are also convinced that it is possible
+to improve the selection of the visual features, for example,
+following the recent developments presented in [13] (which
+were concerned with only one DOF) and [23].
+APPENDIX
+We give here the analytical form of the interaction matrix
+related to any image moment, in the general case, where the
+object belongs to a continuous non-planar surface. As already
+stated in Section II-A, the depth
+of any object point can be
+expressed as a continuous function of its image coordinates
+and
+Following exactly the same reasoning as before, changes in the
+determination of the interaction matrix will only appear in (10)
+and (11), from which we obtain
+where only the first three terms that correspond to translational
+motions are modified (since depth has no influence for rotational
+motions). More precisely, we have
+We can note that this general form obviously contains the par-
+ticular form given in (12) for a planar object (where we had set
+and all other terms
+equal
+to 0).
+From the previous result, we easily deduce the terms that cor-
+respond to the translational part of the interaction matrices re-
+lated to the area
+, and the coordinates
+and
+of the object
+center of gravity
+To compute the terms that correspond to the centered moments
+, a more simple form can be derived if the polynomial that
+links the depth
+of a point to the corresponding image point is
+decomposed around the object center of gravity
+We have the following relations:
+which, for a planar object, yields
+Using this form, we obtain
+where
+(and we recall that
+is the centered
+moment normalized by the area
+). Similarly, we
+obtain
+After some simple (but tedious) developments using (20) and
+the previous equations, we finally obtain the terms related to
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+
+CHAUMETTE: IMAGE MOMENTS: A GENERAL AND USEFUL SET OF FEATURES FOR VISUAL SERVOING
+723
+the translational part of the interaction matrix related to any cen-
+tered moment
+as follows:
+where
+, and
+. From these
+last equations, we can deduce, if needed, the analytical form of
+the interaction matrix related to any combination of moments,
+such as, for example, the object orientation
+. In all cases, the
+results are a generalization of those obtained by considering
+a planar object (i.e., the planar case can be retrieved from the
+general case by canceling all the terms
+and
+, such that
+).
+To conclude, we can see from all the previous equations that,
+if the object is not planar, or if its limb surface is not a plane,
+the translational terms of the interaction matrix related to any
+moments combination requires the value of moments of order
+higher than
+. Furthermore, an approximation of all
+the terms
+or
+is also necessary in the visual-servoing
+scheme. Even if not validated through experimental results,
+approximating the object surface by a plane seems to be a
+good compromise, in practice, between modeling errors and
+complexity, especially thanks to the well-known robustness
+properties of closed-loop visual-servoing schemes with respect
+to modeling errors. Regardless, the results presented in this
+Appendix may be useful for an accurate theoretical stability
+analysis of the system.
+REFERENCES
+[1] Z. Bien, W. Jang, and J. Park, “Characterization and use of Feature–Ja-
+cobian matrix for visual servoing,” in Visual Servoing, K. Hashimoto,
+Ed, Singapore: World Scientific, 1993, pp. 317–363.
+[2] F. Chaumette, P. Rives, and B. Espiau, “Classification and realization of
+the different vision-based tasks,” in Visual Servoing, K. Hashimoto, Ed,
+Singapore: World Scientific, 1993, pp. 199–228.
+[3] F. Chaumette, “Potential problems of stability and convergence in
+image-based and position-based visual servoing,” in The Conflu-
+ence of Vision and Control, ser. LNCIS Series.
+Berlin, Germany:
+Springer-Verlag, 1998, 237, pp. 66–78.
+[4] R. Cipolla, Active Visual Inference of Surface Shape.
+Berlin, Germany:
+Springer-Verlag, 1995, vol. 1016, Lecture Notes in Computer Science.
+[5] C. Collewet and F. Chaumette, “A contour approach for image-based
+control of objects with complex shape,” in Proc. IEEE/RSJ Int. Conf.
+Intelligent Robots and Systems, vol. 1, Takamatsu, Japan, Nov. 2000,
+pp. 751–756.
+[6] P. Corke and S. Hutchinson, “A new partitioned approach to image-
+based visual servo control,” IEEE Trans. Robot. Automat., vol. 17, pp.
+507–515, Aug. 2001.
+[7] Z. Duric, A. Rosenfeld, and J. Duncan, “The applicability of Green’s
+theorem to computation of rate of approach,” Int. J. Comput. Vis., vol.
+31, no. 1, pp. 83–98, Feb. 1999.
+[8] B. Espiau, F. Chaumette, and P. Rives, “A new approach to visual ser-
+voing in robotics,” IEEE Trans. Robot. Automat., vol. 8, pp. 313–326,
+June 1992.
+[9] J. Feddema, C. Lee, and O. Mitchell, “Automatic selection of image
+features for visual servoing of a robot manipulator,” in Proc. IEEE Int.
+Conf. Robotics and Automation, vol. 2, Scottsdale, AZ, May 1989, pp.
+832–837.
+[10] W. H. Hayt, Engineering Electromagnetics, 5th ed.
+New York: Mc-
+Graw-Hill, 1989.
+[11] M. K. Hu, “Visual pattern recognition by moment invariants,” IRE Trans.
+Inform. Theory, vol. 8, pp. 179–187, 1962.
+[12] S. Hutchinson, G. Hager, and P. Corke, “A tutorial on visual servo con-
+trol,” IEEE Trans. Robot. Automat., vol. 12, pp. 651–670, Oct. 1996.
+[13] R. Mahony, P. Corke, and F. Chaumette, “Choice of image features
+for depth-axis control in image-based visual servo control,” in Proc.
+IEEE/RSJ Int. Conf. Intelligent Robots and Systems, vol. 1, Lausanne,
+Switzerland, Oct. 2002, pp. 390–395.
+[14] E. Malis, F. Chaumette, and S. Boudet, “2 1/2D visual servoing,” IEEE
+Trans. Robot. Automat., vol. 15, pp. 238–250, Apr. 1999.
+[15] R. Mukundan and K. R. Ramakrishman, Moment Functions in Image
+Analysis: Theory and Application, Singapore: World Scientific, 1998.
+[16] B. Nelson and P. Khosla, “The resolvability ellipsoid for visual ser-
+voing,” in Proc. IEEE Int. Conf. Computer Vision and Pattern Recog-
+nition, Seattle, WA, June 1994, pp. 829–832.
+[17] R. J. Prokop and A. P. Reeves, “A survey of moment-based techniques
+for unoccluded object representation and recognition,” in Proc. Com-
+puter Vision, Graphics, Image Processing Conf., vol. 54, Sept. 1992, pp.
+438–460.
+[18] J. Sato and R. Cipolla, “Extracting group transformations from images
+moments,” Comput. Vis. Image Understanding, vol. 73, no. 1, pp. 29–42,
+1999.
+[19] R. Sharma and S. Hutchinson, “Optimizing hand/eye configuration for
+visual servo systems,” in Proc. IEEE Int. Conf. Robotics and Automa-
+tion, vol. 1, Nagoya, Japan, May 1995, pp. 172–177.
+[20] C. Steger, “On the calculation of arbitrary moments of polygons,”
+Munchen Univ., Munchen, Germany, Tech. Rep. FGBV-96-05, Oct.
+1996.
+[21] J. Stewart, Calculus, 2nd ed.
+Pacific Grove, CA: Brooks/Cole, 1991.
+[22] L. Van Gool, T. Moons, E. Pauwels, and A. Oosterlink, “Vision and Lie’s
+approach to invariance,” Image Vis. Comput., vol. 13, no. 4, pp. 259–277,
+May 1995.
+[23] O. Tahri and F. Chaumette, “Application of moment invariants to visual
+servoing,” in Proc. IEEE Int. Conf. Robotics and Automation, vol. 3,
+Taipei, Taiwan, Sept. 2003, pp. 4276–4281.
+[24] G. Wells, C. Venaille, and C. Torras, “Vision-based robot positioning
+using neural networks,” Image Vis. Comput., vol. 14, no. 10, pp.
+715–732, Dec. 1996.
+François Chaumette (M’98) was born in Nantes,
+France, in 1963, and graduated from École Nationale
+Supérieure de Mécanique, Nantes, in 1987. He
+received the Ph.D degree and “Habilitation à Diriger
+des Recherches” in computer science from the
+University of Rennes, Rennes, France, in 1990 and
+1998, respectively.
+Since 1990, he has been with IRISA/INRIA,
+Rennes, where he is now “Directeur de Recherches.”
+His research interests include robotics, computer
+vision, and especially the coupling of these two
+research domains (visual servoing and active perception).
+Dr. Chaumette received the AFCET/CNRS Prize for the best French thesis
+in automatic control in 1991. He was also the corecipient, with Ezio Malis, of
+the 2002 King-Sun Fu Memorial Best IEEE TRANSACTIONS ON ROBOTICS AND
+AUTOMATION Paper Award. He is currently an Associate Editor of the IEEE
+TRANSACTIONS ON ROBOTICS.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:55 UTC from IEEE Xplore.  Restrictions apply. 
+

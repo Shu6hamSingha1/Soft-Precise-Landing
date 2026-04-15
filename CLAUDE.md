@@ -29,7 +29,7 @@ git push origin main
 IBVS_Manuscript.pdf          — PLASMC paper draft (IEEE TAES)
 References/                  — Reference papers (PDF)
 MATLAB/
-  visualControl_IBVS_adaptive_temp.m  — Main PLASMC simulation (single run)
+  visualControl_IBVS_adaptive.m       — Main PLASMC simulation (single run)
   visualControl_IBVS_adaptive_loop.m  — Monte Carlo / loop version
   InitVar.m                  — Simulation parameters (shared)
   Constants.m                — Physical constants (m, J, g, camera params)

@@ -1,0 +1,1144 @@
+1116
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+Point-Based and Region-Based Image Moments
+for Visual Servoing of Planar Objects
+Omar Tahri and François Chaumette, Member, IEEE
+Abstract—Moments are generic (and usually intuitive) descrip-
+tors that can be computed from several kinds of objects, deﬁned
+either from closed contours or from a set of points. In this paper,
+we present improvements in image-based visual servo using image
+moments. First, the analytical form of the interaction matrix re-
+lated to the moments computed from a set of coplanar points is
+derived, and we show that it is different from the form obtained
+previously, using coplanar closed contours. Six visual features are
+selected to design a decoupled control scheme when the object is
+parallel to the image plane. This nice property is then generalized
+to the case where the desired object position is not parallel to the
+image plane. Finally, experimental results are presented to illus-
+trate the validity of our approach and its robustness, with respect
+to modeling errors.
+Index Terms—Image moment, invariant, visual servoing.
+I. INTRODUCTION
+T
+O DATE, an open question in image-based visual servoing
+is to determine the set of visual features to be used in the
+control scheme so that an optimal behavior of the system is
+obtained. In the past, most works were concerned with simple
+objects, and the features used as input of the control scheme
+were generally coordinates of points, or parameters describing
+the conﬁguration in the image of segments, straight lines, or el-
+lipses [9], [13]. The set of objects to which these methods can
+be applied is, thus, limited. They have also the basic require-
+ment of feature matching between initial and desired images.
+More recent works have tried to surmount the problems men-
+tioned above, by using, for example, an eigenspace representa-
+tion [8], the polar signature of an object contour [5], or, as in
+this paper, image moments [4]. Image moments are particularly
+interesting. They can be computed easily from a binary or a seg-
+mented image, or from a set of extracted points of interest. Com-
+puting moments in several images (for visual servoing, the ini-
+tial and the desired ones, and all the successive images acquired
+by the camera) just necessitates a high-level global matching of
+the object, and not an accurate and tedious matching of each
+object point. They are generic, describing the same geometrical
+Manuscript received July 30, 2004; revised January 13, 2005. This paper was
+recommended for publication by Associate Editor J. Kosecka and Editor F. Park
+upon evaluation of the reviewers’ comments. This paper was presented in part
+at the International Conference on Robotics and Automation, Taipei, Taiwan,
+R.O.C., September 2003, and in part at the International Conference on Robotics
+and Automation, New Orleans, LA, April 2004.
+O. Tahri was with IRISA/INRIA Rennes, 35 042 Rennes-Cedex, France. He
+is now with CEA/LIST, 92265 Fontenay-aux-Roses, France.
+F. Chaumette is with IRISA/INRIA Rennes, 35 042 Rennes-Cedex, France
+(e-mail: Francois.Chaumette@irisa.fr).
+Digital Object Identiﬁer 10.1109/TRO.2005.853500
+entities, whatever the object shape complexity. Low-order mo-
+ments have an intuitive meaning, since they are directly related
+to the area, the centroid, the inertial moments, and the orien-
+tation of the object in the image. Image moments have been
+widely studied in the computer vision community [12], [21]
+[22], especially for pattern recognition applications. In addi-
+tion to the advantages recalled above, judicious combinations
+of moments are indeed invariant to some transformations, such
+as scale, 2-D translation, and/or 2-D rotation. This property is of
+great interest in pattern recognition, which explains the amount
+of work on the determination of moments invariants (see [2],
+[19], [23], and [32], for instance). As it will be shown in this
+paper, such an invariance property is also of particular interest
+in visual servoing.
+Whatever the nature of the possible measures extracted from
+the image, from a set of image points coordinates to a set of
+image moments, the main question is how to combine them to
+obtain an adequate behavior of the system. In most works, the
+combination is nothing but a simple stacking. If the error be-
+tween the initial value of the features and the desired one is
+small, and if the task to realize constrains all the available de-
+grees of freedom (DOFs), that may be a good choice. How-
+ever, as soon as the error is large, problems may appear, such
+as reaching local minimum or a task singularity [3]. To over-
+come these problems, combining path planning and visual ser-
+voing is a ﬁrst approach, since tracking planned trajectories al-
+lows the error to always remain small [7], [20], [34]. A second
+approach is to use the measures to build particular visual fea-
+tures that will ensure expected properties to the control scheme.
+Position-based visual servoing belongs to this approach. Using
+visual measures and an a priori knowledge of a computer-aided
+design (CAD) model of the observed object, the relative camera-
+object pose is estimated and used as input to the control scheme
+[33]. An adequate 3-D trajectory can thus be obtained, such as a
+geodesic for the orientation and a straight line for the translation.
+However, position-based visual servoing may suffer from poten-
+tial instabilities due to image noise [3] (the “cooking” of the vi-
+sual features from the measures is quite complex, since it comes
+from the solution of an inverse problem).1 2–1/2-D (or hybrid)
+visual servoing also belongs to this approach [18]. The goals
+were to combine 2-D features and 3-D features to decouple the
+control of the rotation from the control of the translation (as in
+3-D visual servoing), to ensure as much as possible the visi-
+bility of the object in the camera ﬁeld of view (FOV), and also
+to demonstrate the global stability of the system using only the
+measures from the current and the desired images. Finally, sev-
+eral works have been realized in image-based visual servoing
+1The marvelous expression “cooking of features” is from Peter Corke.
+1552-3098/$20.00 © 2005 IEEE
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1117
+following the same general objective. In [14], the coordinates of
+points are expressed in a cylindrical coordinate system, instead
+of the classical Cartesian one, to improve the robot trajectory.
+In [11], the three coordinates of the centroid of an object in a
+virtual image obtained through a spherical projection have been
+selected to control three DOFs of an underactuated system. This
+selection ensures a passivity property that is useful in control-
+ling such complex systems. In [24], a vanishing point and the
+horizon line have been selected to control a similar system. This
+choice ensures a good decoupling between translational and ro-
+tational DOFs. In [15], vanishing points have also been used for
+a dedicated object (a 3-D rectangle), once again for decoupling
+properties. For the same object, six visual features have been de-
+signed in [6] to control the six DOFs of a robot arm, following
+a partitioned approach. Finally, in [4], a ﬁrst attempt to select
+six features from image moments has been recently presented.
+This selection was valid only for planar objects whose desired
+pose is parallel to the image plane. In this paper, the selection
+method is signiﬁcantly improved, and is generalized for any de-
+sired object pose.
+In most related previous works, the selection of the visual fea-
+tures was guided by a partitioned approach to design a decou-
+pled control scheme, that is, to try to associate each DOF to be
+controlled with only one visual feature. That is indeed a good
+strategy. However, it is not sufﬁcient to obtain a good behavior
+of the visual features and of the robot trajectory simultaneously.
+In few words, we recall that the time variation
+of the visual
+features
+can be expressed linearly with respect to the relative
+camera-object kinematics screw
+(1)
+where
+is the interaction matrix related to
+[9], [13]. The con-
+trol scheme is usually designed to try to ensure an exponential
+decoupled decrease of the visual features to their desired value
+, from which we deduce, if we consider an eye-in-hand system
+observing a static object
+(2)
+where
+is a model or an approximation of
+,
+is the pseu-
+doinverse of
+,
+is a positive gain tuning the time to conver-
+gence, and
+is the camera velocity sent to the low-level robot
+controller. In the following, we denote
+and
+, respectively,
+as the translational and rotational components of the kinematic
+screw, so that
+. An expo-
+nential decoupled decrease will be obtained simultaneously on
+the visual features and on the camera velocity (that would give
+a perfect behavior) only if
+and
+are constant. If it is pos-
+sible to choose
+as a constant matrix, the form of
+is set
+by the design of , and it is generally very far from a constant
+matrix. For instance, the well-known interaction matrix related
+to the coordinates
+of an image point is given by
+(3)
+where
+is the depth of the observed point. We can see from (3)
+that the velocities
+and
+are really not the same with respect
+to each camera velocity component. Some are inversely propor-
+tional to the depth
+of the point, some are linearly dependent
+on the image coordinates, while others depend on them at the
+second order. The nonlinearities in system (1) using (3) explain
+the difference of behaviors in image space and in 3-D space,
+and the inadequate robot trajectory that occurs sometimes when
+the displacement to realize is large [3] (of course, for small dis-
+placements, such that the variations of
+are negligible, a cor-
+rect behavior is obtained, as already noted above). An important
+problem is, thus, to determine visual features, such that their in-
+teraction matrix minimizes the nonlinearities in (1). Ideally, we
+would like
+to be the identity matrix
+, even if this goal is
+probably impossible to reach. Note that designing a decoupled
+or a partitioned system is a step toward this goal, since it intro-
+duces terms equal to zero in
+.
+In this paper, we propose signiﬁcant improvements in the de-
+termination of adequate visual features using image moments.
+In the next section, we ﬁrst brieﬂy recall the basic deﬁnition of
+image moments. We then give a general analytical form of their
+interaction matrix. In [4], only objects deﬁned from closed con-
+tours were considered, while this paper deals also with moments
+computed from a set of image points. Section III is devoted to
+the determination of six visual features to control the six DOFs
+of the system for the particular case where the desired object
+pose is parallel to the image plane. This result is generalized in
+Section IV to the case where the object may have any orienta-
+tion with respect to the camera. Finally, experimental results are
+presented in Section V to validate the proposed theoretical re-
+sults.
+II. MODELING
+A. Moment Invariants
+If we consider a dense object
+in the image, deﬁned by a
+set of closed contours [see, for instance, Figs. 2(b) and 8(b)], its
+2-D moments
+of order
+are deﬁned by
+(4)
+The centered moments
+are computed with respect to the
+object entroid
+. They are deﬁned by
+(5)
+where
+and
+,
+being the
+object area. Similarly, for a discrete set of
+image points [see,
+for instance, Fig. 14(a)], the moments are deﬁned by
+(6)
+while the centered moments are now given by
+(7)
+where
+and
+(
+in that case).
+The centered moments deﬁned either from (5) or (7) are known
+to be invariant to 2-D translational motion. In the literature,
+many works have presented various methods to derive moment
+invariants to other transformations, such as scale and 2-D rota-
+tion. For instance, moment invariants to rotation have been ob-
+tained from radial and angular moments [23], Zernike moments
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+1118
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+[2], [30], [32], and complex moments [1], [10]. As for invariants
+to scale, several combinations of moments have been proposed,
+such as, for example [19]
+(8)
+This formula will be used in Section III to decouple the features
+involved in the control of the translational DOFs
+and
+. We
+now present several combinations of moments that are invariant
+to 2-D translation, 2-D rotation, and to scale. Complete details
+on how they have been determined can be found in [21], [22],
+and [27]
+(9)
+where invariants
+to
+are given in the Appendix. We will see
+in Sections III and V that depending on the object considered,
+two among the invariants (9) will be selected as visual features
+to control the rotational velocities
+and
+. We now derive a
+general form of the interaction matrix related to image moments.
+B. Interaction Matrix of Image Moments
+In [4], the interaction matrix
+related to any moment
+deﬁned from (4) has been determined. It has been obtained from
+the following equation:
+(10)
+where
+. If a planar object is considered, and if
+we exclude the degenerate case where the camera optical center
+belongs to this plane, so that, for any object point
+(11)
+we obtain (see [4] for more details)
+(12)
+where
+(13)
+with
+. We now consider the case of moments deﬁned
+by (6). We will see that a different analytical form of
+is
+obtained, characterized by the value of . Computing the time
+derivative of (6), we obtain
+(14)
+The velocity of any image point
+is given from (1) and (3),
+setting
+in (1). More precisely, using (11), the velocity
+of
+can be written
+(15)
+Finally, using (15) in (14), and then using (6), we obtain, after
+simple developments, the interaction matrix related to
+. Its
+analytical form is again given by (12) and (13), but with
+.
+Matrix
+is, thus, not exactly the same, if we consider the
+moments (4) of a dense object (i.e., deﬁned by closed contours),
+or the moments (6) of a discrete object (i.e., deﬁned by a set of
+discrete points). The analytical forms are similar, since the two
+terms of (14) correspond exactly to the ﬁrst two terms present in
+(10). On the other hand, they are different, since the third term
+of (10) does not appear in (14). To illustrate these differences on
+a simple example, let us consider moment
+. In the discrete
+case,
+is nothing but the number
+of object points. This
+number is, of course, invariant, and we can check by setting
+in (13) that all the terms of
+are indeed
+equal to zero. In the dense case,
+is nothing but the area of
+the object, and general robot motion modiﬁes its value, as can
+be checked from (13) using
+.
+Many visual features derived from moments have, however, a
+very similar behavior in both cases. For instance, we can easily
+compute from (12) the interaction matrix related to the coordi-
+nates
+and
+of the object center of gravity. We obtain
+where
+(16)
+with
+,
+for dense objects, and
+for
+discrete objects.
+Similarly, if we consider the centered moments deﬁned by (5)
+or (7), we obtain, after tedious developments
+(17)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1119
+with
+In all cases, and as expected, we can check from
+and
+that all centered moments are invariant, with respect to trans-
+lational motions parallel to the image plane when the object is
+parallel to the image plane (
+if
+).
+Similarly, for the same conﬁgurations, we can check from (12)
+that the invariants to scale given by (8) are invariant to transla-
+tional motion along the optical axis (
+if
+).
+Finally, after quite tedious computations, we can also check that
+the invariants
+given in (9) are such that
+, and, if
+, such that
+. As detailed
+in the next section, these invariance properties will be useful in
+selecting adequate visual features for visual servoing.
+III. CHOICE OF THE VISUAL FEATURES
+In this section, we select from the previous theoretical results
+six combinations of moments to control the six DOFs of the
+robot. Our objective is to obtain a sparse interaction matrix that
+changes slowly around the desired position of the camera. We
+will see that the solution we present is such that the interac-
+tion matrix is block-triangular when the object is parallel to the
+image plane. Furthermore, we will see that for the same posi-
+tions, the elements corresponding to translational motions form
+a constant diagonal block, which is independent of depth. In [4],
+this last interesting property was not satisﬁed.
+We ﬁrst assume that the desired position of the object is par-
+allel to the image plane (i.e.,
+) and we denote
+the interaction matrix for such conﬁgurations. The more general
+case where the desired object position may have any orientation
+with respect to the image plane will be treated in the next sec-
+tion.
+A. Visual Features to Control the Translational DOFs
+In [4] and [6], the three visual features used to control the
+translational DOFs have been selected as the coordinates
+,
+of the center of gravity, and the area
+of the object in
+the image. In that case, we obtain from (16) and (12)
+(18)
+with
+,
+, and
+. First, we recall that if a set of
+points is considered, we
+cannot use the area
+, since it is a constant value equal to
+. This case will be studied later. Then, we can note that, even
+if the above matrix is triangular, most of its elements are not
+constant. Moreover, the third feature
+does not have the same
+dynamics with respect to
+as
+and
+with respect to
+and
+, respectively.
+A better choice can be obtained from these intuitive features
+by just adding an adequate normalization. More precisely, we
+deﬁne
+(19)
+where
+is the desired area of the object in the image, and
+the desired depth between the camera and the object. The
+interaction matrices related to these normalized features can be
+easily determined from (18). Noting that
+, where
+is the area of the planar object, we obtain
+(20)
+with
+,
+,
+,
+, and
+. Since
+is inversely proportional to
+, we ﬁnd again the recent result
+given in [16], stating that the variation of such features depends
+linearly on the depth (note the constant term in the third element
+of
+). The normalization by
+has just been chosen, so
+that this constant term is equal to
+1. Furthermore, the design
+of
+and
+allows us to completely partition the three selected
+features to the three translational DOFs. This decoupling prop-
+erty was expected from (8). We also obtain the same dynamics
+for the three features [note the diagonal block equal to
+in
+(20)]. This very nice property will allow us to obtain an ade-
+quate robot translational trajectory.
+We now consider the case of a discrete object. Since
+is invariant to 2-D translation and 2-D rotation, we propose to
+replace in (19) the area and its desired value by
+and
+(21)
+In that case, the interaction matrix related to
+,
+, and
+is
+again given by (20), but with
+The control of the translational DOFs can thus be realized with
+the same nice properties for both cases. We now consider the
+rotational DOFs.
+B. Visual Features to Control the Rotational DOF
+First, as in [4] and [6], we use the object orientation
+that
+can be deﬁned from the second-order centered moments:
+. We also use two moment invari-
+ants
+and
+, chosen in (9). The interaction matrices related to
+these features have the following form:
+(22)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+1120
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+where the analytical form of
+,
+,
+, and
+can be
+obtained after tedious developments using (17), and where
+and
+are shown in the equation at the bottom of the page,
+with
+and
+for a dense object, and with
+and
+for a discrete object.
+Unfortunately, we have not been able to ﬁnd two combina-
+tions of moments
+and
+such that
+, and such
+that
+and
+are constant. In fact, their value and their vari-
+ation change for each object, since they depend on the value of
+several moments. That is why we will see, in Section V, how to
+choose for each object the best pair
+from the set given
+in (9).
+Finally, we recall that the interaction matrices (20) and (22)
+have nice expected forms only when the object is parallel to the
+image plane. In Section V, we will see that when the desired ob-
+ject position is parallel to the image plane, satisfactory results
+are obtained, even if the initial position is far away from this con-
+ﬁguration. However, if the desired object position is not parallel
+to the image plane, the decoupling and linearizing properties are
+not as good as in the parallel case. That is why we present, in
+the next section, a new method to generalize our results to the
+case where the desired object position may have any orientation
+with respect to the image plane (except, of course, the degen-
+erate case where the camera optical center belongs to the object
+plane).
+IV. GENERALIZATION TO DESIRED OBJECT POSES
+NON-PARALLEL TO THE IMAGE PLANE
+The general idea of our method consists of applying a virtual
+rotation to the camera, computing the visual features after this
+virtual motion, and then using the transformed features in the
+control law. The rotation is determined so that the image plane
+in its virtual desired position is parallel to the object. The prop-
+erties obtained in this case will thus be enlarged for any desired
+conﬁguration.
+The ﬁrst step of the method consists of determining the vir-
+tual rotation
+to apply to the camera. If the task is speci-
+ﬁed by a desired conﬁguration to reach between the camera and
+the object,
+is directly given by this conﬁguration (but this
+method necessitates the knowledge of the 3-D model of the ob-
+ject to compute the desired value
+of the visual features). If the
+task is speciﬁed by a desired image acquired during an ofﬂine
+learning step,
+can be obtained either from a pose-estimation
+algorithm if the model of the object is known, or from a par-
+tial pose-estimation algorithm if another image of the object is
+available [29]. Finally, the two angles involved in
+can also
+be given during the learning step in the same way as the desired
+depth
+is set for the parallel case. For this method, no prior
+knowledge of the pattern lying on the target plane is required.
+We have chosen this last simple solution for the experimental
+results presented in Section V. We will see that a coarse approx-
+imation of
+is sufﬁcient, since the decoupling properties are
+ensured in a neighborhood of the parallel conﬁguration.
+We now describe how the visual features are computed. Let
+us denote
+, and
+the coordinates of a 3-D
+point after and before the virtual rotation. Of course, we have
+(23)
+from which we immediately deduce the coordinates
+of
+the point in the image that would have been obtained if the
+camera had really moved. Indeed, using the perspective projec-
+tion equation (
+,
+), we obtain
+(24)
+where
+are the coordinates of the point in the real image.
+We can note that
+can be computed directly from
+and
+. An estimation of the coordinates of the 3-D point is, thus,
+useless.
+If the object is composed of a set of
+points, (24) is applied to
+all the
+points in the desired image (from which, visual features
+are computed), and for all the
+points in the current image
+(from which, visual features
+are computed). Otherwise, if a
+dense object is considered, the moments after the virtual rotation
+are given by
+(25)
+where
+We thus obtain
+(26)
+where
+. Computing the moments directly from (26)
+is possible, but time consuming. We thus propose a more efﬁ-
+cient method, based on a Taylor series expansion of
+. Indeed, if
+(which is the case,
+in practice), this term can be approximated by
+(27)
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1121
+Using (27) in (26), and after simple developments, we obtain
+(28)
+with
+and
+. The moments after the virtual
+rotation can thus be computed directly and efﬁciently from the
+moments in the real image.
+Finally, a change in the control law (2) has to be performed
+to come back from the virtually rotated camera to the real one
+(29)
+where matrix
+is nothing but
+Let us note that
+is a constant block-diagonal matrix, and
+thus preserves the decoupling properties between translational
+and rotational motions. Let us also note that the virtual rotation
+does not change the stability properties of the system, even if
+it is coarsely approximated, as long as we avoid the degenerate
+case where the camera optical center belongs to the object plane
+(which is very unlikely to occur).
+V. EXPERIMENTAL RESULTS
+This section presents several experimental results obtained at
+video rate with a 6-DOF eye-in-hand system using ﬁrst dense
+objects, and then discrete ones. For dense objects, image mo-
+ments are efﬁciently computed from the contour points using
+Green’s theorem [26]. In all the experiments, and as in [28], we
+have used the following model of the interaction matrix in the
+control law (29):
+Indeed, it has been recently proved in [17] that this choice
+largely improves the system behavior. Note that, of course, the
+improvements appear only for the terms of
+which are not
+constant.
+A. Experimental Results Using Dense Objects
+We ﬁrst consider the object depicted in Fig. 1(a) and (b): a
+“whale.” For this object, we have chosen
+and
+from the set
+given in (9) to control the rotational motion
+and
+. For all
+the possible pairs, we can indeed compute, using (28), the error
+(30)
+where
+and
+, which represent the rotation angles around the
+and
+axes, are varying from
+to
+, typically. We then
+choose the pair
+such that the error
+presents a global
+minimum, with an inﬂuence zone as large and as symmetrical as
+Fig. 1.
+Results for a pure translational motion when the object is parallel to
+the image plane. (a) Initial image. (b) Desired image. (c) s  s m. (d)  cm/s.
+(e) Camera 3-D trajectory.
+Fig. 2.
+Representation of f(e ) on [ (=3); =3]  [ (=3);=3] for the
+“whale” and pair. (a) (c ; c
+). (b) (c ; c ). (c) (c ; c ). (d) (c ; c ).
+possible [31]. A complete study is given in [27]. We present in
+Fig. 2 the value of
+for four possible pairs. We can note from
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+1122
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+Fig. 3.
+Results for a pure translation when the object is not parallel to the image
+plane. (a) Initial image. (b) Desired image. (c) s   s m. (d) v cm/s and dg/s.
+(e) Camera 3-D trajectory.
+Fig. 2(a) and (d) that
+and
+supply an adequate
+behavior of
+(that is why
+has been selected). On the
+other hand,
+and
+have to be avoided [see Fig. 2(b)
+and (c)]. This ofﬂine selection process has to be done for each
+new object considered, once a desired image is acquired. Com-
+puting the values of
+for all the possible pairs
+currently takes a few seconds on a standard PC.
+In the next paragraph, we consider the case where a pure
+translational motion can be realized to reach the desired image
+from the initial one. We will then consider more complex dis-
+placements.
+1) Pure Translational Motion: We compare in Fig. 1 the re-
+sults obtained with our features given in (19) and those obtained
+using the centroid coordinates
+and the area
+. For that
+ﬁrst experiment, the image plane is parallel to the object plane,
+the desired depth
+has been set to 0.5 m, and gain
+to 0.1. We
+can see in Fig. 1 the improvements brought by the proposed fea-
+tures (corresponding plots are in dashed lines), since they allow
+obtaining the same exponential decoupled decrease for the vi-
+sual features and for the components of the camera velocity. As
+expected, the camera 3-D trajectory is a pure straight line using
+the proposed features, while it is not using the other ones. Note
+that using a bad estimation of
+with our features just has a gain
+effect. Thus, it changes the time to convergence of the system,
+but not the robot trajectory nor the exponential decoupled de-
+crease of the features (as long as
+).
+The results still remain good when the image and object
+planes are not parallel (see Fig. 3). In that case,
+has again
+been set to 0.5 m, and rotation
+has been speciﬁed, by
+Fig. 4.
+Results for a complex motion when the desired object position is
+parallel to the image plane. (a) Initial image. (b) Camera 3-D trajectory. (c)
+s   s
+m. (d) v cm/s and dg/s.
+hand, as a rotation of 30 around the
+axis. The camera 3-D
+trajectory is still a straight line, while if the virtual rotation is
+not applied, rotational motions are involved to reach the goal,
+whatever the visual features used. This validates the selected
+features to control the translational motions, and also the im-
+portance of applying a virtual rotation when the desired object
+position is not parallel to the image plane.
+2) Complex Motion: We now test our scheme for displace-
+ments involving very large translations and rotations. We ﬁrst
+consider the case where the image and object planes are par-
+allel at the desired position. The desired image is depicted in
+Fig. 1(b), while the initial one is in Fig. 4(a). The numerical
+value of the interaction matrix computed for the desired posi-
+tion is given by
+As expected, we can note that
+is block triangular with
+main terms around the diagonal. Its condition number, 2.60, is
+very satisfactory. The obtained results are given in Fig. 4. They
+show the good behavior of the control law. Indeed, there is no
+oscillation in the decreasing of the visual features [see Fig. 4(c)],
+and there is only one small oscillation for only two components
+of the camera velocity [see Fig. 4(d)]. Even if the rotation to re-
+alize between the initial and the desired positions is very large,
+the obtained camera 3-D trajectory is satisfactory [see Fig. 4(b)].
+The decoupling properties are thus ensured in a large neighbor-
+hood of the desired position, despite the fact that the current ob-
+ject plane parameters are never computed nor introduced in the
+control law. The behavior obtained with our pure image-based
+method is thus similar to that obtained with a hybrid control
+scheme (but it does not necessitate an estimation of the camera
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1123
+Fig. 5.
+Results for a complex motion when the desired object position is not
+parallel to the image plane. (a) Initial image. (b) Camera 3-D trajectory. (c)
+s   s
+m. (d) v cm/s and dg/s.
+Fig. 6.
+Results using a bad calibration. (a) Initial image. (b) Camera 3-D
+trajectory. (c) s   s
+m. (d) v cm/s and dg/s.
+displacement at each iteration of the control scheme). We can
+ﬁnally note that using moments of order 5 (involved in
+and
+) does not introduce signiﬁcant noise in the control law.
+The results obtained when the image and the object planes
+are not parallel for the desired position are given in Fig. 5. We
+can note the very large difference between the initial image
+[Fig. 5(a)] and the desired one [Fig. 3(b)]. Thanks to the virtual
+rotation applied and the visual features selected, the camera tra-
+jectory is still very satisfactory, as well as the decreasing of the
+visual features and the components of the camera velocity.
+3) Results With a Bad Calibration and Object Occlu-
+sion: We now test the robustness of our approach with respect
+to a bad calibration of the system. In the experiment reported in
+Fig. 6, errors have been added to camera intrinsic parameters
+Fig. 7.
+Representation of f(e ) for the “brain” and for the pair. (a) (c ; c
+).
+(b) (c ; c ).
+Fig. 8.
+Results obtained with the “brain” for a desired object position parallel
+to the image plane. (a) Initial image. (b) Desired image. (c) s   s
+m. (d) v
+cm/s and dg/s. (e) Camera 3-D trajectory.
+(25% on the focal length and 20 pixels on the coordinates of the
+principal point) and to the object plane parameters (
+m, instead of
+m). The lighting conditions from the
+initial position [see Fig. 6(a)] to the desired one [see Fig. 1(b)]
+are also different. Furthermore, an occlusion has been gener-
+ated, since the object is not completely in the camera FOV at
+the beginning of the servo. Despite the worse conditions of the
+experiments, the system still converges, and, as soon as the
+occlusion ends (after iteration 30), the behavior of the system
+is similar to that of the previous experiments, which validates
+the robustness of our scheme with respect to modeling errors.
+4) Results for Another Object: We now consider another ob-
+ject, a “brain” [see Fig. 8(a) and (b)]. For that object, pair
+has been selected to control the rotational motion
+and
+. In-
+deed, it is clear from Fig. 7 that this pair is now adequate, while
+is not. The numerical value of the interaction matrix
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+1124
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+Fig. 9.
+Results obtained with the “brain” for a desired object position
+non-parallel to the image plane. (a) Initial image. (b) Desired image. (c) Visual
+features s   s m. (d) v cm/s and dg/s. (e) Camera 3-D trajectory.
+corresponding to the desired conﬁguration given in Fig. 8(b) is
+given by
+Once again, we can note the nice form of
+whose condition
+number is 3.14. We can also note in Fig. 8(c)–(e) the correct
+behavior of the control law, which is very similar to the one
+obtained with the “whale.”
+Similarly, if we consider a desired conﬁguration of the object
+plane non-parallel to the image plane, the behavior obtained is
+still satisfactory, thanks to the virtual rotation applied (see Fig. 9,
+where
+has again been speciﬁed as a rotation of 30 around
+the
+axis).
+B. Experimental Results Using Discrete Objects
+Discrete objects are now considered. The ﬁrst one is very
+simple and composed of 17 “white dots” (see Fig. 11). For
+that object, several pairs of moments invariants can be chosen,
+such as
+or
+(see Fig. 10). In the following ex-
+periments, we have chosen the pair
+. Two cases for the
+desired camera position have been also considered. Either the
+image plane is parallel to the object, or it is not. The corre-
+sponding images are given in Fig. 11(a) and (b).
+1) Pure Translational Motion: In this experiment, the same
+pure translation
+cm
+cm
+cm is between the
+initial and the desired conﬁgurations for both parallel and non-
+Fig. 10.
+Representation of f(e ) for the set of points and for the pair.
+(a) (c ; c
+). (b) (c ; c ).
+Fig. 11.
+Pure translational motion. (a) Desired image when the object is
+parallel to the image plane. (b) Desired image when the object is not parallel
+to the image plane. (c) Initial image for a pure translation from (a). (d) Initial
+image for a pure translation from (b). (e) Comparison of s   s
+m. (f)
+Comparison of 
+cm/s. (g) Camera 3-D trajectory when the object is parallel
+to the image plane (a straight line, using our features). (h) Idem when the object
+is not parallel to the image plane.
+parallel cases [see Fig. 11(c) and (d)]. We have compared the
+results obtained using the moments proposed in Section III-A
+as visual features [see (19) and (21)], and using all the points
+coordinates
+.
+In both parallel and non-parallel cases, we can see in
+Fig. 11(e)–(h) the improvements brought using moments and,
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1125
+Fig. 12.
+Results for a complex motion using a discrete object, compared using
+our visual features and using a basic image-based approach. (a) Initial image.
+(b) Desired image. (c) s   s
+m using moments. (d) v
+cm/s and dg/s using
+moments. (e) s   s
+m using image-points coordinates. (f) v
+cm/s and dg/s
+using image-points coordinates. (g) Image points trajectories (with dashed lines
+using image points coordinates). (h) Camera trajectories (almost a straight line
+with our features).
+for the non-parallel case, brought by the virtual rotation. In-
+deed, they allow obtaining a pure exponential decrease for the
+visual features, and generate exactly the same camera velocity.
+As expected, the camera 3-D trajectory is a pure straight line in
+both cases using the proposed method. When points coordinates
+are used, we no longer have a pure exponential decrease for the
+visual features and for the camera velocity components. The
+camera trajectory is thus no longer a straight line. Rotational
+motions (unfortunately, not visible on the presented plots) are
+even involved when points are used for the non-parallel case.
+2) Complex Motion and Comparison wrt Basic Image-Based
+Visual Servoing: We now consider a complex displacement,
+and we present a comparison between our image-based method
+using six combinations of moments and the traditional image-
+based method, where the coordinates of the image points are
+used as input to the control scheme. The initial image is given in
+Fig. 12(a), while the desired one is given in Fig. 12(b). The cor-
+responding displacement is very large (
+cm,
+cm,
+cm,
+,
+,
+), and the
+desired position is such that there is a rotation of
+around the
+Fig. 13.
+Results with modeling errors. (a) s   s
+m. (b) v
+cm/s and dg/s.
+(c) Image points trajectories. (d) Camera trajectory (almost the same, with or
+without modeling errors).
+camera axis between the object plane and the image plane.
+As for the other objects considered previously, the interaction
+matrix using the moments after the virtual rotation is sparse and
+block triangular
+Despite the large displacement to realize, we can note in
+Fig. 12(c) and (d) the decoupled and exponential decrease of
+the six combinations of moments and the six camera velocity
+components. If points coordinates are used as input to the
+control law [see Fig. 12(e) and (f)], the system still converges,
+but without these nice properties. The difference of behaviors
+is particularly clear on the trajectories of the image points
+[see Fig. 12(g)] and the camera trajectory [see Fig. 12(h)],
+where our scheme leads to almost a pure 3-D straight line.
+The results obtained using the proposed combinations of 2-D
+moments are thus similar to those of a hybrid visual servoing.
+Even if currently limited to planar objects, our method has
+the advantage that it is not necessary to explicitly solve the
+matching problem between each point of the object extracted
+on the current image, and the corresponding point extracted on
+the desired image. Contrary to the other existing methods (that
+is, basic image-based, position-based, and hybrid schemes),
+it is sufﬁcient to check that the same set of points is used to
+compute the moments in the current and the desired images.
+3) Results With a Bad System Calibration: We now test the
+robustness of our approach with respect to modeling errors. In
+the presented experiment, errors have been added to camera in-
+trinsic parameters (25% on the focal length and 20 pixels on
+the coordinates of the principal point) and to the object depth
+(
+m instead of
+m). Furthermore, an error
+equal to 10 has been set in
+. The results are given in Fig. 13.
+Even if the trajectory of the points are different in the calibrated
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+1126
+IEEE TRANSACTIONS ON ROBOTICS, VOL. 21, NO. 6, DECEMBER 2005
+Fig. 14.
+Results for complex images. (a) Initial image. (b) Desired image.
+(c) ks   s k m. (d) v cm/s and dg/s.
+and coarse-calibrated cases [compare Figs. 12(g) and 13(c)],
+which is mainly due to the large errors introduced in the camera
+intrinsic parameters, all the errors introduced have a small ef-
+fect on the decreasing of the moments [compare Figs. 12(c) and
+13(a)], on the camera velocity components [compare Figs. 12(d)
+and 13(b)], and thus on the camera 3-D trajectory, which is
+still very near to a pure straight line, as in the calibrated case
+[see Fig. 13(d), where the trajectories can be compared]. Let
+us note that the basic image-based method using points coor-
+dinates as input to the control law does not allow the system
+to converge with the same modeling errors, since some points
+leave the camera FOV. These results validate the strong robust-
+ness of our scheme with respect to modeling errors, and the fact
+that the decoupling properties are not sensitive to a coarse ap-
+proximation of the virtual rotation, since they are ensured in a
+neighborhood of the virtually rotated desired position.
+4) Results for Complex Images: Finally, we present experi-
+mental results obtained with more complex images (see Fig. 14)
+using the pair
+. The considered points have been ex-
+tracted using the well-known Harris detector and tracked using a
+simple sum of squared distances algorithm. We can note that the
+plots obtained are more noisy than using simple dots, because of
+the less accurate points extraction. It is mainly noticeable on
+and
+components of the camera velocity, since these values
+depend on moments of order 5 (while
+and
+are not noisy
+at all, since their value only depends on moments of order 2).
+Despite this noise, the exponential decrease, the convergence,
+and the stability are still obtained, which proves the validity of
+our approach. This results could be improved easily using a sub-
+pixel accuracy image tracker, such as the Shi-Tomasi algorithm
+[25].
+VI. CONCLUSION
+In this paper, we have proposed a new visual servoing scheme
+based on image moments, valid for dense and discrete objects.
+Six features have been designed to decouple the DOFs of the
+system, which provides a large domain of convergence, a good
+behavior of the visual features, and an adequate camera trajec-
+tory. A new method, based on a virtual camera rotation, has also
+been proposed to extend the decoupling properties for any de-
+sired camera orientation with respect to the object. The experi-
+mental results have shown the validity of our approach, and its
+robustness with respect to modeling errors. We have obtained
+results similar to using a hybrid visual servoing scheme, but
+with a more simple cooking of the visual features, since our
+method does not necessitate any point-to-point matching, any
+homography estimation, nor any partial displacement estima-
+tion at each iteration of the control scheme. Future work will be
+devoted to determining a unique pair of moments invariants able
+to efﬁciently control
+and
+, whatever the considered object.
+We would like also to generalize the results to nonplanar objects,
+and to determine analytical conditions to ensure the global sta-
+bility of the system in the presence of modeling errors.
+APPENDIX
+The set of invariants involved in (9) are given by [27]
+REFERENCES
+[1] Y. S. Abu-Mustapha and D. Psaltis, “Image normalization by complex
+moments,” IEEE Trans. Pattern Anal. Machine Intell., vol. PAMI-7, no.
+1, pp. 46–55, Jan. 1985.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+
+TAHRI AND CHAUMETTE: POINT-BASED AND REGION-BASED IMAGE MOMENTS FOR VISUAL SERVOING OF PLANAR OBJECTS
+1127
+[2] S. O. Belkassim, M. Shridhar, and M. Ahmadi, “Shape-contour recog-
+nition using moment invariants,” in Proc. 10th Int. Conf. Pattern Recog.,
+Atlantic City, NJ, Jun. 1990, pp. 649–651.
+[3] F. Chaumette, “Potential problems of stability and convergence in
+image-based and position-based visual servoing,” in The Conﬂuence of
+Vision and Control.
+New York: Springer-Verlag, 1998, vol. 237, pp.
+66–78.
+[4]
+, “Image moments: A general and useful set of features for visual
+servoing,” IEEE Trans. Robot., vol. 20, no. 4, pp. 713–723, Aug. 2004.
+[5] C. Collewet and F. Chaumette, “A contour approach for image-based
+control of objects with complex shape,” in Proc. IEEE/RSJ Int. Conf.
+Intell. Robots Syst., vol. 1, Takamatsu, Japan, Nov. 2000, pp. 751–756.
+[6] P. I. Corke and S. A. Hutchinson, “A new partitioned approach to image-
+based visual servo control,” IEEE Trans. Robot. Autom., vol. 17, no. 4,
+pp. 507–515, Aug. 2001.
+[7] N. J. Cowan, J. D. Weingarten, and D. E. Koditschek, “Visual servoing
+via navigation functions,” IEEE Trans. Robot. Autom., vol. 18, no. 4, pp.
+521–533, Aug. 2002.
+[8] K. Deguchi, “A direct interpretation of dynamic images with camera and
+object motions for vision-guided robot control,” Int. J. Computer Vision,
+vol. 37, no. 1, pp. 7–20, Jun. 2000.
+[9] B. Espiau, F. Chaumette, and P. Rives, “A new approach to visual
+servoing in robotics,” IEEE Trans. Robot. Autom., vol. 8, no. 3, pp.
+313–326, Jun. 1992.
+[10] J. Flusser, “On the independance of rotation moment invariants,” Pattern
+Recog., vol. 33, pp. 1405–1410, 2000.
+[11] T. Hamel and R. Mahony, “Visual servoing of an underactuated dynamic
+rigid body system: An image-based approach,” IEEE Trans. Robot.
+Autom., vol. 18, no. 2, pp. 187–198, Apr. 2002.
+[12] M.-K. Hu, “Visual pattern recognition by moments invariants,” IRE
+Trans. Inf. Theory, vol. 8, pp. 179–187, Feb. 1962.
+[13] S. Hutchinson, G. Hager, and P. Corke, “A tutorial on visual servo con-
+trol,” IEEE Trans. Robot. Autom., vol. 12, no. 5, pp. 651–670, Oct. 1996.
+[14] M. Iwatsuki and N. Okiyama, “A new formulation of visual servoing
+based on cylindrical coordinates system,” IEEE Trans. Robot., vol. 21,
+no. 2, pp. 266–273, Apr. 2005.
+[15] J.-S. Lee, I. H. Suh, B.-J. You, and S.-R. Oh, “A novel visual servoing ap-
+proach involving disturbance observer,” in Proc. IEEE Int. Conf. Robot.
+Autom., vol. 1, Detroit, MI, May 1999, pp. 269–274.
+[16] R. Mahony, P. Corke, and F. Chaumette, “Choice of image features
+for depth-axis control in image-based visual servo control,” in Proc.
+IEEE/RSJ Int. Conf. Intell. Robots Syst., Lausanne, Switzerland, Oct.
+2002, pp. 390–395.
+[17] E. Malis, “Improving vision-based control using efﬁcient second-order
+minimization techniques,” in Proc. IEEE Int. Conf. Robot. Autom., New
+Orleans, LA, Apr. 2004, pp. 1843–1848.
+[18] E. Malis, F. Chaumette, and S. Boudet, “2-1/2 D visual servoing,” IEEE
+Trans. Robot. Autom., vol. 15, no. 2, pp. 238–250, Apr. 1999.
+[19] A. G. Mamistvalov, “n-dimensional moment invariants and conceptual
+theory of recognition n-dimensional solids,” IEEE Trans. Pattern Anal.
+Machine Intell., vol. 20, no. 8, pp. 819–831, Aug. 1998.
+[20] Y. Mezouar and F. Chaumette, “Path planning for robust image-based
+control,” IEEE Trans. Robot. Autom., vol. 18, no. 4, pp. 534–549, Aug.
+2002.
+[21] R. Mukundan and K. R. Ramakrishnan, Moment Functions in Image
+Analysis Theory and Application, Singapore: World Scientiﬁc, 1998.
+[22] R. J. Prokop and A. P. Reeves, “A survey of moments-based techniques
+for unoccluded object representation,” Graph. Models Image Process.,
+vol. 54, no. 5, pp. 438–460, Sep. 1992.
+[23] S. S. Reddi, “Radial and angular moment invariants for image identiﬁ-
+cation,” IEEE Trans. Pattern Anal. Machine Intell., vol. PAMI-3, no. 2,
+pp. 240–242, Feb. 1981.
+[24] P. Rives and J. Azinheira, “Linear structures following by an airship
+using vanishing points and horizon line in a visual servoing scheme,”
+in Proc. IEEE Int. Conf. Robot. Autom., vol. 1, New Orleans, LA, Apr.
+2004, pp. 255–260.
+[25] J. Shi and C. Tomasi, “Good features to track,” in Proc. IEEE Int. Conf.
+Computer Vis. Pattern Recog., Seattle, WA, Jun. 1994, pp. 593–600.
+[26] C. Steger, “On the calculation of arbitrary moments of polygons,”
+Munchen Univ., Munchen, Germany, Tech. Rep. FGBV-96-05, Oct.
+1996.
+[27] O. Tahri, “Application des moments à l’asservissement visuel et au
+calcul de pose,” Ph.D. dissertation (in French), Univ. de Rennes 1,
+IRISA, Rennes, France, Mar. 2004.
+[28] O. Tahri and F. Chaumette, “Application of moment invariants to visual
+servoing,” in Proc. IEEE Int. Conf. Robot. Autom., Taipei, Taiwan, Sep.
+2003, pp. 4276–4281.
+[29]
+, “Complex objects pose estimation based on image moment invari-
+ants,” in Proc. IEEE Int. Conf. Robot. Autom., Barcelona, Spain, Apr.
+2005, pp. 438–443.
+[30] M. R. Teague, “Image analysis via the general theory of moments,” J.
+Opt. Soc. Amer., vol. 70, pp. 920–930, Aug. 1980.
+[31] L. Vincent and P. Soille, “Watersheds in digital spaces: An efﬁcient al-
+gorithm based on immersion simulations,” IEEE Trans. Pattern Anal.
+Machine Intell., vol. 13, no. 6, pp. 583–598, Jun. 1992.
+[32] A. Walin and O. Kübler, “Complete sets of complex Zernike moments
+invariants and the role of the pseudo-invariants,” IEEE Trans. Pattern
+Anal. Machine Intell., vol. 17, no. 11, pp. 1106–1110, Nov. 1995.
+[33] W. Wilson, C. Hulls, and G. Bell, “Relative end-effector control using
+Cartesian position-based visual servoing,” IEEE Trans. Robot. Autom.,
+vol. 12, no. 5, pp. 684–696, Oct. 1996.
+[34] P. Zanne, G. Morel, and F. Plestan, “Robust 3D vision-based control and
+planning,” in Proc. IEEE Int. Conf. Robot. Autom., vol. 5, New Orleans,
+LA, Apr. 2004, pp. 4423–4428.
+Omar Tahri was born in Fez, Morocco, in 1976. He
+received the Master’s degree in photonics, images
+and system control from Louis Pasteur University,
+Strasbourg, France, in 2000, and the Ph.D degree
+in computer science from the University of Rennes,
+Rennes, France, in 2004.
+He is currently in a Postdoctoral position with
+CEA-LIST, Fontenay-aux-Roses, France. His re-
+search interests include robotics and computer
+vision, especially visual servoing.
+François Chaumette (M’98) was born in Nantes,
+France, in 1963 and graduated from École Nationale
+Supérieure de Mécanique, Nantes, in 1987. He
+received the Ph.D degree and “Habilitation à Diriger
+des Recherches” in computer science from the
+University of Rennes, Rennes, France, in 1990 and
+1998, respectively.
+Since 1990, he has been with IRISA/INRIA,
+Rennes, where he is now “Directeur de Recherches”
+and head of the Lagadic Group. His research inter-
+ests include robotics and computer vision, especially
+visual servoing and active perception.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on February 10,2024 at 06:48:54 UTC from IEEE Xplore.  Restrictions apply. 
+

@@ -1,0 +1,1548 @@
+Aerospace Science and Technology 130 (2022) 107869
+Contents lists available at ScienceDirect
+Aerospace Science and Technology
+www.elsevier.com/locate/aescte
+Autonomous ship deck landing of a quadrotor UAV using feed-forward 
+image-based visual servoing
+Gangik Cho a, Joonwon Choi b, Geunsik Bae a, Hyondong Oh a,∗
+a Department of Mechanical Engineering, Ulsan National Institute of Science and Technology, Ulsan 44919, Republic of Korea
+b School of Aeronautics and Astronautics, Purdue University, West Lafayette, IN, 47906, United States
+a r t i c l e 
+i n f o
+a b s t r a c t
+Article history:
+Received 9 April 2022
+Received in revised form 28 July 2022
+Accepted 6 September 2022
+Available online 13 September 2022
+Communicated by Hever Moncayo
+Keywords:
+Autonomous landing
+Image-based visual servoing
+Sensor fusion
+Unmanned aerial vehicle
+Autonomous takeoff and landing are crucial for unmanned aerial vehicles (UAVs) to perform various 
+missions automatically. However, navigation sensors with low accuracy such as global positioning system 
+(GPS) are limited in autonomous takeoff and landing for marine applications when ships are moving 
+fast and oscillating by sea waves. In this study, an image-based visual servoing (IBVS) technique, which 
+was originally used to land a UAV on a static target, is extended for a moving target. In particular, the 
+ship velocity is estimated and used as a feed-forward term in the IBVS controller. To accurately estimate 
+the velocity of the ship, velocity data from the GPS on the ship, image information obtained from the 
+camera in the UAV, and dynamic model of the ship are combined using the Kalman ﬁlter framework. 
+Besides, considering the under-actuated nature of the UAV and oscillation of the ship, a virtual plane 
+concept, adaptive IBVS gain and feature shape compensation are introduced. Lastly, to apply the IBVS 
+controller to the moving ship deck landing, a robust and safe autonomous landing procedure, starting 
+from the approach to the touchdown phase, is also developed. The proposed autonomous landing system 
+is validated via simulations and various real-world ﬂight experiments simulating situations in which the 
+ship is moving fast and oscillated by sea waves. In the ﬂight experiments, the UAV lands successfully on 
+the landing pad with the average touchdown error of 0.2 m while the ship is oscillating at the Sea State
+4 and is moving faster than 5 m/s.
+© 2022 Elsevier Masson SAS. All rights reserved.
+1. Introduction
+Unmanned aerial vehicles (UAVs) have been widely used for 
+surveillance, reconnaissance missions, search and rescue opera-
+tions, and wind turbine and bridge inspections in both military 
+and industrial ﬁelds [1–5]. For the aforementioned missions, the 
+takeoff and landing of the UAV are better to be performed au-
+tonomously before and after missions. In particular, if the UAV 
+is operated at marine environments far from the land, the UAV 
+should be able to land on possibly small and narrow areas of a 
+moving ship oscillated by sea waves [6]. However, owing to sig-
+niﬁcant position errors, it is insuﬃcient to perform autonomous 
+landing in this condition using conventional sensing systems such 
+as global positioning system (GPS). Although real time kinematic 
+GPS (RTK-GPS) can be employed for accurate position estimations 
+[7], installing RTK-GPS on a moving ship is expensive and challeng-
+ing. To address the inaccuracy of the GPS, vision sensors can be 
+* Corresponding author.
+E-mail addresses: chogi89@unist.ac.kr (G. Cho), choi774@purdue.edu (J. Choi), 
+baegs94@unist.ac.kr (G. Bae), h.oh@unist.ac.kr (H. Oh).
+added to the sensing system; hence, in this research, visual servo-
+ing is exploited for the autonomous landing of a UAV on a moving 
+ship deck.
+There are many researches about autonomous landing of a UAV 
+using visual servoing. However, there are insuﬃcient studies fo-
+cused on the oscillating targets in high speeds. Regarding the au-
+tonomous landing system, there are also insuﬃcient systematic 
+studies on the entire landing procedure starting from the approach 
+to the touchdown phase. Therefore, this study proposes an au-
+tonomous landing system of a UAV based on feed-forward image-
+based visual servoing (FF-IBVS), to achieve landing on a small ship 
+deck moving in high speeds and oscillating by sea waves. To make 
+the landing system robust and stable, the adaptive IBVS gain and 
+compensation of a landing feature shape are applied. In addition, 
+to improve the landing performance, reliable velocity estimations 
+of the ship are newly introduced, and the entire landing procedure 
+is made fully autonomous.
+The main contribution of this study is as follows. First, we en-
+hance the autonomous landing performance, building upon the FF-
+IBVS method [8] via several innovative techniques such as: adap-
+tive IBVS gain, feature shape compensation for IBVS, and improve 
+estimation using the Kalman ﬁlter and sensor fusion. The adap-
+https://doi.org/10.1016/j.ast.2022.107869
+1270-9638/© 2022 Elsevier Masson SAS. All rights reserved.
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+tive IBVS gain is introduced to maintain the features in the FOV 
+by slowing down the altitude rate. The features are compensated 
+as a square shape to eliminate unnecessary IBVS commands from 
+the effect of the distortion triggered by the changing attitude of 
+the ship. Second, a landing system for robust and safe autonomous 
+landing is designed. To detect the features and land on the target 
+(e.g., ship) from a long distance, the size and placement of aug-
+mented reality (AR) tags (i.e., markers for the landing) are carefully 
+determined. The landing procedure, starting from the approach to 
+the touchdown phase, is also designed with the state machine 
+structure. It ensures that if the marker is missed, the UAV holds the 
+position near the target or changes its altitude to ﬁnd the marker 
+again. Lastly, comprehensive realistic simulations and ﬂight exper-
+iments in harsh conditions are conducted to validate the proposed 
+algorithm. In these simulations and experiments, the environment 
+is set to a harsh condition, where the ship is moving at a speed of 
+5 m/s while oscillating at Sea State 4. Here, Sea State 4 refers to 
+the height of sea waves between 1.25 and 2.5 m [9]. To the best of 
+our knowledge, 5 m/s speed is the fastest environment setup for 
+the vision-based autonomous landing experiment of a quadrotor 
+UAV. Under such severe circumstances, it is very diﬃcult for UAVs 
+to land on a moving ship deck. The objectives of this paper are to
+apply several innovative techniques for vision-based autonomous 
+landing such as feature compensation, ship state estimation, and 
+robust landing procedure based on the state machine and to ver-
+ify the performance of the proposed approach via simulations and 
+real-world ﬂight experiments.
+The rest of this paper is organized as follows. In Section 2, 
+related work is represented, and in Section 3, IBVS is brieﬂy intro-
+duced and additional processes for the under-actuated system such 
+as quadrotor UAVs are explained. Subsequently, a feed-forward 
+IBVS for compensating the velocity of a moving target to achieve 
+precision landing is presented in Section 4. In Section 5, the en-
+tire autonomous landing system, including the marker for the IBVS 
+setup and landing procedure, is proposed. The performances of the 
+proposed controller and landing system are veriﬁed via simulations 
+and experiments in Sections 6 and 7, respectively. The conclusions 
+and future work are given in Section 8.
+2. Related work
+Visual servoing is a control method for guiding unmanned 
+vehicles or robots (especially robot manipulators [10–12]) to a 
+target position using a vision sensor. It can be categorized into 
+position-based visual servoing (PBVS) and image-based visual ser-
+voing (IBVS) [13]. In PBVS, states are deﬁned as the pose of the 
+target, and the target pose is estimated with respect to the camera 
+frame. The error is expressed as the relative pose between the tar-
+get and camera, and the PBVS outputs the command to reduce the 
+error. PBVS enables the camera to move to the target in an opti-
+mal trajectory. However, poor state estimation could destabilize the 
+pose of the camera, which triggers issues such as perturbations in 
+the trajectory and inaccuracies after convergence [14].
+Several studies have been conducted on the autonomous land-
+ing of UAVs using PBVS. Jung et al. estimated the horizontal 
+distance error between the landing target and the UAV using 
+the center of the measured feature position and marker length 
+information [15]. For the autonomous landing on the target, 
+a proportional–integral–derivative controller was employed. To 
+handle the limited ﬁeld of view (FOV) of the camera, Chen et al. 
+used a pan-tilt camera, estimated the landing target, and then con-
+ducted autonomous landing [16]. Yang et al. exploited PBVS to 
+achieve the takeoff and landing of a UAV with a square-root un-
+scented Kalman ﬁlter to estimate the pose of the UAV [17]. Zhao 
+et al. proposed the PBVS controller that is robust to the time delays 
+in the translational and rotational dynamics [18]. Acevedo et al. 
+conducted a study to achieve landing on a moving platform us-
+ing PBVS [19] where the platform moved with a maximum speed 
+of 10 km/h. Falanga et al. developed a fully autonomous quadrotor 
+system that can land on a moving target using PBVS [20]. In the 
+study conducted by Santana et al., autonomous landing using PBVS 
+on a platform oscillating with the heave motion was presented 
+[21], and simulations were carried out with the virtual robot ex-
+perimentation platform (V-REP) [22] to verify the algorithm.
+In contrast, in IBVS, states are deﬁned as the position of the 
+features in the image plane, and the error is deﬁned as the pixel 
+position error between the desired and current feature positions. 
+From the pixel error in the image plane, the desired velocity com-
+mand to move the camera to a target pose is calculated with image 
+Jacobian, which explains the relationship between the velocity of 
+the camera in 3-D space and feature velocity in 2-D image plane. 
+IBVS is known to be more robust against pixel measurement errors 
+than PBVS [14].
+Several studies have also been actively conducted on au-
+tonomous landing using IBVS. Tang et al. applied spherical image 
+centroids-based IBVS for going through a window and landing on 
+a target for a UAV [23]. Hamel et al. applied IBVS to an under-
+actuated system for the ﬁrst time using a robust backstepping 
+technique [24]. They considered the full dynamics of the camera 
+motion ﬁxed to the rigid body. As an extension of this work, Gue-
+nard et al. carried out the hovering experiment of a quadrotor UAV 
+[25]. Lee et al. applied a virtual image plane to IBVS to compensate 
+the effect of the attitude of the UAV. Furthermore, they designed 
+an adaptive sliding mode controller [26,27] in order to keep the 
+image within the FOV of the camera. Especially, in [27], Patrol 
+mode which is to ﬁnd out the target is added. Serra et al. proposed 
+a control law for landing on a platform with the heave motion, and 
+then conducted simulations and indoor experiments [28]. In the 
+research conducted by Truong et al. [29], a controller was intro-
+duced for the ship landing of an helicopter, using a combination of 
+IBVS and translational rate command, and then simulations were 
+carried out. In the study by Rakotomamonjy et al. [30], to land on 
+a moving ship deck, the velocity of the ship was estimated using 
+the response amplitude operator and the autoregressive moving 
+average model. The motion of the ship was compensated in the 
+IBVS controller and its performance was veriﬁed via simulations. 
+Borshchova et al. conducted autonomous landing simulations and 
+experiments on a ship deck [31,32]. They adopted the color detec-
+tion method as features for IBVS to reduce the computational load. 
+Simulations were also conducted for a moving target with V-REP 
+simulations. Wynn et al. proposed feed-forward IBVS (FF-IBVS) to 
+compensate the velocity of the moving ship [8]. The velocity of 
+the ship was estimated using an extended Kalman ﬁlter (EKF), 
+which fuses visual and GPS measurements, while the estimated 
+velocity was used as a feed-forward term combined with the IBVS 
+controller. They also proposed the entire process for autonomous 
+landing on a moving target starting from the approach phase. In 
+the experiment, the velocity of the target was set at approximately 
+1 m/s, with the heave motion; in addition, precision landing per-
+formance was veriﬁed in ﬂight experiments.
+As mentioned in the above paragraphs, there are existing stud-
+ies to land the UAV on a moving ship. However, there are few 
+studies dealing with the harsh outdoor environment where the 
+landing pad is oscillated by sea waves as well as going forward at 
+a high speed. For the autonomous landing system, the entire land-
+ing procedure starting from the approach phase to touchdown is 
+also not studied suﬃciently. Therefore, in this paper, ﬁrst, to land 
+the UAV on the ship moving fast and oscillating, several techniques 
+such as adaptive-IBVS gain, feature shape compensation and sen-
+sor fusion are exploited. Second, for robust and safe autonomous 
+landing, the entire landing procedure based on the state machine 
+is designed. Lastly, to verify the performance of the autonomous 
+2
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 1. Pinhole camera model.
+landing algorithm, real-world ﬂight experiments as well as numer-
+ical simulations in harsh conditions are conducted.
+3. Image-based visual servoing
+In this section, conventional IBVS is brieﬂy reviewed [14], and 
+then several innovative techniques for applying the IBVS to au-
+tonomous landing are presented.
+3.1. Conventional IBVS
+As mentioned in Section 1, the objective of IBVS is to reduce the 
+pixel error between the desired and measured feature positions in 
+the image plane. The error e for the IBVS is deﬁned as:
+e = sd −s
+where sd and s denote the desired and measured feature positions, 
+respectively. The relationship between the camera and feature ve-
+locity is given by:
+˙s = Lsvc,
+(1)
+where Ls denotes the image Jacobian matrix, and vc ∈R6 rep-
+resents the camera velocity comprising three linear motions and 
+three angular motions (i.e., vc = [vc,x vc,y vc,z ωc,x ωc,y ωc,z]⊤). 
+The image Jacobian matrix Ls can be derived from the pinhole 
+camera model illustrated in Fig. 1. An arbitrary point P = [x y z]⊤, 
+which is expressed in the camera frame (O XY Z), is projected to 
+the image plane as s = [x′ y′]⊤:
+x′ = f x/z,
+(2)
+y′ = f y/z
+(3)
+where f denotes the camera focal length. Taking the time deriva-
+tive of Eqs. (2) and (3), we have:
+˙x′ = ( f ˙x −x′˙z)/z,
+(4)
+˙y′ = ( f ˙y −y′˙z)/z.
+(5)
+When the camera is moving in a 3-D space, the velocity of the 
+arbitrary point in the camera frame is expressed as:
+˙P =
+⎡
+⎣
+˙x
+˙y
+˙z
+⎤
+⎦= −vc,lin −vc,ang × P =
+⎡
+⎣
+−vc,x −ωc,yz + ωc,z y
+−vc,y −ωc,zx + ωc,xz
+−vc,z −ωc,x y + ωc,yx
+⎤
+⎦
+(6)
+where vc,lin = [vc,x vc,y vc,z]⊤and vc,ang = [ωc,x ωc,y ωc,z]⊤rep-
+resent the linear and angular velocities of the camera, respectively. 
+From Eqs. (1)–(6), the image Jacobian matrix, which is the rela-
+tionship between the velocity of the feature in the image plane 
+and the camera velocity, can be obtained as:
+Ls =
+
+−f
+z
+0
+x′
+z
+x′ y′
+f
+−( f 2+x′ 2)
+f
+y′
+0
+−f
+z
+y′
+z
+f 2+y′ 2
+f
+−x′ y′
+f
+−x′
+
+.
+Assuming the desired feature position sd is static (i.e., ˙e = ˙s), 
+and to ensure that the feature error decreases exponentially (i.e., 
+˙e = −λe), the relationship between the camera velocity and fea-
+ture error can be obtained as:
+vc = −λL+
+s e
+where λ = diag(λx, λy, λz, λφ, λθ, λψ) is a diagonal matrix of the 
+positive gain and L+
+s
+denotes a pseudo inverse matrix of Ls. Note 
+that, knowing the exact value of Ls is diﬃcult because of pixel 
+error, depth estimation error, and focal length uncertainty. Hence, 
+the IBVS controller is designed as:
+vd = −λˆL
++
+e e
+(7)
+where ˆ
+L+
+e
+and vd denote the approximation of L+
+e
+and the de-
+sired camera velocity, respectively. Assuming that the center of the 
+quadrotor UAV coincides with the center of the camera, vd can be 
+considered as the desired UAV velocity.
+3.2. IBVS for under-actuated system
+From the IBVS controller, a six degrees-of-freedom (DOF) de-
+sired velocity (vd ∈R6 = [vx v y vz ωx ωy ωz]⊤) can be calcu-
+lated as in Eq. (7). However, in the under-actuated system such 
+as the quadrotor UAV, roll and pitch rates are coupled with the 
+linear velocities in the y and x directions, respectively. In other 
+words, the UAV cannot make roll and pitch rate motions inde-
+pendent of y- and x-axis velocities. Furthermore, owing to this 
+under-actuated nature, the UAV could make unwanted opposite 
+velocity commands to the target position, depending on the sit-
+uation. For example, as described in Fig. 2 (a), although the target 
+position is in the left side of the UAV, the target is projected on 
+the right half of the image plane when the UAV is inclined; hence, 
+3
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 2. Projections of the target positions on the image plane and virtual image plane: (a) on the image plane; and (b) on the virtual image plane, respectively.
+the UAV will move to the right direction by the IBVS controller 
+to make the center of the image plane coincide with the target 
+position, which is the opposite to the target position. To address 
+this issue, features are transformed into a virtual coordinate frame 
+[26]. The virtual coordinate frame is deﬁned, such that the cen-
+ter of the origin coincides with the camera coordinate frame and 
+its z-axis is parallel to the z-axis of the inertial frame. The virtual 
+image plane is also deﬁned, such that the image plane is rotated 
+from the camera frame to the virtual coordinate frame. This im-
+plies that the virtual image plane is always parallel to the ground, 
+and if the landing pad is parallel to the ground, the roll and pitch 
+rates are always zero, such that an under-actuated system can be 
+decoupled.
+The virtual image plane transformation can be conducted by 
+using the roll and pitch angles of the UAV. The 3-D position of i-th 
+marker in the camera frame P i = [xi yi zi]⊤is expressed in the 
+virtual coordinate frame as P r
+i = [xr
+i yr
+i zr
+i ]⊤, and its corresponding 
+2-D position in the image plane and virtual image plane are si
+and sr
+i , respectively. The relationship between P i and P r
+i can be 
+expressed as:
+P r
+i = R(1,φ)R(2,θ)P i,
+(8)
+where
+R(1,φ) =
+⎡
+⎣
+1
+0
+0
+0
+cosφ
+−sinφ
+0
+sinφ
+cosφ
+⎤
+⎦, R(2,θ) =
+⎡
+⎣
+cosθ
+0
+sinθ
+0
+1
+0
+−sinθ
+0
+cosθ
+⎤
+⎦,
+and, φ and θ are roll and pitch angle of the UAV, respectively. Us-
+ing Eq. (8) and the pinhole camera model (i.e., Eqs. (2)–(3)), the 
+i-th marker position in the virtual image plane can be computed 
+as:
+sr
+i = f
+zr
+i
+
+xr
+i
+yr
+i
+	
+= f
+⎡
+⎣
+x′
+icosθ+ f sinθ
+−x′
+icosφsinθ+y′
+isinφ+ f cosφcosθ
+x′
+isinφsinθ+y′
+isinφ+ f cosφcosθ
+−x′
+icosφsinθ+y′
+isinφ+ f cosφcosθ
+⎤
+⎦.
+3.3. Adaptive-gain IBVS
+Even though the virtual image plane is applied to IBVS, if the 
+UAV decreases its altitude via the IBVS control command when 
+its horizontal position is far from the center of the landing tar-
+get, the features can get easily out of the image plane because of 
+the limited FOV, as illustrated in the Fig. 3. To operate the IBVS, 
+it is important to keep the features inside of the image plane as 
+long as possible. To this end, Lee et al. [26] suggested an adaptive 
+IBVS gain, using the inverse tangent function where it was applied 
+to the horizontal plane to reduce roll and pitch angle by lowering 
+Fig. 3. Features are out of FOV at a low altitude.
+the velocity for x- and y-directions, and ensure that the feature 
+stays in the FOV. However, this method can degrade target track-
+ing performance because it reduces the velocity of the UAV, and 
+also the effect of a smaller scan area as the UAV decreases its alti-
+tude is not taken into account. Thus, in this research, we propose 
+the use of the adaptive IBVS gain for the altitude rate to be ad-
+justed by the feature error in the image plane to maintain a small 
+control input if the UAV has a large distance error to the center 
+of the landing target. The adaptive gain (adz) is designed with the 
+sigmoid function as:
+adz = 1 −
+1
+1 + e−kc ,
+(9)
+where c represents the distance between the center of the fea-
+tures and the center of the image plane, and k denotes the gain of 
+the sigmoid function. The IBVS control command with the adaptive 
+gain is then given as:
+vd = −λ
+⎡
+⎢⎢⎢⎢⎢⎣
+1
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+0
+adz
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+0
+1
+0
+0
+0
+0
+0
+0
+1
+⎤
+⎥⎥⎥⎥⎥⎦
+ˆL
++
+e e.
+3.4. Square compensation for landing pad oscillation
+After the transformation of the features to the virtual image 
+plane, x- and y-axis velocities and roll and pitch rates are decou-
+pled. However, if the landing target is oscillating, that is, the plane 
+made up of features is not parallel to the image plane, then cou-
+pling cannot be entirely discarded. As illustrated in Fig. 4, there 
+are four markers employed and the distance between the center of 
+the camera and right marker is closer than that of the left marker. 
+Subsequently, the distance between the right part of the features 
+4
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 4. Square ﬁtting of the features: (a) before square ﬁtting; and (b) after the 
+square ﬁtting.
+is longer than the others and the desired velocity command to the 
+left direction will be obtained as illustrated in Fig. 4(a). To elimi-
+nate the effect of inclination on the landing pad, four features are 
+ﬁtted to square via the least square method. Then, the plane com-
+prising four features is made parallel to the image plane, and the 
+IBVS control command will not make unnecessary commands re-
+gardless of the attitude of the landing pad.
+4. Feed-forward IBVS
+The conventional IBVS assumes that the target is stationary 
+[13,14]. To apply the IBVS to a moving target, the target velocity 
+should be explicitly considered. In this study, the horizontal linear 
+velocity of the moving ship is used. The desired velocity command 
+from IBVS combined with the target velocity compensation as a 
+feed-forward term makes a new command for feed-forward IBVS 
+(FF-IBVS) as:
+vd, f f = vd,4D O F + ˆvtarget
+(10)
+where ˆvtarget = [ˆvtarget,x ˆvtarget,y 0 0]⊤is the estimated horizontal 
+velocity of the ship.
+We employ the information from the GPS and camera for the 
+target velocity estimation. The GPS is attached to the ship deck and 
+measures the position and velocity of the ship with the respect to 
+the world frame. Then, these measurements are transformed into 
+the relative values with respect to the UAV using the information 
+from the GPS onboard the UAV. Meanwhile, the camera calculates 
+the relative pose of the landing pad on the ship relative to the 
+UAV using the features captured in the image plane. From these 
+relative sensing data, the state of the landing pad relative to the 
+UAV is estimated by the Kalman ﬁlter (KF). Besides, to facilitate the 
+information from the two different sensors, we apply the track-to-
+track fusion algorithm [33] as presented in Fig. 5. The algorithm 
+comprises two distinct KFs updating the ship state via the GPS 
+and camera, and they are fused accordingly. Note that the posi-
+tion measurements from the camera are relatively accurate and its 
+update rate is faster compared with GPS. However, camera mea-
+surements may not be available when the features are out of the 
+camera ﬁeld-of-view (FOV). Thus, by fusing these two sensors with 
+Kalman ﬁlters, we can make the estimation more robust against 
+intermittent measurement loss of camera or GPS as well as im-
+proving the estimation accuracy.
+Let us deﬁne the state of the ship (or, equivalently, landing pad) 
+as:
+Fig. 5. Track-to-track fusion structure.
+X =
+
+xship
+yship
+˙xship
+˙yship
+...
+(5)
+x ship
+(5)
+y ship
+⊤
+where xship and yship represent the x- and y-axis positions of the 
+ship in the UAV vehicle-1 frame, respectively. For the detail of 
+the UAV vehicle-1 frame, which is similar to the body-ﬁxed frame 
+but with no pitch and roll considered, refer to [34]. Because the 
+ship might oscillate due to waves in the marine environment, the 
+designed ﬁlter should be able to consider this effect. Various ap-
+proaches have been presented to estimate the pose of a ship in 
+such conditions [35]. Nonetheless, many existing studies require 
+the accurate dynamic model of a ship, which is usually hard to 
+obtain. In this study, we assume that the motion of the ship can 
+be represented as a simple constant crackle (5th-time derivative 
+of the position) model inspired by [36]. Assuming the ship moves 
+with a constant velocity while slightly oscillating due to the wave, 
+this model would be suﬃcient to represent the minor rotation of 
+the ship.
+The transition matrix of the constant crackle model (F ) can be 
+deﬁned as:
+F =
+⎡
+⎢⎢⎢⎢⎢⎢⎢⎣
+I2
+T I2
+T 2
+2 I2
+T 3
+6 I2
+T 4
+24 I2
+T 5
+120 I2
+02
+I2
+T I2
+T 2
+2 I2
+T 3
+6 I2
+T 4
+24 I2
+02
+02
+I2
+T I2
+T 2
+2 I2
+T 3
+6 I2
+02
+02
+02
+I2
+T I2
+T 2
+2 I2
+02
+02
+02
+02
+I2
+T I2
+02
+02
+02
+02
+02
+I2
+⎤
+⎥⎥⎥⎥⎥⎥⎥⎦
+,
+where T is the sampling time, I2 is the 2 × 2 identity matrix, and 
+02 is the 2 × 2 zero matrix. The estimated state of the ship at time 
+step k −1 for the ﬁlter with GPS is represented as ˆX
+G P S
+k−1|k−1. Hence, 
+the prediction step of the ﬁlter can be expressed as:
+ˆX
+G P S
+k|k−1 = F ˆX
+G P S
+k−1|k−1,
+ˆP
+G P S
+k|k−1 = F ˆP
+G P S
+k−1|k−1 F T + Q k−1,
+where ˆX
+G P S
+k|k−1 is the predicted state, ˆP
+G P S
+k−1|k−1 is the error covari-
+ance matrix at time step k −1, ˆP
+G P S
+k|k−1 is the predicted error co-
+variance matrix, and Q k−1 is the system noise at time step k −1. 
+The correction step can be written as:
+S G P S
+k
+= H G P S ˆP
+G P S
+k|k−1H T
+G P S + RG P S
+k
+,
+νG P S
+k
+= yG P S
+k
+−H G P S ˆX
+G P S
+k|k−1,
+K G P S
+k
+= ˆP
+G P S
+k|k−1H T
+G P S S G P S
+k
+−1,
+ˆX
+G P S
+k|k
+= ˆX
+G P S
+k|k−1 + K G P S
+k
+νG P S
+k
+,
+ˆP
+G P S
+k|k
+= (I12 −K G P S
+k
+H G P S) ˆP
+G P S
+k|k−1,
+5
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 6. Flowchart of the FF-IBVS algorithm.
+Fig. 7. Overview of the autonomous landing system.
+where H G P S is the measurement matrix, K G P S
+k
+is the Kalman gain, 
+yG P S
+k
+is the measurement, and RG P S
+k
+is the measurement noise 
+covariance.
+Along with sensor measurements, to further improve the esti-
+mation performance, we impose the following state constraints:
+d5xship
+dt5
+=
+d5 yship
+dt5
+= 0.
+(11)
+This comes from the assumption that the dynamics of the ship 
+is not that highly maneuverable; so crackles would be zero. In 
+the preliminary numerical simulations, we observed that the use 
+of these constraints improves the estimation performance to some 
+extent.
+To realize Eq. (11) on our KFs, we adopt the pseudo-measure-
+ment technique [36] which considers the constraint of a system as 
+additional (i.e., pseudo) measurements. Hence, the measurement at 
+each time step k becomes
+Fig. 8. Markers used for vision-based autonomous landing.
+6
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 9. State machine structure for autonomous landing.
+Fig. 10. PX4 simulation in a Gazebo environment.
+yG P S
+k
+= [xG P S
+ship yG P S
+ship ˙xG P S
+ship ˙yG P S
+ship 0 0]⊤,
+where xG P S
+ship and yG P S
+ship denote the measured locations of a ship in 
+the x and y directions in the UAV vehicle-1 frame, respectively, 
+and ˙xG P S
+ship and ˙yG P S
+ship represent their velocities. The x and y position 
+crackles, pseudo-measurements, are set to be zero to represent Eq. 
+(11). Then, the measurement matrix H G P S is deﬁned as:
+H G P S =
+⎡
+⎣
+I2
+02
+02
+02
+02
+02
+02
+I2
+02
+02
+02
+02
+02
+02
+02
+02
+02
+I2
+⎤
+⎦.
+For simplicity, we only describe the detailed equations for the 
+GPS case. Nevertheless, its counterpart for the camera case can be 
+easily expressed as the same form of the equations while modify-
+ing the measurements and the measurement matrix as:
+yC AM
+k
+=
+
+xC AM
+ship
+yC AM
+ship
+0
+0
+⊤
+,
+H C AM =
+
+I2
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+I2
+	
+.
+To measure the relative position of the landing platform with re-
+spect to the UAV, AR tag detection (which will be explained in 
+the next section) and the perspective-n-point method [37] are ex-
+ploited. The perspective-n-point method is a method of estimating 
+the pose of the camera using a set of 2-D points projected onto 
+the image plane from a set of 3-D points and its implementa-
+tion is done by using the OpenCV function, SolvePnP. The error 
+of the perspective-n-point is computed as approximately 0.1 m in 
+the UAV landing simulation. In case of ﬂight experiments, the er-
+7
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 11. Time history of the motion of the ship: (a) linear motion; and (b) angular 
+motion.
+Fig. 12. Distance between the center of the features and the center of the image 
+plane: (a) without adaptive IBVS gain; and (b) with adaptive IBVS gain.
+ror cannot be measured as it is diﬃcult to obtain the ground truth 
+data.
+After the updates of both ﬁlters are accomplished, their states 
+are fused by the state-vector fusion method [33]. Each estimation 
+of KFs is weighted based on the magnitude of the corresponding 
+error covariance matrix. Accordingly, the more accurate the esti-
+Fig. 13. Comparison of effect of the square compensation for landing pad oscillation.
+Fig. 14. Simulation results: (a) time history of the velocity of the ship and UAV; (b) 
+time history of the altitudes of the ship and UAV; (c) time history of the horizontal 
+position error; (d) time history of estimated velocity of the ship (e) time history of 
+orientation of the ship and UAV; and (f) time history of the roll and pitch angle of 
+the UAV.
+mation from one KF, is the more portion it will take in the fused 
+states. In contrast, if one ﬁlter becomes defective, the error covari-
+ance increases signiﬁcantly and it would be automatically excluded 
+from the fused states. The fused covariance matrix can be com-
+puted as:
+8
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 14. (continued)
+P T k = [ ˆP
+G P S−1
+k|k
++ ˆP
+C AM−1
+k|k
+]−1,
+where ˆP
+C AM
+k|k
+represents the error covariance matrix for the camera 
+part at time step k. From P T k, the fused state ( ˆ
+X T k) is represented 
+as:
+ˆ
+X T k = P T k[ ˆP
+G P S−1
+k|k
+ˆX
+G P S
+k|k
++ ˆP
+C AM−1
+k|k
+ˆX
+C AM
+k|k
+]
+Note that from 
+ˆ
+X T k, we can extract the estimated ship velocity 
+ˆvtarget for the feed-forward input for FF-IBVS in Eq. (10).
+To verify the performance of the proposed constant crackle 
+model and pseudo measurement technique, the estimation ac-
+curacy is compared with the second-order constant velocity 
+model. For the ship moving with a constant speed of 10 m/s
+and the wave effect which can be represented as a sum of 
+three sinusoidal functions: 1.0 sin(2πt/12), 0.36 sin(2πt/8.75) and 
+0.096 sin(2πt/3.75), the averaged position and velocity errors of 
+the proposed estimation approach are 0.376 m and 0.629 m/s, re-
+spectively whereas the position and velocity errors of the second-
+order model are 0.394 m and 0.661 m/s, respectively.
+The ﬂowchart of the FF-IBVS algorithm is shown in Fig. 6. First, 
+the image is captured from the camera and feature points of the 
+AR tags on the landing pad are extracted. To estimate the velocity 
+Fig. 15. Simulation results: touchdown error.
+of the ship, the relative pose of the ship with respect to the cam-
+era frame and the position and velocity from the GPS in the global 
+frame are used in the sensor fusion module. For the IBVS term, vir-
+tual image plane transform and square compensation is conducted. 
+Using the modiﬁed feature positions and the estimated horizontal 
+velocity of the ship, the FF-IBVS control input in the form of the 
+velocity command is calculated.
+5. Autonomous ship deck landing system
+This section describes the autonomous landing system that ex-
+ploits the feed-forward IBVS algorithm. The entire autonomous 
+ship deck landing system is illustrated in Fig. 7. The ship is as-
+sumed to oscillate with six-DOF motions (roll, pitch, yaw, surge, 
+sway, and heave) generated by sea waves and also move forward. 
+The landing pad is positioned at the stern of the ship, and the GPS 
+is installed on the landing pad. The multiple markers are placed 
+on the landing pad and are used as the features for IBVS. The mis-
+sion of the UAV is to land on the ship deck using the GPS and the 
+on-board camera of the UAV.
+The markers used in this research are illustrated in Fig. 8. We 
+designed three IBVS levels to enable the autonomous visual land-
+ing from the high altitude where different marker sizes were used 
+for each IBVS level. At a high altitude, small markers cannot be 
+detected owing to the limited camera resolution, and at a low al-
+titude, large markers can be out of FOV. For the markers, the AR 
+tags, especially the ArUco markers, are exploited, which can be de-
+tected from a distant camera in a highly reliable manner [38]. The 
+center points of AR tags at IBVS levels 1 and 2 form a square with 
+lengths of 2.2 m and 0.68 m respectively. The marker for IBVS 
+level 3 is located at the center of the landing pad. In a 3-D space, 
+more than three feature points are required for the IBVS and we 
+use four feature points. After the detection of AR tags, the cen-
+ter points of four AR tags for IBVS levels 1 and 2 or every corner 
+points of the single AR tag for IBVS level 3 are used as feature 
+points for IBVS.
+Fig. 9 describes the entire landing procedure where the decision 
+making for autonomous landing is carried out by the state machine 
+structure. There are seven states: approach, three IBVS states (lev-
+els 1, 2 and 3), hold, rising and landing. At the approach state, the 
+UAV is guided to an approach point of 12 m above the center of 
+the landing pad using the GPS information. Once the UAV reaches 
+the approach point and AR tags for IBVS level 1 are detected, the 
+approach ﬂag becomes true, and FF-IBVS is started. There are three 
+IBVS states which include IBVS levels 1, 2 and 3. For each IBVS 
+9
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 16. Setup for ﬂight experiments.
+Fig. 17. Landing platforms for ﬂight experiments: (a) RC car leading a landing pad; and (b) motion platform on a truck for simulating motion of the ship.
+Fig. 18. UAVs for experiments: (a) Tarot X4 equipped with a gimbal camera; and (b) Tarot 650 pro without a gimbal camera.
+10
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 19. Images captured during the experiments for situation (a).
+level, the completion of the corresponding IBVS is determined by 
+the size of the square formed by the feature points. If the pixel er-
+ror of the length of one side of the square remains less than the 
+threshold for more than 3 s, the IBVS n (n = 1, 2 and 3) ﬂag be-
+comes true, and the landing state goes to the next state. Lastly, if 
+IBVS 3 ﬂag is true, the state goes to the landing state which repre-
+sents the ﬁnal state of the entire landing procedure. At the landing 
+state, the UAV decreases its altitude with a constant descent rate 
+of 1 m/s while maintaining the feed-forward velocity, which is the 
+estimated horizontal velocity of the ship. During the IBVS state, if 
+the UAV misses the markers, the state is altered to the hold state. 
+At the hold state, the UAV holds its altitude and the feed-forward 
+velocity. If the markers are not detected for more than 3 s, the 
+state enters the rising state where, the UAV increases its altitude 
+with a constant climb rate of 1 m/s. In the hold or rising state, 
+if the UAV detects the markers again, the state is changed to ap-
+propriate IBVS level again. If the UAV cannot detect the markers 
+continuously for more than 5 s, all parameters are initialized and 
+the state is changed back to the approach state.
+6. Simulations
+To verify the feasibility and the performance of the proposed 
+autonomous landing system, numerical simulations are ﬁrst con-
+ducted. Fig. 10 shows the simulation in the Gazebo environment 
+using the PX4 autopilot (i.e., ﬂight controller) with an Iris UAV 
+model from 3DR. The bottom and top of the left side of each ﬁg-
+ure present the images acquired from a camera and the extracted 
+features from the image, respectively. In the feature view, the rect-
+angular and circular shapes indicate the coordinates of the desired 
+and measured features, respectively. The horizontal FOV and res-
+olution of the camera are set to 102◦, and 2048 × 1536 pixels, 
+respectively. The simulation is carried out in a scenario in which a 
+ship moves forward with a speed of 10 knot (≈5.14 m/s) at the 
+Sea State 4 environment [9]. The ship motion as the superposition 
+of three sinusoidal functions according to Sea State 4 is presented 
+in the Table 1, and the corresponding time history of the motion 
+of the ship is illustrated in Fig. 11. The position errors of the GPS 
+of the ship and UAV are modeled as Gauss-Markov processes [39]:
+νk+1 = e−kG P S Tsνk + ηk
+where νk+1 and νk represent the errors simulated at time steps 
+k + 1 and k, respectively, ηk denotes the Gaussian white noise at 
+time step k, 1/kG P S is the time constant of the process, and Ts
+represents the sampling time. The velocity error of the GPS is set 
+to a standard deviation of 0.05 m/s [34]. In these simulations, ηk
+and 1/kG P S are set to 0.21 m and 1100, respectively.
+11
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Table 1
+Simulated ship motion in the Sea State 4 environment.
+Motion
+1st order
+2nd order
+3rd order
+Amplitude
+Period
+Amplitude
+Period
+Amplitude
+Period
+[m or deg]
+[s]
+[m or deg]
+[s]
+[m or deg]
+[s]
+Surge
+1
+12
+0.36
+8.75
+0.096
+3.75
+Sway
+0.9
+16.3
+0.32
+5
+0.112
+2.5
+Heave
+1
+11.3
+0.33
+6.25
+0.12
+3.75
+Roll
+11
+7.5
+3.97
+3.75
+1.28
+1
+Pitch
+3.1
+6.3
+1.54
+3.75
+0.5
+2.25
+Yaw
+2.14
+12.5
+0.69
+6.25
+0.24
+3.75
+Fig. 20. Experiment results for situation (a): (a) time history of the velocity of the 
+landing platform; and (b) time history of the altitude of the UAV.
+In the simulations section, the effect of the adaptive-gain IBVS 
+and square compensation of the features are veriﬁed, and then the 
+entire landing procedure is conducted.
+6.1. Adaptive-gain IBVS
+To verify the effect of the adaptive IBVS gain, two simulation 
+results, which are with and without the adaptive gain, are com-
+pared. Fig. 12 describes the distance between the center of the 
+features and the center of the image plane (i.e., the value c in Eq. 
+(9)). Whenever features are detected, the red circle is marked on 
+the graph. If the adaptive IBVS gain is not applied, the IBVS con-
+trol command makes the UAV descend its altitude regardless of the 
+horizontal error, resulting in that the features get out of the image 
+plane from 15 to 20 s and from 25 to 32 s. On the other hand, with 
+the adaptive IBVS gain, when the features are far from the center 
+of the image plane, a small control input is applied to the altitude 
+direction (i.e., small descending rate); this allows a suﬃcient time 
+for the features to get closer to the center of the image plane. The 
+simulation results demonstrate that less features are missed with 
+the use of the adaptive IBVS gain during the landing process.
+6.2. Square compensation for landing pad oscillation
+In this subsection, the effect of the square compensation of 
+features (illustrated in Fig. 4) is veriﬁed. The simulation environ-
+ment is set to the situation where the landing pad performs the 
+rotational motion (i.e., rolling, pitching, and yawing) with the am-
+plitude and period described in the Table 1. The position errors 
+with and without square compensation were compared during the 
+simulation of IBVS level 3 for 30 seconds. As shown in Fig. 13, only 
+a slight position error exists when square compensation is used, 
+whereas the UAV oscillates according to the motion of the landing 
+pad when the compensation is not conducted. The mean values of 
+the horizontal position error with and without compensation are 
+0.0694 m and 0.2237 m, respectively.
+6.3. Landing procedure
+In the simulations, the entire landing procedure is conducted to 
+verify the performance of the proposed autonomous landing algo-
+rithm including the approach, FF-IBVS, and landing with the state 
+machine structure. The simulations are conducted ten times, and 
+Fig. 14 presents one sample result, showing the time history of 
+relevant states and errors. As shown in the Fig. 14 (a), in the Ap-
+proach phase, the UAV approaches the ship with a high speed, and 
+at approximately 14 s, the velocity command for FF-IBVS starts to 
+be generated. Note that the horizontal error in Fig. 14 (c) repre-
+sents the magnitude of the horizontal error with respect to the 
+world coordinate frame which has no relation to the attitude of 
+the ship. The estimation error of the ship velocity is presented in 
+Fig. 14 (d). The performance of the orientation alignment is shown 
+in the Fig. 14 (e). Fig. 14 (f) shows the attitude log data of the 
+UAV. The initial altitude and horizontal position error are approx-
+imately 16.2 m and 67.9 m, respectively. At the approach phase, 
+the UAV approaches 12 m above the ship using the GPS with the 
+horizontal position error of 8 m. At the IBVS level 1 ∼3 states, 
+the UAV tracks the ship while decreasing its altitude according to 
+the desired velocity command generated by the FF-IBVS algorithm. 
+Note that, for the ﬁnal state, the UAV touches down the ship with 
+just the velocity of the ship estimated by the GPS only as there 
+is no camera measurement available just above the landing pad. 
+Fig. 15 presents the touchdown errors for all simulations where an 
+average touchdown error of 0.52 m, standard deviation of 0.15 m
+and a maximum touchdown error of 0.77 m are obtained. The pa-
+rameters related to FF-IBVS for the simulations are presented in 
+Table 2. A movie clip for these simulations can be found at https://
+www.youtube .com /watch ?v =bTBZL4SuFLM.
+7. Experiments
+To verify the proposed autonomous landing algorithm in the 
+real world, various ﬂight experiments are conducted. The setup for 
+ﬂight experiments is illustrated in Fig. 16. For the camera and lens, 
+a Teledyne Dalsa Genie Nano C2020 and a 3.5 mm, f/5.6 Cr Series 
+Fixed Focal Length Lens from Edmund Optics are used, respectively. 
+12
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 21. Images captured during the experiments for situation (b).
+Table 2
+Parameters related to FF-IBVS for the simulations.
+IBVS Level 1
+λ in Eq. (7)
+diag(2.0, 2.0, 5.0, 0, 0, 0.2)
+Saturation values for vd,4D O F
+[1.0 1.0 2.0 0.5]⊤
+k in Eq. (9)
+0.002
+IBVS Level 2
+λ in Eq. (7)
+diag(2.0, 2.0, 5.0, 0, 0, 0.2)
+Saturation values for vd,4D O F
+[1.5 1.5 1.0 0.5]⊤
+k in Eq. (9)
+0.002
+IBVS Level 3
+λ in Eq. (7)
+diag(2.0, 2.0, 8.0, 0, 0, 0.2)
+Saturation values for vd,4D O F
+[3.0 3.0 0.5 0.5]⊤
+k in Eq. (9)
+0.002
+A combination of the selected camera and lens has the horizontal 
+FOV of 102◦and resolution of 2048 × 1536 pixels. To process the 
+GPS data on the landing pad, the Pixhawk4 (i.e., commercial au-
+topilot) is used. The image and velocity data of the landing pad 
+acquired from the camera and GPS are transmitted to the Nvidia 
+Jetson TX2 which is used as the mission computer (MC) for au-
+tonomous landing via Gigabit Ethernet and Wi-Fi communication. 
+At the MC, the AR tags for the IBVS are extracted, and the desired 
+velocity command from FF-IBVS is calculated. Note that, since the 
+AR tag extraction takes the most computation time in the entire 
+process, the update rate of FF-IBVS is set to the AR tag extraction 
+speed. In particular, on the TX2 board, as the AR tag extraction 
+algorithm can be run up to about 12 Hz, the update rate for ve-
+locity control command generation from FF-IBVS is set to 10 Hz 
+in consideration of computational stability. The generated velocity 
+command is transmitted to the velocity controller of the UAV.
+The landing platforms for the ﬂight experiments are designed 
+in two types. The ﬁrst design comprises a radio-controlled (RC) car 
+with the landing pad as illustrated in Fig. 17 (a). The GPS on the 
+RC car estimates the velocity of the landing platform, and the data 
+is transmitted to the UAV via a Wi-Fi router. The second design 
+of the landing platform is a combination of a truck and motion 
+platform as illustrated in Fig. 17 (b). The motion platform on the 
+truck is utilized to simulate ship motions triggered by sea waves.
+The experiments were performed at various situations by grad-
+ually increasing the complexity: (a) the UAV is equipped with the 
+gimbal system to maintain the camera parallel to the ground at all 
+times to replace the use of the virtual coordinate frame explained 
+in Section 3.2 while starting from the IBVS level 2; (b) simulated 
+6-DOF ship motions (roll, pitch, yaw, surge, sway, and heave) trig-
+gered by sea waves using the motion platform are added along 
+with the setup of the situation (a); (c) entire procedure starting 
+from the approach to touchdown phase is conducted but with-
+out the gimbal and 6-DOF ship motions; and (d) simulated ship 
+motions are added along with the setup of the situation (c). For 
+the situation (b) and (d), the amplitude and period of the simu-
+lated ship motion is set to a ﬁrst order sinusoidal function of the 
+Table 1 and the amplitude of the translational motion is scaled 
+down by 1/10 because of the physical limitation of the motion 
+platform. The reason for using the gimbal system is that when the 
+image plane transform is applied, the FOV does not always point 
+13
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 22. Experiment results for situation (b): (a) time history of the velocity of the 
+landing platform; and (b) time history of the altitude of the UAV.
+Table 3
+Parameters related to FF-IBVS for the experiments.
+IBVS Level 1
+λ in Eq. (7)
+diag(4.0, 4.0, 5.0, 0, 0, 0.5)
+Saturation values for vd,4D O F
+[1.5 1.5 0.7 0.5)]⊤
+k in Eq. (9)
+0.002
+IBVS Level 2
+λ in Eq. (7)
+diag(2.0, 2.0, 3.0, 0, 0, 0.5)
+Saturation values for vd,4D O F
+[1.5 1.5 0.5 0.6)]⊤
+k in Eq. (9)
+0.002
+IBVS Level 3
+λ in Eq. (7)
+diag(2.0, 2.0, 3.0, 0, 0, 0.5)
+Saturation values for vd,4D O F
+[1.2 1.2 0.5 0.6]⊤
+k in Eq. (9)
+0.002
+downwards, so the features of the landing pad get easily out of the 
+FOV; this makes the autonomous landing harder. Thus, the exper-
+iments are carried out by ﬁrst using the gimbal system for ease 
+of FF-IBVS implementation and then using the virtual image plane 
+to reduce the weight of the payload by removing the gimbal sys-
+tem. For all experiments, the landing platforms are set to move 
+forward at a speed of approximately 3 ∼6 m/s. As illustrated in 
+Fig. 18, at situations (a) and (b), Tarot X4 is exploited for the UAV 
+which is equipped with the gimbal camera, and at situation (c) and 
+(d), Tarot 650 pro and customized UAV are employed, respectively. 
+Here, the customized UAV is a coaxial quadrotor type UAV and has 
+1,500 mm and 5 kg of diagonal length and payload, respectively. 
+The parameters for the experiments are presented in Table 3.
+For situation (a), the experiments are conducted three times. 
+The image capture during the experiment for situation (a) is illus-
+trated in Fig. 19. The top left side for each image shows the image 
+obtained from the camera and the result of the AR tag extraction. 
+The UAV starts the autonomous landing when the features are rec-
+ognized (Fig. 19 (a)), and then, the UAV executes IBVS. Figs. 19 (b) 
+and (c) present the captured images when the UAV completes the 
+IBVS levels 2 and 3, respectively. If the completion of IBVS level 
+3 is detected, the UAV decreases its altitude and completes the 
+landing procedure (Fig. 19 (d)). The speed of the landing platform 
+and altitude of the UAV at situation (a) are presented in Fig. 20
+Fig. 23. Experiment results for situation (c): (a) time history of the velocity of the 
+landing platform; and (b) time history of the altitude of the UAV.
+Table 4
+Experiment results for situation (a): touchdown error.
+Trial
+Mean error
+Std. deviation
+1st
+2nd
+3rd
+Touchdown error [m]
+0.21
+0.24
+0.26
+0.24
+0.03
+(a) and (b), respectively. The maximum speed of the landing plat-
+form is attained at approximately 4.5 m/s. The UAV starts landing 
+at an altitude of 7 m from the IBVS level 2. At approximately 
+7 s, the IBVS level 3 commences, and at that time, the altitude 
+of the UAV is approximately 4 m. At approximately 22 s, the IBVS 
+level 3 is completed. The time from the IBVS level 2 to touchdown 
+takes approximately 24 s. Table 4 presents the touchdown error for 
+the experiments of situation (a). From three experiments, a mean 
+touchdown error of 0.24 m, a standard deviation of 0.03 m, and a 
+maximum touchdown error of 0.26 m are obtained.
+Situation (b) uses the motion platform simulating the motion 
+of the ship. Fig. 21 presents the images captured during the ex-
+periments for situation (b). The UAV employs IBVS to start landing 
+on the landing pad on which the ship motion is simulated (Fig. 21
+(a)), and completes IBVS levels 2 and 3 sequentially (Fig. 21 (b) 
+and (c)). When the completion of IBVS level 3 is detected, the 
+UAV decreases its altitude. Fig. 21 (d) presents the captured im-
+age of touchdown. Fig. 22 presents the time history of velocity 
+of the landing platform and the altitudes of the UAV. The maxi-
+mum speed of the landing platform is approximately 5.5 m/s. The 
+altitude of the UAV at the starting time is set to 7 m, which is 
+the same as situation (a). The touchdown errors for situation (b) 
+are presented in Table 5. From three experiments for situation 
+(b), a mean touchdown error of 0.81 m, a standard deviation of 
+0.13 m, and a maximum touchdown error of 0.95 m are obtained. 
+A movie clip showing the experiments for the situation (a) and (b) 
+can be found at https://www.youtube .com /watch ?v =TSdlVZ9bgXw.
+The experiments using the RC car with the landing pad for 
+situation (c) are also conducted three times. As mentioned ear-
+lier, in these experiments, the gimbal is not employed; instead, 
+14
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Fig. 24. Images captured during the experiments for situation (d).
+Table 5
+Experiment results for situation (b): touchdown error.
+Trial
+Mean error
+Std. deviation
+1st
+2nd
+3rd
+Touchdown error [m]
+0.70
+0.77
+0.95
+0.81
+0.13
+Table 6
+Experiment results for situation (c): touchdown error.
+Trial
+Mean error
+Std. deviation
+1st
+2nd
+3rd
+Touchdown error [m]
+1.1
+0.9
+0.5
+0.83
+0.31
+a virtual coordinate transform is used, which is much more chal-
+lenging. Fig. 23 presents the sample result obtained out of three 
+trials, showing the time history of velocity of the landing platform 
+and the altitudes of the landing platform and the UAV. The landing 
+platform maintains the reference velocity of approximately 5 m/s
+while autonomous landing is executed. At the approach phase, the 
+UAV approaches around the landing platform. Then, at approxi-
+mately 14 s, the state enters the IBVS level 1, and the UAV starts 
+to decrease its altitude via IBVS velocity command. Table 6 rep-
+resents the touchdown errors for all experiments where a mean 
+touchdown error of 0.83 m, a standard deviation of 0.31 m, and 
+a maximum touchdown error of 1.1 m are obtained. Because the 
+gimbal is not utilized and the RC car with the landing pad moves 
+on a slippery grass ﬁeld, the touchdown error obtained is larger 
+than that of situation (a).
+For the situation (d), the most comprehensive experiments are 
+carried out. The entire landing procedures starting from the ap-
+proach phase to landing is conducted and virtual coordinate trans-
+form is used on the situation where the ship motion is simulated. 
+Fig. 24 shows the image capture during the experiment for the sit-
+Fig. 25. Experiment results for situation (d): (a) time history of the velocity of the 
+landing platform; and (b) time history of the altitude of the UAV.
+uation (d). Fig. 25 presents the sample result obtained out of three 
+trials, showing the time history of velocity of the landing platform 
+and the altitude of the UAV. The maximum speed of the landing 
+platform is approximately 6 m/s and the initial altitude of the UAV 
+15
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+Table 7
+Experiment results for situation (d): touchdown error.
+Trial
+Mean error
+Std. deviation
+1st
+2nd
+3rd
+Touchdown error [m]
+0.2
+0.1
+0.3
+0.2
+0.1
+is set to 10 m. Table 7 shows the touchdown error for all experi-
+ments where a mean error of 0.2 m, a standard deviation of 0.1 m, 
+and a maximum error of 0.3 m are obtained. A movie clip show-
+ing the experiments for the situation (d) can be found at https://
+www.youtube .com /watch ?v =q4PM37adCuk.
+8. Conclusions and future work
+This study proposed a vision-based autonomous ship deck land-
+ing strategy using feed-forward image-based visual servoing (FF-
+IBVS). Conventional IBVS schemes cannot guarantee the conver-
+gence of the position error to zero if the target is not stationary. 
+To resolve this issue, the velocity of the ship was added as a feed-
+forward term in IBVS. The motion of the ship was measured by 
+the GPS on the ship deck and the camera attached to the UAV, 
+and then estimated via Kalman ﬁltering. In addition, the adaptive 
+IBVS gain was used, such that the features remained in the FOV, 
+and the features were compensated to ﬁt a square to avoid the tilt 
+effects of the ship. To accomplish the entire landing procedure au-
+tonomously, a landing scheme in the form of the state machine 
+structure, including the approach, three IBVS levels according to 
+the relative altitude between the ship and the UAV, hold, rising, 
+and landing states, was designed. The proposed autonomous land-
+ing algorithm was veriﬁed via various simulations and real ﬂight 
+experiments.
+The method proposed in this paper, the use of additional sen-
+sors (i.e., GPS on the ship deck) was necessary to estimate the 
+velocity of the ship accurately. However, the sensor attached to the 
+ship could complicate the system, and if issues such as communi-
+cation failure occurs, autonomous landing might not be possible. 
+Therefore, as a future work, a method for estimating the velocity 
+of a ship without the aid of GPS will be investigated. In addition 
+to that, to cope with the strong wind and gusts in harsh marine 
+environments, robust control techniques (e.g., sliding mode con-
+trol and/or disturbance observer) will be considered as the future 
+work.
+Declaration of competing interest
+The authors declare that they have no known competing ﬁnan-
+cial interests or personal relationships that could have appeared to 
+inﬂuence the work reported in this paper.
+Data availability
+The authors are unable or have chosen not to specify which 
+data has been used.
+Acknowledgement
+This research was supported by the Basic Science Research Pro-
+gram through the National Research Foundation of Korea (NRF) 
+funded by the Ministry of Education (2020R1A6A1A03040570), De-
+velopment of Drone System for Ship and Marine Mission of Civil 
+Military Technology Cooperation Center (18-CM-AS-22), and Oper-
+ation of an Unmanned Aerial System for a VTOL funded by the 
+Agency of Defense Development (111885-912828001).
+References
+[1] S. Kim, J. Park, D. Han, E. Kim, D. Lee, Development of a vision-based recog-
+nition and position measurement system for cooperative missions of multiple 
+heterogeneous unmanned vehicles, Int. J. Aeronaut. Space Sci. 22 (2) (2021) 
+468–478.
+[2] Q. Wang, Y. Zhang, Heterogeneous sensor-based target tracking with constant 
+time delay, Int. J. Aeronaut. Space Sci. 22 (1) (2021) 186–194.
+[3] A. Nayyar, B.-L. Nguyen, N.G. Nguyen, The internet of drone things (IODT): fu-
+ture envision of smart drones, in: First International Conference on Sustainable 
+Technologies for Computational Intelligence, Springer, 2020, pp. 563–580.
+[4] A. Kumar, R. Krishnamurthi, A. Nayyar, A.K. Luhach, M.S. Khan, A. Singh, 
+A novel software-deﬁned drone network (SDDN)-based collision avoidance 
+strategies for on-road traﬃc monitoring and management, Veh. Commun. 28 
+(2021) 100313.
+[5] N.A. Khan, N.Z. Jhanjhi, S.N. Brohi, A. Nayyar, Emerging use of UAV’s: secure 
+communication protocol issues and challenges, in: Drones in Smart-Cities, El-
+sevier, 2020, pp. 37–55.
+[6] T. Dautermann, B. Korn, K. Flaig, M.U. de Haag, GNSS double differences used as 
+beacon landing system for aircraft instrument approach, Int. J. Aeronaut. Space 
+Sci. 22 (6) (2021) 1455–1463.
+[7] Y. Kang, B. Park, A. Cho, C. Yoo, Y. Kim, S. Choi, S. Koo, S. Oh, A precision 
+landing test on motion platform and shipboard of a tilt-rotor UAV based on 
+RTK-GNSS, Int. J. Aeronaut. Space Sci. 19 (4) (2018) 994–1005.
+[8] J.S. Wynn, T.W. McLain, Visual servoing with feed-forward for precision ship-
+board landing of an autonomous multirotor, in: 2019 American Control Confer-
+ence, IEEE, 2019, pp. 3928–3935.
+[9] Manual on Codes – International Codes, Volume I.3 – Annex II to the WMO 
+Technical Regulations: Part D – Representations derived from data models.
+[10] N. Shahriari, S. Fantasia, F. Flacco, G. Oriolo, Robotic visual servoing of moving 
+targets, in: 2013 IEEE/RSJ International Conference on Intelligent Robots and 
+Systems, 2013, pp. 77–82.
+[11] I. Siradjuddin, L. Behera, T.M. McGinnity, S. Coleman, Image-based visual ser-
+voing of a 7-DOF robot manipulator using an adaptive distributed fuzzy PD 
+controller, IEEE/ASME Trans. Mechatron. 19 (2) (2013) 512–523.
+[12] J.P. Alepuz, M.R. Emami, J. Pomares, Direct image-based visual servoing of free-
+ﬂoating space manipulators, Aerosp. Sci. Technol. 55 (2016) 1–9.
+[13] S. Hutchinson, G.D. Hager, P.I. Corke, A tutorial on visual servo control, IEEE 
+Trans. Robot. Autom. 12 (5) (1996) 651–670.
+[14] F. Chaumette, S. Hutchinson, Visual servo control. I. Basic approaches, IEEE 
+Robot. Autom. Mag. 13 (4) (2006) 82–90.
+[15] S. Jung, K.B. Ariyur, Automated wireless recharging for small UAVs, Int. J. Aero-
+naut. Space Sci. 18 (3) (2017) 588–600.
+[16] C. Chen, S. Chen, G. Hu, B. Chen, P. Chen, K. Su, An auto-landing strategy based 
+on pan-tilt based visual servoing for unmanned aerial vehicle in GNSS-denied 
+environments, Aerosp. Sci. Technol. (2021) 106891.
+[17] S. Yang, J. Ying, Y. Lu, Z. Li, Precise quadrotor autonomous landing with SRUKF 
+vision perception, in: 2015 IEEE International Conference on Robotics and Au-
+tomation, 2015, pp. 2196–2201.
+[18] W. Zhao, H. Liu, X. Wang, Robust visual servoing control for quadrotors landing 
+on a moving target, J. Franklin Inst. 358 (4) (2021) 2301–2319.
+[19] J.J. Acevedo, M. García, A. Viguria, P. Ramón, B.C. Arrue, A. Ollero, Autonomous 
+landing of a multicopter on a moving platform based on vision techniques, in: 
+Iberian Robotics Conference, Springer, 2017, pp. 272–282.
+[20] D. Falanga, A. Zanchettin, A. Simovic, J. Delmerico, D. Scaramuzza, Vision-based 
+autonomous quadrotor landing on a moving platform, in: 2017 IEEE Interna-
+tional Symposium on Safety, Security and Rescue Robotics, 2017, pp. 200–207.
+[21] R.O. de Santana, L.A. Mozelli, A.A. Neto, Vision-based autonomous landing for 
+micro aerial vehicles on targets moving in 3D space, in: 2019 19th Interna-
+tional Conference on Advanced Robotics, IEEE, 2019, pp. 541–546.
+[22] E. Rohmer, S.P. Singh, M. Freese, V-REP: a versatile and scalable robot sim-
+ulation framework, in: 2013 IEEE/RSJ International Conference on Intelligent 
+Robots and Systems, 2013, pp. 1321–1326.
+[23] Z. Tang, R. Cunha, D. Cabecinhas, T. Hamel, C. Silvestre, Quadrotor going 
+through a window and landing: an image-based visual servo control approach, 
+Control Eng. Pract. 112 (2021) 104827.
+[24] T. Hamel, R. Mahony, Visual servoing of an under-actuated dynamic rigid-body 
+system: an image-based approach, IEEE Trans. Robot. Autom. 18 (2) (2002) 
+187–198.
+[25] N. Guenard, T. Hamel, R. Mahony, A practical visual servo control for an un-
+manned aerial vehicle, IEEE Trans. Robot. 24 (2) (2008) 331–340.
+[26] D. Lee, H. Lim, H.J. Kim, Y. Kim, K.J. Seong, Adaptive image-based visual servo-
+ing for an underactuated quadrotor system, J. Guid. Control Dyn. 35 (4) (2012) 
+1335–1353.
+[27] D. Lee, T. Ryan, H.J. Kim, Autonomous landing of a VTOL UAV on a moving plat-
+form using image-based visual servoing, in: 2012 IEEE International Conference 
+on Robotics and Automation, 2012, pp. 971–976.
+[28] P. Serra, R. Cunha, T. Hamel, D. Cabecinhas, C. Silvestre, Landing on a mov-
+ing target using image-based visual servo control, in: 53rd IEEE Conference on 
+Decision and Control, 2014, pp. 2179–2184.
+16
+
+G. Cho, J. Choi, G. Bae et al.
+Aerospace Science and Technology 130 (2022) 107869
+[29] Q.H. Truong, T. Rakotomamonjy, A. Taghizad, J.-M. Biannic, Vision-based con-
+trol for helicopter ship landing with handling qualities constraints, IFAC-
+PapersOnLine 49 (17) (2016) 118–123.
+[30] T. Rakotomamonjy, Q.H. Truong, Helicopter ship landing using visual servoing 
+on a moving platform, IFAC-PapersOnLine 50 (1) (2017) 10507–10512.
+[31] I. Borshchova, S. O’Young, Visual servoing for autonomous landing of a multi-
+rotor UAS on a moving platform, J. Unmanned Veh. Syst. 5 (1) (2016) 13–26.
+[32] I. Borshchova, S. O’Young, Marker-guided auto-landing on a moving platform, 
+Int. J. Intell. Unmanned Syst. (2017).
+[33] Y. Bar-Shalom, L. Campo, The effect of the common process noise on the 
+two-sensor fused-track covariance, IEEE Trans. Aerosp. Electron. Syst. 6 (1986) 
+803–805.
+[34] R.W. Beard, T.W. McLain, Small Unmanned Aircraft, Princeton University Press, 
+2012.
+[35] T. Perez, M. Blanke, Simulation of ship motion in seaway, Computer Sci-
+ence, Technical Report, The University of Newcastle, Callaghan, Australia, 2002, 
+pp. 1–13.
+[36] J.L. Sanchez-Lopez, S. Saripalli, P. Campoy, J. Pestana, C. Fu, Toward visual au-
+tonomous ship board landing of a VTOL UAV, in: 2013 International Conference 
+on Unmanned Aircraft Systems, IEEE, 2013, pp. 779–788.
+[37] M.A. Fischler, R.C. Bolles, Random sample consensus: a paradigm for model ﬁt-
+ting with applications to image analysis and automated cartography, Commun. 
+ACM 24 (6) (1981) 381–395.
+[38] S. Garrido-Jurado, R. Muñoz-Salinas, F.J. Madrid-Cuevas, M.J. Marín-Jiménez, 
+Automatic generation and detection of highly reliable ﬁducial markers under 
+occlusion, Pattern Recognit. 47 (6) (2014) 2280–2292.
+[39] J. Rankin, An error model for sensor simulation GPS and differential GPS, in: 
+Proceedings of IEEE Position, Location and Navigation Symposium, PLANS’94, 
+1994, pp. 260–266.
+17
+

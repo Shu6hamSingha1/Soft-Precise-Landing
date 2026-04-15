@@ -1,0 +1,2093 @@
+128
+Asian Journal of Control, Vol. 1, No. 3, pp. 128-145, September 1999
+I. INTRODUCTION
+Unmanned air vehicles (UAVs) are being used more
+and more in a number of civilian and military applications,
+Manuscript received October 19, 1999; accepted November 1,
+1999.
+The authors are with Dept. of Electrical Engineering & Com-
+puter Science, University of California at Berkeley, Berkeley,
+CA94720-1774, U.S.A.
+This research is supported by ONR under the grant N00014-
+97-1-0946 and ARO under the MURI grant DAAH04-96-1-
+0341. The authors would also like to thank members of the UC
+BErkeley Aerial Robot team, especially Hyunchul Shim for
+identifying the helicopter dynamic model.
+LANDING AN UNMANNED AIR VEHICLE: VISION BASED MOTION
+ESTIMATION AND NONLINEAR CONTROL
+Omid Shakernia, Yi Ma, T. John Koo and Shankar Sastry
+ABSTRACT
+In this paper, we use computer vision as a feedback sensor in a control loop
+for landing an unmanned air vehicle (UAV) on a landing pad.  The vision
+problem we address here is then a special case of the classic ego-motion
+estimation problem since all feature points lie on a planar surface (the landing
+pad). We study together the discrete and differential versions of the ego-motion
+estimation, in order to obtain both position and velocity of the UAV relative to
+the landing pad. After briefly reviewing existing algorithm for the discrete case,
+we present, in a unified geometric framework, a new estimation scheme for
+solving the differential case. We further show how the obtained algorithms
+enable the vision sensor to be placed in the feedback loop as a state observer for
+landing control. These algorithms are linear, numerically robust, and
+computationally inexpensive hence suitable for real-time implementation. We
+present a thorough performance evaluation of the motion estimation algorithms
+under  varying levels of image measurement noise, altitudes of the camera above
+the landing pad, and different camera motions relative to the landing pad. A
+landing controller is then designed for a full dynamic model of the UAV. Using
+geometric nonlinear control theory, the dynamics of the UAV are decoupled
+into an inner system and outer system. The proposed control scheme is then
+based on the differential flatness of the outer system. For the overall closed-loop
+system, conditions are provided under which exponential stability can be
+guaranteed. In the closed-loop system, the controller is tightly coupled with the
+vision based state estimation and the only auxiliary sensor are accelerometers
+for measuring acceleration of the UAV. Finally, we show through simulation
+results that the designed vision-in-the-loop controller generates stable landing
+maneuvers even for large levels of image measurement noise. Experiments on
+a real UAV will be presented in future work.
+KeyWords: Motion estimation, computer vision based control, unmanned air
+vehicle, differential flatness.
+for example remote monitoring of traffic, search and res-
+cue operations, and surveillance.  This has generated con-
+siderable interest in the control community, mainly due to
+the fact that the design of UAVs brings to light research
+questions falling in some of the most exciting new direc-
+tions for control.  One of these directions is the use of
+computer vision as a sensor in the feedback control loop.
+The task of autonomous aircraft landing is particularly well
+suited to vision based control, especially in cases where
+the landing pad is in an unknown location and is moving,
+such as the deck of a ship.
+Typically, a vision system on board a UAV augments
+a sensor suite including a Global Positioning System
+(GPS) which provides position information relative to the
+inertial frame, and Inertial Navigation Sensors (INS) which
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+129
+provide acceleration information [24].  As a cheap,
+passive and information-abundant sensor, computer vision
+is gaining more and more importance in the sensor suite of
+mobile robots.  There has been a growing interest in con-
+trol design around a vision sensor.  In [18], stereo vision
+systems are proposed to augment a multi-sensor suite
+including laser range-finders in the landing maneuver of a
+UAV.  In [25], the use of projections of parallel lines is
+proposed for the purpose of estimating the location and
+orientation of the helicopter landing pad.  Using this
+approach, the vision sensor provides position and orienta-
+tion estimates of the camera relative to the landing pad,
+but can not estimate the camera velocity, which is im-
+portant for controlling a UAV.  In this paper, we present
+computer vision algorithms to estimate UAV motion
+(position and orientation, linear and angular velocity) rela-
+tive to a landing pad using a calibrated monocular camera.
+The given algorithms are linear, computationally in-
+expensive, numerically robust, and amenable to real-time
+implementation.  We also present a thorough performance
+evaluation of the vision based motion estimation under
+varying levels of image measurement noise, altitudes, and
+camera motions relative to the landing pad.
+Furthermore, the use of computer vision in the con-
+trol of UAVs is more challenging than in the classical
+“visual servoing” approach [2] because UAVs are under-
+actuated nonlinear dynamical systems.  In order for a
+guaranteed performance such as stability for the overall
+closed-loop system, a thorough characterization of the
+UAV dynamics are absolutely necessary.  We hereby
+present a full dynamic model of the UAV.  Based on
+geometric control theory, we decompose the dynamics
+into two subsystems: inner and outer systems.  A nonlinear
+controller is proposed based on differential flatness of the
+outer system.  In addition to the work in [21], we also give
+a detailed stability analysis of the closed-loop system, and
+clear conditions are derived for system stability.  The
+proposed controller is tightly coupled with the vision based
+state estimation and the only auxiliary sensor needed to
+implement the controller is an INS for measurement of
+acceleration.  The INS is used since second order deriva-
+tives of image features are highly sensitive to noise.
+Finally, we show through simulation that the designed
+vision-in-the-loop controller is stable even for large levels
+of image measurement noise.  Implementation on real
+helicopters will be reported in future work.
+Organization of the paper
+In section 2, we introduce the notation for the
+camera motion and imaging models.  In section 3 we
+formulate the problem of motion estimation from image
+measurements of a planar scene.  We present a new geo-
+metrical scheme for the recovery of the camera linear and
+angular velocities from the velocities of feature image
+points.  In section 3.4 we provide simulation results of
+the planar ego-motion estimation algorithms and evaluate
+their performance under the presence of noise, and differ-
+ent types of motion relative to the plane.  In section 4 we
+give the dynamic model of the UAV and the design of a
+controller based on differential flatness.  Conditions for
+closed-loop stability are also studied in detail.  In section 5
+we describe how the obtained vision algorithms can be
+placed in the feedback loop as a state estimator for the
+controller, and provide simulation results of the vision
+based landing maneuver.  We end the paper in section 6
+with concluding remarks and directions for future research.
+II. CAMERA MOTION AND
+PROJECTION MODEL
+In this section, we introduce the notation for the
+motion of the UAV and the imaging model of the on-
+board camera.  The notation is consistent with that given in
+[13,15].  We identify a point with its coordinates in the
+inertial frame, and use the terms “point” and “coordinates”
+interchangeably when referring to points in the inertial
+frame.  We will adhere to the following convention:
+We denote the coordinates of a point in the inertial frame
+with a tilde, for example q ∈ R3, and denote the coordinates
+of the point in the camera frame using the same letter, but
+without a tilde, for example q ∈ R3.  We assume a monocu-
+lar camera is fixed to the UAV and the optical axis of the
+camera coincides with the vertical axis of the UAV body
+frame.
+Given a vector ω = (ω1, ω2, ω3)T ∈ R3, we define ω
+∈ so(3), the space of skew-symmetric matrices in R3 × 3, by:
+  
+ω =
+0
+– ω3 ω1
+ω3
+0
+– ω1
+– ω2 ω1
+0
+.
+(2.1)
+It follows from the definition of cross-product of
+vectors that for any two vectors p, q ∈ R3, we have p × q =
+p q.  We assume that the motion of the UAV is described
+by a smooth curve on the s2pecial Euclidean group SE(3)
+= {(p, 
+  
+R)  R3, R ∈ SO(3)}, where SO(3) is the special
+orthogonal group of rotation matrices in R3 × 3.  Let (p(t),
+R(t)) ∈ SE(3) denote the position and orientation of the
+camera with respect to the inertial frame at time t.  Then the
+coordinates of a fixed point in the inertial frame, and its
+coordinates in the camera frame at time t are related by:
+  
+q = R(t)q(t) + p(t) .
+(2.2)
+Since q is fixed, differentiating equation (2.2)
+leads to q = –RTRq – RTp .  Since RTR = I, we have RTR
+= –RTR, and hence RTR ∈ so(3).  We define ω ∈ R3 and
+υ ∈ R3 by:
+   
+ω = RTR , υ = RTp .
+(2.3)
+R
+
+130
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+With this notation we have:
+   
+q = – ωq – υ .
+(2.4)
+The meaning of these variables is that ω and υ are the
+angular and linear velocities of the camera relative to the
+inertial frame, given in the instantaneous camera frame.
+The imaging of the camera is given by the perspec-
+tive projection of points in the 3D world onto the image
+plane.  We assume a calibrated camera, and without loss of
+generality we take the image plane to be at a unit distance
+from optical center of the camera.  The perspective projec-
+tion of the camera is then given by:
+π : R3\{0} → RP
+RP
+RP
+RP
+RP2
+  
+(qx, qy, qz)T
+ 
+  
+qx
+qz, qy
+qz, 1
+T
+.
+(2.5)
+If x is the image of a point q, i.e. x = π(q), then we can
+write:
+λx = q
+(2.6)
+where λ = qz ∈ R encodes the depth of q from the optical
+center of the camera.  Denoting the optical axis by e3 =
+(0, 0, 1)T, we have λ = e3
+Tq.  Rewriting equation (2.6), we get
+the following identity:
+   
+(I – xe3
+T)q = 0
+(2.7)
+which will be useful in the later development.
+III. MOTION ESTIMATION
+In this section, we give a formulation of the so-called
+ego-motion estimation problem [11,14,20,23].  The goal is
+to recover the motion of the camera using image mea-
+surements of fixed points in the scene.  The ego-motion
+estimation problem can be subdivided into the discrete
+and differential cases.  In the discrete case, one uses the
+correspondences between image points in a pair of im-
+ages to compute the rigid camera motion between the
+frames.  A solution to the discrete case can be obtained by
+the well-known 8-point algorithm [11].  In the 8-point
+algorithm, one uses image correspondences of at least
+eight fixed points in general configuration in the scene
+and minimizes the epipolar constraint to recover the
+ so-called essential matrix that contains all the motion
+parameters.  Then singular value decomposition is used to
+uniquely decompose the essential matrix and find the
+translation and rotation between the camera frames.  The
+differential ego-motion estimation problem is to recover
+the translational and rotational velocity of the camera
+given the velocities of image points in a sequence of
+images.  Recently, Ma et al. [13] derived a counterpart for
+the 8-point algorithm for the differential case.  In a similar
+spirit to the discrete case, using at least eight image point
+velocities, one minimizes a differential epipolar constraint
+and recovers a differential essential matrix, that contains
+all the motion parameters.  Then eigenvalue-decomposi-
+tion is used to uniquely decompose the differential essen-
+tial matrix to find the translational and rotational velocity
+of the camera.
+The ego-motion estimation problem for the purpose
+of landing a UAV is a special case of the general one: All
+the image points correspond to coplanar points on the
+landing pad.  It is well known that the case where all
+features points in the scene are coplanar is a degenerate
+case that makes the 8-point algorithm ill-conditioned,
+giving poor estimation results [4].  Hence one needs algo-
+rithms specific to the planar case.  The discrete version of
+the planar ego-motion problem has been studied exten-
+sively [3,12,23].  Here we only formulate the problem and
+briefly revisit well-known results that can be found in [23].
+Our contribution is to the differential version of the
+problem.  The differential version is important when the
+task is to control a dynamic mobile robot such as a UAV,
+since velocity estimates are necessary for the computation
+of control inputs.  The differential planar ego-motion
+estimation problem has been studied by many researchers
+[7,12,19,22], each using a different approach.  We here
+propose a new and unified geometric framework which
+provides motion estimation algorithms for the planar
+case in the same spirit of the general purpose 8-point
+algorithm: First minimize a planar discrete (differential)
+epipolar constraint based on image correspondences
+(velocities) to obtain a planar discrete (differential) essen-
+tial matrix, then use SVD (eigenvalue decomposition) of
+the essential matrix to recover the unknown motion
+parameters.
+3.1 Discrete case
+Suppose we have a set of m fixed coplanar points
+  
+{qi}i = 1
+m  ⊂ P, where P denotes the plane.  Without loss of
+generality, we take the origin of the inertial frame to be in
+P.  Figure 1 depicts the geometry of the camera frame
+relative to the landing pad.  We will assume throughout the
+paper that the optical center of the camera never passes
+through the plane.  We have the following proposition,
+which gives a constraint on the coordinates of the coplanar
+points.
+Proposition 3.1  Suppose the camera undergoes a rigid
+motion (p, R) ∈ SE(3).  Then the coordinates 
+  
+{qi
+0}i = 1
+m ,
+  
+{qi
+1}i = 1
+m  of the fixed coplanar points 
+  
+{qi}i = 1
+m  ⊂ P in the two
+camera frames are related by:
+  
+qi
+0 = R + 1
+d pnT qi
+1 ,
+i = 1, …, m
+(3.1)
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+131
+where d is the perpendicular distance of camera frame 1 to
+the plane P and n ∈ S2 is the surface normal of P relative
+to camera frame 1.
+Proof.  Let (p0, R0), (p1, R1) ∈ SE(3) be the configura-
+tions of camera frames 0 and 1, respectively.  Without
+loss of generality, we take R0 = I, and hence the rigid
+motion between the camera frames is (p, R) = (p1 – p0, R).
+For each i = 1, …, m we have:
+  
+qi
+0 = Rqi
+1 + p
+(3.2)
+where qi
+0, qi
+1 are the coordinates of qi in camera frames 0
+and 1, respectively.  Let nF ∈ S2 be the unit normal vector
+of the plane P in terms of the inertial frame.  Then the
+surface normal in the coordinate frame of camera 1 is given
+by n = RTnF.  If d > 0 denotes the distance from the plane P
+to the optical center of camera frame 1, then we have:
+  
+1
+dnTqi
+1 = 1,
+i = 1, …, m .
+(3.3)
+Substitution of equation (3.3) into equation (3.2) gives the
+result.
+■
+We call the matrix:
+  
+A = R + 1
+d pnT  ∈ R3 × 3
+(3.4)
+the planar essential matrix, since it contains all the the
+motion parameters {p, R} and the structure parameters
+{n, d} that we need to recover.  Notice that due to the
+inherent scale ambiguity in the term 1
+dp in equation (3.4),
+the vision sensor can in general only recover the ratio of the
+camera translation scaled by the inverse distance to the
+plane.  In section (5.1) we show how to resolve this
+ambiguity when the vision sensor is used for landing.
+Lemma 3.2  The matrix A = R + 1
+d pnT satisfies the
+constraint:
+   
+(I – xi
+0e3
+T)Axi
+1 = 0,
+i = 1, …, m
+(3.5)
+where 
+   
+{xi
+0}i = 1
+m , 
+   
+{xi
+1}i = 1
+m , are the images of 
+  
+{qi
+0}i = 1
+m , 
+  
+{qi
+1}i = 1
+m ,
+respectively.
+Proof.  Simply apply equation (2.7) to equation (3.1)
+■
+Equation (3.5) is the planar discrete epipolar con-
+straint.  Since the constraint given by Lemma 3.2 is linear
+in A, by stacking the entries of A as a = (a11, a12, a13, a21, …,
+a33)T ∈ R9, we may re-write equation (3.5) as fia = 0,
+where fi ∈ R3 × 9 is a function of xi
+0, xi
+1.  Since the third row
+in equation (3.5) is all zeroes, the third row of fi contains
+all zeroes, so we simply drop it and take fi ∈ R2 × 9.  With
+this notation, given m image points correspondences,
+by defining F = (
+ 
+fi
+T, …, 
+ 
+fm
+T)T ∈ R2m × 9 we can combine the
+equations (3.5) and rewrite them as:
+Fa = 0.
+(3.6)
+In order to solve uniquely (up to scale) for a, we
+must have rank(F) = 8.  Each pair of image point corre-
+spondences gives two constraints, hence we would expect
+that at least four point correspondences would be neces-
+sary for the estimation of A.  We say a set of coplanar points
+are in general configuration if there is a set of four points
+such that no three are collinear.
+Proposition 3.3 (Weng [23])  rank(F) = 8 if and only if
+the points 
+  
+{qi}i = 1
+m  are in general configuration in the plane.
+Proposition 3.3 says that if there are at least four point
+correspondences of which no three are collinear, then we
+may apply standard linear least squares estimation to
+recover A up its scale.  That is, we can recover AL = ξA
+for some unknown ξ ∈ R.  Due to the nature of least
+squares estimation, as the number of feature points in-
+creases, the estimation of the A matrix, and hence the
+motion estimates, improves.
+It turns out that the middle singular value of the
+matrix A = R + 1
+dpnT is identically equal to 1 [3,23].  Then,
+if (σ1, σ2, σ3) are the singular values of AL, we set A = 
+ 
+1σ 2AL,
+which determines A up to a sign.  To get the correct sign,
+we use 
+    
+λi
+0xi
+0 = 
+    
+λi
+1Axi
+1 and the fact that λi
+0, λi
+1 > 0 to impose
+the constraint 
+   
+(xi
+0)
+TAxi
+1 > 0 for i = 1, …, m.  Thus, we have
+that if the points 
+  
+{qi}i = 1
+m  are arranged in general configura-
+tion then the matrix A can be uniquely estimated from the
+image measurements.  Once we have recovered A, we
+need some more SVD analysis in order to decompose it
+into its motion and structure parameters.  For the details on
+the decomposition please refer to [23].  In general, for a
+matrix A = (R + 1
+dpnT), there are two physically possible
+solutions for its decomposition into parameters {p, R,
+n, d}.  In section 5.1 we give a method of disambiguating
+Fig. 1.  Geometry of camera frame relative to landing pad.
+
+132
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+the solutions when the task is landing a UAV on a landing
+pad whose geometry is known a priori.
+3.2 Differential case
+Here, in addition to measuring image points, we
+measure image point velocities.
+Proposition 3.4  Suppose the camera undergoes a rigid
+motion with body linear and angular velocities υ(t), ω(t).
+Then the coordinates of coplanar points 
+  
+{qi}i = 1
+m  in the
+camera frame satisfy:
+   
+qi = – ω + 1
+dυnT qi(t),
+i = 1, …, m .
+(3.7)
+Proof.  Each of the points qi satisfies:
+   
+qi = – ωqi – υ .
+(3.8)
+Let n(t) = R(t)TnF, be the surface normal to P in the
+camera frame at time t, where R(t) is the orientation of the
+camera frame.  Then, if d(t) > 0 is the distance from the
+optical center of the camera to the plane P at time t, then:
+   
+1
+d(t)n(t)Tqi(t) ≡1,
+i = 1, …, m .
+(3.9)
+Substituting equation (3.9) into equation (3.8) gives the
+result.
+■
+We call the matrix:
+   
+B = ω + 1
+dυnT  ∈ R3 × 3
+(3.10)
+the planar differential essential matrix, since it contains
+all the differential motion parameters {υ, ω} and structure
+parameters {n, d} that we need to recover.  As in the
+discrete case, there is an inherent scale ambiguity in the
+term 1
+dυ in equation (3.10).  Thus the vision sensor can in
+general only recover the ratio of the camera translational
+velocity scaled by the inverse distance to the plane.  In
+section 5.1 we show how to resolve this ambiguity when the
+vision sensor is used for landing.
+3.2.1 Estimating matrix B
+We first give a proposition which will be used to
+prove the main result of this section: Given image veloci-
+ties of at least four points in general configuration in the
+plane, we can uniquely estimate the planar differential
+essential matrix.
+Proposition 3.5  The matrix B = (ω + 1
+dυnT) satisfies the
+constraint:
+   
+xi = – (I – xie3
+T)Bxi ,
+i = 1, …, m
+(3.11)
+where 
+   
+{xi(t), xi(t)}i = 1
+m  are image points and velocities of
+fixed points 
+  
+{qi}i = 1
+m  in the plane.
+Proof.  We will drop the subscript i for ease of notation.
+Differentiating λx = q and substituting q = –Bq gives 
+ 
+λx +
+ 
+λx = –λBx.  Differentiating λ = e3
+Tq gives λ = –λe3
+TBx.
+Using these relations and eliminating λ gives the result.■
+Equation (3.11) is the planar differential epipolar
+constraint.  Since the constraint is linear in B, by stacking
+the entries of B as b = (b11, b12, b13, b21, …, b33)T ∈ R9, we
+may re-write (3.11) as xi = gi
+Tb, where gi ∈ R9 × 3 is a
+function of xi.  However, since the third row of equation
+(3.11) contains only zeros, each image point velocity only
+imposes two constraints on the matrix B.  Given a set of m
+image point and velocity pairs 
+   
+{xi, xi}i = 1
+m  of fixed points
+in the plane, we may stack each equation xi = gi
+Tb into a
+single equation:
+   
+X = Gb
+(3.12)
+where X = (x1
+T, …, xm
+T)T ∈ R3m and G = (g1, …, gm)T ∈
+R3m × 9.
+Proposition 3.6  rank(G) = 8 if and only if the points
+  
+{qi}i = 1
+m  are in general configuration in the plane.
+Proof.  Please see Appendix A.
+■
+If the points are in general configuration in the
+plane then using linear least squares techniques equation
+(3.12) can be used to recover b up to one dimension, since
+G has a one dimensional null space.  That is, we can recover
+B = BL + ξBK where BL corresponds to the minimum norm
+linear least squares estimate of B, BK corresponds to a
+vector in ker(G) and ξ ∈ R is an unknown scale.  By
+inspection of equation (3.11) one can see that BK = I.  Then
+we have:
+B = BL + ξI.
+(3.13)
+Thus, in order uniquely estimate B, we only need to
+recover the unknown ξ.  So far, we have not considered
+the special structure of the B matrix.  Next we give con-
+straints imposed by the structure of B which can be used to
+recover ξ, and thus uniquely estimate B.
+Lemma 3.7 Suppose u, υ ∈ R3, and 
+  
+u
+2 = 
+  
+υ
+2 = α.  If
+u ≠ υ, the matrix D = uυT + υuT ∈ R3 × 3 has eigenvalues
+{λ1, 0, λ3}, where λ1 > 0, and λ3 < 0.  If u = ±υ, the matrix
+D has eigenvalues {±2α, 0, 0}
+Proof.  Let β = uTυ. If u ≠ ±υ, we have –α < b < α.  We
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+133
+can solve the eigenvalues and eigenvectors of D by
+inspection:
+D(u + υ) = (β + α)(u + υ)
+D(u × υ) = 0
+D(u – υ) = (β – α)(u – υ).
+Clearly λ1 = (β + α) > 0 and λ3 = β – α < 0.  It is
+direct to check the conditions on D when u = ±υ.
+■
+Theorem 3.8  The matrix B can be uniquely estimated
+from the image measurements if and only if there are
+four points of 
+  
+{qi}i = 1
+m  in the plane such that no three are
+collinear.
+Proof.  In this proof, we will work with sorted eigenvalues,
+that is if {λ1, λ2, λ3} are eigenvalues of some matrix, then
+λ1 ≥ λ2 ≥ λ3.  If the points are not in general configuration,
+then by Proposition 3.6, rank(G) < 8, and the problem is
+under-constrained.  Now suppose the points are in general
+configuration.  Then by least squares estimation we may
+recover B = BL + ξI for some unknown ξ ∈ R.  By Lemma
+3.7, we have that B + BT = 1
+dυnT + 1
+dnυT has eigenvalues
+{λ1, λ2, λ3} where λ1 ≥ 0, λ2 ≡ 0.  Compute the eigenvalues
+of BL + 
+ 
+BL
+T and denote them as {γ1, γ2, γ3}.  Since we have
+B = BL + ξI, then λi = γi + 2ξ, for i = 1, 2, 3.  Since we must
+have λ2 = 0, we have ξ = –1
+2γ2, and set B = BL –1
+2γ2I.
+■
+3.2.2 Decomposing matrix B
+We now address the task of decomposing B into
+its motion and structure parameters.  The following con-
+structive proof gives a new technique for the recovery of
+motion and structure parameters
+Theorem 3.9  Given a matrix B ∈ R3 × 3 in the form B = ω
++ 1
+dυnT, one can recover the motion and structure param-
+eters {ω, υ
+d , n} up to at most 2 physically possible solu-
+tions.  There is a unique solution if υ = 0, υ × n = 0 or
+e3
+Tυ = 0, where e3 = (0, 0, 1)T is the optical axis.
+Proof.  Compute the eigenvalue/eigenvector pairs of
+B + BT and denote them as {λi, ui}, i = 1, 2, 3.  If λi = 0 for
+i =1, 2, 3, then we have υ = 0 and ω = B.  In this case we
+can not recover the normal of the plane n.  Otherwise, if
+λ1 > 0, and λ3 < 0, then we have υ × n ≠ 0.  Let α = 
+   
+υ / d
+> 0, let υ = 
+  
+υ / α , and n = 
+   
+α n, and let β = 
+  
+υ
+Tn.
+According to Lemma 3.7, the eigenvalue/eigenvector
+pairs of B + BT are given by:
+   
+λ1 = β + α > 0, u1 =
+1
+υ + n
+(υ + n)
+λ3 = β – α > 0, u3 =
+1
+υ – n
+(υ – n).
+(3.14)
+Then, α = 1
+2(λ1 – λ3).  It is direct to check that 
+   
+υ + n
+2
+= 2λ1, 
+   
+υ – n
+2 = –2λ3.  Then together with (3.14), we have
+a solution:
+   
+υ1 = 1
+2( 2λ1u1 +
+– 2λ3u3)
+n1 = 1
+2( 2λ1u1 –
+– 2λ3u3)
+ω1 = 1
+2((B –υ1n1
+T) – (B – υ1n1
+T)T) .
+(3.15)
+The estimate of 
+ 
+ω1 is computed as above because, in the
+presence of noise, in general B – 
+   
+υ1n1
+T is not necessarily
+an element in so(3).  We here take the projection of
+B – 
+   
+υ1n1
+T onto so(3).
+ However, the eigenvalue-decomposition {λi, ui} is
+not unique — there is a sign ambiguity in the eigenvectors
+u1 and u3.  This sign ambiguity leads to a total of 4 possible
+solutions for υ and n computed according to (3.15).  It is
+direct to check that that if {ω, υ
+d , n} are the true motion and
+structure parameters, then the 4 possible solutions obtained
+by (3.15) are:
+Solution 1 υ1 = υ/d
+Solution 3
+υ3 = –υ1
+(true)
+n1 = n
+n3 = –n1
+ω 1 = ω
+ω 3 = ω 1
+Solution 2
+υ2 = 
+   
+υ / d n
+Solution 4
+υ4 = –υ2
+n2 = 
+   1
+υ / d
+υ/d
+υ4 = –n2
+ω 2 = ω – nυT/d + υnT/d
+ω 3 = ω 2
+In order to reduce the number of physically possible
+solutions, we impose the so-called “positive depth con-
+straint” — since the camera can only see points that are in
+front of it, we must have nTe3 > 0.  This constraint eliminates
+solution 3 as being physically impossible.  If nTe3 ≠ 0, one
+of solutions 2 or 4 will be eliminated, whereas if υTe3 = 0
+both solutions 2 and 4 are eliminated.  For the case that
+υ × n = 0, it is easy to see that solutions 1 and 2 are
+equivalent, and that imposing the positive depth constraint
+leads to a unique solution.
+■
+The results for the ambiguities of solutions were
+also reported in [7,19,22].  In section 5.1 we give a method
+of disambiguating the solutions when the task is landing a
+UAV on a landing pad whose geometry is known a priori.
+
+134
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+3.3 Implementation issues
+For both the discrete and differential algorithms, the
+most computationally intensive task is the linear least
+squares estimation of the A and B matrices, which involves
+the singular value decomposition (SVD) of the matrices
+F, G ∈ R2m × 9 where m is the number of tracked feature
+points.  The cost of the SVD of a matrix M ∈ Rn × m for
+n ≤ m is O(n2m) flops.  Then, as the number of tracked
+feature points m increases, the cost of the vision algorithms
+grows as O(m).
+We have implemented the above algorithms using
+the MATHLIB C++ library in Matlab, and have found that
+on a 450 MHz Pentium II running Linux, the vision algo-
+rithms can perform motion estimation based on 25 tracked
+feature points at a rate of over 150 Hz, a rate far beyond that
+of most current real-time feature tracking hardware.
+3.4 Simulation of motion estimation algorithms
+Since our goal is to use the estimated motion and
+structure from the vision as a sensor in a control loop, of
+utmost consideration is the performance of this sensor in
+the presence of noise in the measurements of point corre-
+spondences and image velocity.  Another important
+criteria to analyze is how the estimation errors depend on
+different camera motions with respect to the observed
+plane.  To this end, we have implemented both the discrete
+and differential algorithms and performed various simula-
+tions in order to evaluate their performance.  In order to
+assess the performance of the planar algorithms, for all
+simulations we compare the results with the traditional
+8-point algorithm as described in [13].
+For all simulations, we generated 50 random points
+uniformly distributed within the field of view of the
+camera, FOV = 60˚.  The image correspondences and the
+image velocity measurements were corrupted by additive
+white Gaussian noise.  For evaluating the 8-point
+algorithm, we randomly scattered the depths of these
+points uniformly between distance of zmin and zmax
+focal lengths, where for all simulations, we set zmax = 400
+and zmin = 100 unless otherwise noted.  For evaluating the
+planar algorithm, we placed the points on the fronto-
+parallel plane at a distance of (zmax+zmin)/2.  Each data
+point on each plot is the mean result of 50 trials for a given
+motion, noise level, and distance.  We studied the perfor-
+mance of the algorithms as a function of depth variation,
+noise in the image measurements, and motion about differ-
+ent translation/rotation axes.
+3.4.1 Depth sensitivity
+In planar case, our depth variation analysis attempts
+to see how the errors in the estimates depend on the
+depth of the plane being viewed.  Notice that in the matrices
+A = R + 1
+dpnT and B = ω + 1
+dυnT, the translation term is
+scaled by the inverse distance of the plane.  Thus, for a
+fixed translation and a fixed noise level, as the distance of
+the plane increases, the “signal” from the translation term
+decreases while the noise level stays constant.  Thus, one
+would expect that as the signal to noise ratio decreases, the
+performance of the algorithms also decrease.  Also, from
+the structure of the A and B matrices, we see that the errors
+in the rotational components should not depend on the
+depths of the points.  This expectation was validated as
+shown in Fig 2.
+Notice that for very low depth variation, the 8-point
+algorithm for both discrete and differential case performs
+poorly.  This is a result of singularities that occur in the
+algorithm when the feature points are coplanar.  Also,
+notice that for the planar case, as expected, the errors
+increase as the distance of the plane increases.  One
+interesting observation is that for the discrete case, the
+rotation estimate is always better in the planar case than in
+the general case.
+Fig. 2.  Depth sensitivity.
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+135
+3.4.2 Noise sensitivity
+In the simulations presented in Fig. 3, for a given
+motion, we corrupted the correspondences and image ve-
+locities with increasing levels additive white Gaussian
+noise.  Notice that for both discrete and differential cases,
+the planar algorithm performs better that the 8-point
+algorithm.
+3.4.3 Motion sensitivity
+Next we study the sensitivity of the algorithm with
+respect to different motions relative to the plane.  We ran
+the algorithms for a motion about each translation-rotation
+axis pair for two different noise levels (low and high).  In
+general, the planar algorithms perform better than the
+8-point algorithms except when the translation axis is
+parallel optical axis (and hence the surface normal of the
+plane).  The higher sensitivity in that case can seen as an
+overall numerical sensitivity to perturbations in the alge-
+braic eigenvalue/eigenvector problem when there are
+repeated eigenvalues.  For example, if a matrix has a pair
+of repeated eigenvalues then any vector in certain two
+dimensional subspace can be considered an eigenvector
+corresponding to the repeated eigenvalue.  Because the
+eigenvectors corresponding to repeated eigenvalues are
+defined up to subspace, it is intuitive to see that for two
+different perturbations of the matrix, the corresponding
+eigenvectors could be quite different.  A similar phenom-
+enon occurs in the case of repeated singular vectors.
+Thus, an algorithm that uses the computation of  eigen-
+vectors (singular vectors) is inherently sensitive to noise in
+the case of repeated eigenvalues (singular values).
+The situation of having repeated eigenvalues
+(singular values) occurs in the planar differential (discrete)
+algorithm in the case that the translational motion is
+parallel to the surface normal of the plane.  In the 8-point
+algorithm, the situation of repeated eigenvalues occurs in
+the case that the translation and rotation axes are parallel
+[13].  The simulation results for both the discrete (in Fig. 4)
+and the differential case (in Fig. 5) validate our expectation
+of the higher noise sensitivities in these cases.
+IV. NONLINEAR CONTROL FOR A UAV
+DYNAMIC MODEL
+In this section, we present the dynamical model of the
+UAV, a control design based on differential flatness, and a
+stability analysis of the closed-loop system.  The proposed
+controller is general in the sense that it can be applied
+towards trajectory tracking.  For the purpose of landing, the
+UAV is asked to track a fixed point at the desired configu-
+ration above the landing pad.
+We parameterize the orientation R ∈ SO(3) of the
+UAV relative to the inertial frame by the ZYX (or “roll,
+pitch, yaw”) Euler angles denoted by Θ = (φ, θ, ψ)T.  Thus
+we have R = exp(ê3ψ) exp(ê2θ) exp(ê1φ) with e1 = (1, 0, 0)
+T, e2 = (0, 1, 0)T, e3 = (0, 0, 1)T.  Under this parameterization,
+there is a mapping Ψ(Θ) ∈ R3 × 3 given by:
+  
+Ψ(Θ) =
+1
+sin φ tan θ
+cos φ tan θ
+0
+cos φ
+– sin φ
+0 sin φ / cos θ
+cos φ / cos θ
+(4.1)
+which maps the body rotational velocity to Euler angle
+velocity, that is: 
+  
+Θ = Ψω.
+4.1 System dynamics
+A complete model of a helicopter can be divided into
+four different subsystems: actuator dynamics, rotary wing
+dynamics, force and moment generation processes, and
+rigid body dynamics.  The dynamics of the engine and
+Fig. 3.  Noise sensitivity.
+
+136
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+actuators (which depend on the flexibility of the rotors and
+fuselage) are quite complex and intractable for analysis.  In
+this paper, we consider a helicopter model including only
+the rigid body dynamics, the force and moment generation
+process and a simplified rotary wing dynamics.  This model
+is illustrated in Fig. 6.
+We now articulate each of the three subsystems.
+First, the equations describing the rigid body dynamics are
+given by:
+    
+p = 1mRf
+b
+Θ = Ψω
+ω = I
+– 1(τ b – ω × Iω)
+(4.2)
+where m > 0 is the body mass, I ∈ R3 × 3 is the inertial matrix
+and f b, τ b ∈ R3 are the body force and torque given by:
+   
+f b =
+XM
+YM + YT
+Z M
++ RT
+0
+0
+mg
+τ b =
+RM
+M M + MT
+N M
++
+Ymh M + Z MyM + YTh T
+– XMh M + Z MlM
+– YMlM – YTlT
+.
+(4.3)
+Fig. 4.  Discrete Case: sensitivity to translation-rotation axes.
+Fig. 5.  Differential case: sensitivity to translation-rotation axes.
+8–Point
+Planar
+8–Point
+Planar
+14
+12
+10
+8
+6
+4
+2
+0
+translation error (deg)
+Discrete: motion dependency: 3 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+12
+10
+8
+6
+4
+2
+0
+rotation error (deg)
+Discrete: motion dependency: 3 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+50
+40
+30
+20
+10
+0
+translation error (deg)
+Discrete: motion dependency: 7 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+30
+25
+20
+15
+10
+5
+0
+rotation error (deg)
+Discrete: motion dependency: 7 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+8
+6
+4
+2
+0
+translation error (deg)
+Differential: motion dependency: 1 pixel noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+8
+6
+4
+2
+0
+rotation error (deg)
+Differential: motion dependency: 1 pixel noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+14
+12
+10
+8
+6
+4
+2
+0
+translation error (deg)
+Differential: motion dependency: 3 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+14
+12
+10
+8
+6
+4
+2
+0
+rotation error (deg)
+Differential: motion dependency: 3 pixels noise std
+x–x
+x–Y
+x–z
+Y–x
+Y–Y
+Y–z
+z–x
+z–Y
+z–z       
+translation–rotation axes
+8–Point
+Planar
+θM
+ θT
+B
+A
+Rotary
+Wing
+Dynamics
+Force &
+Moment
+Generation
+Rigid
+Body
+Dynamics
+TM
+TT
+als
+bls
+fb
+τb
+p
+v
+R
+ω
+Fig. 6.  Block diagram of UAV dynamics.
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+137
+The body forces and torques generated by the main
+rotor are controlled by TM, a1s and b1s, in which a1s and b1s
+are the longitudinal and lateral tilt of the tip path plane of
+the main rotor with respect to the shaft, respectively.  The
+tail rotor is considered as a source of pure lateral force YT
+and anti-torque QT, which are controlled by TT.  The forces
+and torques can be expressed as:
+   
+XM = – TM sin a1s
+RM ∼∂RM
+∂b 1sb 1s – QM sin a1s
+YM = TM sin b 1s
+M M ∼∂M M
+∂a1s a1s – QM sin b 1s
+Z M = – TM cos a1s cos b 1s
+N M ∼– QM cos a1s cos b 1s
+YT = – TT
+MT = – QT .
+The moments generated by the main and tail rotor
+can be calculated from the constants {lM, yM, hM, hT, lT},
+where hi, li and yi denote the vertical, longitudinal, and
+lateral distance between the center of gravity and the center
+of the rotor specified by i = M or T.  These system
+parameters are given in Appendix B.  In the simulation,
+we will approximate the rotor torque equations by
+Qi 
+   
+∼Ci
+QTi
+1.5 + 
+ 
+Di
+Q for i = M,T, with details described in [10].
+The values of 
+ 
+Ci
+Q, 
+ 
+Di
+Q are also given in Appendix B.
+Finally, the rotary wing dynamics are in general
+harder to express explicitly.  In an operating region near
+hovering, the rotary wing dynamics can be approximated
+by the following equations (for details see [16]):
+   
+TM = cM1θ M + cM3θ M
+3 , TT = cT1θ T + cT3qT
+3,
+  
+a1s = – B, b 1s = A
+where θM, qT are the main and tail rotor collective pitch, and
+B, A are the longitudinal and lateral cyclic pitch.
+4.2 Inner and outer system partitioning
+A system x = f(x, t, u) is called differentially flat
+if there exist output functions, called flat outputs, such that
+all states and inputs can be expressed in terms of the flat
+outputs and their derivatives [6].  Differential flatness has
+been applied to approximate models of aircraft [5] and
+helicopter [9] for trajectory generation.  The full helicopter
+dynamics are not flat in general, however it can be shown
+that the dynamics can be partitioned into an “inner system”
+(e.g. the attitude dynamics) and an “outer system” (e.g. the
+position dynamics) where the outer system is flat.  This
+scheme has been successfully used for generating a two
+stage control synthesis for many systems which are not
+completely flat [21].  Such a scheme which utilizes the
+flatness of the outer system is roughly illustrated in Fig. 7.
+In the figure, PO is the outer system which is flat, and PI is
+the inner system which is not necessarily flat.  Given a
+desired output trajectory, say yd
+O(⋅), the mapping F in
+Fig. 7 utilizes the flatness property of the outer system to
+generate an desired output trajectory yd
+I(⋅) for the inner
+system.  The control synthesis for the overall system then
+reduces to the design of an inner system controller, C,
+which drives the inner system output yI(t) → yd
+I(t)
+(exponentially) as t → ∞.  As the inner system output
+converges, one can show that the outer system output
+converges to the desired one, yO(t) → yd
+O(t) as t → ∞.  That
+is, the overall system asymptotically tracks the desired
+trajectory.
+It has been shown in [9] that the helicopter dynamics
+are approximately differentially flat with the position and
+heading {p, ψ} as the flat outputs.  The approximation is
+based on the assumption that the coupling terms a1s, b1s, TT
+are small and can be neglected in the model.  So if a1s, b1s,
+TT ≈ 0, the outer system dynamics (4.2) can be rewritten as:
+   
+p = 1mR(Θ)
+0
+0
+– TM
++
+0
+0
+g
++ h
+(4.5)
+with
+   
+h = 1mR(Θ)
+– TM sin a1s
+TM sin b 1s – TT
+– TM(cos a1s cos b 1s – 1
+.
+where the inputs are uO = y I = (Θ, TM), and the outputs are
+yO = (p, p , p , ψ).  One must notice that this approxima-
+tion introduces a small non-vanishing modeling error h
+which depends on Θ, TM, a1s, b1s, TT.  We will soon show its
+effect on the stability of the closed-loop system.
+4.3 Control design
+The control design for the overall system is be based
+on an assumption that there exists a controller C such that
+eI = 0 is an exponentially stable equilibrium point for the
+inner error system:
+  
+eI = f(eI, eO, t) eO = 0, f(0, 0, t) = 0
+where eO = yO – yd
+O and eI = y I – yd
+I .  There have been various
+design methodologies proposed for the controller of the
+inner system, e.g. [10].  In this paper, we are only interested
+in the performance of the overall system assuming such a
+Fig. 7.  Partitioned inner and outer systems.
+(4.4)
+
+138
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+controller C is already available.  As shown in [9], for the
+approximated outer system (4.5), there exists a smooth
+mapping from the outer system output to the inner system
+output:
+Φ : R4 → R4
+   
+(p, ψ) 
+ 
+   
+(Θ, TM)
+which is defined by the equations:
+  
+TM = m
+(px)2 + (py)2 + (pz – g)2
+   
+f = sin
+– 1 – px sin ψ + py cos ψ
+TM / m
+   
+θ = atan2
+px cos ψ + py sin ψ
+– TM cos φ / m
+,
+px – 1
+– TM cos φ / m
+ψ = ψ
+where φ, θ ≠ ±π/2.  Suppose that the desired output
+trajectory of the outer system is yd
+O = (pd, pd, pd, ψd).  To
+obtain the desired trajectory of the inner system, we define
+a pseudo-input vector:
+   
+υ p = pd + Kυ(p – pd) + K p(p – pd)
+(4.6)
+where Kp, Kυ ∈ R3 × 3 are control parameters.  With the
+above pseudo-input, the desired output of the inner system
+yd
+I is given by:
+(Θd, TMd) = Φ(υp, ψd).
+(4.7)
+A more detailed schematic of the controller for
+this system is illustrated in Fig. 8.  Clearly, if the inner
+system exactly tracks the desired trajectory (Θd, TMd),
+that is, yd
+I = y I in Fig. 7, then the behavior of the overall
+closed-loop system is specified by the outer system only,
+which, due to chosen the control law (4.6), is approxi-
+mately a linear system with poles assigned by the param-
+eters Kυ, Kp.
+Now if we summarize all conditions so far and
+rewrite the dynamics of the overall closed-loop system in
+terms of the tracking errors eI and eO of the inner and outer
+systems respectively, they have the form:
+  eI = f(eI, eO, t)
+eO = AeO + g(eI, t) + h(eI, eO, t)
+(4.8)
+where
+   
+g(eI, t) = 1mR(Θ)
+0
+0
+– TM
+– 1mR(Θd)
+0
+0
+– TMd
+.
+In the above equations, f(eI, eO, t) is in general a
+function of both eI and eO since the input of the inner system
+is a function of eO.  The function h(eI, eO, t) from (4.5) is a
+small non-vanishing approximation error, and g(eI, t) van-
+ishes when the inner system exactly tracks the desired
+trajectory, i.e., g(0, t) = 0.  Since the helicopter model is
+smooth and many of the parameters are physically bounded,
+g(eI, t) is in fact (globally) bounded as 
+  
+g(eI, t)  ≤ 
+ 
+L eI  for
+some constant L > 0.1
+4.4 Stability analysis
+We now analyze the performance of the overall
+closed-loop system.  As we have argued before, the func-
+tion f in (4.8) is in general a function of both eI and eO.
+However, in practice, the inner system is usually designed
+to have a much faster convergence rate than the outer
+system.  To simplify the analysis, for now we assume
+that the inputs TMd(⋅) and Θd(⋅) of the inner system are
+approximately constant, and thus f is only a function of
+eI (the more general case will be presented afterwards).
+Recall that given a general system x = f(x, t), by the
+Lyapunov theorem and its converse [17], the system is
+exponentially stable if and only if there exists a Lyapunov
+function V(x, t) satisfying:
+   
+α1 x
+2 ≤V(x, t) ≤α2 x
+2
+(4.9)
+   
+∂V
+∂t + ∂V
+∂x f(x, t) ≤– α3 x
+2
+(4.10)
+   
+∂V
+∂x
+≤α4 x
+(4.11)
+for some positive Lyapunov constants α1, α2, α3, α4 > 0.
+We can apply this theorem to both the nominal outer s
+ystem eO = AeO and the inner system eI = f(eI, t) and denote
+the corresponding Lyapunov functions as VO and VI and
+the Lyapunov constants as α1, α2, α3, α4 >0 and β1, β2, β3,
+β4 > 0, respectively.
+Fig. 8.  Block diagram of control scheme.
+1Such an L can be estimated from the system equation (4.2).
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+139
+Theorem 4.1  Consider the following system:
+  eI = f(eI, t)
+eO = AeO + g(eI, t)
+(4.12)
+where g(eI, t) is a perturbation term that satisfies 
+  
+g(eI, t)
+≤ 
+ 
+L eI .  If both the nominal outer system eO = AeO and
+inner system eI = f(eI, t) are exponentially stable, then the
+overall system is exponentially stable for any L > 0.
+Proof.  Apply the converse Lyapunov theorem to both the
+outer and inner systems, and denote the corresponding
+Lyapunov functions as VO, VI and the constants as
+   
+{αi}i = 1
+4
+, 
+   
+{β i}i = 1
+4
+, respectively.  We consider the candidate
+Lyapunov function V = V I + µVO for the overall system.
+Then we have:
+   
+V = V
+I + µV
+O ≤– β 3 eI
+2 – µα3 eO
+2 + µα4L eO
+eI
+  
+= – ( eI , eO )Q( eI , eO )T
+where the matrix Q ∈ R2 × 2 is:
+   
+Q =
+β 3
+– 1
+2µα4L
+– 1
+2µα4L
+µα4
+The matrix Q can be positive definite if and only if
+there exists a small enough µ > 0 such that det(Q) > 0.  It is
+easy to check that it suffices to have 0 < µ < 
+   
+4β 3α3
+α4
+2L2 .  Such
+a µ always exists.  Therefore, the overall system is always
+exponentially stable regardless of L.
+■
+This theorem states a very interesting fact for the
+system (4.12): as long as the inner system and outer system
+are exponentially stable, the system is extremely robust
+(in terms of exponential stability) to any (vanishing) per-
+turbation of the outer system which only depends on the
+tracking error of the inner system.
+In the above theorem we assumed that the inner
+system does not depend on the tracking error eO of the outer
+system.  For the more general case, we may write:
+f(eI, eO, t) = f(eI, 0, t) + d(eI, eO, t)
+where d(eI, eO, t) = f(eI, eO, t) – f(eI, 0, t).  The nominal system
+eI = f(eI, 0, t) is exponentially stable as designed and we still
+denote its Lyapunov function as V I and Lyapunov con-
+stants as 
+   
+{β i}i = 1
+4
+.  Then for the overall system, following
+the spirit of Theorem 4.1, we have the result:
+Theorem 4.2.  Consider the following perturbed system:
+  eI = f(eI, eO, t) = f(eI, 0, t) + d(eI, eO, t)
+eO = AeO + g(eI, t0
+(4.13)
+where g(eI, t) is a perturbation term that satisfies 
+  
+g(eI, t)
+≤ 
+  
+L1 eI  for some L1 > 0.  If, for d(eI, eO, t), there exists L2
+> 0 such that 
+  
+d(eI, eO, t)  ≤ 
+  
+L2 eI , then the overall system
+is exponentially stable if the product of the two Lipschitz
+constants satisfies the inequality:
+   
+L1 ⋅L2 < α3
+α4 ⋅β 3
+β 4 .
+(4.14)
+Proof.  The proof is very similar to that of Theorem 4.1.
+We consider the candidate Lyapunov function V = VI + µVO
+for the overall system.  Then we have:
+   
+V = V
+I + µV
+O ≤– β 3 eI
+2 + β 4L2 eI
+eO
+   
+– µα3 eO
+2+ µα4L1 eO
+eI
+  
+= – ( eI , eO )Q( eI , eO )T
+where the matrix Q ∈ R2 × 2 is:
+   
+Q =
+β 3
+– 1
+2(β 4L2 + µα4L1)
+– 1
+2(β 4L2 + µα4L1)
+µα3
+.
+Q is positive definite if and only if det(Q) > 0.  That
+is, there exists µ > 0 such that:
+   
+– α4
+2L1
+2µ2 + (4β 3α3 – 2β 4L2α4L1)µ – β 4
+2L2
+2 > 0 .
+This is true if and only if the discriminant of the quadratic
+function of µ on the left hand side is positive which yields:
+L1 ⋅ L2 < 
+  
+α3
+α4 ⋅β 3
+β 4 .
+■
+This theorem states a very interesting fact about the
+system (4.13): heuristically, α3 and β3 are proportional to
+the convergence rates of the outer and inner systems
+respectively,2 hence the stability of the perturbed systems
+requires only that the product of the Lipschitz constants of
+2 More precise estimates of the convergences rates are given by
+  
+α3
+2α2  and 
+  
+β3
+2β2 .
+
+140
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+the perturbation terms is less than the product of the two
+convergence rates, regardless of the rate of each individual
+system.
+Comments. 4.3  The stability of a similar model of the
+overall closed-loop system has been studied before in [21],
+however, no explicit conditions are provided under which
+a µ exists such that the overall system is stable.  Here,
+Theorems 4.1 and 4.2 give more detailed and useful results
+in characterizing the properties of the closed-loop system.
+Although we have established the conditions for the
+system (4.13) to be exponentially stable, estimates of its
+Lyapunov constants indeed depend on L1, L2 and all the
+Lyapunov constants of the inner and outer systems.  These
+constants can be optimized by maximizing the smaller
+eigenvalue of Q with respect to µ.  We here omit the detail
+and carry on the analysis by assuming that the system
+(4.13) is exponentially stable and its Lyapunov constants
+are denoted by γ1, γ2, γ3, γ4 > 0.  We now want to estimate
+the effect of the non-vanishing error term h on the perfor-
+mance of the closed-loop system (4.8).  In general, we can
+no longer expect asymptotic stability when a non-vanish-
+ing perturbation is introduced.  However, according to [8],
+we can still have good estimates of a bound on the tracking
+error and the rate of convergence outside this bound.
+Proposition 4.4  Assume that the system (4.13) has the
+Lyapunov constants 
+   
+{γi}i = 1
+4
+.  Then, for the closed-loop
+system (4.8), if 
+  
+h(eI, eO, t  ≤ δ < 
+  
+γ3
+2γ4
+γ1γ2 , then the
+tracking error of the overall system is bounded by b =
+  
+2γ4
+γ3
+γ2γ1 δ, and, outside this bound, the error exponen-
+tially decreases with a rate larger than λ = 
+  
+γ3
+4γ2 .
+The control parameters Kυ and Kp can be adjusted so
+as to minimize the error bound b.  For the helicopter model,
+the error term h(eI, eO, t) is usually extremely small, as is δ.
+We can also choose the control parameters such that the
+inner and outer systems have very fast rates of convergence,
+hence a large γ3.  Consequently, the error bound b is very
+small, and usually barely noticeable in simulations and
+experiments, as we will soon see.
+V. VISION IN THE CONTROL LOOP
+In this section, we discuss how the discrete and
+differential motion estimation algorithms described in sec-
+tion 3 are used in the control loop for landing a UAV onto
+a landing pad with a known geometry.
+5. 1 Disambiguation of motion estimates
+We assume that the image of the landing pad taken
+from the desired landing configuration are given.  The
+feature points on the landing pad are assumed to be in
+general configuration (they could for example be corners
+on the typical “H” pattern).  Without loss of generality,
+suppose (p0, I) ∈ SE(3) is the configuration of the desired
+camera frame, and d0 = –nF
+Tp0 > 0 is the desired distance of
+the camera to the landing plane with known surface normal
+nF ∈ R3.
+Proposition 5.1  Suppose A = (R + 1
+dpnT) ∈ R3 × 3 is the
+planar essential matrix associated with two camera frames
+relative to a plane.  If d0 > 0 is the distance from the first
+camera to the plane, then the distance of the second camera
+to the plane is given by d = d0/det(A).
+Proof.  Suppose the configuration of the second camera
+frame is (p1, R1) ∈ SE(3).  Then d0 = –nF
+Tp0, d = –nF
+Tp1 are
+the distances from the first and second cameras to the plane.
+Since nF = Rn, we have ART = (I + 1
+d pnF
+T), hence the
+eigenvalues of ART are {λ, 1, ,1} where λ = 1 + 1
+dnF
+Tp.  But
+pTnF = 
+ 
+p1
+TnF – 
+ 
+p0
+TnF = –d + d0.  Using det(A) = det(ART) = λ,
+it is direct to check that det(A) = d0/d.
+■
+The knowledge of nF allows us to disambiguate the
+pair of solutions discussed in Theorem 3.9 by taking the
+one that minimizes 
+  
+nest – Rest
+T nF , where nest is the vision
+estimated surface normal, and Rest is the estimated rotation
+matrix according to the discrete algorithm.  Also, the
+knowledge of d0 allows to find d according to Proposition
+5.1, which solves the scale ambiguity in p/d in the discrete
+case and υ/d in the differential case.
+The vision algorithms described above generate esti-
+mates of {p, R, υ, ω}.  However, to compute the control
+signals we need estimates of {p, p , Θ, Θ}.  Note that given
+R ∈ SO(3), the ZY X Euler angles (away from the singularity)
+can be recovered by:
+   
+θ = atan2( – r31,
+r32
+2 + r33
+2 )
+φ = atan2(r32 / cos θ, r33 / cos θ)
+ψ = atan2(r21 / cos θ, r11 / cos θ)
+(5.1)
+where rij is the entry of the i-th row and j-th column of R.
+Thus, we can recover {Θ, Θ} from {R, ω} by applying
+equations (5.1), (4.1) and Θ = 
+ 
+Ψω.  We can recover p  using
+the estimates {υ, R} through p  = Rυ.  The closed-loop
+system configuration is depicted in Fig. 9.  For the estimate
+of TM one needs p  as in equation (4.6), which can be
+measured by accelerometers that give a = RTp .
+5.2. Simulation results for the closed-loop system
+We present the simulation results of the proposed
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+141
+vision based landing scheme.  In these simulations, we
+apply the proposed controller for the full dynamic model of
+the UAV.  We add Gaussian noise of different levels of
+standard deviation (in pixel units) to the correspondences
+and image velocities, and perform the discrete and differ-
+ential motion estimation algorithms based on the noisy
+data.  In Figs. 10 and 11 we present the simulation results
+for image measurement noise levels of 0, 1, 2, 4 pixels
+standard deviation in both the correspondences and the
+image velocities.
+In these simulations, the initial position is p = (2, 1,
+5)T meters away from the desired landing configuration
+above the landing pad (the origin), the initial orientation is
+(θ, φ, ψ)T = (0, 0, 0.4)T radians.  The dominant poles of the
+outer loop controller are placed at –2, –.45.  The inner loop
+attitude controller is designed based on feedback linear-
+ization [9], and it has the form Θ(3) = VΘ, where VΘ is
+designed as three decoupled pole-placement controllers
+with poles located at –10 and –7 ±7.1414i for each controller.
+The main rotor thrust is controlled based on dynamic
+inversion and the pole is placed at –5.
+Since the origin of the closed-loop system is expo-
+nentially stable, it is robust to relatively large levels of
+noise.  As we see, the controller performs very well at a
+noise level of 1 pixel standard deviation, which is the
+accuracy of most state-of-the-art feature-tracking tech-
+niques [1], and remains stable at a large noise level of 4
+pixel standard deviation.  Due to the gain margin in the
+controller, the closed loop system is also robust to possible
+modeling errors which are omitted, such as the camera
+calibration.
+VI. CONCLUSIONS AND FUTURE WORK
+In this paper we studied the problem of using com-
+puter vision as a feedback sensor to control the landing of
+a dynamic Unmanned Aerial Vehicle.  We derived a novel
+geometric algorithm for estimating the camera angular and
+linear velocity relative to a planar scene, and gave a
+thorough performance evaluation.  We proposed a nonlin-
+ear controller based on differential flatness for a full UAV
+dynamic model, and gave detailed conditions for stability
+of the overall closed loop system.  Through extensive
+simulation, the vision based controller was shown to result
+in stable landing maneuvers for large noise levels.
+We are currently implementing the above vision
+algorithms and controller on a model helicopter as part of
+the UC BErkeley Aerial Robot (BEAR) project.  One of our
+Fig. 9.  Block diagram of vision in control loop.
+Fig. 10.  Closed-loop system simulation: (a) 0 pixel noise.  (b) 1 pixel noise.
+(a) Landing with 0 pixel noise.
+(b) Landing with 1 pixel noise.
+
+142
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+UAVs is a Yamaha R-50 model helicopter, on which we
+have mounted computers, INS, GPS, and a vision system,
+consisting of a camera, a real-time feature tracker board,
+and a Pentium II running Linux.  Fig. 12 shows one of the
+UC Berkeley UAVs on which we will implement the
+proposed landing scheme.
+APPENDIX
+A. Additional Proof
+Proof of Proposition 3.6. We will use the fact that a set of
+points in the plane are collinear if and only if the images of
+the points are collinear in the image plane [23].  This allows
+us to work with the images of features points on the plane.
+For sufficiency, suppose there exists a set of four
+points in the plane such that no three are collinear.  By
+contradiction, we will prove that the corresponding eight
+rows of G are linearly independent.  Suppose the matrix:
+   
+GT =
+x1
+0
+x2
+0
+x3
+0
+x4
+0
+0
+x1
+0
+x2
+0
+x3
+0
+x4
+– x1x1 – y1x1 – x2x2 – y2x2 – x3x3 – y3x3 – x4x4 – y4x4
+∈ R9 × 8
+(A.1)
+has rank(G) < 8.  Then there exists ξ = (a1, c1, a2, c2, a3, c3,
+a4, c4)T ∈ R8 such than ξ ≠ 0 and GTξ = 0.  Define di ∆
+aixi + ciyi.  Now let a = (a1, a2, a3, a4)T, c = (c1, c2, c3, c4)T,
+d = (d1, d2, d3, d4)T and define X = (x1, x2, x3, x4) ∈ R3 × 4.  With
+this notation, the condition GTξ = 0, ξ ≠ 0 implies a ≠ 0 or
+c ≠ 0 and Xa = Xc = Xd = 0.
+Without loss of generality, take a ≠ 0.  Since by the
+hypothesis, no three of xi are collinear, each set of 3
+columns of X are linearly independent.  Since Xa = 0, then
+if one component of a is zero, then we must have a = 0.
+Hence a ≠ 0 implies ai ≠ 0 for i = 1, …, 4.  Since each set
+of 3 columns of X are linearly independent dim(ker(X))
+≤ 1 and ∃γ, δ ∈ R such that c = γ a and d = δ a.  This
+implies:
+Fig. 11.  Closed-loop system simulation: (a) 2 pixel noise.  (b) 4 pixel noise.
+(a) Landing with 2 pixel noise.
+(b) Landing with 4 pixel noise.
+Fig. 12.  A member of UC Berkeley UAV fleet: a Yamaha R-50 helicopter.
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+143
+ di = aixi + ciyi = aixi + γ aiyi = δ ai.
+(A.2)
+But since ai ≠ 0 for each i, we have xi + γyi = δ which
+implies that all four image points xi are collinear in the
+image plane, resulting in a contradiction.
+For necessity, we first show that if all points are
+collinear, then rank(G) ≤ 5.  Let u = (α, β, 0) ∈ R3 be the
+unit normal to the line in the image plane containing the
+image points xi, i = 1, …, m.  That is xi
+Tu = 0 for i = 1, …,
+m.  Define four vectors in R9 by:
+  
+h 1 =
+u
+0
+0
+, h 2 =
+0
+u
+0
+, h 3 =
+0
+0
+u
+, h 4 =
+e1e2e3
+ ∈ R9
+(A.3)
+where (e1, e2, e3) = I3 × 3.  Using uTu =1 and e3
+Tu = 0, it is
+direct to check that for H = (h1, h2, h3, h4) ∈ R9 × 4, det(HT H)
+= 2 and hence rank(H) = 4.  From the structure of G in
+equation (A.1) is is clear that Ghi = 0 for i = 1, …, 4.  Then
+dim(ker(G)) ≥ 4 and hence rank(G) ≤ 9 – 4 = 5.
+Now suppose condition of the proposition is not
+satisfied.  The claim is trivially proved if the number of
+image points is less than 3.  Suppose there are more than 4
+image points, not all collinear, and for each set of four
+points at least 3 are collinear.  Without loss of generality,
+suppose x2, x3, x4 lie on a line (call this the common line),
+and x1 does not lie on the common line.  By induction, we
+prove that all xi’s for i ≥ 4 lie on the common line.  Suppose
+xi lies on the common line for some i ≥ 4 and xi+1 does not.
+Choose two points out of x2, x3, xi such that they do not lie
+at the intersection of the common line and the line con-
+necting x1, xi+1.  Call these points xj, xk.  Then the four points
+x1, xj, xk, xi+1 are in a general configuration.  This is a
+contradiction, and hence xi+1 lies on the common line.
+Since all image points lie on a single line expect for x1, then
+rank(G) ≤ 5 + 2 = 7.
+■
+B. UAV System Parameters
+All variables except for the state variables and inputs
+are numeric constants, which can be obtained by measure-
+ments and experiments.  The following are the values of the
+constants:
+Ix
+= 0.142413
+Iy
+= 0.271256
+Iz
+= 0.271492
+lM = –0.015
+yM = 0
+hM
+= 0.2943
+hT = 0.1154
+lT
+= 0.8715
+m
+= 4.9
+ 
+CM
+Q = 0.004452
+ 
+DM
+Q = 0.6304
+   
+∂RM
+∂b 1s = 25.23
+ 
+CT
+Q = 0.005066
+ 
+DT
+Q = 0.008488
+   
+∂M M
+∂a1s = 25.23
+cM1 = 6.4578
+cM3 = 100.3752
+cT1
+= 0.1837
+cT3 = 0.1545
+The operation regions in radian for a1s, b1s and newton
+for TM, TT are: 
+  
+a1s  ≤ 0.4363, 
+  
+b 1s  ≤ 0.3491, –20.86 ≤ TM
+≤ 69.48, –5.26 ≤ TT ≤ 5.26.
+REFERENCES
+1. Barron, J., D. Fleet and S. Beauchemin, “Performance
+of Optical Flow Techniques,” Int. J. Comput. Vision,
+Vol. 12, No. 1, pp. 43-77 (1994).
+2. Espiau, B., F. Chaumette and P. Rives, “A New Ap-
+proach to Visual Servoing in Robotics,” IEEE Trans.
+Rob. Autom., Vol. 8, No. 3, pp. 313-326 (1992).
+3. Faugeras, O.D. F. Lustman, “Motion and Structure
+from Motion in a Piecewise Planar Environment, ” Int.
+J. Pattern Recogn. Artif. Intell., Vol. 2, No. 3, pp. 485-
+508 (1988).
+4. Faugeras, O.D., F. Lustman and G. Toscani, “Motion
+and Structure from Motion from Point and Line
+Matches,” IEEE Int. Conf. Comput. Vision,
+Washington, U.S.A., pp. 25-34 (1987).
+5. Fliess, M. “Aircraft Control Using Flatness,” In Proc.
+Symp. Contr., Optimiz. Supervision, Lille, France,
+pp. 194-199 (1996).
+6. Fliess, M., J. Lévine, Ph. Martin and P. Rouchon,
+“Flatness and Defect of Nonlinear Systems: Introduc-
+tory Theory and Applications,” Int. J. Contr., Vol, 61,
+No. 6, pp. 1327-1361 (1995).
+7. Kanatani, K., “Detecting the Motion of a Planar Sur-
+face by Line & Surface Integrals,” In Comput. Vision,
+Graphics, Image Process., Vol. 29, pp. 13-22 (1985).
+8. Khalil, H.K., Nonlinear Systems, Prentice-Hall, 2nd
+Ed., Englewood-Cliffs, NJ (1996).
+9. Koo, T.J. and S. Sastry, “Output Tracking Control
+Design of a Helicopter Model Based on Approximate
+Linearization,” In Proc. the 37th Conf. Decis. Contr.,
+Tampa, Florida, December, pp. 3635-40 (1998).
+10. Lee, E.H., H. Shim, H. Park and K.I. Lee, “Design of
+Hovering Attitude Controller for a Model Helicopter,
+” In Proc. Soc. Instrum. Contr. Engineers, Tokyo,
+Japan, pp. 1385-1389 (1993).
+11. Longuet-Higgins, H.C.,“A Computer Algorithm for
+Reconstructing a Scene from Two Projections,” In
+Nature, Vol, 293, pp. 133-135 (1981).
+12. Longuet-Higgins, H.C., “The Reconstruction of a
+Plane Surface from Two Perspective Projections,”
+In Proc. Royal Soc. London, Vol, 227 of B, London,
+UK, pp. 399-410 (1986).
+13. Ma, Y., J. Kosecká and S.S. Sastry, “Linear Differen-
+tial Algorithm for Motion Recovery: A Geometric
+Approach,” Int. J. Comput. Vision, to appear.
+14. Maybank, S., Theory of Reconstruction from Image
+Motion, Springer Series in Information Sciences.
+Springer-Verlag, New York (1993).
+15. Murray, R.M., Z. Li and S.S. Sastry, A Mathematical
+Introduction to Robotic Manipulation, CRC Press,
+Boce Rator (1993).
+˘
+
+144
+Asian Journal of Control, Vol. 1, No. 3, September 1999
+16. Raymond W. Prouty, Helicopter Performance,
+Stability, and Control, Krieger Publishing Co., Inc.,
+Boston, U.S.A. (1995).
+17. Sastry, S., Nonlinear Systems: Analysis, Stability and
+Control, Springer-Verlag, New York (1999).
+18. Schell, F.R. and E.D. Dickmanns, “Autonomous Land-
+ing of Airplanes by Dynamic Machine Vision,” Mach.
+Vision Appl., Vol. 7, pp. 127-134 (1994).
+19. Subbarao, M. and A.M. Waxman, “On the Uniqueness
+of Image Flow Solutions for Planar Surfaces in
+Motion,” Comput. Vision, Graphics, Image Process.,
+Vol. 36, pp. 208-228 (1986).
+20. Toscani, G. and O.D. Faugeras, “Structure and Motion
+from Two Noisy Perspective Images,” In IEEE Int.
+Conf. Rob. Autom., Washington, U.S.A., pp. 221227
+(1986).
+21. M.J. van Nieuwstadt and R.M. Murray, “Outer Flatness:
+Trajectory Generation for a Model Helicopter,” In
+Proc. Eur. Contr. Conf., Brussels, Belgium (1997).
+22. Waxman, A. and S. Ullman, “Surface Structure and
+Three-Dimensional Motion from Image Flow
+Kinematics,” Int. J. Rob. Res., Vol. 4, No. 3, pp.72-94
+(1985).
+23. Weng, J., T.S. Huang and N. Ahuja, Motion and
+Structure from Image Sequences, Springer-Verlag,
+New York (1993).
+24. Werner, S., S. Furst, D. Dickmanns and E.D.
+Dickmanns, “A Vision-Based Multi-Sensor Machine
+Perception System for Autonomous Aircraft Landing
+Approach,” In Proc. the SPIE - The Int. Soc. Optical
+Eng., Vol. 2736, Orlando, U.S.A., pp. 54-63 (1996).
+25. Yang, Z.F. and W.H. Tsai, “Using Parallel Line Infor-
+mation for Vision-Based Landmark Location Estima-
+tion and an Application to Automatic Helicopter
+Landing,” Rob. Comput. Integr. Manuf., Vol.14, No.
+4, pp. 297-306 (1998).
+ Omid Shakernia received his B.S.
+degree in the Department of Electri-
+cal Engineering and Computer Sci-
+ences in 1997 from the University of
+California, Berkeley. He will receive
+a M.S. degree in Electrical Engineer-
+ing and Computer Science in Decem-
+ber 1999, and is pursuing a Ph.D.
+degree in the Intelligent Machines and Robotics Labora-
+tory at UC Berkeley. Mr. Shakernia’s research interests
+include computer vision based control of mobile robots,
+hybrid systems, and nonlinear control systems.
+ Yi Ma received the two Bachelors’
+degree in automatic control and ap-
+plied mathematics in 1995 from
+Tsinghua University, People’s Repub-
+lic of China. He received the M.S.
+degree in electrical engineering and
+computer science from University of
+California at Berkeley in 1997.
+He is currently a Ph.D. candidate in the Department
+of Electrical Engineering and Computer Science and a MA
+student in the Mathematics Department of UC Berkeley.
+His research interests include geometric control theory,
+multiview geometry in computer vision, visual servoing
+and applications of differential geometry in system theory.
+His Ph.D. research is about both a differential geometric
+and a estimation theoretic approaches to multiview
+geometry, especially for motion and structure estimation
+from image sequences.
+Mr. Ma is a student member of IEEE.
+ Tak-Kuen John Koo received the
+B.Eng. degree in 1992 in Electronic
+Engineering and the M.Phil. in 1994
+in Information Engineering both
+from the Chinese University of Hong
+Kong.
+From 1994 to 1995, he was a
+graduate student in Signal and Image
+Processing Institute at the University of  Southern California.
+He is currently a Ph.D. Candidate in Electrical Engineering
+and Computer Sciences at the University of California at
+Berkeley.  His research interests include nonlinear control
+theory, hybrid systems, inertial navigation systems with
+applications to unmanned aerial vehicles.
+He received the Distinguished M.Phil.  Thesis Award
+of the Faculty of Engineering, The Chinese University of
+Hong Kong, in 1994.  He was a consultant of SRI Interna-
+tional in 1998.
+Currently, he is the team leader of the Berkeley
+AeRobot Team, and a delegate of The Graduate Assembly,
+University of California at Berkeley. He is a student mem-
+ber of IEEE and SIAM.
+S. Shankar Sastry received his
+Ph.D. degree in 1981 from the Uni-
+versity of California, Berkeley. He
+was on the faculty of MIT from 1980-
+82 and Harvard University as a Gor-
+don McKay professor in 1994. He is
+currently a Professor of Electrical En-
+gineering and Computer Sciences and
+Bioengineering, and Director of the Electronics Research
+
+O. Shakernia et al.: Landing an Unmanned Air Vehicle: Vision Based Motion Estimation and Nonlinear Control
+145
+Laboratory at Berkeley. He has held visiting appointments
+at the Australian National University, Canberra the Uni-
+versity of Rome, Scuola Normale and University of Pisa,
+the CNRS laboratory LAAS in Toulouse (poste rouge), and
+as a Vinton Hayes Visiting fellow at the Center for Intelli-
+gent Control Systems at MIT. His areas of research are
+nonlinear and adaptive control, robotic telesurgery, control
+of hybrid systems, and biological motor control. He is a
+coauthor (with M. Bodson) of “Adaptive Control: Stability,
+Convergence and Robustness, Prentice Hall, 1989.” and
+(with R. Murray and Z. Li) of “A Mathematical Introduc-
+tion to Robotic Manipulation, CRC Press, 1994”. His book
+“Nonlinear Control: Analysis, Stability and Control” has
+just been published by Springer Verlag in 1999. He has co-
+edited “ Hybrid Control II” and “Hybrid Control IV” and
+“Hybrid Control V”, with P. Antsaklis, A. Nerode, and W.
+Kohn, Springer Lecture Notes in Computer Science, 1995,
+1997, and 1999 and co edited “Hybrid Systems Computa-
+tion and Control” Springer Verlag Lecture Notes in Com-
+puter Science with Henzinger in 1998 and “Essays in
+Mathematical Robotics”, Springer Verlag IMA Series with
+Baillieul and Sussmann.
+Dr. Sastry was an Associate Editor of the IEEE
+Transactions on Automatic Control, IEEE Control
+Magazine, IEEE Transactions on Circuits and Systems,
+and the Journal of Mathematical Systems, Estimation and
+Control and is an Associate Editor of the IMA Journal of
+Control and Information, the International Journal of
+Adaptive Control and Signal Processing and the Journal of
+Biomimetic Systems and Materials. He received the Presi-
+dent of India Gold Medal in 1977, the IBM Faculty Devel-
+opment award for 1983-1985, the NSF Presidential Young
+Investigator Award in 1985 and the Eckman Award of the
+of the American Automatic Control Council in 1990.
+

@@ -1,0 +1,668 @@
+PROCEEDINGS OF SPIE
+SPIEDigitalLibrary.org/conference-proceedings-of-spie
+Autonomous landing and ingress of
+micro-air-vehicles in urban
+environments based on monocular
+vision
+Roland Brockers, Patrick Bouffard, Jeremy Ma, Larry
+Matthies, Claire Tomlin
+Roland Brockers, Patrick Bouffard, Jeremy Ma, Larry Matthies, Claire Tomlin,
+"Autonomous landing and ingress of micro-air-vehicles in urban environments
+based on monocular vision," Proc. SPIE 8031, Micro- and Nanotechnology
+Sensors, Systems, and Applications III, 803111 (13 May 2011); doi:
+10.1117/12.884449
+Event: SPIE Defense, Security, and Sensing, 2011, Orlando, Florida, United
+States
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024  Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+Autonomous landing and ingress of micro-air-vehicles in urban
+environments based on monocular vision.
+Roland Brockers a, Patrick Bouffard b, Jeremy Ma a, Larry Matthies a, Claire Tomlin b
+a Jet Propulsion Laboratory, California Institute of Technology, Pasadena, CA, USA
+b Electrical Engineering and Computer Sciences, University of California, Berkeley, CA, USA
+ABSTRACT
+Unmanned micro air vehicles (MAVs) will play an important role in future reconnaissance and search and rescue appli-
+cations. In order to conduct persistent surveillance and to conserve energy, MAVs need the ability to land, and they need
+the ability to enter (ingress) buildings and other structures to conduct reconnaissance. To be safe and practical under a
+wide range of environmental conditions, landing and ingress maneuvers must be autonomous, using real-time, onboard
+sensor feedback. To address these key behaviors, we present a novel method for vision-based autonomous MAV landing
+and ingress using a single camera for two urban scenarios: landing on an elevated surface, representative of a rooftop,
+and ingress through a rectangular opening, representative of a door or window. Real-world scenarios will not include spe-
+cial navigation markers, so we rely on tracking arbitrary scene features; however, we do currently exploit planarity of the
+scene. Our vision system uses a planar homography decomposition to detect navigation targets and to produce approach
+waypoints as inputs to the vehicle control algorithm. Scene perception, planning, and control run onboard in real-time;
+at present we obtain aircraft position knowledge from an external motion capture system, but we expect to replace this in
+the near future with a fully self-contained, onboard, vision-aided state estimation algorithm. We demonstrate autonomous
+vision-based landing and ingress target detection with two different quadrotor MAV platforms. To our knowledge, this is
+the ﬁrst demonstration of onboard, vision-based autonomous landing and ingress algorithms that do not use special purpose
+scene markers to identify the destination.
+1. INTRODUCTION
+New applications in surveillance, rescue and aerial observation demand more and more autonomous behavior to support
+human operators and guarantee safe operation. Accordingly, research in autonomous navigation for unmanned aerial ve-
+hicles (UAVs) has been an intense ﬁeld of study in the past few years. Research activity has also been boosted by the
+ready availability of small, relatively inexpensive small quadrotor platforms, some of which are easily adaptable for use
+as research vehicles or even expressly designed as such. Nevertheless, payload capacity limitations are inescapable, and
+in turn drive constraints on available energy and computational resources. Power- and CPU-intensive sensor suites are,
+consequently, difﬁcult to deploy on such systems. For this reason, small passive vision sensors (i.e. cameras) have seen
+increasing use for navigation, as a single passive sensor can be employed simultaneously for detection and 3D reconstruc-
+tion. Using only a vision sensor creates new challenges, as a structure from motion approach with a single moving camera
+can reconstruct 3D information only up to an unknown scale factor, additional information is necessary to remove the extra
+degree of freedom. Systems that are deployed outdoors can overcome this issue by using GPS data for pose recovery, but
+this is not an option for systems operating in deep space or indoors.
+To cope with this issue, we are developing a system on a small UAV platform using a minimal sensor suite that
+can operate using only on-board resources to autonomously achieve basic navigation tasks. Here we present, as a ﬁrst
+step towards this goal, a navigation approach that visually detects and reconstructs the position of navigation targets, but
+depends on an external motion capture system∗to regain scale and for closed loop control. In a future approach we plan on
+replacing the motion capture system with an on-board state estimation that fuses IMU and visual information to estimate
+pose and scale.
+To demonstrate the capability of our approach, we chose two important example scenarios for a small UAV platform:
+autonomous landing on an elevated landing platform (representative of a rooftop), and autonomous building ingress through
+Author contact information: {brockers,jeremy.c.ma,lhm}@jpl.nasa.gov, {bouffard,tomlin}@eecs.berkeley.edu
+∗VICON, http://www.vicon.com
+Invited Paper
+Micro- and Nanotechnology Sensors, Systems, and Applications III, edited by 
+Thomas George, M. Saif Islam, Achyut K. Dutta, Proc. of SPIE Vol. 8031, 803111
+© 2011 SPIE · CCC code: 0277-786X/11/$18 · doi: 10.1117/12.884449
+Proc. of SPIE Vol. 8031  803111-1
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+(a)
+(b)
+Figure 1. We evaluated our approach on two different quadrotor platforms: STARMAC (a) and AscTec Pelican (b).
+a rectangular opening (representative of windows and doors). Both scenarios are important for applications such as rescue
+or surveillance missions, and allow us to deploy a multiple homography based approach that uses planar surfaces like walls
+and roof-tops to reconstruct structure from motion.
+This paper is organized as follows: Section 2 discusses related work and how our approach differs. In section 3 we
+introduce our approach in detail, highlighting the planar homography estimation framework for waypoint generation, our
+control algorithm for autonomous navigation, and the vision and navigation system interaction. Experimental results are
+given in Section 4. Section 5 concludes this paper and discusses future work.
+2. RELATED WORK
+Vision-based methods for aerial vehicles to detect navigation targets have been used in the past to identify e.g. landing sites
+with ﬁxed markers,1–3 or terrain features such as ﬂat surface areas.4–6 To reconstruct the target position with a single mov-
+ing camera, different structure from motion approaches are deployed. While most methods use external pose information
+like GPS to calculate accurate target positions,1,4,7 other applications use the imagery itself to regain the camera motion
+up to scale before a structure from motion approach is applied.5 These approaches usually need a separate mechanism
+to retrieve the unknown scale factor in order to accurately scale the reconstructed 3D structure of the environment with
+information from an additional sensor (e.g. an IMU or altimeter). A different approach is the use of optical ﬂow to perform
+closed loop navigation. This is interesting, as the ﬂow ﬁeld, calculated from the camera images, can be used for egomotion
+stabilization without additional pose sensors and, at the same time, for basic navigation tasks like obstacle avoidance or
+landing without an explicit 3D reconstruction.8,9
+In the work that is described in this paper, we use a multiple homography decomposition for motion estimation and
+target detection. Homography based approaches have been used for landing site detection in various helicopter and aircraft
+applications.7,10 These methods usually perform a RANSAC based homography calculation to identify a planar surface in
+the image. We extend this approach to a multiple homography estimation method to detect planar elevated landing surfaces
+above ﬂat ground, and to signiﬁcantly improve the accuracy of motion estimates from homography decompositions by
+aligning the detected homographies.
+In the following, we give a brief introduction of different vision-aided navigation approaches that are closely related to
+our work. An example of an approach which visually detects a ﬁxed landing target is the method of Saripalli et al.1 Their
+approach to autonomous landing of a UAV uses GPS and vision to navigate to a known landing site marked with a pre-
+determined ’H’ pattern. Various control strategies for landing are considered, but the approach depends on the detection
+of the known pattern by thresholding and segmentation. Inspired by the way ﬂies navigate, Rufﬁer et al. proposed an
+optical-ﬂow based method for autonomous landing and navigation,8 controlling the aircraft by adjusting thrust and pitch
+to maintain a reference optical ﬂow value. The experimental results are limited to a highly controlled environment with
+tethered rotorcraft and arbitrarily textured terrain. Landing is considered from the control perspective but no identiﬁcation
+of landing sites is performed. Goncalves et al. presented a method for vision-aided navigation for aircraft approach and
+landing on a planar runway10 which is comparable to the method presented in this paper. The authors similarly utilize a
+homography estimation schema to determine aircraft pose relative to the runway. However, in their approach, assumptions
+are made (e.g. the slowly varying depth to feature) which are valid only for large aircraft at high altitude, preventing
+extension to micro UAVs.
+In terms of autonomous control, Templeton et al.4 demonstrated a model-predictive ﬂight control system using a
+monocular camera on an autonomous helicopter. They tracked features in geo-referenced images to estimate 3D structure
+Proc. of SPIE Vol. 8031  803111-2
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+H
+frame 1
+frame 2
+X
+c’
+c
+x1
+x2
+n
+ovicon
+tV
+t12
+pV1
+pV2
+obody
+obody
+’
+R21
+Figure 2. Coordinate frames and homography induced by a planar surface. t12 and R21 are the camera motion parameters reconstructed
+from the homography H.
+and generate modular elevation and appearance maps, but their approach assumes the availability of GPS information.
+Herisse et al.9 addressed the control problem associated with hovering ﬂight and vertical landing control, using an optical
+ﬂow technique, but assume only a single ﬂat plane and do not consider landing site selection. Recent work by Blosch et
+al.11 demonstrates the use of a monocular vision-based SLAM algorithm for accurate determination of the pose of a UAV
+in GPS denied environments. Using a technique ﬁrst introduced by Klein and Murray12 for augmented reality applications,
+Blosch et al. are able to demonstrate the use of a SLAM algorithm for UAV applications in real-time with sustained
+tracking made possible via image keyframes. The authors point to future work with an onboard IMU to determine scale,
+which is an issue not yet resolved in their work. This work, while not exploring landing techniques per se, is a signiﬁcant
+step towards the capability of operating UAV systems in all types of environments.
+3. APPROACH
+Our approach employs a single camera as a vision sensor to detect a navigation target and generate 3D waypoints to the
+target for autonomous navigation of a quadrotor platform (ﬁgure 1). Autonomous ﬂight maneuvers are triggered based
+on vision system inputs following a three step approach. In a ﬁrst phase, the vehicle ﬂies a search pattern to detect
+the navigation target and to estimate an initial waypoint to the target position. Once detected, additional waypoints are
+gathered by ﬂying the system in a random pattern in the vicinity of the target. These new waypoints are used by the
+control algorithm to improve the accuracy of the target estimate. After the target estimate converges, the vehicle executes
+a ﬁxed ﬂy-to-waypoint maneuver to the target. The following sections introduce the vision algorithm to generate target
+waypoints from point correspondences for our two different application scenarios: autonomous landing on an elevated
+landing platform, and approaching a rectangular opening for automated ingress, followed by a description of the vehicle
+control algorithm that uses the vision inputs for navigation.
+3.1 Vision based target detection and waypoint generation
+Structure from motion with a single camera can be solved, in theory, by estimating the essential or fundamental matrix13,14
+to recover camera motion up to scale, followed by triangulation for 3D reconstruction. However, because of the well-known
+stability issues of estimating the transfer matrices from unconstrained point correspondences, we limit our approach by
+assuming a planar surface in view – a ground plane or wall surface. In this case, a homography decomposition can be used
+for ego motion estimation (ﬁgure 2), which is in general more stable than using essential or fundamental matrix estimates.
+In our approach the homography is derived similar to15 from matched feature points.
+Proc. of SPIE Vol. 8031  803111-3
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+H1,2
+frame 1
+frame 2
+Groundplane
+Table
+H1
+H2
+n
+tracked
+feature
+points
+H
+frame 1
+frame 2
+Wall
+H
+n
+in-plane features
+off-plane features
+detected line segments
+(a)
+(b)
+Figure 3. Homography based target detection: (a) Multiple homography detection for landing. (b) Opening detection for ingress scenario.
+3.1.1 Feature detection and matching
+To establish point correspondences between frames, we implemented a sub-pixel precise version of the STAR feature de-
+tector, a center-surround type detector, for detecting blob-like features.16,17 Feature points are matched among frames
+using an upright version of SURF18 for efﬁciency. To maximize the accuracy of motion estimation and the 3D reconstruc-
+tion, the most current frame is matched against a reference frame, which is selected by tracking features in subsequent
+frames and picking the frame in the past for which a minimum number of features can be tracked continuously.
+3.1.2 Homography Estimation
+A homography H is deﬁned by constraining the general rigid body motion equation by a 3D plane equation. Using
+homogeneous coordinates, the relationship between points that are located on a planar surface can be expressed as:
+x2 = R21(x1 −t12) , ˜nT
+1x1 = 1 , ˜n1 = 1
+d n1
+(1)
+⇒x2 = Hx1 with H = R21(1−t12˜nT
+1)
+(2)
+Starting from unconstraint point correspondences, we use a RANSAC approach19 to calculate a homography for the max-
+imum set of matched in-plane feature points for a given reprojection error threshold following the method of Longuet-
+Higgins15 to parameterize the dominant plane in view. If multiple surfaces are visible (landing scenario) a reﬁnement step
+further increases the accuracy of the estimated homography by detecting additional homographies and applying a multiple
+homography alignment algorithm (see section 3.2). The ﬁnal homography is then decomposed to reconstruct the inverse
+surface normal ˜n1 and vehicle motion R21,t12 up to scale (eq. 2) using the second part of Longuet-Higgins’ algorithm.15
+Note, that the distance to the plane surface is coded in the inverse plane normal ˜n1 (eq. 1). In addition, the vision algorithm
+also uses the distinction between in-plane and off-plane features for detection. We will discuss further details on how this
+is done in sections 3.2 and 3.3.
+3.1.3 Waypoint Generation
+Once a navigation target is detected in the image, the reconstructed vehicle motion parameters and the plane normal of the
+detected surface are used to calculate a 3D waypoint which is located on the target plane. To recover scale, VICON pose
+information is used to scale the estimated camera translation t12 with the vehicle translation tV measured by the VICON
+system:
+s = |c−c′|
+|t12|
+= |tV −RV1tc +RV2tc|
+1
+(3)
+Since the vehicle body frame obody (ﬁgure 2) is not centered on the camera projection center c, the vehicle orientation
+RV1,RV2 in ovicon and the vehicle-camera calibration vector tc in obody are needed to account for rotational motion.
+Proc. of SPIE Vol. 8031  803111-4
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+To calculate the 3D position of a waypoint Xc located on the detected planar surface, the ray deﬁned by the camera
+center and a speciﬁc normalized image coordinate is intersected with the detected surface (as seen from the new camera
+position) to obtain a 3D point in camera coordinates:
+⃗r = (x2,y2,1)T, ˜n2 = R21
+1
+1−tT
+12 · ˜n1
+˜n1
+(4)
+Xc = β⃗r, s−1˜nT
+2Xc = 1 ⇒β = s(˜nT
+2⃗r)−1 ⇒Xc =
+s·⃗r
+n2xx2 +n2yy2 +n2z
+(5)
+This point is ﬁnally transferred into VICON coordinates that are used to control the vehicle, by a transformation with the
+vehicle-camera calibration parameters Rc and tc and the vehicle position and orientation within the VICON frame PV1 and
+RV1:
+XV = PV1 +RV1tc +RV1RcXc
+(6)
+In the following, we apply the homography based reconstruction to two different application scenarios.
+3.2 Landing
+In the autonomous landing scenario (ﬁgure 4a), the quadrotor is equipped with a downward looking camera (cp. ﬁgure 3a)
+to detect an elevated, planar landing site. In the detection phase, the vehicle initially ﬂies a predeﬁned search pattern, until
+the landing area comes into view and is detected by the vision system. For each frame in which the vision algorithm detects
+the landing surface, a waypoint is generated for the center of the landing spot. These individual waypoints are collected by
+the vehicle control algorithm, which initiates an automated landing once the mean of the waypoint coordinates stabilizes.
+In order to detect a landing platform it is assumed that the landing surface is surrounded by a dominant plane – the ﬂoor. A
+ﬁrst homography estimation is used to reconstruct the plane parameters and to extract in-plane features that are located on
+the ground. For all off-plane features, a second homography estimation is applied to ﬁnd the elevated landing surface. If
+enough features on a second surface are found, the landing platform is detected (ﬁgure 5). Theoretically both homographies
+could be used to calculate camera motion up to scale. However, in our approach we ﬁrst align the two homographies using
+the epipolar constraint as described in20 before applying a homography decomposition algorithm to increase the accuracy
+of the reconstruction results for ego motion and plane normals. Finally, an aiming point in the image is calculated which
+is deﬁned by the center of all detected feature points on the landing target, and a 3D waypoint is calculated as described in
+section 3.1.3.
+3.3 Ingress
+The homography estimation approach can also be applied to the problem of ingress (ﬁgure 4b) to detect wall openings. In
+this application, the vehicle is equipped with a forward looking camera (ﬁgure 3b) to perform autonomous building ingress.
+Similar to the landing scenario, we assume a dominant plane in view – the wall surface – and track outliers to detect an
+Takeoff
+Platform
+Waypoint
+Approach
+Land
+Detect Platform
+Refine Estimate
+Ingress
+waypoint
+Approach
+Refinement
+Detect Opening
+Takeoff
+(a)
+(b)
+Figure 4. After takeoff, the autonomous landing (a) and automated ingress (b) algorithm proceed in three phases: Detection, Reﬁnement,
+and Approach.
+Proc. of SPIE Vol. 8031  803111-5
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+Figure 5. Landing surface detection: The platform is detected if sufﬁcient matched features points are observed on the elevated platform
+(squares). White dots are features located on the ground plane, black dots are outliers.
+opening. Once detected, waypoints for the ingress target are generated as explained before, now using the wall surface to
+position the waypoint in the center of the opening.
+While off-plane features can serve as a good indicator of a wall opening, the detection of the opening target is in
+particular more challenging due to (1) false positives for outliers that are not always isolated to opening areas and may
+appear on the planar wall surface (ﬁgure 6a), and (2) clusters of outliers that do not clearly deﬁne the true size of the wall
+opening (ﬁgure 6b). To remedy these issues, we adopt an approach to ingress that detects square or rectangular openings
+since these types of openings are typical for urban/indoor environments. To detect a rectangular opening area, we search
+for the bounding box that contains the most number of outliers without including any inliers. This is done in a three
+step process. First, line segments are extracted from the image by a Hough transform, ﬁltering on predominantly vertical
+and horizontal line segments (ﬁgure 7a and b). Second, a 2D histogram of in- and outliers is generated and partitioned
+according to vertical and horizontal segments detected in the previous step (ﬁgure 7c). And third, the partition which
+contains the largest number of outliers above a given threshold and without including any inliers is selected as an opening
+(ﬁgure 7d).
+Following the identiﬁcation of the largest bounding box of outliers (with a prior cue seeded by line segments from
+the Hough Transform), the ingress point is identiﬁed as the center point of the box opening on the wall surface and a 3D
+waypoint is generated and passed to the vehicle controller.
+(a)
+(b)
+Figure 6. (a) Detected in-plane (white) and off-plane features (black). Note that some false positives are located on the planar surface,
+rather than being completely isolated in the opening. (b) Outliers are only detected on out-of-plane regions that are descriptive in features.
+Featureless off-plane areas of the image may not always be detected as such due to the lack of features. This limits the detectable size of
+the actual opening (dashed box) to something much smaller (solid box).
+Proc. of SPIE Vol. 8031  803111-6
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+1331
+U
+(a)
+(b)
+(c)
+(d)
+Figure 7. (a) Raw output image from Hough Transform. (b) Filtered output with vertical and horizontal edges. (c) 2D histogram image of
+inliers (outlined boxes) and outliers (solid boxes), partitioned using the detected vertical and horizontal line segments. (d) The detected
+opening (white rectangle, centroid marked by white square), and features (inliers white, outliers black), superimposed on the captured
+image.
+3.4 Navigation and Control
+Our control scheme is designed to operate in a hierarchical framework. There are three distinct levels to the hierarchy
+which are termed the autonomy loop, the outer loop and the inner loop. The autonomy loop is responsible for the highest-
+level behaviors and is the most abstract, whereas the outer and inner loop are responsible for low-level behaviors like direct
+ﬂight to waypoints and vehicle stabilization. In the proposed scheme, the vision system becomes an input to the high-level
+autonomy loop. Note, that this implies that this approach is adaptable to any vehicle for which the level abstractions hold
+and not only to the speciﬁc vehicle type – a quadrotor UAV – considered in our experiments.
+From the perspective of the autonomy loop, the vision subsystem is a sensory input, providing “measurements” of the
+true position of a navigation target. The navigation system operates in three sequential phases with three distinct behaviors
+at the autonomy level, in order to ﬁrst detect the target (detection phase), then determine an accurate estimate of the target
+location (reﬁnement phase), and ﬁnally to perform an autonomous maneuver based on the ﬁnal target estimate (approach
+phase) (cp. ﬁgure 4).
+3.4.1 Autonomous Landing Control
+Figure 8 illustrates the phases of the autonomous landing scenario. The objective is to detect and localize an unknown,
+unmarked elevated landing platform, and subsequently land upon it.
+Platform Detection
+In the detection phase, the vehicle follows a predeﬁned path, while the vision subsystem gathers
+imagery for an initial detection of the landing platform. Once the initial detection occurs and a ﬁrst landing spot waypoint
+XV,1 is generated, the control system transitions to the reﬁnement phase.
+Proc. of SPIE Vol. 8031  803111-7
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+00
+oe
+08
+TO
+15
+2
+10
+02
+00
+02
+10
+00
+02
+I0
+22
+-JO
+-02
+00
+02
+I0
+Detection
+Takeoff
+Refinement/Descent
+Takeoff
+Detection
+Refinement
+Descent
+(a)
+(b)
+Figure 8. (a) Top-down view of an actual vehicle trajectory through the phases. (b) Side view of an actual vehicle trajectory through the
+phases.
+Reﬁnement of Estimate
+The waypoint measurements are subject to noise and outliers, which makes it necessary to
+gather additional measurements for a reﬁned estimate. This happens in the reﬁnement phase, where additional 3D way-
+points are collected into a sequence of n waypoints
+
+XV,i
+n
+i=1. To produce additional waypoints, the vehicle has to move
+to collect imagery from different vantage points in the vicinity of the current estimate. This is accomplished by directing
+the vehicle outer loop control to position the vehicle at points ˜XV,i in the neighborhood above the ﬁrst waypoint XV,1. To
+address the uncertainty in the estimate of the platform location at any given time, these positions are drawn from a bivariate
+normal distribution N (μ,Σ), where mean μ and covariance Σ are determined from the sample mean and covariance of the
+waypoints collected up to that point. Positions that would take the vehicle more than some arbitrary cutoff distance away
+from the estimate are discarded.
+As each new measurement is obtained, sample statistics of the set of measurements are computed. In particular, the
+waypoint estimate after the n-th measurement has been obtained is the sample mean of the estimates ˆXi = 1
+n ∑n
+i=1 XV,i,
+When the stopping criteria for the reﬁnement phase,
+n ≥nmin,
+(7)
+|
+
+1
+1
+0
+
+( ˆXn −ˆXn−1)| ≤εhorz,
+(8)
+|
+
+0
+0
+1
+
+( ˆXn −ˆXn−1)| ≤εvert,
+(9)
+have been met, the estimate is considered to be ’stable’, and ˆXn is taken as the ﬁnal target waypoint. The controller then
+transitions to the approach phase.
+Descent and Landing
+In the approach phase, the vehicle is ﬁrst sent to the point at the current altitude immediately
+above ˆXn. Then the vehicle descends at a ﬁxed rate vdes, as long as the radial offset er(t) between the current position
+and ˆXn is within a tolerance. The altitude setpoint is then updated accordingly, x3(t +1) = x3(t)+vdesdt and the updated
+setpoint is passed to the low-level altitude control loop. Thus, the vehicle only descends when it is within a prescribed
+volume. Finally, once the vertical offset reaches a threshold altitude, the altitude setpoint is rapidly decreased before
+cutting off power to the motors to complete the landing. During this ﬁnal phase the onboard accelerometer readings are
+employed to detect touch down and cut off the motor power.
+Proc. of SPIE Vol. 8031  803111-8
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+3.4.2 Autonomous Ingress Control
+The autonomous landing scheme described above can be easily adapted for autonomous ingress – ingress basically follows
+the same high-level control phases. Due to the forward looking camera, ﬂight maneuvers during detection and reﬁnement
+are modiﬁed to reﬂect the change in viewing direction.
+At the present time we have performed limited approaches to an opening for ingress, performing maneuvers for de-
+tection and reﬁnement, but due to limitations in the available ﬂying space in the current laboratory setup, we are not able
+to perform the actual ﬂy-through. We plan to remedy this in the near future, with a larger ﬂying area suitable for a full
+ingress.
+Several control options for maneuvering through the opening are feasible: A heuristic, similar to that used for landing
+could prove adequate, depending on the control performance achievable under the aerodynamic disturbances present during
+the ingress. However provably-safe schemes could be considered as well, wherein the controller design would be supported
+by a reachability-based analysis.21
+4. EXPERIMENTAL RESULTS
+4.1 Hardware Testbed
+Our approach has been implemented on quadrotor platforms ﬂying indoors in laboratory environments, using a VICON
+motion capture system as the primary means of state estimation. We have employed two different vehicle architectures (ﬁg-
+ure 1), porting the approach from one (the STARMAC22 quadrotor) vehicle to the next (the AscTec Pelican UAV∗). While
+the two vehicles differ in implementation details, they are similar in that they are both equipped with high-level computing
+(in the case of STARMAC, a dual-core 2.16 GHz Pentium PC-104 board; for the Pelican, a 1.6 GHz Intel Atom board).
+The high-level computer executes a multiprocess and multi threaded system, using Robot Operating System (ROS)23 for
+system management, interprocess communication, and communication with the operator ground station. Modules were
+written variously in Python and C++. Note, that our formulation does not require a minimum frame rate for good results –
+the accuracy depends solely on the spatial separation of the camera location between image acquisition, not on the rate at
+which images are captured.
+Operator control of the vehicle is performed via a ’ground station’ laptop equipped with a joystick, which has bidirec-
+tional communication with the onboard high level computer via a WiFi link. Live raw video from the onboard camera as
+well as a diagnostic image output from the vision algorithm (as shown in ﬁgures 5 and 7) can be transmitted to the ground
+station to allow for rapid debugging. Data may be logged to on-board mass storage for later transfer to a desktop PC where
+the algorithms can be tested and reﬁned on the ’played back’ data.
+As mentioned above, the autonomy layer implements the 3-phase behavior described above by commanding autose-
+quence destinations to the outer loop of the control architecture. In the outer loop, a linear controller stably regulates the
+vehicle’s lateral (horizontal) position of the vehicle towards a designated setpoint. Vehicle yaw angle is maintained con-
+stant, and altitude is also regulated with a linear controller based on state measurements from the motion capture system.
+The camera used is a Point Grey Research Fireﬂy MV USB monochrome camera equipped, with a 4 mm micro lens.
+Capture was set in streaming mode at full (640×480) resolution. For the landing scenario, various platforms were tested.
+Note that the vision algorithm is not dependent on special features or artiﬁcial texturing of the elevated platform. The
+landing platform is relatively small in comparison to the ’footprint’ of the quadrotor’s landing gear (approx. 15×15cm),
+which requires precise waypoint estimation. The ingress scenario employed a mockup wall built from Styrofoam elements
+with one square opening of 60x60cm (cp. ﬁgure 6 and 7).
+We tested our algorithm intensively running on-board the two different quadrotor platforms. Autonomous landing was
+performed successfully on both, the STARMAC and the Asctec Pelican quadrotor. For the ingress experiment we used the
+STARMAC platform to gather imagery for the waypoint calculation during the detection and reﬁnement phase.
+∗Ascending Technologies GmbH, http://www.asctec.de/
+Proc. of SPIE Vol. 8031  803111-9
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+//'
+(a)
+(b)
+Figure 9. View of the STARMAC quadrotor (a) just prior to landing and (b) after landing in one of the experiments.
+4.2 Landing
+We tested the landing algorithm on the above described setup with the landing platform placed at an arbitrary location.
+The sequence of events during an experimental run was as follows. The human operator ﬁrst commands the vehicle
+to enter a position-holding mode, and commands a take-off maneuver, bringing the vehicle to a hover above the initial
+location at some suitable altitude. Upon command of the operator’s ’go’ signal, a predetermined ﬂight path is executed
+(platform detection phase). After detection and reﬁnement of the platform position, the vehicle lands autonomously on the
+platform. After the automatic shut-down of the motors, the experimental run is considered complete. All operations after
+the operators initiates the detection phase are performed completely autonomous.
+In our experiments, we used three different sizes for the landing platform, assembled out of printer paper reams: a)
+double wide, 2 reams high (43.2×27.9×10.9cm); b) double wide, 4 reams high (43.2×27.9×21.9cm); and c) single wide,
+4 reams high (21.6×27.9×21.9cm). In all three scenarios, both quadrotor systems were able to successfully land (see
+ﬁgure 9). The vision algorithm was very effective in detecting and localizing the landing platform. As expected, the
+platform location was estimated most accurately in the lateral direction, while the vertical component of the estimate was
+poorest. This behavior is acceptable, as a highly accurate lateral position is necessary to safely land the vehicle on the
+platform, whereas a more uncertain height estimate is compensated within the ﬁnal descent step. Figure 10 shows the
+measured raw lateral waypoint coordinates that are generated from the vision system, and the reﬁned waypoint estimate
+during reﬁnement. Figure 11 compares the estimated height with the true height of the landing spot. The reﬁned estimate
+and the estimated platform height converge over time, as new measurements arrive from the vision algorithm. Target
+waypoints where generated at a maximum rate of approximately 5 fps on the STARMAC quadrotor and at approximately
+2 fps on the Pelican system.
+4.3 Ingress
+The initial start up of the system is similar to the landing experiment. The vehicle is brought up to altitude and the detection
+phase is initiated. To detect an opening, the vehicle ﬂies a trajectory along a wall surface, with the camera facing directly
+to the wall. Once detected, the vehicle performs a predeﬁned horizontal ﬂight maneuver parallel to the wall surface in front
+of the opening to execute the reﬁnement phase. For the reasons described above, we did not perform an approach phase.
+To conﬁrm the quality of our reconstruction results, we added one measurement for the ingress experiment. In addition
+to the calculation of a navigation waypoint in the center of the ingress target, we also calculate the lateral position of the left
+and right border of the window opening to measure the opening width. Figure 12 shows the estimated opening width (mean
+width) during reﬁnement phase for a typical test run. Note that larger deviations are outliers caused by false detections of
+the window borders. The estimated opening width at convergence is very close to the true opening width of 60cm. This
+conﬁrms the accuracy of the vision output for the ingress scenario.
+Proc. of SPIE Vol. 8031  803111-10
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+0.29
+0.28
+0.27
+0.26
+0.25
+0.24
+0.23
+0.22
+0.66
+0.68
+x(m)
+y(m)
+0.70
+0.72
+0.74
+0.76
+Figure 10. Example of landing point es-
+timate reﬁnement. Crosses are raw mea-
+surements, Circles show the evolution of
+the waypoint estimate as each new mea-
+surement is incorporated.
+0
+5
+10
+15
+20
+25
+30
+35
+40
+45
+50
+0.05
+0.1
+0.15
+0.2
+0.25
+0.3
+0.35
+0.4
+time(sec)
+height(m)
+estimated height
+raw height
+true height
+Figure 11. Landing spot height estima-
+tion.
+0
+5
+10
+15
+20
+25
+30
+35
+40
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+time(sec)
+width(m)
+estimated width
+raw width
+true width
+Figure 12. Opening width estimation for
+the ingress target.
+5. CONCLUSIONS AND FUTURE WORK
+This paper demonstrates a visual navigation approach for autonomous landing and ingress of a micro air vehicle, which
+uses images from a monocular camera to detect navigation targets and generate 3D navigation waypoints based on a
+multiple homography approach with scale recovery from a motion capture system. The system is able to generate highly
+accurate target waypoints as shown in our experiments and illustrated by the very accurate reconstruction of the landing
+platform height and the ingress opening width. Using a three stage control scheme, we are able to autonomously detect,
+approach and land on an elevated landing surface that is only slightly larger than the footprint of our aerial vehicles, and
+gather navigation target waypoints for building ingress. All algorithms run on-board the vehicles.
+This is, to our knowledge, the ﬁrst vision-based, experimentally tested algorithm for small UAVs, using a single monoc-
+ular camera and requiring no artiﬁcial labeling or external computation, enabling autonomous landing on an elevated
+landing platform and ingress into a building.
+The current approach uses pose estimates based on VICON motion capture data to regain scale for our structure from
+motion approach, and to control the vehicle. We plan on substituting the VICON input with vision-based on-board state
+estimation in a future extension. Ultimately, we aim to navigate a small aerial vehicle with on-board processing using only
+a minimal sensor suite of a single camera with an additional sensor to regain scale (e.g. an on-board IMU), in a GPS denied
+environment. A challenge for this type of vehicle when maneuvering close to structure or in wind gusts is the incorporation
+of a dynamic controller to consider changes in vehicle dynamics caused by aerial disturbances. In particular, we want
+to explore this aspect of the problem for performing autonomous ingress maneuvers through small openings. With the
+complexity of the unsteady airﬂow in this ﬂight regime, effective models will likely require additional detail beyond the
+simple double integrator type models which are quite effective when clear of such aerodynamic disturbances.
+Acknowledgments
+This work was funded by the Army Research Laboratory under the Micro Autonomous Systems & Technology Collabo-
+rative Technology Alliance program (MAST-CTA). JPL contributions were carried out at the Jet Propulsion Laboratory,
+California Institute of Technology, under a contract with the National Aeronautics and Space Administration.
+REFERENCES
+[1] Saripalli, S., Montgomery, J. F., and Sukhatme, G. S., “Vision-based autonomous landing of an unmanned aerial
+vehicle,” in [Proc. Int. Conf. on Robotics and Automation], 2799–2804 (2002).
+[2] Lange, S., Suenderhauf, N., and Protzel, P., “A vision based onboard approach for landing and position control of an
+autonomous multirotor uav in gps-denied environments,” in [Proc. of Int. Conf. on Adv. Robotics], (2009).
+[3] Wenzel, K. E., Rosset, P., and Zell, A., “Low-cost visual tracking of a landing place and hovering ﬂight control with
+a microcontroller,” Intelligent and Robotic Systems 57, 297–311 (2009).
+Proc. of SPIE Vol. 8031  803111-11
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+
+[4] Templeton, T., Shim, D. H., Geyer, C., and Sastry, S. S., “Autonomous vision-based landing and terrain mapping using
+an MPC-controlled unmanned rotorcraft,” in [Proc. Int. Conf. on Robotics and Automation], 1349–1356 (2007).
+[5] Johnson, A., Montgomery, J., and Matthies, L., “Vision guided landing of an autonomous helicopter in hazardous
+terrain,” in [Proc. Int. Conf. on Robotics and Automation], 3966 – 3971 (2005).
+[6] Mejias, L., Usher, K., Roberts, J., and Corke, P., “Two seconds to touchdown – vision-based controlled forced
+landing,” in [Proc. Int. Conf. on Intelligent Robots and Systems], 3527–3532 (2006).
+[7] Bosch, S., Lacroix, S., and Caballero, F., “Autonomous detection of safe landing areas for an uav from monocular
+images,” in [Proc. Int. Conf. on Intelligent Robots and Systems], 5522 –5527 (2006).
+[8] Rufﬁer, F. and Franceschini, N., “Visually guided micro-aerial vehicle: automatic take off, terrain following, landing
+and wind reaction,” in [Proc. Int. Conf. on Robotics and Automation], 2339–2346 (2004).
+[9] Herisse, B., Russotto, F.-X., Hamel, T., and Mahony, R., “Hovering ﬂight and vertical landing control of a vtol
+unmanned aerial vehicle using optical ﬂow,” in [Proc. Int. Conf. on Intelligent Robots and Systems], 801–806 (2008).
+[10] Goncalves, T. F. and Azinheira, J. R., “Vision-based autonomous approach and landing for an aircraft using direct
+visual tracking method,” in [Proc. Int. Conf. on Informatics in Control, Automation and Robotics], 94–101 (2009).
+[11] Blosch, M., Weiss, S., Scaramuzza, D., and Siegwart, R., “Vision based mav navigation in unknown and unstructured
+environments,” in [Proc. Int. Conf. on Robotics and Automation], 21–28 (2010).
+[12] Klein, G. and Murray, D., “Parallel tracking and mapping for small ar workspaces,” in [Proc. Int. Symposium on
+Mixed and Augmented Reality], 225–234 (2007).
+[13] Longuet-Higgins, H., “A computer algorithm for reconstructing a scenen from two projections,” Nature (293) , 133–
+135 (1981).
+[14] Luong, Q.-T. and Faugeras, O., “The fundamental matrix: Theory, algorithm, and stability analysis,” Comp. Vis. (17)
+, 43–75 (1996).
+[15] Longuet-Higgins, H., “The reconstruction of a plane surface from two perspective projections,” Proc. Roy. Soc.
+London Series B 227 (1249) , 399–410 (1986).
+[16] “Star detector wiki.” http://pr.willowgarage.com/wiki/Star Detector.
+[17] Agrawal, M., Konolige, K., and Blas, M. R., “Censure: Center surround extremas for realtime feature detection and
+matching.,” in [Proc. Europ. Conf. on Comp. Vis.], LNCS 5305, 102–115 (2008).
+[18] Bay, H., Ess, A., Tuytelaars, T., and Van Gool, L., “Speeded-up robust features (surf),” Comp. Vis. Image Un-
+derst. 110(3), 346–359 (2008).
+[19] Fischler, M. A. and Bolles, R. C., “Random sample consensus: A paradigm for model ﬁtting with applications to
+image analysis and automated cartography.,” Commun. ACM , 381–395 (1981).
+[20] Cheng, Y., “Real-time surface slope estimation by homography alignment for spacecraft safe landing,” in [Proc. Int.
+Conf. on Robotics and Automation], 2280–2286 (2010).
+[21] Mitchell, I. M., Bayen, A. M., and Tomlin, C. J., “A time-dependent Hamilton-Jacobi formulation of reachable sets
+for continuous dynamic games,” Trans. on Autom. Control 50(7), 947–957 (2005).
+[22] Hoffmann, G. M., Huang, H., Waslander, S. L., and Tomlin, C. J., “Quadrotor helicopter ﬂight dynamics and control:
+Theory and experiment,” in [Proc. of the AIAA Guidance, Navigation, and Control Conference and Exhibit], (2007).
+[23] “Ros (robot operating system) website.” http://www.ros.org.
+Proc. of SPIE Vol. 8031  803111-12
+Downloaded From: https://www.spiedigitallibrary.org/conference-proceedings-of-spie on 31 Jan 2024
+Terms of Use: https://www.spiedigitallibrary.org/terms-of-use
+

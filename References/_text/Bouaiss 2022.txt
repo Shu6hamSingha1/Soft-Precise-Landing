@@ -1,0 +1,1065 @@
+Signal, Image and Video Processing (2023) 17:21–30
+https://doi.org/10.1007/s11760-022-02199-y
+ORIGINAL PAPER
+Visual soft landing of an autonomous quadrotor on a moving pad
+using a combined fuzzy velocity control with model predictive control
+Oussama Bouaiss1
+· Raihane Mechgoug1 · Abdelmalik Taleb-Ahmed2
+Received: 7 October 2021 / Revised: 4 March 2022 / Accepted: 5 March 2022 / Published online: 23 April 2022
+© The Author(s), under exclusive licence to Springer-Verlag London Ltd., part of Springer Nature 2022
+Abstract
+Autonomous landing is a vital option for Unmanned Aerial vehicles (UAV), as it can be a fail-safe in many critical cases. This
+paper demonstrates a complete solution for the soft landing application of a fully autonomous quadrotor on a moving pad
+considering external disturbance, model uncertainties, and actuators noise. The challenge starts with detecting the specially
+designed landing pad by an onboard vision system, a robust Algorithm estimates its coordinates precisely using a camera
+pose estimation. An enhanced Kalman ﬁlter by Madgwick data fusion of asynchronous sensors was developed for the best
+relative pose and heading reference. Different sizes and designs of the ArUco markers were attentively chosen to ensure the
+best detection at different altitudes and angles of approach. The landing trajectory is dynamically generated based on Jerk
+optimization, integrating a bio-inspired velocity proﬁle by Fuzzy Logic Controller (FLC) to smoothen the landing. Model
+Predictive Control (MPC) was opted for quadrotor control to track the generated trajectory in time reference with the rejection
+of disturbance. The solution presents a soft mechanism for ﬂat surface landing similar to human decision concept and control.
+The proposed method ensures absorption of the shock of impact, and the optimal tracking of the moving landing pad at less
+than 4 cm of error in Cartesian coordinates. Experimental results from pad relative pose estimation developed in Python,
+Data fusion experimentation of Attitude and Heading Reference system (AHRS), and Matlab simulations with a performance
+comparison between MPC and Proportional Integral Derivative (PID) control validate the effectiveness and reliability of the
+proposed landing task solution.
+Keywords Unmanned aerial vehicles · Quadrotor · Video processing · landing · Fuzzy logic · Model predictive Control ·
+Pose estimation
+1 Introduction
+The quadrotor is one of the most interesting types of UAVs, it
+received a large volume of papers and research because of its
+ﬂexibility, maneuverability, and its hovering mode ability. Its
+use was effective in detection, civil and military surveillance,
+shipping of commercial, in medical services, and even in
+B Oussama Bouaiss
+oussama.bouaiss@univ-biskra.dz
+B Raihane Mechgoug
+raihane.mechgoug@univ-biskra.dz
+Abdelmalik Taleb-Ahmed
+Abdelmalik.Taleb-Ahmed@uphf.fr
+1
+Department of Electrical Engineering, LESIA Laboratory,
+University of Mohamed Khider, Biskra, Algeria
+2
+Institute of Electronics, Microelectronics and Nanotechnology
+(IEMN), UMR 8520, Polytechnic University Hauts de France,
+University of Lille, CNRS, 59313 Valenciennes, France
+industrial application [1,2]. Quadrotors have become able to
+perform complicated maneuvers and autonomous tasks even
+in harsh conditions or hazardous environments, thus comes
+the option of autonomous landing as a vital task for many
+missions and as a fail-safe in case of some technical issue
+during the ﬂight such as GPS denial or low power.
+Diverse papers tackled the quadrotor landing, Zhe et al. in
+[3] developed a vision-based autonomous landing on a mov-
+ing surface vessel with PID tracking and control, the relative
+pose was based on the visual detection and estimation of the
+landing area, relative localization for UAV-based image was
+addressed [4]. In [5] Danjun et al. considered the ground
+effect based on Cheeseman’s model for more precision of
+the quadrotor Vertical Taking Off and Landing (VTOL) with
+a robust PID control. An efﬁcient 3-D time-optimal trajec-
+tory tracking by a quadrotor model on a moving pad was
+addressed in [6]. Yuhua et al. proposed a complete solution
+for autonomous landing of a low-cost quadrotor on a moving
+123
+
+22
+Signal, Image and Video Processing (2023) 17:21–30
+new designed landing pad with Lyapunov stability demon-
+stration [7]. However, those previous papers opted for PID
+control which unfortunately doesn’t consider either distur-
+bance or model uncertainty, In addition, it affects slightly the
+tracking performance. Other papers studied the landing con-
+trol of the UAV on an oscillating pad with sea characteristics
+[8] considering an introduction of nonlinear Kalman Filter
+(KF) [9]. In [10] Carlos et al. proposed an uncertain quadrotor
+smooth landing on a moving pad without a relative state vec-
+tor availability using a Linear Quadratic Regulator(LQR) to
+track the trajectory in the presence of unknown uncertainties.
+To comply with the autonomous landing of the quadro-
+tor, computer vision processing is crucial to determine the
+relative pose to dynamically generate the trajectory for the
+landing. Many algorithms of vision subject to detection and
+estimation for autonomous landing have been developed.
+ArUco markers were widely used because of the easiness
+of detection and the efﬁciency of the identiﬁcation [2,3,7,9].
+Whereas the pose estimation varies from direct methods that
+use PnP algorithm [7,11,12], or sophisticated and intelligent
+methods based on neural networking [13]. The visual pro-
+cessing is so sensitive in the matter of data extraction (size,
+pattern, and pose) to camera type and its calibration, to the
+shuttereffect,tothevelocityofdrone’slanding,andtheexter-
+nal light and mirror effect [11].
+It is critical to consider the noise and disturbance model
+in the control and estimation during the robust landing pro-
+cess, especially in outdoor applications, thus the estimation
+of quadrotor state vector was enhanced by Madgwick data
+fusion of asynchronous sensors ﬁlter [14] combined by an
+Extended KF, another ﬁlter was set for the best estimation of
+markers visual localization [15].
+Based on the literature, some researchers used pursuit
+guidance while simultaneously descending with the UAV in
+altitude [16], wherein [17], a fusion of monocular Simulta-
+neously Localization And Mapping (SLAM) and INS was
+utilized in the landing of the quadrotor in bio-inspired guid-
+ance method which is based on Tau theory. In [18], complex
+maneuvers were illustrated by a robust tracking control that
+can be constrained for landing. In this paper, to enhance the
+bio-inspired soft landing, a novel Fuzzy decision-maker pro-
+cess is used to estimate the landing time via the average
+possible speed, the Fuzzy sets use the observed state vectors
+of both the quadrotor and moving pad to decide the velocity
+of the landing. This method controls the velocity limits to
+design the optimal trajectory to track for the landing as an
+expert guidance control. MPC is chosen for the tracking per-
+formance instead of classic PID, MPC is adaptive and can
+handle the considered disturbance and Gaussian noise.
+The proposed soft landing approach separates the process
+into two interconnected parts: First, the detection of mark-
+ers, identiﬁcation of at least one visible marker depending on
+Fig. 1 Autonomous Landing control processing
+the height, and then determining the relative pose of the pad
+center with consideration to the motion of both the quadro-
+tor and the landing pad. Then, the generation of minimal
+Jerk trajectory to ensure smoothness during landing, where
+MPC is responsible for tracking iteratively the desired trajec-
+tory to land. The smooth velocity proﬁle is controlled by the
+FLC decision-maker. The opted philosophy is demonstrated
+in Fig. 1.
+The project aimed to develop a complete application for
+the smooth autonomous landing of a quadrotor on a moving
+pad based on a vision algorithm using a monocular camera
+with robust position control. The iterative and adaptive Gen-
+eration of trajectory was based on the optimal jerk. This paper
+has valued the following contributions:
+• Design a robust application of the pose estimation based
+on a special landing pad by multiple ArUco markers with
+different patterns at different sizes to ease the detection.
+• MPC control is opted for position tracking for better
+attenuation of external disturbance with a performance
+comparison to PID control.
+• Planning a mimic of natural decision making as expert
+human processing for landing by adding FLC for velocity
+control.
+• Combine EKF with Madgwick data fusion of asyn-
+chronous sensors for state observation.
+The rest of the paper is organized as follows: Sect.
+2 presents the landing pad design, the vision processing
+approach for detection and identiﬁcation of the patterns, and
+the pose estimation. In Sect. 3, the dynamics of the quadrotor
+are modeled. In Sect. 4, The enhanced Madgwick/Extended
+Kalman Filter (EKF) with data fusion is presented with the
+Attitude and Heading Reference system (AHRS). Section 5
+develops the generation of the optimum Jerk trajectory, with
+the fuzzy velocity control. MPC for tracking the desired tra-
+jectory for the landing is detailed in Sect. 6. Results of the
+estimation of the relative pose by vision and control simula-
+tion with comparison are presented in Sect. 7. Finally, Sect.
+8 concludes the paper.
+123
+
+Signal, Image and Video Processing (2023) 17:21–30
+23
+2 The detection of the relative pose
+estimation
+Before engaging the landing control, the detection and the
+estimation of the relative pose of the moving landing pad
+are ﬁrstly processed. This section investigates this challenge,
+aiming to maximize the detection probability and to avoid
+miss-estimation samples and the limitation of the Field Of
+View(FOV).
+2.1 Concept of detection of the landing pad
+Many techniques for pad detection were investigated, such
+as color-based, or shape-based, other research were based
+on employing a complementary modular approach that uses
+data-driven methods for auto-docking such in [19]. In this
+paper, we opted for the ArUco markers. The use of binary
+square ﬁducial markers provides enough data for the detec-
+tion by the four corners, the identiﬁcation from the binary
+codiﬁcation, and the relative pose from projection process-
+ing. All those features are easy to be acquired by different
+types of cameras and from relatively higher altitudes. In addi-
+tion, choosing different markers designs at different sizes
+will ease the task of close detection at the same time as far
+ones, which ensures a robust detection all along the trajec-
+tory of landing. As the quadrotor got close to the landing
+pad, some markers leave slowly the Field Of View(FOV), at
+this level, the detection will be based only on the relatively
+smaller markers, contrary to larger markers that will be used
+at higher altitudes. Yuhua Qi et al. proposed a similar aspect
+of detection for a low-cost camera in [7]. The redundancy of
+markers will enhance the total probability of detection and
+recall, precision augments by the use of small patterns at low
+altitudes.
+2.2 Robustness of the pose estimation
+The ArUco library was used as a base of markers design
+[20]. At every iteration image, the pose estimation process
+is initially based on the markers detection algorithm that
+recognizes the detected markers and identiﬁes them by a
+binary codiﬁcation. Recognition is performed by analyzing
+the inner codiﬁcation and attributing the marker in a canoni-
+cal form by differentiating between black and white surfaces
+using a simple Otsu thresholding technique, and excluding
+the wrong detection, besides identifying markers from the
+predeﬁned list. Then, the algorithm ran an estimation process
+for the relative pose of the landing pad based on the OpenCV
+library. A specially designed ﬁlter decides which markers to
+be considered based on the average of actual relative distance
+estimations between the quadrotor and the landing pad, the
+ﬁlter extracts out the bad estimation based on the normalized
+variance to the mean. The marker estimate is considered if
+and only if:
+|
+⎛
+⎜⎝
+ˆ
+Est(i)
+2 −
+⎛
+⎝
+N
+
+j=1
+ˆ
+Est( j)/N
+⎞
+⎠
+2⎞
+⎟⎠/V(Est)| > 0.2
+(1)
+ˆ
+Est(i) represents the Cartesian distance estimate from the
+Marker i, V(Est) is the variance of all detected distances
+estimates. Inner codiﬁcation choice of ArUco markers was
+based on simple detection and reading from a far distance
+and denser for smaller ones to improve close estimation. For
+better pose estimation performance, it is judicious to calibrate
+the camera, A special calibration code that uses OpenCV
+for camera calibration tools and Charuco image was used to
+extract the camera matrix and the distortion vector needed
+for the pose estimator.
+3 Dynamics modeling
+3.1 Dynamics
+The Quadrotor dynamics have been discussed in many
+papers. The validated model is derived based on the con-
+sideration of two frames as shown in [21]. Two frame
+references were used, a Body-frame B(Ob, Xb, Yb, Zb). and
+an Earth-related reference: E(Oe, Xe, Ye, Ze)., The E frame
+will coincide with the landing pad in motion, detailed mod-
+eling with illustrated forced has been studied in [21].
+Considering all applied forces and torques contributions
+on the quadrotor body with assumptions as detailed in [21]
+(Table 1), the dynamics may be simpliﬁed in the follow-
+ing equations, where double dots symbol means the second
+derivative:
+Table 1 Symbols deﬁnition
+Symbols
+Deﬁnitions
+Symbols
+Deﬁnitions
+φ
+Roll angle
+θ
+Pitch angle
+ψ
+Yaw angle
+
+Rotor speed
+JT P
+Total rotors inertia
+l
+Lever
+b
+Thrust coefﬁcient
+g
+Gravity
+d
+Drag coefﬁcient
+
+Rotor speed
+m
+Quadrotor mass
+I
+Inertia matrix
+Ixx, Iyy, Izz
+Inertia matrix diag
+123
+
+24
+Signal, Image and Video Processing (2023) 17:21–30
+⎧
+⎪⎪⎪⎪⎪⎪⎪⎪⎪⎨
+⎪⎪⎪⎪⎪⎪⎪⎪⎪⎩
+¨X = (sψsφ + cψsθcφ) U1/m
+¨Y = (−cψsφ + sψsθcφ) U1/m
+¨Z = −g + cθcφ U1/m
+¨φ = 1/Ixx ((Iyy −Izz) ˙φ ˙ψ + JT P ˙φ + U2)
+¨θ = 1/Iyy ((Izz −Ixx) ˙θ ˙ψ + JT P ˙θ + U3)
+¨ψ = 1/Izz ((Ixx −Iyy) ˙θ ˙φ + U4)
+(2)
+3.2 State space representation
+Considering the state vector X = (x1 x2 ... x12)T in R12,
+dynamics can be written in state-space as follows:
+˙X = F(X,U)
+(3)
+⎡
+⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎢⎣
+x1 = x
+x2 = ˙x1
+x3 = y
+x4 = ˙x3
+x5 = z
+x6 = ˙x5
+x7 = φ
+x8 = ˙x7
+x9 = θ
+x10 = ˙x9
+x11 = ψ
+x12 = ˙x11
+⎤
+⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎥⎦
+; F(X, U) =
+⎛
+⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎜⎝
+x2
+(cos x7 sin x9 cos x11 + sin x7 sin x11) U1/m
+x4
+(cos x7 sin x9 sin x11 −sin x7 cos x11) U1/m
+x6
+−g + (cos x7 cos x9) U1/m
+x8
+1/Ixx ((Iyy −Izz) x12x10 + JT P x10 + U2)
+x10
+1/Iyy ((Izz −Ixx)x12x8 + JT P x8 + U3)
+x12
+1/Izz ((Ixx −Iyy)x10x8 + U4)
+⎞
+⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎟⎠
+(4)
+From the system dynamics in (4), the Cartesian position
+vector depends on the attitude states. However, the attitude
+of the quadrotor is independent of linear positions. Nested
+loops control is based on this relative dependency [21].
+4 Madgwick / EKF and data fusion
+To land autonomously on the moving pad, the quadrotor
+should localize itself ﬁrst during the ﬂight using multiple
+asynchronous sensors, then estimate the relative pose to the
+landing pad and move upon a minimal jerk trajectory.
+Initially, an Inertial Measurement Unit (IMU) is exploited
+to track all rotations and translations with relative errors and
+noise of measurements [22]. A magnetometer is used to build
+the Attitude and Heading Reference system (AHRS) ﬁlter.
+An EKF based on the Jacobian of the Linear Time Variant
+(LTV) model will be combined with the Madgwick ﬁlter
+of quaternion orientation and the GPS data to provide the
+optimal orientation and position estimate.
+4.1 AHRS filter and data fusion for Orientation
+AHRS is a continuous discrete method for the estimation
+of the orientation and heading of the quadrotor UAV via
+asynchronous sensors data fusion including GPS when avail-
+able. A combination of accelerometer and magnetometer is
+susceptible to cancel gyro integrative bias drift [23]. The
+developed AHRS is enhanced by the EKF that considers the
+white Gaussian noises of internal disturbances of the plant
+and sensors noises[24].
+Quaternion orientation is chosen to avoid the gimbal lock
+that may occur while using the Euler rotation angles. The
+normalized quaternion orientation that uses the angular rate
+ws is established by the Gyroscopic ﬁlter. The normalized
+angular quaternion estimate is calculated as follows:
+qw−est,i,N =
+
+1/2 qest,i−1 ⊗ws
+∥qw−est,i∥
+(5)
+qw−est,i is the quaternion angular estimate, and the
+qest,i−1 is the best quaternion estimate from the EKF at
+instant ”i −1”. ⊗represents the quaternion product. The
+problem with this method is that it is prone to drift because
+of the sensor bias. The dead reckoning of angles based only
+on gyroscopic reading is too sensitive to noise and bias drift.
+Thus the accelerometer and the calibrated magnetometer
+from distortions can be fused with the Gyro ﬁlter for optimal
+estimation of the quaternion orientations.
+The accelerometer/magnetometer combination can sim-
+ply provide the orientation of the quadrotor by the following
+equations:
+⎧
+⎨
+⎩
+θ = arcsin(Accx/g)
+φ = arctan(−Accy/accz)
+ψ = arctan(magz/magx) + D
+(6)
+Acci mag j are accelerometer and magnetometer readings,
+respectively, and D is the declination between the magnetic
+north and true north. Madgwick formulated an optimization
+function to get the quaternion orientation from the combi-
+nation of accelerometer and magnetometer [14]. However,
+his method doesn’t consider the dynamics of the model and
+keeps blind to system noise.
+For the synchronous quaternion estimations of the quadro-
+tor [22], a complementary ﬁlter is processed as follows:
+qest,i = γi qa−est,i + (1 −γi) qw−est,i,N ,
+0 < γ < 1 (7)
+qw−est,i,N is the normalized angular rate sensor quater-
+nion
+and
+qa−est,i
+is
+the
+normalized
+accelerometer/
+magnetometer quaternion orientation estimate. γi is an opti-
+mal variable based on bad estimation method penalty, and it
+is calculated by:
+γi erra,m = (1 −γi)errw
+(8)
+with errw is the magnitude of quaternion derivative cor-
+responding to the gyroscope measurement error and erra,m
+123
+
+Signal, Image and Video Processing (2023) 17:21–30
+25
+is the magnitude of quaternion error of the accelerome-
+ter/magnetometer method.
+γ = errw/(errw + erra,m).
+(9)
+The GPS data at 5 Hz NEO-6M is added to the EKF, the
+general position is used in proactive way-points application
+[25].
+4.2 Design of the Kalman Filter gains
+for the quadrotor
+An EKF observes the state vector, including the orientations,
+and the sensors bias. The observer derives from The six DOF
+linear model [26]. A Jacobin linearized Linear Time Variant
+(LTV) dynamic model of the quadrotor combined with the
+sensorsﬁlterwasfoundbetterthantheMadgwickﬁlterforthe
+quaternion orientation as it does incorporate the prediction
+data [22]. The EKF uses orientation ﬁlter data to observe the
+augmented state vector including the errors state vector.
+Quaternion orientation and linear positions are updated by
+EKF, the design is explicit in Fig. 2.
+Iterative equations of the EKF to observe the state vector
+estimate denoted by ˆx can be demonstrated to be as follows:
+⎧
+⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎨
+⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎪⎩
+Ai = ∂F/∂x|xi,ui
+Bi = ∂F/∂u|xi,ui
+ˆx0−= ˆx−(0)
+P−
+0 = E[ ˜x0−˜x0−]
+Ki = P−
+i CT
+i [Ci P−
+i CT
+i + Ri]−1
+ˆxi + = ˆxi −+ Ki[yi −Ci ˆxi]
+P+
+i
+= (I −KiCi)P−
+i (I −KiCi)T + Ki Ri K T
+i
+ˆ
+xi+1−= Ai ˆxi + + Biui
+ˆ
+P−
+i+1 = Ai P+
+i AT
+i + Gi QiGT
+i
+(10)
+Fig. 2 Madgwick / EKF Design with pre-ﬁltering and data fusion
+Ai, Bi, Ci represent the time-variant linearized model matri-
+ces, Ki is the optimal gain matrix, Pi, Gi Riccati matrices,
+and R, Q are noise covariance matrices that depend on sen-
+sors and model. superscript −and + represent the predicted
+and updated values, respectively.
+The combination between Madgwick AHRS ﬁlter and
+EKF gives an optimal estimate of quadrotor orientation as
+they are both derived from mathematical optimization.
+5 Trajectory generation
+Several methods for trajectory generation have been exam-
+ined in the literature. Trajectory generation from optimiza-
+tion of time or effort is not within the scope of this paper.
+The geometric treatment of the problem simpliﬁes both the
+modeling and control law for the system [27], min Jerk was
+considered in this work, although, Vijay et al proved that a
+min snap is equivalent to a min effort for quadrotor trajectory
+generation [28].
+5.1 Minimum Jerk trajectory
+Neville Hogan developed the notion of jerk optimization
+by minimizing the position third-time derivative denoted by
+three dotted X, aiming for the smoothness of the 3D position
+X(t), the optimization of jerk can be written as:
+J =
+ t f
+t0
+...
+X(t)2dt.
+(11)
+The 3D solution of such an optimization is: X(6)(t) = 0.
+Hence
+⎧
+⎪⎪⎨
+⎪⎪⎩
+x(t) = cx5t5 + cx4t4 + cx3t3 + cx2t2 + cx1t + cx0
+y(t) = cy5t5 + cy4t4 + cy3t3 + cy2t2 + cy1t + cy0
+z(t) = cz5t5 + cz4t4 + cz3t3 + cz2t2 + cz1t + cz0
+(12)
+where ci j are found by satisfying the boundary conditions
+of initial and ﬁnal states. During landing, a control loop of
+the vision and estimation updates the target position, thus,
+the ﬁnal state changes such as the optimization as well. For
+every iteration of the estimation, the optimization process
+calculates the parameters online using the initial dynamic
+state and the ﬁnal pose estimate.
+To ﬁnd ci j, it is necessary to solve the three systems of
+six algebraic equations each, between the initial and ﬁnal
+states for every dimension. The problem of the solution is
+that dynamic resolution, requires a good estimate of quadro-
+tor position, velocity, and acceleration. Where the need for
+the KF with sensors data fusion which is detailed in Sect.
+4. Additionally, the ﬁnal time of each iteration should be
+123
+
+26
+Signal, Image and Video Processing (2023) 17:21–30
+calculated based on the required speed for that position. This
+latter is decided by a fuzzy logic controller.
+The minimum jerk 3D trajectory mentioned by Eq. (12)
+describes system smoothness between initial and ﬁnal times.
+For the aimed case, the ﬁnal time is unknown, so the prob-
+lem is referred to be a feedforward control. Based on this
+approach, the optimization will be divided into segments at
+which we apply to ﬁnd a new smooth trajectory depending
+on the quadrotor estimated states and the relative pose to the
+landing pad in motion.
+A simple reformulation of this problem lays on normaliz-
+ing the time between [t0, t f ]:
+τ = (t −t0)/T
+(13)
+T = t f −t0.
+(14)
+The 3D minimum jerk Trajectory will be generated by:
+⎧
+⎪⎪⎨
+⎪⎪⎩
+x(t) = cx5τ 5 + cx4τ 4 + cx3τ 3 + cx2τ 2 + cx1τ + cx0
+y(t) = cy5τ 5 + cy4τ 4 + cy3τ 3 + cy2τ 2 + cy1τ + cy0
+z(t) = cz5τ 5 + cz4τ 4 + cz3τ 3 + cz2τ 2 + cz1τ + cz0
+(15)
+where,
+dτ/dt = 1/T .
+(16)
+The last system of Equations is used to form the algebraic
+equations between an initial state given by the enhanced EKF
+estimation at the initial instant of the current iteration and
+the ﬁnal time state deﬁned by the desired landing on pose
+estimate of the pad. Resolution of the system should be in
+function of T .
+5.2 Feedback controlled trajectory
+Thedescribedtrajectoryby P(t) :
+
+x(t), y(t), z(t)
+
+isknown
+and it is T dependent. so at every instant labeled by t0, we
+deﬁne:
+Px(t) = [x(t) ˙x(t) ¨x(t)]T
+(17)
+Px0 = [x0 vx0 ax0]T
+(18)
+Deriving the jerk equations in Eqs.15, we ﬁnd:
+⎧
+⎪⎪⎨
+⎪⎪⎩
+...x (t0) = 6cx3/T 3 = 60/T 3(x f −x0) −36/T 2vx0 −9/Tax0
+...y(t0) = 6cy3/T 3 = 60/T 3(y f −y0) −36/T 2vy0 −9/Tay0
+...z (t0) = 6cz3/T 3 = 60/T 3(z f −z0) −36/T 2vz0 −9/Taz0
+(19)
+Eq. (19) presents three kinematics for x(t), y(t) & z(t)
+between initial time of each iteration t0, and the estimated
+landing time t f .
+⎡
+⎣
+˙x
+¨x...x
+⎤
+⎦=
+⎡
+⎣
+0
+1
+0
+0
+0
+1
+−60/T 3 −36/T 2 −9/T
+⎤
+⎦
+⎡
+⎣
+x
+˙x
+¨x
+⎤
+⎦+
+⎡
+⎣
+0
+0
+60/T 3
+⎤
+⎦x f
+(20)
+Dynamics described in Eq. (20) will provide a smooth tra-
+jectory that minimizes the jerk. The unknown T value will
+be deﬁned by an expert FLC, that considers many inputs
+to validate the right velocity to target and the estimated
+time for the landing. By analogy, we ﬁnd dynamics for y(t)
+and z(t).
+5.3 Fuzzy velocity control
+In [16], Alvika et al processed the velocity by a log polyno-
+mial to smooth the trajectory. However, to bio-inspired the
+human piloting, a FLC was designed as a velocity controller,
+other FLC approaches for adaptive intelligent control were
+discussed in [29].
+System of Eq. (20) represents the time position of the
+quadrotor in the normalized time that depends on T , the total
+descent time. Using expert piloting data, we aimed to gen-
+erate the T via fuzzy logic processing to emulate the human
+pilotinggrasp.Forthat,theFLCwasconceptualizedtogener-
+ate the total time T based on instantaneous speed and distance
+to the target. The classical approach to determine the fuzzy
+rules base was processed, the antecedent and consequent
+partitions will be designed by human expert knowledge for
+quadrotor landing. Due to the complexity of time estimation,
+the average speed is based on the processing of quadrotor
+dynamics, the initial state, and relative pose and velocity.
+FLC is opted for velocity control, as it is more linguistic
+and to inspires the expert human pilot approach to land with
+enough robustness and softness. FLC inputs are described by
+the instantaneous relative position, velocity, and acceleration
+states of the quadrotor, output is the average speed to target.
+Landing time T is then calculated. This method presents a
+soft landing because of the use of expert rules. The block
+diagram of the fuzzy logic velocity controller is illustrated in
+Fig. 3.
+Total Time of landing T is based on the average velocity
+and distance to the landing pad and can be calculated as
+follows:
+T =
+
+	x2p,q + 	y2p,q + 	z2p,q/V + Tmin
+(21)
+123
+
+Signal, Image and Video Processing (2023) 17:21–30
+27
+Fig. 3 velocity control and time to land estimation by Fuzzy logic
+control scheme
+	(x, y, z)p,q, represent the Cartesian distances between the
+quadrotor and pad, V is the average velocity estimated by
+the FLC, Tmin is a safety margin.
+6 Control and tracking of designed
+trajectory
+MPC is an optimal control that satisﬁes a set of constraints.
+MPC is chosen based on the quadrotor nature, the multiple
+manipulative variables with constraints to meet, and the dis-
+turbance which has been considered as model uncertainties,
+and as white Gaussian noise during the simulation. Jaco-
+bian of quadrotor dynamics is used to linearize the model,
+the Adaptive design will be based on linearization at every
+operating points [30,31].
+6.1 Tracking control strategy
+The MPC is a ﬁnite-horizon optimization based on the
+dynamics model. Fig. 4 shows the control strategy with MPC
+to track the generated min Jerk trajectory with the fuzzy
+velocity control. System can be written as follows:
+˙xi+1 = Ai xi + Biui + wi
+(22)
+yi = Ci xi + vi
+(23)
+vi,wi are discrete-time Gaussian white noises with the
+respective covariance matrices Q and R. To ensure optimal
+tracking [32], a quadratic cost function ”J” is deﬁned as:
+J = 1/2 (CN xN −Z N)T SN (CN xN −Z N)+
++1/2 N−1
+i=1
+
+(Ci xi −Zi)T Qi(Ci xi −Zi) + uT
+i Riui
+
+(24)
+Zi represents the Minimal Jerk trajectory along the hori-
+zon N. The optimal Control can be demonstrated to be [32]:
+Fig. 4 Complete Scheme of MPC control with Fuzzy min Jerk
+trajectory
+ui = −
+
+(Ri + BT
+i Pi+1Bi)−1BT
+i Pi+1 Ai
+
+xi
++
+
+(Ri + BT
+i Pi+1Bi)−1BT
+i
+
+gi+1
+(25)
+Pi and Gi are recursively calculated as follows:
+⎧
+⎪⎨
+⎪⎩
+Pi = Vi + AT
+i Pi+1
+
+I + Bi R−1
+i
+BT
+i Pi+1
+−1
+Ai
+gi = Wi Zi + AT
+i
+
+I −Pi+1(I + Bi R−1
+i
+BT
+i Pi+1)−1Bi R−1
+i
+BT
+i
+
+gi+1
+(26)
+With Vi = CT
+i QiCi and Wi = CT
+i Qi,
+
+PN = CT
+N SNCN
+gN = CT
+N SN Z N
+(27)
+The control solution is calculated on the Horizon of N points
+to the landing on the pad, at every iteration the control is
+calculated repeatedly and applied just for current iteration.
+The complete FLC/MPC control-based architecture is shown
+in Fig. 4.
+Stability of the control is ensured by the separation prin-
+ciple, essentially, Adaptive LQG is a combination of the KF
+and LQR. Thus, the design of optimal control can be derived
+independently of the observer.
+7 Results
+In this section, we conducted all the simulations and experi-
+ments necessary for the autonomous landing project.
+7.1 Vision processing results
+Tables 2, 3, and 4 are made considering the hovering mode of
+the quadrotor to optimize the pad design emulating the real
+aspect of vibration, ﬂight disturbance, and high-frequency
+noise. For that many real-time images were taken and ana-
+lyzed. Based on using one vs multiple markers and varying
+their sizes, experimental tests of detection probability and
+precision are explicit in Tables 2, 3 and 4.
+123
+
+28
+Signal, Image and Video Processing (2023) 17:21–30
+Table 2 Multiple markers vs single marker detectability and precision
+of the pose estimation
+Markers
+Detectability (recall)
+Estimate precision
+Single Marker
+97.1
+4.89 cm
+Multiple markers
+99.3
+2.55 cm
+Table 3 Detection rate for different sizes of markers from different
+heights
+0.3 m
+0.6 m
+1 m
+3 m
+7 m
+5 cm
+100 %
+99.2 %
+91.1 %
+8.1 %
+0 %
+10 cm
+95.2%
+99.2 %
+97.4 %
+88.9 %
+31 %
+18 cm
+0 %
+87.7 %
+97.9 %
+99.8 %
+88.6 %
+Table 4 Precision of pose estimation at different sizes of markers from
+different heights. ((NA): Non-Applicable values: are cases of no detec-
+tion)
+0.3 m
+0.6 m
+1 m
+3 m
+7 m
+5 cm
+3.3 cm
+5.1 cm
+9.4 cm
+(NA)
+(NA)
+10 cm
+2.7 cm
+3.4 cm
+6.9 cm
+19.6 cm
+(NA)
+18 cm
+(NA)
+(NA)
+4.9 cm
+12.9 cm
+28.9 cm
+Besides the detection recall, the precision of the pose sig-
+niﬁcantly increases by enabling multi measurement which
+attenuates the noise of calculation to a tolerated error margin
+of the general position determination.
+Multiple markers increase the detection probability of the
+pad, and the estimation precision of the relative pose got
+better. In addition, the different sizes of markers play an
+important role in pose estimation and detection from differ-
+ent heights, low altitudes uses small marker when larger ones
+are out of the FOV. Contrary to the high altitude detection,
+where we rely completely on larger markers as the smaller
+ones are less detectable with insufﬁcient precision.
+The designed landing pad was detected easily from differ-
+ent heights, and different angles of heading orientation, Fig. 5
+shows the detection and estimation from different positions.
+Figure 5 shows different scenarios, Sub-Figure (A) shows
+the designed landing pad that contains multiple designs at
+different sizes, Sub-Figure (B) demonstrates the detection
+process and the pose estimation from a far pose, Cartesian
+coordinates are calculated and printed in red, the ﬁlter uses
+only larger markers even with the possible detection of closer
+ones, in Sub-Figure (C), The ﬁlter considers only medium
+size markers, estimation of the Cartesian pose coordinates is
+printed. In Sub-Figure (D), the pose estimation is based only
+on smaller markers as larger ones are out of FOV. The F, M,
+and C denotation show the ﬁlter choice of markers based on
+the relative distance.
+Fig. 5 Detection and estimation of the relative pose from differ-
+ent positions (Sub-ﬁg.A: shows the designed landing pad, Sub-ﬁg.B:
+demonstrates a detection from 2.8 m away, Sub-ﬁg.C demonstrates the
+pose estimation from 0.9 m, Sub-ﬁg.D: shows a close pose estimation
+at the ﬁnal stage of landing at 0.5 m)
+7.2 Results of sensor fusion and EKF
+of the quadrotor
+The Data fusion ﬁlter combined with the EKF exploit the
+MPU 9250 and the GPS with a calibrated magnetometer.
+AHRS algorithm calculates the quaternion orientation. Fig. 6
+presents the AHRS ﬁlter’s real-time performance by interfac-
+ing Matlab with the sensor via Arduino. AHRS ﬁlter showed
+a responsive tracking of real motion orientation. Mean track-
+ing errors are detailed in Table 5.
+A Matlab simulation of the EKF observer of linear posi-
+tion is shown in Fig. 7, the Observer can reject noise and
+uncertainty of dynamics. The EKF is crucial to ensure loop
+Fig. 6 AHRS observer for the general position of the quadrotor, Real-
+time reading by interfacing Matlab and MPU-9250
+Table 5 Mean orientation tracking errors
+Angles of orientation
+Roll φ
+Pitch θ
+Yaw ψ
+Error (deg)
+0.23
+0.34
+0.65
+123
+
+Signal, Image and Video Processing (2023) 17:21–30
+29
+Fig. 7 EKF observer for the general position of the quadrotor with
+Gaussian noise attenuation
+stability during tracking, in presence of white noise applied
+as sensor noise and wind gust. The wind gust was simulated
+as a Gaussian noise at low feeding rate, whereas a high feed-
+ing rate white noise was simulated and applied on actuators
+and sensor reading.
+7.3 Control simulation results
+MPC tracking of the Min Jerk trajectory to land was simu-
+lated in a Matlab environment by following a landing pad in
+motion considering only the EKF as an observer. The mov-
+ing pad position was simulated to be a forward sinusoidal
+motion, as shown in the green path in Fig. 8, During the sim-
+ulation, the Optimal trajectory is calculated dynamically and
+updated in every iteration, based on optimization dynamics
+in Eq. 20, furthermore, the T value is estimated by the FLC.
+The MPC tracker calculates iteratively the optimal command
+to apply by the set of equations Eqs. 25–27. The blue path
+shows the optimal calculated trajectory. The Red trajectory
+is the MPC simulated position of the quadrotor compared to
+the PID one in magenta. The simulation of MPC shows an
+excellent stabilization and very good tracking of the desired
+trajectory even in presence of simulated wind gust and model
+Fig. 8 3D Minimum Jerk trajectory tracking of a quadrotor perfor-
+mance controlled by PID vs MPC (Landing pad trajectory in Green,
+The optimal Min-Jerk trajectory in blue, Quadrotor position by con-
+trolled by MPC in red, and the magenta path is the quadrotor position
+by PID control)
+uncertainties with Gaussian noise as demonstrated in Fig. 8,
+PID control shows more deviation and less robustness to the
+sudden noise and wind perturbation. A comparison with PID
+control illustrates that the MPC is more performant and more
+robust to the added disturbance.
+8 Conclusion
+This paper comes up with a robust application of the quadro-
+tor’s autonomous landing on a moving platform that is
+detected and localized by an onboard camera. An optimal
+minimal Jerk trajectory tracking by MPC controller success-
+fully opted subject to parametric uncertainties and external
+disturbance.Therelativeposetothelandingpadwasbasedon
+the detection of the specially designed pad by the combined
+ArUco markers for the best detection at different altitudes
+and angles. Identiﬁcation of each marker and estimation
+of the pose was performed via Open-CV/python algorithm
+enhanced by stabilization ﬁlters. The Madgwick / EKF
+observer of the quadrotor was enhanced by an asynchronous
+sensors fusion (MPU9250 and NEO-6M) to observe the
+quadrotor states vector and sensors bias for orientation pre-
+cision of less than 1 deg. Relative pose estimation was
+satisfactory within 4 cm of accuracy. Trajectory generation
+was adaptive based on both observers’ results with fuzzy
+velocity control to estimate the landing time to bio-inspired
+an experienced human pilot. Subsequently, the trajectory is
+fed to the MPC for tracking, which considers the uncertainty
+of model and disturbance. Comparison with PID proved the
+robustness and performance of the MPC tracking.
+Funding No Funds have been received.
+Declarations
+Conﬂict of interest All authors of this paper declare no conﬂict of
+interest.
+Ethical approval This article does not contain any studies with human
+participants performed by any of the authors.
+References
+1. Qianfei Zhou, Y.F., Ding, Shuqing: Corrosion inspection and eval-
+uation of crane metal structure based on UAV vision. Signal Image
+Video Process. 16(1), 5 (2022)
+2. Miranda, V.R., Rezende, A., Rocha, T.L., Azpúrua, H., Pimenta,
+L.C., Freitas, G.M.: Autonomous navigation system for a delivery
+drone, arXiv preprint arXiv:2106.08878
+3. Xu, Z.-C., Hu, B.-B., Liu, B., Wang, X., Zhang, H.-T.: Vision-based
+autonomous landing of unmanned aerial vehicle on a motional
+unmanned surface vessel. In: 39th Chinese Control Conference
+(CCC). pp. 6845–6850, IEEE (2020)
+123
+
+30
+Signal, Image and Video Processing (2023) 17:21–30
+4. Xing, L., Dai, W.: A local feature extraction method for uav-based
+image registration based on virtual line descriptors. SIViP 15(4),
+705–713 (2021)
+5. Danjun, L., Yan, Z., Zongying, S., Geng, L.: Autonomous landing
+of quadrotor based on ground effect modelling. In: 34th Chinese
+Control Conference (CCC). pp. 5647–5652. IEEE (2015)
+6. Hu, B., Mishra, S.: A time-optimal trajectory generation algorithm
+for quadrotor landing onto a moving platform, In: American Con-
+trol Conference (ACC). pp. 4183–4188. IEEE (2017)
+7. Qi, Y., Jiang, J., Wu, J., Wang, J., Wang, C., Shan, J.: Autonomous
+landing solution of low-cost quadrotor on a moving platform.
+Robot. Auton. Syst. 119, 64–76 (2019)
+8. Hervas, J.R., Reyhanoglu, M., Tang, H.: Automatic landing control
+of unmanned aerial vehicles on moving platforms, In: IEEE 23rd
+International Symposium on Industrial Electronics (ISIE), pp. 69–
+74. IEEE (2014)
+9. Hu,B.,Lu,L.,Mishra,S.:Fast,safeandpreciselandingofaquadro-
+tor on an oscillating platform. In: American Control Conference
+(ACC). pp. 3836–3841. IEEE (2015)
+10. Aguilar-Ibanez, C., Suarez-Castanon, M.S., Gutierrez-Frias, O.,
+Rubio, J.d.J.J., Meda-Campana, A.: A robust control strategy for
+landing an unmanned aerial vehicle on a vertically moving plat-
+form, Complexity (2020)
+11. Schweighofer, G., Pinz, A.: Robust pose estimation from a planar
+target. IEEE Trans. Pattern Anal. Mach. Intell. 28(12), 2024–2030
+(2006)
+12. Bacik, J., Durovsky, F., Fedor, P., Perdukova, D.: Autonomous ﬂy-
+ing with quadrocopter using fuzzy control and ArUco markers.
+Intel. Serv. Robot. 10(3), 185–194 (2017)
+13. Li, B., Wu, J., Tan, X., Wang, B.: Aruco marker detection
+under occlusion using convolutional neural network. In:2020 5th
+International Conference on Automation, Control and Robotics
+Engineering (CACRE), pp. 706–711. IEEE (2020)
+14. Wilson,S.,Eberle,H.,Hayashi,Y.,Madgwick,S.O.,McGregor,A.,
+Jing, X., Vaidyanathan, R.: Formulation of a new gradient descent
+MARG orientation algorithm: case study on robot teleoperation.
+Mech. Syst. Signal Process. 130, 183–200 (2019)
+15. Faria, S., Lima, J., Costa, P.: Sensor fusion for mobile robot local-
+ization using extended kalman ﬁlter, uwb tof and aruco markers. In:
+International Conference on Optimization, Learning Algorithms
+and Applications, pp. 235–250. Springer (2021)
+16. Gautam, A., Sujit, P., Saripalli, S.: Autonomous quadrotor land-
+ing using vision and pursuit guidance. IFAC-PapersOnLine 50(1),
+10501–10506 (2017)
+17. Das, H., Sridhar, K., Padhi, R.: Bio-inspired landing of quadrotor
+using improved state estimation. IFAC-PapersOnLine 51(1), 462–
+467 (2018)
+18. Lee, T., Leok, M., McClamroch, N.H.: Nonlinear robust tracking
+control of a quadrotor UAV on SE (3). Asian J. Control 15(2),
+391–408 (2013)
+19. Volden,Ø., Stahl, A., Fossen T.I.: Vision-based positioning sys-
+tem for auto-docking of unmanned surface vehicles (USVs). Int. J.
+Intell. Robot. Appl. 1–18 (2021)
+20. Garrido-Jurado, S., Muñoz-Salinas, R., Madrid-Cuevas, F.J.,
+Marín-Jiménez,M.J.:Automaticgenerationanddetectionofhighly
+reliable ﬁducial markers under occlusion. Pattern Recogn. 47(6),
+2280–2292 (2014)
+21. Bouaiss, O., Mechgoug, R., Ajgou, R.: Modeling, control and
+simulation of quadrotor uav. In: 020 1st International Confer-
+ence on Communications, Control Systems and Signal Processing
+(CCSSP), pp. 340–345. IEEE, (2020)
+22. Madgwick, S.: An efﬁcient orientation ﬁlter for inertial and iner-
+tial/magnetic sensor arrays. Report x-io Univ. Bristol (UK) 25,
+113–118 (2010)
+23. Wang, L., Zhang, Z., Sun, P.: Quaternion-based Kalman ﬁlter for
+AHRS using an adaptive-step gradient descent algorithm. Int. J.
+Adv. Rob. Syst. 12(9), 131 (2015)
+24. Xiong, J.-J., Zheng, E.-H.: Optimal kalman ﬁlter for state estima-
+tion of a quadrotor uav. Optik 126(21), 2862–2868 (2015)
+25. AG, U.: Neo-6: U-blox 6 gps modules data sheet (2018)
+26. Morelli, E.A.: Estimating noise characteristics from ﬂight test data
+using optimal fourier smoothing. J. Aircr. 32(4), 689–695 (1995)
+27. Nayak, A., Banavar, R.N., Maithripala, D.H.S.: Stabilizing a spher-
+ical pendulum on a quadrotor. Asian J. Control. https://doi.org/10.
+1002/asjc.2577
+28. Mellinger, D., Kumar, V.: Minimum snap trajectory generation
+and control for quadrotors, In: IEEE International Conference on
+Robotics and Automation, pp. 2520–2525. IEEE (2011)
+29. Mo, H., Farid, G.: Nonlinear and adaptive intelligent control
+techniques for quadrotor uav-a survey. Asian J. Control 21(2), 989–
+1008 (2019)
+30. Georgiou,T.T.,Lindquist,A.:Theseparationprincipleinstochastic
+control, redux. IEEE Trans. Autom. Control 58(10), 2481–2494
+(2013)
+31. Van Willigenburg, L., De Koning, W.L.: Numerical algorithms and
+issues concerning the discrete-time optimal projection equations.
+Eur. J. Control. 6(1), 93–110 (2000)
+32. Bohner, M., Wintz, N.: The linear quadratic tracker on time scales.
+Int. J. Dyn. Syst. Differ. Equ. 3(4), 423–447 (2011)
+Publisher’s Note Springer Nature remains neutral with regard to juris-
+dictional claims in published maps and institutional afﬁliations.
+123
+

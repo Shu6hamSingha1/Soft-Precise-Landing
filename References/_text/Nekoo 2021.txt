@@ -1,0 +1,804 @@
+ 
+ 
+                                                       
+Abstract—This paper presents an experimental study of the soft-
+landing problem in quadrotors using the induced wind modeling 
+approach. The landing phase has been typically one of the critical 
+phases in drone flight. Landing complexity drastically increases 
+when the drone needs to land on sensitive sites, such as platforms 
+or rack of pipes in refineries (for inspection purposes), in which 
+explosive 
+material 
+is 
+running 
+through 
+or 
+there 
+exist 
+flammable/explosive material in the environment. Multirotor 
+unmanned aerial vehicles (UAVs) are usually lightweight 
+platforms and they are significantly disturbed by the aerodynamic 
+ground effect while landing; so, near the ground, those drones are 
+subjected to an external disturbance in proximity to the ground. In 
+this situation, the airflow can be reflected after reaching the 
+ground, disturbing the performance of the rotors significantly. 
+This paper aims to model the induced wind velocity, caused by the 
+propellers to see and consider the ground effect during the landing. 
+The reduction of the total thrust near the ground provides a 
+smooth landing and avoids bumping. The complex wind modeling 
+formulation and limitation of the commercialized autopilots make 
+the implementation a challenging task. Herein we propose how to 
+incorporate the proposed soft-landing algorithm within an existing 
+UAV autopilot. Experimental results show that the proposed 
+approach successfully replicates the wind modeling which leads to 
+a soft-landing. 
+I. INTRODUCTION 
+Inspection and Maintenance (I&M) is an essential task for 
+industrial plants and big companies. This task aims to keep the 
+infrastructure operational as much time as possible and predict 
+the failures in the system before they arise. An oil refinery is one 
+case that needs monitoring and inspection periodically; i.e. 
+inspection of the thickness of the pipes [1]. The HYFLIERS 
+(HYbrid FLying-rollIng with-snakE-aRm robot for contact 
+inSpection) project aims to include drones as an enabling 
+technology to facilitate and accelerate I&M operations reducing 
+risks and costs [2]. Oil and gas plants are varied environments 
+with kilometers of long-isolated pipes and racks of pipes. The 
+massive length of the pipelines is enough to justify the cost of an 
+automated system for I&M. We narrow our research, focusing 
+on landing on a platform or a rack of pipes (pipes arranged close 
+together) for two reasons: 1) This is one of the most common 
+structures of oil and gas plants and 2) the aerodynamic problem 
+is very similar to the problem of landing on the ground. In those 
+environments, the landing must be soft/smooth without any 
+bumps or hard contact to avoid generating damage to the 
+ 
+This work is supported by the HYFLIERS project (HYbrid FLying-rolling 
+with-snakE-aRm robot for contact inspection) funded by the European 
+Commission H2020 Programme under grant agreement ID: 779411 
+(https://cordis.europa.eu/project/rcn/213049)] and by the ARTIC project funded 
+by the Ministerio de Ciencia, Innovación y Universidades under the grant 
+agreement ID: RTI2018-102224-B-I00. 
+infrastructure. This has been previously studied using a specific 
+physical landing gear under a drone to provide that condition. 
+Luo et al. presented a soft-landing gear, fabricated by Elastosil 
+M4601 silicone material, like four soft fingers to clamp around a 
+pipe [3]. They also used a neural network controller to design 
+avian landing behavior on non-flat surfaces. Sahinoz proposed 
+and analyzed a landing gear for the soft landing of a lunar lander 
+[4]. The rover lander’s weight was significant and obliged the 
+designers to use a stable soft-landing gear to maintain structural 
+integrity.  Zhang et al. presented a bioinspired landing gear for a 
+soft touch down in the landing phase [5]. The landing was 
+considered between 1 to 2 m/s; using a shock absorber and 
+parallel flexible mechanism design, the system could be 
+successfully landed. Hang et al. presented a multimodal 
+landing/perching gear for a multirotor unmanned aerial vehicle 
+[6]. They presented a modularized and actuated landing gear 
+framework that worked with different scenarios and structures. 
+Using an air damper and elastic structure were also reported for 
+absorbing the shock during the landing phase [7]. 
+In this work, we approach the soft-landing subject in terms 
+of control design, without adding physical landing gear under a 
+drone. The objective is to obtain a controlled smooth landing 
+maneuver without increasing the complexity and the total weight 
+of the aerial system. Avoiding hard impact with a specific control 
+strategy has been previously studied in many other applications 
+such 
+as 
+electromechanical 
+valves 
+[8]. 
+Peterson 
+and 
+Stefanopoulou proposed a control approach, extremum seeking, 
+to reduce the speed of the impact, then having a better smooth 
+landing [8]. Yang and Baoyin presented a fuel-optimal control 
+method for soft-landing on a moving object [9]. Mercorelli used 
+adaptive control for a soft-landing of electromagnetic actuators 
+[10]. A pre-action was done to avoid saturation and then hard 
+impact by the electromagnetic input, in order to change the plant. 
+Nevertheless, the slow or controlled landing must be gained 
+utilizing proper feedback and precise control. Myeong and 
+Myung presented a wall climbing drone for soft-landing [11]. 
+Fricke et al. used a machine learning approach for vertical soft 
+landing [12]. 
+Regarding the aerodynamic problem, the ground effect has 
+been extensively studied in the literature. The classic method was 
+presented by Cheeseman and Bennet, using the assumptions of 
+the linearized potential aerodynamics [18]. Since then, several 
+S. R. Nekoo, J. Á. Acosta, G. Heredia and A. Ollero are with GRVC Robotics 
+Lab., Universidad de Sevilla, Seville, Spain; e-mails: saerafee@yahoo.com, 
+{jaar, guiller, aollero}@us.es. 
+P.J. Sanchez-Cuevas is with SpaceR Research Group, SnT - University of 
+Luxembourg, pedro.sanchezcuevas@uni.lu.  
+Experimental Investigation of Soft-Landing of Quadrotors via 
+Induced Wind Modeling Approach 
+Saeed Rafee Nekoo, Pedro J. Sanchez Cuevas, José Ángel Acosta, Guillermo Heredia and Anibal 
+Ollero 
+978-1-6654-3389-1/21/$31.00 ©2021 IEEE
+2021 Aerial Robotic Systems Physically Interacting with the Environment (AIRPHARO) | 978-1-6654-3389-1/21/$31.00 ©2021 IEEE | DOI: 10.1109/AIRPHARO52252.2021.9571054
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
+ 
+ 
+studies have been accomplished so far to model this aerodynamic 
+problem in helicopters [13-15], and the extension of that idea for 
+quadrotors [16-19].  
+Recently, the use of neural networks has been also reported 
+for learning the complex aerodynamics effect near the ground 
+[20]. They performed deep learning based on nonlinear control 
+with guaranteed stability. The combination of neural networks, 
+intelligent control, and inverse dynamics was also used for 
+landing [21]. The induced wind under a multirotor drone 
+generates disturbance near the ground, which is so-called the 
+ground effect [18]. It was studied and modeled in terms of thrust 
+(force) for a single propeller [22], and also for a quadrotor [18]. 
+The method of the images of Betz was used to deliver a relation 
+for computation of the reflected thrust. That defined the reflected 
+wind produced by the propellers which imposed on the 
+unmanned aerial vehicle (UAV) additional thrust. If one neglects 
+this additional thrust, the UAV faces a couple of bumps before 
+landing (or before turning off the rotors). Here we approach the 
+issue differently. We compute the induced wind speed using an 
+augmented model of flying objects that includes external wind 
+gusts. Lungu proposed this modeling for fixed-wing unmanned 
+aerial vehicles during landing and the source of the wind was 
+completely external from the environment [23]. We use the same 
+model; however, the wind is caused by the drone’s propellers, as 
+a reflection near the ground. 
+This approach is subjected to uncertainty in modeling, 
+aerodynamics, wind reflection, and the nonlinearity of the 
+platform itself. A robust controller is required to control the 
+system, i.e. the sliding mode control (SMC); previously 
+employed for simulation study and modeling of the system [24]. 
+On the one hand, modifying the autopilots of commercial drones 
+is not possible in some cases (to implement complex controllers 
+such as SMC). On the other hand, end-users prefer commercial 
+drones for the sake of repairs, an extension of the service fast by 
+increasing the number of drones, etc. So, implementation of the 
+soft-landing approach is required on the standard autopilots. 
+They use PD/PID control, and implementing the proposed soft-
+landing approach on them is a challenge. 
+The main contribution of this work is the experimental 
+implementation of the proposed soft-landing approach adapted 
+to commercial autopilots. Concerning previous work Ref. [24], 
+which was a purely theoretical work, this current paper 
+implements the soft-landing method experimentally and briefly 
+reports it. The comparison of the landing with/without the 
+algorithm validates the effectiveness of the method. 
+The rest of the work is structured as follows. Section II briefly 
+expresses the system modeling: induced wind velocity, ground 
+effect, and quadrotor dynamics. Section III introduces the 
+platform and experimental setup characteristics. Section IV 
+shows the results and Section V presents the concluding remarks. 
+II. 
+SYSTEM MODELING 
+A. Induced wind velocity 
+The momentum theory must be revisited to define the 
+induced wind velocity of the propellers under the quadrotor 
+drone. Considering a single propeller, passing the air through, 
+please see Fig. 1, the existence of the following conditions are 
+assumed [25]: the velocity is constant over the disc, the pressure 
+is uniform over the disc, rotation imparted to the flow as it passes 
+through the propeller is neglected, the flow pass through the 
+propeller can be separated from the rest of the flow by a well-
+defined stream tube, and the flow is incompressible. 
+ 
+Fig. 1. Description of the momentum theory on a propeller. 
+	
+ 
+
+  is the velocity of airflow in front of the propeller, far 
+from the propeller, and 	 close to that, 	 is a velocity closely 
+behind the propeller and 	 an ultimate downstream velocity of 
+the airflow. The pressure is presented by  Pa, with indices 
+“∞” denotes the environment, “i” in-front and “o” behind the 
+propeller with respect; the area of the rotating propeller is shown 
+by  m. The thrust,  N, is shaped by  =  −. 
+Using conversion of the mass, in-front and behind the propeller, 
+and thrust relation, also mathematical manipulation, one could 
+find the induced wind velocity in terms of thrust [25]: 
+	 = −	
+2 +  	
+
+4 + 
+2", 
+(1) 
+	 = 	
+2 +  	
+
+4 + 
+2", 
+(2) 
+where " 
+$%
+&' is the air density. 
+B. Ground effect 
+Considering the environmental wind speed zero, 	
+ = 0, the 
+thrust of one propeller is found using Eq. (1) or (2),  = 2"	
+. 
+The ground effect for propeller systems was proposed to define 
+a relation for calculating the thrust near the ground based on the 
+image method [22, 26]. The reflective thrust for a single propeller 
+is [26]: 
+%
+
+=
+1
+1 − )
+4*+
+, 
+(3) 
+where  N is the thrust of the free flight, % N is the thrust 
+under the ground effect, ) m is the radius of the propeller and 
+*+ m is the distance of the rotor from the ground. Equation (3) 
+is rewritten for a quadrotor as [18]: 
+ 
+uniform air flow 
+	
+, 
+ 
+area:  
+	
+ + 	,  
+	,  
+	, 
+ 
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
+ 
+ 
+%
+
+=
+1
+1 − )
+4*+
+
+−
+)*+
+,- + 4*+. −
+)*+
+2,2- + 4*+.
+. 
+(4) 
+To transform (4) to an equation in terms of airflow velocity, 
+the conversion between force and the mass flow rate is used [24]: 
+% = 2"	%
+, 
+(5) 
+ = 2"	
+, 
+(6) 
+where  = 40) m is the area of four propellers. 
+Substituting (5) and (6) in Eq. (4), one could represent the ground 
+reflection of wind with direction towards the ground, −1, which 
+causes the negative sign for 	%: 
+	% = −	
+1
+ 1 − )
+4*+
+
+−
+)*+
+,- + 4*+. −
+)*+
+2,2- + 4*+.
+. 
+(7) 
+The distance between the quadcopter and the ground for 
+studying the ground effect was stated dist. = 5) [18]. The 
+control, using (7) is applicable, since 	% in reality is less than the 
+theoretical estimation. The airflow speed by the ground is 
+5	6 = 	%
+5) *+ −	%,
+*+ ∈80, 5)9,
+0
+*+ > 5).
+ 
+(8) 
+Equation (8) implies that the high-speed reaction by the 
+ground is generated near the ground and increases the thrust of 
+the UAV. 
+C. Quadrotor dynamics 
+A moving coordinate (body frame) is attached to the center 
+of mass of the quadrotor defined by {<+, =+, *+} that can move and 
+rotate concerning inertial frame {?, @, 1}, or Earth frame: 1 axis 
+is from the center of the earth to surface, @ axis pointing to the 
+North and ? axis pointing to the East. The generalized 
+coordinates include the absolute position of the system and Euler 
+angles 
+for 
+inertial 
+frame 
+AB = 8CD
+EB, C
+EB9E =
+8<+B, =+B, *+B, FB, GB, HB9E m, rad. The angular 
+velocities of the body frame, linear and rotational, are expressed 
+as [27]: 
+JDB = 8KB, LB, MB9E m
+s , 
+JB = 8NB, OB, PB9E Qrad
+s R. 
+The kinematics relations between the two reference frames 
+are defined by [28]:  
+CSDB = TUVWXCBYJDB,  
+CSB = ZXCBYJB,  
+in which TUVWXCBY is the rotation matrix and ZXCBY relates 
+the angular velocities between the two reference frames: 
+TUVWXCBY = [
+\]\^
+_`_]\^ −\`_^
+\`_]\^ + _`_^
+\]_^
+_`_]_^ + \`\^
+\`_]_^ −_`\^
+−_]
+_`\]
+\`\]
+a, 
+ZXCBY = [
+1
+_`B]
+\`B]
+0
+\`
+−_`
+0
+_`/\]
+\`/\]
+a. 
+The state vector of the system is chosen 
+bB = 8CD
+EB, C
+EB, JD
+EB, J
+EB9E, 
+which results in the state-space representation of dynamics 
+without modeling of wind: 
+bS =
+⎣
+⎢
+⎢
+⎢
+⎡
+TUVWCJD
+ZCJ
+TUVW,.C  f
+⁄
+−JhJD −ij. −kCSD f
+⁄
+lmDn −JhlJ
+⎦
+⎥
+⎥
+⎥
+⎤
+. 
+(9) 
+This model is valid under hovering conditions that require 
+small changes in orientation dynamics [29-31]. 
+D. Wind modeling 
+The input information of the wind to the problem is the wind 
+velocity 
+in 
+inertial 
+coordinates, 
+set 
+by 
+rB =
+8sWB, sVB, sUB9E m/s. To transform the wind elements 
+to the body frame, a rotation matrix is used; and we introduce the 
+wind vector in the body coordinate: 
+r+B = tsuB, svB, swBx
+E = TUVW
+E
+XCBYrB 
+&
+.  
+Considering the wind, the modified form of state-space 
+equation (9) is [32]: 
+bS =
+⎣
+⎢
+⎢
+⎢
+⎢
+⎡
+TUVWCJD
+ZCJ
+TUVW,.C
+f
+−JhJD + r+ −rS + −ij. −kCSD
+f
+lmDn −JhlJ
+⎦
+⎥
+⎥
+⎥
+⎥
+⎤
+. 
+(10) 
+where [23]: 
+rS + = ∇r+Jz + r+ + {r+
+{B , 
+in which 
+∇r+ = TUVWC∇rTUVW
+E
+C; 
+∇r =
+⎣
+⎢
+⎢
+⎢
+⎢
+⎢
+⎡{sW
+{<
+{sV
+{<
+{sU
+{<
+{sW
+{=
+{sV
+{=
+{sU
+{=
+{sW
+{*
+{sV
+{*
+{sU
+{* ⎦
+⎥
+⎥
+⎥
+⎥
+⎥
+⎤
+.  
+The model (10) is general with wind components in all 
+directions; however, in this work, we are using it for the vertical 
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
+ 
+ 
+landing of multirotor UAVs. As a result, the wind vector is 
+introduced as rB = }
+0
+0
+	6B
+~, where 	6 is defined in Eq. (8). 
+III. 
+EXPERIMENTAL SETUP 
+A. Platform description 
+The experimental platform (Fig. 2) is a quadrotor with a 
+customized protective case surrounding the propellers. The 
+quadrotor platform, used in this work, is designed with cross 
+configuration, using the DJI E305 as a motorization system 
+supplied with a 4s LiPo battery. The weight of the UAV is 
+1.5 kg and the flight time is around 14 min. The distance 
+between the rotor’s axis is 480 mm [33]. The employed 
+autopilot of this setup is PX4. 
+ 
+Fig. 2. The experimental multirotor UAV. 
+B. Implementation 
+Commercial autopilots follow the scheme of linear cascade 
+controllers (i.e. PX4 [34], DJI A3, and Ardupilot), However, to 
+open a door to custom implementations they allow to be 
+commanded by a companion computer through their Software 
+Developer Kits (SDKs). Those SDKs can be commanded at 
+different levels by passing one or more of their implemented 
+controllers.  
+In this work, we aim to implement the soft-landing maneuver 
+in a general way to validate the algorithm, minimize both the 
+risk and the implementation time. Then, we directly bypass the 
+first layer of the controller and send velocity commands to the 
+autopilot. 
+The control of the translation and orientation is done 
+separately in a commercial autopilot (i.e. PX4), so, we present a 
+translational control since that considers the soft-landing 
+approach in the system (10). The implementation strategy must 
+embed the wind modeling inside the control law nonetheless, the 
+attitude control inside the autopilot possesses PID structure: 
+ƒB = „…jB + „†jSB + „‡ ˆ j‰d‰
+Š
+‹
+, 
+ 
+(11) 
+where the three signals (components of ƒB) will be used to 
+construct the total thrust in the form of 
+ = f{tTUVW,.CxDKD + tTUVW,.CxK 
++tTUVW,.Cx.K. + i}. 
+(12) 
+where tTUVW,.CxD is the first component of the TUVW,.. Then 
+Eq. (12) is substituted into the system by TUVW,.C  f
+⁄
+  
+which delivers the translation control signal. „… ∈ℝ.×. is the 
+constant proportional gain, „† ∈ℝ.×. and „‡ ∈ℝ.×. are the 
+ones for derivative and integral parts, jB, jSB, and Ž j‰d‰
+Š
+‹
+ 
+are error vector, derivative and integral of that with respect. 
+If one assumes that the landing is almost vertical, the main 
+parameters that reduce the thrust near the landing are acting in 1 
+axis direction, or the third component of the control signal (11). 
+Excluding the third element of the control law, one could present: 
+KwB = •…,w•wB + •†,w•SwB + •‡,w ˆ •w‰d‰
+Š
+‹
+. 
+(13) 
+The constant gain •…,w defines the speed (vertical position 
+variable) of the landing, also in collaboration with other 
+derivative and integral parts. A proposed solution for practical 
+implementation is to consider a state-dependent scalar gain 
+•…,wb for thrust reduction near the ground based on the wind 
+modeling approach. We define a feedforward reduction term 
+‘b = −JhJD + r+ −rS +, 
+from translational dynamics (10), which reduces the thrust near 
+the landing, presented in Fig. 3 for an arbitrary simulation. 
+ 
+Fig. 3. Thrust reduction during soft-landing for a sample simulation due to 
+feedforward thrust reduction. 
+If we substitute the third component of ‘b, into the 
+proportional gain of (13) with scaling factor ’, we will find a 
+new proportional gain as: 
+•…,wb = •…,w + ’“wb, 
+(14) 
+where ’ scales the “wb in the overall gain. So, observing (14), 
+it can be realized that the gain is constant in all workspace, and 
+“wb will be activated in *+ ∈80, 5)9, reducing the •…,wb with 
+tuning parameter ’. 
+The tuning parameter ’, was considered to enhance and 
+weaken the effect of the soft-landing term, “wb. Since the feed-
+TB(t) (N)
+z-axis (m)
+thrust reduction 
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
+ 
+ 
+forward effect of the soft-landing mechanism was used in the 
+experimental implementation, the precise value of ’ is not 
+known and it should be defined by try and error and 
+experimentation. It is obvious that selecting a large value for ’ 
+results in positive feedback, or in other words, unstable control. 
+That requires sensitivity in tuning. It would be ideal to implement 
+the total system using a robust controller uniformly, similar to 
+the theoretical design in Ref. [24], however, to present a practical 
+implementation approach, and using a commercial autopilot, this 
+proposed method has been employed. 
+IV. 
+RESULTS 
+Several trials have been performed for a vertical landing. The 
+initial position of the drone was set at the height of * = 2.5m. 
+The feedback on the position of the system was defined by the 
+Opti-Track system. Using the algorithm to define “wb and then 
+using the new gain •…,wb in (14), the results have been found. 
+The regulation in 1 axis direction is plotted in Fig. 4. To find the 
+proper tuning parameter ’, 5 tests have been performed, 
+changing ’ from 0 to 1000. The best performance was gained 
+by ’ = 750. The landing of the drone in 1 axis started by a 
+constant speed, then near the ground for ’ = 0, without soft-
+landing algorithm, the system touched the ground and bounced 
+back with several bumps. The landing improved that eventually, 
+’ = 750 gained the softest landing. Also, ’ = 1000 caused 
+instability in the system as we expected by positive feedback, 
+presented in Fig. 4. This instability is limited to the landing phase 
+near the ground, must be avoided by careful tuning before 
+outdoor experiments. To address safety concerns, in an event of 
+flying upward, after exiting the limit of *+B ∈80,5)9, the soft-
+landing part is turned off. 
+ 
+Fig. 4. The results of the soft-landing in 1 axis direction with different selection 
+of ’. 
+V. 
+CONCLUSIONS 
+This work investigated the soft landing problem for 
+multirotor drones using a wind modeling approach, through an 
+experimental study. The landing of a drone is a critical issue 
+specifically in sensitive industrial sites such as refineries or 
+places with explosive/flammable material. In those cases, hard 
+contact will cause severe danger to the operation. The wind 
+modeling approach introduces an augmented system by the 
+velocity of the wind that could observe the effect of the wind on 
+the system. Here the wind is produced by the drones’ propellers 
+and then that is reflected upward near the ground. The tendency 
+to use commercial unmanned aircraft systems also limits the 
+implementation flexibility, and therefore, complex algorithms 
+are hard to be used. We proposed a method for the experimental 
+implementation of the soft-landing on commercial autopilots 
+with PD/PID controllers. Results showed successful landing on 
+a testbed Opti-Track system. 
+ACKNOWLEDGMENTS 
+This work is supported by the HYFLIERS project (HYbrid 
+FLying-rolling with-snakE-aRm robot for contact inspection) 
+funded by the European Commission H2020 Programme under 
+grant 
+agreement 
+ID: 
+779411 
+(https://cordis.europa.eu/project/rcn/213049)] and by the ARTIC 
+project funded by the Ministerio de Ciencia, Innovación y 
+Universidades under the grant agreement ID: RTI2018-102224-
+B-I00. 
+ 
+REFERENCES 
+[1] 
+K. Tak and J. Kim, "Corrosion effect on inspection and 
+replacement planning for a refinery plant," Computers & 
+Chemical Engineering, vol. 117, pp. 97-104, 2018. 
+[2] 
+https://www.oulu.fi/hyfliers/. 
+[3] 
+C. Luo, W. Zhao, Z. Du, and L. Yu, "A neural network 
+based landing method for an unmanned aerial vehicle with 
+soft landing gears," Applied Sciences, vol. 9, p. 2976, 2019. 
+[4] 
+A. Sahinoz, "Landing gear design and stability evaluation 
+of a lunar lander for soft landing," in Proceedings of the 
+Bennett conference on mechanical engineering, Pittsburgh, 
+PA, USA, 2012, pp. 1-17. 
+[5] 
+K. Zhang, P. Chermprayong, D. Tzoumanikas, W. Li, M. 
+Grimm, M. Smentoch, et al., "Bioinspired design of a 
+landing system with soft shock absorbers for autonomous 
+aerial robots," Journal of Field Robotics, vol. 36, pp. 230-
+251, 2019. 
+[6] 
+K. Hang, X. Lyu, H. Song, J. A. Stork, A. M. Dollar, D. 
+Kragic, et al., "Perching and resting—A paradigm for 
+UAV maneuvering with modularized landing gears," 
+Science Robotics, vol. 4, 2019. 
+[7] 
+L. Son, M. Surya, M. Bur, U. Ubaidillah, and R. Dhelika, 
+"Shock and harmonic response analysis of UAV nose 
+landing gear system with air damper," Cogent Engineering, 
+vol. 8, p. 1905231, 2021. 
+[8] 
+K. S. Peterson and A. G. Stefanopoulou, "Extremum 
+seeking control for soft landing of an electromechanical 
+valve actuator," Automatica, vol. 40, pp. 1063-1069, 2004. 
+[9] 
+H. Yang and H. Baoyin, "Fuel-optimal control for soft 
+landing on an irregular asteroid," IEEE Transactions on 
+Aerospace and Electronic Systems, vol. 51, pp. 1688-1697, 
+2015. 
+[10] P. Mercorelli, "An antisaturating adaptive preaction and a 
+slide surface to achieve soft landing control for 
+0
+200
+400
+600
+800
+1000
+time step
+0
+0.5
+1
+1.5
+2
+2.5
+=0
+=100
+=500
+=750
+=1000
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
+ 
+ 
+electromagnetic actuators," IEEE/ASME Transactions on 
+Mechatronics, vol. 17, pp. 76-85, 2010. 
+[11] W. Myeong and H. Myung, "Development of a wall-
+climbing drone capable of vertical soft landing using a tilt-
+rotor mechanism," IEEE Access, vol. 7, pp. 4868-4879, 
+2018. 
+[12] K. Fricke, R. Giorgiani do Nascimento, and F. Viana, 
+"Quadcopter soft vertical landing control with hybrid 
+physics-informed machine learning," in AIAA Scitech 2021 
+Forum, 2021, p. 1018. 
+[13] J. S. Hayden, "The effect of the ground on helicopter 
+hovering power required," in Proc. AHS 32nd Annual 
+Forum, 1976. 
+[14] H. C. Curtiss, M. Sun, W. F. Putman, and E. J. Hanker, 
+"Rotor aerodynamics in ground effect at low advance 
+ratios," Journal of the American Helicopter Society, vol. 
+29, pp. 48-55, 1984. 
+[15] T. E. Lee, J. G. Leishman, and M. Ramasamy, "Fluid 
+dynamics of interacting blade tip vortices with a ground 
+plane," Journal of the American Helicopter Society, vol. 
+55, pp. 22005-22005, 2010. 
+[16] C. Powers, D. Mellinger, A. Kushleyev, B. Kothmann, and 
+V. Kumar, "Influence of aerodynamics and proximity 
+effects in quadrotor flight," in Experimental Robotics, 
+2013, pp. 289-302. 
+[17] P. J. Sanchez-Cuevas, G. Heredia, and A. Ollero, 
+"Experimental approach to the aerodynamic effects 
+produced in multirotors flying close to obstacles," in 
+Iberian Robotics Conference, 2017, pp. 742-752. 
+[18] P. Sanchez-Cuevas, G. Heredia, and A. Ollero, 
+"Characterization of the aerodynamic ground effect and its 
+influence in multirotor control," International Journal of 
+Aerospace Engineering, vol. 2017, 2017. 
+[19] X. Kan, J. Thomas, H. Teng, H. G. Tanner, V. Kumar, and 
+K. Karydis, "Analysis of ground effect for small-scale 
+UAVS in forward flight," IEEE Robotics and Automation 
+Letters, vol. 4, pp. 3860-3867, 2019. 
+[20] G. Shi, X. Shi, M. O’Connell, R. Yu, K. Azizzadenesheli, 
+A. Anandkumar, et al., "Neural lander: Stable drone 
+landing control using learned dynamics," in 2019 
+International Conference on Robotics and Automation 
+(ICRA), Montreal, Montreal, Canada, 2019, pp. 9784-
+9790. 
+[21] J.-G. Juang, H.-H. Chang, and K. C. Cheng, "Intelligent 
+landing control using linearized inverse aircraft model," in 
+Proceedings of the 2002 American Control Conference 
+(IEEE Cat. No. CH37301), Anchorage, AK, USA, 2002, 
+pp. 3269-3274. 
+[22] A. Betz, "The ground effect on lifting propellers," 
+Technical Memorandums, National Advisory Committee 
+for Aeronautics, N. 836, 1937. 
+[23] M. Lungu, "Backstepping and dynamic inversion 
+combined controller for auto-landing of fixed wing 
+UAVs," Aerospace Science and Technology, vol. 96, p. 
+105526, 2020. 
+[24] S. R. Nekoo, J. R. Acosta, G. Heredia, and A. Ollero, "Soft-
+landing of multi-rotor drones using a robust nonlinear 
+control and wind modeling*," in 2021 International 
+Conference on Unmanned Aircraft Systems (ICUAS), 
+Athens, Greece, 2021. 
+[25] B. W. McCormick, "Aerodynamics aeronautics and flight 
+mechanics," 2nd ed. New York NY: John Wiley & Sons 
+Inc, 1995. 
+[26] I. C. Cheeseman and W. E. Bennett, "The effect of the 
+helicopter rotor by ground on a forward flight," 
+Aeronautical Research Council Reports and Memoranda, 
+No. 3021, 1957. 
+[27] S. R. Nekoo, J. Á. Acosta, and A. Ollero, "Geometric 
+control using the state-dependent Riccati equation: 
+application to aerial-acrobatic maneuvers," International 
+Journal of Control, pp. 1-13, 2021. 
+[28] S. R. Nekoo, J. Á. Acosta, A. E. Gomez-Tamm, and A. 
+Ollero, "Optimized thrust allocation of variable-pitch 
+propellers quadrotor control: A comparative study on flip 
+maneuver," in 2019 Workshop on Research, Education and 
+Development of Unmanned Aerial Systems (RED UAS), 
+Cranfield, United Kingdom, United Kingdom, 2019, pp. 
+86-95. 
+[29] S. R. Nekoo, J. Á. Acosta, and A. Ollero, "Collision 
+avoidance of SDRE controller using artificial potential 
+field method: Application to aerial robotics," in 2020 
+International Conference on Unmanned Aircraft Systems 
+(ICUAS), Athens, Greece, 2020, pp. 551-556. 
+[30] S. R. Nekoo, J. Á. Acosta, and A. Ollero, "Fully coupled 
+six-DoF nonlinear suboptimal control of a quadrotor: 
+Application to variable-pitch rotor design," in Iberian 
+Robotics conference, 2019, pp. 72-83. 
+[31] F. Sabatino, "Quadrotor control: modeling, nonlinear 
+control design, and simulation," Master's Degree Project, 
+KTH Electrical Engineering, Stockholm, Sweden, 2015. 
+[32] P. R. Ambati and R. Padhi, "A neuro-adaptive augmented 
+dynamic inversion design for robust auto-landing," IFAC 
+Proceedings Volumes, vol. 47, pp. 12202-12207, 2014. 
+[33] P. J. Sanchez-Cuevas, G. Heredia, and A. Ollero, 
+"Multirotor UAS for bridge inspection by contact using the 
+ceiling effect," in 2017 International Conference on 
+Unmanned Aircraft Systems (ICUAS), 2017, pp. 767-774. 
+[34] L. Meier, D. Honegger, and M. Pollefeys, "PX4: A node-
+based multithreaded open source robotics framework for 
+deeply embedded platforms," in 2015 IEEE international 
+conference on robotics and automation (ICRA), 2015, pp. 
+6235-6240. 
+ 
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on January 11,2024 at 04:56:37 UTC from IEEE Xplore.  Restrictions apply. 
+
