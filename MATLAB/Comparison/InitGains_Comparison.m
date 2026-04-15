@@ -26,16 +26,16 @@ K_PLASMC.gamma_1  = [0.1, 0.1];                 % slowed for realistic-mode trac
 K_PLASMC.p_10     = K.p_10;
 K_PLASMC.p_1inf   = [0.20; 0.20];               % widened (robustness-mode wind headroom)
 
-K_PLASMC.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
+K_PLASMC.zp = diag([9.0, 9.0]);                 % COMBO_C lock 2026-04-16 (deep-sweep: -32% maxXY)
 K_PLASMC.zi = diag([0.1, 0.1]);
 K_PLASMC.zd = diag([0.975, 0.975]);            % deep-sweep lock-in (-35% maxXY)
 
 K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];           % prior 25/25 baseline
 K_PLASMC.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
-K_PLASMC.p_2inf   = [2.5;  2.5;  1.5];         % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
+K_PLASMC.p_2inf   = [2.5;  2.5;  0.75];        % COMBO_C lock 2026-04-16 (deep-sweep: z tightened, -29% aggT)
 
 K_PLASMC.Omega   = diag([0.05, 0.05, 0.006]);   % lateral integral gain bumped 17x for short-descent xy catch-up
-K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
+K_PLASMC.Gamma   = diag([0.4375, 0.5,   1.125]); % COMBO_C lock 2026-04-16 (deep-sweep: z x1.5, -28% aggT)
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
 K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
