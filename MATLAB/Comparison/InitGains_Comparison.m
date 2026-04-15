@@ -77,18 +77,26 @@ K_Lin2022 = struct();
 % vhat_z≈0.023 m/s near z=0 → UAV stalls 0.18m above ground at t=40s.
 % k1=0.3 gives vhat_z≈0.068 m/s, landing ~t=38s; rho_v0 re-computed from
 % vhat_init so initial xi_v stays well within ±0.999.
-K_Lin2022.k1 = 0.3;
-K_Lin2022.k2 = 3.0;
+% Best-effort retune within paper's framework. Paper values (k1=4.5,
+% rho_inf=0.05) crash in 1-2 steps on our IC=[2,2,-5] harness because
+% vhat saturates the PPC barrier instantly. This is the minimum
+% deviation from the paper that keeps xi_v inside (-1,1):
+%  - k1 lowered so vhat stays finite at step 1
+%  - rho_inf vectorized per axis (paper's formulation allows this,
+%    eq. 14 uses diag Q_p); wide xy absorbs wind, tight z preserves
+%    descent authority
+%  - l slowed so bound stays wide during catch-up
+K_Lin2022.k1 = 0.6;
+K_Lin2022.k2 = 4.0;
 
-K_Lin2022.rho_inf_p     = 0.05;
-K_Lin2022.rho_inf_v     = 0.05;
-% l_p/l_v=0.05: slow decay gives the UAV time to build velocity before the
-% performance constraint tightens (0.15 was too fast relative to actuator limits)
-K_Lin2022.l_p           = 0.05;
-K_Lin2022.l_v           = 0.05;
-% Larger margin so xi_p/xi_v stay well within (-1,1) throughout
-K_Lin2022.rho_p0_margin = 1.0;
-K_Lin2022.rho_v0_margin = 1.0;
+% z-bound widened to 0.15: Linear/Circ carry Lin heave (A_z=0.2, w_z=0.5)
+% so target v_z oscillates ±0.1 m/s. Tighter bound barrier-saturated xi_v(3).
+K_Lin2022.rho_inf_p     = [0.30; 0.30; 0.15];
+K_Lin2022.rho_inf_v     = [0.30; 0.30; 0.15];
+K_Lin2022.l_p           = [0.03; 0.03; 0.10];
+K_Lin2022.l_v           = [0.03; 0.03; 0.10];
+K_Lin2022.rho_p0_margin = 1.5;
+K_Lin2022.rho_v0_margin = 1.5;
 
 % r_pt_des = [0;0;0]: target the landing point exactly (NED).
 % [0;0;-0.4] was causing the UAV to hover 0.4 m above target and never land.
@@ -109,19 +117,27 @@ K_Zhang2026 = struct();
 %       omega_n=0.70 rad/s, zeta=0.70 -> overshoot<5% (was ~50% with old gains)
 %    z: pos_gain=2.10 N/m, vel_gain=2.92 N/(m/s), omega_n=1.0, zeta=0.70
 %   T at t=0: Fc_z=-10.1N -> T=10.9N < weight=20.6N -> descends correctly.
-K_Zhang2026.Kc1 = diag([0.1,  0.1,  0.2 ]);
-K_Zhang2026.Kc2 = diag([0.85, 0.85, 1.6 ]);
-K_Zhang2026.Kc3 = diag([1.85, 1.85, 2.5 ]);
+% Best-effort retune. Paper Table III values (Kc1(3)=0.6, Kc2(3)=2.6)
+% give vertical omega_n~1.6 rad/s which finishes descent before
+% horizontal converges under our IC. Horizontal sped up to match a
+% gentled vertical so both loops converge on same time scale.
+% Inner-loop Kc4/Kc5 unused — shared geometric SO(3) replaces eq. 212.
+% z slowed further: omega_n_z ~0.4 rad/s so peak descent v_z from 5m
+% stays <1.5 m/s for soft landing. xy unchanged.
+K_Zhang2026.Kc1 = diag([0.25, 0.25, 0.03]);
+K_Zhang2026.Kc2 = diag([2.0,  2.0,  0.15]);
+K_Zhang2026.Kc3 = diag([2.5,  2.5,  0.5 ]);
 
 % AEDO: lAF1/2 and PNF tightened further (prev PNF=50 still caused
 % omega_AF to drift high enough to produce 7 post-landing oscillations).
 % lAF1=1,lAF2=0.5 slows observer; PNF=150 keeps bandwidth near omega_AFm.
+% AEDO (paper omega_AFm=1 rad/s per p8, kept)
 K_Zhang2026.lAF1      = 1;
 K_Zhang2026.lAF2      = 0.5;
-K_Zhang2026.omega_AFm = 0.3;
+K_Zhang2026.omega_AFm = 1.0;
 K_Zhang2026.PNF_poly  = [0, 0, 150];
 K_Zhang2026.xhat_AF0  = zeros(6,1);
-K_Zhang2026.omega_AF0 = 0.3;
+K_Zhang2026.omega_AF0 = 1.0;
 
 K_Zhang2026.kR     = kR_shared;
 K_Zhang2026.kOmega = kOmega_shared;
@@ -139,13 +155,18 @@ K_Chen2025 = struct();
 % kr=0.7 stalls 0.34m, kr=1.0 stalls 0.41m, kr=1.2 oscillates 0.5m,
 % kr=1.5 reaches ground at 11m/s impact. Structural limitation.
 % q_d(3) = zf/zstar0 so error is exactly zero at landing height zf=0.1m.
+% Best-effort retune. Paper values (kr=8, k2=20) amplify pixel noise
+% through finite-diff de -> v_xy >10 m/s, T saturates 60N instantly.
+% Structural limitation documented in project_chen2025_limitation.md:
+% no safe kr exists for noisy landing. These are the most benign
+% gains that keep the simulation numerically stable.
 K_Chen2025.kr     = 1.0;
 K_Chen2025.k1_obs = 0.2;
 K_Chen2025.k2_obs = 5;
 K_Chen2025.k3_obs = 0.5;
 K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 1.5;      % normalisation height [m]
-K_Chen2025.q_d    = [0; 0; 0.0667]; % zf/zstar0 = 0.1/1.5; e_z=0 at landing alt
+K_Chen2025.zstar0 = 1.5;
+K_Chen2025.q_d    = [0; 0; 0.0667]; % zf/zstar0 = 0.1/1.5
 K_Chen2025.psi_des = 0;
 
 K_Chen2025.kR     = kR_shared;
@@ -164,11 +185,20 @@ K_Cho2022 = struct();
 % lambda_xy kept -0.8: feedforward frame fix (I_R_V'*I_v_t) already removes
 % the main oscillation cause. -0.5 was too slow to close initial 2m offset
 % vs 0.5 m/s moving target within 40s (effective gain 0.1 at z=5m).
-K_Cho2022.lambda_IBVS = [-0.8; -0.8; -2.0; 0; 0; 0];
-K_Cho2022.v_sat       = [1.0; 1.0; 0.4; 0.2];
-K_Cho2022.k_sigmoid   = 0.002;
+% Best-effort retune. Paper Table 2 values (lambda_xy=2, lambda_z=5)
+% are too aggressive for moving targets (Linear/Lissajous fail to land)
+% but work for Static. lambda_xy=1.2 is the compromise that lands moving
+% targets; Kv lateral 2->3.5 fights wind drift; k_sigmoid 0.002->0.02
+% so adaptive altitude gain ad_z saturates to 1 near landing (was stuck
+% at 0.5, halving descent); v_sat(3) 0.4->0.7 removes descent cap.
+K_Cho2022.lambda_IBVS = [-1.2; -1.2; -2.0; 0; 0; 0];
+% k_sigmoid=0.1 was tested and broke moving targets: feature centroid
+% fluctuates on moving trajs -> ad_z jitters -> z-command jitters. Kept
+% k_sigmoid=0.02 and v_sat(3)=0.7. Static stall at ~0.35m is accepted.
+K_Cho2022.v_sat       = [1.0; 1.0; 0.7; 0.2];
+K_Cho2022.k_sigmoid   = 0.02;
 K_Cho2022.use_sq_comp = true;
-K_Cho2022.Kv          = diag([2.0, 2.0, 2.0]);
+K_Cho2022.Kv          = diag([3.5, 3.5, 2.0]);
 K_Cho2022.psi_des     = 0;
 
 K_Cho2022.kR     = kR_shared;

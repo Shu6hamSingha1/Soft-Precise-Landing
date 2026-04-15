@@ -18,7 +18,7 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
 %   2. Trajectory type: "Circular"
 %   3. Entire image-feature block inside ZOH gate (only update every ZOH steps)
 %   4. Depth: f/(C_s_tc(3)+zf) and f/(V_s_tc(3)+zf) (not f/z)
-%   5. Noise: awgn(C_nP, 50, 'measured') (not randi+round)
+%   5. Noise: depth-dep sigma_px + outliers (shared init_robustness.m)
 %   6. dPdt, V_w_i, V_dw_i computed via _prev variables (not buffer+smooth4)
 %   7. V_w_a uses scalar _prev variable + raw_dw_a buffer
 %   8. ACTUAL mode: Savitzky-Golay filter (not mean/smooth4)
@@ -56,6 +56,7 @@ fprintf('%s\n\n', ctrl_names{CTRL_SEL});
 % =========================================================================
 Constants;
 InitVar;
+init_robustness;    % samples wind / mass / inertia / CoG / pixel-noise model
 InitGains_Comparison;
 
 switch CTRL_SEL
@@ -235,9 +236,15 @@ for idx = 1:N_steps
         % Project to image plane  (depth includes zf offset)
         C_nP = (f / (C_s_tc(3) + zf)) * C_nP3(1:2,:);
 
-        % Noise  (awgn in _temp.m, not randi+round)
+        % Depth-dependent pixel noise (shared with run_simulation.m)
         if NOISE
-            C_nP = awgn(C_nP, SNR_IBVS, 'measured');
+            z_dep = max(abs(C_s_tc(3)), 0.1);
+            sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
+            C_nP = C_nP + (sigma_px / f) * randn(size(C_nP));
+            if rand < outlier_prob
+                col = randi(size(C_nP,2));
+                C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
+            end
         end
 
         % Virtual image plane transform
@@ -681,7 +688,14 @@ for idx = 1:N_steps
 % *************************************************************************
 % UAV dynamics integration  (all controllers: u_2 = [tau; T])
 % *************************************************************************
-    x_c = RK5(@(t,x) UAVDyn(t,x,u_2), t0, x_c, dt);
+    if NOISE
+        F_turb   = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
+        v_rel    = wind_mean - x_c(8:10);
+        F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel;
+        x_c = RK5(@(t,x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
+    else
+        x_c = RK5(@(t,x) UAVDyn(t,x,u_2), t0, x_c, dt);
+    end
     if any(isnan(x_c)), break; end
 
     I_p_c = x_c(1:3);   q_c   = x_c(4:7);

@@ -36,6 +36,8 @@ Constants;
 
 InitVar;
 
+init_robustness;    % samples wind / mass / inertia / CoG / pixel-noise model
+
 %% =========================================================================
 %  PLASMC GAINS (from InitGains_Comparison.m — tuned for comparison study)
 % =========================================================================
@@ -212,7 +214,15 @@ for idx=1:N_steps
         C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
 
         if NOISE
-            C_nP = awgn(C_nP, 40, 'measured');
+            % Depth-dependent pixel noise: sigma_px(z) = 0.3 + 0.5/(z+0.5) [px]
+            z_dep = max(abs(C_s_tc(3)), 0.1);
+            sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
+            C_nP = C_nP + (sigma_px / f) * randn(size(C_nP));
+            % Outlier injection (detector glitch)
+            if rand < outlier_prob
+                col = randi(size(C_nP,2));
+                C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
+            end
         end
 
     % *************************************************************************
@@ -512,7 +522,15 @@ for idx=1:N_steps
 
     if any(isnan(u_2)) || norm(u_2) > 1e4, break; end
 
-    x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
+    % Update wind state: mean + colored turbulence + velocity-drag
+    if NOISE
+        F_turb   = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
+        v_rel    = wind_mean - x_c(8:10);
+        F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel;
+        x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
+    else
+        x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
+    end
 
     if any(isnan(x_c))
         break;
