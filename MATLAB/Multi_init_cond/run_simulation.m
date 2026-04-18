@@ -6,7 +6,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
     if nargin < 5, cfg_override = []; end
     if nargin < 6, seed = []; end
-    load(fullfile(mfile_dir, '..', 'Common', 'bestParam.mat'));
+    load("bestParam.mat");
     if ~isempty(seed)
         rng(seed);
     elseif isempty(K_override)
@@ -45,27 +45,25 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % =====================================================================
     K_ctrl = struct();
 
-    K_ctrl.gamma_1  = [0.1, 0.1];                 % slowed for realistic-mode tracking headroom
-    K_ctrl.p_10     = K.p_10;
-    K_ctrl.p_1inf   = [0.20; 0.20];    % widened (robustness-mode wind headroom)
+    K_ctrl.p_10     = K.p_10;                     % sensor-half, used for r_e normalization (Approach 2)
 
-    K_ctrl.zp = diag([9.0, 9.0]);                 % COMBO_C lock 2026-04-16 (deep-sweep: -32% maxXY)
+    K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
     K_ctrl.zi = diag([0.1, 0.1]);
     K_ctrl.zd = diag([0.975, 0.975]);             % deep-sweep lock-in (-35% maxXY)
 
     K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
     K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
-    K_ctrl.p_2inf   = [2.5;  2.5;  0.75];         % COMBO_C lock 2026-04-16 (deep-sweep: z tightened, -29% aggT)
+    K_ctrl.p_2inf   = [2.5;  2.5;  1.5];           % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
 
     K_ctrl.Omega   = diag([0.05,  0.05,  0.006]);  % lateral integral gain bumped 17x for short-descent xy catch-up
-    K_ctrl.Gamma   = diag([0.4375, 0.5,   1.125]); % COMBO_C lock 2026-04-16 (deep-sweep: z x1.5, -28% aggT)
+    K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
     K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
     K_ctrl.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
 
     % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
-    K_ctrl.kR     = diag([1.5, 1.5, 0.5]);
+    K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
     K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
 
     % Yaw adaptive SMC — generates heading reference psi_d (no compass)
@@ -78,6 +76,12 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     K_ctrl.p_a       = 2;
     K_ctrl.kappa_a_0 = 2.0;                       % pre-seed for high-wz rotating targets
     K_ctrl.E_a       = 3.0;                       % wide boundary layer smooths sat*kappa_a
+
+    % FoV-adaptive cone clamp (Approach 2)
+    K_ctrl.rho_fov_0   = res/2;                   % [160;120] px — sensor-half init
+    K_ctrl.rho_fov_inf = [15; 15];                % terminal pixel margin (px)
+    K_ctrl.l_fov       = 0.1;                     % box decay rate (1/s)
+    K_ctrl.theta_cap   = deg2rad(60);             % soft cone ceiling
 
     % Apply optional gain overrides (used by sweep harness)
     if ~isempty(K_override)
@@ -158,22 +162,26 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     V_dw    = zeros(3, 1);
 
     % PLASMC-specific arrays
-    p_1         = zeros(2, N_steps);
-    dp_1        = zeros(2, N_steps);
     p_2         = zeros(3, N_steps);
     dp_2        = zeros(3, N_steps);
-    S_1         = zeros(2, 2, N_steps);
-    G_1         = zeros(2, 2, N_steps);
-    zeta_1      = zeros(2, N_steps);
-    izeta_1     = zeros(2, N_steps);
-    raw_dzeta_1 = zeros(2, N_steps + 3);
     S_2         = zeros(3, 3, N_steps);
     G_2         = zeros(3, 3, N_steps);
     zeta_2      = zeros(3, N_steps);
     izeta_2     = zeros(3, N_steps);
     sigma       = zeros(3, N_steps);
     raw_dh_d    = zeros(3, N_steps + 3);
-    V_s_e       = zeros(2, N_steps);
+
+    % Outer-loop PID on normalized raw error (Approach 2)
+    V_s_e        = zeros(2, N_steps);
+    V_s_e_n      = zeros(2, N_steps);
+    iV_s_e_n     = zeros(2, N_steps);
+    raw_dV_s_e_n = zeros(2, N_steps + 3);
+
+    % FoV-adaptive cone clamp logging (Approach 2)
+    rho_fov_log    = zeros(2, N_steps);
+    d_min_log      = zeros(1, N_steps);
+    theta_cur_log  = zeros(1, N_steps);
+    theta_cone_log = zeros(1, N_steps);
     kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
     kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
     e_a         = zeros(1, N_steps);
@@ -329,32 +337,24 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         end
 
     % *********************************************************************
-    % Desired Optical Flow with Visibility Constraints
+    % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
+    % No virtual-feature visibility funnel: physical-corner visibility is
+    % enforced downstream by the FoV-adaptive cone clamp on I_a_cd.
     % *********************************************************************
-        V_s_e(:,idx) = V_s(1:2) - V_s_d(1:2);
-
-        p_1(:,idx) = expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * (K_ctrl.p_10 - K_ctrl.p_1inf) + K_ctrl.p_1inf;
-        dp_1(:,idx) = -diag(K_ctrl.gamma_1) * expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * (K_ctrl.p_10 - K_ctrl.p_1inf);
-
-        S_1_margin = 0.05;   % matches S_2_margin; bounds |zeta_1|<=3.66
-        for j=1:2
-            S_1(j,j,idx) = V_s_e(j,idx)/p_1(j,idx);
-            S_1(j,j,idx) = min(max(S_1(j,j,idx), -1+S_1_margin), 1-S_1_margin);
-            zeta_1(j,idx) = log((1+S_1(j,j,idx))/(1-S_1(j,j,idx)));
-            G_1(j, j,idx) = (exp(zeta_1(j,idx)) + 1)^2/(2*exp(zeta_1(j,idx))*p_1(j,idx));
-        end
+        V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
+        V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
 
         if idx == 1
-            izeta_1(:,idx) = dt*zeta_1(:,idx);
-            raw_dzeta_1(:,idx+3) = zeros(2,1);
+            iV_s_e_n(:,idx) = dt * V_s_e_n(:,idx);
+            raw_dV_s_e_n(:,idx+3) = zeros(2,1);
         else
-            izeta_1(:,idx) = izeta_1(:,idx-1) + dt*(zeta_1(:,idx-1) + zeta_1(:,idx))/2;
-            raw_dzeta_1(:,idx+3) = (zeta_1(:,idx) - zeta_1(:,idx-1))/dt;
+            iV_s_e_n(:,idx) = iV_s_e_n(:,idx-1) + dt*(V_s_e_n(:,idx-1) + V_s_e_n(:,idx))/2;
+            raw_dV_s_e_n(:,idx+3) = (V_s_e_n(:,idx) - V_s_e_n(:,idx-1))/dt;
         end
-        dzeta_1 = smooth4(raw_dzeta_1(:,idx:idx+3));
-        dzeta_1d = -K_ctrl.zp*zeta_1(:,idx) - K_ctrl.zi*izeta_1(:,idx) - K_ctrl.zd*dzeta_1;
+        dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
 
-        V_ds_d = [G_1(:, :, idx)\dzeta_1d + S_1(:,:,idx)*dp_1(:,idx);0.0];
+        V_ds_d_xy = -K_ctrl.zp*V_s_e_n(:,idx) - K_ctrl.zi*iV_s_e_n(:,idx) - K_ctrl.zd*dV_s_e_n;
+        V_ds_d    = [V_ds_d_xy; 0.0];
 
         V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
             - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3);
@@ -425,17 +425,39 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
            break;
         end
 
-        % Cone clamp
-        att_cone = deg2rad(35);
+    % *********************************************************************
+    % FoV-adaptive cone clamp (Approach 2)
+    %   theta_current = acos(I_R_C(3,3))
+    %   rho_fov(t)    = shrinking box half-widths centered on image center
+    %   d_min         = min axis-wise margin of any physical corner to box
+    %   theta_cone    = min(theta_current + atan(d_min/f), theta_cap)
+    % *********************************************************************
+        R33           = max(min(I_R_C(3,3), 1), -1);
+        theta_current = acos(R33);
+
+        rho_fov_curr = (K_ctrl.rho_fov_0 - K_ctrl.rho_fov_inf) * ...
+                       exp(-K_ctrl.l_fov * tRange(idx)) + K_ctrl.rho_fov_inf;
+
+        d_corner_x = rho_fov_curr(1) - abs(C_nP(1,:));
+        d_corner_y = rho_fov_curr(2) - abs(C_nP(2,:));
+        d_min_fov  = max(min([d_corner_x, d_corner_y]), 0);
+
+        theta_cone = min(theta_current + atan(d_min_fov / f), K_ctrl.theta_cap);
+
         if I_a_cd(3,idx) >= 0
             I_a_cd(3,idx) = -3.0;
         end
-        a_xy_limit = abs(I_a_cd(3,idx)) * tan(att_cone);
+        a_xy_limit = abs(I_a_cd(3,idx)) * tan(theta_cone);
         a_xy_norm  = norm(I_a_cd(1:2,idx));
         if a_xy_norm > a_xy_limit
             I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
         end
         I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
+
+        rho_fov_log(:,idx)  = rho_fov_curr;
+        d_min_log(idx)      = d_min_fov;
+        theta_cur_log(idx)  = theta_current;
+        theta_cone_log(idx) = theta_cone;
 
         % Low-pass filter I_a_cd before feeding R_d construction.
         % Matches tau_w=0.08s: absorbs pixel-noise spikes propagated
