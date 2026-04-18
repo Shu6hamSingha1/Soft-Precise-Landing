@@ -46,13 +46,20 @@ def extract_run(r):
     xt  = dat.x_t.astype(float)     # 7 x N
 
     # Trim to valid samples [0..idx]
-    pos = X[0:3, :idx+1]
-    vel = X[7:10, :idx+1]
-    quat = X[3:7, :idx+1]
-    tgt = xt[0:3, :idx+1]
+    # MATLAB writes X_DS(:,idx+1) = x_c (Python: X[:, idx]); on break
+    # branches that column can be unwritten, so trim to the last populated col.
+    pos_all = X[0:3, :idx+1]
+    last_nz = idx
+    while last_nz > 0 and np.abs(pos_all[:, last_nz]).sum() == 0:
+        last_nz -= 1
+    end_slice = slice(0, last_nz + 1)
+    pos = X[0:3, end_slice]
+    vel = X[7:10, end_slice]
+    quat = X[3:7, end_slice]
+    tgt = xt[0:3, end_slice]
 
-    # If loop broke at idx, target column may be zero — use previous
-    if idx > 0 and np.linalg.norm(tgt[:, -1]) == 0 and np.linalg.norm(tgt[:, -2]) > 0:
+    # If loop broke at last_nz, target column may be zero — use previous
+    if last_nz > 0 and np.linalg.norm(tgt[:, -1]) == 0 and np.linalg.norm(tgt[:, -2]) > 0:
         tgt[:, -1] = tgt[:, -2]
 
     # Relative metrics
@@ -61,14 +68,15 @@ def extract_run(r):
     xy_err  = np.linalg.norm(rel[0:2, :], axis=0)
     d3_err  = np.linalg.norm(rel, axis=0)
 
-    final_alt = alt_err[-1]
-    final_xy  = xy_err[-1]
-    final_3d  = d3_err[-1]
-    final_vel = np.linalg.norm(vel[:, -1])
+    # Trust MATLAB-computed final metrics (authoritative; no indexing ambiguity)
+    final_alt = float(r.final_alt)
+    final_xy  = float(r.final_xy)
+    final_3d  = float(np.sqrt(final_alt**2 + final_xy**2))
+    final_vel = float(r.final_rel_vel)
     final_vz  = vel[2, -1]
 
-    # Landing classification (must match MATLAB criteria)
-    landed = (final_alt <= LAND_ALT) and (final_xy <= LAND_XY)
+    # MATLAB-authoritative landing flag
+    landed = bool(r.success)
 
     # Trajectory metrics
     altitudes = -pos[2, :]    # NED -> positive altitude

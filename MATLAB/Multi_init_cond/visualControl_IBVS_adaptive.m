@@ -53,7 +53,7 @@ K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
 K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
 K_ctrl.p_2inf   = [2.5;  2.5;  1.5];          % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
 
-K_ctrl.Omega   = diag([0.05, 0.05, 0.006]);   % lateral integral gain bumped 17x for short-descent xy catch-up
+K_ctrl.Omega   = diag([0.05, 0.05, 0.025]);   % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
 K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
 K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);

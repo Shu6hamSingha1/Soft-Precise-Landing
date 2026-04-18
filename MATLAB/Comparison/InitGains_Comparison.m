@@ -34,7 +34,7 @@ K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];           % prior 25/25 baseline
 K_PLASMC.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
 K_PLASMC.p_2inf   = [2.5;  2.5;  1.5];         % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
 
-K_PLASMC.Omega   = diag([0.05, 0.05, 0.006]);   % lateral integral gain bumped 17x for short-descent xy catch-up
+K_PLASMC.Omega   = diag([0.05, 0.05, 0.025]);   % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
 K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
@@ -42,7 +42,7 @@ K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
 K_PLASMC.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
 
 % Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
-K_PLASMC.kR     = diag([1.5, 1.5, 0.5]);
+K_PLASMC.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 broke Linear realistic Run 5 soft-landing (v_rel=0.237 m/s > 0.20 m/s on IC [2,2,-3])
 K_PLASMC.kOmega = diag([0.3, 0.3, 0.1]);
 
 % Yaw adaptive SMC — heading-rate generator (SO(3) baseline)
