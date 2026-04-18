@@ -80,7 +80,7 @@ K_ctrl.E_a       = 3.0;   % wide boundary layer to smooth sat*kappa_a at kappa_a
 % FoV-adaptive cone clamp (Approach 2)
 % Shrinking box funnel on physical pixel corners -> state-dependent cone angle.
 K_ctrl.rho_fov_0   = res/2;              % [160;120] px — sensor-half init (matches physical FoV)
-K_ctrl.rho_fov_inf = [15; 15];           % terminal pixel margin (px)
+K_ctrl.rho_fov_inf = [40; 40];           % terminal pixel margin (px) — widened to keep cone authority
 K_ctrl.l_fov       = 0.1;                % box decay rate (1/s)
 K_ctrl.theta_cap   = deg2rad(60);        % soft cone ceiling
 
