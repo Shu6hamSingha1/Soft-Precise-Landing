@@ -15,7 +15,7 @@ res = [320;240];  % Image resolution
 
 %% Defining system constants
 g = [0;0;9.81];
-h_rd = -0.46;                     % slowed 8% to shave Circ R3 / Linear R5 terminal v_rel
+h_rd = -0.42;                     % slowed further (-0.50->-0.46->-0.42) to close Linear IC5 soft threshold
 
 e3 = [0;0;1];
 

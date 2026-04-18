@@ -49,7 +49,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
     K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
     K_ctrl.zi = diag([0.1, 0.1]);
-    K_ctrl.zd = diag([0.975, 0.975]);             % deep-sweep lock-in (-35% maxXY)
+    K_ctrl.zd = diag([1.15, 1.15]);               % bumped with E(3,3)=1.0 to chase Linear IC5 soft threshold
 
     K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
     K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
@@ -60,7 +60,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
     K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-    K_ctrl.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
+    K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with zd=1.15); 1.1 was saturated
 
     % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
     K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing

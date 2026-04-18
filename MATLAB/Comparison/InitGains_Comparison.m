@@ -28,7 +28,7 @@ K_PLASMC.p_1inf   = [0.20; 0.20];               % widened (robustness-mode wind 
 
 K_PLASMC.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
 K_PLASMC.zi = diag([0.1, 0.1]);
-K_PLASMC.zd = diag([0.975, 0.975]);            % deep-sweep lock-in (-35% maxXY)
+K_PLASMC.zd = diag([1.15, 1.15]);              % bumped with E(3,3)=1.0 to chase Linear IC5 soft threshold
 
 K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];           % prior 25/25 baseline
 K_PLASMC.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
@@ -39,7 +39,7 @@ K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
 K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
-K_PLASMC.E       = diag([1.0,   1.0,   0.9  ]);  % z widened for ship-deck soft landing (Lissajous Run5)
+K_PLASMC.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with zd=1.15); 1.1 was saturated
 
 % Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
 K_PLASMC.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 broke Linear realistic Run 5 soft-landing (v_rel=0.237 m/s > 0.20 m/s on IC [2,2,-3])
