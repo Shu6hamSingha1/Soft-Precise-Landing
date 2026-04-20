@@ -32,7 +32,7 @@
 \maketitle
 
 \section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
-Image features throughout this paper are expressed in a \emph{virtual camera frame} $\mathcal{V}$, obtained from the physical camera frame $\mathcal{C}$ by rotating out the UAV roll $\phi$ and pitch $\theta$ so that its image plane is always parallel to the inertial horizontal plane. This abstraction \cite{fink2017, xie2016_2} decouples the translational image-feature dynamics from the rotational motion of the underactuated quadrotor; the pinhole projection on $\mathcal{V}$ and the closed-form virtual-feature map are given in Section~S6 of the supplement.
+Image features throughout this paper are expressed in a \emph{virtual camera frame} $\mathcal{V}$, obtained from the physical camera frame $\mathcal{C}$ by rotating out the UAV roll $\phi$ and pitch $\theta$ so that its image plane is always parallel to the inertial horizontal plane. This abstraction \cite{fink2017, xie2016_2} decouples the translational image-feature dynamics from the rotational motion of the underactuated quadrotor; the pinhole projection on $\mathcal{V}$ and the closed-form virtual-feature map are given in Section~S1 of the supplement.
 
 \subsection{Dynamics of Quadrotor-Target System} \label{quadrotor dynamics: section}
 Let $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote the body-fixed frame in forward-right-down configuration, with linear and angular velocities $\,^\mathcal{B}\boldsymbol{v}_\text{b}$ and $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$. From the Newton--Euler formulation, the UAV flight dynamics read
@@ -115,7 +115,7 @@ The final commands sent to the motor mixing algorithm are the combined thrust-to
 \fi
 
 \subsection{Image-Kinematic Reformulation and Problem Statement} \label{problem statement: section}
-The proposed controller replaces the scale-dependent inertial state $(\,^\mathcal{I}\boldsymbol{r}_\text{b},\,^\mathcal{I}\boldsymbol{v}_\text{b})$ of the cascaded pose-based baseline (Section~S6, supplement) with the scale-independent image features $(\boldsymbol{s},\boldsymbol{h})$. Under the pinhole projection, the normalized target position is
+The proposed controller replaces the scale-dependent inertial state $(\,^\mathcal{I}\boldsymbol{r}_\text{b},\,^\mathcal{I}\boldsymbol{v}_\text{b})$ of the cascaded pose-based baseline (Section~S1, supplement) with the scale-independent image features $(\boldsymbol{s},\boldsymbol{h})$. Under the pinhole projection, the normalized target position is
 \begin{equation} \label{normalized_pos: equation}
     \boldsymbol{s} = \begin{bmatrix}\,^\mathcal{V}\hat{\boldsymbol{r}}\\ 1\end{bmatrix} = \frac{\,^\mathcal{V}\boldsymbol{r}_\text{t}}{\,^\mathcal{V}z_\text{t}},
 \end{equation}
@@ -137,47 +137,44 @@ where $h_\text{rd}>0$ is a constant desired radial (descent) optic flow. The opt
 \end{equation}
 with $\boldsymbol{u}_\text{a}=-\,^\mathcal{I}R_\mathcal{V}^\top\,^\mathcal{I}\boldsymbol{a}_\text{d}$, $\beta=1/\,^\mathcal{V}z_\text{t}$; $\boldsymbol{c}_h$ is known and available for feedback linearization, while $\beta$ and $\boldsymbol{d}_h$ are unknown.
 
-\textit{Assumption 1}: The disturbance $\boldsymbol{d}_h$ is uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$. The desired acceleration lies inside the underactuated thrust cone $|\,^\mathcal{I}\boldsymbol{a}_{xy}|\le|\,^\mathcal{I}a_z|\tan\phi_{\max}$ with $\phi_{\max}=35^\circ$, which is enforced as an actuator-level saturation.
+\textit{Assumption 1}: The disturbance $\boldsymbol{d}_h$ is uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$. The desired lateral acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}$ is bounded by a state-dependent attitude cone $|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}|\le|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)$ with $\theta_\text{cone}(t)\le\theta_\text{cap}=60^\circ$, enforced by the FoV-adaptive projection of Section~\ref{fov cone: section}.
 
 Orientation alignment is handled without a magnetometer by extracting the target image orientation from second-order centred moments:
 \begin{equation} \label{target orientation: equation}
     \alpha = \tfrac12\tan^{-1}\!\big(2\mu_{11}/(\mu_{20}-\mu_{02})\big),
 \end{equation}
-whose time derivative satisfies $\dot{\alpha} = -\,^\mathcal{V}\omega_{\text{v}z}=\dot{\psi}$ (from $\,^\mathcal{V}\boldsymbol{\omega}_\text{v}=[0,0,-\dot{\psi}]^\top$). The outer loop therefore passes the desired attitude $\boldsymbol{\Phi}_\text{d}=[\phi_\text{d},\theta_\text{d},\alpha_\text{d}]^\top$ to an inner loop that regulates $\boldsymbol{\Phi}_\text{b}=[\phi_\text{b},\theta_\text{b},\alpha]^\top$, mirroring the baseline inner loop of Section~S6 with $\psi$ replaced by $\alpha$.
+whose time derivative satisfies $\dot{\alpha} = -\,^\mathcal{V}\omega_{\text{v}z}=\dot{\psi}$ (from $\,^\mathcal{V}\boldsymbol{\omega}_\text{v}=[0,0,-\dot{\psi}]^\top$). The outer loop therefore passes the desired attitude $\boldsymbol{\Phi}_\text{d}=[\phi_\text{d},\theta_\text{d},\alpha_\text{d}]^\top$ to an inner loop that regulates $\boldsymbol{\Phi}_\text{b}=[\phi_\text{b},\theta_\text{b},\alpha]^\top$, mirroring the baseline inner loop of Section~S1 with $\psi$ replaced by $\alpha$.
 
 The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$ and $\boldsymbol{u}_\text{a}$ so that $\hat{\boldsymbol{r}}_\text{e}$ satisfies the visibility constraint \eqref{visibility_constraints} throughout the descent and $\boldsymbol{h}_\text{e}$ converges to a small ultimate bound under Assumption~1.
 
 \begin{figure*}[hbt!]
 \centering
-    \includegraphics[width=1.0 \textwidth]{Figures/generated/block_diagram.pdf}
-    \caption{Block diagram of the proposed DF-ASMC pipeline for soft precise landing on a mobile target. The outer prescribed-performance funnel on the image-feature error $\hat{\boldsymbol{r}}_\text{e}$ (Section~\ref{ppc visibility: section}) generates the optic-flow command $\boldsymbol{h}_\text{d}$, the inner prescribed-performance funnel on the optic-flow error $\boldsymbol{h}_\text{e}$ (Section~\ref{ppc optic flow: section}) defines the unconstrained variable $\boldsymbol{\zeta}_2$, and the leakage-type adaptive sliding mode law (Section~\ref{adaptive controller for inner loop : section}) drives $\boldsymbol{\zeta}_2$ to a uniform ultimate bound. The inner attitude/rate stages and the motor-mixing block are inherited from the baseline cascaded controller of Section~\ref{quadrotor dynamics: section}.}
+    \resizebox{\textwidth}{!}{\input{block_diagram.tex}}
+    \caption{Block diagram of the MDF-ASMC pipeline. A scale-independent PID on the normalized image-feature error $\bar{\boldsymbol{r}}_\text{e}$ generates the desired optic flow $\boldsymbol{h}_\text{d}$; an inner PPC funnel on $\boldsymbol{h}_\text{e}$ defines $\boldsymbol{\zeta}_2$, which the leakage-type adaptive sliding-mode law drives to a uniform ultimate bound; an FoV-adaptive cone clamp then projects the commanded inertial acceleration onto a state-dependent attitude cone that preserves physical-corner visibility. Attitude/rate stages are inherited from the baseline of Section~S1.}
     \label{block diagram: figure}
 \end{figure*}
 
 \section{FORMULATION OF CONTROL STRATEGY} \label{control strategy: section}
-The proposed DF-ASMC architecture is a \emph{dual-funnel} prescribed-performance design: a visibility funnel on the image-feature error $\hat{\boldsymbol{r}}_\text{e}$ (Section~\ref{ppc visibility: section}) enforces target visibility and generates the optic-flow command $\boldsymbol{h}_\text{d}$; an optic-flow funnel on $\boldsymbol{h}_\text{e}$ (Section~\ref{ppc optic flow: section}) shapes the rate at which the descent velocity vanishes and is what converts a generic IBVS regulator into a soft-landing law. Both funnels are stabilised by a leakage-type adaptive sliding-mode law (Section~\ref{adaptive controller for inner loop : section}) that requires no \emph{a priori} bound on the system uncertainty; closed-loop boundedness is established in Section~\ref{stability: section}.
+The proposed MDF-ASMC is a \emph{dual-funnel} design. A \emph{visibility funnel} enforces target visibility by defining a shrinking pixel-box around the image centre and converting the worst-case corner margin into a state-dependent attitude cone, onto which the commanded inertial acceleration is projected. An \emph{optic-flow funnel} confines the optic-flow error $\boldsymbol{h}_\text{e}$ to a prescribed-performance envelope whose exponential decay shapes the rate at which the descent velocity vanishes, turning a generic IBVS regulator into a soft-landing law. The optic-flow funnel is stabilised by a leakage-type adaptive sliding-mode law that requires no \emph{a priori} bound on the system uncertainty; the visibility funnel is enforced kinematically at the acceleration-command stage and its projection residual is absorbed into the closed-loop disturbance.
 
-\subsection{Visibility Funnel: Prescribed Performance on the Image-Feature Error} \label{ppc visibility: section}
-With $\hat{\boldsymbol{r}}_\text{e}=\,^\mathcal{V}\hat{\boldsymbol{r}}-\hat{\boldsymbol{r}}_\text{d}$, the visibility constraint \eqref{visibility_constraints} translates into the prescribed-performance envelope \cite{lin2022, salehi2021}
-\begin{equation}
-\label{prescribed perfromance: equation}
-    -\underline{C}_{k} p_{1_k}(t) < \hat{r}_{\text{e}k} < \overline{C}_{k} p_{1_k}(t),\quad k\in\{1,2\},
-\end{equation}
-with $\underline{C}_k=\mathcal{R}_k/(2f)+\hat{r}_{\text{d}k}$, $\overline{C}_k=\mathcal{R}_k/(2f)-\hat{r}_{\text{d}k}$, and $p_{1_k}(t) = (p_{1_{0k}}-p_{1_{\infty k}})e^{-\xi_{1_k}t}+p_{1_{\infty k}}$. For the soft-landing task $\hat{\boldsymbol{r}}_\text{d}=\boldsymbol{0}$ and $\underline{C}_k=\overline{C}_k=\mathcal{R}_k/(2f)$, so the error transformation $\hat{\boldsymbol{r}}_\text{e}=\mathcal{S}_1(\boldsymbol{\zeta}_1)\boldsymbol{p}_1(t)$ collapses to the symmetric hyperbolic form
-\begin{equation} \label{symmetric transformation: equation}
-    \zeta_{1_k} = \ln\!\left(\frac{1 + \hat{r}_{\text{e}k}/p_{1_k}(t)}{1 - \hat{r}_{\text{e}k}/p_{1_k}(t)}\right),\qquad k=1,2,
-\end{equation}
-with $p_{1_k}(0)=\mathcal{R}_k/(2f)$. The general asymmetric transformation, its inverse, and the Jacobian $\mathcal{G}_1=\text{diag}(g_{1_k})$ are given in Section~S7 of the supplement. Differentiating yields
-\begin{equation} \label{transformed error derivative: equation}
-    \dot{\boldsymbol{\zeta}}_1 = \mathcal{G}_1\!\left[\dot{\hat{\boldsymbol{r}}}_{\text{e}} - \mathcal{S}_1(\boldsymbol{\zeta}_1)\dot{\boldsymbol{p}}_1(t)\right],
-\end{equation}
-which, combined with \eqref{h_des: equation}, expresses the desired optic flow as a function of $(\boldsymbol{\zeta}_1,\dot{\boldsymbol{\zeta}}_1)$. A PID law in the unconstrained coordinate,
-\begin{equation} \label{zeta_e_dot_d: equation}
-    \dot{\boldsymbol{\zeta}}_1 = -K_{\zeta p}\boldsymbol{\zeta}_1 - K_{\zeta i}\!\int\boldsymbol{\zeta}_1\,d\tau - K_{\zeta d}\frac{\delta\boldsymbol{\zeta}_1}{\delta t},
-\end{equation}
-then drives $\hat{\boldsymbol{r}}_\text{e}$ into the funnel and synthesises the corresponding $\boldsymbol{h}_\text{d}$; the closed-form expression is given in Eq.~(S7.4) of the supplement.
+\subsection{Proposed Outer-Loop Controller} \label{outer loop: section}
 
-\subsection{Optic-Flow Funnel: Prescribed Performance on the Descent-Rate Error} \label{ppc optic flow: section}
+\subsubsection{Normalized-Error PID for the Desired Optic Flow} \label{normalized pid: section}
+The desired optic flow $\boldsymbol{h}_\text{d}$ feeding the optic-flow funnel is synthesised from a scale-independent PID on a normalized image-feature error. Let $\boldsymbol{p}_{1_0}=\mathcal{R}/(2f)\in\mathbb{R}^2_{>0}$ denote the sensor-half widths expressed in feature units, and define the normalized feature error
+\begin{equation} \label{normalized error: equation}
+    \bar{\boldsymbol{r}}_\text{e} = \hat{\boldsymbol{r}}_\text{e}\oslash\boldsymbol{p}_{1_0},\qquad\hat{\boldsymbol{r}}_\text{e}=\,^\mathcal{V}\hat{\boldsymbol{r}}-\hat{\boldsymbol{r}}_\text{d},
+\end{equation}
+where $\oslash$ is componentwise division, so that $|\bar{r}_{\text{e}_k}|\le 1$ corresponds to the FoV boundary. A PID law in the normalized coordinate generates the reference error-derivative
+\begin{equation} \label{s_e_dot_d: equation}
+    \dot{\boldsymbol{s}}_\text{e} = -K_{rp}\bar{\boldsymbol{r}}_\text{e} - K_{ri}\!\int\bar{\boldsymbol{r}}_\text{e}\,d\tau - K_{rd}\frac{\delta\bar{\boldsymbol{r}}_\text{e}}{\delta t},
+\end{equation}
+with diagonal gains $K_{rp},K_{ri},K_{rd}\succ 0$. Substituting into \eqref{h_des: equation} yields
+\begin{equation} \label{h_d final: equation}
+    \boldsymbol{h}_\text{d} = \dot{\boldsymbol{s}}_\text{e} + \,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s} + \big[h_\text{rd} - (\,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s}.
+\end{equation}
+Normalization by $\boldsymbol{p}_{1_0}$ makes the PID gains invariant under a change of sensor resolution and lifts the unit-free constraint $|\bar{r}_{\text{e}_k}|\le 1$ into a common tuning target. Analytical enforcement of this bound is delegated to the visibility funnel of Section~\ref{fov cone: section}, which clamps the downstream acceleration command so the target image corner points never leave the shrinking FoV box.
+
+\subsubsection{Optic-Flow Funnel: Prescribed Performance on the Descent-Rate Error} \label{ppc optic flow: section}
 The optic-flow error is constrained inside a second funnel $h_{e_k}\in(-p_{2_k}(t),p_{2_k}(t))$, $k\in\{1,2,3\}$, with performance function $\boldsymbol{p}_2(t) = e^{-\Xi_2 t}(\boldsymbol{p}_{2_0}-\boldsymbol{p}_{2_\infty})+\boldsymbol{p}_{2_\infty}$, where $\boldsymbol{p}_{2_0},\boldsymbol{p}_{2_\infty},\Xi_2=\text{diag}(\xi_{2_k})\succ 0$ set the maximum overshoot, steady-state residual, and minimum convergence rate. A hyperbolic-tangent transformation maps the constrained error onto the unconstrained coordinate $\boldsymbol{\zeta}_2$:
 \begin{align}
     \label{optical flow error transformation: equation}
@@ -189,10 +186,10 @@ with inverse $\zeta_{2_k}=\ln\!\big((p_{2_k}+h_{e_k})/(p_{2_k}-h_{e_k})\big)$. D
 \end{equation}
 with Jacobian $\mathcal{G}_2=\text{diag}(g_{2_k})$, $g_{2_k}=(e^{\zeta_{2_k}}+1)^2/(2e^{\zeta_{2_k}}p_{2_k})$.
 
-\textit{Remark 1 (Funnel-saturation guard).} Since $g_{2_k}\to\infty$ as $|S_2(\zeta_{2_k})|\to 1$, the equivalent control $\boldsymbol{u}_\text{eq}$ in \eqref{adaptive control law: equation} can blow up under transient pixel-noise peaks. We therefore numerically clamp $|S_2(\zeta_{2_k})|$ at $1-\epsilon_S$, $\epsilon_S=0.05$, which tightens the closed-loop constraint set to $|h_{e_k}|\le(1-\epsilon_S)p_{2_k}(t)$ and contributes a bounded additive residual absorbed into $\tilde{d}$ in the proof of Theorem~1. The clamp is active for $<0.5\%$ of control steps in the reported runs and is essential for the $25/25$ landing rate of Section~\ref{multi init: subsec}. Initial-condition feasibility and a sliding-surface anti-windup guard consistent with the clamp are described in Section~S7.
+\textit{Remark 1 (Funnel-saturation guard).} Since $g_{2_k}\to\infty$ as $|S_2(\zeta_{2_k})|\to 1$, the equivalent control $\boldsymbol{u}_\text{eq}$ in \eqref{adaptive control law: equation} can blow up under transient pixel-noise peaks. We therefore numerically clamp $|S_2(\zeta_{2_k})|$ at $1-\epsilon_S$, $\epsilon_S=0.05$, which tightens the closed-loop constraint set to $|h_{e_k}|\le(1-\epsilon_S)p_{2_k}(t)$ and contributes a bounded additive residual absorbed into $\tilde{d}$ in the proof of Theorem~1. The clamp is active for $<0.5\%$ of control steps in the reported runs and is essential for the $25/25$ landing rate of Section~\ref{multi init: subsec}. Initial-condition feasibility and a sliding-surface anti-windup guard consistent with the clamp are described in Section~S2.
 
-\subsection{Leakage-Type Adaptive Sliding Mode Control Law} \label{adaptive controller for inner loop : section}
-A leakage-type adaptive first-order sliding mode law is designed to drive $\boldsymbol{\zeta}_2$ in \eqref{unconstrained system: equation} to a uniform ultimate bound without any \emph{a priori} knowledge of $\beta$ or $\boldsymbol{d}_h$, extending the vertical-landing formulation of \cite{singhal2025} to the 3D image-kinematic setting. Unlike classical adaptive sliding-mode designs \cite{lee2012}, the leakage term prevents monotonic gain drift under persistent noise.
+\subsubsection{Leakage-Type Adaptive Sliding Mode Control Law} \label{asmc law: section}
+A leakage-type adaptive first-order sliding mode law drives $\boldsymbol{\zeta}_2$ in \eqref{unconstrained system: equation} to a uniform ultimate bound without any \emph{a priori} knowledge of $\beta$ or $\boldsymbol{d}_h$, extending~\cite{singhal2025} to the 3D image-kinematic setting.
 
 Define the PI sliding surface $\boldsymbol{\sigma}=\boldsymbol{\zeta}_2+\mathcal{X}\!\int_{t_0}^{t}\boldsymbol{\zeta}_2\,d\tau$ with $\mathcal{X}=\text{diag}(\chi_k)\succ 0$. Combining $\dot{\boldsymbol{\sigma}}=\dot{\boldsymbol{\zeta}}_2+\mathcal{X}\boldsymbol{\zeta}_2$ with \eqref{unconstrained system: equation} and collecting the uncertain terms into $\boldsymbol{\theta}=[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2,\,I_{3\times 3}]$ and $\boldsymbol{\overline{d}}=\beta_{\min}^{-1}[\beta-1,\boldsymbol{d}_h]^\top$ (with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$) yields
 \begin{equation} \label{sigma derivative: equation 2}
@@ -210,30 +207,45 @@ where $\Gamma=\text{diag}(\gamma_k)\succ 0$, $\mathcal{E}=\text{diag}(\varepsilo
 \end{equation}
 with $\mathcal{N}=\text{diag}(\eta_k)\succ 0$, $\mathcal{P}=\text{diag}(\rho_k)\succ 0$.
 
-\subsubsection{Yaw-Channel Adaptive Sliding Mode and Heading-Reference Integrator}
-Orientation alignment is enforced on the scalar image-orientation error $\alpha_e=\alpha-\alpha_\text{d}$, whose dynamics $\dot{\alpha}_e=-\,^\mathcal{V}\omega_{\text{v}z}$ follow from \eqref{target orientation: equation}. With $\alpha_e$ unwrapped to $(-\pi/2,\pi/2]$ (to prevent half-turn feature flips from driving spurious yaw), a scalar copy of the law \eqref{adaptive control law: equation}--\eqref{adaptive law: equation} with sliding surface $\sigma_a=\alpha_e+\chi_a\!\int\alpha_e\,d\tau$ produces a signal $u_\text{a}$ that is integrated online as the \emph{time-derivative of a desired heading}:
-\begin{equation} \label{psi d integrator: equation}
-    \psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}\!\big[\psi_\text{d}(t_k) + u_\text{a}(t_k)\,\Delta t\big].
+\subsection{Visibility Funnel: FoV-Adaptive Cone Clamp} \label{fov cone: section}
+The visibility funnel realises the state-dependent attitude cone of Assumption~1 by projecting the commanded lateral acceleration onto a cone whose half-angle is tied to the instantaneous corner-point margin. Let $\,^\mathcal{C}\boldsymbol{n}_i\in\mathbb{R}^2$, $i\in\{1,\ldots,4\}$, denote the pixel coordinates of the four target image corner points in the camera frame $\mathcal{C}$. An FoV-adaptive \emph{pixel-box} centred on the image centre and collapsing exponentially toward its terminal half-widths is defined by
+\begin{equation} \label{rho fov: equation}
+    \boldsymbol{\rho}_\text{fov}(t) = e^{-\ell_\text{fov} t}\big(\boldsymbol{\rho}_{\text{fov},0}-\boldsymbol{\rho}_{\text{fov},\infty}\big) + \boldsymbol{\rho}_{\text{fov},\infty},
 \end{equation}
-This \emph{virtual-compass generator} makes $\psi_\text{d}$ evolve purely from the image-based yaw error, enabling magnetometer-free operation. The yaw channel decouples from the translational dynamics, so the stability argument of Section~\ref{stability: section} reproduces line-for-line with scalar substitutions; the full substitution is given in Section~S7.
+with $\boldsymbol{\rho}_{\text{fov},0},\boldsymbol{\rho}_{\text{fov},\infty}\in\mathbb{R}^2_{>0}$ setting the initial and terminal half-widths along the two sensor axes and $\ell_\text{fov}>0$ the decay rate; mirroring the pixel-unit convention of \eqref{visibility_constraints}, $\boldsymbol{\rho}_{\text{fov},0}\preceq\mathcal{R}/2$. The worst-case pixel-corner margin to the box boundary is
+\begin{equation} \label{d min fov: equation}
+    d_\text{min}^\text{fov}(t) = \max\!\left(0,\ \min_{i,k}\!\big(\rho_{\text{fov},k}(t)-|\,^\mathcal{C}n_{i,k}|\big)\right),\ k\in\{1,2\},
+\end{equation}
+which stays strictly positive while every corner lies inside $\boldsymbol{\rho}_\text{fov}(t)$ and is clipped to zero the moment any corner touches the boundary. The cone half-angle onto which $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ is projected is
+\begin{equation} \label{cone angle: equation}
+    \theta_\text{cone}(t) = \min\!\Big(\theta_\text{curr}(t) + \tan^{-1}\!\big(d_\text{min}^\text{fov}(t)/f\big),\ \theta_\text{cap}\Big),
+\end{equation}
+where $\theta_\text{curr}(t)=\arccos(R_{33}(t))$ is the tilt of the body-$z$ axis from the inertial vertical and $\theta_\text{cap}=60^\circ$ is the airframe tilt ceiling. As any corner approaches the box, $d_\text{min}^\text{fov}\to 0$ and $\theta_\text{cone}\to\theta_\text{curr}$, so the outer loop cannot command any additional tilt that would push that corner outside $\boldsymbol{\rho}_\text{fov}(t)$. The projection itself is
+\begin{equation} \label{cone clamp: equation}
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\leftarrow \min\!\left(1,\ \frac{|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)}{\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|+\varepsilon}\right)\!\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy},
+\end{equation}
+with $\varepsilon>0$ a numerical floor. By construction the target image corner points remain inside $\boldsymbol{\rho}_\text{fov}(t)\subseteq\boldsymbol{\rho}_\text{fov}(0)\preceq\mathcal{R}/2$, so the visibility constraint \eqref{visibility_constraints} is enforced kinematically for all $t\ge 0$. The projection is active for $<1\%$ of control steps in the reported runs and its bounded additive contribution is absorbed into $\boldsymbol{d}_h$ in \eqref{h_e_dot_1: equation}.
+
+\subsection{Proposed Inner-Loop Controller} \label{inner loop: section}
+
+\subsubsection{Yaw-Channel Adaptive Sliding Mode and Heading-Reference Integrator}
+Orientation alignment is enforced on the image-orientation error $\alpha_e=\alpha-\alpha_\text{d}$, whose dynamics $\dot{\alpha}_e=-\,^\mathcal{V}\omega_{\text{v}z}$ follow from \eqref{target orientation: equation}. With $\alpha_e$ unwrapped to $(-\pi/2,\pi/2]$ (to prevent half-turn feature flips from driving spurious yaw), a scalar copy of the law \eqref{adaptive control law: equation}--\eqref{adaptive law: equation} with sliding surface $\sigma_a=\alpha_e+\chi_a\!\int\alpha_e\,d\tau$ produces a signal $\,^\mathcal{V}\omega_{\text{v}z}$, which is equivalent to the desired yaw rate $\dot{\psi}_\text{d}$ due to decoupled yaw. The yaw-rate signal is integrated online as the \emph{time-derivative of a desired heading}:
+\begin{equation} \label{psi d integrator: equation}
+    \psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}\!\big[\psi_\text{d}(t_k) + \dot{\psi}_\text{d}(t_k)\,\Delta t\big].
+\end{equation}
+This \emph{virtual-compass generator} makes $\psi_\text{d}$ evolve purely from the image-based yaw error, enabling magnetometer-free operation. The yaw channel decouples from the translational dynamics, so the stability argument of Section~\ref{stability: section} reproduces line-for-line with scalar substitutions; the full substitution is given in Section~S2.
 
 \subsubsection{Inner Loop: Geometric SO(3) Attitude Control} \label{so3 inner loop: section}
-The outer law \eqref{adaptive control law: equation} returns a desired inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{cd}$, which DF-ASMC realises through the geometric almost-global attitude tracker of \cite{lee2010} that avoids both the Euler-angle coupling at large tilt and the sign-continuity issues of quaternion trackers. After a 2-Hz low-pass filter on $\,^\mathcal{I}\boldsymbol{a}_\text{cd}$ (absorbing pixel-noise spikes), the filtered command defines the thrust magnitude $T_\text{cd}=m\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{cd}\|$ and body-$z$ axis; together with $\psi_\text{d}$ from \eqref{psi d integrator: equation} a Gram--Schmidt construction yields $R_\text{d}$. With attitude error $\boldsymbol{e}_R=\tfrac12(R_\text{d}^\top R-R^\top R_\text{d})^\vee$ and angular-velocity error $\boldsymbol{e}_\Omega$, the commanded body torque is
+The outer law \eqref{adaptive control law: equation} returns a desired inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, which MDF-ASMC realises through the geometric almost-global attitude tracker of \cite{lee2010}. After a 2-Hz low-pass filter on $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, the filtered command defines $\,^\mathcal{B}T_u=m\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ and body-$z$ axis; together with $\psi_\text{d}$ from \eqref{psi d integrator: equation} a Gram--Schmidt construction yields $R_\text{d}$. With attitude error $\boldsymbol{e}_R=\tfrac12(R_\text{d}^\top R-R^\top R_\text{d})^\vee$ and angular-velocity error $\boldsymbol{e}_\Omega$, the commanded body torque is
 \begin{equation} \label{so3 torque: equation}
-    \,^\mathcal{B}\boldsymbol{\tau}_\text{cd} = -k_R\boldsymbol{e}_R - k_\Omega\boldsymbol{e}_\Omega + \boldsymbol{\omega}\times J\boldsymbol{\omega},
+    \,^\mathcal{B}\boldsymbol{\tau}_u = -k_R\boldsymbol{e}_R - k_\Omega\boldsymbol{e}_\Omega + \boldsymbol{\omega}\times J\boldsymbol{\omega},
 \end{equation}
-with $k_R,k_\Omega\succ 0$; this inherits the almost-global exponential stability of \cite[Thm.~3.1]{lee2010}. Filter coefficients, $R_\text{d}$ construction, and error definitions are in Section~S7.
-
-\textit{Remark 2 (Attitude-cone clamp).} Before the low-pass filter, $\,^\mathcal{I}\boldsymbol{a}_\text{cd}$ is projected so that the tilt cannot exceed $\phi_{\max}=35^\circ$ (X500 envelope):
-\begin{equation} \label{cone clamp: equation}
-    \,^\mathcal{I}\boldsymbol{a}_{\text{cd},xy}\leftarrow\min\!\left(1,\frac{|a_{\text{cd},z}|\tan\phi_{\max}}{a_{xy}+\varepsilon}\right)\!\,^\mathcal{I}\boldsymbol{a}_{\text{cd},xy}.
-\end{equation}
-The clamp is active for $<1\%$ of control steps in the reported runs and its bounded additive contribution is absorbed into $\boldsymbol{d}_h$.
+with $k_R,k_\Omega\succ 0$; this inherits the almost-global exponential stability of \cite[Thm.~3.1]{lee2010}. Filter coefficients, $R_\text{d}$ construction, and error definitions are in Section~S2.
 
 \subsection{Lyapunov Stability Analysis} \label{stability: section}
-The stability analysis follows a layered Lyapunov argument for cascaded nonlinear systems \cite{khalil2002}, building on the standard definition of global uniform ultimate boundedness (GUUB). The key statements are reported below; the full proof, the preparatory Lemma on GUUB, and the line-by-line Lyapunov derivative manipulation are relegated to Section~S7 of the supplement.
+The stability analysis follows a layered Lyapunov argument for cascaded nonlinear systems \cite{khalil2002}, building on the standard definition of global uniform ultimate boundedness (GUUB). The key statements are reported below; the full proof, the preparatory Lemma on GUUB, and the line-by-line Lyapunov derivative manipulation are relegated to Section~S2 of the supplement.
 
-\textit{Theorem 1 (Inner-loop GUUB).}
+\textit{Theorem 1 (Adaptive Optic-Flow Funnel Invariance).}
 Consider the perturbed nonlinear system \eqref{h_e_dot_1: equation} with initial optic-flow error $-\boldsymbol{p}_{2_0}<\boldsymbol{h}_e(0)<\boldsymbol{p}_{2_0}$. Then, under \textit{Assumption~1}, the unconstrained system \eqref{unconstrained system: equation} driven by the proposed control law \eqref{adaptive control law: equation}--\eqref{adaptive law: equation} exponentially drives $\boldsymbol{\zeta}_2$ into a UUB
 \begin{equation} \label{UUB bound: equation}
     \vartheta = \sqrt{\frac{3\,\beta_{\min}\lambda_{\max}(\mathcal{P})}{\varphi_1-\varphi_2}}\,\tilde{d},
@@ -242,4 +254,4 @@ where $\varphi_1 \triangleq \beta_{\min}\frac{\min\{2\lambda_{\min}(\Gamma),\lam
 
 \textit{Proof sketch.} Take the Lyapunov candidate $V(t) = \tfrac12\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}]$. Using \eqref{sigma derivative: equation 2}, the closed-loop \eqref{adaptive control law: equation}, and the switching identity $\boldsymbol{\sigma}^\top\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma}) = |\boldsymbol{\sigma}|^\top - \boldsymbol{r}_\varepsilon^\top$ with boundary-layer residual $r_{\varepsilon_k}\le\varepsilon_k/4$, and noting $\boldsymbol{\kappa}(t)\in\mathbb{R}_+^3$ from \eqref{adaptive law: equation}, one obtains $\dot{V}(t)\le -\varphi_2 V(t)$ for all $V(t)\ge\Theta=\tfrac{3\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2}{2(\varphi_1-\varphi_2)}$. Standard GUUB arguments then give \eqref{UUB bound: equation}, and the inverse transformation \eqref{optical flow error transformation: equation} preserves $-\boldsymbol{p}_2(t)<\boldsymbol{h}_e<\boldsymbol{p}_2(t)$. The boundary-layer residual and the saturation-guard clamp of Remark~1 both contribute bounded additive terms absorbed into $\tilde{d}$. $\hfill\blacksquare$
 
-\textit{Corollary 1 (Layered closed-loop boundedness).} Under the conditions of Theorem~1, if the outer-loop PID law \eqref{zeta_e_dot_d: equation} is implemented with positive-definite gains, the transformed image-feature error $\boldsymbol{\zeta}_1$ converges exponentially into a residual set whose size is upper-bounded by an affine function of $\vartheta$, so that the image-feature error satisfies $-\underline{C}_k p_{1k}(t)<\hat{r}_{e_k}(t)<\overline{C}_k p_{1k}(t)$ for all $t\ge 0$ and the visibility constraint \eqref{visibility_constraints} is preserved throughout. The short cascade argument --- substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_e$ into \eqref{transformed error derivative: equation} and invoking standard ISS results \cite{khalil2002} --- is given in Section~S7 of the supplement.
+\textit{Corollary 1 (Closed-loop target visibility).} Under the conditions of Theorem~1, the normalized-error PID \eqref{s_e_dot_d: equation} with diagonal positive-definite gains renders the image-feature error $\hat{\boldsymbol{r}}_\text{e}$ ultimately bounded by an affine function of $\vartheta$ through the ISS cascade $\boldsymbol{h}_\text{e}\to\boldsymbol{h}\to\hat{\boldsymbol{r}}_\text{e}$. Independently, the cone-clamp projection \eqref{cone clamp: equation} enforces by construction that the target remains visible to the onboard camera for the entire descent --- i.e., the visibility constraint \eqref{visibility_constraints} holds at every time step, regardless of uncertainty, delay, or saturation. Together with Theorem~1, the corollary delivers visibility and soft precise landing from a single layered certificate. The ISS cascade and the geometric visibility argument are carried out in Section~S2 of the supplement.

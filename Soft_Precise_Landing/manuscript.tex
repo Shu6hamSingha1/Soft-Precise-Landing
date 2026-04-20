@@ -13,6 +13,8 @@
 \usepackage{mathtools}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
 
 \jvol{XX}
 \jnum{XX}
@@ -31,7 +33,7 @@
 
 \begin{document}
 
-\title{Dual-Funnel Adaptive Sliding-Mode Control for Guaranteed Soft Precise Landing Using Optic Flow} 
+\title{Dual-Funnel Adaptive Sliding-Mode Control for Vision-Only Soft Precise Landing with Guaranteed Target Visibility}
 
 \author{SHUBHAM SINGHAL}
 \member{Graduate Student Member, IEEE}
@@ -59,39 +61,39 @@ Jishnu Keshavan is also with the Department of Mechanical Engineering, Indian In
 % \editor{Mentions of supplemental materials and animal/human rights statements can be included here.}
 \supplementary{A video of the closed-loop simulation runs is available at: \url{https://youtu.be/1wcuQ9zRay0}.}
 
-\markboth{SINGHAL ET AL.}{SLIDING MODE CONTROL FOR GUARANTEED SOFT LANDING USING OPTIC FLOW}
+\markboth{SINGHAL ET AL.}{DUAL-FUNNEL ASMC FOR VISION-ONLY SOFT PRECISE LANDING}
 \maketitle
 
-\begin{abstract}This paper addresses autonomous soft precise landing of a quadrotor on a moving target from monocular vision alone, with no metric depth, pose, or range measurement. A visual-servoing law built for tracking does not guarantee a vanishing descent velocity at touchdown. A \emph{Dual-Funnel Adaptive Sliding-Mode Control} (DF-ASMC) framework is proposed that couples a visibility funnel on the image-feature error with an optic-flow funnel on the descent-rate error through a barrier-transformed reference generator, converting a generic image-based servoing law into a provable soft-landing law without altitude or compass measurements --- the yaw reference is extracted directly from the image-plane orientation of the target. Both funnels are stabilised by a leakage-type adaptive sliding-mode law with provable gain boundedness under persistent noise and a saturation guard that eliminates the numerical pole of classical PPC implementations. A layered Lyapunov certificate then delivers visibility, soft touchdown, and disturbance rejection from one theorem. Simulations across five initial conditions and five trajectories (including two ship-deck cases) under pixel noise, ground effect, delay, and saturation yield a $25/25$ landing rate with worst-case horizontal error below $3.1~\text{cm}$, and DF-ASMC is the only controller in a head-to-head comparison against four recent baselines to achieve sub-decimetre touchdown on every moving trajectory.
+\begin{abstract}This paper addresses autonomous soft precise landing of a quadrotor on a moving target from monocular vision alone, with no metric depth or heading measurement. A visual-servoing law built for tracking does not guarantee a vanishing relative velocity at touchdown. We propose \emph{Monocular Dual-Funnel Adaptive Sliding-Mode Control} (MDF-ASMC), a parallel two-funnel architecture: an optic-flow funnel generates the commanded acceleration through a leakage-type adaptive sliding-mode law, and an exponentially-decaying visibility funnel defines a state-dependent attitude cone that tightens as the target approaches the funnel boundary. The cone then geometrically clips the commanded acceleration in closed form, simultaneously enforcing target visibility and the actuator-saturation constraint. The desired optic flow is supplied by an image-feature error PID, and the yaw reference is extracted from the target image orientation in the virtual image plane, so the outer loop operates without altitude or compass measurements. The leakage term prevents switching-gain drift under persistent measurement noise, and a funnel saturation guard eliminates the numerical pole of classical PPC implementations. A layered Lyapunov certificate delivers adaptive optic-flow funnel invariance (Theorem~1) and closed-loop target visibility (Corollary~1). Simulations across five initial conditions and five trajectories (including two ship-deck cases) under depth-dependent pixel noise, wind with turbulence, parametric uncertainty, ground effect, delay, and saturation yield a $25/25$ landing rate with worst-case horizontal error below $7.3~\text{cm}$; MDF-ASMC is the only controller in a comparative benchmark against four recent baselines to achieve sub-decimetre touchdown on every moving trajectory.
 \end{abstract}
 
 \begin{IEEEkeywords}Optic flow regulation, adaptive sliding mode control, guaranteed precise landing, visual guidance, prescribed performance constraint
 \end{IEEEkeywords}
 
-\section*{Nomenclature}
+% \section*{Nomenclature}
 
-\begin{tabular}{@{}l @{\quad=\quad} l@{}}
-$t$ & time, s \\
-$m$ & mass, kg \\
-$\boldsymbol{r}$ & radial position vector, m \\
-$\boldsymbol{v}$ & linear velocity vector, m/s \\
-$\boldsymbol{\omega}$ & angular velocity vector, rad/s \\
-$\boldsymbol{F}$ & force vector, N \\
-$J$ & moment of inertia matrix, kg m$^2$ \\
-$\boldsymbol{\tau}$ & torque vector, N m \\
-$T$ & total thrust of the rotors, N \\
-$\hat{\boldsymbol{r}}$ & image point \\
-$\boldsymbol{s}$ & normalized position vector, rad \\
-$\alpha$ & image orientation, rad \\
-$\boldsymbol{h}$ & optical flow, rad/s \\
-$\boldsymbol{q}$ & system output vector \\
-$\boldsymbol{u}$ & system input vector \\
-$\beta$ & uncertainty parameter \\
-$\boldsymbol{c}$ & vector representing known system dynamics \\
-$\boldsymbol{d}$ & vector representing unknown system dynamics \\
-$\boldsymbol{p}$ & performance function vector \\
-$V$ & Lyapunov function
-\end{tabular}
+% \begin{tabular}{@{}l @{\quad=\quad} l@{}}
+% $t$ & time, s \\
+% $m$ & mass, kg \\
+% $\boldsymbol{r}$ & radial position vector, m \\
+% $\boldsymbol{v}$ & linear velocity vector, m/s \\
+% $\boldsymbol{\omega}$ & angular velocity vector, rad/s \\
+% $\boldsymbol{F}$ & force vector, N \\
+% $J$ & moment of inertia matrix, kg m$^2$ \\
+% $\boldsymbol{\tau}$ & torque vector, N m \\
+% $T$ & total thrust of the rotors, N \\
+% $\hat{\boldsymbol{r}}$ & image point \\
+% $\boldsymbol{s}$ & normalized position vector, rad \\
+% $\alpha$ & image orientation, rad \\
+% $\boldsymbol{h}$ & optical flow, rad/s \\
+% $\boldsymbol{q}$ & system output vector \\
+% $\boldsymbol{u}$ & system input vector \\
+% $\beta$ & uncertainty parameter \\
+% $\boldsymbol{c}$ & vector representing known system dynamics \\
+% $\boldsymbol{d}$ & vector representing unknown system dynamics \\
+% $\boldsymbol{p}$ & performance function vector \\
+% $V$ & Lyapunov function
+% \end{tabular}
 
 \section{INTRODUCTION}
 U{\scshape nmanned} Aerial Vehicles (UAVs) are increasingly tasked with autonomous landings on mobile platforms such as ships, ground vehicles, and robots, where imprecise or hard landings risk damage to the UAV, the payload, and the target infrastructure. The terminal landing phase is particularly demanding because it couples tight positioning requirements with a bounded descent velocity while operating in the regime where wind, ground effect, and measurement noise are most pronounced.
@@ -102,21 +104,21 @@ Regulating \emph{optic flow} rather than metric position circumvents scale ambig
 
 An orthogonal line of work enforces \emph{visibility constraints} so that the target does not leave the camera field of view during the terminal descent. Barrier-function constructions \cite{salehi2021} impose hard inequality constraints but render the control law unbounded near the field-of-view boundary; prescribed-performance control (PPC) \cite{lin2022} instead forces the image error inside a smooth time-varying funnel without any unbounded gain. PPC, however, has so far been applied to the image-plane error \emph{alone}, and therefore answers the visibility question but not the soft-touchdown question: a single-funnel PPC law has no mechanism to prescribe the rate at which the vertical velocity vanishes. Recent adaptive and learning-based schemes \cite{paris2020, chen2025, bouazza2025, kamath2026, zhang2026} either depend on heavy perception pipelines, assume a known uncertainty bound, or pre-identify an aerodynamic model --- none of which is available at flight time on an unknown target.
 
-The literature therefore exhibits three gaps. \emph{(i)} No existing image-based landing controller simultaneously constrains the image-plane error and the optic-flow error, so none converts a generic image-based servoing law into a provable soft-landing law without an external altitude estimate. \emph{(ii)} Adaptive visual-servoing laws that tolerate disturbances and saturation do so only under a known uncertainty bound or a pre-identified model. \emph{(iii)} No prior work has established a layered Lyapunov certificate linking the optic-flow error back to the visibility error in closed loop, as required to certify both soft and precise touchdown from a single theorem. These gaps --- summarised qualitatively in Table~\ref{tab:comparison} and quantified head-to-head in Table~\ref{comparison table: table} of Section~\ref{comparison: subsec} --- motivate the DF-ASMC framework developed in this paper.
+The literature therefore exhibits three gaps. \emph{(i)} No existing image-based landing controller simultaneously constrains the image-plane error and the optic-flow error, so none converts a generic image-based servoing law into a provable soft-landing law without an external altitude estimate. \emph{(ii)} Adaptive visual-servoing laws that tolerate disturbances and saturation do so only under a known uncertainty bound or a pre-identified model. \emph{(iii)} No prior work has established a layered Lyapunov certificate linking the optic-flow error back to the visibility error in closed loop, as required to certify both soft and precise touchdown from a single theorem. These gaps --- summarised qualitatively in Table~\ref{tab:comparison} and quantified comparatively in Table~\ref{comparison table: table} of Section~\ref{comparison: subsec} --- motivate the MDF-ASMC framework developed in this paper.
 
 The main contributions of this paper are summarised as follows:
 \begin{enumerate}
-    \item[(a)] \textit{Dual-funnel prescribed-performance architecture.} A visibility funnel on the image-feature error and an optic-flow funnel on the descent-rate error are coupled through a barrier-transformed reference generator, converting a generic image-based servoing law into a provable soft-landing law without any altitude measurement (Sections~\ref{ppc visibility: section}--\ref{ppc optic flow: section}).
+    \item[(a)] \textit{Parallel dual-funnel architecture for image-based soft landing.} A prescribed-performance optic-flow funnel generates a commanded acceleration through a leakage-type adaptive sliding-mode law, and an exponentially-decaying visibility funnel defines a state-dependent attitude cone; the cone geometrically clips the commanded acceleration in closed form, simultaneously enforcing target visibility and actuator saturation (Sections~\ref{normalized pid: section}--\ref{fov cone: section}).
     \item[(b)] \textit{Scale-free and compass-free image-kinematic reformulation.} The translational loop uses optic flow in place of metric depth, and the rotational loop extracts its yaw reference from the image-plane orientation $\alpha$ of the target feature ($\dot{\alpha}=\dot{\psi}$), eliminating both the range sensor and the magnetic compass that every existing image-based landing law retains (Section~\ref{problem statement: section}).
-    \item[(c)] \textit{Leakage-type adaptive sliding mode law with funnel saturation guard.} The optic-flow funnel is stabilised by a sliding-mode law whose switching gain is identified online; the leakage term provably prevents gain drift under persistent measurement noise, and a saturation guard on the optic-flow barrier transformation removes the numerical pole near the funnel edge without weakening the guarantee. An attitude-cone projection handles actuator saturation in closed form (Section~\ref{adaptive controller for inner loop : section}).
-    \item[(d)] \textit{Layered Lyapunov certificate for soft precise landing.} A single layered Lyapunov argument (Section~\ref{stability: section}) renders the optic-flow error GUUB, preserves both funnels for all time, and propagates the inner-loop guarantee backward to the outer visibility error, delivering visibility, soft touchdown, and disturbance rejection from one theorem --- carried through the saturation, funnel-guard, and cone-clamp nonlinearities without approximation.
-    \item[(e)] \textit{Comprehensive numerical validation.} Twenty-five deterministic runs across five initial conditions and five target trajectories (including two ship-deck cases with $\pm 15^\circ/\pm 8^\circ$ roll/pitch and heave) under pixel noise, ground effect, delay, and actuator saturation yield a $25/25$ landing rate with worst-case horizontal error below $3.1~\text{cm}$. A 30-gain deep sweep, a $\pm 40\%$ speed-envelope study, and head-to-head comparison against four recent baselines~\cite{lin2022,zhang2026,chen2025,cho2022} confirm the proposed framework is the only method to achieve sub-decimetre horizontal touchdown on every moving trajectory (Sections~\ref{multi init: subsec}--\ref{comparison: subsec}).
+    \item[(c)] \textit{Leakage-type adaptive sliding mode law with funnel saturation guard.} Extending the 1-D vertical-descent adaptive SMC of~\cite{singhal2025} to the 3-D optic-flow regulation with coupled lateral chase, the optic-flow funnel is stabilised by a sliding-mode law whose switching gain is identified online; the leakage term provably prevents gain drift under persistent measurement noise, and a saturation guard on the optic-flow barrier transformation removes the numerical pole near the funnel edge without weakening the guarantee. A single attitude-cone projection simultaneously enforces the visibility funnel and the actuator-saturation constraint in closed form, solidifying the input-saturation guarantee (Section~\ref{fov cone: section}).
+    \item[(d)] \textit{Layered Lyapunov certificate for soft precise landing.} A layered Lyapunov argument (Section~\ref{stability: section}) renders the optic-flow error globally uniformly ultimately bounded (Theorem~1, adaptive optic-flow funnel invariance) and propagates this invariance to a closed-loop target-visibility guarantee (Corollary~1), delivering soft touchdown, target visibility, and disturbance rejection from one theorem and its corollary --- carried through the saturation, funnel-guard, and cone-clamp nonlinearities without approximation.
+    \item[(e)] \textit{Comprehensive numerical validation.} Twenty-five deterministic runs across five initial conditions and five target trajectories (including two ship-deck cases with $\pm 15^\circ/\pm 8^\circ$ roll/pitch and heave) under depth-dependent pixel noise, wind with turbulence, parametric uncertainty, ground effect, delay, and actuator saturation yield a $25/25$ landing rate with worst-case horizontal error below $7.3~\text{cm}$. A 30-gain deep sweep, a $\pm 40\%$ speed-envelope study, and a comparative benchmark against four recent baselines~\cite{lin2022,zhang2026,chen2025,cho2022} confirm the proposed framework is the only method to achieve sub-decimetre horizontal touchdown on every moving trajectory (Sections~\ref{multi init: subsec}--\ref{comparison: subsec}).
 \end{enumerate}
-The rest of the paper is structured as follows. Section~\ref{background: section} presents the image-kinematic model of the optic-flow-guided soft-landing problem (the baseline cascaded pose-based architecture that the proposed controller replaces is recapitulated in Section~S6 of the supplementary material). Section~\ref{control strategy: section} develops the dual-funnel prescribed-performance design, the leakage-type adaptive sliding mode law, and the layered Lyapunov stability analysis. Section~\ref{experimentation: section} reports the numerical validation, including the multi-initial-condition robustness study, the deep-sweep gain analysis, the target-speed envelope, and the head-to-head comparison against four state-of-the-art landing controllers. Finally, Section~\ref{conclusion: section} presents the conclusions of this study.
+The rest of the paper is structured as follows. Section~\ref{background: section} presents the image-kinematic model of the optic-flow-guided soft-landing problem (the baseline cascaded pose-based architecture that the proposed controller replaces is recapitulated in Section~S1 of the supplementary material). Section~\ref{control strategy: section} develops the dual-funnel prescribed-performance design, the leakage-type adaptive sliding mode law, and the layered Lyapunov stability analysis. Section~\ref{experimentation: section} reports the numerical validation, including the multi-initial-condition robustness study, the deep-sweep gain analysis, the target-speed envelope, and the comparative benchmark against four state-of-the-art landing controllers. Finally, Section~\ref{conclusion: section} presents the conclusions of this study.
 
-\begin{table*}[!t]
+\begin{table}[!t]
 \centering
-\caption{Qualitative comparison of visual-servoing-based UAV landing approaches. \emph{Scale-Free} marks methods whose control law does not require a metric depth or range measurement from a dedicated depth sensor or an explicit 3D reconstruction pipeline; methods that rely on stereo, LiDAR, or PBVS-grade pose estimation are marked $\times$. \emph{Robustness} refers to analytical treatment of parametric/model uncertainty; \emph{Disturbance Handling} to explicit inclusion of wind, ground effect, or pixel noise in the design; \emph{Actuator Constraints} to an in-design treatment of thrust/tilt saturation; and \emph{Stability Guarantee} to a Lyapunov or ISS argument covering the closed loop used for landing.}
+\caption{Qualitative comparison of visual-servoing-based UAV landing approaches. \emph{Scale-Free}: no metric depth/range sensor required ($\times$ = relies on stereo, LiDAR, or PBVS-grade pose). Remaining columns indicate analytical robustness design, explicit disturbance handling, in-design actuator-constraint treatment, and a Lyapunov/ISS stability guarantee.}
 \label{tab:comparison}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
@@ -137,10 +139,10 @@ The rest of the paper is structured as follows. Section~\ref{background: section
 \cite{bouazza2025}            & $\times$ & \checkmark  & \checkmark  & $\times$    & $\times$    \\
 \cite{kamath2026}             & $\times$ & \checkmark  & \checkmark  & $\times$    & $\times$    \\
 \cite{zhang2026}              & $\times$ & \checkmark  & \checkmark  & $\times$    & $\times$    \\
-\textbf{Proposed (DF-ASMC)}            & \checkmark & \checkmark & \checkmark  & \checkmark  & \checkmark  \\
+\textbf{Proposed}            & \checkmark & \checkmark & \checkmark  & \checkmark  & \checkmark  \\
 \bottomrule
 \end{tabular}
-\end{table*}
+\end{table}
 
 \input{control_formulation}
 
@@ -148,13 +150,13 @@ The rest of the paper is structured as follows. Section~\ref{background: section
 
 \section{CONCLUSION}
 \label{conclusion: section}
-This paper addressed the problem of guaranteeing a soft precise landing of a quadrotor on a moving target from monocular vision alone. The premise of the paper is that visibility and soft touchdown are, in closed-loop terms, \emph{two independent funnel constraints}: one on the image-plane error to keep the target in the camera field of view, and one on the optic-flow error to drive the descent velocity to zero as the altitude vanishes. Treating them as a single constraint --- the path taken by virtually all prior image-based landing work --- is what forces existing controllers to rely on an external altitude estimate, a pre-identified aerodynamic model, or both.
+Vision-only soft precise landing on a moving target imposes two simultaneous guarantees on the controller: a vanishing relative velocity at touchdown and an uninterrupted view of the target throughout the descent. Classical image-based servoing laws are built for tracking, not for soft contact, and every existing landing controller retains at least one external sensing dependency --- a calibrated range sensor, a magnetometer, or explicit pose estimation --- to close the altitude and heading channels.
 
-The methodological answer proposed here is the dual-funnel DF-ASMC framework. Its novelty is architectural on two axes. First, two prescribed-performance funnels are coupled through a barrier-transformed reference generator so that the visibility funnel synthesises a feasible optic-flow command that the optic-flow funnel then drives to zero. Second, the entire outer loop is driven from a single monocular camera stream: optic flow supplies the translational feedback in place of metric depth, and the image-plane orientation of the target supplies the yaw reference in place of a magnetic compass, removing the two external sensing dependencies --- a calibrated range sensor and a magnetometer --- that every existing image-based landing controller retains. The optic-flow funnel is stabilised by a leakage-type adaptive sliding mode law whose switching gain is identified online, requires no \emph{a priori} bound on the lumped uncertainty, and provably remains bounded under persistent measurement noise. The funnel saturation guard on the optic-flow barrier transformation eliminates the numerical pole that afflicts conventional prescribed-performance implementations, and an underactuated attitude-cone projection carries the loop through the actuator-saturation nonlinearity without breaking the Lyapunov argument. The entire construction is certified by a single layered Lyapunov analysis that propagates the inner-loop GUUB statement backward through the reference generator, thereby establishing --- in one theorem --- visibility, soft touchdown, and disturbance rejection under actuator saturation, ground effect, pixel noise, and computational delay.
+MDF-ASMC treats visibility and soft-touchdown as two independent funnels with two architectural innovations and drives the entire outer loop from a single monocular camera. First, the visibility funnel and the optic-flow funnel operate in parallel: the optic-flow funnel generates the commanded acceleration through a leakage-type adaptive sliding-mode law on the optic-flow error, and an exponentially-decaying visibility funnel defines a state-dependent attitude cone that tightens as the target approaches the funnel boundary; the ASMC-generated acceleration is then geometrically clipped in closed form by this attitude cone --- a single projection that simultaneously enforces target visibility and the actuator-saturation constraint. Second, optic flow supplies the translational feedback in place of metric depth, and the target image orientation in the virtual image plane supplies the yaw reference in place of a magnetic compass, removing the two external sensing dependencies --- a calibrated range sensor and a magnetometer --- that every existing image-based landing controller retains. The adaptive sliding-mode law identifies its switching gain online, requires no \emph{a priori} bound on the lumped uncertainty, and provably remains bounded under persistent measurement noise. The entire construction is certified by a layered Lyapunov analysis delivering, from one theorem and its corollary, adaptive optic-flow funnel invariance (soft touchdown) and closed-loop target visibility under actuator saturation, ground effect, pixel noise, and computational delay.
 
-Numerical validation on twenty-five deterministic runs spanning five initial conditions and five target trajectories, including two ship-deck cases with heave, roll, and pitch oscillations, confirms the predictions of the theory: the closed loop lands in every run, the funnel and cone-clamp activation rates stay below one percent even under ship-deck motion, and the achieved touchdown error is an order of magnitude tighter than the prescribed precision bound. A cross-trajectory deep sweep, a target-speed envelope study, and a head-to-head comparison against four recent baselines further quantify the robustness, the admissible target-speed band, and the performance margin of the proposed framework --- confirming in particular that DF-ASMC is the only controller in the compared set to simultaneously satisfy the visibility, soft-touchdown, and landing-time thresholds on every moving trajectory.
+Numerical validation on twenty-five deterministic runs spanning five initial conditions and five target trajectories, including two ship-deck cases with heave, roll, and pitch oscillations, confirms the predictions of the theory: the closed loop lands in every run, the funnel and cone-clamp activation rates stay below one percent even under ship-deck motion, and the achieved touchdown error is an order of magnitude tighter than the prescribed precision bound. A cross-trajectory deep sweep, a target-speed envelope study, and a comparative benchmark against four recent baselines further quantify the robustness, the admissible target-speed band, and the performance margin of the proposed framework --- confirming in particular that MDF-ASMC is the only controller in the compared set to simultaneously satisfy the visibility, soft-touchdown, and landing-time thresholds on every moving trajectory.
 
-The principal limitation of the present study is that validation is restricted to high-fidelity numerical simulation; hardware-in-the-loop and outdoor flight experiments on the X500 platform are the natural next step. Beyond experimental validation, two methodological extensions look particularly promising. The first is to generalise the dual-funnel construction to obstacle-aware and multi-target terminal landing by adding a third constraint layer on a free-space image-plane region, which the same layered Lyapunov machinery can in principle accommodate. The second is to deploy the rate-setpoint interface of DF-ASMC directly on top of a PX4 inner loop so that the Lyapunov analysis of Section~\ref{stability: section} transfers verbatim from the simulated geometric attitude tracker to the commercial autopilot, bridging the gap between a provable soft-landing certificate and a production-grade avionics stack.
+The principal limitation of the present study is that validation is restricted to high-fidelity numerical simulation; hardware-in-the-loop and outdoor flight experiments on the X500 platform are the natural next step. Beyond experimental validation, two methodological extensions look particularly promising. The first is to generalise the dual-funnel construction to obstacle-aware and multi-target terminal landing by adding a third constraint layer on a free-space image-plane region, which the same layered Lyapunov machinery can in principle accommodate. The second is to deploy the rate-setpoint interface of MDF-ASMC directly on top of a PX4 inner loop so that the Lyapunov analysis of Section~\ref{stability: section} transfers verbatim from the simulated geometric attitude tracker to the commercial autopilot, bridging the gap between a provable soft-landing certificate and a production-grade avionics stack.
 
 \bibliography{IEEEabrv, bibliography}
 
