@@ -30,12 +30,25 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
 % =========================================================================
 % clc;
 % close all;
+bestParamFile = fullfile(fileparts(mfilename('fullpath')), '..', 'Common', 'bestParam.mat');
 if exist('K', 'var') == 1
-    clearvars -except K;
-elseif isfile("bestParam.mat") == 1
-    clear; load("bestParam.mat");
+    if exist('MC_SEED','var') == 1
+        clearvars -except K MC_SEED CTRL_SEL TRAJ_TYPE bestParamFile;
+    else
+        clearvars -except K CTRL_SEL TRAJ_TYPE bestParamFile;
+    end
+elseif isfile(bestParamFile) == 1
+    if exist('MC_SEED','var') == 1
+        mc_tmp = MC_SEED; bp_tmp = bestParamFile; cs_tmp = CTRL_SEL; tt_tmp = TRAJ_TYPE; clearvars -except mc_tmp bp_tmp cs_tmp tt_tmp c ctrl_list ctrl_names trajType all_results; load(bp_tmp); MC_SEED = mc_tmp; bestParamFile = bp_tmp; CTRL_SEL = cs_tmp; TRAJ_TYPE = tt_tmp; clear mc_tmp bp_tmp cs_tmp tt_tmp;
+    else
+        bp_tmp = bestParamFile; cs_tmp = CTRL_SEL; tt_tmp = TRAJ_TYPE; clearvars -except bp_tmp cs_tmp tt_tmp c ctrl_list ctrl_names trajType all_results; load(bp_tmp); bestParamFile = bp_tmp; CTRL_SEL = cs_tmp; TRAJ_TYPE = tt_tmp; clear bp_tmp cs_tmp tt_tmp;
+    end
 end
-rng('shuffle');
+if exist('MC_SEED','var') == 1
+    rng(MC_SEED);
+else
+    rng('shuffle');
+end
 
 %% =========================================================================
 %  SELECT CONTROLLER
@@ -142,22 +155,28 @@ u_2_hover = [zeros(3,1); m*norm(g)];
 %  PRE-ALLOCATE PLASMC-SPECIFIC ARRAYS  (only if CTRL_SEL == 1)
 % =========================================================================
 if CTRL_SEL == 1
-    p_1         = zeros(2, N_steps);
-    dp_1        = zeros(2, N_steps);
+    % Approach 2: no visibility funnel (p_1/S_1/G_1/zeta_1/izeta_1 removed).
     p_2         = zeros(3, N_steps);
     dp_2        = zeros(3, N_steps);
-    S_1         = zeros(2, 2, N_steps);
-    G_1         = zeros(2, 2, N_steps);
-    zeta_1      = zeros(2, N_steps);
-    izeta_1     = zeros(2, N_steps);
-    raw_dzeta_1 = zeros(2, N_steps + 3);
     S_2         = zeros(3, 3, N_steps);
     G_2         = zeros(3, 3, N_steps);
     zeta_2      = zeros(3, N_steps);
     izeta_2     = zeros(3, N_steps);
     sigma       = zeros(3, N_steps);
     raw_dh_d    = zeros(3, N_steps + 3);
-    V_s_e       = zeros(2, N_steps);
+
+    % Outer-loop PID on normalized raw error (Approach 2)
+    V_s_e        = zeros(2, N_steps);
+    V_s_e_n      = zeros(2, N_steps);
+    iV_s_e_n     = zeros(2, N_steps);
+    raw_dV_s_e_n = zeros(2, N_steps + 3);
+
+    % FoV-adaptive cone clamp logging (Approach 2)
+    rho_fov_log    = zeros(2, N_steps);
+    d_min_log      = zeros(1, N_steps);
+    theta_cur_log  = zeros(1, N_steps);
+    theta_cone_log = zeros(1, N_steps);
+
     kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
     kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
     e_a         = zeros(1, N_steps);
@@ -194,7 +213,17 @@ end
 % Safe default u_2 before loop (hover thrust, zero torques)
 u_2 = [zeros(3,1); m*norm(g)];
 
-landed = false;
+landed  = false;
+precise = false;
+soft    = false;
+
+% FoV failure flag — strict.  Any physical-corner pixel leaving the sensor
+% box [-res(1)/2, res(1)/2] x [-res(2)/2, res(2)/2] counts as controller
+% failure (target lost from camera view).  Applies to all 5 controllers
+% since they share the C_nP projection.
+fov_fail   = false;
+fov_fail_t = NaN;
+
 for idx = 1:N_steps
 
 % *************************************************************************
@@ -245,6 +274,16 @@ for idx = 1:N_steps
                 col = randi(size(C_nP,2));
                 C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
             end
+        end
+
+        % FoV failure check — strict.  Any physical-corner pixel outside the
+        % sensor box terminates the run with success=false.
+        if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
+            fov_fail   = true;
+            fov_fail_t = tRange(idx);
+            fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
+                idx, tRange(idx), max(abs(C_nP(1,:))), max(abs(C_nP(2,:))));
+            break;
         end
 
         % Virtual image plane transform
@@ -345,7 +384,7 @@ for idx = 1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.10;
+        precise = xy_err <= 0.08;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -359,46 +398,30 @@ for idx = 1:N_steps
     switch CTRL_SEL
 
         %------------------------------------------------------------------
-        case 1   % PLASMC — inline, matching _temp.m exactly
+        case 1   % PLASMC (Approach 2) — raw-error PID + FoV-adaptive cone clamp
         %------------------------------------------------------------------
 
-        % Visibility constraint performance function
-        p_1(:,idx)  = expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * ...
-                      (K_ctrl.p_10 - K_ctrl.p_1inf) + K_ctrl.p_1inf;
-        dp_1(:,idx) = -diag(K_ctrl.gamma_1) * ...
-                       expm(-diag(K_ctrl.gamma_1)*tRange(idx)) * ...
-                       (K_ctrl.p_10 - K_ctrl.p_1inf);
+        % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
+        % No virtual-feature visibility funnel: physical-corner visibility is
+        % enforced downstream by the FoV-adaptive cone clamp on I_a_cd.
+        V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
+        V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
 
-        % Error and transformation S_1, zeta_1
-        V_s_e(:,idx) = V_s(1:2) - V_s_d(1:2);   % V_s is a column vector now
-        for j = 1:2
-            S_1(j,j,idx) = V_s_e(j,idx) / p_1(j,idx);
-            % Clamp to open interval (-1,1)  (min/max, no flag-break)
-            S_1(j,j,idx) = min(max(S_1(j,j,idx), -1+eps), 1-eps);
-            zeta_1(j,idx) = log((1 + S_1(j,j,idx)) / (1 - S_1(j,j,idx)));
-            G_1(j,j,idx)  = (exp(zeta_1(j,idx)) + 1)^2 / ...
-                             (2 * exp(zeta_1(j,idx)) * p_1(j,idx));
-        end
-
-        % Integral and derivative of zeta_1  (init: dt not dt/2)
         if idx == 1
-            izeta_1(:,idx)       = dt * zeta_1(:,idx);
-            raw_dzeta_1(:,idx+3) = zeros(2,1);
+            iV_s_e_n(:,idx) = dt * V_s_e_n(:,idx);
+            raw_dV_s_e_n(:,idx+3) = zeros(2,1);
         else
-            izeta_1(:,idx)       = izeta_1(:,idx-1) + ...
-                                   dt*(zeta_1(:,idx-1) + zeta_1(:,idx))/2;
-            raw_dzeta_1(:,idx+3) = (zeta_1(:,idx) - zeta_1(:,idx-1)) / dt;
+            iV_s_e_n(:,idx) = iV_s_e_n(:,idx-1) + dt*(V_s_e_n(:,idx-1) + V_s_e_n(:,idx))/2;
+            raw_dV_s_e_n(:,idx+3) = (V_s_e_n(:,idx) - V_s_e_n(:,idx-1))/dt;
         end
-        dzeta_1  = smooth4(raw_dzeta_1(:,idx:idx+3));
-        dzeta_1d = -K_ctrl.zp*zeta_1(:,idx) - K_ctrl.zi*izeta_1(:,idx) ...
-                   -K_ctrl.zd*dzeta_1;
+        dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
 
-        % Desired optical flow h_d  (V_s is column vector, not indexed)
-        V_ds_d       = [G_1(:,:,idx)\dzeta_1d + S_1(:,:,idx)*dp_1(:,idx); 0.0];
-        V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + ...
-                       (h_rd - dot(cross(V_w, V_s(1:3)), e3)) * V_s(1:3);
+        V_ds_d_xy = -K_ctrl.zp*V_s_e_n(:,idx) - K_ctrl.zi*iV_s_e_n(:,idx) - K_ctrl.zd*dV_s_e_n;
+        V_ds_d    = [V_ds_d_xy; 0.0];
 
-        % Optical flow error
+        V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
+            - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3);
+
         V_h_e(:,idx) = V_h - V_h_d(:,idx);
 
         % Optical flow performance function
@@ -408,7 +431,7 @@ for idx = 1:N_steps
                        expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * ...
                        (K_ctrl.p_20 - K_ctrl.p_2inf);
 
-        % Transformation S_2, zeta_2  (clamp, no flag-break)
+        % Transformation S_2, zeta_2
         S_2_margin = 0.05;   % funnel saturation guard: keeps |zeta_2|<=3.66, G_2 finite
         for j = 1:3
             S_2(j,j,idx) = V_h_e(j,idx) / p_2(j,idx);
@@ -418,15 +441,14 @@ for idx = 1:N_steps
                              (2 * exp(zeta_2(j,idx)) * p_2(j,idx));
         end
 
-        % Integral of zeta_2  (init: dt not dt/2)
+        % Integral of zeta_2
         if idx == 1
             izeta_2(:,idx) = dt * zeta_2(:,idx);
         else
             izeta_2(:,idx) = izeta_2(:,idx-1) + ...
                              dt*(zeta_2(:,idx-1) + zeta_2(:,idx))/2;
         end
-        % Anti-windup: clamp izeta_2 to prevent spike accumulation
-        izeta_2_max = 5.0;   % 50/50 lock-in (synced with run_simulation.m)
+        izeta_2_max = 5.0;
         izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
         sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega * izeta_2(:,idx);
 
@@ -464,22 +486,44 @@ for idx = 1:N_steps
 
         V_a_cd        = -G_2(:,:,idx) \ (u_sw + u_eq);
         I_a_cd(:,idx) = I_R_V * V_a_cd - g;
-        % Cone clamp: keep acceleration vector within max attitude angle
-        att_cone = deg2rad(35);
+
+        if norm(I_a_cd(:,idx)) > 1e02 || any(isnan(I_a_cd(:,idx)))
+            fprintf('  BREAK: I_a_cd norm=%.2f or NaN at idx=%d (t=%.2f)\n', ...
+                    norm(I_a_cd(:,idx)), idx, tRange(idx));
+            break;
+        end
+
+        % FoV-adaptive cone clamp (Approach 2)
+        %   theta_current = acos(I_R_C(3,3))
+        %   rho_fov(t)    = shrinking box half-widths centered on image center
+        %   d_min         = min axis-wise margin of any physical corner to box
+        %   theta_cone    = min(theta_current + atan(d_min/f), theta_cap)
+        R33           = max(min(I_R_C(3,3), 1), -1);
+        theta_current = acos(R33);
+
+        rho_fov_curr = (K_ctrl.rho_fov_0 - K_ctrl.rho_fov_inf) * ...
+                       exp(-K_ctrl.l_fov * tRange(idx)) + K_ctrl.rho_fov_inf;
+
+        d_corner_x = rho_fov_curr(1) - abs(C_nP(1,:));
+        d_corner_y = rho_fov_curr(2) - abs(C_nP(2,:));
+        d_min_fov  = max(min([d_corner_x, d_corner_y]), 0);
+
+        theta_cone = min(theta_current + atan(d_min_fov / f), K_ctrl.theta_cap);
+
         if I_a_cd(3,idx) >= 0
             I_a_cd(3,idx) = -3.0;
         end
-        a_xy_limit = abs(I_a_cd(3,idx)) * tan(att_cone);
+        a_xy_limit = abs(I_a_cd(3,idx)) * tan(theta_cone);
         a_xy_norm  = norm(I_a_cd(1:2,idx));
         if a_xy_norm > a_xy_limit
             I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
         end
         I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
-        if norm(I_a_cd(:,idx)) > 1e02
-            fprintf('  BREAK: I_a_cd norm=%.2f or NaN at idx=%d (t=%.2f)\n', ...
-                    norm(I_a_cd(:,idx)), idx, tRange(idx));
-            break;
-        end
+
+        rho_fov_log(:,idx)  = rho_fov_curr;
+        d_min_log(idx)      = d_min_fov;
+        theta_cur_log(idx)  = theta_current;
+        theta_cone_log(idx) = theta_cone;
 
         % LPF I_a_cd before R_d construction (noise absorber)
         I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
@@ -769,7 +813,7 @@ for idx = 1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.10;
+        precise = xy_err <= 0.08;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -785,6 +829,14 @@ end   % main loop
 % is at idx-1. Landing break exits after logging — data at idx is complete.
 if ~landed
     idx = idx - 1;
+end
+
+% Strict FoV-failure policy: physical-corner FoV violation ⇒ run is failed
+% even if the landing termination condition would otherwise have fired.
+if fov_fail
+    landed  = false;
+    precise = false;
+    soft    = false;
 end
 
 %% =========================================================================

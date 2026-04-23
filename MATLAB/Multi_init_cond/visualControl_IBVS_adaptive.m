@@ -45,13 +45,13 @@ K_ctrl = struct();
 
 K_ctrl.p_10     = K.p_10;                     % sensor-half, used for r_e normalization (Approach 2)
 
-K_ctrl.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
+K_ctrl.zp = diag([9.0, 9.0]);                 % Combo D: x1.5 from 6.0 (deep-sweep precision winner, -25% maxXY)
 K_ctrl.zi = diag([0.1, 0.1]);
-K_ctrl.zd = diag([1.15, 1.15]);               % bumped with E(3,3)=1.0 to chase Linear IC5 soft threshold
+K_ctrl.zd = diag([1.4375, 1.4375]);           % Combo D: x1.25 from 1.15 (D-damping pair for zp x1.5; recovers soft margin)
 
 K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
 K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
-K_ctrl.p_2inf   = [2.5;  2.5;  1.5];          % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
+K_ctrl.p_2inf   = [2.5;  2.5;  1.5 ];          % reverted from Combo A (z-tightening acted as speed knob under FW=11)
 
 K_ctrl.Omega   = diag([0.05, 0.05, 0.025]);   % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
 K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
@@ -79,9 +79,9 @@ K_ctrl.E_a       = 3.0;   % wide boundary layer to smooth sat*kappa_a at kappa_a
 
 % FoV-adaptive cone clamp (Approach 2)
 % Shrinking box funnel on physical pixel corners -> state-dependent cone angle.
-K_ctrl.rho_fov_0   = res/2;              % [160;120] px — sensor-half init (matches physical FoV)
+K_ctrl.rho_fov_0   = [145; 105];         % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
 K_ctrl.rho_fov_inf = [40; 40];           % terminal pixel margin (px) — widened to keep cone authority
-K_ctrl.l_fov       = 0.1;                % box decay rate (1/s)
+K_ctrl.l_fov       = 0.1;                % reverted from Combo A (faster cone decay was a speed knob, not precision)
 K_ctrl.theta_cap   = deg2rad(60);        % soft cone ceiling
 
 %% =========================================================================
@@ -182,6 +182,12 @@ ie_a        = zeros(1, N_steps);
 flag = false;
 landed = false;
 
+% FoV failure flag (Approach 2): any physical-corner pixel leaving the
+% sensor box [-res(1)/2, res(1)/2] x [-res(2)/2, res(2)/2] strictly counts
+% as controller failure — the camera has lost the target.
+fov_fail   = false;
+fov_fail_t = NaN;
+
 %% Solving for Control Law and then the System Dynamics using this Control Law
 % Finding System State Evolution from t=t_0 to t=t_end
 for idx=1:N_steps
@@ -232,6 +238,16 @@ for idx=1:N_steps
                 col = randi(size(C_nP,2));
                 C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
             end
+        end
+
+        % FoV failure check — strict.  Any physical-corner pixel outside the
+        % sensor box terminates the run with success=false.
+        if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
+            fov_fail   = true;
+            fov_fail_t = tRange(idx);
+            fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
+                idx, tRange(idx), max(abs(C_nP(1,:))), max(abs(C_nP(2,:))));
+            break;
         end
 
     % *************************************************************************
@@ -327,7 +343,7 @@ for idx=1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.10;
+        precise = xy_err <= 0.08;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
@@ -592,7 +608,7 @@ for idx=1:N_steps
     xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
     rel_vel  = norm(I_v_c - dx_t(1:3,idx));
     if alt_above <= zf
-        precise = xy_err <= 0.10;
+        precise = xy_err <= 0.08;
         soft    = rel_vel <= 0.2;
         fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
                 tRange(idx), alt_above, xy_err, rel_vel, precise, soft);

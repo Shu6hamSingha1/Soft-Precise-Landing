@@ -11,14 +11,14 @@
 \renewcommand{\theequation}{S\arabic{equation}}
 \renewcommand{\thesection}{S\arabic{section}}
 
-\title{Supplementary Material for\\``Dual-Funnel Adaptive Sliding-Mode Control for Vision-Only Soft Precise Landing with Guaranteed Target Visibility''}
+\title{Supplementary Material for\\``Monocular Dual-Funnel Adaptive Sliding-Mode Control for Soft Precise Landing with Guaranteed Target Visibility''}
 \author{Shubham Singhal,~Suresh Sundaram,~and~Jishnu Keshavan}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This document is the supplementary material accompanying the main manuscript. It contains (i) the virtual-camera abstraction and the baseline cascaded pose-based architecture whose inner-loop stages are reused by the proposed MDF-ASMC, (ii) detailed derivations including optic-flow funnel implementation remarks, SO(3) construction details, the yaw-channel Lyapunov substitution, and the full proof of Theorem~1, and (iii) the complete simulation result set: idealized-condition and realistic-disturbance figure sets, closed-loop internals, deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark. Section, equation, figure, and table numbers in this document are prefixed with ``S''; references to the main paper use unprefixed numbers. All references to bibliography entries resolve against the main paper's bibliography.
+This document is the supplementary material accompanying the main manuscript. It contains (i) the virtual-camera abstraction and the baseline cascaded pose-based architecture whose inner-loop stages are reused by the proposed MDF-ASMC, (ii) detailed derivations including optic-flow funnel implementation remarks, SO(3) construction details, and the full proofs of Theorems~1 and~2, and (iii) the complete simulation result set: idealized-condition and realistic-disturbance figure sets, closed-loop internals, deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark. Section, equation, figure, and table numbers in this document are prefixed with ``S''; references to the main paper use unprefixed numbers. All references to bibliography entries resolve against the main paper's bibliography.
 \end{abstract}
 
 % =================================================================
@@ -36,9 +36,13 @@ To decouple the translational image-feature dynamics from the rotational motion 
     \,^\mathcal{C}\boldsymbol{\hat{r}} = \begin{bmatrix} \,^\mathcal{C}\hat{x} \\ \,^\mathcal{C}\hat{y} \end{bmatrix}
     = \frac{1}{\,^\mathcal{C}z}\begin{bmatrix} \,^\mathcal{C}x \\ \,^\mathcal{C}y \end{bmatrix},
 \end{equation}
-i.e.\ the perspective projection of the 3-D point $\,^\mathcal{C}\boldsymbol{r}=[\,^\mathcal{C}x,\,^\mathcal{C}y,\,^\mathcal{C}z]^{\top}$.
+i.e.\ the perspective projection of the 3-D point $\,^\mathcal{C}\boldsymbol{r}=[\,^\mathcal{C}x,\,^\mathcal{C}y,\,^\mathcal{C}z]^{\top}$. The field-of-view visibility constraint, expressed on this camera-frame image feature in pixel units, reads
+\begin{equation} \label{sup:visibility_constraints}
+    -\frac{\mathcal{R}}{2} \le \,^\mathcal{C}\hat{\boldsymbol{r}} \le \frac{\mathcal{R}}{2},\qquad \mathcal{R}=[r_h,r_w]^\top,
+\end{equation}
+where $\mathcal{R}$ is the camera-sensor resolution. The funnel-margin cone clamp of Section~III-A3 of the main paper tightens this bound through the target image funnel $\boldsymbol{p}_1(t)\preceq\mathcal{R}/2$ and enforces it kinematically for all $t\ge 0$.
 
-The virtual camera frame $\mathcal{V}=\{O_{\text{v}}~X_{\text{v}}~Y_{\text{v}}~Z_{\text{v}}\}$ moves with $\mathcal{C}$ but is constrained so that its $X_{\text{v}}$--$Y_{\text{v}}$ plane remains parallel to the inertial $X_{\text{i}}$--$Y_{\text{i}}$ plane; the associated virtual image plane keeps the same position and orientation relative to $\mathcal{V}$ as the physical image plane has relative to $\mathcal{C}$. The corresponding rotation is obtained by rolling out $\phi$ and pitching out $\theta$:
+The virtual camera frame $\mathcal{V}=\{O_{\text{v}}~X_{\text{v}}~Y_{\text{v}}~Z_{\text{v}}\}$ moves with $\mathcal{C}$ but is constrained so that its $X_{\text{v}}$--$Y_{\text{v}}$ plane remains parallel to the inertial $X_{\text{i}}$--$Y_{\text{i}}$ plane; the associated virtual image plane keeps the same position and orientation relative to $\mathcal{V}$ as the image plane has relative to $\mathcal{C}$. The corresponding rotation is obtained by rolling out $\phi$ and pitching out $\theta$:
 \begin{equation}
 \label{sup:virtual 3D point}
     \,^\mathcal{V}\boldsymbol{r} = \,^\mathcal{V}R_\mathcal{C}\,^\mathcal{C}\boldsymbol{r}, \qquad \,^\mathcal{V}R_\mathcal{C} = R_y(\theta)R_x(\phi).
@@ -103,37 +107,31 @@ and the final motor-mixer input is the combined thrust-torque command $\boldsymb
 \clearpage
 \section{Detailed Derivations of MDF-ASMC}
 \label{sup:detailed}
-This section collects the standard prescribed-performance machinery, implementation remarks, SO(3) construction details, the yaw-channel Lyapunov substitution, and the full proof of Theorem~1 that the main paper defers to the supplement.
+This section collects the standard prescribed-performance machinery, implementation remarks, SO(3) construction details, and the full proofs of Theorems~1 and~2 that the main paper defers to the supplement.
 
 \subsection{Optic-Flow Funnel: Implementation Remarks}
 \label{sup:optic_flow_remarks}
-\textit{Remark (Initial-condition feasibility).} The optic-flow transformation requires $|h_{e_k}(0)|<p_{2_{0k}}$. In the reported runs, $\boldsymbol{p}_{2_0}=[25,25,8]^\top$ is sized to envelope the worst-case initial optic-flow magnitude observed across the five ICs of Section~IV-A of the main paper, with a $2\times$--$3\times$ margin against pixel-noise spikes on the fastest \texttt{traj\_Gen} targets (Case~5 at $\omega_z=0.3$~rad/s; Case~2 at $1.414$~m/s).
+\textit{Remark (Initial-condition feasibility).} The optic-flow transformation requires $|h_{e_k}(0)|<p_{2_{0k}}$. In the simulations, $\boldsymbol{p}_{2_0}=[25,25,4]^\top$ is sized to envelope the worst-case initial optic-flow magnitude observed across the five ICs of Section~IV-A of the main paper, with a $2\times$--$3\times$ margin against pixel-noise spikes on the fastest target trajectories (Case~5 at $\omega_z=0.3$~rad/s; Case~2 at $1.414$~m/s).
 
-\textit{Remark (Sliding-surface integral anti-windup).} At the funnel mouth, $\int\boldsymbol{\zeta}_2\,d\tau$ in the sliding-surface definition can wind up whenever $\boldsymbol{\zeta}_2$ is briefly clamped by the saturation guard of Remark~1 in the main paper. We therefore bound each channel by $|\!\int\!\zeta_{2_k}\,d\tau|\le 10$. The clamp activates only during short transient spikes and does not affect the Lyapunov derivative on the open sub-funnel where Theorem~1 operates.
+\textit{Remark (Sliding-surface integral anti-windup).} At the funnel mouth, $\int\boldsymbol{\zeta}_2\,d\tau$ in the sliding-surface definition can wind up whenever $\boldsymbol{\zeta}_2$ is briefly clamped by the funnel-saturation guard of the main paper. We therefore bound each component by $|\!\int\!\zeta_{2_k}\,d\tau|\le 10$. The clamp activates only during short transient spikes and does not affect the Lyapunov derivative on the open sub-funnel where Theorem~1 operates.
 
-\subsection{Yaw-Channel Lyapunov Substitution}
-\label{sup:yaw_lyap}
-Because the yaw channel decouples from the translational dynamics under the virtual-camera abstraction, the Lyapunov argument of Theorem~1 applies to the scalar yaw ASMC with the substitutions $\boldsymbol{\sigma}\leftarrow\sigma_a$, $\Gamma\leftarrow\gamma_a$, $\mathcal{P}\leftarrow p_a$, $\mathcal{N}\leftarrow n_a$, $\mathcal{G}_2\leftarrow 1$, and $\beta_a\equiv 1$ (unity heading-rate gain under the virtual-compass integrator). The scalar Lyapunov function $V_a(t) = \tfrac12\sigma_a^2 + \tfrac12 n_a^{-1}(\kappa_a-\tilde{d}_a)^2$ reproduces the main-paper derivative inequalities line for line with $\lambda_{\min}(\Gamma)\leftarrow\gamma_a$, $\lambda_{\max}(\mathcal{P})\leftarrow p_a$, and yields the yaw-channel UUB
-\begin{equation*}
-    \vartheta_a = \sqrt{\tfrac{3 p_a}{\varphi_{1a}-\varphi_{2a}}}\,\tilde{d}_a,
-\end{equation*}
-which renders $\alpha_e$ uniformly ultimately bounded. The virtual-compass integrator $\psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}[\psi_\text{d}(t_k)+\dot{\psi}_\text{d}(t_k)\Delta t]$ then yields a bounded desired heading $\psi_\text{d}$ for the inner SO(3) tracker. The raw image-feature angle is unwrapped to $(-\pi/2,\pi/2]$ via $\alpha_e = \tfrac12\text{atan2}(\sin(2\alpha_e^\text{raw}),\cos(2\alpha_e^\text{raw}))$ to absorb the ellipse-orientation half-turn symmetry.
+\textit{Remark (Funnel-saturation guard).} Since $g_{2_k}=(e^{\zeta_{2_k}}+1)^2/(2e^{\zeta_{2_k}}p_{2_k})\to\infty$ as $|S_2(\zeta_{2_k})|\to 1$, the equivalent control $\boldsymbol{u}_\text{eq}$ in the main paper can blow up under transient pixel-noise peaks. We therefore numerically clamp $|S_2(\zeta_{2_k})|$ at $1-\epsilon_S$ with $\epsilon_S=0.05$, which tightens the closed-loop constraint set to $|h_{e_k}|\le(1-\epsilon_S)p_{2_k}(t)$ and contributes a bounded additive residual absorbed into $\tilde{d}$ in the proof of Theorem~1. The clamp is active for less than $0.5\%$ of control steps in the simulations and is essential for the $25/25$ landing rate of Section~IV-B of the main paper.
 
 \subsection{SO(3) Inner-Loop Construction Details}
 \label{sup:so3_details}
-The outer adaptive law returns a desired inertial acceleration $\,^\mathcal{I}\!\boldsymbol{a}_\text{d}$ that is first low-pass filtered to absorb pixel-noise spikes amplified through $L_s^{-1}$ at low altitude:
+The outer adaptive law returns a desired inertial acceleration $\,^\mathcal{I}\!\boldsymbol{a}_\text{d}$. Because the image Jacobian inverse $L_s^{-1}$ amplifies pixel noise as depth $\,^\mathcal{V}\!z_\text{t}\to 0$, this raw signal exhibits sharp spikes near touchdown. We therefore define the \emph{filtered desired inertial acceleration} $\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}\in\mathbb{R}^3$ as the first-order low-pass response of $\,^\mathcal{I}\!\boldsymbol{a}_\text{d}$,
 \begin{equation} \label{sup:I a cd filt}
-    \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_{k+1}) = \alpha_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_k)+(1-\alpha_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_{k+1}),
+    \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_{k+1}) = \alpha_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_k)+(1-\alpha_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_{k+1}), \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_0)=\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_0),
 \end{equation}
-with $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and $\tau_\text{a}=0.08$~s ($\sim 2$~Hz cut-off). The commanded thrust magnitude and desired body-$z$ axis are then $\,^\mathcal{B}T_u = m\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}\|$ and $\boldsymbol{r}_{d,3} = -\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}/\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}\|$. With $\psi_\text{d}$ from the virtual-compass integrator supplying $\boldsymbol{a}_h=[\cos\psi_\text{d},\sin\psi_\text{d},0]^\top$, the remaining body axes are constructed by Gram--Schmidt on $SO(3)$:
+with filter coefficient $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$, time constant $\tau_\text{a}=0.08$~s ($\sim 2$~Hz cut-off), and sample interval $\Delta t$. The filtered signal $\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}$---not the raw $\,^\mathcal{I}\!\boldsymbol{a}_\text{d}$---is what the SO(3) inner loop consumes: the commanded thrust magnitude and desired body-$z$ axis are $\,^\mathcal{B}T_u = m\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}\|$ and $\boldsymbol{r}_{d,3} = -\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}/\|\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}\|$. With $\psi_\text{d}$ from the virtual-compass integrator supplying $\boldsymbol{a}_h=[\cos\psi_\text{d},\sin\psi_\text{d},0]^\top$, the remaining body axes are constructed by Gram--Schmidt on $SO(3)$:
 \begin{equation} \label{sup:R_d construction}
     \boldsymbol{r}_{d,2} = \frac{\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h}{\|\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h\|},\ \ \boldsymbol{r}_{d,1} = \boldsymbol{r}_{d,2}\times\boldsymbol{r}_{d,3},\ \ R_\text{d}=[\boldsymbol{r}_{d,1}\ \boldsymbol{r}_{d,2}\ \boldsymbol{r}_{d,3}].
 \end{equation}
 A degeneracy guard replaces $\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h$ with a fixed east-axis fallback when $\|\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h\|<10^{-6}$. The attitude and angular-velocity errors are
 \begin{equation*}
-    \boldsymbol{e}_R = \tfrac12(R_\text{d}^\top R - R^\top R_\text{d})^\vee,\qquad \boldsymbol{e}_\Omega = \boldsymbol{\omega} - R^\top R_\text{d}\boldsymbol{\omega}_\text{d},
+    \boldsymbol{e}_R = \tfrac12(R_\text{d}^\top R - R^\top R_\text{d})^\vee,\qquad \boldsymbol{e}_\Omega = \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} - R^\top R_\text{d}\,^\mathcal{B}\boldsymbol{\omega}_\text{d},
 \end{equation*}
-with $\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitude (not attitude rate), so $\boldsymbol{e}_\Omega=\boldsymbol{\omega}$. The geometric torque law of the main paper then inherits the almost-global exponential stability result of \cite[Thm.~3.1]{lee2010}: for any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
+with $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitude (not attitude rate), so $\boldsymbol{e}_\Omega=\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$. The geometric torque law of the main paper then inherits the almost-global exponential stability result of \cite[Thm.~3.1]{lee2010}: for any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
 
 \subsection{Full Proof of Theorem~1}
 \label{sup:theorem1_proof}
@@ -141,7 +139,7 @@ with $\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitu
 
 \textit{Lemma.} If $V(\boldsymbol{\chi})$ is continuously differentiable with $k_1\|\boldsymbol{\chi}\|^2\le V\le k_2\|\boldsymbol{\chi}\|^2$ and $\dot{V}\le -k_3 V$ for $\|\boldsymbol{\chi}\|\ge\varkappa$ ($k_1,k_2,k_3>0$), then every trajectory with $\|\boldsymbol{\chi}(0)\|^2\le\lambda$ is GUUB with $\Lambda = \varkappa(k_2/k_1)^{1/2}$.
 
-\textit{Proof of Theorem~1.} The initial transformed error $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0)/p_{2_{0k}})$ is well defined since $|h_{e_k}(0)|<p_{2_{0k}}$. Under the control law of the main paper, $\boldsymbol{\zeta}_2$ evolves via the unconstrained dynamics equation of the main paper (Section~III-A2). Consider the candidate
+\textit{Proof of Theorem~1.} The initial transformed error $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0)/p_{2_{0k}})$ is well defined since $|h_{e_k}(0)|<p_{2_{0k}}$. Under the control law of the main paper, $\boldsymbol{\zeta}_2$ evolves via the unconstrained dynamics equation of the main paper (Section~III-A2). Combining $\dot{\boldsymbol{\sigma}}=\dot{\boldsymbol{\zeta}}_2+\mathcal{X}\boldsymbol{\zeta}_2$ with the unconstrained dynamics and collecting the uncertain terms into the regressor $\boldsymbol{\theta}=[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2,\,I_{3\times 3}]\in\mathbb{R}^{3\times 4}$ (with $\|\cdot\|$ denoting the Frobenius norm throughout) and lumped disturbance $\boldsymbol{\overline{d}}=\beta_{\min}^{-1}[\beta-1,\boldsymbol{d}_h]^\top$ with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$ yields the main-paper expression for $\dot{\boldsymbol{\sigma}}$. Consider the candidate
 \begin{equation} \label{sup:Lyapunov function}
     V(t) = \tfrac12\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}],
 \end{equation}
@@ -174,11 +172,45 @@ For any $0<\varphi_2<\varphi_1$,
 \end{equation*}
 Invoking the Lemma, every trajectory enters the ball $\{V\le\Theta\}$ in finite time and remains there. Since $V(t)\ge\|\boldsymbol{\sigma}\|^2/2$, the ultimate bound on $\boldsymbol{\sigma}$ is $\vartheta = [3\beta_{\min}\lambda_{\max}(\mathcal{P})/(\varphi_1-\varphi_2)]^{1/2}\tilde{d}$, independent of initial conditions. From the sliding surface definition, $\boldsymbol{\zeta}_2$ converges into a small residual around the origin, so from the inverse PPC transformation $-\boldsymbol{p}_2(t)<\boldsymbol{h}_e<\boldsymbol{p}_2(t)$ holds for all $t\ge 0$. $\hfill\blacksquare$
 
-\textit{Cascade argument for Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ uniformly ultimately bounded inside $\boldsymbol{p}_2(t)$. Combining the visual error kinematics of the main paper with the PID-generated reference and substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ yields the horizontal-channel closed loop
+\textit{Cascade argument for Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ uniformly ultimately bounded inside $\boldsymbol{p}_2(t)$. Combining the visual error kinematics of the main paper with the PID-generated reference and substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ yields the horizontal-axis closed loop
 \begin{equation*}
-    (P_{1_0}+K_{rd})\ddot{\bar{\boldsymbol{r}}}_\text{e} + K_{rp}\dot{\bar{\boldsymbol{r}}}_\text{e} + K_{ri}\bar{\boldsymbol{r}}_\text{e} = \boldsymbol{\delta}_\text{e}(\boldsymbol{h}_\text{e},\boldsymbol{s}),
+    (\Phi_\text{max}+K_{rd})\ddot{\bar{\boldsymbol{r}}}_\text{e} + K_{rp}\dot{\bar{\boldsymbol{r}}}_\text{e} + K_{ri}\bar{\boldsymbol{r}}_\text{e} = \boldsymbol{\delta}_\text{e}(\boldsymbol{h}_\text{e},\boldsymbol{s}),
 \end{equation*}
-with $P_{1_0}=\text{diag}(\boldsymbol{p}_{1_0})$ and the perturbation $\boldsymbol{\delta}_\text{e}$ linear in $\boldsymbol{h}_\text{e}$ and bounded for all $\boldsymbol{s}$ inside the FoV. This closed loop is a linear second-order PID-driven system; under the diagonal positive-definite gains $(K_{rp},K_{ri},K_{rd})$ every channel is Hurwitz. Standard ISS arguments for linear cascades~\cite{khalil2002} therefore render $\bar{\boldsymbol{r}}_\text{e}$, and equivalently $\hat{\boldsymbol{r}}_\text{e}=\boldsymbol{p}_{1_0}\odot\bar{\boldsymbol{r}}_\text{e}$, ultimately bounded by an affine function of $\vartheta$. The visibility constraint is enforced kinematically by the FoV-adaptive cone clamp of Section~IV of the main paper, which guarantees that every target image corner point stays inside $\boldsymbol{\rho}_\text{fov}(t)\subseteq\boldsymbol{\rho}_\text{fov}(0)\preceq\mathcal{R}/2$ for all $t\ge 0$ independently of the outer-loop transient.
+with $\Phi_\text{max}=\text{diag}(\boldsymbol{\varphi}_\text{max})$ and the perturbation $\boldsymbol{\delta}_\text{e}$ linear in $\boldsymbol{h}_\text{e}$ and bounded for all $\boldsymbol{s}$ inside the FoV. This closed loop is a linear second-order PID-driven system; under the diagonal positive-definite gains $(K_{rp},K_{ri},K_{rd})$ every axis is Hurwitz. Standard ISS arguments for linear cascades~\cite{khalil2002} therefore render $\bar{\boldsymbol{r}}_\text{e}$, and equivalently $\hat{\boldsymbol{r}}_\text{e}=\boldsymbol{\varphi}_\text{max}\odot\bar{\boldsymbol{r}}_\text{e}$, ultimately bounded by an affine function of $\vartheta$. The visibility constraint is enforced kinematically by the funnel-margin cone clamp of Section~III-A3 of the main paper, which guarantees that every target feature point stays inside $\boldsymbol{p}_1(t)\subseteq\boldsymbol{p}_1(0)\preceq\mathcal{R}/2$ for all $t\ge 0$ independently of the outer-loop transient.
+
+\subsection{Full Proof of Theorem~2}
+\label{sup:theorem2_proof}
+Under the virtual-camera abstraction, the yaw control loop decouples from the translational dynamics. The proofs of Theorems~1 and~2 share the same procedure.
+
+\textit{Proof of Theorem~2.} Under the yaw control law of the main paper (Section~III-B1) and with $\sigma_\alpha=\alpha_e+\chi_\alpha\!\int\alpha_e\,d\tau$, the sliding-surface dynamics read
+\begin{equation*}
+\dot{\sigma}_\alpha = \dot{\alpha}_e + \chi_\alpha\alpha_e = -\gamma_\alpha\sigma_\alpha - \text{sat}(\sigma_\alpha/\varepsilon_\alpha)\kappa_\alpha + d_\alpha,
+\end{equation*}
+where the $\chi_\alpha\alpha_e$ feed-forward in the control law cancels the $\chi_\alpha\alpha_e$ term introduced by the integrator. Consider the candidate
+\begin{equation} \label{sup:yaw lyapunov}
+    V_\alpha(t) = \tfrac12\sigma_\alpha^2 + \tfrac{1}{2\eta_\alpha}[\kappa_\alpha(t)-\tilde{d}_\alpha]^2,
+\end{equation}
+with $|d_\alpha|\le\tilde{d}_\alpha$ from Assumption~1 of the main paper. Differentiating along the closed-loop trajectory,
+\begin{align*}
+\dot{V}_\alpha(t) &= \sigma_\alpha\dot{\sigma}_\alpha + \eta_\alpha^{-1}[\kappa_\alpha(t)-\tilde{d}_\alpha]\dot{\kappa}_\alpha(t)\\
+&= -\gamma_\alpha\sigma_\alpha^2 - \sigma_\alpha\text{sat}(\sigma_\alpha/\varepsilon_\alpha)\kappa_\alpha(t) + \sigma_\alpha d_\alpha\\
+&\quad + [\kappa_\alpha(t)-\tilde{d}_\alpha]\big[|\sigma_\alpha| - \rho_\alpha\kappa_\alpha(t)\big].
+\end{align*}
+Using $\sigma_\alpha\text{sat}(\sigma_\alpha/\varepsilon_\alpha) = |\sigma_\alpha| - r_{\varepsilon_\alpha}$ with $r_{\varepsilon_\alpha}=\max(0,|\sigma_\alpha|-\sigma_\alpha^2/\varepsilon_\alpha)\le\varepsilon_\alpha/4$, $|d_\alpha|\le\tilde{d}_\alpha$, and noting $\kappa_\alpha(t)\ge 0$ from the adaptive law with $\kappa_\alpha(0)>0$,
+\begin{align*}
+\dot{V}_\alpha(t) \le& -\gamma_\alpha\sigma_\alpha^2 - (\tilde{d}_\alpha-|d_\alpha|)|\sigma_\alpha| + \kappa_\alpha(t) r_{\varepsilon_\alpha}\\
+&- \rho_\alpha[\kappa_\alpha^2(t) - \tilde{d}_\alpha\kappa_\alpha(t)].
+\end{align*}
+The second term is non-negative, and $\kappa_\alpha(t) r_{\varepsilon_\alpha}$ is uniformly bounded by the leakage law and absorbed into $\tilde{d}_\alpha$. Completing the square on the third term,
+\begin{align*}
+\dot{V}_\alpha(t) \le& -\gamma_\alpha\sigma_\alpha^2 - \tfrac{\rho_\alpha}{2}[\kappa_\alpha(t)-\tilde{d}_\alpha]^2 + \tfrac{\rho_\alpha}{2}\tilde{d}_\alpha^2\\
+\le& -\varphi_1^\alpha V_\alpha(t) + \tfrac{\rho_\alpha}{2}\tilde{d}_\alpha^2,
+\end{align*}
+with $\varphi_1^\alpha = \min\{2\gamma_\alpha,\,\rho_\alpha\}/\max\{1,\,\eta_\alpha^{-1}\} > 0$. For any $0<\varphi_2^\alpha<\varphi_1^\alpha$,
+\begin{equation*}
+\dot{V}_\alpha(t)\le -\varphi_2^\alpha V_\alpha(t),\qquad \forall\,V_\alpha(t)\ge\Theta_\alpha = \tfrac{\rho_\alpha\tilde{d}_\alpha^2}{2(\varphi_1^\alpha-\varphi_2^\alpha)}.
+\end{equation*}
+Invoking the Lemma of Section~\ref{sup:theorem1_proof}, every trajectory enters the ball $\{V_\alpha\le\Theta_\alpha\}$ in finite time and remains there. Since $V_\alpha(t)\ge\sigma_\alpha^2/2$, the ultimate bound on $\sigma_\alpha$ is $\vartheta_\alpha = [\rho_\alpha/(\varphi_1^\alpha-\varphi_2^\alpha)]^{1/2}\tilde{d}_\alpha$, matching the UUB of Theorem~2 of the main paper. From the sliding-surface definition, $\alpha_e$ is ultimately bounded by an affine function of $\vartheta_\alpha$, and the virtual-compass integrator of the main paper (Section~III-B1) yields a bounded desired heading $\psi_\text{d}$ for the inner SO(3) tracker. The raw image-feature angle is unwrapped to $(-\pi/2,\pi/2]$ via $\alpha_e = \tfrac12\text{atan2}(\sin(2\alpha_e^\text{raw}),\cos(2\alpha_e^\text{raw}))$ to absorb the ellipse-orientation half-turn symmetry. $\hfill\blacksquare$
 
 % =================================================================
 %  S3 — Simulation Results (old S1–S5 merged)
@@ -188,10 +220,10 @@ with $P_{1_0}=\text{diag}(\boldsymbol{p}_{1_0})$ and the perturbation $\boldsymb
 \label{sec:sup-results}
 This section collects the complete simulation result set supporting Section~IV of the main paper: the idealized-condition and realistic-disturbance multi-initial-condition figure sets, the closed-loop internals of a representative run, the deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark.
 
-\subsection{Idealized-Condition Multi-Initial-Condition Trajectories}
+\subsection{Multi-Initial-Condition Results under Idealised Conditions}
 \label{sec:sup-noiseless}
 
-The figures in this section verify that, in the absence of measurement noise, ground effect, computational delay, and model uncertainty, the closed loop lands from every initial condition of Table~II of the main paper on every trajectory of Section~IV-A of the main paper, with the target image corner points remaining strictly inside the FoV-adaptive pixel-box $\boldsymbol{\rho}_\text{fov}(t)$. These runs provide an empirical verification of the dual-funnel construction, isolating the role of the prescribed-performance layer from that of the adaptive robustness layer.
+The figures in this section verify that, in the absence of measurement noise, ground effect, computational delay, and model uncertainty, the closed loop lands from every initial condition of Table~III of the main paper on every trajectory of Section~IV-A of the main paper, with the target feature points remaining strictly inside the target image funnel $\boldsymbol{p}_1(t)$. These runs provide an empirical verification of the dual-funnel construction, isolating the role of the prescribed-performance layer from that of the adaptive robustness layer.
 
 \begin{figure}[!t]
 \centering
@@ -263,11 +295,27 @@ The figures in this section verify that, in the absence of measurement noise, gr
     \label{fig:sup-circ-ip-nl}
 \end{figure}
 
+\subsubsection*{Per-IC Performance Analysis}
+
+The $25$ idealised runs of Figs.~\ref{fig:sup-static-3d-nl}--\ref{fig:sup-circ-ip-nl} share the five initial conditions of Table~III of the main paper as the full-disturbance set, but with pixel noise, outliers, mean wind, OU turbulence, parametric uncertainty, centre-of-gravity offset, ground effect, and computational delay all removed. In this regime the closed loop is a deterministic cascade and the touchdown residuals are set by the funnel schedule and the geometric cone-clamp projection alone; the adaptive gain $\boldsymbol{\kappa}(t)$ drifts towards its leakage-limited floor rather than tracking any disturbance amplitude, so the PPC layer of the dual-funnel construction carries the closed loop on its own.
+
+\emph{IC$1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre with essentially zero initial optic-flow error, so $\boldsymbol{p}_1(t)$ is slack throughout and the funnel-margin cone clamp is never engaged. The vertical axis follows the funnel-scheduled descent reference almost exactly, and the sliding surface $\boldsymbol{\sigma}$ stays within the boundary-layer width $\boldsymbol{\varepsilon}$ from $t=0$. The touchdown $xy$-residual is set by the finite integration step and the funnel granularity near $\boldsymbol{p}_{1_\infty}=[40,40]^\top$~px, not by any controller transient. This run defines the idealised reference profile against which the four displaced ICs are compared.
+
+\emph{IC$2$ ($[2,2,-5]$~m, diagonal lateral offset).} The initial lateral displacement drives the normalized virtual feature PID to produce a non-zero $\boldsymbol{h}_\text{d}$ on both image axes, and the cone clamp trims the lateral commanded acceleration during the first $1$--$2$~s while the features traverse from $\boldsymbol{p}_{1_0}$ towards the image centre. Absent stochastic forcing, the sliding surface returns to zero cleanly once the chase transient resolves, and the run merges with the IC$1$ terminal profile by mid-descent. The touchdown residual differs from IC$1$ by the deterministic overshoot of the geometric tracker during the chase phase, not by any persistent tracking error.
+
+\emph{IC$3$ ($[2,-2,-5]$~m, anti-diagonal lateral offset).} IC$3$ is the exact sign-reversed counterpart of IC$2$; without stochastic disturbance the deterministic symmetry of the controller implies that IC$2$ and IC$3$ produce touchdown residuals that differ only by the parity of the lateral axis. On the rotating trajectories (Cases~4 and~5) the opposite lateral direction still places the UAV on a different phase of the target rotation, introducing a deterministic---but noise-free---rotation-phase offset between IC$2$ and IC$3$ visible in Figs.~\ref{fig:sup-liss-3d-nl} and~\ref{fig:sup-circ-3d-nl}.
+
+\emph{IC$4$ ($[2,2,-7]$~m, high altitude plus lateral).} The $2$~m of extra altitude extends the descent and affords the funnel envelope additional time to reach its terminal bound $\boldsymbol{p}_{1_\infty}$. Target features start smaller on the image (depth-scaled by a factor $5/7$ relative to IC$1$), so the initial funnel margin $d_\text{min}^\text{fov}(t)$ is wider and the cone clamp is active only briefly during the lateral chase. Because the UAV reaches the tight terminal envelope well before touchdown, the idealised IC$4$ terminal residual settles even closer to the funnel granularity than IC$1$---the longer run benefits the closed loop in the idealised regime rather than accumulating error.
+
+\emph{IC$5$ ($[2,2,-3]$~m, low altitude plus lateral).} The shortened descent leaves less time for the funnel to tighten, and the $5/3\approx 1.67\times$ pixel magnification at $\,^\mathcal{V}z=3$~m places the initial image-feature excursion near the outer $\boldsymbol{p}_{1_0}=[145,105]^\top$~px envelope. The cone clamp activates at its tightest during the initial $1$--$2$~s and enforces a smooth lateral trim without feature loss; absent pixel noise the image-plane trajectory traces a clean arc back to the centre rather than the jittered approach of the full-disturbance regime. The touchdown residual is comparable to IC$1$ once the features re-centre, isolating the large pixel excursions of Section~\ref{sec:sup-multi-init} as a purely noise-induced effect rather than a geometric limitation of the cone clamp.
+
+\emph{Cross-IC trends in the idealised regime.} All five ICs produce touchdown $xy$-residuals substantially below the full-disturbance baseline of Section~\ref{sec:sup-multi-init}, with all cone-clamp activations ending within the first $1$--$2$~s of each run. The adaptive gain $\boldsymbol{\kappa}(t)$ stays near its leakage-limited floor throughout because no structured disturbance needs absorption. These runs empirically verify that the dual-funnel construction---target image funnel plus optic-flow funnel---is self-consistent: with the adaptive robustness layer effectively disengaged, the PPC layer alone drives the closed loop from every initial condition to a funnel-granularity precision floor, keeping the target feature points strictly inside $\boldsymbol{p}_1(t)$ for all $t\ge 0$.
+
 \clearpage
-\subsection{Full Multi-Initial-Condition Figure Set under Realistic Disturbances}
+\subsection{Multi-Initial-Condition Results under Realistic Disturbances}
 \label{sec:sup-multi-init}
 
-The main paper shows a single representative Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~V multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-B of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $35^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
+The main paper shows a single representative Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~IV multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-A of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $35^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
 
 \begin{figure}[!t]
 \centering
@@ -328,20 +376,36 @@ The main paper shows a single representative Circular ship-deck run under realis
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
-    \caption{Image-plane evolution for Case~5 (circular target trajectory) under realistic disturbances (the corresponding 3-D trajectory view appears as Fig.~9 in the main paper).}
+    \caption{Image-plane evolution for Case~5 (circular target trajectory), realistic disturbances (3-D view: Fig.~3 of the main paper).}
     \label{fig:sup-circ-ip}
 \end{figure}
+
+\subsubsection*{Per-IC Performance Analysis}
+
+The $25$ full-disturbance runs of Figs.~\ref{fig:sup-static-3d}--\ref{fig:sup-circ-ip} are organised by trajectory, with the five initial conditions of Table~III of the main paper overlaid on each panel. The nominal drop IC$1=[0,0,-5]$~m serves as the reference case; the four displaced ICs stress the closed loop in distinct physical modes.
+
+\emph{IC$1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre and the envelope $\boldsymbol{p}_1(t)$ is wide relative to the initial excursion, so the funnel-margin cone clamp is inactive through the first several seconds and the lateral demand is driven solely by target motion. The descent profile closely follows the idealised baseline of Section~\ref{sec:sup-noiseless}, with the adaptive gain $\boldsymbol{\kappa}(t)$ growing monotonically to absorb wind and pixel-noise residuals. This run sets the reference landing time and horizontal error against which the four displaced ICs are compared.
+
+\emph{IC$2$ ($[2,2,-5]$~m, diagonal lateral offset).} The target feature centroid starts displaced along both the $\hat{X}_\text{c}$ and $\hat{Y}_\text{c}$ image-plane axes, so the normalized virtual feature PID generates a non-zero desired optic flow $\boldsymbol{h}_\text{d}$ on both lateral axes simultaneously. Roll and pitch commands reach the cone clamp during the first $1$--$2$~s, and $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral-chase disturbance. Once the features re-centre the run rejoins the IC$1$ profile; the additional chase phase adds $\sim 0.5$--$1$~s to the landing time, and the horizontal error at touchdown lies within a few centimetres of IC$1$ because the terminal phase is dominated by disturbance-realisation variance rather than initial geometry.
+
+\emph{IC$3$ ($[2,-2,-5]$~m, anti-diagonal lateral offset).} IC$3$ is the sign-reversed counterpart of IC$2$ across the $y$-axis, and the lateral chase dynamics are symmetric under that reversal. On the static and purely lateral trajectories (Cases~1 and~2) the IC$3$ touchdown error lies within measurement variance of IC$2$, confirming that the controller carries no hidden bias in its $y$-axis gains. On the rotating trajectories (Cases~4 and~5) the opposite lateral direction places the UAV on a different phase of the target rotation relative to IC$2$, so the terminal error differs by $1$--$2$~cm between IC$2$ and IC$3$ even though the controller gains and the pixel-noise seed are identical.
+
+\emph{IC$4$ ($[2,2,-7]$~m, high altitude plus lateral).} The additional $2$~m of altitude extends the nominal descent by $\sim 3$--$4$~s, making IC$4$ the run responsible for the worst-case landing time ($t_\text{f}^{\max}\approx 34$--$36$~s across trajectories, Table~IV of the main paper). Target features start smaller on the image (depth-scaled by a factor $5/7$ relative to IC$1$), so the cone clamp is less stressed at $t=0$ and the initial funnel margin $d_\text{min}^\text{fov}(t)$ is wider than under IC$1$. During the combined descent and lateral chase the pixel-plane trajectory traces a longer arc inside the funnel before converging to the centre; because the funnel exponential $e^{-\xi_1 t}$ reaches its terminal bound while the UAV still has altitude, the closed loop gains additional dwell time at the tight terminal envelope, pulling the mean horizontal error of IC$4$ back into the few-centimetre range of IC$1$ despite the longer run.
+
+\emph{IC$5$ ($[2,2,-3]$~m, low altitude plus lateral).} The $2$~m of missing altitude shortens the descent, but at $\,^\mathcal{V}z=3$~m the pinhole projection magnifies the lateral offset by $5/3\approx 1.67\times$ relative to IC$1$, pushing the initial image-feature excursion above $100$~px. The worst-case physical-pixel excursions of the entire $25$-run set---$|\,^\mathcal{C}\hat{x}|_{\max}=134$~px on Case~4 (Lissajous) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px on Case~1 (static)---both occur on IC$5$ runs, confirming that low-altitude starts place the tightest demand on the funnel-margin cone clamp. The clamp activates with its tightest $\theta_\text{cone}(t)$ during the first $1$--$2$~s; $d_\text{min}^\text{fov}(t)$ remains strictly positive throughout, and the features re-centre before the funnel envelope $\boldsymbol{p}_1(t)$ has tightened substantially from its initial $\boldsymbol{p}_{1_0}=[145,105]^\top$~px value. Terminal horizontal error ends within $\sim 1$~cm of IC$1$ despite the reduced mixing time between lateral and vertical axes.
+
+\emph{Cross-IC trends.} Landing times cluster around the IC$1$ baseline, with IC$4$ responsible for the worst-case $t_\text{f}$ in each trajectory (extra descent distance) and IC$5$ modestly faster (reduced descent distance). Touchdown horizontal error is dominated by the terminal $1$--$2$~s of the run and therefore tracks disturbance-realisation variance (wind, pixel noise) more closely than initial-condition geometry, producing a $\sim 2$--$3$~cm spread across the five ICs on each trajectory. Cone-clamp activation intensity, by contrast, is driven by initial-condition geometry: it rises monotonically from IC$4$ (wide initial margin, low excursion) through IC$1\approx$ IC$2\approx$ IC$3$ to IC$5$ (tightest initial margin, highest excursion). No IC produces a visibility violation or a touchdown outside the precise-and-soft specification; the $25/25$ success rate reported in Section~IV-B of the main paper is achieved with finite margin on the tightest displaced IC.
 
 \clearpage
 \subsection{Closed-Loop Internals of MDF-ASMC (Representative Run)}
 \label{sec:sup-internals}
 
-The figures in this section expose the closed-loop internals of MDF-ASMC for the representative case IC$2=[2,2,-5]$~m on Case~3 (sinusoidal trajectory) under the full disturbance set. They provide the per-signal evidence underlying the single-sentence empirical claim in Section~IV-B of the main paper, namely that the outer image-feature error, the inner optic-flow error, the sliding surface, the adaptive gain, and the commanded thrust/acceleration all remain inside their respective safety envelopes at every time instant.
+The figures in this section expose the closed-loop internals of MDF-ASMC for the representative case IC$2=[2,2,-5]$~m on Case~3 (sinusoidal trajectory) under the full disturbance set --- the run pointed to from Section~IV-B of the main paper. They show that the virtual image feature error, the optic-flow error, the sliding surface, the adaptive gain, and the commanded thrust/acceleration all remain inside their respective safety envelopes at every time instant.
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_outer_funnel.pdf}
-    \caption{Visibility funnel: image-feature centroid error $\boldsymbol{E}_2(t)$ versus the prescribed-performance bound $\pm\boldsymbol{p}_1(t)$.}
+    \caption{Target image funnel: image-feature centroid error $\boldsymbol{E}_2(t)$ versus the prescribed-performance bound $\pm\boldsymbol{p}_1(t)$.}
     \label{fig:sup-outer}
 \end{figure}
 
@@ -362,7 +426,7 @@ The figures in this section expose the closed-loop internals of MDF-ASMC for the
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
-    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw-channel gain $\kappa_\text{a}(t)$.}
+    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\text{a}(t)$.}
     \label{fig:sup-kappa}
 \end{figure}
 
@@ -387,13 +451,13 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
     \toprule
         \textbf{Control Parameter} & \textbf{Value}\\
     \midrule
-        \multicolumn{2}{l}{\textit{Visibility Funnel --- FoV-Adaptive Cone Clamp}} \\
-        $\boldsymbol{\rho}_{\text{fov},0}$      & $[145,105]^\top$~px \\
-        $\boldsymbol{\rho}_{\text{fov},\infty}$ & $[40,40]^\top$~px \\
-        $\ell_\text{fov}$                       & $0.1$~s$^{-1}$ \\
-        $\theta_\text{cap}$                     & $60^\circ$ \\
+        \multicolumn{2}{l}{\textit{Target Image Funnel --- Funnel-Margin Cone Clamp}} \\
+        $\boldsymbol{p}_{1_0}$      & $[145,105]^\top$~px \\
+        $\boldsymbol{p}_{1_\infty}$ & $[40,40]^\top$~px \\
+        $\xi_1$                     & $0.1$~s$^{-1}$ \\
+        $\theta_\text{cap}$         & $60^\circ$ \\
     \midrule
-        \multicolumn{2}{l}{\textit{Normalized-Error PID --- Desired Optic Flow}} \\
+        \multicolumn{2}{l}{\textit{Normalized Virtual Feature PID --- Desired Optic Flow}} \\
         $K_{rp}$ & $\text{diag}([9.0,9.0])$ \\
         $K_{ri}$ & $\text{diag}([0.1,0.1])$ \\
         $K_{rd}$ & $\text{diag}([1.4375,1.4375])$ \\
@@ -420,6 +484,7 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
         $\chi_\text{a},\,\gamma_\text{a}$  & $0.5,\,0.5$ \\
         $n_\text{a},\,p_\text{a}$          & $1.0,\,2$ \\
         $\kappa_{\text{a}_0},\,E_\text{a}$ & $2.0,\,3.0$ \\
+        $\Omega_\text{a}$                  & $0.5$ \\
     \bottomrule
     \end{tabular}
 \end{table}
@@ -428,43 +493,31 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
 \subsection{Deep-Sweep Gain Analysis}
 \label{sec:sup-sweep}
 
-In order to characterise the sensitivity of the locked gain set (Table~\ref{sup:control params}) to parameter perturbations, a cross-trajectory deep sweep was carried out in which each of the $30$ scalar MDF-ASMC parameters (from the outer visibility-funnel gains to the inner geometric SO($3$) and adaptive yaw SMC gains) was independently perturbed by $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$ of its nominal value, and every resulting candidate gain was replayed on all five trajectories for all five initial conditions. This amounts to $30\times 4\times 5\times 5 = 3000$ deterministic simulations (600 unique parameter--multiplier--trajectory combinations, each evaluated over 5 ICs). A candidate is \emph{viable} if it preserves the $5/5$ land rate on every trajectory, and \emph{Pareto-admissible} if it additionally improves either the aggregate landing time $\bar{t}_\text{f}$ or the aggregate worst-case horizontal error $xy_\text{e}^{\max}$ without worsening the other.
+In order to characterise the sensitivity of the locked gain set (Table~\ref{sup:control params}) to parameter perturbations, a cross-trajectory deep sweep was carried out along $33$ scalar axes covering the tunable gains of Table~\ref{sup:control params} (with each diagonal pair of $K_{rp},K_{ri},K_{rd},k_R,k_\Omega$ treated as a single axis) together with two closed-loop structural knobs --- the descent-reference shaping parameter $h_{r_d}$ and the optic-flow smoothing-window length --- that modulate the outer-loop forward signal path. Each axis was independently perturbed by $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$ of its nominal value, yielding $33\times 4 = 132$ parameter--multiplier combinations; every combination was replayed on all five trajectories for all five initial conditions, producing $132\times 5\times 5 = 3300$ perturbation simulations on top of the $5\times 5 = 25$ baseline runs at the locked gain, for a total of $3325$ deterministic simulations.
 
-The baseline aggregate metrics at the locked gain set are $\bar{t}_\text{f}=18.20~\text{s}$ and $xy_\text{e}^{\max}=0.072~\text{m}$ (mean across the five trajectories). The $120$ parameter--multiplier combinations partition into four classes, summarized in Table~\ref{sup:deep sweep table}.
+A candidate is \emph{viable} if it preserves the $5/5$ land rate on every trajectory, and \emph{Pareto-admissible} if it additionally improves either the aggregate landing time $\bar{t}_\text{f}$ or the aggregate worst-case horizontal error $xy_\text{e}^{\max}$ without worsening the other. The baseline aggregate metrics at the locked gain set are $\bar{t}_\text{f}=17.87~\text{s}$ and $xy_\text{e}^{\max}=0.051~\text{m}$ (mean across the five trajectories). The sweep confirms the locked gain set as a load-bearing design point: $25$ of the $132$ single-axis perturbations ($19\%$) break the $5/5$ land rate on at least one trajectory, and no single-axis perturbation unilaterally improves both aggregate metrics simultaneously. The locked gains already achieve $25/25$ successful landings with worst-case $xy_\text{e}=5.7~\text{cm}$ (Table~IV of the main paper) and are therefore retained as a conservative, validated design point.
 
-\begin{table}[!t]
-\centering
-\caption{Deep-sweep parameter classification across the five trajectories (120 parameter--multiplier combinations, each evaluated on 5 ICs per trajectory).}
-\label{sup:deep sweep table}
-\begin{tabular}{lcc}
-\toprule
-\textbf{Class} & \textbf{Count} & \textbf{Fraction} \\
-\midrule
-Fragile (breaks $5/5$ on $\ge 1$ trajectory) & $53$  & $44\%$ \\
-Pareto-admissible (viable $+$ strict improvement) & $42$ & $35\%$ \\
-Inert (viable, no measurable change)           & $15$  & $13\%$ \\
-Pareto trade (viable, improves one, worsens other) & $10$ & $8\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+The qualitative parameter roles observed in the sweep are as follows.
 
-The dominant result is that $44\%$ of all perturbations break the $5/5$ land rate on at least one trajectory, confirming that the majority of the gain set is load-bearing. The $42$ Pareto-admissible perturbations indicate modest headroom for further tuning; however, the locked gains already achieve $25/25$ successful landings with worst-case $xy_\text{e}=7.2~\text{cm}$ (Table~V of the main paper) and are therefore retained as a conservative, validated design point.
+\emph{Load-bearing parameters.} Perturbations of $K_{rp}$, $\boldsymbol{p}_{2_0}$, $\boldsymbol{p}_{2_\infty}$, $k_R$, and $\chi_\text{a}$ break the $5/5$ land rate on at least one trajectory --- typically on the lateral-offset initial conditions IC$3$--IC$5$, where the controller's chase authority is most stressed. These axes tolerate only minor deviations from their locked values.
 
-The three non-Pareto classes exhibit the following structure.
-
-\emph{Fragile parameters.} Perturbations of $K_{rp}$, $\boldsymbol{p}_{2_0}$, $\boldsymbol{p}_{2_\infty}$, $k_R$, and $\chi_\text{a}$ break the $5/5$ land rate on at least one trajectory --- typically on the lateral-offset initial conditions IC$3$--IC$5$, where the controller's chase authority is most stressed. These parameters are load-bearing at their locked values.
-
-\emph{Inert parameters.} $n_\text{a}$, $p_\text{a}$, $\kappa_{\text{a}_0}$, $E_\text{a}$, $\Omega_\text{a}$, and $\gamma_\text{a}$ produce no measurable change in any reported metric at $\pm 50\%$ perturbation, indicating that the adaptive yaw SMC leakage tail is overparameterized for this class of problems and that the heading-reference integrator is driven almost entirely by the projection error.
+\emph{Robust parameters.} $n_\text{a}$, $p_\text{a}$, $\kappa_{\text{a}_0}$, $E_\text{a}$, $\Omega_\text{a}$, and $\gamma_\text{a}$ produce no measurable change in any reported metric at $\pm 50\%$ perturbation, indicating that the adaptive yaw SMC leakage tail is overparameterised for this class of problems and that the heading-reference integrator is driven almost entirely by the projection error.
 
 \emph{Pareto trades.} A small number of perturbations trade landing time against horizontal precision and thus cannot unilaterally improve both metrics simultaneously.
+
+\clearpage
+\subsection{Target-Speed Envelope Sweep}
+\label{sec:sup-speed}
+
+Starting from IC $[0,0,-5]~\text{m}$ with all gains fixed at the locked values of Table~\ref{sup:control params}, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory of Section~IV-A of the main paper, acting directly on the velocity parameters of $\,^\mathcal{I}\boldsymbol{x}_\text{t}(t)$; the descent trajectories are plotted in Fig.~\ref{speed envelope: figure} of the main paper. All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $0.154~\text{m/s}$ (Case~5, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, confirming that the closed loop is limited by the cone clamp rather than by the adaptation law or the funnels.
 
 \clearpage
 \subsection{Per-Controller Failure Analysis in the Comparative Benchmark}
 \label{sec:sup-comparison}
 
-This section expands on the failure modes of the four baselines in the comparison study of Section~IV-E of the main paper. Table~VI of the main paper reports the quantitative outcomes; the analysis below identifies the structural reason each baseline fails to simultaneously land \emph{precisely} ($xy_\text{e}\le 0.10~\text{m}$) and \emph{softly} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the shared disturbance model of Section~IV-B of the main paper.
+This section expands on the failure modes of the four baselines in the comparison study of Section~IV-C of the main paper. Table~V of the main paper reports the quantitative outcomes; the analysis below identifies the structural reason each baseline fails to simultaneously land \emph{precisely} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{softly} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the shared disturbance model of Section~IV-A of the main paper.
 
-For every baseline, the gains reported in the main paper are a best-effort retune \emph{within the framework proposed by the original authors}: the paper-authoritative values of~\cite{lin2022,zhang2026,chen2025,cho2022} each destabilise the closed loop on the adversarial initial condition $\text{IC}_2=[2,2,-5]~\text{m}$ under our disturbance model (crashing within one to three control steps; a per-baseline breakdown of these failures is archived with the implementation code). The retunes therefore isolate a \emph{structural} limitation of each framework rather than a tuning shortcoming.
+For every baseline, the gains reported in the main paper are a best-effort retune \emph{within the framework proposed by the original authors}: the paper-authoritative values of~\cite{lin2022,zhang2026,chen2025,cho2022} each destabilise the closed loop on the adversarial initial condition $\text{IC}_2=[2,2,-5]~\text{m}$ under our disturbance model (crashing within one to three control steps). The retunes therefore isolate a \emph{structural} limitation of each framework rather than a tuning shortcoming.
 
 \subsubsection{Performance-Constrained PBVS \cite{lin2022}}
 
@@ -472,38 +525,29 @@ The scheme of~\cite{lin2022} regulates the position and velocity errors through 
 \begin{equation*}
     \rho_{p_k}(t) = (\rho_{p_k}(0)-\rho_{p_k}^\infty)e^{-l_{p_k}t} + \rho_{p_k}^\infty,
 \end{equation*}
-with the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ fed into a barrier function. Widening the $z$-axis envelope to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ absorbs the heave disturbance of~\cite{lin2022} ($A_z=0.2~\text{m}$, $\omega_z=0.5~\text{rad/s}$) used on Cases~2 and~5 (ship-deck), preventing $\xi_{v}(3)$ from saturating on the vertical oscillation. The horizontal channels remain structurally incompatible with the shared disturbance model: the steady-state velocity error induced by the $\pm 0.2~\text{m/s}$ mean wind plus OU turbulence already occupies a substantial fraction of any $\rho_{v_\infty}^{xy}$ compatible with $z$-descent authority, and the additional tracking error from a moving target pushes $\|\xi_v^{xy}\|$ close enough to the barrier that the lateral thrust demand saturates the $60~\text{N}$ cone limit on a subset of noise realisations (observed at $T\approx 49~\text{N}$ on the Linear case). Since the barrier enforces $|\xi_v|<1$ as a hard constraint, there is no gain setting that simultaneously preserves descent authority and admits the worst-case wind-plus-target velocity error; the scheme therefore produces horizontal errors in the $0.71$--$27.3~\text{m}$ range across all five cases, with catastrophic divergence on Case~2.
+with the transformed velocity error $\xi_{v_k}=e_{v_k}/\rho_{v_k}(t)\in(-1,1)$ fed into a barrier function. Widening the $z$-axis envelope to $\rho_{v_\infty}(3)=0.15~\text{m/s}$ absorbs the vertical reference profile of~\cite{lin2022} ($A_z=0.2~\text{m}$, $\omega_z=0.5~\text{rad/s}$, adopted from its Section~IV-B 3-D tracking study) used as the heave component on our Cases~2 and~5 (ship-deck), preventing $\xi_{v}(3)$ from saturating on the vertical oscillation. The horizontal-axis dynamics remain structurally incompatible with the shared disturbance model: the steady-state velocity error induced by the $\pm 0.2~\text{m/s}$ mean wind plus OU turbulence already occupies a substantial fraction of any $\rho_{v_\infty}^{xy}$ compatible with $z$-descent authority, and the additional tracking error from a moving target pushes $\|\xi_v^{xy}\|$ close enough to the barrier that the lateral thrust demand saturates the $60~\text{N}$ cone limit on a subset of noise realisations (observed at $T\approx 49~\text{N}$ on the Linear case). Since the barrier enforces $|\xi_v|<1$ as a hard constraint, there is no gain setting that simultaneously preserves descent authority and admits the worst-case wind-plus-target velocity error; the commanded position excursion forces target feature points outside the camera FoV on every trajectory well before touchdown altitude, triggering the feature-visibility break at $t_\text{f}=3.53$--$16.43~\text{s}$ with final horizontal separations of $0.71$--$2.68~\text{m}$ (worst on Case~2).
 
 \subsubsection{PBVS with Adaptive Extended Disturbance Observer \cite{zhang2026}}
 
-The backstepping law of~\cite{zhang2026} realises a second-order closed loop with natural frequency $\omega_n=\sqrt{K_{c_1}K_{c_3}+K_{c_2}}$ and damping $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$. This baseline is the strongest of the four under our disturbance model, landing on all five trajectories with horizontal error in the $0.08$--$0.59~\text{m}$ band. The structural limitation lies in the decoupling of the horizontal and vertical time scales: the paper-authoritative $\omega_n^z$ drives the UAV through the $5~\text{m}$ descent before the horizontal loop has closed its chase error on moving targets, so landing the adversarial IC inside the $40~\text{s}$ budget forces either a fast $\omega_n^z$ (hard touchdown) or a slow $\omega_n^z$ (horizontal error grows). Our retune ($K_{c_1}^{zz}=0.03$, $K_{c_2}^{zz}=0.15$, $K_{c_3}^{zz}=0.5$, $\omega_n^z\approx 0.4~\text{rad/s}$) gentles the $z$ channel aggressively and still yields terminal relative speeds in the $0.6$--$1.5~\text{m/s}$ range --- well above the $0.20~\text{m/s}$ soft-touchdown threshold. The framework has no mechanism to couple descent-rate regulation to image-plane error closure, so the horizontal--vertical time-scale trade-off cannot be removed by gain tuning.
+The backstepping law of~\cite{zhang2026} realises a second-order closed loop with natural frequency $\omega_n=\sqrt{(K_{c_1}K_{c_3}+K_{c_2})/m}$ and damping $\zeta=(mK_{c_1}+K_{c_3})/(2m\omega_n)$ (per-axis, from Eq.~(39) of~\cite{zhang2026}). This baseline is the strongest of the four under our disturbance model, reaching the landing altitude on the four moving cases in $t_\text{f}=9.56$--$9.93~\text{s}$ with horizontal error $0.17$--$0.24~\text{m}$; on Case~1 (static target) the absence of aiding target velocity causes the initial lateral transient to push features outside the camera FoV and the visibility break fires at $t_\text{f}=0.47~\text{s}$. The structural limitation lies in the decoupling of the horizontal and vertical time scales: the paper-authoritative $\omega_n^z$ drives the UAV through the $5~\text{m}$ descent before the horizontal loop has closed its chase error on moving targets. Our retune ($K_{c_1}^{zz}=0.03$, $K_{c_2}^{zz}=0.15$, $K_{c_3}^{zz}=0.5$, $\omega_n^z\approx 0.4~\text{rad/s}$) gentles the $z$ axis aggressively and still yields terminal relative speeds of $0.56$--$0.66~\text{m/s}$ on the moving cases --- roughly $3\times$ the $0.20~\text{m/s}$ soft-touchdown threshold. The framework has no mechanism to couple descent-rate regulation to image-plane error closure, so the horizontal--vertical time-scale trade-off cannot be removed by gain tuning.
 
 \subsubsection{IBVS with Adaptive Observer \cite{chen2025}}
 
-The force law of~\cite{chen2025} takes the form $\boldsymbol{f} = -k_r(\boldsymbol{r}-\boldsymbol{s}+\boldsymbol{\varepsilon}) + \text{(observer terms)}$, with $\boldsymbol{r}$ an image-moment vector constructed from the current feature set and $\dot{\boldsymbol{r}}$ required by the depth-adaptive update law. The derivation of~\cite{chen2025} assumes $\dot{\boldsymbol{r}}$ is available analytically from the target motion model; no measurement filter is prescribed. In any vision-only implementation, $\dot{\boldsymbol{r}}$ must be obtained by finite-difference of the noisy feature vector, and the resulting noise energy is amplified by the observer gain and by the $1/z$ scaling implicit in $\boldsymbol{r}$ at low altitude. Under the depth-dependent pixel noise model ($\sigma_{\text{px}}\uparrow$ as $z\downarrow$), the finite-difference error on a non-trivial fraction of random seeds grows without bound as the altitude approaches the landing target, driving the commanded force past the $60~\text{N}$ thrust limit. The scheme successfully lands on Case~1 ($xy_\text{e}=0.08~\text{m}$) but stalls above the landing altitude on all four moving cases: $z_\text{f}=0.39$--$1.24~\text{m}$, with $xy_\text{e}=0.98$--$1.66~\text{m}$, worst on Case~5 ($z_\text{f}=1.24~\text{m}$) where the combined deck motion and target tracking demand amplifies the finite-difference error. Because the stall is a structural consequence of the missing $\dot{\boldsymbol{r}}$ filter rather than a gain-tuning issue, no choice of $k_r$, $k_1$, $k_2$ restores the $5/5$ land rate: lowering $k_r$ (from the paper value of $8$ down to $1.0$) only delays the divergence until lower altitudes without eliminating it.
+The force law of~\cite{chen2025} takes the form $\boldsymbol{f} = -k_r(\boldsymbol{r}-\boldsymbol{s}+\boldsymbol{\varepsilon}) + \text{(observer terms)}$, with $\boldsymbol{r}=-\dot{\boldsymbol{\zeta}}-\boldsymbol{\zeta}_1+3\dot{\boldsymbol{e}}$ an auxiliary vector (Eq.~(25) of~\cite{chen2025}) whose construction already requires the image-moment-error derivative $\dot{\boldsymbol{e}}$ and the observer-state derivative $\dot{\boldsymbol{\zeta}}$. Both $\boldsymbol{r}$ and the depth-adaptive update law (Eq.~(32) of~\cite{chen2025}) therefore inherit these derivatives, and the derivation prescribes no measurement filter for either. In any vision-only implementation, $\dot{\boldsymbol{e}}$ and $\dot{\boldsymbol{\zeta}}$ must be obtained by finite-difference of the noisy image-moment vector, and the resulting noise energy is amplified by the observer gain and by the $1/z$ scaling implicit in $\boldsymbol{e}$ at low altitude. Under the depth-dependent pixel noise model ($\sigma_{\text{px}}\uparrow$ as $z\downarrow$), the finite-difference error on a non-trivial fraction of random seeds grows without bound as the altitude approaches the landing target, driving the commanded force past the $60~\text{N}$ thrust limit. The scheme stalls above the landing altitude on every trajectory, exhausting the $40~\text{s}$ time limit at $z_\text{f}=1.08$--$1.09~\text{m}$ with $xy_\text{e}=0.69$--$0.85~\text{m}$. Because the stall is a structural consequence of the missing derivative filter rather than a gain-tuning issue, no choice of $k_r$, $k_1$, $k_2$ restores landing authority: lowering $k_r$ (from the Simulation~1 value $k_r=8$ of~\cite{chen2025}, with $12.2$ and $15$ used in its subsequent studies) down to $1.0$ only delays the divergence until lower altitudes without eliminating it.
 
 \subsubsection{Feed-Forward IBVS \cite{cho2022}}
 
-The scheme of~\cite{cho2022} commands a translational velocity $\boldsymbol{v}_d = -\lambda\hat{L}_e^+\boldsymbol{e} + \boldsymbol{v}_{\text{ff}}$ and gates the vertical channel by an adaptive sigmoid altitude gain $a_{d_z}(c) = 1 - \sigma(k_\sigma c)$, where $c$ is the centroid norm of the instantaneous optic-flow vector. In our vision-only harness the velocity feed-forward $\boldsymbol{v}_{\text{ff}}$ is set consistently with the IBVS velocity command. The framework lands on only two of the five cases within the $40~\text{s}$ budget (Cases~2 and~5), with horizontal errors in the $0.26$--$0.43~\text{m}$ range on all trajectories. It cannot simultaneously satisfy the $0.10~\text{m}$ precise and $0.20~\text{m/s}$ soft criteria on any moving trajectory, because the adaptive altitude gain couples the feature-centroid \emph{norm} to the vertical descent command: the paper-authoritative $k_\sigma=0.002$ keeps $a_{d_z}\approx 0.5$ throughout the approach, halving the available descent rate and leaving the UAV $0.4$--$0.5~\text{m}$ above the landing plane when the $40~\text{s}$ budget expires on Cases~1, 3, and~4. Increasing $k_\sigma$ --- e.g.\ to $k_\sigma=0.1$ for fast saturation of $a_{d_z}$ --- breaks moving targets on a different failure mode: the feature centroid jitters under pixel noise, so $a_{d_z}$ jitters and the $z$-command follows, producing the $1$--$3~\text{m}$ lateral errors we observed in that retune. The compromise $k_\sigma=0.02$ used for the reported numbers accepts the terminal stall as the least-bad failure; no setting removes it, because the framework has no separation between precision regulation at altitude and descent regulation near touchdown.
-
-\subsubsection{Comparison Summary Bar Chart}
-
-\begin{figure*}[!t]
-\centering
-    \includegraphics[width=0.82\textwidth]{Figures/generated/comparison_summary.pdf}
-    \caption{Side-by-side summary of landing time, final horizontal error, and UAV-target relative speed at touchdown across all five cases and five controllers. Dotted lines mark the $40~\text{s}$ landing budget, the $0.10~\text{m}$ \emph{precise} horizontal-error bound, and the $0.20~\text{m/s}$ \emph{soft} relative-speed bound. The proposed MDF-ASMC is the only controller that clears all three thresholds simultaneously on every moving trajectory.}
-    \label{fig:sup-comp-summary}
-\end{figure*}
+The scheme of~\cite{cho2022} commands a translational velocity $\boldsymbol{v}_d = -\lambda\hat{L}_e^+\boldsymbol{e} + \boldsymbol{v}_{\text{ff}}$ and gates the vertical axis by an adaptive sigmoid altitude gain $a_{d_z}(c) = 1 - \sigma(k_\sigma c)$, where $c$ is the norm of the image-centroid displacement from the image centre (Eq.~(9) of~\cite{cho2022}). In the vision-only test setup the velocity feed-forward $\boldsymbol{v}_{\text{ff}}$ is set consistently with the IBVS velocity command. The framework fails to reach the landing altitude on any of the five cases: the visibility break fires within $t_\text{f}=0.35$--$1.67~\text{s}$ with horizontal separations of $1.96$--$2.77~\text{m}$ and altitudes of $4.78$--$5.02~\text{m}$ (i.e.\ no meaningful descent). The root cause is the same in every case: the raw pseudo-inverse $\lambda\hat{L}_e^+\boldsymbol{e}$ commands a lateral velocity that, under the adversarial IC's initial feature displacement, exceeds the rate at which the adaptive altitude gate admits descent, so the UAV pitches hard while barely losing altitude and the target feature points cross the camera FoV bound within a few control steps. Tuning $k_\sigma$ cannot decouple the two axes: lowering it keeps descent throttled; raising it introduces sigmoid chatter from centroid jitter under pixel noise, so the $z$-command flips erratically and lateral error grows without bound. The framework has no separation between precision regulation at altitude and descent regulation near touchdown.
 
 \clearpage
 \subsection{Summary of Numerical Observations}
 \label{sec:sup-summary}
 The numerical study summarized in Section~IV of the main paper supports the following conclusions:
 \begin{enumerate}
-    \item The locked MDF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under depth-dependent pixel noise, mean wind plus OU turbulence, pixel outliers, $\pm5\%$ parametric uncertainty, ground effect, computational delay, and actuator constraints, with mean landing time $\le 18.4~\text{s}$ and worst-case horizontal error $\le 7.3~\text{cm}$ --- including ship-deck roll/pitch oscillation and the heave profile from~\cite{lin2022} on Cases~2 and~5. Every touchdown is simultaneously precise ($xy_\text{e}\le 0.10~\text{m}$) and soft ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$).
-    \item A cross-trajectory deep sweep of $30$ gains $\times$ $4$ perturbations $\times$ $5$ trajectories $\times$ $5$ ICs ($2400$ deterministic runs) partitions the MDF-ASMC parameters into Pareto-admissible, fragile, inert, and Pareto-trade classes. The locked gain set is a justified design point validated by this systematic exploration of the parameter space.
-    \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.10~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
-    \item Under identical disturbance conditions, the proposed MDF-ASMC dominates four representative state-of-the-art controllers~\cite{lin2022,zhang2026,chen2025,cho2022} in both landing time and horizontal touchdown precision on all four moving trajectories.
+    \item The locked MDF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under depth-dependent pixel noise, mean wind plus OU turbulence, pixel outliers, $\pm5\%$ parametric uncertainty, ground effect, computational delay, and actuator constraints, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error $\le 5.8~\text{cm}$ --- including ship-deck roll/pitch oscillation and the heave profile from~\cite{lin2022} on Cases~2 and~5. Every touchdown is simultaneously precise ($xy_\text{e}\le 0.08~\text{m}$) and soft ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$).
+    \item A cross-trajectory deep sweep over $33$ axes $\times$ $4$ perturbations $\times$ $5$ trajectories $\times$ $5$ ICs ($3300$ perturbation runs plus $25$ baseline runs, $3325$ deterministic simulations in total) exposes load-bearing, robust, and Pareto-trade roles across the MDF-ASMC parameters. The locked gain set is a justified design point validated by this systematic exploration of the parameter space.
+    \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
+    \item Under identical disturbance conditions, the proposed MDF-ASMC is the only controller among four representative state-of-the-art baselines~\cite{lin2022,zhang2026,chen2025,cho2022} that reaches the $z_\text{f}=0.20~\text{m}$ landing altitude on every trajectory, with horizontal error $\le 2.1~\text{cm}$ --- an order of magnitude below the closest landing baseline~\cite{zhang2026} on the four moving cases.
 \end{enumerate}
 
 \bibliography{IEEEabrv, bibliography}

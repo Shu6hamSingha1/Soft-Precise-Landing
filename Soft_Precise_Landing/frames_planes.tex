@@ -1,0 +1,143 @@
+% Frames-and-planes schematic for MDF-ASMC.
+% Single-column TikZ figure; inputs must be set up by the including document.
+% Requires: \usepackage{tikz}, \usetikzlibrary{arrows.meta,positioning,calc}
+\begin{tikzpicture}[
+    >={Latex[length=1.6mm,width=1.2mm]},
+    line cap=round,
+    every node/.style={font=\scriptsize},
+    axisI/.style={->, thick, black},
+    axisB/.style={->, thick, blue!65!black},
+    axisV/.style={->, thick, orange!80!black},
+    dimaxis/.style={->, thick, gray!75},
+    rayline/.style={dashed, thin, black!70},
+    planeC/.style={thick, blue!65!black, fill=blue!8, fill opacity=0.7},
+    planeV/.style={thick, orange!80!black, fill=orange!12, fill opacity=0.7},
+    groundline/.style={line width=0.9pt, black!70},
+    targetbox/.style={thick, fill=gray!25},
+    uav/.style={line width=1.2pt, black},
+    x=1cm, y=1cm,
+]
+
+% =====================================================================
+% Ground plane and inertial frame
+% =====================================================================
+\draw[groundline] (-0.4,0) -- (7.2,0);
+
+\coordinate (Oi) at (0,0);
+\draw[axisI] (Oi) -- ++(0.55,0)   node[above=-1pt]{$X_\text{i}$};
+\draw[axisI] (Oi) -- ++(0,0.55)   node[above=-1pt]{$Z_\text{i}$};
+\draw[axisI] (Oi) -- ++(-0.28,-0.20) node[below=-2pt,xshift=-2pt]{$Y_\text{i}$};
+\node[below right=1pt and 1pt] at (Oi) {$O_\text{i}\,\,\mathcal{I}$};
+
+% =====================================================================
+% Target on the ground
+% =====================================================================
+\coordinate (Ot) at (5.4,0.08);
+\draw[targetbox]
+    ($(Ot)+(-0.55,-0.04)$) --
+    ($(Ot)+( 0.55,-0.04)$) --
+    ($(Ot)+( 0.68, 0.12)$) --
+    ($(Ot)+(-0.42, 0.12)$) -- cycle;
+\foreach \dx/\dy in {-0.55/-0.04, 0.55/-0.04, 0.68/0.12, -0.42/0.12}
+    \fill[black] ($(Ot)+(\dx,\dy)$) circle (0.9pt);
+\node[below=5pt] at (Ot) {$\,^\mathcal{I}\boldsymbol{r}_\text{t}$};
+
+\draw[dimaxis] (Oi) -- ($(Ot)+(-0.02,0)$);
+
+% =====================================================================
+% UAV body + camera frame (tilted).  B and C share origin; label as
+% one group placed above-right of the rotor bar.
+% =====================================================================
+\coordinate (Ob) at (3.0,4.8);
+\def\tilt{20}
+
+% Rotor bar
+\draw[uav, rotate around={\tilt:(Ob)}] ($(Ob)+(-0.7,0)$) -- ($(Ob)+(0.7,0)$);
+\draw[uav, fill=white, rotate around={\tilt:(Ob)}] ($(Ob)+(-0.7,0)$) circle (0.08);
+\draw[uav, fill=white, rotate around={\tilt:(Ob)}] ($(Ob)+( 0.7,0)$) circle (0.08);
+% Origin marker (small dot to make Ob unambiguous)
+\fill[black] (Ob) circle (0.6pt);
+
+% Body axes: only X_b and Z_b for clarity (2D figure)
+\draw[axisB, rotate around={\tilt:(Ob)}] (Ob) -- ++(0.55,0)
+    node[above right=-3pt]{$X_\text{b}$};
+\draw[axisB, rotate around={\tilt:(Ob)}] (Ob) -- ++(0,-0.45)
+    node[left=-1pt, yshift=-1pt]{$Z_\text{b}$};
+
+% Origin label at body origin
+\node[above=2pt] at (Ob) {$O_\text{b}$};
+% Frame label placed well above the UAV
+\node[above=12pt, xshift=12pt, blue!65!black] at (Ob) {$\mathcal{B},\mathcal{C}$};
+
+% UAV position vector -- label placed on the EAST side of the line
+% (away from the virtual image plane that sits to the west)
+\draw[dimaxis] (Oi) -- (Ob);
+\node[anchor=west, xshift=3pt, yshift=-2pt] at ($(Oi)!0.45!(Ob)$) {$\,^\mathcal{I}\boldsymbol{r}_\text{b}$};
+
+% =====================================================================
+% Image plane (attached to B, tilted with body)
+% f below Ob along -Z_b.  Widened to contain the projection point.
+% =====================================================================
+\def\fdist{0.95}
+\coordinate (PCcen) at ($(Ob)+({\fdist*sin(\tilt)},{-\fdist*cos(\tilt)})$);
+\coordinate (PCL) at ($(PCcen)+({-0.75*cos(\tilt)},{-0.75*sin(\tilt)})$);
+\coordinate (PCR) at ($(PCcen)+({ 0.75*cos(\tilt)},{ 0.75*sin(\tilt)})$);
+\coordinate (PCLt) at ($(PCL)+(0.14,0.18)$);
+\coordinate (PCRt) at ($(PCR)+(0.14,0.18)$);
+\draw[planeC] (PCL) -- (PCR) -- (PCRt) -- (PCLt) -- cycle;
+\node[blue!65!black, anchor=west] at ($(PCR)+(0.1,0.25)$)
+    {IMAGE PLANE};
+
+% =====================================================================
+% Virtual frame V (axes parallel to I, drawn spatially offset for
+% clarity; dashed connector to the true shared origin).
+% =====================================================================
+\coordinate (Ov) at (0.9,4.1);
+\draw[axisV] (Ov) -- ++(0.55,0)   node[above=-1pt]{$X_\text{v}$};
+\draw[axisV] (Ov) -- ++(0,-0.35)  coordinate (ZvTip);
+\node[orange!80!black, anchor=north west, xshift=1pt] at (ZvTip) {$Z_\text{v}$};
+\node[orange!80!black, above=2pt, xshift=-5pt] at (Ov) {$\mathcal{V}$};
+\node[below right=-2pt and 2pt] at (Ov) {$O_\text{v}$};
+
+\draw[dashed, gray!55] (Ov) -- (Ob);
+
+% =====================================================================
+% Virtual image plane (horizontal), f below Ov.  Widened so the
+% projection point lies clearly inside.
+% =====================================================================
+\coordinate (PVcen) at ($(Ov)+(0,-\fdist)$);
+
+\coordinate (PVL) at ($(PVcen)+(-1.05,0)$);
+\coordinate (PVR) at ($(PVcen)+( 1.35,0)$);
+\coordinate (PVLt) at ($(PVL)+(0.18,0.22)$);
+\coordinate (PVRt) at ($(PVR)+(0.18,0.22)$);
+\draw[planeV] (PVL) -- (PVR) -- (PVRt) -- (PVLt) -- cycle;
+\node[orange!80!black, anchor=north] at ($(PVcen)+(-0.2,-0.08)$)
+    {VIRTUAL IMAGE PLANE};
+
+% FoV pixel box on the virtual plane (smaller, centered)
+\draw[thick, red!70!black] ($(PVcen)+(-0.35,0.05)$) rectangle ($(PVcen)+(0.35,0.13)$);
+\node[red!70!black, anchor=south east] at ($(PVcen)+(-0.35,0.14)$)
+    {$\boldsymbol{p}_1(t)$};
+
+% =====================================================================
+% Projection rays from one target 3D point -- geometrically correct
+% hit points computed from ray/plane intersection ratios.
+% =====================================================================
+\coordinate (Tcor) at ($(Ot)+(0.68,0.12)$);
+
+% Ray to camera origin; HitC at parameter 0.174 from Ob toward Tcor
+\draw[rayline] (Tcor) -- (Ob);
+\coordinate (HitC) at ($(Ob)!0.174!(Tcor)$);
+\fill[blue!65!black] (HitC) circle (1.3pt);
+\node[blue!65!black, anchor=south west, xshift=3pt, yshift=1pt] at (HitC)
+    {$\,^\mathcal{C}\boldsymbol{\hat{r}}$};
+
+% Ray to virtual origin; HitV at parameter 0.227 from Ov toward Tcor
+\draw[rayline] (Tcor) -- (Ov);
+\coordinate (HitV) at ($(Ov)!0.227!(Tcor)$);
+\fill[orange!80!black] (HitV) circle (1.3pt);
+\node[orange!80!black, anchor=south west, xshift=3pt, yshift=1pt] at (HitV)
+    {$\,^\mathcal{V}\boldsymbol{\hat{r}}$};
+
+\end{tikzpicture}

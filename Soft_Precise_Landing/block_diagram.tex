@@ -1,5 +1,5 @@
-% TikZ block diagram of the DF-ASMC control pipeline.
-% Left-to-right cascade: Vision (top) -> Outer Loop (visibility + tracking)
+% TikZ block diagram of the MDF-ASMC control pipeline.
+% Left-to-right cascade: Vision (top) -> Outer Loop (target image + optic-flow)
 % -> Inner Loop -> Plant. Feedback wraps far-left edge.
 % IEEE TAES styling: compact spacing, \small block text (matches body),
 % \footnotesize edge labels, \scriptsize eq-refs; unified gray/blue palette
@@ -43,13 +43,11 @@
 \node[sens, right=of feat]   (vh)   {Optic Flow};
 
 % =============================================================
-% ROW 2 — Outer loop: visibility chain
+% ROW 2 — Outer loop: cone-clamp chain
 % =============================================================
 \node[sum,   below=9mm of img]                (e1)  {};
-\node[ctrl, novel, right=of e1,
-      label={[eqlbl]below:Eq.~\eqref{symmetric transformation: equation}}] (fnl1) {Visibility Funnel};
-\node[ctrl, novel, right=of fnl1,
-      label={[eqlbl]below:Eq.~\eqref{zeta_e_dot_d: equation}}]             (pid)  {Barrier PID};
+\node[ctrl, novel, right=of e1, minimum width=22mm,
+      label={[eqlbl]below:Eqs.~\eqref{normalized error: equation},\,\eqref{h_d final: equation}}] (pid) {Normalized Virtual\\Feature PID};
 \node[left=5mm of e1]                         (sd)  {$\hat{\boldsymbol{r}}_\text{d}$};
 
 % =============================================================
@@ -63,7 +61,7 @@
 \node[ctrl, novel, right=of sld,
       label={[eqlbl]below:Eqs.~\eqref{adaptive control law: equation},\,\eqref{adaptive law: equation}}] (asmc) {Adaptive SMC};
 \node[ctrl, novel, right=of asmc,
-      label={[eqlbl]below:Eq.~\eqref{cone clamp: equation}}]                         (cone) {Cone Clamp};
+      label={[eqlbl]below:Eq.~\eqref{cone clamp: equation}}]                         (cone) {Funnel-Margin\\Cone Clamp};
 \node[ctrl, right=of cone,
       label={[eqlbl]below:$\tau_\text{a}=0.08$~s}]                                   (lpf)  {LP Filter};
 
@@ -90,14 +88,13 @@
 \draw[flow] (img)  -- (feat);
 \draw[flow] (feat) -- (vh);
 
-% --- Visibility side ---
+% --- Cone-clamp side ---
 \draw[ref]  (sd) -- (e1);
 \draw[flow] ([xshift=-3mm]feat.south) |- (e1.north);
 \node[signlbl] at ([xshift=-2.5mm, yshift=-1.5mm]e1) {$\scriptstyle+$};
 \node[signlbl] at ([xshift=1.7mm,  yshift=2.3mm]e1)  {$\scriptstyle-$};
 
-\draw[flow] (e1)   -- (fnl1) node[edgelbl, midway, above, yshift=0.3mm]{$\hat{\boldsymbol{r}}_\text{e}$};
-\draw[flow] (fnl1) -- (pid)  node[edgelbl, midway, above, yshift=0.3mm]{$\boldsymbol{\zeta}_1$};
+\draw[flow] (e1) -- (pid) node[edgelbl, midway, above, yshift=0.3mm]{$\hat{\boldsymbol{r}}_\text{e}$};
 
 % --- Optic-flow side ---
 % h_d from PID drops to e2 (dashed — desired optic flow); label on LEFT of arrow
@@ -164,7 +161,7 @@
         label={[grouplbl, gray!60!black]above:VISION FRONT-END}] {};
   % OUTER LOOP: label on LEFT shoulder to keep clear of vision row above
   \node[draw=blue!60!black, dashed, rounded corners, line width=0.3mm,
-        fit=(sd)(e1)(fnl1)(pid)(e2)(fnl2)(sld)(asmc)(cone)(lpf),
+        fit=(sd)(e1)(pid)(e2)(fnl2)(sld)(asmc)(cone)(lpf),
         inner sep=2.8mm,
         label={[grouplbl, blue!60!black, xshift=-48mm, yshift=-1mm]above:OUTER-LOOP CONTROLLER}] {};
   % INNER LOOP: label to RIGHT of the fit box (open area — no overlap)

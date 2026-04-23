@@ -22,17 +22,18 @@
 % =========================================================================
 K_PLASMC = struct();
 
-K_PLASMC.gamma_1  = [0.1, 0.1];                 % slowed for realistic-mode tracking headroom
-K_PLASMC.p_10     = K.p_10;
-K_PLASMC.p_1inf   = [0.20; 0.20];               % widened (robustness-mode wind headroom)
+% Approach 2: visibility funnel (p_1, gamma_1, p_1inf) REMOVED. Physical-corner
+% visibility is enforced downstream by the FoV-adaptive cone clamp on I_a_cd.
+% p_10 retained — used as sensor-half for V_s_e_n normalization in outer PID.
+K_PLASMC.p_10     = K.p_10;                     % sensor-half, r_e normalization (Approach 2)
 
-K_PLASMC.zp = diag([6.0, 6.0]);                 % prior 25/25 baseline
+K_PLASMC.zp = diag([9.0, 9.0]);                 % Combo D: x1.5 from 6.0 (deep-sweep precision winner, -25% maxXY)
 K_PLASMC.zi = diag([0.1, 0.1]);
-K_PLASMC.zd = diag([1.15, 1.15]);              % bumped with E(3,3)=1.0 to chase Linear IC5 soft threshold
+K_PLASMC.zd = diag([1.4375, 1.4375]);           % Combo D: x1.25 from 1.15 (D-damping pair for zp x1.5; recovers soft margin)
 
 K_PLASMC.gamma_2  = [0.2, 0.2, 0.2];           % prior 25/25 baseline
 K_PLASMC.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
-K_PLASMC.p_2inf   = [2.5;  2.5;  1.5];         % lateral widened to prevent |S_2|->1 collapse under cone-clamped oscillation
+K_PLASMC.p_2inf   = [2.5;  2.5;  1.5 ];        % reverted from Combo A (z-tightening acted as speed knob under FW=11)
 
 K_PLASMC.Omega   = diag([0.05, 0.05, 0.025]);   % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
 K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
@@ -52,6 +53,12 @@ K_PLASMC.n_a       = 1.0;
 K_PLASMC.p_a       = 2;
 K_PLASMC.kappa_a_0 = 2.0;
 K_PLASMC.E_a       = 3.0;
+
+% FoV-adaptive cone clamp (Approach 2) — synced with Multi_init/run_simulation.m
+K_PLASMC.rho_fov_0   = [145; 105];              % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
+K_PLASMC.rho_fov_inf = [40; 40];                % terminal pixel margin (px)
+K_PLASMC.l_fov       = 0.1;                     % cone-decay rate
+K_PLASMC.theta_cap   = deg2rad(60);             % soft cone ceiling
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)
