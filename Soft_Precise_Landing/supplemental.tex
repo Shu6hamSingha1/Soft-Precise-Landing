@@ -309,7 +309,7 @@ The $25$ idealised runs of Figs.~\ref{fig:sup-static-3d-nl}--\ref{fig:sup-circ-i
 
 \emph{IC$5$ ($[2,2,-3]$~m, low altitude plus lateral).} The shortened descent leaves less time for the funnel to tighten, and the $5/3\approx 1.67\times$ pixel magnification at $\,^\mathcal{V}z=3$~m places the initial image-feature excursion near the outer $\boldsymbol{p}_{1_0}=[145,105]^\top$~px envelope. The cone clamp activates at its tightest during the initial $1$--$2$~s and enforces a smooth lateral trim without feature loss; absent pixel noise the image-plane trajectory traces a clean arc back to the centre rather than the jittered approach of the full-disturbance regime. The touchdown residual is comparable to IC$1$ once the features re-centre, isolating the large pixel excursions of Section~\ref{sec:sup-multi-init} as a purely noise-induced effect rather than a geometric limitation of the cone clamp.
 
-\emph{Cross-IC trends in the idealised regime.} All five ICs produce touchdown $xy$-residuals substantially below the full-disturbance baseline of Section~\ref{sec:sup-multi-init}, with all cone-clamp activations ending within the first $1$--$2$~s of each run. The adaptive gain $\boldsymbol{\kappa}(t)$ stays near its leakage-limited floor throughout because no structured disturbance needs absorption. These runs empirically verify that the dual-funnel construction---target image funnel plus optic-flow funnel---is self-consistent: with the adaptive robustness layer effectively disengaged, the PPC layer alone drives the closed loop from every initial condition to a funnel-granularity precision floor, keeping the target feature points strictly inside $\boldsymbol{p}_1(t)$ for all $t\ge 0$.
+\emph{Cross-IC trends in the idealised regime.} All five ICs produce touchdown $xy$-residuals substantially below the full-disturbance baseline of Section~\ref{sec:sup-multi-init}, with all cone-clamp activations ending within the first $1$--$2$~s of each run. The adaptive gain $\boldsymbol{\kappa}(t)$ stays near its leakage-limited floor throughout because no structured disturbance needs absorption. These runs empirically verify that the dual-funnel construction---optic-flow funnel plus target image funnel---is self-consistent: with the adaptive robustness layer effectively disengaged, the PPC layer alone drives the closed loop from every initial condition to a funnel-granularity precision floor, keeping the target feature points strictly inside $\boldsymbol{p}_1(t)$ for all $t\ge 0$.
 
 \clearpage
 \subsection{Multi-Initial-Condition Results under Realistic Disturbances}
@@ -451,12 +451,6 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
     \toprule
         \textbf{Control Parameter} & \textbf{Value}\\
     \midrule
-        \multicolumn{2}{l}{\textit{Target Image Funnel --- Funnel-Margin Cone Clamp}} \\
-        $\boldsymbol{p}_{1_0}$      & $[145,105]^\top$~px \\
-        $\boldsymbol{p}_{1_\infty}$ & $[40,40]^\top$~px \\
-        $\xi_1$                     & $0.1$~s$^{-1}$ \\
-        $\theta_\text{cap}$         & $60^\circ$ \\
-    \midrule
         \multicolumn{2}{l}{\textit{Normalized Virtual Feature PID --- Desired Optic Flow}} \\
         $K_{rp}$ & $\text{diag}([9.0,9.0])$ \\
         $K_{ri}$ & $\text{diag}([0.1,0.1])$ \\
@@ -475,6 +469,12 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
         $\boldsymbol{\kappa}_0$ & $[0.125,0.125,0.25]^\top$ \\
         $E$                     & $\text{diag}([1.0,1.0,1.0])$ \\
         $\epsilon_S$            & $0.05$ \\
+    \midrule
+        \multicolumn{2}{l}{\textit{Target Image Funnel --- Funnel-Margin Cone Clamp}} \\
+        $\boldsymbol{p}_{1_0}$      & $[145,105]^\top$~px \\
+        $\boldsymbol{p}_{1_\infty}$ & $[40,40]^\top$~px \\
+        $\xi_1$                     & $0.1$~s$^{-1}$ \\
+        $\theta_\text{cap}$         & $60^\circ$ \\
     \midrule
         \multicolumn{2}{l}{\textit{Geometric SO(3) Attitude Control}} \\
         $k_R$      & $\text{diag}([1.5,1.5,0.5])$ \\
