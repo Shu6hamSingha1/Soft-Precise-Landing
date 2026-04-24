@@ -131,7 +131,7 @@ A degeneracy guard replaces $\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h$ with a 
 \begin{equation*}
     \boldsymbol{e}_R = \tfrac12(R_\text{d}^\top R - R^\top R_\text{d})^\vee,\qquad \boldsymbol{e}_\Omega = \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} - R^\top R_\text{d}\,^\mathcal{B}\boldsymbol{\omega}_\text{d},
 \end{equation*}
-with $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitude (not attitude rate), so $\boldsymbol{e}_\Omega=\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$. The geometric torque law of the main paper then inherits the almost-global exponential stability result of \cite[Thm.~3.1]{lee2010}: for any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
+where $(\cdot)^\vee:\mathfrak{so}(3)\to\mathbb{R}^3$ is the vee map that extracts a 3-vector from a skew-symmetric matrix, and $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}\equiv 0$ since the outer loop commands attitude (not attitude rate), so $\boldsymbol{e}_\Omega=\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$. The geometric torque law of the main paper then inherits the almost-global exponential stability result of \cite[Thm.~3.1]{lee2010}: for any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
 
 \subsection{Full Proof of Theorem~1}
 \label{sup:theorem1_proof}

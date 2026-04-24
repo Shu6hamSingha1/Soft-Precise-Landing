@@ -64,7 +64,7 @@ where
     &~~~ - \left[\left( \boldsymbol{h} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{t/b}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{h} - \dot{\boldsymbol{h}}_\text{d} \\
     \boldsymbol{d}_h &= \frac{\,^\mathcal{V}\boldsymbol{a}_{\text{t}}}{\,^\mathcal{V}z_{\text{t}}} - \left(\frac{\,^\mathcal{V}\boldsymbol{F_{\text{g}}} + \,^\mathcal{V}\boldsymbol{F_{\text{d}}}}{m \,^\mathcal{V}z_{\text{t}}} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{b}} \times \frac{\,^\mathcal{V}\boldsymbol{v}_{\text{b}}}{\,^\mathcal{V}z_{\text{t}}} \right).
 \end{align*}
-Here $\boldsymbol{h} = \,^\mathcal{V} \boldsymbol{v}_{\text{t/b}}/\,^\mathcal{V} z_{\text{t}}$ is the optic flow representing the visual velocity of the target relative to the UAV, and $\,^\mathcal{V} \boldsymbol{\omega}_{\text{t/b}}$ is the angular rate of the target relative to the UAV, both expressed in the virtual frame $\mathcal{V}$.
+Here $\boldsymbol{h} = \,^\mathcal{V} \boldsymbol{v}_{\text{t/b}}/\,^\mathcal{V} z_{\text{t}}$ is the optic flow representing the visual velocity of the target relative to the UAV, $\,^\mathcal{V} \boldsymbol{\omega}_{\text{t/b}}$ is the angular rate of the target relative to the UAV, both expressed in the virtual frame $\mathcal{V}$, and $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$.
  
 
 \subsection{Image-Kinematic Reformulation and Problem Statement} \label{problem statement: section}
@@ -100,7 +100,7 @@ where $\alpha_e$ is unwrapped to $(-\pi/2,\pi/2]$, $\dot{\psi}_\text{d}$ is the 
 
 \textit{Assumption 1} (uncertainty bounds): The disturbances $\boldsymbol{d}_h$, $d_{\alpha}$ are uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$.
 
-\textit{Property 1} (cone-clamped lateral acceleration): By construction of the funnel-margin cone clamp in Section~\ref{fov cone: section}, the commanded lateral acceleration satisfies the state-dependent bound $|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}|\le|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)$, with $\theta_\text{cone}(t)\le\theta_\text{cap}=60^\circ$.
+\textit{Property 1} (cone-clamped lateral acceleration): By construction of the funnel-margin cone clamp in Section~\ref{fov cone: section}, the commanded lateral acceleration satisfies the state-dependent bound $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|\le|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)$, with $\theta_\text{cone}(t)\le\theta_\text{cap}=60^\circ$.
 
 The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$, $\boldsymbol{u}_h$ and $\dot{\psi}_\text{d}$ so that the target feature points remain visible throughout the descent and $\boldsymbol{h}_\text{e}$, $\alpha_\text{e}$ converge to small ultimate bounds under Assumption~1 and Property~1.
 
@@ -112,7 +112,7 @@ The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$,
 \end{figure*}
 
 \section{MDF-ASMC CONTROL DESIGN} \label{control strategy: section}
-The proposed MDF-ASMC is a \emph{dual-funnel} design (Fig.~\ref{block diagram: figure}). The outer loop is developed in three sub-blocks --- Section~\ref{normalized pid: section} (normalized virtual feature PID producing $\boldsymbol{h}_\text{d}$), Section~\ref{ppc optic flow: section} (optic-flow funnel and leakage-type adaptive SMC), Section~\ref{fov cone: section} (target image funnel and funnel-margin cone clamp) --- followed by the inner loop (Section~\ref{inner loop: section}) and the layered Lyapunov certificate (Section~\ref{stability: section}).
+The proposed MDF-ASMC is a \emph{dual-funnel} design (Fig.~\ref{block diagram: figure}): the optic-flow funnel generates the commanded acceleration through a leakage-type adaptive sliding-mode law, and the target image funnel sizes a state-dependent attitude cone that kinematically clips it. The outer loop is developed in three sub-blocks --- Section~\ref{normalized pid: section} (normalized virtual feature PID producing $\boldsymbol{h}_\text{d}$), Section~\ref{ppc optic flow: section} (optic-flow funnel and leakage-type adaptive SMC), Section~\ref{fov cone: section} (target image funnel and funnel-margin cone clamp) --- followed by the inner loop (Section~\ref{inner loop: section}) and the layered Lyapunov certificate (Section~\ref{stability: section}).
 
 \subsection{Outer Loop: Dual Funnel and Adaptive SMC} \label{outer loop: section}
 
@@ -177,7 +177,7 @@ which stays strictly positive while every feature point lies inside $\boldsymbol
 \begin{equation} \label{cone angle: equation}
     \theta_\text{cone}(t) = \min\!\Big(\theta_\text{curr}(t) + \tan^{-1}\!\big(d_\text{min}^\text{fov}(t)/f\big),\ \theta_\text{cap}\Big),
 \end{equation}
-where $\theta_\text{curr}(t)=\arccos(R_{33}(t))$ is the tilt of the body-$z$ axis from the inertial vertical and $\theta_\text{cap}=60^\circ$ is the airframe tilt ceiling. As any feature point approaches the funnel boundary, $d_\text{min}^\text{fov}\to 0$ and $\theta_\text{cone}\to\theta_\text{curr}$, so the outer loop cannot command any additional tilt that would push that feature point outside $\boldsymbol{p}_1(t)$. The projection itself is
+where $\theta_\text{curr}(t)=\arccos(R_{33}(t))$ is the tilt of the body-$z$ axis from the inertial vertical (with $R_{33}$ the $(3,3)$ entry of the body-to-inertial rotation matrix $R\in SO(3)$), and $\theta_\text{cap}=60^\circ$ is the airframe tilt ceiling. As any feature point approaches the funnel boundary, $d_\text{min}^\text{fov}\to 0$ and $\theta_\text{cone}\to\theta_\text{curr}$, so the outer loop cannot command any additional tilt that would push that feature point outside $\boldsymbol{p}_1(t)$. The projection itself is
 \begin{equation} \label{cone clamp: equation}
     \,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\leftarrow \min\!\left(1,\ \frac{|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)}{\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|+\epsilon_\text{c}}\right)\!\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy},
 \end{equation}
@@ -193,7 +193,7 @@ In order to drive $\alpha_e$ in \eqref{alpha_e_dot: equation} to a uniform ultim
 \end{align}
 where gains $\gamma_{\alpha}, \chi_{\alpha}, \eta_{\alpha}, \rho_{\alpha} > 0$ and $\varepsilon_{\alpha}>0$ sets the boundary-layer thickness.
 
-The $\dot{\psi}_\text{d}$ signal is integrated online as the \emph{time-derivative of a desired heading}:
+The $\dot{\psi}_\text{d}$ signal is integrated online as the \emph{time-derivative of a desired heading}, with $\Pi_{[-\pi,\pi]}(\cdot)$ denoting the angle-wrapping projection onto $[-\pi,\pi]$:
 \begin{equation} \label{psi d integrator: equation}
     \psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}\!\big[\psi_\text{d}(t_k) + \dot{\psi}_\text{d}(t_k)\,\Delta t\big].
 \end{equation}
