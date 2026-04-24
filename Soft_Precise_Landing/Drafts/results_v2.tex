@@ -64,26 +64,26 @@ Each of the above initial conditions is evaluated against five target trajectory
 \end{enumerate}
 Cases~2 and~5 are ship-deck scenarios with roll/pitch amplitudes and periods bracketing a substantially harsher envelope than the heave-only ``oscillating platform'' of~\cite{lin2022}.
 
-Throughout Section~\ref{experimentation: section} every run applies the perturbation model of Table~\ref{uav params: table} (with ground effect from~\cite{sanchez-cuevas2017}); the aggregated results are reported in Section~\ref{multi init: subsec}.
+Throughout Section~\ref{experimentation: section} every run applies the perturbation model of Table~\ref{uav params: table} (with ground effect from~\cite{sanchez-cuevas2017}); the full-disturbance results are reported in Section~\ref{multi init: subsec}.
 
 \subsection{Robustness Across Initial Conditions and Trajectories}
 \label{multi init: subsec}
-Sweeping the five initial conditions of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{test conditions: subsec} with deterministic per-IC seeding yields the aggregated metrics in Table~\ref{multi init: table}. The most demanding trajectory, Case~5 (circular ship-deck), is shown in Fig.~\ref{Circular_3D: figure}, with closed-loop internals for the representative Case~3 IC$2$ run in Section~S3-B.
+Sweeping the five initial conditions of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{test conditions: subsec} under the full disturbance set (deterministic per-IC seeding) yields the aggregated metrics in Table~\ref{multi init: table}. The most demanding trajectory, Case~5 (circular ship-deck), is shown in Fig.~\ref{Circular_3D: figure}, with closed-loop internals for the representative Case~3 IC$2$ run in Section~S3-C.
 
 \begin{table}[!t]
 \centering
-\caption{Multi-initial-condition robustness of the proposed MDF-ASMC under the simulated disturbance model (Table~\ref{uav params: table}); 5 ICs per case.}
+\caption{Multi-initial-condition robustness of the proposed MDF-ASMC under realistic disturbances (5 ICs per trajectory).}
 \label{multi init: table}
 \begin{tabular}{lccccc}
 \toprule
-\textbf{Case} & \textbf{Lands} & $\bar{t}_\text{f}$ & $t_\text{f}^{\max}$ & $\overline{xy}_\text{e}$ & $xy_\text{e}^{\max}$ \\
-              &                & [s]                & [s]                 & [cm]                     & [cm] \\
+\textbf{Trajectory} & \textbf{Lands} & $\bar{t}_\text{f}$ & $t_\text{f}^{\max}$ & $\overline{xy}_\text{e}$ & $xy_\text{e}^{\max}$ \\
+                    &                & [s]                & [s]                 & [cm]                     & [cm] \\
 \midrule
-1      & 5/5 & 17.91 & 35.58 & 2.80 & 5.02 \\
-2      & 5/5 & 17.93 & 36.25 & 2.78 & 5.71 \\
-3      & 5/5 & 17.64 & 34.95 & 2.48 & 5.51 \\
-4      & 5/5 & 17.70 & 35.29 & 3.38 & 4.49 \\
-5      & 5/5 & 18.15 & 34.35 & 2.77 & 4.75 \\
+Case 1      & 5/5 & 17.91 & 35.58 & 2.80 & 5.02 \\
+Case 2      & 5/5 & 17.93 & 36.25 & 2.78 & 5.71 \\
+Case 3      & 5/5 & 17.64 & 34.95 & 2.48 & 5.51 \\
+Case 4      & 5/5 & 17.70 & 35.29 & 3.38 & 4.49 \\
+Case 5      & 5/5 & 18.15 & 34.35 & 2.77 & 4.75 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -92,15 +92,15 @@ Sweeping the five initial conditions of Table~\ref{initial conditions: table} ag
 \centering
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Circular_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
-    \caption{MDF-ASMC on Case~5 (circular target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. \emph{Bottom}: image-plane evolution $\hat{\boldsymbol{r}}(t)$ with the target image funnel $\pm\boldsymbol{p}_1(t)$. Remaining cases: Section~S3-A of the supplementary document.}
+    \caption{MDF-ASMC on Case~5 (circular target trajectory), full disturbance model. \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. \emph{Bottom}: image-plane evolution $\hat{\boldsymbol{r}}(t)$ with the target image funnel $\pm\boldsymbol{p}_1(t)$. Remaining cases: Section~S3-B.}
     \label{Circular_3D: figure}
 \end{figure}
 
-MDF-ASMC achieves $25/25$ successful landings under the disturbance model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$5$), well within the $\pm[160,120]$~px bound.
+MDF-ASMC achieves $25/25$ successful landings under the full robustness model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$5$), well within the $\pm[160,120]$~px bound.
 
-A 33-axis cross-trajectory deep sweep ($3325$ deterministic runs covering the tunable MDF-ASMC gains and two closed-loop structural knobs, perturbed over $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$) confirms the locked gain set (Table~S1) as a Pareto-admissible design point; the per-axis methodology is in Section~S3-D.
+A 33-axis cross-trajectory deep sweep ($3325$ deterministic runs covering the tunable MDF-ASMC gains and two closed-loop structural knobs, perturbed over $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$) confirms the locked gain set (Table~S1) as a Pareto-admissible design point; the per-axis methodology is in Section~S3-E.
 
-A separate speed-envelope sweep from IC $[0,0,-5]~\text{m}$, applying a symmetric multiplicative scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ to every moving trajectory with all gains fixed, lands $20/20$ runs simultaneously \emph{precise} and \emph{soft} under the disturbance model (Fig.~\ref{speed envelope: figure}), establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning; outside this range the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation. The full per-axis numerical breakdown is in Section~S3-E of the supplement.
+A separate speed-envelope sweep from IC $[0,0,-5]~\text{m}$, applying a symmetric multiplicative scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ to every moving trajectory with all gains fixed, lands $20/20$ runs simultaneously \emph{precise} and \emph{soft} under the full robustness model (Fig.~\ref{speed envelope: figure}), establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning; outside this range the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation. The full per-axis numerical breakdown is in Section~S3-F of the supplement.
 
 \begin{figure*}[!t]
 \centering
@@ -190,7 +190,7 @@ MDF-ASMC is compared against four representative landing controllers --- \cite{l
 The comparison establishes the following observations.
 \begin{enumerate}
     \item The proposed MDF-ASMC is the \emph{only} controller that reaches the $z_\text{f}=0.20~\text{m}$ landing altitude on every trajectory (Table~\ref{comparison table: table}, Fig.~\ref{comparison traj3d: figure}). Every MDF-ASMC cell simultaneously satisfies the altitude, horizontal-error, and time-limit thresholds, with the worst-case horizontal error ($0.021~\text{m}$ on Case~4) well inside the $0.08~\text{m}$ \emph{precise} threshold, while each of the four benchmarks either fails the visibility constraint or exhausts the $40~\text{s}$ time limit on at least one trajectory.
-    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close: \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.5$--$16.4~\text{s}$ on every trajectory; \cite{zhang2026} couples its fixed closed-loop bandwidth to a $0.56$--$0.66~\text{m/s}$ terminal relative speed on the four moving cases, landing (barely) but violating the $0.20~\text{m/s}$ soft-touchdown criterion; \cite{chen2025} amplifies depth-dependent pixel noise through a finite-difference image-moment derivative, stalling above the landing altitude on all five cases at $z_\text{f}\approx 1.08~\text{m}$; and \cite{cho2022} is unable to decouple its pseudo-inverse lateral velocity command from its adaptive altitude gate, triggering an immediate feature-visibility break on every trajectory. Per-baseline diagnoses with the exact equations that break are in Section~S3-F of the supplement.
+    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close: \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.5$--$16.4~\text{s}$ on every trajectory; \cite{zhang2026} couples its fixed closed-loop bandwidth to a $0.56$--$0.66~\text{m/s}$ terminal relative speed on the four moving cases, landing (barely) but violating the $0.20~\text{m/s}$ soft-touchdown criterion; \cite{chen2025} amplifies depth-dependent pixel noise through a finite-difference image-moment derivative, stalling above the landing altitude on all five cases at $z_\text{f}\approx 1.08~\text{m}$; and \cite{cho2022} is unable to decouple its pseudo-inverse lateral velocity command from its adaptive altitude gate, triggering an immediate feature-visibility break on every trajectory. Per-baseline diagnoses with the exact equations that break are in Section~S3-G of the supplement.
 \end{enumerate}
 
-A consolidated summary of all numerical observations is given in Section~S3-G of the supplement.
+A consolidated summary of all numerical observations is given in Section~S3-H of the supplement.

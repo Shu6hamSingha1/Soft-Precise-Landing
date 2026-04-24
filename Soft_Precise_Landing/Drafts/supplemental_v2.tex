@@ -18,7 +18,7 @@
 \maketitle
 
 \begin{abstract}
-This document is the supplementary material accompanying the main manuscript. It contains (i) the virtual-camera abstraction and the baseline cascaded pose-based architecture whose inner-loop stages are reused by the proposed MDF-ASMC, (ii) detailed derivations including optic-flow funnel implementation remarks, SO(3) construction details, and the full proofs of Theorems~1 and~2, and (iii) the complete simulation result set: multi-initial-condition figure sets, closed-loop internals, deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark. Section, equation, figure, and table numbers in this document are prefixed with ``S''; references to the main paper use unprefixed numbers. All references to bibliography entries resolve against the main paper's bibliography.
+This document is the supplementary material accompanying the main manuscript. It contains (i) the virtual-camera abstraction and the baseline cascaded pose-based architecture whose inner-loop stages are reused by the proposed MDF-ASMC, (ii) detailed derivations including optic-flow funnel implementation remarks, SO(3) construction details, and the full proofs of Theorems~1 and~2, and (iii) the complete simulation result set: idealized-condition and realistic-disturbance figure sets, closed-loop internals, deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark. Section, equation, figure, and table numbers in this document are prefixed with ``S''; references to the main paper use unprefixed numbers. All references to bibliography entries resolve against the main paper's bibliography.
 \end{abstract}
 
 % =================================================================
@@ -218,81 +218,173 @@ Invoking the Lemma of Section~\ref{sup:theorem1_proof}, every trajectory enters 
 \clearpage
 \section{Simulation Results}
 \label{sec:sup-results}
-This section collects the complete simulation result set supporting Section~IV of the main paper: the multi-initial-condition figure sets, the closed-loop internals of a representative run, the deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark.
+This section collects the complete simulation result set supporting Section~IV of the main paper: the idealized-condition and realistic-disturbance multi-initial-condition figure sets, the closed-loop internals of a representative run, the deep-sweep gain analysis, and the per-controller failure analysis of the comparative benchmark.
 
-\subsection{Multi-Initial-Condition Results}
+\subsection{Multi-Initial-Condition Results under Idealised Conditions}
+\label{sec:sup-noiseless}
+
+The figures in this section verify that, in the absence of measurement noise, ground effect, computational delay, and model uncertainty, the closed loop lands from every initial condition of Table~III of the main paper on every trajectory of Section~IV-A of the main paper, with the target feature points remaining strictly inside the target image funnel $\boldsymbol{p}_1(t)$. These runs provide an empirical verification of the dual-funnel construction, isolating the role of the prescribed-performance layer from that of the adaptive robustness layer.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for Case~1 (static target) under idealized conditions.}
+    \label{fig:sup-static-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_image_plane_noiseless.pdf}
+    \caption{Image-plane evolution for Case~1 (static target) under idealized conditions.}
+    \label{fig:sup-static-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for Case~2 (linear target trajectory) under idealized conditions.}
+    \label{fig:sup-linear-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_image_plane_noiseless.pdf}
+    \caption{Image-plane evolution for Case~2 (linear target trajectory) under idealized conditions.}
+    \label{fig:sup-linear-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for Case~3 (sinusoidal target trajectory) under idealized conditions.}
+    \label{fig:sup-sin-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_image_plane_noiseless.pdf}
+    \caption{Image-plane evolution for Case~3 (sinusoidal target trajectory) under idealized conditions.}
+    \label{fig:sup-sin-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for Case~4 (Lissajous target trajectory) under idealized conditions.}
+    \label{fig:sup-liss-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_image_plane_noiseless.pdf}
+    \caption{Image-plane evolution for Case~4 (Lissajous target trajectory) under idealized conditions.}
+    \label{fig:sup-liss-ip-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_3D_noiseless.pdf}
+    \caption{3-D UAV trajectories for Case~5 (circular target trajectory) under idealized conditions.}
+    \label{fig:sup-circ-3d-nl}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane_noiseless.pdf}
+    \caption{Image-plane evolution for Case~5 (circular target trajectory) under idealized conditions.}
+    \label{fig:sup-circ-ip-nl}
+\end{figure}
+
+\subsubsection*{Per-IC Performance Analysis}
+
+The $25$ idealised runs of Figs.~\ref{fig:sup-static-3d-nl}--\ref{fig:sup-circ-ip-nl} share the five initial conditions of Table~III of the main paper as the full-disturbance set, but with pixel noise, outliers, mean wind, OU turbulence, parametric uncertainty, centre-of-gravity offset, ground effect, and computational delay all removed. In this regime the closed loop is a deterministic cascade and the touchdown residuals are set by the funnel schedule and the geometric cone-clamp projection alone; the adaptive gain $\boldsymbol{\kappa}(t)$ drifts towards its leakage-limited floor rather than tracking any disturbance amplitude, so the PPC layer of the dual-funnel construction carries the closed loop on its own.
+
+\emph{IC$1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre with essentially zero initial optic-flow error, so $\boldsymbol{p}_1(t)$ is slack throughout and the funnel-margin cone clamp is never engaged. The vertical axis follows the funnel-scheduled descent reference almost exactly, and the sliding surface $\boldsymbol{\sigma}$ stays within the boundary-layer width $\boldsymbol{\varepsilon}$ from $t=0$. The touchdown $xy$-residual is set by the finite integration step and the funnel granularity near $\boldsymbol{p}_{1_\infty}=[40,40]^\top$~px, not by any controller transient. This run defines the idealised reference profile against which the four displaced ICs are compared.
+
+\emph{IC$2$ ($[2,2,-5]$~m, diagonal lateral offset).} The initial lateral displacement drives the normalized virtual feature PID to produce a non-zero $\boldsymbol{h}_\text{d}$ on both image axes, and the cone clamp trims the lateral commanded acceleration during the first $1$--$2$~s while the features traverse from $\boldsymbol{p}_{1_0}$ towards the image centre. Absent stochastic forcing, the sliding surface returns to zero cleanly once the chase transient resolves, and the run merges with the IC$1$ terminal profile by mid-descent. The touchdown residual differs from IC$1$ by the deterministic overshoot of the geometric tracker during the chase phase, not by any persistent tracking error.
+
+\emph{IC$3$ ($[2,-2,-5]$~m, anti-diagonal lateral offset).} IC$3$ is the exact sign-reversed counterpart of IC$2$; without stochastic disturbance the deterministic symmetry of the controller implies that IC$2$ and IC$3$ produce touchdown residuals that differ only by the parity of the lateral axis. On the rotating trajectories (Cases~4 and~5) the opposite lateral direction still places the UAV on a different phase of the target rotation, introducing a deterministic---but noise-free---rotation-phase offset between IC$2$ and IC$3$ visible in Figs.~\ref{fig:sup-liss-3d-nl} and~\ref{fig:sup-circ-3d-nl}.
+
+\emph{IC$4$ ($[2,2,-7]$~m, high altitude plus lateral).} The $2$~m of extra altitude extends the descent and affords the funnel envelope additional time to reach its terminal bound $\boldsymbol{p}_{1_\infty}$. Target features start smaller on the image (depth-scaled by a factor $5/7$ relative to IC$1$), so the initial funnel margin $d_\text{min}^\text{fov}(t)$ is wider and the cone clamp is active only briefly during the lateral chase. Because the UAV reaches the tight terminal envelope well before touchdown, the idealised IC$4$ terminal residual settles even closer to the funnel granularity than IC$1$---the longer run benefits the closed loop in the idealised regime rather than accumulating error.
+
+\emph{IC$5$ ($[2,2,-3]$~m, low altitude plus lateral).} The shortened descent leaves less time for the funnel to tighten, and the $5/3\approx 1.67\times$ pixel magnification at $\,^\mathcal{V}z=3$~m places the initial image-feature excursion near the outer $\boldsymbol{p}_{1_0}=[145,105]^\top$~px envelope. The cone clamp activates at its tightest during the initial $1$--$2$~s and enforces a smooth lateral trim without feature loss; absent pixel noise the image-plane trajectory traces a clean arc back to the centre rather than the jittered approach of the full-disturbance regime. The touchdown residual is comparable to IC$1$ once the features re-centre, isolating the large pixel excursions of Section~\ref{sec:sup-multi-init} as a purely noise-induced effect rather than a geometric limitation of the cone clamp.
+
+\emph{Cross-IC trends in the idealised regime.} All five ICs produce touchdown $xy$-residuals substantially below the full-disturbance baseline of Section~\ref{sec:sup-multi-init}, with all cone-clamp activations ending within the first $1$--$2$~s of each run. The adaptive gain $\boldsymbol{\kappa}(t)$ stays near its leakage-limited floor throughout because no structured disturbance needs absorption. These runs empirically verify that the dual-funnel construction---optic-flow funnel plus target image funnel---is self-consistent: with the adaptive robustness layer effectively disengaged, the PPC layer alone drives the closed loop from every initial condition to a funnel-granularity precision floor, keeping the target feature points strictly inside $\boldsymbol{p}_1(t)$ for all $t\ge 0$.
+
+\clearpage
+\subsection{Multi-Initial-Condition Results under Realistic Disturbances}
 \label{sec:sup-multi-init}
 
-The main paper shows a single representative Circular ship-deck run; the figures below provide the full per-trajectory set that the Table~IV multi-init statistics of the main paper are aggregated over. The runs share the disturbance model of Section~IV-A of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $60^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
+The main paper shows a single representative Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~IV multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-A of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $60^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_3D.pdf}
-    \caption{3-D UAV trajectories for Case~1 (static target).}
+    \caption{3-D UAV trajectories for Case~1 (static target) under realistic disturbances.}
     \label{fig:sup-static-3d}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_image_plane.pdf}
-    \caption{Image-plane evolution for Case~1 (static target).}
+    \caption{Image-plane evolution for Case~1 (static target) under realistic disturbances.}
     \label{fig:sup-static-ip}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_3D.pdf}
-    \caption{3-D UAV trajectories for Case~2 (linear target trajectory).}
+    \caption{3-D UAV trajectories for Case~2 (linear target trajectory) under realistic disturbances.}
     \label{fig:sup-linear-3d}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_image_plane.pdf}
-    \caption{Image-plane evolution for Case~2 (linear target trajectory).}
+    \caption{Image-plane evolution for Case~2 (linear target trajectory) under realistic disturbances.}
     \label{fig:sup-linear-ip}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_3D.pdf}
-    \caption{3-D UAV trajectories for Case~3 (sinusoidal target trajectory).}
+    \caption{3-D UAV trajectories for Case~3 (sinusoidal target trajectory) under realistic disturbances.}
     \label{fig:sup-sin-3d}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_image_plane.pdf}
-    \caption{Image-plane evolution for Case~3 (sinusoidal target trajectory).}
+    \caption{Image-plane evolution for Case~3 (sinusoidal target trajectory) under realistic disturbances.}
     \label{fig:sup-sin-ip}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_3D.pdf}
-    \caption{3-D UAV trajectories for Case~4 (Lissajous target trajectory).}
+    \caption{3-D UAV trajectories for Case~4 (Lissajous target trajectory) under realistic disturbances.}
     \label{fig:sup-liss-3d}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_image_plane.pdf}
-    \caption{Image-plane evolution for Case~4 (Lissajous target trajectory).}
+    \caption{Image-plane evolution for Case~4 (Lissajous target trajectory) under realistic disturbances.}
     \label{fig:sup-liss-ip}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
-    \caption{Image-plane evolution for Case~5 (circular target trajectory); 3-D view in Fig.~3 of the main paper.}
+    \caption{Image-plane evolution for Case~5 (circular target trajectory), realistic disturbances (3-D view: Fig.~3 of the main paper).}
     \label{fig:sup-circ-ip}
 \end{figure}
 
 \subsubsection*{Per-IC Performance Analysis}
 
-The $25$ runs of Figs.~\ref{fig:sup-static-3d}--\ref{fig:sup-circ-ip} are organised by trajectory, with the five initial conditions of Table~III of the main paper overlaid on each panel. The nominal drop IC$1=[0,0,-5]$~m serves as the reference case; the four displaced ICs stress the closed loop in distinct physical modes.
+The $25$ full-disturbance runs of Figs.~\ref{fig:sup-static-3d}--\ref{fig:sup-circ-ip} are organised by trajectory, with the five initial conditions of Table~III of the main paper overlaid on each panel. The nominal drop IC$1=[0,0,-5]$~m serves as the reference case; the four displaced ICs stress the closed loop in distinct physical modes.
 
-\emph{IC$1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre and the envelope $\boldsymbol{p}_1(t)$ is wide relative to the initial excursion, so the funnel-margin cone clamp is inactive through the first several seconds and the lateral demand is driven solely by target motion. The adaptive gain $\boldsymbol{\kappa}(t)$ grows monotonically to absorb wind and pixel-noise residuals. This run sets the reference landing time and horizontal error against which the four displaced ICs are compared.
+\emph{IC$1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre and the envelope $\boldsymbol{p}_1(t)$ is wide relative to the initial excursion, so the funnel-margin cone clamp is inactive through the first several seconds and the lateral demand is driven solely by target motion. The descent profile closely follows the idealised baseline of Section~\ref{sec:sup-noiseless}, with the adaptive gain $\boldsymbol{\kappa}(t)$ growing monotonically to absorb wind and pixel-noise residuals. This run sets the reference landing time and horizontal error against which the four displaced ICs are compared.
 
 \emph{IC$2$ ($[2,2,-5]$~m, diagonal lateral offset).} The target feature centroid starts displaced along both the $\hat{X}_\text{c}$ and $\hat{Y}_\text{c}$ image-plane axes, so the normalized virtual feature PID generates a non-zero desired optic flow $\boldsymbol{h}_\text{d}$ on both lateral axes simultaneously. Roll and pitch commands reach the cone clamp during the first $1$--$2$~s, and $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral-chase disturbance. Once the features re-centre the run rejoins the IC$1$ profile; the additional chase phase adds $\sim 0.5$--$1$~s to the landing time, and the horizontal error at touchdown lies within a few centimetres of IC$1$ because the terminal phase is dominated by disturbance-realisation variance rather than initial geometry.
 
@@ -308,7 +400,7 @@ The $25$ runs of Figs.~\ref{fig:sup-static-3d}--\ref{fig:sup-circ-ip} are organi
 \subsection{Closed-Loop Internals of MDF-ASMC (Representative Run)}
 \label{sec:sup-internals}
 
-The figures in this section expose the closed-loop internals of MDF-ASMC for the representative case IC$2=[2,2,-5]$~m on Case~3 (sinusoidal trajectory) --- the run pointed to from Section~IV-B of the main paper. They show that the virtual image feature error, the optic-flow error, the sliding surface, the adaptive gain, and the commanded thrust/acceleration all remain inside their respective safety envelopes at every time instant.
+The figures in this section expose the closed-loop internals of MDF-ASMC for the representative case IC$2=[2,2,-5]$~m on Case~3 (sinusoidal trajectory) under the full disturbance set --- the run pointed to from Section~IV-B of the main paper. They show that the virtual image feature error, the optic-flow error, the sliding surface, the adaptive gain, and the commanded thrust/acceleration all remain inside their respective safety envelopes at every time instant.
 
 \begin{figure}[!t]
 \centering
@@ -416,7 +508,7 @@ The qualitative parameter roles observed in the sweep are as follows.
 \subsection{Target-Speed Envelope Sweep}
 \label{sec:sup-speed}
 
-Starting from IC $[0,0,-5]~\text{m}$ with all gains fixed at the locked values of Table~\ref{sup:control params}, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory of Section~IV-A of the main paper, acting directly on the velocity parameters of $\,^\mathcal{I}\boldsymbol{x}_\text{t}(t)$; the descent trajectories are plotted in Fig.~\ref{speed envelope: figure} of the main paper. All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the disturbance model, establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $0.154~\text{m/s}$ (Case~5, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, confirming that the closed loop is limited by the cone clamp rather than by the adaptation law or the funnels.
+Starting from IC $[0,0,-5]~\text{m}$ with all gains fixed at the locked values of Table~\ref{sup:control params}, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory of Section~IV-A of the main paper, acting directly on the velocity parameters of $\,^\mathcal{I}\boldsymbol{x}_\text{t}(t)$; the descent trajectories are plotted in Fig.~\ref{speed envelope: figure} of the main paper. All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $0.154~\text{m/s}$ (Case~5, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, confirming that the closed loop is limited by the cone clamp rather than by the adaptation law or the funnels.
 
 \clearpage
 \subsection{Per-Controller Failure Analysis in the Comparative Benchmark}
@@ -453,7 +545,7 @@ The numerical study summarized in Section~IV of the main paper supports the foll
 \begin{enumerate}
     \item The locked MDF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under depth-dependent pixel noise, mean wind plus OU turbulence, pixel outliers, $\pm5\%$ parametric uncertainty, ground effect, computational delay, and actuator constraints, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error $5.7~\text{cm}$ --- including ship-deck roll/pitch oscillation and the heave profile from~\cite{lin2022} on Cases~2 and~5. Every touchdown is simultaneously precise ($xy_\text{e}\le 0.08~\text{m}$) and soft ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$).
     \item A cross-trajectory deep sweep over $33$ axes $\times$ $4$ perturbations $\times$ $5$ trajectories $\times$ $5$ ICs ($3300$ perturbation runs plus $25$ baseline runs, $3325$ deterministic simulations in total) exposes load-bearing, robust, and Pareto-trade roles across the MDF-ASMC parameters. The locked gain set is a justified design point validated by this systematic exploration of the parameter space.
-    \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the disturbance model, establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
+    \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
     \item Under identical disturbance conditions, the proposed MDF-ASMC is the only controller among four representative state-of-the-art baselines~\cite{lin2022,zhang2026,chen2025,cho2022} that reaches the $z_\text{f}=0.20~\text{m}$ landing altitude on every trajectory, with horizontal error $\le 2.1~\text{cm}$ --- an order of magnitude below the closest landing baseline~\cite{zhang2026} on the four moving cases.
 \end{enumerate}
 
