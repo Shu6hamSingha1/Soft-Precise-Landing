@@ -18,6 +18,7 @@ Arm length          & $\ell$                 & $0.2425~\text{m}$ \\
 Total thrust bounds & $[T_{\min},T_{\max}]$  & $[0.0,60.0]~\text{N}$ \\
 Attitude cone ceiling & $\theta_\text{cap}$   & $60^\circ$ \\
 Focal length        & $f$                    & $135~\text{px}$ \\
+Camera resolution   & $\mathcal{R}$          & $[320,240]^\top~\text{px}$ \\
 Above-target gap    & $z_\text{f}$           & $0.20~\text{m}$ \\
 Precise xy-tol.     & $xy_\text{prec}$       & $0.08~\text{m}$ \\
 Soft speed bound    & $v_\text{soft}$        & $0.20~\text{m/s}$ \\
@@ -95,7 +96,7 @@ Case 5      & 5/5 & 18.15 & 34.35 & 2.77 & 4.75 \\
     \label{Circular_3D: figure}
 \end{figure}
 
-MDF-ASMC achieves $25/25$ successful landings under the full robustness model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error below $5.8~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$5$), well within the $\pm[160,120]$~px bound.
+MDF-ASMC achieves $25/25$ successful landings under the full robustness model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$5$), well within the $\pm[160,120]$~px bound.
 
 A 33-axis cross-trajectory deep sweep ($3325$ deterministic runs covering the tunable MDF-ASMC gains and two closed-loop structural knobs, perturbed over $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$) confirms the locked gain set (Table~S1) as a Pareto-admissible design point; the per-axis methodology is in Section~S3-E.
 

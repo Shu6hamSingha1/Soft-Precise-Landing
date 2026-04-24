@@ -1,5 +1,5 @@
 """
-Generate publication-quality PLASMC internals plots from Multi_init_cond datasets.
+Generate publication-quality DF-ASMC internals plots from Multi_init_cond datasets.
 
 Outputs PDFs into Figures/generated/:
   plasmc_outer_funnel.pdf   — image error vs outer visibility funnel p_1
@@ -8,7 +8,7 @@ Outputs PDFs into Figures/generated/:
   plasmc_adaptive_gain.pdf  — kappa(t) and kappa_a(t)
   plasmc_thrust_accel.pdf   — total thrust + lateral acceleration vs cone bound
 
-Representative case: IC4 = [2,2,-5] on Sinusoidal trajectory (index 3, 0-based).
+Representative case: IC2 = [2,2,-5] on Sinusoidal trajectory (index 1, 0-based).
 """
 import os
 import numpy as np
@@ -16,6 +16,7 @@ import scipy.io as sio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3D projection)
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -37,15 +38,18 @@ OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
 
 m = sio.loadmat(DATA, squeeze_me=True, struct_as_record=False)
-run = m["results"][3]   # IC4
+run = m["results"][1]   # IC2 = [2,2,-5]
 d = run.data
 N = int(d.idx) if int(d.idx) > 0 else d.tRange.shape[0]
 t = d.tRange[:N]
 
-p_1     = d.p_1[:, :N]      # 2 x N
-E2_e    = d.V_s_e[:, :N]    # 2 x N (image-feature error used in outer funnel)
+# Approach 2 (2026-04-18): outer p_1 funnel replaced by a funnel-margin
+# rectangular box on the four physical corner pixels. The two performance
+# functions are rho_fov_x(t), rho_fov_y(t) (exponentially decreasing).
+rho_fov = d.rho_fov_log[:, :N]   # 2 x N (px)
+corners = d.P_DS[:, 0:4, :N]     # 2 x 4 x N — physical corner pixel coords
 p_2     = d.p_2[:, :N]      # 3 x N
-w_e     = d.V_h_e[:, :N]    # 3 x N (optic-flow tracking error)
+h_e     = d.V_h_e[:, :N]    # 3 x N (optic-flow tracking error)
 sigma   = d.sigma[:, :N]    # 3 x N
 kappa   = d.kappa[:, :N]    # 3 x N
 kappa_a = d.kappa_a[:N]     # N
@@ -53,25 +57,55 @@ B_T_cd  = d.B_T_cd[:N]      # N (total thrust command, N)
 I_a_cd  = d.I_a_cd[:, :N]   # 3 x N (desired inertial acceleration)
 g_const = 9.81
 m_uav   = float(d.m)
-phi_max = np.deg2rad(35.0)
-a_xy_limit = g_const * np.tan(phi_max)   # ~6.87 m/s^2 lateral cap from cone
+theta_cap = np.deg2rad(60.0)             # locked Property 1 value
+a_xy_limit = g_const * np.tan(theta_cap) # lateral cap from cone clamp
 
 T_max = float(d.T_max)
 T_min = float(d.T_min)
 
-# ---------- Plot A: outer visibility funnel ----------
-fig, axes = plt.subplots(1, 2, figsize=(7.0, 2.6), sharex=True)
-labels = [r"$x$-axis", r"$y$-axis"]
-for k, ax in enumerate(axes):
-    ax.fill_between(t,  p_1[k], -p_1[k], color="orange", alpha=0.18,
-                    label=r"$\pm\,p_1(t)$")
-    ax.plot(t,  p_1[k], color="orange", lw=0.9)
-    ax.plot(t, -p_1[k], color="orange", lw=0.9)
-    ax.plot(t, E2_e[k], color="C0", label=r"$E_{2,k}(t)$")
-    ax.set_xlabel(r"$t$ [s]")
-    ax.set_ylabel("image error [px]")
-    ax.set_title(labels[k])
-axes[1].legend(loc="upper right")
+# ---------- Plot A: 3-D visibility funnel + 4 corner trajectories ----------
+# Funnel walls are the four edges of the rectangle [-rho_x, +rho_x] x
+# [-rho_y, +rho_y] traced over t. Corner pixel trajectories live inside.
+# Sampled quadrilaterals (start, every 3 s, end) connect the four corners.
+fig = plt.figure(figsize=(5.0, 4.5))
+ax = fig.add_subplot(111, projection="3d")
+
+# Four funnel-edge curves (sign_u, sign_v in {+/-1}); axes (t, v, u)
+edge_signs = [(+1, +1), (+1, -1), (-1, +1), (-1, -1)]
+for su, sv in edge_signs:
+    ax.plot(t, sv * rho_fov[1], su * rho_fov[0],
+            color="orange", lw=0.9, alpha=0.85)
+
+# Sampled quadrilaterals: start, every 3 s, end
+t_end = float(t[-1])
+sample_t = [0.0] + list(np.arange(3.0, t_end, 3.0)) + [t_end]
+for ts in sample_t:
+    ti = int(np.argmin(np.abs(t - ts)))
+    rx, ry = float(rho_fov[0, ti]), float(rho_fov[1, ti])
+    # Funnel rectangle at t=ts (orange, dashed)
+    bx = np.array([-rx, +rx, +rx, -rx, -rx])  # u
+    by = np.array([-ry, -ry, +ry, +ry, -ry])  # v
+    bt = np.full(5, t[ti])
+    ax.plot(bt, by, bx, color="orange", lw=0.8, ls="--", alpha=0.6)
+    # Quadrilateral connecting the four target corners (blue, solid)
+    cx = np.append(corners[0, :, ti], corners[0, 0, ti])  # u
+    cy = np.append(corners[1, :, ti], corners[1, 0, ti])  # v
+    ct = np.full(5, t[ti])
+    ax.plot(ct, cy, cx, color="C0", lw=1.0, alpha=0.9)
+
+# Four corner-point trajectories (one color each)
+corner_colors = ["C0", "C1", "C2", "C3"]
+for k in range(4):
+    ax.plot(t, corners[1, k], corners[0, k],
+            color=corner_colors[k], lw=0.9,
+            label=fr"corner {k+1}")
+
+ax.set_xlabel(r"$t$ [s]")
+ax.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]")
+ax.set_zlabel(r"$\,^\mathcal{C}\hat{x}$ [px]")
+ax.set_title("Target image funnel and feature point trajectories")
+ax.legend(loc="upper left", fontsize=7, ncol=2)
+ax.view_init(elev=18, azim=-60)
 fig.tight_layout()
 fig.savefig(f"{OUT}/plasmc_outer_funnel.pdf")
 plt.close(fig)
@@ -84,7 +118,7 @@ for k, ax in enumerate(axes):
                     label=r"$\pm\,p_2(t)$")
     ax.plot(t,  p_2[k], color="orange", lw=0.9)
     ax.plot(t, -p_2[k], color="orange", lw=0.9)
-    ax.plot(t, w_e[k], color="C0", label=r"$w_{e,k}(t)$")
+    ax.plot(t, h_e[k], color="C0", label=r"$h_{e,k}(t)$")
     ax.set_xlabel(r"$t$ [s]")
     ax.set_title(labels[k])
 axes[0].set_ylabel("optic-flow error")
@@ -136,7 +170,7 @@ axes[0].legend(loc="upper right")
 
 axes[1].plot(t, a_xy_norm, color="C0", label=r"$\|^{\mathcal{I}}\!a_{\mathrm{cd},xy}\|$")
 axes[1].axhline(a_xy_limit, color="r", lw=0.8, ls="--",
-                label=r"$g\tan\phi_{\max}$")
+                label=r"$g\tan\theta_{\mathrm{cap}}$")
 axes[1].set_xlabel(r"$t$ [s]")
 axes[1].set_ylabel(r"lateral accel [m/s$^2$]")
 axes[1].set_title("Cone-constrained lateral acceleration")
@@ -145,4 +179,4 @@ fig.tight_layout()
 fig.savefig(f"{OUT}/plasmc_thrust_accel.pdf")
 plt.close(fig)
 
-print("Wrote 5 PLASMC internals plots to:", OUT)
+print("Wrote 5 DF-ASMC internals plots to:", OUT)

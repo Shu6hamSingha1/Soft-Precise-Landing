@@ -1,13 +1,15 @@
 """
 Generate uniform-style 3D and image-plane figures for the multi-init sweep
-of the proposed PLASMC, replacing the legacy MATLAB-rendered PNGs that used
-to live under Figures/11032026/.
+of the proposed DF-ASMC.
 
 For every trajectory in {Static, Linear, Sinusoidal, Lissajous, Circular}
 and every condition in {realistic, noiseless} this script writes:
 
   Figures/generated/multi_init/<traj>_3D[_noiseless].pdf
   Figures/generated/multi_init/<traj>_image_plane[_noiseless].pdf
+
+Image-plane plots use a single axis with all 4 corners x 5 ICs overlaid,
+plus the desired pixel location.
 
 The realistic dataset is loaded from
   MATLAB/Multi_init_cond/Datasets/<traj>_multi_init.mat
@@ -43,6 +45,12 @@ OUT_DIR   = f"{ROOT}/Soft_Precise_Landing/Figures/generated/multi_init"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 TRAJS = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"]
+TRAJ_CASE = {"Static": "Case 1", "Linear": "Case 2", "Sinusoidal": "Case 3",
+             "Lissajous": "Case 4", "Circular": "Case 5"}
+TRAJ_TITLE = {"Static": "Static Target", "Linear": "Linear Target Trajectory",
+              "Sinusoidal": "Sinusoidal Target Trajectory",
+              "Lissajous": "Lissajous Target Trajectory",
+              "Circular": "Circular Target Trajectory"}
 CONDS = [
     ("realistic", ""),                  # <traj>_multi_init.mat
     ("noiseless", "_noiseless"),        # <traj>_multi_init_noiseless.mat
@@ -55,8 +63,6 @@ def _load(traj, suffix):
     if not os.path.exists(path):
         return None
     m = sio.loadmat(path, squeeze_me=True, struct_as_record=False)
-    # squeeze_me collapses a (1,1) struct array to a scalar struct;
-    # normalise so callers always iterate over a list.
     r = m["results"]
     if not hasattr(r, "__len__"):
         m["results"] = [r]
@@ -64,7 +70,6 @@ def _load(traj, suffix):
 
 
 def _idx_of(d):
-    """Final logged step (clamped to array length so plots are clean)."""
     n_max = d.X_DS.shape[1]
     raw = int(getattr(d, "idx", n_max - 1))
     if raw <= 0:
@@ -73,11 +78,6 @@ def _idx_of(d):
 
 
 def _land_idx(d):
-    """Landing index (exclusive), or 0 if the run did not land.
-
-    MATLAB zeros x_t at exactly ``idx``, so the target should be drawn
-    up to ``idx`` (not idx+1) to avoid snapping back to the origin.
-    """
     raw = int(getattr(d, "idx", 0))
     if raw <= 0:
         return 0
@@ -95,17 +95,16 @@ def plot_3d(traj, cond_label, suffix):
 
     longest = None
     longest_n = -1
-    max_land = 0           # latest actual landing index (idx > 0)
+    max_land = 0
     for k, run in enumerate(results):
         d = run.data
         n = _land_idx(d) or _idx_of(d)
         X = d.X_DS[:, :n]
-        # Use actual initial position from state vector (NED: alt = -z)
         ic = X[:3, 0]
         ax.plot(X[0], X[1], -X[2],
                 color=RUN_COLORS[k],
                 lw=1.3,
-                label=f"Run {k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+                label=f"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax.scatter(X[0, 0], X[1, 0], -X[2, 0],
                    color=RUN_COLORS[k], marker="o", s=20)
         ax.scatter(X[0, -1], X[1, -1], -X[2, -1],
@@ -118,8 +117,6 @@ def plot_3d(traj, cond_label, suffix):
             max_land = li
 
     if longest is not None:
-        # Trim target to the latest actual landing time so periodic
-        # trajectories don't wrap back toward the origin.
         tgt_n = max_land if max_land > 0 else longest_n
         xt = longest.x_t[:, :tgt_n]
         ax.plot(xt[0], xt[1], -xt[2],
@@ -128,7 +125,7 @@ def plot_3d(traj, cond_label, suffix):
     ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]")
     ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]")
     ax.set_zlabel("altitude [m]")
-    ax.set_title(f"{traj} target ({cond_label})")
+    ax.set_title(f"{TRAJ_CASE[traj]}: {TRAJ_TITLE[traj]} ({cond_label})")
     ax.legend(loc="upper left", bbox_to_anchor=(0.0, 0.96),
               fontsize=6, ncol=1, framealpha=0.85)
     ax.view_init(elev=22, azim=-58)
@@ -145,63 +142,56 @@ def plot_image_plane(traj, cond_label, suffix):
         return False
     results = m["results"]
 
-    n_runs = len(results)
-    n_cols = int(np.ceil(np.sqrt(n_runs)))
-    n_rows = int(np.ceil(n_runs / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols,
-                             figsize=(5.8, 4.8),
-                             squeeze=False)
+    fig, ax = plt.subplots(figsize=(4.5, 3.6))
+
+    ic_colors = ["C0", "C1", "C2", "C3", "C4"]
+    corner_styles = ["-", "--", "-.", ":"]
+    desired_drawn = False
+
+    def _closed_quad(px, py):
+        return list(px) + [px[0]], list(py) + [py[0]]
 
     for k, run in enumerate(results):
-        ax = axes[k // n_cols, k % n_cols]
         d = run.data
         n = _land_idx(d) or _idx_of(d)
-
-        # P_DS columns 9..12 are the raw pixel coordinates of the four
-        # feature corners (cf. plot_multi_image_plane.m).
         P = d.P_DS[:, 8:12, :n]   # (2, 4, n)
-
-        corner_colors = ["C0", "C1", "C2", "C4"]  # blue, orange, green, purple
-        for i in range(4):
-            x = P[0, i, :]
-            y = P[1, i, :]
-            c = corner_colors[i]
-            ax.plot(x, y, color=c, lw=1.0,
-                    label=f"corner {i+1}" if k == 0 else None)
-            ax.plot(x[0], y[0], "o", color="k", ms=4,
-                    mfc="k", mec="k",
-                    label="start" if (i == 0 and k == 0) else None)
-            ax.plot(x[-1], y[-1], "x", color="dimgray", ms=5, mew=1.4,
-                    label="end"   if (i == 0 and k == 0) else None)
-
-        # Desired pixels
-        if hasattr(d, "V_nP_d"):
-            Pd = d.V_nP_d
-            ax.scatter(Pd[0, :], Pd[1, :], s=48, marker="*",
-                       color="crimson", edgecolors="k", linewidths=0.4,
-                       label="desired" if k == 0 else None, zorder=5)
-
-        # Subplot title with actual IC (NED: alt = -z)
+        c = ic_colors[k]
         ic = d.X_DS[:3, 0]
-        ax.set_title(f"Run {k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$",
-                     fontsize=7)
-        ax.set_xlabel(r"$\hat{x}$ [px]", fontsize=7)
-        ax.set_ylabel(r"$\hat{y}$ [px]", fontsize=7)
-        ax.set_xlim(-160, 160)
-        ax.set_ylim(-120, 120)
-        ax.set_aspect("equal", adjustable="box")
-        ax.tick_params(labelsize=6)
 
-    # Hide any unused subplot cells
-    for k in range(n_runs, n_rows * n_cols):
-        axes[k // n_cols, k % n_cols].axis("off")
+        # Corner trajectories — color by IC, linestyle by corner
+        for i in range(4):
+            ax.plot(P[0, i, :], P[1, i, :], color=c, lw=0.7, alpha=0.5,
+                    ls=corner_styles[i])
 
-    fig.suptitle(f"{traj} target ({cond_label}) — image plane",
-                 fontsize=10)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=4,
-               fontsize=7, frameon=False, bbox_to_anchor=(0.5, -0.01))
-    fig.tight_layout(rect=(0.0, 0.03, 1.0, 0.96), h_pad=0.8, w_pad=0.5)
+        # Start quad (solid, faded)
+        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
+        ax.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
+
+        # End quad (long-dash, IC color)
+        ex, ey = _closed_quad(P[0, :, -1], P[1, :, -1])
+        ax.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
+                label=f"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+
+        # Desired quad (drawn once)
+        if not desired_drawn and hasattr(d, "V_nP_d"):
+            Pd = d.V_nP_d
+            dx, dy = _closed_quad(Pd[0, :], Pd[1, :])
+            ax.plot(dx, dy, color="k", lw=2.0, ls="-", zorder=6,
+                    label="desired")
+            desired_drawn = True
+
+    # Dummy entries for start/end style in legend
+    ax.plot([], [], color="gray", lw=1.2, alpha=0.4, label="start")
+    ax.plot([], [], color="gray", lw=1.4, ls=(0, (5, 2)), label="end")
+
+    ax.set_xlabel(r"$\,^\mathcal{C}\hat{x}$ [px]")
+    ax.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]")
+    ax.set_xlim(-160, 160)
+    ax.set_ylim(-120, 120)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_title(f"{TRAJ_CASE[traj]}: {TRAJ_TITLE[traj]} ({cond_label})")
+    ax.legend(loc="lower right", fontsize=7, ncol=2, framealpha=0.85)
+    fig.tight_layout()
     out = f"{OUT_DIR}/{traj}_image_plane{suffix}.pdf"
     fig.savefig(out, bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)

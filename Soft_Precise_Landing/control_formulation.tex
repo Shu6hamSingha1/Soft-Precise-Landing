@@ -37,7 +37,7 @@ Image features throughout this paper are expressed in a \emph{virtual camera fra
 \begin{figure}[!t]
 \centering
     \resizebox{\columnwidth}{!}{\input{frames_planes.tex}}
-    \caption{Frames and image planes. Inertial $\mathcal{I}$ locates UAV and target; camera frame $\mathcal{C}$ is body-fixed; virtual frame $\mathcal{V}$ shares $\mathcal{C}$'s origin but is de-rotated through $\,^\mathcal{V}R_\mathcal{C}$ so its axes stay parallel to $\mathcal{I}$. A target 3D point projects as $\,^\mathcal{C}\boldsymbol{\hat{r}}$ on the tilted image plane and $\,^\mathcal{V}\boldsymbol{\hat{r}}$ on the virtual image plane.}
+    \caption{Frames and image planes. Inertial $\mathcal{I}$ locates UAV and target; camera frame $\mathcal{C}$ is body-fixed; virtual frame $\mathcal{V}$ shares $\mathcal{C}$'s origin but is de-rotated through $\,^\mathcal{V}R_\mathcal{C}$ so its $X_\text{v}$--$Y_\text{v}$ plane stays parallel to the inertial $X_\text{i}$--$Y_\text{i}$ plane. The four target feature points $\,^\mathcal{C}\boldsymbol{\hat{r}}_i$ project on the tilted image plane (axes $\hat{X}_\text{c},\hat{Y}_\text{c}$) and as $\,^\mathcal{V}\boldsymbol{\hat{r}}_i$ on the virtual image plane (axes $\hat{X}_\text{v},\hat{Y}_\text{v}$); the funnel-margin envelope $\boldsymbol{p}_1(t)$ acts on the camera image plane.}
     \label{frames planes: figure}
 \end{figure}
 
@@ -96,8 +96,7 @@ Differentiating \eqref{target orientation: equation} and defining the orientatio
 \begin{equation} \label{alpha_e_dot: equation}
     \dot{\alpha}_\text{e} = - \dot{\psi}_\text{d} + d_{\alpha},
 \end{equation}
-with $\alpha_e$ unwrapped to $(-\pi/2,\pi/2]$.
-Here $\dot{\psi}_\text{d}$ is the desired yaw rate; $d_{\alpha} = f(\,^\mathcal{V}\boldsymbol{\omega}_{\text{t}}, \,^\mathcal{V}\boldsymbol{\omega}_{\text{b},xy})$ is unknown.
+where $\alpha_e$ is unwrapped to $(-\pi/2,\pi/2]$, $\dot{\psi}_\text{d}$ is the desired yaw rate, and $d_{\alpha} = f(\,^\mathcal{V}\boldsymbol{\omega}_{\text{t}}, \,^\mathcal{V}\boldsymbol{\omega}_{\text{b},xy})$ is unknown.
 
 \textit{Assumption 1} (uncertainty bounds): The disturbances $\boldsymbol{d}_h$, $d_{\alpha}$ are uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$.
 
@@ -158,7 +157,7 @@ where regressor $\boldsymbol{\theta}$ and lumped disturbance $\boldsymbol{\overl
     \boldsymbol{u}_\text{sw} &= -\Gamma\boldsymbol{\sigma} - \|\boldsymbol{\theta}\|\,\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma})\mathcal{G}_2\boldsymbol{\kappa}(t),\\
     \boldsymbol{u}_\text{eq} &= \mathcal{G}_2\!\left[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2\right],\nonumber
 \end{align}
-where $\Gamma=\text{diag}(\gamma_k)\succ 0$, $\mathcal{E}=\text{diag}(\varepsilon_k)$ with $0<\varepsilon_k\ll 1$ sets the boundary-layer thickness, and $\text{sat}(\cdot)$ is the componentwise saturation. The adaptive gain evolves via the leakage-type law
+where $\Gamma=\text{diag}(\gamma_k)\succ 0$, $\mathcal{E}=\text{diag}(\varepsilon_k)\succ 0$ sets the boundary-layer thickness, and $\text{sat}(\cdot)$ is the componentwise saturation. The adaptive gain evolves via the leakage-type law
 \begin{equation} \label{adaptive law: equation}
     \dot{\boldsymbol{\kappa}}(t) = \|\boldsymbol{\theta}\|\mathcal{N}\mathcal{G}_2|\boldsymbol{\sigma}| - \mathcal{N}\mathcal{P}\boldsymbol{\kappa}(t),\quad\boldsymbol{\kappa}(0)\in\mathbb{R}_+^3,
 \end{equation}
@@ -192,7 +191,7 @@ In order to drive $\alpha_e$ in \eqref{alpha_e_dot: equation} to a uniform ultim
     \dot{\psi}_\text{d} &= \gamma_{\alpha}\sigma_{\alpha} + \text{sat}(\sigma_{\alpha}/\varepsilon_{\alpha})\kappa_{\alpha}(t) + \chi_{\alpha} \alpha_e, \nonumber\\
     \dot{\kappa}_{\alpha}(t) &= \eta_{\alpha}|\sigma_{\alpha}| - \eta_{\alpha}\rho_{\alpha}\kappa_{\alpha}(t),\quad\kappa_{\alpha}(0)>0,
 \end{align}
-where gains $\gamma_{\alpha}, \chi_{\alpha}, \eta_{\alpha}, \rho_{\alpha} > 0$ and $0<\varepsilon_{\alpha}\ll 1$ sets the boundary-layer thickness.
+where gains $\gamma_{\alpha}, \chi_{\alpha}, \eta_{\alpha}, \rho_{\alpha} > 0$ and $\varepsilon_{\alpha}>0$ sets the boundary-layer thickness.
 
 The $\dot{\psi}_\text{d}$ signal is integrated online as the \emph{time-derivative of a desired heading}:
 \begin{equation} \label{psi d integrator: equation}

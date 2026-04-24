@@ -315,7 +315,7 @@ The $25$ idealised runs of Figs.~\ref{fig:sup-static-3d-nl}--\ref{fig:sup-circ-i
 \subsection{Multi-Initial-Condition Results under Realistic Disturbances}
 \label{sec:sup-multi-init}
 
-The main paper shows a single representative Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~IV multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-A of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $35^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
+The main paper shows a single representative Circular ship-deck run under realistic disturbances; the figures below provide the full per-trajectory set that the Table~IV multi-init statistics of the main paper are aggregated over. The runs share the full disturbance model of Section~IV-A of the main paper: depth-dependent pixel noise $\sigma_{\text{px}}(z)=0.3+0.5/(z+0.5)$~px, $0.5\%$ Bernoulli $5$-px pixel outliers, mean wind $\pm 0.2$~m/s plus Ornstein--Uhlenbeck turbulence ($\tau=1$~s, $\sigma_w=0.1$~N), $\pm 5\%$ parametric uncertainty on mass and inertia, $\pm 5$~mm centre-of-gravity offset, aerodynamic drag $C_d=0.25$, rotor ground effect, one-step computational delay, and $60^\circ$ attitude-cone projection. Cases~2 and~5 additionally carry $0.2\sin(0.5\,t)~\text{m}$ heave and $(\pm 15^\circ,\pm 8^\circ)$ roll/pitch oscillations, matching the ship-deck profile of~\cite{lin2022}.
 
 \begin{figure}[!t]
 \centering
@@ -405,14 +405,14 @@ The figures in this section expose the closed-loop internals of MDF-ASMC for the
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_outer_funnel.pdf}
-    \caption{Target image funnel: image-feature centroid error $\boldsymbol{E}_2(t)$ versus the prescribed-performance bound $\pm\boldsymbol{p}_1(t)$.}
+    \caption{Target image funnel: trajectories of the four target feature points $\,^\mathcal{C}\boldsymbol{\hat{r}}_i(t)$ versus the funnel envelope $\pm\boldsymbol{p}_1(t)$.}
     \label{fig:sup-outer}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_inner_funnel.pdf}
-    \caption{Optic-flow funnel: optic-flow tracking error $\boldsymbol{w}_e(t)$ versus $\pm\boldsymbol{p}_2(t)$ on all three axes.}
+    \caption{Optic-flow funnel: optic-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_2(t)$ on all three axes.}
     \label{fig:sup-inner}
 \end{figure}
 
@@ -481,10 +481,9 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
         $k_\Omega$ & $\text{diag}([0.3,0.3,0.1])$ \\
     \midrule
         \multicolumn{2}{l}{\textit{Adaptive Yaw SMC}} \\
-        $\chi_\text{a},\,\gamma_\text{a}$  & $0.5,\,0.5$ \\
-        $n_\text{a},\,p_\text{a}$          & $1.0,\,2$ \\
-        $\kappa_{\text{a}_0},\,E_\text{a}$ & $2.0,\,3.0$ \\
-        $\Omega_\text{a}$                  & $0.5$ \\
+        $\chi_\alpha,\,\gamma_\alpha$       & $0.5,\,0.5$ \\
+        $\eta_\alpha,\,\rho_\alpha$         & $1.0,\,2$ \\
+        $\kappa_{\alpha}(0),\,\varepsilon_\alpha$ & $2.0,\,3.0$ \\
     \bottomrule
     \end{tabular}
 \end{table}
@@ -544,7 +543,7 @@ The scheme of~\cite{cho2022} commands a translational velocity $\boldsymbol{v}_d
 \label{sec:sup-summary}
 The numerical study summarized in Section~IV of the main paper supports the following conclusions:
 \begin{enumerate}
-    \item The locked MDF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under depth-dependent pixel noise, mean wind plus OU turbulence, pixel outliers, $\pm5\%$ parametric uncertainty, ground effect, computational delay, and actuator constraints, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error $\le 5.8~\text{cm}$ --- including ship-deck roll/pitch oscillation and the heave profile from~\cite{lin2022} on Cases~2 and~5. Every touchdown is simultaneously precise ($xy_\text{e}\le 0.08~\text{m}$) and soft ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$).
+    \item The locked MDF-ASMC achieves $25/25$ successful landings across five trajectories and five initial conditions under depth-dependent pixel noise, mean wind plus OU turbulence, pixel outliers, $\pm5\%$ parametric uncertainty, ground effect, computational delay, and actuator constraints, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error $5.7~\text{cm}$ --- including ship-deck roll/pitch oscillation and the heave profile from~\cite{lin2022} on Cases~2 and~5. Every touchdown is simultaneously precise ($xy_\text{e}\le 0.08~\text{m}$) and soft ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$).
     \item A cross-trajectory deep sweep over $33$ axes $\times$ $4$ perturbations $\times$ $5$ trajectories $\times$ $5$ ICs ($3300$ perturbation runs plus $25$ baseline runs, $3325$ deterministic simulations in total) exposes load-bearing, robust, and Pareto-trade roles across the MDF-ASMC parameters. The locked gain set is a justified design point validated by this systematic exploration of the parameter space.
     \item Across the symmetric speed-envelope sweep $\lambda\in[0.6,1.4]$ on all four moving trajectories, every run is simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the full robustness model, establishing a $\pm 40\%$ band of guaranteed soft-precise touchdown around every nominal trajectory; at the eventual envelope boundary the failure mode is always attitude-cone saturation rather than the adaptive law.
     \item Under identical disturbance conditions, the proposed MDF-ASMC is the only controller among four representative state-of-the-art baselines~\cite{lin2022,zhang2026,chen2025,cho2022} that reaches the $z_\text{f}=0.20~\text{m}$ landing altitude on every trajectory, with horizontal error $\le 2.1~\text{cm}$ --- an order of magnitude below the closest landing baseline~\cite{zhang2026} on the four moving cases.

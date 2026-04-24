@@ -8,10 +8,12 @@
     axisI/.style={->, thick, black},
     axisB/.style={->, thick, blue!65!black},
     axisV/.style={->, thick, orange!80!black},
+    axisIm/.style={->, semithick, black!75},
     dimaxis/.style={->, thick, gray!75},
     rayline/.style={dashed, thin, black!70},
     planeC/.style={thick, blue!65!black, fill=blue!8, fill opacity=0.7},
     planeV/.style={thick, orange!80!black, fill=orange!12, fill opacity=0.7},
+    rotarrow/.style={->, thick, purple!75!black, dashed},
     groundline/.style={line width=0.9pt, black!70},
     targetbox/.style={thick, fill=gray!25},
     uav/.style={line width=1.2pt, black},
@@ -88,6 +90,19 @@
 \node[blue!65!black, anchor=west] at ($(PCR)+(0.1,0.25)$)
     {IMAGE PLANE};
 
+% Camera image-plane axes ($\hat{X}_c, \hat{Y}_c$) anchored at PCL
+\draw[axisIm, rotate around={\tilt:(PCL)}] (PCL) -- ++(0.30,0)
+    node[below=-1.5pt, xshift=-1pt]{$\hat{X}_\text{c}$};
+\draw[axisIm] (PCL) -- ++(0.10,0.13)
+    node[above left=-3pt and -2pt]{$\hat{Y}_\text{c}$};
+
+% Funnel-margin envelope p_1(t) on the camera image plane (rotated to
+% match the tilt; small box centred on PCcen)
+\draw[thick, red!70!black, rotate around={\tilt:(PCcen)}]
+    ($(PCcen)+(-0.32,-0.04)$) rectangle ($(PCcen)+(0.32,0.04)$);
+\node[red!70!black, anchor=south east, xshift=2pt] at ($(PCcen)+({-0.30*cos(\tilt)},{-0.30*sin(\tilt)+0.04})$)
+    {$\boldsymbol{p}_1(t)$};
+
 % =====================================================================
 % Virtual frame V (axes parallel to I, drawn spatially offset for
 % clarity; dashed connector to the true shared origin).
@@ -100,6 +115,12 @@
 \node[below right=-2pt and 2pt] at (Ov) {$O_\text{v}$};
 
 \draw[dashed, gray!55] (Ov) -- (Ob);
+
+% V_R_C rotation indicator: curved arrow from the camera-frame tilt
+% to the virtual-frame horizontal orientation.
+\draw[rotarrow] ($(Ob)+(-0.30, 0.05)$) to[bend left=35] ($(Ov)+(0.55, 0.05)$);
+\node[purple!75!black, anchor=south] at ($(Ob)!0.55!(Ov)+(0,0.20)$)
+    {$\,^\mathcal{V}R_\mathcal{C}$};
 
 % =====================================================================
 % Virtual image plane (horizontal), f below Ov.  Widened so the
@@ -115,14 +136,16 @@
 \node[orange!80!black, anchor=north] at ($(PVcen)+(-0.2,-0.08)$)
     {VIRTUAL IMAGE PLANE};
 
-% FoV pixel box on the virtual plane (smaller, centered)
-\draw[thick, red!70!black] ($(PVcen)+(-0.35,0.05)$) rectangle ($(PVcen)+(0.35,0.13)$);
-\node[red!70!black, anchor=south east] at ($(PVcen)+(-0.35,0.14)$)
-    {$\boldsymbol{p}_1(t)$};
+% Virtual image-plane axes ($\hat{X}_v, \hat{Y}_v$) anchored at PVL
+\draw[axisIm] (PVL) -- ++(0.30,0)
+    node[below=-1.5pt, xshift=-1pt]{$\hat{X}_\text{v}$};
+\draw[axisIm] (PVL) -- ++(0.13,0.16)
+    node[above left=-3pt and -2pt]{$\hat{Y}_\text{v}$};
 
 % =====================================================================
-% Projection rays from one target 3D point -- geometrically correct
-% hit points computed from ray/plane intersection ratios.
+% Projection rays from the four target 3D corner points -- the front-
+% right corner has a geometrically-correct ray; the other three are
+% suggested by a small cluster of dots on each image plane.
 % =====================================================================
 \coordinate (Tcor) at ($(Ot)+(0.68,0.12)$);
 
@@ -130,14 +153,25 @@
 \draw[rayline] (Tcor) -- (Ob);
 \coordinate (HitC) at ($(Ob)!0.174!(Tcor)$);
 \fill[blue!65!black] (HitC) circle (1.3pt);
+% Three additional projected corner points clustered near HitC,
+% offset within the camera image plane (rotated by \tilt).
+\foreach \dx/\dy in {-0.18/-0.025, -0.07/0.030, -0.13/0.005} {
+    \fill[blue!65!black, rotate around={\tilt:(HitC)}]
+        ($(HitC)+(\dx,\dy)$) circle (1.1pt);
+}
 \node[blue!65!black, anchor=south west, xshift=3pt, yshift=1pt] at (HitC)
-    {$\,^\mathcal{C}\boldsymbol{\hat{r}}$};
+    {$\,^\mathcal{C}\boldsymbol{\hat{r}}_i$};
 
 % Ray to virtual origin; HitV at parameter 0.227 from Ov toward Tcor
 \draw[rayline] (Tcor) -- (Ov);
 \coordinate (HitV) at ($(Ov)!0.227!(Tcor)$);
 \fill[orange!80!black] (HitV) circle (1.3pt);
+% Three additional projected corner points clustered near HitV
+\foreach \dx/\dy in {-0.20/-0.02, -0.08/0.030, -0.14/0.005} {
+    \fill[orange!80!black]
+        ($(HitV)+(\dx,\dy)$) circle (1.1pt);
+}
 \node[orange!80!black, anchor=south west, xshift=3pt, yshift=1pt] at (HitV)
-    {$\,^\mathcal{V}\boldsymbol{\hat{r}}$};
+    {$\,^\mathcal{V}\boldsymbol{\hat{r}}_i$};
 
 \end{tikzpicture}
