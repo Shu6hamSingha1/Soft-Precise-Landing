@@ -1,7 +1,7 @@
 
 \section{NUMERICAL SIMULATION RESULTS}
 \label{experimentation: section}
-Simulations are carried out in MATLAB using a fifth-order Runge--Kutta integrator at $\Delta t=0.01~\text{s}$ on the full thirteen-state quadrotor model of Section~\ref{background: section}. Platform parameters (X500 class) are listed in Table~\ref{uav params: table}; the locked MDF-ASMC gains are in Table~S1 of the supplement. A run terminates when the UAV altitude above the target first falls below $z_\text{f}=0.20~\text{m}$. The touchdown is \emph{precise} when $\|\,^\mathcal{I}\!e_{xy}\|\le 0.08~\text{m}$ and \emph{soft} when $\|v_\text{rel}\|\le 0.20~\text{m/s}$. On a single core of an Intel i7, one MDF-ASMC control update executes in $\approx 0.18~\text{ms}$, well within the $10~\text{ms}$ control period of the X500 platform.
+Simulations are carried out in MATLAB using a fifth-order Runge--Kutta integrator at $\Delta t=0.01~\text{s}$ on the full thirteen-state quadrotor model of Section~\ref{background: section}. Platform parameters (X500 class) are listed in Table~\ref{uav params: table}; the locked MDF-ASMC gains are in Table~S1 of the supplement. A run terminates when the UAV altitude above the target first falls below $z_\text{f}=0.20~\text{m}$. The touchdown is \emph{precise} when $\|\,^\mathcal{I}\!e_{xy}\|\le 0.08~\text{m}$ and \emph{soft} when $\|v_\text{rel}\|\le 0.20~\text{m/s}$; a touchdown is termed \emph{soft-precise} when both criteria hold simultaneously. On a single core of an Intel i7, one MDF-ASMC control update executes in $\approx 0.18~\text{ms}$, well within the $10~\text{ms}$ control period of the X500 platform.
 
 \begin{table}[!t]
 \centering
@@ -12,7 +12,8 @@ Simulations are carried out in MATLAB using a fifth-order Runge--Kutta integrato
 \textbf{Parameter} & \textbf{Symbol} & \textbf{Value} \\
 \midrule
 Mass                & $m$                    & $2.1~\text{kg}$ \\
-Inertia              & $J$                    & $\text{diag}(0.026,0.026,0.044)$~kg\,m$^2$ \\
+Inertia ($xx,yy$)    & $J_{xx},J_{yy}$        & $0.026$~kg\,m$^2$ \\
+Inertia ($zz$)        & $J_{zz}$               & $0.044$~kg\,m$^2$ \\
 Propeller radius    & $R$                    & $0.075~\text{m}$ \\
 Arm length          & $\ell$                 & $0.2425~\text{m}$ \\
 Total thrust bounds & $[T_{\min},T_{\max}]$  & $[0.0,60.0]~\text{N}$ \\
@@ -59,8 +60,8 @@ Each of the above initial conditions is evaluated against five target trajectory
     \item \textit{Case 1 (Static):}  $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0,\,0,\,0]^\top$~m.
     \item \textit{Case 2 (Linear, ship deck):} $\,^\mathcal{I}\boldsymbol{v}_{\text{t},xy} = [1.0,\,1.0]^\top$~m/s with heave $\,^\mathcal{I}z_\text{t}(t)=0.2\sin(0.5\,t)$~m~\cite{lin2022} and deck oscillation $(\phi_\text{t},\theta_\text{t})=(15^\circ\sin(0.9\,t),\,8^\circ\sin(0.6\,t+\pi/3))$, $\psi_\text{t}=0$.
     \item \textit{Case 3 (Sinusoidal):} $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0.5\sin(0.8\,t),\,0.3\,t,\,0]^\top$~m.
-    \item \textit{Case 4 (Lissajous):} $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0.5\sin(-0.8\,t),\,0.8\sin(0.4\,t),\,0]^\top$~m.
-    \item \textit{Case 5 (Circular, ship deck):} $r=0.5~\text{m}$, $\omega_z = 0.3~\text{rad/s}$, $\psi_\text{t}=\omega_z t$; same heave and deck oscillation as Case~2.
+    \item \textit{Case 4 (Lissajous):} $\,^\mathcal{I}\boldsymbol{r}_\text{t} = [0.4\sin(-0.8\,t),\,0.8\sin(0.4\,t),\,0]^\top$~m.
+    \item \textit{Case 5 (Circular, ship deck):} $\,^\mathcal{I}\boldsymbol{r}_{\text{t},xy} = [-r(\cos\omega_z t -1),\,r\sin\omega_z t]^\top$~m with $r=0.5$~m, $\omega_z = 0.25$~rad/s, $\psi_\text{t}=\omega_z t$; same heave and deck oscillation as Case~2.
 \end{enumerate}
 Cases~2 and~5 are ship-deck scenarios with roll/pitch amplitudes and periods bracketing a substantially harsher envelope than the heave-only ``oscillating platform'' of~\cite{lin2022}.
 
@@ -68,7 +69,7 @@ Throughout Section~\ref{experimentation: section} every run applies the perturba
 
 \subsection{Robustness Across Initial Conditions and Trajectories}
 \label{multi init: subsec}
-Sweeping the five initial conditions of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{test conditions: subsec} with deterministic per-IC seeding yields the aggregated metrics in Table~\ref{multi init: table}. The most demanding trajectory, Case~5 (circular ship-deck), is shown in Fig.~\ref{Circular_3D: figure}, with closed-loop internals for the representative Case~3 IC$2$ run in Section~S3-B.
+Sweeping the five initial conditions of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{test conditions: subsec} with deterministic per-IC seeding yields the aggregated metrics in Table~\ref{multi init: table}. The most demanding trajectory, Case~5 (circular ship-deck), is shown in Fig.~\ref{Circular_3D: figure}, with closed-loop internals for the representative Case~3 IC$_2$ run in Section~S3-B.
 
 \begin{table}[!t]
 \centering
@@ -90,32 +91,34 @@ Sweeping the five initial conditions of Table~\ref{initial conditions: table} ag
 
 \begin{figure}[!t]
 \centering
-    \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Circular_3D.pdf}\\[2pt]
+    \includegraphics[width=0.8\columnwidth]{Figures/generated/multi_init/Circular_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Circular_image_plane.pdf}
-    \caption{MDF-ASMC on Case~5 (circular target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. \emph{Bottom}: image-plane evolution $\hat{\boldsymbol{r}}(t)$ with the target image funnel $\pm\boldsymbol{p}_1(t)$. Remaining cases: Section~S3-A of the supplementary document.}
+    \caption{MDF-ASMC on Case~5 (circular target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$. Remaining cases: Section~S3-A of the supplementary document.}
     \label{Circular_3D: figure}
 \end{figure}
 
-MDF-ASMC achieves $25/25$ successful landings under the disturbance model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$5$), well within the $\pm[160,120]$~px bound.
+MDF-ASMC achieves $25/25$ successful landings under the disturbance model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$, including the ship-deck $\pm 15^\circ/\pm 8^\circ$ roll/pitch oscillation on Cases~2 and~5. All $25$ touchdowns are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$). The funnel-margin cone clamp records zero FoV bound violations across all $25$ runs; the worst-case physical-pixel excursions are $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px (Case~4, IC$_5$) and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px (Case~1, IC$_5$), well within the $\pm[160,120]$~px bound.
 
 A 33-axis cross-trajectory deep sweep ($3325$ deterministic runs covering the tunable MDF-ASMC gains and two closed-loop structural knobs, perturbed over $\{\times 0.5,\times 0.75,\times 1.25,\times 1.5\}$) confirms the locked gain set (Table~S1) as a Pareto-admissible design point; the per-axis methodology is in Section~S3-D.
 
-A separate speed-envelope sweep from IC $[0,0,-5]~\text{m}$, applying a symmetric multiplicative scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ to every moving trajectory with all gains fixed, lands $20/20$ runs simultaneously \emph{precise} and \emph{soft} under the disturbance model (Fig.~\ref{speed envelope: figure}), establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning; outside this range the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation. The full per-axis numerical breakdown is in Section~S3-E of the supplement.
+\subsection{Target-Speed Robustness Envelope}
+\label{speed envelope: subsec}
+A separate speed-envelope sweep from IC$_1=[0,0,-5]~\text{m}$ characterises how the gain-locked controller copes with target-speed deviations from the nominal profile. A symmetric multiplicative scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory (Cases~2--5) with all MDF-ASMC gains fixed at the locked values of Table~S1; the resulting $4\times 5=20$ runs all land simultaneously \emph{precise} and \emph{soft} under the disturbance model (Fig.~\ref{speed envelope: figure}). This establishes a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory \emph{without retuning} --- a robustness property that a baseline controller designed at $\lambda=1$ would typically lose toward either end of the range. Outside the $[0.6,1.4]$ band the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation rather than the adaptive law: the dual-funnel architecture remains stable, but the airframe runs out of lateral acceleration to keep up with the target. The full per-axis numerical breakdown is in Section~S3-E of the supplement; the same sweep applied to the four baseline controllers is reported in Section~\ref{comparison: subsec}, where it yields $0/80$ soft-precise touchdowns.
 
 \begin{figure*}[!t]
 \centering
-    \includegraphics[width=0.72\textwidth]{Figures/generated/plasmc_multi_speed_landing.pdf}
-    \caption{MDF-ASMC descent under the target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) on Cases~2--5 from IC $[0,0,-5]$~m (black circle). Dashed: target path; $\times$: touchdown. All $20$ runs are precise and soft.}
+    \includegraphics[width=0.8\textwidth]{Figures/generated/plasmc_multi_speed_landing.pdf}
+    \caption{MDF-ASMC descent under the target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) on Cases~2--5 from IC$_1=[0,0,-5]$~m (black circle). Shaded boxes: per-$\lambda$ soft-precise allowable landing regions around each target trajectory; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. All $20$ runs are soft-precise.}
     \label{speed envelope: figure}
 \end{figure*}
 
 \subsection{Comparison with State-of-the-Art Landing Controllers}
 \label{comparison: subsec}
-MDF-ASMC is compared against four representative landing controllers --- \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{chen2025} (IBVS with adaptive observer), and \cite{cho2022} (feed-forward IBVS) --- all sharing a common geometric SO(3) inner loop and exercised under the identical disturbance model of Section~\ref{test conditions: subsec}. IC is fixed at IC$2=[2,2,-5]~\text{m}$; each trajectory is run for up to $40~\text{s}$. Each baseline was initialised from its source paper and retuned best-effort \emph{within the paper's own framework}, since paper-authoritative values crash on our adversarial IC under the shared disturbance model; the primary adversarial feature is the depth-dependent pixel noise $\sigma_\text{px}(z)=0.3+0.5/(z+0.5)$~px that amplifies near touchdown, which none of the four baselines accommodates. The benchmarks therefore compete from a tuning state at least as favourable as MDF-ASMC. Table~\ref{comparison table: table} reports landing time, final horizontal error, and final altitude; runs that fail to touch down within $40~\text{s}$ are marked $\dagger$.
+MDF-ASMC is compared against four representative landing controllers --- \cite{lin2022} (performance-constrained PBVS), \cite{zhang2026} (PBVS with adaptive disturbance observer), \cite{chen2025} (IBVS with adaptive observer), and \cite{cho2022} (feed-forward IBVS) --- all sharing a common geometric SO(3) inner loop and exercised under the identical disturbance model of Section~\ref{test conditions: subsec}. The initial condition is fixed at IC$_2=[2,2,-5]~\text{m}$; each trajectory is run for up to $40~\text{s}$. Each baseline was initialised from its source paper and retuned best-effort \emph{within the paper's own framework}, since paper-authoritative values crash on our adversarial IC under the shared disturbance model; the primary adversarial feature is the depth-dependent pixel noise $\sigma_\text{px}(z)=0.3+0.5/(z+0.5)$~px that amplifies near touchdown, which none of the four baselines accommodates. The benchmarks therefore compete from a tuning state at least as favourable as MDF-ASMC. Table~\ref{comparison table: table} reports landing time, final horizontal error, and final altitude; runs that fail to touch down within $40~\text{s}$ are marked $\dagger$.
 
 \begin{table*}[!t]
 \centering
-\caption{Five-controller comparison under the shared disturbance model (Section~\ref{test conditions: subsec}), IC$\,{=}\,[2,2,-5]$~m, $40$~s cap. $\dagger$: terminated before reaching $z_\text{f}=0.20$~m (feature-visibility break or time-out).}
+\caption{Five-controller comparison under the shared disturbance model (Section~\ref{test conditions: subsec}), IC$_2=[2,2,-5]$~m, $40$~s cap. $\dagger$: terminated before reaching $z_\text{f}=0.20$~m (feature-visibility break or time-out).}
 \label{comparison table: table}
 \footnotesize
 \setlength{\tabcolsep}{3.5pt}
@@ -183,14 +186,22 @@ MDF-ASMC is compared against four representative landing controllers --- \cite{l
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/comparison_traj3d_circular.pdf}
-    \caption{3-D trajectories of the five controllers on Case~5 (circular target, IC$_2=[2,2,-5]$~m). Dashed: target. MDF-ASMC alone lands within $40$~s under both precise and soft thresholds.}
+    \caption{3-D trajectories of the five controllers on Case~5 (circular target, IC$_2=[2,2,-5]$~m). Shaded box: soft-precise allowable landing region around the target trajectory; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. MDF-ASMC alone lands within $40$~s under both precise and soft thresholds.}
     \label{comparison traj3d: figure}
 \end{figure}
+
+\begin{figure*}[!t]
+\centering
+    \includegraphics[width=0.8\textwidth]{Figures/generated/comparison_multi_speed_circular.pdf}
+    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~5 (circular target, IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region around the corresponding target. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. None of the four baselines lands soft-precise at any $\lambda$; the MDF-ASMC counterpart for every moving trajectory is shown in Fig.~\ref{speed envelope: figure}. Multi-speed plots for Cases~2--4 are in Section~S3-G of the supplement.}
+    \label{comparison multi speed circular: figure}
+\end{figure*}
 
 The comparison establishes the following observations.
 \begin{enumerate}
     \item The proposed MDF-ASMC is the \emph{only} controller that reaches the $z_\text{f}=0.20~\text{m}$ landing altitude on every trajectory (Table~\ref{comparison table: table}, Fig.~\ref{comparison traj3d: figure}). Every MDF-ASMC cell simultaneously satisfies the altitude, horizontal-error, and time-limit thresholds, with the worst-case horizontal error ($0.021~\text{m}$ on Case~4) well inside the $0.08~\text{m}$ \emph{precise} threshold, while each of the four benchmarks either fails the visibility constraint or exhausts the $40~\text{s}$ time limit on at least one trajectory.
-    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close: \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.5$--$16.4~\text{s}$ on every trajectory; \cite{zhang2026} couples its fixed closed-loop bandwidth to a $0.56$--$0.66~\text{m/s}$ terminal relative speed on the four moving cases, landing (barely) but violating the $0.20~\text{m/s}$ soft-touchdown criterion; \cite{chen2025} amplifies depth-dependent pixel noise through a finite-difference image-moment derivative, stalling above the landing altitude on all five cases at $z_\text{f}\approx 1.08~\text{m}$; and \cite{cho2022} is unable to decouple its pseudo-inverse lateral velocity command from its adaptive altitude gate, triggering an immediate feature-visibility break on every trajectory. Per-baseline diagnoses with the exact equations that break are in Section~S3-F of the supplement.
+    \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close: \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.5$--$16.4~\text{s}$ on every trajectory; \cite{zhang2026} couples its fixed closed-loop bandwidth to a $0.56$--$0.66~\text{m/s}$ terminal relative speed on the four moving cases, landing (barely) but violating the $0.20~\text{m/s}$ soft-touchdown criterion; \cite{chen2025} amplifies depth-dependent pixel noise through a finite-difference image-moment derivative, stalling above the landing altitude on all five cases at $z_\text{f}\approx 1.08~\text{m}$; and \cite{cho2022} is unable to decouple its pseudo-inverse lateral velocity command from its adaptive altitude gate, triggering an immediate feature-visibility break on every trajectory. Per-trajectory 3-D plots for Cases~1--4 are in Section~S3-F of the supplement, and per-baseline diagnoses with the exact equations that break are in Section~S3-H.
+    \item These structural pathologies persist across the symmetric speed-envelope sweep $\lambda\in\{0.6,\ldots,1.4\}$ from IC$_1=[0,0,-5]$~m: across the $80$ baseline runs ($4$ baselines $\times$ $4$ moving trajectories $\times$ $5$ $\lambda$ values) the soft-precise count is $0/80$ (Fig.~\ref{comparison multi speed circular: figure} for Case~5; Section~S3-G of the supplement for Cases~2--4). \cite{zhang2026} reaches the $0.20$~m landing altitude on every $(\text{traj},\lambda)$ pair but its terminal vertical relative speed of $0.67$--$0.85$~m/s exceeds the $0.20$~m/s soft bound by $3$--$4\times$; \cite{lin2022,chen2025,cho2022} each break feature visibility well above the landing altitude at every $\lambda$, with terminal altitudes of $1.3$--$5.1$~m. MDF-ASMC, by contrast, delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure}), confirming that the speed-robustness gap is structural rather than a tuning artefact.
 \end{enumerate}
 
-A consolidated summary of all numerical observations is given in Section~S3-G of the supplement.
+A consolidated summary of all numerical observations is given in Section~S3-I of the supplement.

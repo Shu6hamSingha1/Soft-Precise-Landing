@@ -30,19 +30,13 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
 % =========================================================================
 % clc;
 % close all;
-bestParamFile = fullfile(fileparts(mfilename('fullpath')), '..', 'Common', 'bestParam.mat');
-if exist('K', 'var') == 1
-    if exist('MC_SEED','var') == 1
-        clearvars -except K MC_SEED CTRL_SEL TRAJ_TYPE bestParamFile;
-    else
-        clearvars -except K CTRL_SEL TRAJ_TYPE bestParamFile;
-    end
-elseif isfile(bestParamFile) == 1
-    if exist('MC_SEED','var') == 1
-        mc_tmp = MC_SEED; bp_tmp = bestParamFile; cs_tmp = CTRL_SEL; tt_tmp = TRAJ_TYPE; clearvars -except mc_tmp bp_tmp cs_tmp tt_tmp c ctrl_list ctrl_names trajType all_results; load(bp_tmp); MC_SEED = mc_tmp; bestParamFile = bp_tmp; CTRL_SEL = cs_tmp; TRAJ_TYPE = tt_tmp; clear mc_tmp bp_tmp cs_tmp tt_tmp;
-    else
-        bp_tmp = bestParamFile; cs_tmp = CTRL_SEL; tt_tmp = TRAJ_TYPE; clearvars -except bp_tmp cs_tmp tt_tmp c ctrl_list ctrl_names trajType all_results; load(bp_tmp); bestParamFile = bp_tmp; CTRL_SEL = cs_tmp; TRAJ_TYPE = tt_tmp; clear bp_tmp cs_tmp tt_tmp;
-    end
+if exist('MC_SEED','var') == 1
+    clearvars -except MC_SEED SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results;
+else
+    clearvars -except SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results;
+end
+if ~exist('SPEED_MULT','var') || isempty(SPEED_MULT)
+    SPEED_MULT = 1.0;
 end
 if exist('MC_SEED','var') == 1
     rng(MC_SEED);
@@ -69,6 +63,12 @@ fprintf('%s\n\n', ctrl_names{CTRL_SEL});
 % =========================================================================
 Constants;
 InitVar;
+% Allow caller-side IC override (e.g., multi-speed sweep at IC_1=[0,0,-5]).
+% When IC_OVERRIDE is set, replace the position component of x_c/X_DS.
+if exist('IC_OVERRIDE','var') && ~isempty(IC_OVERRIDE)
+    x_c(1:3)    = IC_OVERRIDE(:);
+    X_DS(1:3,1) = IC_OVERRIDE(:);
+end
 init_robustness;    % samples wind / mass / inertia / CoG / pixel-noise model
 InitGains_Comparison;
 
@@ -171,7 +171,7 @@ if CTRL_SEL == 1
     iV_s_e_n     = zeros(2, N_steps);
     raw_dV_s_e_n = zeros(2, N_steps + 3);
 
-    % FoV-adaptive cone clamp logging (Approach 2)
+    % funnel-margin cone clamp logging (Approach 2)
     rho_fov_log    = zeros(2, N_steps);
     d_min_log      = zeros(1, N_steps);
     theta_cur_log  = zeros(1, N_steps);
@@ -243,7 +243,7 @@ for idx = 1:N_steps
     if ~exist('TRAJ_TYPE', 'var')
         TRAJ_TYPE = "Static";
     end
-    traj_t      = traj_Gen((idx-1)*dt, TRAJ_TYPE);
+    traj_t      = traj_Gen((idx-1)*dt, TRAJ_TYPE, SPEED_MULT);
     x_t(:,idx)  = traj_t(:,1);
     dx_t(:,idx) = traj_t(1:end-1, 2);
     I_R_T       = quat2rotm(x_t(4:7,idx)');
@@ -398,12 +398,12 @@ for idx = 1:N_steps
     switch CTRL_SEL
 
         %------------------------------------------------------------------
-        case 1   % PLASMC (Approach 2) — raw-error PID + FoV-adaptive cone clamp
+        case 1   % PLASMC (Approach 2) — raw-error PID + funnel-margin cone clamp
         %------------------------------------------------------------------
 
         % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
         % No virtual-feature visibility funnel: physical-corner visibility is
-        % enforced downstream by the FoV-adaptive cone clamp on I_a_cd.
+        % enforced downstream by the funnel-margin cone clamp on I_a_cd.
         V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
         V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
 
@@ -416,7 +416,7 @@ for idx = 1:N_steps
         end
         dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
 
-        V_ds_d_xy = -K_ctrl.zp*V_s_e_n(:,idx) - K_ctrl.zi*iV_s_e_n(:,idx) - K_ctrl.zd*dV_s_e_n;
+        V_ds_d_xy = -K_ctrl.rp*V_s_e_n(:,idx) - K_ctrl.ri*iV_s_e_n(:,idx) - K_ctrl.rd*dV_s_e_n;
         V_ds_d    = [V_ds_d_xy; 0.0];
 
         V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
@@ -493,7 +493,7 @@ for idx = 1:N_steps
             break;
         end
 
-        % FoV-adaptive cone clamp (Approach 2)
+        % funnel-margin cone clamp (Approach 2)
         %   theta_current = acos(I_R_C(3,3))
         %   rho_fov(t)    = shrinking box half-widths centered on image center
         %   d_min         = min axis-wise margin of any physical corner to box

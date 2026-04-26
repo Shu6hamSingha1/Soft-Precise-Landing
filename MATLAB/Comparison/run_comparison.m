@@ -6,10 +6,11 @@
 % .mat file, then calls plotter_comparison.m.
 %
 % USAGE:
-%   run_comparison                       % all 5 controllers, Static target
-%   run_comparison([1 3])                % only controllers 1 and 3, Static
-%   run_comparison(1:5, "Circular")      % all 5, Circular target
-%   run_comparison([1], "Sinusoidal")    % only PLASMC, Sinusoidal
+%   run_comparison                              % all 5 controllers, Static, shuffled seed
+%   run_comparison([1 3])                       % only controllers 1 and 3, Static
+%   run_comparison(1:5, "Circular")             % all 5, Circular target
+%   run_comparison([1], "Sinusoidal")           % only PLASMC, Sinusoidal
+%   run_comparison(1:5, "Static", 1002)         % deterministic seed (matches Multi_init IC2)
 %
 % OUTPUTS:
 %   result_ctrl_<c>.mat                       — per-controller (cwd, legacy)
@@ -17,7 +18,7 @@
 %                                                controllers in this run
 % =========================================================================
 
-function run_comparison(ctrl_list, trajType)
+function run_comparison(ctrl_list, trajType, seed)
 
 % Shared helpers live in ../Common (collapsed from per-folder duplicates)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
@@ -28,7 +29,18 @@ end
 if nargin < 2 || isempty(trajType)
     trajType = "Static";
 end
+if nargin < 3
+    seed = [];
+end
 trajType = string(trajType);
+
+% Hoist seed into MC_SEED — MC_SEED is preserved across visualControl_comparison's
+% internal clearvars (line 42/45) and the inner-loop clearvars below, so it
+% survives every iteration. A caller-facing `seed` arg would be wiped on
+% iteration 2 because visualControl_comparison strips it from the workspace.
+if ~isempty(seed)
+    MC_SEED = seed;   %#ok<NASGU>  % consumed inside visualControl_comparison
+end
 
 ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
               'Zhang 2026',        'Chen 2025', 'Cho 2022'};
@@ -46,9 +58,14 @@ for c = ctrl_list
 
     fprintf('--- Running Controller %d: %s ---\n', c, ctrl_names{c});
 
-    % Full workspace reset between runs (preserve loop vars + trajType)
-    clearvars -except c ctrl_list ctrl_names trajType all_results;
-    rng('shuffle');
+    % Full workspace reset between runs (preserve loop vars + trajType + MC_SEED).
+    % MC_SEED is preserved when set; otherwise use shuffle for per-run variety.
+    if exist('MC_SEED','var') == 1
+        clearvars -except c ctrl_list ctrl_names trajType all_results MC_SEED SPEED_MULT;
+    else
+        clearvars -except c ctrl_list ctrl_names trajType all_results SPEED_MULT;
+        rng('shuffle');
+    end
 
     CTRL_SEL  = c;          %#ok<NASGU>
     TRAJ_TYPE = trajType;   %#ok<NASGU>
@@ -85,10 +102,19 @@ for c = ctrl_list
     result.V_nP_d = V_nP_d;
 
     % Performance functions (PLASMC only; others get empty)
+    % p_1/S_1/zeta_1 are legacy (pre-Approach 2) fields retained for backward
+    % compatibility with older loaders; no longer populated by ctrl 1.
     if exist('p_1','var'),    result.p_1    = p_1;    else, result.p_1    = []; end
     if exist('p_2','var'),    result.p_2    = p_2;    else, result.p_2    = []; end
     if exist('S_1','var'),    result.S_1    = S_1;    else, result.S_1    = []; end
     if exist('zeta_1','var'), result.zeta_1 = zeta_1; else, result.zeta_1 = []; end
+
+    % Approach 2 PLASMC logs (funnel-margin cone clamp + normalized outer PID)
+    if exist('V_s_e_n','var'),        result.V_s_e_n        = V_s_e_n;        else, result.V_s_e_n        = []; end
+    if exist('rho_fov_log','var'),    result.rho_fov_log    = rho_fov_log;    else, result.rho_fov_log    = []; end
+    if exist('d_min_log','var'),      result.d_min_log      = d_min_log;      else, result.d_min_log      = []; end
+    if exist('theta_cone_log','var'), result.theta_cone_log = theta_cone_log; else, result.theta_cone_log = []; end
+    if exist('theta_cur_log','var'),  result.theta_cur_log  = theta_cur_log;  else, result.theta_cur_log  = []; end
 
     % Time bookkeeping
     result.tRange   = tRange;

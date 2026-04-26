@@ -1,0 +1,249 @@
+% \documentclass[lettersize,journal]{IEEEtran} 
+% \usepackage[colorlinks=true]{hyperref} 
+% % \usepackage{orcidlink} 
+% \usepackage[english]{babel} 
+% \usepackage{graphicx} 
+% % \graphicspath{{ {./images/} }} 
+% \usepackage{amsmath,amsfonts}
+% \usepackage{amssymb} 
+% \usepackage{subcaption} 
+% \usepackage{cite}
+% \usepackage{multirow}
+% \usepackage{enumitem}
+% \usepackage{mathtools}
+% % \usepackage[compact]{titlesec} 
+% % \usepackage{ragged2e}
+% % \AtBeginDocument{
+% % \setlength\abovedisplayskip{3pt}  
+% % \setlength\belowdisplayskip{3pt}} 
+% % \setlength{\textfloatsep}{1pt} 
+% % \usepackage[font=small]{caption}
+% % \captionsetup[figure]{labelfont=small,name={Fig.},labelsep=period}
+
+% \begin{document}
+
+\title{Image-based Visual Servoing Scheme for Soft Precise Landing on Mobile Platform}
+
+\author{Shubham~Singhal}
+
+% \markboth{Data-driven learning}%
+% {}
+
+\maketitle
+
+\section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
+Image features throughout this paper are expressed in a \emph{virtual camera frame} $\mathcal{V}$, obtained from the physical camera frame $\mathcal{C}$ by rotating out the UAV roll $\phi$ and pitch $\theta$ so that its image plane is always parallel to the inertial horizontal plane. This abstraction \cite{fink2017, xie2016_2} decouples the translational image-feature dynamics from the rotational motion of the underactuated quadrotor; the pinhole projection on $\mathcal{V}$ and the closed-form virtual-feature map are given in Section~S1 of the supplement.
+
+\subsection{Dynamics of Quadrotor-Target System} \label{quadrotor dynamics: section}
+Let $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote the body-fixed frame in forward-right-down configuration, with linear and angular velocities $\,^\mathcal{B}\boldsymbol{v}_\text{b}$ and $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$. From the Newton--Euler formulation, the UAV flight dynamics read
+\begin{equation}
+\label{quadrotor dynamics: equation}
+    \begin{bmatrix} ^\mathcal{B} \dot{\boldsymbol{v}}_{\text{b}} \\ ^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{b}} \end{bmatrix} = \begin{bmatrix} B_v & O_{3 \times 3} \\ O_{3 \times 3} & B_{\omega} \end{bmatrix} \begin{bmatrix} ^\mathcal{B} \boldsymbol{F}_u \\ ^\mathcal{B} \boldsymbol{\tau}_u \end{bmatrix} + \begin{bmatrix} \boldsymbol{c}_v \\ \boldsymbol{c}_{\omega} \end{bmatrix} + \begin{bmatrix} ^\mathcal{B} \boldsymbol{F_{\text{d}}} \\ ^\mathcal{B} \boldsymbol{\tau_{\text{d}}} \end{bmatrix}
+ \end{equation}
+ where
+ \begin{align*}
+     B_v &= \frac{1}{m} I_{3 \times 3}, & \boldsymbol{c}_v &= \frac{1}{m} \,^\mathcal{B} \boldsymbol{F_{\text{g}}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times \,^\mathcal{B} \boldsymbol{v}_{\text{b}} \\ B_{\omega} &= J^{-1}, & \boldsymbol{c}_{\omega} &= - J^{-1}\left(\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times (J \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}) \right)
+ \end{align*}
+Here $m$ is the body mass, and $J$ is the body inertia matrix. The control force $\,^\mathcal{B} \boldsymbol{F}_u$ is defined as $\,^\mathcal{B} \boldsymbol{F}_u = \begin{bmatrix} 0 & 0 & \,^\mathcal{B} T_u\end{bmatrix}^\top $ with $\,^\mathcal{B} T_u$ being the total rotor thrust. $\,^\mathcal{B} \boldsymbol{F_{\text{g}}}$ is the gravitational force and $\,^\mathcal{B} \boldsymbol{\tau}_u$ is the control torque. The unknown bounded disturbances $\,^\mathcal{B} \boldsymbol{F_{\text{d}}}$ and $\,^\mathcal{B} \boldsymbol{\tau_{\text{d}}}$ aggregate wind gusts, the aerodynamic ground effect \cite{sanchez-cuevas2017} that dominates near touchdown, and residual unmodelled rotor dynamics.
+
+A downward-facing monocular camera is mounted so that its optical axis is aligned with $Z_\text{b}$. Following the optic-flow formulation of \cite{herisse2012}, the target image dynamics are
+\begin{equation}
+    \dot{\boldsymbol{h}} = B_h \,^\mathcal{V} \boldsymbol{F}_u + \boldsymbol{c}_h + \boldsymbol{d}_h,
+\end{equation}
+where 
+\begin{align*}
+    B_h &= - \frac{1}{m \,^\mathcal{V} z_{\text{t}}} I_{3 \times 3}, \\
+    \boldsymbol{c}_h &=  - \,^\mathcal{V}\dot{\boldsymbol{\omega}}_{\text{v}} \times \boldsymbol{s} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{v}} \times \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) - 2 \left(\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} \times \boldsymbol{h} \right) \nonumber \\
+    &~~~ - \left[\left( \boldsymbol{h} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{v}} \times \boldsymbol{s} \right) \cdot \hat{\boldsymbol{e}}_3 \right] \boldsymbol{h} - \dot{\boldsymbol{h}}_\text{d} \\
+    \boldsymbol{d}_h &= \frac{\,^\mathcal{V}\boldsymbol{a}_{\text{t}}}{\,^\mathcal{V}z_{\text{t}}} - \left(\frac{\,^\mathcal{V}\boldsymbol{F_{\text{g}}} + \,^\mathcal{V}\boldsymbol{F_{\text{d}}}}{m \,^\mathcal{V}z_{\text{t}}} - \,^\mathcal{V}\boldsymbol{\omega}_{\text{b}} \times \frac{\,^\mathcal{V}\boldsymbol{v}_{\text{b}}}{\,^\mathcal{V}z_{\text{t}}} \right).
+\end{align*}
+Here $\boldsymbol{h} = \,^\mathcal{V} \boldsymbol{v}_{\text{t/v}}/\,^\mathcal{V} z_{\text{t}}$ is the optic flow representing visual velocity of the target and  $\,^\mathcal{V} \boldsymbol{\omega}_{\text{v}} = [0, 0, -\dot{\psi}]^\top$ is the angular rate of the virtual plane in the virtual frame $\mathcal{V}$.
+ 
+\iffalse
+In order to achieve target tracking using a pose-based flight controller, the overall control architecture is a cascaded PID controller with outer-loop operating in the inertial frame $\mathcal{I}=\{O_{\text{i}} ~X_{\text{i}} ~Y_{\text{i}} ~Z_{\text{i}}\}$ and the inner-loop in the body frame $\mathcal{B}$.
+The outer-loop controller is designed to generate desired velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$ command that drives the UAV from the instantaneous position $\,^\mathcal{I} \boldsymbol{r}_{\text{b}}$ to the known target position $\,^\mathcal{I}\boldsymbol{r}_{\text{t}}$.
+Then, it generates desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ command that drives the instantaneous UAV velocity $\,^\mathcal{I} \boldsymbol{v}_{\text{b}}$ to the desired velocity $\,^\mathcal{I}\boldsymbol{v}_{\text{d}}$.
+The control laws are shown below:
+\begin{align} \label{outer_loop_control: equation}
+    \,^\mathcal{I}\boldsymbol{v}_{\text{d}} =& - K_{rp} \,^\mathcal{I}\boldsymbol{r}_{\text{e}} - K_{ri} \int \,^\mathcal{I}\boldsymbol{r}_{\text{e}} dt - K_{rd} \frac{d\,^\mathcal{I}\boldsymbol{r}_{\text{e}}}{dt} \nonumber \\
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d}} =&  K_{vp} \,^\mathcal{I}\boldsymbol{v}_{\text{e}} - K_{vi} \int \,^\mathcal{I}\boldsymbol{v}_{\text{e}} dt - K_{vd} \frac{d\,^\mathcal{I}\boldsymbol{v}_{\text{e}}}{dt},
+\end{align}
+where $\,^\mathcal{I}\boldsymbol{r}_{\text{e}} = \,^\mathcal{I}\boldsymbol{r}_{\text{b}} - \,^\mathcal{I}\boldsymbol{r}_{\text{t}}$ represents the relative position between the UAV and the target and $\,^\mathcal{I}\boldsymbol{v}_{\text{e}} = \,^\mathcal{I}\boldsymbol{v}_{\text{b}} - \,^\mathcal{I}\boldsymbol{v}_{\text{d}}$.
+
+Since the centrifugal force $\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} \times (m \,^\mathcal{B} \boldsymbol{v}_{\text{b}})$, given in \eqref{quadrotor dynamics: equation}, is nullified in the inertia frame, the desired acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ is assumed to be achieved solely by the total rotor control thrust $\,^\mathcal{B} T_u$ and its direction, after compensating for gravity and disturbances.
+The relationship between the desired acceleration ($\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$) and the thrust force applied along the desired body Z-axis ($\,^\mathcal{B} T_u$) is derived as:
+\begin{align} \label{a_des: equation}
+    \,^\mathcal{I} \boldsymbol{a}_{\text{d}} &= \frac{1}{m} \,^\mathcal{I}R_{\mathcal{B}} \,^\mathcal{B} \boldsymbol{F}_u = \frac{1}{m} \,^\mathcal{I}R_{\mathcal{B}} \begin{bmatrix} 0 & 0 & \,^\mathcal{B} T_u \end{bmatrix}^\top,
+\end{align}
+where the rotation matrix $^\mathcal{I}R_\mathcal{B}$ transforms vectors from body frame ($\mathcal{B}$) to the inertial frame ($\mathcal{I}$).
+
+The desired roll (${\phi}_{\text{d}}$), pitch (${\theta}_{\text{d}}$), and total thrust ($\,^\mathcal{B} T_u$) commands are then analytically derived by inverting the acceleration $\,^\mathcal{I}\boldsymbol{a}_{\text{d}}$ in \eqref{a_des: equation} using its components ($\,^\mathcal{I} {a}_{\text{d}_x}, \,^\mathcal{I} {a}_{\text{d}_y}, \,^\mathcal{I} {a}_{\text{d}_z}$):
+\begin{align}
+\label{euler_thrust_des: equation}
+    {\theta}_{\text{d}} = & \tan^{-1}\left(\frac{- S_\psi \,^\mathcal{I} {a}_{\text{d}_x} - C_\psi \,^\mathcal{I} {a}_{\text{d}_y}}{\,^\mathcal{I} {a}_{\text{d}_z}} \right) \nonumber \\
+    {\phi}_{\text{d}} = & \tan^{-1}\left(\frac{C_{\theta_{\text{d}}} \left(C_\psi \,^\mathcal{I} {a}_{\text{d}_x} - S_\psi \,^\mathcal{I} {a}_{\text{d}_y} \right)}{\,^\mathcal{I} {a}_{\text{d}_z}} \right) \nonumber \\
+    \,^\mathcal{B} {T}_u = & - \frac{m \,^\mathcal{I} {a}_{\text{d}_z}}{C_{\theta_{\text{d}}} C_{\phi_{\text{d}}}},
+\end{align}
+in which $S_x = sin(x)$ and $C_x = cos(x)$.
+Combining the derived attitude ($\phi_{\text{d}}, \theta_{\text{d}}$) with the known target heading $\psi_{\text{t}}$, the desired attitude $\boldsymbol{\Phi}_{\text{d}} = [\phi_{\text{d}}, \theta_{\text{d}}, \psi_{\text{t}}]^\top$ and thrust ($\,^\mathcal{B} T_u$) commands are then passed to the inner-loop controller to execute the required control effort.
+
+The inner-loop controller uses a cascade of PID loops to regulate the attitude ($\boldsymbol{\Phi}_{\text{b}}$) and angular body rates ($\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$) of the UAV.
+The goal is to generate desired attitude rates ($\dot{\boldsymbol{\Phi}}_{\text{d}}$) command that helps the UAV to accurately follow the desired attitude ($\boldsymbol{\Phi}_{\text{d}}$) command generated by the outer-loop controller.
+The desired attitude rates ($\dot{\boldsymbol{\Phi}}_{\text{d}}$) are transformed into the desired angular body rates ($\,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$) using the kinematic transformation matrix $W(\phi_{\text{d}} ,\theta_{\text{d}} )$:
+\begin{equation}
+\label{kinematic transformation: equation}
+    \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}} = W(\phi_{\text{d}} ,\theta_{\text{d}} ) \dot{\boldsymbol{\Phi}}_{\text{d}},
+\end{equation}
+where matrix $W(\phi_{\text{d}} ,\theta_{\text{d}} )$ relates the inertial Euler rates to the body frame angular rates, based on the desired roll ($\phi_{\text{d}}$) and pitch ($\theta_{\text{d}}$) angles as shown below:
+\begin{equation}
+    W(\phi_{\text{d}} ,\theta_{\text{d}} )=\begin{bmatrix} 0 & C_{\phi_{\text{d}}} & S_{\phi_{\text{d}}} C_{\theta_{\text{d}}} \\ 1 & 0 & -S_{\theta_{\text{d}}} \\ 0 & S_{\phi_{\text{d}}} & - C_{\phi_{\text{d}}} C_{\theta_{\text{d}}} \end{bmatrix}
+\end{equation}
+
+Then, the inner-loop controller generates desired angular acceleration $\,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}}$ command that drives the current body rate $\,^\mathcal{B} \boldsymbol{\omega}_{\text{b}}$ of the UAV to the desired body rate $\,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$.
+The control laws are shown below:
+\begin{align}
+    \dot{\boldsymbol{\Phi}}_{\text{d}} =& - K_{\Phi p} \boldsymbol{\Phi}_{\text{e}} - K_{\Phi i} \int \boldsymbol{\Phi}_{\text{e}} dt - K_{\Phi d} \frac{d\boldsymbol{\Phi}_{\text{e}}}{dt} \nonumber \\
+    \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}} =& - K_{\omega p} \,^\mathcal{B} \boldsymbol{\omega}_{\text{e}} - K_{\omega i} \int \,^\mathcal{B} \boldsymbol{\omega}_{\text{e}} dt - K_{\omega d} \frac{d\,^\mathcal{B} \boldsymbol{\omega}_{\text{e}}}{dt},
+\end{align}
+where $\boldsymbol{\Phi}_{\text{e}} = \boldsymbol{\Phi}_{\text{b}} - \boldsymbol{\Phi}_{\text{d}}$ and $\boldsymbol{\omega}_{\text{e}} = \,^\mathcal{B} \boldsymbol{\omega}_{\text{b}} - \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}}$.
+The desired angular acceleration $\,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}}$ is then used with the rigid body dynamics equation \eqref{quadrotor dynamics: equation} to calculate the necessary desired control torque ($\,^\mathcal{B} \boldsymbol{\tau}_u$):
+\begin{equation}
+\label{tau_des: equation}
+    \,^\mathcal{B} \boldsymbol{\tau}_u = J \,^\mathcal{B} \dot{\boldsymbol{\omega}}_{\text{d}} + \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}} \times (J \,^\mathcal{B} \boldsymbol{\omega}_{\text{d}})
+\end{equation}
+The final commands sent to the motor mixing algorithm are the combined thrust-torque command $\boldsymbol{u} = [\,^\mathcal{B} {T}_u, \,^\mathcal{B} \boldsymbol{\tau}_u^\top]^\top$.
+\fi
+
+\subsection{Image-Kinematic Reformulation and Problem Statement} \label{problem statement: section}
+The proposed controller replaces the scale-dependent inertial state $(\,^\mathcal{I}\boldsymbol{r}_\text{b},\,^\mathcal{I}\boldsymbol{v}_\text{b})$ of the cascaded pose-based baseline (Section~S1, supplement) with the scale-independent image features $(\boldsymbol{s},\boldsymbol{h})$. Under the pinhole projection, the normalized target position is
+\begin{equation} \label{normalized_pos: equation}
+    \boldsymbol{s} = \begin{bmatrix}\,^\mathcal{V}\hat{\boldsymbol{r}}\\ 1\end{bmatrix} = \frac{\,^\mathcal{V}\boldsymbol{r}_\text{t}}{\,^\mathcal{V}z_\text{t}},
+\end{equation}
+and the field-of-view visibility constraint reads
+\begin{equation} \label{visibility_constraints}
+    -\frac{\mathcal{R}}{2f} \le \,^\mathcal{V}\hat{\boldsymbol{r}} \le \frac{\mathcal{R}}{2f},\qquad \mathcal{R}=[r_h,r_w]^\top.
+\end{equation}
+Differentiating \eqref{normalized_pos: equation} and defining the position error $\boldsymbol{s}_\text{e}=\boldsymbol{s}-\boldsymbol{s}_\text{d}$ with $\dot{\boldsymbol{s}}_\text{d}=\boldsymbol{0}$ yields the visual error kinematics
+\begin{equation} \label{s_e_dot: equation}
+    \dot{\boldsymbol{s}}_\text{e} = \boldsymbol{h} - \,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s} - \big[(\boldsymbol{h}-\,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
+\end{equation}
+from which the desired optic flow is solved as
+\begin{equation} \label{h_des: equation}
+    \boldsymbol{h}_\text{d} = \dot{\boldsymbol{s}}_\text{e} + \,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s} + \big[h_\text{rd} - (\,^\mathcal{V}\boldsymbol{\omega}_\text{v}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
+\end{equation}
+where $h_\text{rd}>0$ is a constant desired radial (descent) optic flow. The optic-flow error $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ then satisfies
+\begin{equation} \label{h_e_dot_1: equation}
+    \dot{\boldsymbol{h}}_\text{e} = \beta\,\boldsymbol{u}_\text{a} + \boldsymbol{c}_h + \boldsymbol{d}_h,
+\end{equation}
+with $\boldsymbol{u}_\text{a}=-\,^\mathcal{I}R_\mathcal{V}^\top\,^\mathcal{I}\boldsymbol{a}_\text{d}$, $\beta=1/\,^\mathcal{V}z_\text{t}$; $\boldsymbol{c}_h$ is known and available for feedback linearization, while $\beta$ and $\boldsymbol{d}_h$ are unknown.
+
+\textit{Assumption 1}: The disturbance $\boldsymbol{d}_h$ is uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$. The desired acceleration lies inside the underactuated thrust cone $|\,^\mathcal{I}\boldsymbol{a}_{xy}|\le|\,^\mathcal{I}a_z|\tan\phi_{\max}$ with $\phi_{\max}=35^\circ$, which is enforced as an actuator-level saturation.
+
+Orientation alignment is handled without a magnetometer by extracting the target image orientation from second-order centred moments:
+\begin{equation} \label{target orientation: equation}
+    \alpha = \tfrac12\tan^{-1}\!\big(2\mu_{11}/(\mu_{20}-\mu_{02})\big),
+\end{equation}
+whose time derivative satisfies $\dot{\alpha} = -\,^\mathcal{V}\omega_{\text{v}z}=\dot{\psi}$ (from $\,^\mathcal{V}\boldsymbol{\omega}_\text{v}=[0,0,-\dot{\psi}]^\top$). The outer loop therefore passes the desired attitude $\boldsymbol{\Phi}_\text{d}=[\phi_\text{d},\theta_\text{d},\alpha_\text{d}]^\top$ to an inner loop that regulates $\boldsymbol{\Phi}_\text{b}=[\phi_\text{b},\theta_\text{b},\alpha]^\top$, mirroring the baseline inner loop of Section~S1 with $\psi$ replaced by $\alpha$.
+
+The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$ and $\boldsymbol{u}_\text{a}$ so that $\hat{\boldsymbol{r}}_\text{e}$ satisfies the visibility constraint \eqref{visibility_constraints} throughout the descent and $\boldsymbol{h}_\text{e}$ converges to a small ultimate bound under Assumption~1.
+
+\begin{figure*}[hbt!]
+\centering
+    \resizebox{\textwidth}{!}{\input{block_diagram.tex}}
+    \caption{Block diagram of the DF-ASMC pipeline. The outer visibility funnel on $\hat{\boldsymbol{r}}_\text{e}$ generates $\boldsymbol{h}_\text{d}$; the inner optic-flow funnel on $\boldsymbol{h}_\text{e}$ defines $\boldsymbol{\zeta}_2$; the adaptive sliding-mode law drives $\boldsymbol{\zeta}_2$ to a uniform ultimate bound. Attitude/rate stages are inherited from the baseline of Section~S1.}
+    \label{block diagram: figure}
+\end{figure*}
+
+\section{FORMULATION OF CONTROL STRATEGY} \label{control strategy: section}
+The proposed DF-ASMC architecture is a \emph{dual-funnel} prescribed-performance design: a visibility funnel on $\hat{\boldsymbol{r}}_\text{e}$ enforces target visibility and generates the optic-flow command $\boldsymbol{h}_\text{d}$; an optic-flow funnel on $\boldsymbol{h}_\text{e}$ shapes the rate at which the descent velocity vanishes, converting a generic IBVS regulator into a soft-landing law. Both funnels are stabilised by a leakage-type adaptive sliding-mode law that requires no \emph{a priori} bound on the system uncertainty.
+
+\subsection{Proposed Outer-Loop Controller} \label{outer loop: section}
+
+\subsubsection{Visibility Funnel: Prescribed Performance on the Image-Feature Error} \label{ppc visibility: section}
+With $\hat{\boldsymbol{r}}_\text{e}=\,^\mathcal{V}\hat{\boldsymbol{r}}-\hat{\boldsymbol{r}}_\text{d}$, the visibility constraint \eqref{visibility_constraints} translates into the prescribed-performance envelope \cite{lin2022, salehi2021}
+\begin{equation}
+\label{prescribed perfromance: equation}
+    -\underline{C}_{k} p_{1_k}(t) < \hat{r}_{\text{e}k} < \overline{C}_{k} p_{1_k}(t),\quad k\in\{1,2\},
+\end{equation}
+with $\underline{C}_k=\mathcal{R}_k/(2f)+\hat{r}_{\text{d}k}$, $\overline{C}_k=\mathcal{R}_k/(2f)-\hat{r}_{\text{d}k}$, and $p_{1_k}(t) = (p_{1_{0k}}-p_{1_{\infty k}})e^{-\xi_{1_k}t}+p_{1_{\infty k}}$. For the soft-landing task $\hat{\boldsymbol{r}}_\text{d}=\boldsymbol{0}$ and $\underline{C}_k=\overline{C}_k=\mathcal{R}_k/(2f)$, so the error transformation $\hat{\boldsymbol{r}}_\text{e}=\mathcal{S}_1(\boldsymbol{\zeta}_1)\boldsymbol{p}_1(t)$ collapses to the symmetric hyperbolic form
+\begin{equation} \label{symmetric transformation: equation}
+    \zeta_{1_k} = \ln\!\left(\frac{1 + \hat{r}_{\text{e}k}/p_{1_k}(t)}{1 - \hat{r}_{\text{e}k}/p_{1_k}(t)}\right),\qquad k=1,2,
+\end{equation}
+with $p_{1_k}(0)=\mathcal{R}_k/(2f)$. The general asymmetric transformation, its inverse, and the Jacobian $\mathcal{G}_1=\text{diag}(g_{1_k})$ are given in Section~S2 of the supplement. Differentiating yields
+\begin{equation} \label{transformed error derivative: equation}
+    \dot{\boldsymbol{\zeta}}_1 = \mathcal{G}_1\!\left[\dot{\hat{\boldsymbol{r}}}_{\text{e}} - \mathcal{S}_1(\boldsymbol{\zeta}_1)\dot{\boldsymbol{p}}_1(t)\right],
+\end{equation}
+which, combined with \eqref{h_des: equation}, expresses the desired optic flow as a function of $(\boldsymbol{\zeta}_1,\dot{\boldsymbol{\zeta}}_1)$. A PID law in the unconstrained coordinate,
+\begin{equation} \label{zeta_e_dot_d: equation}
+    \dot{\boldsymbol{\zeta}}_1 = -K_{\zeta p}\boldsymbol{\zeta}_1 - K_{\zeta i}\!\int\boldsymbol{\zeta}_1\,d\tau - K_{\zeta d}\frac{\delta\boldsymbol{\zeta}_1}{\delta t},
+\end{equation}
+then drives $\hat{\boldsymbol{r}}_\text{e}$ into the funnel and synthesises the corresponding $\boldsymbol{h}_\text{d}$; the closed-form expression is given in Eq.~(S2.4) of the supplement.
+
+\subsubsection{Optic-Flow Funnel: Prescribed Performance on the Descent-Rate Error} \label{ppc optic flow: section}
+The optic-flow error is constrained inside a second funnel $h_{e_k}\in(-p_{2_k}(t),p_{2_k}(t))$, $k\in\{1,2,3\}$, with performance function $\boldsymbol{p}_2(t) = e^{-\Xi_2 t}(\boldsymbol{p}_{2_0}-\boldsymbol{p}_{2_\infty})+\boldsymbol{p}_{2_\infty}$, where $\boldsymbol{p}_{2_0},\boldsymbol{p}_{2_\infty},\Xi_2=\text{diag}(\xi_{2_k})\succ 0$ set the maximum overshoot, steady-state residual, and minimum convergence rate. A hyperbolic-tangent transformation maps the constrained error onto the unconstrained coordinate $\boldsymbol{\zeta}_2$:
+\begin{align}
+    \label{optical flow error transformation: equation}
+    \boldsymbol{h}_e &= \mathcal{S}_2(\boldsymbol{\zeta}_2)\boldsymbol{p}_2(t),\quad S_2(\zeta_{2_k}) = \frac{e^{\zeta_{2_k}}-1}{e^{\zeta_{2_k}}+1},
+\end{align}
+with inverse $\zeta_{2_k}=\ln\!\big((p_{2_k}+h_{e_k})/(p_{2_k}-h_{e_k})\big)$. Differentiating and substituting \eqref{h_e_dot_1: equation} yields the unconstrained perturbed dynamics
+\begin{equation} \label{unconstrained system: equation}
+    \dot{\boldsymbol{\zeta}}_2 = \mathcal{G}_2\!\left[\beta\boldsymbol{u}_\text{a} + \boldsymbol{c}_h + \boldsymbol{d}_h - \mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)\right],
+\end{equation}
+with Jacobian $\mathcal{G}_2=\text{diag}(g_{2_k})$, $g_{2_k}=(e^{\zeta_{2_k}}+1)^2/(2e^{\zeta_{2_k}}p_{2_k})$.
+
+\textit{Remark 1 (Funnel-saturation guard).} Since $g_{2_k}\to\infty$ as $|S_2(\zeta_{2_k})|\to 1$, the equivalent control $\boldsymbol{u}_\text{eq}$ in \eqref{adaptive control law: equation} can blow up under transient pixel-noise peaks. We therefore numerically clamp $|S_2(\zeta_{2_k})|$ at $1-\epsilon_S$, $\epsilon_S=0.05$, which tightens the closed-loop constraint set to $|h_{e_k}|\le(1-\epsilon_S)p_{2_k}(t)$ and contributes a bounded additive residual absorbed into $\tilde{d}$ in the proof of Theorem~1. The clamp is active for $<0.5\%$ of control steps in the reported runs and is essential for the $25/25$ landing rate of Section~\ref{multi init: subsec}. Initial-condition feasibility and a sliding-surface anti-windup guard consistent with the clamp are described in Section~S2.
+
+\subsubsection{Leakage-Type Adaptive Sliding Mode Control Law} \label{asmc law: section}
+A leakage-type adaptive first-order sliding mode law drives $\boldsymbol{\zeta}_2$ in \eqref{unconstrained system: equation} to a uniform ultimate bound without any \emph{a priori} knowledge of $\beta$ or $\boldsymbol{d}_h$, extending~\cite{singhal2025} to the 3D image-kinematic setting.
+
+Define the PI sliding surface $\boldsymbol{\sigma}=\boldsymbol{\zeta}_2+\mathcal{X}\!\int_{t_0}^{t}\boldsymbol{\zeta}_2\,d\tau$ with $\mathcal{X}=\text{diag}(\chi_k)\succ 0$. Combining $\dot{\boldsymbol{\sigma}}=\dot{\boldsymbol{\zeta}}_2+\mathcal{X}\boldsymbol{\zeta}_2$ with \eqref{unconstrained system: equation} and collecting the uncertain terms into $\boldsymbol{\theta}=[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2,\,I_{3\times 3}]$ and $\boldsymbol{\overline{d}}=\beta_{\min}^{-1}[\beta-1,\boldsymbol{d}_h]^\top$ (with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$) yields
+\begin{equation} \label{sigma derivative: equation 2}
+    \dot{\boldsymbol{\sigma}} = \beta\mathcal{G}_2\!\left[\boldsymbol{u}_\text{a}+\boldsymbol{c}_h-\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)+\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2\right] + \beta_{\min}\mathcal{G}_2\boldsymbol{\theta}\boldsymbol{\overline{d}}.
+\end{equation}
+The proposed control law cancels the known part and switches on the sliding surface with an online-identified gain:
+\begin{align} \label{adaptive control law: equation}
+    \boldsymbol{u}_\text{a} &= \mathcal{G}_2^{-1}[\boldsymbol{u}_\text{sw}+\boldsymbol{u}_\text{eq}],\nonumber\\
+    \boldsymbol{u}_\text{sw} &= -\Gamma\boldsymbol{\sigma} - \|\boldsymbol{\theta}\|\,\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma})\mathcal{G}_2\boldsymbol{\kappa}(t),\\
+    \boldsymbol{u}_\text{eq} &= \mathcal{G}_2\!\left[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2\right],\nonumber
+\end{align}
+where $\Gamma=\text{diag}(\gamma_k)\succ 0$, $\mathcal{E}=\text{diag}(\varepsilon_k)$ with $0<\varepsilon_k\ll 1$ sets the boundary-layer thickness, and $\text{sat}(\cdot)$ is the componentwise saturation. The adaptive gain evolves via the leakage-type law
+\begin{equation} \label{adaptive law: equation}
+    \dot{\boldsymbol{\kappa}}(t) = \|\boldsymbol{\theta}\|\mathcal{N}\mathcal{G}_2|\boldsymbol{\sigma}| - \mathcal{N}\mathcal{P}\boldsymbol{\kappa}(t),\quad\boldsymbol{\kappa}(0)\in\mathbb{R}_+^3,
+\end{equation}
+with $\mathcal{N}=\text{diag}(\eta_k)\succ 0$, $\mathcal{P}=\text{diag}(\rho_k)\succ 0$.
+
+\textit{Remark 2 (Attitude-cone clamp).} Before the low-pass filter, $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ is projected so that the tilt cannot exceed $\phi_{\max}=35^\circ$ (X500 envelope):
+\begin{equation} \label{cone clamp: equation}
+    \,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\leftarrow\min\!\left(1,\frac{|a_{\text{d},z}|\tan\phi_{\max}}{a_{xy}+\varepsilon}\right)\!\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}.
+\end{equation}
+The clamp is active for $<1\%$ of control steps in the reported runs and its bounded additive contribution is absorbed into $\boldsymbol{d}_h$.
+
+\subsection{Proposed Inner-Loop Controller} \label{inner loop: section}
+
+\subsubsection{Yaw-Channel Adaptive Sliding Mode and Heading-Reference Integrator}
+Orientation alignment is enforced on the image-orientation error $\alpha_e=\alpha-\alpha_\text{d}$, whose dynamics $\dot{\alpha}_e=-\,^\mathcal{V}\omega_{\text{v}z}$ follow from \eqref{target orientation: equation}. With $\alpha_e$ unwrapped to $(-\pi/2,\pi/2]$ (to prevent half-turn feature flips from driving spurious yaw), a scalar copy of the law \eqref{adaptive control law: equation}--\eqref{adaptive law: equation} with sliding surface $\sigma_a=\alpha_e+\chi_a\!\int\alpha_e\,d\tau$ produces a signal $\,^\mathcal{V}\omega_{\text{v}z}$, which is equivalent to the desired yaw rate $\dot{\psi}_\text{d}$ due to decoupled yaw. This is integrated online as the \emph{time-derivative of a desired heading}:
+\begin{equation} \label{psi d integrator: equation}
+    \psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}\!\big[\psi_\text{d}(t_k) + \dot{\psi}_\text{d}(t_k)\,\Delta t\big].
+\end{equation}
+This \emph{virtual-compass generator} makes $\psi_\text{d}$ evolve purely from the image-based yaw error, enabling magnetometer-free operation. The yaw channel decouples from the translational dynamics, so the stability argument of Section~\ref{stability: section} reproduces line-for-line with scalar substitutions; the full substitution is given in Section~S2.
+
+\subsubsection{Inner Loop: Geometric SO(3) Attitude Control} \label{so3 inner loop: section}
+The outer law \eqref{adaptive control law: equation} returns a desired inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, which DF-ASMC realises through the geometric almost-global attitude tracker of \cite{lee2010}. After a 2-Hz low-pass filter on $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, the filtered command defines $\,^\mathcal{B}T_u=m\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ and body-$z$ axis; together with $\psi_\text{d}$ from \eqref{psi d integrator: equation} a Gram--Schmidt construction yields $R_\text{d}$. With attitude error $\boldsymbol{e}_R=\tfrac12(R_\text{d}^\top R-R^\top R_\text{d})^\vee$ and angular-velocity error $\boldsymbol{e}_\Omega$, the commanded body torque is
+\begin{equation} \label{so3 torque: equation}
+    \,^\mathcal{B}\boldsymbol{\tau}_u = -k_R\boldsymbol{e}_R - k_\Omega\boldsymbol{e}_\Omega + \boldsymbol{\omega}\times J\boldsymbol{\omega},
+\end{equation}
+with $k_R,k_\Omega\succ 0$; this inherits the almost-global exponential stability of \cite[Thm.~3.1]{lee2010}. Filter coefficients, $R_\text{d}$ construction, and error definitions are in Section~S2.
+
+\subsection{Lyapunov Stability Analysis} \label{stability: section}
+The stability analysis follows a layered Lyapunov argument for cascaded nonlinear systems \cite{khalil2002}, building on the standard definition of global uniform ultimate boundedness (GUUB). The key statements are reported below; the full proof, the preparatory Lemma on GUUB, and the line-by-line Lyapunov derivative manipulation are relegated to Section~S2 of the supplement.
+
+\textit{Theorem 1 (Inner-loop GUUB).}
+Consider the perturbed nonlinear system \eqref{h_e_dot_1: equation} with initial optic-flow error $-\boldsymbol{p}_{2_0}<\boldsymbol{h}_e(0)<\boldsymbol{p}_{2_0}$. Then, under \textit{Assumption~1}, the unconstrained system \eqref{unconstrained system: equation} driven by the proposed control law \eqref{adaptive control law: equation}--\eqref{adaptive law: equation} exponentially drives $\boldsymbol{\zeta}_2$ into a UUB
+\begin{equation} \label{UUB bound: equation}
+    \vartheta = \sqrt{\frac{3\,\beta_{\min}\lambda_{\max}(\mathcal{P})}{\varphi_1-\varphi_2}}\,\tilde{d},
+\end{equation}
+where $\varphi_1 \triangleq \beta_{\min}\frac{\min\{2\lambda_{\min}(\Gamma),\lambda_{\min}(\mathcal{P})\}}{\max\{1,\beta_{\min}\lambda_{\max}(\mathcal{N}^{-1})\}}>0$ and $0<\varphi_2<\varphi_1$. Moreover, the closed-loop trajectory of \eqref{h_e_dot_1: equation} satisfies $-\boldsymbol{p}_2(t)<\boldsymbol{h}_e<\boldsymbol{p}_2(t)$ for all $t\ge 0$.
+
+\textit{Proof sketch.} Take the Lyapunov candidate $V(t) = \tfrac12\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}]$. Using \eqref{sigma derivative: equation 2}, the closed-loop \eqref{adaptive control law: equation}, and the switching identity $\boldsymbol{\sigma}^\top\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma}) = |\boldsymbol{\sigma}|^\top - \boldsymbol{r}_\varepsilon^\top$ with boundary-layer residual $r_{\varepsilon_k}\le\varepsilon_k/4$, and noting $\boldsymbol{\kappa}(t)\in\mathbb{R}_+^3$ from \eqref{adaptive law: equation}, one obtains $\dot{V}(t)\le -\varphi_2 V(t)$ for all $V(t)\ge\Theta=\tfrac{3\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2}{2(\varphi_1-\varphi_2)}$. Standard GUUB arguments then give \eqref{UUB bound: equation}, and the inverse transformation \eqref{optical flow error transformation: equation} preserves $-\boldsymbol{p}_2(t)<\boldsymbol{h}_e<\boldsymbol{p}_2(t)$. The boundary-layer residual and the saturation-guard clamp of Remark~1 both contribute bounded additive terms absorbed into $\tilde{d}$. $\hfill\blacksquare$
+
+\textit{Corollary 1 (Layered closed-loop boundedness).} Under the conditions of Theorem~1, if the outer-loop PID law \eqref{zeta_e_dot_d: equation} is implemented with positive-definite gains, the transformed image-feature error $\boldsymbol{\zeta}_1$ converges exponentially into a residual set whose size is upper-bounded by an affine function of $\vartheta$, so that the image-feature error satisfies $-\underline{C}_k p_{1k}(t)<\hat{r}_{e_k}(t)<\overline{C}_k p_{1k}(t)$ for all $t\ge 0$ and the visibility constraint \eqref{visibility_constraints} is preserved throughout. The short cascade argument --- substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_e$ into \eqref{transformed error derivative: equation} and invoking standard ISS results \cite{khalil2002} --- is given in Section~S2 of the supplement.

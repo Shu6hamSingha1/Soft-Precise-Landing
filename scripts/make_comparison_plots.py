@@ -15,6 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # noqa
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
     "font.family": "serif",
@@ -44,7 +45,7 @@ CTRL_COLORS = {
 # author-less citation style). The dict keys above still match the MATLAB
 # ctrl_name strings; only the rendered labels change.
 CTRL_DISPLAY = {
-    "PLASMC (Proposed)": "PLASMC (Proposed)",
+    "PLASMC (Proposed)": "MDF-ASMC (Proposed)",
     "Lin 2022":          "Baseline A (PBVS--PPC)",
     "Zhang 2026":        "Baseline B (PBVS--AEDO)",
     "Chen 2025":         "Baseline C (IBVS--Obs)",
@@ -52,40 +53,114 @@ CTRL_DISPLAY = {
 }
 
 # ---------- Plot F: 3D trajectories on Circular (deck) target ----------
-m = sio.loadmat(f"{COMP}/Circular_comparison.mat",
-                squeeze_me=True, struct_as_record=False)
-fig = plt.figure(figsize=(7.0, 4.6))
-ax = fig.add_subplot(111, projection="3d")
+PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
+SOFT_VZ_REL_MPS  = 0.20    # soft-landing relative vertical-speed threshold
+Z_F_M            = 0.20    # above-target gap at termination (corridor vertical height)
 
-target_drawn = False
-for run in m["all_results"]:
-    d = run.data
-    N = int(d.idx) if int(d.idx) > 0 else d.X_DS.shape[1]
-    X = d.X_DS[:, :N]
-    name = str(run.ctrl_name)
-    color = CTRL_COLORS.get(name, "k")
-    disp  = CTRL_DISPLAY.get(name, name)
-    ax.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=disp)
-    ax.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
-    ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color, marker="x", s=30)
-    if not target_drawn:
-        xt = d.x_t[:, :N]
-        ax.plot(xt[0], xt[1], -xt[2], color="k", lw=0.8, ls="--",
-                label="Target")
-        target_drawn = True
 
-ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]")
-ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]")
-ax.set_zlabel("altitude [m]")
-ax.set_title("Circular ship-deck target (IC4 $=[2,2,-5]$~m)")
-ax.legend(loc="upper left", bbox_to_anchor=(0.0, 0.95), ncol=2, fontsize=7)
-ax.view_init(elev=22, azim=-58)
-fig.tight_layout()
-fig.savefig(f"{OUT}/comparison_traj3d_circular.pdf")
-plt.close(fig)
+def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
+                          z_height=Z_F_M, color="0.6", alpha=0.18,
+                          edge_color="k", edge_lw=0.6, edge_ls="--",
+                          label=None):
+    """3D corridor around the target trajectory representing the soft-precise
+    allowable landing region: xy ±half_xy perpendicular to tangent; vertical
+    from true target altitude up to (target altitude + z_height), following
+    target heave. Inputs in NED."""
+    xt = np.asarray(xt); yt = np.asarray(yt); zt = np.asarray(zt)
+    zB = -zt; zT = -zt + z_height
+    n = len(xt)
+    if n < 2:
+        return
+    dx = np.gradient(xt); dy = np.gradient(yt)
+    mag = np.hypot(dx, dy)
+    if np.max(mag) < 1e-3:
+        sx = np.array([-1, 1, 1, -1]) * half_xy + xt[0]
+        sy = np.array([-1, -1, 1, 1]) * half_xy + yt[0]
+        zT0 = zT[0]; zB0 = zB[0]
+        top    = list(zip(sx, sy, np.full(4, zT0)))
+        bottom = list(zip(sx, sy, np.full(4, zB0)))
+        sides = [[top[i], top[(i+1) % 4], bottom[(i+1) % 4], bottom[i]] for i in range(4)]
+        ax.add_collection3d(Poly3DCollection([top, bottom] + sides,
+                                             facecolor=color, alpha=alpha,
+                                             edgecolor="none"))
+        ax.plot([*sx, sx[0]], [*sy, sy[0]],
+                np.full(5, zT0), color=edge_color, lw=edge_lw, ls=edge_ls,
+                label=label)
+        return
+    safe = np.where(mag < 1e-9, 1.0, mag)
+    nx = -dy / safe; ny = dx / safe
+    xL = xt - half_xy * nx; yL = yt - half_xy * ny
+    xR = xt + half_xy * nx; yR = yt + half_xy * ny
+    LT = list(zip(xL, yL, zT)); RT = list(zip(xR, yR, zT))
+    LB = list(zip(xL, yL, zB)); RB = list(zip(xR, yR, zB))
+    def strip(P, Q):
+        return [[P[i], Q[i], Q[i+1], P[i+1]] for i in range(n - 1)]
+    faces = strip(LT, RT) + strip(LB, RB) + strip(LT, LB) + strip(RT, RB)
+    ax.add_collection3d(Poly3DCollection(faces, facecolor=color, alpha=alpha,
+                                         edgecolor="none"))
+    ax.plot(xL, yL, zT, color=edge_color, lw=edge_lw, ls=edge_ls, label=label)
+    ax.plot(xR, yR, zT, color=edge_color, lw=edge_lw, ls=edge_ls)
+    ax.plot(xL, yL, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
+    ax.plot(xR, yR, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
+
+_TRAJ_TITLE = {
+    "Static":     ("Case 1", "Static Target"),
+    "Linear":     ("Case 2", "Linear Target Trajectory"),
+    "Sinusoidal": ("Case 3", "Sinusoidal Target Trajectory"),
+    "Lissajous":  ("Case 4", "Lissajous Target Trajectory"),
+    "Circular":   ("Case 5", "Circular Target Trajectory"),
+}
+
+for traj, (case, title_traj) in _TRAJ_TITLE.items():
+    m = sio.loadmat(f"{COMP}/{traj}_comparison.mat",
+                    squeeze_me=True, struct_as_record=False)
+    fig = plt.figure(figsize=(7.0, 4.6))
+    ax = fig.add_subplot(111, projection="3d")
+
+    target_drawn = False
+    for run in m["all_results"]:
+        d = run.data
+        N = int(d.idx) if int(d.idx) > 0 else d.X_DS.shape[1]
+        X = d.X_DS[:, :N]
+        name = str(run.ctrl_name)
+        color = CTRL_COLORS.get(name, "k")
+        disp  = CTRL_DISPLAY.get(name, name)
+        ax.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=disp)
+        ax.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
+        tgt_xyz  = d.x_t[:3, :N]
+        dtgt_xyz = d.dx_t[:3, :N] if hasattr(d, "dx_t") else np.zeros_like(tgt_xyz)
+        xy_err = float(np.linalg.norm(X[:2, -1] - tgt_xyz[:2, -1]))
+        vz_rel = float(abs(X[9, -1] - dtgt_xyz[2, -1]))
+        soft_precise = (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
+        end_marker = "^" if soft_precise else "x"
+        ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color,
+                   marker=end_marker, s=30)
+        if not target_drawn:
+            xt = d.x_t[:, :N]
+            draw_landing_corridor(ax, xt[0], xt[1], xt[2],
+                                  label="Target corridor")
+            target_drawn = True
+
+    ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=2)
+    ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=2)
+    ax.set_zlabel("altitude [m]", labelpad=2)
+    ax.locator_params(axis="x", nbins=4)
+    ax.locator_params(axis="y", nbins=4)
+    ax.locator_params(axis="z", nbins=4)
+    ax.tick_params(pad=1, labelsize=7)
+    ax.set_title(f"{case}: {title_traj} (IC$_2=[2,2,-5]$~m)", fontsize=8, y=0.95)
+    # Vertical legend just past the z-label, sized to stay inside figure.
+    ax.legend(loc="center left", bbox_to_anchor=(1.10, 0.5),
+              ncol=1, fontsize=6)
+    ax.view_init(elev=22, azim=-58)
+    fig.tight_layout()
+    fig.subplots_adjust(right=0.72)
+    fig.savefig(f"{OUT}/comparison_traj3d_{traj.lower()}.pdf")
+    plt.close(fig)
 
 # ---------- Plot G: bar chart summary (aggregated from .mat files) ----------
-trajs = ["Static", "Linear", "Sinusoidal", "Circular", "Lissajous"]
+trajs = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"]
+traj_labels = ["Case 1", "Case 2", "Case 3", "Case 4", "Case 5"]
 ctrls = ["PLASMC (Proposed)", "Lin 2022", "Zhang 2026", "Chen 2025", "Cho 2022"]
 
 Z_LAND = 0.205
@@ -136,26 +211,24 @@ for j, name in enumerate(ctrls):
 
 for ax in axes:
     ax.set_xticks(x)
-    ax.set_xticklabels(trajs, rotation=20)
+    ax.set_xticklabels(traj_labels, rotation=20)
     ax.grid(axis="y", alpha=0.3)
 
 axes[0].set_ylabel("landing time [s]")
-axes[0].axhline(40.0, color="k", lw=0.8, ls=":")
-axes[0].text(4.4, 40.4, r"$40\,$s budget", fontsize=7, ha="right")
 axes[0].set_title("Landing time")
 
 axes[1].set_ylabel("final $xy$ error [m]")
-axes[1].axhline(0.05, color="k", lw=0.8, ls=":")
-axes[1].text(4.4, 0.06, r"precise $0.05\,$m", fontsize=7, ha="right")
 axes[1].set_title("Horizontal precision")
 
 axes[2].set_ylabel(r"$\|v_\mathrm{rel}\|$ at touchdown [m/s]")
-axes[2].axhline(0.20, color="k", lw=0.8, ls=":")
-axes[2].text(4.4, 0.21, r"soft $0.20\,$m/s", fontsize=7, ha="right")
 axes[2].set_title("Touchdown softness")
 
-axes[0].legend(loc="upper left", fontsize=7, ncol=1)
-fig.tight_layout()
+axes[0].get_legend().remove() if axes[0].get_legend() else None
+# Shared legend at LEFT CENTER of the figure, vertical stack, outside subplots.
+handles, labels = axes[0].get_legend_handles_labels()
+fig.legend(handles, labels, loc="center left", ncol=1,
+           bbox_to_anchor=(0.0, 0.5), frameon=False, fontsize=8)
+fig.tight_layout(rect=(0.18, 0.0, 1.0, 1.0))
 fig.savefig(f"{OUT}/comparison_summary.pdf")
 plt.close(fig)
 
