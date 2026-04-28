@@ -123,7 +123,7 @@ This section collects the standard prescribed-performance machinery, implementat
 
 \textit{Lemma.} If $V(\boldsymbol{\chi})$ is continuously differentiable with $k_1\|\boldsymbol{\chi}\|^2\le V\le k_2\|\boldsymbol{\chi}\|^2$ and $\dot{V}\le -k_3 V$ for $\|\boldsymbol{\chi}\|\ge\varkappa$ ($k_1,k_2,k_3>0$), then every trajectory with $\|\boldsymbol{\chi}(0)\|^2\le\lambda$ is GUUB with $\Lambda = \varkappa(k_2/k_1)^{1/2}$.
 
-\textit{Proof of Theorem~1.} The initial transformed error $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0)/p_{2_{0k}})$ is well defined since $|h_{e_k}(0)|<p_{2_{0k}}$. Under the control law of the main paper, $\boldsymbol{\zeta}_2$ evolves via the unconstrained dynamics equation of the main paper (Section~III-A2). Combining $\dot{\boldsymbol{\sigma}}=\dot{\boldsymbol{\zeta}}_2+\mathcal{X}\boldsymbol{\zeta}_2$ with the unconstrained dynamics and collecting the uncertain terms into the regressor $\boldsymbol{\theta}=[-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2,\,I_{3\times 3}]\in\mathbb{R}^{3\times 4}$ (with $\|\cdot\|$ denoting the Frobenius norm throughout) and lumped disturbance $\boldsymbol{\overline{d}}=\beta_{\min}^{-1}[\beta-1,\boldsymbol{d}_h]^\top$ with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$ yields the main-paper expression for $\dot{\boldsymbol{\sigma}}$. Consider the candidate
+\textit{Proof of Theorem~1.} The initial transformed error $\zeta_{2_k}(0) = S_{2_k}^{-1}(h_{e_k}(0)/p_{2_{0k}})$ is well defined since $|h_{e_k}(0)|<p_{2_{0k}}$, and the regressor $\boldsymbol{\theta}$ and lumped disturbance $\boldsymbol{\overline{d}}$ are defined in Section~III-A2 of the main paper with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$. Consider the candidate
 \begin{equation} \label{sup:Lyapunov function}
     V(t) = \tfrac12\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}],
 \end{equation}
@@ -213,7 +213,7 @@ The main paper shows a single representative Circular ship-deck run; the figures
 \centering
     \includegraphics[width=0.8\columnwidth]{Figures/generated/multi_init/Static_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Static_image_plane.pdf}
-    \caption{MDF-ASMC on Case~1 (static target). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
+    \caption{MDF-ASMC on Case~1 (static target). \emph{Top}: 3-D trajectories for the five ICs of Table~III of the main paper; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
     \label{fig:sup-static}
 \end{figure}
 
@@ -221,7 +221,7 @@ The main paper shows a single representative Circular ship-deck run; the figures
 \centering
     \includegraphics[width=0.8\columnwidth]{Figures/generated/multi_init/Linear_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Linear_image_plane.pdf}
-    \caption{MDF-ASMC on Case~2 (linear target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
+    \caption{MDF-ASMC on Case~2 (linear target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~III of the main paper; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
     \label{fig:sup-linear}
 \end{figure}
 
@@ -229,7 +229,7 @@ The main paper shows a single representative Circular ship-deck run; the figures
 \centering
     \includegraphics[width=0.8\columnwidth]{Figures/generated/multi_init/Sinusoidal_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Sinusoidal_image_plane.pdf}
-    \caption{MDF-ASMC on Case~3 (sinusoidal target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
+    \caption{MDF-ASMC on Case~3 (sinusoidal target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~III of the main paper; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
     \label{fig:sup-sin}
 \end{figure}
 
@@ -237,13 +237,13 @@ The main paper shows a single representative Circular ship-deck run; the figures
 \centering
     \includegraphics[width=0.8\columnwidth]{Figures/generated/multi_init/Lissajous_3D.pdf}\\[2pt]
     \includegraphics[width=0.6\columnwidth]{Figures/generated/multi_init/Lissajous_image_plane.pdf}
-    \caption{MDF-ASMC on Case~4 (Lissajous target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
+    \caption{MDF-ASMC on Case~4 (Lissajous target trajectory). \emph{Top}: 3-D trajectories for the five ICs of Table~III of the main paper; the shaded box around the target trajectory is the soft-precise allowable landing region; soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. \emph{Bottom}: image-plane evolution $\,^\mathcal{C}\boldsymbol{\hat{r}}(t)$.}
     \label{fig:sup-liss}
 \end{figure}
 
 \subsubsection*{Per-IC Performance Analysis}
 
-The $25$ runs of Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss} (Cases~1--4) and Fig.~\ref{Circular_3D: figure} of the main paper (Case~5) are organised by trajectory, with the five initial conditions of Table~III of the main paper overlaid on each panel. The nominal drop IC$_1=[0,0,-5]$~m serves as the reference case; the four displaced ICs stress the closed loop in distinct physical modes.
+The $25$ runs of Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss} (Cases~1--4) and Fig.~3 of the main paper (Case~5) are organised by trajectory, with the five initial conditions of Table~III of the main paper overlaid on each panel. The nominal drop IC$_1=[0,0,-5]$~m serves as the reference case; the four displaced ICs stress the closed loop in distinct physical modes.
 
 \emph{IC$_1$ (nominal $[0,0,-5]$~m).} Target feature points begin at the image centre and the envelope $\boldsymbol{p}_1(t)$ is wide relative to the initial excursion, so the funnel-margin cone clamp is inactive through the first several seconds and the lateral demand is driven solely by target motion. The adaptive gain $\boldsymbol{\kappa}(t)$ grows monotonically to absorb wind and pixel-noise residuals. This run sets the reference landing time and horizontal error against which the four displaced ICs are compared.
 
@@ -369,7 +369,7 @@ The qualitative parameter roles observed in the sweep are as follows.
 \subsection{Target-Speed Envelope Sweep}
 \label{sec:sup-speed}
 
-Starting from IC$_1=[0,0,-5]~\text{m}$ with all gains fixed at the locked values of Table~\ref{sup:control params}, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory of Section~IV-A of the main paper, acting directly on the velocity parameters of $\,^\mathcal{I}\boldsymbol{x}_\text{t}(t)$; the descent trajectories are plotted in Fig.~\ref{speed envelope: figure} of the main paper. All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the disturbance model, establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $0.154~\text{m/s}$ (Case~5, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, confirming that the closed loop is limited by the cone clamp rather than by the adaptation law or the funnels.
+Starting from IC$_1=[0,0,-5]~\text{m}$ with all gains fixed at the locked values of Table~\ref{sup:control params}, a symmetric multiplicative speed scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ is applied to every moving trajectory of Section~IV-A of the main paper, acting directly on the velocity parameters of $\,^\mathcal{I}\boldsymbol{x}_\text{t}(t)$; the descent trajectories are plotted in Fig.~4 of the main paper. All $20$ runs are simultaneously \emph{precise} ($xy_\text{e}\le 0.08~\text{m}$) and \emph{soft} ($\|\boldsymbol{v}_\text{rel}\|\le 0.20~\text{m/s}$) under the disturbance model, establishing a $\pm 40\%$ guaranteed soft-precise envelope around every nominal trajectory without retuning. Worst-case across the sweep: $5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $0.154~\text{m/s}$ (Case~5, $\lambda=1.4$). Outside $\lambda\in[0.6,1.4]$ the failure mode is always $\theta_\text{cap}=60^\circ$ attitude-cone saturation of $\,^\mathcal{I}\boldsymbol{a}_\text{d}$, confirming that the closed loop is limited by the cone clamp rather than by the adaptation law or the funnels.
 
 \clearpage
 \subsection{Per-Trajectory Comparison: 3-D Trajectories}
@@ -409,14 +409,14 @@ Figs.~\ref{comparison_static_3d: figure}--\ref{comparison_lissajous_3d: figure} 
 \subsection{Per-Trajectory Comparison: Target-Speed Sweep}
 \label{sec:sup-comparison-multi-speed}
 
-Figs.~\ref{comparison_multi_speed_linear: figure}--\ref{comparison_multi_speed_lissajous: figure} extend the comparison study of Section~IV-C of the main paper to the symmetric speed-envelope sweep $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ from IC$_1=[0,0,-5]$~m on the three remaining moving trajectories (Linear, Sinusoidal, Lissajous); the Case~5 (circular) plot is in Fig.~\ref{comparison multi speed circular: figure} of the main paper. Each plot has a $2\times 2$ grid (one subplot per baseline, Baseline~A--D) with the same per-$\lambda$ corridor and triangle/cross marker convention as Fig.~\ref{speed envelope: figure} of the main paper.
+Figs.~\ref{comparison_multi_speed_linear: figure}--\ref{comparison_multi_speed_lissajous: figure} extend the comparison study of Section~IV-C of the main paper to the symmetric speed-envelope sweep $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ from IC$_1=[0,0,-5]$~m on the three remaining moving trajectories (Linear, Sinusoidal, Lissajous); the Case~5 (circular) plot is in Fig.~7 of the main paper. Each plot has a $2\times 2$ grid (one subplot per baseline, Baseline~A--D) with the same per-$\lambda$ corridor and triangle/cross marker convention as Fig.~4 of the main paper.
 
 Aggregating the $80$ baseline runs ($4$ baselines $\times$ $4$ moving trajectories $\times$ $5$ $\lambda$ values), the soft-precise count is $0/80$. The four baselines exhibit two distinct failure modes under speed scaling:
 \begin{itemize}
     \item \cite{zhang2026} reaches the $z_\text{f}=0.20$~m landing altitude on every $(\text{traj},\lambda)$ pair (terminal altitude $0.20$--$0.37$~m, horizontal error $0.05$--$0.47$~m) but its terminal vertical relative speed of $0.67$--$0.85$~m/s exceeds the $0.20$~m/s soft bound by $3$--$4\times$ uniformly; the fixed-bandwidth time-scale limitation analysed in Section~\ref{sec:sup-comparison} below is independent of $\lambda$, so widening the speed envelope does not relax it.
     \item \cite{lin2022,chen2025,cho2022} each break feature visibility above the landing altitude on every $(\text{traj},\lambda)$ pair: \cite{lin2022} at terminal altitude $1.3$--$3.9$~m after $1.6$--$5.5$~s, \cite{chen2025} at $1.8$--$2.7$~m after $5.4$--$9.0$~s, and \cite{cho2022} at $4.2$--$5.1$~m after $0.98$--$2.9$~s. The visibility-break time scales with $\lambda$ in the expected direction (faster targets break earlier), but the failure occurs at every $\lambda$ tested.
 \end{itemize}
-By contrast, MDF-ASMC delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure} of the main paper).
+By contrast, MDF-ASMC delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~4 of the main paper).
 
 \begin{figure*}[!t]
 \centering
@@ -447,21 +447,22 @@ This section expands on the failure modes of the four baselines in the compariso
 
 For every baseline, the gains reported in the main paper are a best-effort retune \emph{within the framework proposed by the original authors}: the paper-authoritative values of~\cite{lin2022,zhang2026,chen2025,cho2022} each destabilise the closed loop on the adversarial initial condition IC$_2=[2,2,-5]~\text{m}$ under our disturbance model (crashing within one to three control steps). Table~\ref{baseline gains: table} lists the paper-authoritative values alongside the values used in this study, with the minimum-deviation rationale; the retunes therefore isolate a \emph{structural} limitation of each framework rather than a tuning shortcoming.
 
-\begin{table}[!t]
+\begin{table*}[!t]
 \centering
-\caption{Baseline-controller gains: paper-authoritative values vs. those used in this study. Each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under our disturbance model.}
+\footnotesize
+\caption{Baseline-controller gains: paper-authoritative values vs.\ those used in this study. Each retune is the minimum deviation from the source paper that keeps the closed loop numerically stable under our disturbance model.}
 \label{baseline gains: table}
-\begin{tabular}{p{0.18\columnwidth} p{0.30\columnwidth} p{0.30\columnwidth} p{0.18\columnwidth}}
+\begin{tabular}{p{0.065\textwidth} p{0.18\textwidth} p{0.31\textwidth} p{0.36\textwidth}}
 \toprule
-\textbf{Controller} & \textbf{Paper-authoritative} & \textbf{Used here} & \textbf{Reason} \\
+\textbf{Controller} & \textbf{Paper-authoritative} & \textbf{Used here} & \textbf{Reason for deviation} \\
 \midrule
-\cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}0.6$, $k_2{=}4.0$, $\rho_\infty^p{=}\rho_\infty^v{=}[0.30,0.30,0.15]$ & paper $\xi_v$ saturates PPC barrier in 1--2 steps; $\rho_\infty^z$ widened for Lin~2022 heave \\
-\cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.15)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.5)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before horizontal converges \\
-\cite{chen2025} & $k_r{=}8$, $k_2{=}20$ (also $12.2,15$ in subsequent works) & $k_r{=}1.0$, $k_1^\text{obs}{=}0.2$, $k_2^\text{obs}{=}5$ & paper amplifies finite-difference pixel noise; even $k_r{=}1$ stalls (structural, see §S3-H.3) \\
-\cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}0$, $k_\sigma{=}0.02$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets; sign-flip resolves downward-camera convention \\
+\cite{lin2022} & $k_1{=}4.5$, $\rho_\infty{=}0.05$ uniform & $k_1{=}0.6$, $k_2{=}4.0$, $\rho_\infty^p{=}\rho_\infty^v{=}[0.30,0.30,0.15]$ & paper $\xi_v$ saturates the PPC barrier in 1--2 steps; $\rho_\infty^z$ widened to absorb the~\cite{lin2022} heave \\
+\cite{zhang2026} & $K_{c_1}(3){=}0.6$, $K_{c_2}(3){=}2.6$ & $K_{c_1}{=}\text{diag}(0.25,0.25,0.03)$, $K_{c_2}{=}\text{diag}(2,2,0.15)$, $K_{c_3}{=}\text{diag}(2.5,2.5,0.5)$ & paper vertical $\omega_n{\approx}1.6$~rad/s finishes descent before horizontal loop converges \\
+\cite{chen2025} & $k_r{=}8$, $k_2{=}20$ (also $12.2$, $15$ in subsequent works) & $k_r{=}1.0$, $k_1^\text{obs}{=}0.2$, $k_2^\text{obs}{=}5$ & paper amplifies finite-difference pixel noise; even $k_r{=}1$ stalls --- structural, see Section~\ref{sec:sup-comparison} \\
+\cite{cho2022} & $\lambda_{xy}{=}2.0$, $\lambda_z{=}5.0$ (Table~2) & $\lambda_{xy}{=}{-}0.8$, $\lambda_z{=}0$, $k_\sigma{=}0.02$, $v_\text{sat}^z{=}0.7$ & paper too aggressive for moving targets; sign-flip resolves the downward-camera convention \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 \subsubsection{Performance-Constrained PBVS \cite{lin2022}}
 

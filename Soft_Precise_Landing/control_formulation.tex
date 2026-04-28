@@ -151,7 +151,11 @@ Define the PI sliding surface $\boldsymbol{\sigma}=\boldsymbol{\zeta}_2+\mathcal
 \begin{equation} \label{sigma derivative: equation 2}
     \dot{\boldsymbol{\sigma}} = \beta\mathcal{G}_2\!\left[\boldsymbol{u}_h+\boldsymbol{c}_h-\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)+\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2\right] + \beta_{\min}\mathcal{G}_2\boldsymbol{\theta}\boldsymbol{\overline{d}},
 \end{equation}
-where regressor $\boldsymbol{\theta}$ and lumped disturbance $\boldsymbol{\overline{d}}$ collect the uncertain terms with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$ (definitions in Section~S2). The proposed control law cancels the known part and switches on the sliding surface with an online-identified gain:
+where the uncertain terms are collected into the regressor
+\begin{equation} \label{regressor: equation}
+    \boldsymbol{\theta} = [-\boldsymbol{c}_h+\mathcal{S}_2(\boldsymbol{\zeta}_2)\dot{\boldsymbol{p}}_2(t)-\mathcal{G}_2^{-1}\mathcal{X}\boldsymbol{\zeta}_2,\,I_{3\times 3}]\in\mathbb{R}^{3\times 4}
+\end{equation}
+and the lumped disturbance $\boldsymbol{\overline{d}}=\beta_{\min}^{-1}[\beta-1,\,\boldsymbol{d}_h^\top]^\top$ with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$ ($\|\cdot\|$ denotes the Frobenius norm throughout). The proposed control law cancels the known part and switches on the sliding surface with an online-identified gain:
 \begin{align} \label{adaptive control law: equation}
     \boldsymbol{u}_h &= \mathcal{G}_2^{-1}[\boldsymbol{u}_\text{sw}+\boldsymbol{u}_\text{eq}],\nonumber\\
     \boldsymbol{u}_\text{sw} &= -\Gamma\boldsymbol{\sigma} - \|\boldsymbol{\theta}\|\,\text{sat}(\mathcal{E}^{-1}\boldsymbol{\sigma})\mathcal{G}_2\boldsymbol{\kappa}(t),\\
@@ -164,7 +168,7 @@ where $\Gamma=\text{diag}(\gamma_k)\succ 0$, $\mathcal{E}=\text{diag}(\varepsilo
 with $\mathcal{N}=\text{diag}(\eta_k)\succ 0$, $\mathcal{P}=\text{diag}(\rho_k)\succ 0$.
 
 \subsubsection{Target Image Funnel and Acceleration Conditioning} \label{fov cone: section}
-The target image funnel and its funnel-margin cone clamp realise the state-dependent attitude cone of Property~1 by projecting the commanded lateral acceleration onto a cone whose half-angle tracks the instantaneous funnel margin. With $\,^\mathcal{C}\boldsymbol{\hat{r}}_i\in\mathbb{R}^2$ ($i\in\{1,\ldots,4\}$) the four target-feature pixels, the funnel is the rectangular envelope
+The target image funnel and its funnel-margin cone clamp realise the state-dependent attitude cone of Property~1 by projecting the commanded lateral acceleration onto a cone whose half-angle tracks the instantaneous funnel margin. With $\,^\mathcal{C}\boldsymbol{\hat{r}}_i\in\mathbb{R}^2$ ($i\in\{1,\ldots,4\}$) the four target feature points, the funnel is the rectangular envelope
 \begin{equation} \label{rho fov: equation}
     \boldsymbol{p}_1(t) = e^{-\xi_1 t}(\boldsymbol{p}_{1_0}-\boldsymbol{p}_{1_\infty}) + \boldsymbol{p}_{1_\infty},
 \end{equation}
@@ -203,10 +207,10 @@ The $\dot{\psi}_\text{d}$ signal is integrated online as the \emph{time-derivati
 \begin{equation} \label{psi d integrator: equation}
     \psi_\text{d}(t_{k+1}) = \Pi_{[-\pi,\pi]}\!\big[\psi_\text{d}(t_k) + \dot{\psi}_\text{d}(t_k)\,\Delta t\big].
 \end{equation}
-This \emph{virtual-compass generator} makes $\psi_\text{d}$ evolve purely from the image-based yaw error, enabling magnetometer-free operation. The yaw control loop decouples from the translational dynamics, and its Lyapunov certificate is given by Theorem~2 in Section~\ref{stability: section}.
+This \emph{virtual-compass integrator} makes $\psi_\text{d}$ evolve purely from the image-based yaw error, enabling magnetometer-free operation. The yaw control loop decouples from the translational dynamics, and its Lyapunov certificate is given by Theorem~2 in Section~\ref{stability: section}.
 
 \subsubsection{Geometric SO(3) Attitude Tracker} \label{so3 inner loop: section}
-From the filtered outer-loop output $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$ (Section~\ref{fov cone: section}), the SO(3) inner loop takes the desired body-$z$ axis $\boldsymbol{r}_{d,3}=-\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}/\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ together with $\boldsymbol{a}_h=[\cos\psi_\text{d},\sin\psi_\text{d},0]^\top$ from the virtual-compass integrator and constructs the remaining body axes by Gram--Schmidt on $SO(3)$:
+From the filtered outer-loop output $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$ (Section~\ref{fov cone: section}), the SO(3) inner loop takes the desired body-$z$ axis $\boldsymbol{r}_{d,3}=-\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}/\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ together with $\boldsymbol{a}_h=[\cos\psi_\text{d},\sin\psi_\text{d},0]^\top$ from the virtual-compass integrator and constructs the remaining body axes by Gram--Schmidt on SO(3):
 \begin{align} \label{R_d construction: equation}
     \boldsymbol{r}_{d,2} &= \frac{\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h}{\|\boldsymbol{r}_{d,3}\times\boldsymbol{a}_h\|}, \nonumber\\
     \boldsymbol{r}_{d,1} &= \boldsymbol{r}_{d,2}\times\boldsymbol{r}_{d,3},\ \ R_\text{d}=[\boldsymbol{r}_{d,1}\ \boldsymbol{r}_{d,2}\ \boldsymbol{r}_{d,3}].
@@ -231,7 +235,7 @@ Consider the perturbed nonlinear system \eqref{h_e_dot_1: equation} with initial
 \end{equation}
 where $\varphi_1 \triangleq \beta_{\min}\frac{\min\{2\lambda_{\min}(\Gamma),\lambda_{\min}(\mathcal{P})\}}{\max\{1,\beta_{\min}\lambda_{\max}(\mathcal{N}^{-1})\}}>0$ and $0<\varphi_2<\varphi_1$.
 
-\textit{Proof of Theorem~1.} Combining the sliding-surface dynamics $\dot{\boldsymbol{\sigma}}=\dot{\boldsymbol{\zeta}}_2+\mathcal{X}\boldsymbol{\zeta}_2$ with \eqref{unconstrained system: equation} and the control law \eqref{adaptive control law: equation}, and collecting uncertainty into a regressor $\boldsymbol{\theta}$ and lumped disturbance $\boldsymbol{\overline{d}}$ with $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$ (definitions in Section~S2 of the supplement), consider the Lyapunov candidate
+\textit{Proof of Theorem~1.} Substitute \eqref{adaptive control law: equation} into \eqref{sigma derivative: equation 2} and consider the Lyapunov candidate
 \begin{equation} \label{V candidate: equation}
     V = \tfrac{1}{2}\boldsymbol{\sigma}^\top\boldsymbol{\sigma} + \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}],
 \end{equation}
