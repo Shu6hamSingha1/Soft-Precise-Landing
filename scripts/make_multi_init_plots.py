@@ -384,14 +384,208 @@ def plot_image_plane(traj):
     return True
 
 
+def plot_combined(traj):
+    """Single PDF combining 3-D trajectory (top) and image-plane (bottom) with
+    one shared legend below — manuscript-grade layout for the headline figure.
+    """
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
+    m = _load(traj)
+    if m is None:
+        return False
+    results = m["results"]
+
+    # Side-by-side layout: 3-D on the left, image-plane on the right.
+    # gridspec with a tight left margin shifts subplot 1 further left
+    # (covering the empty space) and a slightly wider wspace prevents the
+    # 3-D panel's z-label from overlapping the image-plane panel.
+    fig = plt.figure(figsize=(11.0, 6.5))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.05, 1.0],
+                          left=0.0, right=0.98, wspace=0.10)
+    ax3 = fig.add_subplot(gs[0, 0], projection="3d")
+    axI = fig.add_subplot(gs[0, 1])
+
+    # =========================================================================
+    # Top: 3-D
+    # =========================================================================
+    longest = None
+    longest_n = -1
+    max_land = 0
+    for k, run in enumerate(results):
+        d = run.data
+        n = _land_idx(d) or _idx_of(d)
+        X = d.X_DS[:, :n]
+        ic = X[:3, 0]
+        ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=1.3,
+                 label=f"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+        ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
+                    color=RUN_COLORS[k], marker="o", s=20)
+        end_marker = "^" if _is_soft_precise(d, n) else "x"
+        ax3.scatter(X[0, -1], X[1, -1], -X[2, -1],
+                    color=RUN_COLORS[k], marker=end_marker, s=30)
+        if n > longest_n:
+            longest_n = n
+            longest = d
+        li = _land_idx(d)
+        if li > max_land:
+            max_land = li
+    if longest is not None:
+        tgt_n = max_land if max_land > 0 else longest_n
+        xt = longest.x_t[:, :tgt_n]
+        draw_landing_corridor(ax3, xt[0], xt[1], xt[2],
+                              label="Target corridor")
+
+    ax3.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
+    ax3.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
+    ax3.set_zlabel("altitude [m]", labelpad=2, fontsize=20)
+    ax3.locator_params(axis="x", nbins=4)
+    ax3.locator_params(axis="y", nbins=4)
+    ax3.locator_params(axis="z", nbins=4)
+    ax3.tick_params(pad=1, labelsize=18)
+    ax3.set_title("3-D View", fontsize=20, y=1.03)
+    ax3.view_init(elev=22, azim=-58)
+
+    # =========================================================================
+    # Bottom: image plane
+    # =========================================================================
+    ic_colors = ["C0", "C1", "C2", "C3", "C4"]
+    corner_styles = ["-", "--", "-.", ":"]
+
+    def _closed_quad(px, py):
+        return list(px) + [px[0]], list(py) + [py[0]]
+
+    desired_quad = None
+    end_corners  = []
+    end_idx      = []
+    max_offsets  = []
+    for run in results:
+        d = run.data
+        n = _land_idx(d) or _idx_of(d)
+        j_end = _last_valid_p(d.P_DS, n)
+        end_idx.append(j_end)
+        end_corners.append((d.P_DS[0, 8:12, j_end].copy(),
+                            d.P_DS[1, 8:12, j_end].copy()))
+        if desired_quad is None and hasattr(d, "V_nP_d"):
+            Pd = d.V_nP_d
+            desired_quad = (np.asarray(Pd[0, :]).copy(),
+                            np.asarray(Pd[1, :]).copy())
+    for k in range(len(results)):
+        if desired_quad is not None:
+            dx_c = end_corners[k][0] - desired_quad[0]
+            dy_c = end_corners[k][1] - desired_quad[1]
+            max_offsets.append(float(np.max(np.hypot(dx_c, dy_c))))
+        else:
+            max_offsets.append(np.nan)
+
+    ic_handles = []
+    for k, run in enumerate(results):
+        d = run.data
+        n_valid = end_idx[k] + 1
+        P = d.P_DS[:, 8:12, :n_valid]
+        c = ic_colors[k]
+        ic = run.data.X_DS[:3, 0]
+        for i in range(4):
+            axI.plot(P[0, i, :], P[1, i, :], color=c, lw=0.7, alpha=0.5,
+                     ls=corner_styles[i])
+        sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
+        axI.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
+        ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+        ic_label = (rf"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
+                    rf" $\Delta_{{\max}}={max_offsets[k]:.1f}$~px")
+        h, = axI.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
+                      label=ic_label)
+        ic_handles.append(h)
+
+    style_handles = []
+    if desired_quad is not None:
+        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        h_des, = axI.plot(dxq, dyq, color="k", lw=2.0, ls="-", zorder=1,
+                          alpha=0.45, label="desired")
+        style_handles.append(h_des)
+    h_start, = axI.plot([], [], color="gray", lw=1.2, alpha=0.4, label="start")
+    h_end,   = axI.plot([], [], color="gray", lw=1.4, ls=(0, (5, 2)), label="end")
+    style_handles += [h_start, h_end]
+
+    axI.set_xlabel(r"$\,^\mathcal{C}\hat{x}$ [px]", fontsize=20)
+    axI.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]", fontsize=20, labelpad=-6)
+    axI.set_xlim(-160, 160)
+    axI.set_ylim(-120, 120)
+    axI.set_aspect("equal", adjustable="box")
+    axI.tick_params(labelsize=18)
+    axI.set_title("Image-Plane View", fontsize=20, y=1.03)
+
+    # Inset on the converged region (unchanged from the standalone plot)
+    if desired_quad is not None:
+        dq_x = desired_quad[0]; dq_y = desired_quad[1]
+        cx, cy = float(np.mean(dq_x)), float(np.mean(dq_y))
+        dq_half = max(np.max(dq_x) - np.min(dq_x),
+                      np.max(dq_y) - np.min(dq_y)) / 2.0
+        pad = max([o for o in max_offsets if np.isfinite(o)] + [5.0]) + 5.0
+        half = dq_half + pad
+        ax_xmin, ax_xmax = -160.0, 160.0
+        x0_frac = (50.0 - ax_xmin) / (ax_xmax - ax_xmin)
+        w_frac = 1.0 - x0_frac
+        h_frac = 0.57
+        y0_frac = 1.0 - h_frac
+        axins = axI.inset_axes([x0_frac, y0_frac, w_frac, h_frac])
+        axins.set_xlim(cx - half, cx + half)
+        axins.set_ylim(cy - half, cy + half)
+        axins.set_aspect("equal")
+        axins.tick_params(labelsize=10, pad=1)
+        axins.locator_params(axis="x", nbins=3)
+        axins.locator_params(axis="y", nbins=3)
+        dxq, dyq = _closed_quad(desired_quad[0], desired_quad[1])
+        axins.plot(dxq, dyq, color="k", lw=1.5, ls="-", zorder=1, alpha=0.45)
+        for k in range(len(results)):
+            ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
+            axins.plot(ex, ey, color=ic_colors[k], lw=1.2, ls=(0, (5, 2)),
+                       zorder=4)
+        mark_inset(axI, axins, loc1=2, loc2=4, fc="none", ec="0.6", lw=0.6)
+
+    # =========================================================================
+    # Legends:
+    #   - Style legend (desired / start / end) inside the image-plane
+    #     panel's upper-left corner (matches the standalone image_plane.pdf).
+    #   - Merged IC legend at the bottom-center of the figure, 2 columns x
+    #     3 rows (5 IC entries, last cell empty).
+    # =========================================================================
+    style_legend = axI.legend(handles=style_handles, loc="lower right",
+                              fontsize=14, ncol=1, framealpha=0.9)
+    axI.add_artist(style_legend)
+
+    # 2-row IC legend (5 entries -> 2 rows x 3 cols, last cell empty),
+    # fontsize 14, anchored at the figure bottom.
+    fig.legend(handles=ic_handles, loc="lower center", ncol=3,
+               fontsize=14, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
+               handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+
+    fig.suptitle(f"{TRAJ_CASE[traj]}: {TRAJ_TITLE[traj]}",
+                 fontsize=24, y=0.99)
+
+    # Subplot height pinned to ~4.125 in (= 0.635 fraction of 6.5 in figsize),
+    # shifted down by ~1.5 IC-legend-rows (~0.055 fraction = ~0.36 in at fontsize 14).
+    fig.subplots_adjust(bottom=0.230, top=0.865)
+    # Nudge subplot 1 (3-D) further left in figure coords, beyond what
+    # gridspec's left=0.0 places it. matplotlib 3D axes leave internal
+    # padding inside the bbox, so set_position is the only reliable way
+    # to push the 3-D content closer to the figure's left edge.
+    pos3 = ax3.get_position()
+    ax3.set_position([pos3.x0 - 0.06, pos3.y0,
+                      pos3.width, pos3.height])
+    out = f"{OUT_DIR}/{traj}_combined.pdf"
+    fig.savefig(out, pad_inches=0.05)
+    plt.close(fig)
+    return True
+
+
 def main():
+    # Only the combined (3-D + image-plane side-by-side) PDFs are used in the
+    # manuscript and supplement. The legacy plot_3d() and plot_image_plane()
+    # helpers are retained for future use but not invoked.
     written = 0
     skipped = []
     for traj in TRAJS:
-        ok3 = plot_3d(traj)
-        okp = plot_image_plane(traj)
-        if ok3 and okp:
-            written += 2
+        if plot_combined(traj):
+            written += 1
         else:
             skipped.append(traj)
 

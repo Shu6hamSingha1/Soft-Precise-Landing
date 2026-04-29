@@ -106,7 +106,7 @@ The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$,
 
 \begin{figure*}[hbt!]
 \centering
-    \resizebox{\textwidth}{!}{\input{block_diagram.tex}}
+    \includegraphics[width=\textwidth]{Figures/block_diagram_v3.pdf}
     \caption{MDF-ASMC pipeline: normalized virtual feature PID $\to$ optic-flow funnel and adaptive SMC $\to$ funnel-margin cone clamp $\to$ SO(3) inner loop (baseline inherited from Section~S1).}
     \label{block diagram: figure}
 \end{figure*}
@@ -191,7 +191,7 @@ $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ is then low-pass filtered to suppress im
     \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_{k+1}) &= \alpha_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_k)+(1-\alpha_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_{k+1}), \nonumber\\
     \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_0) &= \,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_0),
 \end{align}
-with $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and $\tau_\text{a}=0.08$~s. The commanded thrust $\,^\mathcal{B}T_u=m\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ is routed to the motor mixer.
+with $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and $\tau_\text{a}=0.08$~s. The commanded thrust $\,^\mathcal{B}T_u=m\|\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}\|$ is fed into the quadrotor dynamics \eqref{quadrotor dynamics: equation}.
 
 \subsection{Inner Loop: Virtual-Compass Yaw ASMC and SO(3) Tracker} \label{inner loop: section}
 
