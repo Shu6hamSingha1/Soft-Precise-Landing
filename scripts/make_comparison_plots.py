@@ -236,12 +236,16 @@ plt.close(fig)
 # ---------- Plot H: Combined 1x4 (3D Circular + 3 summary bar charts) ----------
 # Main-paper Fig.: first subplot is the Circular 3D trajectory; subplots 2-4
 # are the bar charts replicated from comparison_summary.pdf. Common legend at
-# bottom-center, horizontal stacking.
-fig = plt.figure(figsize=(14.0, 3.8))
-ax3d  = fig.add_subplot(1, 4, 1, projection="3d")
-ax_t  = fig.add_subplot(1, 4, 2)
-ax_xy = fig.add_subplot(1, 4, 3)
-ax_v  = fig.add_subplot(1, 4, 4)
+# bottom-center, horizontal stacking. Format mirrors multi_init/<Traj>_combined.pdf
+# (figsize ~3:1 of multi_init's 1x2; suptitle 24, subplot titles 20, axis
+# labels 20, ticks 18, legend 14). Subplot region pinned via bottom=0.230,
+# top=0.865 so all four boxes share identical aspect.
+fig = plt.figure(figsize=(18.0, 5.0))
+gs  = fig.add_gridspec(1, 4, left=0.05, right=0.99, wspace=0.40)
+ax3d  = fig.add_subplot(gs[0, 0], projection="3d")
+ax_t  = fig.add_subplot(gs[0, 1])
+ax_xy = fig.add_subplot(gs[0, 2])
+ax_v  = fig.add_subplot(gs[0, 3])
 
 # 3D Circular subplot
 m_circ = sio.loadmat(f"{COMP}/Circular_comparison.mat",
@@ -269,14 +273,14 @@ for run in m_circ["all_results"]:
         draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
         target_drawn = True
 
-ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=2)
-ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=2)
-ax3d.set_zlabel("altitude [m]", labelpad=2)
+ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
+ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
+ax3d.set_zlabel("altitude [m]", labelpad=2, fontsize=20)
 ax3d.locator_params(axis="x", nbins=4)
 ax3d.locator_params(axis="y", nbins=4)
 ax3d.locator_params(axis="z", nbins=4)
-ax3d.tick_params(pad=1, labelsize=7)
-ax3d.set_title("Case 5: 3-D trajectories", fontsize=9, y=0.98)
+ax3d.tick_params(pad=1, labelsize=14)
+ax3d.set_title("Landing Performance for Case 5", fontsize=20, x=0.55, y=0.95)
 ax3d.view_init(elev=22, azim=-58)
 
 # Bar charts: reuse LAND_TIME / FINAL_XY / FINAL_V already computed above.
@@ -291,28 +295,51 @@ for j, name in enumerate(ctrls):
 
 for ax in (ax_t, ax_xy, ax_v):
     ax.set_xticks(xb)
-    ax.set_xticklabels(traj_labels, rotation=20, fontsize=8)
-    ax.tick_params(axis="y", labelsize=8)
+    ax.set_xticklabels(traj_labels, rotation=20, fontsize=16)
+    ax.tick_params(axis="y", labelsize=16)
     ax.grid(axis="y", alpha=0.3)
 
-ax_t.set_ylabel("landing time [s]", fontsize=9)
-ax_t.set_title("Landing time", fontsize=9)
-ax_xy.set_ylabel("final $xy$ error [m]", fontsize=9)
-ax_xy.set_title("Horizontal precision", fontsize=9)
-ax_v.set_ylabel(r"$\|v_\mathrm{rel}\|$ at touchdown [m/s]", fontsize=9)
-ax_v.set_title("Touchdown softness", fontsize=9)
+ax_t.set_ylabel("landing time [s]", fontsize=20, labelpad=4)
+ax_t.set_title("Landing Time", fontsize=20, y=1.03)
+ax_xy.set_ylabel("final $xy$ error [m]", fontsize=20, labelpad=4)
+ax_xy.set_title("Horizontal Precision", fontsize=20, y=1.03)
+ax_v.set_ylabel(r"$\|v_\mathrm{rel}\|$ at touchdown [m/s]", fontsize=20, labelpad=4)
+ax_v.set_title("Touchdown Softness", fontsize=20, y=1.03)
 
 # Common legend at bottom-center, horizontal (5 entries -> ncol=5).
 handles, labels = ax_t.get_legend_handles_labels()
 fig.legend(handles, labels, loc="lower center", ncol=5,
-           bbox_to_anchor=(0.5, 0.0), frameon=False, fontsize=9,
+           bbox_to_anchor=(0.5, 0.0), frameon=False, fontsize=14,
            handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
-# Note: 3D z-label sits on the right side of the 3D box for view_init(22,-58);
-# enlarge wspace so it isn't clipped by the next subplot.
-fig.subplots_adjust(left=0.03, right=0.99, top=0.93, bottom=0.20,
-                    wspace=0.50)
-# pad_inches has no effect without bbox_inches="tight"; bbox_inches="tight"
-# silently drops 3D z-axis labels in matplotlib, so we use plain savefig.
+
+fig.suptitle("Landing Performance of Five Controllers across Cases 1–5",
+             fontsize=24, y=0.99)
+
+# Establish a baseline subplot region (matches multi_init's vertical extent),
+# then manually re-position each subplot: 3-D panel (subplot 1) is enlarged
+# and shifted to the figure's left edge; the three bar-chart panels are
+# shortened vertically and re-distributed across the remaining width so they
+# sit centred against the (taller) 3-D panel.
+fig.subplots_adjust(bottom=0.230, top=0.865)
+
+# 3-D panel: bbox sized close to the cube's natural display aspect so there
+# is no internal horizontal padding flanking the 3-D content. Fully on the
+# figure's left edge.
+ax3d.set_position([0.000, 0.10, 0.24, 0.84])
+
+# Bar charts: shorter (height 0.50) and vertically centred against the 3-D box.
+# Generous horizontal gap so the next chart's y-axis label clears the previous
+# chart's rotated x-tick labels (Case 5 sticks out farthest right).
+bar_y0, bar_h = 0.23, 0.56
+bar_left, bar_right = 0.33, 0.99
+n_bars = 3
+gap = 0.07
+bar_w = (bar_right - bar_left - (n_bars - 1) * gap) / n_bars
+for k, ax in enumerate((ax_t, ax_xy, ax_v)):
+    x0 = bar_left + k * (bar_w + gap)
+    ax.set_position([x0, bar_y0, bar_w, bar_h])
+
+# bbox_inches="tight" silently drops 3-D z-axis labels, so plain savefig.
 fig.savefig(f"{OUT}/comparison_combined_circular.pdf")
 plt.close(fig)
 

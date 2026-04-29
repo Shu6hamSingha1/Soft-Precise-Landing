@@ -107,7 +107,7 @@ The control-design problem is therefore to synthesise $\boldsymbol{h}_\text{d}$,
 \begin{figure*}[hbt!]
 \centering
     \includegraphics[width=\textwidth]{Figures/block_diagram_v3.pdf}
-    \caption{MDF-ASMC pipeline: normalized virtual feature PID $\to$ optic-flow funnel and adaptive SMC $\to$ funnel-margin cone clamp $\to$ SO(3) inner loop (baseline inherited from Section~S1).}
+    \caption{MDF-ASMC pipeline. Image features $\,^\mathcal{C}\boldsymbol{\hat{r}}$ from the monocular camera feed the normalized virtual feature PID, which produces the desired optic flow $\boldsymbol{h}_\text{d}$. The optic-flow error $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ drives the adaptive SMC and yields the inertial commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$. The funnel-margin cone clamp projects $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ to the visibility-safe $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$, which together with the yaw rate $\dot{\psi}_\text{d}$ forms the desired attitude $R_\text{d}$ and thrust $\,^\mathcal{B}T_u$. The SO(3) inner loop (Section~S1) closes the loop by tracking $R_\text{d}$ and producing the body-frame torque $\,^\mathcal{B}\boldsymbol{\tau}_u$.}
     \label{block diagram: figure}
 \end{figure*}
 

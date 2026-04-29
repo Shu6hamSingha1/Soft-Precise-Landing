@@ -195,7 +195,7 @@ def plot_3d(traj):
         ax.plot(X[0], X[1], -X[2],
                 color=RUN_COLORS[k],
                 lw=1.3,
-                label=f"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+                label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax.scatter(X[0, 0], X[1, 0], -X[2, 0],
                    color=RUN_COLORS[k], marker="o", s=20)
         end_marker = "^" if _is_soft_precise(d, n) else "x"
@@ -302,7 +302,7 @@ def plot_image_plane(traj):
 
         # End quad (long-dash, IC color) — uses the back-searched last sample
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
-        ic_label = (rf"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
+        ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
                     rf" $\Delta_{{\max}}={max_offsets[k]:.1f}$~px")
         h, = ax.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
                      label=ic_label)
@@ -398,9 +398,13 @@ def plot_combined(traj):
     # gridspec with a tight left margin shifts subplot 1 further left
     # (covering the empty space) and a slightly wider wspace prevents the
     # 3-D panel's z-label from overlapping the image-plane panel.
-    fig = plt.figure(figsize=(11.0, 6.5))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.05, 1.0],
-                          left=0.0, right=0.98, wspace=0.10)
+    fig = plt.figure(figsize=(10.5, 6.0))
+    # 3-D subplot needs a wider bbox than the image-plane subplot because
+    # matplotlib leaves ~25-30 % internal horizontal padding around the
+    # rendered cube. Width ratio 1.5:1.0 keeps the visible cube comparable
+    # in size to the image-plane (which fills its bbox under set_aspect=equal).
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.4, 1.0],
+                          left=0.05, right=0.98, wspace=0.10)
     ax3 = fig.add_subplot(gs[0, 0], projection="3d")
     axI = fig.add_subplot(gs[0, 1])
 
@@ -416,7 +420,7 @@ def plot_combined(traj):
         X = d.X_DS[:, :n]
         ic = X[:3, 0]
         ax3.plot(X[0], X[1], -X[2], color=RUN_COLORS[k], lw=1.3,
-                 label=f"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
+                 label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
                     color=RUN_COLORS[k], marker="o", s=20)
         end_marker = "^" if _is_soft_precise(d, n) else "x"
@@ -441,7 +445,7 @@ def plot_combined(traj):
     ax3.locator_params(axis="y", nbins=4)
     ax3.locator_params(axis="z", nbins=4)
     ax3.tick_params(pad=1, labelsize=18)
-    ax3.set_title("3-D View", fontsize=20, y=1.03)
+    ax3.set_title("3-D View", fontsize=20, y=0.97)
     ax3.view_init(elev=22, azim=-58)
 
     # =========================================================================
@@ -489,7 +493,7 @@ def plot_combined(traj):
         sx, sy = _closed_quad(P[0, :, 0], P[1, :, 0])
         axI.plot(sx, sy, color=c, lw=1.2, alpha=0.4, ls="-", zorder=3)
         ex, ey = _closed_quad(end_corners[k][0], end_corners[k][1])
-        ic_label = (rf"IC{k+1}: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
+        ic_label = (rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$,"
                     rf" $\Delta_{{\max}}={max_offsets[k]:.1f}$~px")
         h, = axI.plot(ex, ey, color=c, lw=1.4, ls=(0, (5, 2)), zorder=4,
                       label=ic_label)
@@ -556,20 +560,19 @@ def plot_combined(traj):
     # fontsize 14, anchored at the figure bottom.
     fig.legend(handles=ic_handles, loc="lower center", ncol=3,
                fontsize=14, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
-               handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+               handlelength=1.6, columnspacing=1.0, handletextpad=0.6)
 
     fig.suptitle(f"Landing for Multiple Initial Conditions for {TRAJ_CASE[traj]}",
                  fontsize=24, y=0.99)
 
-    # Subplot height pinned to ~4.125 in (= 0.635 fraction of 6.5 in figsize),
-    # shifted down by ~1.5 IC-legend-rows (~0.055 fraction = ~0.36 in at fontsize 14).
-    fig.subplots_adjust(bottom=0.230, top=0.865)
-    # Nudge subplot 1 (3-D) further left in figure coords, beyond what
-    # gridspec's left=0.0 places it. matplotlib 3D axes leave internal
-    # padding inside the bbox, so set_position is the only reliable way
-    # to push the 3-D content closer to the figure's left edge.
+    # Margins are FRACTIONS of figure height — they shrink the subplot
+    # proportionally as figsize shrinks. Use small fractions so the suptitle
+    # (~0.5 in) and the 2-row IC legend (~0.7 in) get exactly what they need
+    # and the subplot fills the rest. At figsize=(11, 6.5) this yields a
+    # subplot region ~5.1 in tall.
+    fig.subplots_adjust(bottom=0.17, top=0.93)
     pos3 = ax3.get_position()
-    ax3.set_position([pos3.x0 - 0.06, pos3.y0,
+    ax3.set_position([pos3.x0 - 0.1, pos3.y0,
                       pos3.width, pos3.height])
     out = f"{OUT_DIR}/{traj}_combined.pdf"
     fig.savefig(out, pad_inches=0.05)

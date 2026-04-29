@@ -262,35 +262,35 @@ The figures in this section expose the closed-loop internals of MDF-ASMC for the
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_outer_funnel.pdf}
-    \caption{Target image funnel: trajectories of the four target feature points $\,^\mathcal{C}\boldsymbol{\hat{r}}_i(t)$ versus the funnel envelope $\pm\boldsymbol{p}_1(t)$.}
+    \caption{Target image funnel: trajectories of the four target feature points $\,^\mathcal{C}\boldsymbol{\hat{r}}_i(t)$ versus the funnel envelope $\pm\boldsymbol{p}_1(t)$. All four feature points remain strictly inside the envelope for the full duration of the run, evidencing target visibility throughout descent.}
     \label{fig:sup-outer}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_inner_funnel.pdf}
-    \caption{Optic-flow funnel: optic-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_2(t)$ on all three axes.}
+    \caption{Optic-flow funnel: optic-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_2(t)$ on all three axes. The error stays inside the prescribed envelope on every axis at every time instant, confirming closed-loop funnel invariance.}
     \label{fig:sup-inner}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
-    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis.}
+    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis. After a short reaching phase, $\boldsymbol{\sigma}$ enters and stays inside the boundary layer $\mathcal{E}$ for the remainder of the descent.}
     \label{fig:sup-sliding}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
-    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\text{a}(t)$.}
+    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\text{a}(t)$. The gains rise during the reaching phase and leak down once the surface is inside the boundary layer, exhibiting the leakage-adaptation behavior prescribed by the update law.}
     \label{fig:sup-kappa}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
-    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit.}
+    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit. The lateral command stays strictly below the cone-induced bound, so the funnel-margin cone clamp does not saturate on this run.}
     \label{fig:sup-thrust}
 \end{figure}
 
@@ -417,21 +417,21 @@ By contrast, MDF-ASMC delivers $20/20$ soft-precise touchdowns over the same $\l
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_linear.pdf}
-    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~2 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. Target-velocity profile, Case~2: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[\lambda,\lambda,0.1\cos(0.5t)]^\top$~m/s.}
+    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~2 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. None of the four baselines lands soft-precise at any $\lambda$ on Case~2. Target-velocity profile, Case~2: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[\lambda,$ $\lambda,$ $0.1\cos(0.5t)]^\top$~m/s.}
     \label{comparison_multi_speed_linear: figure}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_sinusoidal.pdf}
-    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~3 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. Target-velocity profile, Case~3: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[0.4\lambda\cos(0.8\lambda t),0.3\lambda,0]^\top$~m/s.}
+    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~3 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. None of the four baselines lands soft-precise at any $\lambda$ on Case~3. Target-velocity profile, Case~3: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[0.4\lambda\cos(0.8\lambda t),$ $0.3\lambda,$ $0]^\top$~m/s.}
     \label{comparison_multi_speed_sinusoidal: figure}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_lissajous.pdf}
-    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~4 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. Target-velocity profile, Case~4: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[-0.32\lambda\cos(0.8\lambda t),0.32\lambda\cos(0.4\lambda t),0]^\top$~m/s.}
+    \caption{Target-speed sweep ($\lambda\in\{0.6,\ldots,1.4\}$, dark to bright) of the four baseline controllers on Case~4 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline; each shaded box is the per-$\lambda$ soft-precise allowable landing region. Soft-precise touchdowns are triangles ($\blacktriangle$), crosses ($\times$) otherwise. None of the four baselines lands soft-precise at any $\lambda$ on Case~4. Target-velocity profile, Case~4: $\,^\mathcal{I}\boldsymbol{v}_\text{t}{=}[-0.32\lambda\cos(0.8\lambda t),$ $0.32\lambda\cos(0.4\lambda t),$ $0]^\top$~m/s.}
     \label{comparison_multi_speed_lissajous: figure}
 \end{figure}
 
