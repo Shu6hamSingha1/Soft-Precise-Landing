@@ -2,11 +2,12 @@
 Generate publication plots for the 5-controller comparison study.
 
 Outputs PDFs into Figures/generated/:
-  comparison_traj3d_sinusoidal.pdf — 5 controllers' UAV trajectories on the
-                                      Sinusoidal target (IC4 = [2,2,-5])
-  comparison_summary.pdf            — bar chart of landing time and final
-                                      horizontal error across 5 trajectories
-                                      x 5 controllers
+  comparison_traj3d_<traj>.pdf      — 5 controllers' UAV trajectories on each
+                                      target trajectory (Static..Circular)
+  comparison_summary.pdf            — 1x3 bar chart of landing time, final
+                                      horizontal error, and touchdown softness
+  comparison_combined_circular.pdf  — 1x4: Circular 3D + 3 summary bar charts,
+                                      common bottom-center legend (main paper)
 """
 import os
 import numpy as np
@@ -230,6 +231,89 @@ fig.legend(handles, labels, loc="center left", ncol=1,
            bbox_to_anchor=(0.0, 0.5), frameon=False, fontsize=8)
 fig.tight_layout(rect=(0.18, 0.0, 1.0, 1.0))
 fig.savefig(f"{OUT}/comparison_summary.pdf")
+plt.close(fig)
+
+# ---------- Plot H: Combined 1x4 (3D Circular + 3 summary bar charts) ----------
+# Main-paper Fig.: first subplot is the Circular 3D trajectory; subplots 2-4
+# are the bar charts replicated from comparison_summary.pdf. Common legend at
+# bottom-center, horizontal stacking.
+fig = plt.figure(figsize=(14.0, 3.8))
+ax3d  = fig.add_subplot(1, 4, 1, projection="3d")
+ax_t  = fig.add_subplot(1, 4, 2)
+ax_xy = fig.add_subplot(1, 4, 3)
+ax_v  = fig.add_subplot(1, 4, 4)
+
+# 3D Circular subplot
+m_circ = sio.loadmat(f"{COMP}/Circular_comparison.mat",
+                     squeeze_me=True, struct_as_record=False)
+target_drawn = False
+for run in m_circ["all_results"]:
+    d = run.data
+    N = int(d.idx) if int(d.idx) > 0 else d.X_DS.shape[1]
+    X = d.X_DS[:, :N]
+    name  = str(run.ctrl_name)
+    color = CTRL_COLORS.get(name, "k")
+    disp  = CTRL_DISPLAY.get(name, name)
+    ax3d.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=disp)
+    ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
+    tgt_xyz  = d.x_t[:3, :N]
+    dtgt_xyz = d.dx_t[:3, :N] if hasattr(d, "dx_t") else np.zeros_like(tgt_xyz)
+    xy_err = float(np.linalg.norm(X[:2, -1] - tgt_xyz[:2, -1]))
+    vz_rel = float(abs(X[9, -1] - dtgt_xyz[2, -1]))
+    soft_precise = (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
+    end_marker = "^" if soft_precise else "x"
+    ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color,
+                 marker=end_marker, s=30)
+    if not target_drawn:
+        xt = d.x_t[:, :N]
+        draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])
+        target_drawn = True
+
+ax3d.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=2)
+ax3d.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=2)
+ax3d.set_zlabel("altitude [m]", labelpad=2)
+ax3d.locator_params(axis="x", nbins=4)
+ax3d.locator_params(axis="y", nbins=4)
+ax3d.locator_params(axis="z", nbins=4)
+ax3d.tick_params(pad=1, labelsize=7)
+ax3d.set_title("Case 5: 3-D trajectories", fontsize=9, y=0.98)
+ax3d.view_init(elev=22, azim=-58)
+
+# Bar charts: reuse LAND_TIME / FINAL_XY / FINAL_V already computed above.
+xb = np.arange(len(trajs))
+width = 0.16
+for j, name in enumerate(ctrls):
+    color = CTRL_COLORS[name]
+    disp  = CTRL_DISPLAY[name]
+    ax_t.bar(xb + (j - 2) * width, LAND_TIME[:, j], width, color=color, label=disp)
+    ax_xy.bar(xb + (j - 2) * width, FINAL_XY[:, j], width, color=color)
+    ax_v.bar(xb + (j - 2) * width, FINAL_V[:, j],  width, color=color)
+
+for ax in (ax_t, ax_xy, ax_v):
+    ax.set_xticks(xb)
+    ax.set_xticklabels(traj_labels, rotation=20, fontsize=8)
+    ax.tick_params(axis="y", labelsize=8)
+    ax.grid(axis="y", alpha=0.3)
+
+ax_t.set_ylabel("landing time [s]", fontsize=9)
+ax_t.set_title("Landing time", fontsize=9)
+ax_xy.set_ylabel("final $xy$ error [m]", fontsize=9)
+ax_xy.set_title("Horizontal precision", fontsize=9)
+ax_v.set_ylabel(r"$\|v_\mathrm{rel}\|$ at touchdown [m/s]", fontsize=9)
+ax_v.set_title("Touchdown softness", fontsize=9)
+
+# Common legend at bottom-center, horizontal (5 entries -> ncol=5).
+handles, labels = ax_t.get_legend_handles_labels()
+fig.legend(handles, labels, loc="lower center", ncol=5,
+           bbox_to_anchor=(0.5, 0.0), frameon=False, fontsize=9,
+           handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+# Note: 3D z-label sits on the right side of the 3D box for view_init(22,-58);
+# enlarge wspace so it isn't clipped by the next subplot.
+fig.subplots_adjust(left=0.03, right=0.99, top=0.93, bottom=0.20,
+                    wspace=0.50)
+# pad_inches has no effect without bbox_inches="tight"; bbox_inches="tight"
+# silently drops 3D z-axis labels in matplotlib, so we use plain savefig.
+fig.savefig(f"{OUT}/comparison_combined_circular.pdf")
 plt.close(fig)
 
 print("Wrote comparison plots to:", OUT)

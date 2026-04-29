@@ -558,7 +558,7 @@ def plot_combined(traj):
                fontsize=14, framealpha=0.9, bbox_to_anchor=(0.5, 0.0),
                handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
 
-    fig.suptitle(f"{TRAJ_CASE[traj]}: {TRAJ_TITLE[traj]}",
+    fig.suptitle(f"Landing for Multiple Initial Conditions for {TRAJ_CASE[traj]}",
                  fontsize=24, y=0.99)
 
     # Subplot height pinned to ~4.125 in (= 0.635 fraction of 6.5 in figsize),

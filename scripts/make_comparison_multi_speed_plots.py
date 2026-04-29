@@ -124,7 +124,9 @@ def plot_one_trajectory(traj):
     m = sio.loadmat(path, squeeze_me=True, struct_as_record=False)
     runs = np.atleast_1d(m["results"])
 
-    fig = plt.figure(figsize=(8.5, 7.0))
+    # Match the layout of plasmc_multi_speed_landing.pdf: larger figure,
+    # 20-24 pt fonts, single-line suptitle (velocity eqn lives in caption).
+    fig = plt.figure(figsize=(10.5, 10.5))
     axes = [fig.add_subplot(2, 2, k + 1, projection="3d") for k in range(4)]
     colors = [viridis(i / (len(MULTS) - 1)) for i in range(len(MULTS))]
 
@@ -156,27 +158,33 @@ def plot_one_trajectory(traj):
         # IC marker (initial UAV position [0,0,-5] m → display altitude 5 m)
         ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
 
-        ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=2)
-        ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=2)
-        ax.set_zlabel("altitude [m]", labelpad=2)
+        ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
+        ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
+        ax.set_zlabel("altitude [m]", labelpad=2, fontsize=20)
         ax.locator_params(axis="x", nbins=4)
         ax.locator_params(axis="y", nbins=4)
         ax.locator_params(axis="z", nbins=4)
-        ax.tick_params(pad=1, labelsize=7)
-        ax.set_title(CTRL_TITLE[ctrl_id], fontsize=8, y=1.0)
+        ax.tick_params(pad=1, labelsize=18)
+        ax.set_title(CTRL_TITLE[ctrl_id], fontsize=20, y=0.95)
         ax.view_init(elev=22, azim=-58)
 
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=6,
-               bbox_to_anchor=(0.5, 0.0), frameon=False)
-    fig.suptitle(f"{CASE_OF[traj]}: {traj} Target Trajectory\n{VEL_EQN[traj]}",
-                 fontsize=10, y=0.99)
-    # Layout: tight-fit subplots; then explicitly push their top boundary
-    # up to 0.95 so the gap between suptitle bottom and subplot top is small.
-    # wspace is set explicitly because tight_layout's 2D bbox detection
-    # under-estimates the gutter needed for 3D-axes z-labels.
-    fig.tight_layout(rect=(0, 0.05, 1, 1.0))
-    fig.subplots_adjust(top=0.95, wspace=0.25)
+               bbox_to_anchor=(0.5, 0.0), frameon=False, fontsize=14,
+               handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+    # Single-line suptitle; the per-case velocity equation lives in the
+    # tex caption (matches the plasmc_multi_speed_landing.pdf convention).
+    fig.suptitle(f"Baseline Controllers at Multiple Target Speeds for {CASE_OF[traj]}",
+                 fontsize=24, y=0.99)
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.94, bottom=0.07,
+                        wspace=0.0, hspace=0.0)
+    # Symmetric leftward shift; top row nudged up a touch.
+    for k, ax in enumerate(axes):
+        pos = ax.get_position()
+        is_top = k < 2
+        dy = 0.02 if is_top else 0.0
+        ax.set_position([pos.x0 - 0.02, pos.y0 + dy,
+                         pos.width, pos.height])
     out_path = f"{OUT_DIR}/comparison_multi_speed_{traj.lower()}.pdf"
     # Note: do NOT use bbox_inches="tight" — it ignores 3D z-axis labels
     # (rendered in 3D coords) and crops them out of the right column.

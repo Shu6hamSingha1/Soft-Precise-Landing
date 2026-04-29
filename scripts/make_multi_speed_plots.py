@@ -120,7 +120,9 @@ def load_run(traj, tag=""):
 
 
 def plot_grid(tag, out_name):
-    fig = plt.figure(figsize=(8.5, 7.0))
+    # Larger figure to host the 2x2 grid at the same per-axes font sizes used
+    # in the manuscript's Circular_combined.pdf (label/title/legend = 20-24 pt).
+    fig = plt.figure(figsize=(10.5, 10.5))
     axes = [fig.add_subplot(2, 2, k + 1, projection="3d") for k in range(4)]
 
     colors = [viridis(i / (len(MULTS) - 1)) for i in range(len(MULTS))]
@@ -160,30 +162,41 @@ def plot_grid(tag, out_name):
             ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=c,
                        marker=end_marker, s=28, zorder=6)
         ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
-        ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=2)
-        ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=2)
-        ax.set_zlabel("altitude [m]", labelpad=2)
+        # Match Circular_combined.pdf 3-D subplot styling.
+        ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)
+        ax.set_ylabel(r"$\,^\mathcal{I}y$ [m]", labelpad=12, fontsize=20)
+        ax.set_zlabel("altitude [m]", labelpad=2, fontsize=20)
         ax.locator_params(axis="x", nbins=4)
         ax.locator_params(axis="y", nbins=4)
         ax.locator_params(axis="z", nbins=4)
         _case = {"Linear": "Case 2", "Sinusoidal": "Case 3",
                  "Circular": "Case 5", "Lissajous": "Case 4"}
-        _vel = {
-            "Linear":     r"$\,^\mathcal{I}\boldsymbol{v}_\text{t} = [\lambda,\,\lambda,\,0.1\cos(0.5\,t)]^\top$ m/s",
-            "Sinusoidal": r"$\,^\mathcal{I}\boldsymbol{v}_\text{t} = [0.4\lambda\cos(0.8\lambda t),\,0.3\lambda,\,0]^\top$ m/s",
-            "Lissajous":  r"$\,^\mathcal{I}\boldsymbol{v}_\text{t} = [-0.32\lambda\cos(0.8\lambda t),\,0.32\lambda\cos(0.4\lambda t),\,0]^\top$ m/s",
-            "Circular":   r"$\,^\mathcal{I}\boldsymbol{v}_\text{t} = [0.125\lambda\sin(0.25\lambda t),\,0.125\lambda\cos(0.25\lambda t),\,0.1\cos(0.5\,t)]^\top$ m/s",
-        }
-        ax.set_title(f"{_case[traj]}: {traj} Target Trajectory\n{_vel[traj]}",
-                     fontsize=8, y=1.0)
+        # Single-line subplot title; per-case velocity equations live in the
+        # tex caption.
+        ax.set_title(f"{_case[traj]}: {traj}", fontsize=20, y=0.95)
         ax.view_init(elev=22, azim=-58)
-        ax.tick_params(pad=1, labelsize=7)
+        ax.tick_params(pad=1, labelsize=18)
 
-    # Shared legend at the bottom
+    # Shared legend at the bottom — same fontsize as the IC legend in
+    # Circular_combined.pdf for visual uniformity.
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=6,
-               bbox_to_anchor=(0.5, 0.0), frameon=False)
-    fig.tight_layout(rect=(0, 0.05, 1, 1))
+               bbox_to_anchor=(0.5, 0.0), frameon=False, fontsize=14,
+               handlelength=1.6, columnspacing=2.0, handletextpad=0.6)
+    # Suptitle in the same format as Circular_combined.pdf (fontsize=24, y=0.99).
+    fig.suptitle("Landing at Multiple Speeds of Mobile Target Trajectories",
+                 fontsize=24, y=0.99)
+    # Tight everywhere: suptitle near top (y=0.99); subplots span almost the
+    # full middle (top=0.94, bottom=0.07); rows share a common boundary
+    # (hspace=0.0) so the inter-row gap collapses.
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.94, bottom=0.07,
+                        wspace=0.0, hspace=0.0)
+    for k, ax in enumerate(axes):
+        pos = ax.get_position()
+        is_top = k < 2
+        dy = 0.02 if is_top else 0.0
+        ax.set_position([pos.x0 - 0.02, pos.y0 + dy,
+                         pos.width, pos.height])
     path = f"{OUT_DIR}/{out_name}"
     # bbox_inches="tight" drops 3D z-axis labels in matplotlib; use plain savefig.
     fig.savefig(path, pad_inches=0.05)
