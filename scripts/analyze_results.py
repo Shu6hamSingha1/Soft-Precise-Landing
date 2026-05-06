@@ -20,7 +20,7 @@ import numpy as np
 
 DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Comparison' / 'Datasets'
 
-NAMES = ['PLASMC', 'Lin2022', 'Zhang2026', 'Chen2025', 'Cho2022']
+NAMES = ['DF-ASMC', 'Lin2022', 'Zhang2026', 'Chen2025', 'Cho2022']
 DT = 0.01
 N_MAX = 4000
 LAND_THRESHOLD = 0.5  # m — alt<=0.4 && xy<=0.5 in MATLAB; use 3D proxy
@@ -225,7 +225,7 @@ def print_detail(ctrl_id, c):
                       f'std(h)=[{h_std[0]:.3f},{h_std[1]:.3f},{h_std[2]:.3f}]  '
                       f'max_jump={h_jump:.3f}')
 
-    # ---- PLASMC barrier proximity (if p_2 available) ----
+    # ---- DF-ASMC barrier proximity (if p_2 available) ----
     if 'p_2' in d and d['p_2'] is not None:
         p2 = d['p_2']
         if hasattr(p2, 'shape') and p2.ndim == 2 and p2.shape[1] >= idx and 'D_DS' in d:

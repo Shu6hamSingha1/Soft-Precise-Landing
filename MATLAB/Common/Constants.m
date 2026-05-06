@@ -15,7 +15,7 @@ res = [320;240];  % Image resolution
 
 %% Defining system constants
 g = [0;0;9.81];
-h_rd = -0.42;                     % slowed further (-0.50->-0.46->-0.42) to close Linear IC5 soft threshold
+h_rd = -0.42;                     % slowed further (-0.50->-0.46->-0.42) to close Linear IC5 soft threshold; -0.38 over-slows and kills IC4 hover-authority
 
 e3 = [0;0;1];
 
@@ -31,6 +31,6 @@ tau_z_max  = 1.0;    % N·m
 
 K.p_10 = [res(2)/2/f; res(1)/2/f];
 
-FILTER_WINDOW = 21;
+FILTER_WINDOW = 11;
 
 eps = 1e-6;

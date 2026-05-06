@@ -6,7 +6,6 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
     if nargin < 5, cfg_override = []; end
     if nargin < 6, seed = []; end
-    load("bestParam.mat");
     if ~isempty(seed)
         rng(seed);
     elseif isempty(K_override)
@@ -47,9 +46,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
     K_ctrl.p_10     = K.p_10;                     % sensor-half, used for r_e normalization (Approach 2)
 
-    K_ctrl.zp = diag([9.0, 9.0]);                 % Combo D: x1.5 from 6.0 (deep-sweep precision winner, -25% maxXY)
-    K_ctrl.zi = diag([0.1, 0.1]);
-    K_ctrl.zd = diag([1.4375, 1.4375]);           % Combo D: x1.25 from 1.15 (D-damping pair for zp x1.5; recovers soft margin)
+    K_ctrl.rp = diag([9.0, 9.0]);                 % Combo D: x1.5 from 6.0 (deep-sweep precision winner, -25% maxXY)
+    K_ctrl.ri = diag([0.1, 0.1]);
+    K_ctrl.rd = diag([1.4375, 1.4375]);           % Combo D: x1.25 from 1.15 (D-damping pair for rp x1.5; recovers soft margin)
 
     K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
     K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
@@ -60,7 +59,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
     K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
     K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-    K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with zd=1.15); 1.1 was saturated
+    K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
 
     % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
     K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
@@ -77,7 +76,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     K_ctrl.kappa_a_0 = 2.0;                       % pre-seed for high-wz rotating targets
     K_ctrl.E_a       = 3.0;                       % wide boundary layer smooths sat*kappa_a
 
-    % FoV-adaptive cone clamp (Approach 2)
+    % funnel-margin cone clamp (Approach 2)
     K_ctrl.rho_fov_0   = [145; 105];              % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
     K_ctrl.rho_fov_inf = [40; 40];                % terminal pixel margin (px) — widened to keep cone authority
     K_ctrl.l_fov       = 0.1;                     % reverted from Combo A (faster cone decay was a speed knob, not precision)
@@ -187,7 +186,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     iV_s_e_n     = zeros(2, N_steps);
     raw_dV_s_e_n = zeros(2, N_steps + 3);
 
-    % FoV-adaptive cone clamp logging (Approach 2)
+    % funnel-margin cone clamp logging (Approach 2)
     rho_fov_log    = zeros(2, N_steps);
     d_min_log      = zeros(1, N_steps);
     theta_cur_log  = zeros(1, N_steps);
@@ -365,7 +364,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % *********************************************************************
     % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
     % No virtual-feature visibility funnel: physical-corner visibility is
-    % enforced downstream by the FoV-adaptive cone clamp on I_a_cd.
+    % enforced downstream by the funnel-margin cone clamp on I_a_cd.
     % *********************************************************************
         V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
         V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
@@ -379,7 +378,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         end
         dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
 
-        V_ds_d_xy = -K_ctrl.zp*V_s_e_n(:,idx) - K_ctrl.zi*iV_s_e_n(:,idx) - K_ctrl.zd*dV_s_e_n;
+        V_ds_d_xy = -K_ctrl.rp*V_s_e_n(:,idx) - K_ctrl.ri*iV_s_e_n(:,idx) - K_ctrl.rd*dV_s_e_n;
         V_ds_d    = [V_ds_d_xy; 0.0];
 
         V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
@@ -452,7 +451,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         end
 
     % *********************************************************************
-    % FoV-adaptive cone clamp (Approach 2)
+    % funnel-margin cone clamp (Approach 2)
     %   theta_current = acos(I_R_C(3,3))
     %   rho_fov(t)    = shrinking box half-widths centered on image center
     %   d_min         = min axis-wise margin of any physical corner to box

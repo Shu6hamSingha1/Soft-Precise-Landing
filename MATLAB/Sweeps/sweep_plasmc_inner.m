@@ -6,6 +6,11 @@
 
 clc; clear;
 
+this_dir = fileparts(mfilename('fullpath'));
+addpath(this_dir);
+addpath(fullfile(this_dir, '..', 'Multi_init_cond'));
+addpath(fullfile(this_dir, '..', 'Common'));
+
 trajType = "Linear";
 group    = "inner";
 

@@ -1,9 +1,9 @@
-"""Static check: labels, refs, citations, brace balance for the 3 .tex files."""
+"""Static check: labels, refs, citations, brace balance for the 4 .tex files."""
 import re, os
 from pathlib import Path
 
 MANUSCRIPT_DIR = Path(__file__).resolve().parent.parent / "Soft_Precise_Landing"
-FILES = ["manuscript.tex", "control_formulation.tex", "results.tex"]
+FILES = ["manuscript.tex", "control_formulation.tex", "results.tex", "supplemental.tex"]
 
 text = {}
 for f in FILES:

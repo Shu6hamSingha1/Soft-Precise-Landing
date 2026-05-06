@@ -17,9 +17,11 @@ produced by Multi_init_cond/multi_Init_Var.m.
 
 The 3D plots draw a target corridor (xy ±0.08 m around the trajectory,
 vertical extent 0.20 m above the true target altitude) representing the
-soft-precise allowable landing region. The 3D landing marker is a
-triangle ('^') for soft-precise touchdowns (xy <= 0.08 m AND |v_z_rel| <=
-0.20 m/s) and a cross ('x') otherwise.
+soft-precise allowable landing region. The 3D landing markers follow
+the 5-category outcome scheme of `feedback_landing_marker_convention.md`:
+'^' filled triangle (soft-precise), 'D' open diamond (precise only),
+'o' open circle (soft only), 'v' open down-triangle (touched down,
+neither), 'x' cross (failed to reach target surface).
 """
 import os
 import numpy as np
@@ -59,7 +61,7 @@ TRAJ_TITLE = {"Static": "Static Target", "Linear": "Linear Target Trajectory",
 RUN_COLORS = ["C0", "C1", "C2", "C3", "C4"]
 
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
-SOFT_VZ_REL_MPS  = 0.20    # soft-landing relative vertical-speed threshold
+SOFT_V_REL_MPS   = 0.20    # soft-landing 3-D relative-speed threshold
 Z_F_M            = 0.20    # above-target gap at termination (corridor vertical height)
 
 
@@ -149,15 +151,32 @@ def _last_valid_p(P_DS, n_max):
     return max(j, 0)
 
 
-def _is_soft_precise(d, n):
-    """Return True iff the touchdown sample (index n-1) satisfies the
-    soft+precise criterion (xy <= 0.08 m AND |v_z_rel| <= 0.20 m/s)."""
-    X   = d.X_DS[:, :n]
-    tgt = d.x_t[:3, :n]
-    dtgt = d.dx_t[:3, :n] if hasattr(d, "dx_t") else np.zeros_like(tgt)
-    xy_err = float(np.linalg.norm(X[:2, -1] - tgt[:2, -1]))
-    vz_rel = float(abs(X[9, -1] - dtgt[2, -1]))
-    return (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
+def _classify_outcome(run):
+    """Return (marker, filled) for the 5-category scheme:
+       ('^', True)  — soft-precise (success & precise & soft)
+       ('D', False) — precise only  (success & precise & !soft)
+       ('o', False) — soft only     (success & !precise & soft)
+       ('v', False) — neither, but touched down
+       ('x', True)  — failed to reach target surface (!success)
+    Reads MATLAB run_simulation.m result-struct flags directly."""
+    if not bool(getattr(run, "success", False)):
+        return ('x', True)
+    p = bool(getattr(run, "precise", False))
+    s = bool(getattr(run, "soft",    False))
+    if   p and s: return ('^', True)
+    elif p:       return ('D', False)
+    elif s:       return ('o', False)
+    else:         return ('v', False)
+
+
+def _scatter_outcome(ax, x, y, z, color, run):
+    """Plot the touchdown marker per the 5-category scheme."""
+    marker, filled = _classify_outcome(run)
+    if filled:
+        ax.scatter(x, y, z, color=color, marker=marker, s=30)
+    else:
+        ax.scatter(x, y, z, facecolors='none', edgecolors=color,
+                   marker=marker, s=30, linewidths=1.0)
 
 
 def _idx_of(d):
@@ -198,9 +217,8 @@ def plot_3d(traj):
                 label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax.scatter(X[0, 0], X[1, 0], -X[2, 0],
                    color=RUN_COLORS[k], marker="o", s=20)
-        end_marker = "^" if _is_soft_precise(d, n) else "x"
-        ax.scatter(X[0, -1], X[1, -1], -X[2, -1],
-                   color=RUN_COLORS[k], marker=end_marker, s=30)
+        _scatter_outcome(ax, X[0, -1], X[1, -1], -X[2, -1],
+                         RUN_COLORS[k], run)
         if n > longest_n:
             longest_n = n
             longest = d
@@ -423,9 +441,8 @@ def plot_combined(traj):
                  label=rf"IC$_{k+1}$: $({ic[0]:.0f},{ic[1]:.0f},{-ic[2]:.0f})$")
         ax3.scatter(X[0, 0], X[1, 0], -X[2, 0],
                     color=RUN_COLORS[k], marker="o", s=20)
-        end_marker = "^" if _is_soft_precise(d, n) else "x"
-        ax3.scatter(X[0, -1], X[1, -1], -X[2, -1],
-                    color=RUN_COLORS[k], marker=end_marker, s=30)
+        _scatter_outcome(ax3, X[0, -1], X[1, -1], -X[2, -1],
+                         RUN_COLORS[k], run)
         if n > longest_n:
             longest_n = n
             longest = d

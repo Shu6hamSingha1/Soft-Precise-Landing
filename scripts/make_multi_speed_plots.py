@@ -16,9 +16,11 @@ the UAV descent trajectory at all five speed multipliers, colored by a
 viridis colormap, with a faint dashed target path at lambda=1.0 for
 reference and a marker at each touchdown point. The displayed target
 altitude is offset by +0.2 m so the target line floats above the ground
-plane. The touchdown marker is a triangle ('^') for soft-precise
-landings (xy <= 0.08 m AND |v_z_rel| <= 0.20 m/s) and a cross ('x')
-otherwise.
+plane. Touchdown markers follow the 5-category scheme of
+`feedback_landing_marker_convention.md`: '^' filled triangle
+(soft-precise), 'D' open diamond (precise only), 'o' open circle
+(soft only), 'v' open down-triangle (touched down, neither),
+'x' cross (failed to reach target surface).
 """
 import os
 import numpy as np
@@ -51,7 +53,7 @@ TRAJS = ["Linear", "Sinusoidal", "Lissajous", "Circular"]
 MULTS = [0.6, 0.8, 1.0, 1.2, 1.4]
 
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
-SOFT_VZ_REL_MPS  = 0.20    # soft-landing relative vertical-speed threshold
+SOFT_V_REL_MPS   = 0.20    # soft-landing 3-D relative-speed threshold
 Z_F_M            = 0.20    # above-target gap at termination (corridor vertical height)
 
 
@@ -101,15 +103,27 @@ def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
     ax.plot(xR, yR, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
 
 
-def _is_soft_precise(d, n):
-    """Return True iff the touchdown sample (index n-1) satisfies the
-    soft+precise criterion (xy <= 0.08 m AND |v_z_rel| <= 0.20 m/s)."""
-    X = d.X_DS[:, :n]
-    tgt = d.x_t[:3, :n]
-    dtgt = d.dx_t[:3, :n] if hasattr(d, "dx_t") else np.zeros_like(tgt)
-    xy_err = float(np.linalg.norm(X[:2, -1] - tgt[:2, -1]))
-    vz_rel = float(abs(X[9, -1] - dtgt[2, -1]))
-    return (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
+def _classify_outcome(run):
+    """Return (marker, filled) for the 5-category scheme — see
+    `feedback_landing_marker_convention.md`. Reads MATLAB result-struct
+    flags (`success`, `precise`, `soft`) directly."""
+    if not bool(getattr(run, "success", False)):
+        return ('x', True)
+    p = bool(getattr(run, "precise", False))
+    s = bool(getattr(run, "soft",    False))
+    if   p and s: return ('^', True)
+    elif p:       return ('D', False)
+    elif s:       return ('o', False)
+    else:         return ('v', False)
+
+
+def _scatter_outcome(ax, x, y, z, color, run, s=28, zorder=6):
+    marker, filled = _classify_outcome(run)
+    if filled:
+        ax.scatter(x, y, z, color=color, marker=marker, s=s, zorder=zorder)
+    else:
+        ax.scatter(x, y, z, facecolors='none', edgecolors=color,
+                   marker=marker, s=s, linewidths=1.0, zorder=zorder)
 
 
 def load_run(traj, tag=""):
@@ -158,9 +172,8 @@ def plot_grid(tag, out_name):
             c = colors[idx_local]
             ax.plot(X[0], X[1], -X[2], color=c, lw=1.4,
                     label=rf"$\lambda={mults[i]:.1f}$")
-            end_marker = "^" if _is_soft_precise(d, N) else "x"
-            ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=c,
-                       marker=end_marker, s=28, zorder=6)
+            _scatter_outcome(ax, X[0, -1], X[1, -1], -X[2, -1],
+                             c, results[i], s=28, zorder=6)
         ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
         # Match Circular_combined.pdf 3-D subplot styling.
         ax.set_xlabel(r"$\,^\mathcal{I}x$ [m]", labelpad=12, fontsize=20)

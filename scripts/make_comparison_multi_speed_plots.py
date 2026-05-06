@@ -6,7 +6,7 @@ and per-trajectory: one PDF per moving trajectory, with a 2x2 grid of
 subplots (Lin 2022, Zhang 2026, Chen 2025, Cho 2022). Each subplot overlays
 the controller's UAV descent at five speed multipliers lambda in {0.6, 0.8,
 1.0, 1.2, 1.4}, with per-lambda soft-precise allowable landing corridor and
-triangle/cross touchdown markers.
+5-category touchdown markers (see `feedback_landing_marker_convention.md`).
 
 Reads:
   MATLAB/Comparison/Datasets/<traj>_multi_speed_comparison.mat
@@ -47,7 +47,7 @@ TRAJS = ["Linear", "Sinusoidal", "Lissajous", "Circular"]
 MULTS = [0.6, 0.8, 1.0, 1.2, 1.4]
 
 PRECISE_XY_M    = 0.08
-SOFT_VZ_REL_MPS = 0.20
+SOFT_V_REL_MPS  = 0.20
 Z_F_M           = 0.20
 
 CTRL_ORDER  = [2, 3, 4, 5]
@@ -108,13 +108,27 @@ def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
     ax.plot(xR, yR, zB, color=edge_color, lw=edge_lw, ls=edge_ls)
 
 
-def is_soft_precise(d, n):
-    X = d.X_DS[:, :n]
-    tgt = d.x_t[:3, :n]
-    dtgt = d.dx_t[:3, :n] if hasattr(d, "dx_t") else np.zeros_like(tgt)
-    xy_err = float(np.linalg.norm(X[:2, -1] - tgt[:2, -1]))
-    vz_rel = float(abs(X[9, -1] - dtgt[2, -1]))
-    return (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
+def _classify_outcome(run):
+    """5-category touchdown-marker scheme — see
+    `feedback_landing_marker_convention.md`. Reads MATLAB result-struct
+    flags (`success`, `precise`, `soft`) directly."""
+    if not bool(getattr(run, "success", False)):
+        return ('x', True)
+    p = bool(getattr(run, "precise", False))
+    s = bool(getattr(run, "soft",    False))
+    if   p and s: return ('^', True)
+    elif p:       return ('D', False)
+    elif s:       return ('o', False)
+    else:         return ('v', False)
+
+
+def _scatter_outcome(ax, x, y, z, color, run, s=28, zorder=6):
+    marker, filled = _classify_outcome(run)
+    if filled:
+        ax.scatter(x, y, z, color=color, marker=marker, s=s, zorder=zorder)
+    else:
+        ax.scatter(x, y, z, facecolors='none', edgecolors=color,
+                   marker=marker, s=s, linewidths=1.0, zorder=zorder)
 
 
 def plot_one_trajectory(traj):
@@ -152,9 +166,8 @@ def plot_one_trajectory(traj):
             c = colors[li]
             ax.plot(X[0], X[1], -X[2], color=c, lw=1.4,
                     label=rf"$\lambda={mu:.1f}$")
-            end_marker = "^" if is_soft_precise(d, N) else "x"
-            ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=c,
-                       marker=end_marker, s=28, zorder=6)
+            _scatter_outcome(ax, X[0, -1], X[1, -1], -X[2, -1],
+                             c, run, s=28, zorder=6)
         # IC marker (initial UAV position [0,0,-5] m → display altitude 5 m)
         ax.scatter(0, 0, 5, color="k", marker="o", s=30, zorder=7)
 

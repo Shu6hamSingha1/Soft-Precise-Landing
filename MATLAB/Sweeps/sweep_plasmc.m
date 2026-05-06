@@ -7,6 +7,11 @@
 
 clc; clear;
 
+this_dir = fileparts(mfilename('fullpath'));
+addpath(this_dir);
+addpath(fullfile(this_dir, '..', 'Multi_init_cond'));
+addpath(fullfile(this_dir, '..', 'Common'));
+
 trajType = "Linear";   % change to test different trajectory
 group    = "outer";    % "outer" | "inner" — for filename
 
@@ -32,9 +37,9 @@ param_list = {
     'gamma_1', [0.2,0.2],    0;
     'p_1inf',  [0.2;0.2],    0;
     % --- Outer PID on zeta_1 ---
-    'zp',      diag([4,4]),  0;
-    'zi',      diag([0.1,0.1]), 0;
-    'zd',      diag([1.3,1.3]), 0;
+    'rp',      diag([4,4]),  0;
+    'ri',      diag([0.1,0.1]), 0;
+    'rd',      diag([1.3,1.3]), 0;
     % --- Optical flow funnel ---
     'gamma_2', [0.2,0.2,0.2], 0;
     'p_20',    [12;12;5],    1;   % horizontal x

@@ -55,8 +55,31 @@ CTRL_DISPLAY = {
 
 # ---------- Plot F: 3D trajectories on Circular (deck) target ----------
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
-SOFT_VZ_REL_MPS  = 0.20    # soft-landing relative vertical-speed threshold
+SOFT_V_REL_MPS   = 0.20    # soft-landing 3-D relative-speed threshold
 Z_F_M            = 0.20    # above-target gap at termination (corridor vertical height)
+
+
+def _classify_outcome(run):
+    """5-category touchdown-marker scheme — see
+    `feedback_landing_marker_convention.md`. Reads MATLAB result-struct
+    flags (`success`, `precise`, `soft`) directly."""
+    if not bool(getattr(run, "success", False)):
+        return ('x', True)
+    p = bool(getattr(run, "precise", False))
+    s = bool(getattr(run, "soft",    False))
+    if   p and s: return ('^', True)
+    elif p:       return ('D', False)
+    elif s:       return ('o', False)
+    else:         return ('v', False)
+
+
+def _scatter_outcome(ax, x, y, z, color, run, s=30):
+    marker, filled = _classify_outcome(run)
+    if filled:
+        ax.scatter(x, y, z, color=color, marker=marker, s=s)
+    else:
+        ax.scatter(x, y, z, facecolors='none', edgecolors=color,
+                   marker=marker, s=s, linewidths=1.0)
 
 
 def draw_landing_corridor(ax, xt, yt, zt, half_xy=PRECISE_XY_M,
@@ -128,14 +151,7 @@ for traj, (case, title_traj) in _TRAJ_TITLE.items():
         disp  = CTRL_DISPLAY.get(name, name)
         ax.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=disp)
         ax.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
-        tgt_xyz  = d.x_t[:3, :N]
-        dtgt_xyz = d.dx_t[:3, :N] if hasattr(d, "dx_t") else np.zeros_like(tgt_xyz)
-        xy_err = float(np.linalg.norm(X[:2, -1] - tgt_xyz[:2, -1]))
-        vz_rel = float(abs(X[9, -1] - dtgt_xyz[2, -1]))
-        soft_precise = (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
-        end_marker = "^" if soft_precise else "x"
-        ax.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color,
-                   marker=end_marker, s=30)
+        _scatter_outcome(ax, X[0, -1], X[1, -1], -X[2, -1], color, run)
         if not target_drawn:
             xt = d.x_t[:, :N]
             draw_landing_corridor(ax, xt[0], xt[1], xt[2],
@@ -260,14 +276,7 @@ for run in m_circ["all_results"]:
     disp  = CTRL_DISPLAY.get(name, name)
     ax3d.plot(X[0], X[1], -X[2], color=color, lw=1.3, label=disp)
     ax3d.scatter(X[0, 0], X[1, 0], -X[2, 0], color=color, marker="o", s=20)
-    tgt_xyz  = d.x_t[:3, :N]
-    dtgt_xyz = d.dx_t[:3, :N] if hasattr(d, "dx_t") else np.zeros_like(tgt_xyz)
-    xy_err = float(np.linalg.norm(X[:2, -1] - tgt_xyz[:2, -1]))
-    vz_rel = float(abs(X[9, -1] - dtgt_xyz[2, -1]))
-    soft_precise = (xy_err <= PRECISE_XY_M) and (vz_rel <= SOFT_VZ_REL_MPS)
-    end_marker = "^" if soft_precise else "x"
-    ax3d.scatter(X[0, -1], X[1, -1], -X[2, -1], color=color,
-                 marker=end_marker, s=30)
+    _scatter_outcome(ax3d, X[0, -1], X[1, -1], -X[2, -1], color, run)
     if not target_drawn:
         xt = d.x_t[:, :N]
         draw_landing_corridor(ax3d, xt[0], xt[1], xt[2])

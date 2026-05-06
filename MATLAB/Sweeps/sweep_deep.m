@@ -1,6 +1,6 @@
 %% PLASMC DEEP PARAMETER SWEEP — CROSS-TRAJECTORY
 % Sweeps every outer + inner control parameter at mults [0.5, 0.75, 1.25, 1.5]
-% across all 4 moving trajectories (Linear, Sinusoidal, Circular, Lissajous)
+% across all 4 moving trajectories (Linear, Sinusoidal, Lissajous, Circular)
 % using 5 deterministic ICs.  Scores each (param, mult) by:
 %   - min land rate across trajs (primary — must be 5/5 on all 4 for "safe")
 %   - aggregate mean_t across trajs (faster = better)
@@ -17,19 +17,25 @@ clc; clear;
 
 this_dir = fileparts(mfilename('fullpath'));
 addpath(this_dir);
-addpath(fullfile(this_dir, '..'));            % run_simulation, InitVar, etc.
-addpath(fullfile(this_dir, '..', '..', 'Common'));  % traj_Gen canonical
+addpath(fullfile(this_dir, '..', 'Multi_init_cond'));  % run_simulation, InitVar
+addpath(fullfile(this_dir, '..', 'Common'));
 
-trajList = ["Linear","Sinusoidal","Circular","Lissajous"];
+% Synced to multi_Init_Var.m (2026-04-16): same trajList, same IC set, and
+% same per-run cfg_override/seed injection so any cell that passes the sweep
+% gate will also pass the 50/50 multi-init gate.
+trajList = ["Static","Linear","Sinusoidal","Lissajous","Circular"];
 
 p0 = [
-    0,0,-5;
-    0,0,-7;
-    0,0,-3;
-    2,2,-5;
-    -2,-2,-5
+    0,  0, -5;
+    2,  2, -5;
+    2, -2, -5;
+    2,  2, -7;
+    2,  2, -3
 ];
 numRuns = size(p0,1);
+
+% Realistic disturbance leg (matches multi_Init_Var.m realistic cfg).
+cfg_override = struct('NOISE', 1, 'GE', 1, 'delay', 1);
 
 mults = [0.5, 0.75, 1.25, 1.5];
 
@@ -38,44 +44,46 @@ mults = [0.5, 0.75, 1.25, 1.5];
 %   index = 0  -> scale all diag/vec entries together
 %   index > 0  -> scale only that 1-based entry
 % ---------------------------------------------------------------------
-% NOTE: Baselines below must match current K_ctrl in run_simulation.m.
-% 2026-04-14 post-retune lock: widened p_20, tightened p_1inf/p_2inf, raised
-% Gamma/kappa_0, replaced attitude PID with geometric SO(3) (kR, kOmega),
-% and retuned yaw ASMC (Omega_a, Gamma_a, n_a, kappa_a_0, E_a).
+% NOTE: Baselines below are placeholders — auto-synced from K_PLASMC (outer+
+% inner) and Constants workspace (const) below before the sweep runs.
+% Post-Approach 2 (2026-04-18): visibility-funnel params (gamma_1, p_1inf)
+% removed; funnel-margin cone params (rho_fov_inf, l_fov, theta_cap) added;
+% Constants-level h_rd and FILTER_WINDOW added as sweepable knobs.
 param_list = {
     % ============== OUTER ==============
-    % Visibility funnel (zeta_1 / image error)
-    'gamma_1', [0.2,0.2],              0, 'outer';
-    'p_1inf',  [0.08;0.08],            0, 'outer';
-    % Outer PID on zeta_1
-    'zp',      diag([6,6]),            0, 'outer';
-    'zi',      diag([0.1,0.1]),        0, 'outer';
-    'zd',      diag([1.3,1.3]),        0, 'outer';
+    % Raw-error PID on V_s_e_n (Approach 2)
+    'rp',      diag([6,6]),               0, 'outer';
+    'ri',      diag([0.1,0.1]),           0, 'outer';
+    'rd',      diag([1.15,1.15]),         0, 'outer';
     % Optical-flow funnel (zeta_2)
-    'gamma_2', [0.2,0.2,0.2],          0, 'outer';
-    'p_20',    [25;25;8],              1, 'outer';   % lateral
-    'p_20',    [25;25;8],              3, 'outer';   % vertical
-    'p_2inf',  [0.8;0.8;1.0],          1, 'outer';
-    'p_2inf',  [0.8;0.8;1.0],          3, 'outer';
+    'gamma_2', [0.2,0.2,0.2],             0, 'outer';
+    'p_20',    [25;25;4],                 1, 'outer';   % lateral
+    'p_20',    [25;25;4],                 3, 'outer';   % vertical
+    'p_2inf',  [2.5;2.5;1.5],             1, 'outer';   % lateral
+    'p_2inf',  [2.5;2.5;1.5],             3, 'outer';   % vertical
     % Sliding-mode law
-    'Omega',   diag([0.003,0.003,0.006]),  1, 'outer'; % lateral
-    'Omega',   diag([0.003,0.003,0.006]),  3, 'outer'; % vertical
-    'Gamma',   diag([0.4375,0.5,0.75]),    1, 'outer'; % x (lock-broken)
-    'Gamma',   diag([0.4375,0.5,0.75]),    2, 'outer'; % y
-    'Gamma',   diag([0.4375,0.5,0.75]),    3, 'outer'; % z
-    'E',       diag([1.0,1.0,0.5]),        1, 'outer';
-    'E',       diag([1.0,1.0,0.5]),        3, 'outer';
+    'Omega',   diag([0.05,0.05,0.025]),   1, 'outer';   % lateral
+    'Omega',   diag([0.05,0.05,0.025]),   3, 'outer';   % vertical
+    'Gamma',   diag([0.4375,0.5,0.75]),   1, 'outer';   % x
+    'Gamma',   diag([0.4375,0.5,0.75]),   2, 'outer';   % y
+    'Gamma',   diag([0.4375,0.5,0.75]),   3, 'outer';   % z
+    'E',       diag([1.0,1.0,1.0]),       1, 'outer';
+    'E',       diag([1.0,1.0,1.0]),       3, 'outer';
     % Adaptive law
-    'N',       diag([0.02,0.02,0.05]),     0, 'outer';
-    'P',       diag([1.5,1.5,5]),          0, 'outer';
-    'kappa_0', [0.125;0.125;0.25],         0, 'outer';
+    'N',       diag([0.02,0.02,0.05]),    0, 'outer';
+    'P',       diag([1.5,1.5,5]),         0, 'outer';
+    'kappa_0', [0.125;0.125;0.25],        0, 'outer';
+    % funnel-margin cone clamp (Approach 2)
+    'rho_fov_inf', [40;40],               0, 'outer';
+    'l_fov',       0.1,                   0, 'outer';
+    'theta_cap',   deg2rad(60),           0, 'outer';
 
     % ============== INNER ==============
-    % Geometric SO(3) attitude (replaces former PID block)
-    'kR',        diag([1.5, 1.5, 0.5]),    1, 'inner'; % roll/pitch (x=y)
-    'kR',        diag([1.5, 1.5, 0.5]),    3, 'inner'; % yaw
-    'kOmega',    diag([0.3, 0.3, 0.1]),    1, 'inner';
-    'kOmega',    diag([0.3, 0.3, 0.1]),    3, 'inner';
+    % Geometric SO(3) attitude
+    'kR',        diag([1.5, 1.5, 0.5]),   1, 'inner';   % roll/pitch
+    'kR',        diag([1.5, 1.5, 0.5]),   3, 'inner';   % yaw
+    'kOmega',    diag([0.3, 0.3, 0.1]),   1, 'inner';
+    'kOmega',    diag([0.3, 0.3, 0.1]),   3, 'inner';
     % Yaw adaptive SMC
     'Omega_a',   0.5,   0, 'inner';
     'Gamma_a',   0.5,   0, 'inner';
@@ -83,7 +91,33 @@ param_list = {
     'p_a',       2,     0, 'inner';
     'kappa_a_0', 2.0,   0, 'inner';
     'E_a',       3.0,   0, 'inner';
+
+    % ============== CONSTANTS (Common/Constants.m) ==============
+    'h_rd',          -0.42, 0, 'const';                 % descent-profile scalar
+    'FILTER_WINDOW', 21,    0, 'const';                 % Sav-Gol window (must stay odd)
 };
+
+% ---------------------------------------------------------------------
+% AUTO-SYNC: overwrite column 2 of param_list with the currently-locked
+% values from K_PLASMC (InitGains_Comparison.m). This prevents the sweep
+% from perturbing a stale reference point whenever the locked gains drift.
+% Only the 'base' column is replaced; index/group remain as declared.
+% ---------------------------------------------------------------------
+addpath(fullfile(this_dir, '..', 'Comparison'));
+Constants;             % populates K.p_10, h_rd, FILTER_WINDOW in workspace
+InitGains_Comparison;  % populates K_PLASMC using K.p_10
+for pp = 1:size(param_list,1)
+    fname = param_list{pp,1};
+    if isfield(K_PLASMC, fname)
+        param_list{pp,2} = K_PLASMC.(fname);
+    elseif exist(fname, 'var') == 1
+        % Constants-workspace scalar (h_rd, FILTER_WINDOW)
+        param_list{pp,2} = eval(fname);
+    else
+        warning('sweep_deep: no source for %s — keeping declared base', fname);
+    end
+end
+clear pp fname;
 
 n_params = size(param_list,1);
 n_trajs  = numel(trajList);
@@ -104,7 +138,7 @@ fprintf('\n=========== BASELINE ===========\n');
 for t = 1:n_trajs
     trajType = trajList(t);
     fprintf('\n--- baseline %s ---\n', trajType);
-    [nl,mt,mxy,maxxy] = run_5ic(p0,numRuns,trajType,struct());
+    [nl,mt,mxy,maxxy] = run_5ic(p0,numRuns,trajType,struct(),cfg_override);
     baseline(t).traj    = trajType;
     baseline(t).n_land  = nl;
     baseline(t).mean_t  = mt;
@@ -129,6 +163,11 @@ for p = 1:n_params
         ovr = struct();
         if isscalar(base)
             new_v = base * m;
+            % FILTER_WINDOW must be an odd integer (sgolayfilt requirement)
+            if strcmp(name, 'FILTER_WINDOW')
+                new_v = round(new_v);
+                if mod(new_v,2) == 0, new_v = new_v + 1; end
+            end
             ovr.(name) = new_v;
             value_log = new_v;
         elseif isvector(base)
@@ -155,7 +194,7 @@ for p = 1:n_params
 
             fprintf('\n--- %s[%s] (idx=%d) x%.2f -> %.4f  on %s ---\n', ...
                     name, grp, idx, m, value_log, trajType);
-            [nl,mt,mxy,maxxy] = run_5ic(p0,numRuns,trajType,ovr);
+            [nl,mt,mxy,maxxy] = run_5ic(p0,numRuns,trajType,ovr,cfg_override);
             sweep(row).n_land  = nl;
             sweep(row).mean_t  = mt;
             sweep(row).mean_xy = mxy;
@@ -250,7 +289,7 @@ if ~found
 end
 
 % =====================================================================
-function [n_land,mean_t,mean_xy,max_xy] = run_5ic(p0,numRuns,trajType,ovr)
+function [n_land,mean_t,mean_xy,max_xy] = run_5ic(p0,numRuns,trajType,ovr,cfg_override)
     landed   = false(numRuns,1);
     t_land   = nan(numRuns,1);
     xy_final = nan(numRuns,1);
@@ -258,9 +297,8 @@ function [n_land,mean_t,mean_xy,max_xy] = run_5ic(p0,numRuns,trajType,ovr)
     for k = 1:numRuns
         q0=[1;0;0;0]; v0=zeros(3,1); w0=zeros(3,1);
         x0=[p0(k,:)'; q0; v0; w0];
-        rng(1000+k);
         try
-            tmp = run_simulation(x0,trajType,ovr);
+            tmp = run_simulation(x0,trajType,ovr,1.0,cfg_override,1000+k);
         catch ME
             fprintf('  Run %d ERR: %s\n',k,ME.message);
             continue;

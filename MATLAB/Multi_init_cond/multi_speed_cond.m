@@ -5,7 +5,7 @@
 % realistic disturbance configs (mirrors multi_Init_Var.m).
 %
 %   mults      : [0.6, 0.8, 1.0, 1.2, 1.4]
-%   Trajectory : Linear, Sinusoidal, Circular, Lissajous  (Static has no speed knob)
+%   Trajectory : Linear, Sinusoidal, Lissajous, Circular  (Static has no speed knob)
 %   Config     : noiseless (NOISE=0, GE=0, delay=0) and realistic (all on)
 %
 % Each (trajectory, config) pair saves a results struct array of length
@@ -24,7 +24,7 @@ addpath(fullfile(mfile_dir, '..', 'Common'));
 addpath(fullfile(mfile_dir, 'plotters'));
 clear mfile_dir;
 
-trajList = ["Linear", "Sinusoidal", "Circular", "Lissajous"];
+trajList = ["Linear", "Sinusoidal", "Lissajous", "Circular"];
 mults    = [0.6, 0.8, 1.0, 1.2, 1.4];
 
 % Single deterministic baseline IC

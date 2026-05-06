@@ -19,9 +19,9 @@ K.p_10 = [res(2)/2/f; res(1)/2/f];
 K.p_1inf = [0.01;0.01];
 
 % Defining Image Feature Control Paramters
-K.zp = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
-K.zi = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
-K.zd = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
+K.rp = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
+K.ri = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
+K.rd = diag((1 + 10*rand(1, 2)) .^ randi([-4, 1], 1, 2));
 
 % % Defining Performance Function for Outlier Elimination
 % K.gamma_2 = 2 * rand(3, 1);

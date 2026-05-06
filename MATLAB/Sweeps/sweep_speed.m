@@ -1,5 +1,5 @@
 %% PLASMC TARGET-SPEED STRESS TEST
-% For each moving trajectory (Linear, Sinusoidal, Circular, Lissajous),
+% For each moving trajectory (Linear, Sinusoidal, Lissajous, Circular),
 % scale the target's motion rate by increasing multipliers until
 % land rate drops from 5/5. Uses deterministic seeds (rng(1000+k))
 % so the failure edge is repeatable.
@@ -22,7 +22,7 @@ addpath(this_dir);
 addpath(fullfile(this_dir, '..', 'Multi_init_cond'));  % run_simulation, InitVar
 addpath(fullfile(this_dir, '..', 'Common'));
 
-trajList = ["Linear","Sinusoidal","Circular","Lissajous"];
+trajList = ["Linear","Sinusoidal","Lissajous","Circular"];
 
 % 5 ICs (matched to multi_Init_Var.m — canonical PLASMC validation set)
 p0 = [
