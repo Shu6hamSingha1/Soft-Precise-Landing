@@ -110,7 +110,7 @@ Section~II-C aggregates the model uncertainty and exogenous perturbations into f
 
 \textit{Actuator faults.} An additive uncontrollable component $\boldsymbol{u}_\text{f}(t)$ in the rotor command captures mechanical damping from motor friction and force bias from the electronic speed controller. This fault is unmeasurable and time-varying, propagating as an additive disturbance to the body force and torque outputs.
 
-\textit{Actuator saturation.} The maximum rotor thrust $T_\text{max}$ and torque $\tau_\text{max}$ limits cap the achievable body force and torque to physical bounds. The funnel-margin cone clamp of Section~III-A3 keeps the commanded body force feasible within $\,^\mathcal{B}T_u\in[T_\text{min},T_\text{max}]$ at all times; residual saturations on $\,^\mathcal{B}\boldsymbol{\tau}_u$ are absorbed by $\boldsymbol{d}_h$.
+\textit{Actuator saturation.} The maximum rotor thrust $T_\text{max}$ and torque $\tau_\text{max}$ limits cap the achievable body force and torque to physical bounds. Provided $T_\text{max}\ge mg/\cos\theta_\text{cap}$, the funnel-margin cone clamp of Section~III-A3 keeps the commanded body force feasible within $\,^\mathcal{B}T_u\in[T_\text{min},T_\text{max}]$ at all times; residual saturations on $\,^\mathcal{B}\boldsymbol{\tau}_u$ are absorbed by $\boldsymbol{d}_h$.
 
 The combined effect of $E(t)$, $\boldsymbol{u}_\text{f}(t)$, and saturation enters $\boldsymbol{d}_h$ in \eqref{sup:d_h} as a bounded, slowly-varying disturbance. The leakage-type adaptive switching gain $\boldsymbol{\kappa}(t)$ identifies the aggregate magnitude online without any explicit uncertainty bound, and the closed-loop GUUB of $\boldsymbol{h}_\text{e}$ (Theorem~1) is robust to all three actuator-chain perturbations.
 
@@ -137,13 +137,13 @@ where $\,^\mathcal{I}R_\mathcal{B}$ is the rotation matrix from $\mathcal{B}$ to
 \end{align}
 where $S_x=\sin(x)$, $C_x=\cos(x)$. Combined with the known target heading $\psi_\text{t}$, the desired attitude $\boldsymbol{\Phi}_\text{d}=[\phi_\text{d},\theta_\text{d},\psi_\text{t}]^\top$ and thrust $\,^\mathcal{B}T_u$ are passed to the inner-loop controller.
 
-The inner-loop controller regulates the attitude $\boldsymbol{\Phi}_\text{b}$ and body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$ through a cascade of PID loops. The desired attitude rates $\dot{\boldsymbol{\Phi}}_\text{d}$ are mapped to desired body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}$ via the kinematic transformation
+The inner-loop controller regulates the attitude $\boldsymbol{\Phi}_\text{b}$ and body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$ through a cascade of PID loops. With $\boldsymbol{\Phi}=[\phi,\theta,\psi]^\top$ in ZYX Tait-Bryan order, the desired attitude rates $\dot{\boldsymbol{\Phi}}_\text{d}$ are mapped to desired body rates $\,^\mathcal{B}\boldsymbol{\omega}_\text{d}$ via the standard Euler-rate-to-body-rate kinematic transformation
 \begin{equation} \label{sup:kinematic_transformation}
     \,^\mathcal{B}\boldsymbol{\omega}_\text{d} = W(\phi_\text{d},\theta_\text{d})\dot{\boldsymbol{\Phi}}_\text{d},
 \end{equation}
 with
 \begin{equation*}
-    W(\phi_\text{d},\theta_\text{d}) = \begin{bmatrix} 0 & C_{\phi_\text{d}} & S_{\phi_\text{d}}C_{\theta_\text{d}} \\ 1 & 0 & -S_{\theta_\text{d}} \\ 0 & S_{\phi_\text{d}} & -C_{\phi_\text{d}}C_{\theta_\text{d}} \end{bmatrix}.
+    W(\phi_\text{d},\theta_\text{d}) = \begin{bmatrix} 1 & 0 & -S_{\theta_\text{d}} \\ 0 & C_{\phi_\text{d}} & S_{\phi_\text{d}}C_{\theta_\text{d}} \\ 0 & -S_{\phi_\text{d}} & C_{\phi_\text{d}}C_{\theta_\text{d}} \end{bmatrix}.
 \end{equation*}
 The inner-loop PID control laws are
 \begin{align}
@@ -166,9 +166,9 @@ This section collects the standard prescribed-performance machinery, implementat
 
 \subsection{Optic-Flow Funnel: Implementation Details}
 \label{sup:optic_flow_remarks}
-\textit{Remark (Initial-condition feasibility).}\label{sup:rmk_ic_feasibility} The optic-flow transformation requires $|h_{\text{e}_k}(0)|<p_{2_{0k}}$. In the simulations, $\boldsymbol{p}_{2_0}=[25,25,4]^\top$ is sized to envelope the worst-case initial optic-flow magnitude observed across the five initial conditions (ICs) of Section~IV-A, with a $2\times$--$3\times$ margin against pixel-noise spikes on the fastest target trajectories (Case~5 at $\omega_z=0.25$~rad/s; Case~2 at $1.414$~m/s).
+\textit{Remark (Initial-condition feasibility).}\label{sup:rmk_ic_feasibility} The optic-flow transformation requires $|h_{\text{e}_k}(0)|<p_{2_{0k}}$. In the simulations, $\boldsymbol{p}_{2_0}=[25,25,4]^\top$~s$^{-1}$ is sized to envelope the worst-case initial optic-flow magnitude observed across the five initial conditions (ICs) of Section~IV-A, with a $2\times$--$3\times$ margin against pixel-noise spikes on the fastest target trajectories (Case~5 at $\omega_z=0.25$~rad/s; Case~2 at $1.414$~m/s).
 
-\textit{Remark (Sliding-surface integral anti-windup).}\label{sup:rmk_anti_windup} Near the funnel boundary, $\int\boldsymbol{\zeta}_2\,d\tau$ in the sliding-surface definition can wind up whenever $\boldsymbol{\zeta}_2$ is briefly clamped by the funnel-saturation guard described below. Each component is therefore bounded by $|\!\int\!\zeta_{2_k}\,d\tau|\le 10$. The clamp activates only during short transient spikes and does not affect the Lyapunov derivative on the open sub-funnel where Theorem~1 operates.
+\textit{Remark (Sliding-surface integral anti-windup).}\label{sup:rmk_anti_windup} Near the funnel boundary, $\int\boldsymbol{\zeta}_2\,d\tau$ in the sliding-surface definition can wind up whenever $\boldsymbol{\zeta}_2$ is briefly clamped by the funnel-saturation guard described below. Each component is therefore bounded by $|\!\int\!\zeta_{2_k}\,d\tau|\le 10$, an empirical cap chosen to keep the integral contribution $\mathcal{X}\!\int\boldsymbol{\zeta}_2\,d\tau$ to the sliding surface below $\lambda_{\max}(\mathcal{X})\cdot 10\le 0.5$, i.e.\ within the boundary-layer thickness $\varepsilon_k=1$ used in the simulations. The clamp activates only during short transient spikes and does not affect the Lyapunov derivative on the open sub-funnel where Theorem~1 operates.
 
 \textit{Remark (Funnel-saturation guard).}\label{sup:rmk_funnel_guard} Since $g_{2_k}=(e^{\zeta_{2_k}}+1)^2/(2e^{\zeta_{2_k}}p_{2_k})\to\infty$ as $|S_2(\zeta_{2_k})|\to 1$, the equivalent control $\boldsymbol{u}_\text{eq}$ can blow up under transient pixel-noise peaks. $|S_2(\zeta_{2_k})|$ is therefore numerically clamped at $1-\epsilon_S$ with $\epsilon_S=0.05$, which tightens the closed-loop constraint set to $|h_{\text{e}_k}|\le(1-\epsilon_S)p_{2_k}(t)$ and contributes a bounded additive residual absorbed into $\tilde{d}$ in the proof of Theorem~1. The choice $\epsilon_S=0.05$ balances two requirements. First, it must be small enough to preserve the funnel envelope ($1-\epsilon_S=0.95$ leaves $<\!5\%$ tightening). Second, it must be large enough that the maximum value of $g_{2_k}$ encountered along closed-loop trajectories stays below the numerical-overflow threshold of double-precision arithmetic. An order-of-magnitude sensitivity check ($\epsilon_S\in\{0.01,\,0.02,\,0.10\}$) preserved the $25/25$ landing rate, so the result is not contingent on this exact value. The clamp is active for less than $0.5\%$ of control steps in the simulations and is essential for the $25/25$ landing rate of Section~IV-B.
 
@@ -194,24 +194,35 @@ Since $\sigma_k\text{sat}(\sigma_k/\varepsilon_k)\ge 0$ componentwise and $\bold
 \begin{equation*}
 \sigma_k\,\text{sat}(\sigma_k/\varepsilon_k) = |\sigma_k| - r_{\varepsilon_k},\qquad k\in\{1,2,3\},
 \end{equation*}
-where $r_{\varepsilon_k} = \max(0,|\sigma_k|-\sigma_k^2/\varepsilon_k)\le\varepsilon_k/4$ vanishes outside the boundary layer $|\sigma_k|>\varepsilon_k$. The residual $\tfrac14\|\boldsymbol{\varepsilon}\|\lambda_{\max}(\mathcal{G}_2)\|\boldsymbol{\kappa}(t)\|$ is bounded uniformly by the leakage law and absorbed into $\tilde{d}$. Using $\beta\ge\beta_{\min}>0$, \eqref{sup:Vdot 1} rearranges to
+where $r_{\varepsilon_k} = \max(0,|\sigma_k|-\sigma_k^2/\varepsilon_k)\le\varepsilon_k/4$ vanishes outside the boundary layer $|\sigma_k|>\varepsilon_k$. The boundary-layer residual contributes a term $\le\tfrac14\|\boldsymbol{\varepsilon}\|\lambda_{\max}(\mathcal{G}_2)\|\boldsymbol{\kappa}(t)\|$ to $\dot V$. Since $V$ contains $\tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}-\tilde d\boldsymbol{1}]^\top\mathcal{N}^{-1}[\boldsymbol{\kappa}-\tilde d\boldsymbol{1}]$, any bounded $V$ implies bounded $\boldsymbol{\kappa}$, so this residual is uniformly bounded along trajectories where $V$ is bounded; the bound is absorbed into $\tilde{d}$ via a one-time inflation of the Assumption-1 constant. Using $\beta\ge\beta_{\min}>0$, \eqref{sup:Vdot 1} rearranges to
 \begin{align*}
 \dot{V}(t)\le& -\beta_{\min}\boldsymbol{\sigma}^\top\Gamma\boldsymbol{\sigma} - \beta_{\min}(\tilde{d}-\|\boldsymbol{\overline{d}}\|)\|\boldsymbol{\theta}\||\boldsymbol{\sigma}|^\top\mathcal{G}_2\boldsymbol{1}\\
 &- \beta_{\min}[\boldsymbol{\kappa}^\top(t)\mathcal{P}\boldsymbol{\kappa}(t) - \tilde{d}\boldsymbol{1}^\top\mathcal{P}\boldsymbol{\kappa}(t)].
 \end{align*}
-The second term is non-negative since $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$. Bounding the third term via completion of the square and using positive-definiteness of $\mathcal{P}$,
+The second term is non-negative since $\|\boldsymbol{\overline{d}}\|\le\tilde{d}$. Bounding the third term via completion of the square,
+\begin{equation*}
+    \boldsymbol{\kappa}^\top\mathcal{P}\boldsymbol{\kappa} - \tilde{d}\boldsymbol{1}^\top\mathcal{P}\boldsymbol{\kappa} = \tfrac{1}{2}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}]^\top\mathcal{P}[\boldsymbol{\kappa}-\tilde{d}\boldsymbol{1}] + \tfrac{1}{2}\boldsymbol{\kappa}^\top\mathcal{P}\boldsymbol{\kappa} - \tfrac{1}{2}\tilde{d}^2\boldsymbol{1}^\top\mathcal{P}\boldsymbol{1},
+\end{equation*}
+so dropping the non-negative $\tfrac{1}{2}\boldsymbol{\kappa}^\top\mathcal{P}\boldsymbol{\kappa}$ term and using $\boldsymbol{\sigma}^\top\Gamma\boldsymbol{\sigma}\ge\lambda_{\min}(\Gamma)\|\boldsymbol{\sigma}\|^2$ yields
 \begin{align*}
 \dot{V}(t)&\le -\beta_{\min}\lambda_{\min}(\Gamma)\|\boldsymbol{\sigma}\|^2 - \tfrac{\beta_{\min}}{2}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]^\top\mathcal{P}[\boldsymbol{\kappa}(t)-\tilde{d}\boldsymbol{1}]\\
-&\quad + \tfrac{\beta_{\min}}{2}\tilde{d}^2\boldsymbol{1}^\top\mathcal{P}\boldsymbol{1}\\
-&\le -\varphi_1 V(t) + \tfrac32\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2.
+&\quad + \tfrac{\beta_{\min}}{2}\tilde{d}^2\boldsymbol{1}^\top\mathcal{P}\boldsymbol{1}.
 \end{align*}
+Comparing the negative-definite quadratic form with $V$ of \eqref{sup:Lyapunov function} gives the multiplier
+\begin{equation*}
+    \varphi_1 \triangleq \beta_{\min}\,\frac{\min\{2\lambda_{\min}(\Gamma),\,\lambda_{\min}(\mathcal{P})\}}{\max\{1,\,\beta_{\min}\lambda_{\max}(\mathcal{N}^{-1})\}}>0,
+\end{equation*}
+and bounding $\boldsymbol{1}^\top\mathcal{P}\boldsymbol{1}\le 3\lambda_{\max}(\mathcal{P})$ yields
+\begin{equation*}
+    \dot{V}(t)\le -\varphi_1 V(t) + \tfrac32\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2.
+\end{equation*}
 For any $0<\varphi_2<\varphi_1$,
 \begin{equation*}
 \dot{V}(t)\le -\varphi_2 V(t),\qquad \forall\,V(t)\ge\Theta=\tfrac{3\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2}{2(\varphi_1-\varphi_2)}.
 \end{equation*}
 Invoking the Lemma, every trajectory enters the ball $\{V\le\Theta\}$ in finite time and remains there. Since $V(t)\ge\|\boldsymbol{\sigma}\|^2/2$, the ultimate bound on $\boldsymbol{\sigma}$ is $\vartheta = [3\beta_{\min}\lambda_{\max}(\mathcal{P})/(\varphi_1-\varphi_2)]^{1/2}\tilde{d}$, independent of initial conditions. From the sliding surface definition, $\boldsymbol{\zeta}_2$ converges into a small residual around the origin, so from the inverse PPC transformation $-\boldsymbol{p}_2(t)<\boldsymbol{h}_\text{e}<\boldsymbol{p}_2(t)$ holds for all $t\ge 0$. $\hfill\blacksquare$
 
-\textit{Cascade argument for Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ uniformly ultimately bounded inside $\boldsymbol{p}_2(t)$. Combining the image position kinematics of Section~II-B1 with the Virtual Image Point PID law of Section~III-A1 and substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ yields the horizontal-axis closed loop
+\textit{Cascade argument for Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ uniformly ultimately bounded inside $\boldsymbol{p}_2(t)$. From the image position kinematics of Section~II-B1, the lateral component of $\dot{\boldsymbol{s}}_\text{e}$ equals the centroid time derivative $\dot{\,^\mathcal{V}\hat{\boldsymbol{r}}}=\boldsymbol{\varphi}_\text{max}\odot\dot{\bar{\boldsymbol{r}}}_\text{e}$ (since $\,^\mathcal{V}\hat{\boldsymbol{r}}=\boldsymbol{\varphi}_\text{max}\odot\bar{\boldsymbol{r}}_\text{e}$). Equating with the Virtual Image Point PID law of Section~III-A1 and differentiating once more, then substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ to expose the residual driver, yields the horizontal-axis closed loop
 \begin{equation*}
     (\Phi_\text{max}+K_{rd})\ddot{\bar{\boldsymbol{r}}}_\text{e} + K_{rp}\dot{\bar{\boldsymbol{r}}}_\text{e} + K_{ri}\bar{\boldsymbol{r}}_\text{e} = \boldsymbol{\delta}_\text{e}(\boldsymbol{h}_\text{e},\boldsymbol{s}),
 \end{equation*}
@@ -280,9 +291,10 @@ Table~\ref{sup:control params} lists the complete locked MDF-ASMC gain set used 
         $K_{rd}$ & $\text{diag}([1.4375,1.4375])$ \\
     \midrule
         \multicolumn{2}{l}{\textit{Performance Function -- Optic Flow}} \\
-        $\Xi_2$                     & $\text{diag}([0.2,0.2,0.2])$ \\
-        $\boldsymbol{p}_{2_0}$      & $[25.0,25.0,4.0]^\top$ \\
-        $\boldsymbol{p}_{2_\infty}$ & $[2.5,2.5,1.5]^\top$ \\
+        $\Xi_2$                     & $\text{diag}([0.2,0.2,0.2])$~s$^{-1}$ \\
+        $\boldsymbol{p}_{2_0}$      & $[25.0,25.0,4.0]^\top$~s$^{-1}$ \\
+        $\boldsymbol{p}_{2_\infty}$ & $[2.5,2.5,1.5]^\top$~s$^{-1}$ \\
+        $h_\text{rd}$               & $-0.42$~s$^{-1}$ \\
     \midrule
         \multicolumn{2}{l}{\textit{ASMC -- Optic Flow Regulation}} \\
         $\mathcal{X}$           & $\text{diag}([0.05,0.05,0.025])$ \\
@@ -322,7 +334,7 @@ The qualitative parameter roles observed in the sweep are as follows.
 
 \emph{Load-bearing parameters.} Perturbations of $K_{rp}$, $\boldsymbol{p}_{2_0}$, $\boldsymbol{p}_{2_\infty}$, $k_R$, and $\mathcal{X}$ break the $5/5$ land rate on at least one trajectory, typically on the lateral-offset initial conditions IC$_3$--IC$_5$, where the controller's chase authority is most stressed. These axes tolerate only minor deviations from their locked values.
 
-\emph{Robust parameters.} The full yaw-ASMC parameter set $\chi_\alpha$, $\gamma_\alpha$, $\eta_\alpha$, $\rho_\alpha$, $\kappa_\alpha(0)$, and $\varepsilon_\alpha$ produces no measurable change in any reported metric at $\pm 50\%$ perturbation, indicating that the adaptive yaw SMC leakage tail is overparameterized for this class of problems and that the heading-reference integrator is driven almost entirely by the projection error. This is consistent with Remark~2, which absorbs the disturbance bound online and renders the yaw-loop performance insensitive to the leakage-tail parameters.
+\emph{Robust parameters.} The full yaw-ASMC parameter set $\chi_\alpha$, $\gamma_\alpha$, $\eta_\alpha$, $\rho_\alpha$, $\kappa_\alpha(0)$, and $\varepsilon_\alpha$ produces no measurable change in any reported metric at $\pm 50\%$ perturbation, with ``no measurable change'' defined as $|\Delta r_{xy,\text{f}}|<0.1$~cm and $|\Delta t_\text{f}|<0.05$~s on every (case, IC) pair, indicating that the adaptive yaw SMC leakage tail is overparameterized for this class of problems and that the heading-reference integrator is driven almost entirely by the projection error. This is consistent with Remark~2, which absorbs the disturbance bound online and renders the yaw-loop performance insensitive to the leakage-tail parameters.
 
 \emph{Pareto trades.} Among the $107$ viable single-axis perturbations, a small subset trade landing time against horizontal precision and thus cannot unilaterally improve both aggregate metrics. The remaining viable perturbations leave one or both aggregate metrics unchanged within numerical precision.
 
@@ -514,7 +526,7 @@ The backstepping law of~\cite{zhang2026} realizes a second-order closed loop wit
 
 \subsubsection{IBVS with Adaptive Observer \cite{chen2025}}
 
-The force law of~\cite{chen2025} takes the form $\boldsymbol{f} = -k_r(\boldsymbol{r}-\boldsymbol{s}+\boldsymbol{\varepsilon}) + \text{(observer terms)}$, with $\boldsymbol{r}=-\dot{\boldsymbol{\zeta}}-\boldsymbol{\zeta}_1+3\dot{\boldsymbol{e}}$ an auxiliary vector (Eq.~(25) of~\cite{chen2025}) whose construction already requires the image-moment-error derivative $\dot{\boldsymbol{e}}$ and the observer-state derivative $\dot{\boldsymbol{\zeta}}$. Both $\boldsymbol{r}$ and the depth-adaptive update law (Eq.~(32) of~\cite{chen2025}) therefore inherit these derivatives, and the derivation prescribes no measurement filter for either. In any vision-only implementation, $\dot{\boldsymbol{e}}$ and $\dot{\boldsymbol{\zeta}}$ must be obtained by finite-difference of the noisy image-moment vector, and the resulting noise energy is amplified by the observer gain and by the $1/z$ scaling implicit in $\boldsymbol{e}$ at low altitude. Under the depth-dependent pixel noise model ($\sigma_{\text{px}}\uparrow$ as $z\downarrow$), the finite-difference error on a non-trivial fraction of random seeds grows without bound as the altitude approaches the landing target, driving the commanded force past the $60~\text{N}$ thrust limit. The scheme stalls above the target surface on every trajectory, exhausting the $40~\text{s}$ time limit at $r_{z,\text{f}}=1.08$--$1.09~\text{m}$ with $r_{xy,\text{f}}=0.69$--$0.85~\text{m}$. Because the stall is a structural consequence of the missing derivative filter rather than a gain-tuning issue, no choice of $k_r$, $k_1$, $k_2$ restores landing authority. Lowering $k_r$ (from the Simulation~1 value $k_r=8$ of~\cite{chen2025}, with $12.2$ and $15$ used in its subsequent studies) down to $1.0$ only delays the divergence until lower altitudes without eliminating it.
+The force law of~\cite{chen2025} takes the form $\boldsymbol{f} = -k_r(\boldsymbol{r}-\boldsymbol{s}+\boldsymbol{\varepsilon}) + \text{(observer terms)}$, with $\boldsymbol{r}=-\dot{\boldsymbol{\zeta}}-\boldsymbol{\zeta}_1+3\dot{\boldsymbol{e}}$ an auxiliary vector (Eq.~(25) of~\cite{chen2025}) whose construction already requires the image-moment-error derivative $\dot{\boldsymbol{e}}$ and the observer-state derivative $\dot{\boldsymbol{\zeta}}$. Both $\boldsymbol{r}$ and the depth-adaptive update law (Eq.~(32) of~\cite{chen2025}) therefore inherit these derivatives, and the derivation prescribes no measurement filter for either. In any vision-only implementation, $\dot{\boldsymbol{e}}$ and $\dot{\boldsymbol{\zeta}}$ must be obtained by finite-difference of the noisy image-moment vector, and the resulting noise energy is amplified by the observer gain and by the $1/z$ scaling implicit in $\boldsymbol{e}$ at low altitude. Under the depth-dependent pixel noise model ($\sigma_{\text{px}}\uparrow$ as $z\downarrow$), the finite-difference error grows without bound on $5/5$ deterministic-seed runs of every trajectory as the altitude approaches the landing target, driving the commanded force past the $60~\text{N}$ thrust limit. The scheme stalls above the target surface on every trajectory, exhausting the $40~\text{s}$ time limit at $r_{z,\text{f}}=1.08$--$1.09~\text{m}$ with $r_{xy,\text{f}}=0.69$--$0.85~\text{m}$. Because the stall is a structural consequence of the missing derivative filter rather than a gain-tuning issue, no choice of $k_r$, $k_1$, $k_2$ restores landing authority. Lowering $k_r$ (from the Simulation~1 value $k_r=8$ of~\cite{chen2025}, with $12.2$ and $15$ used in its subsequent studies) down to $1.0$ only delays the divergence until lower altitudes without eliminating it.
 
 \subsubsection{Feed-Forward IBVS \cite{cho2022}}
 
