@@ -34,6 +34,9 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
     "font.family": "serif",
+    "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
+    "mathtext.fontset": "cm",
+    "axes.formatter.use_mathtext": True,
     "font.size": 9,
     "axes.labelsize": 9,
     "axes.titlesize": 10,

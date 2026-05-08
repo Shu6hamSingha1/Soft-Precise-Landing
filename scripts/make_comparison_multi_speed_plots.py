@@ -22,12 +22,14 @@ import scipy.io as sio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.cm import viridis
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
     "font.family": "serif",
+    "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
+    "mathtext.fontset": "cm",
+    "axes.formatter.use_mathtext": True,
     "font.size": 9,
     "axes.labelsize": 9,
     "axes.titlesize": 10,
@@ -45,16 +47,38 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 TRAJS = ["Linear", "Sinusoidal", "Lissajous", "Circular"]
 MULTS = [0.6, 0.8, 1.0, 1.2, 1.4]
+# Distinct ordered colors for the 5 speed multipliers (cool→warm to match
+# slow→fast). Wong colorblind-friendly palette; replaces viridis since
+# adjacent viridis samples were visually indistinguishable.
+MULT_COLORS = ["#0072B2",  # blue   (λ=0.6, slowest)
+               "#56B4E9",  # cyan   (λ=0.8)
+               "#009E73",  # green  (λ=1.0, nominal)
+               "#E69F00",  # orange (λ=1.2)
+               "#D55E00"]  # vermillion (λ=1.4, fastest)
 
 PRECISE_XY_M    = 0.08
 SOFT_V_REL_MPS  = 0.20
 Z_F_M           = 0.20
 
 CTRL_ORDER  = [2, 3, 4, 5]
-CTRL_TITLE  = {2: "Baseline A (PBVS--PPC)",
-               3: "Baseline B (PBVS--AEDO)",
-               4: "Baseline C (IBVS--Obs)",
-               5: "Baseline D (FF--IBVS)"}
+# Two CTRL_TITLE dicts because IEEE citation numbers differ between
+# the main paper and supplement (separate bibliographies).
+# ctrl_id maps to baseline letter:
+#   2 -> Baseline A (Lin 2022)     main [1] / supp [7]
+#   3 -> Baseline B (Zhang 2026)   main [2] / supp [8]
+#   4 -> Baseline C (Chen 2025)    main [10] / supp [9]
+#   5 -> Baseline D (Cho 2022)     main [9]  / supp [10]
+CTRL_TITLE_MAIN = {2: "Baseline A [1] (PBVS--PPC)",
+                   3: "Baseline B [2] (PBVS--AEDO)",
+                   4: "Baseline C [10] (IBVS--Obs)",
+                   5: "Baseline D [9] (FF--IBVS)"}
+CTRL_TITLE_SUPP = {2: "Baseline A [7] (PBVS--PPC)",
+                   3: "Baseline B [8] (PBVS--AEDO)",
+                   4: "Baseline C [9] (IBVS--Obs)",
+                   5: "Baseline D [10] (FF--IBVS)"}
+# Circular trajectory PDF goes to main paper; the other three go to supplement.
+TRAJ_IS_MAIN = {"Circular": True, "Linear": False,
+                "Sinusoidal": False, "Lissajous": False}
 
 CASE_OF = {"Linear": "Case 2", "Sinusoidal": "Case 3",
            "Lissajous": "Case 4", "Circular": "Case 5"}
@@ -142,7 +166,10 @@ def plot_one_trajectory(traj):
     # 20-24 pt fonts, single-line suptitle (velocity eqn lives in caption).
     fig = plt.figure(figsize=(10.5, 10.5))
     axes = [fig.add_subplot(2, 2, k + 1, projection="3d") for k in range(4)]
-    colors = [viridis(i / (len(MULTS) - 1)) for i in range(len(MULTS))]
+    colors = MULT_COLORS
+    # Citation-number variant depends on whether the figure is destined
+    # for the main paper or supplement.
+    ctrl_title = CTRL_TITLE_MAIN if TRAJ_IS_MAIN.get(traj, False) else CTRL_TITLE_SUPP
 
     for ax, ctrl_id in zip(axes, CTRL_ORDER):
         ctrl_runs = [r for r in runs if int(r.ctrl_id) == ctrl_id]
@@ -178,7 +205,7 @@ def plot_one_trajectory(traj):
         ax.locator_params(axis="y", nbins=4)
         ax.locator_params(axis="z", nbins=4)
         ax.tick_params(pad=1, labelsize=18)
-        ax.set_title(CTRL_TITLE[ctrl_id], fontsize=20, y=0.95)
+        ax.set_title(ctrl_title[ctrl_id], fontsize=20, y=0.95)
         ax.view_init(elev=22, azim=-58)
 
     handles, labels = axes[0].get_legend_handles_labels()

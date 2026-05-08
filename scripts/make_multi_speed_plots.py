@@ -13,7 +13,7 @@ Outputs:
 
 One subplot per trajectory (2x2 grid of 3D axes). Each subplot overlays
 the UAV descent trajectory at all five speed multipliers, colored by a
-viridis colormap, with a faint dashed target path at lambda=1.0 for
+Wong colorblind-friendly palette (cool→warm = slow→fast), with a faint dashed target path at lambda=1.0 for
 reference and a marker at each touchdown point. The displayed target
 altitude is offset by +0.2 m so the target line floats above the ground
 plane. Touchdown markers follow the 5-category scheme of
@@ -28,12 +28,14 @@ import scipy.io as sio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.cm import viridis
 from mpl_toolkits.mplot3d import Axes3D  # noqa
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
     "font.family": "serif",
+    "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
+    "mathtext.fontset": "cm",
+    "axes.formatter.use_mathtext": True,
     "font.size": 9,
     "axes.labelsize": 9,
     "axes.titlesize": 10,
@@ -51,6 +53,14 @@ os.makedirs(OUT_DIR, exist_ok=True)
 
 TRAJS = ["Linear", "Sinusoidal", "Lissajous", "Circular"]
 MULTS = [0.6, 0.8, 1.0, 1.2, 1.4]
+# Distinct ordered colors for the 5 speed multipliers (cool→warm to match
+# slow→fast). Wong colorblind-friendly palette; replaces viridis since
+# adjacent viridis samples were visually indistinguishable.
+MULT_COLORS = ["#0072B2",  # blue   (λ=0.6, slowest)
+               "#56B4E9",  # cyan   (λ=0.8)
+               "#009E73",  # green  (λ=1.0, nominal)
+               "#E69F00",  # orange (λ=1.2)
+               "#D55E00"]  # vermillion (λ=1.4, fastest)
 
 PRECISE_XY_M     = 0.08    # precise-landing horizontal threshold
 SOFT_V_REL_MPS   = 0.20    # soft-landing 3-D relative-speed threshold
@@ -139,7 +149,7 @@ def plot_grid(tag, out_name):
     fig = plt.figure(figsize=(10.5, 10.5))
     axes = [fig.add_subplot(2, 2, k + 1, projection="3d") for k in range(4)]
 
-    colors = [viridis(i / (len(MULTS) - 1)) for i in range(len(MULTS))]
+    colors = MULT_COLORS
 
     for ax, traj in zip(axes, TRAJS):
         results, mults = load_run(traj, tag)
