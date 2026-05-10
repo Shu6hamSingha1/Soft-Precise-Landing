@@ -64,18 +64,18 @@ CTRL_ORDER  = [2, 3, 4, 5]
 # Two CTRL_TITLE dicts because IEEE citation numbers differ between
 # the main paper and supplement (separate bibliographies).
 # ctrl_id maps to baseline letter:
-#   2 -> Baseline A (Lin 2022)     main [1] / supp [7]
-#   3 -> Baseline B (Zhang 2026)   main [2] / supp [8]
-#   4 -> Baseline C (Chen 2025)    main [10] / supp [9]
-#   5 -> Baseline D (Cho 2022)     main [9]  / supp [10]
+#   2 -> Baseline A (Lin 2022)     main [1]  / supp [9]
+#   3 -> Baseline B (Zhang 2026)   main [2]  / supp [8]
+#   4 -> Baseline C (Chen 2025)    main [10] / supp [10]
+#   5 -> Baseline D (Cho 2022)     main [9]  / supp [11]
 CTRL_TITLE_MAIN = {2: "Baseline A [1] (PBVS--PPC)",
                    3: "Baseline B [2] (PBVS--AEDO)",
                    4: "Baseline C [10] (IBVS--Obs)",
                    5: "Baseline D [9] (FF--IBVS)"}
-CTRL_TITLE_SUPP = {2: "Baseline A [7] (PBVS--PPC)",
+CTRL_TITLE_SUPP = {2: "Baseline A [9] (PBVS--PPC)",
                    3: "Baseline B [8] (PBVS--AEDO)",
-                   4: "Baseline C [9] (IBVS--Obs)",
-                   5: "Baseline D [10] (FF--IBVS)"}
+                   4: "Baseline C [10] (IBVS--Obs)",
+                   5: "Baseline D [11] (FF--IBVS)"}
 # Circular trajectory PDF goes to main paper; the other three go to supplement.
 TRAJ_IS_MAIN = {"Circular": True, "Linear": False,
                 "Sinusoidal": False, "Lissajous": False}

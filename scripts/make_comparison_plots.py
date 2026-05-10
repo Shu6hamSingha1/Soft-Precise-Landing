@@ -63,10 +63,10 @@ CTRL_DISPLAY_MAIN = {
 }
 CTRL_DISPLAY_SUPP = {
     "PLASMC (Proposed)": "MDF-ASMC (Proposed)",
-    "Lin 2022":          "Baseline A [7] (PBVS--PPC)",
+    "Lin 2022":          "Baseline A [9] (PBVS--PPC)",
     "Zhang 2026":        "Baseline B [8] (PBVS--AEDO)",
-    "Chen 2025":         "Baseline C [9] (IBVS--Obs)",
-    "Cho 2022":          "Baseline D [10] (FF--IBVS)",
+    "Chen 2025":         "Baseline C [10] (IBVS--Obs)",
+    "Cho 2022":          "Baseline D [11] (FF--IBVS)",
 }
 # Default (for any code path that doesn't specify): main-paper variant.
 CTRL_DISPLAY = CTRL_DISPLAY_MAIN
