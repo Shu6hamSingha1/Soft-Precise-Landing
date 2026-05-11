@@ -1,0 +1,84 @@
+****************************************************************************
+# For Gazebo Classic in Ubuntu 20.04
+****************************************************************************
+# Add multiple agents in a non-default(empty) world with individual commands
+# models : number of spawns -
+# rover : 1 
+# iris : 1
+# world - sonoma_raceway
+
+Tools/simulation/gazebo-classic/sitl_multiple_run.sh -w sonoma_raceway -s "iris:1,rover:1" -t px4_sitl_default
+
+
+# Steps to create and add customized model in gazebo simulator with PX4 autopilot
+1. Create a folder under Tools/simulation/gazebo-classic/sitl_gazebo-classic/models for your model, let’s call it "my_vehicle".
+2. Create the following files under Tools/simulation/gazebo-classic/sitl_gazebo-classic/models/my_vehicle: model.config and my_vehicle.sdf (these can be based off the iris or solo models in Tools/sitl_gazebo/models).
+3. Create an airframe file under ROMFS/px4fmu_common/init.d-posix/airframes (Yet again, this can be based off the iris or solo airframe files), give it an unused number (for example 4229) and name it 4229_my_vehicle.
+4. Add the airframe name along with the unique number (4229_my_vehicle) to the file ROMFS/px4fmu_common/init.d-posix/airframes/CMakeLists.txt in the command px4_add_romfs_files( … .
+5. Add the airframe name (my_vehicle) to the file src/modules/simulation/simulator_mavlink/sitl_targets_gazebo-classic.cmake in the command set(models … .
+6. Run "make px4_sitl gazebo-classic_iris_test".
+7. Run "DONT_RUN=1 make px4_sitl_default gazebo-classic" if the above command shows the following error:
+"make[1]: *** No rule to make target 'gazebo-classic_iris_test'.  Stop.
+make: *** [Makefile:232: px4_sitl] Error 2"
+
+# Steps to create and add customized world in gazebo simulator with PX4 autopilot
+1. Create a world file in Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds called my_vehicle.world (Again, this can be based off the iris or solo world files)
+2. Add the world name (my_vehicle) to the file src/modules/simulation/simulator_mavlink/sitl_targets_gazebo-classic.cmake in the command set(worlds …
+3. Run "make px4_sitl gazebo-classic_iris__iris_test".
+
+****************************************************************************
+# For Gazebo Harmonic in Ubuntu 22.04 (For stationary target)
+****************************************************************************
+Step 1:
+MicroXRCEAgent udp4 -p 8888
+
+Step 2:
+cd PX4-Autopilot/
+PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD=aruco ./build/px4_sitl_default/bin/px4 -i 0
+
+# make px4_sitl gz_x500_mono_cam_down_aruco
+
+Step 3:
+Downloads/QGroundControl.AppImage
+
+Step 4:
+ros2 run ros_gz_bridge parameter_bridge /world/aruco/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock --ros-args -r /world/aruco/clock:=/clock
+
+Step 5:
+ros2 run ros_gz_bridge parameter_bridge /world/aruco/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V --ros-args -r /world/aruco/pose/info:=/pose
+
+Step 6:
+ros2 run ros_gz_bridge parameter_bridge /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
+
+Step 7:
+cd ~/ws/scripts/soft_precise_landing/
+source ../env2025/bin/activate
+****************************************************************************
+# For Gazebo Harmonic in Ubuntu 22.04 (For moving target)
+****************************************************************************
+Step 1:
+MicroXRCEAgent udp4 -p 8888
+
+Step 2:
+cd ~/PX4-Autopilot/
+PX4_SYS_AUTOSTART=4022 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=rover_aruco PX4_GZ_WORLD=rover ./build/px4_sitl_default/bin/px4 -i 1
+
+Step 3:
+cd ~/PX4-Autopilot/
+PX4_GZ_STANDALONE=1 PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="1,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD=rover ./build/px4_sitl_default/bin/px4 -i 0
+
+Step 4:
+Downloads/QGroundControl.AppImage
+
+Step 5:
+ros2 run ros_gz_bridge parameter_bridge /world/rover/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock --ros-args -r /world/rover/clock:=/clock
+
+Step 6:
+ros2 run ros_gz_bridge parameter_bridge /world/rover/dynamic_pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V --ros-args -r /world/rover/dynamic_pose/info:=/pose
+
+Step 7:
+ros2 run ros_gz_bridge parameter_bridge /world/rover/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image --ros-args -r /world/rover/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
+
+Step 8:
+cd ~/ws/scripts/soft_precise_landing/
+source ../env2025/bin/activate
