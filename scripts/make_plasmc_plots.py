@@ -1,5 +1,5 @@
 """
-Generate publication-quality MDF-ASMC internals plots from Multi_init_cond datasets.
+Generate publication-quality VDF-ASMC internals plots from Multi_init_cond datasets.
 
 Outputs PDFs into Figures/generated/:
   plasmc_funnel_combined.pdf — outer visibility funnel + inner optic-flow funnel
@@ -284,7 +284,7 @@ hin, lin = ax_x.get_legend_handles_labels()
 ax_z.legend(hin, lin, loc="upper right", fontsize=14,
             handlelength=1.4, handletextpad=0.5)
 
-fig.suptitle("Dual-Funnel Invariance under MDF-ASMC", fontsize=24, y=0.99)
+fig.suptitle("Dual-Funnel Invariance under VDF-ASMC", fontsize=24, y=0.99)
 
 # Manual layout: 3-D panel hugs left edge, 3 inner panels distributed across
 # the remaining width.
@@ -376,4 +376,4 @@ fig.subplots_adjust(wspace=0.3)
 fig.savefig(f"{OUT}/plasmc_thrust_accel.pdf", bbox_inches="tight", pad_inches=0.02)
 plt.close(fig)
 
-print("Wrote 4 MDF-ASMC internals plots to:", OUT)
+print("Wrote 4 VDF-ASMC internals plots to:", OUT)

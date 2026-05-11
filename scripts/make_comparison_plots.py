@@ -55,14 +55,14 @@ CTRL_COLORS = {
 # IEEE-style citation numbers differ between the main paper and the
 # supplement (they have separate bibliographies).
 CTRL_DISPLAY_MAIN = {
-    "PLASMC (Proposed)": "MDF-ASMC (Proposed)",
+    "PLASMC (Proposed)": "VDF-ASMC (Proposed)",
     "Lin 2022":          "Baseline A [1] (PBVS--PPC)",
     "Zhang 2026":        "Baseline B [2] (PBVS--AEDO)",
     "Chen 2025":         "Baseline C [10] (IBVS--Obs)",
     "Cho 2022":          "Baseline D [9] (FF--IBVS)",
 }
 CTRL_DISPLAY_SUPP = {
-    "PLASMC (Proposed)": "MDF-ASMC (Proposed)",
+    "PLASMC (Proposed)": "VDF-ASMC (Proposed)",
     "Lin 2022":          "Baseline A [9] (PBVS--PPC)",
     "Zhang 2026":        "Baseline B [8] (PBVS--AEDO)",
     "Chen 2025":         "Baseline C [10] (IBVS--Obs)",

@@ -1,7 +1,7 @@
 """
 Per-trajectory multi-speed comparison plots for the four baseline controllers.
 
-Mirrors the MDF-ASMC plot in plasmc_multi_speed_landing.pdf, but per-baseline
+Mirrors the VDF-ASMC plot in plasmc_multi_speed_landing.pdf, but per-baseline
 and per-trajectory: one PDF per moving trajectory, with a 2x2 grid of
 subplots (Lin 2022, Zhang 2026, Chen 2025, Cho 2022). Each subplot overlays
 the controller's UAV descent at five speed multipliers lambda in {0.6, 0.8,
