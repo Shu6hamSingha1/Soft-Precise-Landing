@@ -4,3 +4,10 @@ MATLAB/Multi_init_cond/Untitled
 Obsolete/
 *.log
 *.asv
+
+# Python build/cache
+__pycache__/
+*.pyc
+
+# PX4_Gazebo run-time artifacts
+PX4_Gazebo/run_logs/
