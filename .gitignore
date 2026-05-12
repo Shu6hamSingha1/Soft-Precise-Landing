@@ -11,3 +11,4 @@ __pycache__/
 
 # PX4_Gazebo run-time artifacts
 PX4_Gazebo/run_logs/
+PX4_Gazebo/calibration_data/

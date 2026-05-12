@@ -26,6 +26,20 @@ SLEEP_TIME = 1/30
 REF_RAD_OPT_FLOW = -0.30
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 
+# Calibration sweep amplitudes (reduced from 1.0 m / 15 deg to keep PX4
+# preflight checks happy. Empirically the previous 1.0 m sinusoid tripped
+# "High Accelerometer Bias" / "horizontal velocity unstable" → failsafe →
+# OFFBOARD drop → send_position_ned hang.)
+CALIB_AMP_XY = 0.7
+CALIB_AMP_Z  = 0.3       # mild z oscillation needed to excite the z-axis optical flow
+CALIB_AMP_YAW_DEG = 10.0
+# Per-call timeout on send_position_ned so a stuck MAVSDK can't deadlock the
+# sweep loop. 0.5 s is generous vs the 33 ms loop period.
+CALIB_SEND_TIMEOUT_S = 0.5
+# Bail if the drone drops more than this many metres below its post-takeoff
+# altitude (signals PX4 has entered AUTO_LAND under a failsafe).
+CALIB_ALT_DROP_BAIL_M = 2.0
+
 # Flags
 CONTROLLER_READY = False
 
@@ -106,39 +120,77 @@ async def main(record = 'n'):
 
         await FC_node.arm_and_takeoff(8.0)
 
-        await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosBody().z_m, yaw_deg_0)
+        # Post-takeoff stabilization: PX4's autonomous TAKEOFF task hands off to
+        # HOLD/LOITER but the state-machine transition takes a moment. If we
+        # push offboard setpoints into that window, flight_mode_manager logs
+        # `Matching flight task was not able to run` and drops into AUTO_LAND
+        # ("blind land" failsafe). Sleep + bombard with stationary setpoints
+        # so PX4 settles into a clean OFFBOARD mode before the sinusoidal sweep.
+        print("Hovering 5s for PX4 state-machine to stabilize...")
+        await asyncio.sleep(5.0)
+
+        print("Establishing offboard with stationary setpoints (2s @ 30 Hz)...")
+        for _ in range(60):
+            yaw_deg_curr = yaw_from_quaternion(FC_node.getQuat())
+            await FC_node.send_position_ned(0.0, 0.0,
+                                            FC_node.getPosBody().z_m,
+                                            yaw_deg_curr)
+            await asyncio.sleep(SLEEP_TIME)
 
         # res = input("Do you want to start? (y/n)")
-        
+
+        print("Starting calibration sweep...")
+        # Capture post-takeoff altitude so we can detect failsafe-driven descent.
+        takeoff_z = FC_node.getPosBody().z_m
         for val in cmd_profile:
             if not img_node.is_alive() and FC_node.LANDED:
                 break
 
+            # Bail if PX4 has dropped offboard and started descending under failsafe.
+            # PosBody z is NED-down (negative = above start), so a "drop" means z
+            # increases toward zero (or positive).
+            cur_z = FC_node.getPosBody().z_m
+            if cur_z - takeoff_z > CALIB_ALT_DROP_BAIL_M:
+                print(f"  [bail] altitude dropped {cur_z - takeoff_z:+.2f} m below takeoff — "
+                      f"PX4 likely failsafed; ending sweep early.")
+                break
+
             if CONTROLLER_READY:
                 t_c.append(time_node.perf_counter() - start_time)
-
             else:
                 start_time = time_node.perf_counter()
                 CONTROLLER_READY = True
                 t_c = [0.0]
 
-            pos_cmd = np.array([val, val, FC_node.getPosBody().z_m + 1.0*np.sign(val), yaw_deg_0 + 15*val])
+            # Reduced-amplitude command: gentler than the original 1.0 m / 15° / ±1 m z
+            # sweep, but enough motion on all 4 axes for a clean lstsq solution.
+            # z varies smoothly (sin), not the square-wave-of-sign of the original.
+            pos_cmd = np.array([CALIB_AMP_XY * val,
+                                CALIB_AMP_XY * val,
+                                takeoff_z + CALIB_AMP_Z * val,
+                                yaw_deg_0 + CALIB_AMP_YAW_DEG * val])
 
-            if img_node.FEATURE_IS_VISIBLE:
-                await FC_node.send_position_ned(*pos_cmd)
-
-            else:
-                yaw_deg = yaw_from_quaternion(FC_node.getQuat())
-                await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosBody().z_m, yaw_deg)
+            try:
+                if img_node.FEATURE_IS_VISIBLE:
+                    await asyncio.wait_for(
+                        FC_node.send_position_ned(*pos_cmd),
+                        timeout=CALIB_SEND_TIMEOUT_S)
+                else:
+                    yaw_deg = yaw_from_quaternion(FC_node.getQuat())
+                    await asyncio.wait_for(
+                        FC_node.send_position_ned(0.0, 0.0, takeoff_z, yaw_deg),
+                        timeout=CALIB_SEND_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                print(f"  [bail] send_position_ned timed out — PX4 likely rejected "
+                      f"offboard setpoint; ending sweep early.")
+                break
 
             UAV_pose.append(pose_node.getPose().UAV)
             target_pose.append(pose_node.getPose().target)
-            opt_flow_ang_vel.append(img_node.getOptFlowAngVel())
-            img_feature_param.append(img_node.getImgFeatureParam())
+            # Log RAW values (pre sensor_cal) so this script can be used to recalibrate.
+            opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
+            img_feature_param.append(img_node.getRawImgFeatureParam())
             cmd.append(pos_cmd)
-            # print(f"Gazebo | Int_Ctrl = {UAV_pose[-1]} | {FC_node.getPosBody()}")
-            # print(f"UAV | Target = {UAV_pose[-1]} | {target_pose[-1]}")
-            # print(img_node.metrics())
 
             await asyncio.sleep(SLEEP_TIME)
 
@@ -200,37 +252,28 @@ async def main(record = 'n'):
 
 if __name__ == "__main__":
     res = 'n'
-    # res = input("Do you want to record? (y/n)")
 
     try:
         asyncio.run(main(res))
     except KeyboardInterrupt:
         print("Clean exit on Ctrl+C")
 
-    # Save data# Save data
+    # Auto-save (no input prompt — runs headless via run_output_calibration.sh)
     if CONTROLLER_READY:
-        x = input('Do you want to save the dataset? (y/n)')
-        if x != 'n':
-            # record timestamp
-            timestamp = time.ctime().replace(':', '-')
+        # Allow override via env var so the launcher can predict the path.
+        dir_name = os.environ.get(
+            "CALIB_OUT_DIR",
+            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/"
+            f"{time.ctime().replace(':', '-')}"
+        )
+        os.makedirs(dir_name, exist_ok=True)
 
-            # Create a directory named based on timestamp
-            dir_name = f"/home/shubham/ws/Test_Data/Calibration/{timestamp}"
-            os.makedirs(dir_name)
+        np.save(f'{dir_name}/Img_Data', image_data)
+        np.save(f'{dir_name}/Telemetry_Data', telemetry_data)
+        np.save(f'{dir_name}/Ground_Truth', gt_data)
+        with open(f'{dir_name}/Img_Params.txt', 'w') as f:
+            f.write(str(img_params))
 
-            # Save files inside the folder 
-            np.save(f'{dir_name}/Img_Data', image_data)
-            np.save(f'{dir_name}/Telemetry_Data', telemetry_data)
-            # np.save(f'{dir_name}/Control_Data', controller_data)
-            # np.save(f'{dir_name}/Control_Params', controller_params)
-            np.save(f'{dir_name}/Ground_Truth', gt_data)
-            f = open(f'{dir_name}/Img_Params.txt', 'w')
-            f.write(img_params)
-            f.close()
-
-            print("Saved to CSV!")
-
-        else:
-            print("Closed without saving!")
+        print(f"Calibration data saved -> {dir_name}")
 
         

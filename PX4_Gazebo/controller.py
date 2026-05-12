@@ -11,11 +11,14 @@
 #   - Inner attitude/rate loop is delegated to PX4 (we ship body-rate + thrust)
 #
 # Notes on Gazebo vs MATLAB:
-#   - Camera intrinsics (fx=fy=540, 1280x960) come from x500_mono_cam_down SDF.
-#   - img_data._sensor_cal_s = diag(1/6, 1/6, 1, 1) is kept (user choice).
-#     This attenuates the centroid by 6x before reaching the controller, so
-#     MATLAB gains transplanted here will have a weaker effective response on
-#     the centroid channel. Expect a Gazebo re-tuning pass.
+#   - Camera intrinsics: 640x480 @ fx=fy=270 (Gazebo SDF, hfov=1.74 rad).
+#     MATLAB uses 320x240 @ f=135 (Constants.m). SAME hfov, so normalized
+#     image coordinates and PLASMC gains are invariant. Only pixel-space
+#     quantities scale 2x (rho_fov, etc.).
+#     1280x960 was tested and rejected on 2026-05-12: Gazebo's native render
+#     rate dropped to ~21 Hz with 90 ms ROS-bridge outliers.
+#   - img_data._sensor_cal_s = diag(1/6, 1/6, 1, 1) is kept (user choice) pending
+#     a recalibration pass via output_calibration.py.
 # **************************************************************************
 import time
 import numpy as np
@@ -31,8 +34,10 @@ SLEEP_TIME = 1/200
 N_DIM = 3
 e3 = np.eye(N_DIM)[:, 2]
 
-mass = 2.114  # kg, Holybro X500
-g = 9.80      # m/s^2
+mass = 2.114  # kg, Holybro X500 (matches MATLAB Constants.m: m=2.114)
+g = 9.80      # m/s^2 (matches Gazebo aruco.sdf <gravity>0 0 -9.8</gravity>;
+              # MATLAB Constants.m uses 9.81 internally — sub-0.1% difference,
+              # the 9.80 value here is correct for SITL physics)
 
 # Clamp |S| < 1 - S_MARGIN to keep log-barrier finite (MATLAB uses 0.05 margin)
 S_MARGIN = 0.05
@@ -96,8 +101,17 @@ class Controller(Thread):
         self._kappa_a_0 = 2.0
         self._E_a = 3.0
 
-        # FoV-cone tilt clamp (simplified port; MATLAB uses per-corner pixel margin)
-        self._theta_cap = np.deg2rad(60.0)
+        # FoV-margin cone clamp (full MATLAB port; visualControl_IBVS_adaptive.m:443-469).
+        # Per-corner pixel-margin envelope: rho_fov decays from rho_fov_0 to rho_fov_inf
+        # with rate l_fov; effective theta_cone shrinks as any corner approaches
+        # rho_fov. theta_cap is the hard cone ceiling.
+        # MATLAB values are for 320x240 (rho_fov_0=[145;105], rho_fov_inf=[40;40]).
+        # PX4_Gazebo uses 640x480 at same hfov=1.74; scale rho_fov by 2x to keep
+        # the same geometric meaning (corner margin in % of half-width).
+        self._rho_fov_0   = np.array([290.0, 210.0])   # initial per-axis pixel margin (u, v)
+        self._rho_fov_inf = np.array([80.0, 80.0])     # terminal per-axis pixel margin
+        self._l_fov       = 0.1                        # exponential decay rate
+        self._theta_cap   = np.deg2rad(60.0)           # hard tilt ceiling
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -177,6 +191,11 @@ class Controller(Thread):
         self._a_u = []
         self._I_a_raw = []    # pre-LPF, pre-clamp inertial accel command
         self._I_a = []        # post-LPF, post-clamp inertial accel command
+        # FoV-cone diagnostics
+        self._rho_fov_log = []
+        self._d_min_fov_log = []
+        self._theta_cone_log = []
+        self._theta_current_log = []
         self._w_u = []
         self._B_T = []
         self._u = []
@@ -440,19 +459,55 @@ class Controller(Thread):
         I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 
-        # ---- Tilt-cone clamp (simplified port of MATLAB's FoV cone) ----
+        # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
         I_a = I_a_raw.copy()
-        # Ensure enough downward thrust acceleration to retain tilt authority.
-        # In NED, I_a[2] >= 0 would mean net "downward" net acceleration, which
-        # with insufficient thrust authority destabilizes the lateral cone.
+
+        # 1) Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
+        R33 = float(np.clip(R[2, 2], -1.0, 1.0))
+        theta_current = np.arccos(R33)
+
+        # 2) Pixel-margin envelope (per axis, exponentially decaying)
+        t_elapsed = self._t[-1] - self._t0
+        rho_fov_curr = ((self._rho_fov_0 - self._rho_fov_inf)
+                        * np.exp(-self._l_fov * t_elapsed)
+                        + self._rho_fov_inf)   # (2,)
+
+        # 3) Per-corner pixel margins — get latest 4 corners from img_node
+        # _feature_pts[-1] is a [prev, curr] frame pair; [-1][1] is current 4 corners.
+        # Raw corners are in OpenCV top-left coords; convert to image-centered.
+        d_min_fov = 0.0
+        try:
+            fp_list = self._img_node._feature_pts
+            if len(fp_list) > 0:
+                raw_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+                cx, cy = self._img_node.center
+                u_centered = raw_corners[:, 0] - cx
+                v_centered = raw_corners[:, 1] - cy
+                d_corner_x = rho_fov_curr[0] - np.abs(u_centered)   # (4,)
+                d_corner_y = rho_fov_curr[1] - np.abs(v_centered)   # (4,)
+                d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
+        except (IndexError, AttributeError, ValueError, TypeError):
+            d_min_fov = 0.0   # fall back to "no extra tilt allowed"
+
+        # 4) Cone angle: current tilt + how-much-more-we-can-tilt-before-edge, capped
+        focal_px = float(self._img_node.focal[0])
+        theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+                               self._theta_cap))
+
+        # 5) Apply cone to inertial accel
         if I_a[2] >= 0:
             I_a[2] = -3.0
-        a_xy_lim = abs(I_a[2]) * np.tan(self._theta_cap)
+        a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
         a_xy_n = np.linalg.norm(I_a[:2])
         if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
             I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
-        # Floor on downward (climb) accel magnitude
         I_a[2] = max(I_a[2], -50.0)
+
+        # log FoV diagnostics
+        self._rho_fov_log.append(rho_fov_curr.copy())
+        self._d_min_fov_log.append(d_min_fov)
+        self._theta_cone_log.append(theta_cone)
+        self._theta_current_log.append(theta_current)
 
         # ---- LPF (MATLAB tau_ia = 0.08 s) ----
         if len(self._I_a) == 0:
@@ -571,6 +626,9 @@ class Controller(Thread):
             "E_a": self._E_a,
             # FoV / LPF
             "theta_cap_deg": np.rad2deg(self._theta_cap),
+            "rho_fov_0": self._rho_fov_0,
+            "rho_fov_inf": self._rho_fov_inf,
+            "l_fov": self._l_fov,
             "tau_ia": self._tau_ia,
             # Inner-attitude PD (kept for logging; PX4 rate ctrl does the heavy lifting)
             "K_ep": self._K_ep,
@@ -613,6 +671,11 @@ class Controller(Thread):
             "w_u(t)": self._w_u,
             "B_T(t)": self._B_T,
             "EA_d(t)": self._euler_d,
+            # FoV-margin cone diagnostics
+            "rho_fov(t)": self._rho_fov_log,
+            "d_min_fov(t)": self._d_min_fov_log,
+            "theta_cone(t)": self._theta_cone_log,
+            "theta_current(t)": self._theta_current_log,
         }
 
     def getImgData(self):

@@ -24,7 +24,7 @@ FENCE = (-5.0, 5.0, -5.0, 5.0, -5.0, 5.0) # xmin, xmax, ymin, ymax, zmin, zmax -
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
-REF_RAD_OPT_FLOW = -0.30
+REF_RAD_OPT_FLOW = -0.42  # MATLAB h_rd (Constants.m); reverted from -0.30 during MATLAB↔PX4 alignment
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 
 # Flight Controller Details:

@@ -22,10 +22,21 @@ from numerical_methods import extrapolate
 from gz_subscriber import GZ_Subscriber, Image_Node
 
 CHECK_NUM = 80
-fx = 540
-fy = 540
+# Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
+# fx = (W/2) / tan(hfov/2) = 320 / tan(0.87) ≈ 270.
+# MATLAB Constants.m uses f=135 at 320x240; same hfov, so normalized image
+# coordinates and PLASMC gains are identical. Only pixel-space FoV margins
+# (rho_fov in controller.py) are scaled 2x vs MATLAB.
+fx = 270
+fy = 270
 
-FILTER_WIN = 51
+FILTER_WIN = 13       # sliding-window length for savgol on raw image-side measurements
+                      # Retuned 2026-05-12 via tune_savgol.py across 5 calibration
+                      # recordings × 8 channels. Best runtime mean|corr| was (13, 1),
+                      # vs legacy (51, 2) which actually HURT runtime correlation
+                      # because ~25-sample lag pulled the centroid out of phase
+                      # with ground truth.
+FILTER_POLYORDER = 1
 VIDEO = False
 
 class IMG_PROCESSOR(Thread):
@@ -47,17 +58,30 @@ class IMG_PROCESSOR(Thread):
         self.focal = np.array([fx, fy])
         self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
 
-        self._sensor_cal_hw = np.diag([1, 1, 1, 1/3, 1/3, 1]) # Sensor calibration matrix
-        self._sensor_cal_s = np.diag([1/6, 1/6, 1, 1]) # Sensor calibration matrix
+        # Sensor calibration matrices — median across 5 clean output_calibration runs
+        # (2026-05-12; recordings in PX4_Gazebo/calibration_data/, derivation via
+        # analyze_calibration.py + aggregate_calibration.py + 6/6 pose-validation).
+        # Per-axis std/median:
+        #   hw: [22%, 26%, 58%(z is gentle in sweep), 31%, 23%, 27%]
+        #   s:  [4%, 3%]  — centroid calibration is rock-solid
+        # The legacy values diag(1,1,1,1/3,1/3,1) / diag(1/6,1/6,1,1) were derived
+        # from a different camera (1280x960) and never validated for the current
+        # 640x480 @ fx=270 setup; they had raw optical flow ~10x over-scaled which
+        # is the likely cause of earlier PLASMC `a_u` blow-ups.
+        self._sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
+        self._sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
 
         # ArUco marker detection setup
         _arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         _arucoParams = cv2.aruco.DetectorParameters()
         self._detector = cv2.aruco.ArucoDetector(_arucoDict, _arucoParams)
 
-        # Parameters for Lucas Kanade algorithm
+        # Parameters for Lucas Kanade algorithm.
+        # winSize sized for 320x240 frames (was (50,50), tuned for 1280x960 -- ~25%
+        # of image height there; now ~8% which keeps the search window roughly
+        # corner-scale relative to the marker).
         self._lk_params = dict(
-            winSize = (50, 50), maxLevel = 3, criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.05)
+            winSize = (20, 20), maxLevel = 3, criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.05)
         )
 
         # Flags and counters
@@ -129,7 +153,7 @@ class IMG_PROCESSOR(Thread):
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
                     if self._imgProcess(images, quaternions, showVideo = VIDEO) is AVAILABLE:
                         if not AVAILABLE:
-                            time.sleep(1/100) # 100 Hz
+                            time.sleep(1/300) # ~300 Hz polling — camera arrives at ~62 Hz, this is just a CPU yield
                             continue                        
                         if self._count_check_opt_flow > 0:
                             self._count_check_opt_flow = 0
@@ -140,7 +164,7 @@ class IMG_PROCESSOR(Thread):
                             print("OPTIC FLOW UNAVAILABLE...")
                             AVAILABLE = False
                             self._count_check_opt_flow = 0
-                        time.sleep(1/100) # 100 Hz
+                        time.sleep(1/300) # ~300 Hz polling — camera arrives at ~62 Hz, this is just a CPU yield
                         continue
 
                     else:
@@ -153,7 +177,7 @@ class IMG_PROCESSOR(Thread):
 
                 self._calc_time = time.perf_counter() - timer_flag
 
-                time.sleep(1/100) # 100 Hz
+                time.sleep(1/300) # ~300 Hz polling — camera arrives at ~62 Hz, this is just a CPU yield
 
         except KeyboardInterrupt:
             print("KeyboardInterrupt: Flow Streamer Thread\n")
@@ -185,7 +209,7 @@ class IMG_PROCESSOR(Thread):
         print("Waiting for image streaming")
         start_time = self._time.perf_counter()
         while any(image is None for image in self._image_node.getImages()):
-            time.sleep(1/100)
+            time.sleep(1/300)
             if (self._time.perf_counter() - start_time) > 20:
                 raise Exception("Unable to get image data.")
     
@@ -414,21 +438,44 @@ class IMG_PROCESSOR(Thread):
         parameter = f"{{'Capture Rate':{self._capRate}, 'resolution':{self._resolution}}}"
         return parameter
     
-    def getImgFeatureParam(self):
+    def getRawImgFeatureParam(self):
+        """Image feature vector BEFORE _sensor_cal_s. Used by output_calibration."""
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
-        return self._sensor_cal_s @ self._img_feature_param[-1]
-    
-    def getOptFlowAngVel(self):
+        return np.array(self._img_feature_param[-1])
+
+    def getRawOptFlowAngVel(self):
+        """Optical-flow + angular-velocity vector BEFORE _sensor_cal_hw. Used by output_calibration."""
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
-    
-        # Smooth the estimates of Optic Flow and Angular Velocity using Savitzky-Golay filter
-        if len(self._opt_flow_ang_vel_raw) >= FILTER_WIN:
-            opt_flow_ang_vel_sgf = sgf(self._opt_flow_ang_vel_raw[-FILTER_WIN:], FILTER_WIN, 2, axis=0)
-            opt_flow_ang_vel = opt_flow_ang_vel_sgf[:,int(FILTER_WIN/2 + 1)]                    # Check this
-        else:
-            opt_flow_ang_vel = np.mean(self._opt_flow_ang_vel_raw, axis=0)
+        return np.array(self._opt_flow_ang_vel_raw[-1])
 
-        # return self._sensor_cal_hw @ opt_flow_ang_vel
-        return self._sensor_cal_hw @ self._opt_flow_ang_vel_raw[-1]
+    def getOptFlowAngVel(self):
+        """Calibrated, savgol-smoothed optical flow + angular velocity (6-vec).
+
+        Matches the pattern used in legacy img_data versions (v4..v9, img_data_LK):
+            sgf(buf[-FILTER_WIN:], FILTER_WIN, POLYORDER, axis=0)[int(FILTER_WIN/2 + 1)]
+        Returns the non-causal estimate at t - FILTER_WIN/2 (~FILTER_WIN/2 samples lag).
+        Until buffer fills to FILTER_WIN samples, fall back to mean of available raw.
+        """
+        if len(self._opt_flow_ang_vel_raw) == 0:
+            return np.zeros(6)
+        if len(self._opt_flow_ang_vel_raw) >= FILTER_WIN:
+            sgf_buf = sgf(self._opt_flow_ang_vel_raw[-FILTER_WIN:],
+                          FILTER_WIN, FILTER_POLYORDER, axis=0)
+            return self._sensor_cal_hw @ sgf_buf[int(FILTER_WIN / 2 + 1)]
+        return self._sensor_cal_hw @ np.mean(self._opt_flow_ang_vel_raw, axis=0)
+
+    def getImgFeatureParam(self):
+        """Calibrated, savgol-smoothed image-feature vector (4-vec).
+
+        Same pattern as getOptFlowAngVel — sliding-window savgol on raw centroid /
+        scale / alpha. Until buffer fills, fall back to mean.
+        """
+        if len(self._img_feature_param) == 0:
+            return np.zeros(4)
+        if len(self._img_feature_param) >= FILTER_WIN:
+            sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:],
+                          FILTER_WIN, FILTER_POLYORDER, axis=0)
+            return self._sensor_cal_s @ sgf_buf[int(FILTER_WIN / 2 + 1)]
+        return self._sensor_cal_s @ np.mean(self._img_feature_param, axis=0)

@@ -81,16 +81,36 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   controller.py                — PLASMC port aligned to MATLAB single-run
   flight_controller.py         — MAVSDK wrapper (uXRCE-DDS over udp:14540)
   gz_subscriber.py             — ROS 2 subs for /pose, /clock, /image
-  img_data.py                  — ArUco detection + Lucas-Kanade optical flow
+  img_data.py                  — ArUco detection + LK optical flow
+                                 (sensor-cal matrices on lines 50–51)
   img_data_LK.py               — alt LK tune (not in active pipeline)
   numerical_methods.py         — RK5, smooth4, extrapolate
   posctl.py                    — bare position-control demo
   target_tracking_mtr.py       — pose-only target centering demo
-  calibration.py, input_calibration.py, output_calibration.py
+  calibration.py, input_calibration.py
+  output_calibration.py        — drives sinusoidal commands, auto-saves raw
+                                 image/pose data for sensor-cal recalibration
+  analyze_calibration.py       — ports plotter_calibration.ipynb logic; derives
+                                 new _sensor_cal_hw / _sensor_cal_s
+  validate_pose_transforms.py  — 6 sanity checks on frame conventions used
+                                 by analyze_calibration.py
+  validate_image.py            — ROS 2 subscriber; saves a frame + annotated
+                                 frame; runs ArUco detection on it
   Images/                      — ArUco marker images (DICT_4X4_50)
-  tips.txt                     — manual launch sequence (ArUco + rover scenarios)
-  run_aruco_landing.sh         — one-command launcher (MicroXRCEAgent + PX4 SITL
-                                 + Gazebo + 3 bridges + QGC + landing_test.py)
+  tips.txt                     — manual launch sequence (ArUco + rover)
+  run_aruco_landing.sh         — one-command landing-test launcher
+                                 (HEADLESS=1 for offscreen Qt; auto-cleans)
+  run_output_calibration.sh    — headless calibration sweep launcher
+  measure_image_fps.sh         — brings SITL up, samples /image rate
+  validate_image_feed.sh       — wraps validate_image.py
+  aggregate_calibration.py     — combines all recordings; reports per-axis
+                                 mean/median/std (use after >=5 valid runs)
+  tune_savgol.py               — sweeps (window, polyorder) over all
+                                 recordings; picks max |corr| config
+  plotter_calibration.ipynb    — interactive ground-truth vs calibrated
+                                 overlays + per-channel quality metrics
+  calibration_data/<timestamp>/ — auto-saved recordings (gitignored)
+  run_logs/                    — per-component logs (gitignored)
 ```
 
 ## PX4/Gazebo Phase — Quick Reference
@@ -103,9 +123,49 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
 **Launch (stationary ArUco):**
 ```bash
 cd ~/Soft-Precise-Landing/PX4_Gazebo/
-./run_aruco_landing.sh        # spawns all background components + runs landing_test.py
+./run_aruco_landing.sh                  # GUI mode
+HEADLESS=1 ./run_aruco_landing.sh       # offscreen Qt, no visible windows
 ```
-See `tips.txt` for the manual 7-pane launch (and the rover/moving-target variant).
+- The launcher runs `setsid` on every child so cleanup catches process groups (single PID-kill from earlier iterations missed bridge children).
+- HEADLESS mode uses `QT_QPA_PLATFORM=offscreen` on PX4 SITL — Gazebo's standalone `-s` server breaks the camera plugin on x500_mono_cam_down.
+- QGC is launched (offscreen in HEADLESS mode) to satisfy PX4's "No connection to GCS" preflight check.
+- See `tips.txt` for the manual 7-pane launch (and the rover/moving-target variant).
+
+**Camera (640×480 @ fx=fy=270, hfov=1.74 rad).** Edited in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf`. Image feed validated at ~62 Hz steady. Higher resolutions tested and rejected:
+- 1280×960 → Gazebo native renderer drops to 21 Hz with 92 ms ROS-bridge outliers.
+- Same hfov as MATLAB → PLASMC gain tuning is invariant.
+
+**Sensor-cal (applied 2026-05-12, from 5-run median):**
+```python
+# img_data.py:65-66
+_sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
+_sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
+```
+Legacy `diag(1,1,1,1/3,1/3,1)` / `diag(1/6,1/6,1,1)` were ~10× off on optical flow — likely cause of earlier PLASMC `a_u` blow-up.
+
+**Runtime savgol filter (applied 2026-05-13):**
+```python
+# img_data.py:33-39
+FILTER_WIN = 13
+FILTER_POLYORDER = 1
+```
+Sliding-window pattern from user's legacy `img_data*.py`: `sgf(buf[-W:], W, P, axis=0)[W/2+1]`. Applied in both `getOptFlowAngVel()` and `getImgFeatureParam()`. Tuned via `tune_savgol.py` for runtime (lag-aware) — legacy `FILTER_WIN=51` was actually worse than no filter (the ~25-sample lag pulled centroid out of phase with ground truth). The **offline** notebook uses `(101, 3)` for analysis — DO NOT apply that to the runtime.
+
+**Sensor-cal recalibration workflow** (when needed):
+```bash
+# Run until you have ≥ 5 valid recordings (~50% of runs fail; cleanup loop removes empty dirs):
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  timeout 110 bash run_output_calibration.sh
+  for d in calibration_data/*/; do [ -z "$(ls "$d" 2>/dev/null)" ] && rmdir "$d"; done
+  [ "$(ls calibration_data/ | wc -l)" -ge 5 ] && break
+done
+~/ws/scripts/env2025/bin/python3 validate_pose_transforms.py   # 6 sanity checks
+~/ws/scripts/env2025/bin/python3 aggregate_calibration.py      # median + std
+~/ws/scripts/env2025/bin/python3 tune_savgol.py                # offline + runtime savgol picks
+# Then edit img_data.py:65-66 with the median diag values
+# And update img_data.py:33-39 with the RUNTIME (not offline) savgol params
+```
+Calibration data goes to timestamped folders under `calibration_data/`; gitignored. `tune_savgol.py` reports both offline-best (non-causal; for the notebook) and runtime-best (lag-aware sliding window; for img_data.py). **Never put the offline params in img_data.py** — long windows look great offline but lag pulls the live signal out of phase with reality.
 
 **Control architecture (post-port):**
 - **Outer loop (Python):** PID on raw normalized pixel error → desired feature-time-derivative `V_ds_d`
