@@ -137,8 +137,22 @@ class FC():
         else:
             arm_res = 'y'
         if arm_res != 'n':
+            # PX4 prints "Ready for takeoff" before all preflight checks settle.
+            # arm() can still return COMMAND_DENIED for ~5-15 s after that
+            # (heading estimate / EKF still converging). Retry instead of crashing.
             print("-- Arming")
-            await self.vehicle.action.arm()
+            arm_err = None
+            for attempt in range(10):                  # ~10 * 2s = 20 s budget
+                try:
+                    await self.vehicle.action.arm()
+                    arm_err = None
+                    break
+                except Exception as e:
+                    arm_err = e
+                    print(f"  arm attempt {attempt + 1}/10 denied: {e} — waiting 2s")
+                    await asyncio.sleep(2.0)
+            if arm_err is not None:
+                raise RuntimeError(f"arm() failed after 10 retries: {arm_err}")
             print('Armed!')
         else:
             raise Exception("Request for arming rejected.")
@@ -168,16 +182,48 @@ class FC():
             raise Exception("Request for takeoff rejected.")
 
         print("Switching to OFFBOARD mode!")
-        await self.send_velocity_body(0.0, 0.0, 0.0, 0.0)
-        
-        try:
-            print("-- Starting offboard")
-            await self.vehicle.offboard.start()
 
-        except OffboardError as error:
-            print(f"Starting offboard mode failed \
-                    with error code: {error._result.result}")
-        
+        # Bombard PX4 with stationary setpoints BEFORE calling offboard.start().
+        # MAVSDK requires a valid setpoint stream to be flowing; a single one
+        # (the original code) can race with PX4's TAKEOFF->HOLD transition and
+        # cause offboard.start() to silently fail. The script then proceeds with
+        # offboard NOT active, and PX4 ignores subsequent setpoints (stays in
+        # HOLD, drifts).
+        for _ in range(20):                    # ~0.5 s at 40 Hz of setpoints
+            await self.send_velocity_body(0.0, 0.0, 0.0, 0.0)
+            await asyncio.sleep(0.025)
+
+        # Retry offboard.start() a few times — first attempt sometimes fails
+        # because PX4 is still in the TAKEOFF->HOLD transition.
+        last_err = None
+        for attempt in range(5):
+            try:
+                print(f"-- Starting offboard (attempt {attempt + 1}/5)")
+                await self.vehicle.offboard.start()
+                last_err = None
+                break
+            except OffboardError as error:
+                last_err = error
+                print(f"  offboard.start failed: {error._result.result} "
+                      f"— continuing to pump setpoints and retrying...")
+                for _ in range(20):
+                    await self.send_velocity_body(0.0, 0.0, 0.0, 0.0)
+                    await asyncio.sleep(0.025)
+        if last_err is not None:
+            # Don't silently continue with offboard NOT active — caller needs to know.
+            raise RuntimeError(
+                f"offboard.start() failed after 5 attempts: {last_err._result.result}. "
+                f"Subsequent send_position_ned / send_attitude_rate calls won't take effect."
+            )
+
+        # Verify mode actually flipped to OFFBOARD before we hand control back.
+        try:
+            mode = await asyncio.wait_for(self.vehicle.telemetry.flight_mode().__aiter__().__anext__(),
+                                          timeout=1.0)
+            print(f"  PX4 reported flight_mode = {mode}")
+        except Exception as e:
+            print(f"  (couldn't read flight_mode: {e})")
+
         print(self.getPosBody())
     
     async def send_position_ned(self, n = 0.0, e = 0.0, d = 0.0, yaw = 0.0):

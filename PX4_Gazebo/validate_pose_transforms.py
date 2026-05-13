@@ -17,7 +17,8 @@ Checks (each labelled CHECK):
   8. UAV angular velocity matches Gazebo's reported body-rate roughly
 
 Run AFTER a calibration recording exists in
-PX4_Gazebo/calibration_data/latest/
+PX4_Gazebo/calibration_data/output/<timestamp>/
+(defaults to the most recent; pass a specific dir as argv[1] if needed).
 """
 import os
 import sys
@@ -34,7 +35,7 @@ def banner(s):
 
 
 def _most_recent_run_dir():
-    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data"
+    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output"
     cands = [d for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
     if not cands:
         return None

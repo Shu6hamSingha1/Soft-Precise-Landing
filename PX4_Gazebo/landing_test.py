@@ -215,7 +215,10 @@ if __name__ == "__main__":
 
     # Save data# Save data
     if CONTROLLER_READY:
-        x = input('Do you want to save the dataset? (y/n)')
+        if os.environ.get('LANDING_AUTOSAVE') == '1':
+            x = 'y'
+        else:
+            x = input('Do you want to save the dataset? (y/n)')
         if x != 'n':
             # record timestamp
             timestamp = time.ctime().replace(':', '-')

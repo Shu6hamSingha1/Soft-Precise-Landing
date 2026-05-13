@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Aggregate sensor-cal diag values across ALL valid calibration recordings in
-PX4_Gazebo/calibration_data/. A run is "valid" only if validate_pose_transforms
+PX4_Gazebo/calibration_data/output/. A run is "valid" only if validate_pose_transforms
 on it returns 0 (all 6 checks pass). For each valid run, derive diag values
 via analyze_calibration's per-axis median-of-ratio. Report mean, median, std
 across runs, plus per-run breakdown.
@@ -124,7 +124,7 @@ def analyze_one(run_dir):
 
 
 def main():
-    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data"
+    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output"
     run_dirs = sorted([d for d in glob.glob(f"{parent}/*") if os.path.isdir(d)])
     # Filter symlinks
     run_dirs = [d for d in run_dirs if not os.path.islink(d)]

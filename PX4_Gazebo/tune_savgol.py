@@ -19,7 +19,7 @@ from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion, DCM
 from itertools import product
 
-PARENT = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data"
+PARENT = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output"
 FLU_2_FRD = np.array(DCM(x=180.0))
 
 # Currently-applied sensor_cal matrices (5-run median, 2026-05-12)

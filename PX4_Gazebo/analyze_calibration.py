@@ -2,10 +2,11 @@
 """
 Derive _sensor_cal_hw and _sensor_cal_s by comparing raw image-side
 measurements against ground-truth pose-derived quantities, following the
-same methodology as plotter_calibration.ipynb (cells 11, 16, 18).
+same methodology as plotter_output_calibration.ipynb (cells 11, 16, 18).
 
 Inputs:
-  - PX4_Gazebo/calibration_data/latest/{Img_Data,Telemetry_Data,Ground_Truth}.npy
+  - PX4_Gazebo/calibration_data/output/<timestamp>/{Img_Data,Telemetry_Data,Ground_Truth}.npy
+    (defaults to the most recent timestamped folder; pass a dir as argv[1] to pick one)
 
 Outputs:
   - Proposed _sensor_cal_hw (6x6 diag) and _sensor_cal_s (4x4 diag)
@@ -27,7 +28,7 @@ def load_data(data_dir):
 
 
 def compute_ground_truth_flow_and_w(gt):
-    """Port of plotter_calibration.ipynb cells 16 + 18.
+    """Port of plotter_output_calibration.ipynb cells 16 + 18.
 
     Returns (t_g, B_y_g, B_w_tug, B_x_tu) all of shape (N, 3) [or (N,) for t_g].
     """
@@ -110,7 +111,7 @@ def robust_scale(raw, gt, magnitude_threshold):
 
 
 def _most_recent_run_dir():
-    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data"
+    parent = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output"
     cands = [d for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
     if not cands:
         return None

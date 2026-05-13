@@ -82,15 +82,13 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   flight_controller.py         — MAVSDK wrapper (uXRCE-DDS over udp:14540)
   gz_subscriber.py             — ROS 2 subs for /pose, /clock, /image
   img_data.py                  — ArUco detection + LK optical flow
-                                 (sensor-cal matrices on lines 50–51)
-  img_data_LK.py               — alt LK tune (not in active pipeline)
+                                 (sensor-cal matrices L65-66, savgol L33-39)
   numerical_methods.py         — RK5, smooth4, extrapolate
-  posctl.py                    — bare position-control demo
-  target_tracking_mtr.py       — pose-only target centering demo
-  calibration.py, input_calibration.py
+  input_calibration.py         — FC actuator/attitude-rate response calibration
+                                 (sinusoidal cmd profile, records pose response)
   output_calibration.py        — drives sinusoidal commands, auto-saves raw
                                  image/pose data for sensor-cal recalibration
-  analyze_calibration.py       — ports plotter_calibration.ipynb logic; derives
+  analyze_calibration.py       — ports plotter_output_calibration.ipynb logic; derives
                                  new _sensor_cal_hw / _sensor_cal_s
   validate_pose_transforms.py  — 6 sanity checks on frame conventions used
                                  by analyze_calibration.py
@@ -107,9 +105,13 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
                                  mean/median/std (use after >=5 valid runs)
   tune_savgol.py               — sweeps (window, polyorder) over all
                                  recordings; picks max |corr| config
-  plotter_calibration.ipynb    — interactive ground-truth vs calibrated
+  plotter_output_calibration.ipynb — interactive ground-truth vs calibrated
+                                 output (sensor_cal_hw, sensor_cal_s); per-channel quality
+  plotter_input_calibration.ipynb  — interactive ground-truth vs commanded
+                                 input (attitude-rate + thrust); FC response check
                                  overlays + per-channel quality metrics
-  calibration_data/<timestamp>/ — auto-saved recordings (gitignored)
+  calibration_data/output/<timestamp>/  — output_calibration recordings (gitignored)
+  calibration_data/input/<timestamp>/   — input_calibration recordings  (gitignored)
   run_logs/                    — per-component logs (gitignored)
 ```
 

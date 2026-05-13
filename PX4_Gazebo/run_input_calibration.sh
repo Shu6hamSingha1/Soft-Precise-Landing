@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Run output_calibration.py headlessly. Brings up MicroXRCEAgent + PX4 SITL
-# (Qt offscreen) + 3 ros_gz bridges + QGC (offscreen, for GCS-link
-# preflight), waits for PX4 health, then runs the calibration sweep.
+# Run input_calibration.py headlessly. Same pattern as run_output_calibration.sh:
+# brings up MicroXRCEAgent + PX4 SITL (Qt offscreen) + 3 bridges + QGC, waits
+# for preflight, then runs the input-calibration sweep that sends attitude-rate
+# commands and records pose response.
 set -u
 
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
@@ -10,48 +11,42 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/run_logs"
 mkdir -p "$LOG_DIR"
 
-# Every run lands in its own timestamped folder so we keep history (matches
-# the original ~/ws/scripts/soft_precise_landing/output_calibration.py
-# convention which used time.ctime()-style names). A `latest` symlink in the
-# same parent tracks the most recent run for analyze/validate scripts.
-CALIB_PARENT="$SCRIPT_DIR/calibration_data/output"
+CALIB_PARENT="$SCRIPT_DIR/calibration_data/input"
 mkdir -p "$CALIB_PARENT"
 TIMESTAMP="$(date '+%a %b %e %H-%M-%S %Y')"
-export CALIB_OUT_DIR="${CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"
-mkdir -p "$CALIB_OUT_DIR"
-echo "[calib] output dir: $CALIB_OUT_DIR"
+export INPUT_CALIB_OUT_DIR="${INPUT_CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"
+mkdir -p "$INPUT_CALIB_OUT_DIR"
+echo "[input-calib] output dir: $INPUT_CALIB_OUT_DIR"
 
 declare -a PIDS=()
 
 cleanup() {
   echo
-  echo "[calib] cleanup..."
+  echo "[input-calib] cleanup..."
   for pid in "${PIDS[@]}"; do
     kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
   done
   sleep 1
-  # Hardier kill — output_calibration.py can hang past SIGTERM if MAVSDK
-  # is awaiting an offboard ACK that PX4 won't send (post-failsafe).
-  pkill -9 -f 'output_calibration.py' 2>/dev/null || true
+  pkill -9 -f 'input_calibration.py' 2>/dev/null || true
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
   pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
   pkill -9 -f 'QGroundControl' 2>/dev/null || true
-  echo "[calib] done."
+  echo "[input-calib] done."
 }
 trap cleanup EXIT INT TERM
 
 start_bg() {
   local name="$1"; shift
   local logfile="$LOG_DIR/$name.log"
-  echo "[calib] launching $name"
+  echo "[input-calib] launching $name"
   setsid "$@" > "$logfile" 2>&1 &
   local pid=$!
   PIDS+=("$pid")
   sleep 0.3
   if ! kill -0 "$pid" 2>/dev/null; then
-    echo "[calib] $name died:"
+    echo "[input-calib] $name died:"
     tail -n 20 "$logfile" || true
     exit 1
   fi
@@ -60,7 +55,7 @@ start_bg() {
 start_bg microxrce MicroXRCEAgent udp4 -p 8888
 sleep 1
 
-echo "[calib] starting PX4 SITL (headless Qt)..."
+echo "[input-calib] starting PX4 SITL (headless Qt)..."
 # Truncate log so the preflight-wait grep below only matches THIS run.
 : > "$LOG_DIR/px4_sitl.log"
 setsid env QT_QPA_PLATFORM=offscreen \
@@ -72,7 +67,7 @@ setsid env QT_QPA_PLATFORM=offscreen \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PIDS+=($!)
 
-echo -n "[calib] waiting for Gazebo "
+echo -n "[input-calib] waiting for Gazebo "
 WAITED=0
 while ! gz topic -l 2>/dev/null | grep -q '/world/aruco/clock'; do
   sleep 1; echo -n "."
@@ -97,7 +92,7 @@ if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
   QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
 fi
 
-echo -n "[calib] waiting for PX4 preflight "
+echo -n "[input-calib] waiting for PX4 preflight "
 WAITED=0
 while ! strings "$LOG_DIR/px4_sitl.log" 2>/dev/null | grep -q 'Ready for takeoff' \
       && [ "$WAITED" -lt 30 ]; do
@@ -106,16 +101,9 @@ while ! strings "$LOG_DIR/px4_sitl.log" 2>/dev/null | grep -q 'Ready for takeoff
 done
 echo " (${WAITED}s)"
 
-# "Ready for takeoff" is printed before EKF heading-estimate / gyro-bias checks settle,
-# so the first arm() attempt frequently gets COMMAND_DENIED. Give PX4 an extra 8 s
-# to settle. (flight_controller.py also retries arm internally; this just makes
-# the first attempt usually succeed.)
-echo "[calib] settling 20s before arm (heading-estimate convergence)..."
-sleep 20
-
-echo "[calib] running output_calibration.py (data -> $CALIB_OUT_DIR)..."
+echo "[input-calib] running input_calibration.py (data -> $INPUT_CALIB_OUT_DIR)..."
 cd "$SCRIPT_DIR"
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 output_calibration.py
-echo "[calib] script exit $?"
+INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 input_calibration.py
+echo "[input-calib] script exit $?"

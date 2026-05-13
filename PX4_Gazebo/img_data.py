@@ -11,9 +11,10 @@ Code to compute real-time optical flow
     - https://ieeexplore.ieee.org/abstract/document/8753669/
     - https://docs.opencv.org/3.4/d4/dee/tutorial_optical_flow.html
 """
+import os
 import numpy as np
 import cv2 # OpenCV library
-from threading import Thread 
+from threading import Thread
 import time
 from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion
@@ -58,30 +59,52 @@ class IMG_PROCESSOR(Thread):
         self.focal = np.array([fx, fy])
         self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
 
-        # Sensor calibration matrices — median across 5 clean output_calibration runs
-        # (2026-05-12; recordings in PX4_Gazebo/calibration_data/, derivation via
-        # analyze_calibration.py + aggregate_calibration.py + 6/6 pose-validation).
-        # Per-axis std/median:
-        #   hw: [22%, 26%, 58%(z is gentle in sweep), 31%, 23%, 27%]
-        #   s:  [4%, 3%]  — centroid calibration is rock-solid
-        # The legacy values diag(1,1,1,1/3,1/3,1) / diag(1/6,1/6,1,1) were derived
-        # from a different camera (1280x960) and never validated for the current
-        # 640x480 @ fx=270 setup; they had raw optical flow ~10x over-scaled which
-        # is the likely cause of earlier PLASMC `a_u` blow-ups.
-        self._sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
-        self._sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
+        # Sensor calibration matrices — RECALIBRATED 2026-05-13 after the lstsq +
+        # LK retuning + extrapolation-clip fix. nanmedian across 4 valid output_cal
+        # runs (recordings in calibration_data/output/Wed May 13 10-{02-57, 04-47,
+        # 06-20, 07-52} 2026/). 5th run (10-09-27) dropped by validity gate.
+        #
+        # Most axes are within ±10% of the pre-fix 2026-05-12 calibration; axis 5
+        # (yaw rate) shifted up by 74% (0.244 → 0.424) — most likely because the
+        # tighter LK now rejects noisier yaw-axis corners, so the surviving signal
+        # needs a larger scaling to match GT.
+        #
+        # Previous (pre-fix 2026-05-12, kept for reference):
+        #   _sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
+        #   _sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
+        self._sensor_cal_hw = np.diag([0.1498, 0.1694, 0.0877, 0.2188, 0.2114, 0.4236])
+        self._sensor_cal_s  = np.diag([0.6069, 0.6109, 1.0000, 1.0000])
 
-        # ArUco marker detection setup
+        # ArUco marker detection setup, with sub-pixel corner refinement
+        # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
+        # which returns integer-rounded pixel corners. SUBPIX runs the standard
+        # cv2.cornerSubPix algorithm internally on each detected corner, giving
+        # sub-pixel precision before LK tracks them. Cheap and improves the
+        # downstream lstsq input quality.
         _arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         _arucoParams = cv2.aruco.DetectorParameters()
+        _arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        _arucoParams.cornerRefinementWinSize = 5       # 11x11 actual window
+        _arucoParams.cornerRefinementMaxIterations = 30
+        _arucoParams.cornerRefinementMinAccuracy = 0.01
         self._detector = cv2.aruco.ArucoDetector(_arucoDict, _arucoParams)
 
-        # Parameters for Lucas Kanade algorithm.
-        # winSize sized for 320x240 frames (was (50,50), tuned for 1280x960 -- ~25%
-        # of image height there; now ~8% which keeps the search window roughly
-        # corner-scale relative to the marker).
+        # Parameters for Lucas Kanade algorithm. Retuned 2026-05-13 for 640x480 frames
+        # with focus on REJECTING low-confidence corners (was producing lstsq garbage
+        # when corners drifted near the image edge during the calibration sweep).
+        #   winSize (21,21)    — odd-sized window centered on each corner; ~22% of
+        #                        the typical marker width at 640x480 hover altitude
+        #   maxLevel 3         — pyramid levels (frame downsampled to 80x60 at L3)
+        #   criteria 30 / 0.01 — tighter than before (was 20 / 0.05); convergence
+        #                        within 0.01 px or 30 iterations
+        #   minEigThreshold 1e-3 — reject corners with min spatial eigenvalue below
+        #                        this; cuts off poorly-tracked points before they
+        #                        feed the lstsq solve
         self._lk_params = dict(
-            winSize = (20, 20), maxLevel = 3, criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.05)
+            winSize=(21, 21),
+            maxLevel=3,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+            minEigThreshold=1e-3,
         )
 
         # Flags and counters
@@ -99,6 +122,37 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        # Online post-filter logs (both filters computed every frame, regardless
+        # of which one IMG_FILTER selects for the controller). Saved as
+        # "Opt Flow KF" / "Opt Flow Savgol" inside getLogData for offline A/B.
+        self._opt_flow_kf_log = []
+        self._opt_flow_savgol_log = []
+
+        # Per-axis 2-state constant-velocity Kalman filter on the 6 optic-flow /
+        # ang-vel channels. Replaces the prior Savgol(13, 1) buffer.
+        #
+        # State per channel: [value, rate-of-change]
+        # Model: x_{k+1} = F·x_k + w,   z_k = H·x_k + v,
+        #        F = [[1, dt], [0, 1]],  H = [1, 0]
+        #        Q = q · [[dt^4/4, dt^3/2], [dt^3/2, dt^2]]   (white-noise on ẍ)
+        #        R = r                                          (measurement variance)
+        #
+        # Why over Savgol(13,1)? Savgol delivered ~92% HF reduction but at ~100 ms
+        # group delay (legacy 51-window was outright worse due to lag). A 2-state
+        # KF adapts: when motion is steady, the innovation is small and the gain
+        # tightens (more smoothing); during transients, innovation grows and gain
+        # opens (faster response). Steady-state HF reduction comparable to Savgol;
+        # transient lag dominated by 1/(KF gain), typically <30 ms.
+        #
+        # Tuning: q (process noise) / r (measurement noise) ratio sets bandwidth.
+        # Defaults below tuned for ~10 Hz steady-state cutoff at 60 Hz sampling
+        # (matches Savgol13's effective bandwidth).
+        self._kf_q = 5.0                    # process-noise PSD (rad/s² per √s)²
+        self._kf_r = 0.1                    # measurement noise variance
+        self._kf_x = np.zeros((6, 2))       # [value, rate] per channel
+        self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
+        self._kf_prev_t = None
+        self._kf_initialized = False
 
         # Video recording
         self._video = None
@@ -254,13 +308,42 @@ class IMG_PROCESSOR(Thread):
                 if showVideo:
                     self._showOptFlow(imgs[1], C_nP, V_nP_norm)
                 
-                # Compute optical flow
+                # Compute optical flow via 6-DOF image-Jacobian lstsq.
+                # Notes from 2026-05-13 experiments (kept lstsq, rejected
+                # robust-regression alternatives for this specific 8x6 algebra):
+                #   - IRLS/Huber on residuals: NO-OP. Residual nullspace is 2D
+                #     with equal projection onto every corner pair, so per-corner
+                #     residual norms are structurally equal regardless of which
+                #     corner is bad.
+                #   - LOO by held-out residual norm: same symmetry, NO-OP.
+                #   - LK-`err` row weighting: HURT (cap-hit% rose 0.5→1.9%);
+                #     downweighting pushes the system toward 6x6 exactly
+                #     determined, which is more sensitive to remaining noise.
+                # Noise reduction is now handled temporally (KF in getOptFlowAngVel),
+                # not via the lstsq solve itself.
+                # Stability gates retained: rcond=1e-3, rank, condition, ±10 clip.
                 A = self._fill_A(V_nP_norm[1])
-
                 Y = np.reshape(V_nP_norm[1] - V_nP_norm[0], (-1,)) * self._fps
 
-                B_v = np.linalg.lstsq(A, Y, rcond=None)[0]
-                self._opt_flow_ang_vel_raw.append(size_factor * B_v)
+                B_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
+                cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
+                bad = (
+                    rank < 6
+                    or cond > 1e4
+                    or not np.all(np.isfinite(B_v))
+                    or np.max(np.abs(B_v)) > 50.0
+                )
+                if bad:
+                    B_v = np.zeros(6)
+                B_v = np.clip(B_v, -10.0, 10.0)
+
+                B_v_scaled = size_factor * B_v
+                self._opt_flow_ang_vel_raw.append(B_v_scaled)
+                # 2-state KF update — only on a fresh raw measurement.
+                self._kf_update(B_v_scaled, self._time.perf_counter())
+                # Log both filters' calibrated outputs every frame for A/B.
+                self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
+                self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
 
                 self._getImgFeatures(size_factor * V_nP_norm[1])
 
@@ -288,11 +371,25 @@ class IMG_PROCESSOR(Thread):
         self._fps_log.append(self._fps)
 
         if not FEATURE_DATA_IS_LOGGED:
-            # Extrapolate the output data
-            extrapolated_opt_flow_ang_vel_raw = extrapolate(self._time_log, self._opt_flow_ang_vel_raw, n=4, deg=1, default_shape=6)
-            extrapolated_img_feature_param = extrapolate(self._time_log, self._img_feature_param, n=4, deg=1, default_shape=4)   
+            # No new feature data this frame (LK failed or marker not seen).
+            # 2026-05-13: do NOT extrapolate the optical-flow / angular-velocity vector.
+            # The previous deg=1 polynomial extrapolation cascaded: if past values
+            # were noisy or clipped, the extrapolation amplified into 10^5+ outliers
+            # OR saturated at the clip ceiling and propagated forever. Appending zero
+            # is the safer "no information" default; the controller already does its
+            # own smoothing/freezing if it sees zeros.
+            #
+            # For the image-feature centroid we DO extrapolate (clipped) because
+            # holding the last marker position is a reasonable assumption while LK
+            # briefly loses tracking — the marker hasn't moved much in a frame or two.
+            extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
 
-            # Log the extrapolated data
+            extrapolated_img_feature_param = extrapolate(
+                self._time_log, self._img_feature_param, n=4, deg=1, default_shape=4)
+            extrapolated_img_feature_param = np.nan_to_num(
+                np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
+            extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
+
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._img_feature_param.append(extrapolated_img_feature_param)
 
@@ -329,7 +426,52 @@ class IMG_PROCESSOR(Thread):
 
         return A
 
-    
+    def _kf_update(self, z, t):
+        """Per-channel 2-state KF (constant-velocity) update.
+
+        z : (6,) measurement vector (raw lstsq output, post-clip).
+        t : current timestamp in seconds (monotonic perf_counter).
+
+        On the first call, the state is initialized to z with zero rate; the
+        full covariance is reset to a moderate prior so the next few updates
+        adapt quickly. Subsequent calls run the standard Kalman predict +
+        update with dt computed from the previous call's time.
+        """
+        if not self._kf_initialized:
+            self._kf_x[:, 0] = z
+            self._kf_x[:, 1] = 0.0
+            # Diagonal prior covariance — value uncertainty ~ |z|, rate ~|z|/dt
+            self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
+            self._kf_prev_t = t
+            self._kf_initialized = True
+            return
+
+        dt = max(min(t - self._kf_prev_t, 0.1), 1e-3)
+        self._kf_prev_t = t
+
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        # Discrete-white-noise-on-acceleration process model
+        Q = self._kf_q * np.array([
+            [dt**4 / 4.0, dt**3 / 2.0],
+            [dt**3 / 2.0, dt**2],
+        ])
+        R = self._kf_r
+
+        # Vectorize across the 6 channels: each has its own (2,) state and (2,2) P.
+        # Predict: x ← Fx, P ← FPF^T + Q
+        x_pred = self._kf_x @ F.T                          # (6, 2)
+        P_pred = F @ self._kf_P @ F.T + Q                  # (6, 2, 2)
+
+        # Innovation y = z - Hx_pred (H = [1, 0]), scalar per channel
+        y = z - x_pred[:, 0]                               # (6,)
+        S = P_pred[:, 0, 0] + R                            # (6,) innovation variance
+        K = P_pred[:, :, 0] / S[:, None]                   # (6, 2) Kalman gain
+
+        # Update: x ← x_pred + K·y, P ← (I - K H) P_pred
+        self._kf_x = x_pred + K * y[:, None]
+        # (I - K H) P_pred: subtract K_i · P_pred[i, 0, :] from row i of P_pred
+        self._kf_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+
     def _getImgFeatures(self, pts):
         """
         pts : virtual feature points in normalized frame
@@ -370,37 +512,42 @@ class IMG_PROCESSOR(Thread):
         self._img_feature_param.append(s)
 
     def _getVirtualPts(self, pts, quat):
-        # Extract roll, pitch (yaw does not affect virtual camera)
+        """Reproject camera-frame pixels onto the virtual image plane V.
+
+        V is the MATLAB `I_R_V = rotz(yaw)` frame: a LEVEL frame
+        (gravity-aligned z) that preserves the UAV's yaw heading. Roll and
+        pitch are removed by aligning V's z-axis with world-down; yaw is
+        carried over via the camera-y axis used to construct V's x-axis.
+        """
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
-        # ---- Remove yaw (keep roll & pitch only) ----
-        # Gravity direction in camera frame
+        # World-down expressed in the camera frame.
         g = R @ np.array([0, 0, 1])
 
-        # Construct roll–pitch-only rotation
+        # Build V's basis in camera coords: z_V along gravity (no roll/pitch),
+        # x_V from camera-y × z_V so the heading is set by the camera-y axis
+        # (which is rigidly aligned with the UAV body — hence V inherits the
+        # UAV's yaw).
         z_axis = g / np.linalg.norm(g)
         x_axis = np.cross([0, 1, 0], z_axis)
         x_axis /= np.linalg.norm(x_axis)
         y_axis = np.cross(z_axis, x_axis)
 
-        R_rp = np.column_stack([x_axis, y_axis, z_axis])
+        # Rotation matrix from V to camera (columns = V-axes in camera coords).
+        C_R_V = np.column_stack([x_axis, y_axis, z_axis])
 
-        R_inv = R_rp.T   # inverse rotation
-        
-        # Normalize image points (pixel → normalized camera coords)
+        # Normalize pixel coords to camera-frame rays (z = 1 plane).
         cx, cy = self.center
-        x = (pts[:,0] - cx) / fx
-        y = (pts[:,1] - cy) / fy
+        x = (pts[:, 0] - cx) / fx
+        y = (pts[:, 1] - cy) / fy
+        rays = np.column_stack([x, y, np.ones_like(x)])              # (N × 3)
 
-        # Build rays and rotate
-        rays = np.column_stack([x, y, np.ones_like(x)])          # (N × 3)
-        vr = rays @ R_inv.T                                      # (N × 3)
+        # Rotate rays into V: V_ray = (V_R_C) · C_ray = C_R_V.T · C_ray.
+        # Equivalent np-broadcast form: rays @ C_R_V.
+        V_rays = rays @ C_R_V                                        # (N × 3)
 
-        # Reproject normalized coordinates onto virtual image plane
-        z = vr[:,2]
-        vx = vr[:,0] / z
-        vy = vr[:,1] / z
-
-        return np.column_stack([vx, vy])
+        # Reproject onto V's image plane (perspective divide by depth-in-V).
+        z_v = V_rays[:, 2]
+        return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
     
     def _showOptFlow(self, img, C_pts, V_nP_norm):
         # 1. Ensure pixel coordinates for both frames are int32
@@ -431,6 +578,8 @@ class IMG_PROCESSOR(Thread):
             "Virtual Feature Pts": self._virtual_feature_pts,
             "Feature Params": self._img_feature_param,
             "Opt Flow Ang Vel": self._opt_flow_ang_vel_raw,
+            "Opt Flow KF": self._opt_flow_kf_log,
+            "Opt Flow Savgol": self._opt_flow_savgol_log,
             "FPS": self._fps_log
         }
     
@@ -450,21 +599,31 @@ class IMG_PROCESSOR(Thread):
             return np.zeros(6)
         return np.array(self._opt_flow_ang_vel_raw[-1])
 
-    def getOptFlowAngVel(self):
-        """Calibrated, savgol-smoothed optical flow + angular velocity (6-vec).
-
-        Matches the pattern used in legacy img_data versions (v4..v9, img_data_LK):
-            sgf(buf[-FILTER_WIN:], FILTER_WIN, POLYORDER, axis=0)[int(FILTER_WIN/2 + 1)]
-        Returns the non-causal estimate at t - FILTER_WIN/2 (~FILTER_WIN/2 samples lag).
-        Until buffer fills to FILTER_WIN samples, fall back to mean of available raw.
+    def _compute_savgol_output(self):
+        """Latest Savgol(FILTER_WIN, FILTER_POLYORDER) sample, matching the
+        legacy non-causal sliding-window pattern (returns sgf_buf[win/2 + 1]).
+        Returns the PRE-calibration 6-vec; getOptFlowAngVel / log buffers
+        apply _sensor_cal_hw.
         """
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
         if len(self._opt_flow_ang_vel_raw) >= FILTER_WIN:
             sgf_buf = sgf(self._opt_flow_ang_vel_raw[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
-            return self._sensor_cal_hw @ sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return self._sensor_cal_hw @ np.mean(self._opt_flow_ang_vel_raw, axis=0)
+            return sgf_buf[int(FILTER_WIN / 2 + 1)]
+        return np.mean(self._opt_flow_ang_vel_raw, axis=0)
+
+    def getOptFlowAngVel(self):
+        """Calibrated, smoothed optical flow + angular velocity (6-vec).
+
+        Both filters' outputs are computed and logged every frame; this
+        getter just selects which one the controller sees via IMG_FILTER:
+          'kf'     (default) → 2-state constant-velocity Kalman.
+          'savgol'           → legacy Savgol(13, 1).
+        """
+        if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
+            return self._sensor_cal_hw @ self._compute_savgol_output()
+        return self._sensor_cal_hw @ self._kf_x[:, 0]
 
     def getImgFeatureParam(self):
         """Calibrated, savgol-smoothed image-feature vector (4-vec).

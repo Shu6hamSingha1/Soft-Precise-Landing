@@ -155,6 +155,12 @@ else
   echo " ready after ${WAITED}s."
 fi
 
+# "Ready for takeoff" prints before EKF heading-estimate settles, so the
+# first arm() can be COMMAND_DENIED. Settle 20 s (matches the calibration
+# launcher fix; flight_controller.arm_and_takeoff also retries internally).
+echo "[run] settling 20s before arm (EKF heading-estimate convergence)..."
+sleep 20
+
 # 5) Run the landing controller in the foreground.
 #    Ctrl+C here triggers the cleanup trap and kills all background processes.
 echo

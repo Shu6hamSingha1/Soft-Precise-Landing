@@ -263,7 +263,7 @@ if __name__ == "__main__":
         # Allow override via env var so the launcher can predict the path.
         dir_name = os.environ.get(
             "CALIB_OUT_DIR",
-            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/"
+            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output/"
             f"{time.ctime().replace(':', '-')}"
         )
         os.makedirs(dir_name, exist_ok=True)

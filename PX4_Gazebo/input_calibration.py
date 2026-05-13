@@ -128,8 +128,14 @@ async def main(record = 'n'):
                 # await FC_node.send_velocity_body(*v_cmd, a_cmd[3]))  # FC follows FRD
                 # await FC_node.send_velocity_body(*cmd))  # FC follows FRD
                 sys_cmd = convert_2_sys_cmd(cmd)
-                await FC_node.send_attitude_rate(*sys_cmd)  # FC follows FRD
-                
+                try:
+                    await asyncio.wait_for(
+                        FC_node.send_attitude_rate(*sys_cmd),  # FC follows FRD
+                        timeout=0.5)
+                except asyncio.TimeoutError:
+                    print("  [bail] send_attitude_rate timed out — PX4 likely dropped offboard.")
+                    break
+
                 await asyncio.sleep(SLEEP_TIME)
                 
                 UAV_pose.append(pose_node.getPose().UAV)
@@ -194,35 +200,28 @@ async def main(record = 'n'):
             rclpy.shutdown()
 
 if __name__ == "__main__":
-    res = input("Do you want to record? (y/n)")
+    res = 'n'
 
     try:
-        asyncio.run(main())
+        asyncio.run(main(res))
     except KeyboardInterrupt:
         print("Clean exit on Ctrl+C")
 
-    # Save data# Save data
+    # Auto-save (no input prompt — runs headless via run_input_calibration.sh).
     if CONTROLLER_READY:
-        x = input('Do you want to save the dataset? (y/n)')
-        if x != 'n':
-            # record timestamp
-            timestamp = time.ctime().replace(':', '-')
+        dir_name = os.environ.get(
+            "INPUT_CALIB_OUT_DIR",
+            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/input/"
+            f"{time.ctime().replace(':', '-')}"
+        )
+        os.makedirs(dir_name, exist_ok=True)
 
-            # Create a directory named based on timestamp
-            dir_name = f"/home/shubham/ws/Test_Data/Calibration/{timestamp}"
-            os.makedirs(dir_name)
+        np.save(f'{dir_name}/Img_Data', image_data)
+        np.save(f'{dir_name}/Telemetry_Data', telemetry_data)
+        np.save(f'{dir_name}/Control_Data', controller_data)
+        np.save(f'{dir_name}/Control_Params', controller_params)
+        np.save(f'{dir_name}/Ground_Truth', gt_data)
+        with open(f'{dir_name}/Img_Params.txt', 'w') as f:
+            f.write(str(img_params))
 
-            # Save files inside the folder 
-            np.save(f'{dir_name}/Img_Data', image_data)
-            np.save(f'{dir_name}/Telemetry_Data', telemetry_data)
-            # np.save(f'{dir_name}/Control_Data', controller_data)
-            # np.save(f'{dir_name}/Control_Params', controller_params)
-            np.save(f'{dir_name}/Ground_Truth', gt_data)
-            f = open(f'{dir_name}/Img_Params.txt', 'w')
-            f.write(img_params)
-            f.close()
-
-            print("Saved to CSV!")
-
-        else:
-            print("Closed without saving!")
+        print(f"Input-calibration data saved -> {dir_name}")
