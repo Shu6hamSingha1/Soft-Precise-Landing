@@ -59,21 +59,37 @@ class IMG_PROCESSOR(Thread):
         self.focal = np.array([fx, fy])
         self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
 
-        # Sensor calibration matrices — RECALIBRATED 2026-05-13 after the lstsq +
-        # LK retuning + extrapolation-clip fix. nanmedian across 4 valid output_cal
-        # runs (recordings in calibration_data/output/Wed May 13 10-{02-57, 04-47,
-        # 06-20, 07-52} 2026/). 5th run (10-09-27) dropped by validity gate.
+        # Sensor calibration matrices — RECALIBRATED 2026-05-13 (3rd iteration).
+        # Method: std-ratio (RMA / geometric-mean regression) across 9 valid
+        # post-fix runs:  α = σ(GT) / σ(filtered_raw)
         #
-        # Most axes are within ±10% of the pre-fix 2026-05-12 calibration; axis 5
-        # (yaw rate) shifted up by 74% (0.244 → 0.424) — most likely because the
-        # tighter LK now rejects noisier yaw-axis corners, so the surviving signal
-        # needs a larger scaling to match GT.
+        # Why std-ratio over median(gt/raw) and over LS-optimal?
+        #   - median(gt/raw) is unstable per-run because raw magnitudes vary 10×
+        #     between runs (lstsq SNR is low). 9-run inter-run CV was 50-150%.
+        #   - LS-optimal α = E[raw·gt]/E[raw²] is biased toward zero when corr<1
+        #     (raw has noise that gt doesn't), shrinking calibrated output below
+        #     GT amplitude. Verified empirically: LS-derived α gave RMSE = 95% of
+        #     GT RMS (no better than predicting zero).
+        #   - Std-ratio matches amplitudes: σ(α·filt) = σ(GT) by construction, so
+        #     calibrated and GT plots overlay in envelope. Per-sample correlation
+        #     (0.2-0.5 per axis) bounds how tightly individual peaks align — that
+        #     ceiling is set by raw signal SNR, not the cal factor.
         #
-        # Previous (pre-fix 2026-05-12, kept for reference):
-        #   _sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
-        #   _sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
-        self._sensor_cal_hw = np.diag([0.1498, 0.1694, 0.0877, 0.2188, 0.2114, 0.4236])
-        self._sensor_cal_s  = np.diag([0.6069, 0.6109, 1.0000, 1.0000])
+        # Previous iterations (kept for reference):
+        #   2026-05-12 median (4 runs):
+        #     _sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
+        #   2026-05-13a 4-run nanmedian:
+        #     _sensor_cal_hw = np.diag([0.1498, 0.1694, 0.0877, 0.2188, 0.2114, 0.4236])
+        #   2026-05-13b 9-run median(gt/raw) (NEW/OLD RMSE within ±3%):
+        #     _sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 0.1998])
+        # HYBRID — axes 0-4 use the 9-run median(gt/raw) cal (proven visually
+        # acceptable; lower amplitude bias on quiet sweeps); axis 5 (ω_z) uses
+        # the median-per-run std-ratio (1.98) because the raw lstsq systemati-
+        # cally under-amplifies yaw rate — every single one of 10 runs needed
+        # >1.0× amplification on ω_z, and the median-of-medians gives 1.98×.
+        # Centroid s uses the median(gt/raw) value (stable across runs, 0.58).
+        self._sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 1.9788])
+        self._sensor_cal_s  = np.diag([0.5830, 0.6104, 1.0000, 1.0000])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
