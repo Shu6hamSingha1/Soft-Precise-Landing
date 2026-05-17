@@ -49,6 +49,7 @@ class Controller(Thread):
         self._h_ref = ref_rad_opt_flow
 
         self._CONTROLLER_READY = False
+        self._warmup_remaining = 0           # set by startController()
         self._STAY_OPEN = True
         self.TARGET_IS_VISIBLE = False
 
@@ -118,6 +119,10 @@ class Controller(Thread):
 
         # Anti-windup clamps (MATLAB izeta_2 clamped to ±5; others heuristic)
         self._iV_s_e_n_clamp = 5.0
+        # Per-component sliding-surface integral anti-windup cap. Matches
+        # Supplement S2-D item 2 (corrected): |∫ζ_{2k}dτ| ≤ 5, chosen so the
+        # integral contribution X·∫ζ to σ stays ≤ λ_max(X)·5 ≤ 0.25, within
+        # the boundary-layer thickness ε_k = 1 used in the simulations.
         self._izeta_clamp = 5.0
         self._ie_a_clamp = 2.0
 
@@ -226,8 +231,11 @@ class Controller(Thread):
                     feature_param = self._img_node.getImgFeatureParam()
                     opt_flow_ang_vel = self._img_node.getOptFlowAngVel()
                     self._updateImgFeatureParam(feature_param)
-                    self._updateOptFlow(opt_flow_ang_vel[:3])
+                    # Append _w_i BEFORE _updateOptFlow — the latter now uses
+                    # self._w_i[-1] (MATLAB V_w) and would IndexError on the
+                    # first iteration if appended after.
                     self._w_i.append(opt_flow_ang_vel[3:])
+                    self._updateOptFlow(opt_flow_ang_vel[:3])
 
                     self.PLASMC()
                     self._yawCtrl()
@@ -303,27 +311,31 @@ class Controller(Thread):
         """Middle-loop: barrier-transform optical flow error, prep zeta / sigma inputs."""
         self._h.append(h)
 
-        # Desired optical flow (MATLAB form preserved)
+        # Desired optical flow — MATLAB form (visualControl_IBVS_adaptive.m:369-370).
+        # MATLAB uses V_w (optical-flow-derived target-relative ang vel in V frame),
+        # NOT the UAV body rate. The corresponding Python variable is self._w_i
+        # (= getOptFlowAngVel()[3:] = KF-smoothed lstsq output, V-frame). Using
+        # self._w (body IMU) here was a parity bug — frames don't match (V vs body)
+        # and physical meaning differs (target-relative vs absolute).
+        w = self._w_i[-1]
         self._h_d.append(
             self._ds_d[-1]
-            - np.cross(self._w[-1], self._s[-1][:3])
-            + (self._h_ref + np.dot(np.cross(self._w[-1], self._s[-1][:3]), e3))
+            - np.cross(w, self._s[-1][:3])
+            + (self._h_ref + np.dot(np.cross(w, self._s[-1][:3]), e3))
               * self._s[-1][:3]
         )
         self._h_e.append(self._h[-1] - self._h_d[-1])
 
-        # Barrier transform on h_e
+        # Barrier transform on h_e — MATLAB visualControl_IBVS_adaptive.m:380-385.
+        # Only the RATIO is clamped (for log finiteness); the stored h is left
+        # untouched so the downstream c-term still sees the actual measurement.
         S = np.eye(N_DIM)
         zeta = np.zeros(N_DIM)
         G = np.eye(N_DIM)
         for idx in range(N_DIM):
             ratio = self._h_e[-1][idx] / self._p[-1][idx]
-            # Clamp to [-1+margin, 1-margin] for log finiteness
             ratio = float(np.clip(ratio, -1.0 + S_MARGIN, 1.0 - S_MARGIN))
             S[idx, idx] = ratio
-            # If actually out of envelope, also clamp the stored h to barrier boundary
-            if abs(self._h_e[-1][idx]) >= self._p[-1][idx]:
-                self._h[-1][idx] = ratio * self._p[-1][idx] + self._h_d[-1][idx]
             zeta[idx] = np.log((1 + ratio) / (1 - ratio))
             G[idx, idx] = (np.exp(zeta[idx]) + 1) ** 2 / (2 * np.exp(zeta[idx]) * self._p[-1][idx])
         self._S.append(S)
@@ -346,25 +358,31 @@ class Controller(Thread):
         else:
             new_int = (self._izeta[-1]
                        + self._dt[-1] * 0.5 * (self._zeta[-1] + self._zeta[-2]))
-            n = np.linalg.norm(new_int)
-            if n > self._izeta_clamp:
-                new_int = new_int * (self._izeta_clamp / n)
+            # Anti-windup: per-COMPONENT clamp (matches MATLAB visualControl_IBVS
+            # _adaptive.m:393-394). Was norm-clamp, which saturated ~30% earlier
+            # on 3-vectors at the limit (norm=√3·5 vs per-axis 5 each).
+            new_int = np.clip(new_int, -self._izeta_clamp, self._izeta_clamp)
             self._izeta.append(new_int)
 
-        # Body angular acceleration (smoothed finite difference of w)
-        if len(self._w) > 1:
-            self._dw_deque.append((self._w[-1] - self._w[-2]) / self._dt[-1])
+        # Angular acceleration: smoothed derivative of V_w. MATLAB derives V_dw
+        # from V_w_i (visualControl_IBVS_adaptive.m:295-299); we mirror that by
+        # differentiating self._w_i (NOT self._w body rate).
+        if len(self._w_i) > 1:
+            self._dw_deque.append((self._w_i[-1] - self._w_i[-2]) / self._dt[-1])
             self._dw_deque.popleft()
         self._dw.append(smooth4(self._dw_deque))
 
         # Sliding surface (MATLAB: sigma = zeta + Omega * integral(zeta))
         self._sigma.append(self._zeta[-1] + self._Omega @ self._izeta[-1])
 
-        # Known dynamics term c
+        # Known dynamics term c — MATLAB visualControl_IBVS_adaptive.m:407-408.
+        # All cross products use V-frame target-relative ω (self._w_i), matching
+        # MATLAB's V_w. Self._w (body IMU rate) is logged but not used here.
+        w = self._w_i[-1]
         c = (np.cross(self._dw[-1], self._s[-1][:3])
-             + np.cross(self._w[-1], np.cross(self._w[-1], self._s[-1][:3]))
-             + 2 * np.cross(self._w[-1], self._h[-1])
-             - (np.dot(self._h[-1] + np.cross(self._w[-1], self._s[-1][:3]), e3)) * self._h[-1]
+             + np.cross(w, np.cross(w, self._s[-1][:3]))
+             + 2 * np.cross(w, self._h[-1])
+             - (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
              - self._dh_d[-1])
 
         # Theta matrix and its Frobenius norm
@@ -397,9 +415,17 @@ class Controller(Thread):
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
         # Sanity: if PLASMC blew up (G ill-conditioned or zeta singular), abort.
+        # Suppressed during warmup — the first ~100 iterations fill the PID /
+        # SMC deques (dh_d, ds_d, izeta, kappa) and naturally produce large
+        # transients while landing_test still sends hover setpoints, not a_u.
         if np.any(np.abs(a_u) > 100):
-            print(f"[PLASMC] a_u blew up: {a_u}\nG={self._G[-1]}\nc={c}")
-            self._STAY_OPEN = False
+            if self._warmup_remaining > 0:
+                self._warmup_remaining -= 1
+            else:
+                print(f"[PLASMC] a_u blew up: {a_u}\nG={self._G[-1]}\nc={c}")
+                self._STAY_OPEN = False
+        else:
+            self._warmup_remaining = 0    # one good frame ends warmup early
         self._a_u.append(a_u)
 
     def _yawCtrl(self):
@@ -586,9 +612,14 @@ class Controller(Thread):
         self._u.append(np.concatenate((self._w_u[-1], [self._B_T[-1]])))
 
     # ---------------- Public API ----------------
-    def startController(self):
+    def startController(self, warmup_steps=100):
         self._t0 = self._time.perf_counter()
         self._CONTROLLER_READY = True
+        # During warmup, suppress the |a_u|>100 abort so the PID/SMC deques
+        # can fill without triggering the safety. Caller (landing_test) should
+        # NOT use the controller output during this phase — keep sending hover
+        # setpoints instead. Set to 0 to disable warmup.
+        self._warmup_remaining = warmup_steps
 
     def checkTargetVisibility(self):
         # Backward-compat: outer barrier removed, so visibility is delegated to img_node

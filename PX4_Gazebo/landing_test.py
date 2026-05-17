@@ -111,39 +111,51 @@ async def main(record = 'n'):
 
         EC_node = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM, time_node, FC_node)
 
-        await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)        
+        await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)
 
-        # while not FC_node.LANDED:
+        # Hover-to-origin phase: PX4's built-in takeoff often drifts laterally
+        # by several metres, which can put the ArUco marker outside the camera
+        # FOV before the controller even starts. Send NED position (0, 0, -alt)
+        # for ~4 s to drive the drone over the marker and let position-hold
+        # stabilise before IBVS takes over.
+        print("[landing_test] Hover-to-origin (4 s) before starting controller…")
+        cur_z = FC_node.getPosBody().z_m
+        for _ in range(200):                      # 200 * 20 ms = 4 s
+            await FC_node.send_position_ned(0.0, 0.0, cur_z, 0.0)
+            await asyncio.sleep(0.02)
+
+        # Start controller (its thread begins iterating); send_attitude_rate
+        # output is NOT used yet — we keep sending hover setpoints to PX4 while
+        # the controller's internal buffers (PID integrator, _ds_d_deque,
+        # _izeta, _dh_d_deque, _kappa) settle to steady-state values matching
+        # the actual visual feedback. Without this warmup the first PID firing
+        # drives dh_d to ~160 m/s² → c-term blow-up → a_u abort.
+        start_time = time_node.perf_counter()
+        EC_node.startController()
+        CONTROLLER_READY = True
+        t_c = [0.0]
+        # Short warmup — just enough to fill the 4-deep smoothing deques
+        # without letting the PID integrator wind up against the (likely
+        # nonzero) centroid error while drone is hover-locked.
+        print("[landing_test] PID warmup (100 ms — fills deques only)…")
+        for _ in range(5):                        # 5 * 20 ms = 100 ms
+            await FC_node.send_position_ned(0.0, 0.0, cur_z, 0.0)
+            await asyncio.sleep(0.02)
+
+        # Main control loop: controller is now warm.
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
             target_pose.append(pose_node.getPose().target)
 
-            if CONTROLLER_READY:
-                t_c.append(time_node.perf_counter() - start_time)
-                if EC_node.TARGET_IS_VISIBLE:
-                    cmd = EC_node.getControlInput()
-                    # print(cmd)
-
-                    sys_cmd = convert_2_sys_cmd(cmd)
-                    await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
-
-                    # **************************************************************************
-                    # Method II: Using Acceleration Commands
-                    # Here velocity_x and velocity_y is assumed to be zero.
-                    # **************************************************************************
-                    # await FC_node.send_local_acceleration(a_u[0], a_u[1], -a_u[2]))
-
-                    u_cmd.append(cmd)
-
-                else:        
-                    # await track_target(FC_node, EC_node, pose_node)
-                    break
-
+            t_c.append(time_node.perf_counter() - start_time)
+            if EC_node.TARGET_IS_VISIBLE:
+                cmd = EC_node.getControlInput()
+                sys_cmd = convert_2_sys_cmd(cmd)
+                await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
+                u_cmd.append(cmd)
             else:
-                start_time = time_node.perf_counter()
-                EC_node.startController()
-                CONTROLLER_READY = True
-                t_c = [0.0]
+                # Target lost — break the loop and let cleanup save what we have.
+                break
 
             d = pose_node.getPose().UAV.position.z
             # d = - FC_node.getPosBody().z_m
