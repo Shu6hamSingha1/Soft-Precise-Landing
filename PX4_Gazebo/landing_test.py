@@ -119,37 +119,82 @@ async def main(record = 'n'):
 
         await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)
 
-        # Fly to MATLAB initial condition: drone at INITIAL_DRONE_ENU
-        # (2 east, 2 north, 5 up) in Gazebo world coords, marker at origin.
-        # PX4's NED origin sits at the drone's spawn point and drifts during
-        # takeoff, so a fixed NED setpoint doesn't put the drone at a fixed
-        # WORLD point. Each iteration reads current Gazebo ENU + PX4 NED,
-        # computes the ENU error to (INITIAL_DRONE_ENU + target_xy_offset),
-        # converts to NED displacement, sends NED_setpoint = current_NED +
-        # ΔNED. Drone converges to the target ENU pose regardless of EKF-
-        # origin drift.
+        # Fly to MATLAB initial condition: drone at INITIAL_DRONE_ENU (above the
+        # marker, Gazebo world coords). Each iteration recomputes a NED setpoint
+        # from the CURRENT Gazebo ENU↔PX4 NED transform — this actively
+        # compensates for EKF position drift. An earlier "snapshot the transform
+        # once" variant locked the setpoint in PX4 frame and let Gazebo truth
+        # drift 1.3 m off the IC over 15 s; recomputing keeps the drone over
+        # the marker in world truth regardless of EKF wander.
         #
         # Convention: Gazebo ENU (x=East, y=North, z=Up), PX4 NED (x=North,
-        # y=East, z=Down). For displacement vectors: NED_x=ENU_y,
-        # NED_y=ENU_x, NED_z=-ENU_z.
+        # y=East, z=Down). For DISPLACEMENT vectors: NED_x=ENU_y, NED_y=ENU_x,
+        # NED_z=-ENU_z.
+        #
+        # Convergence: pos_err ≤ 0.5 m AND speed ≤ 0.3 m/s for 10 consecutive
+        # samples (0.2 s) — both measured against Gazebo truth, NOT PX4 NED.
+        # Tolerances reflect realized PX4 steady-state in SITL (tighter values
+        # of 0.3 m / 0.15 m/s consistently timed out at ~0.4 m / 0.22 m/s).
+        # Max wait 15 s; final 1 s is a settle phase regardless of convergence.
         ix, iy, iz = INITIAL_DRONE_ENU
-        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{ix},{iz}) (8 s)…")
-        for _ in range(400):                      # 400 * 20 ms = 8 s
+        target_enu_0 = pose_node.getPose().target.position
+        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})")
+        IC_POS_TOL  = 0.5
+        IC_VEL_TOL  = 0.3
+        STABLE_HITS = 10
+        MAX_ITERS   = 750                         # 15 s @ 50 Hz
+        prev_enu    = pose_node.getPose().UAV.position
+        prev_t      = time.perf_counter()
+        stable      = 0
+        converged_at = None
+        target_n = target_e = target_d = 0.0
+        for k in range(MAX_ITERS):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
             ned_pos    = FC_node.getPosBody()
-            # Desired ENU = target + INITIAL_DRONE_ENU (marker is at target_enu,
-            # drone IC is at (ix, iy, iz) offset from marker)
+            # Re-derive setpoint each iter — chases the Gazebo truth target
+            # through PX4 EKF drift.
             de_enu = (target_enu.x + ix - drone_enu.x)
             dn_enu = (target_enu.y + iy - drone_enu.y)
             du_enu = (target_enu.z + iz - drone_enu.z)
-            # ENU displacement → NED displacement
-            d_n_ned =  dn_enu
-            d_e_ned =  de_enu
-            d_d_ned = -du_enu
-            target_n = ned_pos.x_m + d_n_ned
-            target_e = ned_pos.y_m + d_e_ned
-            target_d = ned_pos.z_m + d_d_ned
+            target_n = ned_pos.x_m + dn_enu
+            target_e = ned_pos.y_m + de_enu
+            target_d = ned_pos.z_m - du_enu
+            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
+            await asyncio.sleep(0.02)
+            # Convergence check on Gazebo truth (post-setpoint sample).
+            cur_enu = pose_node.getPose().UAV.position
+            now = time.perf_counter()
+            dt = max(now - prev_t, 1e-3)
+            speed = ((cur_enu.x - prev_enu.x)**2 +
+                     (cur_enu.y - prev_enu.y)**2 +
+                     (cur_enu.z - prev_enu.z)**2) ** 0.5 / dt
+            d_e = cur_enu.x - (target_enu.x + ix)
+            d_n = cur_enu.y - (target_enu.y + iy)
+            d_u = cur_enu.z - (target_enu.z + iz)
+            pos_err = (d_e*d_e + d_n*d_n + d_u*d_u) ** 0.5
+            prev_enu, prev_t = cur_enu, now
+            if pos_err <= IC_POS_TOL and speed <= IC_VEL_TOL:
+                stable += 1
+                if stable >= STABLE_HITS:
+                    converged_at = (k + 1) * 0.02
+                    print(f"[landing_test] IC converged at t={converged_at:.2f}s "
+                          f"(pos_err={pos_err:.3f} m, speed={speed:.3f} m/s)")
+                    break
+            else:
+                stable = 0
+        if converged_at is None:
+            print(f"[landing_test] IC convergence TIMEOUT after 15 s "
+                  f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s) — proceeding anyway")
+
+        # 1 s of holding the (recomputed) setpoint to let residual velocity damp.
+        for _ in range(50):
+            drone_enu  = pose_node.getPose().UAV.position
+            target_enu = pose_node.getPose().target.position
+            ned_pos    = FC_node.getPosBody()
+            target_n = ned_pos.x_m + (target_enu.y + iy - drone_enu.y)
+            target_e = ned_pos.y_m + (target_enu.x + ix - drone_enu.x)
+            target_d = ned_pos.z_m - (target_enu.z + iz - drone_enu.z)
             await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
             await asyncio.sleep(0.02)
         cur_z = FC_node.getPosBody().z_m       # for the brief PID warmup below
