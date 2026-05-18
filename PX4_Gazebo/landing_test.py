@@ -90,6 +90,7 @@ async def main(record = 'n'):
     start_pose = None
     t_c = []
     u_cmd = []
+    SOFT_PRECISE = {}
 
     try:
         rclpy.init()
@@ -286,7 +287,37 @@ async def main(record = 'n'):
 
         if FC_node.LANDED:
             print("Landed (PX4 LandedState = ON_GROUND)")
-        
+
+        # ─── MATLAB soft-precise landing classification ─────────────────
+        # MATLAB criteria (visualControl_IBVS_adaptive.m:337-345):
+        #   precise = xy_err  <= 0.08 m     (lateral distance to target)
+        #   soft    = rel_vel <= 0.2 m/s    (UAV–target relative speed)
+        # Evaluated at touchdown (PX4 reports LANDED here, equivalent to
+        # MATLAB's alt_above <= zf=0.2 m check).
+        # XY-err uses Gazebo truth (no onboard equivalent without an external
+        # ref); rel_vel uses PX4 NED velocity (the drone's onboard estimate).
+        SOFT_PRECISE = {}
+        try:
+            drone_enu  = pose_node.getPose().UAV.position
+            target_enu = pose_node.getPose().target.position
+            xy_err = ((drone_enu.x - target_enu.x)**2 +
+                      (drone_enu.y - target_enu.y)**2) ** 0.5
+            v = FC_node.getVelBody()
+            rel_vel = (v.x_m_s**2 + v.y_m_s**2 + v.z_m_s**2) ** 0.5
+            precise = xy_err  <= 0.08
+            soft    = rel_vel <= 0.2
+            SOFT_PRECISE = dict(xy_err=xy_err, rel_vel=rel_vel,
+                                precise=precise, soft=soft)
+            tag = ("SOFT+PRECISE" if (soft and precise)
+                   else "PRECISE-only" if precise
+                   else "SOFT-only"   if soft
+                   else "FAIL")
+            print(f"[landing_test] Landing classification: {tag}  "
+                  f"(xy_err={xy_err:.3f} m [≤0.08], "
+                  f"rel_vel={rel_vel:.3f} m/s [≤0.2])")
+        except Exception as e:
+            print(f"[landing_test] Could not compute soft-precise metrics: {e}")
+
         EC_node.close()
         await FC_node.close()
             
@@ -311,7 +342,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             controller_data = EC_node.getLogData()
             controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose,"Command": u_cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose,"Command": u_cmd, "SoftPrecise": SOFT_PRECISE}
             img_params = EC_node.getImgParams()
 
         # Close EC_node thread
