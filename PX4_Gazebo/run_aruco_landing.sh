@@ -72,6 +72,14 @@ start_bg() {
   fi
 }
 
+# 0) Reset PX4 SITL persistent param state. Without this, params set by
+# previous runs (via airframe init, MAVSDK set_param, or pxh> param set)
+# persist across launches and can cause hard-to-debug behaviour — e.g.
+# carrying a too-permissive EKF2_ABL_LIM into a fresh test, or holding
+# stale safety thresholds. Force a clean default-param boot every time.
+rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/0/parameters.bson"      2>/dev/null
+rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/0/parameters_backup.bson" 2>/dev/null
+
 # 1) uXRCE-DDS agent
 start_bg microxrce MicroXRCEAgent udp4 -p 8888
 sleep 1
@@ -170,4 +178,21 @@ echo
 cd "$SCRIPT_DIR"
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-python3 landing_test.py
+PY_OUT="$LOG_DIR/landing_test.out"
+python3 landing_test.py 2>&1 | tee "$PY_OUT"
+PY_EXIT=${PIPESTATUS[0]}
+
+# Detect the IMU-timestamp / lockstep race documented at
+# discuss.px4.io/t/px4-sitl-multi-vehicle-gazebo-imu-timing-errors/33268.
+# When PX4's gz_bridge subscribes to IMU before lockstep has synced with
+# the Gazebo clock, accel/gyro is published with timestamp=0, which cascades
+# into "ekf2 missing data" → arming permanently denied. The python script
+# reports this as "arm() failed after 10 retries: COMMAND_DENIED". Exit
+# code 42 signals the retry wrapper (run_aruco_landing_retry.sh) to restart
+# the whole stack from scratch.
+if grep -q 'arm() failed after 10 retries' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: arm permanently denied (likely gz_bridge/lockstep race)."
+  echo "[run] Signaling retry with exit code 42."
+  exit 42
+fi
+exit "$PY_EXIT"
