@@ -335,11 +335,18 @@ class Controller(Thread):
         # self._w (body IMU) here was a parity bug — frames don't match (V vs body)
         # and physical meaning differs (target-relative vs absolute).
         w = self._w_i[-1]
+        # MATLAB visualControl_IBVS_adaptive.m:369-370 EXACTLY:
+        #   V_h_d = V_ds_d + cross(V_w, V_s(1:3))
+        #         + (h_rd - dot(cross(V_w, V_s(1:3)), e3)) * V_s(1:3)
+        # The earlier Python had BOTH coupling-term signs flipped (−cross and
+        # +dot). On z that cancels to h_rd at s≈[0,0,1] so descent worked, but
+        # x/y picked up doubled cross-coupling — V_h_d[0,1] excursions hit ±20
+        # vs MATLAB's ±4, over-driving the SMC and giving 8× MATLAB descent rate.
+        cross_ws = np.cross(w, self._s[-1][:3])
         self._h_d.append(
             self._ds_d[-1]
-            - np.cross(w, self._s[-1][:3])
-            + (self._h_ref + np.dot(np.cross(w, self._s[-1][:3]), e3))
-              * self._s[-1][:3]
+            + cross_ws
+            + (self._h_ref - np.dot(cross_ws, e3)) * self._s[-1][:3]
         )
         self._h_e.append(self._h[-1] - self._h_d[-1])
 
