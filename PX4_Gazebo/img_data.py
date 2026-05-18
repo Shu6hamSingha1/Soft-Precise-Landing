@@ -497,38 +497,64 @@ class IMG_PROCESSOR(Thread):
     def _getImgFeatures(self, pts):
         """
         pts : virtual feature points in normalized frame
-            shape (N,2), already (x,y) = (u-cx)/fx, (v-cy)/fy
+            shape (N,2), already (x,y) = (u-cx)/fx, (v-cy)/fy.
+        For ArUco markers, pts MUST be in the detector's intrinsic corner
+        order (TL, TR, BR, BL of the marker frame, not the image frame) so
+        the per-corner weighting below breaks the 4-fold rotational symmetry.
+
+        ArUco markers in SITL are a perfect square: with uniform weights,
+        mu_11 ≡ 0 ∀ yaw → alpha undefined → yaw axis blind. The corner
+        ARRAY ORDERING (TL,TR,BR,BL of the marker, recovered from the
+        marker's asymmetric ID bits) carries the yaw information, but
+        ordinary 2nd-moments throw it away because all corners get
+        identical weight.
+
+        Fix: weight the 4 corners non-uniformly. Each weight is tied to
+        its marker-frame label (TL=4, TR=3, BR=2, BL=1), so the weighted
+        moments rotate WITH the marker frame. Yaw the drone → corner
+        positions rotate, weights stay attached to their marker-frame
+        labels, mu_11 becomes a nonzero function of yaw, alpha resolves.
+
+        Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
         """
+        x = pts[:, 0]
+        y = pts[:, 1]
+        N = len(x)
 
-        # ---- 1. Zeroth & first-order moments ----
-        x = pts[:,0]
-        y = pts[:,1]
+        if N == 4:
+            # ArUco labeled corners — weight by marker-frame index.
+            w = np.array([4.0, 3.0, 2.0, 1.0])
+            # Bias offset: with weights [4,3,2,1] the weighted square's
+            # principal axis is intrinsically rotated by alpha_0 = -0.5951 rad
+            # (≈ -34.1°) even at yaw=0. Subtract this constant so the
+            # corrected alpha satisfies alpha=0 ↔ yaw=0. Within
+            # yaw ∈ [-30°, +90°] the corrected alpha tracks yaw 1:1; beyond
+            # that the 0.5·atan2 branch wraps but the SMC operates near 0
+            # so this is fine in practice.
+            alpha_0 = -0.5950962035054 # computed analytically for [4,3,2,1]
+        else:
+            w = np.ones(N)
+            alpha_0 = 0.0
+        W = w.sum()
 
-        m00 = np.sum(np.ones_like(x))          # = N points (area surrogate)
-        m10 = np.sum(x)
-        m01 = np.sum(y)
+        # ---- 1. Weighted centroid ----
+        xc = float(np.sum(w * x) / W)
+        yc = float(np.sum(w * y) / W)
 
-        # ---- 2. Centroid in normalized frame ----
-        xc = m10 / m00
-        yc = m01 / m00
-        Pc = np.array([xc, yc])
-
-        # ---- 3. Centered coordinates ----
+        # ---- 2. Centered, weighted 2nd moments ----
         Xc = x - xc
         Yc = y - yc
+        mu20 = float(np.sum(w * Xc * Xc))
+        mu02 = float(np.sum(w * Yc * Yc))
+        mu11 = float(np.sum(w * Xc * Yc))
 
-        # ---- 4. Second-order centered moments ----
-        mu20 = np.sum(Xc**2)
-        mu02 = np.sum(Yc**2)
-        mu11 = np.sum(Xc * Yc)
-
-        # ---- 5. Orientation of marker ----
+        # ---- 3. Orientation of marker (bias-corrected) ----
         if abs(mu11) < 1e-6:
-            alpha = 0.0
+            alpha = -alpha_0           # raw=0 → corrected = -alpha_0
         else:
-            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02))
+            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
 
-        # ---- 6. Feature vector (unnormalized) ----
+        # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
 
         self._img_feature_param.append(s)
