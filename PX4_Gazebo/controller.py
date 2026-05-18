@@ -105,70 +105,44 @@ class Controller(Thread):
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
-        # Middle-loop performance envelope (optical flow). The supplemental
-        # 33-axis deep sweep (Section S3-A) identifies p_2_0 and p_2_∞ as
-        # LOAD-BEARING — perturbations break the 5/5 land rate.
-        # MATLAB: gamma_2 = [0.2, 0.2, 0.2], p_20 = [25, 25, 4], p_2inf = [2.5, 2.5, 1.5]
-        # Env-var scalers for sweep tuning (default 1.0):
-        #   PLASMC_P20_SCALE   — initial funnel half-width multiplier
-        #   PLASMC_P2INF_SCALE — terminal funnel half-width multiplier
-        p20_scale   = float(os.environ.get("PLASMC_P20_SCALE",   "1.0"))
-        p2inf_scale = float(os.environ.get("PLASMC_P2INF_SCALE", "1.0"))
-        self._gamma = np.diag([0.2, 0.2, 0.2])
-        self._p_0 = p20_scale   * np.array([25.0, 25.0, 4.0])
-        self._p_inf = p2inf_scale * np.array([2.5, 2.5, 1.5])
-        if p20_scale != 1.0 or p2inf_scale != 1.0:
-            print(f"[PLASMC] funnel scales: p_2_0={p20_scale}, p_2_∞={p2inf_scale}")
+        # Per-axis env-var scalers (default 1.0). Mirrors the manuscript's
+        # 33-axis sweep methodology. See run_all_gains_ic1.sh.
+        def s(key, default="1.0"):
+            return float(os.environ.get(f"PLASMC_{key}_SCALE", default))
 
-        # Middle-loop SMC. The supplemental 33-axis sweep identifies 𝒳 (Omega)
-        # as LOAD-BEARING; Γ is in the Pareto-trade class.
-        # MATLAB: Omega = diag(0.05, 0.05, 0.025), Gamma = diag(0.4375, 0.5, 0.75), E = diag(1, 1, 1)
-        # Env-var scaler (default 1.0):
-        #   PLASMC_OMEGA_SCALE — sliding-surface integrator gain multiplier
-        omega_scale = float(os.environ.get("PLASMC_OMEGA_SCALE", "1.0"))
-        self._Omega = omega_scale * np.diag([0.05, 0.05, 0.025])
-        self._Gma = np.diag([0.4375, 0.5, 0.75])
-        self._E = np.diag([1.0, 1.0, 1.0])
-        if omega_scale != 1.0:
-            print(f"[PLASMC] Omega (𝒳) scale = {omega_scale}")
-
-        # Adaptive-gain (translational) ODE
-        # MATLAB: N = diag(0.02, 0.02, 0.05), P = diag(1.5, 1.5, 5.0), kappa_0 = [0.125, 0.125, 0.25]
-        # SITL z-axis: dropped N[z] from MATLAB's 0.05 → 0.02 (matching x/y) to
-        # slow κ-adaptation on the depth channel. Justification: in MATLAB
-        # PLASMC's c-term perfectly cancels the assumed plant dynamics, so a
-        # large N[z] is needed for fast convergence without overshoot. In SITL
-        # PX4's attitude-rate loop adds ~50 ms of inner-loop lag that the c-term
-        # doesn't model, so the fast N[z] just pumps κ up to compensate, and
-        # the system over-drives (5m → 0m in 3 s vs MATLAB's 22 s). PLASMC_N_Z
-        # env var lets you override for tuning.
+        # Optic-flow funnel (LOAD-BEARING: p_2_0, p_2_∞)
+        self._gamma = s("XI2")    * np.diag([0.2, 0.2, 0.2])
+        self._p_0   = s("P20")    * np.array([25.0, 25.0, 4.0])
+        self._p_inf = s("P2INF")  * np.array([2.5, 2.5, 1.5])
+        # Optic-flow SMC (LOAD-BEARING: Omega)
+        self._Omega = s("OMEGA")  * np.diag([0.05, 0.05, 0.025])
+        self._Gma   = s("GAMMA")  * np.diag([0.4375, 0.5, 0.75])
+        self._E     = s("E")      * np.diag([1.0, 1.0, 1.0])
+        # Adaptive-gain ODE
         N_z = float(os.environ.get("PLASMC_N_Z", "0.02"))
-        self._N = np.diag([0.02, 0.02, N_z])
-        self._P = np.diag([1.5, 1.5, 5.0])
-        self._kappa_0 = np.array([0.125, 0.125, 0.25])
-        if N_z != 0.02:
-            print(f"[PLASMC] N[z] overridden to {N_z} (env PLASMC_N_Z)")
+        self._N = s("N") * np.diag([0.02, 0.02, N_z])
+        self._P = s("P") * np.diag([1.5, 1.5, 5.0])
+        self._kappa_0 = s("KAPPA0") * np.array([0.125, 0.125, 0.25])
+        if any(s(k) != 1.0 for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]) or N_z != 0.02:
+            print(f"[PLASMC] tunable middle-loop scales:")
+            for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]:
+                v = s(k)
+                if v != 1.0: print(f"  {k:<8} = {v}")
+            if N_z != 0.02: print(f"  N_z      = {N_z}")
 
-        # Yaw adaptive SMC
-        # MATLAB: Omega_a = 0.5, Gamma_a = 0.5, n_a = 1.0, p_a = 2, kappa_a_0 = 2.0, E_a = 3.0
-        self._Omega_a = 0.5
-        self._Gma_a = 0.5
-        self._n_a = 1.0
-        self._p_a = 2.0
-        self._kappa_a_0 = 2.0
-        self._E_a = 3.0
+        # Yaw adaptive SMC (ROBUST per supplement S3-A — sweep tunable but low impact)
+        self._Omega_a    = s("YAW_OMEGA")  * 0.5
+        self._Gma_a      = s("YAW_GAMMA")  * 0.5
+        self._n_a        = s("YAW_N")      * 1.0
+        self._p_a        = s("YAW_P")      * 2.0
+        self._kappa_a_0  = s("YAW_KAPPA0") * 2.0
+        self._E_a        = s("YAW_E")      * 3.0
 
-        # FoV-margin cone clamp (full MATLAB port; visualControl_IBVS_adaptive.m:443-469).
-        # Per-corner pixel-margin envelope: rho_fov decays from rho_fov_0 to rho_fov_inf
-        # with rate l_fov; effective theta_cone shrinks as any corner approaches
-        # rho_fov. theta_cap is the hard cone ceiling.
-        # MATLAB values are for 320x240 (rho_fov_0=[145;105], rho_fov_inf=[40;40]).
-        # PX4_Gazebo uses 640x480 at same hfov=1.74; scale rho_fov by 2x to keep
-        # the same geometric meaning (corner margin in % of half-width).
-        self._rho_fov_0   = np.array([290.0, 210.0])   # initial per-axis pixel margin (u, v)
-        self._rho_fov_inf = np.array([80.0, 80.0])     # terminal per-axis pixel margin
-        self._l_fov       = 0.1                        # exponential decay rate
-        self._theta_cap   = np.deg2rad(60.0)           # hard tilt ceiling
+        # FoV-margin cone clamp (acceleration conditioning)
+        self._rho_fov_0   = s("RHOFOV0")   * np.array([290.0, 210.0])
+        self._rho_fov_inf = s("RHOFOVINF") * np.array([80.0, 80.0])
+        self._l_fov       = s("LFOV")      * 0.1
+        self._theta_cap   = np.deg2rad(s("THETACAP") * 60.0)
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
