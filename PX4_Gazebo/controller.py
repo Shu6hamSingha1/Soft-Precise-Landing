@@ -58,6 +58,26 @@ class Controller(Thread):
         # Override via PLASMC_HRD_RAMP_S env var; set to 0 to disable.
         self._hrd_ramp_s = float(os.environ.get("PLASMC_HRD_RAMP_S", "3.0"))
 
+        # Lateral-error gating: shrink h_rd while the marker is off-center.
+        # h_rd_eff = h_rd / (1 + alpha · ‖s_e_n‖²)
+        # Purely image-based — no altitude/depth used, scale-invariant.
+        # Intent: descent slows when visually uncentered, giving the lateral
+        # PID time to converge before more altitude is given up.
+        # alpha sets the trade: 0 = no gating (MATLAB-equivalent), large =
+        # near-zero descent until perfectly centered.
+        #
+        # 2026-05-18 multi-IC sweep with alpha=5: IC 3 hit SOFT for the first
+        # time (vel 0.17 m/s, threshold 0.2), but IC 4 xy doubled (0.68→1.24)
+        # and IC 5 went catastrophic (xy=12 m, vel=9 m/s). Hypothesis: the
+        # varying h_ref_eff makes h_d non-steady, generating dh_d transients
+        # that feed the SMC c-term destructively; also the h_rd term in
+        # V_h_d's x/y components couples lateral PID into descent. Disabled
+        # by default until a non-destructive formulation is found (e.g.
+        # rate-limit h_ref_eff, gate only when ||s_e_n||>threshold, etc.).
+        # Override via PLASMC_HRD_GATE_ALPHA (default 0 = off); set ~1–2 to
+        # experiment.
+        self._hrd_gate_alpha = float(os.environ.get("PLASMC_HRD_GATE_ALPHA", "0.0"))
+
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
         self._STAY_OPEN = True
@@ -381,9 +401,17 @@ class Controller(Thread):
         # starts (MATLAB cold-starts at steady state; SITL does not).
         if self._hrd_ramp_s > 0:
             elapsed = self._t[-1] - self._t0
-            h_ref_eff = self._h_ref * min(1.0, elapsed / self._hrd_ramp_s)
+            ramp = min(1.0, elapsed / self._hrd_ramp_s)
         else:
-            h_ref_eff = self._h_ref
+            ramp = 1.0
+        # Lateral-error gating: shrink h_rd while the marker is off-center.
+        # Scale-free (uses normalized pixel error s_e_n directly).
+        if self._hrd_gate_alpha > 0 and len(self._s_e_n) > 0:
+            sen2 = float(self._s_e_n[-1][0]**2 + self._s_e_n[-1][1]**2)
+            lat_health = 1.0 / (1.0 + self._hrd_gate_alpha * sen2)
+        else:
+            lat_health = 1.0
+        h_ref_eff = self._h_ref * ramp * lat_health
         cross_ws = np.cross(w, self._s[-1][:3])
         self._h_d.append(
             self._ds_d[-1]
