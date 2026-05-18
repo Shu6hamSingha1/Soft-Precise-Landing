@@ -131,16 +131,23 @@ async def main(record = 'n'):
         # y=East, z=Down). For DISPLACEMENT vectors: NED_x=ENU_y, NED_y=ENU_x,
         # NED_z=-ENU_z.
         #
-        # Convergence: pos_err ≤ 0.5 m AND speed ≤ 0.3 m/s for 10 consecutive
-        # samples (0.2 s) — both measured against Gazebo truth, NOT PX4 NED.
-        # Tolerances reflect realized PX4 steady-state in SITL (tighter values
-        # of 0.3 m / 0.15 m/s consistently timed out at ~0.4 m / 0.22 m/s).
+        # Convergence: pos_err ≤ 0.5 m AND speed ≤ 0.3 m/s AND |yaw_err| ≤ 2°
+        # for 10 consecutive samples (0.2 s). All measured against Gazebo truth,
+        # NOT PX4 NED. Tolerances reflect realized PX4 steady-state in SITL
+        # (tighter pos/vel values of 0.3 / 0.15 consistently timed out at ~0.4
+        # / 0.22). The yaw check was added 2026-05-18 after a 5-run variance
+        # sweep showed PX4 sometimes spawns at yaw ≈ -13° and instant position-
+        # convergence (0.2 s) doesn't give the yaw setpoint time to rotate the
+        # drone to 0°. Engaging the controller from a 13°-misaligned V-frame
+        # caused the K_ri ×10 integrator to wind up around the misalignment and
+        # produced systematic lateral drift in whatever direction noise nudged.
         # Max wait 15 s; final 1 s is a settle phase regardless of convergence.
         ix, iy, iz = INITIAL_DRONE_ENU
         target_enu_0 = pose_node.getPose().target.position
         print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})")
         IC_POS_TOL  = 0.5
         IC_VEL_TOL  = 0.3
+        IC_YAW_TOL  = np.deg2rad(2.0)
         STABLE_HITS = 10
         MAX_ITERS   = 750                         # 15 s @ 50 Hz
         prev_enu    = pose_node.getPose().UAV.position
@@ -148,6 +155,7 @@ async def main(record = 'n'):
         stable      = 0
         converged_at = None
         target_n = target_e = target_d = 0.0
+        yaw_err = 0.0
         for k in range(MAX_ITERS):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
@@ -173,19 +181,27 @@ async def main(record = 'n'):
             d_n = cur_enu.y - (target_enu.y + iy)
             d_u = cur_enu.z - (target_enu.z + iz)
             pos_err = (d_e*d_e + d_n*d_n + d_u*d_u) ** 0.5
+            # Yaw error from PX4 quaternion: ψ = atan2(2(wz+xy), 1 − 2(y²+z²))
+            # Target yaw = 0 rad. We use the smallest signed angular distance.
+            q = FC_node.getQuat()
+            yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
+                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
+            yaw_err = abs(np.arctan2(np.sin(yaw), np.cos(yaw)))   # |ψ − 0|, wrapped
             prev_enu, prev_t = cur_enu, now
-            if pos_err <= IC_POS_TOL and speed <= IC_VEL_TOL:
+            if pos_err <= IC_POS_TOL and speed <= IC_VEL_TOL and yaw_err <= IC_YAW_TOL:
                 stable += 1
                 if stable >= STABLE_HITS:
                     converged_at = (k + 1) * 0.02
                     print(f"[landing_test] IC converged at t={converged_at:.2f}s "
-                          f"(pos_err={pos_err:.3f} m, speed={speed:.3f} m/s)")
+                          f"(pos_err={pos_err:.3f} m, speed={speed:.3f} m/s, "
+                          f"yaw_err={np.rad2deg(yaw_err):.2f}°)")
                     break
             else:
                 stable = 0
         if converged_at is None:
             print(f"[landing_test] IC convergence TIMEOUT after 15 s "
-                  f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s)")
+                  f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s, "
+                  f"yaw_err={np.rad2deg(yaw_err):.2f}°)")
             # Hard-abort instead of proceeding with a moving/off-target drone.
             # Empirically: PX4 SITL occasionally fails to settle during the
             # convergence loop (drone oscillates at ±2 m / ±2 m/s for 15s).
