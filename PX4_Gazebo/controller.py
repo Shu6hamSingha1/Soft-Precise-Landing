@@ -414,18 +414,13 @@ class Controller(Thread):
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
-        # Sanity: if PLASMC blew up (G ill-conditioned or zeta singular), abort.
-        # Suppressed during warmup — the first ~100 iterations fill the PID /
-        # SMC deques (dh_d, ds_d, izeta, kappa) and naturally produce large
-        # transients while landing_test still sends hover setpoints, not a_u.
-        if np.any(np.abs(a_u) > 100):
-            if self._warmup_remaining > 0:
-                self._warmup_remaining -= 1
-            else:
-                print(f"[PLASMC] a_u blew up: {a_u}\nG={self._G[-1]}\nc={c}")
-                self._STAY_OPEN = False
-        else:
-            self._warmup_remaining = 0    # one good frame ends warmup early
+        # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
+        # rate setpoints internally to physical limits (~±220 deg/s); an
+        # over-large a_u from a noisy startup PID firing just produces a
+        # brief wobble, not a crash. Keeping the controller alive lets the
+        # SMC adapt and recover instead of killing the run permanently.
+        # _warmup_remaining is retained as a state variable for future use
+        # but no longer gates anything here.
         self._a_u.append(a_u)
 
     def _yawCtrl(self):

@@ -113,16 +113,40 @@ async def main(record = 'n'):
 
         await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)
 
-        # Hover-to-origin phase: PX4's built-in takeoff often drifts laterally
-        # by several metres, which can put the ArUco marker outside the camera
-        # FOV before the controller even starts. Send NED position (0, 0, -alt)
-        # for ~4 s to drive the drone over the marker and let position-hold
-        # stabilise before IBVS takes over.
-        print("[landing_test] Hover-to-origin (4 s) before starting controller…")
-        cur_z = FC_node.getPosBody().z_m
+        # Hover-OVER-MARKER phase: PX4's NED origin sits at the drone's spawn
+        # point and drifts during takeoff, so a NED setpoint of (0,0) doesn't
+        # send the drone to the marker (which sits at world ENU origin in
+        # the aruco.sdf world). Use Gazebo GT to compute a NED setpoint that
+        # actually puts the drone above the marker.
+        #
+        # Convention: Gazebo world is ENU (x=East, y=North, z=Up).
+        #             PX4 odometry is NED (x=North, y=East, z=Down).
+        # For displacement vectors:  NED_x = ENU_y,  NED_y = ENU_x,  NED_z = -ENU_z.
+        #
+        # Each iteration we read the drone's current NED + Gazebo ENU, compute
+        # the ENU error to the marker (0,0,TAKEOFF_HEIGHT), convert to a NED
+        # displacement, and add to the current NED to form the setpoint. This
+        # is robust to the PX4-NED-origin drift because it always references
+        # the displacement actually needed in world coordinates.
+        print("[landing_test] Hover-OVER-MARKER (4 s) using Gazebo GT for frame alignment…")
         for _ in range(200):                      # 200 * 20 ms = 4 s
-            await FC_node.send_position_ned(0.0, 0.0, cur_z, 0.0)
+            drone_enu  = pose_node.getPose().UAV.position
+            target_enu = pose_node.getPose().target.position
+            ned_pos    = FC_node.getPosBody()
+            # ENU error from drone to (marker_xy, TAKEOFF_HEIGHT above marker)
+            de_enu = (target_enu.x - drone_enu.x)         # east
+            dn_enu = (target_enu.y - drone_enu.y)         # north
+            du_enu = (target_enu.z + TAKEOFF_HEIGHT - drone_enu.z)   # up
+            # ENU displacement → NED displacement
+            d_n_ned =  dn_enu
+            d_e_ned =  de_enu
+            d_d_ned = -du_enu
+            target_n = ned_pos.x_m + d_n_ned
+            target_e = ned_pos.y_m + d_e_ned
+            target_d = ned_pos.z_m + d_d_ned
+            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
             await asyncio.sleep(0.02)
+        cur_z = FC_node.getPosBody().z_m       # for the brief PID warmup below
 
         # Start controller (its thread begins iterating); send_attitude_rate
         # output is NOT used yet — we keep sending hover setpoints to PX4 while
@@ -134,12 +158,11 @@ async def main(record = 'n'):
         EC_node.startController()
         CONTROLLER_READY = True
         t_c = [0.0]
-        # Short warmup — just enough to fill the 4-deep smoothing deques
-        # without letting the PID integrator wind up against the (likely
-        # nonzero) centroid error while drone is hover-locked.
+        # Short warmup — just enough to fill the 4-deep smoothing deques.
+        # Hold the last marker-aligned NED setpoint so drone stays put.
         print("[landing_test] PID warmup (100 ms — fills deques only)…")
         for _ in range(5):                        # 5 * 20 ms = 100 ms
-            await FC_node.send_position_ned(0.0, 0.0, cur_z, 0.0)
+            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
             await asyncio.sleep(0.02)
 
         # Main control loop: controller is now warm.
