@@ -48,35 +48,16 @@ class Controller(Thread):
     def __init__(self, ref_rad_opt_flow, des_img_feature, time_keeper=time, controller=None, record='n'):
         Thread.__init__(self)
         self._h_ref = ref_rad_opt_flow
-        # Soft-engagement: ramp h_rd from 0 → self._h_ref linearly over this
-        # window after startController() so V_h_d[z] doesn't step from 0 to
-        # the steady-state target the instant the controller engages. Without
-        # ramping, the SMC sees an instant 0.42 error in the h-channel that
-        # the κ adaptation reacts to aggressively (the descent on a 5m→0m
-        # test was 8× faster than MATLAB partly because of this cold start;
-        # MATLAB sims cold-start at steady state so the issue doesn't appear).
-        # Override via PLASMC_HRD_RAMP_S env var; set to 0 to disable.
-        self._hrd_ramp_s = float(os.environ.get("PLASMC_HRD_RAMP_S", "3.0"))
-
-        # Lateral-error gating: shrink h_rd while the marker is off-center.
-        # h_rd_eff = h_rd / (1 + alpha · ‖s_e_n‖²)
-        # Purely image-based — no altitude/depth used, scale-invariant.
-        # Intent: descent slows when visually uncentered, giving the lateral
-        # PID time to converge before more altitude is given up.
-        # alpha sets the trade: 0 = no gating (MATLAB-equivalent), large =
-        # near-zero descent until perfectly centered.
-        #
-        # 2026-05-18 multi-IC sweep with alpha=5: IC 3 hit SOFT for the first
-        # time (vel 0.17 m/s, threshold 0.2), but IC 4 xy doubled (0.68→1.24)
-        # and IC 5 went catastrophic (xy=12 m, vel=9 m/s). Hypothesis: the
-        # varying h_ref_eff makes h_d non-steady, generating dh_d transients
-        # that feed the SMC c-term destructively; also the h_rd term in
-        # V_h_d's x/y components couples lateral PID into descent. Disabled
-        # by default until a non-destructive formulation is found (e.g.
-        # rate-limit h_ref_eff, gate only when ||s_e_n||>threshold, etc.).
-        # Override via PLASMC_HRD_GATE_ALPHA (default 0 = off); set ~1–2 to
-        # experiment.
-        self._hrd_gate_alpha = float(os.environ.get("PLASMC_HRD_GATE_ALPHA", "0.0"))
+        # NOTE: previously had a soft-engagement ramp (PLASMC_HRD_RAMP_S) and
+        # a lateral-error gate (PLASMC_HRD_GATE_ALPHA) that modulated h_ref
+        # during the descent. Both removed 2026-05-18: ramp gave essentially
+        # zero improvement (3.07 s vs 3.29 s, within noise) and the gate
+        # caused catastrophic IC 5 failure (12 m runaway) — both because
+        # varying h_ref makes h_d[z] non-steady, generates dh_d transients
+        # that feed the SMC c-term destructively, and shrinking h_rd also
+        # shrinks the (h_rd − dot(cross(w,s), e3))·s cross-coupling on x/y
+        # which alters SMC stability. Direct MATLAB-style use of h_ref
+        # is the cleanest.
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -396,22 +377,9 @@ class Controller(Thread):
         # +dot). On z that cancels to h_rd at s≈[0,0,1] so descent worked, but
         # x/y picked up doubled cross-coupling — V_h_d[0,1] excursions hit ±20
         # vs MATLAB's ±4, over-driving the SMC and giving 8× MATLAB descent rate.
-        # Soft-engage h_rd: ramp 0 → self._h_ref over self._hrd_ramp_s seconds
-        # to avoid the step-change-at-engagement that pumped the SMC κ on cold
-        # starts (MATLAB cold-starts at steady state; SITL does not).
-        if self._hrd_ramp_s > 0:
-            elapsed = self._t[-1] - self._t0
-            ramp = min(1.0, elapsed / self._hrd_ramp_s)
-        else:
-            ramp = 1.0
-        # Lateral-error gating: shrink h_rd while the marker is off-center.
-        # Scale-free (uses normalized pixel error s_e_n directly).
-        if self._hrd_gate_alpha > 0 and len(self._s_e_n) > 0:
-            sen2 = float(self._s_e_n[-1][0]**2 + self._s_e_n[-1][1]**2)
-            lat_health = 1.0 / (1.0 + self._hrd_gate_alpha * sen2)
-        else:
-            lat_health = 1.0
-        h_ref_eff = self._h_ref * ramp * lat_health
+        # Direct h_ref (MATLAB-equivalent). Previously had a soft-engage ramp
+        # and a lateral-error gate here — both removed (see __init__ note).
+        h_ref_eff = self._h_ref
         cross_ws = np.cross(w, self._s[-1][:3])
         self._h_d.append(
             self._ds_d[-1]
