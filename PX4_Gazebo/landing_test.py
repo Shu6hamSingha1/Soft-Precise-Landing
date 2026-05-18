@@ -35,8 +35,12 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 # velocity BEFORE the IBVS controller engages — same starting state as
 # the MATLAB simulation, so SITL transients no longer depend on the
 # random takeoff drift of PX4's AUTO_TAKEOFF.
-INITIAL_DRONE_ENU = (0.0, 0.0, 5.0)   # directly above marker at 5 m; isolates the z-channel
-TAKEOFF_HEIGHT = INITIAL_DRONE_ENU[2]   # 5.0 m, lift before flying to IC
+# Override via env var INITIAL_DRONE_ENU="x,y,z" (Gazebo ENU). Used by
+# run_multi_ic_landing.sh to sweep the MATLAB Multi_init_cond IC list:
+#   (0,0,5) (2,2,5) (2,-2,5) (2,2,7) (2,2,3)
+_ic_env = os.environ.get("INITIAL_DRONE_ENU", "0.0,0.0,5.0")
+INITIAL_DRONE_ENU = tuple(float(v) for v in _ic_env.split(","))
+TAKEOFF_HEIGHT = INITIAL_DRONE_ENU[2]   # lift to IC altitude before flying to IC xy
 LANDING_HEIGHT = 0.0       # in metres
 LANDING_VELOCITY = 0.20     # in m/s
 HOME_LOCATION = (13.017442, 77.565477, 955.0) #Lab GPS location and sea level altitude
