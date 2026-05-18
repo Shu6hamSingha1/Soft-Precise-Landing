@@ -83,6 +83,12 @@ class Controller(Thread):
         # MATLAB: rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
         # PLASMC_PID_SCALE env var (default 1.0) scales all three gains; set to
         # 0 to zero out PID for SMC-only debugging.
+        # NOTE: tried PID ×0.5 (rp=4.5, rd=0.72) to reduce lateral over-drive
+        # alongside N[z]=0.02. Result: h_d[x,y] excursions tamed (±5 vs ±20),
+        # but loop became under-damped — drone oscillated y: -1.0 → +0.3 → +1.8
+        # in 2s and lost marker. Halving rd cuts the damping pair; needs a
+        # different ratio (e.g. rp ×0.5, rd ×1.0) or paired with anti-windup
+        # tightening.  Reverted to MATLAB gains here pending that work.
         pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
         self._K_rp = pid_scale * np.diag([9.0, 9.0])
         self._K_ri = pid_scale * np.diag([0.1, 0.1])
@@ -104,9 +110,20 @@ class Controller(Thread):
 
         # Adaptive-gain (translational) ODE
         # MATLAB: N = diag(0.02, 0.02, 0.05), P = diag(1.5, 1.5, 5.0), kappa_0 = [0.125, 0.125, 0.25]
-        self._N = np.diag([0.02, 0.02, 0.05])
+        # SITL z-axis: dropped N[z] from MATLAB's 0.05 → 0.02 (matching x/y) to
+        # slow κ-adaptation on the depth channel. Justification: in MATLAB
+        # PLASMC's c-term perfectly cancels the assumed plant dynamics, so a
+        # large N[z] is needed for fast convergence without overshoot. In SITL
+        # PX4's attitude-rate loop adds ~50 ms of inner-loop lag that the c-term
+        # doesn't model, so the fast N[z] just pumps κ up to compensate, and
+        # the system over-drives (5m → 0m in 3 s vs MATLAB's 22 s). PLASMC_N_Z
+        # env var lets you override for tuning.
+        N_z = float(os.environ.get("PLASMC_N_Z", "0.02"))
+        self._N = np.diag([0.02, 0.02, N_z])
         self._P = np.diag([1.5, 1.5, 5.0])
         self._kappa_0 = np.array([0.125, 0.125, 0.25])
+        if N_z != 0.02:
+            print(f"[PLASMC] N[z] overridden to {N_z} (env PLASMC_N_Z)")
 
         # Yaw adaptive SMC
         # MATLAB: Omega_a = 0.5, Gamma_a = 0.5, n_a = 1.0, p_a = 2, kappa_a_0 = 2.0, E_a = 3.0
