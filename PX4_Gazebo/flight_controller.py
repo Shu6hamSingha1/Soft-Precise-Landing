@@ -72,6 +72,7 @@ class FC():
                 asyncio.create_task(self._getOdometry()),
                 asyncio.create_task(self._getAcc()),
                 asyncio.create_task(self._getLandedState()),
+                asyncio.create_task(self._impactDetector()),
                 asyncio.create_task(self.print_status_text())
             ]
 
@@ -307,6 +308,37 @@ class FC():
             print(f"gRPC error during landed_state retrieval: {e.details()}")
         except Exception as e:
             print(f"Unexpected error during landed_state retrieval: {e}")
+
+    async def _impactDetector(self):
+        """Fast touchdown detection via accelerometer spike.
+        PX4's LandedState typically takes 1–3 s of stillness to fire; in our
+        IC 5 test the gap was 3.3 s, during which the drone slid 0.9 m on its
+        gear. The physical impact shows up as a clear spike in body-frame
+        accel magnitude (~15.8 m/s² at touchdown vs ~9.81 baseline gravity).
+        We watch for |a| above IMPACT_THRESH and flip LANDED immediately so
+        the main loop can disarm before slide accumulates. Once airborne
+        (LANDED=False), we wait for at least one descent-detection cycle to
+        avoid triggering on the brief tilt transients of takeoff.
+        """
+        # Threshold tuned 2026-05-18 after multi-IC sweep: true touchdowns
+        # spike to 500–900 m/s² in Gazebo (the physics engine produces large
+        # contact impulses); false positives during descent maneuvers cluster
+        # at 13–14 m/s². 50 m/s² (~5 g) gives 10× margin under real impacts
+        # and 4× over the SMC's descent transients.
+        IMPACT_THRESH = 50.0
+        try:
+            while self._STAY_OPEN:
+                await asyncio.sleep(0.005)        # 200 Hz check
+                if self.LANDED or not self._acc_frd:
+                    continue
+                a = self._acc_frd[-1]
+                a_mag = (a.forward_m_s2**2 + a.right_m_s2**2 + a.down_m_s2**2) ** 0.5
+                if a_mag > IMPACT_THRESH:
+                    print(f"[FC] Impact detected (|a|={a_mag:.1f} m/s² > "
+                          f"{IMPACT_THRESH}) — LANDED=True")
+                    self.LANDED = True
+        except Exception as e:
+            print(f"Impact detector error: {e}")
                            
     async def print_status_text(self):
         try:

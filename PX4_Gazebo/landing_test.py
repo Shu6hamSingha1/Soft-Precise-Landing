@@ -290,7 +290,20 @@ async def main(record = 'n'):
             await asyncio.sleep(SLEEP_TIME)
 
         if FC_node.LANDED:
-            print("Landed (PX4 LandedState = ON_GROUND)")
+            print("Landed (PX4 LandedState or impact spike)")
+            # Quick disarm: cut thrust + disarm motors to stop any post-touchdown
+            # slide. The drone often has residual lateral velocity at impact;
+            # without disarming, motors keep spinning at FINAL_DESCENT_THRUST
+            # (or whatever the last attitude_rate cmd's thrust was) and the
+            # drone slides on its gear. IC 5 slid 0.9 m east in 3 s of
+            # post-touchdown PX4-pre-LANDED window. Disarming kills that.
+            try:
+                await FC_node.send_attitude_rate(0.0, 0.0, 0.0, 0.0)
+                await asyncio.sleep(0.05)
+                await FC_node.vehicle.action.disarm()
+                print("[landing_test] Disarmed post-touchdown.")
+            except Exception as e:
+                print(f"[landing_test] Disarm failed (probably already disarmed by PX4): {e}")
 
         # ─── MATLAB soft-precise landing classification ─────────────────
         # MATLAB criteria (visualControl_IBVS_adaptive.m:337-345):
