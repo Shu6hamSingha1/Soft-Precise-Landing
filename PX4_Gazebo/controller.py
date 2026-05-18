@@ -542,7 +542,15 @@ class Controller(Thread):
         theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
                                self._theta_cap))
 
-        # 5) Apply cone to inertial accel
+        # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
+        # MATLAB-equivalent safety: I_a represents required thrust acceleration
+        # (thrust force / m). For sane upright drone with thrust opposing
+        # gravity, I_a[2] should be NEGATIVE (thrust accel up in NED). If the
+        # SMC ever commands I_a[2] >= 0, that asks for non-upward thrust →
+        # drone would have to flip. Force a moderate negative value (~-3 m/s²
+        # of thrust accel, i.e. mild lift but well below hover) to keep the
+        # drone upright; the controller can still descend by reducing thrust
+        # below gravity.
         if I_a[2] >= 0:
             I_a[2] = -3.0
         a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
@@ -624,10 +632,15 @@ class Controller(Thread):
 
         self._w_u.append(w_u)
 
-        # Thrust scalar (Newtons) — same convention as before:
-        # B_T is the EXCESS thrust beyond gravity compensation, mapped to PX4 throttle
-        # in landing_test.convert_2_sys_cmd. At hover, I_a[2]≈0 -> B_T≈0.
-        self._B_T.append(mass * self._I_a[-1][2]
+        # Thrust scalar (Newtons) for landing_test.convert_2_sys_cmd, which
+        # expects B_T as "thrust DEFICIT below hover": thrust_norm = 0.738 -
+        # B_T/45. So B_T = 0 at hover, B_T > 0 → less thrust (descend),
+        # B_T < 0 → more thrust (climb).
+        # Our I_a[2] is in NED-with-gravity-subtracted (so I_a[2] = -g at hover,
+        # not 0). Need to add g back to align: B_T = mass·(I_a[2] + g)/cos·cos.
+        # Without the +g, B_T = -20.7 N at hover → thrust_norm clips to 1.0 →
+        # full throttle → drone climbs instead of hovering.
+        self._B_T.append(mass * (self._I_a[-1][2] + g)
                          / max(np.cos(euler[0]), 1e-6)
                          / max(np.cos(euler[1]), 1e-6))
 

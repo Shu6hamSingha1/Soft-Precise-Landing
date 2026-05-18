@@ -28,9 +28,15 @@ REF_RAD_OPT_FLOW = -0.42  # MATLAB h_rd (Constants.m); reverted from -0.30 durin
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 
 # Flight Controller Details:
-TAKEOFF_HEIGHT = 3.0        # in metres
-INITIAL_HEIGHT = 1.5        # in metres
-INITIAL_VELOCITY = 0.2      # in m/s
+# MATLAB-IC match (Multi_init_cond/InitVar.m line 17):
+#   I_p_c = [2.0, 2.0, -5.0]   (NED — i.e. 2 east, 2 north, 5 up in ENU)
+#   zero velocity, zero attitude rate, identity quaternion
+# Drone is positioned to (2, 2, 5) ENU and allowed to settle to zero
+# velocity BEFORE the IBVS controller engages — same starting state as
+# the MATLAB simulation, so SITL transients no longer depend on the
+# random takeoff drift of PX4's AUTO_TAKEOFF.
+INITIAL_DRONE_ENU = (0.0, 0.0, 5.0)   # directly above marker at 5 m; isolates the z-channel
+TAKEOFF_HEIGHT = INITIAL_DRONE_ENU[2]   # 5.0 m, lift before flying to IC
 LANDING_HEIGHT = 0.0       # in metres
 LANDING_VELOCITY = 0.20     # in m/s
 HOME_LOCATION = (13.017442, 77.565477, 955.0) #Lab GPS location and sea level altitude
@@ -113,30 +119,30 @@ async def main(record = 'n'):
 
         await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)
 
-        # Hover-OVER-MARKER phase: PX4's NED origin sits at the drone's spawn
-        # point and drifts during takeoff, so a NED setpoint of (0,0) doesn't
-        # send the drone to the marker (which sits at world ENU origin in
-        # the aruco.sdf world). Use Gazebo GT to compute a NED setpoint that
-        # actually puts the drone above the marker.
+        # Fly to MATLAB initial condition: drone at INITIAL_DRONE_ENU
+        # (2 east, 2 north, 5 up) in Gazebo world coords, marker at origin.
+        # PX4's NED origin sits at the drone's spawn point and drifts during
+        # takeoff, so a fixed NED setpoint doesn't put the drone at a fixed
+        # WORLD point. Each iteration reads current Gazebo ENU + PX4 NED,
+        # computes the ENU error to (INITIAL_DRONE_ENU + target_xy_offset),
+        # converts to NED displacement, sends NED_setpoint = current_NED +
+        # ΔNED. Drone converges to the target ENU pose regardless of EKF-
+        # origin drift.
         #
-        # Convention: Gazebo world is ENU (x=East, y=North, z=Up).
-        #             PX4 odometry is NED (x=North, y=East, z=Down).
-        # For displacement vectors:  NED_x = ENU_y,  NED_y = ENU_x,  NED_z = -ENU_z.
-        #
-        # Each iteration we read the drone's current NED + Gazebo ENU, compute
-        # the ENU error to the marker (0,0,TAKEOFF_HEIGHT), convert to a NED
-        # displacement, and add to the current NED to form the setpoint. This
-        # is robust to the PX4-NED-origin drift because it always references
-        # the displacement actually needed in world coordinates.
-        print("[landing_test] Hover-OVER-MARKER (4 s) using Gazebo GT for frame alignment…")
-        for _ in range(200):                      # 200 * 20 ms = 4 s
+        # Convention: Gazebo ENU (x=East, y=North, z=Up), PX4 NED (x=North,
+        # y=East, z=Down). For displacement vectors: NED_x=ENU_y,
+        # NED_y=ENU_x, NED_z=-ENU_z.
+        ix, iy, iz = INITIAL_DRONE_ENU
+        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{ix},{iz}) (8 s)…")
+        for _ in range(400):                      # 400 * 20 ms = 8 s
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
             ned_pos    = FC_node.getPosBody()
-            # ENU error from drone to (marker_xy, TAKEOFF_HEIGHT above marker)
-            de_enu = (target_enu.x - drone_enu.x)         # east
-            dn_enu = (target_enu.y - drone_enu.y)         # north
-            du_enu = (target_enu.z + TAKEOFF_HEIGHT - drone_enu.z)   # up
+            # Desired ENU = target + INITIAL_DRONE_ENU (marker is at target_enu,
+            # drone IC is at (ix, iy, iz) offset from marker)
+            de_enu = (target_enu.x + ix - drone_enu.x)
+            dn_enu = (target_enu.y + iy - drone_enu.y)
+            du_enu = (target_enu.z + iz - drone_enu.z)
             # ENU displacement → NED displacement
             d_n_ned =  dn_enu
             d_e_ned =  de_enu
