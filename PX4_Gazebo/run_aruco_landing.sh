@@ -195,4 +195,12 @@ if grep -q 'arm() failed after 10 retries' "$PY_OUT" 2>/dev/null; then
   echo "[run] Signaling retry with exit code 42."
   exit 42
 fi
+# IC convergence timeout — drone never settled at the IC pose during the 15s
+# pre-controller hover loop. PX4 SITL flakiness; let the retry wrapper boot
+# a fresh stack rather than fly garbage from a moving start.
+if grep -q 'IC convergence timeout' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle)."
+  echo "[run] Signaling retry with exit code 42."
+  exit 42
+fi
 exit "$PY_EXIT"

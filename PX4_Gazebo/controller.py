@@ -81,15 +81,14 @@ class Controller(Thread):
 
         # Outer-loop PID on V_s_e_n (raw normalized pixel error)
         # MATLAB:  rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
-        # Retune trials (kept here for future reference):
-        #   uniform P/2, D/2:  under-damped → lateral oscillation, target lost
-        #   asym    P/2, D=1:  monotonic drift -1.55m N → target lost (likely
-        #                       reveals a centroid/sign bias that the full-
-        #                       MATLAB P was overpowering)
-        # Full-MATLAB PID + IC-convergence fix gives the most reliable landing
-        # in SITL today; retune deferred until the underlying bias is
-        # diagnosed. Env-var scalers stay in place so further tuning doesn't
-        # need a code edit:
+        # SITL:    K_ri boosted 10× (0.1 → 1.0). Diagnosis: the lateral PID
+        # is conditionally unstable on SITL's noisier LK centroid — initial
+        # noise perturbations grow into 1+ m drift in any direction (run-to-
+        # run varies). MATLAB's tiny K_ri = 0.1 can't correct steady drift.
+        # Boosting K_ri 10× lets the integral term explicitly null persistent
+        # offsets; the existing 5.0 anti-windup clamp on |is_e_n| limits runaway.
+        # Env-var scalers stay in place so further tuning doesn't need a code
+        # edit:
         #   PLASMC_KP_SCALE  (default 1.0)
         #   PLASMC_KD_SCALE  (default 1.0)
         #   PLASMC_KI_SCALE  (default 1.0)
@@ -100,7 +99,7 @@ class Controller(Thread):
         ki_scale  = float(os.environ.get("PLASMC_KI_SCALE",  "1.0"))
         pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
         self._K_rp = pid_scale * kp_scale * np.diag([9.0, 9.0])
-        self._K_ri = pid_scale * ki_scale * np.diag([0.1, 0.1])
+        self._K_ri = pid_scale * ki_scale * np.diag([1.0, 1.0])
         self._K_rd = pid_scale * kd_scale * np.diag([1.4375, 1.4375])
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")

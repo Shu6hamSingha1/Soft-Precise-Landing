@@ -185,7 +185,16 @@ async def main(record = 'n'):
                 stable = 0
         if converged_at is None:
             print(f"[landing_test] IC convergence TIMEOUT after 15 s "
-                  f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s) — proceeding anyway")
+                  f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s)")
+            # Hard-abort instead of proceeding with a moving/off-target drone.
+            # Empirically: PX4 SITL occasionally fails to settle during the
+            # convergence loop (drone oscillates at ±2 m / ±2 m/s for 15s).
+            # If we engage the controller from that state, the boosted K_ri ×10
+            # integrator winds up around the moving setpoint and turns into a
+            # 5+ m runaway. Better to abort and let the retry wrapper try a
+            # fresh SITL boot than to fly garbage.
+            raise RuntimeError(f"IC convergence timeout (pos_err={pos_err:.2f} m, "
+                               f"speed={speed:.2f} m/s) — aborting before controller engage")
 
         # 1 s of holding the (recomputed) setpoint to let residual velocity damp.
         for _ in range(50):
