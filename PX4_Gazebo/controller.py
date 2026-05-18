@@ -80,21 +80,30 @@ class Controller(Thread):
         self._p_10 = self._img_node.center / self._img_node.focal  # (2,)
 
         # Outer-loop PID on V_s_e_n (raw normalized pixel error)
-        # MATLAB: rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
-        # PLASMC_PID_SCALE env var (default 1.0) scales all three gains; set to
-        # 0 to zero out PID for SMC-only debugging.
-        # NOTE: tried PID ×0.5 (rp=4.5, rd=0.72) to reduce lateral over-drive
-        # alongside N[z]=0.02. Result: h_d[x,y] excursions tamed (±5 vs ±20),
-        # but loop became under-damped — drone oscillated y: -1.0 → +0.3 → +1.8
-        # in 2s and lost marker. Halving rd cuts the damping pair; needs a
-        # different ratio (e.g. rp ×0.5, rd ×1.0) or paired with anti-windup
-        # tightening.  Reverted to MATLAB gains here pending that work.
+        # MATLAB:  rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
+        # Retune trials (kept here for future reference):
+        #   uniform P/2, D/2:  under-damped → lateral oscillation, target lost
+        #   asym    P/2, D=1:  monotonic drift -1.55m N → target lost (likely
+        #                       reveals a centroid/sign bias that the full-
+        #                       MATLAB P was overpowering)
+        # Full-MATLAB PID + IC-convergence fix gives the most reliable landing
+        # in SITL today; retune deferred until the underlying bias is
+        # diagnosed. Env-var scalers stay in place so further tuning doesn't
+        # need a code edit:
+        #   PLASMC_KP_SCALE  (default 1.0)
+        #   PLASMC_KD_SCALE  (default 1.0)
+        #   PLASMC_KI_SCALE  (default 1.0)
+        #   PLASMC_PID_SCALE (default 1.0) is the legacy uniform scaler,
+        #     applied on top of the per-term scales.
+        kp_scale  = float(os.environ.get("PLASMC_KP_SCALE",  "1.0"))
+        kd_scale  = float(os.environ.get("PLASMC_KD_SCALE",  "1.0"))
+        ki_scale  = float(os.environ.get("PLASMC_KI_SCALE",  "1.0"))
         pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
-        self._K_rp = pid_scale * np.diag([9.0, 9.0])
-        self._K_ri = pid_scale * np.diag([0.1, 0.1])
-        self._K_rd = pid_scale * np.diag([1.4375, 1.4375])
-        if pid_scale != 1.0:
-            print(f"[PLASMC] PID gains scaled by {pid_scale} (env PLASMC_PID_SCALE)")
+        self._K_rp = pid_scale * kp_scale * np.diag([9.0, 9.0])
+        self._K_ri = pid_scale * ki_scale * np.diag([0.1, 0.1])
+        self._K_rd = pid_scale * kd_scale * np.diag([1.4375, 1.4375])
+        if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
+            print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
         # Middle-loop performance envelope (optical flow)
         # MATLAB: gamma_2 = [0.2, 0.2, 0.2], p_20 = [25, 25, 4], p_2inf = [2.5, 2.5, 1.5]
