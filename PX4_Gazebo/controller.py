@@ -105,17 +105,32 @@ class Controller(Thread):
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
-        # Middle-loop performance envelope (optical flow)
+        # Middle-loop performance envelope (optical flow). The supplemental
+        # 33-axis deep sweep (Section S3-A) identifies p_2_0 and p_2_∞ as
+        # LOAD-BEARING — perturbations break the 5/5 land rate.
         # MATLAB: gamma_2 = [0.2, 0.2, 0.2], p_20 = [25, 25, 4], p_2inf = [2.5, 2.5, 1.5]
+        # Env-var scalers for sweep tuning (default 1.0):
+        #   PLASMC_P20_SCALE   — initial funnel half-width multiplier
+        #   PLASMC_P2INF_SCALE — terminal funnel half-width multiplier
+        p20_scale   = float(os.environ.get("PLASMC_P20_SCALE",   "1.0"))
+        p2inf_scale = float(os.environ.get("PLASMC_P2INF_SCALE", "1.0"))
         self._gamma = np.diag([0.2, 0.2, 0.2])
-        self._p_0 = np.array([25.0, 25.0, 4.0])
-        self._p_inf = np.array([2.5, 2.5, 1.5])
+        self._p_0 = p20_scale   * np.array([25.0, 25.0, 4.0])
+        self._p_inf = p2inf_scale * np.array([2.5, 2.5, 1.5])
+        if p20_scale != 1.0 or p2inf_scale != 1.0:
+            print(f"[PLASMC] funnel scales: p_2_0={p20_scale}, p_2_∞={p2inf_scale}")
 
-        # Middle-loop SMC
+        # Middle-loop SMC. The supplemental 33-axis sweep identifies 𝒳 (Omega)
+        # as LOAD-BEARING; Γ is in the Pareto-trade class.
         # MATLAB: Omega = diag(0.05, 0.05, 0.025), Gamma = diag(0.4375, 0.5, 0.75), E = diag(1, 1, 1)
-        self._Omega = np.diag([0.05, 0.05, 0.025])
+        # Env-var scaler (default 1.0):
+        #   PLASMC_OMEGA_SCALE — sliding-surface integrator gain multiplier
+        omega_scale = float(os.environ.get("PLASMC_OMEGA_SCALE", "1.0"))
+        self._Omega = omega_scale * np.diag([0.05, 0.05, 0.025])
         self._Gma = np.diag([0.4375, 0.5, 0.75])
         self._E = np.diag([1.0, 1.0, 1.0])
+        if omega_scale != 1.0:
+            print(f"[PLASMC] Omega (𝒳) scale = {omega_scale}")
 
         # Adaptive-gain (translational) ODE
         # MATLAB: N = diag(0.02, 0.02, 0.05), P = diag(1.5, 1.5, 5.0), kappa_0 = [0.125, 0.125, 0.25]
