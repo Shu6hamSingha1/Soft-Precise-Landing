@@ -524,14 +524,13 @@ class IMG_PROCESSOR(Thread):
         if N == 4:
             # ArUco labeled corners — weight by marker-frame index.
             w = np.array([4.0, 3.0, 2.0, 1.0])
-            # Bias offset: with weights [4,3,2,1] the weighted square's
-            # principal axis is intrinsically rotated by alpha_0 = -0.5951 rad
-            # (≈ -34.1°) even at yaw=0. Subtract this constant so the
-            # corrected alpha satisfies alpha=0 ↔ yaw=0. Within
-            # yaw ∈ [-30°, +90°] the corrected alpha tracks yaw 1:1; beyond
-            # that the 0.5·atan2 branch wraps but the SMC operates near 0
-            # so this is fine in practice.
-            alpha_0 = -0.5950962035054 # computed analytically for [4,3,2,1]
+            # 2026-05-19: sign-flip experiment failed catastrophically — the
+            # actual SITL corner-ordering convention differs from analytical
+            # derivation. Reverted to alpha_0 = -0.5951 which empirically gave
+            # the best result (xy=0.28 on IC 1). Yaw SMC sees alpha with
+            # NEGATIVE correlation to true yaw, but that turns out to be a
+            # stable equilibrium for the current SMC sign convention.
+            alpha_0 = -0.5950962035054
         else:
             w = np.ones(N)
             alpha_0 = 0.0
@@ -550,7 +549,7 @@ class IMG_PROCESSOR(Thread):
 
         # ---- 3. Orientation of marker (bias-corrected) ----
         if abs(mu11) < 1e-6:
-            alpha = -alpha_0           # raw=0 → corrected = -alpha_0
+            alpha = -alpha_0
         else:
             alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
 
