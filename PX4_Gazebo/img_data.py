@@ -82,13 +82,19 @@ class IMG_PROCESSOR(Thread):
         #     _sensor_cal_hw = np.diag([0.1498, 0.1694, 0.0877, 0.2188, 0.2114, 0.4236])
         #   2026-05-13b 9-run median(gt/raw) (NEW/OLD RMSE within ±3%):
         #     _sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 0.1998])
-        # HYBRID — axes 0-4 use the 9-run median(gt/raw) cal (proven visually
-        # acceptable; lower amplitude bias on quiet sweeps); axis 5 (ω_z) uses
-        # the median-per-run std-ratio (1.98) because the raw lstsq systemati-
-        # cally under-amplifies yaw rate — every single one of 10 runs needed
-        # >1.0× amplification on ω_z, and the median-of-medians gives 1.98×.
-        # Centroid s uses the median(gt/raw) value (stable across runs, 0.58).
-        self._sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 1.9788])
+        # All 6 axes use the 9-run median(gt/raw) cal (2026-05-13b). The earlier
+        # HYBRID variant amplified ω_z by 1.9788× to match the deliberate-yaw
+        # output_calibration-sweep amplitude. But in the landing scenario the
+        # actual yaw rate is near zero (PX4 truth |ω_yaw| < 0.43 rad/s during
+        # the 5m → 0m descent), while the lstsq optic-flow solve produces a
+        # consistent +0.8 rad/s bias on ω_z (probably leakage from the marker-
+        # corner divergence pattern as the drone approaches). Amplifying that
+        # bias by 1.98× gave w_i[z] median +1.56 rad/s, which doubly poisoned
+        # the SMC via the V_h_d cross-coupling term and the c-term — partially
+        # responsible for the 8× faster-than-MATLAB descent rate. Reverting to
+        # 0.1998 reduces the bias contamination 10× and matches the policy used
+        # on the other 5 channels. Centroid s uses median(gt/raw) (stable, 0.58).
+        self._sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 0.1998])
         self._sensor_cal_s  = np.diag([0.5830, 0.6104, 1.0000, 1.0000])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
