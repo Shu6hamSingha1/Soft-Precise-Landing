@@ -242,29 +242,50 @@ async def main(record = 'n'):
             await asyncio.sleep(0.02)
 
         # Main control loop: controller is now warm.
+        # Termination: PX4's LandedState (via FC_node.LANDED, fused onboard
+        # from accel/baro/gyro/EKF) — onboard-only, no Gazebo truth.
+        # The earlier `d <= LANDING_HEIGHT` check used Gazebo ENU z and only
+        # worked in sim; PX4's landed_state is what a real flight would use.
+        #
+        # ArUco detection drops when the marker corners spill outside the
+        # image frame (drone too close, ≈ last 0.2 m). When that happens
+        # we switch to an open-loop final descent: fixed gentle thrust below
+        # hover, zero body rate setpoints, and wait for PX4 to report
+        # LANDED. This is the standard pattern for marker-based landing —
+        # close in with vision, last 20 cm with constant descent.
+        FINAL_DESCENT_THRUST = 0.65          # below 0.738 hover → mild descent
+        FINAL_DESCENT_TIMEOUT = 5.0          # seconds
+        in_final_descent = False
+        final_descent_t0 = None
+
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
             target_pose.append(pose_node.getPose().target)
 
             t_c.append(time_node.perf_counter() - start_time)
-            if EC_node.TARGET_IS_VISIBLE:
+            if EC_node.TARGET_IS_VISIBLE and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
                 await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
                 u_cmd.append(cmd)
             else:
-                # Target lost — break the loop and let cleanup save what we have.
-                break
-
-            d = pose_node.getPose().UAV.position.z
-            # d = - FC_node.getPosBody().z_m
-            # Stop the controller if it lands 
-            if d <= LANDING_HEIGHT:
-            # if d <= LANDING_HEIGHT and abs(vz) < LANDING_VELOCITY:
-               print("Landed")
-               break
+                # Marker lost → final descent. Hold zero body rate, push
+                # constant sub-hover thrust until PX4 reports ON_GROUND.
+                if not in_final_descent:
+                    in_final_descent = True
+                    final_descent_t0 = time_node.perf_counter()
+                    print(f"[landing_test] Marker lost — final descent "
+                          f"(thrust={FINAL_DESCENT_THRUST}) until LANDED.")
+                await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
+                if (time_node.perf_counter() - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
+                    print(f"[landing_test] Final-descent timeout "
+                          f"({FINAL_DESCENT_TIMEOUT}s) — PX4 never reported LANDED.")
+                    break
 
             await asyncio.sleep(SLEEP_TIME)
+
+        if FC_node.LANDED:
+            print("Landed (PX4 LandedState = ON_GROUND)")
         
         EC_node.close()
         await FC_node.close()

@@ -71,6 +71,7 @@ class FC():
             self.tasks = [
                 asyncio.create_task(self._getOdometry()),
                 asyncio.create_task(self._getAcc()),
+                asyncio.create_task(self._getLandedState()),
                 asyncio.create_task(self.print_status_text())
             ]
 
@@ -283,6 +284,29 @@ class FC():
             print(f"gRPC error during acceleration retrieval: {e.details()}")
         except Exception as e:
             print(f"Unexpected error during acceleration retrieval: {e}")
+
+    async def _getLandedState(self):
+        """Subscribe to PX4's LandedState — onboard-only landing detection.
+        PX4 fuses accel/baro/gyro/EKF to publish one of:
+          IN_AIR, LANDING, ON_GROUND, TAKING_OFF, UNKNOWN
+        Updates self.LANDED on transitions so the main loop can exit cleanly
+        without relying on Gazebo ground truth.
+        """
+        try:
+            async for state in self.vehicle.telemetry.landed_state():
+                self._flight_state.append(state)
+                # Only flip LANDED → True if we previously took off. Initial
+                # ON_GROUND-before-takeoff is normal and arm_and_takeoff sets
+                # LANDED=False explicitly after climbing.
+                if state == LandedState.ON_GROUND and not self.LANDED:
+                    print("[FC] PX4 reports ON_GROUND — LANDED=True")
+                    self.LANDED = True
+                if not self._STAY_OPEN:
+                    break
+        except grpc.RpcError as e:
+            print(f"gRPC error during landed_state retrieval: {e.details()}")
+        except Exception as e:
+            print(f"Unexpected error during landed_state retrieval: {e}")
                            
     async def print_status_text(self):
         try:
