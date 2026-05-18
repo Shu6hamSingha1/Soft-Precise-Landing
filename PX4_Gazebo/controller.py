@@ -48,6 +48,15 @@ class Controller(Thread):
     def __init__(self, ref_rad_opt_flow, des_img_feature, time_keeper=time, controller=None, record='n'):
         Thread.__init__(self)
         self._h_ref = ref_rad_opt_flow
+        # Soft-engagement: ramp h_rd from 0 → self._h_ref linearly over this
+        # window after startController() so V_h_d[z] doesn't step from 0 to
+        # the steady-state target the instant the controller engages. Without
+        # ramping, the SMC sees an instant 0.42 error in the h-channel that
+        # the κ adaptation reacts to aggressively (the descent on a 5m→0m
+        # test was 8× faster than MATLAB partly because of this cold start;
+        # MATLAB sims cold-start at steady state so the issue doesn't appear).
+        # Override via PLASMC_HRD_RAMP_S env var; set to 0 to disable.
+        self._hrd_ramp_s = float(os.environ.get("PLASMC_HRD_RAMP_S", "3.0"))
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -342,11 +351,19 @@ class Controller(Thread):
         # +dot). On z that cancels to h_rd at s≈[0,0,1] so descent worked, but
         # x/y picked up doubled cross-coupling — V_h_d[0,1] excursions hit ±20
         # vs MATLAB's ±4, over-driving the SMC and giving 8× MATLAB descent rate.
+        # Soft-engage h_rd: ramp 0 → self._h_ref over self._hrd_ramp_s seconds
+        # to avoid the step-change-at-engagement that pumped the SMC κ on cold
+        # starts (MATLAB cold-starts at steady state; SITL does not).
+        if self._hrd_ramp_s > 0:
+            elapsed = self._t[-1] - self._t0
+            h_ref_eff = self._h_ref * min(1.0, elapsed / self._hrd_ramp_s)
+        else:
+            h_ref_eff = self._h_ref
         cross_ws = np.cross(w, self._s[-1][:3])
         self._h_d.append(
             self._ds_d[-1]
             + cross_ws
-            + (self._h_ref - np.dot(cross_ws, e3)) * self._s[-1][:3]
+            + (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
         )
         self._h_e.append(self._h[-1] - self._h_d[-1])
 
