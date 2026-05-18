@@ -20,6 +20,7 @@
 #   - img_data._sensor_cal_s = diag(1/6, 1/6, 1, 1) is kept (user choice) pending
 #     a recalibration pass via output_calibration.py.
 # **************************************************************************
+import os
 import time
 import numpy as np
 from scipy.linalg import expm
@@ -71,9 +72,14 @@ class Controller(Thread):
 
         # Outer-loop PID on V_s_e_n (raw normalized pixel error)
         # MATLAB: rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
-        self._K_rp = np.diag([9.0, 9.0])
-        self._K_ri = np.diag([0.1, 0.1])
-        self._K_rd = np.diag([1.4375, 1.4375])
+        # PLASMC_PID_SCALE env var (default 1.0) scales all three gains; set to
+        # 0 to zero out PID for SMC-only debugging.
+        pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
+        self._K_rp = pid_scale * np.diag([9.0, 9.0])
+        self._K_ri = pid_scale * np.diag([0.1, 0.1])
+        self._K_rd = pid_scale * np.diag([1.4375, 1.4375])
+        if pid_scale != 1.0:
+            print(f"[PLASMC] PID gains scaled by {pid_scale} (env PLASMC_PID_SCALE)")
 
         # Middle-loop performance envelope (optical flow)
         # MATLAB: gamma_2 = [0.2, 0.2, 0.2], p_20 = [25, 25, 4], p_2inf = [2.5, 2.5, 1.5]
@@ -234,7 +240,18 @@ class Controller(Thread):
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the
                     # first iteration if appended after.
-                    self._w_i.append(opt_flow_ang_vel[3:])
+                    #
+                    # Cap |w_i| at ±5 rad/s per axis. The raw lstsq + KF + the
+                    # 1.98× sensor_cal_hw amplification on ω_z can produce
+                    # transient |w_i| > 10 rad/s from image noise. That feeds
+                    # cross(w_i, s) in _updateOptFlow / PLASMC, blowing up
+                    # h_d → h_e → zeta → kappa → a_u → drone tumbles → more
+                    # optic-flow noise → positive feedback. ±5 rad/s
+                    # (~285 deg/s) is the X500's physical body-rate limit;
+                    # values beyond this aren't physically meaningful for
+                    # the marker's apparent relative angular velocity.
+                    W_I_MAX = 5.0
+                    self._w_i.append(np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX))
                     self._updateOptFlow(opt_flow_ang_vel[:3])
 
                     self.PLASMC()
