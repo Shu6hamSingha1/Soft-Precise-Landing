@@ -99,9 +99,21 @@ class Controller(Thread):
         kd_scale  = float(os.environ.get("PLASMC_KD_SCALE",  "1.0"))
         ki_scale  = float(os.environ.get("PLASMC_KI_SCALE",  "1.0"))
         pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
-        self._K_rp = pid_scale * kp_scale * np.diag([9.0, 9.0])
-        self._K_ri = pid_scale * ki_scale * np.diag([1.0, 1.0])
-        self._K_rd = pid_scale * kd_scale * np.diag([1.4375, 1.4375])
+        # Per-axis PID scalers (default 1.0). PID is 2D (x,y of feature
+        # error in image plane); _X applies to axis 0, _Y to axis 1.
+        # Note: image axis 0 (V-frame x) → PITCH, image axis 1 → ROLL.
+        kp_x = float(os.environ.get("PLASMC_KP_X_SCALE", "1.0"))
+        kp_y = float(os.environ.get("PLASMC_KP_Y_SCALE", "1.0"))
+        ki_x = float(os.environ.get("PLASMC_KI_X_SCALE", "1.0"))
+        ki_y = float(os.environ.get("PLASMC_KI_Y_SCALE", "1.0"))
+        kd_x = float(os.environ.get("PLASMC_KD_X_SCALE", "1.0"))
+        kd_y = float(os.environ.get("PLASMC_KD_Y_SCALE", "1.0"))
+        self._K_rp = pid_scale * np.diag([kp_scale * kp_x * 9.0,
+                                          kp_scale * kp_y * 9.0])
+        self._K_ri = pid_scale * np.diag([ki_scale * ki_x * 1.0,
+                                          ki_scale * ki_y * 1.0])
+        self._K_rd = pid_scale * np.diag([kd_scale * kd_x * 1.4375,
+                                          kd_scale * kd_y * 1.4375])
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
