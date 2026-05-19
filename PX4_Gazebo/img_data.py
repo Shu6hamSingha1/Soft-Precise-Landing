@@ -497,61 +497,38 @@ class IMG_PROCESSOR(Thread):
     def _getImgFeatures(self, pts):
         """
         pts : virtual feature points in normalized frame
-            shape (N,2), already (x,y) = (u-cx)/fx, (v-cy)/fy.
-        For ArUco markers, pts MUST be in the detector's intrinsic corner
-        order (TL, TR, BR, BL of the marker frame, not the image frame) so
-        the per-corner weighting below breaks the 4-fold rotational symmetry.
+            shape (N,2), already (x,y) = (u-cx)/fx, (v-cy)/fy
+        MATLAB image_feature.m equivalent.
 
-        ArUco markers in SITL are a perfect square: with uniform weights,
-        mu_11 ≡ 0 ∀ yaw → alpha undefined → yaw axis blind. The corner
-        ARRAY ORDERING (TL,TR,BR,BL of the marker, recovered from the
-        marker's asymmetric ID bits) carries the yaw information, but
-        ordinary 2nd-moments throw it away because all corners get
-        identical weight.
+        NOTE on yaw observability:
+        The 4 ArUco corners in SITL form a perfect square. With uniform
+        moment weights, mu_11 ≡ 0 ∀ yaw → alpha undefined → yaw SMC blind.
+        MATLAB's T_nP3 is deliberately asymmetric (one corner at (-20,+20)
+        vs others at (±15)) to give the moment-based alpha real signal.
 
-        Fix: weight the 4 corners non-uniformly. Each weight is tied to
-        its marker-frame label (TL=4, TR=3, BR=2, BL=1), so the weighted
-        moments rotate WITH the marker frame. Yaw the drone → corner
-        positions rotate, weights stay attached to their marker-frame
-        labels, mu_11 becomes a nonzero function of yaw, alpha resolves.
-
-        Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
+        Tried per-corner non-uniform weighting [4,3,2,1] as a workaround —
+        it does make alpha yaw-observable but introduces a calibration
+        problem (analytical bias alpha_0 disagrees with empirical) and
+        multi-IC sweep regressed (1/5 soft vs 3/5 baseline). The proper
+        fix is asymmetric marker GEOMETRY in SITL, not synthesized weights.
         """
         x = pts[:, 0]
         y = pts[:, 1]
-        N = len(x)
 
-        if N == 4:
-            # ArUco labeled corners — weight by marker-frame index.
-            w = np.array([4.0, 3.0, 2.0, 1.0])
-            # 2026-05-19: sign-flip experiment failed catastrophically — the
-            # actual SITL corner-ordering convention differs from analytical
-            # derivation. Reverted to alpha_0 = -0.5951 which empirically gave
-            # the best result (xy=0.28 on IC 1). Yaw SMC sees alpha with
-            # NEGATIVE correlation to true yaw, but that turns out to be a
-            # stable equilibrium for the current SMC sign convention.
-            alpha_0 = -0.5950962035054
-        else:
-            w = np.ones(N)
-            alpha_0 = 0.0
-        W = w.sum()
+        m00 = float(len(x))
+        xc = float(np.sum(x) / m00)
+        yc = float(np.sum(y) / m00)
 
-        # ---- 1. Weighted centroid ----
-        xc = float(np.sum(w * x) / W)
-        yc = float(np.sum(w * y) / W)
-
-        # ---- 2. Centered, weighted 2nd moments ----
         Xc = x - xc
         Yc = y - yc
-        mu20 = float(np.sum(w * Xc * Xc))
-        mu02 = float(np.sum(w * Yc * Yc))
-        mu11 = float(np.sum(w * Xc * Yc))
+        mu20 = float(np.sum(Xc * Xc))
+        mu02 = float(np.sum(Yc * Yc))
+        mu11 = float(np.sum(Xc * Yc))
 
-        # ---- 3. Orientation of marker (bias-corrected) ----
         if abs(mu11) < 1e-6:
-            alpha = -alpha_0
+            alpha = 0.0
         else:
-            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
+            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02))
 
         # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
