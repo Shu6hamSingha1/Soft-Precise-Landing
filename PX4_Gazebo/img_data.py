@@ -525,7 +525,16 @@ class IMG_PROCESSOR(Thread):
 
         if N == 4:
             w = np.array([4.0, 3.0, 2.0, 1.0])
-            alpha_0 = -0.5950962035054
+            # Empirically calibrated 2026-05-19: from 30 controller-start
+            # samples on the multi-IC bundle 20260519-115851 where IC-
+            # convergence had verified yaw ≈ 0, median raw alpha was
+            # -0.9379 rad. My earlier analytical value (-0.5951) was off
+            # by ~20° (≈ -0.34 rad), which caused the yaw SMC to steer to
+            # a wrong yaw setpoint on offset ICs and degraded multi-IC
+            # pass rate. Empirical value accounts for the actual
+            # getVirtualPts projection convention + cv2.aruco corner
+            # ordering in SITL.
+            alpha_0 = -0.9379
         else:
             w = np.ones(N)
             alpha_0 = 0.0
