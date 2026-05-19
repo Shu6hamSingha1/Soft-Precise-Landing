@@ -487,17 +487,12 @@ class Controller(Thread):
     def _yawCtrl(self):
         """Yaw adaptive SMC (MATLAB kappa_a) -> body yaw-rate setpoint u_a."""
         # Yaw feature error wrapped to [-pi/2, pi/2] (ellipse symmetry):
-        # Wrap signed-angular error.
-        # ALPHA_METHOD="moment" (default): alpha has period π (180°
-        # symmetric in moment-based formulation), so wrap to [-π/2, π/2]
-        # via factor-of-2 trick. MATLAB visualControl_IBVS_adaptive.m:483.
-        # ALPHA_METHOD="corner": alpha has full 2π range (atan2 of TR-TL
-        # edge), wrap to [-π, π] via plain atan2(sin, cos).
+        # Wrap signed-angular error to [-π/2, π/2] via factor-of-2 trick.
+        # alpha is π-period (2nd-moment formula is 180°-symmetric on
+        # square corners), so this is the natural wrap.
+        # MATLAB visualControl_IBVS_adaptive.m:483.
         e_a_raw = self._s[-1][3] - self._s_d[3]
-        if os.environ.get("ALPHA_METHOD", "moment").lower() == "corner":
-            e_a = np.arctan2(np.sin(e_a_raw), np.cos(e_a_raw))
-        else:
-            e_a = np.arctan2(np.sin(2 * e_a_raw), np.cos(2 * e_a_raw)) / 2.0
+        e_a = np.arctan2(np.sin(2 * e_a_raw), np.cos(2 * e_a_raw)) / 2.0
         self._e_a.append(e_a)
 
         # Trapezoidal integral with anti-windup

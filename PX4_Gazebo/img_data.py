@@ -501,58 +501,59 @@ class IMG_PROCESSOR(Thread):
             For ArUco markers, pts MUST be in cv2.aruco's intrinsic
             corner order [TL, TR, BR, BL] of the marker frame.
 
-        alpha computation switchable via ALPHA_METHOD env var:
+        Weighted-moment alpha (MATLAB image_feature.m, modified for SITL):
 
-          "moment" (default) — weighted-moments formulation, MATLAB-style.
-            Mathematically clean. π-period (180° ambiguous on square corners).
-            Uses [4,3,2,1] per-corner weights to synthesize the asymmetry
-            MATLAB's T_nP3 has by geometry; alpha_0 = -0.9379 empirical bias.
+          MATLAB uses an asymmetric corner geometry (T_nP3 — one corner at
+          (-20,+20) vs others (±15,±15)) so the moment-based alpha is yaw-
+          observable. SITL uses a perfectly square ArUco; with uniform
+          weights mu_11 ≡ 0 ∀ yaw → alpha undefined → yaw SMC blind.
 
-          "corner" — atan2 of the marker's TL→TR edge in the image plane.
-            True 2π range, no 180° ambiguity. Sign convention: at marker
-            axis-aligned with image (TR directly right of TL in y-down
-            image coords), alpha=0; positive when marker rotates CW in
-            image (= drone yaws CCW relative to marker). NOTE: yawCtrl's
-            wrap must also be 2π-period when this method is active.
+          We synthesize the asymmetry via per-corner weights [4,3,2,1]
+          tied to cv2.aruco's intrinsic corner labeling (TL=4, TR=3, BR=2,
+          BL=1). The weights rotate WITH the marker frame, so alpha
+          encodes drone-relative-to-marker yaw. Bias offset alpha_0
+          recenters so alpha=0 corresponds to a stable equilibrium yaw.
 
-        The unweighted-moments path is kept as a fallback for N != 4.
+          alpha_0 = -0.9379 was calibrated empirically from controller-
+          start samples at PX4 yaw≈0. Equilibrium happens to be at PX4_yaw
+          ≈ 0 in our world — this makes IC convergence's yaw=0 target
+          coincide with the SMC equilibrium so no yaw rotation is needed
+          during descent (minimizes lateral leak via PX4 mixer coupling).
+
+          Fundamental limitation: 2nd-moment alpha has π-period symmetry
+          (mu_11, mu_20, mu_02 all invariant under 180° rotation), so
+          alpha=0 has two equilibria 180° apart. For a symmetric ArUco
+          this is harmless (orientation doesn't affect landing precision);
+          for directional landings, an asymmetric marker geometry would
+          be needed.
+
+          Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
         """
         x = pts[:, 0]
         y = pts[:, 1]
         N = len(x)
 
-        method = os.environ.get("ALPHA_METHOD", "moment").lower()
-
-        # Centroid (uniform — same for both methods; PID outer loop uses this)
-        xc = float(np.mean(x))
-        yc = float(np.mean(y))
-
-        if method == "corner" and N == 4:
-            # Corner-ordering atan2: angle of the TL→TR edge in image plane.
-            # Drives the drone to drive this angle → 0 = marker axis-aligned.
-            tl, tr = pts[0], pts[1]
-            alpha = float(np.arctan2(tr[1] - tl[1], tr[0] - tl[0]))
+        if N == 4:
+            w = np.array([4.0, 3.0, 2.0, 1.0])
+            alpha_0 = -0.9379
         else:
-            # Weighted-moments (default) — synthesized π-period yaw signal.
-            if N == 4:
-                w = np.array([4.0, 3.0, 2.0, 1.0])
-                alpha_0 = -0.9379
-            else:
-                w = np.ones(N)
-                alpha_0 = 0.0
-            W = w.sum()
-            # Re-centroid with weights for the moment path
-            xc = float(np.sum(w * x) / W)
-            yc = float(np.sum(w * y) / W)
-            Xc = x - xc
-            Yc = y - yc
-            mu20 = float(np.sum(w * Xc * Xc))
-            mu02 = float(np.sum(w * Yc * Yc))
-            mu11 = float(np.sum(w * Xc * Yc))
-            if abs(mu11) < 1e-6:
-                alpha = -alpha_0
-            else:
-                alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
+            w = np.ones(N)
+            alpha_0 = 0.0
+        W = w.sum()
+
+        xc = float(np.sum(w * x) / W)
+        yc = float(np.sum(w * y) / W)
+
+        Xc = x - xc
+        Yc = y - yc
+        mu20 = float(np.sum(w * Xc * Xc))
+        mu02 = float(np.sum(w * Yc * Yc))
+        mu11 = float(np.sum(w * Xc * Yc))
+
+        if abs(mu11) < 1e-6:
+            alpha = -alpha_0
+        else:
+            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
 
         # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
