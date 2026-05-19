@@ -156,12 +156,24 @@ async def main(record = 'n'):
         # Max wait 15 s; final 1 s is a settle phase regardless of convergence.
         ix, iy, iz = INITIAL_DRONE_ENU
         target_enu_0 = pose_node.getPose().target.position
-        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})")
+        # ALPHA-DRIVEN IC YAW TARGET (2026-05-19): instead of hard-coding the
+        # IC yaw setpoint to 0 (drone facing north), use the visual alpha
+        # signal to compute the yaw that aligns the drone with the marker.
+        # Needed because the marker's world orientation is not always north,
+        # and ALPHA_METHOD=corner demands a specific drone yaw at touchdown.
+        # If the IC convergence targets that yaw, the SMC has nothing to do
+        # during descent → no yaw-induced lateral leak.
+        # Read alpha from the image processor (already running by this point,
+        # IMG_PROCESSOR thread auto-started in EC_node = Controller(...)).
+        # Send yaw_target_PX4 = current_PX4_yaw + alpha (in radians);
+        # MAVSDK send_position_ned expects degrees, so convert.
+        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})"
+              f"  (alpha-driven yaw target)")
         IC_POS_TOL  = 0.5
         IC_VEL_TOL  = 0.3
-        IC_YAW_TOL  = np.deg2rad(2.0)
+        IC_YAW_TOL  = np.deg2rad(2.0)        # |alpha| ≤ 2° at engagement
         STABLE_HITS = 10
-        MAX_ITERS   = 750                         # 15 s @ 50 Hz
+        MAX_ITERS   = 750
         prev_enu    = pose_node.getPose().UAV.position
         prev_t      = time.perf_counter()
         stable      = 0
@@ -172,17 +184,29 @@ async def main(record = 'n'):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
             ned_pos    = FC_node.getPosBody()
-            # Re-derive setpoint each iter — chases the Gazebo truth target
-            # through PX4 EKF drift.
             de_enu = (target_enu.x + ix - drone_enu.x)
             dn_enu = (target_enu.y + iy - drone_enu.y)
             du_enu = (target_enu.z + iz - drone_enu.z)
             target_n = ned_pos.x_m + dn_enu
             target_e = ned_pos.y_m + de_enu
             target_d = ned_pos.z_m - du_enu
-            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
+            # Yaw target: drive alpha → 0 (marker-axis-aligned).
+            # When alpha > 0, drone needs to yaw POSITIVELY to reduce it.
+            # Source: alpha = atan2(TR.y-TL.y, TR.x-TL.x). Drone yawing +ψ
+            # (CCW in NED) rotates the camera frame +ψ, so marker in image
+            # rotates -ψ; new_alpha = alpha - ψ. To null: ψ = alpha.
+            # yaw_target_PX4 = current_PX4_yaw + alpha.
+            q = FC_node.getQuat()
+            cur_yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
+                                 1.0 - 2.0*(q.y*q.y + q.z*q.z))
+            alpha_cur = 0.0
+            if EC_node._img_node.FEATURE_IS_VISIBLE:
+                s_now = EC_node._img_node.getImgFeatureParam()
+                alpha_cur = float(s_now[3])
+            yaw_target_rad = cur_yaw + alpha_cur
+            yaw_target_deg = float(np.rad2deg(yaw_target_rad))
+            await FC_node.send_position_ned(target_n, target_e, target_d, yaw_target_deg)
             await asyncio.sleep(0.02)
-            # Convergence check on Gazebo truth (post-setpoint sample).
             cur_enu = pose_node.getPose().UAV.position
             now = time.perf_counter()
             dt = max(now - prev_t, 1e-3)
@@ -193,12 +217,9 @@ async def main(record = 'n'):
             d_n = cur_enu.y - (target_enu.y + iy)
             d_u = cur_enu.z - (target_enu.z + iz)
             pos_err = (d_e*d_e + d_n*d_n + d_u*d_u) ** 0.5
-            # Yaw error from PX4 quaternion: ψ = atan2(2(wz+xy), 1 − 2(y²+z²))
-            # Target yaw = 0 rad. We use the smallest signed angular distance.
-            q = FC_node.getQuat()
-            yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
-                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
-            yaw_err = abs(np.arctan2(np.sin(yaw), np.cos(yaw)))   # |ψ − 0|, wrapped
+            # Yaw-error criterion changed to "|alpha| small" — the drone has
+            # rotated to marker-aligned, not to PX4-yaw-zero.
+            yaw_err = abs(np.arctan2(np.sin(alpha_cur), np.cos(alpha_cur)))
             prev_enu, prev_t = cur_enu, now
             if pos_err <= IC_POS_TOL and speed <= IC_VEL_TOL and yaw_err <= IC_YAW_TOL:
                 stable += 1
