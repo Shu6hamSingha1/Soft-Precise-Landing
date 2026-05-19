@@ -105,36 +105,56 @@ class Controller(Thread):
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
-        # Per-axis env-var scalers. Mirrors the manuscript's 33-axis sweep
-        # methodology. See run_all_gains_ic1.sh.
-        # Defaults match MATLAB exactly EXCEPT KAPPA0 (set to 1.25 from
-        # IC 1 vertical-tune sweep result — boosting κ_0 from
-        # [0.125, 0.125, 0.25] → [0.156, 0.156, 0.313] gives the SMC more
-        # switching headroom at engagement, reducing IC 1 score 15× from
-        # baseline 6.37 → 0.42 with xy=0.25 m, vel=0.034 m/s).
+        # Per-axis env-var scalers. Each param has a uniform scalar
+        # (PLASMC_<KEY>_SCALE, applied to all 3 axes) AND per-axis scalars
+        # (PLASMC_<KEY>_{X,Y,Z}_SCALE, applied on top of the uniform). All
+        # default to 1.0 except KAPPA0 uniform=1.25 (best from IC 1 sweep).
         def s(key, default="1.0"):
             return float(os.environ.get(f"PLASMC_{key}_SCALE", default))
+        def per_axis(key, base, default="1.0"):
+            """Return diag([sX*sU*base[0], sY*sU*base[1], sZ*sU*base[2]])"""
+            sU = s(key, default)
+            sX = s(f"{key}_X")
+            sY = s(f"{key}_Y")
+            sZ = s(f"{key}_Z")
+            return np.array([sX*sU*base[0], sY*sU*base[1], sZ*sU*base[2]])
 
         # Optic-flow funnel (LOAD-BEARING: p_2_0, p_2_∞)
-        self._gamma = s("XI2")    * np.diag([0.2, 0.2, 0.2])
-        self._p_0   = s("P20")    * np.array([25.0, 25.0, 4.0])
-        self._p_inf = s("P2INF")  * np.array([2.5, 2.5, 1.5])
+        self._gamma = np.diag(per_axis("XI2",   [0.2, 0.2, 0.2]))
+        self._p_0   =          per_axis("P20",   [25.0, 25.0, 4.0])
+        self._p_inf =          per_axis("P2INF", [2.5, 2.5, 1.5])
         # Optic-flow SMC (LOAD-BEARING: Omega)
-        self._Omega = s("OMEGA")  * np.diag([0.05, 0.05, 0.025])
-        self._Gma   = s("GAMMA")  * np.diag([0.4375, 0.5, 0.75])
-        self._E     = s("E")      * np.diag([1.0, 1.0, 1.0])
-        # Adaptive-gain ODE
-        N_z = float(os.environ.get("PLASMC_N_Z", "0.02"))
-        self._N = s("N") * np.diag([0.02, 0.02, N_z])
-        self._P = s("P") * np.diag([1.5, 1.5, 5.0])
+        self._Omega = np.diag(per_axis("OMEGA", [0.05, 0.05, 0.025]))
+        self._Gma   = np.diag(per_axis("GAMMA", [0.4375, 0.5, 0.75]))
+        self._E     = np.diag(per_axis("E",     [1.0, 1.0, 1.0]))
+        # Adaptive-gain ODE. PLASMC_N_Z is the legacy *absolute* scalar
+        # for N[z] (default 0.02 — slowed from MATLAB's 0.05 for SITL).
+        # Per-axis scalers (PLASMC_N_X_SCALE etc) multiply on top of this.
+        N_z_abs = float(os.environ.get("PLASMC_N_Z", "0.02"))
+        n_diag = per_axis("N", [0.02, 0.02, 0.02])
+        n_diag[2] = N_z_abs * s("N") * s("N_Z")     # legacy override path
+        self._N = np.diag(n_diag)
+        self._P = np.diag(per_axis("P",      [1.5, 1.5, 5.0]))
         # KAPPA0 default 1.25 (best single-axis tune from IC 1 sweep)
-        self._kappa_0 = s("KAPPA0", "1.25") * np.array([0.125, 0.125, 0.25])
-        if any(s(k) != 1.0 for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]) or N_z != 0.02:
+        self._kappa_0 =        per_axis("KAPPA0", [0.125, 0.125, 0.25], "1.25")
+        # Print any non-default scales (uniform + per-axis).
+        _print_lines = []
+        _keys = ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]
+        _defaults = {"KAPPA0": "1.25"}
+        for k in _keys:
+            v = s(k, _defaults.get(k, "1.0"))
+            if v != 1.0 and k != "KAPPA0":           # KAPPA0=1.25 is now the default; only print if changed
+                _print_lines.append(f"  {k:<8} = {v}")
+            if k == "KAPPA0" and v != 1.25:
+                _print_lines.append(f"  {k:<8} = {v}")
+            for ax in ("X","Y","Z"):
+                vx = s(f"{k}_{ax}")
+                if vx != 1.0:
+                    _print_lines.append(f"  {k}_{ax}{' '*(7-len(k))}= {vx}")
+        if N_z_abs != 0.02: _print_lines.append(f"  N_Z(abs) = {N_z_abs}")
+        if _print_lines:
             print(f"[PLASMC] tunable middle-loop scales:")
-            for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]:
-                v = s(k)
-                if v != 1.0: print(f"  {k:<8} = {v}")
-            if N_z != 0.02: print(f"  N_z      = {N_z}")
+            for line in _print_lines: print(line)
 
         # Yaw adaptive SMC (ROBUST per supplement S3-A — sweep tunable but low impact)
         self._Omega_a    = s("YAW_OMEGA")  * 0.5

@@ -67,12 +67,17 @@ def convert_2_sys_cmd(cmd):
     # PX4 throttle range = [0, 1]; clip to avoid invalid commands.
     thrust_norm = float(np.clip(0.738 - cmd[3] / 45.0, 0.0, 1.0))
     rates = np.array(cmd[:3], dtype=float)
-    # Vertical-only mode: zero roll/pitch rates, keep yaw rate + thrust.
-    # Tests pure z-axis descent + yaw control in isolation, removing
-    # lateral-PID couplings.
-    if os.environ.get("LANDING_VERTICAL_ONLY", "0") == "1":
-        rates[0] = 0.0   # roll rate
-        rates[1] = 0.0   # pitch rate
+    # Per-axis rate-zero env vars for axis-isolation diagnostics.
+    # Each LANDING_NO_W* zeroes the corresponding body rate command.
+    # LANDING_VERTICAL_ONLY is kept as shorthand for NO_WX=NO_WY=1.
+    if (os.environ.get("LANDING_VERTICAL_ONLY", "0") == "1"
+            or os.environ.get("LANDING_NO_WX", "0") == "1"):
+        rates[0] = 0.0
+    if (os.environ.get("LANDING_VERTICAL_ONLY", "0") == "1"
+            or os.environ.get("LANDING_NO_WY", "0") == "1"):
+        rates[1] = 0.0
+    if os.environ.get("LANDING_NO_WZ", "0") == "1":
+        rates[2] = 0.0
     return np.append(RAD2DEG * rates, thrust_norm)
 
 async def track_target(FC_node, EC_node, pose_node):
