@@ -105,8 +105,13 @@ class Controller(Thread):
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
 
-        # Per-axis env-var scalers (default 1.0). Mirrors the manuscript's
-        # 33-axis sweep methodology. See run_all_gains_ic1.sh.
+        # Per-axis env-var scalers. Mirrors the manuscript's 33-axis sweep
+        # methodology. See run_all_gains_ic1.sh.
+        # Defaults match MATLAB exactly EXCEPT KAPPA0 (set to 1.25 from
+        # IC 1 vertical-tune sweep result — boosting κ_0 from
+        # [0.125, 0.125, 0.25] → [0.156, 0.156, 0.313] gives the SMC more
+        # switching headroom at engagement, reducing IC 1 score 15× from
+        # baseline 6.37 → 0.42 with xy=0.25 m, vel=0.034 m/s).
         def s(key, default="1.0"):
             return float(os.environ.get(f"PLASMC_{key}_SCALE", default))
 
@@ -122,7 +127,8 @@ class Controller(Thread):
         N_z = float(os.environ.get("PLASMC_N_Z", "0.02"))
         self._N = s("N") * np.diag([0.02, 0.02, N_z])
         self._P = s("P") * np.diag([1.5, 1.5, 5.0])
-        self._kappa_0 = s("KAPPA0") * np.array([0.125, 0.125, 0.25])
+        # KAPPA0 default 1.25 (best single-axis tune from IC 1 sweep)
+        self._kappa_0 = s("KAPPA0", "1.25") * np.array([0.125, 0.125, 0.25])
         if any(s(k) != 1.0 for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]) or N_z != 0.02:
             print(f"[PLASMC] tunable middle-loop scales:")
             for k in ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]:
