@@ -498,68 +498,61 @@ class IMG_PROCESSOR(Thread):
         """
         pts : virtual feature points in normalized frame
             shape (N,2), already (x,y) = (u-cx)/fx, (v-cy)/fy.
-        For ArUco markers, pts MUST be in the detector's intrinsic corner
-        order (TL, TR, BR, BL of the marker frame) so the per-corner
-        weighting breaks the 4-fold rotational symmetry.
+            For ArUco markers, pts MUST be in cv2.aruco's intrinsic
+            corner order [TL, TR, BR, BL] of the marker frame.
 
-        SITL has perfect-square ArUco corners. With uniform weights,
-        mu_11 ≡ 0 ∀ yaw → alpha undefined → yaw SMC blind. MATLAB's
-        T_nP3 is asymmetric ((-20,+20) vs (±15,±15)) and naturally has
-        alpha yaw-observable. We synthesize the same asymmetry here
-        via per-corner weights [4,3,2,1] tied to the ArUco-labeled
-        corner index (TL=4, TR=3, BR=2, BL=1) — the weights rotate
-        WITH the marker frame, so alpha encodes drone-vs-marker yaw.
+        alpha computation switchable via ALPHA_METHOD env var:
 
-        Bias offset alpha_0 = -0.5951 rad recenters so alpha=0 ↔ yaw=0
-        for the [4,3,2,1] weights. Empirically validated on IC 1:
-        alpha med = -0.129, true yaw med = -0.131 — medians match within
-        noise. Multi-IC results are noisier than the uniform-moments
-        baseline but the yaw signal is genuinely active rather than
-        integrating noise.
+          "moment" (default) — weighted-moments formulation, MATLAB-style.
+            Mathematically clean. π-period (180° ambiguous on square corners).
+            Uses [4,3,2,1] per-corner weights to synthesize the asymmetry
+            MATLAB's T_nP3 has by geometry; alpha_0 = -0.9379 empirical bias.
 
-        Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
+          "corner" — atan2 of the marker's TL→TR edge in the image plane.
+            True 2π range, no 180° ambiguity. Sign convention: at marker
+            axis-aligned with image (TR directly right of TL in y-down
+            image coords), alpha=0; positive when marker rotates CW in
+            image (= drone yaws CCW relative to marker). NOTE: yawCtrl's
+            wrap must also be 2π-period when this method is active.
+
+        The unweighted-moments path is kept as a fallback for N != 4.
         """
         x = pts[:, 0]
         y = pts[:, 1]
         N = len(x)
 
-        if N == 4:
-            w = np.array([4.0, 3.0, 2.0, 1.0])
-            # Empirical alpha_0 = -0.9379, calibrated from controller-start
-            # samples at PX4 yaw≈0. Equilibrates the drone at edge_angle≈95°
-            # in the image — NOT marker-axis-aligned, but stable and gives
-            # the best multi-IC pass rate of any calibration tested.
-            #
-            # NOTE on fundamental limitation: moment-based alpha (any
-            # 2nd-moment formula, including this weighted variant) is
-            # invariant under 180° rotation because mu_11, mu_20, mu_02
-            # are all 180°-symmetric. So alpha=0 has TWO equilibria 180°
-            # apart, and the SMC picks whichever it reaches first. To get
-            # a true 360°-unambiguous yaw signal, either use
-            # atan2(TR.y-TL.y, TR.x-TL.x) directly on the corner-ordering,
-            # or change to an asymmetric marker geometry (mirror MATLAB's
-            # T_nP3 with one corner offset). Attempt with alpha_0=+0.5951
-            # (analytical "marker-aligned") equilibrated at edge_angle≈180°
-            # (the wrong symmetric solution) and gave 3-5 m of lateral drift.
-            alpha_0 = -0.9379
+        method = os.environ.get("ALPHA_METHOD", "moment").lower()
+
+        # Centroid (uniform — same for both methods; PID outer loop uses this)
+        xc = float(np.mean(x))
+        yc = float(np.mean(y))
+
+        if method == "corner" and N == 4:
+            # Corner-ordering atan2: angle of the TL→TR edge in image plane.
+            # Drives the drone to drive this angle → 0 = marker axis-aligned.
+            tl, tr = pts[0], pts[1]
+            alpha = float(np.arctan2(tr[1] - tl[1], tr[0] - tl[0]))
         else:
-            w = np.ones(N)
-            alpha_0 = 0.0
-        W = w.sum()
-
-        xc = float(np.sum(w * x) / W)
-        yc = float(np.sum(w * y) / W)
-
-        Xc = x - xc
-        Yc = y - yc
-        mu20 = float(np.sum(w * Xc * Xc))
-        mu02 = float(np.sum(w * Yc * Yc))
-        mu11 = float(np.sum(w * Xc * Yc))
-
-        if abs(mu11) < 1e-6:
-            alpha = -alpha_0
-        else:
-            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
+            # Weighted-moments (default) — synthesized π-period yaw signal.
+            if N == 4:
+                w = np.array([4.0, 3.0, 2.0, 1.0])
+                alpha_0 = -0.9379
+            else:
+                w = np.ones(N)
+                alpha_0 = 0.0
+            W = w.sum()
+            # Re-centroid with weights for the moment path
+            xc = float(np.sum(w * x) / W)
+            yc = float(np.sum(w * y) / W)
+            Xc = x - xc
+            Yc = y - yc
+            mu20 = float(np.sum(w * Xc * Xc))
+            mu02 = float(np.sum(w * Yc * Yc))
+            mu11 = float(np.sum(w * Xc * Yc))
+            if abs(mu11) < 1e-6:
+                alpha = -alpha_0
+            else:
+                alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
 
         # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
