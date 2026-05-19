@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Vertical-only IC 1 parameter sweep — focused on z-axis SMC + yaw gains.
-# Lateral PID (KP, KD, KI) is irrelevant in vertical-only mode (wx, wy
-# zeroed in convert_2_sys_cmd), so we skip it.
+# Vertical-landing IC 1 parameter sweep — FULL controller (lateral PID
+# active, wx/wy enabled). IC 1 = drone directly over marker, so the
+# "vertical landing" scenario is just descent + yaw + light lateral
+# correction for noise. Sweeps z-axis SMC + yaw + lateral PID gains.
 #
 # Sweeps each parameter through {0.5, 0.75, 1.25, 1.5} multipliers on
-# IC 1 (0,0,5) ENU in vertical-only mode. ~9 axes × 4 multipliers + 1
-# baseline ≈ 37 runs (~1 hour).
+# IC 1 (0,0,5) ENU with full controller. ~19 axes × 4 multipliers + 1
+# baseline + 4 N_Z scalars ≈ 81 runs (~2 hours).
 
 set -u
 
@@ -18,7 +19,8 @@ IC="0.0,0.0,5.0"
 
 # z-channel-relevant axes (no lateral PID since vertical-only).
 # N_Z is a SCALAR override (not a multiplier), handled separately.
-PARAMS="${PARAMS:-OMEGA_SCALE GAMMA_SCALE E_SCALE \
+PARAMS="${PARAMS:-KP_SCALE KI_SCALE KD_SCALE \
+                  OMEGA_SCALE GAMMA_SCALE E_SCALE \
                   N_SCALE P_SCALE KAPPA0_SCALE \
                   P20_SCALE P2INF_SCALE XI2_SCALE \
                   YAW_OMEGA_SCALE YAW_GAMMA_SCALE YAW_N_SCALE \
@@ -44,13 +46,11 @@ run_config() {
   before=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
 
   if [ -n "$env_var" ]; then
-    env "${env_var}=${env_value}" INITIAL_DRONE_ENU="$IC" LANDING_VERTICAL_ONLY=1 \
-        LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
+    env "${env_var}=${env_value}" INITIAL_DRONE_ENU="$IC" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
         bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" \
         > "$dst_dir.log" 2>&1
   else
-    env INITIAL_DRONE_ENU="$IC" LANDING_VERTICAL_ONLY=1 \
-        LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
+    env INITIAL_DRONE_ENU="$IC" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
         bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" \
         > "$dst_dir.log" 2>&1
   fi
