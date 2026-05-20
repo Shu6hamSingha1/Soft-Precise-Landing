@@ -24,7 +24,7 @@ FENCE = (-5.0, 5.0, -5.0, 5.0, -5.0, 5.0) # xmin, xmax, ymin, ymax, zmin, zmax -
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
-REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.70"))  # raised from MATLAB's -0.42 on 2026-05-20: 9-run sweep showed faster descent cuts xy mean 0.71→0.28m
+REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.42"))  # MATLAB-aligned default; -0.70 wins on IC1 (mean xy 0.71→0.28) but REGRESSES IC2-5 severely (mean xy ~2m, IC5 crash) because off-center starts need lateral travel time. Set LANDING_REF_RAD_OPT_FLOW=-0.70 for centered-IC tuning runs.
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 
 # Flight Controller Details:
