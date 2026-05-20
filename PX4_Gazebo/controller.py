@@ -744,6 +744,16 @@ class Controller(Thread):
         # not torques, via MAVSDK set_attitude_rate).
         w_u = -self._K_R @ e_R
 
+        # Hard clamp on body-rate command magnitude. LK optical flow has a
+        # ~15 px tracking window; at our 540 px focal length and 60 Hz
+        # image rate, a body rate of ~1.7 rad/s = 100°/s already pushes
+        # corner motion to the LK limit. Clamping at 1.0 rad/s (= 57°/s)
+        # gives a safety margin and prevents transient attitude-error
+        # spikes from breaking optical-flow tracking (2026-05-21 finding).
+        # Env-overridable; default 1.0 rad/s.
+        w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
+        w_u = np.clip(w_u, -w_max, w_max)
+
         # Diagnostics: log desired-attitude decomposition + SO(3) error
         self._euler_d.append(np.array([phi_d, theta_d, self._psi_d]))
         self._e_R_log.append(e_R.copy())
