@@ -83,7 +83,9 @@ for r in csv.DictReader(open(sys.argv[1]), delimiter='\t'):
         a['fs'].append(float(r['flight_s']))
     except: pass
 
-print(f"\n  Per-IC aggregate (config: cap=50, grace=1.0s, REF_RAD=-0.70, κ_0×1.25)")
+import os as _os
+_ref = _os.environ.get("LANDING_REF_RAD_OPT_FLOW", "default")
+print(f"\n  Per-IC aggregate (config: cap=50, grace=1.0s, REF_RAD={_ref}, κ_0×1.25)")
 print(f"  {'ic':<5} {'n':>3} {'soft':>4} {'prec':>4}  {'mean xy':>8} {'max xy':>8}  {'mean vel':>9}  {'mean s':>8}")
 for k in sorted(agg.keys()):
     a = agg[k]
