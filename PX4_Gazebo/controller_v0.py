@@ -1,38 +1,25 @@
 # **************************************************************************
-# PLASMC: Performance-constrained Leakage-type Adaptive Sliding-Mode Control
+# PLASMC v0 — LEGACY EULER-PD INNER ATTITUDE PATH (reference file)
 #
-# Manuscript-faithful PX4 port. Aligned to MATLAB single-run reference:
-#   MATLAB/Multi_init_cond/visualControl_IBVS_adaptive.m
-# and the analytical formulation in Soft_Precise_Landing/control_formulation.tex
-# (Sections III-A outer/middle loop, III-B1 virtual-compass yaw ASMC,
-# III-B2 geometric SO(3) tracker).
+# Original PX4 controller as it existed through commit 144dc49 and earlier,
+# retained as *_v0.py for archival reference. The inner attitude/rate loop
+# is implemented as:
+#   - Inverse kinematics on I_a + current yaw  →  desired (phi_d, theta_d)
+#   - Euler PD on attitude error               →  desired Euler-rate
+#   - W_d kinematic map                        →  body rate setpoint
+#   - Yaw rate is the yaw-ASMC output u_a directly (no attitude tracking)
 #
-# Pipeline (per tick at ~50 Hz):
-#   1. Outer Virtual Image Point PID:   pixel error  -> V_ds_d              §III-A1
-#   2. Optic-Flow Funnel + ASMC:        V_h_e        -> u_h (= a_u)         §III-A2
-#   3. Yaw ASMC (virtual compass):      alpha_e      -> psi_d_dot -> psi_d  §III-B1
-#   4. R_d construction:               -I_a + a_h(psi_d) -> Gram-Schmidt    §III-B2
-#   5. SO(3) attitude error:            e_R = ½ vee(R_d^T R - R^T R_d)      §III-B2
-#   6. Body-rate setpoint:              w_u = -K_R · e_R    (rate-mode P)
-#   7. Thrust scalar:                   B_T = m · |I_a[2] + g|
+# The ACTIVE controller (controller.py) replaces the inner loop with the
+# manuscript-faithful virtual-compass + geometric SO(3) attitude tracker
+# (control_formulation.tex:219-251).
 #
-# Rate-mode caveat: we keep PX4's body-rate + thrust interface (MAVSDK
-# set_attitude_rate), so the inner SO(3) law is reduced to its proportional
-# part `w_u = -K_R · e_R`. The damping `-k_Omega · e_Omega` and gyroscopic
-# feedforward `omega × J · omega` from the manuscript torque law are handled
-# inside PX4's onboard rate controller (the body-rate setpoint we ship is
-# tracked there).
+# Empirical comparison (2026-05-20, IC1 only):
+#   v0 (this file, legacy):  mean xy=0.49 m, max=0.77, std=0.24
+#   active controller.py:    mean xy=0.36 m, max=0.44, std=0.10  (-57% std)
 #
-# Legacy Euler-PD + direct-yaw path (the older PX4 implementation) is kept
-# at controller_v1.py for archival reference. The original both-paths
-# snapshot is at controller_v0.py.
-#
-# Notes on Gazebo vs MATLAB:
-#   - Camera intrinsics: 640x480 @ fx=fy=270 (Gazebo SDF, hfov=1.74 rad).
-#     MATLAB uses 320x240 @ f=135. Same hfov → image-normalized PLASMC gains
-#     are invariant; only pixel-space quantities (rho_fov) scale 2x.
-#   - Sensor-cal matrices _sensor_cal_s / _sensor_cal_hw are applied in
-#     img_data.py from a 5-run output_calibration sweep (2026-05-12).
+# Recover any intermediate state via git, e.g. for the both-paths-env-gated
+# version that briefly existed in commit dd44fa8:
+#     git show dd44fa8:PX4_Gazebo/controller.py
 # **************************************************************************
 import os
 import time
@@ -208,23 +195,15 @@ class Controller(Thread):
         self._izeta_clamp = 5.0
         self._ie_a_clamp = 2.0
 
-        # SO(3) attitude-error proportional gain. Manuscript Eq. `so3 torque`
-        # uses k_R = diag(1.5, 1.5, 0.5) on a torque output; we use
-        # diag(5, 5, 5) on a body-rate output (rad/s per rad of e_R is a
-        # different unit). Env scalers: PLASMC_KR_SCALE uniform, plus per-axis
-        # PLASMC_KR_{ROLL,PITCH,YAW}_SCALE.
-        kr_u     = float(os.environ.get("PLASMC_KR_SCALE",       "1.0"))
-        kr_roll  = float(os.environ.get("PLASMC_KR_ROLL_SCALE",  "1.0"))
-        kr_pitch = float(os.environ.get("PLASMC_KR_PITCH_SCALE", "1.0"))
-        kr_yaw   = float(os.environ.get("PLASMC_KR_YAW_SCALE",   "1.0"))
-        self._K_R = np.diag([kr_u * kr_roll  * 5.0,
-                             kr_u * kr_pitch * 5.0,
-                             kr_u * kr_yaw   * 5.0])
+        # Inner-attitude PD (rate-side; PX4's rate ctrl does the actuator work)
+        # K_ei/K_ed default to zero — angle error already feeds the rate
+        # setpoint, integration left to PX4 if needed.
+        self._K_ep = np.diag([5.0, 5.0, 5.0])
+        self._K_ei = np.diag([0.0, 0.0, 0.0])
+        self._K_ed = np.diag([0.0, 0.0, 0.0])
 
-        # Virtual-compass heading state. Lazy-init on first _attCtrl call
-        # from the current body yaw (manuscript: psi_d = yaw_init, line 127
-        # of visualControl_IBVS_adaptive.m).
-        self._psi_d = None
+        # v0 (legacy Euler-PD path only). The active controller.py uses the
+        # manuscript-faithful virtual-compass + SO(3) tracker.
 
         # Reference depth-rate (MATLAB h_rd was -0.42; user has chosen -0.30 historically via REF_RAD_OPT_FLOW)
         # We keep ref_rad_opt_flow from the constructor; do not override.
@@ -279,11 +258,12 @@ class Controller(Thread):
         self._kappa_a = [np.array(self._kappa_a_0)]
         self._u_a = []        # commanded yaw rate (rad/s)
 
-        # Attitude reference / SO(3) diagnostics
-        # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
-        # plotting; the active rate command comes from e_R, not Euler PD.
+        # Attitude reference / output
         self._euler_d = []
-        self._e_R_log = []
+        self._euler_e = []
+        self._ieuler_e = []
+        self._deuler_e_deque = deque([np.zeros(N_DIM)] * 4)
+        self._deuler_ed = []
         self._a_v = []
         self._a_u = []
         self._I_a_raw = []    # pre-LPF, pre-clamp inertial accel command
@@ -587,15 +567,6 @@ class Controller(Thread):
         # but expressed in body frame. NED yaw rate convention matches.
         self._u_a.append(float(u_a))
 
-        # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
-        #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]
-        # No external heading reference enters; psi_d evolves purely from
-        # the image-based alpha error via the leakage ASMC.
-        if self._psi_d is not None and len(self._dt) > 0:
-            self._psi_d = float(
-                np.arctan2(np.sin(self._psi_d + u_a * self._dt[-1]),
-                           np.cos(self._psi_d + u_a * self._dt[-1]))
-            )
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
@@ -697,56 +668,46 @@ class Controller(Thread):
             phi_d = np.arctan2(-sy * I_a_use[0] + cy * I_a_use[1],
                                -I_a_use[2] / np.cos(theta_d))
 
-        # Clamp away from singularity (phi_d, theta_d used only for logging
-        # and the inverse-kinematics decomposition; R_d below is built from
-        # I_a directly via the manuscript recipe).
+        # Clamp away from singularity (replaces print-only warning)
         ang_lim = np.deg2rad(85.0)
         phi_d = float(np.clip(phi_d, -ang_lim, ang_lim))
         theta_d = float(np.clip(theta_d, -ang_lim, ang_lim))
 
-        # ===== Manuscript inner loop (control_formulation.tex:219-251) =====
-        # 1. psi_d state (integrated in _yawCtrl); lazy-init on first call
-        #    from current body yaw (MATLAB line 127: psi_d = yaw_init).
-        if self._psi_d is None:
-            self._psi_d = float(yaw_c)
+        self._euler_d.append(np.array([phi_d, theta_d, 0.0]))
 
-        # 2. R_d construction (Eq. `R_d construction`):
-        #      rd3 = -I_a / ||I_a||       (desired body-z opposes net force, NED)
-        #      a_h = [cos psi_d, sin psi_d, 0]  (heading vector)
-        #      rd2 = (rd3 × a_h) / ||rd3 × a_h||  (Gram-Schmidt)
-        #      rd1 = rd2 × rd3
-        f_mag = float(np.linalg.norm(I_a_use))
-        if f_mag < 1e-6:
-            R_d = np.eye(3)
+        # Euler error (yaw channel zeroed here; yaw is handled by _yawCtrl -> _u_a)
+        self._euler_e.append(np.array([euler[0] - phi_d,
+                                       euler[1] - theta_d,
+                                       0.0]))
+
+        # Integral / derivative of euler error
+        if len(self._ieuler_e) == 0:
+            self._ieuler_e.append(np.zeros(N_DIM))
         else:
-            rd3 = -I_a_use / f_mag
-            a_h = np.array([np.cos(self._psi_d), np.sin(self._psi_d), 0.0])
-            rd2_raw = np.cross(rd3, a_h)
-            n2 = float(np.linalg.norm(rd2_raw))
-            if n2 < 1e-6:
-                # degeneracy guard (manuscript: rd2 = inertial East)
-                rd2 = np.array([0.0, 1.0, 0.0])
-            else:
-                rd2 = rd2_raw / n2
-            rd1 = np.cross(rd2, rd3)
-            R_d = np.column_stack([rd1, rd2, rd3])
+            self._ieuler_e.append(self._ieuler_e[-1]
+                                  + self._dt[-1] * 0.5 * (self._euler_e[-1] + self._euler_e[-2]))
 
-        # 3. SO(3) attitude error (Eq. `so3 errors`):
-        #      e_R = 0.5 * vee(R_d^T R - R^T R_d)
-        eR_mat = 0.5 * (R_d.T @ R - R.T @ R_d)
-        e_R = np.array([eR_mat[2, 1], eR_mat[0, 2], eR_mat[1, 0]])
+        if len(self._euler_e) > 1:
+            self._deuler_e_deque.append((self._euler_e[-1] - self._euler_e[-2]) / self._dt[-1])
+            self._deuler_e_deque.popleft()
+        deuler_e = smooth4(self._deuler_e_deque)
 
-        # 4. Body-rate setpoint: w_u = -K_R · e_R.
-        # Proportional part of the manuscript's full SO(3) torque law
-        #     tau = -k_R · e_R  -  k_Omega · e_Omega  +  omega × J · omega
-        # The damping and gyroscopic feedforward terms are absorbed into
-        # PX4's onboard rate controller (since we ship body rates here,
-        # not torques, via MAVSDK set_attitude_rate).
-        w_u = -self._K_R @ e_R
+        self._deuler_ed.append(- self._K_ep @ self._euler_e[-1]
+                               - self._K_ei @ self._ieuler_e[-1]
+                               - self._K_ed @ deuler_e)
 
-        # Diagnostics: log desired-attitude decomposition + SO(3) error
-        self._euler_d.append(np.array([phi_d, theta_d, self._psi_d]))
-        self._e_R_log.append(e_R.copy())
+        # ===== Legacy Euler-PD path (yaw routed via u_a directly) =====
+        # Map Euler-rate command to body rates using desired-attitude W_d.
+        # Yaw channel is overridden with the yaw-ASMC output u_a (bypasses
+        # this attitude loop).
+        W_d = np.array([
+            [1, 0, -np.sin(theta_d)],
+            [0, np.cos(phi_d),  np.sin(phi_d) * np.cos(theta_d)],
+            [0, -np.sin(phi_d), np.cos(phi_d) * np.cos(theta_d)],
+        ])
+        w_u = W_d @ self._deuler_ed[-1]
+        if len(self._u_a) > 0:
+            w_u[2] = self._u_a[-1]
 
         self._w_u.append(w_u)
 
@@ -814,8 +775,8 @@ class Controller(Thread):
             "rho_fov_inf": self._rho_fov_inf,
             "l_fov": self._l_fov,
             "tau_ia": self._tau_ia,
-            # SO(3) inner-loop gain
-            "K_R": self._K_R,
+            # Inner-attitude PD (kept for logging; PX4 rate ctrl does the heavy lifting)
+            "K_ep": self._K_ep,
         }
 
     def getLogData(self):
@@ -855,7 +816,6 @@ class Controller(Thread):
             "w_u(t)": self._w_u,
             "B_T(t)": self._B_T,
             "EA_d(t)": self._euler_d,
-            "e_R(t)": self._e_R_log,
             # FoV-margin cone diagnostics
             "rho_fov(t)": self._rho_fov_log,
             "d_min_fov(t)": self._d_min_fov_log,
