@@ -161,18 +161,20 @@ async def main(record = 'n'):
         # Max wait 15 s; final 1 s is a settle phase regardless of convergence.
         ix, iy, iz = INITIAL_DRONE_ENU
         target_enu_0 = pose_node.getPose().target.position
-        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})")
+        print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})  (+ tilt check)")
         IC_POS_TOL  = 0.5
-        IC_VEL_TOL  = 0.3
+        IC_VEL_TOL  = 0.2                          # tightened 0.3 → 0.2
         IC_YAW_TOL  = np.deg2rad(2.0)
-        STABLE_HITS = 10
-        MAX_ITERS   = 750                         # 15 s @ 50 Hz
+        IC_TILT_TOL = np.deg2rad(1.5)              # NEW: |roll|, |pitch| ≤ 1.5°
+        STABLE_HITS = 20                           # tightened 10 → 20 (0.4 s of stability)
+        MAX_ITERS   = 750                          # 15 s @ 50 Hz
         prev_enu    = pose_node.getPose().UAV.position
         prev_t      = time.perf_counter()
         stable      = 0
         converged_at = None
         target_n = target_e = target_d = 0.0
         yaw_err = 0.0
+        tilt_err = 0.0
         for k in range(MAX_ITERS):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
@@ -198,27 +200,36 @@ async def main(record = 'n'):
             d_n = cur_enu.y - (target_enu.y + iy)
             d_u = cur_enu.z - (target_enu.z + iz)
             pos_err = (d_e*d_e + d_n*d_n + d_u*d_u) ** 0.5
-            # Yaw error from PX4 quaternion: ψ = atan2(2(wz+xy), 1 − 2(y²+z²))
-            # Target yaw = 0 rad. We use the smallest signed angular distance.
+            # Roll, pitch, yaw from PX4 quaternion.
+            # Roll  φ = atan2(2(wx + yz), 1 − 2(x² + y²))
+            # Pitch θ = asin(2(wy − zx))
+            # Yaw   ψ = atan2(2(wz + xy), 1 − 2(y² + z²))
             q = FC_node.getQuat()
+            roll = np.arctan2(2.0*(q.w*q.x + q.y*q.z),
+                              1.0 - 2.0*(q.x*q.x + q.y*q.y))
+            sinp = float(np.clip(2.0*(q.w*q.y - q.z*q.x), -1.0, 1.0))
+            pitch = np.arcsin(sinp)
             yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
                              1.0 - 2.0*(q.y*q.y + q.z*q.z))
-            yaw_err = abs(np.arctan2(np.sin(yaw), np.cos(yaw)))   # |ψ − 0|, wrapped
+            yaw_err  = abs(np.arctan2(np.sin(yaw), np.cos(yaw)))
+            tilt_err = max(abs(roll), abs(pitch))           # |roll| AND |pitch| both ≤ tol
             prev_enu, prev_t = cur_enu, now
-            if pos_err <= IC_POS_TOL and speed <= IC_VEL_TOL and yaw_err <= IC_YAW_TOL:
+            if (pos_err  <= IC_POS_TOL  and speed   <= IC_VEL_TOL
+                    and yaw_err <= IC_YAW_TOL and tilt_err <= IC_TILT_TOL):
                 stable += 1
                 if stable >= STABLE_HITS:
                     converged_at = (k + 1) * 0.02
                     print(f"[landing_test] IC converged at t={converged_at:.2f}s "
                           f"(pos_err={pos_err:.3f} m, speed={speed:.3f} m/s, "
-                          f"yaw_err={np.rad2deg(yaw_err):.2f}°)")
+                          f"yaw_err={np.rad2deg(yaw_err):.2f}°, "
+                          f"tilt={np.rad2deg(tilt_err):.2f}°)")
                     break
             else:
                 stable = 0
         if converged_at is None:
             print(f"[landing_test] IC convergence TIMEOUT after 15 s "
                   f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s, "
-                  f"yaw_err={np.rad2deg(yaw_err):.2f}°)")
+                  f"yaw_err={np.rad2deg(yaw_err):.2f}°, tilt={np.rad2deg(tilt_err):.2f}°)")
             # Hard-abort instead of proceeding with a moving/off-target drone.
             # Empirically: PX4 SITL occasionally fails to settle during the
             # convergence loop (drone oscillates at ±2 m / ±2 m/s for 15s).
