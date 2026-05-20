@@ -308,6 +308,12 @@ async def main(record = 'n'):
         final_descent_t0 = None
         last_good_sys_cmd = None
         marker_lost_t0 = None
+        # 2026-05-21: per user direction, marker loss beyond grace counts as
+        # a TARGET_LOST landing failure rather than a graceful soft-precise
+        # success via fallback. The fallback (zero-rate + fixed thrust) still
+        # exists to bring the drone safely to ground, but the landing is
+        # tagged as a failure regardless of touchdown xy/vel.
+        target_lost = False
 
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
@@ -335,9 +341,11 @@ async def main(record = 'n'):
                 # PX4 reports ON_GROUND.
                 if not in_final_descent:
                     in_final_descent = True
+                    target_lost = True
                     final_descent_t0 = time_node.perf_counter()
-                    print(f"[landing_test] Marker lost — final descent "
-                          f"(thrust={FINAL_DESCENT_THRUST}) until LANDED.")
+                    print(f"[landing_test] Marker lost beyond grace — TARGET_LOST. "
+                          f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
+                          f"to bring drone down safely; landing is tagged as failure.")
                 await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
                 if (time_node.perf_counter() - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
                     print(f"[landing_test] Final-descent timeout "
@@ -378,17 +386,27 @@ async def main(record = 'n'):
                       (drone_enu.y - target_enu.y)**2) ** 0.5
             v = FC_node.getVelBody()
             rel_vel = (v.x_m_s**2 + v.y_m_s**2 + v.z_m_s**2) ** 0.5
-            precise = xy_err  <= 0.08
-            soft    = rel_vel <= 0.2
+            # If marker was lost beyond grace, landing is a failure regardless
+            # of touchdown xy/vel (per user direction 2026-05-21). The xy/vel
+            # numbers are still recorded for diagnostics.
+            if target_lost:
+                precise = False
+                soft    = False
+                tag = "TARGET_LOST"
+            else:
+                precise = xy_err  <= 0.08
+                soft    = rel_vel <= 0.2
+                tag = ("SOFT+PRECISE" if (soft and precise)
+                       else "PRECISE-only" if precise
+                       else "SOFT-only"   if soft
+                       else "FAIL")
             SOFT_PRECISE = dict(xy_err=xy_err, rel_vel=rel_vel,
-                                precise=precise, soft=soft)
-            tag = ("SOFT+PRECISE" if (soft and precise)
-                   else "PRECISE-only" if precise
-                   else "SOFT-only"   if soft
-                   else "FAIL")
+                                precise=precise, soft=soft,
+                                target_lost=target_lost)
             print(f"[landing_test] Landing classification: {tag}  "
                   f"(xy_err={xy_err:.3f} m [≤0.08], "
-                  f"rel_vel={rel_vel:.3f} m/s [≤0.2])")
+                  f"rel_vel={rel_vel:.3f} m/s [≤0.2]"
+                  f"{', target lost mid-flight' if target_lost else ''})")
         except Exception as e:
             print(f"[landing_test] Could not compute soft-precise metrics: {e}")
 
