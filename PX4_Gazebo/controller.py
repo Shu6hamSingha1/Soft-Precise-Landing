@@ -441,7 +441,7 @@ class Controller(Thread):
         # starts from a clean steady-state IC where V_h_d[0] is already
         # near the reference; SITL has takeoff/drift before controller
         # engagement, so V_h_d[0] is far from the equilibrium.)
-        DH_D_MAX = 20.0
+        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
         if len(self._h_d) > 1:
             self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
