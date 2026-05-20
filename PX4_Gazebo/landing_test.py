@@ -165,9 +165,15 @@ async def main(record = 'n'):
         IC_POS_TOL  = 0.5
         IC_VEL_TOL  = 0.2                          # tightened 0.3 → 0.2
         IC_YAW_TOL  = np.deg2rad(2.0)
-        IC_TILT_TOL = np.deg2rad(1.5)              # NEW: |roll|, |pitch| ≤ 1.5°
+        IC_TILT_TOL = np.deg2rad(3.0)              # |roll|, |pitch| ≤ 3°
+                                                    # PX4's hover limit-cycle
+                                                    # floats ~2-2.5° even at
+                                                    # pos_err < 0.02m; threshold
+                                                    # of 1.5° was unreachable.
         STABLE_HITS = 20                           # tightened 10 → 20 (0.4 s of stability)
-        MAX_ITERS   = 750                          # 15 s @ 50 Hz
+        MAX_ITERS   = int(os.environ.get("LANDING_IC_BUDGET_S", "30")) * 50
+                                                    # 30 s @ 50 Hz (was 15 s; bumped
+                                                    # to absorb slow-settle days)
         prev_enu    = pose_node.getPose().UAV.position
         prev_t      = time.perf_counter()
         stable      = 0
@@ -227,7 +233,7 @@ async def main(record = 'n'):
             else:
                 stable = 0
         if converged_at is None:
-            print(f"[landing_test] IC convergence TIMEOUT after 15 s "
+            print(f"[landing_test] IC convergence TIMEOUT after {MAX_ITERS*0.02:.0f} s "
                   f"(last pos_err={pos_err:.3f} m, speed={speed:.3f} m/s, "
                   f"yaw_err={np.rad2deg(yaw_err):.2f}°, tilt={np.rad2deg(tilt_err):.2f}°)")
             # Hard-abort instead of proceeding with a moving/off-target drone.

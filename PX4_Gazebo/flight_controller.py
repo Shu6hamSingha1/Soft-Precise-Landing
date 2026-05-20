@@ -140,21 +140,41 @@ class FC():
             arm_res = 'y'
         if arm_res != 'n':
             # PX4 prints "Ready for takeoff" before all preflight checks settle.
-            # arm() can still return COMMAND_DENIED for ~5-15 s after that
-            # (heading estimate / EKF still converging). Retry instead of crashing.
+            # arm() can still return COMMAND_DENIED for 5-30 s afterwards because
+            # of the PX4-gz_bridge lockstep race: gz_bridge subscribes to IMU
+            # before the lockstep scheduler has synced with Gazebo's clock,
+            # producing IMU timestamps=0 which the EKF rejects, which gates the
+            # is_armable health flag.
+            #
+            # Instead of blind retries, poll telemetry.health() until
+            # is_armable goes true (EKF has accepted valid IMU samples). This
+            # is adaptive: typical wait is 0-10 s on a healthy SITL boot,
+            # 20-40 s when lockstep is racing. After is_armable, arm() should
+            # succeed first try; if it doesn't we raise to trigger an outer
+            # retry of the whole stack.
+            print("-- Waiting for is_armable (EKF / lockstep ready)...")
+            armable_timeout = 60.0
+            async def _wait_armable():
+                async for health in self.vehicle.telemetry.health():
+                    if health.is_armable:
+                        return
+            t0 = time.monotonic()
+            try:
+                await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
+            except asyncio.TimeoutError:
+                raise RuntimeError(
+                    f"is_armable did not go True within {armable_timeout}s "
+                    f"— PX4 lockstep race is not recovering."
+                )
+            print(f"  is_armable after {time.monotonic() - t0:.1f}s")
+
             print("-- Arming")
-            arm_err = None
-            for attempt in range(10):                  # ~10 * 2s = 20 s budget
-                try:
-                    await self.vehicle.action.arm()
-                    arm_err = None
-                    break
-                except Exception as e:
-                    arm_err = e
-                    print(f"  arm attempt {attempt + 1}/10 denied: {e} — waiting 2s")
-                    await asyncio.sleep(2.0)
-            if arm_err is not None:
-                raise RuntimeError(f"arm() failed after 10 retries: {arm_err}")
+            try:
+                await self.vehicle.action.arm()
+            except Exception as e:
+                # If arm() fails even when is_armable=True, something else is
+                # wrong (e.g. preflight check beyond EKF) — signal outer retry.
+                raise RuntimeError(f"arm() failed even after is_armable: {e}")
             print('Armed!')
         else:
             raise Exception("Request for arming rejected.")

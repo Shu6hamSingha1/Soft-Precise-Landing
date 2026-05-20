@@ -162,10 +162,12 @@ else
 fi
 
 # "Ready for takeoff" prints before EKF heading-estimate settles, so the
-# first arm() can be COMMAND_DENIED. Settle 20 s (matches the calibration
-# launcher fix; flight_controller.arm_and_takeoff also retries internally).
-echo "[run] settling 20s before arm (EKF heading-estimate convergence)..."
-sleep 20
+# first arm() can be COMMAND_DENIED. flight_controller.arm_and_takeoff
+# polls telemetry.health() for is_armable (60s budget) before arming,
+# so we only need a short structural wait here to let the bridges/QGC
+# settle into the loop.
+echo "[run] short settle (5s) before launching landing_test (arm() polls is_armable)..."
+sleep 5
 
 # 5) Run the landing controller in the foreground.
 #    Ctrl+C here triggers the cleanup trap and kills all background processes.
@@ -184,12 +186,12 @@ PY_EXIT=${PIPESTATUS[0]}
 # discuss.px4.io/t/px4-sitl-multi-vehicle-gazebo-imu-timing-errors/33268.
 # When PX4's gz_bridge subscribes to IMU before lockstep has synced with
 # the Gazebo clock, accel/gyro is published with timestamp=0, which cascades
-# into "ekf2 missing data" → arming permanently denied. The python script
-# reports this as "arm() failed after 10 retries: COMMAND_DENIED". Exit
-# code 42 signals the retry wrapper (run_aruco_landing_retry.sh) to restart
-# the whole stack from scratch.
-if grep -q 'arm() failed after 10 retries' "$PY_OUT" 2>/dev/null; then
-  echo "[run] DETECTED: arm permanently denied (likely gz_bridge/lockstep race)."
+# into "ekf2 missing data" → is_armable stays False permanently.
+# flight_controller.arm_and_takeoff polls is_armable for 60s; if it times
+# out it raises "is_armable did not go True within 60s". Exit code 42
+# signals the retry wrapper to restart the whole stack.
+if grep -qE 'is_armable did not go True|arm\(\) failed even after is_armable' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: PX4 lockstep race did not recover (is_armable timeout)."
   echo "[run] Signaling retry with exit code 42."
   exit 42
 fi
