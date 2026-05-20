@@ -404,6 +404,11 @@ class IMG_PROCESSOR(Thread):
             # For the image-feature centroid we DO extrapolate (clipped) because
             # holding the last marker position is a reasonable assumption while LK
             # briefly loses tracking — the marker hasn't moved much in a frame or two.
+            # 2026-05-20: tried hold-last-value as a "safer" alternative — REGRESSED
+            # badly (mean xy 0.49→1.52, max 0.77→4.83 across 5 reps). During descent
+            # the marker moves in image; extrapolation predicts the trend, hold-last
+            # freezes at a stale position. Single-frame dropouts can then cause
+            # catastrophic lateral excursions. Keep the polyfit-deg-1 extrapolate.
             extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
 
             extrapolated_img_feature_param = extrapolate(

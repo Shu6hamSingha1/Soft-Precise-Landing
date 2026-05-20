@@ -138,14 +138,12 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
 
 # 4) QGroundControl — always launch if available (its heartbeats satisfy
-# PX4's "No connection to ground control station" preflight check). In
-# HEADLESS mode it inherits QT_QPA_PLATFORM=offscreen so no window appears.
+# PX4's "No connection to ground control station" preflight check). QGC
+# is always launched OFFSCREEN — the user never interacts with its GUI,
+# it's purely there for the heartbeat. This keeps the desktop clean even
+# when Gazebo's GUI is visible.
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
-  if [ -n "$HEADLESS" ]; then
-    QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
-  else
-    start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
-  fi
+  QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
 fi
 
 # 4b) Wait for PX4 health to settle (EKF2 converge, baro init, GCS connect).
