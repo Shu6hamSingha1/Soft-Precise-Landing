@@ -201,6 +201,15 @@ class Controller(Thread):
         self._K_ei = np.diag([0.0, 0.0, 0.0])
         self._K_ed = np.diag([0.0, 0.0, 0.0])
 
+        # Virtual-compass + geometric SO(3) attitude path
+        # (manuscript Section III-B1/B2: psi_d evolves from image-based alpha_e
+        # via leakage ASMC; SO(3) tracker closes attitude through R_d built
+        # from -I_a direction + a_h = [cos psi_d, sin psi_d, 0].) Default off
+        # for A/B comparison; enable via LANDING_VIRTUAL_COMPASS=1.
+        self._virtual_compass = (os.environ.get("LANDING_VIRTUAL_COMPASS", "0") == "1")
+        self._K_R = np.diag([5.0, 5.0, 5.0])     # SO(3) attitude-error → body-rate gain
+        self._psi_d = None                        # set lazily on first _attCtrl call
+
         # Reference depth-rate (MATLAB h_rd was -0.42; user has chosen -0.30 historically via REF_RAD_OPT_FLOW)
         # We keep ref_rad_opt_flow from the constructor; do not override.
 
@@ -563,6 +572,17 @@ class Controller(Thread):
         # but expressed in body frame. NED yaw rate convention matches.
         self._u_a.append(float(u_a))
 
+        # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
+        #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]
+        # No external heading reference enters — psi_d evolves purely from
+        # the image-based alpha error via the leakage ASMC. Only used in
+        # the SO(3) path; legacy rate-mode path still consumes self._u_a.
+        if self._virtual_compass and self._psi_d is not None and len(self._dt) > 0:
+            self._psi_d = float(
+                np.arctan2(np.sin(self._psi_d + u_a * self._dt[-1]),
+                           np.cos(self._psi_d + u_a * self._dt[-1]))
+            )
+
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
         theta_norm = X[1]
@@ -691,19 +711,59 @@ class Controller(Thread):
                                - self._K_ei @ self._ieuler_e[-1]
                                - self._K_ed @ deuler_e)
 
-        # ---- Map Euler-rate command to body rates using DESIRED attitude (W_d) ----
-        # MATLAB cascades attitude PID -> body torques, but for PX4 we send rates.
-        # Use W_d so the kinematic mapping is consistent with the desired attitude.
-        W_d = np.array([
-            [1, 0, -np.sin(theta_d)],
-            [0, np.cos(phi_d),  np.sin(phi_d) * np.cos(theta_d)],
-            [0, -np.sin(phi_d), np.cos(phi_d) * np.cos(theta_d)],
-        ])
-        w_u = W_d @ self._deuler_ed[-1]
+        if self._virtual_compass:
+            # ===== Manuscript-faithful path =====
+            # Virtual-compass integrator (psi_d) + R_d from thrust direction +
+            # heading vector + SO(3) attitude error → body-rate setpoint.
+            # See manuscript control_formulation.tex:219-251.
 
-        # Override yaw rate with the yaw SMC output u_a
-        if len(self._u_a) > 0:
-            w_u[2] = self._u_a[-1]
+            # Lazy-init psi_d on first call (MATLAB: psi_d = yaw_init, line 127)
+            if self._psi_d is None:
+                self._psi_d = float(yaw_c)
+
+            # R_d construction (Eq. R_d construction: equation, lines 238-242)
+            #   rd3 = -I_a / ||I_a||      (desired body-z opposes net force in NED)
+            #   a_h = [cos psi_d, sin psi_d, 0]
+            #   rd2 = (rd3 × a_h) / ||rd3 × a_h||
+            #   rd1 = rd2 × rd3
+            f_mag = float(np.linalg.norm(I_a_use))
+            if f_mag < 1e-6:
+                R_d = np.eye(3)
+            else:
+                rd3 = -I_a_use / f_mag
+                a_h = np.array([np.cos(self._psi_d), np.sin(self._psi_d), 0.0])
+                rd2_raw = np.cross(rd3, a_h)
+                n2 = float(np.linalg.norm(rd2_raw))
+                if n2 < 1e-6:
+                    # degeneracy guard (manuscript: rd2 = inertial East)
+                    rd2 = np.array([0.0, 1.0, 0.0])
+                else:
+                    rd2 = rd2_raw / n2
+                rd1 = np.cross(rd2, rd3)
+                R_d = np.column_stack([rd1, rd2, rd3])
+
+            # SO(3) attitude error (Eq. so3 errors: equation, line 244-245)
+            #   e_R = 0.5 * vee(R_d^T R - R^T R_d)
+            eR_mat = 0.5 * (R_d.T @ R - R.T @ R_d)
+            e_R = np.array([eR_mat[2, 1], eR_mat[0, 2], eR_mat[1, 0]])
+
+            # Rate-mode mapping: w_u = -K_R · e_R   (proportional part of SO(3)
+            # tracker; kΩ·e_Ω damping and ω×Jω feedforward are handled by PX4's
+            # rate loop since we ship body rates, not torques).
+            w_u = -self._K_R @ e_R
+        else:
+            # ===== Legacy Euler-PD path (yaw routed via u_a directly) =====
+            # Map Euler-rate command to body rates using DESIRED attitude (W_d)
+            W_d = np.array([
+                [1, 0, -np.sin(theta_d)],
+                [0, np.cos(phi_d),  np.sin(phi_d) * np.cos(theta_d)],
+                [0, -np.sin(phi_d), np.cos(phi_d) * np.cos(theta_d)],
+            ])
+            w_u = W_d @ self._deuler_ed[-1]
+
+            # Override yaw rate with the yaw SMC output u_a
+            if len(self._u_a) > 0:
+                w_u[2] = self._u_a[-1]
 
         self._w_u.append(w_u)
 
