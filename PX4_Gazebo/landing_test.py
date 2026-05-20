@@ -283,8 +283,18 @@ async def main(record = 'n'):
         # close in with vision, last 20 cm with constant descent.
         FINAL_DESCENT_THRUST = 0.65          # below 0.738 hover → mild descent
         FINAL_DESCENT_TIMEOUT = 5.0          # seconds
+        # Marker-loss grace: brief dropouts (1-2 frames) are common when the
+        # marker briefly leaves FoV due to tilt or motion blur. Without a
+        # grace period, a single dropped frame commits us to open-loop final
+        # descent — which then drifts on residual lateral momentum. With a
+        # grace, IBVS keeps sending the last valid attitude-rate command
+        # while waiting for re-detection; only commit to final descent if
+        # marker is genuinely gone for MARKER_LOSS_GRACE seconds.
+        MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
         in_final_descent = False
         final_descent_t0 = None
+        last_good_sys_cmd = None
+        marker_lost_t0 = None
 
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
@@ -296,9 +306,20 @@ async def main(record = 'n'):
                 sys_cmd = convert_2_sys_cmd(cmd)
                 await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
                 u_cmd.append(cmd)
+                last_good_sys_cmd = sys_cmd
+                marker_lost_t0 = None
+            elif (not in_final_descent
+                  and last_good_sys_cmd is not None
+                  and (marker_lost_t0 is None
+                       or (time_node.perf_counter() - marker_lost_t0) < MARKER_LOSS_GRACE)):
+                # Marker briefly lost — hold last valid command within grace.
+                if marker_lost_t0 is None:
+                    marker_lost_t0 = time_node.perf_counter()
+                await FC_node.send_attitude_rate(*last_good_sys_cmd)
             else:
-                # Marker lost → final descent. Hold zero body rate, push
-                # constant sub-hover thrust until PX4 reports ON_GROUND.
+                # Marker lost beyond grace (or never seen) → final descent.
+                # Hold zero body rate, push constant sub-hover thrust until
+                # PX4 reports ON_GROUND.
                 if not in_final_descent:
                     in_final_descent = True
                     final_descent_t0 = time_node.perf_counter()
