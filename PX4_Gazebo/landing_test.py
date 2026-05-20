@@ -163,7 +163,14 @@ async def main(record = 'n'):
         target_enu_0 = pose_node.getPose().target.position
         print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})  (+ tilt check)")
         IC_POS_TOL  = 0.5
-        IC_VEL_TOL  = 0.2                          # tightened 0.3 → 0.2
+        IC_VEL_TOL  = 0.5                          # was 0.2 — too tight; the
+                                                    # one-step-difference speed
+                                                    # estimate is noisy, and
+                                                    # PX4 hover limit-cycle
+                                                    # gives transient 0.3-0.4
+                                                    # m/s speeds at pos_err
+                                                    # < 0.25 m. 0.5 m/s is the
+                                                    # noise floor.
         IC_YAW_TOL  = np.deg2rad(2.0)
         IC_TILT_TOL = np.deg2rad(3.0)              # |roll|, |pitch| ≤ 3°
                                                     # PX4's hover limit-cycle
