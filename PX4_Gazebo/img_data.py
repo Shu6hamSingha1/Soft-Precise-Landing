@@ -31,13 +31,15 @@ CHECK_NUM = 80
 fx = 270
 fy = 270
 
-FILTER_WIN = 13       # sliding-window length for savgol on raw image-side measurements
+FILTER_WIN = int(os.environ.get("IMG_FILTER_WIN", "13"))
+                      # sliding-window length for savgol on raw image-side measurements
                       # Retuned 2026-05-12 via tune_savgol.py across 5 calibration
                       # recordings × 8 channels. Best runtime mean|corr| was (13, 1),
                       # vs legacy (51, 2) which actually HURT runtime correlation
                       # because ~25-sample lag pulled the centroid out of phase
-                      # with ground truth.
-FILTER_POLYORDER = 1
+                      # with ground truth. Env-overridable for tuning the
+                      # delay-vs-noise tradeoff (smaller window = less lag).
+FILTER_POLYORDER = int(os.environ.get("IMG_FILTER_POLY", "1"))
 VIDEO = False
 
 class IMG_PROCESSOR(Thread):
