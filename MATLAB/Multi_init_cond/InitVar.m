@@ -65,8 +65,13 @@ X_DS = x_c;
 V_X_DS = [];
 D_DS = [];
 
-kappa = K.kappa_0;
-kappa_a = K.kappa_a_0;
+% K.kappa_0 / K.kappa_a_0 aren't defined by Constants.m in the current
+% repo state.  The canonical script overwrites both `kappa` and `kappa_a`
+% at its lines 172-173 from K_ctrl.kappa_0 anyway, so this is just a safe
+% pre-init.  Honor K.kappa_0 if a caller (e.g. Adapt_Control_Params)
+% defined it; otherwise fall back to the canonical default [0.125;0.125;0.25].
+if isfield(K, 'kappa_0');   kappa   = K.kappa_0;   else; kappa   = [0.125; 0.125; 0.25]; end
+if isfield(K, 'kappa_a_0'); kappa_a = K.kappa_a_0; else; kappa_a = 2.0;                  end
 
 %% Constants related to Low-pass filter for B_w_c
 tau_w   = 0.08;        % time constant [s] (20–50 ms recommended)
