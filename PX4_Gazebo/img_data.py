@@ -98,6 +98,16 @@ class IMG_PROCESSOR(Thread):
         # on the other 5 channels. Centroid s uses median(gt/raw) (stable, 0.58).
         self._sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 0.1998])
         self._sensor_cal_s  = np.diag([0.5830, 0.6104, 1.0000, 1.0000])
+        # 2026-05-21: attempted partial refresh of _sensor_cal_s to the
+        # fresh 5-run median (0.6104, 0.6116, ...). REVERTED — the +5%
+        # change on axis 0 destabilized the loop (5-rep IC1 mean xy
+        # 0.387→1.174m, TARGET_LOST 0→2). The IBVS centroid scaling is
+        # very sensitive even to small changes; the existing 0.5830 is
+        # well-tuned and shouldn't be replaced without strong evidence.
+        # _sensor_cal_hw also untouched (5-run median gave NaN on axis 2
+        # and std≈mean noise on other axes — methodology mismatch with
+        # the std-ratio path that produced the current cal). Fresh
+        # calibration data is in calibration_data/output_archive_2026*.
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
