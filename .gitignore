@@ -13,3 +13,6 @@ __pycache__/
 PX4_Gazebo/run_logs/
 PX4_Gazebo/calibration_data/
 # (calibration_data/ holds both output/ and input/ subtrees)
+
+# Phase 1 sentinel files (transient; do not commit)
+MATLAB/Datasets/Phase1/done.flag

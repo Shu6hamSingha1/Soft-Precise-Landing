@@ -110,4 +110,12 @@ end
 
 save([OUTDIR 'phase1_summary.mat'], 'results');
 fprintf('\nFull results: %sphase1_summary.mat\n', OUTDIR);
-fprintf('Per-rep trajectories: %sphase1_*_rep*.mat\n', OUTDIR);
+
+% Sentinel file for the Git Bash wrapper to detect completion.  Written
+% LAST so the wrapper never picks up an incomplete summary.mat.
+fid = fopen([OUTDIR 'done.flag'], 'w');
+if fid ~= -1
+  fprintf(fid, '%s\n', datestr(now, 'yyyy-mm-dd HH:MM:SS'));
+  fclose(fid);
+end
+fprintf('Wrote sentinel: %sdone.flag\n', OUTDIR);
