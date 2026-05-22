@@ -76,8 +76,12 @@ class FC():
                 asyncio.create_task(self.print_status_text())
             ]
 
-            await self.vehicle.telemetry.set_rate_odometry(60)
-            await self.vehicle.telemetry.set_rate_imu(60)
+            # Telemetry rate bumped 60 → 200 Hz (2026-05-22).  60 Hz adds ~16 ms
+            # quantization to logged ω, inflating Phase 2 cross-correlation lag
+            # by ±8 ms.  Doesn't change control-path latency (we don't use ω as
+            # feedback), but cleans up diagnostics and any future feedback use.
+            await self.vehicle.telemetry.set_rate_odometry(200)
+            await self.vehicle.telemetry.set_rate_imu(200)
 
             await self.vehicle.action.hold()
                 
