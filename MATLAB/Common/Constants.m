@@ -16,6 +16,9 @@ res = [320;240];  % Image resolution
 %% Defining system constants
 g = [0;0;9.81];
 h_rd = -0.42;                     % slowed further (-0.50->-0.46->-0.42) to close Linear IC5 soft threshold; -0.38 over-slows and kills IC4 hover-authority
+% Honor batch-wrapper global if set (e.g. to match PX4's -0.70 default).
+global H_RD_OVERRIDE;
+if ~isempty(H_RD_OVERRIDE); h_rd = H_RD_OVERRIDE; end
 
 e3 = [0;0;1];
 
