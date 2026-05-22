@@ -179,8 +179,21 @@ cd "$SCRIPT_DIR"
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 PY_OUT="$LOG_DIR/landing_test.out"
-python3 landing_test.py 2>&1 | tee "$PY_OUT"
+# Hard wall-clock timeout to prevent rare hangs (PX4 SITL crash without
+# clean exit, MAVSDK deadlock, etc.) from blocking sweep loops indefinitely.
+# 180 s is generous: arm settle (~5 s) + IC convergence (up to 30 s) +
+# warmup (0.1 s) + landing flight (4-22 s) + cleanup ≈ ~70 s typical max.
+# 180 s gives 2.5× headroom. Hang triggers exit code 124; treated as
+# lockstep-race retry signal below.
+PY_TIMEOUT_S="${PY_TIMEOUT_S:-180}"
+PY_SCRIPT="${PY_SCRIPT:-landing_test.py}"
+timeout --kill-after=10 "$PY_TIMEOUT_S" python3 "$PY_SCRIPT" 2>&1 | tee "$PY_OUT"
 PY_EXIT=${PIPESTATUS[0]}
+# coreutils timeout returns 124 (or 137 with SIGKILL after grace) on timeout
+if [ "$PY_EXIT" = "124" ] || [ "$PY_EXIT" = "137" ]; then
+  echo "[run] DETECTED: landing_test.py hung past ${PY_TIMEOUT_S}s wall-clock — treating as failure."
+  exit 42
+fi
 
 # Detect the IMU-timestamp / lockstep race documented at
 # discuss.px4.io/t/px4-sitl-multi-vehicle-gazebo-imu-timing-errors/33268.
