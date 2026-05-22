@@ -8,7 +8,7 @@ ACTUAL = 1;
 % IC and noise via MATLAB globals declared BEFORE calling the canonical
 % script.  `clear` at the top of the canonical script wipes locals but
 % leaves `global` declarations intact, so this is the safe override path.
-global IC_OVERRIDE NOISE_OVERRIDE;
+global IC_OVERRIDE NOISE_OVERRIDE IC_VEL_OVERRIDE;
 if ~isempty(NOISE_OVERRIDE); NOISE = NOISE_OVERRIDE; end
 
 %% Initialization Time Trajectory
@@ -30,9 +30,12 @@ q_cw = 1.0; q_cx = 0.0; q_cy = 0.0; q_cz = 0.0;
 q_c = [q_cw; q_cx; q_cy; q_cz];
 q_c = q_c / norm(q_c);
 
-% Initial Absolute Linear and Angular Velocities of Camera in Inertial 
+% Initial Absolute Linear and Angular Velocities of Camera in Inertial
 % Reference Frame
 I_vx_c = 0.0; I_vy_c = 0.0; I_vz_c = -0.00;
+if ~isempty(IC_VEL_OVERRIDE)
+    I_vx_c = IC_VEL_OVERRIDE(1); I_vy_c = IC_VEL_OVERRIDE(2); I_vz_c = IC_VEL_OVERRIDE(3);
+end
 I_v_c = [I_vx_c; I_vy_c; I_vz_c];
 w_cx = 0.00; w_cy = 0.00; w_cz = 0.00;
 B_w_c = [w_cx; w_cy; w_cz];
