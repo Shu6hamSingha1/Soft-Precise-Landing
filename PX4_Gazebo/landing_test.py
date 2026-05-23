@@ -162,22 +162,16 @@ async def main(record = 'n'):
         ix, iy, iz = INITIAL_DRONE_ENU
         target_enu_0 = pose_node.getPose().target.position
         print(f"[landing_test] Hover to MATLAB-IC ENU ({ix},{iy},{iz})  (+ tilt check)")
-        IC_POS_TOL  = 0.5
-        IC_VEL_TOL  = 0.5                          # was 0.2 — too tight; the
-                                                    # one-step-difference speed
-                                                    # estimate is noisy, and
-                                                    # PX4 hover limit-cycle
-                                                    # gives transient 0.3-0.4
-                                                    # m/s speeds at pos_err
-                                                    # < 0.25 m. 0.5 m/s is the
-                                                    # noise floor.
-        IC_YAW_TOL  = np.deg2rad(2.0)
-        IC_TILT_TOL = np.deg2rad(3.0)              # |roll|, |pitch| ≤ 3°
-                                                    # PX4's hover limit-cycle
-                                                    # floats ~2-2.5° even at
-                                                    # pos_err < 0.02m; threshold
-                                                    # of 1.5° was unreachable.
-        STABLE_HITS = 20                           # tightened 10 → 20 (0.4 s of stability)
+        # IC tolerances: 2026-05-21 analysis showed σ0 (initial SMC sliding
+        # variable) predicts xy_end at ρ=+0.77 with only 0.4% σ0 variance.
+        # The savgol-filtered optic flow at engagement is set by the last ~7
+        # samples of pre-engagement motion, so tighter IC settling shrinks
+        # σ0 spread. Env-overridable for experimentation.
+        IC_POS_TOL  = float(os.environ.get("LANDING_IC_POS_TOL",  "0.5"))
+        IC_VEL_TOL  = float(os.environ.get("LANDING_IC_VEL_TOL",  "0.5"))
+        IC_YAW_TOL  = np.deg2rad(float(os.environ.get("LANDING_IC_YAW_TOL_DEG", "2.0")))
+        IC_TILT_TOL = np.deg2rad(float(os.environ.get("LANDING_IC_TILT_TOL_DEG", "3.0")))
+        STABLE_HITS = int(os.environ.get("LANDING_IC_STABLE_HITS", "20"))
         MAX_ITERS   = int(os.environ.get("LANDING_IC_BUDGET_S", "30")) * 50
                                                     # 30 s @ 50 Hz (was 15 s; bumped
                                                     # to absorb slow-settle days)
@@ -320,7 +314,13 @@ async def main(record = 'n'):
             target_pose.append(pose_node.getPose().target)
 
             t_c.append(time_node.perf_counter() - start_time)
-            if EC_node.TARGET_IS_VISIBLE and not in_final_descent:
+            # Intervention 3 (2026-05-22): treat FEATURE_IS_STALE the same as
+            # marker-loss — if img_data has been extrapolating for STALE_THRESH+
+            # consecutive frames, route to the grace-hold path instead of
+            # letting the controller act on stale/extrapolated feature data.
+            feature_fresh = (EC_node.TARGET_IS_VISIBLE
+                             and not EC_node.FEATURE_IS_STALE)
+            if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
                 await FC_node.send_attitude_rate(*sys_cmd)  # FC BODY follows FRD
@@ -331,7 +331,8 @@ async def main(record = 'n'):
                   and last_good_sys_cmd is not None
                   and (marker_lost_t0 is None
                        or (time_node.perf_counter() - marker_lost_t0) < MARKER_LOSS_GRACE)):
-                # Marker briefly lost — hold last valid command within grace.
+                # Marker briefly lost OR feature stale — hold last valid command
+                # within grace, give the detector a chance to re-acquire.
                 if marker_lost_t0 is None:
                     marker_lost_t0 = time_node.perf_counter()
                 await FC_node.send_attitude_rate(*last_good_sys_cmd)

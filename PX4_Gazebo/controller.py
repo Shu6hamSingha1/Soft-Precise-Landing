@@ -211,9 +211,14 @@ class Controller(Thread):
         # SO(3) attitude-error proportional gain. Manuscript Eq. `so3 torque`
         # uses k_R = diag(1.5, 1.5, 0.5) on a torque output; we use
         # diag(5, 5, 5) on a body-rate output (rad/s per rad of e_R is a
-        # different unit). Env scalers: PLASMC_KR_SCALE uniform, plus per-axis
-        # PLASMC_KR_{ROLL,PITCH,YAW}_SCALE.
-        kr_u     = float(os.environ.get("PLASMC_KR_SCALE",       "1.0"))
+        # different unit). The uniform scale defaults to 0.4 — at full 5.0
+        # the inner loop overdrives the LK tracking window (peak body rate
+        # > 1.7 rad/s causes corner motion > 15 px / frame, then OPTIC
+        # FLOW UNAVAILABLE → TARGET_LOST). 0.4 × 5.0 = 2.0 rad/s per rad e_R
+        # combined with the PLASMC_W_U_MAX=1.0 clamp keeps optical flow
+        # alive. Env scalers: PLASMC_KR_SCALE uniform (set to 1.0 to recover
+        # legacy effective K_R=5.0), plus per-axis PLASMC_KR_{ROLL,PITCH,YAW}_SCALE.
+        kr_u     = float(os.environ.get("PLASMC_KR_SCALE",       "0.4"))
         kr_roll  = float(os.environ.get("PLASMC_KR_ROLL_SCALE",  "1.0"))
         kr_pitch = float(os.environ.get("PLASMC_KR_PITCH_SCALE", "1.0"))
         kr_yaw   = float(os.environ.get("PLASMC_KR_YAW_SCALE",   "1.0"))
@@ -237,6 +242,13 @@ class Controller(Thread):
 
     def close(self):
         self._STAY_OPEN = False
+
+    @property
+    def FEATURE_IS_STALE(self):
+        """Forwards img_data's stale-feature flag (see Intervention 2,
+        2026-05-22).  Lets landing_test refuse to act on extrapolated
+        feature data after STALE_THRESH consecutive detection misses."""
+        return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
     def _initialize_controller(self):
         # Attitude state

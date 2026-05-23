@@ -115,12 +115,26 @@ class IMG_PROCESSOR(Thread):
         # cv2.cornerSubPix algorithm internally on each detected corner, giving
         # sub-pixel precision before LK tracks them. Cheap and improves the
         # downstream lstsq input quality.
+        #
+        # 2026-05-22 — INTERVENTION 1: tuned for low-contrast detection so we
+        # can pick up the small marker through drone-body shadow at low alt
+        # (the failure mode where Image_Feature_Pts freezes in the last 100-
+        # 150 ms of descent).  Env knobs let us A/B without code edits.
         _arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         _arucoParams = cv2.aruco.DetectorParameters()
         _arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
         _arucoParams.cornerRefinementWinSize = 5       # 11x11 actual window
         _arucoParams.cornerRefinementMaxIterations = 30
         _arucoParams.cornerRefinementMinAccuracy = 0.01
+        # Low-contrast / shadow-robustness tuning.  Defaults shown in comments.
+        _arucoParams.adaptiveThreshConstant = float(
+            os.environ.get("ARUCO_ADAPT_THRESH_C", "5.0"))         # default 7.0
+        _arucoParams.errorCorrectionRate = float(
+            os.environ.get("ARUCO_ERR_CORRECT", "0.8"))             # default 0.6
+        _arucoParams.minMarkerPerimeterRate = float(
+            os.environ.get("ARUCO_MIN_PERIM_RATE", "0.02"))         # default 0.03
+        _arucoParams.minOtsuStdDev = float(
+            os.environ.get("ARUCO_MIN_OTSU_STD", "3.0"))            # default 5.0
         self._detector = cv2.aruco.ArucoDetector(_arucoDict, _arucoParams)
 
         # Parameters for Lucas Kanade algorithm. Retuned 2026-05-13 for 640x480 frames
@@ -146,6 +160,22 @@ class IMG_PROCESSOR(Thread):
         self.FEATURE_IS_VISIBLE = False
         self._count_check_img_feature = CHECK_NUM
         self._count_check_opt_flow = CHECK_NUM
+
+        # 2026-05-22 — INTERVENTION 2: explicit stale-feature detection.
+        # Tracks consecutive frames where FEATURE_DATA_IS_LOGGED was False
+        # (either ArUco didn't detect or LK lost corners).  When the streak
+        # exceeds STALE_THRESH, FEATURE_IS_STALE flips True so downstream
+        # consumers (controller, landing_test) can refuse to act on the
+        # extrapolated feature data.  Resets to 0 on every successful frame.
+        #
+        # Default threshold: 3 frames ≈ 35 ms at 86 Hz — short enough to
+        # catch the failure mode (100-150 ms freezes in failed PX4 reps)
+        # before the controller commits to stale-derivative drift, long
+        # enough to absorb the 1-frame dropouts that the existing
+        # extrapolation handles cleanly (per 2026-05-20 finding).
+        self._consec_misses = 0
+        self.FEATURE_IS_STALE = False
+        self.STALE_THRESH = int(os.environ.get("IMG_STALE_THRESH", "3"))
 
         # Data storage
         self._time_log = []
@@ -383,9 +413,14 @@ class IMG_PROCESSOR(Thread):
 
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
-                    self.FEATURE_IS_VISIBLE  = True 
+                    self.FEATURE_IS_VISIBLE  = True
                 if self._count_check_img_feature > 0:
                     self._count_check_img_feature = 0
+                # Intervention 2: detection succeeded → reset stale counter
+                self._consec_misses = 0
+                if self.FEATURE_IS_STALE:
+                    print("LANDING PAD RE-ACQUIRED (stale → fresh)")
+                    self.FEATURE_IS_STALE = False
 
                 # Log the updated data
                 self._feature_pts.append(C_nP)
@@ -405,6 +440,12 @@ class IMG_PROCESSOR(Thread):
         self._fps_log.append(self._fps)
 
         if not FEATURE_DATA_IS_LOGGED:
+            # Intervention 2: increment the stale streak and flip the flag
+            # if we've been extrapolating for too many consecutive frames.
+            self._consec_misses += 1
+            if self._consec_misses >= self.STALE_THRESH and not self.FEATURE_IS_STALE:
+                print(f"FEATURE_IS_STALE = True  ({self._consec_misses} consec misses)")
+                self.FEATURE_IS_STALE = True
             # No new feature data this frame (LK failed or marker not seen).
             # 2026-05-13: do NOT extrapolate the optical-flow / angular-velocity vector.
             # The previous deg=1 polynomial extrapolation cascaded: if past values
