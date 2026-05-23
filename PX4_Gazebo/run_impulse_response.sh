@@ -8,4 +8,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Wall-clock budget: 90s arm/EKF settle + 25s flight + cleanup ≈ 130s.
 export PY_TIMEOUT_S="${PY_TIMEOUT_S:-150}"
 export PY_SCRIPT="impulse_response.py"
-exec bash "$SCRIPT_DIR/run_aruco_landing.sh"
+# Use the retry wrapper to absorb PX4 SITL lockstep failures (is_armable
+# never going True is a known race; cheap retry is the standard fix).
+exec bash "$SCRIPT_DIR/run_aruco_landing_retry.sh"
