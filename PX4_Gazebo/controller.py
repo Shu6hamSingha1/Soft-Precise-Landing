@@ -167,7 +167,12 @@ class Controller(Thread):
         n_diag = per_axis("N", [0.02, 0.02, 0.02])
         n_diag[2] = N_z_abs * s("N") * s("N_Z")     # legacy override path
         self._N = np.diag(n_diag)
-        self._P = np.diag(per_axis("P",      [1.5, 1.5, 5.0]))
+        # P_z reduced from MATLAB 5.0 → 2.5 (2026-05-25). The only middle-loop
+        # SMC singleton in BigSensitivity with reproducible above-baseline
+        # PRECISE rate at n>=5: P_Z × 0.5 gave 2 PRECISE out of 11 (18% vs
+        # baseline 8%) and 0 TL. Stacking n=1 "winners" rejected per memory.
+        # Legacy MATLAB P_z=5.0 recoverable via PLASMC_P_Z_SCALE=2.0.
+        self._P = np.diag(per_axis("P",      [1.5, 1.5, 2.5]))
         # KAPPA0 default 1.25 (best single-axis tune from IC 1 sweep)
         self._kappa_0 =        per_axis("KAPPA0", [0.125, 0.125, 0.25], "1.25")
         # Print any non-default scales (uniform + per-axis).
