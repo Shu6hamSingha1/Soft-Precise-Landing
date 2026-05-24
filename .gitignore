@@ -1,4 +1,7 @@
 .claude/
+# But keep project-level Claude Code skills tracked (they're meant to ship)
+!.claude/skills/
+!.claude/skills/**
 MATLAB/Multi_init_cond/Datasets/
 MATLAB/Multi_init_cond/Untitled
 Obsolete/
