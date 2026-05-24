@@ -166,6 +166,25 @@ For MATLAB-vs-PX4 comparison:
 - `MC_*RATE_P > 1.0` via MAVSDK runtime → SITL preflight failure (mode-1 lever still untried at post-takeoff)
 - Enlarging small marker → violates the at-touchdown FoV match constraint
 
+## The precision-softness frontier (2026-05-24, mapped via 5 N=10 sweeps)
+
+The architecture's lag forces a frontier — knobs move along it, not off it. Demonstrated empirically:
+
+```
+                          PREC  SOFT  SP    xy_min   vh_end_mean
+Interventions only         1     2    1     0.039    1.2     ← still best
+RHOFOVINF × 0.5            0     4    0     0.110    0.80
+RHOFOVINF × 0.7            1     2    0     0.077    0.99
+THETACAP × 1.5             0     1    0     0.099    0.94 (+ TL)
+Stack ×0.5 + KP×1.25       1     2    0     0.031    0.88
+─────────────────────────────────────────────────────────
+Combined SP rate           1 / 50 = 2%
+```
+
+**The PRECISE-only failure mode** (across 19 PRECISE-only reps out of 1205): every rep has |vh_end| ≫ |vz_end|. The drone lands precisely on target but is still sliding laterally at 1+ m/s. The architecture can HOLD zero lateral velocity but cannot actively BRAKE significant lateral velocity in the final phase.
+
+When the user proposes tuning the terminal-phase parameters (`RHOFOVINF`, `THETACAP`, `KP/KI/KD` boosts, or their combos), cite this finding. The frontier is mapped; further single-knob terminal-phase sweeps will land on a point already characterized.
+
 ## Known winners (current defaults)
 
 ```
