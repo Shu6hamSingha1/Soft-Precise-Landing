@@ -1,7 +1,7 @@
-.claude/
-# But keep project-level Claude Code skills tracked (they're meant to ship)
+# Ignore transient .claude/ files but keep project skills tracked (they ship with repo).
+# Using .claude/* (not .claude/) so git can traverse into the skills subdir.
+.claude/*
 !.claude/skills/
-!.claude/skills/**
 MATLAB/Multi_init_cond/Datasets/
 MATLAB/Multi_init_cond/Untitled
 Obsolete/
