@@ -122,8 +122,15 @@ class Controller(Thread):
         ki_y = float(os.environ.get("PLASMC_KI_Y_SCALE", "1.0"))
         kd_x = float(os.environ.get("PLASMC_KD_X_SCALE", "1.0"))
         kd_y = float(os.environ.get("PLASMC_KD_Y_SCALE", "1.0"))
-        self._K_rp = pid_scale * np.diag([kp_scale * kp_x * 9.0,
-                                          kp_scale * kp_y * 9.0])
+        # K_rp = 4.0 (reduced from MATLAB 9.0 on 2026-05-25 by user direction).
+        # N=10 sweep (PLASMC_KP_SCALE=0.4444) showed: vh_end_mean cut 1.2 → 0.525
+        # (-56%), SOFT count 2 → 4 of 10, catastrophic-tail xy_max 1.04 → 0.84.
+        # Trade: 0 PRECISE in that sweep, but the architectural-lag analysis
+        # says PRECISE rate is IC-luck dominated anyway.  Setting MATLAB-9.0 →
+        # 4.0 here makes the soft-prioritized config the default.
+        # Legacy MATLAB K_rp=9 recoverable via PLASMC_KP_SCALE=2.25.
+        self._K_rp = pid_scale * np.diag([kp_scale * kp_x * 4.0,
+                                          kp_scale * kp_y * 4.0])
         self._K_ri = pid_scale * np.diag([ki_scale * ki_x * 1.0,
                                           ki_scale * ki_y * 1.0])
         self._K_rd = pid_scale * np.diag([kd_scale * kd_x * 1.4375,
