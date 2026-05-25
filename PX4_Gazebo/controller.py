@@ -122,21 +122,51 @@ class Controller(Thread):
         ki_y = float(os.environ.get("PLASMC_KI_Y_SCALE", "1.0"))
         kd_x = float(os.environ.get("PLASMC_KD_X_SCALE", "1.0"))
         kd_y = float(os.environ.get("PLASMC_KD_Y_SCALE", "1.0"))
-        # K_rp = 4.0 (reduced from MATLAB 9.0 on 2026-05-25 by user direction).
-        # N=10 sweep (PLASMC_KP_SCALE=0.4444) showed: vh_end_mean cut 1.2 → 0.525
-        # (-56%), SOFT count 2 → 4 of 10, catastrophic-tail xy_max 1.04 → 0.84.
-        # Trade: 0 PRECISE in that sweep, but the architectural-lag analysis
-        # says PRECISE rate is IC-luck dominated anyway.  Setting MATLAB-9.0 →
-        # 4.0 here makes the soft-prioritized config the default.
-        # Legacy MATLAB K_rp=9 recoverable via PLASMC_KP_SCALE=2.25.
-        self._K_rp = pid_scale * np.diag([kp_scale * kp_x * 4.0,
-                                          kp_scale * kp_y * 4.0])
+        # K_rp gain scheduling (2026-05-25, after IC2-5 regression of K_rp=4).
+        # K_rp = 4 is good for IC1 (low |s_e_n|, IC-near-center) — gives
+        # softness via reduced PID aggression.  But at IC2-5 the initial
+        # offset gives |s_e_n| ≈ 0.3-0.6, and K_rp=4 has insufficient
+        # authority — the PID integrator winds out before touchdown.
+        #
+        # Solution: schedule K_rp on current image-error magnitude.
+        #   |s_e_n| > THRESH (far)   → K_rp_far  = 9 (full authority)
+        #   |s_e_n| < THRESH (close) → K_rp_close= 4 (soft pursuit of small error)
+        # Smooth tanh blend over WIDTH around THRESH (no chattering).
+        #
+        # Env knobs:
+        #   PLASMC_KP_FAR / PLASMC_KP_CLOSE — base gains (defaults 9, 4)
+        #   PLASMC_KP_SCHED_THRESH         — switch |s_e_n| (default 0.1)
+        #   PLASMC_KP_SCHED_WIDTH          — blend width (default 0.05)
+        #   PLASMC_KP_SCHED_ENABLE         — 0 to disable scheduling (legacy
+        #                                     behaviour: K_rp = K_rp_close)
+        # The existing PLASMC_KP_SCALE / per-axis scalers apply ON TOP of
+        # both far and close gains, so legacy environment hooks still work.
+        self._kp_far_base   = float(os.environ.get("PLASMC_KP_FAR",   "9.0"))
+        self._kp_close_base = float(os.environ.get("PLASMC_KP_CLOSE", "4.0"))
+        self._kp_sched_thresh = float(os.environ.get("PLASMC_KP_SCHED_THRESH", "0.1"))
+        self._kp_sched_width  = float(os.environ.get("PLASMC_KP_SCHED_WIDTH",  "0.05"))
+        self._kp_sched_enable = bool(int(os.environ.get("PLASMC_KP_SCHED_ENABLE", "1")))
+
+        self._K_rp_far = pid_scale * np.diag([kp_scale * kp_x * self._kp_far_base,
+                                              kp_scale * kp_y * self._kp_far_base])
+        self._K_rp_close = pid_scale * np.diag([kp_scale * kp_x * self._kp_close_base,
+                                                kp_scale * kp_y * self._kp_close_base])
+        # Initial value of the effective K_rp — set to close (will be
+        # updated each tick by _updateImgFeatureParam via _compute_K_rp_eff).
+        # Kept on `self._K_rp` for backward compat with logging / params dump.
+        self._K_rp = self._K_rp_close.copy()
+
         self._K_ri = pid_scale * np.diag([ki_scale * ki_x * 1.0,
                                           ki_scale * ki_y * 1.0])
         self._K_rd = pid_scale * np.diag([kd_scale * kd_x * 1.4375,
                                           kd_scale * kd_y * 1.4375])
         if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
             print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
+        if self._kp_sched_enable:
+            print(f"[PLASMC] K_rp scheduling: close={self._kp_close_base}, far={self._kp_far_base}, "
+                  f"thresh={self._kp_sched_thresh}, width={self._kp_sched_width}")
+        else:
+            print(f"[PLASMC] K_rp scheduling DISABLED — using constant K_rp = {self._kp_close_base}")
 
         # Per-axis env-var scalers. Each param has a uniform scalar
         # (PLASMC_<KEY>_SCALE, applied to all 3 axes) AND per-axis scalars
@@ -427,6 +457,20 @@ class Controller(Thread):
             self._ds_e_n_deque.append((self._s_e_n[-1] - self._s_e_n[-2]) / self._dt[-1])
             self._ds_e_n_deque.popleft()
         ds_e_n = smooth4(self._ds_e_n_deque)
+
+        # 2026-05-25 — gain-schedule K_rp by |s_e_n| magnitude.  See header
+        # block on gain scheduling.  Smooth tanh blend prevents chattering
+        # at the threshold.  When PLASMC_KP_SCHED_ENABLE=0, blend = 0 →
+        # K_rp = K_rp_close (constant — legacy K_rp=4 behaviour).
+        if self._kp_sched_enable:
+            sen_mag = float(np.linalg.norm(self._s_e_n[-1]))
+            # blend ∈ [0, 1]: 0 at far below threshold, 1 at far above
+            blend = 0.5 * (1.0 + np.tanh(
+                (sen_mag - self._kp_sched_thresh) /
+                max(self._kp_sched_width, 1e-6)))
+        else:
+            blend = 0.0
+        self._K_rp = blend * self._K_rp_far + (1.0 - blend) * self._K_rp_close
 
         # PID -> desired feature-time-derivative
         V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
