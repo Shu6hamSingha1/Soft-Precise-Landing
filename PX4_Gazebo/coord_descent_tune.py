@@ -200,71 +200,113 @@ def main():
     # Baseline composite — measure current defaults with 3 reps
     print(f"\n=== Baseline measurement (n={reps_per_cand} reps at IC1, current defaults) ===")
     xys, vels = [], []
+    n_sp_baseline = 0
     for r in range(reps_per_cand):
         dst = bundle / "baseline" / f"rep{r+1}"
         xy, vel, prec, soft, tl = run_one_rep(env_for_state(state), ic, dst)
         xys.append(xy); vels.append(vel)
-        print(f"  baseline rep {r+1}: xy={xy:.4f} vel={vel:.4f} prec={prec} soft={soft} tl={tl}")
-        if prec and soft and not tl:
-            print(f"  ★★★ SP at baseline rep {r+1} — stopping ★★★")
-            with open(log_path, "a") as f:
-                json.dump({"event": "sp_at_baseline", "rep": r+1, "xy": xy, "vel": vel}, f); f.write("\n")
-            return
+        is_sp = prec and soft and not tl
+        if is_sp: n_sp_baseline += 1
+        print(f"  baseline rep {r+1}: xy={xy:.4f} vel={vel:.4f} prec={prec} soft={soft} tl={tl}{' ★' if is_sp else ''}")
+    print(f"  baseline SP count: {n_sp_baseline}/{reps_per_cand}")
     best_xy_min, best_vel, best_composite = composite(xys, vels)
     print(f"  baseline composite={best_composite:.4f}  xy_min={best_xy_min:.4f}  vel={best_vel:.4f}")
     with open(log_path, "a") as f:
         json.dump({"event": "baseline", "composite": best_composite,
                    "xy_min": best_xy_min, "vel": best_vel}, f); f.write("\n")
 
-    sp_found = False
+    # IC2-5 set (per landing_test convention)
+    ICS_OFF_CENTER = {
+        "IC2": "2.0,2.0,5.0",
+        "IC3": "-2.0,2.0,5.0",
+        "IC4": "2.0,2.0,7.0",
+        "IC5": "2.0,2.0,3.0",
+    }
+
+    def validate_ic2_5(env, bundle_subdir):
+        """Run 2 reps at each of IC2-5.  Returns dict of stats per IC."""
+        results = {}
+        for ic_name, ic_pos in ICS_OFF_CENTER.items():
+            n_sp = 0; xys = []; vels = []
+            for r in range(2):
+                dst = bundle / bundle_subdir / f"{ic_name}_rep{r+1}"
+                xy, vel, prec, soft, tl = run_one_rep(env, ic_pos, dst)
+                xys.append(xy); vels.append(vel)
+                is_sp = prec and soft and not tl
+                if is_sp: n_sp += 1
+                print(f"      {ic_name} rep{r+1}: xy={xy:.4f} vel={vel:.4f} {'★' if is_sp else ''}")
+            results[ic_name] = {"sp": n_sp, "xy_mean": sum(xys)/len(xys),
+                                "xy_max": max(xys), "vel_mean": sum(vels)/len(vels)}
+        return results
+
+    true_win = False
     for pass_idx in range(1, max_passes + 1):
+        if true_win: break
         print(f"\n{'='*72}\n  PASS {pass_idx}/{max_passes} — {len(AXES)} axes, random order\n{'='*72}")
         axis_order = list(AXES)
         rng.shuffle(axis_order)
         n_accepted_this_pass = 0
         for ax_i, (name, env_var, kind, _def) in enumerate(axis_order):
-            if sp_found:
+            if true_win:
                 break
-            # Sample new value
             new_value = log_uniform(rng)
             old_value = state[name]
             state[name] = new_value
             run_env = env_for_state(state)
             print(f"\n  [pass {pass_idx} axis {ax_i+1}/{len(AXES)}] {name}: try {new_value:.4g} (was {old_value:.4g})")
             xys, vels = [], []
+            n_sp = 0
+            # Run ALL reps_per_cand reps — no early break on first SP.
+            # Need n_sp >= 3 for a "true SP candidate" worth IC2-5 validation.
             for r in range(reps_per_cand):
                 dst = bundle / f"pass{pass_idx}" / f"{name}_{new_value:.4g}_rep{r+1}"
                 xy, vel, prec, soft, tl = run_one_rep(run_env, ic, dst)
                 xys.append(xy); vels.append(vel)
-                print(f"    rep {r+1}: xy={xy:.4f} vel={vel:.4f} prec={prec} soft={soft} tl={tl}")
-                if prec and soft and not tl:
-                    print(f"    ★★★ SP on axis={name} value={new_value:.4g} rep {r+1} ★★★")
-                    sp_found = True
-                    with open(log_path, "a") as f:
-                        json.dump({"event": "sp", "axis": name, "value": new_value,
-                                   "pass": pass_idx, "rep": r+1, "xy": xy, "vel": vel}, f); f.write("\n")
-                    break
-            if sp_found:
-                # Save the SP-producing state
-                state_path.write_text(json.dumps(state, indent=2))
-                break
+                is_sp = prec and soft and not tl
+                if is_sp: n_sp += 1
+                print(f"    rep {r+1}: xy={xy:.4f} vel={vel:.4f} prec={prec} soft={soft} tl={tl}{' ★' if is_sp else ''}")
             xy_min, vel_at_min, comp = composite(xys, vels)
+
+            # ★ TRUE WIN gate: 3/3 SP at IC1, then IC2-5 validation.
+            if n_sp == reps_per_cand:
+                print(f"\n    ★★★ {reps_per_cand}/{reps_per_cand} SP at IC1 — validating IC2-5 ★★★")
+                ic25 = validate_ic2_5(run_env, f"pass{pass_idx}_IC25_{name}")
+                ic25_sp = sum(v["sp"] for v in ic25.values())
+                ic25_n = sum(2 for _ in ic25)
+                ic25_pass = ic25_sp >= 4  # at least half of 8 reps soft+precise
+                print(f"    IC2-5: {ic25_sp}/{ic25_n} SP — {'PASS' if ic25_pass else 'FAIL'}")
+                with open(log_path, "a") as f:
+                    json.dump({"event": "true_win_check", "axis": name,
+                               "value": new_value, "pass": pass_idx,
+                               "ic1_sp": n_sp, "ic25_sp": ic25_sp, "ic25_n": ic25_n,
+                               "ic25_pass": ic25_pass, "ic25_detail": ic25,
+                               "state": state.copy()}, f); f.write("\n")
+                if ic25_pass:
+                    true_win = True
+                    print(f"\n    ★★★ TRUE WIN: IC1 3/3 + IC2-5 {ic25_sp}/{ic25_n} SP ★★★")
+                    state_path.write_text(json.dumps(state, indent=2))
+                    break
+                else:
+                    print(f"    IC2-5 failed — keep searching (note: IC1 is reproducibly SP here though)")
+
+            # Composite-improvement gate (just for tracking — every test logged)
             accepted = comp < best_composite
             if accepted:
-                print(f"    ★ ACCEPTED: composite {comp:.4f} < best {best_composite:.4f}")
+                print(f"    ★ ACCEPTED: composite {comp:.4f} < best {best_composite:.4f}  (SP_count={n_sp}/{reps_per_cand})")
                 best_xy_min, best_vel, best_composite = xy_min, vel_at_min, comp
                 n_accepted_this_pass += 1
             else:
-                print(f"    rejected: composite {comp:.4f} >= best {best_composite:.4f} — reverting")
+                print(f"    rejected: composite {comp:.4f} >= best {best_composite:.4f}  (SP_count={n_sp}/{reps_per_cand}) — reverting")
                 state[name] = old_value
             with open(log_path, "a") as f:
                 json.dump({"event": "axis_test", "pass": pass_idx, "axis": name,
                            "new_value": new_value, "old_value": old_value,
                            "xy_min": xy_min, "vel": vel_at_min, "composite": comp,
                            "best_composite": best_composite, "accepted": accepted,
+                           "n_sp": n_sp,
                            "current_state": state.copy()}, f); f.write("\n")
             state_path.write_text(json.dumps(state, indent=2))
-        if sp_found:
+        if true_win:
             break
         print(f"\n  Pass {pass_idx} complete: {n_accepted_this_pass} of {len(AXES)} axes updated.")
         if n_accepted_this_pass == 0:
@@ -273,7 +315,7 @@ def main():
 
     print(f"\n{'='*72}")
     print(f"  COORDINATE DESCENT DONE")
-    print(f"  SP found: {sp_found}")
+    print(f"  TRUE WIN (3/3 IC1 + IC2-5 pass): {true_win}")
     print(f"  Best composite: {best_composite:.4f}  (xy_min={best_xy_min:.4f}, vel={best_vel:.4f})")
     print(f"  State: {state_path}")
     print(f"  Log: {log_path}")
