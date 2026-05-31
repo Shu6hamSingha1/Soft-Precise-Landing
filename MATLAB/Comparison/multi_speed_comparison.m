@@ -1,6 +1,6 @@
 %% MULTI-SPEED COMPARISON DRIVER
 %
-% Runs the four baseline controllers (Lin 2022, Zhang 2026, Chen 2025,
+% Runs the four baseline controllers (Lin 2022, Zhang 2026, Lin 2023,
 % Cho 2022) on every moving trajectory at every speed multiplier, under
 % the shared disturbance model.
 %
@@ -24,7 +24,7 @@ MS_STATE.trajList        = ["Linear", "Sinusoidal", "Lissajous", "Circular"];
 MS_STATE.mults           = [0.6, 0.8, 1.0, 1.2, 1.4];
 MS_STATE.ctrls           = [2 3 4 5];
 MS_STATE.ctrl_names_full = {'PLASMC (Proposed)', 'Lin 2022', 'Zhang 2026', ...
-                            'Chen 2025',         'Cho 2022'};
+                            'Lin 2023',          'Cho 2022'};
 MS_STATE.datasetDir      = fullfile(mfile_dir, 'Datasets');
 MS_STATE.varsToCapture   = {'X_DS','P_DS','x_t','dx_t','tRange','idx', ...
                             'A_z','BT_u','I_a_d','sigma','kappa', ...

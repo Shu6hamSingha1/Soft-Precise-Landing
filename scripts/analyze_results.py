@@ -20,7 +20,7 @@ import numpy as np
 
 DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Comparison' / 'Datasets'
 
-NAMES = ['DF-ASMC', 'Lin2022', 'Zhang2026', 'Chen2025', 'Cho2022']
+NAMES = ['VDF-ASMC', 'Lin2022', 'Zhang2026', 'Lin2023', 'Cho2022']
 DT = 0.01
 N_MAX = 4000
 LAND_THRESHOLD = 0.5  # m — alt<=0.4 && xy<=0.5 in MATLAB; use 3D proxy

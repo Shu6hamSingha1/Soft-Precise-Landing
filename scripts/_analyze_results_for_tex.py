@@ -202,7 +202,7 @@ def comparison_report():
     print(' 5-CONTROLLER COMPARISON (IC2=[2,2,-5], shared disturbance)')
     print('=============================================================')
     summary = {}
-    ctrl_order = ['PLASMC (Proposed)', 'Lin 2022', 'Zhang 2026', 'Chen 2025', 'Cho 2022']
+    ctrl_order = ['PLASMC (Proposed)', 'Lin 2022', 'Zhang 2026', 'Lin 2023', 'Cho 2022']
     grid = {name: {} for name in ctrl_order}
 
     for traj in TRAJS:

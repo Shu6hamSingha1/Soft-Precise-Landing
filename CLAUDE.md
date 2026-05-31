@@ -66,7 +66,7 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     InitGains_Comparison.m, InitVar.m
     ctrl_Lin2022.m             — Lin et al. (PBVS+PPC)
     ctrl_Zhang2026.m           — Zhang & Wu (PBVS+AEDO)
-    ctrl_Chen2025.m            — Chen et al. (IBVS observer)
+    ctrl_Lin2023.m             — Lin et al. (robust circle-feature IBVS + funnel); replaced Chen 2025 (Obsolete/Comparison/MATLAB/ctrl_Chen2025_v0.m)
     ctrl_Cho2022.m             — Cho et al. (FF-IBVS)
     plotter_comparison.m, plotter_adaptive.m
     run_comparison_all.m, run_monte_carlo.m, multi_speed_comparison.m

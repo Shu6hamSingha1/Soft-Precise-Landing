@@ -37,7 +37,7 @@ Five controllers exercised under a shared disturbance model:
 | 1 | **VDF-ASMC** (Proposed) | IBVS + Optic Flow + Adaptive SMC | Singhal et al. (this work) |
 | 2 | **Lin 2022** | PBVS + Performance-Constrained Control | Lin et al., IEEE TII 2022 |
 | 3 | **Zhang 2026** | PBVS + Adaptive Extended Disturbance Observer | Zhang & Wu, IEEE TIE 2026 |
-| 4 | **Chen 2025** | IBVS + Adaptive Observer | Chen et al., IEEE TCST 2025 |
+| 4 | **Lin 2023** | Robust IBVS + Performance Funnel | Lin et al., IEEE T-ASE 2023 |
 | 5 | **Cho 2022** | Feed-Forward IBVS | Cho et al., Aerosp. Sci. Technol. 2022 |
 
 Baselines 2–5 share a common geometric SO(3) inner loop.
@@ -88,7 +88,7 @@ MATLAB/
     visualControl_comparison.m           -- Per-controller closed-loop simulation
     InitGains_Comparison.m               -- Locked gains for all 5 controllers
     ctrl_Lin2022.m, ctrl_Zhang2026.m     -- Baseline implementations
-    ctrl_Chen2025.m, ctrl_Cho2022.m
+    ctrl_Lin2023.m, ctrl_Cho2022.m
     multi_speed_comparison.m             -- Per-traj per-λ speed-sweep driver
     plotter_comparison.m                 -- MATLAB-side plotting
     Datasets/                            -- Saved .mat results (per-traj, per-ctrl)
@@ -159,7 +159,7 @@ All PDFs are written to `Soft_Precise_Landing/Figures/generated/`.
 ```bash
 cd scripts
 python analyze_results.py            # Summary across all 5 controllers
-python analyze_results.py 4 --plot   # Detailed Chen2025 diagnostics with plots
+python analyze_results.py 4 --plot   # Detailed Lin2023 diagnostics with plots
 ```
 
 Reports: landing status, final position/velocity, attitude excursions, phase-by-phase breakdown, optic-flow noise diagnostics, funnel-margin proximity, and per-baseline crash signatures.

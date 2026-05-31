@@ -3,7 +3,7 @@ Per-trajectory multi-speed comparison plots for the four baseline controllers.
 
 Mirrors the VDF-ASMC plot in plasmc_multi_speed_landing.pdf, but per-baseline
 and per-trajectory: one PDF per moving trajectory, with a 2x2 grid of
-subplots (Lin 2022, Zhang 2026, Chen 2025, Cho 2022). Each subplot overlays
+subplots (Lin 2022, Zhang 2026, Lin 2023, Cho 2022). Each subplot overlays
 the controller's UAV descent at five speed multipliers lambda in {0.6, 0.8,
 1.0, 1.2, 1.4}, with per-lambda soft-precise allowable landing corridor and
 5-category touchdown markers (see `feedback_landing_marker_convention.md`).
@@ -66,15 +66,15 @@ CTRL_ORDER  = [2, 3, 4, 5]
 # ctrl_id maps to baseline letter:
 #   2 -> Baseline A (Lin 2022)     main [1]  / supp [9]
 #   3 -> Baseline B (Zhang 2026)   main [2]  / supp [8]
-#   4 -> Baseline C (Chen 2025)    main [10] / supp [10]
+#   4 -> Baseline C (Lin 2023)     main [10] / supp [10]
 #   5 -> Baseline D (Cho 2022)     main [9]  / supp [11]
 CTRL_TITLE_MAIN = {2: "Baseline A [1] (PBVS--PPC)",
                    3: "Baseline B [2] (PBVS--AEDO)",
-                   4: "Baseline C [10] (IBVS--Obs)",
+                   4: "Baseline C [10] (IBVS--PPC)",
                    5: "Baseline D [9] (FF--IBVS)"}
 CTRL_TITLE_SUPP = {2: "Baseline A [9] (PBVS--PPC)",
                    3: "Baseline B [8] (PBVS--AEDO)",
-                   4: "Baseline C [10] (IBVS--Obs)",
+                   4: "Baseline C [10] (IBVS--PPC)",
                    5: "Baseline D [11] (FF--IBVS)"}
 # Circular trajectory PDF goes to main paper; the other three go to supplement.
 TRAJ_IS_MAIN = {"Circular": True, "Linear": False,

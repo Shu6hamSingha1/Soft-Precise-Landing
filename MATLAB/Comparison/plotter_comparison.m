@@ -41,14 +41,14 @@ end
 colours = { [0.00, 0.45, 0.70],  ...   % 1 PLASMC    – blue
             [0.85, 0.33, 0.10],  ...   % 2 Lin 2022  – red-orange
             [0.47, 0.67, 0.19],  ...   % 3 Zhang 2026– green
-            [0.49, 0.18, 0.56],  ...   % 4 Chen 2025 – purple
+            [0.49, 0.18, 0.56],  ...   % 4 Lin 2023 – purple
             [0.93, 0.69, 0.13]};       % 5 Cho 2022  – gold
 
 styles  = {'-', '--', ':', '-.', '-'};
 lw      = [2.0, 1.8, 1.8, 1.8, 1.8];
 
 ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
-              'Zhang 2026',        'Chen 2025', 'Cho 2022'};
+              'Zhang 2026',        'Lin 2023', 'Cho 2022'};
 
 %% Load data
 D = cell(1, 5);

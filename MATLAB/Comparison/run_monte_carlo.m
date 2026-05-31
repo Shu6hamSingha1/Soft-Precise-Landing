@@ -15,7 +15,7 @@ if nargin < 1 || isempty(n_seeds), n_seeds = 5; end
 
 trajList = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"];
 ctrlList = 1:5;
-ctrl_names = {'PLASMC', 'Lin2022', 'Zhang2026', 'Chen2025', 'Cho2022'};
+ctrl_names = {'PLASMC', 'Lin2022', 'Zhang2026', 'Lin2023', 'Cho2022'};
 
 nT = numel(trajList); nC = numel(ctrlList); nS = n_seeds;
 

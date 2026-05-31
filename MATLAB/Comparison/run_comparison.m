@@ -43,7 +43,7 @@ if ~isempty(seed)
 end
 
 ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
-              'Zhang 2026',        'Chen 2025', 'Cho 2022'};
+              'Zhang 2026',        'Lin 2023', 'Cho 2022'};
 
 fprintf('=== Comparative Study: %d controllers on %s target ===\n\n', ...
         numel(ctrl_list), trajType);

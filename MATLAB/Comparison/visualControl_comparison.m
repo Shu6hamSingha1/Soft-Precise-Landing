@@ -8,7 +8,7 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
 %   1. PLASMC     - Proposed (Singhal et al.)
 %   2. Lin 2022   - Lin et al., IEEE TII 2022
 %   3. Zhang 2026 - Zhang & Wu, IEEE TIE 2026
-%   4. Chen 2025  - Chen et al., IEEE TCST 2025
+%   4. Lin 2023  - Lin et al., IEEE T-ASE 2023 (replaced Chen 2025)
 %   5. Cho 2022   - Cho et al., Aerosp. Sci. Technol. 2022
 %
 % Based on: visualControl_IBVS_adaptive.m
@@ -49,13 +49,13 @@ end
 %   1 = PLASMC (proposed)
 %   2 = Lin 2022
 %   3 = Zhang 2026
-%   4 = Chen 2025
+%   4 = Lin 2023
 %   5 = Cho 2022
 % =========================================================================
 % CTRL_SEL = 1;   % <-- change here
 
 ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
-              'Zhang 2026', 'Chen 2025', 'Cho 2022'};
+              'Zhang 2026', 'Lin 2023', 'Cho 2022'};
 fprintf('%s\n\n', ctrl_names{CTRL_SEL});
 
 %% =========================================================================
@@ -76,7 +76,7 @@ switch CTRL_SEL
     case 1,  K_ctrl = K_PLASMC;
     case 2,  K_ctrl = K_Lin2022;
     case 3,  K_ctrl = K_Zhang2026;
-    case 4,  K_ctrl = K_Chen2025;
+    case 4,  K_ctrl = K_Lin2023;
     case 5,  K_ctrl = K_Cho2022;
 end
 
@@ -199,12 +199,9 @@ if CTRL_SEL == 3
 end
 
 if CTRL_SEL == 4
-    e_hat_chen    = zeros(3,1);
-    vvs_hat_chen  = zeros(3,1);
-    v0_chen       = zeros(3,1);
-    zstar_hat     = K_ctrl.zstar0;
-    e_prev_chen   = zeros(3,1);   % previous e for finite difference (ε = ė + k₁e)
-    zeta_prev_chen = zeros(3,1);  % previous ζ for finite difference (r uses ζ̇)
+    % Lin 2023 funnel states (adaptive rho(0)=|e(0)|+margin, set at idx==1)
+    rho_t0_lin = [];
+    rho_v0_lin = [];
 end
 
 %% =========================================================================
@@ -594,36 +591,53 @@ for idx = 1:N_steps
         F_c_prev    = m * (I_a_cd(:,idx) + g);
 
         %------------------------------------------------------------------
-        case 4   % Chen 2025 — IBVS observer + geometric inner loop
+        case 4   % Lin 2023 — robust circle-feature IBVS + funnel + SO(3)
         %------------------------------------------------------------------
-        psi_dot_curr = B_w_c(3);
+        % Circle-moment image features  (Eq. 7): s_t = [an*xg; an*yg; an]
+        %   an = sqrt(a*/a) from the simulated image-point polygon areas;
+        %   (xg,yg) = image centroid. Built from V_nP_i (same noisy IBVS
+        %   measurement the other IBVS baselines consume), NOT ground-truth
+        %   depth -> keeps the controller image-based / scale-free.
+        % Centroid in NORMALISED image coords (px/f ~ O(0.1)); the area
+        % ratio an is scale-invariant so it is taken on the raw pixel polys.
+        % Lin's literal feature an = sqrt(a*/a) (an>1 when high, ->1 at
+        % touchdown). The image-dynamics inversion (Eq. 8) is handled by the
+        % +k1 virtual-velocity sign in ctrl_Lin2023 (no reciprocal needed).
+        xg     = mean(V_nP_i(1,:)) / f;
+        yg     = mean(V_nP_i(2,:)) / f;
+        a_img  = polyarea(V_nP_i(1,:), V_nP_i(2,:));
+        a_des  = polyarea(V_nP_d(1,:), V_nP_d(2,:));
+        an     = sqrt(max(a_des,1e-9) / max(a_img,1e-9));
+        s_t_lin   = [an*xg; an*yg; an];
+        s_t_d_lin = [mean(V_nP_d(1,:))/f; mean(V_nP_d(2,:))/f; 1];   % an_d = 1
 
-        % Depth-ratio image feature: qz = z/z0 (normalised by initial depth)
-        % Paper's qz = sqrt(a*/a) = z/z* blows up for extreme landing ratios
-        % (5m->0.1m gives qz~50). Use z/z0 with q_d=[0;0;0] instead.
-        V_s_chen = [V_s(1:2); V_s_tc(3) / K_ctrl.zstar0];
-
-        % Error and finite differences for ε, s, r  (Eqs. 22-25)
-        e_chen    = V_s_chen - K_ctrl.q_d;
-        zeta_chen = e_chen - e_hat_chen;
-        if idx == 1
-            de_chen    = zeros(3,1);
-            dzeta_chen = zeros(3,1);
-            e_hat_chen = e_chen;   % sync observer so zeta=0 at t=0
-            zeta_chen  = zeros(3,1);
-        else
-            de_chen    = (e_chen - e_prev_chen) / dt;
-            dzeta_chen = (zeta_chen - zeta_prev_chen) / dt;
+        % Adaptive funnel rho(0) = |e(0)| + margin  (mirror Lin 2022)
+        if isempty(rho_t0_lin)
+            e_t_init   = s_t_lin - s_t_d_lin;
+            rho_t0_lin = abs(e_t_init) + K_ctrl.rho_t0_margin;
+            xi_t_init  = max(min(e_t_init ./ rho_t0_lin, 0.999), -0.999);
+            eps_t_init = 0.5 * log((1 + xi_t_init) ./ (1 - xi_t_init));
+            q_t_init   = 1 ./ ((1 + xi_t_init) .* (1 - xi_t_init));
+            vhat_V0    = K_ctrl.k1 .* (q_t_init .* eps_t_init);   % +k1, per-axis (match ctrl)
+            vhat_I0    = I_R_V * vhat_V0;
+            rho_v0_lin = abs(I_v_c - vhat_I0) + K_ctrl.rho_v0_margin;
         end
-        e_prev_chen    = e_chen;
-        zeta_prev_chen = zeta_chen;
+        rho_t = (rho_t0_lin - K_ctrl.rho_inf_t) .* ...
+                 exp(-K_ctrl.l_t * tRange(idx)) + K_ctrl.rho_inf_t;
+        rho_v = (rho_v0_lin - K_ctrl.rho_inf_v) .* ...
+                 exp(-K_ctrl.l_v * tRange(idx)) + K_ctrl.rho_inf_v;
 
-        [u_2, e_hat_chen, vvs_hat_chen, v0_chen, zstar_hat, I_a_cd(:,idx)] = ...
-            ctrl_Chen2025(V_s_chen, K_ctrl.q_d, ...
-                          e_hat_chen, vvs_hat_chen, v0_chen, zstar_hat, ...
-                          de_chen, dzeta_chen, psi_dot_curr, dt, ...
-                          I_R_C, I_R_V, B_w_c, K_ctrl, m, J, g, e3, ...
-                          tau_xy_max, tau_z_max, T_max, T_min, K_ctrl.psi_des);
+        % Own-velocity feedback (Lin 2023 uses it); velocity noise as for PBVS
+        if NOISE
+            I_v_cm = I_v_c + sigma_vel * randn(3,1);
+        else
+            I_v_cm = I_v_c;
+        end
+
+        [u_2, I_a_cd(:,idx), ~] = ...
+            ctrl_Lin2023(s_t_lin, s_t_d_lin, I_v_cm, rho_t, rho_v, ...
+                         K_ctrl.psi_des, I_R_C, I_R_V, B_w_c, K_ctrl, m, J, g, ...
+                         tau_xy_max, tau_z_max, T_max, T_min);
 
         %------------------------------------------------------------------
         case 5   % Cho 2022 — FF-IBVS + geometric inner loop

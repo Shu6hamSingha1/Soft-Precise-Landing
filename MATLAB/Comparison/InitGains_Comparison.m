@@ -150,34 +150,36 @@ K_Zhang2026.kR     = kR_shared;
 K_Zhang2026.kOmega = kOmega_shared;
 
 %% =========================================================================
-%  4.  K_Chen2025   (Chen et al., 2025, Sec. V)
+%  4.  K_Lin2023   (Lin et al., 2023, Sec. III) -- replaces Chen 2025
 % =========================================================================
-K_Chen2025 = struct();
+% Robust circle-feature IBVS with a performance funnel (PPC) on IMAGE
+% features + geometric SO(3) attitude. Same funnel-backstepping structure
+% as K_Lin2022, but the OUTER loop runs on circle-moment image features
+% s_t = [an*xg; an*yg; an]  (Eq. 7) instead of metric position. That swap
+% IS the IBVS (Lin2023) vs PBVS (Lin2022) distinction; it preserves the
+% deliberate 2 PBVS + 2 IBVS baseline split.
+%   k1 (paper Kt): feature-funnel -> virtual-velocity gain
+%   k2 (paper Kv): velocity-funnel -> force gain
+% SMOKE-TEST starting values (NOT yet tuned). Retune best-effort within the
+% paper's framework on IC2 under the Table-II noise model, exactly as the
+% other baselines were (published gains expected to need adjustment).
+K_Lin2023 = struct();
+K_Lin2023.k1 = [0.4; 0.4; 0.40];             % feature -> virtual velocity (Kt), per-axis
+                                             % (lateral raised for centring; depth=0.40 is the
+                                             %  FoV-safe sweet spot: 0.60 reintroduces FoV loss)
+K_Lin2023.k2 = 4.0;                          % velocity -> force           (Kv)
+K_Lin2023.rho_inf_t = [0.10; 0.10; 0.03];    % feature funnel steady-state (tight depth floor -> an->1 -> z->0.2m touchdown)
+K_Lin2023.rho_inf_v = [0.30; 0.30; 0.15];    % velocity funnel steady-state
+K_Lin2023.l_t       = [0.05; 0.05; 0.10];    % feature funnel decay rate (depth contraction tuned for touchdown)
+K_Lin2023.l_v       = [0.03; 0.03; 0.10];    % velocity funnel decay rate
+K_Lin2023.rho_t0_margin = [1.5; 1.5; 5.0];   % rho_t(0)=|e_t(0)|+margin, per-axis
+                                             % (large depth margin: literal e_t(3)~12 needs
+                                             %  funnel room so xi_t(3) doesn't start near 1)
+K_Lin2023.rho_v0_margin = 1.5;               % rho_v(0) = |e_v(0)| + margin
+K_Lin2023.psi_des = 0;
 
-% Paper gains: kr=8, k1=0.2, k2=20, k3=2, k4=0.4
-% Force mapping corrected: I_F = -m*I_R_V*f - m*g (from ξ̈ = -Rψ f).
-% Gains reduced from paper values: pixel noise (awgn SNR=50) amplified
-% through finite-diff de (noise ~ 1/z^2). At alt<2m, de noise produces
-% force > thrust capacity via r-s+eps ~ 3*de. No safe kr exists:
-% kr=0.7 stalls 0.34m, kr=1.0 stalls 0.41m, kr=1.2 oscillates 0.5m,
-% kr=1.5 reaches ground at 11m/s impact. Structural limitation.
-% q_d(3) = zf/zstar0 so error is exactly zero at landing height zf=0.1m.
-% Best-effort retune. Paper values (kr=8, k2=20) amplify pixel noise
-% through finite-diff de -> v_xy >10 m/s, T saturates 60N instantly.
-% Structural limitation documented in project_chen2025_limitation.md:
-% no safe kr exists for noisy landing. These are the most benign
-% gains that keep the simulation numerically stable.
-K_Chen2025.kr     = 1.0;
-K_Chen2025.k1_obs = 0.2;
-K_Chen2025.k2_obs = 5;
-K_Chen2025.k3_obs = 0.5;
-K_Chen2025.k4_obs = 0.4;
-K_Chen2025.zstar0 = 1.5;
-K_Chen2025.q_d    = [0; 0; 0.0667]; % zf/zstar0 = 0.1/1.5
-K_Chen2025.psi_des = 0;
-
-K_Chen2025.kR     = kR_shared;
-K_Chen2025.kOmega = kOmega_shared;
+K_Lin2023.kR     = kR_shared;
+K_Lin2023.kOmega = kOmega_shared;
 
 %% =========================================================================
 %  5.  K_Cho2022   (Cho et al., 2022, Tables 2 & 3)

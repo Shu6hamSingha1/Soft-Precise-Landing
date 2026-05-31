@@ -45,7 +45,7 @@ CTRL_COLORS = {
     "PLASMC (Proposed)": "C3",
     "Lin 2022":          "C0",
     "Zhang 2026":        "C2",
-    "Chen 2025":         "C4",
+    "Lin 2023":          "C4",
     "Cho 2022":          "C1",
 }
 
@@ -58,14 +58,14 @@ CTRL_DISPLAY_MAIN = {
     "PLASMC (Proposed)": "VDF-ASMC (Proposed)",
     "Lin 2022":          "Baseline A [1] (PBVS--PPC)",
     "Zhang 2026":        "Baseline B [2] (PBVS--AEDO)",
-    "Chen 2025":         "Baseline C [10] (IBVS--Obs)",
+    "Lin 2023":          "Baseline C [10] (IBVS--PPC)",
     "Cho 2022":          "Baseline D [9] (FF--IBVS)",
 }
 CTRL_DISPLAY_SUPP = {
     "PLASMC (Proposed)": "VDF-ASMC (Proposed)",
     "Lin 2022":          "Baseline A [9] (PBVS--PPC)",
     "Zhang 2026":        "Baseline B [8] (PBVS--AEDO)",
-    "Chen 2025":         "Baseline C [10] (IBVS--Obs)",
+    "Lin 2023":          "Baseline C [10] (IBVS--PPC)",
     "Cho 2022":          "Baseline D [11] (FF--IBVS)",
 }
 # Default (for any code path that doesn't specify): main-paper variant.
@@ -263,7 +263,7 @@ plt.close(fig)
 # ---------- Plot G: bar chart summary (aggregated from .mat files) ----------
 trajs = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"]
 traj_labels = ["Case 1", "Case 2", "Case 3", "Case 4", "Case 5"]
-ctrls = ["PLASMC (Proposed)", "Lin 2022", "Zhang 2026", "Chen 2025", "Cho 2022"]
+ctrls = ["PLASMC (Proposed)", "Lin 2022", "Zhang 2026", "Lin 2023", "Cho 2022"]
 
 Z_LAND = 0.205
 
