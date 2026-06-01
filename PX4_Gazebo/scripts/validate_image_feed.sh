@@ -7,7 +7,7 @@ set -u
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 VENV="${VENV:-$HOME/ws/scripts/env2025}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/run_logs"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
 declare -a PIDS=()
@@ -67,10 +67,10 @@ sleep 3   # let the bridge settle and a few frames flow
 echo
 echo "[validate] running validate_image.py ..."
 echo "------------------------------------------------------------"
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-python3 validate_image.py
+python3 apps/validate_image.py
 PY_RC=$?
 echo "------------------------------------------------------------"
 echo "[validate] validate_image.py exit code: $PY_RC"

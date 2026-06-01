@@ -4,6 +4,8 @@
 # Used simulator time instead of system time
 # Sending sinusoidal velocity commands to FC for calibration
 # **************************************************************************
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 import os
 import asyncio
 import time

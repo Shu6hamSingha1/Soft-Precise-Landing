@@ -11,7 +11,7 @@ set -u
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 VENV="${VENV:-$HOME/ws/scripts/env2025}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/run_logs"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
 # HEADLESS=1 -> no Gazebo GUI client, no QGroundControl. PX4's gz launch
@@ -143,7 +143,16 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
 # it's purely there for the heartbeat. This keeps the desktop clean even
 # when Gazebo's GUI is visible.
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
-  QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
+  # Launch QGC non-fatally: FUSE-mount failures (stale /tmp/.mount_QGroun*
+  # leftovers after many SITL runs, fusermount "Operation not permitted")
+  # would otherwise abort the whole run via start_bg's exit 1. QGC is only
+  # here for the heartbeat — non-critical when offboard is the mode.
+  echo "[run] launching qgc (log: $LOG_DIR/qgc.log) — non-fatal"
+  setsid env QT_QPA_PLATFORM=offscreen "$HOME/Downloads/QGroundControl.AppImage" \
+      > "$LOG_DIR/qgc.log" 2>&1 &
+  qgc_pid=$!
+  PIDS+=("$qgc_pid")
+  NAMES[$qgc_pid]="qgc"
 fi
 
 # 4b) Wait for PX4 health to settle (EKF2 converge, baro init, GCS connect).
@@ -175,7 +184,7 @@ echo
 echo "[run] All background processes up. Starting landing_test.py..."
 echo "[run] Press Ctrl+C to abort and clean everything up."
 echo
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 PY_OUT="$LOG_DIR/landing_test.out"
@@ -186,7 +195,7 @@ PY_OUT="$LOG_DIR/landing_test.out"
 # 180 s gives 2.5× headroom. Hang triggers exit code 124; treated as
 # lockstep-race retry signal below.
 PY_TIMEOUT_S="${PY_TIMEOUT_S:-180}"
-PY_SCRIPT="${PY_SCRIPT:-landing_test.py}"
+PY_SCRIPT="${PY_SCRIPT:-apps/landing_test.py}"
 timeout --kill-after=10 "$PY_TIMEOUT_S" python3 "$PY_SCRIPT" 2>&1 | tee "$PY_OUT"
 PY_EXIT=${PIPESTATUS[0]}
 # coreutils timeout returns 124 (or 137 with SIGKILL after grace) on timeout

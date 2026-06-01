@@ -7,7 +7,7 @@ set -u
 
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/run_logs"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
 DURATION="${DURATION:-15}"
 mkdir -p "$LOG_DIR"
 

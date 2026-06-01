@@ -4,6 +4,8 @@
 # Used simulator time instead of system time
 # Added target tracking functionality
 # **************************************************************************
+import os, sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 import os
 import asyncio
 import time
@@ -41,6 +43,8 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 _ic_env = os.environ.get("INITIAL_DRONE_ENU", "0.0,0.0,5.0")
 INITIAL_DRONE_ENU = tuple(float(v) for v in _ic_env.split(","))
 TAKEOFF_HEIGHT = INITIAL_DRONE_ENU[2]   # lift to IC altitude before flying to IC xy
+INITIAL_YAW_DEG = float(os.environ.get("INITIAL_YAW_DEG", "0.0"))
+INITIAL_YAW_RAD = np.deg2rad(INITIAL_YAW_DEG)
 LANDING_HEIGHT = 0.0       # in metres
 LANDING_VELOCITY = 0.20     # in m/s
 HOME_LOCATION = (13.017442, 77.565477, 955.0) #Lab GPS location and sea level altitude
@@ -194,7 +198,7 @@ async def main(record = 'n'):
             target_n = ned_pos.x_m + dn_enu
             target_e = ned_pos.y_m + de_enu
             target_d = ned_pos.z_m - du_enu
-            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
+            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
             await asyncio.sleep(0.02)
             # Convergence check on Gazebo truth (post-setpoint sample).
             cur_enu = pose_node.getPose().UAV.position
@@ -218,7 +222,8 @@ async def main(record = 'n'):
             pitch = np.arcsin(sinp)
             yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
                              1.0 - 2.0*(q.y*q.y + q.z*q.z))
-            yaw_err  = abs(np.arctan2(np.sin(yaw), np.cos(yaw)))
+            yaw_err  = abs(np.arctan2(np.sin(yaw - INITIAL_YAW_RAD),
+                                      np.cos(yaw - INITIAL_YAW_RAD)))
             tilt_err = max(abs(roll), abs(pitch))           # |roll| AND |pitch| both ≤ tol
             prev_enu, prev_t = cur_enu, now
             if (pos_err  <= IC_POS_TOL  and speed   <= IC_VEL_TOL
@@ -255,7 +260,7 @@ async def main(record = 'n'):
             target_n = ned_pos.x_m + (target_enu.y + iy - drone_enu.y)
             target_e = ned_pos.y_m + (target_enu.x + ix - drone_enu.x)
             target_d = ned_pos.z_m - (target_enu.z + iz - drone_enu.z)
-            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
+            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
             await asyncio.sleep(0.02)
         cur_z = FC_node.getPosBody().z_m       # for the brief PID warmup below
 
@@ -273,7 +278,7 @@ async def main(record = 'n'):
         # Hold the last marker-aligned NED setpoint so drone stays put.
         print("[landing_test] PID warmup (100 ms — fills deques only)…")
         for _ in range(5):                        # 5 * 20 ms = 100 ms
-            await FC_node.send_position_ned(target_n, target_e, target_d, 0.0)
+            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
             await asyncio.sleep(0.02)
 
         # Main control loop: controller is now warm.

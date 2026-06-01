@@ -1,8 +1,22 @@
 # PX4_Gazebo .sh master reference
 
-Canonical bash patterns for new sweep / harness scripts in this project. Compiled from the active launchers (`run_aruco_landing.sh`, `run_output_calibration.sh`, `run_input_calibration.sh`, `run_multi_ic_landing.sh`, `run_ic_validation.sh`) and the lessons from one-off sweeps (most of which were deleted — see git log around 2026-06-01).
+Canonical bash patterns for new sweep / harness scripts in this project. Compiled from the active launchers in `scripts/` (`run_aruco_landing.sh`, `run_output_calibration.sh`, `run_input_calibration.sh`, `run_multi_ic_landing.sh`, `run_ic_validation.sh`) and the lessons from one-off sweeps (most of which were deleted — see git log around 2026-06-01).
 
-Source-of-truth refs below point to the canonical implementation. Don't copy a snippet from a random old script — copy from the file:line listed here.
+Source-of-truth refs below point to the canonical implementation. Don't copy a snippet from a random old script — copy from the `scripts/<file>:line` listed here.
+
+## Layout (post-2026-06-01)
+
+```
+PX4_Gazebo/
+├── src/        # library .py — imported by apps/, never invoked directly
+├── apps/       # entry-point .py — invoked by scripts/run_*.sh
+├── tools/      # analyzers / aggregators — invoked manually post-recording
+├── scripts/    # .sh launchers — THIS file's subject
+├── notebooks/  # plotter notebooks
+├── calibration_data/, run_logs/, Images/   # data dirs (not under scripts/)
+```
+
+From inside `scripts/`, `$SCRIPT_DIR` points at `scripts/`, so data dirs need the `$SCRIPT_DIR/..` prefix and `python3 apps/X.py` invocations should be preceded by `cd "$SCRIPT_DIR/.."`.
 
 ---
 
@@ -37,7 +51,7 @@ BUNDLE_DIR="$HOME/ws/Test_Data/<BundleName>/${TIMESTAMP}"; mkdir -p "$BUNDLE_DIR
 
 ## 2. Process cleanup — the canonical pattern
 
-**Source: `run_aruco_landing.sh:27-72`.** Use exactly this pattern for any script that brings up PX4/Gazebo/bridges; do NOT invent your own.
+**Source: `scripts/run_aruco_landing.sh:27-72`.** Use exactly this pattern for any script that brings up PX4/Gazebo/bridges; do NOT invent your own.
 
 ```bash
 PIDS=(); declare -A NAMES
@@ -99,7 +113,7 @@ Key invariants:
 For cal sweeps where ~50% of attempts fail (PX4 failsafe / hung MAVSDK):
 
 ```bash
-TARGET_DIR="$SCRIPT_DIR/calibration_data/output"
+TARGET_DIR="$SCRIPT_DIR/../calibration_data/output"
 for i in 1 2 3 4 5 6 7 8 9 10; do
   echo "=== Sweep $i  $(date +%H:%M:%S) ==="
   timeout 220 bash "$SCRIPT_DIR/run_output_calibration.sh"

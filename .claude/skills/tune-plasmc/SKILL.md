@@ -22,12 +22,13 @@ Every PLASMC landing in this SITL setup fails for exactly one of these reasons. 
 | # | Failure mode | Diagnostic signal | Fix |
 |---|---|---|---|
 | **1** | **MAVSDK rate-loop lag** (architectural ceiling) | xy_mean stuck ~0.3-0.5 m across many gain configs; impulse-test t_d > 20 ms; PX4/MATLAB σ_xy ratio > 3× | Loop-lag reduction (see "Levers within MAVSDK" below). Not a tuning fix. |
-| **2** | **Marker-detection breakdown** at z<0.3m | `Image Feature Pts` frozen for ≥100ms in final descent; sides stay <100 px through touchdown | Interventions 1+2+3 (committed 8baea2b). Already in default config. |
+| **2** | **Marker-detection breakdown** at z<0.3m | `Image Feature Pts` frozen for ≥100ms in final descent; sides stay <100 px through touchdown | Interventions 1+2+3 (committed 8baea2b). KLT fallback (`MARKER_KLT_MAX_STEPS=20`, default ON) further bridges short outages by LK-tracking last good corners — see [[klt-marker-fallback]]. |
 | **3** | **IC sensitivity amplified by lag** | vh0 > 0.2 m/s → σ_xy diverges; PX4 σ_trajectory deviates from MATLAB by 4× in σ_xy only | Tightening IC tol alone doesn't help (validated). Need lag reduction (mode 1). |
 | **4** | **Kr too aggressive** | Peak body rates >1.7 rad/s → LK loses corners → TARGET_LOST | `PLASMC_KR_SCALE=0.4` (current default) + `PLASMC_W_U_MAX=1.0` |
 | **5** | **PID-output saturation** | a_u peaks > 100 m/s² before LPF; tau_ia can't smooth | tau_ia ∈ [0.08, 0.20] is the safe range. Higher = lag, lower = noise. |
 | **6** | **Funnel-envelope breach** | rho_fov_log near zero, theta_current near theta_cone | Widen `RHOFOV0` or relax `THETACAP`. Very rare in current config. |
 | **7** | **Sensor cal drift** | Optic-flow lstsq returns clipped or non-finite | Don't refresh sensor cal — methodology mismatch in `aggregate_calibration.py` produces 7-10× wrong gains (see `feedback_calibration_lessons.md`). Sensor noise already matches MATLAB per Phase 4. |
+| **8** | **Compass yaw drift** under aggressive maneuvers | EKF yaw diverges 30-46° from GT in input-cal-style commands; body-frame analysis shows ~100m phantom position mismatch even though world position is correct within ~10m | Use `V_YAW_SOURCE=alpha` for live IBVS (V frame becomes marker-aligned, compass-independent). Use `BODY_YAW_SOURCE=gt` in `plotter_input_calibration.ipynb` for analysis. See [[compass-yaw-drift]] and [[v-yaw-source-alpha]]. |
 
 If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → already fixed by defaults. Mode 4-7 → tuneable. Mode 3 → secondary to mode 1.
 
@@ -88,15 +89,18 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 | `ie_a_clamp` | 2.0 | **not env-overridable** | Anti-windup on integrated yaw error |
 
 ### Image pipeline (img_data.py)
-| Param | Default | Env knob |
-|---|---|---|
-| `FILTER_WIN` (savgol window) | 13 → user uses 7 | `IMG_FILTER_WIN` |
-| `FILTER_POLYORDER` | 1 | `IMG_FILTER_POLY` |
-| `STALE_THRESH` (intervention 2) | 3 frames | `IMG_STALE_THRESH` |
-| `adaptiveThreshConstant` | 5.0 (intervention 1) | `ARUCO_ADAPT_THRESH_C` |
-| `errorCorrectionRate` | 0.8 (intervention 1) | `ARUCO_ERR_CORRECT` |
-| `minMarkerPerimeterRate` | 0.02 (intervention 1) | `ARUCO_MIN_PERIM_RATE` |
-| `minOtsuStdDev` | 3.0 (intervention 1) | `ARUCO_MIN_OTSU_STD` |
+| Param | Default | Env knob | Notes |
+|---|---|---|---|
+| `FILTER_WIN` (savgol window) | 13 → user uses 7 | `IMG_FILTER_WIN` | |
+| `FILTER_POLYORDER` | 1 | `IMG_FILTER_POLY` | |
+| `STALE_THRESH` (intervention 2) | 3 frames | `IMG_STALE_THRESH` | |
+| `adaptiveThreshConstant` | 5.0 (intervention 1) | `ARUCO_ADAPT_THRESH_C` | |
+| `errorCorrectionRate` | 0.8 (intervention 1) | `ARUCO_ERR_CORRECT` | |
+| `minMarkerPerimeterRate` | 0.02 (intervention 1) | `ARUCO_MIN_PERIM_RATE` | |
+| `minOtsuStdDev` | 3.0 (intervention 1) | `ARUCO_MIN_OTSU_STD` | |
+| `IMG_EXTRA_PTS` (hybrid Shi-Tomasi corners) | 0 | `IMG_EXTRA_PTS` | Set ≥50 → over-determines 8x6 lstsq with extra corners; defaults to OFF |
+| `V_YAW_SOURCE` (V frame yaw source) | `'compass'` | `V_YAW_SOURCE` | `'alpha'` makes V marker-aligned → compass-independent. See [[v-yaw-source-alpha]]. Needs sensor_cal redo after switching. |
+| `MARKER_KLT_MAX_STEPS` (KLT fallback cap) | `20` | `MARKER_KLT_MAX_STEPS` | KLT-tracks last good corners when ArUco fails; bridges short outages. Default ON. Set to `0` to disable. See [[klt-marker-fallback]]. |
 
 ### Landing-test (landing_test.py)
 | Param | Default | Env knob |
@@ -220,10 +224,10 @@ Best-known IC1 N=10 outcome:  PRECISE=1, SOFT=2, **SOFT+PRECISE=1**, TL=0, xy_me
 
 ## Files
 
-- `controller.py` — all PLASMC gains, env knobs
-- `img_data.py` — image pipeline, ArUco params, savgol, stale-feature detection
-- `landing_test.py` — IC convergence, marker-loss grace, control loop, autosave
-- `flight_controller.py` — MAVSDK wrapper, telemetry rates, rate-gain hook (DEAD)
-- `analyze_timeseries.py`, `analyze_loop_latency.py`, `analyze_sensor_noise.py`,
-  `analyze_marker_switch.py`, `analyze_sigma_compare.py`,
-  `diagnose_intervention_reps.py`, `analyze_impulse_response.py` — diagnostics
+- `src/controller.py` — all PLASMC gains, env knobs
+- `src/img_data.py` — image pipeline, ArUco params, savgol, stale-feature detection
+- `apps/landing_test.py` — IC convergence, marker-loss grace, control loop, autosave
+- `src/flight_controller.py` — MAVSDK wrapper, telemetry rates, rate-gain hook (DEAD)
+- `tools/analyze_timeseries.py`, `tools/analyze_loop_latency.py`, `tools/analyze_sensor_noise.py`,
+  `tools/analyze_marker_switch.py`, `tools/analyze_sigma_compare.py`,
+  `tools/diagnose_intervention_reps.py`, `tools/analyze_impulse_response.py` — diagnostics

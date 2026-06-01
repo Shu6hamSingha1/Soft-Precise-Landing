@@ -13,7 +13,7 @@ Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the maste
 
 - User asks to write a new sweep / harness / cal-loop / multi-IC / impulse-response script
 - User asks "can you make a .sh that ..."
-- About to substantively edit `run_aruco_landing.sh`, `run_output_calibration.sh`, `run_input_calibration.sh`, `run_ic_validation.sh`, or `run_multi_ic_landing.sh`
+- About to substantively edit `scripts/run_aruco_landing.sh`, `scripts/run_output_calibration.sh`, `scripts/run_input_calibration.sh`, `scripts/run_ic_validation.sh`, or `scripts/run_multi_ic_landing.sh`
 - A bash sweep loop in a one-shot Bash tool call would be more than ~15 lines (write a file instead, applying these patterns)
 
 ## What to do
@@ -25,7 +25,7 @@ Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the maste
    - `feedback_precision_softness_frontier` — RHO/THETACAP/KP frontier mapped
    - `feedback_phase1_matlab_baseline` — controller works in MATLAB; the gap is SITL-specific
 4. **If a new file is warranted**, copy the canonical snippets from the reference. Don't invent variants. Specifically:
-   - Cleanup helper + `start_bg` from `run_aruco_landing.sh:27-72` (reference §2) — verbatim
+   - Cleanup helper + `start_bg` from `scripts/run_aruco_landing.sh:27-72` (reference §2) — verbatim
    - Per-rep landing harness with `before`/`latest` diff (reference §4) — verbatim
    - IC table from reference §5
    - Env-knob table from reference §6
@@ -37,7 +37,7 @@ Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the maste
 Need to run something repeatedly?
 ├── Once, < 15 lines, throwaway       → inline shell `for` loop, no file
 ├── Once, needs metric extraction     → /tmp/loop.sh (not tracked); delete after
-├── Recurring methodology / new harness → PX4_Gazebo/run_<name>.sh (tracked),
+├── Recurring methodology / new harness → PX4_Gazebo/scripts/run_<name>.sh (tracked),
 │                                          following SH_REFERENCE.md patterns
 └── Variation on existing launcher    → env-var override, NOT a fork
 ```

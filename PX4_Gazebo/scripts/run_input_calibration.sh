@@ -8,10 +8,10 @@ set -u
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 VENV="${VENV:-$HOME/ws/scripts/env2025}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/run_logs"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
-CALIB_PARENT="$SCRIPT_DIR/calibration_data/input"
+CALIB_PARENT="$SCRIPT_DIR/../calibration_data/input"
 mkdir -p "$CALIB_PARENT"
 TIMESTAMP="$(date '+%a %b %e %H-%M-%S %Y')"
 export INPUT_CALIB_OUT_DIR="${INPUT_CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"
@@ -89,7 +89,14 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
 
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
-  QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
+  # Non-fatal: QGC AppImage FUSE-mount failures (stale /tmp/.mount_QGroun*
+  # leftovers from previous runs) would trip start_bg's exit 1. QGC is only
+  # here for GCS heartbeat so PX4 preflight passes — if it fails, PX4 still
+  # runs; preflight just takes the longer "Communication regained" path.
+  echo "[input-calib] launching qgc (non-fatal)"
+  setsid env QT_QPA_PLATFORM=offscreen "$HOME/Downloads/QGroundControl.AppImage" \
+      > "$LOG_DIR/qgc.log" 2>&1 &
+  PIDS+=("$!")
 fi
 
 echo -n "[input-calib] waiting for PX4 preflight "
@@ -102,8 +109,8 @@ done
 echo " (${WAITED}s)"
 
 echo "[input-calib] running input_calibration.py (data -> $INPUT_CALIB_OUT_DIR)..."
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 input_calibration.py
+INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 apps/input_calibration.py
 echo "[input-calib] script exit $?"

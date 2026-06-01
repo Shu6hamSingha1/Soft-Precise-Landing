@@ -7,14 +7,14 @@ set -u
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 VENV="${VENV:-$HOME/ws/scripts/env2025}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/run_logs"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
 # Every run lands in its own timestamped folder so we keep history (matches
 # the original ~/ws/scripts/soft_precise_landing/output_calibration.py
 # convention which used time.ctime()-style names). A `latest` symlink in the
 # same parent tracks the most recent run for analyze/validate scripts.
-CALIB_PARENT="$SCRIPT_DIR/calibration_data/output"
+CALIB_PARENT="$SCRIPT_DIR/../calibration_data/output"
 mkdir -p "$CALIB_PARENT"
 TIMESTAMP="$(date '+%a %b %e %H-%M-%S %Y')"
 export CALIB_OUT_DIR="${CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"
@@ -94,7 +94,13 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
 
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
-  QT_QPA_PLATFORM=offscreen start_bg qgc "$HOME/Downloads/QGroundControl.AppImage"
+  # Non-fatal: QGC FUSE-mount failures (stale /tmp/.mount_QGroun* leftovers
+  # after many SITL runs) would otherwise abort the entire calibration
+  # attempt via start_bg's exit 1. QGC is only here for GCS heartbeat.
+  echo "[calib] launching qgc (non-fatal)"
+  setsid env QT_QPA_PLATFORM=offscreen "$HOME/Downloads/QGroundControl.AppImage" \
+      > "$LOG_DIR/qgc.log" 2>&1 &
+  PIDS+=("$!")
 fi
 
 echo -n "[calib] waiting for PX4 preflight "
@@ -114,8 +120,8 @@ echo "[calib] settling 20s before arm (heading-estimate convergence)..."
 sleep 20
 
 echo "[calib] running output_calibration.py (data -> $CALIB_OUT_DIR)..."
-cd "$SCRIPT_DIR"
+cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 output_calibration.py
+CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 apps/output_calibration.py
 echo "[calib] script exit $?"

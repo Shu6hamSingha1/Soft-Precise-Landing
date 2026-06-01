@@ -240,6 +240,13 @@ class Controller(Thread):
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
+        # LPF on yaw rate command. The s[3] marker-orientation feature wraps
+        # at ±π/2 due to 180° symmetry of the moment estimator; single-pixel
+        # noise near the boundary flips e_a by π, producing ~100°/s u_a step
+        # commands that PX4's motor mixer translates into vertical-thrust
+        # ripple (T ∝ ω²). LPF removes the high-frequency switching while
+        # preserving the slow yaw-drift correction.
+        self._tau_ua = float(os.environ.get("PLASMC_TAU_UA", "0.1"))
 
         # Anti-windup clamps (MATLAB izeta_2 clamped to ±5; others heuristic)
         self._iV_s_e_n_clamp = 5.0
@@ -653,6 +660,10 @@ class Controller(Thread):
         # Sign: MATLAB integrates u_a into desired heading psi_d. Body yaw rate
         # to drive heading toward target = same sign as u_a's effect on psi_d
         # but expressed in body frame. NED yaw rate convention matches.
+        # LPF the raw u_a before storing — see _tau_ua comment.
+        if len(self._u_a) > 0 and len(self._dt) > 0 and self._tau_ua > 0:
+            alpha_ua = self._tau_ua / (self._tau_ua + self._dt[-1])
+            u_a = alpha_ua * self._u_a[-1] + (1.0 - alpha_ua) * u_a
         self._u_a.append(float(u_a))
 
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
