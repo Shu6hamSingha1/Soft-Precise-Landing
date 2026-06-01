@@ -30,6 +30,23 @@ WINDOWS    = [5, 7, 9, 11, 13, 15, 17, 21, 25, 31, 41, 51, 71, 101]
 POLYORDERS = [1, 2, 3, 4]
 
 
+def _body_omega_from_quats(quats, t):
+    """Body-frame ω from quaternions via central difference (preserves SO(3))."""
+    N = len(quats); w = np.zeros((N, 3))
+    for i in range(N):
+        i0 = max(0, i - 1); i1 = min(N - 1, i + 1)
+        if i1 == i0: continue
+        dt_pair = t[i1] - t[i0]
+        if dt_pair < 1e-9: continue
+        w0, x0, y0, z0 = quats[i0]
+        w1, x1, y1, z1 = quats[i1]
+        dq_x = w0*x1 - x0*w1 - y0*z1 + z0*y1
+        dq_y = w0*y1 + x0*z1 - y0*w1 - z0*x1
+        dq_z = w0*z1 - x0*y1 + y0*x1 - z0*w1
+        w[i] = 2.0 * np.array([dq_x, dq_y, dq_z]) / dt_pair
+    return w
+
+
 def compute_gt(gt):
     t_g = np.array(gt["Time"]); dt = np.diff(t_g); valid = np.hstack(([True], dt > 1e-6))
     t_g = t_g[valid]; n = len(t_g)
@@ -52,14 +69,14 @@ def compute_gt(gt):
         B_v_tu[i] = FLU_2_FRD @ np.linalg.inv(W_T_P[i, :3, :3]) @ W_v_tu[i]
     z = B_x_tu[:, 2].copy(); z[np.abs(z) < 0.1] = np.nan
     B_y_g = B_v_tu / z[:, None]
-    W_dR_B = np.gradient(W_T_P[:, :3, :3], t_g, axis=0)
-    W_dR_T = np.gradient(W_R_T, t_g, axis=0)
-    B_w_ug = np.zeros((n, 3)); B_w_tg = np.zeros((n, 3))
-    for i in range(n):
-        s = W_T_P[i, :3, :3].T @ W_dR_B[i]
-        B_w_ug[i] = FLU_2_FRD @ np.array([s[2, 1], s[0, 2], s[1, 0]])
-        s = W_R_T[i].T @ W_dR_T[i]
-        B_w_tg[i] = FLU_2_FRD @ np.array([s[2, 1], s[0, 2], s[1, 0]])
+    # Quaternion-difference for body-frame ω (preserves SO(3); element-wise
+    # np.gradient on R breaks orthogonality and over-reports ω_z ~2×).
+    uav_q = np.array([[u.orientation.w, u.orientation.x,
+                       u.orientation.y, u.orientation.z] for u in uav])
+    tgt_q = np.array([[t.orientation.w, t.orientation.x,
+                       t.orientation.y, t.orientation.z] for t in tgt])
+    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_q, t_g).T).T
+    B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_q, t_g).T).T
     B_w_tug = B_w_tg - B_w_ug
     xc_gt = B_x_tu[:, 0] / B_x_tu[:, 2]
     yc_gt = B_x_tu[:, 1] / B_x_tu[:, 2]

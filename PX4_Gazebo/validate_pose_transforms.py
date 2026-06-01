@@ -27,6 +27,29 @@ from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion, DCM
 
 
+def _body_omega_from_quats(quats, t):
+    """Body-frame angular velocity from quaternions via central difference
+    (δq = conj(q[i-1])·q[i+1]; ω_body ≈ 2·δq.xyz / dt). Preserves SO(3)."""
+    N = len(quats)
+    w = np.zeros((N, 3))
+    for i in range(N):
+        i0 = max(0, i - 1)
+        i1 = min(N - 1, i + 1)
+        if i1 == i0:
+            continue
+        q0, q1 = quats[i0], quats[i1]
+        dt_pair = t[i1] - t[i0]
+        if dt_pair < 1e-9:
+            continue
+        w0, x0, y0, z0 = q0
+        w1, x1, y1, z1 = q1
+        dq_x = w0*x1 - x0*w1 - y0*z1 + z0*y1
+        dq_y = w0*y1 + x0*z1 - y0*w1 - z0*x1
+        dq_z = w0*z1 - x0*y1 + y0*x1 - z0*w1
+        w[i] = 2.0 * np.array([dq_x, dq_y, dq_z]) / dt_pair
+    return w
+
+
 def banner(s):
     print()
     print("=" * 78)
@@ -171,11 +194,11 @@ def main():
 
     # ---- CHECK 8: Angular velocity in body FRD ----
     banner("CHECK 8: B_w_ug — UAV angular velocity in body FRD")
-    W_dR_B = np.gradient(W_T_P[:, :3, :3], t_g, axis=0)
-    B_w_ug = np.zeros((n, 3))
-    for i in range(n):
-        skew = W_T_P[i, :3, :3].T @ W_dR_B[i]
-        B_w_ug[i] = FLU_2_FRD @ np.array([skew[2, 1], skew[0, 2], skew[1, 0]])
+    # Quaternion-difference (preserves SO(3); see plotter_output_calibration.ipynb
+    # cell 6). np.gradient(W_R_B) breaks orthogonality and over-reports ω_z ~2×.
+    uav_quats = np.array([[p.orientation.w, p.orientation.x,
+                           p.orientation.y, p.orientation.z] for p in uav_poses])
+    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
     print(f"  B_w_ug RMS: ({np.sqrt(np.mean(B_w_ug[:,0]**2)):.4f}, "
           f"{np.sqrt(np.mean(B_w_ug[:,1]**2)):.4f}, {np.sqrt(np.mean(B_w_ug[:,2]**2)):.4f})  [rad/s]")
     print(f"  EXPECT: moderate roll/pitch rates during oscillation (typically <1 rad/s)")

@@ -27,6 +27,30 @@ def load_data(data_dir):
     }
 
 
+def _body_omega_from_quats(quats, t):
+    """Body-frame angular velocity from quaternions via central difference
+    (δq = conj(q[i-1])·q[i+1]; ω_body ≈ 2·δq.xyz / dt). Preserves SO(3),
+    unlike element-wise np.gradient on the rotation matrix."""
+    N = len(quats)
+    w = np.zeros((N, 3))
+    for i in range(N):
+        i0 = max(0, i - 1)
+        i1 = min(N - 1, i + 1)
+        if i1 == i0:
+            continue
+        q0, q1 = quats[i0], quats[i1]
+        dt_pair = t[i1] - t[i0]
+        if dt_pair < 1e-9:
+            continue
+        w0, x0, y0, z0 = q0
+        w1, x1, y1, z1 = q1
+        dq_x = w0*x1 - x0*w1 - y0*z1 + z0*y1
+        dq_y = w0*y1 + x0*z1 - y0*w1 - z0*x1
+        dq_z = w0*z1 - x0*y1 + y0*x1 - z0*w1
+        w[i] = 2.0 * np.array([dq_x, dq_y, dq_z]) / dt_pair
+    return w
+
+
 def compute_ground_truth_flow_and_w(gt):
     """Port of plotter_output_calibration.ipynb cells 16 + 18.
 
@@ -78,20 +102,15 @@ def compute_ground_truth_flow_and_w(gt):
     z[np.abs(z) < 0.1] = np.nan  # invalid
     B_y_g = B_v_tu / z[:, np.newaxis]
 
-    # Ground-truth angular velocity (body frame): UAV
-    W_R_B = W_T_P[:, :3, :3]
-    W_dR_B = np.gradient(W_R_B, t_g, axis=0)
-    B_w_ug = np.zeros((n, 3))
-    for i, (R, dR) in enumerate(zip(W_R_B, W_dR_B)):
-        skew = R.T @ dR
-        B_w_ug[i] = FLU_2_FRD @ np.array([skew[2, 1], skew[0, 2], skew[1, 0]])
-
-    # Ground-truth angular velocity (body frame): target
-    W_dR_T = np.gradient(W_R_T, t_g, axis=0)
-    B_w_tg = np.zeros((n, 3))
-    for i, (R, dR) in enumerate(zip(W_R_T, W_dR_T)):
-        skew = R.T @ dR
-        B_w_tg[i] = FLU_2_FRD @ np.array([skew[2, 1], skew[0, 2], skew[1, 0]])
+    # Ground-truth angular velocity (body frame) via quaternion difference.
+    # np.gradient on the 9 rotation-matrix elements breaks SO(3); the non-skew
+    # residual leaks ~2× into ω_z (verified in plotter_output_calibration.ipynb).
+    uav_quats = np.array([[p.orientation.w, p.orientation.x,
+                           p.orientation.y, p.orientation.z] for p in uav_poses])
+    tgt_quats = np.array([[p.orientation.w, p.orientation.x,
+                           p.orientation.y, p.orientation.z] for p in target_poses])
+    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
+    B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_quats, t_g).T).T
     B_w_tug = B_w_tg - B_w_ug
 
     return t_g, B_y_g, B_w_tug, B_x_tu, valid

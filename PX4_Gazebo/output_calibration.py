@@ -17,12 +17,13 @@ from gz_subscriber import GZ_Subscriber, Pose_Node, Clock_Node
 # from numerical_methods import RK5
 # from controller import Controller
 
-# Companion Computer Details:
+# Companion Computer Details — MUST match landing_test.py to keep the
+# calibration regime identical to the operational regime.  Any divergence
+# (sleep rate, resolution, filter window, IMG_PROCESSOR config) produces a
+# cal that doesn't transfer to landing.
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
-# RESOLUTION = (1280, 960)
-# RESOLUTION = (640, 480)
-RESOLUTION = (320, 240)
-SLEEP_TIME = 1/30
+RESOLUTION = (640, 480)        # match landing_test.py:25
+SLEEP_TIME = 1/200             # match landing_test.py:26 (was 1/30 — 6.7× slower)
 REF_RAD_OPT_FLOW = -0.30
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 
@@ -30,9 +31,41 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
 # preflight checks happy. Empirically the previous 1.0 m sinusoid tripped
 # "High Accelerometer Bias" / "horizontal velocity unstable" → failsafe →
 # OFFBOARD drop → send_position_ned hang.)
-CALIB_AMP_XY = 0.7
-CALIB_AMP_Z  = 0.3       # mild z oscillation needed to excite the z-axis optical flow
-CALIB_AMP_YAW_DEG = 10.0
+CALIB_AMP_XY = 0.35    # 2026-05-30: cut from 0.7 → 0.35. At 0.5 Hz the
+                       # peak tilt for 0.7 m amplitude is ~35°, which moves
+                       # the marker out of FoV during the x/y phases →
+                       # 100% zero-row blackouts mid-phase. 0.35 m → ~10-15°
+                       # peak tilt, marker stays detectable.
+CALIB_AMP_Z  = float(os.environ.get("CALIB_AMP_Z", "1.2"))
+                          # 2026-05-29: bumped from 0.3 to 0.6m to lift z optic-flow
+                          # signal out of the noise floor (std had been 0.003).
+                          # 2026-06-01: bumped 0.6 → 1.2m. n=9-run cal showed flow_z
+                          # 95% CI = ±30% (much wider than other axes' ±4%) because
+                          # 0.6m is still small. 1.2m gives peak vert vel ~3.77 m/s
+                          # and peak accel ~5.9 m/s² (~0.6g extra thrust) — within
+                          # PX4 envelope at h≈3m. Marker stays in FoV across
+                          # altitude range 1.8-4.2m. Reduce via env var if PX4
+                          # failsafes start tripping on a particular drone build.
+CALIB_AMP_YAW_DEG = float(os.environ.get("CALIB_AMP_YAW_DEG", "30.0"))
+                          # 2026-06-01: bumped 10° → 30°. n=9-run cal showed ω_z
+                          # 95% CI = ±9% (vs ±3-4% for other ω axes) — yaw signal
+                          # was small. 30° gives peak yaw rate ~94°/s = 1.64 rad/s
+                          # (within typical MAX_YAW_RATE). Marker stays centered.
+
+# PHASED-EXCITATION redesign 2026-05-29. The previous lockstep `pos_cmd = AMP*val`
+# on all four axes (x, y, z, yaw) made the four input channels 100% correlated,
+# so lstsq could not separate per-axis scale factors — z-axis scale came back
+# NaN in 4/5 fresh runs (May 29). Now: each axis is excited ALONE in sequence
+# (x then y then z then yaw), with a tagged "phase" log so analyze_calibration
+# can derive each cal factor from a clean single-axis segment.
+#
+# Each phase lasts CALIB_PHASE_S seconds. Sine frequency CALIB_FREQ_HZ=0.5
+# → 4 cycles per 8s phase. Setpoint rate now matches landing (200 Hz) — the
+# IMG_PROCESSOR / image-callback rate stays at the Gazebo capture rate (~60 Hz)
+# regardless of how fast we send setpoints.
+CALIB_PHASE_S    = float(os.environ.get("CALIB_PHASE_S", "8.0"))    # seconds per single-axis phase
+CALIB_SETTLE_S   = float(os.environ.get("CALIB_SETTLE_S", "1.0"))   # seconds of zero command between phases
+CALIB_FREQ_HZ    = float(os.environ.get("CALIB_FREQ_HZ", "0.5"))    # excitation frequency
 # Per-call timeout on send_position_ned so a stuck MAVSDK can't deadlock the
 # sweep loop. 0.5 s is generous vs the 33 ms loop period.
 CALIB_SEND_TIMEOUT_S = 0.5
@@ -77,11 +110,44 @@ async def main(record = 'n'):
     target_pose = []
     opt_flow_ang_vel = []
     img_feature_param = []
+    phase_log = []           # per-sample tag: 'x', 'y', 'z', 'yaw', or 'settle'
     start_pose = None
     t_c = []
     cmd = []
-    # Use the following az_profile for vz_cmd to FC
-    cmd_profile = 1.0*np.sin(np.linspace(0, 15*np.pi, 1000))
+    # Phased excitation: build a script of (phase_name, x_fn, y_fn, z_fn, yaw_fn, duration)
+    # Each fn takes phase-relative time `tau` (0..duration) and returns the offset.
+    zero = lambda tau: 0.0
+    sin_x   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    sin_y   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    sin_z   = lambda tau: CALIB_AMP_Z  * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    # Phase order: settle → yaw → x → y → z. Yaw is FIRST after the initial
+    # settle so even if PX4 drops the MAVSDK connection mid-sweep (observed
+    # during the more-aggressive z phase), we keep clean ω_z data. z is LAST
+    # because it's the most likely to trip PX4 failsafes.
+    #
+    # CALIB_PHASES env var (comma-separated): select which active phases to
+    # include. Default 'yaw,x,y,z' = all. For z-only recovery (when the full
+    # sweep dies mid-y leaving z phase unsampled), use CALIB_PHASES=z and the
+    # script will skip yaw/x/y entirely — z then runs early, within the ~22 s
+    # PX4-MAVSDK uptime budget.
+    _selected = os.environ.get("CALIB_PHASES", "yaw,x,y,z").split(",")
+    _selected = [s.strip() for s in _selected if s.strip()]
+    _phase_fns = {
+        'yaw': (zero, zero, zero, sin_yaw),
+        'x':   (sin_x, zero, zero, zero),
+        'y':   (zero, sin_y, zero, zero),
+        'z':   (zero, zero, sin_z, zero),
+    }
+    phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S)]
+    for _ph in _selected:
+        if _ph not in _phase_fns:
+            print(f"  [warn] unknown phase {_ph!r}; skipping"); continue
+        fx, fy, fz, fyaw = _phase_fns[_ph]
+        phase_script.append((_ph, fx, fy, fz, fyaw, CALIB_PHASE_S))
+        phase_script.append(('settle', zero, zero, zero, zero, CALIB_SETTLE_S))
+    total_s = sum(p[5] for p in phase_script)
+    print(f"[calib] phased excitation: {len(phase_script)} phases, total {total_s:.1f}s")
 
     try:
         rclpy.init()
@@ -107,7 +173,7 @@ async def main(record = 'n'):
         while start_pose is None:
             start_pose = pose_node.getPose().UAV
 
-        yaw_deg_0 = yaw_from_quaternion(FC_node.getQuat())*0.0
+        yaw_deg_0 = yaw_from_quaternion(FC_node.getQuat())
         
         img_node = ID.IMG_PROCESSOR(capRate=CAPTURE_RATE, resolution=RESOLUTION, time_keeper=time_node, controller=FC_node) # start the thread for onboard camera flow streaming
 
@@ -118,7 +184,7 @@ async def main(record = 'n'):
         else:
             print("Starting without recording...!")
 
-        await FC_node.arm_and_takeoff(8.0)
+        await FC_node.arm_and_takeoff(5.0)   # match landing_test.py default TAKEOFF_HEIGHT
 
         # Post-takeoff stabilization: PX4's autonomous TAKEOFF task hands off to
         # HOLD/LOITER but the state-machine transition takes a moment. If we
@@ -139,60 +205,69 @@ async def main(record = 'n'):
 
         # res = input("Do you want to start? (y/n)")
 
-        print("Starting calibration sweep...")
+        print("Starting calibration sweep (phased excitation)...")
         # Capture post-takeoff altitude so we can detect failsafe-driven descent.
         takeoff_z = FC_node.getPosBody().z_m
-        for val in cmd_profile:
-            if not img_node.is_alive() and FC_node.LANDED:
-                break
 
-            # Bail if PX4 has dropped offboard and started descending under failsafe.
-            # PosBody z is NED-down (negative = above start), so a "drop" means z
-            # increases toward zero (or positive).
-            cur_z = FC_node.getPosBody().z_m
-            if cur_z - takeoff_z > CALIB_ALT_DROP_BAIL_M:
-                print(f"  [bail] altitude dropped {cur_z - takeoff_z:+.2f} m below takeoff — "
-                      f"PX4 likely failsafed; ending sweep early.")
-                break
+        for ph_name, fn_x, fn_y, fn_z, fn_yaw, duration in phase_script:
+            print(f"  [phase] {ph_name:6s}  duration={duration:.1f}s")
+            phase_t0 = time_node.perf_counter()
+            n_steps = int(duration / SLEEP_TIME)
+            for k in range(n_steps):
+                if not img_node.is_alive() and FC_node.LANDED:
+                    break
 
-            if CONTROLLER_READY:
-                t_c.append(time_node.perf_counter() - start_time)
-            else:
-                start_time = time_node.perf_counter()
-                CONTROLLER_READY = True
-                t_c = [0.0]
+                # Bail on failsafe-driven descent.
+                cur_z = FC_node.getPosBody().z_m
+                if cur_z - takeoff_z > CALIB_ALT_DROP_BAIL_M:
+                    print(f"  [bail] altitude dropped {cur_z - takeoff_z:+.2f} m below takeoff — "
+                          f"PX4 likely failsafed; ending sweep early.")
+                    break
 
-            # Reduced-amplitude command: gentler than the original 1.0 m / 15° / ±1 m z
-            # sweep, but enough motion on all 4 axes for a clean lstsq solution.
-            # z varies smoothly (sin), not the square-wave-of-sign of the original.
-            pos_cmd = np.array([CALIB_AMP_XY * val,
-                                CALIB_AMP_XY * val,
-                                takeoff_z + CALIB_AMP_Z * val,
-                                yaw_deg_0 + CALIB_AMP_YAW_DEG * val])
-
-            try:
-                if img_node.FEATURE_IS_VISIBLE:
-                    await asyncio.wait_for(
-                        FC_node.send_position_ned(*pos_cmd),
-                        timeout=CALIB_SEND_TIMEOUT_S)
+                if CONTROLLER_READY:
+                    t_c.append(time_node.perf_counter() - start_time)
                 else:
-                    yaw_deg = yaw_from_quaternion(FC_node.getQuat())
-                    await asyncio.wait_for(
-                        FC_node.send_position_ned(0.0, 0.0, takeoff_z, yaw_deg),
-                        timeout=CALIB_SEND_TIMEOUT_S)
-            except asyncio.TimeoutError:
-                print(f"  [bail] send_position_ned timed out — PX4 likely rejected "
-                      f"offboard setpoint; ending sweep early.")
-                break
+                    start_time = time_node.perf_counter()
+                    phase_t0 = start_time
+                    CONTROLLER_READY = True
+                    t_c = [0.0]
 
-            UAV_pose.append(pose_node.getPose().UAV)
-            target_pose.append(pose_node.getPose().target)
-            # Log RAW values (pre sensor_cal) so this script can be used to recalibrate.
-            opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
-            img_feature_param.append(img_node.getRawImgFeatureParam())
-            cmd.append(pos_cmd)
+                tau = time_node.perf_counter() - phase_t0   # phase-relative time
+                pos_cmd = np.array([
+                    fn_x(tau),
+                    fn_y(tau),
+                    takeoff_z + fn_z(tau),
+                    yaw_deg_0 + fn_yaw(tau),
+                ])
 
-            await asyncio.sleep(SLEEP_TIME)
+                try:
+                    if img_node.FEATURE_IS_VISIBLE:
+                        await asyncio.wait_for(
+                            FC_node.send_position_ned(*pos_cmd),
+                            timeout=CALIB_SEND_TIMEOUT_S)
+                    else:
+                        yaw_deg = yaw_from_quaternion(FC_node.getQuat())
+                        await asyncio.wait_for(
+                            FC_node.send_position_ned(0.0, 0.0, takeoff_z, yaw_deg),
+                            timeout=CALIB_SEND_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    print(f"  [bail] send_position_ned timed out — PX4 likely rejected "
+                          f"offboard setpoint; ending sweep early.")
+                    break
+
+                UAV_pose.append(pose_node.getPose().UAV)
+                target_pose.append(pose_node.getPose().target)
+                # Log RAW values (pre sensor_cal) so this script can be used to recalibrate.
+                opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
+                img_feature_param.append(img_node.getRawImgFeatureParam())
+                cmd.append(pos_cmd)
+                phase_log.append(ph_name)
+
+                await asyncio.sleep(SLEEP_TIME)
+            else:
+                # inner loop completed without break → next phase
+                continue
+            break   # outer loop break if inner broke
 
             # print(f"Commanded Profile | Position: {pos_cmd} | {UAV_pose[-1]}")
             # print(f"Commanded vz: {vz}")
@@ -224,7 +299,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd, "Phase": phase_log}
             img_params = img_node.getParams()
 
         # Close img_node thread

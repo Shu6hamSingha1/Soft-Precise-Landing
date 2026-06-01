@@ -5,6 +5,7 @@
 
 #!/usr/bin/env python3
 # Import the necessary libraries
+import os
 import time
 from threading import Thread
 
@@ -167,7 +168,17 @@ class Image_Node(Node):
                 frame = self.br.imgmsg_to_cv2(msg, desired_encoding="bgr8")
                 quat = self._FC.getQuat()
 
-                rot_frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)  # Rotated image by 90 degrees
+                # Default 90° CW rotation has been in place since the project's first
+                # commit (no documented reason — likely matches a legacy camera mount).
+                # Set GZ_NO_IMAGE_ROTATION=1 to disable: the lstsq's "camera-x" will
+                # then align with body-x, raw axes match GT body-frame axes, and a
+                # diagonal _sensor_cal_hw can hit ratio=1.0 per axis. WARNING: this
+                # invalidates the controller's gain tuning (currently tuned in the
+                # rotated frame); use only for calibration investigation.
+                if os.environ.get("GZ_NO_IMAGE_ROTATION", "0") == "1":
+                    rot_frame = frame
+                else:
+                    rot_frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
                 # filtered_img = ski.filters.gaussian(frame, sigma=3)
 
