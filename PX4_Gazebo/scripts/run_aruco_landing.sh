@@ -49,6 +49,7 @@ cleanup() {
   pkill -9 -f 'gz sim' 2>/dev/null || true
   pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
+  pkill -9 -f 'QGroundControl' 2>/dev/null || true
   echo "[run] done."
 }
 trap cleanup EXIT INT TERM
