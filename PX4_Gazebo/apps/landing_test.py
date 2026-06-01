@@ -66,10 +66,15 @@ def convert_2_sys_cmd(cmd):
     # Convention: cmd[3] is the controller's B_T scalar (Newtons of excess
     # thrust beyond gravity compensation). At hover, controller outputs
     # B_T = 0 and PX4 needs ~0.738 throttle to hold the X500 in Gazebo.
-    # Slope 1/45 N^-1 was empirically chosen by the original author.
+    #
+    # Slope tightened 2026-06-01 from 1/45 to 1/42.3 so that 1 N of B_T
+    # produces exactly 1/mass m/s² of body-z accel (Newton's law). Empirical
+    # verification on n=7 input-cal runs: TEL/(T_u/mass) gain went from
+    # 0.937 (old slope) to ~1.00 (new slope). See memory
+    # feedback_input_cal_thrust_units.
     #
     # PX4 throttle range = [0, 1]; clip to avoid invalid commands.
-    thrust_norm = float(np.clip(0.738 - cmd[3] / 45.0, 0.0, 1.0))
+    thrust_norm = float(np.clip(0.738 - cmd[3] / 42.3, 0.0, 1.0))
     rates = np.array(cmd[:3], dtype=float)
     # Per-axis rate-zero env vars for axis-isolation diagnostics.
     # Each LANDING_NO_W* zeroes the corresponding body rate command.

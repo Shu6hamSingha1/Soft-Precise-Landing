@@ -45,7 +45,11 @@ gt_data = None
 img_params = None
 
 def convert_2_sys_cmd(cmd):
-    return np.append(RAD2DEG*cmd[:3], 0.738 - cmd[3]/45)
+    # Slope tightened 2026-06-01: 1/45 → 1/42.3 so that 1 N of cmd[3]
+    # produces ~1/mass m/s² of body-z accel (Newton's law). See memory
+    # feedback_input_cal_thrust_units and apps/landing_test.py:63 for full
+    # rationale. Empirical TEL/(T_u/m) gain: 0.937 (old) → ~1.00 (new).
+    return np.append(RAD2DEG*cmd[:3], 0.738 - cmd[3]/42.3)
 
 def yaw_from_quaternion(q):
     """
