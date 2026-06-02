@@ -77,96 +77,46 @@ class IMG_PROCESSOR(Thread):
         # `center = (320, 240)` — that one was transposed and is now (240, 320).
         self.center = np.array(self._resolution) / 2.0   # (cx, cy) = (240, 320)
 
-        # Sensor calibration matrices — RECALIBRATED 2026-05-13 (3rd iteration).
-        # Method: std-ratio (RMA / geometric-mean regression) across 9 valid
-        # post-fix runs:  α = σ(GT) / σ(filtered_raw)
+        # Sensor calibration matrices — RECALIBRATED 2026-06-02 after the
+        # Hybrid Flow strip-down (now 4-corner-only LSTSQ).
         #
-        # Why std-ratio over median(gt/raw) and over LS-optimal?
-        #   - median(gt/raw) is unstable per-run because raw magnitudes vary 10×
-        #     between runs (lstsq SNR is low). 9-run inter-run CV was 50-150%.
-        #   - LS-optimal α = E[raw·gt]/E[raw²] is biased toward zero when corr<1
-        #     (raw has noise that gt doesn't), shrinking calibrated output below
-        #     GT amplitude. Verified empirically: LS-derived α gave RMSE = 95% of
-        #     GT RMS (no better than predicting zero).
-        #   - Std-ratio matches amplitudes: σ(α·filt) = σ(GT) by construction, so
-        #     calibrated and GT plots overlay in envelope. Per-sample correlation
-        #     (0.2-0.5 per axis) bounds how tightly individual peaks align — that
-        #     ceiling is set by raw signal SNR, not the cal factor.
+        # Method: signed std-ratio per phase (σ(GT)/σ(raw_filtered)),
+        # MAD-outlier-rejected mean across runs (k_MAD=2.5). Each cal axis
+        # derived from its own single-axis excitation phase:
+        #   hw[0..2] = h_x, h_y, h_z  ← phases 'x', 'y', 'z'
+        #   hw[3..5] = w_x, w_y, w_z  ← phases 'y', 'x', 'yaw'
+        #   s[0..1]  = centroid_x, y  ← phases 'x', 'y'
+        # Sign from Pearson corr(GT, raw) per phase; magnitude from std-ratio.
+        # Phased excitation script in apps/output_calibration.py;
+        # aggregator at tools/aggregate_calibration_phased.py.
         #
-        # Previous iterations (kept for reference):
-        #   2026-05-12 median (4 runs):
-        #     _sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
-        #   2026-05-13a 4-run nanmedian:
-        #     _sensor_cal_hw = np.diag([0.1498, 0.1694, 0.0877, 0.2188, 0.2114, 0.4236])
-        #   2026-05-13b 9-run median(gt/raw) (NEW/OLD RMSE within ±3%):
-        #     _sensor_cal_hw = np.diag([0.1972, 0.1764, 0.0257, 0.1801, 0.2139, 0.1998])
-        # All 6 axes use the 9-run median(gt/raw) cal (2026-05-13b). The earlier
-        # HYBRID variant amplified ω_z by 1.9788× to match the deliberate-yaw
-        # output_calibration-sweep amplitude. But in the landing scenario the
-        # actual yaw rate is near zero (PX4 truth |ω_yaw| < 0.43 rad/s during
-        # the 5m → 0m descent), while the lstsq optic-flow solve produces a
-        # consistent +0.8 rad/s bias on ω_z (probably leakage from the marker-
-        # corner divergence pattern as the drone approaches). Amplifying that
-        # bias by 1.98× gave w_i[z] median +1.56 rad/s, which doubly poisoned
-        # the SMC via the V_h_d cross-coupling term and the c-term — partially
-        # responsible for the 8× faster-than-MATLAB descent rate. Reverting to
-        # 0.1998 reduces the bias contamination 10× and matches the policy used
-        # on the other 5 channels. Centroid s uses median(gt/raw) (stable, 0.58).
-        # 2026-05-29 REVERTED: landing-test-derived multipliers (1.5, 3.2, 95, 2.1,
-        # 2.7, 3.5) caused 5/5 reps to TARGET_LOST with 18 m/s impact crashes.
-        # The 95× on z optic flow drove massive thrust overcompensation.
-        # Likely cause: ground-truth B_y_g had a near-zero-depth singularity
-        # producing artificial 5-12 m/s/m peaks; my "ratio" diagnosed those
-        # as undercal when they were actually a numerical artifact. Need a
-        # better GT pipeline (clip Z < 0.5 m, smooth gradient) before any
-        # multiplier conclusion. Original 5-run-median values restored:
-        # 2026-05-30 REVERTED AGAIN: z-axis 0.0257 → 0.9356 (the cal-derived
-        # 36× multiplier) also crashed 4/4 reps with TARGET_LOST at xy≈10m,
-        # vel≈1.7 m/s impact. Same failure mode as the earlier 95× attempt.
-        # Even though two independent methods (landing-test ratio and phased
-        # calibration aggregate) agree the raw flow_z is ~36-37× under-scaled,
-        # the controller cannot tolerate this magnitude change in one step.
-        # The PLASMC SMC's a_u command depends heavily on flow_z (V_h_d cross-
-        # coupling + c-term); a 36× higher flow_z signal drives a_u into
-        # saturation, drone tilts hard, marker leaves FoV → TARGET_LOST.
-        # Next attempt should walk z up incrementally (2× → 4× → 8× …) to
-        # find the stability cliff. Reverted to original for now.
-        # 2026-05-31: matched-landing setup (640×480 / SLEEP_TIME=1/200 / takeoff
-        # 5 m / IMG_FILTER_WIN=7) + HYBRID FLOW default IMG_EXTRA_PTS=50 (108×6
-        # over-determined lstsq) + 5-run sweep + MAD-outlier-rejected mean
-        # (k_MAD=2.5). Per-axis values drop outliers on the noisy axes
-        # (flow_x/y, ω_y, centroid) where lstsq is still noisy despite hybrid;
-        # axes with tight clustering (flow_z, ω_x, ω_z) keep all 5 samples.
-        # Recalibrated 2026-06-01 after the _getVirtualPts V-frame g-sign
-        # fix (line ~870). Pre-fix sensor_cal was implicitly compensating
-        # for the tilt-amplified V-frame projection bias on s and on
-        # L-matrix entries; with the fix, raw signals are now properly
-        # V-frame and the new cal values reflect that.
-        # Derived from 5 post-V-fix recordings via aggregate_calibration_phased.py
-        # (MAD-outlier-rejected mean, k_MAD=2.5). Order in hw:
-        # [h_x, h_y, h_z, w_x, w_y, w_z] — virtual image velocity + angular vel.
-        # Notable change: _sensor_cal_s diag → ~(0.86, 1.00) (was (0.71, 0.66)),
-        # because V-frame raw now correctly tracks position-only motion and
-        # matches V-frame GT magnitude without needing scaling compensation.
-        # w_x, w_y cal are NEGATIVE because LSTSQ recovery of those axes is
-        # poorly conditioned (col 1 ∥ col 3 and col 0 ∥ col 4 at image center,
-        # so v_y↔ω_x and v_x↔ω_y can't be cleanly separated). The lstsq
-        # outputs are weakly correlated with body ω, so sign is recording-
-        # dependent. Aggregator now uses corr-based signed std-ratio and
-        # compares against B_w_tug = -B_w_ug (manuscript w = target rel
-        # camera ω), giving consistent negative signs across all 5 runs.
-        self._sensor_cal_hw = np.diag([1.4677, 0.5914, 1.5615, -0.6007, -1.2326, 8.1189])
-        self._sensor_cal_s  = np.diag([0.8593, 1.0047, 1.0000, 1.0000])
-        # 2026-05-21: attempted partial refresh of _sensor_cal_s to the
-        # fresh 5-run median (0.6104, 0.6116, ...). REVERTED — the +5%
-        # change on axis 0 destabilized the loop (5-rep IC1 mean xy
-        # 0.387→1.174m, TARGET_LOST 0→2). The IBVS centroid scaling is
-        # very sensitive even to small changes; the existing 0.5830 is
-        # well-tuned and shouldn't be replaced without strong evidence.
-        # _sensor_cal_hw also untouched (5-run median gave NaN on axis 2
-        # and std≈mean noise on other axes — methodology mismatch with
-        # the std-ratio path that produced the current cal). Fresh
-        # calibration data is in calibration_data/output_archive_2026*.
+        # Run conditions: 10 recordings (5 default arm + 5 heavy arm) under
+        # CALIB_AMP_XY=0.35 m, CALIB_AMP_Z=1.0/1.4 m, CALIB_AMP_YAW=20°/30°,
+        # 12 s/phase. MARKER_KLT_MAX_STEPS=0 (no LK fallback during cal),
+        # V_YAW_SOURCE=compass (matches aggregator GT projection).
+        # 6 of 10 runs survived MAD outlier rejection on most axes; 8 of 10
+        # on the better-conditioned axes (h_z, ω_z).
+        #
+        # Notes on observability (geometric, 4-corner / near-axial marker):
+        #   - L cols 0/4 (v_x, ω_y) and cols 1/3 (v_y, ω_x) are
+        #     parallel/anti-parallel at small (x, y). Min-norm LSTSQ splits
+        #     the v/ω motion across the pair, putting most weight on the
+        #     translation cols. Result: cal_hw[3]/[4] for ω_x/ω_y are very
+        #     small (~0.003 / ~0.057) — the controller effectively sees
+        #     zero image-derived ω_x, ω_y. MATLAB exhibits the same
+        #     behaviour and lands 10/10, so PLASMC is robust to this.
+        #   - cal_hw[2] (ω_z) and cal_hw[5] (h_z) are well-recovered
+        #     because cols 2 and 5 have non-zero entries at non-zero (x, y),
+        #     giving real spatial spread on the 4 corners.
+        # Order in hw: [h_x, h_y, h_z, w_x, w_y, w_z].
+        # 2026-06-02 — cal set to IDENTITY during recalibration.
+        # The next aggregator run uses sample-level outlier rejection on the
+        # matched (GT, raw) pairs (see tools/aggregate_calibration_phased.py).
+        # Don't run landings against this identity cal — it has no GT-matching
+        # scaling and will produce garbage controller inputs. Apply derived
+        # values before any landing test.
+        self._sensor_cal_hw = np.diag([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        self._sensor_cal_s  = np.diag([1.0, 1.0, 1.0, 1.0])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -214,30 +164,6 @@ class IMG_PROCESSOR(Thread):
             minEigThreshold=1e-3,
         )
 
-        # 2026-05-29 — HYBRID FLOW: ArUco + Shi-Tomasi corners.
-        # The 4 ArUco corners give us identity (needed for centroid s and yaw
-        # alpha) but only 4 correspondences → 8x6 lstsq is ill-conditioned and
-        # one lost corner kills the whole frame. We additionally extract up to
-        # IMG_EXTRA_PTS Shi-Tomasi features across the frame and track them
-        # with the same LK call; the combined set goes into _fill_A so the
-        # system becomes ((8 + 2N_kept), 6) — over-determined and robust to
-        # individual point losses. ArUco subset still used exclusively for
-        # _getImgFeatures (centroid + alpha need identity).
-        #
-        # Default 50 (HYBRID FLOW enabled). The 4-corner lstsq is noise-dominated
-        # (cal-sweep SNR < 1 for 5/6 axes) which makes sensor cal derivation
-        # unstable.  50 Shi-Tomasi corners over-determines the lstsq (108x6)
-        # and drops the noise floor enough to derive a constant cal factor and
-        # to give the controller a less noisy state estimate.  Set
-        # IMG_EXTRA_PTS=0 to revert to the legacy 4-corner-only mode.
-        self._extra_pts_max = int(os.environ.get("IMG_EXTRA_PTS", "50"))
-        self._extra_pts_params = dict(
-            maxCorners=self._extra_pts_max,
-            qualityLevel=float(os.environ.get("IMG_EXTRA_QUALITY", "0.01")),
-            minDistance=int(os.environ.get("IMG_EXTRA_MIN_DIST", "10")),
-            blockSize=int(os.environ.get("IMG_EXTRA_BLOCK", "7")),
-        )
-
         # 2026-05-31 — V_YAW_SOURCE: pick where the virtual frame's yaw
         # comes from. 'compass' (default, legacy) uses the drone's full
         # quaternion (so V is yaw-locked to the drone's heading, which
@@ -247,6 +173,37 @@ class IMG_PROCESSOR(Thread):
         # compass-independent. See _imgProcess for the rotation; the
         # controller-side alpha-offset is also disabled below.
         self._v_yaw_source = os.environ.get("V_YAW_SOURCE", "compass")
+
+        # 2026-06-02 — MULTI-MARKER BOARD layout.
+        # The landing pad carries several ArUco markers at KNOWN, non-
+        # overlapping board offsets (Images/aruco_board_layout.npy:
+        # id -> (x_m, y_m, size_m), board centre at origin). The OPTICAL FLOW
+        # [h;w] uses all corners identity-free (rigid-body twist); the POSITION
+        # feature s=(xc,yc) and yaw alpha need a stable reference, so they are
+        # reconstructed from this layout via a board->V-frame homography fit to
+        # whatever markers are visible (see _board_feature). This keeps the
+        # centroid continuous/unbiased as markers enter/leave the FoV — a plain
+        # mean-of-visible-corners would jump when the visible subset changes.
+        #
+        # If the layout file is absent (single-marker pad, old recordings) the
+        # pipeline falls back to the single-marker _getImgFeatures path.
+        self._board_layout = None
+        _layout_path = os.environ.get(
+            "ARUCO_BOARD_LAYOUT",
+            os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         '..', 'Images', 'aruco_board_layout.npy'))
+        try:
+            if os.path.exists(_layout_path):
+                self._board_layout = np.load(_layout_path, allow_pickle=True).item()
+                print(f"[img_data] board layout loaded: {len(self._board_layout)} "
+                      f"markers from {_layout_path}")
+        except Exception as _e:
+            print(f"[img_data] board layout load failed ({_e}); single-marker mode")
+            self._board_layout = None
+        # Yaw-reference offset for the board (analogue of the single-marker
+        # alpha_0). Board axes are explicit, so default 0; re-calibrate if the
+        # board's +x is not aligned with the desired equilibrium heading.
+        self._board_alpha_0 = float(os.environ.get("BOARD_ALPHA0", "0.0"))
 
         # 2026-05-31 — KLT fallback for marker re-acquisition.
         # When ArUco detection fails on a frame (drone shadow, low contrast,
@@ -460,14 +417,45 @@ class IMG_PROCESSOR(Thread):
         # without losing the marker. Drift is capped via _max_lk_steps; after
         # that we declare the marker stale and let the normal extrapolation
         # path take over.
+        # MULTI-MARKER (nested ArUco): the landing pad carries several
+        # concentric ArUco markers of different scales/IDs. ALL decoded
+        # markers' corners are target-rigid, so we feed the full corner set
+        # into the 6-DOF lstsq — the spread across scales breaks the rank
+        # deficiency that cripples a single near-axial marker (cols 0/4 and
+        # 1/3 of L become parallel at small (x,y); spread separates them).
+        #
+        # The PRIMARY marker (smallest ID = innermost/smallest, most reliable
+        # near touchdown) still defines the centroid s and yaw alpha (identity
+        # needed). Because the markers are CONCENTRIC, every marker's centre is
+        # the board centre, so the primary's centroid IS the board centroid —
+        # invariant to which other markers happen to be in view.
+        #
+        # This is structurally the old "hybrid flow" (primary + extra corners)
+        # but the extras are now on-target marker corners, NOT off-marker
+        # Shi-Tomasi — so it is moving-target-safe (all corners share the
+        # target's rigid motion; no camera-rel-ground bias).
         aruco_pts_0 = None
+        extra_pts_0 = np.zeros((0, 2), dtype=np.float32)   # other markers' corners
+        marker_ids = None        # per-marker IDs in all_pts_0 order (None in KLT fallback)
         used_klt_fallback = False
         if results[0]:
-            aruco_pts_0 = results[0][np.argmin(results[1])][0].astype(np.float32)
+            ids = np.asarray(results[1]).flatten()
+            M = len(ids)
+            primary_i = int(np.argmin(ids))
+            # Primary first, then the rest — so marker k occupies corners
+            # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
+            # first for KLT-fallback continuity + display + the strict gate.
+            order = [primary_i] + [i for i in range(M) if i != primary_i]
+            marker_ids = [int(ids[i]) for i in order]
+            marker_corners_0 = [results[0][i][0].reshape(-1, 2).astype(np.float32)
+                                for i in order]
+            aruco_pts_0 = marker_corners_0[0]
+            if len(marker_corners_0) > 1:
+                extra_pts_0 = np.vstack(marker_corners_0[1:]).astype(np.float32)
             if self._lk_step_count > 0:
                 print(f"ArUco re-acquired after {self._lk_step_count} KLT-fallback frame(s)")
             self._lk_step_count = 0
-            if min(results[1]) == 0:
+            if ids.min() == 0:
                 size_factor = 1/1.0
         elif (self._max_lk_steps > 0
               and self._prev_aruco_pts is not None
@@ -505,23 +493,6 @@ class IMG_PROCESSOR(Thread):
         # Check if feature detection was successful
         if aruco_pts_0 is not None:
             n_aruco = len(aruco_pts_0)
-
-            # HYBRID FLOW: optionally augment ArUco corners with Shi-Tomasi corners
-            # from the surrounding scene to over-determine the 8x6 lstsq. ArUco
-            # corners keep their identity (used for centroid/alpha); Shi-Tomasi
-            # corners contribute only to the flow lstsq.
-            if self._extra_pts_max > 0:
-                # goodFeaturesToTrack requires CV_8UC1 or CV_32FC1 (single-channel).
-                # The gz_subscriber image is 3-channel BGR; convert defensively.
-                img0_gray = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
-                extra_pts_0 = cv2.goodFeaturesToTrack(img0_gray, **self._extra_pts_params)
-                if extra_pts_0 is None:
-                    extra_pts_0 = np.zeros((0, 2), dtype=np.float32)
-                else:
-                    extra_pts_0 = extra_pts_0.reshape(-1, 2).astype(np.float32)
-            else:
-                extra_pts_0 = np.zeros((0, 2), dtype=np.float32)
-
             all_pts_0 = np.vstack([aruco_pts_0, extra_pts_0])
 
             # For successful run of cv2.calcOpticalFlowPyrLK() function, here's what you need to know.
@@ -537,8 +508,10 @@ class IMG_PROCESSOR(Thread):
             aruco_status = status[:n_aruco]
             extra_status = status[n_aruco:]
 
-            # ArUco gate stays strict: need all 4 corners for centroid/alpha.
-            # Extra corners are kept individually (any that pass LK contribute).
+            # PRIMARY gate stays strict: need all 4 primary corners tracked
+            # for centroid/alpha. Extra (other-marker) corners are kept
+            # individually — any that pass LK add spread to the lstsq.
+            board_markers_px1 = None     # [(id, frame1 corners 4x2)] for homography
             if int(np.sum(aruco_status == 1)) == n_aruco:
                 FEATURE_DATA_IS_LOGGED = True
                 aruco_pts_1 = all_pts_1[:n_aruco].reshape(-1, 2)
@@ -547,8 +520,21 @@ class IMG_PROCESSOR(Thread):
                 extra_pts_1_kept = all_pts_1[n_aruco:].reshape(-1, 2)[extra_good]
                 flow_pts_0 = np.vstack([aruco_pts_0, extra_pts_0_kept])
                 flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
-                # ArUco-only pair preserved for logging / centroid / display.
+                # Primary-only pair preserved for centroid / alpha / display.
                 C_nP = [aruco_pts_0, aruco_pts_1]
+
+                # Collect per-marker frame-1 corners (only markers whose all-4
+                # corners survived LK) + IDs, for the board homography. Marker k
+                # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
+                if marker_ids is not None and self._board_layout is not None:
+                    all_pts_1_2d = all_pts_1.reshape(-1, 2)
+                    grp = []
+                    for k, mid in enumerate(marker_ids):
+                        sl = slice(4 * k, 4 * k + 4)
+                        if np.all(status[sl] == 1) and mid in self._board_layout:
+                            grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
+                    if grp:
+                        board_markers_px1 = grp
 
             # NOTE: size_factor adjustment based on min(results[1]) == 0 lives
             # only in the ArUco-detection branch up top. On the KLT-fallback
@@ -556,11 +542,16 @@ class IMG_PROCESSOR(Thread):
             # not iterable" if we re-ran the check here. Already handled above.
 
             if FEATURE_DATA_IS_LOGGED:
-                # ArUco-only virtual points → used for centroid s and alpha.
+                # Primary-marker virtual points → fallback centroid s and alpha.
                 V_aruco_norm = [self._getVirtualPts(p, a) for p, a in zip(C_nP, quats)]
-                # Full (ArUco + Shi-Tomasi) virtual points → used for 6-DOF lstsq.
+                # Full (all-marker) virtual points → 6-DOF lstsq spread.
                 V_flow_norm = [self._getVirtualPts(flow_pts_0, quats[0]),
                                self._getVirtualPts(flow_pts_1, quats[1])]
+                # Per-marker frame-1 V-corners → board homography (centroid/yaw).
+                board_markers_V = None
+                if board_markers_px1 is not None:
+                    board_markers_V = [(mid, self._getVirtualPts(c, quats[1]))
+                                       for mid, c in board_markers_px1]
 
                 # V_YAW_SOURCE=alpha: replace the compass-derived yaw of the V
                 # frame with the marker's principal-axis angle (alpha). V is
@@ -580,17 +571,20 @@ class IMG_PROCESSOR(Thread):
                     R2d_T = np.array([[c_a, -s_a], [s_a, c_a]])    # rotate pts by -alpha
                     V_aruco_norm = [pts @ R2d_T for pts in V_aruco_norm]
                     V_flow_norm  = [pts @ R2d_T for pts in V_flow_norm]
+                    if board_markers_V is not None:
+                        board_markers_V = [(mid, c @ R2d_T) for mid, c in board_markers_V]
 
-                # Shows image with optical flow (ArUco only — extras would clutter)
+                # Shows image with optical flow (primary marker only)
                 if showVideo:
                     self._showOptFlow(imgs[1], C_nP, V_aruco_norm)
 
-                # Compute optical flow via 6-DOF image-Jacobian lstsq.
-                # 2026-05-29: hybrid set (4 ArUco + N Shi-Tomasi). System is now
-                # ((8+2N)x6) — strongly over-determined when N>0, falls back to
-                # the original (8x6) when IMG_EXTRA_PTS=0.
-                # Notes from 2026-05-13 experiments (kept lstsq, rejected
-                # robust-regression alternatives for this specific 8x6 algebra):
+                # Compute optical flow via 6-DOF image-Jacobian lstsq on the
+                # full multi-marker corner set ((2N)x6, N>=4). With one marker
+                # this is the original 8x6; with several decoded the system is
+                # strongly over-determined AND spatially spread, which is what
+                # restores rank on the lateral/tilt columns. Notes from
+                # 2026-05-13 experiments (kept lstsq, rejected robust-regression
+                # alternatives for this specific algebra):
                 #   - IRLS/Huber on residuals: NO-OP. Residual nullspace is 2D
                 #     with equal projection onto every corner pair, so per-corner
                 #     residual norms are structurally equal regardless of which
@@ -599,7 +593,7 @@ class IMG_PROCESSOR(Thread):
                 #   - LK-`err` row weighting: HURT (cap-hit% rose 0.5→1.9%);
                 #     downweighting pushes the system toward 6x6 exactly
                 #     determined, which is more sensitive to remaining noise.
-                # Noise reduction is now handled temporally (KF in getOptFlowAngVel),
+                # Noise reduction is handled temporally (KF in getOptFlowAngVel),
                 # not via the lstsq solve itself.
                 # Stability gates retained: rcond=1e-3, rank, condition, ±10 clip.
                 A = self._fill_A(V_flow_norm[1])
@@ -625,10 +619,17 @@ class IMG_PROCESSOR(Thread):
                 self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
                 self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
 
-                # Centroid/alpha computed from the 4 ArUco virtual points only —
-                # Shi-Tomasi extras have no identity and would break the
-                # cv2.aruco-corner-order assumption in _getImgFeatures.
-                self._getImgFeatures(size_factor * V_aruco_norm[1])
+                # Centroid s and yaw alpha. Preferred path: board homography
+                # (stable board centre + true yaw from the known marker layout,
+                # occlusion-robust). Fallback: single-marker weighted moments
+                # on the primary marker (no layout, or homography degenerate).
+                board_s = None
+                if board_markers_V is not None:
+                    board_s = self._board_feature(board_markers_V, size_factor)
+                if board_s is not None:
+                    self._img_feature_param.append(board_s)
+                else:
+                    self._getImgFeatures(size_factor * V_aruco_norm[1])
 
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
@@ -707,10 +708,10 @@ class IMG_PROCESSOR(Thread):
     
     def _fill_A(self, centered_pts):
         """
-        centered_pts: shape (N,2)  — N >= 4 (4 ArUco corners + 0..M Shi-Tomasi).
-        Returns A of shape (2N, 6) — the IBVS interaction matrix evaluated
-        per point (depth Z normalized to 1; the 1/Z scaling is folded into
-        _sensor_cal_hw).
+        centered_pts: shape (N, 2), N>=4 — all decoded markers' corner
+        positions in the V-frame (4 per marker). Returns A of shape (2N, 6),
+        the IBVS interaction matrix evaluated per corner (depth Z normalized
+        to 1; the 1/Z scaling is folded into _sensor_cal_hw).
         """
         x = centered_pts[:, 0]
         y = centered_pts[:, 1]
@@ -803,6 +804,65 @@ class IMG_PROCESSOR(Thread):
         if abs(mu11) < 1e-9:
             return 0.0
         return 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
+
+    def _board_corners(self, mid):
+        """Board-plane coords (metres, board centre = origin) of marker `mid`'s
+        4 corners, in cv2.aruco order [TL, TR, BR, BL]. Board +x = texture
+        column (right), +y = texture row (down) — matching make_aruco_board.py.
+        """
+        cx, cy, sz = self._board_layout[mid]
+        h = sz / 2.0
+        return np.array([[cx - h, cy - h],   # TL
+                         [cx + h, cy - h],   # TR
+                         [cx + h, cy + h],   # BR
+                         [cx - h, cy + h]],  # BL
+                        dtype=np.float64)
+
+    def _board_feature(self, markers_V, size_factor=1.0):
+        """Board centroid s=(xc,yc,1,alpha) from a board->V-frame homography.
+
+        markers_V : list of (id, 4x2 V-frame-normalized corners) for the markers
+                    whose all-4 corners survived LK this frame.
+
+        Fits a planar homography H from board-plane coords (known offsets) to
+        the V-frame image coords, then maps the board centre (0,0) -> V to get
+        a stable, occlusion-robust centroid, and the board +x direction -> V to
+        get a true yaw. Returns None if the fit is degenerate (caller falls
+        back to single-marker moments).
+
+        Each marker contributes 4 correspondences, so a single marker (4 pts)
+        is the minimum for a homography (8 DOF); >=2 markers over-determine it.
+        """
+        board_pts, img_pts = [], []
+        for mid, cV in markers_V:
+            board_pts.append(self._board_corners(mid))
+            img_pts.append(np.asarray(cV, dtype=np.float64) * size_factor)
+        board_pts = np.vstack(board_pts)
+        img_pts = np.vstack(img_pts)
+        if len(board_pts) < 4:
+            return None
+        try:
+            H, _ = cv2.findHomography(board_pts, img_pts, method=0)
+        except Exception:
+            H = None
+        if H is None or not np.all(np.isfinite(H)):
+            return None
+
+        def apply(p):
+            v = H @ np.array([p[0], p[1], 1.0])
+            if abs(v[2]) < 1e-12:
+                return None
+            return v[:2] / v[2]
+
+        center = apply((0.0, 0.0))
+        xdir = apply((0.05, 0.0))      # small step along board +x near centre
+        if center is None or xdir is None:
+            return None
+        d = xdir - center
+        if np.hypot(d[0], d[1]) < 1e-9:
+            return None
+        alpha = float(np.arctan2(d[1], d[0])) - self._board_alpha_0
+        return np.array([float(center[0]), float(center[1]), 1.0, alpha])
 
     def _getImgFeatures(self, pts):
         """

@@ -25,8 +25,12 @@ from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion, DCM
 
 FLU_2_FRD = np.array(DCM(x=180.0))
-FILTER_WIN = 101  # offline-best savgol
-POLYORDER  = 3
+# Filter params MUST match src/img_data.py runtime (FILTER_WIN=13, POLY=1).
+# Previously used offline-best (101, 3) which gave σ(raw_filtered) much smaller
+# than the runtime sees → derived cal too small → controller sees weak error
+# signal at runtime → TARGET_LOST drift (observed 2026-06-02 IC1 landing).
+FILTER_WIN = 13
+POLYORDER  = 1
 
 # Cal-axis ↔ which excitation phase to derive it from
 AXIS_PHASE_HW = {0: 'x', 1: 'y', 2: 'z', 3: 'y', 4: 'x', 5: 'yaw'}
@@ -134,33 +138,68 @@ def compute_gt_signals(gt):
     return t_g, B_y_g, B_w_ug, xc_gt, yc_gt, valid
 
 
-def std_ratio(gt, raw, mask):
-    """Signed scale factor = σ(GT)/σ(raw_filtered) × sign(median(GT/raw_active)).
+def std_ratio(gt, raw, mask, k_mad_sample=3.0):
+    """Signed scale factor with SAMPLE-LEVEL outlier rejection on matched pairs.
 
-    Captures both MAGNITUDE (from std-ratio, robust to outliers and DC offset)
-    AND SIGN (from median ratio where signal is above noise floor). The signed
-    median catches conventions where the LSTSQ recovery is opposite-sign of
-    the GT — happens on w_x/w_y axes where L matrix col [1] (translation) and
-    col [3] (rotation) are anti-parallel at image center, so LSTSQ chooses a
-    minimum-norm trade-off whose sign depends on numerical conditioning, not
-    on a clean convention. Pre-2026-06-01 this function was unsigned, which
-    forced the controller to see anti-correlated w_x/w_y vs body ω."""
+    Method (2026-06-02 rewrite — user's "eliminate outliers, remove corresponding
+    GT samples, ratio the magnitudes"):
+
+    1. Restrict to the phase mask, drop non-finite pairs.
+    2. Initial robust fit: σ_g = std(GT_cleaned), σ_r = std(raw_cleaned),
+       β_init = sign(corr) × σ_g / σ_r.
+    3. Compute residuals r_i = raw_i − GT_i / β_init  (model: raw ≈ GT/β).
+    4. Drop the matched (GT_i, raw_i) pairs where
+       |r_i − median(r)| > k_mad_sample × MAD(r).
+       This is regression-residual outlier detection (IRLS-style hard reject)
+       — robust because it uses GT as the reference axis, so noisy raw
+       samples are caught without dragging down by their own MAD.
+    5. Final α = sign(corr_clean) × σ(GT_clean) / σ(raw_clean).
+       For zero-mean sinusoidal excitation, σ ≡ RMS ≡ √(2/π)·mean(|·|) ×
+       proportionality constant — so this IS the magnitude-ratio per the
+       user's proposal, applied to outlier-cleaned matched pairs.
+
+    Returns NaN if too few samples survive or if corr collapses (signal below
+    noise floor — no observability)."""
     g = gt[mask]; r = raw[mask]
     finite = np.isfinite(g) & np.isfinite(r)
     if finite.sum() < 30:
         return float('nan')
     gf = g[finite]; rf = r[finite]
-    sg = float(np.std(gf))
-    sr = float(np.std(rf))
-    if sr < 1e-9:
+
+    sg0 = float(np.std(gf))
+    sr0 = float(np.std(rf))
+    if sr0 < 1e-9 or sg0 < 1e-9:
         return float('nan')
-    # Sign: from Pearson correlation between (raw, GT). This is the actual
-    # invariant we care about — we want sign(cal·raw) = sign(GT). Per-sample
-    # ratio median was too noisy when signal is weak (LSTSQ-recovered ω is
-    # near-noise-floor when L conditioning is poor at small marker spread).
-    co = float(np.corrcoef(gf, rf)[0, 1])
+
+    co0 = float(np.corrcoef(gf, rf)[0, 1])
+    if not np.isfinite(co0) or abs(co0) < 0.05:
+        # No correlation — signal below noise floor. Don't bother cleaning.
+        return float('nan')
+    sign0 = +1.0 if co0 > 0 else -1.0
+    beta_init = sign0 * sg0 / sr0
+
+    # Residuals of raw vs model raw_hat = GT / beta_init
+    raw_hat = gf / beta_init
+    resid = rf - raw_hat
+    med = float(np.median(resid))
+    mad = float(np.median(np.abs(resid - med)))
+    if mad < 1e-12:
+        # Constant residuals — no scatter, accept initial fit
+        return beta_init
+
+    keep = np.abs(resid - med) <= k_mad_sample * mad
+    if keep.sum() < 30:
+        # Too aggressive — relax to keep enough samples
+        return beta_init
+    gc = gf[keep]; rc = rf[keep]
+
+    sg = float(np.std(gc))
+    sr = float(np.std(rc))
+    if sr < 1e-9 or sg < 1e-9:
+        return float('nan')
+    co = float(np.corrcoef(gc, rc)[0, 1])
     if not np.isfinite(co) or abs(co) < 0.05:
-        return sg / sr   # unsigned fallback when there is no signal to sign
+        return float('nan')
     sign = +1.0 if co > 0 else -1.0
     return sign * sg / sr
 
