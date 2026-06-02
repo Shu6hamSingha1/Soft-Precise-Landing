@@ -37,6 +37,9 @@ PX4_Gazebo/test_data/DhdClampSweep/**/rep*/
 PX4_Gazebo/test_data/SPCampaign/**/rep*/
 !PX4_Gazebo/test_data/SPCampaign/**/summary.tsv
 !PX4_Gazebo/test_data/SPCampaign/**/*.log
+# SP #6 (first mechanism-driven SP ever: THETA_FLOOR=60 + DH_D_MAX=5, 2026-06-03,
+# xy=0.060 vel=0.149) — irreplaceable, track the full rep
+!PX4_Gazebo/test_data/SPCampaign/b2A_floor60_20260603-033719/rep4/
 # HybridFlow_AB: bulk A/B reps ignored EXCEPT hybrid_rep5 (SP #5, the 5th
 # soft+precise landing ever — achieved on the hybrid-flow arm 2026-05-29).
 PX4_Gazebo/test_data/HybridFlow_AB/*
