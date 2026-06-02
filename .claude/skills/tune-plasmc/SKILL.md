@@ -41,7 +41,7 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_SCALE`, `PLASMC_KI_X/Y_SCALE` | 10× MATLAB's 0.1; needed for SITL drift correction |
 | `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_SCALE`, `PLASMC_KD_X/Y_SCALE` | Sensitive to centroid noise; ↑ → chatter |
 | `PID_SCALE` uniform | 1.0 | `PLASMC_PID_SCALE` | Legacy uniform scaler |
-| `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative |
+| `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). Pending IC2-5 gate — see memory dsd-touchdown-spike.** |
 
 ### Middle loop (PLASMC funnel + sliding)
 | Param | Default | Env knob | Notes |
@@ -135,7 +135,8 @@ Lever D (image-based velocity feedforward) is **already implemented** via the op
 ## Diagnostic procedure — "why did this rep fail"
 
 For a single failed rep:
-1. Load with `analyze_timeseries.py <rep_dir>` (per-channel correlation with xy_end)
+1. `analyze_explosion_chain.py <rep_dir> [...]` — finds WHICH state departs its normal envelope FIRST and the resulting causal chain (ds_d → dh_d clamp → ζ saturation → κ runaway → a_u). Aggregates first-movers across reps. This is the per-term a_u attribution tool.
+2. Load with `analyze_timeseries.py <rep_dir>` (per-channel correlation with xy_end)
 2. Look at:
    - `|σ|_tail` ρ vs xy_end — if high (>0.7) the controller didn't reach sliding surface
    - `|s_e_n|_tail` — if high, controller didn't drive image error to zero
@@ -228,6 +229,7 @@ Best-known IC1 N=10 outcome:  PRECISE=1, SOFT=2, **SOFT+PRECISE=1**, TL=0, xy_me
 - `src/img_data.py` — image pipeline, ArUco params, savgol, stale-feature detection
 - `apps/landing_test.py` — IC convergence, marker-loss grace, control loop, autosave
 - `src/flight_controller.py` — MAVSDK wrapper, telemetry rates, rate-gain hook (DEAD)
+- `tools/analyze_explosion_chain.py` — first-exploding-state + causal-chain diagnosis (2026-06-02)
 - `tools/analyze_timeseries.py`, `tools/analyze_loop_latency.py`, `tools/analyze_sensor_noise.py`,
   `tools/analyze_marker_switch.py`, `tools/analyze_sigma_compare.py`,
   `tools/diagnose_intervention_reps.py`, `tools/analyze_impulse_response.py` — diagnostics

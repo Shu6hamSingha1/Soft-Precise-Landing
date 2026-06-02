@@ -28,6 +28,11 @@ PX4_Gazebo/test_data/ICValidation/
 PX4_Gazebo/test_data/KLT_AB/
 PX4_Gazebo/test_data/NewCal/
 PX4_Gazebo/test_data/Test_Videos/
+# DhdClampSweep (2026-06-02 DH_D_MAX=5 n=5 validation): bulk .npy reps ignored
+# (regenerable); summary + per-rep console logs tracked as the campaign record.
+PX4_Gazebo/test_data/DhdClampSweep/**/rep*/
+!PX4_Gazebo/test_data/DhdClampSweep/**/summary.tsv
+!PX4_Gazebo/test_data/DhdClampSweep/**/*.log
 # HybridFlow_AB: bulk A/B reps ignored EXCEPT hybrid_rep5 (SP #5, the 5th
 # soft+precise landing ever — achieved on the hybrid-flow arm 2026-05-29).
 PX4_Gazebo/test_data/HybridFlow_AB/*

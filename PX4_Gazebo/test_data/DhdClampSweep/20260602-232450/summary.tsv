@@ -1,0 +1,6 @@
+rep	landed	xy_err	rel_vel	precise	soft	target_lost
+0	YES	2.9864	0.4054	0	0	0
+1	YES	2.9402	0.3239	0	0	1
+2	YES	1.0977	0.1079	0	1	0
+3	YES	0.8251	0.2775	0	0	1
+4	YES	0.7415	0.2132	0	0	0

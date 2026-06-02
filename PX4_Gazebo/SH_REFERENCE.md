@@ -158,20 +158,20 @@ run_one() {
   echo "=== rep=$rep ==="
 
   # Capture latest dir BEFORE the run so we can detect a no-save fail
-  local before
-  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
+  local before     # NOTE: -d + */ -> directories only (pitfall 9: skips parameter_record.ods)
+  before=$(ls -td "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/"*/ 2>/dev/null | head -1 || true)
 
   env <PLASMC_OVERRIDES> \
       INITIAL_DRONE_ENU="$IC" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
       bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" > "$dst.log" 2>&1
 
   local latest
-  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -td "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/"*/ 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     printf "%s\tNO\t-\t-\t-\t-\t-\t-\t-\n" "$rep" >> "$SUMMARY"
     return
   fi
-  cp -r "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest" "$dst"
+  cp -r "$latest" "$dst"
 
   local m
   m=$("$HOME/ws/scripts/env2025/bin/python3" - "$dst" << 'PY'
@@ -294,6 +294,7 @@ PY
 6. **Forgetting `setsid`** — bare `cmd &` puts the child in the script's process group; `kill -- -$pid` then targets the script itself. Always launch via the `start_bg` helper.
 7. **Hardcoded `~`** — works in bash but breaks under `setsid env`. Use `$HOME`.
 8. **Missing `timeout`** — `run_output_calibration.sh` and `landing_test.py` both have hang modes. Wrap any sweep in `timeout 220 bash ...`.
+9. **Non-rep files in `Landing_Test/`** — `parameter_record.ods` lives inside `test_data/Landing_Test/`, so the §4 `ls -t | head -1` rep-detection picks it up if anything touches it mid-sweep (bit the 2026-06-02 DH_D_MAX sweep: a rep "result" resolved to the .ods). Use `ls -td .../Landing_Test/*/ | head -1` (directories only) and never edit the .ods while a sweep is running.
 
 ---
 
