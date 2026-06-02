@@ -77,46 +77,40 @@ class IMG_PROCESSOR(Thread):
         # `center = (320, 240)` — that one was transposed and is now (240, 320).
         self.center = np.array(self._resolution) / 2.0   # (cx, cy) = (240, 320)
 
-        # Sensor calibration matrices — RECALIBRATED 2026-06-02 after the
-        # Hybrid Flow strip-down (now 4-corner-only LSTSQ).
+        # Sensor calibration — MULTI-MARKER BOARD, 2026-06-02.
         #
-        # Method: signed std-ratio per phase (σ(GT)/σ(raw_filtered)),
-        # MAD-outlier-rejected mean across runs (k_MAD=2.5). Each cal axis
-        # derived from its own single-axis excitation phase:
-        #   hw[0..2] = h_x, h_y, h_z  ← phases 'x', 'y', 'z'
-        #   hw[3..5] = w_x, w_y, w_z  ← phases 'y', 'x', 'yaw'
-        #   s[0..1]  = centroid_x, y  ← phases 'x', 'y'
-        # Sign from Pearson corr(GT, raw) per phase; magnitude from std-ratio.
-        # Phased excitation script in apps/output_calibration.py;
-        # aggregator at tools/aggregate_calibration_phased.py.
+        # _sensor_cal_hw is now a FULL 6x6 matrix M (not a diagonal):
+        #   calibrated [h;w] = M @ raw_lstsq_[h;w].
+        # The board makes the 6-DOF lstsq full-rank, but a fixed GEOMETRIC
+        # h<->w coupling remains (L cols v_x<->w_y and v_y<->w_x), so the true
+        # map raw->GT is a 6x6 with off-diagonal terms in exactly the
+        # (h0,w1) and (h1,w0) pairs. A diagonal would mis-scale the four
+        # coupled axes; the matrix de-mixes them. The controller already
+        # applies `self._sensor_cal_hw @ vec`, so a matrix is a drop-in.
         #
-        # Run conditions: 10 recordings (5 default arm + 5 heavy arm) under
-        # CALIB_AMP_XY=0.35 m, CALIB_AMP_Z=1.0/1.4 m, CALIB_AMP_YAW=20°/30°,
-        # 12 s/phase. MARKER_KLT_MAX_STEPS=0 (no LK fallback during cal),
-        # V_YAW_SOURCE=compass (matches aggregator GT projection).
-        # 6 of 10 runs survived MAD outlier rejection on most axes; 8 of 10
-        # on the better-conditioned axes (h_z, ω_z).
+        # Derived via tools/derive_board_cal.py (GT[h;w] = M @ raw, lstsq) over
+        # 4 board output_calibration runs (V_YAW_SOURCE=compass,
+        # MARKER_KLT_MAX_STEPS=0). Stable across runs: primary terms ~3%,
+        # off-diagonal coupling terms ~3-10%. Per-axis fit R^2:
+        #   Hx 0.71  Hy 0.70  Hz 0.90  Wx 0.56  Wy 0.55  Wz 0.78
+        # (lateral/tilt axes were R^2~0 = pure noise with a single marker;
+        # the board restored observability — see tools/find_camera_rotation.py).
+        # The coupling is geometric (L structure), not target-motion dependent,
+        # so M holds for a moving/rotating target too (board corners are rigid).
         #
-        # Notes on observability (geometric, 4-corner / near-axial marker):
-        #   - L cols 0/4 (v_x, ω_y) and cols 1/3 (v_y, ω_x) are
-        #     parallel/anti-parallel at small (x, y). Min-norm LSTSQ splits
-        #     the v/ω motion across the pair, putting most weight on the
-        #     translation cols. Result: cal_hw[3]/[4] for ω_x/ω_y are very
-        #     small (~0.003 / ~0.057) — the controller effectively sees
-        #     zero image-derived ω_x, ω_y. MATLAB exhibits the same
-        #     behaviour and lands 10/10, so PLASMC is robust to this.
-        #   - cal_hw[2] (ω_z) and cal_hw[5] (h_z) are well-recovered
-        #     because cols 2 and 5 have non-zero entries at non-zero (x, y),
-        #     giving real spatial spread on the 4 corners.
-        # Order in hw: [h_x, h_y, h_z, w_x, w_y, w_z].
-        # 2026-06-02 — cal set to IDENTITY during recalibration.
-        # The next aggregator run uses sample-level outlier rejection on the
-        # matched (GT, raw) pairs (see tools/aggregate_calibration_phased.py).
-        # Don't run landings against this identity cal — it has no GT-matching
-        # scaling and will produce garbage controller inputs. Apply derived
-        # values before any landing test.
-        self._sensor_cal_hw = np.diag([1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-        self._sensor_cal_s  = np.diag([1.0, 1.0, 1.0, 1.0])
+        # _sensor_cal_s ~ identity: the board homography (img_data._board_feature)
+        # already returns the centroid in V-frame-normalized units, so only a
+        # small residual scale (~1.06-1.10) is needed. axes 2,3 (scale, alpha)
+        # stay 1.0.
+        # Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z].
+        self._sensor_cal_hw = np.array([
+            [+0.4471, +0.0080, -0.0071, -0.0065, +0.3286, +0.0021],
+            [-0.0002, +0.4421, +0.0094, -0.2904, +0.0031, -0.0007],
+            [+0.0312, -0.0308, +0.7556, +0.0092, -0.0318, +0.0004],
+            [-0.0028, -1.2763, -0.0217, +0.8781, +0.0115, -0.0075],
+            [+1.2497, +0.0263, -0.0086, +0.0120, +1.0125, +0.0072],
+            [-0.2179, +0.3672, +0.0178, +0.0484, -0.0285, +0.5609]])
+        self._sensor_cal_s  = np.diag([1.0986, 1.0562, 1.0, 1.0])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -250,6 +244,7 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
         # Online post-filter logs (both filters computed every frame, regardless
         # of which one IMG_FILTER selects for the controller). Saved as
         # "Opt Flow KF" / "Opt Flow Savgol" inside getLogData for offline A/B.
@@ -613,6 +608,7 @@ class IMG_PROCESSOR(Thread):
 
                 B_v_scaled = size_factor * B_v
                 self._opt_flow_ang_vel_raw.append(B_v_scaled)
+                self._n_flow_corners.append(int(len(flow_pts_1)))
                 # 2-state KF update — only on a fresh raw measurement.
                 self._kf_update(B_v_scaled, self._time.perf_counter())
                 # Log both filters' calibrated outputs every frame for A/B.
@@ -699,6 +695,7 @@ class IMG_PROCESSOR(Thread):
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._img_feature_param.append(extrapolated_img_feature_param)
+            self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
 
             # Log the previous data
             self._feature_pts.append(self._feature_pts[-1] if self._feature_pts else np.zeros((2,4,2)))
@@ -1014,6 +1011,7 @@ class IMG_PROCESSOR(Thread):
             "Virtual Feature Pts": self._virtual_feature_pts,
             "Feature Params": self._img_feature_param,
             "Opt Flow Ang Vel": self._opt_flow_ang_vel_raw,
+            "N Flow Corners": self._n_flow_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
             "FPS": self._fps_log
