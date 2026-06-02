@@ -561,13 +561,18 @@ class Controller(Thread):
         # Without the cap, the PID's first non-zero firing produces a step
         # in V_h_d that gives raw dh_d ≈ (Δh_d)/dt ≈ 60-160 m/s² — feeds the
         # c-term, blows up |a_u|, drone flies away. Real-flight |dh_d| is
-        # well under 5 m/s² even during aggressive maneuvers; ±20 is a
-        # conservative bound that passes normal flight but blocks the
-        # unphysical startup spike. (MATLAB doesn't need this because it
-        # starts from a clean steady-state IC where V_h_d[0] is already
-        # near the reference; SITL has takeoff/drift before controller
-        # engagement, so V_h_d[0] is far from the equilibrium.)
-        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
+        # well under 5 m/s² even during aggressive maneuvers.
+        #
+        # 2026-06-03 — default tightened 50 → 5 (the physical level). The
+        # explosion-chain analysis (tools/analyze_explosion_chain.py, n=6
+        # defaults reps) showed the old 50 clamp WAS the κ-runaway feed:
+        # near touchdown the 1/Z ds_d spike pins dh_d at ±50 → Θ_norm ≈ 50 →
+        # dκ/dt = Θ·N·G·|σ| runs κ to 10-100× κ_0 → a_u 400-7000 m/s² →
+        # hard impact. At 5.0 the runaway is broken: κ stays bounded,
+        # rel_vel max 9.5 → 0.4 m/s at IC1 (n=5), xy unchanged. IC2-5 gate
+        # passed 2026-06-03 (no regression). Legacy value recoverable via
+        # PLASMC_DH_D_MAX=50.
+        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "5.0"))
         if len(self._h_d) > 1:
             self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
@@ -714,12 +719,28 @@ class Controller(Thread):
         return self._n_a * abs(sigma_a) - self._n_a * self._p_a * kappa_a
 
     def _attCtrl(self):
-        """Convert body-frame accel a_u + yaw rate u_a -> [body rates; thrust] for PX4."""
+        """Convert V-frame accel a_u + yaw rate u_a -> [body rates; thrust] for PX4."""
         R = Quaternion(self._quat[-1]).to_DCM()
         euler = Quaternion(self._quat[-1]).to_angles()  # [roll, pitch, yaw]
 
-        # Raw inertial accel (net of gravity)
-        I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
+        # Raw inertial accel (net of gravity).
+        # a_u lives in the V frame (level, yaw-aligned — same frame as the
+        # optic-flow features it was computed from). MATLAB transforms it with
+        # I_R_V = rotz(yaw) (visualControl_IBVS_adaptive.m:430); the legacy
+        # Python used the FULL body DCM R, which mis-rotates a_u by the
+        # current tilt (CONTROLLER_PARITY.md parity item D1, ~17% cross-axis
+        # error at 10° tilt). Env-gated: PLASMC_VFRAME_ROT=yaw selects the
+        # MATLAB-faithful yaw-only rotation; default 'body' keeps legacy
+        # behaviour until the fix passes the IC2-5 gate.
+        if os.environ.get("PLASMC_VFRAME_ROT", "body") == "yaw":
+            yaw_v = euler[2]
+            cy_v, sy_v = np.cos(yaw_v), np.sin(yaw_v)
+            R_v = np.array([[cy_v, -sy_v, 0.0],
+                            [sy_v,  cy_v, 0.0],
+                            [0.0,    0.0, 1.0]])
+            I_a_raw = R_v @ self._a_u[-1] - np.array([0.0, 0.0, g])
+        else:
+            I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 
         # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
