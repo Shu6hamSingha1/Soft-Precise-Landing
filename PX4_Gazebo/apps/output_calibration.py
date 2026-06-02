@@ -151,6 +151,41 @@ async def main(record = 'n'):
     total_s = sum(p[5] for p in phase_script)
     print(f"[calib] phased excitation: {len(phase_script)} phases, total {total_s:.1f}s")
 
+    # CALIB_MODE=multisine: frequency-multiplexed excitation during a slow
+    # multi-cycle ascent/descent, to derive a HEIGHT-SCHEDULED cal M(altitude).
+    #   z   : slow large sweep, takeoff_h <-> CALIB_FLOOR (multiple cycles)
+    #   x,y : distinct freqs, ACTIVE ONLY above CALIB_LAT_GATE_ALT (lateral
+    #         would leave the FoV at low altitude); gated to 0 below.
+    #   yaw : distinct freq, ACTIVE THROUGHOUT (yaw rotates in place -> marker
+    #         stays framed at any altitude).
+    # Distinct, non-harmonic freqs -> the GT axes are decorrelated over the
+    # window, so the existing GT=M@raw least-squares (binned by altitude)
+    # separates them. -> M above gate = full 6-axis; below gate = h_z,w_z only
+    # (analysis holds lateral at the gate-altitude value).
+    if os.environ.get("CALIB_MODE", "phased") == "multisine":
+        H_ms   = float(os.environ.get("CALIB_TAKEOFF_HEIGHT", "5.0"))
+        floor  = float(os.environ.get("CALIB_FLOOR", "0.5"))
+        gate   = float(os.environ.get("CALIB_LAT_GATE_ALT", "1.2"))
+        A_xy   = float(os.environ.get("CALIB_MS_AMP_XY", "0.30"))
+        A_yaw  = float(os.environ.get("CALIB_MS_AMP_YAW_DEG", "15.0"))
+        Tms    = float(os.environ.get("CALIB_MULTISINE_S", "60.0"))
+        ncyc   = float(os.environ.get("CALIB_Z_CYCLES", "2.0"))
+        f_x, f_y, f_yaw = 0.40, 0.55, 0.25            # distinct, non-harmonic
+        f_z = ncyc / Tms
+        cen = 0.5 * (H_ms + floor)
+        amp = 0.5 * (H_ms - floor)
+        def _alt(tau):  return cen + amp * np.cos(2*np.pi*f_z*tau)   # H at tau=0
+        def _lat(tau):  return 1.0 if _alt(tau) > gate else 0.0
+        ms_z   = lambda tau: H_ms - _alt(tau)                       # NED-offset: + = descend
+        ms_x   = lambda tau: A_xy  * np.sin(2*np.pi*f_x*tau)   * _lat(tau)
+        ms_y   = lambda tau: A_xy  * np.sin(2*np.pi*f_y*tau)   * _lat(tau)
+        ms_yaw = lambda tau: A_yaw * np.sin(2*np.pi*f_yaw*tau)
+        phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S),
+                        ('multisine', ms_x, ms_y, ms_z, ms_yaw, Tms)]
+        total_s = sum(p[5] for p in phase_script)
+        print(f"[calib] MULTISINE: {Tms:.0f}s, {ncyc} z-cycles {H_ms}<->{floor}m, "
+              f"lateral gated >{gate}m, yaw throughout; total {total_s:.1f}s")
+
     try:
         rclpy.init()
         pose_node = Pose_Node()
@@ -224,9 +259,11 @@ async def main(record = 'n'):
                 if not img_node.is_alive() and FC_node.LANDED:
                     break
 
-                # Bail on failsafe-driven descent.
+                # Bail on failsafe-driven descent — but NOT in multisine mode,
+                # where the commanded descent to CALIB_FLOOR is intentional.
                 cur_z = FC_node.getPosBody().z_m
-                if cur_z - takeoff_z > CALIB_ALT_DROP_BAIL_M:
+                if (os.environ.get("CALIB_MODE", "phased") != "multisine"
+                        and cur_z - takeoff_z > CALIB_ALT_DROP_BAIL_M):
                     print(f"  [bail] altitude dropped {cur_z - takeoff_z:+.2f} m below takeoff — "
                           f"PX4 likely failsafed; ending sweep early.")
                     break
@@ -240,10 +277,19 @@ async def main(record = 'n'):
                     t_c = [0.0]
 
                 tau = time_node.perf_counter() - phase_t0   # phase-relative time
+                # Multisine commands ABSOLUTE altitude (NED z = fn_z - H), so the
+                # descent floor is independent of PX4's takeoff overshoot (it
+                # took off to ~6 m, not 5 → takeoff_z+fn_z undershot the floor).
+                # fn_z(tau) = H - alt(tau), so NED z = fn_z - H = -alt(tau).
+                if ph_name == 'multisine':
+                    _Hms = float(os.environ.get("CALIB_TAKEOFF_HEIGHT", "5.0"))
+                    z_cmd = fn_z(tau) - _Hms
+                else:
+                    z_cmd = takeoff_z + fn_z(tau)
                 pos_cmd = np.array([
                     fn_x(tau),
                     fn_y(tau),
-                    takeoff_z + fn_z(tau),
+                    z_cmd,
                     yaw_deg_0 + fn_yaw(tau),
                 ])
 
