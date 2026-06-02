@@ -33,8 +33,16 @@ PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/*
 !PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/hybrid_rep5/
 !PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/hybrid_rep5.log
 !PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/summary.tsv
-# per-rep console logs inside the tracked test_data dirs ARE wanted (override *.log)
-!PX4_Gazebo/test_data/**/*.log
+# per-rep console logs inside the TRACKED campaign dirs ARE wanted (override
+# *.log) — scoped PER-DIR so the ignored bulk reps' logs are NOT pulled in
+# (the blanket !test_data/**/*.log leaked the HybridFlow A/B bulk-rep logs).
+# hybrid_rep5.log is re-included above via its own carve-out (line 34).
+!PX4_Gazebo/test_data/CoordDescent/**/*.log
+!PX4_Gazebo/test_data/ImpulseResponse/**/*.log
+!PX4_Gazebo/test_data/Interventions/**/*.log
+!PX4_Gazebo/test_data/Krp4/**/*.log
+!PX4_Gazebo/test_data/NewDefaults/**/*.log
+!PX4_Gazebo/test_data/RhoFov05_KP125/**/*.log
 
 # Phase 1 sentinel files (transient; do not commit)
 MATLAB/Datasets/Phase1/done.flag
