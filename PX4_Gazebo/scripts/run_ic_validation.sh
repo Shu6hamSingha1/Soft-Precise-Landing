@@ -37,17 +37,17 @@ run_one() {
   local enu="${IC_ENU[$ic]}"
   local dst="$BUNDLE_DIR/${ic}_rep${rep}"
   echo "=== $ic (ENU $enu) rep=$rep ==="
-  local before
-  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
+  local before     # -d + */ -> directories only (SH_REFERENCE pitfall 9: skips parameter_record.ods)
+  before=$(ls -td "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/"*/ 2>/dev/null | head -1 || true)
   env INITIAL_DRONE_ENU="$enu" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
       bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" > "$dst.log" 2>&1
   local latest
-  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -td "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/"*/ 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     printf "%s\t%s\t%s\tNO\t-\t-\t-\t-\t-\t-\n" "$ic" "$enu" "$rep" >> "$SUMMARY"
     return
   fi
-  cp -r "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest" "$dst"
+  cp -r "$latest" "$dst"
   local m
   m=$("$HOME/ws/scripts/env2025/bin/python3" - "$dst" << 'PY'
 import sys, numpy as np, os
