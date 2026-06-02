@@ -122,6 +122,18 @@ class Controller(Thread):
         ki_y = float(os.environ.get("PLASMC_KI_Y_SCALE", "1.0"))
         kd_x = float(os.environ.get("PLASMC_KD_X_SCALE", "1.0"))
         kd_y = float(os.environ.get("PLASMC_KD_Y_SCALE", "1.0"))
+        # 2026-06-02 — touchdown derivative-kick guard. Diagnosed on IC1:
+        # near touchdown the 1/Z growth of s_e_n makes ds_e_n spike, so the
+        # K_rd term dominates the outer-PID desired-flow ds_d (measured −18
+        # vs proportional ~8 on x) → h_d blows past the funnel p → barrier
+        # ratio clamps → zeta saturates (3.66) → kappa runaway → hard impact.
+        # The MEASURED flow h stays small throughout, so this is a desired-
+        # flow artifact, not perception. Clamping |ds_d| per axis caps that
+        # transient spike while leaving normal-regime tracking (|ds_d|≲1)
+        # untouched — surgical alternative to cutting K_rd, which also strips
+        # the lateral tracking damping the derivative legitimately provides.
+        # Default 0 = off (no clamp). Set PLASMC_DSD_CLAMP to the per-axis cap.
+        self._dsd_clamp = float(os.environ.get("PLASMC_DSD_CLAMP", "0.0"))
         # K_rp gain scheduling (2026-05-25, after IC2-5 regression of K_rp=4).
         # K_rp = 4 is good for IC1 (low |s_e_n|, IC-near-center) — gives
         # softness via reduced PID aggression.  But at IC2-5 the initial
@@ -494,6 +506,10 @@ class Controller(Thread):
         V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
                      - self._K_ri @ self._is_e_n[-1]
                      - self._K_rd @ ds_e_n)
+        # Touchdown derivative-kick guard (see __init__ note): cap the per-axis
+        # desired flow so the 1/Z spike can't push h_d past the funnel. Off at 0.
+        if self._dsd_clamp > 0.0:
+            V_ds_d_xy = np.clip(V_ds_d_xy, -self._dsd_clamp, self._dsd_clamp)
         self._ds_d.append(np.concatenate([V_ds_d_xy, [0.0]]))
 
     def _updateOptFlow(self, h):
