@@ -18,6 +18,13 @@ from mavsdk.telemetry import LandedState
 class FC():
     def __init__(self, time_keeper=time):
         self._time = time_keeper
+        # 2026-06-02 — LAG FIX: transport for the high-rate body-rate setpoints.
+        #   'mavsdk' (default): offboard.set_attitude_rate over UDP (~30 ms).
+        #   'dds': direct uXRCE-DDS publish to /fmu/in/vehicle_rates_setpoint
+        #          (cuts the MAVSDK/MAVLink/UDP hops; ~38 ms -> ~10 ms target).
+        # Cold path (arm/takeoff/offboard-entry/land) stays MAVSDK regardless.
+        self._cmd_transport = os.environ.get("CMD_TRANSPORT", "mavsdk")
+        self._dds = None
         # Flags
         self.CONNECTED = False
         self._OFFBOARD = False
@@ -93,6 +100,16 @@ class FC():
             #   MC_ROLLRATE_D  default 0.003     MC_PITCHRATE_D  default 0.003
             # Set scale >1 only after verifying stability on impulse-test.
             await self._maybe_apply_rate_gain_scale()
+
+            # Eagerly create the DDS rate sender here (single-threaded setup
+            # moment) rather than lazily on the first in-flight send_attitude_rate
+            # — lazy creation from the asyncio control loop, with the
+            # gz_subscriber executors already spinning, raced rclpy context state
+            # ("publisher's context is invalid"). Its own isolated context shares
+            # no locks with the subscribers.
+            if self._cmd_transport == "dds" and self._dds is None:
+                from dds_setpoint import DDSRateSender
+                self._dds = DDSRateSender(time_keeper=self._time)
 
             await self.vehicle.action.hold()
                 
@@ -324,7 +341,17 @@ class FC():
 
         'roll_rate', 'pitch_rate', and 'yaw_rate' are angular rates in deg/s.
 
+        CMD_TRANSPORT=dds routes this through the low-latency uXRCE-DDS path
+        (DDSRateSender, lazily created) instead of MAVSDK. PX4 stays in the
+        OFFBOARD mode entered by MAVSDK at takeoff; the DDS body_rate stream
+        seamlessly takes over (same uORB topics, no failsafe gap).
         """
+        if self._cmd_transport == "dds":
+            if self._dds is None:   # fallback (start() normally creates it eagerly)
+                from dds_setpoint import DDSRateSender
+                self._dds = DDSRateSender(time_keeper=self._time)
+            self._dds.send_rates(roll_rate, pitch_rate, yaw_rate, thrust)
+            return
         await self.vehicle.offboard.set_attitude_rate(
                 AttitudeRate(roll_rate, pitch_rate, yaw_rate, thrust))
 

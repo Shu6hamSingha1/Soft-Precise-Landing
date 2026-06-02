@@ -188,6 +188,15 @@ echo
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
+# Overlay px4_msgs (for CMD_TRANSPORT=dds, the low-latency uXRCE-DDS rate path).
+# Additive over /opt/ros/humble (adds px4_msgs + typesupport); does not change
+# rclpy. No-op if absent.
+if [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
+  set +u   # ros2_ws setup.bash references COLCON_TRACE unbound; don't trip set -u
+  # shellcheck disable=SC1091
+  source "$HOME/ros2_ws/install/setup.bash"
+  set -u
+fi
 PY_OUT="$LOG_DIR/landing_test.out"
 # Hard wall-clock timeout to prevent rare hangs (PX4 SITL crash without
 # clean exit, MAVSDK deadlock, etc.) from blocking sweep loops indefinitely.
