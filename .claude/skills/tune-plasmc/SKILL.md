@@ -73,6 +73,7 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 | `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_SCALE` | Terminal pixel envelope |
 | `l_fov` | 0.1 | `PLASMC_LFOV_SCALE` | Envelope decay rate (1/s) |
 | `theta_cap` | 60° | `PLASMC_THETACAP_SCALE` | Soft cone ceiling — acceleration saturation |
+| `theta_floor` | 0° (legacy) | `PLASMC_THETA_FLOOR_DEG` | **Floor on θ_cone (2026-06-03). The d_min collapse was strangling terminal correction (94-100% of final-2s samples at IC1) — THETACAP is irrelevant when d_min=0. floor=60 → SP #6 (xy 0.060/vel 0.149, first mechanism-driven SP). See memory fov-cone-clamp-deadlock.** |
 
 ### Inner loop (SO(3))
 | Param | Default | Env knob | Notes |
@@ -202,6 +203,10 @@ IMG_STALE_THRESH=3          (intervention 2)
 ```
 
 Best-known IC1 N=10 outcome:  PRECISE=1, SOFT=2, **SOFT+PRECISE=1**, TL=0, xy_mean=0.328 m, std=0.157 m.
+
+**2026-06-03 (multisine-cal era): `PLASMC_THETA_FLOOR_DEG=60` + `PLASMC_DH_D_MAX=5` (default) → SP #6
+(xy=0.060, vel=0.149) at IC1, 1/5 rate, 0 TL. The current best config. Neither knob is sufficient alone;
+PID_SCALE=0.54 stacking adds nothing. Open: raise SP rate (terminal softness) + IC2-5 overshoot prevention.**
 
 ## Procedure for new tuning
 
