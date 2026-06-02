@@ -1,0 +1,11 @@
+rep	landed	xy	vel	precise	soft	target_lost	result_dir
+1	YES	0.3371	0.6640	0	0	0	rep1
+2	YES	0.0388	0.1309	1	1	0	rep2
+3	YES	0.3278	1.2961	0	0	0	rep3
+4	YES	0.3818	0.8242	0	0	0	rep4
+5	YES	0.6627	0.1441	0	1	0	rep5
+6	YES	0.3598	1.7125	0	0	0	rep6
+7	YES	0.4428	1.8126	0	0	0	rep7
+8	YES	0.2212	1.8277	0	0	0	rep8
+9	YES	0.3285	1.9574	0	0	0	rep9
+10	YES	0.1771	1.3561	0	0	0	rep10

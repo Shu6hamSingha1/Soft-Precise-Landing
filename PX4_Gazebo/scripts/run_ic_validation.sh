@@ -18,7 +18,7 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BUNDLE_DIR="$HOME/ws/Test_Data/ICValidation/${TIMESTAMP}"
+BUNDLE_DIR="$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/ICValidation/${TIMESTAMP}"
 mkdir -p "$BUNDLE_DIR"
 
 N_REPS="${N_REPS:-2}"
@@ -38,16 +38,16 @@ run_one() {
   local dst="$BUNDLE_DIR/${ic}_rep${rep}"
   echo "=== $ic (ENU $enu) rep=$rep ==="
   local before
-  before=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   env INITIAL_DRONE_ENU="$enu" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
       bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" > "$dst.log" 2>&1
   local latest
-  latest=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     printf "%s\t%s\t%s\tNO\t-\t-\t-\t-\t-\t-\n" "$ic" "$enu" "$rep" >> "$SUMMARY"
     return
   fi
-  cp -r "$HOME/ws/Test_Data/Landing_Test/$latest" "$dst"
+  cp -r "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest" "$dst"
   local m
   m=$("$HOME/ws/scripts/env2025/bin/python3" - "$dst" << 'PY'
 import sys, numpy as np, os

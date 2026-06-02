@@ -490,7 +490,7 @@ if __name__ == "__main__":
             timestamp = time.ctime().replace(':', '-')
 
             # Create a directory named based on timestamp
-            dir_name = f"/home/shubham/ws/Test_Data/Landing_Test/{timestamp}"
+            dir_name = f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/{timestamp}"
             os.makedirs(dir_name)
 
             # Save files inside the folder 

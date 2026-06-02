@@ -154,7 +154,7 @@ def main():
 
     if args.bundle is None:
         candidates = sorted(glob.glob(os.path.expanduser(
-            "~/ws/Test_Data/DefaultN10/*")))
+            "~/Soft-Precise-Landing/PX4_Gazebo/test_data/DefaultN10/*")))
         if not candidates:
             sys.exit("No DefaultN10 bundle found.")
         args.bundle = candidates[-1]

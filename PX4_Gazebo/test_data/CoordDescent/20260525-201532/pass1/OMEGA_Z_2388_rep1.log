@@ -1,0 +1,22 @@
+=================================================================
+[retry] Attempt 1 / 3
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/qgc.log)
+[run] qgc died immediately; last lines:
+/tmp/.mount_QGrounPNPUGO/QGroundControl: symbol lookup error: /tmp/.mount_QGrounPNPUGO/Qt/libs/libQt5Location.so.5: undefined symbol: _ÛN29QDec¤arativePlaceContentModel16staticMetaObjectE, version Qt_5_PRIVATE_API
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 879830 + group)
+[run]   killing px4_sitl (pid 879888 + group)
+[run]   killing bridge_clock (pid 880268 + group)
+[run]   killing bridge_pose (pid 880312 + group)
+[run]   killing bridge_image (pid 880332 + group)
+[run] done.
+[retry] Attempt 1 exited rc=1 (not the race condition); giving up.

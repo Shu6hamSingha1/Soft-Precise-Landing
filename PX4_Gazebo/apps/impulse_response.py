@@ -12,7 +12,7 @@ These give a cleaner lag estimate than the convergent-flight cross-
 correlation in analyze_loop_latency.py, since hover removes the flight-
 dynamics confound.
 
-Output: $HOME/ws/Test_Data/ImpulseResponse/<timestamp>/impulse_log.npy
+Output: $HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/ImpulseResponse/<timestamp>/impulse_log.npy
 
 Run via:
     PY_SCRIPT=impulse_response.py bash run_aruco_landing.sh
@@ -46,7 +46,7 @@ LOOP_HZ = 200
 LOOP_DT = 1.0 / LOOP_HZ
 
 OUTDIR = os.path.expanduser(
-    f"~/ws/Test_Data/ImpulseResponse/{time.strftime('%Y%m%d-%H%M%S')}"
+    f"~/Soft-Precise-Landing/PX4_Gazebo/test_data/ImpulseResponse/{time.strftime('%Y%m%d-%H%M%S')}"
 )
 os.makedirs(OUTDIR, exist_ok=True)
 

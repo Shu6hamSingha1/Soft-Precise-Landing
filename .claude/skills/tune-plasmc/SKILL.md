@@ -208,7 +208,7 @@ Best-known IC1 N=10 outcome:  PRECISE=1, SOFT=2, **SOFT+PRECISE=1**, TL=0, xy_me
 2. **Pick ONE parameter** to vary (no combinations until singletons validated).
 3. **Sweep at 3-5 values** spanning [0.5×, 2.0×] of default.
 4. **Run n=5 per cell** at IC1.
-5. **Save bundle to `~/ws/Test_Data/<sweep_name>/<timestamp>/`** for the analyzer.
+5. **Save bundle to `~/Soft-Precise-Landing/PX4_Gazebo/test_data/<sweep_name>/<timestamp>/`** for the analyzer.
 6. **Reject any "winner" without n=10 follow-up** — first run only narrows the search.
 7. **Run IC2-5 validation** before any default change (`run_ic_validation.sh`).
 8. **Update memory** if a real winner appears; update this skill's "known winners" if it's baked into defaults.

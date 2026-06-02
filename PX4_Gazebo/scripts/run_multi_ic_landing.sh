@@ -15,7 +15,7 @@
 #
 # Each IC drives one run of run_aruco_landing_retry.sh (with its built-in
 # IC-convergence + retry-on-PX4-flake handling). Results from each run land
-# in ~/ws/Test_Data/Landing_Test/<timestamp>/ and get aggregated by name into
+# in ~/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/<timestamp>/ and get aggregated by name into
 # this script's summary at the end. We also copy each successful run dir into
 # a multi-IC bundle for compact downstream analysis.
 #
@@ -27,7 +27,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BUNDLE_DIR="$HOME/ws/Test_Data/Multi_IC/${TIMESTAMP}"
+BUNDLE_DIR="$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Multi_IC/${TIMESTAMP}"
 mkdir -p "$BUNDLE_DIR"
 PER_IC_REPEATS="${PER_IC_REPEATS:-1}"
 
@@ -54,7 +54,7 @@ run_one() {
   # Snapshot mtime of latest Landing_Test dir BEFORE the run, so we can detect
   # the new one after.
   local before
-  before=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
 
   INITIAL_DRONE_ENU="$ic" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
     bash "$SCRIPT_DIR/run_aruco_landing_retry.sh"
@@ -63,7 +63,7 @@ run_one() {
 
   # Find the new run dir (most recent that's different from `before`)
   local latest
-  latest=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     echo "[multi_ic] no new result dir — run probably failed"
     printf "%d\t%d\t%s\tFAIL\t0\t-\t-\t-\t-\n" \
@@ -71,7 +71,7 @@ run_one() {
     return
   fi
 
-  local src="$HOME/ws/Test_Data/Landing_Test/$latest"
+  local src="$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest"
   local dst="$BUNDLE_DIR/IC_${ic_idx}_rep_${repeat}"
   cp -r "$src" "$dst"
   echo "[multi_ic] copied $latest → $dst"

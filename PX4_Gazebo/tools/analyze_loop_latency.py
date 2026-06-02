@@ -24,7 +24,7 @@ We can measure stages 4 + 5 + 6 + 7 + 8 + 9 together by cross-correlating
 
 Usage:
     python3 analyze_loop_latency.py <bundle_dir>
-        — defaults to ~/ws/Test_Data/DefaultN10/<latest>
+        — defaults to ~/Soft-Precise-Landing/PX4_Gazebo/test_data/DefaultN10/<latest>
 """
 from __future__ import annotations
 import argparse
@@ -158,7 +158,7 @@ def main():
 
     if args.bundle is None:
         candidates = sorted(glob.glob(os.path.expanduser(
-            "~/ws/Test_Data/DefaultN10/*")))
+            "~/Soft-Precise-Landing/PX4_Gazebo/test_data/DefaultN10/*")))
         if not candidates:
             sys.exit("No DefaultN10 bundle found; pass a path explicitly.")
         args.bundle = candidates[-1]

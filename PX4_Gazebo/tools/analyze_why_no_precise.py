@@ -94,17 +94,17 @@ def main():
     candidates = {
         # SP reps (all 3 ever):
         "SP #1 (Interventions, K_rp=9, lucky IC)":
-            "/home/shubham/ws/Test_Data/Interventions/20260523-162914/rep2",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Interventions/20260523-162914/rep2",
         "SP #2 (NewDefaults K_rp=4 P_z=2.5)":
-            "/home/shubham/ws/Test_Data/NewDefaults/20260525-015341/rep5",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/NewDefaults/20260525-015341/rep5",
         # Closest near-SP (PRECISE-only or near-PRECISE):
         "PRECISE-only stack (xy=0.031, vel=0.97)":
-            "/home/shubham/ws/Test_Data/RhoFov05_KP125/20260524-095751/rep6",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/RhoFov05_KP125/20260524-183744/rep6",
         "Closest-near-SP at K_rp=4 (rep9: xy=0.128 vel=0.156)":
-            "/home/shubham/ws/Test_Data/Krp4/20260525-011046/rep9",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Krp4/20260525-011046/rep9",
         # Failure cases:
         "POOR at K_rp=4 (rep2: xy=0.84)":
-            "/home/shubham/ws/Test_Data/Krp4/20260525-011046/rep2",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Krp4/20260525-011046/rep2",
     }
 
     traces = {}

@@ -11,7 +11,7 @@
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BUNDLE_DIR="$HOME/ws/Test_Data/MarkerGrace/${TIMESTAMP}"
+BUNDLE_DIR="$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/MarkerGrace/${TIMESTAMP}"
 mkdir -p "$BUNDLE_DIR"
 
 IC="0.0,0.0,5.0"
@@ -26,17 +26,17 @@ run_one() {
   local dst="$BUNDLE_DIR/grace_rep${rep}"
   echo "=== grace=$GRACE rep=$rep ==="
   local before
-  before=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   env LANDING_MARKER_LOSS_GRACE="$GRACE" INITIAL_DRONE_ENU="$IC" \
       LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
       bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" > "$dst.log" 2>&1
   local latest
-  latest=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     printf "%s\tNO\t-\t-\t-\t-\t-\t-\t-\t-\n" "$rep" >> "$SUMMARY"
     return
   fi
-  cp -r "$HOME/ws/Test_Data/Landing_Test/$latest" "$dst"
+  cp -r "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest" "$dst"
   # Count "NOT VISIBLE" dropouts during flight
   local dropouts
   dropouts=$(grep "LANDING PAD NOT VISIBLE" "$dst.log" 2>/dev/null | wc -l)

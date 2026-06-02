@@ -40,12 +40,12 @@ When a new script IS warranted (new methodology, new IC strategy, new env-knob),
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-BUNDLE_DIR="$HOME/ws/Test_Data/<BundleName>/${TIMESTAMP}"; mkdir -p "$BUNDLE_DIR"
+BUNDLE_DIR="$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/<BundleName>/${TIMESTAMP}"; mkdir -p "$BUNDLE_DIR"
 ```
 
 - `set -u` (not `set -e` — many of these scripts intentionally continue after a failed rep).
 - `SCRIPT_DIR` resolves via `BASH_SOURCE[0]` so `bash other.sh` from a different cwd still works.
-- Bundle root under `~/ws/Test_Data/<Name>/<timestamp>/` matches existing convention; downstream analyzers expect this.
+- Bundle root under `~/Soft-Precise-Landing/PX4_Gazebo/test_data/<Name>/<timestamp>/` matches existing convention; downstream analyzers expect this.
 
 ---
 
@@ -159,19 +159,19 @@ run_one() {
 
   # Capture latest dir BEFORE the run so we can detect a no-save fail
   local before
-  before=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  before=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
 
   env <PLASMC_OVERRIDES> \
       INITIAL_DRONE_ENU="$IC" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
       bash "$SCRIPT_DIR/run_aruco_landing_retry.sh" > "$dst.log" 2>&1
 
   local latest
-  latest=$(ls -t "$HOME/ws/Test_Data/Landing_Test/" 2>/dev/null | head -1 || true)
+  latest=$(ls -t "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/" 2>/dev/null | head -1 || true)
   if [ -z "$latest" ] || [ "$latest" = "$before" ]; then
     printf "%s\tNO\t-\t-\t-\t-\t-\t-\t-\n" "$rep" >> "$SUMMARY"
     return
   fi
-  cp -r "$HOME/ws/Test_Data/Landing_Test/$latest" "$dst"
+  cp -r "$HOME/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/$latest" "$dst"
 
   local m
   m=$("$HOME/ws/scripts/env2025/bin/python3" - "$dst" << 'PY'
@@ -288,7 +288,7 @@ PY
 
 1. **Self-pkill** (section 2) — `pkill -f X` kills the loop's parent bash if its argv contains `X`. Always invoke loops as `bash /tmp/file.sh`, not as inline `bash -c '...'`.
 2. **Empty-dir pollution** — `output_calibration.py` mkdirs its dir at start; if the sweep fails, the empty dir remains and inflates `ls`-by-mtime counts. The empty-dir `rmdir` step is mandatory.
-3. **Stale `latest` symlink** — `ls -t` on `~/ws/Test_Data/Landing_Test/` is the recording detector. Capture `before` BEFORE the run; comparing to `latest` after is the only way to detect "no recording was produced."
+3. **Stale `latest` symlink** — `ls -t` on `~/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/` is the recording detector. Capture `before` BEFORE the run; comparing to `latest` after is the only way to detect "no recording was produced."
 4. **`set -e` in sweep scripts** — DON'T. One failed rep should not abort the rest. Use explicit returns and let the summary record `NO`.
 5. **`python3` (system) vs `env2025/bin/python3`** — only the venv has numpy/ahrs/scipy/cv2. Always use the full venv path in heredocs.
 6. **Forgetting `setsid`** — bare `cmd &` puts the child in the script's process group; `kill -- -$pid` then targets the script itself. Always launch via the `start_bg` helper.

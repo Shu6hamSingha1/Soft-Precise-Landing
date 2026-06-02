@@ -17,5 +17,17 @@ PX4_Gazebo/run_logs/
 PX4_Gazebo/calibration_data/
 # (calibration_data/ holds both output/ and input/ subtrees)
 
+# PX4_Gazebo/test_data: bulk recordings (regenerable) are ignored.
+# Tracked subdirs (irreplaceable — SP landings, reference reps, campaign records):
+#   CoordDescent/ ImpulseResponse/ Interventions/ Krp4/ NewDefaults/ RhoFov05_KP125/
+PX4_Gazebo/test_data/Landing_Test/
+PX4_Gazebo/test_data/ICValidation/
+PX4_Gazebo/test_data/HybridFlow_AB/
+PX4_Gazebo/test_data/KLT_AB/
+PX4_Gazebo/test_data/NewCal/
+PX4_Gazebo/test_data/Test_Videos/
+# per-rep console logs inside the tracked test_data dirs ARE wanted (override *.log)
+!PX4_Gazebo/test_data/**/*.log
+
 # Phase 1 sentinel files (transient; do not commit)
 MATLAB/Datasets/Phase1/done.flag

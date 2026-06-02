@@ -1,0 +1,248 @@
+=================================================================
+[retry] Attempt 1 / 3
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/qgc.log)
+[run] waiting for PX4 preflight to clear ... ready after 6s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] K_rp scheduling DISABLED — using constant K_rp = 4.0
+[PLASMC] tunable middle-loop scales:
+  P2INF_X  = 0.0462467
+  E_X      = 0.00593788
+  E_Z      = 10.0491
+  P_Y      = 0.000996519
+-- Waiting for is_armable (EKF / lockstep ready)...
+LANDING PAD VISIBLE NOW...
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+Altitude reached
+-4.827388763427734 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = HOLD
+PositionBody: [x_m: 0.01879955269396305, y_m: 0.007631502579897642, z_m: -5.4793267250061035]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+[landing_test] IC convergence TIMEOUT after 30 s (last pos_err=1.006 m, speed=0.011 m/s, yaw_err=95.54°, tilt=0.11°)
+RuntimeError: Main Thread: IC convergence timeout (pos_err=1.01 m, speed=0.01 m/s) — aborting before controller engage
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle).
+[run] Signaling retry with exit code 42.
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 862755 + group)
+[run]   killing px4_sitl (pid 862792 + group)
+[run]   killing bridge_clock (pid 863186 + group)
+[run]   killing bridge_pose (pid 863206 + group)
+[run]   killing bridge_image (pid 863249 + group)
+[run]   killing qgc (pid 863277 + group)
+[run] done.
+[retry] Attempt 1 lost the gz_bridge/lockstep race; retrying after 10 s...
+=================================================================
+[retry] Attempt 2 / 3
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/qgc.log)
+[run] waiting for PX4 preflight to clear ............... (timeout, proceeding anyway)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Unexpected error: Main Thread: Unable to get simulation time.
+
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 865583 + group)
+[run]   killing px4_sitl (pid 865629 + group)
+[run]   killing bridge_clock (pid 866011 + group)
+[run]   killing bridge_pose (pid 866044 + group)
+[run]   killing bridge_image (pid 866087 + group)
+[run]   killing qgc (pid 866115 + group)
+[run] done.
+[retry] SUCCESS after attempt 2

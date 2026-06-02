@@ -148,7 +148,7 @@ def analyze_one(rep_dir: Path) -> dict:
 
 
 def main():
-    cands = sorted(glob.glob(os.path.expanduser("~/ws/Test_Data/Interventions/*")))
+    cands = sorted(glob.glob(os.path.expanduser("~/Soft-Precise-Landing/PX4_Gazebo/test_data/Interventions/*")))
     if not cands:
         sys.exit("No intervention bundle.")
     bundle = Path(cands[-1])

@@ -30,7 +30,7 @@ import numpy as np
 
 def find_latest():
     cands = sorted(glob.glob(os.path.expanduser(
-        "~/ws/Test_Data/ImpulseResponse/*/impulse_log.npy")))
+        "~/Soft-Precise-Landing/PX4_Gazebo/test_data/ImpulseResponse/*/impulse_log.npy")))
     return cands[-1] if cands else None
 
 

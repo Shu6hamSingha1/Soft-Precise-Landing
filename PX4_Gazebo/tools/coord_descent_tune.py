@@ -120,7 +120,7 @@ def composite(xys: list[float], vels: list[float]) -> tuple[float, float, float]
 
 def run_one_rep(env: dict, ic: str, dst: Path) -> tuple[float, float, bool, bool, bool]:
     """Run one SITL landing. Returns (xy, vel, precise, soft, target_lost)."""
-    landing_test_dir = Path.home() / "ws/Test_Data/Landing_Test"
+    landing_test_dir = Path.home() / "Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test"
     landing_test_dir.mkdir(parents=True, exist_ok=True)
     # FIX: sort by mtime not name — names start with weekday abbrev (Mon/Tue/...)
     # which breaks alphabetic sort across week boundaries.
@@ -183,7 +183,7 @@ def env_for_state(state: dict) -> dict:
 
 
 def main():
-    bundle = Path.home() / "ws/Test_Data/CoordDescent" / time.strftime("%Y%m%d-%H%M%S")
+    bundle = Path.home() / "Soft-Precise-Landing/PX4_Gazebo/test_data/CoordDescent" / time.strftime("%Y%m%d-%H%M%S")
     bundle.mkdir(parents=True, exist_ok=True)
     state_path = bundle / "state.json"
     log_path = bundle / "log.jsonl"

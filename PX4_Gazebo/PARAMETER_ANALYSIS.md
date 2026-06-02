@@ -271,7 +271,7 @@ The PID's `K_rd` (derivative) provides braking. But:
 
 ## Data sources
 
-- `~/ws/Test_Data/` — 68 bundles, 1205 reps
+- `~/Soft-Precise-Landing/PX4_Gazebo/test_data/` — 68 bundles, 1205 reps
 - `/tmp/all_landings.json` — full classification table from `scan_all_landings.py`
 - Memory: every `feedback_*.md` under `~/.claude/projects/-home-shubham-Soft-Precise-Landing/memory/`
 - `controller.py`, `img_data.py`, `landing_test.py` — current source of truth

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan every SITL landing bundle under ~/ws/Test_Data/ and classify every
+"""Scan every SITL landing bundle under ~/Soft-Precise-Landing/PX4_Gazebo/test_data/ and classify every
 rep. Identifies SP landings, PRECISE-only, SOFT-only, and the distribution
 of failures. Then for each SP/near-SP we extract diagnostic signals so we
 can answer "what was different about this rep?"
@@ -88,7 +88,7 @@ def classify_rep(rep_dir: Path) -> dict | None:
 
 def main():
     roots = [
-        os.path.expanduser("~/ws/Test_Data"),
+        os.path.expanduser("~/Soft-Precise-Landing/PX4_Gazebo/test_data"),
     ]
     all_reps = []
     bundles_scanned = []

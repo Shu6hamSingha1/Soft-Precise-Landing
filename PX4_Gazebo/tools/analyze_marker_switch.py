@@ -125,7 +125,7 @@ def analyze_rep(rep_dir):
 
 def main():
     cands = sorted(glob.glob(os.path.expanduser(
-        "~/ws/Test_Data/DefaultN10/*")))
+        "~/Soft-Precise-Landing/PX4_Gazebo/test_data/DefaultN10/*")))
     if not cands:
         sys.exit("No DefaultN10 bundle.")
     bundle = cands[-1]
