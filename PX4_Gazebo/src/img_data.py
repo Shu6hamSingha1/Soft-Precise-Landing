@@ -77,39 +77,35 @@ class IMG_PROCESSOR(Thread):
         # `center = (320, 240)` — that one was transposed and is now (240, 320).
         self.center = np.array(self._resolution) / 2.0   # (cx, cy) = (240, 320)
 
-        # Sensor calibration — MULTI-MARKER BOARD, 2026-06-02.
+        # Sensor calibration — MULTISINE height-validated M (2026-06-02 night),
+        # CONFIRMED over 4 descent runs. FULL 6x6: calibrated [h;w]=M@raw.
         #
-        # _sensor_cal_hw is now a FULL 6x6 matrix M (not a diagonal):
-        #   calibrated [h;w] = M @ raw_lstsq_[h;w].
-        # The board makes the 6-DOF lstsq full-rank, but a fixed GEOMETRIC
-        # h<->w coupling remains (L cols v_x<->w_y and v_y<->w_x), so the true
-        # map raw->GT is a 6x6 with off-diagonal terms in exactly the
-        # (h0,w1) and (h1,w0) pairs. A diagonal would mis-scale the four
-        # coupled axes; the matrix de-mixes them. The controller already
-        # applies `self._sensor_cal_hw @ vec`, so a matrix is a drop-in.
+        # Derived via CALIB_MODE=multisine (apps/output_calibration.py): freq-
+        # multiplexed excitation (x@0.40,y@0.55,yaw@0.25Hz — distinct freqs ->
+        # GT axes decorrelated -> GT=M@raw lstsq separates them) during a slow
+        # 2-cycle z-sweep 5<->0.3m, lateral gated >1.2m, yaw throughout. Fit
+        # binned by altitude shows M is HEIGHT-STABLE (diag ~const, R^2 0.8+
+        # from 0.5-5.5m) — overturns the earlier "no single M spans descent"
+        # (that was noise in 2-run discrete sweeps). Pooled over 4 runs / 49k
+        # samples: R^2 Hx 0.81 Hy 0.83 Hz 0.92 Wx 0.49 Wy 0.50 Wz 0.78.
+        # Reproducible: diag Hx 0.749±4%, Hy 0.683±2%, Hz 0.864±4%, Wz 0.610±6%
+        # (tilt Wx/Wy noisy 16-27%). The h<->w coupling (off-diagonals in the
+        # (h0,w1)/(h1,w0) pairs) is geometric -> holds for moving targets too.
         #
-        # Derived via tools/derive_board_cal.py (GT[h;w] = M @ raw, lstsq) over
-        # 4 board output_calibration runs (V_YAW_SOURCE=compass,
-        # MARKER_KLT_MAX_STEPS=0). Stable across runs: primary terms ~3%,
-        # off-diagonal coupling terms ~3-10%. Per-axis fit R^2:
-        #   Hx 0.71  Hy 0.70  Hz 0.90  Wx 0.56  Wy 0.55  Wz 0.78
-        # (lateral/tilt axes were R^2~0 = pure noise with a single marker;
-        # the board restored observability — see tools/find_camera_rotation.py).
-        # The coupling is geometric (L structure), not target-motion dependent,
-        # so M holds for a moving/rotating target too (board corners are rigid).
-        #
-        # _sensor_cal_s ~ identity: the board homography (img_data._board_feature)
-        # already returns the centroid in V-frame-normalized units, so only a
-        # small residual scale (~1.06-1.10) is needed. axes 2,3 (scale, alpha)
-        # stay 1.0.
+        # NOTE: this GT-accurate M landed WORSE than the prior board M in n<=3
+        # IC1 tests (1.088/0.889-crash/1.565 vs 0.675m) — the controller is
+        # co-tuned to the older cal's magnitudes and the residual is LAG-limited,
+        # not cal-limited. Kept per user decision (correct cal of record);
+        # closing the landing gap is the lag fix / controller retune, not cal.
+        # Prior 5m board M recoverable: Obsolete/src/img_data_5mM_20260602.py.
         # Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z].
         self._sensor_cal_hw = np.array([
-            [+0.4471, +0.0080, -0.0071, -0.0065, +0.3286, +0.0021],
-            [-0.0002, +0.4421, +0.0094, -0.2904, +0.0031, -0.0007],
-            [+0.0312, -0.0308, +0.7556, +0.0092, -0.0318, +0.0004],
-            [-0.0028, -1.2763, -0.0217, +0.8781, +0.0115, -0.0075],
-            [+1.2497, +0.0263, -0.0086, +0.0120, +1.0125, +0.0072],
-            [-0.2179, +0.3672, +0.0178, +0.0484, -0.0285, +0.5609]])
+            [+0.7126, -0.0190, +0.0115, -0.0268, +0.4315, +0.0042],
+            [-0.0291, +0.6817, +0.0072, -0.3727, +0.0732, -0.0099],
+            [+0.0005, +0.0010, +0.8583, -0.0545, -0.0106, +0.0023],
+            [+0.0050, -0.7570, -0.0153, +0.6147, -0.0552, -0.0101],
+            [+0.7930, +0.0092, +0.0106, -0.0370, +0.6207, +0.0014],
+            [+0.0052, +0.0364, +0.0238, +0.0171, -0.1310, +0.6088]])
         self._sensor_cal_s  = np.diag([1.0986, 1.0562, 1.0, 1.0])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
