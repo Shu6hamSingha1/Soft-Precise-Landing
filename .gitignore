@@ -20,7 +20,10 @@ PX4_Gazebo/calibration_data/
 # PX4_Gazebo/test_data: bulk recordings (regenerable) are ignored.
 # Tracked subdirs (irreplaceable — SP landings, reference reps, campaign records):
 #   CoordDescent/ ImpulseResponse/ Interventions/ Krp4/ NewDefaults/ RhoFov05_KP125/
-PX4_Gazebo/test_data/Landing_Test/
+# Landing_Test: bulk autosave runs ignored EXCEPT the hand-curated tuning log
+# (parameter_record.ods — MATLAB Sheet1 + PX4_IC1_Tuning sheet, irreplaceable).
+PX4_Gazebo/test_data/Landing_Test/*
+!PX4_Gazebo/test_data/Landing_Test/parameter_record.ods
 PX4_Gazebo/test_data/ICValidation/
 PX4_Gazebo/test_data/KLT_AB/
 PX4_Gazebo/test_data/NewCal/
