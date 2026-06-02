@@ -84,7 +84,6 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     flight_controller.py       — MAVSDK wrapper (uXRCE-DDS over udp:14540)
     gz_subscriber.py           — ROS 2 subs for /pose, /clock, /image
     numerical_methods.py       — RK5, smooth4, extrapolate
-    controller_v0.py           — archival snapshot of pre-refactor controller
   apps/                        — entry-point scripts (executed by scripts/run_*.sh)
     landing_test.py            — main entry: arms, takes off, runs landing loop
     input_calibration.py       — FC actuator/attitude-rate response calibration
