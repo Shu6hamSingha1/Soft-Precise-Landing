@@ -41,7 +41,7 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_SCALE`, `PLASMC_KI_X/Y_SCALE` | 10× MATLAB's 0.1; needed for SITL drift correction |
 | `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_SCALE`, `PLASMC_KD_X/Y_SCALE` | Sensitive to centroid noise; ↑ → chatter |
 | `PID_SCALE` uniform | 1.0 | `PLASMC_PID_SCALE` | Legacy uniform scaler |
-| `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). Pending IC2-5 gate — see memory dsd-touchdown-spike.** |
+| `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
 
 ### Middle loop (PLASMC funnel + sliding)
 | Param | Default | Env knob | Notes |
