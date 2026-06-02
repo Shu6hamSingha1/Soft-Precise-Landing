@@ -398,7 +398,18 @@ class Controller(Thread):
                     # values beyond this aren't physically meaningful for
                     # the marker's apparent relative angular velocity.
                     W_I_MAX = 5.0
-                    self._w_i.append(np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX))
+                    _w_in = np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX)
+                    # DIAGNOSTIC (2026-06-02): CTRL_ZERO_WXY zeros the w_x,w_y
+                    # channels feeding the cross(V_w,V_s) decoupling term. The
+                    # board restored real w_x,w_y, but they (a) are height-
+                    # corrupted by the fixed 5m cal M during descent and (b)
+                    # overdrive cross(V_w,S) -> h_d runaway. Zeroing returns to
+                    # the regime the controller was tuned in (w_xy~0) while
+                    # keeping the board's corrected h. If this stabilizes the
+                    # landing, the w-feedforward is confirmed as the culprit.
+                    if os.environ.get("CTRL_ZERO_WXY", "0") == "1":
+                        _w_in = _w_in.copy(); _w_in[0] = 0.0; _w_in[1] = 0.0
+                    self._w_i.append(_w_in)
                     self._updateOptFlow(opt_flow_ang_vel[:3])
 
                     self.PLASMC()

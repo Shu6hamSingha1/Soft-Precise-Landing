@@ -40,8 +40,20 @@ PAD_M  = 2.5                      # physical pad side (Gazebo plane <size>)
 TEX_PX = 2048                     # texture resolution (square)
 
 # layout: id -> (cx_m, cy_m, size_m)   (centre offset from pad centre, marker side)
+# Graduated for continuous spread 5 m -> touchdown:
+#   corners (large) -> altitude; ring (medium) -> mid; inner+centre -> touchdown.
+# The inner cluster (id 9-12) closes the touchdown gap: at <0.8 m the ring/
+# corner markers leave the FoV, so without these the board collapsed to the
+# single centre marker (rank deficiency returned -> divergence in the final
+# ~1 m). The 0.08 m inner markers at +/-0.2 m stay framed down to ~0.3 m
+# (FoV half-width 0.36 m at 0.4 m) and decode (54 px at 0.4 m), keeping
+# discrete-corner spread all the way to touchdown.
 LAYOUT = {
     0: ( 0.00,  0.00, 0.15),      # small centre — touchdown framing
+    9: ( 0.20,  0.20, 0.08),      # inner cluster — touchdown spread (<0.8 m)
+    10:(-0.20,  0.20, 0.08),
+    11:( 0.20, -0.20, 0.08),
+    12:(-0.20, -0.20, 0.08),
     1: ( 0.55,  0.00, 0.30),      # medium ring (mid-descent)
     2: (-0.55,  0.00, 0.30),
     3: ( 0.00,  0.55, 0.30),

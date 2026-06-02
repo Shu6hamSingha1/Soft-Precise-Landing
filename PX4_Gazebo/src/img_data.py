@@ -199,6 +199,24 @@ class IMG_PROCESSOR(Thread):
         # board's +x is not aligned with the desired equilibrium heading.
         self._board_alpha_0 = float(os.environ.get("BOARD_ALPHA0", "0.0"))
 
+        # 2026-06-02 — FEATURE SOURCE for the 6-DOF flow lstsq:
+        #   'dense' (default, approach A): textured nested marker. The lstsq is
+        #     fed DENSE interior points (3 nested quads × side points) generated
+        #     from the primary marker's corners; the marker texture makes them
+        #     LK-trackable. Centroid/yaw from the primary marker moments
+        #     (_getImgFeatures). Multi-scale conditioning that improves at
+        #     touchdown. See _get_all_feature_points.
+        #   'board': multi-marker ArUco board — all decoded markers' corners
+        #     feed the lstsq; centroid/yaw via board homography.
+        # Default 'board': discrete ArUco corners are the resolution-correct
+        # feature at 640x480 (R^2 0.55-0.90). 'dense' (textured single-marker)
+        # was tested in two forms (fine-stipple geometric pts, coarse on-marker
+        # GFT) and BOTH underperformed the board here (R^2 0.1-0.5) — the fine
+        # features don't track at fx=270; it would only win at 1280x960 (ruled
+        # out by FPS). Kept env-selectable for a future high-res/real-camera run.
+        self._feature_source = os.environ.get("IMG_FEATURE_SOURCE", "board")
+        self._dense_pts_per_side = int(os.environ.get("IMG_DENSE_PER_SIDE", "15"))
+
         # 2026-05-31 — KLT fallback for marker re-acquisition.
         # When ArUco detection fails on a frame (drone shadow, low contrast,
         # partial occlusion, fast motion), we track the last good corner
@@ -441,12 +459,37 @@ class IMG_PROCESSOR(Thread):
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
             order = [primary_i] + [i for i in range(M) if i != primary_i]
-            marker_ids = [int(ids[i]) for i in order]
             marker_corners_0 = [results[0][i][0].reshape(-1, 2).astype(np.float32)
                                 for i in order]
             aruco_pts_0 = marker_corners_0[0]
-            if len(marker_corners_0) > 1:
-                extra_pts_0 = np.vstack(marker_corners_0[1:]).astype(np.float32)
+            if self._feature_source == 'dense':
+                # Approach A (resolution-correct): extra LSTSQ points = REAL
+                # corners found INSIDE the primary marker via goodFeaturesToTrack,
+                # masked to the marker polygon. At 640x480 the only on-marker
+                # features that resolve at altitude are the ArUco cells' own
+                # corners (~18px at 5m); sub-cell texture aliases. GFT picks
+                # exactly those (+ the coarse-texture squares). Masked to the
+                # marker -> target-rigid -> moving-target-safe. marker_ids stays
+                # None so centroid/yaw take the single-marker moment path.
+                marker_ids = None
+                _g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+                _mask = np.zeros(_g0.shape[:2], np.uint8)
+                cv2.fillConvexPoly(_mask, aruco_pts_0.astype(np.int32), 255)
+                _gf = cv2.goodFeaturesToTrack(
+                    _g0, maxCorners=int(os.environ.get("IMG_GFT_MAX", "200")),
+                    qualityLevel=float(os.environ.get("IMG_GFT_QUALITY", "0.01")),
+                    minDistance=int(os.environ.get("IMG_GFT_MINDIST", "5")),
+                    mask=_mask)
+                if _gf is not None and len(_gf) > 0:
+                    extra_pts_0 = _gf.reshape(-1, 2).astype(np.float32)
+                else:
+                    extra_pts_0 = self._get_all_feature_points(
+                        aruco_pts_0, self._dense_pts_per_side)
+            else:
+                # Board mode: extra points = the OTHER markers' corners.
+                marker_ids = [int(ids[i]) for i in order]
+                if len(marker_corners_0) > 1:
+                    extra_pts_0 = np.vstack(marker_corners_0[1:]).astype(np.float32)
             if self._lk_step_count > 0:
                 print(f"ArUco re-acquired after {self._lk_step_count} KLT-fallback frame(s)")
             self._lk_step_count = 0
@@ -702,7 +745,40 @@ class IMG_PROCESSOR(Thread):
             self._virtual_feature_pts.append(self._virtual_feature_pts[-1] if self._virtual_feature_pts else np.zeros((2,4,2)))
 
         return FEATURE_DATA_IS_LOGGED
-    
+
+    # ── Dense interior feature points (textured nested marker, approach A) ──
+    # Ported from ~/ws/scripts/soft_precise_landing/img_data_LK.py. Instead of
+    # only the 4 ArUco corners, synthesize a dense set of points spread over the
+    # marker interior at multiple scales. On a TEXTURED marker (stipple fill)
+    # every such point lands on real 2D texture, so LK tracks it reliably (no
+    # aperture problem). Benefits: (1) heavy over-determination of the 6-DOF
+    # lstsq → low noise; (2) multi-radius sampling → better conditioning that
+    # IMPROVES at close range (touchdown), where the marker is large-in-image.
+    # Points are interior-only (built from the marker's own corners) → they ride
+    # the target's rigid motion → moving-target-safe (unlike background texture).
+    def _get_scaled_quadrilaterals(self, pts):
+        """3 nested quads from the marker corners: 1.0, 2/3, 1/3 scale about
+        the centroid. pts: (4,2). Returns list of 3 (4,2) arrays."""
+        centroid = np.mean(pts, axis=0)
+        return [centroid + s * (pts - centroid) for s in (1.0, 2.0/3.0, 1.0/3.0)]
+
+    def _get_side_points(self, quad, n_per_side=15):
+        """Divide each side of a quad into n_per_side points. quad: (4,2).
+        Returns (4*n_per_side, 2)."""
+        pts = []
+        t = np.linspace(0.0, 1.0, n_per_side)
+        for i in range(4):
+            A = quad[i]; B = quad[(i + 1) % 4]
+            pts.append(np.outer(1 - t, A) + np.outer(t, B))
+        return np.vstack(pts)
+
+    def _get_all_feature_points(self, pts, n_per_side=15):
+        """All dense interior points (3 scaled quads × side points) for the
+        marker with corners `pts` (4,2). Returns (M,2) float32."""
+        allp = [self._get_side_points(q, n_per_side)
+                for q in self._get_scaled_quadrilaterals(pts)]
+        return np.vstack(allp).astype(np.float32)
+
     def _fill_A(self, centered_pts):
         """
         centered_pts: shape (N, 2), N>=4 — all decoded markers' corner

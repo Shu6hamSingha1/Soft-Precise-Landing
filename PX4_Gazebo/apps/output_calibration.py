@@ -186,7 +186,12 @@ async def main(record = 'n'):
         else:
             print("Starting without recording...!")
 
-        await FC_node.arm_and_takeoff(5.0)   # match landing_test.py default TAKEOFF_HEIGHT
+        # Default 5.0 m matches landing_test.py TAKEOFF_HEIGHT. Env-overridable
+        # so we can derive/validate the calibration matrix at several altitudes
+        # (test depth-invariance of M — the lateral/tilt axes are only excited
+        # at the takeoff height, so multi-height sweeps are required to check it).
+        _takeoff_h = float(os.environ.get("CALIB_TAKEOFF_HEIGHT", "5.0"))
+        await FC_node.arm_and_takeoff(_takeoff_h)
 
         # Post-takeoff stabilization: PX4's autonomous TAKEOFF task hands off to
         # HOLD/LOITER but the state-machine transition takes a moment. If we
