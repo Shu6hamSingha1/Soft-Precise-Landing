@@ -777,6 +777,18 @@ class Controller(Thread):
         focal_px = float(self._img_node.focal[0])
         theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
                                self._theta_cap))
+        # 2026-06-03 — θ_cone floor (env PLASMC_THETA_FLOOR_DEG, default 0 = legacy).
+        # Diagnosed deadlock: near touchdown (1/Z spreads the marker corners) and
+        # during off-center overshoot, d_min_fov → 0 → θ_cone collapses to the
+        # CURRENT tilt → a_xy_lim ≈ 0 → the SMC's terminal/recovery correction
+        # (10-40 m/s² requested) is clamped to ~0.02-1.7 m/s² (94-100% of final-2s
+        # samples on IC1, every IC2-5 rep). The collapse logic assumes tilt moves
+        # the marker OUT of the image, but tilting toward the marker re-centers
+        # it — the clamp blocks exactly the recovery action. A floor guarantees
+        # minimum lateral authority: floor=60 (=θ_cap) disables the d_min term
+        # entirely; intermediate values (15-30°) keep a softened clamp.
+        theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "0.0")))
+        theta_cone = float(max(theta_cone, min(theta_floor, self._theta_cap)))
 
         # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
         # MATLAB-equivalent safety: I_a represents required thrust acceleration

@@ -33,6 +33,10 @@ PX4_Gazebo/test_data/Test_Videos/
 PX4_Gazebo/test_data/DhdClampSweep/**/rep*/
 !PX4_Gazebo/test_data/DhdClampSweep/**/summary.tsv
 !PX4_Gazebo/test_data/DhdClampSweep/**/*.log
+# SPCampaign (2026-06-03 iterate-until-SP campaign): same policy.
+PX4_Gazebo/test_data/SPCampaign/**/rep*/
+!PX4_Gazebo/test_data/SPCampaign/**/summary.tsv
+!PX4_Gazebo/test_data/SPCampaign/**/*.log
 # HybridFlow_AB: bulk A/B reps ignored EXCEPT hybrid_rep5 (SP #5, the 5th
 # soft+precise landing ever — achieved on the hybrid-flow arm 2026-05-29).
 PX4_Gazebo/test_data/HybridFlow_AB/*
