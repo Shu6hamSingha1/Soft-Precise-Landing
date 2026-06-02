@@ -335,7 +335,7 @@ class IMG_PROCESSOR(Thread):
                         if self._video is None:
                             # Below VideoWriter object will store video in 'timestamp.avi' file. 
                             self.timestamp = time.ctime().replace(':', '-')
-                            self._video = cv2.VideoWriter(f'/home/shubham/ws/Test_Data/Test_Videos/{self.timestamp}.mp4',  
+                            self._video = cv2.VideoWriter(f'/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/{self.timestamp}.mp4',  
                                     cv2.VideoWriter_fourcc(*'mp4v'), 
                                     self._capRate, self._resolution)
 
