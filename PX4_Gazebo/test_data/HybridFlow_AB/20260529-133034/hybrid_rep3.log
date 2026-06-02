@@ -1,0 +1,185 @@
+=================================================================
+[retry] Attempt 1 / 3
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear ............... (timeout, proceeding anyway)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] K_rp scheduling: close=4.0, far=9.0, thresh=0.1, width=0.05
+-- Waiting for is_armable (EKF / lockstep ready)...
+LANDING PAD VISIBLE NOW...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+Status: CRITICAL: Compass needs calibration - Land now!	
+Status: CRITICAL: Preflight Fail: Compass 0 fault
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Altitude reached
+-4.626948356628418 5.0
+Switching to OFFBOARD mode!
+Status: CRITICAL: Compass needs calibration - Land now!	
+Status: CRITICAL: Preflight Fail: Compass 0 fault
+-- Starting offboard (attempt 1/5)
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -6.025512218475342, y_m: 3.205889940261841, z_m: -4.964628219604492]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+[landing_test] IC convergence TIMEOUT after 30 s (last pos_err=1.975 m, speed=1.756 m/s, yaw_err=0.02°, tilt=14.08°)
+RuntimeError: Main Thread: IC convergence timeout (pos_err=1.97 m, speed=1.76 m/s) — aborting before controller engage
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle).
+[run] Signaling retry with exit code 42.
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 3739604 + group)
+[run]   killing px4_sitl (pid 3739682 + group)
+[run]   killing bridge_clock (pid 3740193 + group)
+[run]   killing bridge_pose (pid 3740247 + group)
+[run]   killing bridge_image (pid 3740302 + group)
+[run] done.
+[retry] Attempt 1 lost the gz_bridge/lockstep race; retrying after 10 s...
+=================================================================
+[retry] Attempt 2 / 3
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear ............... (timeout, proceeding anyway)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] K_rp scheduling: close=4.0, far=9.0, thresh=0.1, width=0.05
+-- Waiting for is_armable (EKF / lockstep ready)...
+LANDING PAD VISIBLE NOW...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.873420715332031 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.006728423293679953, y_m: 0.040713801980018616, z_m: -5.424909591674805]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=3.02s (pos_err=0.116 m, speed=0.089 m/s, yaw_err=0.02°, tilt=0.48°)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[FC] Impact detected (|a|=721.1 m/s² > 50.0) — LANDED=True
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.125 m [≤0.08], rel_vel=0.548 m/s [≤0.2])
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Saved to CSV!
+Flight Controller is disconnected...
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 3746184 + group)
+[run]   killing px4_sitl (pid 3746250 + group)
+[run]   killing bridge_clock (pid 3746793 + group)
+[run]   killing bridge_pose (pid 3746818 + group)
+[run]   killing bridge_image (pid 3746861 + group)
+[run] done.
+[retry] SUCCESS after attempt 2

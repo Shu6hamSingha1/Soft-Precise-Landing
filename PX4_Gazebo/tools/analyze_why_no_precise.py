@@ -92,11 +92,17 @@ def kinematic_budget(rep: dict) -> dict:
 
 def main():
     candidates = {
-        # SP reps (all 3 ever):
+        # SP reps (all 5 ever; this dict is the canonical SP registry):
         "SP #1 (Interventions, K_rp=9, lucky IC)":
             "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Interventions/20260523-162914/rep2",
         "SP #2 (NewDefaults K_rp=4 P_z=2.5)":
             "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/NewDefaults/20260525-015341/rep5",
+        "SP #3 (CoordDescent RHOFOV0=241.8, degenerate config: xy=0.052 vel=0.061)":
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/CoordDescent/20260525-201532/pass1/RHOFOV0_241.8_rep2",
+        "SP #4 (CoordDescent E_Z=0.107 axis test: xy=0.066 vel=0.165)":
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/CoordDescent/20260526-014855/pass1/E_Z_0.1067_rep1",
+        "SP #5 (HybridFlow hybrid arm rep5: xy=0.066 vel=0.136)":
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/hybrid_rep5",
         # Closest near-SP (PRECISE-only or near-PRECISE):
         "PRECISE-only stack (xy=0.031, vel=0.97)":
             "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/RhoFov05_KP125/20260524-183744/rep6",

@@ -22,10 +22,17 @@ PX4_Gazebo/calibration_data/
 #   CoordDescent/ ImpulseResponse/ Interventions/ Krp4/ NewDefaults/ RhoFov05_KP125/
 PX4_Gazebo/test_data/Landing_Test/
 PX4_Gazebo/test_data/ICValidation/
-PX4_Gazebo/test_data/HybridFlow_AB/
 PX4_Gazebo/test_data/KLT_AB/
 PX4_Gazebo/test_data/NewCal/
 PX4_Gazebo/test_data/Test_Videos/
+# HybridFlow_AB: bulk A/B reps ignored EXCEPT hybrid_rep5 (SP #5, the 5th
+# soft+precise landing ever — achieved on the hybrid-flow arm 2026-05-29).
+PX4_Gazebo/test_data/HybridFlow_AB/*
+!PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/
+PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/*
+!PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/hybrid_rep5/
+!PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/hybrid_rep5.log
+!PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/summary.tsv
 # per-rep console logs inside the tracked test_data dirs ARE wanted (override *.log)
 !PX4_Gazebo/test_data/**/*.log
 
