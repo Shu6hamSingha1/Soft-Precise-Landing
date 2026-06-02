@@ -37,24 +37,23 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 ### Outer loop (image-error → desired optic-flow rate)
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_SCALE`, `PLASMC_KP_X/Y_SCALE` | Boost >1.5× → instability cascade |
-| `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_SCALE`, `PLASMC_KI_X/Y_SCALE` | 10× MATLAB's 0.1; needed for SITL drift correction |
-| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_SCALE`, `PLASMC_KD_X/Y_SCALE` | Sensitive to centroid noise; ↑ → chatter |
-| `PID_SCALE` uniform | 1.0 | `PLASMC_PID_SCALE` | Legacy uniform scaler |
+| `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_X/Y_SCALE` (per-axis ONLY; uniform scales removed 2026-06-03) | Boost >1.5× → instability cascade |
+| `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_X/Y_SCALE` | 10× MATLAB's 0.1; needed for SITL drift correction |
+| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_X/Y_SCALE` | Sensitive to centroid noise; ↑ → chatter |
 | `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
 
 ### Middle loop (PLASMC funnel + sliding)
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `gamma` (Ξ_2) | `diag(0.2, 0.2, 0.2)` | `PLASMC_XI2_SCALE`, per-axis `_X/_Y/_Z` | Sliding-variable gain |
-| `p_2_0` | `[25, 25, 4]` | `PLASMC_P20_SCALE`, per-axis | Initial half-width of funnel |
-| `p_2_inf` | `[2.5, 2.5, 1.5]` | `PLASMC_P2INF_SCALE`, per-axis | Terminal half-width — LOAD-BEARING |
-| `Omega` (Ω) | `diag(0.05, 0.05, 0.025)` | `PLASMC_OMEGA_SCALE`, per-axis | κ-leakage rate. LOAD-BEARING (controls SP rate) |
-| `Gamma` (Γ) | `diag(0.4375, 0.5, 0.75)` | `PLASMC_GAMMA_SCALE`, per-axis | κ-adaptation rate |
-| `E` | `diag(1, 1, 1)` | `PLASMC_E_SCALE`, per-axis | Boundary-layer thickness; sat() arg scaled by 1/E |
-| `N` | `diag(0.02, 0.02, 0.02)` | `PLASMC_N_SCALE` + `PLASMC_N_Z` (legacy abs) | Drives e-modification term in κ-ODE |
-| `P` | `diag(1.5, 1.5, 5.0)` | `PLASMC_P_SCALE`, per-axis | Anti-windup-like gain on κ-ODE |
-| `kappa_0` (init κ) | `1.25 × [0.125, 0.125, 0.25]` | `PLASMC_KAPPA0_SCALE` (default 1.25) | Already at best singleton (big sweep) |
+| `gamma` (Ξ_2) | `diag(0.2, 0.2, 0.2)` | `PLASMC_XI2_{X,Y,Z}_SCALE` | Sliding-variable gain |
+| `p_2_0` | `[25, 25, 4]` | `PLASMC_P20_{X,Y,Z}_SCALE` | Initial half-width of funnel |
+| `p_2_inf` | `[2.5, 2.5, 1.5]` | `PLASMC_P2INF_{X,Y,Z}_SCALE` | Terminal half-width — LOAD-BEARING |
+| `Omega` (Ω) | `diag(0.05, 0.05, 0.025)` | `PLASMC_OMEGA_{X,Y,Z}_SCALE` | κ-leakage rate. LOAD-BEARING (controls SP rate) |
+| `Gamma` (Γ) | `diag(0.4375, 0.5, 0.75)` | `PLASMC_GAMMA_{X,Y,Z}_SCALE` | κ-adaptation rate |
+| `E` | `diag(1, 1, 1)` | `PLASMC_E_{X,Y,Z}_SCALE` | Boundary-layer thickness; sat() arg scaled by 1/E |
+| `N` | `diag(0.02, 0.02, 0.02)` | `PLASMC_N_{X,Y}_SCALE` + `PLASMC_N_Z` (legacy abs) × `PLASMC_N_Z_SCALE` | Drives e-modification term in κ-ODE |
+| `P` | `diag(1.5, 1.5, 2.5)` | `PLASMC_P_{X,Y,Z}_SCALE` | Anti-windup-like gain on κ-ODE (P_z=2.5 baked) |
+| `kappa_0` (init κ) | `[0.15625, 0.15625, 0.3125]` (1.25× baked into base) | `PLASMC_KAPPA0_{X,Y,Z}_SCALE` | Already at best singleton (big sweep) |
 
 ### Yaw SMC (low-impact per supplement S3-A)
 | Param | Default | Env knob |
@@ -69,8 +68,8 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 ### FoV-margin cone clamp
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `rho_fov_0` | `[290, 210]` | `PLASMC_RHOFOV0_SCALE` | Initial pixel envelope |
-| `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_SCALE` | Terminal pixel envelope |
+| `rho_fov_0` | `[290, 210]` | `PLASMC_RHOFOV0_{U,V}_SCALE` | Initial pixel envelope (per image axis) |
+| `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_{U,V}_SCALE` | Terminal pixel envelope (per image axis) |
 | `l_fov` | 0.1 | `PLASMC_LFOV_SCALE` | Envelope decay rate (1/s) |
 | `theta_cap` | 60° | `PLASMC_THETACAP_SCALE` | Soft cone ceiling — acceleration saturation |
 | `theta_floor` | 0° (legacy) | `PLASMC_THETA_FLOOR_DEG` | **Floor on θ_cone (2026-06-03). The d_min collapse was strangling terminal correction (94-100% of final-2s samples at IC1) — THETACAP is irrelevant when d_min=0. floor=60 → SP #6 (xy 0.060/vel 0.149, first mechanism-driven SP). See memory fov-cone-clamp-deadlock.** |
@@ -78,7 +77,7 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 ### Inner loop (SO(3))
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `K_R` | `0.4 × diag(5, 5, 5) = diag(2, 2, 2)` | `PLASMC_KR_SCALE` (default 0.4); per-axis `PLASMC_KR_{ROLL,PITCH,YAW}_SCALE` | 0.4 is the stable sweet spot (committed 2026-05-21). Higher → LK breakage |
+| `K_R` | `diag(2, 2, 2)` (0.4×5 baked into base) | `PLASMC_KR_{ROLL,PITCH,YAW}_SCALE` | 2.0 is the stable sweet spot. Higher → LK breakage |
 | `W_U_MAX` (body-rate clamp) | 1.0 rad/s | `PLASMC_W_U_MAX` | Caps body-rate command magnitude |
 
 ### Misc / control-loop
@@ -112,6 +111,11 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 | `PX4_RATE_SCALE` | 1.0 (DEAD — see `feedback_mc_rate_p_dead.md`) | `PLASMC_PX4_RATE_SCALE` |
 
 ## Tuning methodology (RULES — violate at your peril)
+
+0. **Per-axis knobs ONLY (user directive 2026-06-03).** All uniform scale multipliers
+   were REMOVED from controller.py. Tune `_X/_Y/_Z` (or `_ROLL/_PITCH/_YAW`, `_U/_V`)
+   variants. The two image axes run at different effective gains (x is 1.39× hotter —
+   see memory per-axis-tuning); uniform scaling can never fix that.
 
 1. **n ≥ 5 reps per cell.** Single runs are noise. The "winners" from n=1 sweeps reproducibly fail to replicate at n=10 (see `feedback_sensitivity_sweep_methodology.md`).
 2. **IC2-5 validation is mandatory before defaulting.** IC1 improvements consistently regress off-center starts. `run_ic_validation.sh` exists.

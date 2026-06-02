@@ -23,9 +23,8 @@
 # inside PX4's onboard rate controller (the body-rate setpoint we ship is
 # tracked there).
 #
-# Legacy Euler-PD + direct-yaw path (the older PX4 implementation) is kept
-# at controller_v1.py for archival reference. The original both-paths
-# snapshot is at controller_v0.py.
+# Legacy Euler-PD + direct-yaw path (the older PX4 implementation) is
+# archived at Obsolete/src/controller_v0.py (and in git history).
 #
 # Notes on Gazebo vs MATLAB:
 #   - Camera intrinsics: 640x480 @ fx=fy=270 (Gazebo SDF, hfov=1.74 rad).
@@ -102,20 +101,17 @@ class Controller(Thread):
         # run varies). MATLAB's tiny K_ri = 0.1 can't correct steady drift.
         # Boosting K_ri 10× lets the integral term explicitly null persistent
         # offsets; the existing 5.0 anti-windup clamp on |is_e_n| limits runaway.
-        # Env-var scalers stay in place so further tuning doesn't need a code
-        # edit:
-        #   PLASMC_KP_SCALE  (default 1.0)
-        #   PLASMC_KD_SCALE  (default 1.0)
-        #   PLASMC_KI_SCALE  (default 1.0)
-        #   PLASMC_PID_SCALE (default 1.0) is the legacy uniform scaler,
-        #     applied on top of the per-term scales.
-        kp_scale  = float(os.environ.get("PLASMC_KP_SCALE",  "1.0"))
-        kd_scale  = float(os.environ.get("PLASMC_KD_SCALE",  "1.0"))
-        ki_scale  = float(os.environ.get("PLASMC_KI_SCALE",  "1.0"))
-        pid_scale = float(os.environ.get("PLASMC_PID_SCALE", "1.0"))
-        # Per-axis PID scalers (default 1.0). PID is 2D (x,y of feature
+        # Per-axis env-var scalers (PLASMC_KP_X_SCALE, PLASMC_KD_Y_SCALE, ...)
+        # stay in place so further tuning doesn't need a code edit. Uniform
+        # scalers (KP/KD/KI/PID_SCALE) were REMOVED 2026-06-03.
+        # Per-axis PID scalers ONLY — all uniform scale multipliers were removed
+        # 2026-06-03 per user directive ("tune control parameter for individual
+        # axis, instead of a scale parameter tuning"). PID is 2D (x,y of feature
         # error in image plane); _X applies to axis 0, _Y to axis 1.
-        # Note: image axis 0 (V-frame x) → PITCH, image axis 1 → ROLL.
+        # Note: image axis 0 (V-frame x) → PITCH/North, image axis 1 → ROLL/East.
+        # The two axes run at DIFFERENT effective loop gains for the same physical
+        # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
+        # than y) — per-axis scalers are how that gets compensated.
         kp_x = float(os.environ.get("PLASMC_KP_X_SCALE", "1.0"))
         kp_y = float(os.environ.get("PLASMC_KP_Y_SCALE", "1.0"))
         ki_x = float(os.environ.get("PLASMC_KI_X_SCALE", "1.0"))
@@ -133,7 +129,13 @@ class Controller(Thread):
         # untouched — surgical alternative to cutting K_rd, which also strips
         # the lateral tracking damping the derivative legitimately provides.
         # Default 0 = off (no clamp). Set PLASMC_DSD_CLAMP to the per-axis cap.
-        self._dsd_clamp = float(os.environ.get("PLASMC_DSD_CLAMP", "0.0"))
+        # Per-axis desired-flow caps (uniform PLASMC_DSD_CLAMP removed 2026-06-03).
+        # 0.0 = that axis unclamped. The proven-SP rep's own envelope was
+        # ds_d_x ≤ 2.3, ds_d_y ≤ 1.9 — use those as starting clamp values.
+        self._dsd_clamp_xy = np.array([
+            float(os.environ.get("PLASMC_DSD_CLAMP_X", "0.0")),
+            float(os.environ.get("PLASMC_DSD_CLAMP_Y", "0.0")),
+        ])
         # K_rp gain scheduling (2026-05-25, after IC2-5 regression of K_rp=4).
         # K_rp = 4 is good for IC1 (low |s_e_n|, IC-near-center) — gives
         # softness via reduced PID aggression.  But at IC2-5 the initial
@@ -151,48 +153,46 @@ class Controller(Thread):
         #   PLASMC_KP_SCHED_WIDTH          — blend width (default 0.05)
         #   PLASMC_KP_SCHED_ENABLE         — 0 to disable scheduling (legacy
         #                                     behaviour: K_rp = K_rp_close)
-        # The existing PLASMC_KP_SCALE / per-axis scalers apply ON TOP of
-        # both far and close gains, so legacy environment hooks still work.
+        # The per-axis PLASMC_KP_X/Y_SCALE scalers apply ON TOP of both far
+        # and close gains.
         self._kp_far_base   = float(os.environ.get("PLASMC_KP_FAR",   "9.0"))
         self._kp_close_base = float(os.environ.get("PLASMC_KP_CLOSE", "4.0"))
         self._kp_sched_thresh = float(os.environ.get("PLASMC_KP_SCHED_THRESH", "0.1"))
         self._kp_sched_width  = float(os.environ.get("PLASMC_KP_SCHED_WIDTH",  "0.05"))
         self._kp_sched_enable = bool(int(os.environ.get("PLASMC_KP_SCHED_ENABLE", "1")))
 
-        self._K_rp_far = pid_scale * np.diag([kp_scale * kp_x * self._kp_far_base,
-                                              kp_scale * kp_y * self._kp_far_base])
-        self._K_rp_close = pid_scale * np.diag([kp_scale * kp_x * self._kp_close_base,
-                                                kp_scale * kp_y * self._kp_close_base])
+        self._K_rp_far = np.diag([kp_x * self._kp_far_base,
+                                  kp_y * self._kp_far_base])
+        self._K_rp_close = np.diag([kp_x * self._kp_close_base,
+                                    kp_y * self._kp_close_base])
         # Initial value of the effective K_rp — set to close (will be
         # updated each tick by _updateImgFeatureParam via _compute_K_rp_eff).
         # Kept on `self._K_rp` for backward compat with logging / params dump.
         self._K_rp = self._K_rp_close.copy()
 
-        self._K_ri = pid_scale * np.diag([ki_scale * ki_x * 1.0,
-                                          ki_scale * ki_y * 1.0])
-        self._K_rd = pid_scale * np.diag([kd_scale * kd_x * 1.4375,
-                                          kd_scale * kd_y * 1.4375])
-        if pid_scale != 1.0 or kp_scale != 1.0 or kd_scale != 1.0 or ki_scale != 1.0:
-            print(f"[PLASMC] PID scales: P={kp_scale}, I={ki_scale}, D={kd_scale}, uniform={pid_scale}")
+        self._K_ri = np.diag([ki_x * 1.0,
+                              ki_y * 1.0])
+        self._K_rd = np.diag([kd_x * 1.4375,
+                              kd_y * 1.4375])
+        _pid_ax = {"KP_X": kp_x, "KP_Y": kp_y, "KI_X": ki_x, "KI_Y": ki_y, "KD_X": kd_x, "KD_Y": kd_y}
+        if any(v != 1.0 for v in _pid_ax.values()):
+            print("[PLASMC] per-axis PID scales: " + ", ".join(f"{k}={v}" for k, v in _pid_ax.items() if v != 1.0))
         if self._kp_sched_enable:
             print(f"[PLASMC] K_rp scheduling: close={self._kp_close_base}, far={self._kp_far_base}, "
                   f"thresh={self._kp_sched_thresh}, width={self._kp_sched_width}")
         else:
             print(f"[PLASMC] K_rp scheduling DISABLED — using constant K_rp = {self._kp_close_base}")
 
-        # Per-axis env-var scalers. Each param has a uniform scalar
-        # (PLASMC_<KEY>_SCALE, applied to all 3 axes) AND per-axis scalars
-        # (PLASMC_<KEY>_{X,Y,Z}_SCALE, applied on top of the uniform). All
-        # default to 1.0 except KAPPA0 uniform=1.25 (best from IC 1 sweep).
+        # Per-axis env-var scalers ONLY (uniform PLASMC_<KEY>_SCALE knobs
+        # removed 2026-06-03 per user directive). Each middle-loop param is
+        # tuned via PLASMC_<KEY>_{X,Y,Z}_SCALE applied to the baked base values.
         def s(key, default="1.0"):
             return float(os.environ.get(f"PLASMC_{key}_SCALE", default))
-        def per_axis(key, base, default="1.0"):
-            """Return diag([sX*sU*base[0], sY*sU*base[1], sZ*sU*base[2]])"""
-            sU = s(key, default)
-            sX = s(f"{key}_X")
-            sY = s(f"{key}_Y")
-            sZ = s(f"{key}_Z")
-            return np.array([sX*sU*base[0], sY*sU*base[1], sZ*sU*base[2]])
+        def per_axis(key, base):
+            """Return [sX*base[0], sY*base[1], sZ*base[2]] (per-axis scales only)."""
+            return np.array([s(f"{key}_X") * base[0],
+                             s(f"{key}_Y") * base[1],
+                             s(f"{key}_Z") * base[2]])
 
         # Optic-flow funnel (LOAD-BEARING: p_2_0, p_2_∞)
         self._gamma = np.diag(per_axis("XI2",   [0.2, 0.2, 0.2]))
@@ -207,7 +207,7 @@ class Controller(Thread):
         # Per-axis scalers (PLASMC_N_X_SCALE etc) multiply on top of this.
         N_z_abs = float(os.environ.get("PLASMC_N_Z", "0.02"))
         n_diag = per_axis("N", [0.02, 0.02, 0.02])
-        n_diag[2] = N_z_abs * s("N") * s("N_Z")     # legacy override path
+        n_diag[2] = N_z_abs * s("N_Z")              # legacy override path (per-axis only)
         self._N = np.diag(n_diag)
         # P_z reduced from MATLAB 5.0 → 2.5 (2026-05-25). The only middle-loop
         # SMC singleton in BigSensitivity with reproducible above-baseline
@@ -215,18 +215,13 @@ class Controller(Thread):
         # baseline 8%) and 0 TL. Stacking n=1 "winners" rejected per memory.
         # Legacy MATLAB P_z=5.0 recoverable via PLASMC_P_Z_SCALE=2.0.
         self._P = np.diag(per_axis("P",      [1.5, 1.5, 2.5]))
-        # KAPPA0 default 1.25 (best single-axis tune from IC 1 sweep)
-        self._kappa_0 =        per_axis("KAPPA0", [0.125, 0.125, 0.25], "1.25")
-        # Print any non-default scales (uniform + per-axis).
+        # kappa_0 base = 1.25 × MATLAB [0.125,0.125,0.25] (the old uniform
+        # KAPPA0_SCALE=1.25 default is baked in; tune per-axis from here)
+        self._kappa_0 =        per_axis("KAPPA0", [0.15625, 0.15625, 0.3125])
+        # Print any non-default per-axis scales.
         _print_lines = []
         _keys = ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]
-        _defaults = {"KAPPA0": "1.25"}
         for k in _keys:
-            v = s(k, _defaults.get(k, "1.0"))
-            if v != 1.0 and k != "KAPPA0":           # KAPPA0=1.25 is now the default; only print if changed
-                _print_lines.append(f"  {k:<8} = {v}")
-            if k == "KAPPA0" and v != 1.25:
-                _print_lines.append(f"  {k:<8} = {v}")
             for ax in ("X","Y","Z"):
                 vx = s(f"{k}_{ax}")
                 if vx != 1.0:
@@ -244,9 +239,10 @@ class Controller(Thread):
         self._kappa_a_0  = s("YAW_KAPPA0") * 2.0
         self._E_a        = s("YAW_E")      * 3.0
 
-        # FoV-margin cone clamp (acceleration conditioning)
-        self._rho_fov_0   = s("RHOFOV0")   * np.array([290.0, 210.0])
-        self._rho_fov_inf = s("RHOFOVINF") * np.array([80.0, 80.0])
+        # FoV-margin cone clamp (acceleration conditioning). Pixel envelopes
+        # are tuned per image axis (U/V); uniform RHOFOV*_SCALE removed.
+        self._rho_fov_0   = np.array([s("RHOFOV0_U")   * 290.0, s("RHOFOV0_V")   * 210.0])
+        self._rho_fov_inf = np.array([s("RHOFOVINF_U") * 80.0,  s("RHOFOVINF_V") * 80.0])
         self._l_fov       = s("LFOV")      * 0.1
         self._theta_cap   = np.deg2rad(s("THETACAP") * 60.0)
 
@@ -277,15 +273,15 @@ class Controller(Thread):
         # > 1.7 rad/s causes corner motion > 15 px / frame, then OPTIC
         # FLOW UNAVAILABLE → TARGET_LOST). 0.4 × 5.0 = 2.0 rad/s per rad e_R
         # combined with the PLASMC_W_U_MAX=1.0 clamp keeps optical flow
-        # alive. Env scalers: PLASMC_KR_SCALE uniform (set to 1.0 to recover
-        # legacy effective K_R=5.0), plus per-axis PLASMC_KR_{ROLL,PITCH,YAW}_SCALE.
-        kr_u     = float(os.environ.get("PLASMC_KR_SCALE",       "0.4"))
+        # alive. Env scalers: per-axis PLASMC_KR_{ROLL,PITCH,YAW}_SCALE only.
+        # Base K_R = 2.0 (the old uniform KR_SCALE=0.4 × 5.0 baked in);
+        # tune per-axis only (uniform KR_SCALE removed 2026-06-03).
         kr_roll  = float(os.environ.get("PLASMC_KR_ROLL_SCALE",  "1.0"))
         kr_pitch = float(os.environ.get("PLASMC_KR_PITCH_SCALE", "1.0"))
         kr_yaw   = float(os.environ.get("PLASMC_KR_YAW_SCALE",   "1.0"))
-        self._K_R = np.diag([kr_u * kr_roll  * 5.0,
-                             kr_u * kr_pitch * 5.0,
-                             kr_u * kr_yaw   * 5.0])
+        self._K_R = np.diag([kr_roll  * 2.0,
+                             kr_pitch * 2.0,
+                             kr_yaw   * 2.0])
 
         # Virtual-compass heading state. Lazy-init on first _attCtrl call
         # from the current body yaw (manuscript: psi_d = yaw_init, line 127
@@ -508,8 +504,13 @@ class Controller(Thread):
                      - self._K_rd @ ds_e_n)
         # Touchdown derivative-kick guard (see __init__ note): cap the per-axis
         # desired flow so the 1/Z spike can't push h_d past the funnel. Off at 0.
-        if self._dsd_clamp > 0.0:
-            V_ds_d_xy = np.clip(V_ds_d_xy, -self._dsd_clamp, self._dsd_clamp)
+        if np.any(self._dsd_clamp_xy > 0.0):
+            # per-axis cap; axis with cap=0 stays unclamped
+            for ax in range(2):
+                if self._dsd_clamp_xy[ax] > 0.0:
+                    V_ds_d_xy[ax] = float(np.clip(V_ds_d_xy[ax],
+                                                  -self._dsd_clamp_xy[ax],
+                                                  self._dsd_clamp_xy[ax]))
         self._ds_d.append(np.concatenate([V_ds_d_xy, [0.0]]))
 
     def _updateOptFlow(self, h):
