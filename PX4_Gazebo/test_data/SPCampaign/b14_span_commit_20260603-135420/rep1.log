@@ -1,0 +1,7 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up 
