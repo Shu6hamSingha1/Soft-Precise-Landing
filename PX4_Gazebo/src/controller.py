@@ -364,15 +364,21 @@ class Controller(Thread):
                     # the marker's apparent relative angular velocity.
                     W_I_MAX = 5.0
                     _w_in = np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX)
-                    # DIAGNOSTIC (2026-06-02): CTRL_ZERO_WXY zeros the w_x,w_y
-                    # channels feeding the cross(V_w,V_s) decoupling term. The
-                    # board restored real w_x,w_y, but they (a) are height-
-                    # corrupted by the fixed 5m cal M during descent and (b)
-                    # overdrive cross(V_w,S) -> h_d runaway. Zeroing returns to
-                    # the regime the controller was tuned in (w_xy~0) while
-                    # keeping the board's corrected h. If this stabilizes the
-                    # landing, the w-feedforward is confirmed as the culprit.
-                    if os.environ.get("CTRL_ZERO_WXY", "0") == "1":
+                    # CTRL_ZERO_WXY zeros the w_x,w_y channels feeding the
+                    # cross(V_w,V_s) decoupling term. DEFAULT 1 (static target):
+                    # the image-derived roll/pitch angular flow w_x,w_y is
+                    # structurally weakly-observable for a planar marker under a
+                    # downward camera (rotation/translation ambiguity) — it comes
+                    # out under-amplitude/noisy (up to 3.4 rad/s of garbage; see
+                    # Images/virtual_img_ang_vel.png), and fed live it overdrives
+                    # cross(V_w,S) -> a_u inflation -> body-rate saturation ->
+                    # divergence (0 SP, 3-7m). The validated config (b13/b14,
+                    # 2 SP/10) ran with this ON; default was OFF and the missing
+                    # knob silently regressed the baseline to 0 SP (2026-06-03).
+                    # MUST be 0 for MOVING/ROTATING targets (real w_xy needed) —
+                    # but then the w_xy de-rotation should use the IMU body rate,
+                    # not the unobservable image estimate.
+                    if os.environ.get("CTRL_ZERO_WXY", "1") == "1":
                         _w_in = _w_in.copy(); _w_in[0] = 0.0; _w_in[1] = 0.0
                     self._w_i.append(_w_in)
                     self._updateOptFlow(opt_flow_ang_vel[:3])
