@@ -30,12 +30,27 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     %                 is stale but the inner SO(3) feedback stays current).
     %                 Models the PX4 lag structure: MAVSDK transport sits
     %                 between our controller and PX4's internal rate loop.
-    delay_outer = 0;
+    %   delay_outer_lat / delay_outer_yaw — per-channel outer delay. PX4's
+    %                 measured lag is asymmetric (roll/pitch chain 52-61 ms,
+    %                 yaw chain 287 ms); these let the sweep apply the real
+    %                 profile. `lat` delays I_a_cd_filt (roll/pitch/thrust
+    %                 reference); `yaw` delays psi_d (heading reference).
+    %                 delay_outer is the both-channel shorthand.
+    delay_outer     = 0;
+    delay_outer_lat = 0;
+    delay_outer_yaw = 0;
     if ~isempty(cfg_override)
         if isfield(cfg_override, 'NOISE'), NOISE = cfg_override.NOISE; end
         if isfield(cfg_override, 'GE'),    GE    = cfg_override.GE;    end
         if isfield(cfg_override, 'delay'), delay = cfg_override.delay; end
         if isfield(cfg_override, 'delay_outer'), delay_outer = cfg_override.delay_outer; end
+        if isfield(cfg_override, 'delay_outer_lat'), delay_outer_lat = cfg_override.delay_outer_lat; end
+        if isfield(cfg_override, 'delay_outer_yaw'), delay_outer_yaw = cfg_override.delay_outer_yaw; end
+    end
+    % delay_outer expands to both channels unless a per-channel value is given
+    if delay_outer > 0
+        if delay_outer_lat == 0, delay_outer_lat = delay_outer; end
+        if delay_outer_yaw == 0, delay_outer_yaw = delay_outer; end
     end
 
     % Override initial state — also re-derive component variables
@@ -530,7 +545,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % *********************************************************************
     % Construct R_d from filtered I_a_cd (roll/pitch) + psi_d (heading)
     % *********************************************************************
-        % Outer-loop delay (delay_outer > 0): the attitude/thrust reference
+        % Outer-loop delay (per-channel): the attitude/thrust reference
         % tracks a STALE outer-loop command while the inner SO(3) feedback
         % (e_R, e_Omega from the CURRENT state) stays live. Models the PX4
         % lag structure (transport between outer controller and PX4's rate
@@ -538,14 +553,20 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         % therefore destabilizes the inner stabilization itself.
         Ia_outer_buf(:, idx) = I_a_cd_filt;
         psi_outer_buf(idx)   = psi_d;
-        if delay_outer > 0 && idx > delay_outer
-            I_a_for_Rd = Ia_outer_buf(:, idx - delay_outer);
-            psi_for_Rd = psi_outer_buf(idx - delay_outer);
-        elseif delay_outer > 0
+        % Lateral/thrust channel (I_a_cd_filt -> R_d roll/pitch + T_cd)
+        if delay_outer_lat > 0 && idx > delay_outer_lat
+            I_a_for_Rd = Ia_outer_buf(:, idx - delay_outer_lat);
+        elseif delay_outer_lat > 0
             I_a_for_Rd = -g;            % hover reference until buffer fills
-            psi_for_Rd = yaw_init;
         else
             I_a_for_Rd = I_a_cd_filt;
+        end
+        % Heading channel (psi_d -> R_d yaw alignment)
+        if delay_outer_yaw > 0 && idx > delay_outer_yaw
+            psi_for_Rd = psi_outer_buf(idx - delay_outer_yaw);
+        elseif delay_outer_yaw > 0
+            psi_for_Rd = yaw_init;
+        else
             psi_for_Rd = psi_d;
         end
 
