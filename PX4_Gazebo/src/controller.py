@@ -698,6 +698,17 @@ class Controller(Thread):
         focal_px = float(self._img_node.focal[0])
         theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
                                self._theta_cap))
+        # θ_cone floor — RESTORED 2026-06-03 (removed by the 14:20 refactor; second
+        # refactor regression after DH_D_MAX). The d_min collapse logic assumes
+        # tilt moves the marker OUT of the image, but tilting toward the marker
+        # re-centers it — near touchdown / during overshoot d_min→0 collapses
+        # θ_cone to the current tilt and clamps exactly the recovery action
+        # (cone-clamp duty 43.8% vs 4.9% with the floor; LateralRestore c1 vs b13).
+        # The validated 28%-SP config ran with floor=60 (=θ_cap, disables the
+        # d_min term); it is the default. Set PLASMC_THETA_FLOOR_DEG=0 for the
+        # legacy collapsing cone, or 15-30 for a softened intermediate clamp.
+        theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
+        theta_cone = float(max(theta_cone, min(theta_floor, self._theta_cap)))
 
         # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
         # MATLAB-equivalent safety: I_a represents required thrust acceleration
