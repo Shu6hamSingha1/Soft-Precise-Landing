@@ -307,6 +307,25 @@ class Controller(Thread):
         feature data after STALE_THRESH consecutive detection misses."""
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
+    @property
+    def MARKER_EXTENT_PX(self):
+        """Max corner distance (px) from the image center of the latest marker
+        detection. SCALE-FREE proximity indicator: a large extent means the
+        marker fills the image, i.e. touchdown is geometrically imminent —
+        no depth or altitude is used. Used by landing_test's stale-streak
+        commitment (env LANDING_STALE_COMMIT_EXTENT). Returns 0.0 when no
+        corners are available."""
+        try:
+            fp_list = self._img_node._feature_pts
+            if len(fp_list) > 0:
+                raw_corners = np.asarray(fp_list[-1][1], dtype=float)
+                cx, cy = self._img_node.center
+                return float(max(np.abs(raw_corners[:, 0] - cx).max(),
+                                 np.abs(raw_corners[:, 1] - cy).max()))
+        except (IndexError, AttributeError, ValueError, TypeError):
+            pass
+        return 0.0
+
     def _initialize_controller(self):
         # Attitude state
         self._quat = []

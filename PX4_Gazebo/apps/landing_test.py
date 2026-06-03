@@ -313,10 +313,31 @@ async def main(record = 'n'):
         # zf is the LANDING GEAR HEIGHT — MATLAB's termination at 0.2m IS gear
         # contact (same event as PX4's LandedState). The controller is designed
         # to control through touchdown; it must not hand off early. REVERTED.
+        #
+        # Stale-streak commitment (env-gated, 2026-06-03, SCALE-FREE).
+        # Failure mode it addresses (5/24 reps, all catastrophic): detection
+        # breaks down at gear contact, the KLT fallback feeds extrapolated
+        # corners, the controller chases a phantom error, climbs off a
+        # near-perfect landing, and crashes. KLT-cap tuning cannot fix this
+        # without destroying routine dropout bridging (proven: caps 3/10/20).
+        # The commitment decouples the two: bridging stays (cap 20), but when
+        # staleness PERSISTS (>> any routine dropout) while the last FRESH
+        # marker extent indicated touchdown proximity (marker filling the
+        # image — an image quantity, no depth), commit to the open-loop
+        # touchdown instead of chasing. Tagged terminal_perception_loss,
+        # NOT target_lost (losing the marker under the airframe at touchdown
+        # is expected physics, not a tracking failure).
+        #   LANDING_STALE_COMMIT_EXTENT  px threshold; 0 = feature OFF (default)
+        #   LANDING_STALE_COMMIT_TIME    persistence required (s) after stale fires
+        STALE_COMMIT_EXTENT = float(os.environ.get("LANDING_STALE_COMMIT_EXTENT", "0.0"))
+        STALE_COMMIT_TIME = float(os.environ.get("LANDING_STALE_COMMIT_TIME", "0.15"))
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
         marker_lost_t0 = None
+        terminal_perception_loss = False
+        stale_streak_t0 = None
+        last_fresh_extent = 0.0
         # 2026-05-21: per user direction, marker loss beyond grace counts as
         # a TARGET_LOST landing failure rather than a graceful soft-precise
         # success via fallback. The fallback (zero-rate + fixed thrust) still
@@ -335,6 +356,25 @@ async def main(record = 'n'):
             # letting the controller act on stale/extrapolated feature data.
             feature_fresh = (EC_node.TARGET_IS_VISIBLE
                              and not EC_node.FEATURE_IS_STALE)
+            # ── Stale-streak commitment (see env knobs above; inert when EXTENT=0) ──
+            if STALE_COMMIT_EXTENT > 0.0 and not in_final_descent:
+                if feature_fresh:
+                    last_fresh_extent = EC_node.MARKER_EXTENT_PX
+                    stale_streak_t0 = None
+                else:
+                    now_t = time_node.perf_counter()
+                    if stale_streak_t0 is None:
+                        stale_streak_t0 = now_t
+                    elif ((now_t - stale_streak_t0) >= STALE_COMMIT_TIME
+                          and last_fresh_extent >= STALE_COMMIT_EXTENT):
+                        in_final_descent = True
+                        terminal_perception_loss = True
+                        final_descent_t0 = now_t
+                        print(f"[landing_test] Stale-streak commitment: detection lost "
+                              f"{now_t - stale_streak_t0:.2f}s with last fresh marker extent "
+                              f"{last_fresh_extent:.0f}px >= {STALE_COMMIT_EXTENT:.0f}px "
+                              f"(touchdown proximity) -> open-loop touchdown "
+                              f"[terminal perception loss, not a tracking failure]")
             if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
@@ -405,22 +445,27 @@ async def main(record = 'n'):
             # If marker was lost beyond grace, landing is a failure regardless
             # of touchdown xy/vel (per user direction 2026-05-21). The xy/vel
             # numbers are still recorded for diagnostics.
+            # Precision tolerance raised 0.08 -> 0.10 m per user (2026-06-03).
+            PRECISE_TOL = float(os.environ.get("LANDING_PRECISE_TOL", "0.10"))
             if target_lost:
                 precise = False
                 soft    = False
                 tag = "TARGET_LOST"
             else:
-                precise = xy_err  <= 0.08
+                precise = xy_err  <= PRECISE_TOL
                 soft    = rel_vel <= 0.2
                 tag = ("SOFT+PRECISE" if (soft and precise)
                        else "PRECISE-only" if precise
                        else "SOFT-only"   if soft
                        else "FAIL")
+                if terminal_perception_loss:
+                    tag += " [terminal perception loss]"
             SOFT_PRECISE = dict(xy_err=xy_err, rel_vel=rel_vel,
                                 precise=precise, soft=soft,
-                                target_lost=target_lost)
+                                target_lost=target_lost,
+                                terminal_perception_loss=terminal_perception_loss)
             print(f"[landing_test] Landing classification: {tag}  "
-                  f"(xy_err={xy_err:.3f} m [≤0.08], "
+                  f"(xy_err={xy_err:.3f} m [≤{PRECISE_TOL}], "
                   f"rel_vel={rel_vel:.3f} m/s [≤0.2]"
                   f"{', target lost mid-flight' if target_lost else ''})")
         except Exception as e:
