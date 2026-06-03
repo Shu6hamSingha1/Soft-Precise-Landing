@@ -1,0 +1,11 @@
+rep	landed	xy_err	rel_vel	precise	soft	target_lost	result_dir
+1	NO	-	-	-	-	-	-
+2	YES	0.5110	0.6036	0	0	0	Wed Jun  3 12-19-28 2026
+3	YES	2.9512	0.3832	0	0	0	Wed Jun  3 12-20-42 2026
+4	YES	0.0765	0.3093	1	0	0	Wed Jun  3 12-23-47 2026
+5	YES	0.1504	0.0607	0	1	0	Wed Jun  3 12-24-46 2026
+6	YES	0.1189	0.3330	0	0	0	Wed Jun  3 12-25-47 2026
+7	YES	3.3415	0.7331	0	0	0	Wed Jun  3 12-28-17 2026
+8	YES	1.2071	0.4924	0	0	0	Wed Jun  3 12-29-27 2026
+9	YES	0.7395	0.7110	0	0	0	Wed Jun  3 12-32-28 2026
+10	YES	0.2588	0.2675	0	0	0	Wed Jun  3 12-33-27 2026
