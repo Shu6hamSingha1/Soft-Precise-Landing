@@ -205,7 +205,10 @@ def std_ratio(gt, raw, mask, k_mad_sample=3.0):
 
 
 def main():
-    cal_dir = '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output'
+    # Optional dir arg so the same aggregator can be pointed at alternate
+    # recording sets (e.g. post-reboot recalibration vs the pre-reboot set).
+    cal_dir = sys.argv[1] if len(sys.argv) > 1 else \
+        '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output'
     runs = sorted([d for d in glob.glob(os.path.join(cal_dir, '*')) if os.path.isdir(d)])
     print(f"[phased] {len(runs)} run directories under {cal_dir}\n")
     per_run_hw = []
