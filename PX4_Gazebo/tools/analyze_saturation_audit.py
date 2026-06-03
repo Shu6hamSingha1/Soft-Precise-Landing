@@ -114,6 +114,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("reps", nargs="*")
     ap.add_argument("--glob", action="append", default=[])
+    ap.add_argument("--events", action="store_true",
+                    help="per-event attribution (when/why each limit was hit) "
+                         "instead of duty-cycle statistics")
     args = ap.parse_args()
 
     reps = list(args.reps)
@@ -122,6 +125,10 @@ def main():
     reps = [r for r in reps if os.path.isdir(r)]
     if not reps:
         print("No rep directories found."); sys.exit(1)
+
+    if args.events:
+        events_main(reps)
+        return
 
     audits = []
     for rep in reps:
@@ -160,6 +167,94 @@ def main():
     for l, sp_d, nsp_d, ratio in sorted(rows, key=lambda r: -r[2]):
         rs = f"{ratio:.1f}x" if np.isfinite(ratio) else "inf"
         print(f"{l:<24} {sp_d:>15.1f}% {nsp_d:>15.1f}% {rs:>8}")
+
+
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# EVENT-LEVEL ATTRIBUTION (user methodology 2026-06-03):
+# "identify every time any saturation limit is hit, the reason behind it,
+#  and if something can be done to avoid it."
+# For each contiguous saturation event: when, how long, which axis, and a
+# snapshot of the upstream signals that drove the signal into the limit.
+# ════════════════════════════════════════════════════════════════════════════
+
+def _events(mask, t):
+    """Contiguous True intervals of mask -> list of (i_start, i_end)."""
+    out, start = [], None
+    for i, v in enumerate(mask):
+        if v and start is None:
+            start = i
+        elif not v and start is not None:
+            out.append((start, i - 1)); start = None
+    if start is not None:
+        out.append((start, len(mask) - 1))
+    return out
+
+
+def event_report(rep_dir, min_duration=0.06):
+    """Per-event attribution for the three dominant saturations."""
+    cd = np.load(os.path.join(rep_dir, "Control_Data.npy"), allow_pickle=True).item()
+    cp = np.load(os.path.join(rep_dir, "Control_Params.npy"), allow_pickle=True).item()
+    t = np.asarray(cd["t"], dtype=float); t = t - t[0]
+    g = lambda k: _arr(cd[k])
+    zeta = g("zeta(t)"); sigma = g("sigma(t)"); s_e_n = g("s_e_n(t)")
+    h = g("h(t)"); h_d = g("h_d(t)"); ds_d = g("ds_d(t)"); p = g("p(t)")
+    a_u = g("a_u(t)"); I_ar = g("I_a_raw(t)"); thc = np.asarray(cd["theta_cone(t)"], dtype=float)
+    dmin = np.asarray(cd["d_min_fov(t)"], dtype=float)
+    E = np.diag(np.asarray(cp.get("E", np.eye(3))))
+    m = min(len(t), len(zeta), len(sigma), len(s_e_n), len(h), len(h_d),
+            len(ds_d), len(p), len(a_u), len(I_ar), len(thc), len(dmin))
+    tt = t[:m]; T = tt[-1]
+    h_e = h[:m] - h_d[:m]
+    rows = []
+
+    # ── 1. Cone clamp events ────────────────────────────────────────────
+    ask = np.linalg.norm(I_ar[:m][:, :2], axis=1)
+    alw = np.abs(I_ar[:m][:, 2]) * np.tan(thc[:m])
+    for i0, i1 in _events((ask > alw * 1.02) & (ask > 0.5), tt):
+        if tt[i1] - tt[i0] < min_duration: continue
+        # reason: is it a small-allowance problem (d_min collapsed) or a big-ask problem?
+        reason = ("small allowance (d_min=%.0fpx -> allowed %.1f)" % (dmin[i0], alw[i0])
+                  if dmin[i0] < 40 else
+                  "large ask (SMC wants %.1f, err |s_e_n|=%.2f, |h_e|=%.1f)"
+                  % (ask[i0], np.linalg.norm(s_e_n[i0]), np.abs(h_e[i0][:2]).max()))
+        rows.append(dict(limit="cone clamp", t0=tt[i0], dur=tt[i1]-tt[i0],
+                         phase=tt[i0]/T, reason=reason))
+
+    # ── 2. Sigma outside boundary layer ─────────────────────────────────
+    sigE = np.abs(sigma[:m]) / E[None, :]
+    for ax, axn in enumerate("xyz"):
+        for i0, i1 in _events(sigE[:, ax] >= 1.0, tt):
+            if tt[i1] - tt[i0] < min_duration: continue
+            # reason: zeta-driven (funnel error) or integral-driven?
+            reason = ("funnel error: h_e_%s=%.2f vs p=%.2f (ratio %.2f)"
+                      % (axn, h_e[i0][ax], p[i0][ax], abs(h_e[i0][ax])/p[i0][ax]))
+            rows.append(dict(limit=f"sigma/E [{axn}]", t0=tt[i0], dur=tt[i1]-tt[i0],
+                             phase=tt[i0]/T, reason=reason))
+
+    # ── 3. Accel floor events ───────────────────────────────────────────
+    for i0, i1 in _events(I_ar[:m][:, 2] >= 0.0, tt):
+        if tt[i1] - tt[i0] < min_duration: continue
+        reason = ("z-SMC wants accel-down > g: h_e_z=%.2f (h_z=%.2f vs h_d_z=%.2f), a_u_z=%.1f"
+                  % (h_e[i0][2], h[i0][2], h_d[i0][2], a_u[i0][2]))
+        rows.append(dict(limit="accel floor", t0=tt[i0], dur=tt[i1]-tt[i0],
+                         phase=tt[i0]/T, reason=reason))
+
+    return sorted(rows, key=lambda r: r["t0"]), T
+
+
+def events_main(rep_dirs):
+    for rep in rep_dirs:
+        try:
+            rows, T = event_report(rep)
+        except Exception as e:
+            print(f"[error] {rep}: {e}"); continue
+        name = os.path.basename(os.path.dirname(rep)) + "/" + os.path.basename(rep)
+        print(f"\n═══ {name}  (T={T:.1f}s, {len(rows)} events ≥60ms) ═══")
+        for r in rows:
+            ph = "terminal" if r["phase"] > 0.85 else ("mid" if r["phase"] > 0.3 else "early")
+            print(f"  t={r['t0']:5.1f}s ({ph:>8}) {r['dur']*1000:4.0f}ms  {r['limit']:<14} {r['reason']}")
 
 
 if __name__ == "__main__":

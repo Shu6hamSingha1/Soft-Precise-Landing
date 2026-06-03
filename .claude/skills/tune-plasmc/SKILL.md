@@ -153,6 +153,17 @@ Lever D (image-based velocity feedforward) is **already implemented** via the op
 
 ## Diagnostic procedure — "why did this rep fail"
 
+**STANDARD PROCEDURE (2026-06-03, user methodology): failure root-causing + saturation audit.**
+
+For every batch (not just failures):
+1. `analyze_saturation_audit.py --glob '<bundle>/rep*'` — duty cycle of all 12 limits (6 code guards +
+   6 manuscript limits), SP-vs-non-SP ranking. Active limits = silent performance loss even in good reps.
+2. `analyze_saturation_audit.py --events <reps>` — every saturation event with when/why (auto-attributed
+   reason: e.g. cone "large ask" vs "small allowance", σ/ℰ funnel-error ratio, accel-floor z-spike).
+3. For each frequent event type: reason → the manuscript parameter that owns it → tune that parameter so
+   the signal stays in its linear regime. NEVER respond by widening the limit itself (limits are a last
+   resort, only when performance cannot improve any other way).
+
 For a single failed rep:
 1. `analyze_explosion_chain.py <rep_dir> [...]` — finds WHICH state departs its normal envelope FIRST and the resulting causal chain (ds_d → dh_d clamp → ζ saturation → κ runaway → a_u). Aggregates first-movers across reps. This is the per-term a_u attribution tool.
 2. Load with `analyze_timeseries.py <rep_dir>` (per-channel correlation with xy_end)
@@ -252,6 +263,7 @@ PID_SCALE=0.54 stacking adds nothing. Open: raise SP rate (terminal softness) + 
 - `src/img_data.py` — image pipeline, ArUco params, savgol, stale-feature detection
 - `apps/landing_test.py` — IC convergence, marker-loss grace, control loop, autosave
 - `src/flight_controller.py` — MAVSDK wrapper, telemetry rates, rate-gain hook (DEAD)
+- `tools/analyze_saturation_audit.py` — duty cycle + per-event attribution of all 12 limits (2026-06-03; the standard batch diagnostic)
 - `tools/analyze_explosion_chain.py` — first-exploding-state + causal-chain diagnosis (2026-06-02)
 - `tools/analyze_timeseries.py`, `tools/analyze_loop_latency.py`, `tools/analyze_sensor_noise.py`,
   `tools/analyze_marker_switch.py`, `tools/analyze_sigma_compare.py`,
