@@ -110,3 +110,54 @@ Consequences, confirmed by the explosion-chain analysis (n=6 defaults reps, 2026
 5. `a_u = c + Θ·sat(σ/E)·κ + …` → 400–7000 m/s² → hard impact / drift / TARGET_LOST.
 
 The chain starts at the **outer PID** (cal-amplified) and is catastrophically amplified by the **κ-adaptation** (via the dh_d clamp). Gain relaxations under test (see `test_data/Landing_Test/parameter_record.ods → PX4_Gain_Tuning` sheet).
+
+---
+
+## 7. The definitive parameter taxonomy (2026-06-03 cleanup)
+
+What is tunable, what is fixed, and why PX4 has anything beyond the manuscript set.
+
+### 7.1 The real control parameters — 49 scalars, identical across manuscript / MATLAB / Python
+
+| Group | Manuscript | MATLAB | Python (direct per-axis env knobs) | # |
+|---|---|---|---|---|
+| Image PID | K_rp, K_ri, K_rd | `K_ctrl.rp/ri/rd` | `PLASMC_KP/KI/KD_{X,Y}` | 6 |
+| Descent ref | h_rd | `h_rd` | `LANDING_REF_RAD_OPT_FLOW` | 1 |
+| Funnel | Ξ₂, p₂₀, p₂∞ | `gamma_2, p_20, p_2inf` | `PLASMC_XI2/P20/P2INF_{X,Y,Z}` | 9 |
+| Optic-flow ASMC | 𝒳, Γ, 𝒫, 𝒩, κ(0), ℰ | `Omega, Gamma, P, N, kappa_0, E` | `PLASMC_OMEGA/GAMMA/P/N/KAPPA0/E_{X,Y,Z}` | 18 |
+| Accel conditioning | p₁₀, p₁∞, ξ₁, θ_cap | `rho_fov_0/inf, l_fov, theta_cap` | `PLASMC_RHOFOV0/RHOFOVINF_{U,V}, LFOV, THETACAP_DEG` | 6 |
+| Yaw ASMC | χ_α, γ_α, η_α, ρ_α, κ_α(0), ε_α | `Omega_a..E_a` | `PLASMC_YAW_OMEGA/GAMMA/N/P/KAPPA0/E` | 6 |
+| SO(3) | k_R (k_Ω) | `kR (kOmega)` | `PLASMC_KR_{ROLL,PITCH,YAW}` (k_Ω → PX4 rate loop) | 3 |
+
+Fixed design constants (all three sources, never tuned): ε_S=0.05 (Remark 5), ∫ζ clamp=5 (Suppl. S2-D),
+acceleration floor 3.0 m/s² and LPF τ_a=0.08 s (Suppl. S1.5).
+
+### 7.2 PX4-only parameters and their justification
+
+**Category A — architecture translations** (the same MATLAB mechanism in rate-mode/async form; values set
+by physics, never tuned):
+
+| PX4 | MATLAB equivalent | Why the form differs |
+|---|---|---|
+| `PLASMC_W_U_MAX` = 1.0 rad/s | `tau_xy_max`/`tau_z_max` (torque saturation) | inner loop outputs body rate (A1), so the saturation is a rate; additionally protects the LK tracking window |
+| `PLASMC_DH_D_MAX` = 50 | `if idx==1: raw_dh_d=0` | async engagement (A7) has no well-defined "first sample"; a high clamp kills the same transient |
+| `iV_s_e_n`/`ie_a` anti-windups | `izeta_2_max` (S2-D) | the S2-D concept extended to the PID/yaw integrals, which can wind up in PX4's longer/drifting pre-engagement |
+
+**Category B — real-perception protections** (MATLAB perception is synthetic and cannot fail):
+
+| PX4 | Why MATLAB doesn't need it |
+|---|---|
+| `W_I_MAX` = 5 rad/s (w-measurement clamp) | synthetic V_w never spikes (MATLAB even defines the same bound, `w_max`, unused) |
+| `PLASMC_TAU_UA` = 0.1 s (yaw cmd LPF) | synthetic α never wrap-flips; MATLAB's u_a runs unfiltered |
+
+**Category C — the single control-law deviation:**
+
+`CTRL_ZERO_WXY=1` zeros w_x, w_y inside cross(V_w, V_s). Valid for STATIC targets only (true V-frame
+target-relative angular rate ≈ 0; the patch substitutes the known-true value for a noisy estimate with
+R²≈0.49). MUST be removed for moving-target work — which requires fixing the w-estimation first.
+
+### 7.3 Not control parameters at all
+
+img_data.py (ArUco, KLT, savgol, stale, sensor cal, board) and landing_test.py (IC gates, grace,
+stale-commitment, tolerances) parameterize perception and the experiment protocol. MATLAB needs neither
+(perfect perception, ICs set by assignment). They are never part of controller tuning.
