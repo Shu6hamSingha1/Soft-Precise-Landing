@@ -93,158 +93,99 @@ class Controller(Thread):
         # For Gazebo 1280x960 @ f=540: ~[1.185, 0.889]
         self._p_10 = self._img_node.center / self._img_node.focal  # (2,)
 
-        # Outer-loop PID on V_s_e_n (raw normalized pixel error)
-        # MATLAB:  rp = diag(9.0, 9.0), ri = diag(0.1, 0.1), rd = diag(1.4375, 1.4375)
-        # SITL:    K_ri boosted 10× (0.1 → 1.0). Diagnosis: the lateral PID
-        # is conditionally unstable on SITL's noisier LK centroid — initial
-        # noise perturbations grow into 1+ m drift in any direction (run-to-
-        # run varies). MATLAB's tiny K_ri = 0.1 can't correct steady drift.
-        # Boosting K_ri 10× lets the integral term explicitly null persistent
-        # offsets; the existing 5.0 anti-windup clamp on |is_e_n| limits runaway.
-        # Per-axis env-var scalers (PLASMC_KP_X_SCALE, PLASMC_KD_Y_SCALE, ...)
-        # stay in place so further tuning doesn't need a code edit. Uniform
-        # scalers (KP/KD/KI/PID_SCALE) were REMOVED 2026-06-03.
-        # Per-axis PID scalers ONLY — all uniform scale multipliers were removed
-        # 2026-06-03 per user directive ("tune control parameter for individual
-        # axis, instead of a scale parameter tuning"). PID is 2D (x,y of feature
-        # error in image plane); _X applies to axis 0, _Y to axis 1.
-        # Note: image axis 0 (V-frame x) → PITCH/North, image axis 1 → ROLL/East.
+        # ════ Outer-loop Virtual Image Point PID  [manuscript: K_rp, K_ri, K_rd] ════
+        # DIRECT per-axis control parameters (2026-06-03 cleanup: scale factors on
+        # hidden base values replaced by the parameter values themselves; the K_rp
+        # gain scheduler and ds_d clamps were removed as obsolete — see
+        # parameter_record.ods sheet "Removed_Parameters" for the full history).
+        #
+        # Manuscript (MATLAB) values: K_rp=diag(9,9), K_ri=diag(0.1,0.1),
+        # K_rd=diag(1.4375,1.4375). PX4 default K_ri=1.0 (10× MATLAB — SITL
+        # LK-centroid drift correction, see CONTROLLER_PARITY.md §3).
+        #
+        # Axis convention: image axis 0 (V-frame x) → PITCH/North,
+        #                  image axis 1 (V-frame y) → ROLL/East.
         # The two axes run at DIFFERENT effective loop gains for the same physical
         # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
-        # than y) — per-axis scalers are how that gets compensated.
-        kp_x = float(os.environ.get("PLASMC_KP_X_SCALE", "1.0"))
-        kp_y = float(os.environ.get("PLASMC_KP_Y_SCALE", "1.0"))
-        ki_x = float(os.environ.get("PLASMC_KI_X_SCALE", "1.0"))
-        ki_y = float(os.environ.get("PLASMC_KI_Y_SCALE", "1.0"))
-        kd_x = float(os.environ.get("PLASMC_KD_X_SCALE", "1.0"))
-        kd_y = float(os.environ.get("PLASMC_KD_Y_SCALE", "1.0"))
-        # 2026-06-02 — touchdown derivative-kick guard. Diagnosed on IC1:
-        # near touchdown the 1/Z growth of s_e_n makes ds_e_n spike, so the
-        # K_rd term dominates the outer-PID desired-flow ds_d (measured −18
-        # vs proportional ~8 on x) → h_d blows past the funnel p → barrier
-        # ratio clamps → zeta saturates (3.66) → kappa runaway → hard impact.
-        # The MEASURED flow h stays small throughout, so this is a desired-
-        # flow artifact, not perception. Clamping |ds_d| per axis caps that
-        # transient spike while leaving normal-regime tracking (|ds_d|≲1)
-        # untouched — surgical alternative to cutting K_rd, which also strips
-        # the lateral tracking damping the derivative legitimately provides.
-        # Default 0 = off (no clamp). Set PLASMC_DSD_CLAMP to the per-axis cap.
-        # Per-axis desired-flow caps (uniform PLASMC_DSD_CLAMP removed 2026-06-03).
-        # 0.0 = that axis unclamped. The proven-SP rep's own envelope was
-        # ds_d_x ≤ 2.3, ds_d_y ≤ 1.9 — use those as starting clamp values.
-        self._dsd_clamp_xy = np.array([
-            float(os.environ.get("PLASMC_DSD_CLAMP_X", "0.0")),
-            float(os.environ.get("PLASMC_DSD_CLAMP_Y", "0.0")),
-        ])
-        # K_rp gain scheduling (2026-05-25, after IC2-5 regression of K_rp=4).
-        # K_rp = 4 is good for IC1 (low |s_e_n|, IC-near-center) — gives
-        # softness via reduced PID aggression.  But at IC2-5 the initial
-        # offset gives |s_e_n| ≈ 0.3-0.6, and K_rp=4 has insufficient
-        # authority — the PID integrator winds out before touchdown.
-        #
-        # Solution: schedule K_rp on current image-error magnitude.
-        #   |s_e_n| > THRESH (far)   → K_rp_far  = 9 (full authority)
-        #   |s_e_n| < THRESH (close) → K_rp_close= 4 (soft pursuit of small error)
-        # Smooth tanh blend over WIDTH around THRESH (no chattering).
-        #
-        # Env knobs:
-        #   PLASMC_KP_FAR / PLASMC_KP_CLOSE — base gains (defaults 9, 4)
-        #   PLASMC_KP_SCHED_THRESH         — switch |s_e_n| (default 0.1)
-        #   PLASMC_KP_SCHED_WIDTH          — blend width (default 0.05)
-        #   PLASMC_KP_SCHED_ENABLE         — 0 to disable scheduling (legacy
-        #                                     behaviour: K_rp = K_rp_close)
-        # The per-axis PLASMC_KP_X/Y_SCALE scalers apply ON TOP of both far
-        # and close gains.
-        self._kp_far_base   = float(os.environ.get("PLASMC_KP_FAR",   "9.0"))
-        self._kp_close_base = float(os.environ.get("PLASMC_KP_CLOSE", "4.0"))
-        self._kp_sched_thresh = float(os.environ.get("PLASMC_KP_SCHED_THRESH", "0.1"))
-        self._kp_sched_width  = float(os.environ.get("PLASMC_KP_SCHED_WIDTH",  "0.05"))
-        self._kp_sched_enable = bool(int(os.environ.get("PLASMC_KP_SCHED_ENABLE", "1")))
+        # than y) — per-axis values are how that gets compensated.
+        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "9.0")),
+                              float(os.environ.get("PLASMC_KP_Y", "9.0"))])
+        self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "1.0")),
+                              float(os.environ.get("PLASMC_KI_Y", "1.0"))])
+        self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "1.4375")),
+                              float(os.environ.get("PLASMC_KD_Y", "1.4375"))])
 
-        self._K_rp_far = np.diag([kp_x * self._kp_far_base,
-                                  kp_y * self._kp_far_base])
-        self._K_rp_close = np.diag([kp_x * self._kp_close_base,
-                                    kp_y * self._kp_close_base])
-        # Initial value of the effective K_rp — set to close (will be
-        # updated each tick by _updateImgFeatureParam via _compute_K_rp_eff).
-        # Kept on `self._K_rp` for backward compat with logging / params dump.
-        self._K_rp = self._K_rp_close.copy()
+        # ════ Middle-loop control parameters — DIRECT per-axis values ════
+        # Manuscript symbol mapping (CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
+        # P2INF=p₂∞, OMEGA=𝒳 (PI surface integrator), GAMMA=Γ (surface
+        # proportional), E=ℰ (boundary layer), N=𝒩 (adaptive growth),
+        # P=𝒫 (adaptive leakage), KAPPA0=κ(0).
+        # PX4 defaults differing from MATLAB (CONTROLLER_PARITY.md §3):
+        # N_z 0.02 (vs 0.05), P_z 2.5 (vs 5.0), kappa_0 = 1.25× MATLAB.
+        def pa(key, dx, dy, dz):
+            """Per-axis direct parameter PLASMC_<KEY>_{X,Y,Z}; defaults given."""
+            return np.array([float(os.environ.get(f"PLASMC_{key}_X", str(dx))),
+                             float(os.environ.get(f"PLASMC_{key}_Y", str(dy))),
+                             float(os.environ.get(f"PLASMC_{key}_Z", str(dz)))])
 
-        self._K_ri = np.diag([ki_x * 1.0,
-                              ki_y * 1.0])
-        self._K_rd = np.diag([kd_x * 1.4375,
-                              kd_y * 1.4375])
-        _pid_ax = {"KP_X": kp_x, "KP_Y": kp_y, "KI_X": ki_x, "KI_Y": ki_y, "KD_X": kd_x, "KD_Y": kd_y}
-        if any(v != 1.0 for v in _pid_ax.values()):
-            print("[PLASMC] per-axis PID scales: " + ", ".join(f"{k}={v}" for k, v in _pid_ax.items() if v != 1.0))
-        if self._kp_sched_enable:
-            print(f"[PLASMC] K_rp scheduling: close={self._kp_close_base}, far={self._kp_far_base}, "
-                  f"thresh={self._kp_sched_thresh}, width={self._kp_sched_width}")
-        else:
-            print(f"[PLASMC] K_rp scheduling DISABLED — using constant K_rp = {self._kp_close_base}")
+        # Optic-flow funnel (LOAD-BEARING: p_2_0, p_2_∞).
+        # WARNING: funnel width IS the barrier gain (G⁻¹ ≈ p/2) — never widen a
+        # funnel component to "make room" for a transient; it raises that axis's
+        # gain proportionally (lesson learned twice: batches 6 and 11).
+        self._gamma = np.diag(pa("XI2",   0.2, 0.2, 0.2))
+        self._p_0   =         pa("P20",   25.0, 25.0, 4.0)
+        self._p_inf =         pa("P2INF", 2.5, 2.5, 1.5)
+        # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
+        self._Omega = np.diag(pa("OMEGA", 0.05, 0.05, 0.025))
+        self._Gma   = np.diag(pa("GAMMA", 0.4375, 0.5, 0.75))
+        self._E     = np.diag(pa("E",     1.0, 1.0, 1.0))
+        # Adaptive-gain ODE
+        self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
+        self._P       = np.diag(pa("P",      1.5, 1.5, 2.5))
+        self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 0.3125)
 
-        # Per-axis env-var scalers ONLY (uniform PLASMC_<KEY>_SCALE knobs
-        # removed 2026-06-03 per user directive). Each middle-loop param is
-        # tuned via PLASMC_<KEY>_{X,Y,Z}_SCALE applied to the baked base values.
-        def s(key, default="1.0"):
-            return float(os.environ.get(f"PLASMC_{key}_SCALE", default))
-        def per_axis(key, base):
-            """Return [sX*base[0], sY*base[1], sZ*base[2]] (per-axis scales only)."""
-            return np.array([s(f"{key}_X") * base[0],
-                             s(f"{key}_Y") * base[1],
-                             s(f"{key}_Z") * base[2]])
-
-        # Optic-flow funnel (LOAD-BEARING: p_2_0, p_2_∞)
-        self._gamma = np.diag(per_axis("XI2",   [0.2, 0.2, 0.2]))
-        self._p_0   =          per_axis("P20",   [25.0, 25.0, 4.0])
-        self._p_inf =          per_axis("P2INF", [2.5, 2.5, 1.5])
-        # Optic-flow SMC (LOAD-BEARING: Omega)
-        self._Omega = np.diag(per_axis("OMEGA", [0.05, 0.05, 0.025]))
-        self._Gma   = np.diag(per_axis("GAMMA", [0.4375, 0.5, 0.75]))
-        self._E     = np.diag(per_axis("E",     [1.0, 1.0, 1.0]))
-        # Adaptive-gain ODE. PLASMC_N_Z is the legacy *absolute* scalar
-        # for N[z] (default 0.02 — slowed from MATLAB's 0.05 for SITL).
-        # Per-axis scalers (PLASMC_N_X_SCALE etc) multiply on top of this.
-        N_z_abs = float(os.environ.get("PLASMC_N_Z", "0.02"))
-        n_diag = per_axis("N", [0.02, 0.02, 0.02])
-        n_diag[2] = N_z_abs * s("N_Z")              # legacy override path (per-axis only)
-        self._N = np.diag(n_diag)
-        # P_z reduced from MATLAB 5.0 → 2.5 (2026-05-25). The only middle-loop
-        # SMC singleton in BigSensitivity with reproducible above-baseline
-        # PRECISE rate at n>=5: P_Z × 0.5 gave 2 PRECISE out of 11 (18% vs
-        # baseline 8%) and 0 TL. Stacking n=1 "winners" rejected per memory.
-        # Legacy MATLAB P_z=5.0 recoverable via PLASMC_P_Z_SCALE=2.0.
-        self._P = np.diag(per_axis("P",      [1.5, 1.5, 2.5]))
-        # kappa_0 base = 1.25 × MATLAB [0.125,0.125,0.25] (the old uniform
-        # KAPPA0_SCALE=1.25 default is baked in; tune per-axis from here)
-        self._kappa_0 =        per_axis("KAPPA0", [0.15625, 0.15625, 0.3125])
-        # Print any non-default per-axis scales.
+        # Print every parameter whose value differs from its default.
+        _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
+                     "P2INF": (2.5, 2.5, 1.5), "OMEGA": (0.05, 0.05, 0.025),
+                     "GAMMA": (0.4375, 0.5, 0.75), "E": (1.0, 1.0, 1.0),
+                     "N": (0.02, 0.02, 0.02), "P": (1.5, 1.5, 2.5),
+                     "KAPPA0": (0.15625, 0.15625, 0.3125)}
+        _values = {"XI2": np.diag(self._gamma), "P20": self._p_0, "P2INF": self._p_inf,
+                   "OMEGA": np.diag(self._Omega), "GAMMA": np.diag(self._Gma),
+                   "E": np.diag(self._E), "N": np.diag(self._N), "P": np.diag(self._P),
+                   "KAPPA0": self._kappa_0}
         _print_lines = []
-        _keys = ["XI2","P20","P2INF","OMEGA","GAMMA","E","N","P","KAPPA0"]
-        for k in _keys:
-            for ax in ("X","Y","Z"):
-                vx = s(f"{k}_{ax}")
-                if vx != 1.0:
-                    _print_lines.append(f"  {k}_{ax}{' '*(7-len(k))}= {vx}")
-        if N_z_abs != 0.02: _print_lines.append(f"  N_Z(abs) = {N_z_abs}")
+        for k, dflt in _defaults.items():
+            for i, ax in enumerate(("X", "Y", "Z")):
+                if abs(_values[k][i] - dflt[i]) > 1e-12:
+                    _print_lines.append(f"  {k}_{ax} = {_values[k][i]:g}  (default {dflt[i]:g})")
         if _print_lines:
-            print(f"[PLASMC] tunable middle-loop scales:")
+            print("[PLASMC] non-default middle-loop parameters:")
             for line in _print_lines: print(line)
 
-        # Yaw adaptive SMC (ROBUST per supplement S3-A — sweep tunable but low impact)
-        self._Omega_a    = s("YAW_OMEGA")  * 0.5
-        self._Gma_a      = s("YAW_GAMMA")  * 0.5
-        self._n_a        = s("YAW_N")      * 1.0
-        self._p_a        = s("YAW_P")      * 2.0
-        self._kappa_a_0  = s("YAW_KAPPA0") * 2.0
-        self._E_a        = s("YAW_E")      * 3.0
+        # ════ Yaw ASMC  [manuscript: χ_α, γ_α, η_α, ρ_α, κ_α(0), ε_α] ════
+        # (ROBUST class per supplement S3-A — ±50% moves metrics <0.5cm in MATLAB;
+        # in PX4 the yaw chain has 287ms lag so values ~0.2 are used — memory
+        # convergence-ordering.)
+        self._Omega_a   = float(os.environ.get("PLASMC_YAW_OMEGA",  "0.5"))
+        self._Gma_a     = float(os.environ.get("PLASMC_YAW_GAMMA",  "0.5"))
+        self._n_a       = float(os.environ.get("PLASMC_YAW_N",      "1.0"))
+        self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))
+        self._kappa_a_0 = float(os.environ.get("PLASMC_YAW_KAPPA0", "2.0"))
+        self._E_a       = float(os.environ.get("PLASMC_YAW_E",      "3.0"))
 
-        # FoV-margin cone clamp (acceleration conditioning). Pixel envelopes
-        # are tuned per image axis (U/V); uniform RHOFOV*_SCALE removed.
-        self._rho_fov_0   = np.array([s("RHOFOV0_U")   * 290.0, s("RHOFOV0_V")   * 210.0])
-        self._rho_fov_inf = np.array([s("RHOFOVINF_U") * 80.0,  s("RHOFOVINF_V") * 80.0])
-        self._l_fov       = s("LFOV")      * 0.1
-        self._theta_cap   = np.deg2rad(s("THETACAP") * 60.0)
+        # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
+        # Pixel envelopes per image axis (U/V), DIRECT values in px.
+        # Defaults = 2× MATLAB (camera is 640×480 @ f=270 vs 320×240 @ f=135).
+        # In BOARD mode these protect the PRIMARY marker's corners only (see
+        # CONTROLLER_PARITY.md board-mode note). The validated IC1 config sizes
+        # the envelope to the sensor edge: U0=290, V0=315, Uinf=220, Vinf=300.
+        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0")),
+                                      float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0"))])
+        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0")),
+                                      float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0"))])
+        self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.1"))
+        self._theta_cap = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -265,23 +206,15 @@ class Controller(Thread):
         self._izeta_clamp = 5.0
         self._ie_a_clamp = 2.0
 
-        # SO(3) attitude-error proportional gain. Manuscript Eq. `so3 torque`
-        # uses k_R = diag(1.5, 1.5, 0.5) on a torque output; we use
-        # diag(5, 5, 5) on a body-rate output (rad/s per rad of e_R is a
-        # different unit). The uniform scale defaults to 0.4 — at full 5.0
-        # the inner loop overdrives the LK tracking window (peak body rate
-        # > 1.7 rad/s causes corner motion > 15 px / frame, then OPTIC
-        # FLOW UNAVAILABLE → TARGET_LOST). 0.4 × 5.0 = 2.0 rad/s per rad e_R
-        # combined with the PLASMC_W_U_MAX=1.0 clamp keeps optical flow
-        # alive. Env scalers: per-axis PLASMC_KR_{ROLL,PITCH,YAW}_SCALE only.
-        # Base K_R = 2.0 (the old uniform KR_SCALE=0.4 × 5.0 baked in);
-        # tune per-axis only (uniform KR_SCALE removed 2026-06-03).
-        kr_roll  = float(os.environ.get("PLASMC_KR_ROLL_SCALE",  "1.0"))
-        kr_pitch = float(os.environ.get("PLASMC_KR_PITCH_SCALE", "1.0"))
-        kr_yaw   = float(os.environ.get("PLASMC_KR_YAW_SCALE",   "1.0"))
-        self._K_R = np.diag([kr_roll  * 2.0,
-                             kr_pitch * 2.0,
-                             kr_yaw   * 2.0])
+        # ════ SO(3) attitude-error proportional gain  [manuscript: k_R] ════
+        # DIRECT per-axis values in (rad/s)/rad — rate-mode unit, not the
+        # manuscript's N·m/rad (the damping k_Ω lives inside PX4's rate loop).
+        # Default 2.0: higher overdrives the LK tracking window (>1.7 rad/s
+        # body rate → >15 px/frame corner motion → OPTIC FLOW UNAVAILABLE).
+        # Works together with the PLASMC_W_U_MAX=1.0 rad/s command clamp.
+        self._K_R = np.diag([float(os.environ.get("PLASMC_KR_ROLL",  "2.0")),
+                             float(os.environ.get("PLASMC_KR_PITCH", "2.0")),
+                             float(os.environ.get("PLASMC_KR_YAW",   "2.0"))])
 
         # Virtual-compass heading state. Lazy-init on first _attCtrl call
         # from the current body yaw (manuscript: psi_d = yaw_init, line 127
@@ -508,33 +441,10 @@ class Controller(Thread):
             self._ds_e_n_deque.popleft()
         ds_e_n = smooth4(self._ds_e_n_deque)
 
-        # 2026-05-25 — gain-schedule K_rp by |s_e_n| magnitude.  See header
-        # block on gain scheduling.  Smooth tanh blend prevents chattering
-        # at the threshold.  When PLASMC_KP_SCHED_ENABLE=0, blend = 0 →
-        # K_rp = K_rp_close (constant — legacy K_rp=4 behaviour).
-        if self._kp_sched_enable:
-            sen_mag = float(np.linalg.norm(self._s_e_n[-1]))
-            # blend ∈ [0, 1]: 0 at far below threshold, 1 at far above
-            blend = 0.5 * (1.0 + np.tanh(
-                (sen_mag - self._kp_sched_thresh) /
-                max(self._kp_sched_width, 1e-6)))
-        else:
-            blend = 0.0
-        self._K_rp = blend * self._K_rp_far + (1.0 - blend) * self._K_rp_close
-
-        # PID -> desired feature-time-derivative
+        # PID -> desired feature-time-derivative (manuscript form, no clamps)
         V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
                      - self._K_ri @ self._is_e_n[-1]
                      - self._K_rd @ ds_e_n)
-        # Touchdown derivative-kick guard (see __init__ note): cap the per-axis
-        # desired flow so the 1/Z spike can't push h_d past the funnel. Off at 0.
-        if np.any(self._dsd_clamp_xy > 0.0):
-            # per-axis cap; axis with cap=0 stays unclamped
-            for ax in range(2):
-                if self._dsd_clamp_xy[ax] > 0.0:
-                    V_ds_d_xy[ax] = float(np.clip(V_ds_d_xy[ax],
-                                                  -self._dsd_clamp_xy[ax],
-                                                  self._dsd_clamp_xy[ax]))
         self._ds_d.append(np.concatenate([V_ds_d_xy, [0.0]]))
 
     def _updateOptFlow(self, h):
@@ -588,16 +498,12 @@ class Controller(Thread):
         # c-term, blows up |a_u|, drone flies away. Real-flight |dh_d| is
         # well under 5 m/s² even during aggressive maneuvers.
         #
-        # 2026-06-03 — default tightened 50 → 5 (the physical level). The
-        # explosion-chain analysis (tools/analyze_explosion_chain.py, n=6
-        # defaults reps) showed the old 50 clamp WAS the κ-runaway feed:
-        # near touchdown the 1/Z ds_d spike pins dh_d at ±50 → Θ_norm ≈ 50 →
-        # dκ/dt = Θ·N·G·|σ| runs κ to 10-100× κ_0 → a_u 400-7000 m/s² →
-        # hard impact. At 5.0 the runaway is broken: κ stays bounded,
-        # rel_vel max 9.5 → 0.4 m/s at IC1 (n=5), xy unchanged. IC2-5 gate
-        # passed 2026-06-03 (no regression). Legacy value recoverable via
-        # PLASMC_DH_D_MAX=50.
-        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "5.0"))
+        # 2026-06-03 cleanup: this is a STARTUP GUARD only (blocks the
+        # engagement-transient dh_d spike of ~160), value 50 = far above any
+        # in-flight value. It must NOT be used as a tuning knob (a 5.0 default
+        # briefly existed as a κ-runaway patch; reverted — the proper fix is
+        # the convergence-ordering gains that avoid the saturation entirely).
+        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
         if len(self._h_d) > 1:
             self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
@@ -749,23 +655,10 @@ class Controller(Thread):
         euler = Quaternion(self._quat[-1]).to_angles()  # [roll, pitch, yaw]
 
         # Raw inertial accel (net of gravity).
-        # a_u lives in the V frame (level, yaw-aligned — same frame as the
-        # optic-flow features it was computed from). MATLAB transforms it with
-        # I_R_V = rotz(yaw) (visualControl_IBVS_adaptive.m:430); the legacy
-        # Python used the FULL body DCM R, which mis-rotates a_u by the
-        # current tilt (CONTROLLER_PARITY.md parity item D1, ~17% cross-axis
-        # error at 10° tilt). Env-gated: PLASMC_VFRAME_ROT=yaw selects the
-        # MATLAB-faithful yaw-only rotation; default 'body' keeps legacy
-        # behaviour until the fix passes the IC2-5 gate.
-        if os.environ.get("PLASMC_VFRAME_ROT", "body") == "yaw":
-            yaw_v = euler[2]
-            cy_v, sy_v = np.cos(yaw_v), np.sin(yaw_v)
-            R_v = np.array([[cy_v, -sy_v, 0.0],
-                            [sy_v,  cy_v, 0.0],
-                            [0.0,    0.0, 1.0]])
-            I_a_raw = R_v @ self._a_u[-1] - np.array([0.0, 0.0, g])
-        else:
-            I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
+        # NOTE: a_u lives in the V frame; MATLAB uses I_R_V = rotz(yaw) here,
+        # Python uses the full body DCM R — open parity item D1 in
+        # CONTROLLER_PARITY.md (zero difference when level; grows with tilt).
+        I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 
         # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
@@ -802,18 +695,6 @@ class Controller(Thread):
         focal_px = float(self._img_node.focal[0])
         theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
                                self._theta_cap))
-        # 2026-06-03 — θ_cone floor (env PLASMC_THETA_FLOOR_DEG, default 0 = legacy).
-        # Diagnosed deadlock: near touchdown (1/Z spreads the marker corners) and
-        # during off-center overshoot, d_min_fov → 0 → θ_cone collapses to the
-        # CURRENT tilt → a_xy_lim ≈ 0 → the SMC's terminal/recovery correction
-        # (10-40 m/s² requested) is clamped to ~0.02-1.7 m/s² (94-100% of final-2s
-        # samples on IC1, every IC2-5 rep). The collapse logic assumes tilt moves
-        # the marker OUT of the image, but tilting toward the marker re-centers
-        # it — the clamp blocks exactly the recovery action. A floor guarantees
-        # minimum lateral authority: floor=60 (=θ_cap) disables the d_min term
-        # entirely; intermediate values (15-30°) keep a softened clamp.
-        theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "0.0")))
-        theta_cone = float(max(theta_cone, min(theta_floor, self._theta_cap)))
 
         # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
         # MATLAB-equivalent safety: I_a represents required thrust acceleration

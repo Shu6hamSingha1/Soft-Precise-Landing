@@ -95,12 +95,6 @@ class FC():
             # pitch τ = 8 ms at default MC_*RATE_P; tightening P (and adding
             # some D) should shrink τ further.  Env knob is a uniform scale
             # over the X500 defaults so we can A/B without per-axis fiddling.
-            #   MC_ROLLRATE_P  default 0.15      MC_PITCHRATE_P  default 0.15
-            #   MC_ROLLRATE_I  default 0.2       MC_PITCHRATE_I  default 0.2
-            #   MC_ROLLRATE_D  default 0.003     MC_PITCHRATE_D  default 0.003
-            # Set scale >1 only after verifying stability on impulse-test.
-            await self._maybe_apply_rate_gain_scale()
-
             # Eagerly create the DDS rate sender here (single-threaded setup
             # moment) rather than lazily on the first in-flight send_attitude_rate
             # — lazy creation from the asyncio control loop, with the
@@ -124,45 +118,6 @@ class FC():
 
         except Exception as e:
             print(f"Unexpected error: Flight Controller Thread: {e}\n")
-
-    async def _maybe_apply_rate_gain_scale(self):
-        """Apply uniform-scale to PX4's roll/pitch rate-controller gains.
-
-        Reads env var PLASMC_PX4_RATE_SCALE (default 1.0 = no change).
-        Multiplies the X500 defaults of MC_{ROLL,PITCH}RATE_{P,I,D} by the
-        scale and writes them via MAVSDK param API.  No-op when scale is 1.
-
-        The X500 defaults below are what PX4's airframe init writes; we
-        read them back first as a sanity check then apply the scaled values.
-        """
-        scale = float(os.environ.get("PLASMC_PX4_RATE_SCALE", "1.0"))
-        if abs(scale - 1.0) < 1e-3:
-            return
-        defaults = {
-            "MC_ROLLRATE_P":  0.15,
-            "MC_ROLLRATE_I":  0.2,
-            "MC_ROLLRATE_D":  0.003,
-            "MC_PITCHRATE_P": 0.15,
-            "MC_PITCHRATE_I": 0.2,
-            "MC_PITCHRATE_D": 0.003,
-        }
-        print(f"[FC] Scaling PX4 rate gains by {scale}x:")
-        for name, dv in defaults.items():
-            target = dv * scale
-            try:
-                # set-only: get_param_float was observed to hang on this
-                # build (no response on some param names during FC startup).
-                # Wrap in a short timeout so a single bad param can't
-                # poison the entire flight.
-                await asyncio.wait_for(
-                    self.vehicle.param.set_param_float(name, target),
-                    timeout=3.0,
-                )
-                print(f"  {name} → {target:.4f}")
-            except asyncio.TimeoutError:
-                print(f"  {name}: set_param_float TIMED OUT (3s) — skipping")
-            except Exception as e:
-                print(f"  {name}: set failed ({e})")
 
     #-- Close connection
     async def close(self):

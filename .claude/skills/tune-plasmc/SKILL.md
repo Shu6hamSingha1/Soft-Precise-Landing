@@ -34,50 +34,64 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 
 ## Complete parameter inventory
 
+**2026-06-03 CLEANUP: all knobs are now DIRECT per-axis parameter values** (e.g. `PLASMC_KP_X=1.4`),
+not scale factors. Obsolete mechanisms (K_rp scheduling, DSD clamps, THETA_FLOOR, VFRAME_ROT, PX4_RATE_SCALE)
+were removed — see parameter_record.ods sheet `Removed_Parameters` for the full history.
+
+**The validated IC1 config (28% SP @ 10cm, n=25 — parameter_record trial 46), in direct-value form:**
+```
+PLASMC_KP_X=1.4 PLASMC_KP_Y=1.4  PLASMC_KI_X=0.35 PLASMC_KI_Y=0.35  PLASMC_KD_X=0.5031 PLASMC_KD_Y=0.5031
+PLASMC_YAW_OMEGA=0.2 PLASMC_YAW_GAMMA=0.2
+PLASMC_RHOFOV0_V=315 PLASMC_RHOFOVINF_U=220 PLASMC_RHOFOVINF_V=300
+PLASMC_GAMMA_Z=0.375
+MARKER_KLT_MAX_STEPS=20 LANDING_STALE_COMMIT_EXTENT=100
+CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 V_YAW_SOURCE=compass
+```
+
 ### Outer loop (image-error → desired optic-flow rate)
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_X/Y_SCALE` (per-axis ONLY; uniform scales removed 2026-06-03) | Boost >1.5× → instability cascade |
-| `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_X/Y_SCALE` | 10× MATLAB's 0.1; needed for SITL drift correction |
-| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_X/Y_SCALE` | Sensitive to centroid noise; ↑ → chatter |
+| `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_{X,Y}` (direct per-axis values; defaults 9.0) | Boost >1.5× → instability cascade |
+| `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_{X,Y}` (direct; defaults 1.0) | 10× MATLAB's 0.1; needed for SITL drift correction |
+| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_{X,Y}` (direct; defaults 1.4375) | Sensitive to centroid noise; ↑ → chatter |
 | `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
 
 ### Middle loop (PLASMC funnel + sliding)
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `gamma` (Ξ_2) | `diag(0.2, 0.2, 0.2)` | `PLASMC_XI2_{X,Y,Z}_SCALE` | Sliding-variable gain |
-| `p_2_0` | `[25, 25, 4]` | `PLASMC_P20_{X,Y,Z}_SCALE` | Initial half-width of funnel |
-| `p_2_inf` | `[2.5, 2.5, 1.5]` | `PLASMC_P2INF_{X,Y,Z}_SCALE` | Terminal half-width — LOAD-BEARING |
-| `Omega` (Ω) | `diag(0.05, 0.05, 0.025)` | `PLASMC_OMEGA_{X,Y,Z}_SCALE` | κ-leakage rate. LOAD-BEARING (controls SP rate) |
-| `Gamma` (Γ) | `diag(0.4375, 0.5, 0.75)` | `PLASMC_GAMMA_{X,Y,Z}_SCALE` | κ-adaptation rate |
-| `E` | `diag(1, 1, 1)` | `PLASMC_E_{X,Y,Z}_SCALE` | Boundary-layer thickness; sat() arg scaled by 1/E |
-| `N` | `diag(0.02, 0.02, 0.02)` | `PLASMC_N_{X,Y}_SCALE` + `PLASMC_N_Z` (legacy abs) × `PLASMC_N_Z_SCALE` | Drives e-modification term in κ-ODE |
-| `P` | `diag(1.5, 1.5, 2.5)` | `PLASMC_P_{X,Y,Z}_SCALE` | Anti-windup-like gain on κ-ODE (P_z=2.5 baked) |
-| `kappa_0` (init κ) | `[0.15625, 0.15625, 0.3125]` (1.25× baked into base) | `PLASMC_KAPPA0_{X,Y,Z}_SCALE` | Already at best singleton (big sweep) |
+| `gamma` (Ξ_2) | `diag(0.2, 0.2, 0.2)` | `PLASMC_XI2_{X,Y,Z}` (direct) | Sliding-variable gain |
+| `p_2_0` | `[25, 25, 4]` | `PLASMC_P20_{X,Y,Z}` (direct) | Initial half-width of funnel |
+| `p_2_inf` | `[2.5, 2.5, 1.5]` | `PLASMC_P2INF_{X,Y,Z}` (direct) | Terminal half-width — LOAD-BEARING |
+| `Omega` (Ω) | `diag(0.05, 0.05, 0.025)` | `PLASMC_OMEGA_{X,Y,Z}` (direct) | κ-leakage rate. LOAD-BEARING (controls SP rate) |
+| `Gamma` (Γ) | `diag(0.4375, 0.5, 0.75)` | `PLASMC_GAMMA_{X,Y,Z}` (direct) | κ-adaptation rate |
+| `E` | `diag(1, 1, 1)` | `PLASMC_E_{X,Y,Z}` (direct) | Boundary-layer thickness; sat() arg scaled by 1/E |
+| `N` | `diag(0.02, 0.02, 0.02)` | `PLASMC_N_{X,Y,Z}` (direct) | Drives e-modification term in κ-ODE |
+| `P` | `diag(1.5, 1.5, 2.5)` | `PLASMC_P_{X,Y,Z}` (direct) | Anti-windup-like gain on κ-ODE (P_z=2.5 baked) |
+| `kappa_0` (init κ) | `[0.15625, 0.15625, 0.3125]` (1.25× baked into base) | `PLASMC_KAPPA0_{X,Y,Z}` (direct) | Already at best singleton (big sweep) |
 
 ### Yaw SMC (low-impact per supplement S3-A)
 | Param | Default | Env knob |
 |---|---|---|
-| `Omega_a` | 0.5 | `PLASMC_YAW_OMEGA_SCALE` |
-| `Gma_a` | 0.5 | `PLASMC_YAW_GAMMA_SCALE` |
-| `n_a` | 1.0 | `PLASMC_YAW_N_SCALE` |
-| `p_a` | 2.0 | `PLASMC_YAW_P_SCALE` |
-| `kappa_a_0` | 2.0 | `PLASMC_YAW_KAPPA0_SCALE` |
-| `E_a` | 3.0 | `PLASMC_YAW_E_SCALE` |
+| `Omega_a` | 0.5 | `PLASMC_YAW_OMEGA` (direct) |
+| `Gma_a` | 0.5 | `PLASMC_YAW_GAMMA` (direct) |
+| `n_a` | 1.0 | `PLASMC_YAW_N` (direct) |
+| `p_a` | 2.0 | `PLASMC_YAW_P` (direct) |
+| `kappa_a_0` | 2.0 | `PLASMC_YAW_KAPPA0` (direct) |
+| `E_a` | 3.0 | `PLASMC_YAW_E` (direct) |
 
 ### FoV-margin cone clamp
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `rho_fov_0` | `[290, 210]` | `PLASMC_RHOFOV0_{U,V}_SCALE` | Initial pixel envelope (per image axis) |
-| `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_{U,V}_SCALE` | Terminal pixel envelope (per image axis) |
-| `l_fov` | 0.1 | `PLASMC_LFOV_SCALE` | Envelope decay rate (1/s) |
-| `theta_cap` | 60° | `PLASMC_THETACAP_SCALE` | Soft cone ceiling — acceleration saturation |
+| `rho_fov_0` | `[290, 210]` | `PLASMC_RHOFOV0_{U,V}` (direct, px) | Initial pixel envelope (per image axis) |
+| `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_{U,V}` (direct, px) | Terminal pixel envelope (per image axis) |
+| `l_fov` | 0.1 | `PLASMC_LFOV` (direct) | Envelope decay rate (1/s) |
+| `theta_cap` | 60° | `PLASMC_THETACAP_DEG` (direct, deg) | Soft cone ceiling — acceleration saturation |
 | `theta_floor` | 0° (legacy) | `PLASMC_THETA_FLOOR_DEG` | **Floor on θ_cone (2026-06-03). The d_min collapse was strangling terminal correction (94-100% of final-2s samples at IC1) — THETACAP is irrelevant when d_min=0. floor=60 → SP #6 (xy 0.060/vel 0.149, first mechanism-driven SP). See memory fov-cone-clamp-deadlock.** |
 
 ### Inner loop (SO(3))
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
-| `K_R` | `diag(2, 2, 2)` (0.4×5 baked into base) | `PLASMC_KR_{ROLL,PITCH,YAW}_SCALE` | 2.0 is the stable sweet spot. Higher → LK breakage |
+| `K_R` | `diag(2, 2, 2)` (0.4×5 baked into base) | `PLASMC_KR_{ROLL,PITCH,YAW}` (direct; defaults 2.0) | 2.0 is the stable sweet spot. Higher → LK breakage |
 | `W_U_MAX` (body-rate clamp) | 1.0 rad/s | `PLASMC_W_U_MAX` | Caps body-rate command magnitude |
 
 ### Misc / control-loop
