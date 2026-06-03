@@ -364,22 +364,42 @@ class Controller(Thread):
                     # the marker's apparent relative angular velocity.
                     W_I_MAX = 5.0
                     _w_in = np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX)
-                    # CTRL_ZERO_WXY zeros the w_x,w_y channels feeding the
-                    # cross(V_w,V_s) decoupling term. DEFAULT 1 (static target):
-                    # the image-derived roll/pitch angular flow w_x,w_y is
+                    # ---- w_x,w_y de-rotation source (W_XY_DEROT) ----
+                    # The image-derived roll/pitch angular flow w_x,w_y is
                     # structurally weakly-observable for a planar marker under a
-                    # downward camera (rotation/translation ambiguity) — it comes
+                    # downward camera (rotation/translation ambiguity) -> it comes
                     # out under-amplitude/noisy (up to 3.4 rad/s of garbage; see
-                    # Images/virtual_img_ang_vel.png), and fed live it overdrives
+                    # Images/virtual_img_ang_vel.png). Fed live it overdrives
                     # cross(V_w,S) -> a_u inflation -> body-rate saturation ->
-                    # divergence (0 SP, 3-7m). The validated config (b13/b14,
-                    # 2 SP/10) ran with this ON; default was OFF and the missing
-                    # knob silently regressed the baseline to 0 SP (2026-06-03).
-                    # MUST be 0 for MOVING/ROTATING targets (real w_xy needed) —
-                    # but then the w_xy de-rotation should use the IMU body rate,
-                    # not the unobservable image estimate.
-                    if os.environ.get("CTRL_ZERO_WXY", "1") == "1":
+                    # divergence (0 SP). w_z (yaw) IS well observed (swirl pattern)
+                    # and is ALWAYS kept from the image.
+                    #   'zero'  : w_x=w_y=0 — the validated b13/b14 config (2 SP/10).
+                    #   'imu'   : w_x,w_y from the GYRO (accurate), transformed
+                    #             body->V. For a STATIONARY target the camera's
+                    #             angular velocity in V = Ry(pitch)Rx(roll)@omega_body
+                    #             (level transform, compass-aligned V). Recovers the
+                    #             real de-rotation the image cannot observe. Sign is
+                    #             + (image-side overlays GT body rate, same phase).
+                    #   'image' : keep the raw (broken) image w_x,w_y.
+                    # MOVING/ROTATING targets need target omega added (not handled).
+                    # Back-compat: CTRL_ZERO_WXY=1 (the old knob) maps to 'zero'.
+                    _derot = os.environ.get(
+                        "W_XY_DEROT",
+                        "zero" if os.environ.get("CTRL_ZERO_WXY", "1") == "1" else "image")
+                    if _derot == "imu":
+                        roll, pitch, _yaw = Quaternion(self._quat[-1]).to_angles()
+                        cr, sr = np.cos(roll), np.sin(roll)
+                        cp, sp = np.cos(pitch), np.sin(pitch)
+                        R_VB = np.array([[cp, sp * sr, sp * cr],
+                                         [0.0, cr, -sr],
+                                         [-sp, cp * sr, cp * cr]])   # Ry(pitch)@Rx(roll)
+                        wb = self._w[-1]                              # [roll, pitch, -yaw_frd]
+                        w_body_frd = np.array([wb[0], wb[1], -wb[2]]) # clean body-FRD omega
+                        w_V = R_VB @ w_body_frd
+                        _w_in = _w_in.copy(); _w_in[0] = w_V[0]; _w_in[1] = w_V[1]
+                    elif _derot == "zero":
                         _w_in = _w_in.copy(); _w_in[0] = 0.0; _w_in[1] = 0.0
+                    # 'image' -> leave _w_in as the raw image estimate
                     self._w_i.append(_w_in)
                     self._updateOptFlow(opt_flow_ang_vel[:3])
 
