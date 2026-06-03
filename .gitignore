@@ -40,8 +40,8 @@ PX4_Gazebo/test_data/SPCampaign/**/rep*/
 # SP #6 (first mechanism-driven SP ever: THETA_FLOOR=60 + DH_D_MAX=5, 2026-06-03,
 # xy=0.060 vel=0.149) — irreplaceable, track the full rep
 !PX4_Gazebo/test_data/SPCampaign/b2A_floor60_20260603-033719/rep4/
-# SP #7-#12 (2026-06-03 batch 9: control-parameter config, 6 SP / 10 reps).
-# Track the precision record (A3: xy=9.6mm) + winning-config representative (C4):
+# Batch-9 reps (2026-06-03): INVALID as SPs (last 25cm was open-loop handoff; zf=gear height).
+# Kept tracked as reference data for the descent-phase behaviour only:
 !PX4_Gazebo/test_data/SPCampaign/b9A_ordering_handoff_20260603-105615/rep3/
 !PX4_Gazebo/test_data/SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep4/
 # HybridFlow_AB: bulk A/B reps ignored EXCEPT hybrid_rep5 (SP #5, the 5th

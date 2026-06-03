@@ -308,18 +308,11 @@ async def main(record = 'n'):
         # while waiting for re-detection; only commit to final descent if
         # marker is genuinely gone for MARKER_LOSS_GRACE seconds.
         MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
-        # MATLAB-parity IBVS handoff altitude (2026-06-03). MATLAB terminates
-        # the controller at alt_above <= zf = 0.2 m (Constants.m) and never
-        # runs IBVS below that. Below ~zf the measured optic flow (signal AND
-        # noise) scales as 1/Z and exceeds the contracted funnel width — the
-        # controller is outside its validated envelope, and the funnel-
-        # saturation -> kappa-runaway terminal explosion follows. When
-        # LANDING_IBVS_HANDOFF_ALT > 0, hand off from IBVS to the open-loop
-        # final descent at that altitude (Gazebo-truth altitude above target,
-        # the same source the SOFT_PRECISE classifier uses). This is a NORMAL
-        # handoff, not a failure — target_lost stays False. Default 0 = legacy
-        # (IBVS runs to physical touchdown).
-        IBVS_HANDOFF_ALT = float(os.environ.get("LANDING_IBVS_HANDOFF_ALT", "0.0"))
+        # NOTE (2026-06-03): an "IBVS handoff altitude" knob briefly existed here,
+        # based on misreading MATLAB's zf=0.2m as a controller validity envelope.
+        # zf is the LANDING GEAR HEIGHT — MATLAB's termination at 0.2m IS gear
+        # contact (same event as PX4's LandedState). The controller is designed
+        # to control through touchdown; it must not hand off early. REVERTED.
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
@@ -336,23 +329,6 @@ async def main(record = 'n'):
             target_pose.append(pose_node.getPose().target)
 
             t_c.append(time_node.perf_counter() - start_time)
-            # MATLAB-zf handoff check (see IBVS_HANDOFF_ALT above): commit to
-            # open-loop touchdown once below the controller's validated
-            # altitude envelope. Prints the MATLAB-equivalent classification
-            # at the handoff point (= what MATLAB would score this landing).
-            if IBVS_HANDOFF_ALT > 0.0 and not in_final_descent:
-                _d = UAV_pose[-1].position
-                _t = target_pose[-1].position
-                _alt_above = _d.z - _t.z
-                if _alt_above <= IBVS_HANDOFF_ALT:
-                    in_final_descent = True
-                    final_descent_t0 = time_node.perf_counter()
-                    _xy = ((_d.x - _t.x)**2 + (_d.y - _t.y)**2) ** 0.5
-                    _v = FC_node.getVelBody()
-                    _rv = (_v.x_m_s**2 + _v.y_m_s**2 + _v.z_m_s**2) ** 0.5
-                    print(f"[landing_test] IBVS handoff at alt={_alt_above:.2f} m "
-                          f"(MATLAB-zf contract): xy={_xy:.3f} m [<=0.08], "
-                          f"rel_vel={_rv:.3f} m/s [<=0.2] -> open-loop touchdown")
             # Intervention 3 (2026-05-22): treat FEATURE_IS_STALE the same as
             # marker-loss — if img_data has been extrapolating for STALE_THRESH+
             # consecutive frames, route to the grace-hold path instead of

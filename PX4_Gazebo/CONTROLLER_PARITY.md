@@ -41,7 +41,7 @@ These are not "errors" — they are what the PX4/Gazebo platform requires.
 | A3 | **Perception** | Synthetic pinhole projection of 4 known corners + `pinv(L_s)` + depth-dependent pixel noise | ArUco board + LK optical flow + 8×6 LSTSQ + sensor-cal **M** + KF/savgol (`img_data.py`) | Real camera; needs detection, tracking and calibration |
 | A4 | **Timing** | Fixed dt=10 ms, image ZOH every 3 steps (30 Hz cam / 100 Hz ctrl), zero latency | Async ~50 Hz control thread, ~60 Hz camera, variable dt, **~38 ms rate-loop lag + image pipeline lag** | SITL reality. The lag is the dominant MATLAB↔PX4 performance gap (see memory `feedback_impulse_response`, `phase5`) |
 | A5 | **Thrust interface** | `T_cd = ‖m·I_a_filt‖` Newtons → mixer, saturated [0, 60] N | `B_T = m(I_a[2]+g)/cosφcosθ` (thrust *deficit* in N) → `thrust_norm = 0.738 − B_T/42.3` ∈ [0,1] | MAVSDK takes normalized throttle; slope 1/42.3 calibrated 2026-06-01 from input-cal |
-| A6 | **Termination** | `alt_above ≤ zf=0.2 m` → stop sim | PX4 `LandedState` / impact-spike detection; then classification | Real landing has no clean "stop" |
+| A6 | **Termination** | `alt_above ≤ zf=0.2 m` → stop sim | PX4 `LandedState` / impact-spike detection; then classification | **These are the SAME event**: zf = landing-gear height, so MATLAB's 0.2 m termination = gear contact = PX4's LandedState. The controller controls through touchdown on both platforms (clarified 2026-06-03) |
 | A7 | **Run start** | Clean IC, controller active from t=0, V_h_d[0] already ≈ reference | Arm → takeoff → fly to IC → settle gate → 100 ms warmup → engage | SITL must reach the IC physically; gives rise to startup transients MATLAB never sees |
 
 ## 3. Deliberate parameter differences (and why)
