@@ -309,19 +309,24 @@ class Controller(Thread):
 
     @property
     def MARKER_EXTENT_PX(self):
-        """Max corner distance (px) from the image center of the latest marker
-        detection. SCALE-FREE proximity indicator: a large extent means the
-        marker fills the image, i.e. touchdown is geometrically imminent —
-        no depth or altitude is used. Used by landing_test's stale-streak
-        commitment (env LANDING_STALE_COMMIT_EXTENT). Returns 0.0 when no
-        corners are available."""
+        """Marker SPAN (px) — corner-to-corner size of the latest detection.
+        SCALE-FREE proximity indicator: a large span means the marker is BIG
+        in the image, i.e. touchdown is geometrically imminent — no depth or
+        altitude is used. Used by landing_test's stale-streak commitment
+        (env LANDING_STALE_COMMIT_EXTENT). Returns 0.0 when no corners exist.
+
+        NOTE (batch-13 bug fix): the first version measured max distance from
+        the image CENTER, which is also large when a small marker drifts to
+        the image EDGE (lateral error at altitude) — that caused 3 false-
+        positive commitments (1.5-2.5 m soft landings). Span distinguishes
+        the two cases: big-marker-anywhere vs small-marker-at-edge."""
         try:
             fp_list = self._img_node._feature_pts
             if len(fp_list) > 0:
                 raw_corners = np.asarray(fp_list[-1][1], dtype=float)
-                cx, cy = self._img_node.center
-                return float(max(np.abs(raw_corners[:, 0] - cx).max(),
-                                 np.abs(raw_corners[:, 1] - cy).max()))
+                u_span = raw_corners[:, 0].max() - raw_corners[:, 0].min()
+                v_span = raw_corners[:, 1].max() - raw_corners[:, 1].min()
+                return float(max(u_span, v_span))
         except (IndexError, AttributeError, ValueError, TypeError):
             pass
         return 0.0
