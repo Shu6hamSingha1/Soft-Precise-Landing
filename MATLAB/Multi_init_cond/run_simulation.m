@@ -22,12 +22,20 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     %  ---------------------------------------------------------------------
     init_robustness;
 
-    % Optional environment override (NOISE / GE / delay) for sweep harnesses
-    % that need to disable disturbances without editing InitVar.m.
+    % Optional environment override (NOISE / GE / delay / delay_outer) for
+    % sweep harnesses that need to vary disturbances without editing InitVar.m.
+    %   delay       — steps of TORQUE delay (inside the attitude loop; the
+    %                 manuscript's computational-delay model)
+    %   delay_outer — steps of OUTER-LOOP delay (the attitude/thrust REFERENCE
+    %                 is stale but the inner SO(3) feedback stays current).
+    %                 Models the PX4 lag structure: MAVSDK transport sits
+    %                 between our controller and PX4's internal rate loop.
+    delay_outer = 0;
     if ~isempty(cfg_override)
         if isfield(cfg_override, 'NOISE'), NOISE = cfg_override.NOISE; end
         if isfield(cfg_override, 'GE'),    GE    = cfg_override.GE;    end
         if isfield(cfg_override, 'delay'), delay = cfg_override.delay; end
+        if isfield(cfg_override, 'delay_outer'), delay_outer = cfg_override.delay_outer; end
     end
 
     % Override initial state — also re-derive component variables
@@ -123,6 +131,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     B_tau_cd_log = zeros(3, N_steps);
     B_T_cd       = zeros(1, N_steps);
     psi_d_log    = zeros(1, N_steps);
+    Ia_outer_buf = zeros(3, N_steps);   % outer-loop delay buffers (delay_outer)
+    psi_outer_buf= zeros(1, N_steps);
     u_a_log      = zeros(1, N_steps);
 
     % Delay buffer for u_2 = [tau; T]
@@ -520,7 +530,26 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % *********************************************************************
     % Construct R_d from filtered I_a_cd (roll/pitch) + psi_d (heading)
     % *********************************************************************
-        I_F   = m * I_a_cd_filt;
+        % Outer-loop delay (delay_outer > 0): the attitude/thrust reference
+        % tracks a STALE outer-loop command while the inner SO(3) feedback
+        % (e_R, e_Omega from the CURRENT state) stays live. Models the PX4
+        % lag structure (transport between outer controller and PX4's rate
+        % loop). Contrast with `delay`, which delays the final torque and
+        % therefore destabilizes the inner stabilization itself.
+        Ia_outer_buf(:, idx) = I_a_cd_filt;
+        psi_outer_buf(idx)   = psi_d;
+        if delay_outer > 0 && idx > delay_outer
+            I_a_for_Rd = Ia_outer_buf(:, idx - delay_outer);
+            psi_for_Rd = psi_outer_buf(idx - delay_outer);
+        elseif delay_outer > 0
+            I_a_for_Rd = -g;            % hover reference until buffer fills
+            psi_for_Rd = yaw_init;
+        else
+            I_a_for_Rd = I_a_cd_filt;
+            psi_for_Rd = psi_d;
+        end
+
+        I_F   = m * I_a_for_Rd;
         f_mag = norm(I_F);
         T_cd  = f_mag;
 
@@ -528,7 +557,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             R_d = eye(3);
         else
             rd3 = -I_F / f_mag;
-            a_h = [cos(psi_d); sin(psi_d); 0];
+            a_h = [cos(psi_for_Rd); sin(psi_for_Rd); 0];
             rd2_raw = cross(rd3, a_h);
             n2 = norm(rd2_raw);
             if n2 < 1e-6, rd2_raw = [0;1;0]; n2 = 1; end

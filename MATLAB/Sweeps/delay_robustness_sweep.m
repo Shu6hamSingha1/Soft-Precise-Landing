@@ -32,6 +32,10 @@ if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
 DELAY_STEPS = [1, 3, 5, 10, 15, 30];      % x10 ms each
 N_REPS      = 5;                          % reps per cell (seeded -> reproducible)
+% DELAY_MODE: 'inner' = torque delay (manuscript model, destabilizes the
+%             attitude loop itself); 'outer' = outer-loop reference delay
+%             (PX4 lag structure: inner SO(3) feedback stays current).
+DELAY_MODE  = getenv('DELAY_MODE'); if isempty(DELAY_MODE), DELAY_MODE = 'inner'; end
 TRAJ        = "Static";                   % matches PX4 stationary ArUco case
 SP_XY_TOL   = 0.10;                       % m  (10 cm criterion, user 2026-06-03)
 SP_VEL_TOL  = 0.20;                       % m/s
@@ -62,7 +66,11 @@ for a = 1:numel(arms)
     for d = DELAY_STEPS
         for rep = 1:N_REPS
             seed = 1000*d + rep;                       % reproducible noise draw
-            cfg  = struct('NOISE', 1, 'GE', 1, 'delay', d);
+            if strcmp(DELAY_MODE, 'outer')
+                cfg = struct('NOISE', 1, 'GE', 1, 'delay', 1, 'delay_outer', d);
+            else
+                cfg = struct('NOISE', 1, 'GE', 1, 'delay', d);
+            end
             res  = run_simulation(x0, TRAJ, arms(a).K, 1.0, cfg, seed);
             sp   = res.success && (res.final_xy <= SP_XY_TOL) ...
                                && (res.final_rel_vel <= SP_VEL_TOL);
@@ -79,12 +87,12 @@ for a = 1:numel(arms)
 end
 
 results = rows;   % (result.data workspaces intentionally not kept — scalars only)
-save(fullfile(out_dir, 'delay_sweep_results.mat'), 'results', ...
+save(fullfile(out_dir, sprintf('delay_sweep_results_%s.mat', DELAY_MODE)), 'results', ...
      'DELAY_STEPS', 'N_REPS', 'SP_XY_TOL', 'SP_VEL_TOL');
 
 % ---- Summary table ------------------------------------------------------------
-fprintf('\n===== DELAY-ROBUSTNESS ENVELOPE — SP rate per cell (n=%d, xy<=%.2f, vel<=%.2f) =====\n', ...
-        N_REPS, SP_XY_TOL, SP_VEL_TOL);
+fprintf('\n===== DELAY-ROBUSTNESS ENVELOPE [%s delay] — SP rate per cell (n=%d, xy<=%.2f, vel<=%.2f) =====\n', ...
+        DELAY_MODE, N_REPS, SP_XY_TOL, SP_VEL_TOL);
 fprintf('%-18s', 'delay (ms):');
 for d = DELAY_STEPS; fprintf('%8d', d*10); end; fprintf('\n');
 for a = 1:numel(arms)
@@ -95,4 +103,4 @@ for a = 1:numel(arms)
     end
     fprintf('\n');
 end
-fprintf('\nResults saved to %s\n', fullfile(out_dir, 'delay_sweep_results.mat'));
+fprintf('\nResults saved to %s\n', fullfile(out_dir, sprintf('delay_sweep_results_%s.mat', DELAY_MODE)));
