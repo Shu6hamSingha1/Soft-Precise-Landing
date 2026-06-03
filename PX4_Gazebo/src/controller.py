@@ -498,12 +498,15 @@ class Controller(Thread):
         # c-term, blows up |a_u|, drone flies away. Real-flight |dh_d| is
         # well under 5 m/s² even during aggressive maneuvers.
         #
-        # 2026-06-03 cleanup: this is a STARTUP GUARD only (blocks the
-        # engagement-transient dh_d spike of ~160), value 50 = far above any
-        # in-flight value. It must NOT be used as a tuning knob (a 5.0 default
-        # briefly existed as a κ-runaway patch; reverted — the proper fix is
-        # the convergence-ordering gains that avoid the saturation entirely).
-        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
+        # 2026-06-03 cleanup REVERTED same day: the 14:20 refactor restored 50.0
+        # assuming the convergence-ordering gains make the κ-runaway patch
+        # unnecessary. Empirically false — LateralRestore c1 (identical gains,
+        # only this default differing) went 4/4 catastrophic vs b13/b14's ~35%
+        # tail (test_data/LateralRestore/*_ABORTED_dhdmax50_evidence). The
+        # validated 28%-SP config was gated and approved WITH 5.0 baked
+        # (commit 2b43983, IC2-5 gate passed); it is load-bearing until the
+        # 1/Z touchdown spike has a manuscript-parameter fix.
+        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "5.0"))
         if len(self._h_d) > 1:
             self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
