@@ -128,7 +128,7 @@ for c = ctrl_list
     result.trajType  = trajType;
 
     % Per-controller .mat (stored in Datasets/ alongside trajectory results)
-    fname = fullfile(fileparts(mfilename('fullpath')), 'Datasets', sprintf('result_ctrl_%d.mat', c));
+    fname = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison', sprintf('result_ctrl_%d.mat', c));
     save(fname, '-struct', 'result');
     fprintf('    Saved %s  (%d steps)\n\n', fname, idx);
 
@@ -142,7 +142,7 @@ end
 %% =========================================================================
 %  SAVE COMBINED DATASET
 % =========================================================================
-datasetDir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
+datasetDir = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison');
 if ~exist(datasetDir, 'dir')
     mkdir(datasetDir);
 end

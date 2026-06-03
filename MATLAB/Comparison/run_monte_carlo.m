@@ -77,7 +77,7 @@ for ti = 1:nT
     end
 
     % Checkpoint save after each trajectory
-    save(fullfile(fileparts(mfilename('fullpath')), 'Datasets', 'monte_carlo.mat'), ...
+    save(fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison', 'monte_carlo.mat'), ...
          '-struct', 'summary');
 end
 

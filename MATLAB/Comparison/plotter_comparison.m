@@ -52,7 +52,7 @@ ctrl_names = {'PLASMC (Proposed)', 'Lin 2022', ...
 
 %% Load data
 D = cell(1, 5);
-datasets_dir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
+datasets_dir = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison');
 for c = ctrl_list
     fname = fullfile(datasets_dir, sprintf('result_ctrl_%d.mat', c));
     if ~isfile(fname)

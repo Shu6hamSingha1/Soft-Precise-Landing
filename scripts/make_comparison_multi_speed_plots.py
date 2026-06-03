@@ -9,7 +9,7 @@ the controller's UAV descent at five speed multipliers lambda in {0.6, 0.8,
 5-category touchdown markers (see `feedback_landing_marker_convention.md`).
 
 Reads:
-  MATLAB/Comparison/Datasets/<traj>_multi_speed_comparison.mat
+  MATLAB/Datasets/Comparison/<traj>_multi_speed_comparison.mat
   (produced by MATLAB/Comparison/multi_speed_comparison.m)
 
 Outputs:
@@ -41,7 +41,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT     = str(Path(__file__).resolve().parent.parent)
-DATA_DIR = f"{ROOT}/MATLAB/Comparison/Datasets"
+DATA_DIR = f"{ROOT}/MATLAB/Datasets/Comparison"
 OUT_DIR  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT_DIR, exist_ok=True)
 

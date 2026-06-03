@@ -12,7 +12,7 @@ Image-plane plots use a single axis with all 4 corners x 5 ICs overlaid,
 plus the desired pixel location.
 
 Dataset loaded from
-  MATLAB/Multi_init_cond/Datasets/<traj>_multi_init.mat
+  MATLAB/Datasets/MultiInit/<traj>_multi_init.mat
 produced by Multi_init_cond/multi_Init_Var.m.
 
 The 3D plots draw a target corridor (xy ±0.08 m around the trajectory,
@@ -50,7 +50,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT      = str(Path(__file__).resolve().parent.parent)
-DATA_DIR  = f"{ROOT}/MATLAB/Multi_init_cond/Datasets"
+DATA_DIR  = f"{ROOT}/MATLAB/Datasets/MultiInit"
 OUT_DIR   = f"{ROOT}/Soft_Precise_Landing/Figures/generated/multi_init"
 os.makedirs(OUT_DIR, exist_ok=True)
 

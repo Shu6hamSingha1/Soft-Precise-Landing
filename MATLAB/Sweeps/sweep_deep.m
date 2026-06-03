@@ -206,7 +206,7 @@ for p = 1:n_params
 end
 
 % Save
-datasetDir = fullfile(fileparts(mfilename('fullpath')),'Datasets');
+datasetDir = fullfile(fileparts(mfilename('fullpath')),'..','Datasets','Sweeps');
 if ~exist(datasetDir,'dir'), mkdir(datasetDir); end
 saveFile = fullfile(datasetDir,'sweep_deep.mat');
 save(saveFile,'sweep','baseline','param_list','mults','trajList','p0');

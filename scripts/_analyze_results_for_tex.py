@@ -1,10 +1,10 @@
 """One-shot analysis of current .mat files to cross-check results.tex + supplemental.tex.
 
 Reads:
-  - MATLAB/Multi_init_cond/Datasets/<Traj>_multi_init.mat       (5x5 robustness)
-  - MATLAB/Multi_init_cond/Datasets/<Traj>_multi_init_noiseless.mat
-  - MATLAB/Multi_init_cond/Datasets/<Traj>_multi_speed.mat      (4x5 speed sweep)
-  - MATLAB/Comparison/Datasets/result_ctrl_{1..5}.mat           (5-ctrl comparison)
+  - MATLAB/Datasets/MultiInit/<Traj>_multi_init.mat       (5x5 robustness)
+  - MATLAB/Datasets/MultiInit/<Traj>_multi_init_noiseless.mat
+  - MATLAB/Datasets/MultiInit/<Traj>_multi_speed.mat      (4x5 speed sweep)
+  - MATLAB/Datasets/Comparison/result_ctrl_{1..5}.mat           (5-ctrl comparison)
 
 Prints a full report and writes scripts/_current_numbers.json.
 """
@@ -14,8 +14,8 @@ import numpy as np
 import scipy.io as sio
 
 ROOT = Path(__file__).resolve().parent.parent
-MI_DIR = ROOT / 'MATLAB' / 'Multi_init_cond' / 'Datasets'
-CMP_DIR = ROOT / 'MATLAB' / 'Comparison' / 'Datasets'
+MI_DIR = ROOT / 'MATLAB' / 'Datasets' / 'MultiInit'
+CMP_DIR = ROOT / 'MATLAB' / 'Datasets' / 'Comparison'
 
 TRAJS = ['Static', 'Linear', 'Sinusoidal', 'Lissajous', 'Circular']
 MOVING = ['Linear', 'Sinusoidal', 'Lissajous', 'Circular']
@@ -190,7 +190,7 @@ def multi_speed_report():
 
 
 def comparison_report():
-    """Extract Table V from MATLAB/Comparison/Datasets/<Traj>_comparison.mat.
+    """Extract Table V from MATLAB/Datasets/Comparison/<Traj>_comparison.mat.
 
     Each aggregate .mat contains:
       ctrl_list   : array of controller IDs

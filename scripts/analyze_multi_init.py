@@ -23,7 +23,7 @@ from pathlib import Path
 import numpy as np
 import scipy.io as sio
 
-DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Multi_init_cond' / 'Datasets'
+DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Datasets' / 'MultiInit'
 
 
 # Landing thresholds — must match run_simulation.m termination check

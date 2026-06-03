@@ -72,9 +72,9 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     run_comparison_all.m, run_monte_carlo.m, multi_speed_comparison.m
     rerun_circular.m, rerun_other4.m, rerun_lissajous_plasmc.m, rerun_all_traj.m
     inspect_comparison.m, dump_comparison.m
-    Datasets/                  — saved .mat results
+    (results -> MATLAB/Datasets/Comparison/)
   Sweeps/
-    (parameter sweep scripts + Datasets/)
+    (parameter sweep scripts; results -> MATLAB/Datasets/Sweeps/)
 
 PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   src/                         — library modules (imported by apps/, tools/)

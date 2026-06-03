@@ -2,7 +2,7 @@
 # Using .claude/* (not .claude/) so git can traverse into the skills subdir.
 .claude/*
 !.claude/skills/
-MATLAB/Multi_init_cond/Datasets/
+MATLAB/Datasets/MultiInit/
 MATLAB/Multi_init_cond/Untitled
 Obsolete/
 *.log

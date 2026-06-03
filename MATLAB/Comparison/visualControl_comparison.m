@@ -863,5 +863,5 @@ if ~exist('p_2',    'var') || isempty(p_2),    p_2    = zeros(3, idx); end
 if ~exist('S_1',    'var') || isempty(S_1),    S_1    = zeros(2,2,idx); end
 if ~exist('zeta_1', 'var') || isempty(zeta_1), zeta_1 = zeros(2, idx); end
 
-save(fullfile(fileparts(mfilename('fullpath')), 'Datasets', 'comp_result.mat'));
+save(fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison', 'comp_result.mat'));
 fprintf('\nDone: %s  (%d steps)\n', ctrl_names{CTRL_SEL}, idx);

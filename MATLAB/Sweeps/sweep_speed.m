@@ -87,7 +87,7 @@ for t = 1:numel(trajList)
 end
 
 % Save
-datasetDir = fullfile(this_dir,'Datasets');
+datasetDir = fullfile(this_dir,'..','Datasets','Sweeps');
 if ~exist(datasetDir,'dir'), mkdir(datasetDir); end
 saveFile = fullfile(datasetDir,'sweep_speed.mat');
 save(saveFile,'results','mults','trajList','p0');

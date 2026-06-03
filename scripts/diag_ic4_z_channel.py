@@ -25,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import scipy.io as sio
 
-DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Multi_init_cond' / 'Datasets'
+DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Datasets' / 'MultiInit'
 IC_INDEX = 3  # IC4, 0-based
 S2_MARGIN = 0.05
 S2_CAP = 1.0 - S2_MARGIN  # 0.95

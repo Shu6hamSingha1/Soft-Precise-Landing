@@ -4,7 +4,7 @@ from pathlib import Path
 import scipy.io as sio
 import numpy as np
 
-ROOT = str(Path(__file__).resolve().parent.parent / 'MATLAB' / 'Multi_init_cond' / 'Datasets')
+ROOT = str(Path(__file__).resolve().parent.parent / 'MATLAB' / 'Datasets' / 'MultiInit')
 TRAJS = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"]
 CONDS = [("realistic", ""), ("noiseless", "_noiseless")]
 

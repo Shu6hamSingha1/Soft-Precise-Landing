@@ -40,7 +40,7 @@ cfgList = struct( ...
     'GE',        {0,                              1}, ...
     'delay',     {0,                              1});
 
-datasetDir = fullfile(fileparts(mfilename('fullpath')), 'Datasets');
+datasetDir = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'MultiInit');
 if ~exist(datasetDir, 'dir')
     mkdir(datasetDir);
 end

@@ -12,7 +12,7 @@ trajList = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"];
 
 for ti = 1:numel(trajList)
     traj = trajList(ti);
-    f = fullfile(fileparts(mfilename('fullpath')), 'Datasets', sprintf('%s_comparison.mat', traj));
+    f = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'Comparison', sprintf('%s_comparison.mat', traj));
     if ~isfile(f), continue; end
     S = load(f);
     fprintf('\n==========  %s  ==========\n', traj);

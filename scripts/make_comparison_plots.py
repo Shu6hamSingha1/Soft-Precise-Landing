@@ -37,7 +37,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT = str(Path(__file__).resolve().parent.parent)
-COMP = f"{ROOT}/MATLAB/Comparison/Datasets"
+COMP = f"{ROOT}/MATLAB/Datasets/Comparison"
 OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
 

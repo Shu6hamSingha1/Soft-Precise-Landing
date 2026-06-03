@@ -2,7 +2,7 @@
 Multi-speed landing plots for the DF-ASMC target-speed sweep.
 
 Reads:
-  MATLAB/Multi_init_cond/Datasets/<traj>_multi_speed.mat
+  MATLAB/Datasets/MultiInit/<traj>_multi_speed.mat
 
 For each of the four moving trajectories (Linear, Sinusoidal, Circular,
 Lissajous) the sweep is a single IC [0,0,-5] with speed multipliers
@@ -47,7 +47,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT     = str(Path(__file__).resolve().parent.parent)
-DATA_DIR = f"{ROOT}/MATLAB/Multi_init_cond/Datasets"
+DATA_DIR = f"{ROOT}/MATLAB/Datasets/MultiInit"
 OUT_DIR  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT_DIR, exist_ok=True)
 

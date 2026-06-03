@@ -18,7 +18,7 @@ from pathlib import Path
 import scipy.io as sio
 import numpy as np
 
-DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Comparison' / 'Datasets'
+DATA_DIR = Path(__file__).resolve().parent.parent / 'MATLAB' / 'Datasets' / 'Comparison'
 
 NAMES = ['VDF-ASMC', 'Lin2022', 'Zhang2026', 'Lin2023', 'Cho2022']
 DT = 0.01

@@ -103,7 +103,7 @@ for p = 1:n_params
     end
 end
 
-datasetDir = fullfile(fileparts(mfilename('fullpath')),'Datasets');
+datasetDir = fullfile(fileparts(mfilename('fullpath')),'..','Datasets','Sweeps');
 if ~exist(datasetDir,'dir'), mkdir(datasetDir); end
 saveFile = fullfile(datasetDir, sprintf('sweep_%s_%s.mat',trajType,group));
 save(saveFile,'sweep','trajType','param_list','mults');

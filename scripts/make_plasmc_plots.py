@@ -41,7 +41,7 @@ plt.rcParams.update({
 
 from pathlib import Path
 ROOT = str(Path(__file__).resolve().parent.parent)
-DATA = f"{ROOT}/MATLAB/Multi_init_cond/Datasets/Sinusoidal_multi_init.mat"
+DATA = f"{ROOT}/MATLAB/Datasets/MultiInit/Sinusoidal_multi_init.mat"
 OUT  = f"{ROOT}/Soft_Precise_Landing/Figures/generated"
 os.makedirs(OUT, exist_ok=True)
 

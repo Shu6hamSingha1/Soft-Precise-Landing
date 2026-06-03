@@ -19,13 +19,15 @@
 % Static target (matches the PX4 stationary-ArUco case), IC1 = [0,0,-5] NED.
 % SP criterion: xy <= 0.10 m AND rel_vel <= 0.2 m/s (10 cm per user 2026-06-03).
 %
-% Usage:   cd MATLAB/Multi_init_cond;  delay_robustness_sweep
-% Output:  Datasets/DelayRobustness/delay_sweep_results.mat + console table.
+% Usage:   cd MATLAB/Sweeps;  delay_robustness_sweep
+% Output:  ../Datasets/Sweeps/DelayRobustness/delay_sweep_results.mat + console table.
 
 clear; clc;
-mfile_dir = fileparts(mfilename('fullpath'));
-addpath(fullfile(mfile_dir, '..', 'Common'));
-out_dir = fullfile(mfile_dir, 'Datasets', 'DelayRobustness');
+this_dir = fileparts(mfilename('fullpath'));
+addpath(this_dir);
+addpath(fullfile(this_dir, '..', 'Multi_init_cond'));  % run_simulation, InitVar
+addpath(fullfile(this_dir, '..', 'Common'));
+out_dir = fullfile(this_dir, '..', 'Datasets', 'Sweeps', 'DelayRobustness');
 if ~exist(out_dir, 'dir'); mkdir(out_dir); end
 
 DELAY_STEPS = [1, 3, 5, 10, 15, 30];      % x10 ms each
