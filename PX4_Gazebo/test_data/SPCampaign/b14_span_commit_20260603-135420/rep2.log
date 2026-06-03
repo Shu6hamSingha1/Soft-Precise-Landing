@@ -26,44 +26,31 @@ Starting without recording...!
   GAMMA_Z  = 0.5
 -- Waiting for is_armable (EKF / lockstep ready)...
 LANDING PAD VISIBLE NOW...
-  is_armable after 0.5s
+  is_armable after 0.4s
 -- Arming
 Armed!
 -- Taking off
 Status: INFO: Armed by external command	
 Status: INFO: Using default takeoff altitude: 6.0 m	
 Status: INFO: Takeoff detected	
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD RE-ACQUIRED (stale → fresh)
 Altitude reached
--4.723447799682617 5.0
+-4.805758476257324 5.0
 Switching to OFFBOARD mode!
 -- Starting offboard (attempt 1/5)
   PX4 reported flight_mode = OFFBOARD
-PositionBody: [x_m: -0.23534230887889862, y_m: -0.10113968700170517, z_m: -5.260246276855469]
+PositionBody: [x_m: 0.0030951451044529676, y_m: -0.0616578571498394, z_m: -5.356486797332764]
 [landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
-[landing_test] IC converged at t=2.46s (pos_err=0.377 m, speed=0.248 m/s, yaw_err=0.34°, tilt=1.96°)
+[landing_test] IC converged at t=2.74s (pos_err=0.296 m, speed=0.135 m/s, yaw_err=1.86°, tilt=1.11°)
 [landing_test] PID warmup (100 ms — fills deques only)…
 ArUco lost — KLT fallback active (cap 20 frames)
-ArUco re-acquired after 10 KLT-fallback frame(s)
-ArUco lost — KLT fallback active (cap 20 frames)
-ArUco re-acquired after 3 KLT-fallback frame(s)
-ArUco lost — KLT fallback active (cap 20 frames)
 FEATURE_IS_STALE = True  (3 consec misses)
-ArUco re-acquired after 4 KLT-fallback frame(s)
-LANDING PAD RE-ACQUIRED (stale → fresh)
-FEATURE_IS_STALE = True  (3 consec misses)
-LANDING PAD RE-ACQUIRED (stale → fresh)
-FEATURE_IS_STALE = True  (3 consec misses)
-LANDING PAD RE-ACQUIRED (stale → fresh)
-ArUco lost — KLT fallback active (cap 20 frames)
-ArUco re-acquired after 2 KLT-fallback frame(s)
-ArUco lost — KLT fallback active (cap 20 frames)
-[FC] Impact detected (|a|=330.9 m/s² > 50.0) — LANDED=True
-Landed (PX4 LandedState or impact spike)
-ArUco re-acquired after 1 KLT-fallback frame(s)
-FEATURE_IS_STALE = True  (3 consec misses)
-Status: CRITICAL: Disarming denied: not landed	
-[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
-[landing_test] Landing classification: FAIL  (xy_err=2.635 m [≤0.1], rel_vel=3.563 m/s [≤0.2])
+[landing_test] Stale-streak commitment: detection lost 0.15s with last fresh marker extent 284px >= 100px (touchdown proximity) -> open-loop touchdown [terminal perception loss, not a tracking failure]
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[landing_test] Final-descent timeout (5.0s) — PX4 never reported LANDED.
+[landing_test] Landing classification: SOFT+PRECISE [terminal perception loss]  (xy_err=0.048 m [≤0.1], rel_vel=0.014 m/s [≤0.2])
 image_subscriber closed
 Video recording stopped...
 model_pose_subscriber closed
@@ -77,11 +64,11 @@ Flight Controller is disconnected...
 Saved to CSV!
 
 [run] Shutting down background processes...
-[run]   killing microxrce (pid 1785288 + group)
-[run]   killing px4_sitl (pid 1785344 + group)
-[run]   killing bridge_clock (pid 1785781 + group)
-[run]   killing bridge_pose (pid 1785801 + group)
-[run]   killing bridge_image (pid 1785851 + group)
-[run]   killing qgc (pid 1785890 + group)
+[run]   killing microxrce (pid 1788525 + group)
+[run]   killing px4_sitl (pid 1788590 + group)
+[run]   killing bridge_clock (pid 1788943 + group)
+[run]   killing bridge_pose (pid 1788997 + group)
+[run]   killing bridge_image (pid 1789017 + group)
+[run]   killing qgc (pid 1789045 + group)
 [run] done.
 [retry] SUCCESS after attempt 1

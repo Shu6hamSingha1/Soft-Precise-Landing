@@ -1,0 +1,152 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear ......... ready after 18s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis PID scales: KP_X=0.35, KP_Y=0.35, KI_X=0.35, KI_Y=0.35, KD_X=0.35, KD_Y=0.35
+[PLASMC] K_rp scheduling DISABLED — using constant K_rp = 4.0
+[PLASMC] tunable middle-loop scales:
+  GAMMA_Z  = 0.5
+-- Waiting for is_armable (EKF / lockstep ready)...
+LANDING PAD VISIBLE NOW...
+  is_armable after 1.2s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+FEATURE_IS_STALE = True  (3 consec misses)
+ArUco lost — KLT fallback active (cap 20 frames)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached
+-4.845163822174072 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.18141701817512512, y_m: -0.4983302056789398, z_m: -5.420566558837891]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC convergence TIMEOUT after 30 s (last pos_err=1.302 m, speed=1.402 m/s, yaw_err=0.75°, tilt=10.03°)
+RuntimeError: Main Thread: IC convergence timeout (pos_err=1.30 m, speed=1.40 m/s) — aborting before controller engage
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle).
+[run] Signaling retry with exit code 42.
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 1818162 + group)
+[run]   killing px4_sitl (pid 1818194 + group)
+[run]   killing bridge_clock (pid 1818587 + group)
+[run]   killing bridge_pose (pid 1818616 + group)
+[run]   killing bridge_image (pid 1818659 + group)
+[run]   killing qgc (pid 1818689 + group)
+[run] done.
+[retry] Attempt 1 lost the gz_bridge/lockstep race; retrying after 10 s...
+=================================================================
+[retry] Attempt 2 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear ....... ready after 14s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis PID scales: KP_X=0.35, KP_Y=0.35, KI_X=0.35, KI_Y=0.35, KD_X=0.35, KD_Y=0.35
+[PLASMC] K_rp scheduling DISABLED — using constant K_rp = 4.0
+[PLASMC] tunable middle-loop scales:
+  GAMMA_Z  = 0.5
+-- Waiting for is_armable (EKF / lockstep ready)...
+LANDING PAD VISIBLE NOW...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.8262457847595215 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.36596351861953735, y_m: 0.28928130865097046, z_m: -5.169363975524902]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=12.52s (pos_err=0.261 m, speed=0.255 m/s, yaw_err=0.14°, tilt=1.13°)
+[landing_test] PID warmup (100 ms — fills deques only)…
+FEATURE_IS_STALE = True  (3 consec misses)
+ArUco lost — KLT fallback active (cap 20 frames)
+[landing_test] Stale-streak commitment: detection lost 0.16s with last fresh marker extent 157px >= 100px (touchdown proximity) -> open-loop touchdown [terminal perception loss, not a tracking failure]
+ArUco re-acquired after 1 KLT-fallback frame(s)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+FEATURE_IS_STALE = True  (3 consec misses)
+[FC] Impact detected (|a|=122.3 m/s² > 50.0) — LANDED=True
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL [terminal perception loss]  (xy_err=1.353 m [≤0.1], rel_vel=0.344 m/s [≤0.2])
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+Saved to CSV!
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 1821938 + group)
+[run]   killing px4_sitl (pid 1821984 + group)
+[run]   killing bridge_clock (pid 1822377 + group)
+[run]   killing bridge_pose (pid 1822420 + group)
+[run]   killing bridge_image (pid 1822440 + group)
+[run]   killing qgc (pid 1822468 + group)
+[run] done.
+[retry] SUCCESS after attempt 2
