@@ -18,6 +18,9 @@ import numpy as np
 from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion, DCM
 from itertools import product
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from aggregate_calibration_phased import compute_gt_signals  # single V-frame GT source
 
 PARENT = "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output"
 FLU_2_FRD = np.array(DCM(x=180.0))
@@ -48,39 +51,12 @@ def _body_omega_from_quats(quats, t):
 
 
 def compute_gt(gt):
-    t_g = np.array(gt["Time"]); dt = np.diff(t_g); valid = np.hstack(([True], dt > 1e-6))
-    t_g = t_g[valid]; n = len(t_g)
-    uav = np.array(gt["UAV Pose"], dtype=object)[valid]
-    tgt = np.array(gt["Target Pose"], dtype=object)[valid]
-    W_T_P = np.zeros((n, 4, 4)); W_R_T = np.zeros((n, 3, 3))
-    W_x_tu = np.zeros((n, 3));   B_x_tu = np.zeros((n, 3))
-    for i, (p, tp) in enumerate(zip(uav, tgt)):
-        Ru = Quaternion([p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]).to_DCM()
-        Rt = Quaternion([tp.orientation.w, tp.orientation.x, tp.orientation.y, tp.orientation.z]).to_DCM()
-        W_T_P[i, :3, :3] = Ru
-        W_T_P[i, :3, 3]  = [p.position.x, p.position.y, p.position.z]
-        W_R_T[i] = Rt
-        W_x_tu[i] = np.array([tp.position.x, tp.position.y, tp.position.z]) - W_T_P[i, :3, 3]
-        B_x_tu[i] = FLU_2_FRD @ np.linalg.inv(Ru) @ W_x_tu[i]
-    W_x_tu_f = sgf(W_x_tu, 51, 2, axis=0)
-    W_v_tu = np.gradient(W_x_tu_f, t_g, axis=0)
-    B_v_tu = np.zeros((n, 3))
-    for i in range(n):
-        B_v_tu[i] = FLU_2_FRD @ np.linalg.inv(W_T_P[i, :3, :3]) @ W_v_tu[i]
-    z = B_x_tu[:, 2].copy(); z[np.abs(z) < 0.1] = np.nan
-    B_h_g = B_v_tu / z[:, None]
-    # Quaternion-difference for body-frame ω (preserves SO(3); element-wise
-    # np.gradient on R breaks orthogonality and over-reports ω_z ~2×).
-    uav_q = np.array([[u.orientation.w, u.orientation.x,
-                       u.orientation.y, u.orientation.z] for u in uav])
-    tgt_q = np.array([[t.orientation.w, t.orientation.x,
-                       t.orientation.y, t.orientation.z] for t in tgt])
-    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_q, t_g).T).T
-    B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_q, t_g).T).T
-    B_w_tug = B_w_tg - B_w_ug
-    V_xc_g = B_x_tu[:, 0] / B_x_tu[:, 2]
-    V_yc_g = B_x_tu[:, 1] / B_x_tu[:, 2]
-    return valid, B_h_g, B_w_tug, V_xc_g, V_yc_g
+    """V-frame GT via the canonical single source
+    (aggregate_calibration_phased.compute_gt_signals): h, w AND s are all
+    gravity-leveled to the frame img_data.py reports (no body/virtual mix).
+    Returns (valid, V_h_g, V_w_tug, V_xc_g, V_yc_g)."""
+    _t, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, _z = compute_gt_signals(gt)
+    return valid, V_h_g, -V_w_ug, V_xc_g, V_yc_g   # manuscript w = -V_w_ug
 
 
 def safe_corr(a, b):
@@ -123,7 +99,7 @@ def evaluate(run_dirs, window, polyorder, mode):
 
     for d in run_dirs:
         gt = np.load(f"{d}/Ground_Truth.npy", allow_pickle=True)[()]
-        try: valid, B_h_g, B_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
+        try: valid, V_h_g, V_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
         except Exception: continue
         raw_hw = np.asarray(gt["Opt Flow Ang Vel"])[valid]
         raw_s  = np.asarray(gt["Img Feature Params"])[valid]
@@ -134,8 +110,8 @@ def evaluate(run_dirs, window, polyorder, mode):
         cal_hw = (SC_HW @ hw_f.T).T
         cal_s  = (SC_S  @ s_f.T ).T
         for i in range(3):
-            sums[i]   += abs(safe_corr(B_h_g[:, i],   cal_hw[:, i]));     counts[i]   += 1
-            sums[3+i] += abs(safe_corr(B_w_tug[:, i], cal_hw[:, 3+i]));   counts[3+i] += 1
+            sums[i]   += abs(safe_corr(V_h_g[:, i],   cal_hw[:, i]));     counts[i]   += 1
+            sums[3+i] += abs(safe_corr(V_w_tug[:, i], cal_hw[:, 3+i]));   counts[3+i] += 1
         sums[6] += abs(safe_corr(V_xc_g, cal_s[:, 0])); counts[6] += 1
         sums[7] += abs(safe_corr(V_yc_g, cal_s[:, 1])); counts[7] += 1
 
@@ -149,13 +125,13 @@ def baseline_no_filter(run_dirs):
     sums = np.zeros(8); counts = np.zeros(8)
     for d in run_dirs:
         gt = np.load(f"{d}/Ground_Truth.npy", allow_pickle=True)[()]
-        valid, B_h_g, B_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
+        valid, V_h_g, V_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
         raw_hw = np.asarray(gt["Opt Flow Ang Vel"])[valid]
         raw_s  = np.asarray(gt["Img Feature Params"])[valid]
         cal_hw = (SC_HW @ raw_hw.T).T; cal_s = (SC_S @ raw_s.T).T
         for i in range(3):
-            sums[i] += abs(safe_corr(B_h_g[:, i], cal_hw[:, i])); counts[i] += 1
-            sums[3+i] += abs(safe_corr(B_w_tug[:, i], cal_hw[:, 3+i])); counts[3+i] += 1
+            sums[i] += abs(safe_corr(V_h_g[:, i], cal_hw[:, i])); counts[i] += 1
+            sums[3+i] += abs(safe_corr(V_w_tug[:, i], cal_hw[:, 3+i])); counts[3+i] += 1
         sums[6] += abs(safe_corr(V_xc_g, cal_s[:, 0])); counts[6] += 1
         sums[7] += abs(safe_corr(V_yc_g, cal_s[:, 1])); counts[7] += 1
     means = sums / np.maximum(counts, 1)

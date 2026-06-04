@@ -17,6 +17,9 @@ import sys
 import numpy as np
 from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion, DCM
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from aggregate_calibration_phased import compute_gt_signals  # single V-frame GT source
 
 
 def load_data(data_dir):
@@ -52,68 +55,12 @@ def _body_omega_from_quats(quats, t):
 
 
 def compute_ground_truth_flow_and_w(gt):
-    """Port of plotter_output_calibration.ipynb cells 16 + 18.
-
-    Returns (t_g, B_h_g, B_w_tug, B_x_tu) all of shape (N, 3) [or (N,) for t_g].
-    """
-    FLU_2_FRD = np.array(DCM(x=180.0))
-
-    t_g = np.array(gt["Time"])
-    # Drop duplicate timesteps
-    dt = np.diff(t_g)
-    valid = np.hstack(([True], dt > 1e-6))
-    t_g = t_g[valid]
-
-    uav_poses = np.array(gt["UAV Pose"], dtype=object)[valid]
-    target_poses = np.array(gt["Target Pose"], dtype=object)[valid]
-    n = len(t_g)
-
-    # UAV pose 4x4 in world frame
-    W_T_P = np.zeros((n, 4, 4))
-    for i, p in enumerate(uav_poses):
-        W_T_P[i, :3, :3] = Quaternion(
-            [p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]
-        ).to_DCM()
-        W_T_P[i, :3, 3] = [p.position.x, p.position.y, p.position.z]
-        W_T_P[i, 3, 3] = 1.0
-
-    # Target pose & relative position
-    W_R_T = np.zeros((n, 3, 3))
-    W_x_tu = np.zeros((n, 3))
-    B_x_tu = np.zeros((n, 3))
-    for i, (p, R_uav) in enumerate(zip(target_poses, W_T_P[:, :3, :3])):
-        W_R_T[i] = Quaternion(
-            [p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]
-        ).to_DCM()
-        W_x_t = np.array([p.position.x, p.position.y, p.position.z])
-        W_x_tu[i] = W_x_t - W_T_P[i, :3, 3]
-        B_x_tu[i] = FLU_2_FRD @ np.linalg.inv(R_uav) @ W_x_tu[i]
-
-    # Body-frame target velocity wrt UAV
-    W_x_tu_filt = sgf(W_x_tu, min(51, 2 * (n // 4) + 1), 2, axis=0) if n >= 11 else W_x_tu
-    W_v_tu = np.gradient(W_x_tu_filt, t_g, axis=0)
-    B_v_tu = np.zeros((n, 3))
-    for i, (R, v) in enumerate(zip(W_T_P[:, :3, :3], W_v_tu)):
-        B_v_tu[i] = FLU_2_FRD @ np.linalg.inv(R) @ v
-
-    # Ground-truth optical flow (rad/s): velocity / depth, with z = B_x_tu[:,2]
-    # Guard against near-zero depth
-    z = B_x_tu[:, 2].copy()
-    z[np.abs(z) < 0.1] = np.nan  # invalid
-    B_h_g = B_v_tu / z[:, np.newaxis]
-
-    # Ground-truth angular velocity (body frame) via quaternion difference.
-    # np.gradient on the 9 rotation-matrix elements breaks SO(3); the non-skew
-    # residual leaks ~2× into ω_z (verified in plotter_output_calibration.ipynb).
-    uav_quats = np.array([[p.orientation.w, p.orientation.x,
-                           p.orientation.y, p.orientation.z] for p in uav_poses])
-    tgt_quats = np.array([[p.orientation.w, p.orientation.x,
-                           p.orientation.y, p.orientation.z] for p in target_poses])
-    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
-    B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_quats, t_g).T).T
-    B_w_tug = B_w_tg - B_w_ug
-
-    return t_g, B_h_g, B_w_tug, B_x_tu, valid
+    """V-frame GT via the canonical single source
+    (aggregate_calibration_phased.compute_gt_signals): h, w AND s all gravity-
+    leveled to the frame img_data.py reports. Returns
+    (t_g, V_h_g, V_w_tug, V_xc_g, V_yc_g, valid)."""
+    t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, _z = compute_gt_signals(gt)
+    return t_g, V_h_g, -V_w_ug, V_xc_g, V_yc_g, valid   # manuscript w = -V_w_ug
 
 
 def robust_scale(raw, gt, magnitude_threshold):
@@ -148,7 +95,7 @@ def main():
     d = load_data(data_dir)
     gt = d["Ground_Truth"]
 
-    t_g, B_h_g, B_w_tug, B_x_tu, valid = compute_ground_truth_flow_and_w(gt)
+    t_g, V_h_g, V_w_tug, V_xc_g, V_yc_g, valid = compute_ground_truth_flow_and_w(gt)
     n = len(t_g)
 
     # Raw image-side measurements (logged via getRawOptFlowAngVel — pre sensor_cal)
@@ -162,9 +109,9 @@ def main():
     print("        raw RMS  /  gt RMS                    raw RMS  /  gt RMS")
     for i in range(3):
         y_rms_r = np.sqrt(np.nanmean(y_raw[:, i] ** 2))
-        y_rms_g = np.sqrt(np.nanmean(B_h_g[:, i] ** 2))
+        y_rms_g = np.sqrt(np.nanmean(V_h_g[:, i] ** 2))
         w_rms_r = np.sqrt(np.nanmean(w_raw[:, i] ** 2))
-        w_rms_g = np.sqrt(np.nanmean(B_w_tug[:, i] ** 2))
+        w_rms_g = np.sqrt(np.nanmean(V_w_tug[:, i] ** 2))
         print(f"  axis {i}: {y_rms_r:8.4f} / {y_rms_g:8.4f}    "
               f"            {w_rms_r:8.4f} / {w_rms_g:8.4f}")
 
@@ -176,11 +123,11 @@ def main():
     flow_scale = np.zeros(3)
     flow_n = np.zeros(3, dtype=int)
     for i in range(3):
-        flow_scale[i], flow_n[i] = robust_scale(y_raw[:, i], B_h_g[:, i], flow_thresh)
+        flow_scale[i], flow_n[i] = robust_scale(y_raw[:, i], V_h_g[:, i], flow_thresh)
     ang_scale = np.zeros(3)
     ang_n = np.zeros(3, dtype=int)
     for i in range(3):
-        ang_scale[i], ang_n[i] = robust_scale(w_raw[:, i], B_w_tug[:, i], ang_thresh)
+        ang_scale[i], ang_n[i] = robust_scale(w_raw[:, i], V_w_tug[:, i], ang_thresh)
 
     print("\nPer-axis scaling factors (gt / raw):")
     print(f"  Optical flow:    [{flow_scale[0]:+.4f}, {flow_scale[1]:+.4f}, {flow_scale[2]:+.4f}]  "
@@ -210,9 +157,7 @@ def main():
     raw_s = np.asarray(gt["Img Feature Params"])[valid]   # (N, 4)
     xc_raw, yc_raw, _, alpha_raw = raw_s[:, 0], raw_s[:, 1], raw_s[:, 2], raw_s[:, 3]
 
-    # GT centroid: target position / depth (in camera body coords)
-    V_xc_g = B_x_tu[:, 0] / B_x_tu[:, 2]
-    V_yc_g = B_x_tu[:, 1] / B_x_tu[:, 2]
+    # GT centroid s = (V_xc_g, V_yc_g) — V-frame, from compute_ground_truth_flow_and_w.
 
     print(f"  xc raw RMS: {np.sqrt(np.nanmean(xc_raw ** 2)):.4f}   "
           f"xc gt RMS: {np.sqrt(np.nanmean(V_xc_g ** 2)):.4f}")

@@ -184,6 +184,10 @@ def main():
     print(f"  actual peak: ({peak_v[0]:.2f}, {peak_v[1]:.2f}, {peak_v[2]:.2f})  m/s")
 
     # ---- CHECK 7: Optical flow sign — opposite of UAV motion ----
+    # NOTE: intentionally BODY-FRD (B_h_g = B_v_tu / body-depth). This tool
+    # VALIDATES the body-frame pose-transform chain itself — it is NOT a cal
+    # tool comparing against img_data's V-frame output, so it must stay body.
+    # Do not "fix" to V-frame (that would defeat the transform sanity check).
     banner("CHECK 7: Optical flow B_h_g = B_v_tu / depth")
     B_h_g = B_v_tu / B_x_tu[:, 2][:, np.newaxis]
     print(f"  B_h_g RMS: ({np.sqrt(np.mean(B_h_g[:,0]**2)):.4f}, "

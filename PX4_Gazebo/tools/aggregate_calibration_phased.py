@@ -108,17 +108,34 @@ def compute_gt_signals(gt):
     if win >= 5:
         W_v_tu_NED = sgf(W_v_tu_NED, min(51, win), 2, axis=0)
 
-    # V-frame projection (gravity-leveled, drone-yaw-aligned).
-    V_h_g = np.zeros((n, 3))      # virtual image velocity h in V-frame
-    V_xc_g = np.zeros(n)           # virtual image position s_x in V-frame
+    # Body-FRD UAV angular velocity (quaternion-difference, SO(3)-preserving).
+    uav_quats = np.array([[U.orientation.w, U.orientation.x,
+                           U.orientation.y, U.orientation.z] for U in UAV])
+    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
+
+    # V-frame projection (gravity-leveled, drone-yaw-aligned) for h, w AND s, all
+    # onto the SAME per-sample V basis so every channel is in the frame img_data.py
+    # reports (no body/virtual mix). [Was: w kept in body-FRD as an O(tilt)
+    # approximation; corrected 2026-06-05 so w is virtual like h and s.]
+    V_h_g  = np.zeros((n, 3))      # virtual image velocity h
+    V_w_ug = np.zeros((n, 3))      # UAV angular velocity in V (manuscript w = -V_w_ug)
+    V_xc_g = np.zeros(n)           # virtual image position s_x
     V_yc_g = np.zeros(n)
+    V_z_g  = np.zeros(n)           # V-frame depth (altitude) — for validity gates
     for i in range(n):
         yaw = np.arctan2(R_FRD_NED[i, 1, 0], R_FRD_NED[i, 0, 0])
         V_x_NED = np.array([np.cos(yaw), np.sin(yaw),  0.0])
         V_y_NED = np.array([-np.sin(yaw), np.cos(yaw), 0.0])
         V_z_NED = np.array([0.0, 0.0, 1.0])
+        V_R_NED = np.array([V_x_NED, V_y_NED, V_z_NED])   # rows = V axes in NED
+        # ω: re-express body ω in V coords (body → NED → V). This re-expresses the
+        # SAME physical vector; it omits the 2nd-order rotation rate of the leveling
+        # itself (vs the leveled-camera-relative rate) — sub-noise at our tilts,
+        # folds into the EKF-leveling residual. See memory outputcal-flow-validation.
+        V_w_ug[i] = V_R_NED @ (R_FRD_NED[i] @ B_w_ug[i])
         rel = W_x_tu_NED[i]
         Vx = rel @ V_x_NED;  Vy = rel @ V_y_NED;  Vz = rel @ V_z_NED
+        V_z_g[i] = Vz
         if not (Vz > 1.0):
             V_xc_g[i] = np.nan; V_yc_g[i] = np.nan
             V_h_g[i] = np.nan
@@ -128,14 +145,7 @@ def compute_gt_signals(gt):
         relv = W_v_tu_NED[i]
         V_h_g[i] = np.array([relv @ V_x_NED, relv @ V_y_NED, relv @ V_z_NED]) / Vz
 
-    # ω: V-frame ω = body-FRD ω (V-frame z = world-down; for small tilts
-    # body-z ≈ V-z so ω_z components agree; ω_x/ω_y components differ by
-    # O(tilt), which is small for our recordings — keep body-FRD ω for now).
-    uav_quats = np.array([[U.orientation.w, U.orientation.x,
-                           U.orientation.y, U.orientation.z] for U in UAV])
-    B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
-
-    return t_g, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid
+    return t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, V_z_g
 
 
 def std_ratio(gt, raw, mask, k_mad_sample=3.0):
@@ -223,7 +233,7 @@ def main():
             continue
 
         try:
-            t_g, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid_mask = compute_gt_signals(gt)
+            t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid_mask = compute_gt_signals(gt)
         except Exception as e:
             print(f"  [SKIP] {os.path.basename(d)}: gt compute error {e}")
             continue
@@ -257,9 +267,9 @@ def main():
             else:       # virtual image ANGULAR velocity w = -ω_camera (target rel
                         # to camera, manuscript convention). For stationary target:
                         #   w = ω_target - ω_camera = -ω_UAV_body  (since target ω = 0)
-                        # Plotter compares V_w_cal to B_w_tug = -B_w_ug; the aggregator
+                        # Plotter compares V_w_cal to V_w_tug = -V_w_ug; the aggregator
                         # must match this convention or the derived cal sign is wrong.
-                gt_sig = -B_w_ug[:ngt, k - 3]
+                gt_sig = -V_w_ug[:ngt, k - 3]
             hw_diag[k] = std_ratio(gt_sig, raw_hw_f[:ngt, k], mask)
 
         s_diag = np.full(4, np.nan)

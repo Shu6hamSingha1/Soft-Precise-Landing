@@ -36,7 +36,7 @@ def main():
         if 'Phase' not in gt:
             continue
         try:
-            t, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid = compute_gt_signals(gt)
+            t, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, _ = compute_gt_signals(gt)
         except Exception as e:
             print(f"  skip {os.path.basename(d)}: {e}"); continue
 
@@ -51,7 +51,7 @@ def main():
             raw_s = sgf(raw_s, FILTER_WIN, POLYORDER, axis=0)
 
         n = min(len(raw), len(V_h_g))
-        G = np.hstack([V_h_g[:n], -B_w_ug[:n]])      # manuscript w = -B_w_ug
+        G = np.hstack([V_h_g[:n], -V_w_ug[:n]])      # manuscript w = -V_w_ug
         R = raw[:n]
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
