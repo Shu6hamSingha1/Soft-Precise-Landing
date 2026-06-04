@@ -27,7 +27,12 @@ CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
 REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.42"))  # MATLAB-aligned default; -0.70 wins on IC1 (mean xy 0.71→0.28) but REGRESSES IC2-5 severely (mean xy ~2m, IC5 crash) because off-center starts need lateral travel time. Set LANDING_REF_RAD_OPT_FLOW=-0.70 for centered-IC tuning runs.
-DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
+# Desired image features [hx, hy, s, alpha]. alpha (s_d[3]) is the DESIRED marker
+# orientation and MUST match the board's as-seen alpha at the aligned hover — else the
+# controller slews alpha ~85° at engage (the IC1/IC2-5 divergence cause, found
+# 2026-06-04). Read the "MEASURED board alpha" print from a run, then set DES_ALPHA_DEG.
+DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
+                                  np.deg2rad(float(os.environ.get("DES_ALPHA_DEG", "0.0")))])
 
 # Flight Controller Details:
 # MATLAB-IC match (Multi_init_cond/InitVar.m line 17):
@@ -187,10 +192,46 @@ async def main(record = 'n'):
         prev_enu    = pose_node.getPose().UAV.position
         prev_t      = time.perf_counter()
         stable      = 0
+        _spd_hist   = []   # (x,y,z,t) window for jitter-robust speed (single-frame Δpos/dt spikes on GT bridge jitter)
         converged_at = None
         target_n = target_e = target_d = 0.0
         yaw_err = 0.0
         tilt_err = 0.0
+        yaw_cmd_deg = float(INITIAL_YAW_DEG)   # servo'd to null TRUE yaw (below)
+
+        def _servo_true_yaw(yc):
+            # Drift-compensated yaw for the IC rig: ramp the NED setpoint `yc` so
+            # the TRUE (Gazebo) yaw -> INITIAL_YAW, instead of commanding the EKF
+            # yaw (which has drifted ~77deg by descent start). The controller never
+            # uses compass yaw (it uses image alpha); the rig was holding/gating on
+            # the EKF yaw -> drone started the descent badly yawed -> psi_d->180.
+            # Truth is allowed for test setup (feedback_scale_free_depth_free).
+            # GT_yaw_ENU ≈ -(yaw_cmd_NED) + drift (ENU/NED anti-corr r=-0.99), so
+            # d(GT)/d(cmd) = -1: to reduce e>0 you must INCREASE the NED command. The
+            # old -0.05 had the WRONG sign (drifted -> 30s timeout at ~83° yaw_err);
+            # the +0.5 tried earlier "diverged" only because that gain raced past the
+            # drone's ~45°/s yaw-rate. Fix: + sign, moderate gain, per-iter rate-CLAMP
+            # so the setpoint stays trackable (~50°/s at 50 Hz). Env-tunable (set K<0
+            # if a world's ENU/NED sign differs). MUST be applied in the IC loop AND
+            # every post-convergence hold/warmup send, else those un-align the yaw.
+            if os.environ.get("IC_YAW_TARGET", "gt") == "alpha":
+                # Hold the drone BOARD-SQUARE: drive the (drift-free, marker-relative)
+                # perception alpha -> 0. The board is square at alpha 0 (pre-takeoff
+                # measured ≈0° across runs); this keeps it square from spawn through
+                # engage despite compass drift, so the controller starts at e_a≈0
+                # (DES_ALPHA=0). d(alpha)/d(yaw_cmd)<0 (same as GT yaw) -> + sign.
+                _fp = EC_node._img_node.getImgFeatureParam()
+                if _fp is None or len(_fp) < 4 or not np.isfinite(_fp[3]):
+                    return yc          # no marker this frame -> hold last command
+                _e = float(_fp[3])     # want alpha -> 0
+            else:
+                _q = pose_node.getPose().UAV.orientation
+                _y = np.arctan2(2.0*(_q.w*_q.z + _q.x*_q.y),
+                                1.0 - 2.0*(_q.y*_q.y + _q.z*_q.z))
+                _e = np.arctan2(np.sin(_y - INITIAL_YAW_RAD), np.cos(_y - INITIAL_YAW_RAD))
+            _k = float(os.environ.get("IC_YAW_SERVO_K", "0.2"))
+            _dmax = float(os.environ.get("IC_YAW_SERVO_DMAX_DEG", "1.0"))
+            return yc + float(np.clip(np.rad2deg(_k * _e), -_dmax, _dmax))
         for k in range(MAX_ITERS):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
@@ -203,15 +244,24 @@ async def main(record = 'n'):
             target_n = ned_pos.x_m + dn_enu
             target_e = ned_pos.y_m + de_enu
             target_d = ned_pos.z_m - du_enu
-            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
+            yaw_cmd_deg = _servo_true_yaw(yaw_cmd_deg)   # drift-compensate the yaw
+            await FC_node.send_position_ned(target_n, target_e, target_d, yaw_cmd_deg)
             await asyncio.sleep(0.02)
             # Convergence check on Gazebo truth (post-setpoint sample).
             cur_enu = pose_node.getPose().UAV.position
             now = time.perf_counter()
             dt = max(now - prev_t, 1e-3)
-            speed = ((cur_enu.x - prev_enu.x)**2 +
-                     (cur_enu.y - prev_enu.y)**2 +
-                     (cur_enu.z - prev_enu.z)**2) ** 0.5 / dt
+            # Jitter-robust speed: displacement over a ~6-frame window / window-time.
+            # Single-frame Δpos/dt spikes to >1 m/s on GT bridge jitter even when the
+            # drone is still, which kept resetting the STABLE_HITS counter despite a
+            # settled hover (see feedback_gt_noise_uniform_dt).
+            _spd_hist.append((cur_enu.x, cur_enu.y, cur_enu.z, now))
+            if len(_spd_hist) > 6:
+                _spd_hist.pop(0)
+            _x0, _y0, _z0, _t0s = _spd_hist[0]
+            _win_dt = max(now - _t0s, 1e-3)
+            speed = ((cur_enu.x - _x0)**2 + (cur_enu.y - _y0)**2
+                     + (cur_enu.z - _z0)**2) ** 0.5 / _win_dt
             d_e = cur_enu.x - (target_enu.x + ix)
             d_n = cur_enu.y - (target_enu.y + iy)
             d_u = cur_enu.z - (target_enu.z + iz)
@@ -225,10 +275,21 @@ async def main(record = 'n'):
                               1.0 - 2.0*(q.x*q.x + q.y*q.y))
             sinp = float(np.clip(2.0*(q.w*q.y - q.z*q.x), -1.0, 1.0))
             pitch = np.arcsin(sinp)
-            yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y),
-                             1.0 - 2.0*(q.y*q.y + q.z*q.z))
-            yaw_err  = abs(np.arctan2(np.sin(yaw - INITIAL_YAW_RAD),
-                                      np.cos(yaw - INITIAL_YAW_RAD)))
+            # Gate yaw on TRUTH (Gazebo), not the drifted EKF yaw (q). roll/pitch
+            # stay on the EKF — they don't drift and feed the same V-frame leveling.
+            if os.environ.get("IC_YAW_TARGET", "gt") == "alpha":
+                # Gate on board-square (|alpha|≈0), matching the alpha-hold servo. GT
+                # yaw is NOT 0 here (the drone faces the board, not North).
+                _fpg = EC_node._img_node.getImgFeatureParam()
+                yaw_err = (abs(float(_fpg[3]))
+                           if (_fpg is not None and len(_fpg) > 3 and np.isfinite(_fpg[3]))
+                           else np.pi)
+            else:
+                _gtq2 = pose_node.getPose().UAV.orientation
+                _gt_yaw2 = np.arctan2(2.0*(_gtq2.w*_gtq2.z + _gtq2.x*_gtq2.y),
+                                      1.0 - 2.0*(_gtq2.y*_gtq2.y + _gtq2.z*_gtq2.z))
+                yaw_err  = abs(np.arctan2(np.sin(_gt_yaw2 - INITIAL_YAW_RAD),
+                                          np.cos(_gt_yaw2 - INITIAL_YAW_RAD)))
             tilt_err = max(abs(roll), abs(pitch))           # |roll| AND |pitch| both ≤ tol
             prev_enu, prev_t = cur_enu, now
             if (pos_err  <= IC_POS_TOL  and speed   <= IC_VEL_TOL
@@ -257,16 +318,44 @@ async def main(record = 'n'):
             raise RuntimeError(f"IC convergence timeout (pos_err={pos_err:.2f} m, "
                                f"speed={speed:.2f} m/s) — aborting before controller engage")
 
-        # 1 s of holding the (recomputed) setpoint to let residual velocity damp.
-        for _ in range(50):
+        # 1 s hold to damp residual velocity (yaw-servo active), then 0.5 s of FROZEN
+        # yaw so the drone settles and the board alpha stabilizes (the servo's
+        # drift-correction rotation otherwise sweeps alpha ±30°). Then AUTO-SET the
+        # desired alpha s_d[3] to that settled value, so the controller descends
+        # HOLDING the current marker-relative heading instead of slewing ~60-85° at
+        # engage (the IC1/IC2-5 divergence cause, 2026-06-04). The marker sits ~60-85°
+        # off the drone's North-aligned heading and that offset varies per rep with the
+        # compass drift, so a fixed DES_ALPHA can't match it — auto-set does. Env
+        # DES_ALPHA_AUTO=0 disables (then the fixed DES_ALPHA_DEG is used).
+        _alpha_meas = []
+        for _k in range(75):
             drone_enu  = pose_node.getPose().UAV.position
             target_enu = pose_node.getPose().target.position
             ned_pos    = FC_node.getPosBody()
             target_n = ned_pos.x_m + (target_enu.y + iy - drone_enu.y)
             target_e = ned_pos.y_m + (target_enu.x + ix - drone_enu.x)
             target_d = ned_pos.z_m - (target_enu.z + iz - drone_enu.z)
-            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
+            yaw_cmd_deg = _servo_true_yaw(yaw_cmd_deg)   # hold board-square (alpha->0) through engage
+            await FC_node.send_position_ned(target_n, target_e, target_d, yaw_cmd_deg)
             await asyncio.sleep(0.02)
+            if _k >= 50:
+                _fp = EC_node._img_node.getImgFeatureParam()
+                if _fp is not None and len(_fp) > 3 and np.isfinite(_fp[3]):
+                    _alpha_meas.append(float(_fp[3]))
+        if _alpha_meas:
+            _med = float(np.arctan2(np.median(np.sin(_alpha_meas)),
+                                    np.median(np.cos(_alpha_meas))))   # circular median
+            _std = float(np.rad2deg(np.std(_alpha_meas)))
+            if os.environ.get("DES_ALPHA_AUTO", "0") == "1":
+                # NOTE: default OFF. Holding the current heading does NOT land with the
+                # board square to the camera (user requirement). Desired alpha must be
+                # 0 (board at 0° to camera at touchdown); the drone aligns to it.
+                EC_node._s_d[3] = _med
+                print(f"[landing_test] AUTO-SET desired alpha s_d[3] = {np.rad2deg(_med):.1f}° "
+                      f"(settled, n={len(_alpha_meas)}, std={_std:.1f}°) — hold heading, no slew")
+            else:
+                print(f"[landing_test] board alpha (settled) = {np.rad2deg(_med):.1f}° std={_std:.1f}°; "
+                      f"using fixed DES_ALPHA_DEG s_d[3]={np.rad2deg(DES_IMG_FEATURE_PARAM[3]):.1f}°")
         cur_z = FC_node.getPosBody().z_m       # for the brief PID warmup below
 
         # Start controller (its thread begins iterating); send_attitude_rate
@@ -283,7 +372,8 @@ async def main(record = 'n'):
         # Hold the last marker-aligned NED setpoint so drone stays put.
         print("[landing_test] PID warmup (100 ms — fills deques only)…")
         for _ in range(5):                        # 5 * 20 ms = 100 ms
-            await FC_node.send_position_ned(target_n, target_e, target_d, INITIAL_YAW_DEG)
+            yaw_cmd_deg = _servo_true_yaw(yaw_cmd_deg)   # keep TRUE yaw aligned
+            await FC_node.send_position_ned(target_n, target_e, target_d, yaw_cmd_deg)
             await asyncio.sleep(0.02)
 
         # Main control loop: controller is now warm.

@@ -137,6 +137,7 @@ class Image_Node(Node):
         self._count = 0
         self._img_deque = deque([None, None])
         self._quat_deque = deque([None, None])
+        self._angvel_deque = deque([None, None])   # IMU body rate (FRD), synced to the flow pair
         self._start_time = self._time_keeper.perf_counter()
         self._t0 = self._start_time
         self._t1 = self._start_time
@@ -167,6 +168,7 @@ class Image_Node(Node):
                 # Convert ROS Image message to OpenCV image
                 frame = self.br.imgmsg_to_cv2(msg, desired_encoding="bgr8")
                 quat = self._FC.getQuat()
+                angvel = self._FC.getAngVelIMU()   # IMU body rate (FRD), same instant as quat
 
                 # Default 90° CW rotation has been in place since the project's first
                 # commit (no documented reason — likely matches a legacy camera mount).
@@ -185,6 +187,7 @@ class Image_Node(Node):
                 # Append the decoded image to the deque
                 self._img_deque.append(rot_frame)
                 self._quat_deque.append(quat)
+                self._angvel_deque.append(angvel)
                 self._count = self._count + 1
                 self._t0 = self._t1
                 self._t1 = self._time_keeper.perf_counter()
@@ -192,6 +195,7 @@ class Image_Node(Node):
 
                 self._img_deque.popleft()
                 self._quat_deque.popleft()
+                self._angvel_deque.popleft()
                 # time.sleep(0.01)  # Sleep for a short time to avoid high CPU usage
         
         except KeyboardInterrupt:
@@ -211,6 +215,10 @@ class Image_Node(Node):
 
     def getQuaternions(self):
         return list(self._quat_deque)
+
+    def getAngVels(self):
+        """IMU body rate (FRD) paired with the flow images (frame0, frame1)."""
+        return list(self._angvel_deque)
 
     def getFPS(self):
         # return 1/self._meanTimePerImage

@@ -146,6 +146,16 @@ async def main(record = 'n'):
     sin_z   = lambda tau: CALIB_AMP_Z  * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw_agg = lambda tau: CALIB_AMP_YAW_AGG_DEG * np.sin(2*np.pi*CALIB_FREQ_YAW_AGG * tau)
+    # Roll/pitch-EXCITE phases (2026-06-04): small amplitude + high frequency so the
+    # marker stays framed (small position excursion) while tilt-RATE (wx/wy) is large —
+    # tilt_angle ∝ A·ω² but tilt_RATE ∝ A·ω³, so high ω buys rate without leaving FoV.
+    # A=0.12 m, f=1.0 Hz → ~20° tilt (≈ x/y phases) but ~2.7× the tilt-RATE. Purpose:
+    # measure whether image wx/wy track the true (IMU) wx/wy under STRONG roll/pitch
+    # excitation, before setting the IMU↔image wx/wy fusion weights.
+    _rp_amp  = float(os.environ.get("CALIB_AMP_RP", "0.12"))
+    _rp_freq = float(os.environ.get("CALIB_FREQ_RP", "1.0"))
+    _rp_s    = float(os.environ.get("CALIB_RP_S", "12.0"))
+    sin_rp = lambda tau: _rp_amp * np.sin(2*np.pi*_rp_freq * tau)
     # Phase order: settle → yaw → x → y → z. Yaw is FIRST after the initial
     # settle so even if PX4 drops the MAVSDK connection mid-sweep (observed
     # during the more-aggressive z phase), we keep clean ω_z data. z is LAST
@@ -166,10 +176,12 @@ async def main(record = 'n'):
         'y':      (zero, sin_y, zero, zero),
         'z':      (zero, zero, sin_z, zero),
         'yawagg': (zero, zero, zero, sin_yaw_agg),   # aggressive yaw, x=y=z held -> marker stays framed
+        'rollexc':  (sin_rp, zero, zero, zero),      # body-x osc -> strong roll-rate (wx) excitation
+        'pitchexc': (zero, sin_rp, zero, zero),      # body-y osc -> strong pitch-rate (wy) excitation
     }
     # Per-phase duration override (default CALIB_PHASE_S). yawagg runs longer so
     # EKF yaw drift has time to accumulate.
-    _phase_dur = {'yawagg': CALIB_YAW_AGG_S}
+    _phase_dur = {'yawagg': CALIB_YAW_AGG_S, 'rollexc': _rp_s, 'pitchexc': _rp_s}
     phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S)]
     for _ph in _selected:
         if _ph not in _phase_fns:

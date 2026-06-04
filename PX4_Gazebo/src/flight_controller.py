@@ -419,7 +419,9 @@ class FC():
         return self._vel_body[-1]
 
     def getAngVelIMU(self):
-        return self._ang_vel_frd[-1]
+        # None until the IMU task posts its first sample (can lag the odometry/
+        # quat task at boot); callers (e.g. Image_Node angvel deque) must handle None.
+        return self._ang_vel_frd[-1] if self._ang_vel_frd else None
 
     def getAccIMU(self):
         return self._acc_frd[-1]

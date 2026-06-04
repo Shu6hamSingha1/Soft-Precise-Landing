@@ -658,14 +658,27 @@ class Controller(Thread):
             u_a = alpha_ua * self._u_a[-1] + (1.0 - alpha_ua) * u_a
         self._u_a.append(float(u_a))
 
+        # Anti-windup: psi_d must NOT advance faster than the drone can physically
+        # yaw. The body-rate clamp (W_U_MAX) caps the achievable yaw rate; if psi_d
+        # integrates the raw u_a (which reaches ~2.3 rad/s) past that, the virtual
+        # compass races ahead of the measured yaw -> e_R saturates -> the SO(3)
+        # commands max yaw rate -> overshoot and ±180° psi_d windup (the IC yaw
+        # divergence: w_u_z saturated 73% of frames, 3 sign-flips; diagnosed
+        # 2026-06-04). Limit the psi_d advance rate to a fraction of W_U_MAX so the
+        # inner loop can actually track the setpoint. The SMC's u_a (logged) is left
+        # unclamped so sigma_a/kappa_a keep adapting to the true alpha error.
+        _w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
+        _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "0.7")) * _w_max
+        _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
+
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
-        #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]
+        #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]   (u_a rate-limited, see above)
         # No external heading reference enters; psi_d evolves purely from
         # the image-based alpha error via the leakage ASMC.
         if self._psi_d is not None and len(self._dt) > 0:
             self._psi_d = float(
-                np.arctan2(np.sin(self._psi_d + u_a * self._dt[-1]),
-                           np.cos(self._psi_d + u_a * self._dt[-1]))
+                np.arctan2(np.sin(self._psi_d + _ua_psid * self._dt[-1]),
+                           np.cos(self._psi_d + _ua_psid * self._dt[-1]))
             )
 
     def _kappaSolver(self, _, kappa, X):
@@ -680,8 +693,35 @@ class Controller(Thread):
 
     def _attCtrl(self):
         """Convert V-frame accel a_u + yaw rate u_a -> [body rates; thrust] for PX4."""
-        R = Quaternion(self._quat[-1]).to_DCM()
         euler = Quaternion(self._quat[-1]).to_angles()  # [roll, pitch, yaw]
+        # ---- Measured-attitude yaw source: compass (EKF) or alpha (marker-derived) ----
+        # Compass yaw drifts under aggressive maneuvers (EKF heading); the alpha
+        # feature s[3] tracks TRUE world yaw drift-free (output-cal: yaw≈0.949·s[3]
+        # +0.040, r=0.98). BODY_YAW_SOURCE=alpha rebuilds the measured attitude with
+        # EKF roll/pitch (don't drift) + alpha yaw, so the SO(3) error e_R AND the
+        # V→inertial accel transform (I_a_raw) become compass-INDEPENDENT. Default
+        # 'compass' = manuscript behaviour. s[3]->yaw map is env-tunable (K,B). Only
+        # valid with the moment-2π alpha (s[3]≈world yaw); see moment-yaw-canonical.
+        if os.environ.get("BODY_YAW_SOURCE", "compass") == "alpha" and len(self._s) > 0:
+            # NEGATIVE slope: the compass yaw euler[2] we replace is NED, which is
+            # ANTI-correlated with alpha (alpha≈+0.949·GT_yaw_ENU, euler[2]_NED≈
+            # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the
+            # compass yaw did) or e_R winds up -> overshoot (diagnosed 2026-06-04: the
+            # +0.949 sign made yaw_alpha and psi_d diverge -> ±135° yaw ring-out).
+            _k = float(os.environ.get("BODY_YAW_ALPHA_K", "-0.949"))
+            _b = float(os.environ.get("BODY_YAW_ALPHA_B", "0.0"))
+            _ya = _k * float(self._s[-1][3]) + _b
+            yaw_c = float(np.arctan2(np.sin(_ya), np.cos(_ya)))    # wrapped alpha yaw
+            _roll, _pitch = float(euler[0]), float(euler[1])       # EKF roll/pitch (drift-free)
+            _cz, _sz = np.cos(yaw_c), np.sin(yaw_c)
+            _cp, _sp = np.cos(_pitch), np.sin(_pitch)
+            _cr, _sr = np.cos(_roll), np.sin(_roll)
+            R = (np.array([[_cz, -_sz, 0], [_sz, _cz, 0], [0, 0, 1.0]])
+                 @ np.array([[_cp, 0, _sp], [0, 1, 0], [-_sp, 0, _cp]])
+                 @ np.array([[1, 0, 0], [0, _cr, -_sr], [0, _sr, _cr]]))  # Rz(yaw_a)Ry(p)Rx(r)
+        else:
+            R = Quaternion(self._quat[-1]).to_DCM()
+            yaw_c = float(euler[2])
 
         # Raw inertial accel (net of gravity).
         # NOTE: a_u lives in the V frame; MATLAB uses I_R_V = rotz(yaw) here,
@@ -768,7 +808,7 @@ class Controller(Thread):
 
         # ---- Inverse kinematics: desired roll/pitch from I_a (use current yaw) ----
         I_a_use = self._I_a[-1]
-        yaw_c = euler[2]
+        # yaw_c set above per BODY_YAW_SOURCE (compass euler[2] or alpha s[3])
         cy, sy = np.cos(yaw_c), np.sin(yaw_c)
 
         if abs(cy * I_a_use[0] + sy * I_a_use[1]) < 1e-6:

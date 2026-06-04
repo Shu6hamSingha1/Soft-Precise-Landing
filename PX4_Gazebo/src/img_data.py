@@ -190,10 +190,17 @@ class IMG_PROCESSOR(Thread):
         except Exception as _e:
             print(f"[img_data] board layout load failed ({_e}); single-marker mode")
             self._board_layout = None
-        # Yaw-reference offset for the board (analogue of the single-marker
-        # alpha_0). Board axes are explicit, so default 0; re-calibrate if the
-        # board's +x is not aligned with the desired equilibrium heading.
-        self._board_alpha_0 = float(os.environ.get("BOARD_ALPHA0", "0.0"))
+
+        # Equilibrium offset for the 2pi-disambiguated moment yaw (see
+        # _marker_principal_angle). It is the steady alpha (in V) when hovering
+        # aligned over the board at PX4 yaw~0, so that alpha-_moment_alpha_0 == 0
+        # at the desired heading. RECALIBRATED 2026-06-04 for the multi-marker
+        # board + 2pi convention: -2.533 rad (-145.1 deg), measured from the
+        # settle phase of an output-cal run. (The legacy single-marker pi-axis
+        # value was -0.9379 and is WRONG for this geometry -> equilibrium sat at
+        # ~88 deg.) Env-overridable; re-measure if the board/camera geometry
+        # changes.
+        self._moment_alpha_0 = float(os.environ.get("MOMENT_ALPHA0", "-2.533"))
 
         # 2026-06-02 — FEATURE SOURCE for the 6-DOF flow lstsq:
         #   'dense' (default, approach A): textured nested marker. The lstsq is
@@ -258,6 +265,8 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        self._imu_angvel_raw = []   # IMU body rate (FRD) [fwd,right,down], synced to the flow log
+        self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
         # Online post-filter logs (both filters computed every frame, regardless
         # of which one IMG_FILTER selects for the controller). Saved as
@@ -331,7 +340,8 @@ class IMG_PROCESSOR(Thread):
                 timer_flag = time.perf_counter()
                 images = self._image_node.getImages()
                 quaternions = self._image_node.getQuaternions()
-                self._fps = self._image_node.getFPS()   
+                angvels = self._image_node.getAngVels()   # IMU body rate (FRD), paired w/ flow
+                self._fps = self._image_node.getFPS()
                 # print(f"Image FPS: {self._fps}")
 
                 # Check if at least 2 frames of images have been received
@@ -355,7 +365,7 @@ class IMG_PROCESSOR(Thread):
                         self._video.write(images[1])
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
-                    if self._imgProcess(images, quaternions, showVideo = VIDEO) is AVAILABLE:
+                    if self._imgProcess(images, quaternions, angvels, showVideo = VIDEO) is AVAILABLE:
                         if not AVAILABLE:
                             time.sleep(1/300) # ~300 Hz polling — camera arrives at ~62 Hz, this is just a CPU yield
                             continue                        
@@ -422,7 +432,7 @@ class IMG_PROCESSOR(Thread):
             'fps': self._fps, 'img_process_freq':1/self._calc_time
         }
 
-    def _imgProcess(self, imgs, quats, showVideo = False):
+    def _imgProcess(self, imgs, quats, angvels=None, showVideo = False):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
         # Detect markers for both images
@@ -660,6 +670,13 @@ class IMG_PROCESSOR(Thread):
 
                 B_v_scaled = size_factor * B_v
                 self._opt_flow_ang_vel_raw.append(B_v_scaled)
+                _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
+                self._imu_angvel_raw.append(
+                    np.array([_av.forward_rad_s, _av.right_rad_s, _av.down_rad_s])
+                    if _av is not None else np.full(3, np.nan))
+                _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                self._quat_log.append(
+                    np.array([_q1.w, _q1.x, _q1.y, _q1.z]) if _q1 is not None else np.full(4, np.nan))
                 self._n_flow_corners.append(int(len(flow_pts_1)))
                 # 2-state KF update — only on a fresh raw measurement.
                 self._kf_update(B_v_scaled, self._time.perf_counter())
@@ -746,6 +763,8 @@ class IMG_PROCESSOR(Thread):
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
+            self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
+            self._quat_log.append(np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
 
@@ -894,11 +913,19 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
 
     def _marker_principal_angle(self, pts):
-        """Marker principal-axis angle in the (level) V plane.
+        """2pi-periodic marker orientation in the (level) V plane (raw, no offset).
 
-        Same weighted-moment formula as _getImgFeatures, but returns just the
-        raw angle (before alpha_0 offset) so we can use it to ROTATE V into
-        marker-alignment. Used when V_YAW_SOURCE='alpha'.
+        The weighted 2nd-moment principal axis 0.5*arctan2(2 mu11, mu20-mu02)
+        gives only an AXIS (pi-period) — invariant under 180deg. We disambiguate
+        it into a full 2pi DIRECTION using the weighted-centroid DISPLACEMENT: the
+        [4,3,2,1] corner weights pull the centroid toward the high-weight (TL/TR)
+        corners, so (weighted_centroid - geometric_centroid) is a 1st-moment
+        vector that rotates 1:1 with the marker over a full turn. We flip the
+        principal axis to whichever 180deg end aligns with that vector -> no
+        pi-flip (verified to sweep a clean 360deg). Returns the raw angle (before
+        the _moment_alpha_0 equilibrium offset) so callers apply their own offset.
+        Used by _board_feature (per-marker, averaged), the single-marker
+        _getImgFeatures fallback, and V_YAW_SOURCE='alpha'.
         """
         x, y = pts[:, 0], pts[:, 1]
         if len(x) == 4:
@@ -912,9 +939,16 @@ class IMG_PROCESSOR(Thread):
         mu20 = float(np.sum(w * Xc * Xc))
         mu02 = float(np.sum(w * Yc * Yc))
         mu11 = float(np.sum(w * Xc * Yc))
-        if abs(mu11) < 1e-9:
-            return 0.0
-        return 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
+        a = 0.0 if abs(mu11) < 1e-9 else 0.5 * np.arctan2(2 * mu11, mu20 - mu02)
+        # Disambiguate the pi-axis to a 2pi direction via the weighted-centroid
+        # displacement (geometric centre -> weighted centre).
+        dx = xc - float(np.mean(x))
+        dy = yc - float(np.mean(y))
+        if dx * dx + dy * dy > 1e-18:
+            d = a - np.arctan2(dy, dx)
+            if abs(np.arctan2(np.sin(d), np.cos(d))) > np.pi / 2:
+                a += np.pi
+        return float(np.arctan2(np.sin(a), np.cos(a)))   # wrap to (-pi, pi]
 
     def _board_corners(self, mid):
         """Board-plane coords (metres, board centre = origin) of marker `mid`'s
@@ -930,19 +964,30 @@ class IMG_PROCESSOR(Thread):
                         dtype=np.float64)
 
     def _board_feature(self, markers_V, size_factor=1.0):
-        """Board centroid s=(xc,yc,1,alpha) from a board->V-frame homography.
+        """Board centroid + yaw s=(xc,yc,1,alpha).
 
         markers_V : list of (id, 4x2 V-frame-normalized corners) for the markers
                     whose all-4 corners survived LK this frame.
 
-        Fits a planar homography H from board-plane coords (known offsets) to
-        the V-frame image coords, then maps the board centre (0,0) -> V to get
-        a stable, occlusion-robust centroid, and the board +x direction -> V to
-        get a true yaw. Returns None if the fit is degenerate (caller falls
-        back to single-marker moments).
+        Centroid (xc,yc): the board centre (0,0) mapped through a board->V-frame
+        homography fit from the known layout (Images/aruco_board_layout.npy) —
+        stable and occlusion-robust as markers enter/leave the FoV.
 
-        Each marker contributes 4 correspondences, so a single marker (4 pts)
-        is the minimum for a homography (8 DOF); >=2 markers over-determine it.
+        Yaw (alpha): the MOMENT yaw — the convention the yaw SMC is designed for
+        (same as the single-marker _getImgFeatures fallback) — computed PER MARKER
+        via _marker_principal_angle and AVERAGED. Every board marker is axis-
+        aligned, so each marker's weighted 2nd-moment principal axis gives the
+        same orientation (confirmed: <=1.6 deg spread across the 13 markers);
+        averaging denoises it. Because board path and fallback now share the
+        moment convention + offset, the board<->fallback switch no longer makes
+        alpha jump. This REPLACES the previous GEOMETRIC board-+x yaw (arctan2 of
+        the homography-mapped +x axis), a 2pi-period convention inconsistent with
+        the moment yaw the control law expects — see git 886809d (introduced) /
+        0008ba1 (geom-unify revert).
+
+        Returns None if the homography fit is degenerate (caller falls back to
+        single-marker _getImgFeatures). A single marker (4 pts) is the minimum
+        for a homography (8 DOF); >=2 markers over-determine it.
         """
         board_pts, img_pts = [], []
         for mid, cV in markers_V:
@@ -959,20 +1004,21 @@ class IMG_PROCESSOR(Thread):
         if H is None or not np.all(np.isfinite(H)):
             return None
 
-        def apply(p):
-            v = H @ np.array([p[0], p[1], 1.0])
-            if abs(v[2]) < 1e-12:
-                return None
-            return v[:2] / v[2]
+        # Occlusion-robust centroid: board centre (0,0) -> V through H.
+        v = H @ np.array([0.0, 0.0, 1.0])
+        if abs(v[2]) < 1e-12:
+            return None
+        center = v[:2] / v[2]
 
-        center = apply((0.0, 0.0))
-        xdir = apply((0.05, 0.0))      # small step along board +x near centre
-        if center is None or xdir is None:
-            return None
-        d = xdir - center
-        if np.hypot(d[0], d[1]) < 1e-9:
-            return None
-        alpha = float(np.arctan2(d[1], d[0])) - self._board_alpha_0
+        # Moment yaw: per-marker 2pi orientation (_marker_principal_angle),
+        # circular-averaged. These are full 2pi DIRECTIONS (disambiguated), so a
+        # NORMAL circular mean (not the doubled-angle axis mean). Same convention
+        # + offset as the _getImgFeatures fallback, so the two alpha paths agree.
+        raw = np.array([self._marker_principal_angle(np.asarray(cV, dtype=np.float64))
+                        for _mid, cV in markers_V])
+        avg_raw = np.arctan2(float(np.mean(np.sin(raw))), float(np.mean(np.cos(raw))))
+        alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else self._moment_alpha_0
+        alpha = float(np.arctan2(np.sin(avg_raw - alpha_0), np.cos(avg_raw - alpha_0)))
         return np.array([float(center[0]), float(center[1]), 1.0, alpha])
 
     def _getImgFeatures(self, pts):
@@ -1017,29 +1063,23 @@ class IMG_PROCESSOR(Thread):
         if N == 4:
             w = np.array([4.0, 3.0, 2.0, 1.0])
             # When V_YAW_SOURCE='alpha', V is already rotated by -alpha_raw in
-            # _imgProcess, so the marker principal axis sits along V.x and the
-            # measured alpha here is ~0. The compass-V bias offset (-0.9379)
-            # would push the controller's input to a constant non-zero value,
-            # creating a permanent yaw-error signal. Use 0 in alpha-mode.
-            alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else -0.9379
+            # _imgProcess, so the marker is along V.x and alpha ~0 -> use offset 0
+            # to avoid a permanent yaw-error bias; else the board equilibrium
+            # offset (shared with the board path so the two alpha paths agree).
+            alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else self._moment_alpha_0
         else:
             w = np.ones(N)
             alpha_0 = 0.0
         W = w.sum()
 
+        # Weighted centroid (TL-biased) — the established SITL lateral feature.
         xc = float(np.sum(w * x) / W)
         yc = float(np.sum(w * y) / W)
 
-        Xc = x - xc
-        Yc = y - yc
-        mu20 = float(np.sum(w * Xc * Xc))
-        mu02 = float(np.sum(w * Yc * Yc))
-        mu11 = float(np.sum(w * Xc * Yc))
-
-        if abs(mu11) < 1e-6:
-            alpha = -alpha_0
-        else:
-            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
+        # Yaw: 2pi-disambiguated moment orientation (same convention/offset as the
+        # board path _board_feature, so a board<->fallback switch never jumps).
+        raw = self._marker_principal_angle(pts)
+        alpha = float(np.arctan2(np.sin(raw - alpha_0), np.cos(raw - alpha_0)))
 
         # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
@@ -1129,6 +1169,8 @@ class IMG_PROCESSOR(Thread):
             "Virtual Feature Pts": self._virtual_feature_pts,
             "Feature Params": self._img_feature_param,
             "Opt Flow Ang Vel": self._opt_flow_ang_vel_raw,
+            "IMU AngVel": self._imu_angvel_raw,
+            "Quat": self._quat_log,
             "N Flow Corners": self._n_flow_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
