@@ -54,6 +54,28 @@ CALIB_AMP_YAW_DEG = float(os.environ.get("CALIB_AMP_YAW_DEG", "30.0"))
                           # was small. 30° gives peak yaw rate ~94°/s = 1.64 rad/s
                           # (within typical MAX_YAW_RATE). Marker stays centered.
 
+# AGGRESSIVE YAW-IN-VIEW phase (2026-06-04). A fast, sustained yaw sweep with
+# x=y=z held at hover so the downward camera keeps the marker CENTERED the whole
+# time (pure yaw rotates in place — no translation pushes the marker out of FoV).
+# Purpose: this is the ONLY experiment that simultaneously (a) stresses PX4's EKF
+# yaw enough for it to DRIFT (the drift is rate-driven — see plotter_input_
+# calibration BODY_YAW_SOURCE, 30-46° under aggressive rates) AND (b) keeps the
+# image CONTINUOUS so the GT thread co-samples 'Img Feature Params' (alpha).
+#   - input-cal HAS the drift but no usable/time-aligned image -> can't show alpha
+#   - output-cal's gentle x/y/z/yaw phases keep the image but barely drift the EKF
+#   - landing holds yaw ~0, so little drift to observe
+# So only an aggressive-yaw-WHILE-framed phase lets the output-cal notebook plot
+# GT yaw, EKF yaw (drifting), and image alpha (locked, r=1.00) all time-aligned —
+# the direct evidence that image-alpha is the drift-free yaw reference.
+CALIB_AMP_YAW_AGG_DEG = float(os.environ.get("CALIB_AMP_YAW_AGG_DEG", "90.0"))
+                          # 90° @ 0.5 Hz -> peak yaw rate ~283°/s; PX4 rate-limits
+                          # to MC_YAWRATE_MAX, giving a sustained near-max-rate
+                          # sweep. Lower if PX4 yaw failsafes trip on your build.
+CALIB_FREQ_YAW_AGG    = float(os.environ.get("CALIB_FREQ_YAW_AGG", "0.5"))
+CALIB_YAW_AGG_S       = float(os.environ.get("CALIB_YAW_AGG_S", "12.0"))
+                          # longer than CALIB_PHASE_S — EKF yaw drift ACCUMULATES
+                          # over sustained maneuvering, so give it time to diverge.
+
 # PHASED-EXCITATION redesign 2026-05-29. The previous lockstep `pos_cmd = AMP*val`
 # on all four axes (x, y, z, yaw) made the four input channels 100% correlated,
 # so lstsq could not separate per-axis scale factors — z-axis scale came back
@@ -123,6 +145,7 @@ async def main(record = 'n'):
     sin_y   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_z   = lambda tau: CALIB_AMP_Z  * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    sin_yaw_agg = lambda tau: CALIB_AMP_YAW_AGG_DEG * np.sin(2*np.pi*CALIB_FREQ_YAW_AGG * tau)
     # Phase order: settle → yaw → x → y → z. Yaw is FIRST after the initial
     # settle so even if PX4 drops the MAVSDK connection mid-sweep (observed
     # during the more-aggressive z phase), we keep clean ω_z data. z is LAST
@@ -133,20 +156,26 @@ async def main(record = 'n'):
     # sweep dies mid-y leaving z phase unsampled), use CALIB_PHASES=z and the
     # script will skip yaw/x/y entirely — z then runs early, within the ~22 s
     # PX4-MAVSDK uptime budget.
-    _selected = os.environ.get("CALIB_PHASES", "yaw,x,y,z").split(",")
+    # 'yawagg' runs LAST: the cal-critical phases (yaw,x,y,z) are captured first
+    # so an aggressive-yaw failsafe (if it trips) only costs the demo phase.
+    _selected = os.environ.get("CALIB_PHASES", "yaw,x,y,z,yawagg").split(",")
     _selected = [s.strip() for s in _selected if s.strip()]
     _phase_fns = {
-        'yaw': (zero, zero, zero, sin_yaw),
-        'x':   (sin_x, zero, zero, zero),
-        'y':   (zero, sin_y, zero, zero),
-        'z':   (zero, zero, sin_z, zero),
+        'yaw':    (zero, zero, zero, sin_yaw),
+        'x':      (sin_x, zero, zero, zero),
+        'y':      (zero, sin_y, zero, zero),
+        'z':      (zero, zero, sin_z, zero),
+        'yawagg': (zero, zero, zero, sin_yaw_agg),   # aggressive yaw, x=y=z held -> marker stays framed
     }
+    # Per-phase duration override (default CALIB_PHASE_S). yawagg runs longer so
+    # EKF yaw drift has time to accumulate.
+    _phase_dur = {'yawagg': CALIB_YAW_AGG_S}
     phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S)]
     for _ph in _selected:
         if _ph not in _phase_fns:
             print(f"  [warn] unknown phase {_ph!r}; skipping"); continue
         fx, fy, fz, fyaw = _phase_fns[_ph]
-        phase_script.append((_ph, fx, fy, fz, fyaw, CALIB_PHASE_S))
+        phase_script.append((_ph, fx, fy, fz, fyaw, _phase_dur.get(_ph, CALIB_PHASE_S)))
         phase_script.append(('settle', zero, zero, zero, zero, CALIB_SETTLE_S))
     total_s = sum(p[5] for p in phase_script)
     print(f"[calib] phased excitation: {len(phase_script)} phases, total {total_s:.1f}s")
