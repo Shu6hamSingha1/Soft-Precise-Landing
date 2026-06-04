@@ -972,11 +972,7 @@ class IMG_PROCESSOR(Thread):
         d = xdir - center
         if np.hypot(d[0], d[1]) < 1e-9:
             return None
-        # Same offset convention as the single-marker fallback (_getImgFeatures):
-        # 0 in alpha-mode (V already marker-aligned), else _board_alpha_0. Keeps
-        # the two alpha paths CONTINUOUS so switching between them never jumps.
-        off = 0.0 if self._v_yaw_source == 'alpha' else self._board_alpha_0
-        alpha = float(np.arctan2(d[1], d[0])) - off
+        alpha = float(np.arctan2(d[1], d[0])) - self._board_alpha_0
         return np.array([float(center[0]), float(center[1]), 1.0, alpha])
 
     def _getImgFeatures(self, pts):
@@ -1019,43 +1015,31 @@ class IMG_PROCESSOR(Thread):
         N = len(x)
 
         if N == 4:
-            # Centroid: weighted [4,3,2,1] toward TL — UNCHANGED (this is the
-            # established SITL lateral feature; the controller is tuned to it).
             w = np.array([4.0, 3.0, 2.0, 1.0])
-            W = w.sum()
-            xc = float(np.sum(w * x) / W)
-            yc = float(np.sum(w * y) / W)
-            # Yaw alpha: GEOMETRIC direction of the marker's board +x axis in V,
-            # from the top (TL->TR) and bottom (BL->BR) edges. Every board marker
-            # is axis-aligned with the board, so the +x edge IS board +x — the
-            # SAME convention as the board-homography path (_board_feature):
-            # full 360deg, no pi-ambiguity, same offset.
-            #
-            # REPLACES the old 2nd-moment principal axis
-            #   alpha = 0.5*arctan2(2*mu11, mu20-mu02) - (-0.9379)
-            # which has period pi and a DIFFERENT offset (-0.9379) than the
-            # board path (0.0). The pipeline switches between the board path and
-            # this single-marker fallback whenever LK drops the full-corner
-            # marker set (e.g. at touchdown), so alpha JUMPED discontinuously
-            # (~54deg offset diff + a possible 180deg from the pi-symmetry) —
-            # the "garbage" flips. pts are in cv2.aruco order [TL,TR,BR,BL].
-            off = 0.0 if self._v_yaw_source == 'alpha' else self._board_alpha_0
-            ex = (pts[1] - pts[0]) + (pts[2] - pts[3])   # 2 * board +x in V
-            alpha = float(np.arctan2(ex[1], ex[0])) - off
+            # When V_YAW_SOURCE='alpha', V is already rotated by -alpha_raw in
+            # _imgProcess, so the marker principal axis sits along V.x and the
+            # measured alpha here is ~0. The compass-V bias offset (-0.9379)
+            # would push the controller's input to a constant non-zero value,
+            # creating a permanent yaw-error signal. Use 0 in alpha-mode.
+            alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else -0.9379
         else:
-            # Non-4-corner (unknown geometry) deep fallback: unweighted centroid
-            # + 2nd-moment axis. Rare; no consistent board +x available here.
             w = np.ones(N)
-            W = w.sum()
-            xc = float(np.sum(w * x) / W)
-            yc = float(np.sum(w * y) / W)
-            Xc = x - xc
-            Yc = y - yc
-            mu20 = float(np.sum(w * Xc * Xc))
-            mu02 = float(np.sum(w * Yc * Yc))
-            mu11 = float(np.sum(w * Xc * Yc))
-            alpha = 0.0 if abs(mu11) < 1e-6 else \
-                0.5 * np.arctan2(2 * mu11, (mu20 - mu02))
+            alpha_0 = 0.0
+        W = w.sum()
+
+        xc = float(np.sum(w * x) / W)
+        yc = float(np.sum(w * y) / W)
+
+        Xc = x - xc
+        Yc = y - yc
+        mu20 = float(np.sum(w * Xc * Xc))
+        mu02 = float(np.sum(w * Yc * Yc))
+        mu11 = float(np.sum(w * Xc * Yc))
+
+        if abs(mu11) < 1e-6:
+            alpha = -alpha_0
+        else:
+            alpha = 0.5 * np.arctan2(2 * mu11, (mu20 - mu02)) - alpha_0
 
         # ---- 4. Feature vector (unnormalized) ----
         s = np.array([xc, yc, 1.0, alpha])
