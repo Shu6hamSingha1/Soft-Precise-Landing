@@ -28,9 +28,10 @@ Every PLASMC landing in this SITL setup fails for exactly one of these reasons. 
 | **5** | **PID-output saturation** | a_u peaks > 100 m/s² before LPF; tau_ia can't smooth | tau_ia ∈ [0.08, 0.20] is the safe range. Higher = lag, lower = noise. |
 | **6** | **Funnel-envelope breach** | rho_fov_log near zero, theta_current near theta_cone | Widen `RHOFOV0` or relax `THETACAP`. Very rare in current config. |
 | **7** | **Sensor cal drift** | Optic-flow lstsq returns clipped or non-finite | Don't refresh sensor cal — methodology mismatch in `aggregate_calibration.py` produces 7-10× wrong gains (see `feedback_calibration_lessons.md`). Sensor noise already matches MATLAB per Phase 4. |
-| **8** | **Compass yaw drift** under aggressive maneuvers | EKF yaw diverges 30-46° from GT in input-cal-style commands; body-frame analysis shows ~100m phantom position mismatch even though world position is correct within ~10m | Use `V_YAW_SOURCE=alpha` for live IBVS (V frame becomes marker-aligned, compass-independent). Use `BODY_YAW_SOURCE=gt` in `plotter_input_calibration.ipynb` for analysis. See [[compass-yaw-drift]] and [[v-yaw-source-alpha]]. |
+| **8** | **Compass yaw drift** under aggressive maneuvers | EKF yaw diverges 30-46° from GT in input-cal-style commands; body-frame analysis shows ~100m phantom position mismatch even though world position is correct within ~10m | Use `BODY_YAW_SOURCE=alpha` (control-side, **now the default**) — SO(3) loop uses the drift-free alpha feature instead of euler[2]. (NOT `V_YAW_SOURCE=alpha` — REMOVED 2026-06-04; it zeroed the yaw feature → open-loop yaw. See [[compass-free-yaw-sign]], [[v-yaw-source-alpha]].) Use `BODY_YAW_SOURCE=gt` in `plotter_input_calibration.ipynb` for analysis. |
+| **8b** | **Compass drift at LANDING START → "yaw runaway"** (the real IC2-5 yaw failure) | At descent start GT yaw ≈ 77° while EKF yaw ≈ 0°; the IC rig holds/gates on the **EKF** yaw, so the drone BEGINS the descent physically yawed ~77° → `psi_d`→±180°, xy 2-16m. `alpha_start ≈ GT_yaw_start` every rep (**alpha is correct**). | **Don't touch alpha** — three alpha redesigns all hit 180° because the cause is the bad start, not the feature. Fix the **test rig** (`landing_test.py` IC convergence): servo NED yaw to null the **true (Gazebo)** yaw + gate on truth so the descent starts aligned. Controller untouched (yaw is image-alpha; compass only enters the rotation matrix, absorbed by the alpha outer loop). See [[yaw-compass-drift-ic-start]]. |
 
-If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → already fixed by defaults. Mode 4-7 → tuneable. Mode 3 → secondary to mode 1.
+If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → already fixed by defaults. Mode 4-7 → tuneable. Mode 3 → secondary to mode 1. **Mode 8b → fix the IC rig, NOT the controller/alpha.**
 
 ## Complete parameter inventory
 
@@ -45,7 +46,7 @@ PLASMC_YAW_OMEGA=0.2 PLASMC_YAW_GAMMA=0.2
 PLASMC_RHOFOV0_V=315 PLASMC_RHOFOVINF_U=220 PLASMC_RHOFOVINF_V=300
 PLASMC_GAMMA_Z=0.375
 MARKER_KLT_MAX_STEPS=20 LANDING_STALE_COMMIT_EXTENT=100
-CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 V_YAW_SOURCE=compass
+CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 ```
 
 ### Outer loop (image-error → desired optic-flow rate)
@@ -113,7 +114,7 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 V_YAW_SOURCE=compass
 | `minMarkerPerimeterRate` | 0.02 (intervention 1) | `ARUCO_MIN_PERIM_RATE` | |
 | `minOtsuStdDev` | 3.0 (intervention 1) | `ARUCO_MIN_OTSU_STD` | |
 | `IMG_EXTRA_PTS` (hybrid Shi-Tomasi corners) | 0 | `IMG_EXTRA_PTS` | Set ≥50 → over-determines 8x6 lstsq with extra corners; defaults to OFF |
-| `V_YAW_SOURCE` (V frame yaw source) | `'compass'` | `V_YAW_SOURCE` | `'alpha'` makes V marker-aligned → compass-independent. See [[v-yaw-source-alpha]]. Needs sensor_cal redo after switching. |
+| `BODY_YAW_SOURCE` (SO(3) yaw source) | `'alpha'` (default since 2026-06-04) | `BODY_YAW_SOURCE` | `'alpha'` = compass-free SO(3) (uses drift-free s[3], not euler[2]); `'compass'` = legacy. See [[compass-free-yaw-sign]]. (`V_YAW_SOURCE` was removed — marker-aligning V zeroed the yaw feature; see [[v-yaw-source-alpha]].) |
 | `MARKER_KLT_MAX_STEPS` (KLT fallback cap) | `20` | `MARKER_KLT_MAX_STEPS` | KLT-tracks last good corners when ArUco fails; bridges short outages. Default ON. Set to `0` to disable. See [[klt-marker-fallback]]. |
 
 ### Landing-test (landing_test.py)

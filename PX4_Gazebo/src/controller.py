@@ -699,10 +699,13 @@ class Controller(Thread):
         # feature s[3] tracks TRUE world yaw drift-free (output-cal: yaw≈0.949·s[3]
         # +0.040, r=0.98). BODY_YAW_SOURCE=alpha rebuilds the measured attitude with
         # EKF roll/pitch (don't drift) + alpha yaw, so the SO(3) error e_R AND the
-        # V→inertial accel transform (I_a_raw) become compass-INDEPENDENT. Default
-        # 'compass' = manuscript behaviour. s[3]->yaw map is env-tunable (K,B). Only
+        # V→inertial accel transform (I_a_raw) become compass-INDEPENDENT. DEFAULT
+        # 'alpha' (compass-free) as of 2026-06-04 — the sign-fixed path eliminated the
+        # yaw divergence (first non-divergent compass-free landing). Set
+        # BODY_YAW_SOURCE=compass for the legacy manuscript behaviour. s[3]->yaw map is
+        # env-tunable (K,B). Falls back to compass when no marker (len(_s)==0). Only
         # valid with the moment-2π alpha (s[3]≈world yaw); see moment-yaw-canonical.
-        if os.environ.get("BODY_YAW_SOURCE", "compass") == "alpha" and len(self._s) > 0:
+        if os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha" and len(self._s) > 0:
             # NEGATIVE slope: the compass yaw euler[2] we replace is NED, which is
             # ANTI-correlated with alpha (alpha≈+0.949·GT_yaw_ENU, euler[2]_NED≈
             # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the

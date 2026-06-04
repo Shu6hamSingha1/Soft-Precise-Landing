@@ -154,15 +154,12 @@ class IMG_PROCESSOR(Thread):
             minEigThreshold=1e-3,
         )
 
-        # 2026-05-31 — V_YAW_SOURCE: pick where the virtual frame's yaw
-        # comes from. 'compass' (default, legacy) uses the drone's full
-        # quaternion (so V is yaw-locked to the drone's heading, which
-        # is in turn compass-derived). 'alpha' uses the marker's
-        # principal-axis angle from this frame's ArUco corners, so V
-        # is marker-aligned and the whole flow/centroid pipeline becomes
-        # compass-independent. See _imgProcess for the rotation; the
-        # controller-side alpha-offset is also disabled below.
-        self._v_yaw_source = os.environ.get("V_YAW_SOURCE", "compass")
+        # NOTE: a V_YAW_SOURCE=alpha mode was REMOVED 2026-06-04. Rotating V to be
+        # marker-aligned forces the yaw feature s[3]->0 by construction, which zeros
+        # the yaw-SMC error (e_a = s[3]-s_d[3]) -> open-loop yaw -> the board
+        # orientation at touchdown is uncontrolled. The V-frame is gravity-leveled and
+        # body-relative (no yaw NUMBER enters _getVirtualPts); yaw is the alpha OUTPUT,
+        # not an input. Compass-free belongs on the CONTROL side (BODY_YAW_SOURCE=alpha).
 
         # 2026-06-02 — MULTI-MARKER BOARD layout.
         # The landing pad carries several ArUco markers at KNOWN, non-
@@ -610,26 +607,9 @@ class IMG_PROCESSOR(Thread):
                     board_markers_V = [(mid, self._getVirtualPts(c, quats[1]))
                                        for mid, c in board_markers_px1]
 
-                # V_YAW_SOURCE=alpha: replace the compass-derived yaw of the V
-                # frame with the marker's principal-axis angle (alpha). V is
-                # then marker-aligned rather than NED-aligned; flow and
-                # centroid are measured in the marker's frame, removing the
-                # dependency on PX4's compass. The gravity (roll/pitch) part
-                # of V is unchanged — it still comes from the accelerometer-
-                # derived quaternion component.
-                #
-                # Implementation: compute alpha from the current V_aruco
-                # (which is in compass-V frame) using the same weighted-moment
-                # formula as _getImgFeatures, then rotate every V point by
-                # -alpha around z. Resulting V is marker-aligned.
-                if self._v_yaw_source == 'alpha':
-                    alpha_cv = self._marker_principal_angle(V_aruco_norm[1])
-                    c_a, s_a = float(np.cos(alpha_cv)), float(np.sin(alpha_cv))
-                    R2d_T = np.array([[c_a, -s_a], [s_a, c_a]])    # rotate pts by -alpha
-                    V_aruco_norm = [pts @ R2d_T for pts in V_aruco_norm]
-                    V_flow_norm  = [pts @ R2d_T for pts in V_flow_norm]
-                    if board_markers_V is not None:
-                        board_markers_V = [(mid, c @ R2d_T) for mid, c in board_markers_V]
+                # (V_YAW_SOURCE=alpha marker-alignment removed 2026-06-04 — it zeroed
+                # the yaw feature s[3]; V stays gravity-leveled/body-relative. See the
+                # note in __init__.)
 
                 # Shows image with optical flow (primary marker only)
                 if showVideo:
@@ -761,6 +741,16 @@ class IMG_PROCESSOR(Thread):
             extrapolated_img_feature_param = np.nan_to_num(
                 np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
+            # Alpha (index 3) is a WRAPPED angle — the deg-1 extrapolation + the ±5 rad
+            # clip push it PAST ±π during marker loss (observed at 286°≈5 rad), handing
+            # the controller a garbage phantom yaw error -> max yaw cmd -> spin-out +
+            # TARGET_LOST (the dominant divergence mode, found 2026-06-04). Linear-
+            # extrapolating a wrapped angle is broken near ±180°, so HOLD the last alpha
+            # (marker orientation barely changes over a short dropout) and wrap it.
+            if self._img_feature_param:
+                _hold_a = float(self._img_feature_param[-1][3])
+                extrapolated_img_feature_param[3] = float(
+                    np.arctan2(np.sin(_hold_a), np.cos(_hold_a)))
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
@@ -924,8 +914,8 @@ class IMG_PROCESSOR(Thread):
         principal axis to whichever 180deg end aligns with that vector -> no
         pi-flip (verified to sweep a clean 360deg). Returns the raw angle (before
         the _moment_alpha_0 equilibrium offset) so callers apply their own offset.
-        Used by _board_feature (per-marker, averaged), the single-marker
-        _getImgFeatures fallback, and V_YAW_SOURCE='alpha'.
+        Used by _board_feature (per-marker, averaged) and the single-marker
+        _getImgFeatures fallback.
         """
         x, y = pts[:, 0], pts[:, 1]
         if len(x) == 4:
@@ -1017,7 +1007,7 @@ class IMG_PROCESSOR(Thread):
         raw = np.array([self._marker_principal_angle(np.asarray(cV, dtype=np.float64))
                         for _mid, cV in markers_V])
         avg_raw = np.arctan2(float(np.mean(np.sin(raw))), float(np.mean(np.cos(raw))))
-        alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else self._moment_alpha_0
+        alpha_0 = self._moment_alpha_0
         alpha = float(np.arctan2(np.sin(avg_raw - alpha_0), np.cos(avg_raw - alpha_0)))
         return np.array([float(center[0]), float(center[1]), 1.0, alpha])
 
@@ -1062,11 +1052,9 @@ class IMG_PROCESSOR(Thread):
 
         if N == 4:
             w = np.array([4.0, 3.0, 2.0, 1.0])
-            # When V_YAW_SOURCE='alpha', V is already rotated by -alpha_raw in
-            # _imgProcess, so the marker is along V.x and alpha ~0 -> use offset 0
-            # to avoid a permanent yaw-error bias; else the board equilibrium
-            # offset (shared with the board path so the two alpha paths agree).
-            alpha_0 = 0.0 if self._v_yaw_source == 'alpha' else self._moment_alpha_0
+            # Board equilibrium offset (shared with the board path _board_feature so
+            # the board<->single-marker fallback never jumps).
+            alpha_0 = self._moment_alpha_0
         else:
             w = np.ones(N)
             alpha_0 = 0.0
