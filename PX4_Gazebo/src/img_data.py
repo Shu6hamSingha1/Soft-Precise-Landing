@@ -291,6 +291,19 @@ class IMG_PROCESSOR(Thread):
         self._kf_prev_t = None
         self._kf_initialized = False
 
+        # Centroid-feature KF (4 channels: xc, yc, scale, alpha) — same 2-state
+        # constant-velocity model as the flow KF, env IMG_FEATURE_FILTER=kf.
+        # Cuts the ~110 ms group delay of savgol(13) on the OUTER-loop centroid
+        # input (savgol lags the flow KF by ~7 samples + is ~2x noisier). That
+        # lag is exactly where off-center convergence stalls: KP=9 commands the
+        # correction but the outer PID reacts to a ~110 ms-stale centroid.
+        # Default 'savgol' until A/B-validated.
+        self._kf_feat_x = np.zeros((4, 2))
+        self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
+        self._kf_feat_prev_t = None
+        self._kf_feat_initialized = False
+        self._kf_feat_last_n = 0
+
         # Video recording
         self._video = None
         
@@ -851,6 +864,35 @@ class IMG_PROCESSOR(Thread):
         # (I - K H) P_pred: subtract K_i · P_pred[i, 0, :] from row i of P_pred
         self._kf_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
 
+    def _kf_feat_update(self, z, t):
+        """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
+
+        Identical constant-velocity model + (q, r) tuning as _kf_update, but on
+        its own (4,2) state — the low-lag alternative to savgol(13) for the
+        OUTER-loop centroid input. z : (4,) raw feature; t : perf_counter.
+        """
+        z = np.asarray(z, dtype=float)
+        if not self._kf_feat_initialized:
+            self._kf_feat_x[:, 0] = z
+            self._kf_feat_x[:, 1] = 0.0
+            self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
+            self._kf_feat_prev_t = t
+            self._kf_feat_initialized = True
+            return
+        dt = max(min(t - self._kf_feat_prev_t, 0.1), 1e-3)
+        self._kf_feat_prev_t = t
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self._kf_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
+                                   [dt**3 / 2.0, dt**2]])
+        R = self._kf_r
+        x_pred = self._kf_feat_x @ F.T                       # (4, 2)
+        P_pred = F @ self._kf_feat_P @ F.T + Q               # (4, 2, 2)
+        y = z - x_pred[:, 0]                                 # (4,)
+        S = P_pred[:, 0, 0] + R                              # (4,)
+        K = P_pred[:, :, 0] / S[:, None]                     # (4, 2)
+        self._kf_feat_x = x_pred + K * y[:, None]
+        self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+
     def _marker_principal_angle(self, pts):
         """Marker principal-axis angle in the (level) V plane.
 
@@ -1154,6 +1196,17 @@ class IMG_PROCESSOR(Thread):
         """
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
+        # KF path (env IMG_FEATURE_FILTER=kf): low-lag alternative to savgol.
+        # Step the centroid KF once per fresh raw sample (the controller calls
+        # this getter every control iteration, possibly faster than the camera).
+        if os.environ.get('IMG_FEATURE_FILTER', 'savgol') == 'kf':
+            n = len(self._img_feature_param)
+            if n != self._kf_feat_last_n:
+                self._kf_feat_last_n = n
+                self._kf_feat_update(self._img_feature_param[-1],
+                                     self._time.perf_counter())
+            if self._kf_feat_initialized:
+                return self._sensor_cal_s @ self._kf_feat_x[:, 0]
         if len(self._img_feature_param) >= FILTER_WIN:
             sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
