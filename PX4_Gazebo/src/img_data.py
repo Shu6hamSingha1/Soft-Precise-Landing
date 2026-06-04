@@ -1067,7 +1067,11 @@ class IMG_PROCESSOR(Thread):
         construction needs.
         """
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
-        # World-down expressed in the camera (= body, since R_V_from_body = I) frame.
+        # World-down in the camera frame. Camera axes = body-FRD (aligned), so this
+        # is R.T @ [0,0,1] = world-down in body. NOTE: the *virtual* frame V is the
+        # LEVELED camera frame, so R_V_from_body is the roll/pitch leveling rotation
+        # built below — NOT identity. ("camera = body" is the axis alignment, which
+        # is what justifies using the body quaternion here.)
         g = R.T @ np.array([0, 0, 1])
 
         # Build V's basis in camera coords: z_V along gravity (no roll/pitch),
