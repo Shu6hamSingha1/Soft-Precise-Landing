@@ -68,7 +68,7 @@ def compute_gt(gt):
     for i in range(n):
         B_v_tu[i] = FLU_2_FRD @ np.linalg.inv(W_T_P[i, :3, :3]) @ W_v_tu[i]
     z = B_x_tu[:, 2].copy(); z[np.abs(z) < 0.1] = np.nan
-    B_y_g = B_v_tu / z[:, None]
+    B_h_g = B_v_tu / z[:, None]
     # Quaternion-difference for body-frame ω (preserves SO(3); element-wise
     # np.gradient on R breaks orthogonality and over-reports ω_z ~2×).
     uav_q = np.array([[u.orientation.w, u.orientation.x,
@@ -78,9 +78,9 @@ def compute_gt(gt):
     B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_q, t_g).T).T
     B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_q, t_g).T).T
     B_w_tug = B_w_tg - B_w_ug
-    xc_gt = B_x_tu[:, 0] / B_x_tu[:, 2]
-    yc_gt = B_x_tu[:, 1] / B_x_tu[:, 2]
-    return valid, B_y_g, B_w_tug, xc_gt, yc_gt
+    V_xc_g = B_x_tu[:, 0] / B_x_tu[:, 2]
+    V_yc_g = B_x_tu[:, 1] / B_x_tu[:, 2]
+    return valid, B_h_g, B_w_tug, V_xc_g, V_yc_g
 
 
 def safe_corr(a, b):
@@ -123,7 +123,7 @@ def evaluate(run_dirs, window, polyorder, mode):
 
     for d in run_dirs:
         gt = np.load(f"{d}/Ground_Truth.npy", allow_pickle=True)[()]
-        try: valid, B_y_g, B_w_tug, xc_gt, yc_gt = compute_gt(gt)
+        try: valid, B_h_g, B_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
         except Exception: continue
         raw_hw = np.asarray(gt["Opt Flow Ang Vel"])[valid]
         raw_s  = np.asarray(gt["Img Feature Params"])[valid]
@@ -134,10 +134,10 @@ def evaluate(run_dirs, window, polyorder, mode):
         cal_hw = (SC_HW @ hw_f.T).T
         cal_s  = (SC_S  @ s_f.T ).T
         for i in range(3):
-            sums[i]   += abs(safe_corr(B_y_g[:, i],   cal_hw[:, i]));     counts[i]   += 1
+            sums[i]   += abs(safe_corr(B_h_g[:, i],   cal_hw[:, i]));     counts[i]   += 1
             sums[3+i] += abs(safe_corr(B_w_tug[:, i], cal_hw[:, 3+i]));   counts[3+i] += 1
-        sums[6] += abs(safe_corr(xc_gt, cal_s[:, 0])); counts[6] += 1
-        sums[7] += abs(safe_corr(yc_gt, cal_s[:, 1])); counts[7] += 1
+        sums[6] += abs(safe_corr(V_xc_g, cal_s[:, 0])); counts[6] += 1
+        sums[7] += abs(safe_corr(V_yc_g, cal_s[:, 1])); counts[7] += 1
 
     means = sums / np.maximum(counts, 1)
     return float(np.mean(means)), dict(zip(chan_names, means))
@@ -149,15 +149,15 @@ def baseline_no_filter(run_dirs):
     sums = np.zeros(8); counts = np.zeros(8)
     for d in run_dirs:
         gt = np.load(f"{d}/Ground_Truth.npy", allow_pickle=True)[()]
-        valid, B_y_g, B_w_tug, xc_gt, yc_gt = compute_gt(gt)
+        valid, B_h_g, B_w_tug, V_xc_g, V_yc_g = compute_gt(gt)
         raw_hw = np.asarray(gt["Opt Flow Ang Vel"])[valid]
         raw_s  = np.asarray(gt["Img Feature Params"])[valid]
         cal_hw = (SC_HW @ raw_hw.T).T; cal_s = (SC_S @ raw_s.T).T
         for i in range(3):
-            sums[i] += abs(safe_corr(B_y_g[:, i], cal_hw[:, i])); counts[i] += 1
+            sums[i] += abs(safe_corr(B_h_g[:, i], cal_hw[:, i])); counts[i] += 1
             sums[3+i] += abs(safe_corr(B_w_tug[:, i], cal_hw[:, 3+i])); counts[3+i] += 1
-        sums[6] += abs(safe_corr(xc_gt, cal_s[:, 0])); counts[6] += 1
-        sums[7] += abs(safe_corr(yc_gt, cal_s[:, 1])); counts[7] += 1
+        sums[6] += abs(safe_corr(V_xc_g, cal_s[:, 0])); counts[6] += 1
+        sums[7] += abs(safe_corr(V_yc_g, cal_s[:, 1])); counts[7] += 1
     means = sums / np.maximum(counts, 1)
     return float(np.mean(means)), dict(zip(chan_names, means))
 

@@ -12,7 +12,7 @@ Checks (each labelled CHECK):
   5. B_x_tu (target wrt UAV in FRD): x≈0, y≈0, z>0 (target below drone)
   6. Body velocity sign: if commanded x sinusoid, B_v_tu[:,0] should be sinusoidal
   7. Optical flow direction: when drone moves +x, target appears to move -x in
-     image; the B_y_g x-component should be NEGATIVE of B_v_tu x-component
+     image; the B_h_g x-component should be NEGATIVE of B_v_tu x-component
      divided by depth (since flow is target apparent motion, opposite of UAV)
   8. UAV angular velocity matches Gazebo's reported body-rate roughly
 
@@ -184,13 +184,13 @@ def main():
     print(f"  actual peak: ({peak_v[0]:.2f}, {peak_v[1]:.2f}, {peak_v[2]:.2f})  m/s")
 
     # ---- CHECK 7: Optical flow sign — opposite of UAV motion ----
-    banner("CHECK 7: Optical flow B_y_g = B_v_tu / depth")
-    B_y_g = B_v_tu / B_x_tu[:, 2][:, np.newaxis]
-    print(f"  B_y_g RMS: ({np.sqrt(np.mean(B_y_g[:,0]**2)):.4f}, "
-          f"{np.sqrt(np.mean(B_y_g[:,1]**2)):.4f}, {np.sqrt(np.mean(B_y_g[:,2]**2)):.4f})  [rad/s]")
+    banner("CHECK 7: Optical flow B_h_g = B_v_tu / depth")
+    B_h_g = B_v_tu / B_x_tu[:, 2][:, np.newaxis]
+    print(f"  B_h_g RMS: ({np.sqrt(np.mean(B_h_g[:,0]**2)):.4f}, "
+          f"{np.sqrt(np.mean(B_h_g[:,1]**2)):.4f}, {np.sqrt(np.mean(B_h_g[:,2]**2)):.4f})  [rad/s]")
     print(f"  EXPECT: rad/s scale (v_body / depth), typically 0.1-0.5 rad/s during flight")
     print(f"  Note: B_v_tu is *target* velocity wrt UAV, so when UAV moves +x, target moves -x in")
-    print(f"        body frame. So sign of B_y_g should be OPPOSITE of UAV body velocity.")
+    print(f"        body frame. So sign of B_h_g should be OPPOSITE of UAV body velocity.")
 
     # ---- CHECK 8: Angular velocity in body FRD ----
     banner("CHECK 8: B_w_ug — UAV angular velocity in body FRD")
@@ -212,7 +212,7 @@ def main():
     all_ok.append(np.allclose(FLU_2_FRD @ np.array([1, 2, 3]), [1, -2, -3], atol=1e-6))
     all_ok.append(mid_z > 1.0)
     all_ok.append(np.max(np.abs(B_v_tu)) < 10.0)   # peak v reasonable
-    all_ok.append(np.max(np.abs(B_y_g)) < 5.0)     # optical flow reasonable
+    all_ok.append(np.max(np.abs(B_h_g)) < 5.0)     # optical flow reasonable
 
     for i, ok in enumerate(all_ok, 1):
         print(f"  CHECK {i}: {'OK' if ok else 'FAIL'}")

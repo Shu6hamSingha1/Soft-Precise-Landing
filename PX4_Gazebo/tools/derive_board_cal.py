@@ -36,7 +36,7 @@ def main():
         if 'Phase' not in gt:
             continue
         try:
-            t, B_y_g, B_w_ug, xc_gt, yc_gt, valid = compute_gt_signals(gt)
+            t, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid = compute_gt_signals(gt)
         except Exception as e:
             print(f"  skip {os.path.basename(d)}: {e}"); continue
 
@@ -50,8 +50,8 @@ def main():
             raw = sgf(raw, FILTER_WIN, POLYORDER, axis=0)
             raw_s = sgf(raw_s, FILTER_WIN, POLYORDER, axis=0)
 
-        n = min(len(raw), len(B_y_g))
-        G = np.hstack([B_y_g[:n], -B_w_ug[:n]])      # manuscript w = -B_w_ug
+        n = min(len(raw), len(V_h_g))
+        G = np.hstack([V_h_g[:n], -B_w_ug[:n]])      # manuscript w = -B_w_ug
         R = raw[:n]
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
@@ -65,9 +65,9 @@ def main():
 
         # centroid scale: GT xc/yc vs board-homography xc/yc (raw_s[:,0:2]),
         # using x/y phases (signed std-ratio, same convention as aggregator).
-        ng = min(len(xc_gt), len(phase), len(raw_s))
-        sx = std_ratio(xc_gt[:ng], raw_s[:ng, 0], (phase[:ng] == 'x'))
-        sy = std_ratio(yc_gt[:ng], raw_s[:ng, 1], (phase[:ng] == 'y'))
+        ng = min(len(V_xc_g), len(phase), len(raw_s))
+        sx = std_ratio(V_xc_g[:ng], raw_s[:ng, 0], (phase[:ng] == 'x'))
+        sy = std_ratio(V_yc_g[:ng], raw_s[:ng, 1], (phase[:ng] == 'y'))
         calS.append([sx, sy])
         used += 1
 

@@ -54,7 +54,7 @@ def _body_omega_from_quats(quats, t):
 def compute_ground_truth_flow_and_w(gt):
     """Port of plotter_output_calibration.ipynb cells 16 + 18.
 
-    Returns (t_g, B_y_g, B_w_tug, B_x_tu) all of shape (N, 3) [or (N,) for t_g].
+    Returns (t_g, B_h_g, B_w_tug, B_x_tu) all of shape (N, 3) [or (N,) for t_g].
     """
     FLU_2_FRD = np.array(DCM(x=180.0))
 
@@ -100,7 +100,7 @@ def compute_ground_truth_flow_and_w(gt):
     # Guard against near-zero depth
     z = B_x_tu[:, 2].copy()
     z[np.abs(z) < 0.1] = np.nan  # invalid
-    B_y_g = B_v_tu / z[:, np.newaxis]
+    B_h_g = B_v_tu / z[:, np.newaxis]
 
     # Ground-truth angular velocity (body frame) via quaternion difference.
     # np.gradient on the 9 rotation-matrix elements breaks SO(3); the non-skew
@@ -113,7 +113,7 @@ def compute_ground_truth_flow_and_w(gt):
     B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_quats, t_g).T).T
     B_w_tug = B_w_tg - B_w_ug
 
-    return t_g, B_y_g, B_w_tug, B_x_tu, valid
+    return t_g, B_h_g, B_w_tug, B_x_tu, valid
 
 
 def robust_scale(raw, gt, magnitude_threshold):
@@ -148,7 +148,7 @@ def main():
     d = load_data(data_dir)
     gt = d["Ground_Truth"]
 
-    t_g, B_y_g, B_w_tug, B_x_tu, valid = compute_ground_truth_flow_and_w(gt)
+    t_g, B_h_g, B_w_tug, B_x_tu, valid = compute_ground_truth_flow_and_w(gt)
     n = len(t_g)
 
     # Raw image-side measurements (logged via getRawOptFlowAngVel — pre sensor_cal)
@@ -162,7 +162,7 @@ def main():
     print("        raw RMS  /  gt RMS                    raw RMS  /  gt RMS")
     for i in range(3):
         y_rms_r = np.sqrt(np.nanmean(y_raw[:, i] ** 2))
-        y_rms_g = np.sqrt(np.nanmean(B_y_g[:, i] ** 2))
+        y_rms_g = np.sqrt(np.nanmean(B_h_g[:, i] ** 2))
         w_rms_r = np.sqrt(np.nanmean(w_raw[:, i] ** 2))
         w_rms_g = np.sqrt(np.nanmean(B_w_tug[:, i] ** 2))
         print(f"  axis {i}: {y_rms_r:8.4f} / {y_rms_g:8.4f}    "
@@ -176,7 +176,7 @@ def main():
     flow_scale = np.zeros(3)
     flow_n = np.zeros(3, dtype=int)
     for i in range(3):
-        flow_scale[i], flow_n[i] = robust_scale(y_raw[:, i], B_y_g[:, i], flow_thresh)
+        flow_scale[i], flow_n[i] = robust_scale(y_raw[:, i], B_h_g[:, i], flow_thresh)
     ang_scale = np.zeros(3)
     ang_n = np.zeros(3, dtype=int)
     for i in range(3):
@@ -211,17 +211,17 @@ def main():
     xc_raw, yc_raw, _, alpha_raw = raw_s[:, 0], raw_s[:, 1], raw_s[:, 2], raw_s[:, 3]
 
     # GT centroid: target position / depth (in camera body coords)
-    xc_gt = B_x_tu[:, 0] / B_x_tu[:, 2]
-    yc_gt = B_x_tu[:, 1] / B_x_tu[:, 2]
+    V_xc_g = B_x_tu[:, 0] / B_x_tu[:, 2]
+    V_yc_g = B_x_tu[:, 1] / B_x_tu[:, 2]
 
     print(f"  xc raw RMS: {np.sqrt(np.nanmean(xc_raw ** 2)):.4f}   "
-          f"xc gt RMS: {np.sqrt(np.nanmean(xc_gt ** 2)):.4f}")
+          f"xc gt RMS: {np.sqrt(np.nanmean(V_xc_g ** 2)):.4f}")
     print(f"  yc raw RMS: {np.sqrt(np.nanmean(yc_raw ** 2)):.4f}   "
-          f"yc gt RMS: {np.sqrt(np.nanmean(yc_gt ** 2)):.4f}")
+          f"yc gt RMS: {np.sqrt(np.nanmean(V_yc_g ** 2)):.4f}")
 
     s_thresh = 0.05
-    xc_scale, xc_n = robust_scale(xc_raw, xc_gt, s_thresh)
-    yc_scale, yc_n = robust_scale(yc_raw, yc_gt, s_thresh)
+    xc_scale, xc_n = robust_scale(xc_raw, V_xc_g, s_thresh)
+    yc_scale, yc_n = robust_scale(yc_raw, V_yc_g, s_thresh)
 
     # 3rd component (scale) is hardcoded 1.0 in img_data.py; scaling has no effect, leave at 1.
     # 4th component (alpha) calibration would need target yaw computation; flag for follow-up.

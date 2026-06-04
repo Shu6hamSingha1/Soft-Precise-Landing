@@ -109,9 +109,9 @@ def compute_gt_signals(gt):
         W_v_tu_NED = sgf(W_v_tu_NED, min(51, win), 2, axis=0)
 
     # V-frame projection (gravity-leveled, drone-yaw-aligned).
-    B_y_g = np.zeros((n, 3))      # virtual image velocity h in V-frame
-    xc_gt = np.zeros(n)           # virtual image position s_x in V-frame
-    yc_gt = np.zeros(n)
+    V_h_g = np.zeros((n, 3))      # virtual image velocity h in V-frame
+    V_xc_g = np.zeros(n)           # virtual image position s_x in V-frame
+    V_yc_g = np.zeros(n)
     for i in range(n):
         yaw = np.arctan2(R_FRD_NED[i, 1, 0], R_FRD_NED[i, 0, 0])
         V_x_NED = np.array([np.cos(yaw), np.sin(yaw),  0.0])
@@ -120,13 +120,13 @@ def compute_gt_signals(gt):
         rel = W_x_tu_NED[i]
         Vx = rel @ V_x_NED;  Vy = rel @ V_y_NED;  Vz = rel @ V_z_NED
         if not (Vz > 1.0):
-            xc_gt[i] = np.nan; yc_gt[i] = np.nan
-            B_y_g[i] = np.nan
+            V_xc_g[i] = np.nan; V_yc_g[i] = np.nan
+            V_h_g[i] = np.nan
             continue
-        xc_gt[i] = Vx / Vz
-        yc_gt[i] = Vy / Vz
+        V_xc_g[i] = Vx / Vz
+        V_yc_g[i] = Vy / Vz
         relv = W_v_tu_NED[i]
-        B_y_g[i] = np.array([relv @ V_x_NED, relv @ V_y_NED, relv @ V_z_NED]) / Vz
+        V_h_g[i] = np.array([relv @ V_x_NED, relv @ V_y_NED, relv @ V_z_NED]) / Vz
 
     # ω: V-frame ω = body-FRD ω (V-frame z = world-down; for small tilts
     # body-z ≈ V-z so ω_z components agree; ω_x/ω_y components differ by
@@ -135,7 +135,7 @@ def compute_gt_signals(gt):
                            U.orientation.y, U.orientation.z] for U in UAV])
     B_w_ug = (FLU_2_FRD @ _body_omega_from_quats(uav_quats, t_g).T).T
 
-    return t_g, B_y_g, B_w_ug, xc_gt, yc_gt, valid
+    return t_g, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid
 
 
 def std_ratio(gt, raw, mask, k_mad_sample=3.0):
@@ -223,7 +223,7 @@ def main():
             continue
 
         try:
-            t_g, B_y_g, B_w_ug, xc_gt, yc_gt, valid_mask = compute_gt_signals(gt)
+            t_g, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid_mask = compute_gt_signals(gt)
         except Exception as e:
             print(f"  [SKIP] {os.path.basename(d)}: gt compute error {e}")
             continue
@@ -244,7 +244,7 @@ def main():
             raw_hw_f = raw_hw.copy(); raw_s_f = raw_s.copy()
 
         # Align lengths between phase array and GT signals (gt may be a bit longer if dt dedup removed some samples)
-        ngt = min(len(B_y_g), len(phase))
+        ngt = min(len(V_h_g), len(phase))
         phase = phase[:ngt]
 
         # Per-axis derivation using only that axis's phase samples
@@ -253,11 +253,11 @@ def main():
             mask = (phase == want_phase)
             if mask.sum() < 30: continue
             if k < 3:   # virtual image VELOCITY h (= target rel camera vel / depth)
-                gt_sig = B_y_g[:ngt, k]
+                gt_sig = V_h_g[:ngt, k]
             else:       # virtual image ANGULAR velocity w = -ω_camera (target rel
                         # to camera, manuscript convention). For stationary target:
                         #   w = ω_target - ω_camera = -ω_UAV_body  (since target ω = 0)
-                        # Plotter compares w_cal to B_w_tug = -B_w_ug; the aggregator
+                        # Plotter compares V_w_cal to B_w_tug = -B_w_ug; the aggregator
                         # must match this convention or the derived cal sign is wrong.
                 gt_sig = -B_w_ug[:ngt, k - 3]
             hw_diag[k] = std_ratio(gt_sig, raw_hw_f[:ngt, k], mask)
@@ -266,7 +266,7 @@ def main():
         for k, want_phase in AXIS_PHASE_S.items():
             mask = (phase == want_phase)
             if mask.sum() < 30: continue
-            gt_sig = xc_gt[:ngt] if k == 0 else yc_gt[:ngt]
+            gt_sig = V_xc_g[:ngt] if k == 0 else V_yc_g[:ngt]
             s_diag[k] = std_ratio(gt_sig, raw_s_f[:ngt, k], mask)
         # axes 2,3 of s (h, alpha) — keep at 1.0 (current convention)
         s_diag[2] = 1.0

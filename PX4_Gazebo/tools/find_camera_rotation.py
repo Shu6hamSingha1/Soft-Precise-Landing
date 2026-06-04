@@ -12,7 +12,7 @@ every raw LSTSQ axis against every GT axis. The dominant entry per column,
 with its sign, IS the rotation.
 
 GT convention here (to find the raw→GT map; sign discussion separate):
-  h GT  = B_y_g  (V-frame virtual image velocity, 3-vec)
+  h GT  = V_h_g  (V-frame virtual image velocity, 3-vec)
   w GT  = B_w_ug (body-FRD UAV angular velocity, 3-vec)
 Raw = gt['Opt Flow Ang Vel'] (the 6-vec LSTSQ output, pre-cal).
 
@@ -63,7 +63,7 @@ def main():
         if 'Phase' not in gt:
             continue
         try:
-            t_g, B_y_g, B_w_ug, xc_gt, yc_gt, valid = compute_gt_signals(gt)
+            t_g, V_h_g, B_w_ug, V_xc_g, V_yc_g, valid = compute_gt_signals(gt)
         except Exception as e:
             print(f"  skip {os.path.basename(d)}: {e}")
             continue
@@ -78,9 +78,9 @@ def main():
         else:
             raw_f = raw.copy()
 
-        # Full 6-vec GT: [B_y_g (3), B_w_ug (3)]
-        ngt = min(len(B_y_g), len(phase), len(raw_f))
-        gt6 = np.hstack([B_y_g[:ngt], B_w_ug[:ngt]])         # (ngt,6)
+        # Full 6-vec GT: [V_h_g (3), B_w_ug (3)]
+        ngt = min(len(V_h_g), len(phase), len(raw_f))
+        gt6 = np.hstack([V_h_g[:ngt], B_w_ug[:ngt]])         # (ngt,6)
         raw_f = raw_f[:ngt]
         phase = phase[:ngt]
 

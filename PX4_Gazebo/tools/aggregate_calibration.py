@@ -84,7 +84,7 @@ def compute_gt(gt):
 
     z = B_x_tu[:, 2].copy()
     z[np.abs(z) < 0.1] = np.nan
-    B_y_g = B_v_tu / z[:, np.newaxis]
+    B_h_g = B_v_tu / z[:, np.newaxis]
 
     # Body-frame angular velocity via quaternion difference (preserves SO(3)).
     # np.gradient on the 9 rotation-matrix elements breaks orthogonality; the
@@ -98,7 +98,7 @@ def compute_gt(gt):
     B_w_tg = (FLU_2_FRD @ _body_omega_from_quats(tgt_quats, t_g).T).T
     B_w_tug = B_w_tg - B_w_ug
 
-    return t_g, B_y_g, B_w_tug, B_x_tu, valid
+    return t_g, B_h_g, B_w_tug, B_x_tu, valid
 
 
 def robust_scale(raw, gt_v, threshold):
@@ -132,17 +132,17 @@ def analyze_one(run_dir):
         return False, None, None, f"load error: {e}"
 
     try:
-        t_g, B_y_g, B_w_tug, B_x_tu, valid = compute_gt(gt)
+        t_g, B_h_g, B_w_tug, B_x_tu, valid = compute_gt(gt)
     except Exception as e:
         return False, None, None, f"gt compute error: {e}"
 
     # validation gate
     n = len(t_g)
     W_T_P_t = None  # not needed for validity gate
-    # Use B_v_tu derived implicitly through B_y_g * depth
+    # Use B_v_tu derived implicitly through B_h_g * depth
     z = B_x_tu[:, 2]
     z_safe = np.where(np.abs(z) < 0.1, np.nan, z)
-    B_v_tu = B_y_g * z_safe[:, np.newaxis]
+    B_v_tu = B_h_g * z_safe[:, np.newaxis]
     if not is_valid_run(B_x_tu, B_v_tu):
         return False, None, None, "validity gate failed (mid_z<=1 or peak v>10)"
 
@@ -152,13 +152,13 @@ def analyze_one(run_dir):
     y_raw, w_raw = raw[:, :3], raw[:, 3:]
     xc_raw = raw_s[:, 0]; yc_raw = raw_s[:, 1]
 
-    xc_gt = B_x_tu[:, 0] / B_x_tu[:, 2]
-    yc_gt = B_x_tu[:, 1] / B_x_tu[:, 2]
+    V_xc_g = B_x_tu[:, 0] / B_x_tu[:, 2]
+    V_yc_g = B_x_tu[:, 1] / B_x_tu[:, 2]
 
-    flow = np.abs([robust_scale(y_raw[:, i], B_y_g[:, i], 0.05) for i in range(3)])
+    flow = np.abs([robust_scale(y_raw[:, i], B_h_g[:, i], 0.05) for i in range(3)])
     ang = np.abs([robust_scale(w_raw[:, i], B_w_tug[:, i], 0.02) for i in range(3)])
-    s_xc = abs(robust_scale(xc_raw, xc_gt, 0.05))
-    s_yc = abs(robust_scale(yc_raw, yc_gt, 0.05))
+    s_xc = abs(robust_scale(xc_raw, V_xc_g, 0.05))
+    s_yc = abs(robust_scale(yc_raw, V_yc_g, 0.05))
 
     hw = np.concatenate([flow, ang])
     s = np.array([s_xc, s_yc, 1.0, 1.0])
