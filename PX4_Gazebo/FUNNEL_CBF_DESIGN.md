@@ -3,6 +3,64 @@
 **Status (2026-06-05):** SWITCHING the visibility mechanism from the **cone clamp** to an
 **input-aware Control Barrier Function**.
 
+---
+## §0. CONVERGED DESIGN (2026-06-06): camera-plane visibility CBF as a QP over body tilt
+
+**Supersedes the optical-flow-dynamics CBF (§2–§4) and the cone clamp (§1) for the LATERAL barrier.**
+The optic-flow CBF was abandoned: calibration vs GT showed the flow (esp. divergence) is poorly
+observed and carries `β` + `d_h`, so a barrier on the flow *dynamics* is unreliable (corner `h_z`
+cross-val −0.98, ring −0.04). Visibility is fundamentally an **attitude** constraint — the tilt shifts
+the FoV — so we filter the desired tilt directly, on the *real* camera plane.
+
+**Barrier (REAL camera plane), per binding axis `k`:**
+```
+h_k = ρ_k − |c_cam,k| − δ_k ,      c_cam = c_V + f·θ
+```
+- `c_cam` = measured camera-plane feature (the REAL FoV position).
+- `c_V = c_cam − f·θ` = de-rotated (tilt-removed) target component (slow; homography centroid).
+- `f·θ` = tilt-induced displacement; `∂c_cam/∂θ = f` — exact geometric Jacobian, **no `β`, no flow, no `d_h`**.
+- `δ` = marker extent (continuous, §3); `ρ = R/2` (full FoV).
+
+**WHY NOT the V-frame:** a barrier on `c_V` does NOT ensure visibility. With `c_V = 0` (target centred
+in the de-rotated frame) a tilt gives `c_cam = f·θ`, which can exceed `ρ` — target out of the *real*
+FoV while the V-frame reads "safe." The photons land on the tilted sensor → the barrier must be on
+`c_cam`.
+
+**Visibility filter (QP over the body tilt `θ`):**
+```
+θ* = argmin_θ ‖θ − θ_d‖²   s.t.   |c_V + τ·ċ_V + f·θ| ≤ ρ − δ ,   |θ| ≤ θ_cap
+```
+- `θ_d` = desired body tilt from the geometric (SO(3)) tracking law.
+- Per-axis **box** ⇒ the QP is a trivial clamp:
+  `θ_k ∈ [(−(ρ−δ) − c_V − τċ_V)/f , ((ρ−δ) − c_V − τċ_V)/f] ∩ [−θ_cap, θ_cap]`.
+- `τ·ċ_V` = drift look-ahead (`ċ_V` from the centroid finite-diff) → forward-invariance under
+  velocity-driven drift. `θ_cap` = input-awareness, built in.
+
+**Controller insertion:** `outer loop → θ_d → [visibility clamp] → θ* → SO(3) inner loop`. Replaces the
+cone clamp (`controller.py:~825-860`) at the **same level** (the clamp already lives in tilt space).
+
+### §0.1 Comparison: CBF QP (rel. deg. 1) vs directional static cone clamp (rel. deg. 0)
+The **directional static cone clamp IS this box with `τ=0`**: `θ ≤ θ_curr + tan⁻¹(d_min/f)` ≡ the box
+without the look-ahead. So the *only* difference is the `τ·ċ_V` drift term.
+
+| | static clamp (deg. 0, `τ=0`) | CBF QP (deg. 1, `τ>0`) |
+|---|---|---|
+| Visibility | instantaneous (now) | **forward-invariant** (anticipates) |
+| Velocity drift | **not prevented** — if `θ_d≈0` while sliding, `c_V` walks out | braked — box tightens ahead, forces inward tilt |
+| Inputs | `c_cam` + tilt + thrust (minimal noise) | + `ċ_V` (centroid finite-diff) |
+| Robustness | bullet-proof | `ċ_V` noise (smooth centroid → manageable) |
+| Conservatism | none, but no anticipation | `τ` trades anticipation vs over-braking |
+| Tuning | none (geometric) | `τ` (look-ahead) |
+
+**Plan:** ship the **deg.-0 static clamp first** (cone clamp made directional + real-FoV + a clean
+`θ_d` projection — robust, tuning-free), which already cures the old clamp's two defects (magnitude
+strangle, shrinking-funnel early death) but only guarantees *instantaneous* visibility. **Add the
+`τ·ċ_V` look-ahead (deg. 1)** for the forward-invariance guarantee, gated on whether the static version
+is observed to lose the target under drift. Both env-gated (`FUNNEL_MODE=cone0|cbf1`). Optical flow is
+reserved for the *vertical* loom only.
+
+---
+
 **Terminology (corrected):** the live `controller.py:757-818` is a **CONE CLAMP** — a heuristic accel
 *saturation* (`|a_xy| ≤ |a_z|·tan θ_cone`), **NOT a CBF**: no barrier function, no `ḣ` constraint, no
 forward-invariance, **no visibility guarantee** (it caps accel from the present geometry; the existing

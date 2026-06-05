@@ -54,8 +54,7 @@ def gt_v_flow(gt, z_floor=0.15):
         VR = np.array([[np.cos(yaw), np.sin(yaw), 0], [-np.sin(yaw), np.cos(yaw), 0], [0, 0, 1.]])
         Vw[i] = VR @ (R[i] @ Bw[i])
         z = X[i] @ VR[2]; Vz[i] = z
-        if z > z_floor:
-            Vh[i] = (VR @ V[i]) / z
+        Vh[i] = (VR @ V[i]) / (z + 0.01)   # regularize z->0 singularity (matches notebook GT)
     return t_g, Vh, Vw, Vz
 
 

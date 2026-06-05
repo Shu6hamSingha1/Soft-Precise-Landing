@@ -481,10 +481,14 @@ class Controller(Thread):
 
         if self._sen_funnel:
             # === PPC funnel on s_e_n (back-mapped form; mirrors baseline :256-289) ===
+            # Mirror the optic-flow funnel breach handling (lines ~581-583): clamp ONLY
+            # the ratio for log-finiteness and leave the stored s_e_n untouched. Same
+            # logic in both PPC funnels -- a breach is absorbed by the clamp, not by
+            # rewriting the measurement.
             S_s = np.eye(2); zeta_s = np.zeros(2); G_s = np.eye(2)
             for idx in range(2):
-                r = float(np.clip(self._s_e_n[-1][idx] / self._p_s[-1][idx],
-                                  -1.0 + S_MARGIN, 1.0 - S_MARGIN))
+                r = self._s_e_n[-1][idx] / self._p_s[-1][idx]
+                r = float(np.clip(r, -1.0 + S_MARGIN, 1.0 - S_MARGIN))
                 S_s[idx, idx] = r
                 zeta_s[idx] = np.log((1 + r) / (1 - r))
                 G_s[idx, idx] = (np.exp(zeta_s[idx]) + 1) ** 2 / (2 * np.exp(zeta_s[idx]) * self._p_s[-1][idx])
