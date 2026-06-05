@@ -159,8 +159,12 @@ class Image_Node(Node):
                 if self._time_keeper.perf_counter() - self._start_time > 1.0:
                     raise Exception("Image resolution not received yet. Waiting...")
             
+            # FPS from the image STAMP (sim-time CAPTURE time) = the true frame interval, jitter-free.
+            # perf_counter() returns the /clock value AT THE CALLBACK, quantized to the ~250 Hz sim
+            # clock -> the interval snaps to 4 ms steps -> fps jittered (62/83/125 Hz). msg.header.stamp
+            # is the camera's own capture instant, which is regular. (2026-06-05)
             self._t0 = self._t1
-            self._t1 = self._time_keeper.perf_counter()
+            self._t1 = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
             if self._t0 != self._t1:
                 self._fps = 1/(self._t1 - self._t0)
