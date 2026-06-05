@@ -59,6 +59,15 @@ strangle, shrinking-funnel early death) but only guarantees *instantaneous* visi
 is observed to lose the target under drift. Both env-gated (`FUNNEL_MODE=cone0|cbf1`). Optical flow is
 reserved for the *vertical* loom only.
 
+**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cone0`):** the deg.-0 directional clamp is live in
+`controller.py` at the cone-clamp application — it limits ONLY the outward (away-from-marker) accel and
+frees the inward/tangential, vs the default `"cone"` magnitude clamp. The marker direction is the
+V-frame centroid `s[:2]` mapped to NED via `Rz(yaw)`; the image→NED **sign/axis map is uncalibrated** —
+env knobs `CONE0_SWAP` (swap u/v), `CONE0_SIGN_X`, `CONE0_SIGN_Y` (default no-swap, +1). **A wrong sign
+drives the marker OUT (CBF doc Assumption 1) — calibrate empirically (small lateral accel, watch the
+centroid) before trusting it.** Falls back to the magnitude clamp when no marker direction is available.
+Default unchanged (`"cone"`). The `τ·ċ_V` look-ahead (`cbf1`) is not yet wired.
+
 ---
 
 **Terminology (corrected):** the live `controller.py:757-818` is a **CONE CLAMP** — a heuristic accel

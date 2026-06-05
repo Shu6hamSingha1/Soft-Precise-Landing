@@ -87,7 +87,8 @@ the barrier is centroid-only, keeping the target centre in frame while deliberat
 marker grow and overflow as the UAV closes on it (its visibility \emph{is} the guarantee; using its large
 extent would fire the barrier early). \textbf{Phase 2 --- on its overflow} (decode-fail, hysteresis-gated
 against flicker $\Rightarrow$ touchdown range), $\delta$ \textbf{ramps in} over a few frames from the
-visible markers' $\tfrac12\mathrm{ptp}_k$ and tracks them thereafter. The ramp (not a step) keeps $h$ from
+visible-\emph{set} half-extent ($\tfrac12\mathrm{ptp}_k$ over ALL visible markers' corners, so
+$|\,^\Cframe\rhat|+\delta$ is the true outermost feature --- not one marker) and tracks them thereafter. The ramp (not a step) keeps $h$ from
 dropping discontinuously at engagement, but clamp the ramp gain so $\delta$ never \emph{lags} the measured
 $\tfrac12\mathrm{ptp}$ --- a ramp slower than the fill under-protects. Within Phase 2 the visible markers
 themselves leave (a mild inner sawtooth); $\dot\delta$ is reset across those switches.
@@ -108,7 +109,9 @@ trusting the barrier.
 attitude bandwidth $\Rightarrow$ lag; $\theta_{\rm cap}$ bounds magnitude, not delay.
 \item \textbf{The drift $\bm d$ is the translation part} ($\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega^{\rm
 curr}$) and $\dot\delta$ the loom. \emph{Challenge:} finite differences $\Rightarrow$ filter + binding-axis
-hysteresis; the disturbance enters as \emph{measured} motion --- no separate $\bm d_h$ term.
+hysteresis; the disturbance enters as \emph{measured} motion --- no separate $\bm d_h$ term. The homography
+centroid (hence $\,^\Cframe\dot{\rhat}_{\rm obs}$) must stay \emph{smooth across marker-set changes} (the
+homography re-fits on a different visible subset) or $\bm d$ spikes --- filter / hold a stable subset across a switch.
 \item \textbf{First-order $\Lw$ over the cycle.} Exact is the rotation homography of $\,^\Cframe\rhat$; the
 $\Lw(\bm\theta-\bm\theta_{\rm curr})$ linearization is accurate over one control step. At $\theta_{\rm
 cap}=60^\circ$ the integral (homography) is the safe choice for the boundary $\bm\theta$.

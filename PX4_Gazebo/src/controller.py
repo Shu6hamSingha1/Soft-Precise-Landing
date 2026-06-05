@@ -875,9 +875,42 @@ class Controller(Thread):
         if I_a[2] >= 0:
             I_a[2] = -3.0
         a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
-        a_xy_n = np.linalg.norm(I_a[:2])
-        if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
-            I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
+
+        # FUNNEL_MODE selects how the lateral accel is constrained for visibility.
+        #   "cone"  (default): the MATLAB magnitude clamp — a two-sided ball on
+        #           ‖a_xy‖. Limits the re-centering accel too (recovery strangle).
+        #   "cone0": the DIRECTIONAL static tilt clamp (docs/CBF_visibility.pdf
+        #           §0.1, the τ=0 camera-plane CBF). Limit ONLY the OUTWARD accel
+        #           (away from the marker, which drives the binding feature toward
+        #           the FoV edge); the inward (re-centering) and tangential
+        #           components are free. Cures the magnitude clamp's strangle.
+        t_hat = None
+        if os.environ.get("FUNNEL_MODE", "cone") == "cone0" and len(self._s) > 0:
+            s_xy = np.asarray(self._s[-1][:2], float)
+            s_n = float(np.linalg.norm(s_xy))
+            if s_n > 1e-6:
+                v = s_xy / s_n
+                # image(u,v) → inertial-NED toward-target map. The swap/sign is the
+                # SIGN-CALIBRATION gate (CBF doc Assumption 1): a WRONG sign drives
+                # the marker OUT. Env-tunable; verify empirically (command a small
+                # lateral accel, watch the centroid) before trusting cone0 on HW.
+                if os.environ.get("CONE0_SWAP", "0") == "1":
+                    v = v[::-1]
+                v = v * np.array([float(os.environ.get("CONE0_SIGN_X", "1.0")),
+                                  float(os.environ.get("CONE0_SIGN_Y", "1.0"))])
+                cz, sz = np.cos(yaw_c), np.sin(yaw_c)
+                t_hat = np.array([cz * v[0] - sz * v[1], sz * v[0] + cz * v[1]])  # Rz(yaw)·v
+
+        if t_hat is not None:
+            # directional: clamp only the outward (away-from-marker) excess
+            a_par = float(I_a[:2] @ t_hat)        # signed; >0 = toward marker (free)
+            if a_par < -a_xy_lim:                 # accelerating outward faster than allowed
+                I_a[:2] = I_a[:2] + (-a_xy_lim - a_par) * t_hat
+        else:
+            # magnitude clamp (default "cone", and cone0 fallback when no marker dir)
+            a_xy_n = np.linalg.norm(I_a[:2])
+            if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
+                I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
         I_a[2] = max(I_a[2], -50.0)
 
         # log FoV diagnostics
