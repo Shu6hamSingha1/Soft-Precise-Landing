@@ -1,9 +1,19 @@
-# Funnel redesign: centroid CBF for multi-marker target visibility
+# Target-visibility funnel — cone clamp (current heuristic) → input-aware CBF (the guarantee)
 
-**Status (2026-06-05):** CBF/cone-clamp **KEPT** (not superseded). `ρ_fov` now held **CONSTANT at
-`ρ_fov_0`** in code (`PLASMC_LFOV=0` default — stops the early perception-death from the 80px shrink).
-Precision is being added via a **PPC funnel on the virtual image POSITION `s`** (ported from the
-baseline; see §9), NOT by shrinking the visibility envelope.
+**Status (2026-06-05):** SWITCHING the visibility mechanism from the **cone clamp** to an
+**input-aware Control Barrier Function**.
+
+**Terminology (corrected):** the live `controller.py:757-818` is a **CONE CLAMP** — a heuristic accel
+*saturation* (`|a_xy| ≤ |a_z|·tan θ_cone`), **NOT a CBF**: no barrier function, no `ḣ` constraint, no
+forward-invariance, **no visibility guarantee** (it caps accel from the present geometry; the existing
+velocity can still carry the centroid out). Earlier text loosely called it "centroid CBF" — that was
+wrong, fixed throughout. A **CBF** is a formal barrier `h(x) ≥ 0` with `ḣ ≥ −α(h)` (or the HOCBF form)
+giving *forward-invariance* of the safe set — see §3, now in its **input-aware** form (never commands
+accel the lagged inner loop can't deliver, so the guarantee is one the plant can honor).
+
+Standing decisions: cone clamp stays the env-gated fallback (`FUNNEL_MODE=cone`); `ρ_fov` held CONSTANT
+at `ρ_fov_0` (`PLASMC_LFOV=0`); **precision is a SEPARATE** PPC funnel on `s_e_n` (§9, implemented);
+the perception-death floor hands off to the ring flow (§7/§8).
 
 ## 1. Problem with the current clamp (D1)
 
@@ -37,7 +47,12 @@ trackable inner marker, not just a centre point):
 ```
 c     = centroid pixel offset from image centre  = s[:2] · f           (2-vector; s[:2] is the
                                                                          normalized centroid feature)
-ρ     = FoV envelope (per-axis: ρ_u, ρ_v), the existing rho_fov_curr
+ρ     = the FULL camera FoV (image half-dims [H/2, W/2]), FIXED — NOT a funnel, NOT rho_fov_0. The
+        HOCBF's ḣ term (§3) supplies the *dynamic* reaction margin (it brakes the outward drift before
+        the edge, sized to the drift rate), so a STATIC margin (ρ < full FoV) is redundant and only
+        sacrifices visibility — it would fire the perception-death floor before the marker actually
+        fills the frame. (A shrinking funnel is strictly worse — early death; its convergence job is
+        the s_e_n funnel's, §9.)
 r     = inner (primary) marker half-extent in px = 0.5·max ptp(primary_corners)   (grows ~1/Z)
 
 h(x)  = min( ρ_u − |c_u| − r ,  ρ_v − |c_v| − r )        # margin; h ≥ 0  ⇔  inner marker in frame
@@ -59,48 +74,55 @@ still fully visible). Constant `ρ_fov_0` = a fixed near-camera-FoV visibility l
 convergence is the **position PPC funnel's** job (§9), not the visibility envelope's. `PLASMC_LFOV>0`
 restores the decay.
 
-## 3. The constraint: a directional CBF (allows recovery, walls off drift)
+## 3. The constraint: an INPUT-AWARE Control Barrier Function (the guarantee)
 
 `h` has **relative degree 2** w.r.t. lateral accel `a` (`a → v → c`): `ċ = J v`, `c̈ = J a + J̇ v`,
 where `J` is the image interaction matrix (downward camera; `J ≈ −(1/Z)·R_img`, sign fixed once
-empirically/from `L`). Use a **High-Order CBF**:
+empirically/from `L`). High-Order CBF, per binding axis `j ∈ {u,v}`:
 
 ```
-ḣ  = ∂h/∂c · ċ            (= −sign(c_axis)·ċ_axis − ṙ   on the binding axis)
-HOCBF:   ḧ + k1·ḣ + k0·h ≥ 0
+ḣ_j  = −sign(c_j)·ċ_j − ṙ                 (ċ from optic flow)
+HOCBF:  ḧ_j + k1·ḣ_j + k0·h_j ≥ 0          →   linear in a_xy:   A_j·a_xy ≤ b_j
 ```
 
-`c̈` is linear in `a`, so this is **one linear inequality in `a_xy`**. Enforce by projecting the
-SMC's desired `a_xy` onto it (clamp only along the gradient ∇_a(ḧ)). Geometrically this bounds the
-**outward radial** component of `a_xy` (the part driving the centroid toward the binding edge) with
-the bound **→0 as h→0**; the **inward (recovery) and tangential** components are left free. → No
-strangling, hard wall at the FoV edge (CBF forward-invariance).
-
-**Practical 1st-order start (recommended first cut):** use the *measured* centroid velocity from
-optic flow (`ċ ≈ h_flow[:2]`) instead of the `J̇v` term:
-
+**Input-aware QP — why a clamp can't guarantee and this can:**
 ```
-û        = c / |c|                                   # outward image direction (binding axis)
-ċ_out    = ċ · û        (measured, from optic flow)  # how fast centre is drifting out
-a_out    = (a_xy mapped through J) · û               # outward accel the command would add
-# barrier: don't let the centre approach the edge faster than the margin allows
-a_out_max = clip( k0·h − k1·ċ_out , 0, ∞ )           # →0 as h→0; allows inward (a_out<0) freely
-if a_out > a_out_max:  a_xy -= (a_out − a_out_max)·(J⁻¹ û)   # clamp ONLY the outward radial part
+a_xy* = argmin ‖a_xy − a_des‖²
+        s.t.  A_j·a_xy ≤ b_j        (HOCBF, j = u, v)
+              ‖a_xy‖ ≤ a_max        (DELIVERABLE accel: a_max = |a_z|·tan θ_cap, or the actuator cap)
 ```
+The `‖a_xy‖ ≤ a_max` box makes the guarantee *honorable*: the CBF can never command accel the lagged
+inner loop can't produce. A naive CBF that ignores it gives forward-invariance **on paper** that the
+SITL lag silently violates — strictly worse than an honest clamp. (We watched this exact failure mode
+in the `s_e_n` funnel, §9: it demanded flow the lagged middle loop couldn't track → the error ran
+away past its own bound.)
 
-This is implementable with what's already logged (`s`, optic flow, marker corners for `r`), avoids
-the `J̇` term, and is the minimal change that makes the clamp directional + centroid-based.
+**Feasibility floor = honest handoff:** if the box ∩ HOCBF set is **empty** (even `a_max` cannot hold
+`h ≥ 0`), visibility is *physically impossible* → raise the perception-floor flag → hand off to the
+ring flow (§7/§8). The CBF tells you *exactly* when to give up, rather than failing silently.
+
+**Directionality (free bonus):** the HOCBF bounds only the **outward radial** `a_xy` (the part driving
+`c` to the edge), bound **→0 as h→0**; the **inward (recovery) and tangential** components are left
+free → **no strangling** (the cone clamp's flaw, §1), hard wall at the edge (forward-invariance).
+
+**Practical `ċ` source (first cut):** measured optic-flow centroid rate (`ċ ≈ h_flow[:2]`) instead of
+the `J̇v` term — implementable today, robust. The QP is 2-var (`a_xy ∈ R²`, 2 HOCBF rows + 1 norm-box),
+solvable **closed-form** (no QP library): project `a_des` onto the HOCBF half-planes, then onto the
+`a_max` ball; if the projection set is empty → infeasible → the floor.
 
 ## 4. Implementation plan (env-gated, A/B-able)
 
-- New block replaces lines 770–817 **behind a flag**:
-  `FUNNEL_MODE = os.environ.get("FUNNEL_MODE","cone")` → `"cone"` (current, default) | `"cbf"`.
-- Reuse: `rho_fov_curr` (764-768), `theta_current` for the upright safety (812-813), `_img_node._feature_pts`
-  (for `r`, primary corners), the centroid from `self._s[-1][:2]` and focal `self._img_node.focal`.
-- New params: `FUNNEL_CBF_K0` (≈ barrier stiffness, 1/s²), `FUNNEL_CBF_K1` (≈ damping, 1/s),
-  `FUNNEL_CBF_RINNER` on/off (use `r` term or centroid-point only).
-- Keep the `I_a[2]<0` upright guard and the `−50` floor unchanged.
-- Log additions for A/B: `h(t)` (centroid margin), `a_out_desired`, `a_out_allowed`, the binding axis.
+- New block replaces `:757-818` behind `FUNNEL_MODE = os.environ.get("FUNNEL_MODE","cone")` →
+  `"cone"` (current heuristic, default) | `"cbf"` (input-aware CBF).
+- **Solve:** 2-var QP (`a_xy ∈ R²`, 2 HOCBF rows + 1 norm-box) — closed-form projection (cheap,
+  real-time), no QP library.
+- Reuse: `J` from the flow lstsq, `ċ` from optic flow (`h_flow[:2]`), `r` from the primary corners,
+  `a_max` from the existing cone limit (`|I_a_z|·tan θ_cap`), centroid `s[:2]·focal`, constant `ρ_fov_0`.
+- New params: `FUNNEL_CBF_K0` (1/s²), `FUNNEL_CBF_K1` (1/s, start `2√k0`), `FUNNEL_CBF_RINNER` (use the
+  `r` term vs centroid-point only).
+- **Feasibility-floor flag** when the QP is infeasible → raise it for the ring-flow handoff (§8).
+  Keep the `I_a[2]<0` upright guard.
+- Log for A/B: `h(t)`, `a_des` vs `a_xy*`, the active HOCBF row(s), the feasibility flag.
 
 ## 5. A/B methodology (`FUNNEL_MODE` cone vs cbf, n=5 each, IC1, video)
 
@@ -208,22 +230,26 @@ selection above. Log the active source + `N_ring`, `N_flow_corners` for A/B. The
 *safety net* — gate its per-frame computation on `N_flow_corners==0` for production so it costs ~0
 while the marker is alive (speed finding: ~4ms/frame, loop 83→62 Hz if run every frame).
 
-## 9. Precision: PPC funnel on virtual image POSITION `s` (port from baseline) — PLANNED
+## 9. Precision: PPC funnel on `s_e_n` (IMPLEMENTED, env-gated, needs tuning)
 
-**Decision (2026-06-05):** keep the cone clamp (constant `ρ_fov_0`, visibility) AND add a PPC funnel
-on `s` (precision), per the baseline `~/ws/scripts/soft_precise_landing/controller.py`.
+**Decision (2026-06-05):** keep visibility (cone clamp / CBF) + add a SEPARATE precision PPC funnel on
+the NORMALIZED position error `s_e_n` — **decoupled**. (The baseline's `_v` funnel did precision AND
+visibility in one mechanism, which would double-constrain the cone clamp; we split them: this funnel =
+precision only, cone clamp / CBF = visibility only.)
 
-**Mapping finding / ISSUE:** the baseline's outer-loop funnel (`:249-290`, the `_v` funnel) is a
-log-barrier **VISIBILITY funnel on `s`** — bounds start at the image edge (`p_0_v ≈ s_d + centre/
-focal`), shrink to `p_inf_v=[0.3,0.3]` → it does precision (tight terminal) AND visibility (image-edge
-start) in ONE mechanism. The PX4 port replaced it with a **plain PID on `s_e`** + the cone clamp for
-visibility. So porting the `_v` funnel **overlaps the cone clamp's visibility** (double-constraint).
+**Implemented** (env-gate `PLASMC_SEN_FUNNEL`, default OFF = the legacy outer PID): the baseline's
+back-mapped PPC (`baseline controller.py:256-289`) on `s_e_n` — `S_s=s_e_n/p_s` →
+`ζ_s=log((1+S)/(1−S))` → `G_s` → `ζ̇_sd = −K_rp·ζ_s − K_ri·∫ζ_s − K_rd·ζ̇_s` →
+`V_ds_d = G_s⁻¹·ζ̇_sd + S_s·ṗ_s` (replaces the PID at `controller.py:477-480`). Drop-in for the PID at
+small error; `s[:2]` only (depth = the `h[2]` funnel). Reuses `K_rp/ri/rd`; params
+`PLASMC_{PS0,PSINF,XIS}_{X,Y}`.
 
-**Recommended (decouple):** `s`-funnel = **precision only** — mirror the velocity funnel `p_2_*`
-(`p_1_0/p_1_inf/γ_1`, log-barrier `ζ_s`+`G_s`); terminal `p_1_inf` = the xy precision target, NOT the
-image edge. Output replaces the PID at `V_ds_d` (controller.py:477-480); `s[:2]` only (depth = the
-`h[2]` funnel's job). Cone clamp keeps the tilt/accel visibility. Knobs `PLASMC_{P10,P1INF,XI1}_*`,
-env-gated for A/B vs the PID. **Open: confirm decouple-vs-subsume before coding.**
+**A/B (n=3, IC1):** REGRESSED — 2/3 diverged (`|s_e_n|` ran to **6.6**, 5× past its bound `p_s0=1.2`) —
+partly confounded by worse IC starts, but the mechanism is real: the back-mapped form goes *gentle* at
+the bound, and the `S_MARGIN` clip caps the control once the error exceeds `p_s`, so the SITL lag lets
+it run away (the **same input-authority lesson** as the CBF, §3). **Needs tuning** — looser `p_s0` /
+slower `γ_s`, and restore the baseline's hard outlier-containment (force `s_e_n` back inside the bound
+on breach) instead of the soft clip. User decision: **keep it, tune it.**
 
 ## Metric note (carry-over, important)
 `SoftPrecise.rel_vel` uses the **PX4 EKF velocity sampled at/after contact** → reads ~0.02 while the

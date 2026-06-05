@@ -1,0 +1,288 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,booktabs,geometry,array,bm}
+\geometry{margin=1in}
+\setlength{\parskip}{4pt}
+\renewcommand{\arraystretch}{1.3}
+\newcommand{\sgn}{\operatorname{sign}}
+\newcommand{\Iframe}{\mathcal{I}}
+\newcommand{\Vframe}{\mathcal{V}}
+\newcommand{\rhat}{\hat{\bm{r}}}
+\newcommand{\ad}{\bm{a}_{\text{d}}}
+
+\title{\textbf{Input-Aware Control Barrier Function\\for the Target-Visibility Guarantee}\\[4pt]
+\large A High-Order CBF alternative to the funnel-margin cone clamp of VDF-ASMC}
+\author{Soft--Precise--Landing}
+\date{5 June 2026}
+
+\begin{document}
+\maketitle
+
+\noindent\emph{Scope.} This note develops the target-visibility guarantee as a High-Order Control
+Barrier Function (HOCBF) on the VDF-ASMC image-kinematic model, in the manuscript's notation --- the
+theory (\S1--\S8) followed by the per-cycle implementation steps (\S9), each step linked to the
+assumption it rests on. The guarantee is stated on the image \emph{features}
+$(\bm{s},\bm{h},\bm{w},\alpha)$: the perception front-end that produces them passes neither the markers'
+physical size nor their shape across the control boundary --- only the features enter the law --- so the
+CBF is depth-, scale-, and shape-free at deployment.
+
+\section*{Notation}
+\begin{tabular}{@{}l l@{}}
+\toprule
+Symbol & Meaning \\
+\midrule
+$\Iframe,\ \mathcal{B},\ \mathcal{C},\ \Vframe$ & inertial, body, camera, virtual frames \\
+$\,^\mathcal{C}\rhat_i,\ \,^\Vframe\rhat_i$ & $i$-th image feature point on camera / virtual plane, $i\in\{1,\dots,N\}$ \\
+$\,^\Vframe\rhat$ & virtual image point (centroid), $\,^\Vframe\rhat = N^{-1}\sum_i\,^\Vframe\rhat_i$ \\
+$\bm{s}=[\,^\Vframe\rhat;\,1]$ & virtual image position (normalized, rad), $\bm{s}_\text{d}=[0,0,1]^\top$ \\
+$\bm{h},\ \bm{w}$ & translational, rotational optic flow ($\Vframe$-frame), rad/s; $h_z$ = divergence \\
+$L_s$ & stacked image interaction matrix, $\,^\Vframe\dot{\rhat}_i=L_{s,i}[\bm{h}\,;\bm{w}]$ \\
+$\,^\Iframe\ad,\ \,^\Vframe\ad$ & inertial / virtual-frame commanded acceleration, $\,^\Vframe\ad=\,^\Iframe R_\Vframe^\top\,^\Iframe\ad$ \\
+$\beta = 1/\,^\Vframe z_\text{t}$ & depth scale (unobservable from the monocular image) \\
+$\mathcal{R}=[r_h,r_w]^\top,\ f$ & camera resolution, focal length (px) \\
+$\bm{\varphi}_{\max}=\mathcal{R}/(2f)$ & camera half-FoV in feature (tangent) units; $|\bar r_{\text{e}_k}|=1$ is the FoV edge \\
+$\bm{\delta}$ & feature half-spread (marker image extent), $\delta_k=\tfrac12\,\mathrm{ptp}_k(\cdot)$ \\
+$\theta_\text{curr},\ \theta_\text{cone},\ \theta_\text{cap}$ & body tilt $\arccos R_{33}$, cone half-angle, cap ($=60^\circ$) \\
+$d_\text{min}^\text{fov},\ \bm{p}_1(t)$ & funnel margin, target image funnel (manuscript) \\
+\midrule
+$h_b,\ h_{b,k}$ & \textbf{(new)} visibility barrier; $h_b=\min_k h_{b,k}$ \\
+$k_0,\ k_1$ & \textbf{(new)} HOCBF stiffness, damping \\
+$\tan\theta_k$ & \textbf{(new)} per-axis tilt control, $\tan\theta_k=\,^\Vframe a_{\text{d},k}/\,^\Vframe a_{\text{d},z}$ \\
+$\lambda$ & \textbf{(new)} divergence--loom scalar $\lambda=\beta\,a_z=\dot h_z+h_z^2$ (observable, scale-free) \\
+$A_k,\ b_k$ & \textbf{(new)} per-axis HOCBF row $A_k\tan\theta_k\le b_k$ \\
+\bottomrule
+\end{tabular}
+
+\section{Goal: from the cone clamp to a forward-invariant barrier}
+VDF-ASMC enforces visibility with the \emph{funnel-margin cone clamp}: a shrinking target image funnel
+$\bm{p}_1(t)$ sizes a state-dependent attitude cone $\theta_\text{cone}(t)$ that projects the commanded
+lateral acceleration,
+\begin{equation}\label{eq:cone}
+\,^\Iframe\bm{a}_{\text{d},xy}\leftarrow
+\min\!\Big(1,\ \tfrac{|\,^\Iframe a_{\text{d},z}|\tan\theta_\text{cone}(t)}{\|\,^\Iframe\bm{a}_{\text{d},xy}\|+\epsilon_c}\Big)\,^\Iframe\bm{a}_{\text{d},xy},
+\qquad
+\theta_\text{cone}=\min\!\big(\theta_\text{curr}+\tan^{-1}(d_\text{min}^\text{fov}/f),\ \theta_\text{cap}\big).
+\end{equation}
+This is a \emph{static, magnitude} projection: it caps $\|\,^\Iframe\bm{a}_{\text{d},xy}\|$ from the present
+margin $d_\text{min}^\text{fov}$, uses no feature \emph{velocity}, and obtains its guarantee only through
+the \emph{shrinking} envelope $\bm{p}_1(t)$. Two costs follow --- the shrink fires the perception-death
+floor early (the marker fills $\bm{p}_1$ while still inside the real FoV), and the magnitude cap throttles
+recovery-toward-centre as hard as drift-outward.
+
+The CBF keeps the same visibility guarantee but (i) on the \emph{full} FoV $\bm{\varphi}_{\max}$ (no shrink,
+no early death), (ii) using the optic flow as the feature velocity to obtain forward-invariance \emph{with}
+recovery preserved, and (iii) input-aware, so the guarantee is one the inner loop can honour.
+
+\section{Dynamics used by the CBF}\label{sec:dyn}
+The CBF rides on the VDF-ASMC image-kinematic model, \emph{unchanged}. The virtual image point obeys the
+position kinematics (manuscript Eq.~(s\,dot))
+\begin{equation}\label{eq:sdot}
+\dot{\bm{s}} = \bm{h} - \bm{w}\times\bm{s} - \big[(\bm{h}-\bm{w}\times\bm{s})\cdot\hat{\bm{e}}_3\big]\bm{s},
+\end{equation}
+so the centroid velocity is the translational optic flow $\bm{h}$ up to the known rotational/perspective
+terms in $\bm{w},\bm{s}$. The translational flow then carries the control through the optic-flow dynamics
+(manuscript Eq.~(h\,dot))
+\begin{equation}\label{eq:hdot}
+\dot{\bm{h}} = -\beta\,^\Iframe R_\Vframe^\top\,^\Iframe\ad + \tilde{\bm{c}}_h + \bm{d}_h
+            = -\beta\,^\Vframe\ad + \tilde{\bm{c}}_h + \bm{d}_h,
+\end{equation}
+with $\beta=1/\,^\Vframe z_\text{t}$ the depth scale, $\tilde{\bm{c}}_h$ the known kinematic coupling, and
+$\bm{d}_h$ the bounded disturbance.
+
+Thus the image position has \textbf{relative degree two} with respect to the commanded acceleration:
+$\,^\Vframe\ad \to \dot{\bm{h}} \to \dot{\bm{s}} \to \bm{s}$. The CBF state is $(\bm{s},\bm{h})$, a double
+integrator in the image plane whose input gain is the depth scale $\beta$. \textbf{No new model is
+introduced} --- \eqref{eq:sdot}--\eqref{eq:hdot} are the controller's existing equations. Crucially,
+$\beta$ is never isolated: \S4 parameterizes the command by tilt so $\beta$ appears only inside the
+observable product $\beta\,a_z$ (\S8).
+
+\section{Barrier on the full field of view}
+Let $\delta_k$ be the feature half-spread (marker image extent, measured as half the corner spread). The
+worst-case feature point lies at $|\,^\Vframe\hat r_k|+\delta_k$ from the optical axis on axis $k$. Define
+the per-axis barrier as the slack to the \emph{full} FoV edge $\varphi_{\max,k}$:
+\begin{equation}\label{eq:barrier}
+h_{b,k} = \varphi_{\max,k} - |\,^\Vframe\hat r_k| - \delta_k,
+\qquad h_b=\min_{k\in\{1,2\}}h_{b,k},
+\qquad
+\mathcal{C}=\{\,h_b\ge 0\,\}.
+\end{equation}
+$h_b\ge 0\iff$ the outermost feature point is inside the FoV on both axes, i.e.\ the target (marker) is
+visible. This is the manuscript funnel margin $d_\text{min}^\text{fov}$ with the shrinking $\bm{p}_1(t)$
+replaced by the fixed full edge $\bm{\varphi}_{\max}$. All quantities are image (feature) units; $\delta_k$
+is read off the image, not computed from any metric size.
+
+\subsection*{Multi-marker realization of $\bm{\delta}$}
+On the concentric multi-size board the detected marker set changes with altitude --- outer markers are
+\emph{designed} to exit the frame --- so the spread over \emph{all} detected corners would jump as
+markers leave and would size the barrier off markers meant to depart. Instead the centroid is taken over
+the whole board (smooth, invariant) while $\bm{\delta}$ is the half-extent of a single \emph{primary}
+marker $\mathcal{M}^\star$ (the smallest decodable ID, the last to survive):
+\begin{equation}\label{eq:delta}
+\delta_k=\tfrac12\,\mathrm{ptp}_k\big(\mathcal{M}^\star\ \text{corners}\big),\qquad k\in\{1,2\}.
+\end{equation}
+Since $\delta_k\propto\beta$ grows as the UAV descends, a single marker spans only a finite altitude band;
+the board bounds this by \emph{switching} to a smaller marker before $\delta_k$ reaches $\varphi_{\max,k}$,
+so $\delta_k$ follows a \textbf{sawtooth} --- rising within a band, dropping at each switch --- and stays
+clear of the FoV edge until the \emph{smallest} marker fills the frame (the genuine touchdown floor, where
+$h_b\!\to\!0$ from the loom $\delta$, not lateral drift, and the lateral CBF is correctly infeasible, \S6).
+Each switch jump is safe-direction ($\delta_k$ drops $\Rightarrow h_b$ rises), so forward-invariance is
+preserved; only $\dot\delta_k$ must be \emph{reset} across a switch rather than differentiated through the
+discontinuity.
+
+\section{High-Order CBF and its directionality}
+Differentiate the binding axis $k$ (the active term of the $\min$). With $\,^\Vframe\hat r_k=s_k$ and
+$\dot{s}_k\approx h_k$ from \eqref{eq:sdot},
+\begin{equation}\label{eq:hbdot}
+\dot h_{b,k} = -\sgn(s_k)\,\dot s_k - \dot\delta_k \;\approx\; -\sgn(s_k)\,h_k - \dot\delta_k .
+\end{equation}
+For $\ddot h_{b,k}$ the command enters through \eqref{eq:hdot}. Rather than the metric
+$\,^\Vframe a_{\text{d},k}$ --- which carries the \emph{unmeasurable} gain $\beta$ --- parameterize the
+lateral command by the \textbf{tilt}, $\,^\Vframe a_{\text{d},k}=\,^\Vframe a_{\text{d},z}\tan\theta_k$ (a
+lateral acceleration is the thrust tilted), exactly the variable the cone clamp uses. Then
+\begin{equation}\label{eq:cddot}
+\ddot s_k \approx \dot h_k = -\beta\,^\Vframe a_{\text{d},k}+\dots = -(\beta\,a_z)\tan\theta_k+\dots
+= -\lambda\,\tan\theta_k+\dots,
+\qquad \boxed{\ \lambda:=\beta\,a_z=\dot h_z+h_z^2\ }
+\end{equation}
+where $\lambda$ --- the depth scale times the vertical accel --- is \textbf{observable from the
+divergence} ($h_z$ and its rate; a standard loom identity, already part of the manuscript's known coupling
+$\tilde{\bm{c}}_h$). Hence $\ddot h_{b,k}\approx \sgn(s_k)\,\lambda\,\tan\theta_k$, and the HOCBF condition
+\begin{equation}\label{eq:hocbf}
+\ddot h_{b,k} + k_1\,\dot h_{b,k} + k_0\,h_{b,k}\ \ge\ 0
+\end{equation}
+is, being affine in $\tan\theta_k$, \textbf{one linear inequality per axis}:
+\begin{equation}\label{eq:row}
+\boxed{\ A_k\,\tan\theta_k\ \le\ b_k,\qquad A_k=-\sgn(s_k)\,\lambda,\qquad b_k=k_0 h_{b,k}+k_1\dot h_{b,k}.\ }
+\end{equation}
+The depth scale $\beta$ has dropped out: $A_k$ carries only the observable $\lambda$ and the control is the
+dimensionless tilt $\tan\theta_k$.
+
+\paragraph{Why it is directional (and the cone clamp is not).} With $\lambda>0$ (positive thrust, $a_z>0$,
+$\beta>0$), the row \eqref{eq:row} constrains the \emph{signed} tilt $\sgn(s_k)\tan\theta_k$ --- the tilt
+component driving the centroid \textbf{outward} (the barrier gradient $\partial h_{b,k}/\partial s_k=-\sgn(s_k)$).
+It is a \textbf{half-space} (one-sided) bound,
+\[
+\sgn(s_k)\tan\theta_k\ \ge\ -\big(k_0 h_{b,k}+k_1\dot h_{b,k}\big)/\lambda ,
+\]
+so only the \emph{drift-increasing} tilt is limited; the \emph{recovery} (inward) and \emph{tangential}
+tilts stay free. As $h_{b,k}\to0$ the bound tightens to ``no outward tilt'' --- a hard wall at the edge
+with full inward authority retained. The cone clamp \eqref{eq:cone} instead bounds the \emph{magnitude}
+$\|\,^\Iframe\bm{a}_{\text{d},xy}\|$ (a two-sided ball), throttling recovery as hard as drift.
+Directionality is the difference between constraining $\sgn(s_k)\tan\theta_k$ (a half-space) and a norm (a
+ball).
+
+\section{Input-aware projection}
+The tilt is what the inner loop must deliver, and VDF-ASMC already caps it:
+$\|\tan\bm\theta\|\le\tan\theta_\text{cap}$, $\theta_\text{cap}=60^\circ$ (Property~1, the
+$2\times$-hover-thrust margin). The visibility-safe command is the projection of the ASMC-desired tilt
+$\tan\theta_k^{\text{des}}=\,^\Vframe a_{\text{d},k}/\,^\Vframe a_{\text{d},z}$ onto the HOCBF half-spaces
+intersected with that tilt ball:
+\begin{equation}\label{eq:qp}
+\boxed{\
+\tan\bm\theta^\star=\arg\min_{\bm\tau\in\mathbb{R}^2}\ \|\bm\tau-\tan\bm\theta^{\text{des}}\|^2
+\quad\text{s.t.}\quad
+A_k\tau_k\le b_k\ (k=1,2),\quad \|\bm\tau\|\le\tan\theta_\text{cap}.\ }
+\end{equation}
+The ball $\|\bm\tau\|\le\tan\theta_\text{cap}$ is the input-aware ingredient: the barrier can never demand a
+tilt (hence a lateral accel) the inner loop cannot produce, so the forward-invariance it certifies is one
+the plant can honour, not a paper guarantee the actuation lag would void.
+
+\section{Feasibility floor and hand-off}
+The constraint set of \eqref{eq:qp} is \emph{empty} iff even the maximum inward tilt cannot satisfy some
+row:
+\begin{equation}\label{eq:feas}
+\min_{\|\bm\tau\|\le\tan\theta_\text{cap}} A_k \tau_k = -\tan\theta_\text{cap}\,|A_k| \;>\; b_k
+\quad\text{for some }k .
+\end{equation}
+Then $h_b<0$ is unavoidable --- the marker is filling the frame faster than any deliverable tilt can
+recover --- which is the true perception-death floor. Control hands off to a marker-free flow estimator
+(texture-free ring optic flow) for the blind terminal phase. The CBF thus \emph{certifies} exactly when the
+visibility objective is physically infeasible, instead of failing silently.
+
+\section{Assumptions (and the practical challenge each carries)}
+\begin{enumerate}
+\item \textbf{The commanded tilt is delivered without lag.} \emph{Challenge:} the inner attitude loop has
+finite bandwidth; the realized tilt lags the command, and a lagged plant can cross the barrier on the
+timescale of the delay. The input-aware ball bounds the tilt magnitude but not its delay; the manuscript
+books this as the attitude-tracking residual inside $\bm{d}_h$.
+\item \textbf{Image position has clean relative degree two via $\bm{h}$.} The rotational/perspective terms
+$\bm{w}\times\bm{s}$ in \eqref{eq:sdot} are treated as known feedforward. \emph{Challenge:} they require a
+reliable $\bm{w}$ from $L_s^\dagger$; near touchdown the pseudo-inverse degrades.
+\item \textbf{The gain is the observable $\lambda$, at first order.} The lateral coupling is taken as
+$\lambda\tan\theta_k$ with $\lambda=\dot h_z+h_z^2$ \eqref{eq:cddot}, which (a) identifies the commanded
+with the realized vertical accel under thrust tracking, and (b) keeps $\tilde c_h,\bm d_h,\ddot\delta_k$
+only through the measured $\dot h_{b,k}$. \emph{Challenge:} $\dot h_z$ is a divergence derivative, noisy
+near touchdown; the reduction is exact only near a centred, steady descent.
+\item \textbf{The marker is detected} ($\,^\Vframe\rhat_i,\bm s,\bm\delta$ available). \emph{Challenge:}
+when detection dies the CBF cannot be evaluated --- this is the hand-off of \eqref{eq:feas}, not a CBF
+guarantee.
+\item \textbf{$\tan\theta_\text{cap}$ is the true deliverable tilt bound} (the $60^\circ$ cap reserves the
+$2\times$-hover-thrust margin). \emph{Challenge:} this assumes the thrust channel is itself unsaturated.
+\end{enumerate}
+
+\section{Scale-freeness and depth-freeness}
+The barrier $h_b$ \eqref{eq:barrier} and the row's right side $b_k$ \eqref{eq:row} are built from
+$\bm{\varphi}_{\max}$, $\,^\Vframe\rhat$, $\bm\delta$, $\bm h$, $\bm w$ --- all image (feature) quantities.
+The control gain $A_k=-\sgn(s_k)\lambda$ carries the depth scale, but \textbf{only inside the product}
+$\lambda=\beta\,a_z$, never $\beta$ alone --- and that product is observable from the divergence,
+\begin{equation}\label{eq:lambda}
+\lambda=\beta\,a_z=\dot h_z+h_z^2,
+\end{equation}
+the vertical optic flow $h_z$ and its rate (the manuscript's $\tilde{\bm{c}}_h$ already forms it). Hence:
+\begin{itemize}
+\item \emph{No isolated $\beta$, no metric size.} Parameterizing the command by the tilt $\tan\theta_k$
+leaves $\beta$ only in $\beta\,a_z$, which the divergence supplies. There is \textbf{no}
+$\hat\beta=\delta/(f\,\mathrm{size})$ step --- that earlier proxy needed the marker's metric size and was
+therefore equivalent to a metric-depth estimate; it is removed.
+\item \emph{Image quantities only.} $\dot h_z,h_z$ are optic flow; $\tan\theta_k$ is dimensionless; the
+deliverable bound is $\tan\theta_\text{cap}$; $\delta_k$ is a measured image extent. No
+$\,^\Vframe z_\text{t}$, altitude, marker size, or metric position appears anywhere in the law.
+\end{itemize}
+
+\paragraph{Verdict.} The formulation is scale-free, depth-free, and (at the control boundary) shape-free in
+the same sense as VDF-ASMC: the depth scale enters only through the divergence-observable $\beta\,a_z$, the
+control is the dimensionless tilt, and the barrier is built from image features. The single honesty caveat
+is Assumption~3 --- the first-order reduction of $\tilde c_h,\bm d_h$ and the use of $\dot h_z$ --- the same
+practical reduction the manuscript already makes for its optic-flow law.
+
+\section{Implementation steps (per control cycle)}
+Each cycle maps the ASMC command $\,^\Vframe\ad$ and the detected feature set to the visibility-safe
+$\,^\Vframe\ad^\star$. The right-hand tag links each step to the assumption (Asm., \S7) or section it rests on.
+\begin{enumerate}
+\item \emph{Marker selection.} Board centroid $\,^\Vframe\rhat=N^{-1}\sum_{i=1}^{N}\,^\Vframe\rhat_i$;
+primary marker $\mathcal{M}^\star=$ smallest decodable ID, with hysteresis to suppress chatter.
+\hfill[Asm.~4]
+\item \emph{Barrier} (per axis $k\in\{1,2\}$). $\delta_k$ from \eqref{eq:delta}, then
+$h_{b,k}=\varphi_{\max,k}-|\,^\Vframe\hat r_k|-\delta_k$, with $\varphi_{\max,k}=\mathcal{R}_k/(2f)$.
+\hfill[Asm.~4]
+\item \emph{Barrier rate} (per axis $k$). Centroid velocity from the optic flow and known feedforward,
+\[
+\dot{\hat r}_k\approx h_k-(\bm{w}\times\bm{s})_k,\qquad
+\dot\delta_k=\frac{\delta_k(t)-\delta_k(t-\Delta t)}{\Delta t}\Big|_{\text{reset }0\text{ on switch}},\qquad
+\dot h_{b,k}=-\sgn(\,^\Vframe\hat r_k)\,\dot{\hat r}_k-\dot\delta_k.
+\]
+\hfill[Asm.~2,\,3;\ \S3]
+\item \emph{Loom gain.} $\lambda=\dot h_z+h_z^2$ from the divergence ($h_z$) and its rate --- the
+observable $\beta\,a_z$; no marker size. \hfill[\S8]
+\item \emph{HOCBF rows} (per axis $k$).
+\[
+A_k=-\sgn(\,^\Vframe\hat r_k)\,\lambda,\qquad b_k=k_0\,h_{b,k}+k_1\,\dot h_{b,k},\qquad
+\text{row}\quad A_k\tan\theta_k\le b_k.
+\]
+\hfill[Asm.~3]
+\item \emph{Deliverable bound.} tilt ball $\|\tan\bm\theta\|\le\tan\theta_\text{cap}$,\ \
+$\theta_\text{cap}=60^\circ$. \hfill[Asm.~5]
+\item \emph{Input-aware projection.} desired tilt
+$\tan\theta_k^{\text{des}}=\,^\Vframe a_{\text{d},k}/\,^\Vframe a_{\text{d},z}$; then
+$\tan\bm\theta^\star=\arg\min_{\bm\tau}\|\bm\tau-\tan\bm\theta^{\text{des}}\|^2$ s.t.\
+$A_k\tau_k\le b_k\,(k{=}1,2),\ \|\bm\tau\|\le\tan\theta_\text{cap}$. Closed form: (i)~clamp each $\tau_k$ to
+its outward limit $b_k/A_k$; (ii)~if $\|\bm\tau\|>\tan\theta_\text{cap}$, scale to the ball;
+(iii)~re-clamp~(i). \hfill[Asm.~1]
+\item \emph{Feasibility / hand-off.} If $-\tan\theta_\text{cap}|A_k|>b_k$ for any $k$: raise the
+perception-floor flag and switch the flow source to the texture-free ring estimator. \hfill[\S6]
+\item \emph{Command map.}
+$\,^\Vframe a_{\text{d},k}^\star=\,^\Vframe a_{\text{d},z}\tan\theta_k^\star$, then
+$\,^\Iframe\ad^\star=\,^\Iframe R_\Vframe\,^\Vframe\ad^\star$ to the SO(3) inner loop (existing acceleration
+floor and low-pass filter follow). \hfill[--]
+\end{enumerate}
+
+\end{document}

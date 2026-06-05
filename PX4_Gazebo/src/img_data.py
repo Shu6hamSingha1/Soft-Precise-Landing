@@ -202,7 +202,8 @@ class IMG_PROCESSOR(Thread):
         # 2026-06-02 — MULTI-MARKER BOARD layout.
         # The landing pad carries several ArUco markers at KNOWN, non-
         # overlapping board offsets (Images/aruco_board_layout.npy:
-        # id -> (x_m, y_m, size_m), board centre at origin). The OPTICAL FLOW
+        # id -> (x, y, size), DIMENSIONLESS (normalised to marker-0 size), board
+        # centre at origin; no metres). The OPTICAL FLOW
         # [h;w] uses all corners identity-free (rigid-body twist); the POSITION
         # feature s=(xc,yc) and yaw alpha need a stable reference, so they are
         # reconstructed from this layout via a board->V-frame homography fit to
@@ -1042,9 +1043,13 @@ class IMG_PROCESSOR(Thread):
         return float(np.arctan2(np.sin(a), np.cos(a)))   # wrap to (-pi, pi]
 
     def _board_corners(self, mid):
-        """Board-plane coords (metres, board centre = origin) of marker `mid`'s
-        4 corners, in cv2.aruco order [TL, TR, BR, BL]. Board +x = texture
-        column (right), +y = texture row (down) — matching make_aruco_board.py.
+        """Board-plane coords (DIMENSIONLESS — normalised to marker-0's size,
+        board centre = origin) of marker `mid`'s 4 corners, in cv2.aruco order
+        [TL, TR, BR, BL]. Board +x = texture column (right), +y = texture row
+        (down) — matching make_aruco_board.py. The layout carries NO metres: the
+        findHomography fit that consumes these is scale-invariant, so the centroid
+        is identical to any global unit; normalising to marker-0 = 1 makes the
+        scale-freeness manifest (no marker physical size anywhere in the pipeline).
         """
         cx, cy, sz = self._board_layout[mid]
         h = sz / 2.0

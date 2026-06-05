@@ -151,8 +151,14 @@ def main():
     print(f"[ok] wrote {tex_path}")
 
     layout_path = os.path.join(out_dir, 'aruco_board_layout.npy')
-    np.save(layout_path, {k: tuple(v) for k, v in LAYOUT.items()})
-    print(f"[ok] wrote {layout_path}  (id -> (x_m, y_m, size_m))")
+    # The controller-facing layout is DIMENSIONLESS: normalise every value by
+    # marker-0's size so the .npy carries no metres. The homography that consumes
+    # it (img_data._getBoardFeatures) is scale-invariant, so the centroid is
+    # identical, but the perception pipeline then provably uses no marker physical
+    # size. (LAYOUT above stays in metres only for the physical board PNG via m_to_px.)
+    _ref = LAYOUT[0][2]
+    np.save(layout_path, {k: tuple(np.asarray(v) / _ref) for k, v in LAYOUT.items()})
+    print(f"[ok] wrote {layout_path}  (id -> (x, y, size), NORMALISED to marker-0 size; dimensionless)")
 
     verify_codecode(tex)
 
