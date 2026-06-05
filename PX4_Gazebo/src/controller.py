@@ -135,6 +135,16 @@ class Controller(Thread):
         self._gamma = np.diag(pa("XI2",   0.2, 0.2, 0.2))
         self._p_0   =         pa("P20",   25.0, 25.0, 4.0)
         self._p_inf =         pa("P2INF", 2.5, 2.5, 1.5)
+        # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
+        # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
+        # PID at small error (G_s^-1·zeta_dot -> -K_rp·s_e_n); the barrier bites as s_e_n -> p_s.
+        self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "0") == "1"
+        self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "0.1")),
+                                 float(os.environ.get("PLASMC_XIS_Y", "0.1"))])
+        self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", "1.2")),
+                                  float(os.environ.get("PLASMC_PS0_Y", "1.2"))])
+        self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.1")),
+                                  float(os.environ.get("PLASMC_PSINF_Y", "0.1"))])
         # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
         self._Omega = np.diag(pa("OMEGA", 0.05, 0.05, 0.025))
         self._Gma   = np.diag(pa("GAMMA", 0.4375, 0.5, 0.75))
@@ -299,6 +309,14 @@ class Controller(Thread):
         self._zeta = []
         self._izeta = []
         self._G = []
+        # Outer-loop position barrier (s_e_n funnel) — mirrors the middle-loop barrier
+        self._p_s = []
+        self._dp_s = []
+        self._S_s = []
+        self._zeta_s = []
+        self._izeta_s = []
+        self._G_s = []
+        self._dzeta_s_deque = deque([np.zeros(2)] * 4)
         self._theta = []      # ||Theta||_F
         self._sigma = []
         self._kappa = [self._kappa_0.copy()]
@@ -440,6 +458,11 @@ class Controller(Thread):
         decay = expm(-t * self._gamma)
         self._p.append(decay @ (self._p_0 - self._p_inf) + self._p_inf)
         self._dp.append(-self._gamma @ decay @ (self._p_0 - self._p_inf))
+        if self._sen_funnel:
+            # Outer-loop position funnel envelope on s_e_n (shrinking, same exp form)
+            decay_s = expm(-t * self._gamma_s)
+            self._p_s.append(decay_s @ (self._p_s_0 - self._p_s_inf) + self._p_s_inf)
+            self._dp_s.append(-self._gamma_s @ decay_s @ (self._p_s_0 - self._p_s_inf))
 
     def _updateImgFeatureParam(self, s):
         """Outer loop: raw normalized pixel error -> PID -> desired feature derivative ds_d.
@@ -456,27 +479,57 @@ class Controller(Thread):
         s_e_n = self._s_e[-1][:2] / self._p_10
         self._s_e_n.append(s_e_n)
 
-        # Trapezoidal integration of normalized error + anti-windup
-        if len(self._is_e_n) == 0:
-            self._is_e_n.append(np.zeros(2))
+        if self._sen_funnel:
+            # === PPC funnel on s_e_n (back-mapped form; mirrors baseline :256-289) ===
+            S_s = np.eye(2); zeta_s = np.zeros(2); G_s = np.eye(2)
+            for idx in range(2):
+                r = float(np.clip(self._s_e_n[-1][idx] / self._p_s[-1][idx],
+                                  -1.0 + S_MARGIN, 1.0 - S_MARGIN))
+                S_s[idx, idx] = r
+                zeta_s[idx] = np.log((1 + r) / (1 - r))
+                G_s[idx, idx] = (np.exp(zeta_s[idx]) + 1) ** 2 / (2 * np.exp(zeta_s[idx]) * self._p_s[-1][idx])
+            self._S_s.append(S_s); self._zeta_s.append(zeta_s); self._G_s.append(G_s)
+            # integral of zeta_s (trapezoidal, anti-windup via izeta_clamp)
+            if len(self._izeta_s) == 0:
+                self._izeta_s.append(np.zeros(2))
+            else:
+                ni = (self._izeta_s[-1]
+                      + self._dt[-1] * 0.5 * (self._zeta_s[-1] + self._zeta_s[-2]))
+                nn = np.linalg.norm(ni)
+                if nn > self._izeta_clamp:
+                    ni = ni * (self._izeta_clamp / nn)
+                self._izeta_s.append(ni)
+            # smoothed derivative of zeta_s
+            if len(self._zeta_s) > 1:
+                self._dzeta_s_deque.append((self._zeta_s[-1] - self._zeta_s[-2]) / self._dt[-1])
+                self._dzeta_s_deque.popleft()
+            dzeta_s = smooth4(self._dzeta_s_deque)
+            # desired barrier dynamics (reuse PID gains) -> back-map + envelope-track
+            dzeta_sd = (- self._K_rp @ self._zeta_s[-1]
+                        - self._K_ri @ self._izeta_s[-1]
+                        - self._K_rd @ dzeta_s)
+            V_ds_d_xy = np.linalg.inv(G_s) @ dzeta_sd + S_s @ self._dp_s[-1]
         else:
-            new_int = (self._is_e_n[-1]
-                       + self._dt[-1] * 0.5 * (self._s_e_n[-1] + self._s_e_n[-2]))
-            n = np.linalg.norm(new_int)
-            if n > self._iV_s_e_n_clamp:
-                new_int = new_int * (self._iV_s_e_n_clamp / n)
-            self._is_e_n.append(new_int)
-
-        # Smoothed derivative of normalized error
-        if len(self._s_e_n) > 1:
-            self._ds_e_n_deque.append((self._s_e_n[-1] - self._s_e_n[-2]) / self._dt[-1])
-            self._ds_e_n_deque.popleft()
-        ds_e_n = smooth4(self._ds_e_n_deque)
-
-        # PID -> desired feature-time-derivative (manuscript form, no clamps)
-        V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
-                     - self._K_ri @ self._is_e_n[-1]
-                     - self._K_rd @ ds_e_n)
+            # === legacy outer PID on s_e_n (default) ===
+            # Trapezoidal integration of normalized error + anti-windup
+            if len(self._is_e_n) == 0:
+                self._is_e_n.append(np.zeros(2))
+            else:
+                new_int = (self._is_e_n[-1]
+                           + self._dt[-1] * 0.5 * (self._s_e_n[-1] + self._s_e_n[-2]))
+                n = np.linalg.norm(new_int)
+                if n > self._iV_s_e_n_clamp:
+                    new_int = new_int * (self._iV_s_e_n_clamp / n)
+                self._is_e_n.append(new_int)
+            # Smoothed derivative of normalized error
+            if len(self._s_e_n) > 1:
+                self._ds_e_n_deque.append((self._s_e_n[-1] - self._s_e_n[-2]) / self._dt[-1])
+                self._ds_e_n_deque.popleft()
+            ds_e_n = smooth4(self._ds_e_n_deque)
+            # PID -> desired feature-time-derivative (manuscript form, no clamps)
+            V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
+                         - self._K_ri @ self._is_e_n[-1]
+                         - self._K_rd @ ds_e_n)
         self._ds_d.append(np.concatenate([V_ds_d_xy, [0.0]]))
 
     def _updateOptFlow(self, h):
