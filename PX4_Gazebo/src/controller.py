@@ -79,7 +79,7 @@ class Controller(Thread):
 
         self._FC = controller
         self._img_node = ID.IMG_PROCESSOR(time_keeper=time_keeper, controller=controller)
-        if record != 'n':
+        if record != 'n' or os.environ.get("IMG_RECORD", "0") == "1":
             self._img_node.RECORD = True
             print("Starting with recording...")
         else:
@@ -184,7 +184,12 @@ class Controller(Thread):
                                       float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0"))])
         self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0")),
                                       float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0"))])
-        self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.1"))
+        # rho_fov held CONSTANT at rho_fov_0 by default (l_fov=0 -> exp(0)=1 -> rho_fov_curr=rho_fov_0).
+        # The decay to rho_fov_inf (80px) shrank the visibility funnel far inside the camera FoV,
+        # firing the perception-death handoff prematurely (marker fills 80px while still visible to
+        # ~290px). Constant rho_fov_0 = a fixed near-camera-FoV visibility limit; precision/convergence
+        # is the SMC's job, not the visibility funnel's. Set PLASMC_LFOV>0 to restore the decay. (2026-06-05)
+        self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.0"))
         self._theta_cap = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
@@ -403,6 +408,7 @@ class Controller(Thread):
                     self._w_i.append(_w_in)
                     self._updateOptFlow(opt_flow_ang_vel[:3])
 
+                    self._img_node.CONTROLLER_READY = True   # gates IMG_RECORD video to the descent
                     self.PLASMC()
                     self._yawCtrl()
                     self._attCtrl()
@@ -624,6 +630,25 @@ class Controller(Thread):
         e_a = np.arctan2(np.sin(2 * e_a_raw), np.cos(2 * e_a_raw)) / 2.0
         self._e_a.append(e_a)
 
+        # Terminal yaw-hold (2026-06-05): the marker ORIENTATION (alpha) becomes
+        # unreliable as the board fills the FoV near touchdown — frozen ArUco corners +
+        # close-up 2nd-moment jitter. A trace showed the controller acting on a garbage
+        # alpha jump -> w_u_z saturated -> the drone SPINS onto a random heading, landing
+        # the board 30-45 deg off square (it was aligned ~5 deg until ~0.5 s before
+        # touchdown). When the marker is stale, OR the folded alpha-error jumps faster
+        # than the body can physically yaw (a perception glitch, not real motion), HOLD:
+        # freeze psi_d below + zero w_u[2] in _attCtrl, so the drone lands at its last
+        # good aligned heading instead of spinning off-square.
+        self._yaw_hold = False
+        if os.environ.get("YAW_TERMINAL_HOLD", "1") == "1":
+            if self.FEATURE_IS_STALE:
+                self._yaw_hold = True
+            elif len(self._e_a) > 1 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+                _de = self._e_a[-1] - self._e_a[-2]
+                _de = np.arctan2(np.sin(2 * _de), np.cos(2 * _de)) / 2.0   # wrap (pi-fold)
+                if abs(_de) / self._dt[-1] > float(os.environ.get("YAW_HOLD_ALPHA_RATE", "3.0")):
+                    self._yaw_hold = True
+
         # Trapezoidal integral with anti-windup
         if len(self._ie_a) == 0:
             self._ie_a.append(0.0)
@@ -674,8 +699,9 @@ class Controller(Thread):
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
         #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]   (u_a rate-limited, see above)
         # No external heading reference enters; psi_d evolves purely from
-        # the image-based alpha error via the leakage ASMC.
-        if self._psi_d is not None and len(self._dt) > 0:
+        # the image-based alpha error via the leakage ASMC.  Frozen during yaw-hold
+        # so a garbage terminal alpha can't slew the virtual compass off-square.
+        if self._psi_d is not None and len(self._dt) > 0 and not self._yaw_hold:
             self._psi_d = float(
                 np.arctan2(np.sin(self._psi_d + _ua_psid * self._dt[-1]),
                            np.cos(self._psi_d + _ua_psid * self._dt[-1]))
@@ -740,11 +766,12 @@ class Controller(Thread):
         R33 = float(np.clip(R[2, 2], -1.0, 1.0))
         theta_current = np.arccos(R33)
 
-        # 2) Pixel-margin envelope (per axis, exponentially decaying)
+        # 2) Pixel-margin envelope (per axis). With l_fov=0 (default, 2026-06-05) this is CONSTANT
+        #    at rho_fov_0 — a fixed visibility limit (see __init__ note). l_fov>0 restores the decay.
         t_elapsed = self._t[-1] - self._t0
         rho_fov_curr = ((self._rho_fov_0 - self._rho_fov_inf)
                         * np.exp(-self._l_fov * t_elapsed)
-                        + self._rho_fov_inf)   # (2,)
+                        + self._rho_fov_inf)   # (2,)  == rho_fov_0 when l_fov=0
 
         # 3) Per-corner pixel margins — get latest 4 corners from img_node
         # _feature_pts[-1] is a [prev, curr] frame pair; [-1][1] is current 4 corners.
@@ -808,6 +835,31 @@ class Controller(Thread):
         else:
             alpha = self._tau_ia / (self._tau_ia + self._dt[-1])
             self._I_a.append(alpha * self._I_a[-1] + (1.0 - alpha) * I_a)
+
+        # Terminal stabilization (2026-06-05): on perception-stale (yaw-hold active near
+        # touchdown) the drone TILTS 14-32 deg chasing the frozen stale optic flow (all of
+        # the lateral drift is gained in this blind phase) AND the SMC winds up the thrust
+        # (free-fall). Override the desired accel to LEVEL + a gentle descent so the drone
+        # holds itself stable through the blind final ~0.5 m: a vertical I_a -> Gram-Schmidt
+        # R_d is level (e_R[:2]->0, no horizontal force => lateral hold) and B_T = mass*eps
+        # is a gentle descent. Yaw is already held by w_u[2]=0. Both R_d and B_T read
+        # self._I_a[-1], so overriding it in place drives all three. Scale-free: only the
+        # drone's own g + a commanded descent accel (no target altitude/Z).
+        # Terminal stabilization — HOLD LAST-GOOD (2026-06-05). When perception goes stale near
+        # touchdown, FREEZE the whole control output I_a at its last trustworthy value (snapshot at
+        # the first stale frame, hold through the blind phase) instead of letting it wind up on the
+        # stale optic flow. HOLDING (not forcing) keeps R_d ~= the actual attitude -> small e_R -> no
+        # instability — forcing a LEVEL R_d here DIVERGED (frozen-yaw mismatch corrupts e_R[0:2] ->
+        # w_u saturates -> drone pitches further off + falls; n=2 rel_vel 0.5-1.0 vs gate-only 0.49).
+        # And it holds the last-good thrust so the drone keeps its pre-death law-descent (~h_d*Z)
+        # instead of free-falling. Both R_d and B_T read self._I_a[-1], so holding it drives all
+        # axes; yaw is already held by w_u[2]=0. Scale-free: freezes an image-derived command only.
+        if getattr(self, "_yaw_hold", False) and os.environ.get("TERMINAL_STABILIZE", "0") == "1":
+            if getattr(self, "_Ia_hold", None) is None:
+                self._Ia_hold = self._I_a[-1].copy()    # snapshot last-good at perception-death onset
+            self._I_a[-1] = self._Ia_hold               # hold it through the blind phase
+        else:
+            self._Ia_hold = None                        # perception alive -> release the hold
 
         # ---- Inverse kinematics: desired roll/pitch from I_a (use current yaw) ----
         I_a_use = self._I_a[-1]
@@ -881,6 +933,12 @@ class Controller(Thread):
         # Env-overridable; default 1.0 rad/s.
         w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
         w_u = np.clip(w_u, -w_max, w_max)
+
+        # Terminal yaw-hold (see _yawCtrl): when the marker orientation is unreliable
+        # near touchdown, don't drive yaw on the garbage alpha — zero the yaw-rate
+        # command so the drone holds its last aligned heading (else it spins off-square).
+        if getattr(self, "_yaw_hold", False):
+            w_u[2] = 0.0
 
         # Diagnostics: log desired-attitude decomposition + SO(3) error
         self._euler_d.append(np.array([phi_d, theta_d, self._psi_d]))

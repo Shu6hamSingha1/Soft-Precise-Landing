@@ -1,6 +1,9 @@
 # Funnel redesign: centroid CBF for multi-marker target visibility
 
-**Status:** design for review (no code changes yet). Env-gated + A/B-able against the current cone.
+**Status (2026-06-05):** CBF/cone-clamp **KEPT** (not superseded). `ρ_fov` now held **CONSTANT at
+`ρ_fov_0`** in code (`PLASMC_LFOV=0` default — stops the early perception-death from the 80px shrink).
+Precision is being added via a **PPC funnel on the virtual image POSITION `s`** (ported from the
+baseline; see §9), NOT by shrinking the visibility envelope.
 
 ## 1. Problem with the current clamp (D1)
 
@@ -44,10 +47,17 @@ All terms are **pixels / normalized image quantities → scale-free, depth-free*
 position). `r` is the *image* size of the marker, not altitude.
 
 **Feasibility floor:** when `r > ρ` (inner marker fills the frame) `h<0` is unavoidable — no
-controller keeps it in. That's the true perception-death floor; the **background texture / nested
-small marker** must carry the optic flow past it. The funnel and the texture compose: CBF keeps the
-target centred+visible as long as physically possible; texture keeps the *flow* alive through the
-fill-frame phase.
+controller keeps it in. That's the true perception-death floor; the **ring (texture-free) optic
+flow** must carry the loom past it (see §7/§8). The funnel and the ring flow compose: CBF keeps the
+target centred+visible as long as physically possible; the ring divergence carries the *vertical*
+flow alive through the fill-frame phase.
+
+**`ρ_fov` held CONSTANT at `ρ_fov_0` `[290,210]px` (IMPLEMENTED 2026-06-05, `PLASMC_LFOV=0` default).**
+The decay to `[80,80]px` shrank the visibility envelope far inside the camera FoV (true image edge
+≈[320,240]px), firing the perception-death floor `r_inner>ρ` prematurely (marker fills 80px while
+still fully visible). Constant `ρ_fov_0` = a fixed near-camera-FoV visibility limit; precision/
+convergence is the **position PPC funnel's** job (§9), not the visibility envelope's. `PLASMC_LFOV>0`
+restores the decay.
 
 ## 3. The constraint: a directional CBF (allows recovery, walls off drift)
 
@@ -197,6 +207,23 @@ else (both unreliable)                      -> HOLD last good (open-loop, final 
 selection above. Log the active source + `N_ring`, `N_flow_corners` for A/B. The ring flow is the
 *safety net* — gate its per-frame computation on `N_flow_corners==0` for production so it costs ~0
 while the marker is alive (speed finding: ~4ms/frame, loop 83→62 Hz if run every frame).
+
+## 9. Precision: PPC funnel on virtual image POSITION `s` (port from baseline) — PLANNED
+
+**Decision (2026-06-05):** keep the cone clamp (constant `ρ_fov_0`, visibility) AND add a PPC funnel
+on `s` (precision), per the baseline `~/ws/scripts/soft_precise_landing/controller.py`.
+
+**Mapping finding / ISSUE:** the baseline's outer-loop funnel (`:249-290`, the `_v` funnel) is a
+log-barrier **VISIBILITY funnel on `s`** — bounds start at the image edge (`p_0_v ≈ s_d + centre/
+focal`), shrink to `p_inf_v=[0.3,0.3]` → it does precision (tight terminal) AND visibility (image-edge
+start) in ONE mechanism. The PX4 port replaced it with a **plain PID on `s_e`** + the cone clamp for
+visibility. So porting the `_v` funnel **overlaps the cone clamp's visibility** (double-constraint).
+
+**Recommended (decouple):** `s`-funnel = **precision only** — mirror the velocity funnel `p_2_*`
+(`p_1_0/p_1_inf/γ_1`, log-barrier `ζ_s`+`G_s`); terminal `p_1_inf` = the xy precision target, NOT the
+image edge. Output replaces the PID at `V_ds_d` (controller.py:477-480); `s[:2]` only (depth = the
+`h[2]` funnel's job). Cone clamp keeps the tilt/accel visibility. Knobs `PLASMC_{P10,P1INF,XI1}_*`,
+env-gated for A/B vs the PID. **Open: confirm decouple-vs-subsume before coding.**
 
 ## Metric note (carry-over, important)
 `SoftPrecise.rel_vel` uses the **PX4 EKF velocity sampled at/after contact** → reads ~0.02 while the

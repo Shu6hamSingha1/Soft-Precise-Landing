@@ -304,6 +304,7 @@ class IMG_PROCESSOR(Thread):
         self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
         self._ring_opt_flow_log = []   # texture-free ring V-frame flow [h;w] per frame (V_v_ring)
+        self._ring_div_log = []        # pure depth-independent divergence (loom) — safety-net vertical
         self._n_ring_corners = []      # # ring stations fed to the ring lstsq per frame
         # Online post-filter logs (both filters computed every frame, regardless
         # of which one IMG_FILTER selects for the controller). Saved as
@@ -472,12 +473,14 @@ class IMG_PROCESSOR(Thread):
     def _compute_ring_flow(self, imgs, quats):
         """Texture-free V-frame optic flow from fixed ring stations (Singhal sampler) fed
         through the SAME _getVirtualPts + _fill_A + lstsq as the corner flow. Returns
-        (V_v_ring [6], n_stations). Runs every frame independent of ArUco detection, so it
-        survives the marker death. SAFETY-NET signal for the soft landing when perception
-        dies (logged for the to-touchdown calibration); the controller still uses the corner
-        flow until this is validated. The PRIMARY goal stays REDUCING perception death. See
-        FUNNEL_CBF_DESIGN.md."""
-        zero = (np.zeros(6), 0)
+        (V_v_ring [6], pure_div, n_stations), where pure_div is the depth-INDEPENDENT radial-mean
+        divergence (Singhal loom) — the robust safety-net VERTICAL signal. The lstsq V_v_ring is
+        depth-MIXED (rings span ground+board), so a fixed ring->corner cal does not generalize;
+        the loom vz/z is depth-free and does, so it carries the soft touchdown. See memory
+        ring-flow-architecture + FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
+        detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
+        death; this is the safety net."""
+        zero = (np.zeros(6), 0.0, 0)
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
@@ -487,7 +490,7 @@ class IMG_PROCESSOR(Thread):
             p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._ring_pts0, None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
             if int(st.sum()) < 6:
-                return (np.zeros(6), int(st.sum()))
+                return (np.zeros(6), 0.0, int(st.sum()))
             r0 = self._ring_pts0[st]
             r1 = p1.reshape(-1, 2)[st]
             # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
@@ -496,6 +499,12 @@ class IMG_PROCESSOR(Thread):
             keep = fm < med + 3.0 * 1.4826 * mad
             if int(keep.sum()) >= 6:
                 r0, r1 = r0[keep], r1[keep]
+            # pure depth-INDEPENDENT divergence (Singhal radial mean / loom): the robust
+            # safety-net VERTICAL signal. Unlike the lstsq V_v_ring (depth-mixed -> a fixed
+            # ring->corner cal does not generalise), the loom vz/z is depth-free.
+            rvec = np.asarray(self.center, float) - r0
+            radial = np.einsum('ij,ij->i', (r1 - r0), rvec) / (np.sum(rvec**2, axis=1) + 1e-6)
+            pure_div = float(np.median(radial)) * self._fps
             # identical V-frame chain to the corner flow (gravity-leveled, same L+)
             V0 = self._getVirtualPts(r0, quats[0])
             V1 = self._getVirtualPts(r1, quats[1])
@@ -506,7 +515,7 @@ class IMG_PROCESSOR(Thread):
             if (rank < 6 or cond > 1e4 or not np.all(np.isfinite(V_v_ring))
                     or np.max(np.abs(V_v_ring)) > 50.0):
                 V_v_ring = np.zeros(6)
-            return (np.clip(V_v_ring, -10.0, 10.0), int(len(r0)))
+            return (np.clip(V_v_ring, -10.0, 10.0), pure_div, int(len(r0)))
         except Exception:
             return zero
 
@@ -797,8 +806,9 @@ class IMG_PROCESSOR(Thread):
         # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
         # still consumes the corner flow. PRIMARY goal remains reducing perception death.
         if self._ring_log_on:
-            _vvr, _nr = self._compute_ring_flow(imgs, quats)
+            _vvr, _pdiv, _nr = self._compute_ring_flow(imgs, quats)
             self._ring_opt_flow_log.append(_vvr)
+            self._ring_div_log.append(_pdiv)
             self._n_ring_corners.append(_nr)
 
         if not FEATURE_DATA_IS_LOGGED:
@@ -1251,6 +1261,7 @@ class IMG_PROCESSOR(Thread):
             "Quat": self._quat_log,
             "N Flow Corners": self._n_flow_corners,
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
+            "Ring Divergence": self._ring_div_log,              # pure depth-independent loom (safety-net vertical)
             "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
