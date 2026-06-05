@@ -61,7 +61,7 @@ only the genuine target motion, not our own tilting.
 
 For a finite tilt change the exact map is the rotation homography of the measured point; the
 first-order form $\,^\Cframe\rhat(\bm\theta)\approx\,^\Cframe\rhat+\Lw\,(\bm\theta-\bm\theta_{\rm curr})$ is
-the local linearization and replaces the earlier (incorrect) $\,^\Cframe\rhat=\,^\Vframe\rhat+\tan\theta$.
+the local linearization, accurate over one control step.
 
 \section{The visibility filter: a QP over the body tilt}
 With $m_k=\varphi_{\max,k}-\delta_k-\tau\dot\delta_k$ the predicted margin,
