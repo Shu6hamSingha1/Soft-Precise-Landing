@@ -910,44 +910,76 @@ class Controller(Thread):
         # below gravity.
         if I_a[2] >= 0:
             I_a[2] = -3.0
-        a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
-
         # FUNNEL_MODE selects how the lateral accel is constrained for visibility.
-        #   "cone"  (default): the MATLAB magnitude clamp — a two-sided ball on
-        #           ‖a_xy‖. Limits the re-centering accel too (recovery strangle).
-        #   "cone0": the DIRECTIONAL static tilt clamp (docs/CBF_visibility.pdf
-        #           §0.1, the τ=0 camera-plane CBF). Limit ONLY the OUTWARD accel
-        #           (away from the marker, which drives the binding feature toward
-        #           the FoV edge); the inward (re-centering) and tangential
-        #           components are free. Cures the magnitude clamp's strangle.
-        #   "cbf1":  cone0 + the predicted-margin look-ahead above (forward-invariant).
-        t_hat = None
-        if funnel_mode in ("cone0", "cbf1") and len(self._s) > 0:
-            s_xy = np.asarray(self._s[-1][:2], float)
-            s_n = float(np.linalg.norm(s_xy))
-            if s_n > 1e-6:
-                v = s_xy / s_n
-                # image(u,v) → inertial-NED toward-target map. The swap/sign is the
-                # SIGN-CALIBRATION gate (CBF doc Assumption 1): a WRONG sign drives
-                # the marker OUT. Env-tunable; verify empirically (command a small
-                # lateral accel, watch the centroid) before trusting cone0 on HW.
-                if os.environ.get("CONE0_SWAP", "0") == "1":
-                    v = v[::-1]
-                v = v * np.array([float(os.environ.get("CONE0_SIGN_X", "1.0")),
-                                  float(os.environ.get("CONE0_SIGN_Y", "1.0"))])
+        #   "cone" (default): MATLAB magnitude clamp (two-sided ball on ‖a_xy‖; strangles recovery).
+        #   "cone0"/"cbf1": directional clamp w/ the L_omega headroom above (lean-magnitude form).
+        #   "cbf2": exact camera-frame theta-QP (image-axis tilt; retires the lean approximation).
+        if funnel_mode == "cbf2":
+            # === Exact camera-frame theta-QP (docs/CBF_visibility.pdf — the literal QP) ===
+            # Constrain the PREDICTED camera feature: |s + L_w@theta + tau*d| <= m, with s = the
+            # V-frame (level) centroid, theta = commanded IMAGE-AXIS tilt, L_w@theta the tilt
+            # shift, m = phi_max - delta. theta_d from the desired accel via the (cone0+drift-
+            # validated) yaw map theta_d = Rz(-yaw)@(a_xy/a_z); solve, then a_xy* = a_z*Rz(yaw)@theta*.
+            # Works in image-axis tilt -> retires cone0/cbf1's lean-magnitude approximation.
+            a_z = abs(I_a[2]); ok = False
+            try:
+                rc = np.asarray(self._img_node._feature_pts[-1][1], float)
+                ct = (rc - np.asarray(self._img_node.center, float)) / foc
+                cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
+                Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
+                s_lvl = np.asarray(self._s[-1][:2], float) if len(self._s) > 0 else cr2
+                m2 = np.maximum(np.asarray(self._p_10, float) - 0.5 * (ct.max(0) - ct.min(0)), 1e-3)
+                dft = np.zeros(2); tau = float(os.environ.get("CBF_TAU", "0.3"))
+                if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_cr_prev", None) is not None:
+                    w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+                    d_raw = (cr2 - self._lw_cr_prev) / self._dt[-1] - Lw2 @ w_rp
+                    ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
+                    self._lw_d = (1 - ema) * getattr(self, "_lw_d", np.zeros(2)) + ema * d_raw
+                    dft = tau * self._lw_d
+                self._lw_cr_prev = cr2.copy()
                 cz, sz = np.cos(yaw_c), np.sin(yaw_c)
-                t_hat = np.array([cz * v[0] - sz * v[1], sz * v[0] + cz * v[1]])  # Rz(yaw)·v
-
-        if t_hat is not None:
-            # directional: clamp only the outward (away-from-marker) excess
-            a_par = float(I_a[:2] @ t_hat)        # signed; >0 = toward marker (free)
-            if a_par < -a_xy_lim:                 # accelerating outward faster than allowed
-                I_a[:2] = I_a[:2] + (-a_xy_lim - a_par) * t_hat
+                th = np.array([[cz, sz], [-sz, cz]]) @ (I_a[:2] / max(a_z, 1e-6))    # theta_d = Rz(-yaw)@(a_xy/a_z)
+                for _ in range(10):                                                  # project onto box + cap
+                    f = s_lvl + Lw2 @ th + dft
+                    for k in range(2):
+                        if f[k] > m2[k]:
+                            r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = s_lvl + Lw2 @ th + dft
+                        elif f[k] < -m2[k]:
+                            r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = s_lvl + Lw2 @ th + dft
+                    tn = float(np.linalg.norm(th))
+                    if tn > self._theta_cap:
+                        th = th * (self._theta_cap / tn)
+                I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)              # a_xy* = a_z*Rz(yaw)@theta*
+                ok = True
+            except (IndexError, AttributeError, ValueError, TypeError):
+                ok = False
+            if not ok:                                                             # magnitude-clamp fallback
+                a_xy_lim = a_z * np.tan(theta_cone); a_xy_n = np.linalg.norm(I_a[:2])
+                if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
+                    I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
         else:
-            # magnitude clamp (default "cone", and cone0 fallback when no marker dir)
-            a_xy_n = np.linalg.norm(I_a[:2])
-            if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
-                I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
+            a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
+            t_hat = None
+            if funnel_mode in ("cone0", "cbf1") and len(self._s) > 0:
+                s_xy = np.asarray(self._s[-1][:2], float)
+                s_n = float(np.linalg.norm(s_xy))
+                if s_n > 1e-6:
+                    v = s_xy / s_n
+                    # image->inertial toward-target map (SIGN-CAL gate; default validated cos.I_a=0.84)
+                    if os.environ.get("CONE0_SWAP", "0") == "1":
+                        v = v[::-1]
+                    v = v * np.array([float(os.environ.get("CONE0_SIGN_X", "1.0")),
+                                      float(os.environ.get("CONE0_SIGN_Y", "1.0"))])
+                    cz, sz = np.cos(yaw_c), np.sin(yaw_c)
+                    t_hat = np.array([cz * v[0] - sz * v[1], sz * v[0] + cz * v[1]])  # Rz(yaw)·v
+            if t_hat is not None:
+                a_par = float(I_a[:2] @ t_hat)        # >0 = toward marker (free)
+                if a_par < -a_xy_lim:                 # outward faster than allowed
+                    I_a[:2] = I_a[:2] + (-a_xy_lim - a_par) * t_hat
+            else:
+                a_xy_n = np.linalg.norm(I_a[:2])      # magnitude clamp (cone / fallback)
+                if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
+                    I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
         I_a[2] = max(I_a[2], -50.0)
 
         # log FoV diagnostics

@@ -84,6 +84,17 @@ the *directionality* (a calibrated-inertial hybrid; a fully camera-frame `θ`-QP
 strangles recovery, the reason the floor was pinned at 60 under the magnitude clamp). The sign-cal
 default map (`SWAP=0,+1,+1`) is validated offline (`tools/calibrate_cone0_sign.py`, cos·I_a=0.84).
 
+**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cbf2`):** the EXACT camera-frame `θ`-QP (the literal doc QP),
+retiring cone0/cbf1's lean-magnitude approximation. Solves, in image-axis tilt:
+`θ* = argmin‖θ−θ_d‖² s.t. |s + L_ω·θ + τd| ≤ m, |θ| ≤ θ_cap`,
+where `s` = V-frame (level) centroid, `L_ω·θ` = the tilt shift (so `s+L_ω·θ` = the predicted camera
+feature), `m = φ_max − δ`, `θ_d = Rz(−yaw)·(a_xy/a_z)`; then `a_xy* = a_z·Rz(yaw)·θ*`. Solved by
+iterative projection (box + cap). The `a_xy↔tilt` yaw map needs no new cal gate — both `cone0` and the
+`L_ω·ω` drift calibrated to the **identity** map (`tools/calibrate_cone0_sign.py`,
+`tools/calibrate_cbf1_drift_sign.py`, cos 0.84/0.85), so the body→image axes are no-swap. Falls back to
+the magnitude clamp on any failure. This is the rigorous form; behaviorally it differs from cbf1 mainly
+**off-centre** (the binding case near touchdown is ~centred, where cbf1 was already ~exact).
+
 ---
 
 **Terminology (corrected):** the live `controller.py:757-818` is a **CONE CLAMP** — a heuristic accel
