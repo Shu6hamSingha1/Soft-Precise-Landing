@@ -45,7 +45,7 @@ VIDEO = False
 class IMG_PROCESSOR(Thread):
     def __init__(self, resolution = (1280, 960), capRate = 60, time_keeper=time, controller=None):
         Thread.__init__(self)
-        self.RECORD = False
+        self.RECORD = os.environ.get("IMG_RECORD", "0") == "1"   # IMG_RECORD=1 saves the descent video
         self.CONTROLLER_READY = False
 
         # Image streaming setup
@@ -152,6 +152,44 @@ class IMG_PROCESSOR(Thread):
             maxLevel=3,
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
             minEigThreshold=1e-3,
+        )
+
+        # Ring stations for the TEXTURE-FREE V-frame optic flow (Singhal ring sampler):
+        # fixed concentric-ring points about the image centre, LK-tracked every frame and
+        # fed through the SAME _getVirtualPts + _fill_A + lstsq as the corners. Survives the
+        # marker death (tracks pattern/ground, no decode needed); logged for the to-touchdown
+        # output calibration. Control still consumes the corner flow until validated.
+        self._ring_log_on = os.environ.get("FLOW_RINGS_LOG", "1") == "1"
+        # Ring radii are RESOLUTION-ADAPTIVE: fractions of R_max = min(W,H)/2 (the largest ring that
+        # fits the frame). Spanning ~17-83% of R_max (NOT clustered) both spreads the L+ lstsq AND
+        # lowers divergence noise (noise ~ LK_px / r): on this 480x640 frame it cut temporal noise
+        # 3.58->1.59 (-56%) vs the old fixed [40..100] (inner 42% only). Tuned 2026-06-05.
+        # FLOW_RING_RADII (explicit px list) overrides the fractions if set.
+        _Rmax = float(min(self._resolution)) / 2.0
+        _expl = os.environ.get("FLOW_RING_RADII", "")
+        if _expl:
+            _ring_radii = [float(r) for r in _expl.split(",")]
+        else:
+            _fracs = [float(x) for x in
+                      os.environ.get("FLOW_RING_FRACS", "0.17,0.33,0.50,0.67,0.83").split(",")]
+            _ring_radii = [f * _Rmax for f in _fracs]
+        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "60"))
+        _rcx, _rcy = float(self.center[0]), float(self.center[1])
+        _ring_pts = []
+        for _rr in _ring_radii:
+            _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
+            _ring_pts.append(np.c_[_rr * np.cos(_ra) + _rcx, _rr * np.sin(_ra) + _rcy])
+        self._ring_pts0 = np.vstack(_ring_pts).astype(np.float32)
+        # Ring LK params (separate from the corner LK): larger winSize + higher
+        # minEigThreshold reject ill-textured ring stations (the board's white cells lack
+        # texture). Tuned offline 2026-06-05 (win 21->41, eig 1e-3->1e-2): ring spread
+        # 1.28->1.20, temporal noise -9%, tracked count +58%. PARTIAL mitigation only —
+        # texturing the board is the deeper fix (the noise stays high without it).
+        self._ring_lk_params = dict(
+            winSize=(int(os.environ.get("FLOW_RING_LK_WIN", "41")),) * 2,
+            maxLevel=int(os.environ.get("FLOW_RING_LK_LVL", "3")),
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+            minEigThreshold=float(os.environ.get("FLOW_RING_LK_EIG", "1e-2")),
         )
 
         # NOTE: a V_YAW_SOURCE=alpha mode was REMOVED 2026-06-04. Rotating V to be
@@ -265,6 +303,8 @@ class IMG_PROCESSOR(Thread):
         self._imu_angvel_raw = []   # IMU body rate (FRD) [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
+        self._ring_opt_flow_log = []   # texture-free ring V-frame flow [h;w] per frame (V_v_ring)
+        self._n_ring_corners = []      # # ring stations fed to the ring lstsq per frame
         # Online post-filter logs (both filters computed every frame, regardless
         # of which one IMG_FILTER selects for the controller). Saved as
         # "Opt Flow KF" / "Opt Flow Savgol" inside getLogData for offline A/B.
@@ -428,6 +468,47 @@ class IMG_PROCESSOR(Thread):
         return {
             'fps': self._fps, 'img_process_freq':1/self._calc_time
         }
+
+    def _compute_ring_flow(self, imgs, quats):
+        """Texture-free V-frame optic flow from fixed ring stations (Singhal sampler) fed
+        through the SAME _getVirtualPts + _fill_A + lstsq as the corner flow. Returns
+        (V_v_ring [6], n_stations). Runs every frame independent of ArUco detection, so it
+        survives the marker death. SAFETY-NET signal for the soft landing when perception
+        dies (logged for the to-touchdown calibration); the controller still uses the corner
+        flow until this is validated. The PRIMARY goal stays REDUCING perception death. See
+        FUNNEL_CBF_DESIGN.md."""
+        zero = (np.zeros(6), 0)
+        if (imgs is None or imgs[0] is None or imgs[1] is None
+                or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
+            return zero
+        try:
+            g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+            g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._ring_pts0, None, **self._ring_lk_params)
+            st = np.asarray(st).flatten().astype(bool)
+            if int(st.sum()) < 6:
+                return (np.zeros(6), int(st.sum()))
+            r0 = self._ring_pts0[st]
+            r1 = p1.reshape(-1, 2)[st]
+            # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
+            fm = np.linalg.norm(r1 - r0, axis=1)
+            med = np.median(fm); mad = np.median(np.abs(fm - med)) + 1e-6
+            keep = fm < med + 3.0 * 1.4826 * mad
+            if int(keep.sum()) >= 6:
+                r0, r1 = r0[keep], r1[keep]
+            # identical V-frame chain to the corner flow (gravity-leveled, same L+)
+            V0 = self._getVirtualPts(r0, quats[0])
+            V1 = self._getVirtualPts(r1, quats[1])
+            A = self._fill_A(V1)
+            Y = np.reshape(V1 - V0, (-1,)) * self._fps
+            V_v_ring, _, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
+            cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
+            if (rank < 6 or cond > 1e4 or not np.all(np.isfinite(V_v_ring))
+                    or np.max(np.abs(V_v_ring)) > 50.0):
+                V_v_ring = np.zeros(6)
+            return (np.clip(V_v_ring, -10.0, 10.0), int(len(r0)))
+        except Exception:
+            return zero
 
     def _imgProcess(self, imgs, quats, angvels=None, showVideo = False):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
@@ -636,20 +717,22 @@ class IMG_PROCESSOR(Thread):
                 A = self._fill_A(V_flow_norm[1])
                 Y = np.reshape(V_flow_norm[1] - V_flow_norm[0], (-1,)) * self._fps
 
-                B_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
+                # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
+                # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
+                V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
                 cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
                 bad = (
                     rank < 6
                     or cond > 1e4
-                    or not np.all(np.isfinite(B_v))
-                    or np.max(np.abs(B_v)) > 50.0
+                    or not np.all(np.isfinite(V_v))
+                    or np.max(np.abs(V_v)) > 50.0
                 )
                 if bad:
-                    B_v = np.zeros(6)
-                B_v = np.clip(B_v, -10.0, 10.0)
+                    V_v = np.zeros(6)
+                V_v = np.clip(V_v, -10.0, 10.0)
 
-                B_v_scaled = size_factor * B_v
-                self._opt_flow_ang_vel_raw.append(B_v_scaled)
+                V_v_scaled = size_factor * V_v
+                self._opt_flow_ang_vel_raw.append(V_v_scaled)
                 _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
                 self._imu_angvel_raw.append(
                     np.array([_av.forward_rad_s, _av.right_rad_s, _av.down_rad_s])
@@ -659,7 +742,7 @@ class IMG_PROCESSOR(Thread):
                     np.array([_q1.w, _q1.x, _q1.y, _q1.z]) if _q1 is not None else np.full(4, np.nan))
                 self._n_flow_corners.append(int(len(flow_pts_1)))
                 # 2-state KF update — only on a fresh raw measurement.
-                self._kf_update(B_v_scaled, self._time.perf_counter())
+                self._kf_update(V_v_scaled, self._time.perf_counter())
                 # Log both filters' calibrated outputs every frame for A/B.
                 self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
                 self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
@@ -710,6 +793,13 @@ class IMG_PROCESSOR(Thread):
         self._time_log.append(self._time.perf_counter())
         self._quats.append(quats)
         self._fps_log.append(self._fps)
+        # Texture-free ring flow — computed EVERY frame (survives the marker death), logged
+        # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
+        # still consumes the corner flow. PRIMARY goal remains reducing perception death.
+        if self._ring_log_on:
+            _vvr, _nr = self._compute_ring_flow(imgs, quats)
+            self._ring_opt_flow_log.append(_vvr)
+            self._n_ring_corners.append(_nr)
 
         if not FEATURE_DATA_IS_LOGGED:
             # Intervention 2: increment the stale streak and flip the flag
@@ -1160,6 +1250,8 @@ class IMG_PROCESSOR(Thread):
             "IMU AngVel": self._imu_angvel_raw,
             "Quat": self._quat_log,
             "N Flow Corners": self._n_flow_corners,
+            "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
+            "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
             "FPS": self._fps_log
