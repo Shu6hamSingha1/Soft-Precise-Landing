@@ -849,7 +849,22 @@ class Controller(Thread):
 
         # 4) Cone angle: current tilt + how-much-more-we-can-tilt-before-edge, capped
         focal_px = float(self._img_node.focal[0])
-        theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+        funnel_mode = os.environ.get("FUNNEL_MODE", "cone")
+        d_min_eff = d_min_fov
+        if funnel_mode == "cbf1":
+            # CBF look-ahead (docs/CBF_visibility.pdf): use the PREDICTED FoV margin
+            # d_min + tau*d_min_dot (forward-invariance, the rel-deg-1 cbf1) so the
+            # clamp tightens BEFORE the marker exits — anticipates the lateral drift
+            # AND the loom (board fill). d_min_dot = EMA-filtered finite-difference of
+            # the margin. Its tilt-rate part is benign in this scalar-margin form:
+            # re-centering RAISES d_min (loosens), an outward drift / fill LOWERS it
+            # (tightens early). Env: CBF_TAU (horizon s), CBF_DMIN_EMA (filter).
+            if len(self._d_min_fov_log) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+                ddot_raw = (d_min_fov - self._d_min_fov_log[-1]) / self._dt[-1]
+                ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
+                self._cbf_ddot = (1.0 - ema) * getattr(self, "_cbf_ddot", 0.0) + ema * ddot_raw
+                d_min_eff = max(d_min_fov + float(os.environ.get("CBF_TAU", "0.3")) * self._cbf_ddot, 0.0)
+        theta_cone = float(min(theta_current + np.arctan(d_min_eff / focal_px),
                                self._theta_cap))
         # θ_cone floor — RESTORED 2026-06-03 (removed by the 14:20 refactor; second
         # refactor regression after DH_D_MAX). The d_min collapse logic assumes
@@ -884,8 +899,9 @@ class Controller(Thread):
         #           (away from the marker, which drives the binding feature toward
         #           the FoV edge); the inward (re-centering) and tangential
         #           components are free. Cures the magnitude clamp's strangle.
+        #   "cbf1":  cone0 + the predicted-margin look-ahead above (forward-invariant).
         t_hat = None
-        if os.environ.get("FUNNEL_MODE", "cone") == "cone0" and len(self._s) > 0:
+        if funnel_mode in ("cone0", "cbf1") and len(self._s) > 0:
             s_xy = np.asarray(self._s[-1][:2], float)
             s_n = float(np.linalg.norm(s_xy))
             if s_n > 1e-6:

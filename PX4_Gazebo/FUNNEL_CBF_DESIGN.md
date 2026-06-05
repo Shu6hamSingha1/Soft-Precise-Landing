@@ -66,7 +66,20 @@ V-frame centroid `s[:2]` mapped to NED via `Rz(yaw)`; the image→NED **sign/axi
 env knobs `CONE0_SWAP` (swap u/v), `CONE0_SIGN_X`, `CONE0_SIGN_Y` (default no-swap, +1). **A wrong sign
 drives the marker OUT (CBF doc Assumption 1) — calibrate empirically (small lateral accel, watch the
 centroid) before trusting it.** Falls back to the magnitude clamp when no marker direction is available.
-Default unchanged (`"cone"`). The `τ·ċ_V` look-ahead (`cbf1`) is not yet wired.
+Default unchanged (`"cone"`).
+
+**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cbf1`):** the forward-invariant CBF = cone0 + a predicted-margin
+look-ahead. `θ_cone` uses the PREDICTED FoV margin `d_min + τ·ḋ_min` (EMA-filtered margin rate; env
+`CBF_TAU`≈0.3 s, `CBF_DMIN_EMA`≈0.3), so the clamp tightens BEFORE the marker exits — anticipating the
+lateral drift and the loom (board fill). In this scalar-margin form the tilt-rate part of `ḋ_min` is
+benign (re-centering raises `d_min`→loosens; an outward drift/fill lowers it→tightens early), so no
+explicit `L_ω` tilt-strip is needed.
+
+**Usage gate for BOTH cone0 and cbf1:** the `d_min` term is only active with `PLASMC_THETA_FLOOR_DEG < 60`
+(the default floor=60 pins `θ_cone=θ_cap` and disables it). Test config: `FUNNEL_MODE=cone0|cbf1` +
+`PLASMC_THETA_FLOOR_DEG=15..30` — the directional clamp is what makes that low floor safe (it no longer
+strangles recovery, the reason the floor was pinned at 60 under the magnitude clamp). The sign-cal
+default map (`SWAP=0,+1,+1`) is validated offline (`tools/calibrate_cone0_sign.py`, cos·I_a=0.84).
 
 ---
 
