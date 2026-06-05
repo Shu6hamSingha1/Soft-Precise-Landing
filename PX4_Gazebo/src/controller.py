@@ -847,25 +847,46 @@ class Controller(Thread):
         except (IndexError, AttributeError, ValueError, TypeError):
             d_min_fov = 0.0   # fall back to "no extra tilt allowed"
 
-        # 4) Cone angle: current tilt + how-much-more-we-can-tilt-before-edge, capped
+        # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
+        foc = np.asarray(self._img_node.focal, float)            # [fx, fy]
         funnel_mode = os.environ.get("FUNNEL_MODE", "cone")
-        d_min_eff = d_min_fov
-        if funnel_mode == "cbf1":
-            # CBF look-ahead (docs/CBF_visibility.pdf): use the PREDICTED FoV margin
-            # d_min + tau*d_min_dot (forward-invariance, the rel-deg-1 cbf1) so the
-            # clamp tightens BEFORE the marker exits — anticipates the lateral drift
-            # AND the loom (board fill). d_min_dot = EMA-filtered finite-difference of
-            # the margin. Its tilt-rate part is benign in this scalar-margin form:
-            # re-centering RAISES d_min (loosens), an outward drift / fill LOWERS it
-            # (tightens early). Env: CBF_TAU (horizon s), CBF_DMIN_EMA (filter).
-            if len(self._d_min_fov_log) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
-                ddot_raw = (d_min_fov - self._d_min_fov_log[-1]) / self._dt[-1]
-                ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
-                self._cbf_ddot = (1.0 - ema) * getattr(self, "_cbf_ddot", 0.0) + ema * ddot_raw
-                d_min_eff = max(d_min_fov + float(os.environ.get("CBF_TAU", "0.3")) * self._cbf_ddot, 0.0)
-        theta_cone = float(min(theta_current + np.arctan(d_min_eff / focal_px),
-                               self._theta_cap))
+        if funnel_mode in ("cone0", "cbf1"):
+            # === L_omega camera-plane CBF (docs/CBF_visibility.pdf), per-cycle steps ===
+            # The tilt->feature coupling is the rotational interaction matrix L_omega at
+            # the MEASURED camera image point (tangent units) — exact, depth-free, no
+            # virtual frame. The headroom is the binding-axis margin / ||L_omega row||.
+            tau = float(os.environ.get("CBF_TAU", "0.3")) if funnel_mode == "cbf1" else 0.0
+            theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+                                   self._theta_cap))   # d_min fallback; overwritten below if cr available
+            try:
+                rc = np.asarray(self._img_node._feature_pts[-1][1], float)   # (N,2) u-v
+                ct = (rc - np.asarray(self._img_node.center, float)) / foc    # corners, tangent
+                cr = ct.mean(0)                                              # (step 2) ^C r_hat centroid
+                delta = 0.5 * (ct.max(0) - ct.min(0))                        # visible-set half-extent
+                x, y = float(cr[0]), float(cr[1])
+                L_w = np.array([[x * y, -(1.0 + x * x)], [1.0 + y * y, -x * y]])   # (step 3) L_omega
+                d = np.zeros(2); ddelta = 0.0
+                if funnel_mode == "cbf1" and len(self._dt) > 0 and self._dt[-1] > 1e-6 \
+                        and getattr(self, "_lw_cr_prev", None) is not None:
+                    # (step 3) exogenous drift d = cr_dot_obs - L_omega @ omega_rp (strip our tilt)
+                    w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+                    d_raw = (cr - self._lw_cr_prev) / self._dt[-1] - L_w @ w_rp
+                    ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
+                    self._lw_d = (1 - ema) * getattr(self, "_lw_d", np.zeros(2)) + ema * d_raw
+                    d = self._lw_d
+                    ddelta = max((float(np.linalg.norm(delta)) - getattr(self, "_lw_dprev",
+                                  float(np.linalg.norm(delta)))) / self._dt[-1], 0.0)
+                self._lw_cr_prev = cr.copy(); self._lw_dprev = float(np.linalg.norm(delta))
+                # (step 4) predicted margin m = phi_max - |cr + tau*d| - delta - tau*ddelta
+                m = np.maximum(np.asarray(self._p_10, float) - np.abs(cr + tau * d) - delta - tau * ddelta, 0.0)
+                headroom = float(np.min(m / (np.linalg.norm(L_w, axis=1) + 1e-9)))   # rad
+                theta_cone = float(min(theta_current + headroom, self._theta_cap))
+            except (IndexError, AttributeError, ValueError, TypeError):
+                pass   # keep the d_min fallback above
+        else:
+            theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+                                   self._theta_cap))
         # θ_cone floor — RESTORED 2026-06-03 (removed by the 14:20 refactor; second
         # refactor regression after DH_D_MAX). The d_min collapse logic assumes
         # tilt moves the marker OUT of the image, but tilting toward the marker

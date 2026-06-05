@@ -68,12 +68,15 @@ drives the marker OUT (CBF doc Assumption 1) — calibrate empirically (small la
 centroid) before trusting it.** Falls back to the magnitude clamp when no marker direction is available.
 Default unchanged (`"cone"`).
 
-**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cbf1`):** the forward-invariant CBF = cone0 + a predicted-margin
-look-ahead. `θ_cone` uses the PREDICTED FoV margin `d_min + τ·ḋ_min` (EMA-filtered margin rate; env
-`CBF_TAU`≈0.3 s, `CBF_DMIN_EMA`≈0.3), so the clamp tightens BEFORE the marker exits — anticipating the
-lateral drift and the loom (board fill). In this scalar-margin form the tilt-rate part of `ḋ_min` is
-benign (re-centering raises `d_min`→loosens; an outward drift/fill lowers it→tightens early), so no
-explicit `L_ω` tilt-strip is needed.
+**IMPLEMENTED + MATCHED TO THE `L_ω` DOC 2026-06-06:** `cone0` and `cbf1` now compute the tilt headroom
+from the **rotational interaction matrix `L_ω` at the measured camera centroid** (tangent units,
+depth-free, no virtual frame), per `CBF_visibility.pdf`:
+`headroom = min_k m_k / ‖L_ω[k]‖`, `m = φ_max − |ᶜr̂ + τ·d| − δ − τ·δ̇`, `θ_cone = θ_curr + headroom`.
+`cone0` is `τ=0` (static); **`cbf1`** adds `τ>0` with the exogenous drift `d = ᶜṙ_obs − L_ω·ω` (body-rate
+stripped; EMA-filtered) — forward-invariant. Reduces to `atan(d_min/f)` for a centred marker and refines
+the off-centre/edge case (the `L_ω` coupling). The directional `a_xy` clamp (cone0's `t̂`) still supplies
+the *directionality* (a calibrated-inertial hybrid; a fully camera-frame `θ`-QP would need the
+`a_xy↔image-tilt` convention, a second cal gate — deferred). Env: `CBF_TAU`≈0.3, `CBF_DMIN_EMA`≈0.3.
 
 **Usage gate for BOTH cone0 and cbf1:** the `d_min` term is only active with `PLASMC_THETA_FLOOR_DEG < 60`
 (the default floor=60 pins `θ_cone=θ_cap` and disables it). Test config: `FUNNEL_MODE=cone0|cbf1` +
