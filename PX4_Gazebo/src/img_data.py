@@ -305,6 +305,7 @@ class IMG_PROCESSOR(Thread):
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
         self._ring_opt_flow_log = []   # texture-free ring V-frame flow [h;w] per frame (V_v_ring)
         self._ring_div_log = []        # pure depth-independent divergence (loom) — safety-net vertical
+        self._ring_opt_flow_kf_log = []  # ring V-frame flow through the SAME KF as corner flow
         self._n_ring_corners = []      # # ring stations fed to the ring lstsq per frame
         # Online post-filter logs (both filters computed every frame, regardless
         # of which one IMG_FILTER selects for the controller). Saved as
@@ -337,6 +338,11 @@ class IMG_PROCESSOR(Thread):
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
         self._kf_initialized = False
+        # Ring-flow KF — the SAME _kf_step filter, separate state (V_v_ring through it)
+        self._kf_x_ring = np.zeros((6, 2))
+        self._kf_P_ring = np.tile(np.eye(2) * 1.0, (6, 1, 1))
+        self._kf_ring_prev_t = None
+        self._kf_ring_initialized = False
 
         # Centroid-feature KF (4 channels: xc, yc, scale, alpha) — same 2-state
         # constant-velocity model as the flow KF, env IMG_FEATURE_FILTER=kf.
@@ -810,6 +816,12 @@ class IMG_PROCESSOR(Thread):
             self._ring_opt_flow_log.append(_vvr)
             self._ring_div_log.append(_pdiv)
             self._n_ring_corners.append(_nr)
+            # run V_v_ring through the SAME KF the corner flow uses (separate state)
+            (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
+             self._kf_ring_initialized) = self._kf_step(
+                self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
+                self._kf_ring_initialized, _vvr, self._time.perf_counter())
+            self._ring_opt_flow_kf_log.append(self._kf_x_ring[:, 0].copy())
 
         if not FEATURE_DATA_IS_LOGGED:
             # Intervention 2: increment the stale streak and flip the flag
@@ -927,29 +939,17 @@ class IMG_PROCESSOR(Thread):
 
         return A
 
-    def _kf_update(self, z, t):
-        """Per-channel 2-state KF (constant-velocity) update.
+    def _kf_step(self, x, P, prev_t, initialized, z, t):
+        """Generic per-channel 2-state (value, rate) constant-velocity KF step.
+        Operates on the passed state (no self.* writes) and returns the updated
+        (x, P, prev_t, initialized) so the SAME filter can run on multiple flow
+        sources (corner flow + ring flow). z: (6,) measurement; t: timestamp."""
+        if not initialized:
+            x = np.zeros((6, 2)); x[:, 0] = z          # value=z, rate=0
+            P = np.tile(np.eye(2) * 1.0, (6, 1, 1))    # moderate prior
+            return x, P, t, True
 
-        z : (6,) measurement vector (raw lstsq output, post-clip).
-        t : current timestamp in seconds (monotonic perf_counter).
-
-        On the first call, the state is initialized to z with zero rate; the
-        full covariance is reset to a moderate prior so the next few updates
-        adapt quickly. Subsequent calls run the standard Kalman predict +
-        update with dt computed from the previous call's time.
-        """
-        if not self._kf_initialized:
-            self._kf_x[:, 0] = z
-            self._kf_x[:, 1] = 0.0
-            # Diagonal prior covariance — value uncertainty ~ |z|, rate ~|z|/dt
-            self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
-            self._kf_prev_t = t
-            self._kf_initialized = True
-            return
-
-        dt = max(min(t - self._kf_prev_t, 0.1), 1e-3)
-        self._kf_prev_t = t
-
+        dt = max(min(t - prev_t, 0.1), 1e-3)
         F = np.array([[1.0, dt], [0.0, 1.0]])
         # Discrete-white-noise-on-acceleration process model
         Q = self._kf_q * np.array([
@@ -957,21 +957,22 @@ class IMG_PROCESSOR(Thread):
             [dt**3 / 2.0, dt**2],
         ])
         R = self._kf_r
-
-        # Vectorize across the 6 channels: each has its own (2,) state and (2,2) P.
-        # Predict: x ← Fx, P ← FPF^T + Q
-        x_pred = self._kf_x @ F.T                          # (6, 2)
-        P_pred = F @ self._kf_P @ F.T + Q                  # (6, 2, 2)
-
+        # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over the 6 channels)
+        x_pred = x @ F.T                                   # (6, 2)
+        P_pred = F @ P @ F.T + Q                           # (6, 2, 2)
         # Innovation y = z - Hx_pred (H = [1, 0]), scalar per channel
         y = z - x_pred[:, 0]                               # (6,)
-        S = P_pred[:, 0, 0] + R                            # (6,) innovation variance
-        K = P_pred[:, :, 0] / S[:, None]                   # (6, 2) Kalman gain
-
+        S = P_pred[:, 0, 0] + R                            # (6,)
+        K = P_pred[:, :, 0] / S[:, None]                   # (6, 2)
         # Update: x ← x_pred + K·y, P ← (I - K H) P_pred
-        self._kf_x = x_pred + K * y[:, None]
-        # (I - K H) P_pred: subtract K_i · P_pred[i, 0, :] from row i of P_pred
-        self._kf_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        x = x_pred + K * y[:, None]
+        P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        return x, P, t, True
+
+    def _kf_update(self, z, t):
+        """Corner-flow KF — thin wrapper around _kf_step on the corner state."""
+        self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
 
     def _kf_feat_update(self, z, t):
         """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
@@ -1262,6 +1263,7 @@ class IMG_PROCESSOR(Thread):
             "N Flow Corners": self._n_flow_corners,
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
             "Ring Divergence": self._ring_div_log,              # pure depth-independent loom (safety-net vertical)
+            "Ring Opt Flow KF": self._ring_opt_flow_kf_log,     # ring flow through the corner-flow KF
             "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,

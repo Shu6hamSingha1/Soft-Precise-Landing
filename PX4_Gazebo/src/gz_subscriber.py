@@ -189,9 +189,12 @@ class Image_Node(Node):
                 self._quat_deque.append(quat)
                 self._angvel_deque.append(angvel)
                 self._count = self._count + 1
-                self._t0 = self._t1
-                self._t1 = self._time_keeper.perf_counter()
-                self._meanTimePerImage = (self._t1 - self._start_time) / self._count
+                # FIX (2026-06-05): do NOT re-update t0/t1 here. That corrupted the next
+                # frame's fps (line ~166) into 1/(idle gap) = 1/(frame_interval - processing_time),
+                # which over-read (~84 vs 62 Hz) and jittered (28-250 Hz) with the processing time.
+                # Leaving t0/t1 as the consecutive callback-fire SIM times (from /clock) makes
+                # fps = 1/(true frame interval). meanTime uses a fresh sim-time read instead.
+                self._meanTimePerImage = (self._time_keeper.perf_counter() - self._start_time) / self._count
 
                 self._img_deque.popleft()
                 self._quat_deque.popleft()
