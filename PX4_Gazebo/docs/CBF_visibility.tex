@@ -88,7 +88,9 @@ marker grow and overflow as the UAV closes on it (its visibility \emph{is} the g
 extent would fire the barrier early). \textbf{Phase 2 --- on its overflow} (decode-fail, hysteresis-gated
 against flicker $\Rightarrow$ touchdown range), $\delta$ \textbf{ramps in} over a few frames from the
 visible markers' $\tfrac12\mathrm{ptp}_k$ and tracks them thereafter. The ramp (not a step) keeps $h$ from
-dropping discontinuously at engagement.
+dropping discontinuously at engagement, but clamp the ramp gain so $\delta$ never \emph{lags} the measured
+$\tfrac12\mathrm{ptp}$ --- a ramp slower than the fill under-protects. Within Phase 2 the visible markers
+themselves leave (a mild inner sawtooth); $\dot\delta$ is reset across those switches.
 
 \section{Feasibility floor and hand-off}
 The QP \eqref{eq:qp} is \textbf{infeasible} iff the predicted margin is gone ($m_k<0$ --- the marker fills
