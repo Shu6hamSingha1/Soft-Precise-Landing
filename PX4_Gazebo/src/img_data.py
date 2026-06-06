@@ -81,7 +81,7 @@ class IMG_PROCESSOR(Thread):
         # 9 phased output_calibration runs (calibration_data/output/, Jun 5-6)
         # via tools/derive_board_cal.py. FULL 6x6: calibrated [h;w]=M@raw.
         #
-        # Standard phased excitation (apps/output_calibration.py): each axis
+        # Standard phased excitation (apps/record_output_calibration.py): each axis
         # driven ALONE in sequence (x -> y -> z -> yaw, settles between), so the
         # GT axes are decorrelated by construction (cleaner than the prior
         # freq-multiplexed multisine, which retained cross-axis correlation that
@@ -1461,7 +1461,7 @@ class IMG_PROCESSOR(Thread):
         The 6-vector this method returns is `[h_raw; w_raw]` — the LSTSQ
         solution that, fed through L at each corner, would reproduce the
         measured per-corner pixel velocity (= the actual optical flow).
-        Used by `output_calibration.py` to derive `_sensor_cal_hw`.
+        Used by `record_output_calibration.py` to derive `_sensor_cal_hw`.
         """
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
@@ -1470,7 +1470,7 @@ class IMG_PROCESSOR(Thread):
     def getRawRingFlowAngVel(self):
         """Raw 6-vector `[h; w]` from the TEXTURE-FREE ring lstsq, BEFORE any
         calibration (the runtime applies none to the ring). Mirrors
-        getRawOptFlowAngVel for the ring sampler so output_calibration.py can
+        getRawOptFlowAngVel for the ring sampler so record_output_calibration.py can
         co-sample it into the GT dict and derive_ring_cal.py can fit M_ring
         (GT[h;w] = M_ring @ ring_raw), exactly as the corner cal is derived.
         Returns the latest per-frame V_v_ring (the same value logged to

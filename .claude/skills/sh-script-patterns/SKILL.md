@@ -48,7 +48,7 @@ Need to run something repeatedly?
 - Never use `set -e` in a sweep script — one failed rep must not abort the rest.
 - Never spawn background children without `setsid` — kill -group needs the PGID.
 - Never use system `python3` in heredocs — always `$HOME/ws/scripts/env2025/bin/python3`.
-- Never skip the empty-dir cleanup in cal loops — `output_calibration.py` mkdirs eagerly.
+- Never skip the empty-dir cleanup in cal loops — `record_output_calibration.py` mkdirs eagerly.
 
 ## After writing
 

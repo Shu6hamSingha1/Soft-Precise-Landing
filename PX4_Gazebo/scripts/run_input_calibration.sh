@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run input_calibration.py headlessly. Same pattern as run_output_calibration.sh:
+# Run record_input_calibration.py headlessly. Same pattern as run_output_calibration.sh:
 # brings up MicroXRCEAgent + PX4 SITL (Qt offscreen) + 3 bridges + QGC, waits
 # for preflight, then runs the input-calibration sweep that sends attitude-rate
 # commands and records pose response.
@@ -30,7 +30,7 @@ cleanup() {
     kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
   done
   sleep 1
-  pkill -9 -f 'input_calibration.py' 2>/dev/null || true
+  pkill -9 -f 'record_input_calibration.py' 2>/dev/null || true
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
   pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
@@ -111,12 +111,12 @@ while ! strings "$LOG_DIR/px4_sitl.log" 2>/dev/null | grep -q 'Ready for takeoff
 done
 echo " (${WAITED}s)"
 
-echo "[input-calib] running input_calibration.py (data -> $INPUT_CALIB_OUT_DIR)..."
+echo "[input-calib] running record_input_calibration.py (data -> $INPUT_CALIB_OUT_DIR)..."
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 # INPUT_APP overridable so this launcher can also fly the VALIDATION app, e.g.
 #   INPUT_APP=apps/record_input_validation.py VALIDATION_PROFILE=multisine \
 #   CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
-INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 "${INPUT_APP:-apps/input_calibration.py}"
+INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 "${INPUT_APP:-apps/record_input_calibration.py}"
 echo "[input-calib] script exit $?"

@@ -10,7 +10,7 @@
 #       (the thing phased single-axis calibration cannot self-check).
 #   'landing'             — monotone descent to touchdown -> the operating regime.
 #
-# Adapted from apps/output_calibration.py: SAME proven flight/record scaffolding
+# Adapted from apps/record_output_calibration.py: SAME proven flight/record scaffolding
 # (node bringup, takeoff, OFFBOARD establishment, send_position_ned loop, the
 # same recorded fields). Only the cmd_profile (build_profile) and the
 # validation_data routing differ. This is a SEPARATE script so validation
@@ -27,7 +27,7 @@ from flight_controller import FC
 import img_data as ID
 from gz_subscriber import GZ_Subscriber, Pose_Node, Clock_Node
 
-CAPTURE_RATE = 60                              # match landing_test.py / output_calibration.py
+CAPTURE_RATE = 60                              # match landing_test.py / record_output_calibration.py
 RESOLUTION   = (640, 480)
 SLEEP_TIME   = 1/200
 SEND_TIMEOUT_S = 0.5

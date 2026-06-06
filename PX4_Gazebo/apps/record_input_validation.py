@@ -11,7 +11,7 @@
 #   'landing'             — thrust ramp-down descent (rates held ~0) -> validates
 #       the thrust->vertical transfer + rate hold through the descent regime.
 #
-# Adapted from apps/input_calibration.py (same convert_2_sys_cmd thrust mapping
+# Adapted from apps/record_input_calibration.py (same convert_2_sys_cmd thrust mapping
 # and send_attitude_rate path). OPEN-LOOP body rates: amplitudes are kept modest
 # and env-overridable — tune VAL_RATE_AMP / VAL_INPUT_MS_S down if your PX4 build
 # tips over or descends during the multisine. No image/controller is needed (the
@@ -37,7 +37,7 @@ telemetry_data = gt_data = None
 
 def convert_2_sys_cmd(cmd):
     # body rates rad/s -> deg/s; thrust Newton-offset -> normalized.
-    # Matches apps/input_calibration.py:52 (slope 1/42.3, hover at 0.738).
+    # Matches apps/record_input_calibration.py:52 (slope 1/42.3, hover at 0.738).
     return np.append(RAD2DEG * cmd[:3], 0.738 - cmd[3] / 42.3)
 
 

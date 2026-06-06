@@ -102,9 +102,9 @@ Key invariants:
 
 ### The self-pkill trap
 
-`pkill -f PATTERN` matches against the full command line of every process — **including the bash loop that's running pkill**. If your loop is invoked as `bash -c 'for i in ...; do timeout 220 bash run_output_calibration.sh; ...; pkill -f output_calibration.py; ...; done'`, the `pkill -f output_calibration.py` kills the parent bash because its argv contains the string `output_calibration.py`.
+`pkill -f PATTERN` matches against the full command line of every process — **including the bash loop that's running pkill**. If your loop is invoked as `bash -c 'for i in ...; do timeout 220 bash run_output_calibration.sh; ...; pkill -f record_output_calibration.py; ...; done'`, the `pkill -f record_output_calibration.py` kills the parent bash because its argv contains the string `record_output_calibration.py`.
 
-**Fix:** put the loop in a file and invoke it as `bash /tmp/loop.sh`. The parent argv becomes just `bash /tmp/loop.sh`, so `pkill -f output_calibration.py` no longer matches it.
+**Fix:** put the loop in a file and invoke it as `bash /tmp/loop.sh`. The parent argv becomes just `bash /tmp/loop.sh`, so `pkill -f record_output_calibration.py` no longer matches it.
 
 ---
 
@@ -121,7 +121,7 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
   # Stray-process cleanup BEFORE counting (so files settle to disk)
   pkill -9 -x MicroXRCEAgent                  2>/dev/null || true
   pgrep -f 'px4_sitl_default/bin/px4'       | xargs -r kill -9 2>/dev/null || true
-  pgrep -f 'output_calibration.py'          | xargs -r kill -9 2>/dev/null || true
+  pgrep -f 'record_output_calibration.py'          | xargs -r kill -9 2>/dev/null || true
   pgrep -f 'ros_gz_bridge parameter_bridge' | xargs -r kill -9 2>/dev/null || true
   pgrep -fa 'gz sim --verbose' | awk '/gz sim --verbose/ {print $1}' | xargs -r kill -9 2>/dev/null || true
   sleep 5
@@ -138,7 +138,7 @@ done
 
 Required components:
 1. `timeout 220` outer wrapper — `run_output_calibration.sh` can hang past natural completion.
-2. Empty-dir cleanup — `output_calibration.py` mkdirs its timestamped folder *before* the sweep runs, so a failed sweep leaves an empty dir that pollutes `ls`-by-mtime.
+2. Empty-dir cleanup — `record_output_calibration.py` mkdirs its timestamped folder *before* the sweep runs, so a failed sweep leaves an empty dir that pollutes `ls`-by-mtime.
 3. Stray pkill of child processes — `run_output_calibration.sh`'s own trap doesn't always reach grandchildren under timeout-SIGKILL.
 
 ---
@@ -287,7 +287,7 @@ PY
 ## 8. Common pitfalls
 
 1. **Self-pkill** (section 2) — `pkill -f X` kills the loop's parent bash if its argv contains `X`. Always invoke loops as `bash /tmp/file.sh`, not as inline `bash -c '...'`.
-2. **Empty-dir pollution** — `output_calibration.py` mkdirs its dir at start; if the sweep fails, the empty dir remains and inflates `ls`-by-mtime counts. The empty-dir `rmdir` step is mandatory.
+2. **Empty-dir pollution** — `record_output_calibration.py` mkdirs its dir at start; if the sweep fails, the empty dir remains and inflates `ls`-by-mtime counts. The empty-dir `rmdir` step is mandatory.
 3. **Stale `latest` symlink** — `ls -t` on `~/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/` is the recording detector. Capture `before` BEFORE the run; comparing to `latest` after is the only way to detect "no recording was produced."
 4. **`set -e` in sweep scripts** — DON'T. One failed rep should not abort the rest. Use explicit returns and let the summary record `NO`.
 5. **`python3` (system) vs `env2025/bin/python3`** — only the venv has numpy/ahrs/scipy/cv2. Always use the full venv path in heredocs.

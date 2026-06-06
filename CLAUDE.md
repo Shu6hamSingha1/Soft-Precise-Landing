@@ -86,8 +86,8 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     numerical_methods.py       — RK5, smooth4, extrapolate
   apps/                        — entry-point scripts (executed by scripts/run_*.sh)
     landing_test.py            — main entry: arms, takes off, runs landing loop
-    input_calibration.py       — FC actuator/attitude-rate response calibration
-    output_calibration.py      — drives sinusoidal commands; saves cal recordings
+    record_input_calibration.py       — FC actuator/attitude-rate response calibration
+    record_output_calibration.py      — drives sinusoidal commands; saves cal recordings
     impulse_response.py        — body-rate impulse test for PX4 rate-loop lag
     validate_image.py          — ROS 2 subscriber; saves frames + ArUco overlay
   tools/                       — analyzers/aggregators (post-recording)

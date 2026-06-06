@@ -1,4 +1,4 @@
-"""Phase-aware aggregator for the redesigned output_calibration.py.
+"""Phase-aware aggregator for the redesigned record_output_calibration.py.
 
 The new excitation drives each axis ALONE in sequence (x → y → z → yaw)
 with a 'Phase' tag per sample stored in Ground_Truth.npy. For each cal
@@ -289,7 +289,7 @@ def main():
 
     if not per_run_hw:
         print("[phased] no phase-tagged runs found.\n")
-        print("  Run output_calibration.py (the new phased version) to generate")
+        print("  Run record_output_calibration.py (the new phased version) to generate")
         print("  recordings with the 'Phase' tag.")
         return
 

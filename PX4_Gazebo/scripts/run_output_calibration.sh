@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run output_calibration.py headlessly. Brings up MicroXRCEAgent + PX4 SITL
+# Run record_output_calibration.py headlessly. Brings up MicroXRCEAgent + PX4 SITL
 # (Qt offscreen) + 3 ros_gz bridges + QGC (offscreen, for GCS-link
 # preflight), waits for PX4 health, then runs the calibration sweep.
 set -u
@@ -11,7 +11,7 @@ LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
 # Every run lands in its own timestamped folder so we keep history (matches
-# the original ~/ws/scripts/soft_precise_landing/output_calibration.py
+# the original ~/ws/scripts/soft_precise_landing/record_output_calibration.py
 # convention which used time.ctime()-style names). A `latest` symlink in the
 # same parent tracks the most recent run for analyze/validate scripts.
 # CALIB_PARENT overridable so a VALIDATION run routes elsewhere (e.g.
@@ -33,9 +33,9 @@ cleanup() {
     kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
   done
   sleep 1
-  # Hardier kill — output_calibration.py can hang past SIGTERM if MAVSDK
+  # Hardier kill — record_output_calibration.py can hang past SIGTERM if MAVSDK
   # is awaiting an offboard ACK that PX4 won't send (post-failsafe).
-  pkill -9 -f 'output_calibration.py' 2>/dev/null || true
+  pkill -9 -f 'record_output_calibration.py' 2>/dev/null || true
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
   pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
@@ -122,12 +122,12 @@ echo " (${WAITED}s)"
 echo "[calib] settling 20s before arm (heading-estimate convergence)..."
 sleep 20
 
-echo "[calib] running output_calibration.py (data -> $CALIB_OUT_DIR)..."
+echo "[calib] running record_output_calibration.py (data -> $CALIB_OUT_DIR)..."
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 # CALIB_APP overridable so this launcher can also fly the VALIDATION app, e.g.
 #   CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine \
 #   CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
-CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 "${CALIB_APP:-apps/output_calibration.py}"
+CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 "${CALIB_APP:-apps/record_output_calibration.py}"
 echo "[calib] script exit $?"

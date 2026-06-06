@@ -31,7 +31,7 @@ cal, never in the runtime control path. See memory `feedback_scale_free_depth_fr
 
 # OUTPUT calibration (image → optical flow `[h; w]`)
 
-**Maneuver:** `apps/output_calibration.py`, default **phased** (each axis x→y→z→yaw driven ALONE,
+**Maneuver:** `apps/record_output_calibration.py`, default **phased** (each axis x→y→z→yaw driven ALONE,
 settles between → axes decorrelated). `CALIB_MODE=multisine` = freq-multiplexed (validation only).
 
 **Derive (corner):** `tools/derive_board_cal.py` — full **6×6** `M` s.t. `GT[h;w] = M @ raw`
@@ -57,7 +57,7 @@ with `CTRL_ZERO_WXY=1`). h-block comes out near-identity from phased data.
 `_sensor_cal_ring` (ring 6×6). Runtime: `getOptFlowAngVel()` = `_sensor_cal_hw @ corner-KF`;
 `getRingFlowAngVel()` = `_sensor_cal_ring @ ring-KF` (ring is a SAFETY NET — control consumes the
 corner flow). Raw getters `getRawOptFlowAngVel` / `getRawRingFlowAngVel` (pre-cal) are co-sampled
-into the GT dict by `output_calibration.py` so the derive tools can fit.
+into the GT dict by `record_output_calibration.py` so the derive tools can fit.
 
 **Validate:** `notebooks/plotter_output_validation.ipynb` — GT-direct, auto-loads the live cal,
 checks calibrated corner + ring flow vs GT on a multisine run (per-channel R²) and runs the
@@ -68,7 +68,7 @@ landing-to-touchdown check via `tools/validate_output_flow.py::validate(dir)`.
 **Key difference:** input cal is a **dynamic transfer (gain + LAG)**, not a static matrix. The
 headline metric is **lag**, not amplitude — gain≈1 with 287 ms yaw lag is still a failing cal.
 
-**Maneuver:** `apps/input_calibration.py` — sends `send_attitude_rate` (body ω + thrust) via a
+**Maneuver:** `apps/record_input_calibration.py` — sends `send_attitude_rate` (body ω + thrust) via a
 `cmd_profile` array; records commanded (`gt['Command']`) vs achieved (`tel['Angular Velocity FRD']`).
 Thrust mapping: `thrust_norm = 0.738 - B_T/42.3` (B_T in Newtons; see `feedback_input_cal_thrust_units`).
 
@@ -103,7 +103,7 @@ validation_data/landing/      landing-to-touchdown (serves BOTH input + output) 
 | `CALIB_OUT_BASE` / `INPUT_CALIB_OUT_BASE` | output/input cal apps | parent dir (app-level) |
 | `CALIB_OUT_DIR` / `INPUT_CALIB_OUT_DIR` | apps + launchers | exact path (precedence) |
 | `LANDING_OUT_BASE` | `apps/landing_test.py` | route a validation landing |
-| `CALIB_MODE` | `output_calibration.py` | `phased` (default) \| `multisine` |
+| `CALIB_MODE` | `record_output_calibration.py` | `phased` (default) \| `multisine` |
 | `RING_CAL_MODE` | `derive_ring_cal.py` | `transfer` (default) \| `gt` |
 
 **Collect (Gazebo — the USER runs these; never invoke SITL yourself):**

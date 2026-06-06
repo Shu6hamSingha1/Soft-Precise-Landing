@@ -1,4 +1,4 @@
-"""Aggregator for input_calibration.py recordings.
+"""Aggregator for record_input_calibration.py recordings.
 
 Input-cal differs from output-cal in what it measures:
 - Output cal validates the IMG-to-image-feature pipeline (sensor_cal_hw/s).
