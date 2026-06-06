@@ -122,7 +122,7 @@ INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=multisine CALIB_PA
 # LANDINGS use POSITION-SETPOINT / thrust-staircase descents (NOT the untuned PLASMC
 # controller — it has a descent regressor that hovers; run_aruco_landing is for tuning, not validation):
 CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=landing bash scripts/run_output_calibration.sh   # output: position-SP descent, flow vs GT to touchdown
-INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=landing bash scripts/run_input_calibration.sh    # input: thrust-staircase (0.74↓0.01), GT-alt stop at 1m
+INPUT_APP=apps/record_input_validation.py VALIDATION_PROFILE=landing CALIB_PARENT=$PWD/validation_data/input_landing bash scripts/run_input_calibration.sh   # input: thrust staircase (0.74↓0.01), GT-stop 1m. CALIB_PARENT routes it OUT of calibration_data/input (else it contaminates the rate-cal aggregate).
 ```
 The validation apps (`apps/record_output_validation.py`, `apps/record_input_validation.py`) each fly one of two
 `cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`. The **landing**
