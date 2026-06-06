@@ -109,6 +109,45 @@ def r2_slope(meas, gt):
     return (float(ss), float(a[0]))
 
 
+def ekf_offline(corn_cal, ring_cal, ncc, ncr, t):
+    """Replicate the runtime fusion EKF (img_data._ekf_fuse_step) OFFLINE from
+    CALIBRATED corner+ring flow, so the notebook's fused trace is cal-CONSISTENT
+    (recomputed from raw + the CURRENT cal, NOT the recording-time-baked
+    'Opt Flow Fused' log). Returns (fused[n,6]=[h_tr;w], h_tv[n,3]). corner_conf
+    is approximated 1.0 (the runtime's KLT-depth down-weighting isn't logged;
+    exact for clean-corner frames, the vast majority). Params mirror img_data."""
+    I3 = np.eye(3); Z3 = np.zeros((3, 3))
+    Hc = np.block([[I3, Z3, Z3], [Z3, Z3, I3]])     # measures [h_tr; w]
+    Hr = np.block([[I3, I3, Z3], [Z3, Z3, I3]])     # measures [h_tr+h_tv; w]
+    Rc = np.diag([0.05] * 6)
+    Rr = np.diag([0.5, 0.5, 0.5, 1e6, 1e6, 1e6])
+    Q  = np.diag([5.] * 3 + [0.2] * 3 + [5.] * 3)
+    n = len(corn_cal); x = np.zeros(9); P = np.eye(9); init = False; prev = None
+    fused = np.full((n, 6), np.nan); htv = np.full((n, 3), np.nan)
+    def upd(x, P, z, H, R):
+        S = H @ P @ H.T + R; K = P @ H.T @ np.linalg.inv(S)
+        return x + K @ (z - H @ x), (np.eye(9) - K @ H) @ P
+    for i in range(n):
+        co = ncc[i] > 0 and np.all(np.isfinite(corn_cal[i]))
+        ro = ncr[i] > 0 and np.all(np.isfinite(ring_cal[i]))
+        if not init:
+            if co:
+                x[0:3] = corn_cal[i, 0:3]; x[6:9] = corn_cal[i, 3:6]
+                if ro: x[3:6] = ring_cal[i, 0:3] - corn_cal[i, 0:3]
+            elif ro:
+                x[0:3] = ring_cal[i, 0:3]; x[6:9] = ring_cal[i, 3:6]
+            else:
+                continue
+            P = np.eye(9); prev = t[i]; init = True
+            fused[i] = np.concatenate([x[0:3], x[6:9]]); htv[i] = x[3:6]; continue
+        dt = max(min(t[i] - prev, 0.1), 1e-3); prev = t[i]
+        P = P + Q * dt                                       # predict (random walk F=I)
+        if co: x, P = upd(x, P, corn_cal[i], Hc, Rc)         # corner_conf≈1.0
+        if ro: x, P = upd(x, P, ring_cal[i], Hr, Rr)
+        fused[i] = np.concatenate([x[0:3], x[6:9]]); htv[i] = x[3:6]
+    return fused, htv
+
+
 def prep(d):
     """SHARED load + calibrate + GT-align used by every validation view (the
     to-touchdown/altitude `validate`, the per-channel `channel_r2`, and the
@@ -125,18 +164,17 @@ def prep(d):
     ring = np.asarray(img.get('Ring Opt Flow Ang Vel', []), float)
     if ring.ndim != 2 or ring.shape[1:] != (6,) or len(ring) == 0:
         ring = np.full((len(corn), 6), np.nan)                   # ring-less recording -> nan
-    fused = np.asarray(img.get('Opt Flow Fused', []), float)     # EKF (FLOW_FUSE_RING=1) or absent
-    fused = fused if (fused.ndim == 2 and len(fused) and np.any(fused)) else None
-    tvel = np.asarray(img.get('Target Vel', []), float)          # EKF h_tv (FLOW_FUSE_RING=1)
-    tvel = tvel if (tvel.ndim == 2 and len(tvel)) else None
     ncr = np.asarray(img.get('N Ring Corners', np.zeros(len(corn))), float)
     ncc = np.asarray(img['N Flow Corners'], float)
-    n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc), len(fused) if fused is not None else 1 << 30)
+    n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc))
     ti, ring, corn, ncr, ncc = ti[:n], ring[:n], corn[:n], ncr[:n], ncc[:n]
-    if fused is not None: fused = fused[:n]
-    if tvel is not None:  tvel = tvel[:n]
     ring_cal = (CAL_RING @ ring.T).T
     corn_cal = (CAL @ corn.T).T
+    # Recompute the fusion EKF OFFLINE from raw + the CURRENT cal so corner/ring/
+    # fused are all cal-CONSISTENT (the recording's baked 'Opt Flow Fused' log is
+    # recording-time-cal and would mismatch a refreshed cal). Works on any run,
+    # even ones recorded before the EKF existed.
+    fused, tvel = ekf_offline(corn_cal, ring_cal, ncc, ncr, ti)
     off, ar = best_offset(ti, np.where(ncc > 0, corn_cal[:, 2], np.nan), t_g, GT[:, 2])
     ti_r, tg_r = ti - ti[0], t_g - t_g[0]
     GTi = np.column_stack([np.interp(ti_r - off, tg_r, GT[:, k], left=np.nan, right=np.nan) for k in range(6)])
