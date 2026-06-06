@@ -102,14 +102,18 @@ class IMG_PROCESSOR(Thread):
         # poorly observed) -> Hz=1.11 is the least-certain entry; RE-VALIDATE the
         # descent (vertical) flow gain. Prior 9-run M in git history.
         # Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z].
+        # Corner sensor cal — re-derived 2026-06-07 from ALL 13 phased runs
+        # (8 original + 5 new fused) via tools/derive_board_cal.py. R^2 Hx 0.75
+        # Hy 0.75 Hz 0.79 Wz 0.71 (most-robust pool; supersedes the 8-run cal).
+        # Wx/Wy rows zeroed (yaw-only w; CTRL_ZERO_WXY=1).
         self._sensor_cal_hw = np.array([
-            [+0.9791, -0.0077, +0.0040, -0.0025, +0.8641, +0.0049],
-            [-0.0378, +0.9170, +0.0002, -0.7317, -0.0534, -0.0013],
-            [+0.0088, +0.0224, +1.1119, -0.0024, +0.0142, +0.0002],
+            [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
+            [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],
+            [+0.0124, +0.0148, +1.0744, +0.0128, +0.0068, -0.0046],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.0079, +1.0427, +0.0108, -0.8882, +0.1366, +1.0647]])
-        self._sensor_cal_s  = np.diag([1.1351, 1.1306, 1.0, 1.0])
+            [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161, +1.0151]])
+        self._sensor_cal_s  = np.diag([1.1162, 1.1629, 1.0, 1.0])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -124,16 +128,19 @@ class IMG_PROCESSOR(Thread):
         # corner standard's zeroed rows; CTRL_ZERO_WXY=1). CAVEAT: Wz gain 3.45 with
         # high inter-run STD — the ring sees yaw weakly (concentric, low texture);
         # trust the h-block, treat ring-yaw as coarse. PROVISIONAL: keyed to the
-        # current corner M (re-derive if that changes). For the GT-DIRECT cal, re-run
-        # output_calibration (now co-samples the ring) + RING_CAL_MODE=gt. Ring is a
-        # SAFETY NET (control consumes corner flow), so this is inert for landing today.
+        # current corner M (re-derive if that changes). Re-derived 2026-06-07 keyed
+        # to the new all-13 corner M; R^2 Hx 0.67 Hy 0.85 Hz 0.77 Wz 0.89.
+        # GT-DIRECT (RING_CAL_MODE=gt) was TRIED and is WORSE here: it can only use
+        # the 5 co-sampled fused runs, which are the noisy ones from a stressed SITL
+        # session (R^2 Hx 0.34 Hz 0.57 Wz 0.56) — so transfer (13 recordings) wins.
+        # Ring is the FUSION input (control consumes EKF when FLOW_FUSE_RING=1).
         self._sensor_cal_ring = np.array([
-            [+1.1025, +0.0087, -0.0276, -0.0153, +1.0961, -0.0108],
-            [-0.1342, +0.6537, +0.0773, -0.5734, -0.1888, +0.0148],
-            [-0.2249, -0.1145, +1.3463, +0.1159, -0.2570, -0.0325],
+            [+1.0380, +0.0353, -0.0134, -0.0416, +1.0246, -0.0672],
+            [-0.0677, +0.6101, +0.0457, -0.5329, -0.0970, -0.0876],
+            [-0.2966, -0.0732, +1.3655, +0.0711, -0.2970, -0.1485],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.0520, +0.5225, +0.0433, -0.3763, -0.1761, +3.4510]])
+            [-0.0720, +0.5884, +0.0018, -0.4402, -0.1344, +2.9790]])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -395,6 +402,14 @@ class IMG_PROCESSOR(Thread):
         self._ekf_P = np.eye(9) * 1.0
         self._ekf_init = False
         self._ekf_prev_t = None
+        # Default OFF. The EKF fused [h_tr;w] is the best estimator BY SIGNAL
+        # (R^2 vs GT across cal/multisine/landing, wins on h_z/w_z), BUT a 1-rep
+        # closed-loop test (2026-06-07, FLOW_FUSE_RING=1) showed it BREAKS THE
+        # DESCENT: the drone held 6 m for ~4.6 min, xy-locked (0.05 m) but never
+        # descended. Cause: the loom descent reference (REF_RAD_OPT_FLOW) is
+        # co-tuned to the CORNER h_z scale; the fused h_z (ring gain 1.37) over-
+        # reports the loom -> no descent command. Re-tune the descent reference to
+        # the fused scale before defaulting ON, then run the IC2-5 gate.
         self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
