@@ -77,36 +77,52 @@ class IMG_PROCESSOR(Thread):
         # `center = (320, 240)` — that one was transposed and is now (240, 320).
         self.center = np.array(self._resolution) / 2.0   # (cx, cy) = (240, 320)
 
-        # Sensor calibration — MULTISINE height-validated M (2026-06-02 night),
-        # CONFIRMED over 4 descent runs. FULL 6x6: calibrated [h;w]=M@raw.
+        # Sensor calibration — PHASED single-axis M (2026-06-06), derived over
+        # 9 phased output_calibration runs (calibration_data/output/, Jun 5-6)
+        # via tools/derive_board_cal.py. FULL 6x6: calibrated [h;w]=M@raw.
         #
-        # Derived via CALIB_MODE=multisine (apps/output_calibration.py): freq-
-        # multiplexed excitation (x@0.40,y@0.55,yaw@0.25Hz — distinct freqs ->
-        # GT axes decorrelated -> GT=M@raw lstsq separates them) during a slow
-        # 2-cycle z-sweep 5<->0.3m, lateral gated >1.2m, yaw throughout. Fit
-        # binned by altitude shows M is HEIGHT-STABLE (diag ~const, R^2 0.8+
-        # from 0.5-5.5m) — overturns the earlier "no single M spans descent"
-        # (that was noise in 2-run discrete sweeps). Pooled over 4 runs / 49k
-        # samples: R^2 Hx 0.81 Hy 0.83 Hz 0.92 Wx 0.49 Wy 0.50 Wz 0.78.
-        # Reproducible: diag Hx 0.749±4%, Hy 0.683±2%, Hz 0.864±4%, Wz 0.610±6%
-        # (tilt Wx/Wy noisy 16-27%). The h<->w coupling (off-diagonals in the
-        # (h0,w1)/(h1,w0) pairs) is geometric -> holds for moving targets too.
+        # Standard phased excitation (apps/output_calibration.py): each axis
+        # driven ALONE in sequence (x -> y -> z -> yaw, settles between), so the
+        # GT axes are decorrelated by construction (cleaner than the prior
+        # freq-multiplexed multisine, which retained cross-axis correlation that
+        # biased the h-block low). Result: the h-block comes out NEAR-IDENTITY
+        # (Hx +1.01, Hy +0.93, Hz +0.99) — the board-homography corner flow is
+        # already well-scaled; the geometric h<->w coupling ((h0,w1)/(h1,w0)
+        # off-diagonals) supplies the rest and holds for moving targets too.
+        # Per-axis R^2 (8 runs): Hx 0.79 Hy 0.79 Hz 0.83 Wz 0.73  (Wx/Wy GT=0).
         #
-        # NOTE: this GT-accurate M landed WORSE than the prior board M in n<=3
-        # IC1 tests (1.088/0.889-crash/1.565 vs 0.675m) — the controller is
-        # co-tuned to the older cal's magnitudes and the residual is LAG-limited,
-        # not cal-limited. Kept per user decision (correct cal of record);
-        # closing the landing gap is the lag fix / controller retune, not cal.
-        # Prior 5m board M recoverable: Obsolete/src/img_data_5mM_20260602.py.
+        # HONEST cal (2026-06-06): re-derived from 8 CORRECTLY-LEVELED phased
+        # runs via derive_board_cal.py with the GT w-axis made YAW-ONLY
+        # (V_w_ug[:, :2] = 0) to match what the leveled V-frame flow carries — so
+        # the Wx/Wy rows are EXACTLY 0 (consistent with CTRL_ZERO_WXY=1) instead
+        # of the prior 9-run cal's garbage rows (R^2 ~0.4, full-rotation GT). One
+        # of the 9 runs ('...3-42-07') was EXCLUDED — its leveling retained
+        # roll/pitch (cell-20 slope 0.64 vs ~0.96 for the rest). h-block + Wz are
+        # the trustworthy rows. CAVEAT: Hz inter-run STD 0.36 (divergence is
+        # poorly observed) -> Hz=1.11 is the least-certain entry; RE-VALIDATE the
+        # descent (vertical) flow gain. Prior 9-run M in git history.
         # Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z].
         self._sensor_cal_hw = np.array([
-            [+0.7126, -0.0190, +0.0115, -0.0268, +0.4315, +0.0042],
-            [-0.0291, +0.6817, +0.0072, -0.3727, +0.0732, -0.0099],
-            [+0.0005, +0.0010, +0.8583, -0.0545, -0.0106, +0.0023],
-            [+0.0050, -0.7570, -0.0153, +0.6147, -0.0552, -0.0101],
-            [+0.7930, +0.0092, +0.0106, -0.0370, +0.6207, +0.0014],
-            [+0.0052, +0.0364, +0.0238, +0.0171, -0.1310, +0.6088]])
-        self._sensor_cal_s  = np.diag([1.0986, 1.0562, 1.0, 1.0])
+            [+0.9791, -0.0077, +0.0040, -0.0025, +0.8641, +0.0049],
+            [-0.0378, +0.9170, +0.0002, -0.7317, -0.0534, -0.0013],
+            [+0.0088, +0.0224, +1.1119, -0.0024, +0.0142, +0.0002],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [-0.0079, +1.0427, +0.0108, -0.8882, +0.1366, +1.0647]])
+        self._sensor_cal_s  = np.diag([1.1351, 1.1306, 1.0, 1.0])
+
+        # Texture-free RING flow calibration M_ring (GT[h;w] = M_ring @ ring_raw).
+        # The ring lstsq is NOT depth-mixed: the board is coplanar with the ground,
+        # so in the gravity-leveled V-frame every ring station shares one
+        # perpendicular depth Z=altitude (ring h_z tracks corner h_z at r~0.95
+        # across the whole descent, verified 2026-06-06), so a FIXED M_ring
+        # generalizes — derived like the corner cal via tools/derive_ring_cal.py.
+        # IDENTITY placeholder (== current raw behaviour) until the co-sampled
+        # M_ring is derived (re-run output_calibration, which now co-samples the
+        # ring, then derive_ring_cal.py). The retro-aligned first cut was too noisy
+        # to apply (R^2 0.28-0.70, unstable Wz). Ring is a SAFETY NET (control
+        # consumes the corner flow), so identity here is inert for landing.
+        self._sensor_cal_ring = np.eye(6)
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -484,9 +500,12 @@ class IMG_PROCESSOR(Thread):
         through the SAME _getVirtualPts + _fill_A + lstsq as the corner flow. Returns
         (V_v_ring [6], pure_div, n_stations), where pure_div is the depth-INDEPENDENT radial-mean
         divergence (Singhal loom) — the robust safety-net VERTICAL signal. The lstsq V_v_ring is
-        depth-MIXED (rings span ground+board), so a fixed ring->corner cal does not generalize;
-        the loom vz/z is depth-free and does, so it carries the soft touchdown. See memory
-        ring-flow-architecture + FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
+        NOT depth-mixed: the board is coplanar with the ground, so in the gravity-leveled V-frame
+        every station shares one perpendicular depth Z=altitude (ring h_z tracks corner h_z at
+        r~0.95 across the whole descent, verified 2026-06-06). A FIXED M_ring therefore generalizes
+        and is derived like the corner cal (tools/derive_ring_cal.py). The loom is preferred for
+        ROBUSTNESS (texture-free median, survives marker death), NOT for depth-invariance. See
+        FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
         detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
         death; this is the safety net."""
         zero = (np.zeros(6), 0.0, 0)
@@ -508,9 +527,9 @@ class IMG_PROCESSOR(Thread):
             keep = fm < med + 3.0 * 1.4826 * mad
             if int(keep.sum()) >= 6:
                 r0, r1 = r0[keep], r1[keep]
-            # pure depth-INDEPENDENT divergence (Singhal radial mean / loom): the robust
-            # safety-net VERTICAL signal. Unlike the lstsq V_v_ring (depth-mixed -> a fixed
-            # ring->corner cal does not generalise), the loom vz/z is depth-free.
+            # pure divergence (Singhal radial mean / loom): the robust safety-net VERTICAL
+            # signal. Preferred over the lstsq V_v_ring for ROBUSTNESS (texture-free median,
+            # survives marker death) — NOT for depth: on the coplanar ground both give vz/Z.
             rvec = np.asarray(self.center, float) - r0
             radial = np.einsum('ij,ij->i', (r1 - r0), rvec) / (np.sum(rvec**2, axis=1) + 1e-6)
             pure_div = float(np.median(radial)) * self._fps
@@ -1309,6 +1328,27 @@ class IMG_PROCESSOR(Thread):
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
         return np.array(self._opt_flow_ang_vel_raw[-1])
+
+    def getRawRingFlowAngVel(self):
+        """Raw 6-vector `[h; w]` from the TEXTURE-FREE ring lstsq, BEFORE any
+        calibration (the runtime applies none to the ring). Mirrors
+        getRawOptFlowAngVel for the ring sampler so output_calibration.py can
+        co-sample it into the GT dict and derive_ring_cal.py can fit M_ring
+        (GT[h;w] = M_ring @ ring_raw), exactly as the corner cal is derived.
+        Returns the latest per-frame V_v_ring (the same value logged to
+        'Ring Opt Flow Ang Vel'). Zeros if ring logging is off / no sample yet.
+        """
+        if len(self._ring_opt_flow_log) == 0:
+            return np.zeros(6)
+        return np.array(self._ring_opt_flow_log[-1])
+
+    def getRingFlowAngVel(self):
+        """Calibrated texture-free ring flow `[h; w]` (6-vec): the ring analogue
+        of getOptFlowAngVel — `_sensor_cal_ring @ ring-KF state`. SAFETY-NET
+        signal (control consumes the corner flow); `_sensor_cal_ring` is identity
+        until the co-sampled M_ring is derived (tools/derive_ring_cal.py).
+        """
+        return self._sensor_cal_ring @ self._kf_x_ring[:, 0]
 
     def _compute_savgol_output(self):
         """Latest Savgol(FILTER_WIN, FILTER_POLYORDER) sample, matching the

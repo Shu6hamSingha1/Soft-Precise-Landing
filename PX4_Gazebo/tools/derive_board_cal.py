@@ -37,6 +37,13 @@ def main():
             continue
         try:
             t, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, _ = compute_gt_signals(gt)
+            # HONEST GT (2026-06-06): the V-frame is gravity-leveled, so body
+            # roll/pitch produces NO V-frame flow -> the GT w-axis must be
+            # YAW-ONLY. Without this the Wx/Wy cal rows are garbage (R^2 ~0.4)
+            # that the runtime zeroes anyway (CTRL_ZERO_WXY=1), and the h-block
+            # fit is unaffected (columns independent). See memory
+            # feedback_vframe_rhs_yaw_only / the cell-20 fix (86509bb).
+            V_w_ug = V_w_ug.copy(); V_w_ug[:, 0:2] = 0.0
         except Exception as e:
             print(f"  skip {os.path.basename(d)}: {e}"); continue
 
