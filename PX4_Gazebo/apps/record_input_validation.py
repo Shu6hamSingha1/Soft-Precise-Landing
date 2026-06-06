@@ -8,11 +8,13 @@
 # Two cmd_profiles, selected by VALIDATION_PROFILE:
 #   'multisine' (default) — all rate axes commanded TOGETHER at distinct,
 #       non-harmonic freqs -> tests gain+lag under cross-axis coupling.
-#   'landing'             — POSITION-SETPOINT descent (send_position_ned, PX4 holds
-#       attitude; NO controller, NO open-loop tip-over) -> records the FC's achieved
-#       rate/thrust response through the descent regime to touchdown. (Use the
-#       'multisine' profile for the command->response gain+lag validation; the
-#       landing profile is a clean-descent characterization, not command-tracking.)
+#   'landing'             — THRUST-MAP validation: command thrust_norm as a STAIRCASE
+#       from 0.74 (just above hover ~0.738), dropping 0.01 each step (VAL_THRUST_STEP_S),
+#       rates held 0. Takeoff 20 m; STOP at 1 m using GAZEBO GT altitude (more accurate
+#       than the EKF). Records commanded thrust_norm vs achieved vertical accel across a
+#       sweep of thrust levels -> fits the thrust map. NOT position-SP (PX4 would own
+#       the thrust, leaving nothing to validate). Env: VAL_THRUST_START/STEP/STEP_S/MIN,
+#       VAL_STOP_ALT, VAL_TAKEOFF_HEIGHT, VAL_LANDING_MAX_S.
 #
 # Adapted from apps/record_input_calibration.py (same convert_2_sys_cmd thrust mapping
 # and send_attitude_rate path). OPEN-LOOP body rates: amplitudes are kept modest
@@ -31,8 +33,16 @@ from gz_subscriber import GZ_Subscriber, Pose_Node, Clock_Node
 
 SLEEP_TIME = 1/200
 SEND_TIMEOUT_S = 0.5
-TAKEOFF_H = float(os.environ.get("VAL_TAKEOFF_HEIGHT", "5.0"))
 PROFILE   = os.environ.get("VALIDATION_PROFILE", "multisine").lower()
+# landing (thrust-map) starts high (20 m) for the thrust staircase; multisine hovers low.
+TAKEOFF_H = float(os.environ.get("VAL_TAKEOFF_HEIGHT", "20.0" if PROFILE == "landing" else "5.0"))
+# thrust-staircase (landing): command thrust_norm = THR0, dropping DTHR every STEP_S,
+# rates 0; stop at STOP_ALT using Gazebo GT altitude. Sweeps thrust to fit the thrust map.
+THR0     = float(os.environ.get("VAL_THRUST_START", "0.74"))   # just above hover (~0.738)
+DTHR     = float(os.environ.get("VAL_THRUST_STEP",  "0.01"))   # drop per step
+STEP_S   = float(os.environ.get("VAL_THRUST_STEP_S", "1.5"))   # hold each thrust level this long
+THR_MIN  = float(os.environ.get("VAL_THRUST_MIN",   "0.55"))   # safety floor on thrust_norm
+STOP_ALT = float(os.environ.get("VAL_STOP_ALT",     "1.0"))    # stop at this GT height (m)
 
 CONTROLLER_READY = False
 telemetry_data = gt_data = None
@@ -49,14 +59,18 @@ def yaw_from_quaternion(q):
 
 
 def cmd_at(tau):
-    """MULTISINE cmd_profile -> [wx, wy, wz, thrust_offset_N] at time tau (rad/s body
-    rates; thrust_offset 0). The 'landing' profile is a POSITION-SETPOINT descent
-    handled in the send loop (send_position_ned), not here."""
+    """MULTISINE cmd_profile -> [wx, wy, wz, thrust_offset_N] (rad/s rates; thrust 0).
+    The 'landing' profile is a thrust_norm STAIRCASE handled in the send loop."""
     A = float(os.environ.get("VAL_RATE_AMP", "0.15"))          # rad/s, modest (open-loop)
     f_x, f_y, f_z = 0.40, 0.55, 0.70                           # distinct, non-harmonic
     return np.array([A*np.sin(2*np.pi*f_x*tau),
                      A*np.sin(2*np.pi*f_y*tau),
                      A*np.sin(2*np.pi*f_z*tau), 0.0])
+
+
+def thrust_staircase(tau):
+    """landing thrust_norm at time tau: THR0, dropping DTHR every STEP_S (floored)."""
+    return max(THR_MIN, THR0 - DTHR * int(tau // STEP_S))
 
 
 async def main():
@@ -65,7 +79,7 @@ async def main():
     UAV_pose = []; target_pose = []; ac_cmd = []; t_c = []; start_pose = None; start_time = 0.0
 
     DUR = (float(os.environ.get("VAL_INPUT_MS_S", "20.0")) if PROFILE == "multisine"
-           else float(os.environ.get("VAL_LANDING_S", "20.0")) + 3.0)
+           else float(os.environ.get("VAL_LANDING_MAX_S", "120.0")))   # GT-alt stop ends it early
     print(f"[val:input] profile={PROFILE}, {DUR:.1f}s")
     try:
         rclpy.init()
@@ -88,9 +102,6 @@ async def main():
         await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosBody().z_m, yaw)
         await asyncio.sleep(1.0)
 
-        yaw0  = yaw_from_quaternion(FC_node.getQuat())             # takeoff yaw (held in landing)
-        floor = float(os.environ.get("VAL_LANDING_FLOOR", "0.0"))
-        Tl    = float(os.environ.get("VAL_LANDING_S", "20.0"))
         start_time = time_node.perf_counter()
         for _k in range(int(DUR / SLEEP_TIME)):
             if FC_node.LANDED:
@@ -100,27 +111,37 @@ async def main():
             else:
                 start_time = time_node.perf_counter(); CONTROLLER_READY = True; t_c = [0.0]
             tau = time_node.perf_counter() - start_time
+            pose = pose_node.getPose()
 
+            # multisine -> rate-loop excitation (rates via convert_2_sys_cmd);
+            # landing  -> thrust_norm STAIRCASE (THR0 dropping DTHR/step, rates 0),
+            #             commanded DIRECTLY (not via the 0.738-offset map), so the
+            #             commanded thrust_norm is recorded vs the achieved accel.
             try:
                 if PROFILE == "landing":
-                    # POSITION-SETPOINT descent (PX4 holds attitude — clean, no
-                    # open-loop tip-over). Record the z setpoint as 'Command'; the
-                    # FC's achieved rate/thrust response is in Telemetry.
-                    z = -(TAKEOFF_H - (TAKEOFF_H - floor) * min(tau / Tl, 1.0))
-                    await asyncio.wait_for(FC_node.send_position_ned(0.0, 0.0, z, yaw0),
+                    thr = thrust_staircase(tau)
+                    await asyncio.wait_for(FC_node.send_attitude_rate(0.0, 0.0, 0.0, thr),
                                            timeout=SEND_TIMEOUT_S)
-                    cmd = np.array([0.0, 0.0, z, 0.0])
+                    cmd = np.array([0.0, 0.0, 0.0, thr])     # record commanded thrust_norm
                 else:
                     cmd = cmd_at(tau)
                     await asyncio.wait_for(FC_node.send_attitude_rate(*convert_2_sys_cmd(cmd)),
                                            timeout=SEND_TIMEOUT_S)
             except asyncio.TimeoutError:
-                print("  [bail] setpoint send timed out — PX4 likely dropped OFFBOARD.")
+                print("  [bail] send_attitude_rate timed out — PX4 likely dropped OFFBOARD.")
                 break
             await asyncio.sleep(SLEEP_TIME)
-            UAV_pose.append(pose_node.getPose().UAV)
-            target_pose.append(pose_node.getPose().target)
+            UAV_pose.append(pose.UAV)
+            target_pose.append(pose.target)
             ac_cmd.append(cmd)
+
+            # STOP at STOP_ALT using GAZEBO GT altitude (height above target) — more
+            # accurate than the EKF estimate for the terminal cutoff.
+            if PROFILE == "landing":
+                gt_alt = abs(pose.UAV.position.z - pose.target.position.z)
+                if gt_alt <= STOP_ALT:
+                    print(f"  [landing] GT alt {gt_alt:.2f} m <= {STOP_ALT} m (thr={thr:.3f}) -> stop.")
+                    break
 
         yaw = yaw_from_quaternion(FC_node.getQuat())
         await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosBody().z_m, yaw)
