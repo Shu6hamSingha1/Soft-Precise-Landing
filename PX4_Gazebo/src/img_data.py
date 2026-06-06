@@ -402,14 +402,16 @@ class IMG_PROCESSOR(Thread):
         self._ekf_P = np.eye(9) * 1.0
         self._ekf_init = False
         self._ekf_prev_t = None
-        # Default OFF. The EKF fused [h_tr;w] is the best estimator BY SIGNAL
-        # (R^2 vs GT across cal/multisine/landing, wins on h_z/w_z), BUT a 1-rep
-        # closed-loop test (2026-06-07, FLOW_FUSE_RING=1) showed it BREAKS THE
-        # DESCENT: the drone held 6 m for ~4.6 min, xy-locked (0.05 m) but never
-        # descended. Cause: the loom descent reference (REF_RAD_OPT_FLOW) is
-        # co-tuned to the CORNER h_z scale; the fused h_z (ring gain 1.37) over-
-        # reports the loom -> no descent command. Re-tune the descent reference to
-        # the fused scale before defaulting ON, then run the IC2-5 gate.
+        # Default OFF (untested closed-loop). The EKF fused [h_tr;w] is the best
+        # estimator BY SIGNAL (R^2 vs GT across cal/multisine/landing). A 1-rep
+        # FLOW_FUSE_RING=1 landing (2026-06-07) did NOT descend (held 6 m/4.6 min,
+        # xy-locked 0.05 m; controller COMMANDED descent h_d_z=-0.42 but measured
+        # loom h_z stayed ~0). IMPORTANT: fused h_z == corner-KF h_z (ratio 1.00),
+        # so the EKF did NOT change the descent signal -> this is a vertical
+        # actuation/tracking failure, likely NOT EKF-specific (needs a fused-vs-
+        # corner comparison at the same IC to attribute). NO scale mismatch, so
+        # re-tuning REF_RAD_OPT_FLOW is not indicated. Keep OFF until a comparison
+        # rep shows fused descends like corner.
         self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
