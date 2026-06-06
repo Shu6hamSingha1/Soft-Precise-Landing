@@ -402,17 +402,15 @@ class IMG_PROCESSOR(Thread):
         self._ekf_P = np.eye(9) * 1.0
         self._ekf_init = False
         self._ekf_prev_t = None
-        # Default OFF (untested closed-loop). The EKF fused [h_tr;w] is the best
-        # estimator BY SIGNAL (R^2 vs GT across cal/multisine/landing). A 1-rep
-        # FLOW_FUSE_RING=1 landing (2026-06-07) did NOT descend (held 6 m/4.6 min,
-        # xy-locked 0.05 m; controller COMMANDED descent h_d_z=-0.42 but measured
-        # loom h_z stayed ~0). IMPORTANT: fused h_z == corner-KF h_z (ratio 1.00),
-        # so the EKF did NOT change the descent signal -> this is a vertical
-        # actuation/tracking failure, likely NOT EKF-specific (needs a fused-vs-
-        # corner comparison at the same IC to attribute). NO scale mismatch, so
-        # re-tuning REF_RAD_OPT_FLOW is not indicated. Keep OFF until a comparison
-        # rep shows fused descends like corner.
-        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
+        # DEFAULT ON (2026-06-07). The EKF fused [h_tr;w] is the best estimator by
+        # signal (R^2 vs GT across cal/multisine/landing, wins h_z/w_z) AND feeds
+        # the controller corner-EQUIVALENT h_z (fused h_z == corner-KF h_z, ratio
+        # 1.00) so the descent input is unchanged from corner-only. The earlier
+        # 1-rep no-descent was UNATTRIBUTED (loom stayed 0 despite commanded
+        # descent) and is NOT an EKF signal change; a fused-vs-corner descent
+        # comparison is the check (if corner also fails to descend at that IC it
+        # was a fluke). Set FLOW_FUSE_RING=0 to revert to corner-only.
+        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "1") == "1"
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
         self._H_ring   = np.block([[_I3, _I3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr+h_tv; w]
