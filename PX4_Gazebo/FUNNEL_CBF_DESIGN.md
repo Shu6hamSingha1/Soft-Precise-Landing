@@ -85,10 +85,12 @@ strangles recovery, the reason the floor was pinned at 60 under the magnitude cl
 default map (`SWAP=0,+1,+1`) is validated offline (`tools/calibrate_cone0_sign.py`, cos·I_a=0.84).
 
 **IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cbf2`):** the EXACT camera-frame `θ`-QP (the literal doc QP),
-retiring cone0/cbf1's lean-magnitude approximation. Solves, in image-axis tilt:
-`θ* = argmin‖θ−θ_d‖² s.t. |s + L_ω·θ + τd| ≤ m, |θ| ≤ θ_cap`,
-where `s` = V-frame (level) centroid, `L_ω·θ` = the tilt shift (so `s+L_ω·θ` = the predicted camera
-feature), `m = φ_max − δ`, `θ_d = Rz(−yaw)·(a_xy/a_z)`; then `a_xy* = a_z·Rz(yaw)·θ*`. Solved by
+retiring cone0/cbf1's lean-magnitude approximation. Solves, in image-axis tilt, on the **measured C-frame feature anchored at the current tilt**:
+`θ* = argmin‖θ−θ_d‖² s.t. |ᶜr̂ + L_ω·(θ−θ_curr) + τd| ≤ m, |θ| ≤ θ_cap`,
+where `ᶜr̂` = measured camera centroid, `θ_curr` = current tilt from the attitude
+(`Rz(−yaw)·(−R[:2,2]/R₃₃)`), `m = φ_max − δ`, `θ_d = Rz(−yaw)·(a_xy/a_z)`; then `a_xy* = a_z·Rz(yaw)·θ*`.
+(NB: anchor on `ᶜr̂`, NOT the V-frame `s` — the barrier is C-frame, and anchoring at `θ_curr` keeps the
+`L_ω` linearization accurate at the operating point.) Solved by
 iterative projection (box + cap). The `a_xy↔tilt` yaw map needs no new cal gate — both `cone0` and the
 `L_ω·ω` drift calibrated to the **identity** map (`tools/calibrate_cone0_sign.py`,
 `tools/calibrate_cbf1_drift_sign.py`, cos 0.84/0.85), so the body→image axes are no-swap. Falls back to

@@ -916,18 +916,18 @@ class Controller(Thread):
         #   "cbf2": exact camera-frame theta-QP (image-axis tilt; retires the lean approximation).
         if funnel_mode == "cbf2":
             # === Exact camera-frame theta-QP (docs/CBF_visibility.pdf — the literal QP) ===
-            # Constrain the PREDICTED camera feature: |s + L_w@theta + tau*d| <= m, with s = the
-            # V-frame (level) centroid, theta = commanded IMAGE-AXIS tilt, L_w@theta the tilt
-            # shift, m = phi_max - delta. theta_d from the desired accel via the (cone0+drift-
-            # validated) yaw map theta_d = Rz(-yaw)@(a_xy/a_z); solve, then a_xy* = a_z*Rz(yaw)@theta*.
-            # Works in image-axis tilt -> retires cone0/cbf1's lean-magnitude approximation.
+            # Barrier on the MEASURED C-frame feature, anchored at the current tilt:
+            #   |cr + L_w@(theta - theta_curr) + tau*d| <= m,  cr = measured camera centroid (tangent),
+            # theta = commanded IMAGE-AXIS tilt, theta_curr the current tilt (from the attitude),
+            # L_w@(theta-theta_curr) the shift from now, m = phi_max - delta. theta_d = Rz(-yaw)@(a_xy/a_z)
+            # (cone0+drift-validated map); solve, then a_xy* = a_z*Rz(yaw)@theta*. Image-axis tilt ->
+            # retires cone0/cbf1's lean-magnitude approximation.
             a_z = abs(I_a[2]); ok = False
             try:
                 rc = np.asarray(self._img_node._feature_pts[-1][1], float)
                 ct = (rc - np.asarray(self._img_node.center, float)) / foc
                 cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
                 Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
-                s_lvl = np.asarray(self._s[-1][:2], float) if len(self._s) > 0 else cr2
                 m2 = np.maximum(np.asarray(self._p_10, float) - 0.5 * (ct.max(0) - ct.min(0)), 1e-3)
                 dft = np.zeros(2); tau = float(os.environ.get("CBF_TAU", "0.3"))
                 if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_cr_prev", None) is not None:
@@ -938,18 +938,22 @@ class Controller(Thread):
                     dft = tau * self._lw_d
                 self._lw_cr_prev = cr2.copy()
                 cz, sz = np.cos(yaw_c), np.sin(yaw_c)
-                th = np.array([[cz, sz], [-sz, cz]]) @ (I_a[:2] / max(a_z, 1e-6))    # theta_d = Rz(-yaw)@(a_xy/a_z)
-                for _ in range(10):                                                  # project onto box + cap
-                    f = s_lvl + Lw2 @ th + dft
+                Rzm = np.array([[cz, sz], [-sz, cz]])                          # Rz(-yaw): inertial -> image
+                R33 = float(R[2, 2]) if abs(float(R[2, 2])) > 1e-3 else 1e-3
+                th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / R33)           # current image-axis tilt (attitude)
+                th = Rzm @ (I_a[:2] / max(a_z, 1e-6))                          # theta_d = Rz(-yaw)@(a_xy/a_z)
+                anchor = cr2 - Lw2 @ th_curr + dft                            # so f = cr + L_w@(theta-theta_curr) + tau*d
+                for _ in range(10):                                           # project onto box + cap
+                    f = anchor + Lw2 @ th
                     for k in range(2):
                         if f[k] > m2[k]:
-                            r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = s_lvl + Lw2 @ th + dft
+                            r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
                         elif f[k] < -m2[k]:
-                            r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = s_lvl + Lw2 @ th + dft
+                            r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
                     tn = float(np.linalg.norm(th))
                     if tn > self._theta_cap:
                         th = th * (self._theta_cap / tn)
-                I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)              # a_xy* = a_z*Rz(yaw)@theta*
+                I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)        # a_xy* = a_z*Rz(yaw)@theta*
                 ok = True
             except (IndexError, AttributeError, ValueError, TypeError):
                 ok = False
