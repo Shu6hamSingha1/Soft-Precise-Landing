@@ -8,8 +8,11 @@
 # Two cmd_profiles, selected by VALIDATION_PROFILE:
 #   'multisine' (default) — all rate axes commanded TOGETHER at distinct,
 #       non-harmonic freqs -> tests gain+lag under cross-axis coupling.
-#   'landing'             — thrust ramp-down descent (rates held ~0) -> validates
-#       the thrust->vertical transfer + rate hold through the descent regime.
+#   'landing'             — POSITION-SETPOINT descent (send_position_ned, PX4 holds
+#       attitude; NO controller, NO open-loop tip-over) -> records the FC's achieved
+#       rate/thrust response through the descent regime to touchdown. (Use the
+#       'multisine' profile for the command->response gain+lag validation; the
+#       landing profile is a clean-descent characterization, not command-tracking.)
 #
 # Adapted from apps/record_input_calibration.py (same convert_2_sys_cmd thrust mapping
 # and send_attitude_rate path). OPEN-LOOP body rates: amplitudes are kept modest
@@ -46,19 +49,14 @@ def yaw_from_quaternion(q):
 
 
 def cmd_at(tau):
-    """The validation cmd_profile -> [wx, wy, wz, thrust_offset_N] at time tau.
-    thrust_offset > 0 REDUCES thrust (0.738 - offset/42.3) -> descend."""
-    if PROFILE == "multisine":
-        A = float(os.environ.get("VAL_RATE_AMP", "0.15"))          # rad/s, modest (open-loop)
-        f_x, f_y, f_z = 0.40, 0.55, 0.70                           # distinct, non-harmonic
-        return np.array([A*np.sin(2*np.pi*f_x*tau),
-                         A*np.sin(2*np.pi*f_y*tau),
-                         A*np.sin(2*np.pi*f_z*tau), 0.0])
-    if PROFILE == "landing":
-        Tl = float(os.environ.get("VAL_LANDING_S", "20.0"))
-        DT = float(os.environ.get("VAL_LANDING_THRUST_N", "1.5"))  # +N -> less thrust -> descend
-        return np.array([0.0, 0.0, 0.0, DT * min(tau / Tl, 1.0)])
-    raise SystemExit(f"unknown VALIDATION_PROFILE={PROFILE!r} (expected multisine|landing)")
+    """MULTISINE cmd_profile -> [wx, wy, wz, thrust_offset_N] at time tau (rad/s body
+    rates; thrust_offset 0). The 'landing' profile is a POSITION-SETPOINT descent
+    handled in the send loop (send_position_ned), not here."""
+    A = float(os.environ.get("VAL_RATE_AMP", "0.15"))          # rad/s, modest (open-loop)
+    f_x, f_y, f_z = 0.40, 0.55, 0.70                           # distinct, non-harmonic
+    return np.array([A*np.sin(2*np.pi*f_x*tau),
+                     A*np.sin(2*np.pi*f_y*tau),
+                     A*np.sin(2*np.pi*f_z*tau), 0.0])
 
 
 async def main():
@@ -90,6 +88,9 @@ async def main():
         await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosBody().z_m, yaw)
         await asyncio.sleep(1.0)
 
+        yaw0  = yaw_from_quaternion(FC_node.getQuat())             # takeoff yaw (held in landing)
+        floor = float(os.environ.get("VAL_LANDING_FLOOR", "0.0"))
+        Tl    = float(os.environ.get("VAL_LANDING_S", "20.0"))
         start_time = time_node.perf_counter()
         for _k in range(int(DUR / SLEEP_TIME)):
             if FC_node.LANDED:
@@ -98,13 +99,23 @@ async def main():
                 t_c.append(time_node.perf_counter() - start_time)
             else:
                 start_time = time_node.perf_counter(); CONTROLLER_READY = True; t_c = [0.0]
+            tau = time_node.perf_counter() - start_time
 
-            cmd = cmd_at(time_node.perf_counter() - start_time)
             try:
-                await asyncio.wait_for(FC_node.send_attitude_rate(*convert_2_sys_cmd(cmd)),
-                                       timeout=SEND_TIMEOUT_S)
+                if PROFILE == "landing":
+                    # POSITION-SETPOINT descent (PX4 holds attitude — clean, no
+                    # open-loop tip-over). Record the z setpoint as 'Command'; the
+                    # FC's achieved rate/thrust response is in Telemetry.
+                    z = -(TAKEOFF_H - (TAKEOFF_H - floor) * min(tau / Tl, 1.0))
+                    await asyncio.wait_for(FC_node.send_position_ned(0.0, 0.0, z, yaw0),
+                                           timeout=SEND_TIMEOUT_S)
+                    cmd = np.array([0.0, 0.0, z, 0.0])
+                else:
+                    cmd = cmd_at(tau)
+                    await asyncio.wait_for(FC_node.send_attitude_rate(*convert_2_sys_cmd(cmd)),
+                                           timeout=SEND_TIMEOUT_S)
             except asyncio.TimeoutError:
-                print("  [bail] send_attitude_rate timed out — PX4 likely dropped OFFBOARD.")
+                print("  [bail] setpoint send timed out — PX4 likely dropped OFFBOARD.")
                 break
             await asyncio.sleep(SLEEP_TIME)
             UAV_pose.append(pose_node.getPose().UAV)
