@@ -115,5 +115,8 @@ echo "[input-calib] running input_calibration.py (data -> $INPUT_CALIB_OUT_DIR).
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 apps/input_calibration.py
+# INPUT_APP overridable so this launcher can also fly the VALIDATION app, e.g.
+#   INPUT_APP=apps/input_validation.py VALIDATION_PROFILE=multisine \
+#   CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
+INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 "${INPUT_APP:-apps/input_calibration.py}"
 echo "[input-calib] script exit $?"

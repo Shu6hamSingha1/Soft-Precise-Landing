@@ -113,11 +113,13 @@ cd ~/Soft-Precise-Landing/PX4_Gazebo
 for i in $(seq 1 10); do timeout 220 bash scripts/run_output_calibration.sh; done
 ~/ws/scripts/env2025/bin/python3 tools/derive_board_cal.py     # corner M  -> paste into img_data.py
 ~/ws/scripts/env2025/bin/python3 tools/derive_ring_cal.py      # ring M_ring (transfer) -> paste
-# VALIDATION (1 run each, separate folder)
-CALIB_MODE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
-CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
-LANDING_OUT_BASE=$PWD/validation_data/landing bash scripts/run_aruco_landing.sh
+# VALIDATION (dedicated apps via CALIB_APP/INPUT_APP override; VALIDATION_PROFILE=multisine|landing)
+CALIB_APP=apps/output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
+INPUT_APP=apps/input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
+LANDING_OUT_BASE=$PWD/validation_data/landing bash scripts/run_aruco_landing.sh   # landing serves BOTH
 ```
+The validation apps (`apps/output_validation.py`, `apps/input_validation.py`) each fly one of two
+`cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`.
 
 # Tools inventory
 - `tools/derive_board_cal.py` — corner 6×6 M (GT=M@raw)

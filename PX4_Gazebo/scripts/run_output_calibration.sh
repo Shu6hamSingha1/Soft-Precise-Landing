@@ -126,5 +126,8 @@ echo "[calib] running output_calibration.py (data -> $CALIB_OUT_DIR)..."
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 apps/output_calibration.py
+# CALIB_APP overridable so this launcher can also fly the VALIDATION app, e.g.
+#   CALIB_APP=apps/output_validation.py VALIDATION_PROFILE=multisine \
+#   CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
+CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 "${CALIB_APP:-apps/output_calibration.py}"
 echo "[calib] script exit $?"
