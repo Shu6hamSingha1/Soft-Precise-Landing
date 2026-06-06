@@ -629,8 +629,13 @@ if __name__ == "__main__":
             # record timestamp
             timestamp = time.ctime().replace(':', '-')
 
-            # Create a directory named based on timestamp
-            dir_name = f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test/{timestamp}"
+            # Create a directory named based on timestamp.
+            # LANDING_OUT_BASE routes a VALIDATION landing elsewhere (e.g.
+            # validation_data/landing) without polluting the default test set.
+            _land_base = os.environ.get(
+                "LANDING_OUT_BASE",
+                "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test")
+            dir_name = f"{_land_base}/{timestamp}"
             os.makedirs(dir_name)
 
             # Save files inside the folder 

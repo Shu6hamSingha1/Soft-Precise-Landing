@@ -111,8 +111,15 @@ def validate(d):
     t_g, Vh, Vw, Vz = gt_v_flow(gt)
     GT = np.hstack([Vh, -Vw])                                    # manuscript sign on w
     ti = np.asarray(img['Time'], float)
-    ring = np.asarray(img['Ring Opt Flow Ang Vel'], float); corn = np.asarray(img['Opt Flow Ang Vel'], float)
-    ncr = np.asarray(img['N Ring Corners'], float); ncc = np.asarray(img['N Flow Corners'], float)
+    corn = np.asarray(img['Opt Flow Ang Vel'], float)
+    # Ring may be absent/empty on recordings predating the ring logging — fill
+    # with NaN so the ring checks return nan instead of crashing the matmul.
+    ring = np.asarray(img.get('Ring Opt Flow Ang Vel', []), float)
+    if ring.ndim != 2 or ring.shape[1:] != (6,) or len(ring) == 0:
+        print("  (no ring data in this recording — ring checks -> nan)")
+        ring = np.full((len(corn), 6), np.nan)
+    ncr = np.asarray(img.get('N Ring Corners', np.zeros(len(corn))), float)
+    ncc = np.asarray(img['N Flow Corners'], float)
     n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc))
     ti, ring, corn, ncr, ncc = ti[:n], ring[:n], corn[:n], ncr[:n], ncc[:n]
     ring_cal = (CAL_RING @ ring.T).T   # runtime-faithful: ring uses _sensor_cal_ring, NOT corner CAL

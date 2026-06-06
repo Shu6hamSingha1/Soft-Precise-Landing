@@ -16,6 +16,8 @@ __pycache__/
 PX4_Gazebo/run_logs/
 PX4_Gazebo/calibration_data/
 # (calibration_data/ holds both output/ and input/ subtrees)
+PX4_Gazebo/validation_data/
+# (validation_data/ holds multisine/, input_multi/, landing/ — independent of calibration)
 
 # PX4_Gazebo/test_data: bulk recordings (regenerable) are ignored.
 # Tracked subdirs (irreplaceable — SP landings, reference reps, campaign records):

@@ -11,7 +11,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
-CALIB_PARENT="$SCRIPT_DIR/../calibration_data/input"
+# CALIB_PARENT overridable so a VALIDATION run routes elsewhere (e.g.
+# CALIB_PARENT=$PWD/validation_data/input_multi ...) without contaminating
+# the calibration set the aggregator scans.
+CALIB_PARENT="${CALIB_PARENT:-$SCRIPT_DIR/../calibration_data/input}"
 mkdir -p "$CALIB_PARENT"
 TIMESTAMP="$(date '+%a %b %e %H-%M-%S %Y')"
 export INPUT_CALIB_OUT_DIR="${INPUT_CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"

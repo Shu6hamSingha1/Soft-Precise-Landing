@@ -14,7 +14,10 @@ mkdir -p "$LOG_DIR"
 # the original ~/ws/scripts/soft_precise_landing/output_calibration.py
 # convention which used time.ctime()-style names). A `latest` symlink in the
 # same parent tracks the most recent run for analyze/validate scripts.
-CALIB_PARENT="$SCRIPT_DIR/../calibration_data/output"
+# CALIB_PARENT overridable so a VALIDATION run routes elsewhere (e.g.
+# CALIB_PARENT=$PWD/validation_data/multisine CALIB_MODE=multisine ...) without
+# contaminating the calibration set the derive tools scan.
+CALIB_PARENT="${CALIB_PARENT:-$SCRIPT_DIR/../calibration_data/output}"
 mkdir -p "$CALIB_PARENT"
 TIMESTAMP="$(date '+%a %b %e %H-%M-%S %Y')"
 export CALIB_OUT_DIR="${CALIB_OUT_DIR:-$CALIB_PARENT/$TIMESTAMP}"
