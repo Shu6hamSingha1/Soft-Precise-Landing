@@ -119,10 +119,15 @@ for i in $(seq 1 10); do timeout 220 bash scripts/run_output_calibration.sh; don
 # VALIDATION (dedicated apps via CALIB_APP/INPUT_APP override; VALIDATION_PROFILE=multisine|landing)
 CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
 INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
-LANDING_OUT_BASE=$PWD/validation_data/landing bash scripts/run_aruco_landing.sh   # landing serves BOTH
+# LANDINGS use POSITION-SETPOINT / thrust-staircase descents (NOT the untuned PLASMC
+# controller — it has a descent regressor that hovers; run_aruco_landing is for tuning, not validation):
+CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=landing bash scripts/run_output_calibration.sh   # output: position-SP descent, flow vs GT to touchdown
+INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=landing bash scripts/run_input_calibration.sh    # input: thrust-staircase (0.74↓0.01), GT-alt stop at 1m
 ```
 The validation apps (`apps/record_output_validation.py`, `apps/record_input_validation.py`) each fly one of two
-`cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`.
+`cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`. The **landing**
+profiles deliberately AVOID the PLASMC controller: output = `send_position_ned` descent; input = a
+thrust_norm staircase. (`run_aruco_landing.sh` is the controller — for *tuning*, not validation.)
 
 **Validation maneuver tuning (from the 2026-06-06 SITL shakedown — see `validation-runs-status`):**
 the apps run end-to-end, but the DEFAULT amplitudes are too aggressive:
