@@ -77,9 +77,10 @@ class IMG_PROCESSOR(Thread):
         # `center = (320, 240)` — that one was transposed and is now (240, 320).
         self.center = np.array(self._resolution) / 2.0   # (cx, cy) = (240, 320)
 
-        # Sensor calibration — PHASED single-axis M (2026-06-06), derived over
-        # 9 phased output_calibration runs (calibration_data/output/, Jun 5-6)
-        # via tools/derive_board_cal.py. FULL 6x6: calibrated [h;w]=M@raw.
+        # Sensor calibration — PHASED single-axis M (refreshed 2026-06-07),
+        # derived over ALL 13 phased runs (calibration_data/output/, 8 original
+        # Jun 5-6 + 5 new fused Jun 6) via tools/derive_board_cal.py.
+        # FULL 6x6: calibrated [h;w]=M@raw.
         #
         # Standard phased excitation (apps/record_output_calibration.py): each axis
         # driven ALONE in sequence (x -> y -> z -> yaw, settles between), so the
@@ -115,22 +116,22 @@ class IMG_PROCESSOR(Thread):
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
         # uniform depth Z=altitude; ring h_z ~ corner h_z r~0.95), so a FIXED M_ring
-        # generalizes. Derived 2026-06-06 via tools/derive_ring_cal.py mode=transfer:
+        # generalizes. Re-derived 2026-06-07 (keyed to the all-13 corner M) via
+        # tools/derive_ring_cal.py mode=transfer:
         # the ring is calibrated against the ALREADY-CALIBRATED CORNER as a transfer
         # standard (M_ring@ring ~= M_corner@corner) over 13 SAME-CLOCK recordings
         # (RingFlow landings + output runs) — avoids the Img/GT cross-clock smear of
         # the GT-direct retro path, and makes ring_cal ~= corner_cal so the
-        # marker->ring handoff is continuous. Per-axis R^2: Hx 0.63 Hy 0.84 Hz 0.76
-        # Wz 0.89 (approaching corner). Wx/Wy rows EXACTLY 0 (inherited from the
-        # corner standard's zeroed rows; CTRL_ZERO_WXY=1). CAVEAT: Wz gain 3.45 with
-        # high inter-run STD — the ring sees yaw weakly (concentric, low texture);
-        # trust the h-block, treat ring-yaw as coarse. PROVISIONAL: keyed to the
-        # current corner M (re-derive if that changes). Re-derived 2026-06-07 keyed
-        # to the new all-13 corner M; R^2 Hx 0.67 Hy 0.85 Hz 0.77 Wz 0.89.
-        # GT-DIRECT (RING_CAL_MODE=gt) was TRIED and is WORSE here: it can only use
-        # the 5 co-sampled fused runs, which are the noisy ones from a stressed SITL
-        # session (R^2 Hx 0.34 Hz 0.57 Wz 0.56) — so transfer (13 recordings) wins.
-        # Ring is the FUSION input (control consumes EKF when FLOW_FUSE_RING=1).
+        # marker->ring handoff is continuous. Per-axis R^2 (keyed to all-13 corner M):
+        # Hx 0.67 Hy 0.85 Hz 0.77 Wz 0.89 (approaching corner). Wx/Wy rows EXACTLY 0
+        # (inherited from the corner standard; CTRL_ZERO_WXY=1). CAVEAT: ring-yaw Wz
+        # gain ~3 with high inter-run STD — the ring sees yaw weakly (concentric, low
+        # texture); trust the h-block, treat ring-yaw as coarse. PROVISIONAL: keyed
+        # to the current corner M (re-derive if that changes).
+        # GT-DIRECT (RING_CAL_MODE=gt) was TRIED and is WORSE: it can only use the 5
+        # co-sampled fused runs (noisy, stressed SITL session: R^2 Hx 0.34 Hz 0.57
+        # Wz 0.56) — so transfer (13 recordings) wins.
+        # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
         self._sensor_cal_ring = np.array([
             [+1.0380, +0.0353, -0.0134, -0.0416, +1.0246, -0.0672],
             [-0.0677, +0.6101, +0.0457, -0.5329, -0.0970, -0.0876],
