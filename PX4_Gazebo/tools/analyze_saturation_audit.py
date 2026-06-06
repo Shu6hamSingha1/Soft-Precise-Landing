@@ -81,6 +81,19 @@ def audit_rep(rep_dir, sat_thresh=0.98):
             len(zeta), len(izeta), len(sigma), len(a_u), len(I_a), len(I_ar),
             len(B_T), len(thc))
 
+    # Incomplete/aborted recording guard: short flights can leave a 2-D channel
+    # (e.g. is_e_n(t)) empty -> shape (0,), which makes the axis=1 reductions
+    # below raise a cryptic AxisError and silently drop an otherwise-listed rep.
+    # Skip cleanly with a reason instead.
+    _need2d = {"w_u": w_u, "w_i": w_i, "dh_d": dh_d, "is_e_n": is_en,
+               "zeta": zeta, "izeta": izeta, "sigma": sigma,
+               "a_u": a_u, "I_a": I_a, "I_a_raw": I_ar}
+    _bad = [k for k, a in _need2d.items() if np.asarray(a).ndim != 2]
+    if m < 20 or _bad:
+        print(f"[skip] {rep_dir}: incomplete recording "
+              f"(m={m}, empty/1-D channels: {_bad or 'none'})")
+        return None
+
     duty = {}
     th = sat_thresh
 

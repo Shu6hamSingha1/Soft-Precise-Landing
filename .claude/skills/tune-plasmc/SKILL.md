@@ -36,8 +36,21 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 ## Complete parameter inventory
 
 **2026-06-03 CLEANUP: all knobs are now DIRECT per-axis parameter values** (e.g. `PLASMC_KP_X=1.4`),
-not scale factors. Obsolete mechanisms (K_rp scheduling, DSD clamps, THETA_FLOOR, VFRAME_ROT, PX4_RATE_SCALE)
-were removed — see parameter_record.ods sheet `Removed_Parameters` for the full history.
+not scale factors. Obsolete mechanisms (K_rp scheduling, DSD clamps, VFRAME_ROT, PX4_RATE_SCALE)
+were removed — see parameter_record.ods sheet `Removed_Parameters`. (THETA_FLOOR was RE-ADDED; see FoV cone.)
+
+> **⚠️ 2026-06-06 CAL-REGIME RESET + NEW KNOBS — read [[project_tuning_campaign_newcal_reset]] first.**
+> Tuning **restarts** under the honest 8-run cal (`d60973a`). There are **3 cal regimes**: trial 46's
+> "28% SP @ 10cm" ran under the *multisine* cal (regime 2, still had the V-frame g-sign bug) — it is now a
+> HYPOTHESIS, not a result. Everything in "Known winners / dead-ends / frontier" below is regime-1/2 and
+> mostly GAIN-STARVED; the memory has the re-classified prioritized 6-knob sweep order.
+> **Corrected current code defaults vs the tables below:** `PLASMC_DH_D_MAX`=**5.0** (not 50),
+> `PLASMC_THETA_FLOOR_DEG`=**60** (not 0), `PLASMC_LFOV`=**0.0** (not 0.1, rho_fov held constant).
+> **New knobs not in the tables:** outer PPC funnel `PLASMC_SEN_FUNNEL`(off)+`XIS/PS0/PSINF_{X,Y}`;
+> visibility CBF `FUNNEL_MODE`(cone|cone0|cbf1|cbf2, default cone)+`CBF_TAU`+`CBF_DMIN_EMA`+`CONE0_{SWAP,SIGN_X,SIGN_Y}`;
+> `PLASMC_TAU_UA`(0.1 yaw-rate LPF); `PLASMC_YAW_PSID_RATE`(0.7); `W_XY_DEROT`(zero|imu|image, =zero via CTRL_ZERO_WXY=1);
+> `YAW_TERMINAL_HOLD`(on)+`YAW_HOLD_ALPHA_RATE`(3.0)+`TERMINAL_STABILIZE`(off); `IMG_FEAT_KF_R`(0.004, centroid-KF noise).
+> Sweep harness: `scripts/run_knob_sweep.sh`. IC2-5 gate: `run_ic_validation.sh` — never pass it `LANDING_OUT_BASE`.
 
 **The validated IC1 config (28% SP @ 10cm, n=25 — parameter_record trial 46), in direct-value form:**
 ```
@@ -55,7 +68,7 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 | `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_{X,Y}` (direct per-axis values; defaults 9.0) | Boost >1.5× → instability cascade |
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_{X,Y}` (direct; defaults 1.0) | 10× MATLAB's 0.1; needed for SITL drift correction |
 | `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_{X,Y}` (direct; defaults 1.4375) | Sensitive to centroid noise; ↑ → chatter |
-| `DH_D_MAX` | 50.0 m/s³ | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
+| `DH_D_MAX` | **5.0** m/s³ (baked) | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
 
 ### Middle loop (PLASMC funnel + sliding)
 | Param | Default | Env knob | Notes |
@@ -85,9 +98,9 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 |---|---|---|---|
 | `rho_fov_0` | `[290, 210]` | `PLASMC_RHOFOV0_{U,V}` (direct, px) | Initial pixel envelope (per image axis) |
 | `rho_fov_inf` | `[80, 80]` | `PLASMC_RHOFOVINF_{U,V}` (direct, px) | Terminal pixel envelope (per image axis) |
-| `l_fov` | 0.1 | `PLASMC_LFOV` (direct) | Envelope decay rate (1/s) |
+| `l_fov` | **0.0** (baked; rho_fov held constant at rho_fov_0) | `PLASMC_LFOV` (direct) | Envelope decay rate (1/s). Was 0.1 → decay to 80px fired perception-death early; set >0 to restore decay (2026-06-05). |
 | `theta_cap` | 60° | `PLASMC_THETACAP_DEG` (direct, deg) | Soft cone ceiling — acceleration saturation |
-| `theta_floor` | 0° (legacy) | `PLASMC_THETA_FLOOR_DEG` | **Floor on θ_cone (2026-06-03). The d_min collapse was strangling terminal correction (94-100% of final-2s samples at IC1) — THETACAP is irrelevant when d_min=0. floor=60 → SP #6 (xy 0.060/vel 0.149, first mechanism-driven SP). See memory fov-cone-clamp-deadlock.** |
+| `theta_floor` | **60°** (baked default; =θ_cap → d_min collapse OFF) | `PLASMC_THETA_FLOOR_DEG` | **Floor on θ_cone (2026-06-03). The d_min collapse was strangling terminal correction (94-100% of final-2s samples at IC1) — THETACAP is irrelevant when d_min=0. floor=60 → SP #6 (xy 0.060/vel 0.149, first mechanism-driven SP). See memory fov-cone-clamp-deadlock.** |
 
 ### Inner loop (SO(3))
 | Param | Default | Env knob | Notes |
