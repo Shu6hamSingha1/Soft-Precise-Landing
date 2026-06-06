@@ -928,8 +928,14 @@ class Controller(Thread):
                 ct = (rc - np.asarray(self._img_node.center, float)) / foc
                 cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
                 Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
-                m2 = np.maximum(np.asarray(self._p_10, float) - 0.5 * (ct.max(0) - ct.min(0)), 1e-3)
-                dft = np.zeros(2); tau = float(os.environ.get("CBF_TAU", "0.3"))
+                tau = float(os.environ.get("CBF_TAU", "0.3"))
+                delta2 = 0.5 * (ct.max(0) - ct.min(0))                       # per-axis half-extent
+                ddelta2 = np.zeros(2)                                        # loom (marker-fill rate), growth only
+                if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_delta_prev", None) is not None:
+                    ddelta2 = np.maximum((delta2 - self._lw_delta_prev) / self._dt[-1], 0.0)
+                self._lw_delta_prev = delta2.copy()
+                m2 = np.maximum(np.asarray(self._p_10, float) - delta2 - tau * ddelta2, 1e-3)   # phi_max - delta - tau*ddelta
+                dft = np.zeros(2)
                 if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_cr_prev", None) is not None:
                     w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
                     d_raw = (cr2 - self._lw_cr_prev) / self._dt[-1] - Lw2 @ w_rp
@@ -954,6 +960,7 @@ class Controller(Thread):
                     if tn > self._theta_cap:
                         th = th * (self._theta_cap / tn)
                 I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)        # a_xy* = a_z*Rz(yaw)@theta*
+                theta_cone = float(np.linalg.norm(th))                       # log the commanded tilt magnitude (cbf2 diag)
                 ok = True
             except (IndexError, AttributeError, ValueError, TypeError):
                 ok = False

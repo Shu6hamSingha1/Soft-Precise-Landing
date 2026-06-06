@@ -69,9 +69,10 @@ With $m_k=\varphi_{\max,k}-\delta_k-\tau\dot\delta_k$ the predicted margin,
 \boxed{\;\bm\theta^\star=\arg\min_{\bm\theta}\ \|\bm\theta-\bm\theta_d\|^2
 \ \ \text{s.t.}\ \ \big|\,^\Cframe\hat r_k+[\Lw(\bm\theta-\bm\theta_{\rm curr})]_k+\tau d_k\big|\le m_k,\ \ |\bm\theta|\le\theta_{\rm cap}\;}
 \end{equation}
-A small 2-variable QP (the two tilt axes), with $\le2$ binding rows plus the cap --- closed-form. $\Lw$ is
-near-diagonal for a centred marker (the $xy$ off-terms vanish), so it is nearly a per-axis clamp; the
-off-diagonal carries the genuine roll$\leftrightarrow$pitch cross-coupling near the FoV edge.
+A small 2-variable QP (the two tilt axes), with $\le2$ binding rows plus the cap, solved by a few
+projection iterations. $\Lw$ is near-diagonal for a centred marker (the $xy$ off-terms vanish), so it is
+nearly a per-axis clamp (closed-form there); the off-diagonal carries the genuine
+roll$\leftrightarrow$pitch cross-coupling near the FoV edge, which the iterations resolve.
 \begin{itemize}
 \item \textbf{Directional} --- only the outward binding row is active; inward (recovery) and tangential
 tilts are free. No strangling.
