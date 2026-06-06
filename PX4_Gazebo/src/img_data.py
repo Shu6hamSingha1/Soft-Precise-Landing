@@ -89,19 +89,11 @@ class IMG_PROCESSOR(Thread):
         # (Hx +1.01, Hy +0.93, Hz +0.99) — the board-homography corner flow is
         # already well-scaled; the geometric h<->w coupling ((h0,w1)/(h1,w0)
         # off-diagonals) supplies the rest and holds for moving targets too.
-        # Per-axis R^2 (8 runs): Hx 0.79 Hy 0.79 Hz 0.83 Wz 0.73  (Wx/Wy GT=0).
-        #
-        # HONEST cal (2026-06-06): re-derived from 8 CORRECTLY-LEVELED phased
-        # runs via derive_board_cal.py with the GT w-axis made YAW-ONLY
-        # (V_w_ug[:, :2] = 0) to match what the leveled V-frame flow carries — so
-        # the Wx/Wy rows are EXACTLY 0 (consistent with CTRL_ZERO_WXY=1) instead
-        # of the prior 9-run cal's garbage rows (R^2 ~0.4, full-rotation GT). One
-        # of the 9 runs ('...3-42-07') was EXCLUDED — its leveling retained
-        # roll/pitch (cell-20 slope 0.64 vs ~0.96 for the rest). h-block + Wz are
-        # the trustworthy rows. CAVEAT: Hz inter-run STD 0.36 (divergence is
-        # poorly observed) -> Hz=1.11 is the least-certain entry; RE-VALIDATE the
-        # descent (vertical) flow gain. Prior 9-run M in git history.
-        # Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z].
+        # (Prior provenance — all in git history, superseded by the all-13 refresh
+        # below: the 4-multisine cal, then the 9-run, then the 8-run honest cal
+        # 2026-06-06. Order in [h;w]: [h_x, h_y, h_z, w_x, w_y, w_z]. CAVEAT
+        # carried forward: Hz (divergence) is the least-certain row — poorly
+        # observed, high inter-run STD; re-validate the descent (vertical) gain.)
         # Corner sensor cal — re-derived 2026-06-07 from ALL 13 phased runs
         # (8 original + 5 new fused) via tools/derive_board_cal.py. R^2 Hx 0.75
         # Hy 0.75 Hz 0.79 Wz 0.71 (most-robust pool; supersedes the 8-run cal).

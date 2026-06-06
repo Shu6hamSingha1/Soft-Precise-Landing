@@ -38,7 +38,9 @@
 #     calibrated quantity in the corner-cal (_sensor_cal_hw) units (the ring is
 #     transfer-matched to that scale, and the two source cals + EKF are internal
 #     to img_data); the controller applies no cal of its own. Current cal of
-#     record: 8-run phased corner M + transfer-derived ring M_ring (2026-06-06).
+#     record: all-13-run phased corner M + re-keyed transfer ring M_ring
+#     (2026-06-07; supersedes the 8-run 2026-06-06 cal). FLOW_FUSE_RING default
+#     ON (EKF fused flow) as of 2026-06-07.
 # **************************************************************************
 import os
 import time
@@ -395,13 +397,20 @@ class Controller(Thread):
                     W_I_MAX = 5.0
                     _w_in = np.clip(opt_flow_ang_vel[3:], -W_I_MAX, W_I_MAX)
                     # ---- w_x,w_y de-rotation source (W_XY_DEROT) ----
-                    # The image-derived roll/pitch angular flow w_x,w_y is
-                    # structurally weakly-observable for a planar marker under a
-                    # downward camera (rotation/translation ambiguity) -> it comes
-                    # out under-amplitude/noisy (up to 3.4 rad/s of garbage; see
-                    # Images/virtual_img_ang_vel.png). Fed live it overdrives
-                    # cross(V_w,S) -> a_u inflation -> body-rate saturation ->
-                    # divergence (0 SP). w_z (yaw) IS well observed (swirl pattern)
+                    # The image-derived roll/pitch angular flow w_x,w_y is weakly
+                    # observable ONLY when corners CLUSTER near the image center
+                    # (single small marker): the x^2,y^2,xy curvature that separates
+                    # tilt-rate from translation vanishes, so the v_x<->w_y and
+                    # v_y<->w_x columns go parallel. The multi-marker board + ring
+                    # SPREAD restores that curvature -> w_x,w_y ARE recoverable
+                    # (confirmed by a PROPER-EXCITATION re-test; the earlier r~-0.07
+                    # "geometrically unobservable" result was an under-excitation
+                    # artifact -- only ~0.1 rad/s achieved -- compounded by analysis
+                    # in the V-LEVELED frame, which de-rotates r/p out by construction).
+                    # Raw image w_x,w_y can still read noisy live (up to 3.4 rad/s; see
+                    # Images/virtual_img_ang_vel.png) when r/p is unexcited; fed in it
+                    # overdrives cross(V_w,S) -> a_u inflation -> body-rate saturation
+                    # -> divergence (0 SP). w_z (yaw) IS well observed (swirl pattern)
                     # and is ALWAYS kept from the image.
                     #   'zero'  : w_x=w_y=0 — the validated b13/b14 config (2 SP/10).
                     #   'imu'   : w_x,w_y from the GYRO (accurate), transformed
