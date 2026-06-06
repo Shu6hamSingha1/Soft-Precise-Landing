@@ -36,9 +36,12 @@ settles between → axes decorrelated). `CALIB_MODE=multisine` = freq-multiplexe
 
 **Derive (corner):** `tools/derive_board_cal.py` — full **6×6** `M` s.t. `GT[h;w] = M @ raw`
 (corner lstsq is full-rank with fixed geometric h↔w coupling, so M is NOT diagonal). The applied
-corner cal **zeros the Wx/Wy rows** (yaw-only w: roll/pitch rate is geometrically unobservable from
-image flow, so the GT w-axis is set yaw-only `V_w_ug[:,:2]=0` → those rows come out 0, consistent
-with `CTRL_ZERO_WXY=1`). h-block comes out near-identity from phased data.
+corner cal **zeros the Wx/Wy rows as a LEVEL-TARGET modeling choice** (`CTRL_ZERO_WXY=1`): the GT
+w-axis is set yaw-only `V_w_ug[:,:2]=0`, so those rows come out 0. **NOTE (corrected 2026-06-07):**
+roll/pitch rate is NOT geometrically unobservable from image flow — the 2026-06-04 "unobservable"
+verdict was OVERTURNED (an under-excitation + V-leveled-frame artifact). wx/wy ARE recoverable with
+the multi-marker board's corner SPREAD + adequate excitation; zeroing them is a choice for a level
+target, not a necessity. See memory `wxy-unobservable-imu-fusion-deferred`. h-block ≈ identity.
 
 **Derive (ring, texture-free):** `tools/derive_ring_cal.py` — separate **6×6** `M_ring`.
 - `RING_CAL_MODE=transfer` (DEFAULT): calibrate the ring against the **already-calibrated CORNER**

@@ -105,7 +105,12 @@ class IMG_PROCESSOR(Thread):
         # Corner sensor cal — re-derived 2026-06-07 from ALL 13 phased runs
         # (8 original + 5 new fused) via tools/derive_board_cal.py. R^2 Hx 0.75
         # Hy 0.75 Hz 0.79 Wz 0.71 (most-robust pool; supersedes the 8-run cal).
-        # Wx/Wy rows zeroed (yaw-only w; CTRL_ZERO_WXY=1).
+        # Wx/Wy rows zeroed = the gravity-leveled V-frame de-rotates roll/pitch out
+        # by construction + a level-target modeling choice (CTRL_ZERO_WXY=1). This is
+        # NOT because wx/wy are "geometrically unobservable from image flow" — that
+        # 2026-06-04 claim was OVERTURNED 2026-06-07: in the raw/body frame wx/wy ARE
+        # observable with the multi-marker board's corner SPREAD + adequate excitation
+        # (see memory wxy-unobservable-imu-fusion-deferred). Zeroing here is a choice.
         self._sensor_cal_hw = np.array([
             [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
             [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],

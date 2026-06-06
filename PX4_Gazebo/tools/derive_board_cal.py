@@ -41,7 +41,11 @@ def main():
             # roll/pitch produces NO V-frame flow -> the GT w-axis must be
             # YAW-ONLY. Without this the Wx/Wy cal rows are garbage (R^2 ~0.4)
             # that the runtime zeroes anyway (CTRL_ZERO_WXY=1), and the h-block
-            # fit is unaffected (columns independent). See memory
+            # fit is unaffected (columns independent). NOTE: this is a V-LEVELING
+            # consequence (r/p de-rotated out of the V-frame here), NOT "wx/wy
+            # unobservable from image flow" — that claim was OVERTURNED 2026-06-07
+            # (wx/wy ARE observable in the raw/body frame w/ the spread board;
+            # memory wxy-unobservable-imu-fusion-deferred). See memory
             # feedback_vframe_rhs_yaw_only / the cell-20 fix (86509bb).
             V_w_ug = V_w_ug.copy(); V_w_ug[:, 0:2] = 0.0
         except Exception as e:
