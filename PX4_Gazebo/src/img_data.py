@@ -111,18 +111,29 @@ class IMG_PROCESSOR(Thread):
             [-0.0079, +1.0427, +0.0108, -0.8882, +0.1366, +1.0647]])
         self._sensor_cal_s  = np.diag([1.1351, 1.1306, 1.0, 1.0])
 
-        # Texture-free RING flow calibration M_ring (GT[h;w] = M_ring @ ring_raw).
-        # The ring lstsq is NOT depth-mixed: the board is coplanar with the ground,
-        # so in the gravity-leveled V-frame every ring station shares one
-        # perpendicular depth Z=altitude (ring h_z tracks corner h_z at r~0.95
-        # across the whole descent, verified 2026-06-06), so a FIXED M_ring
-        # generalizes — derived like the corner cal via tools/derive_ring_cal.py.
-        # IDENTITY placeholder (== current raw behaviour) until the co-sampled
-        # M_ring is derived (re-run output_calibration, which now co-samples the
-        # ring, then derive_ring_cal.py). The retro-aligned first cut was too noisy
-        # to apply (R^2 0.28-0.70, unstable Wz). Ring is a SAFETY NET (control
-        # consumes the corner flow), so identity here is inert for landing.
-        self._sensor_cal_ring = np.eye(6)
+        # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
+        # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
+        # uniform depth Z=altitude; ring h_z ~ corner h_z r~0.95), so a FIXED M_ring
+        # generalizes. Derived 2026-06-06 via tools/derive_ring_cal.py mode=transfer:
+        # the ring is calibrated against the ALREADY-CALIBRATED CORNER as a transfer
+        # standard (M_ring@ring ~= M_corner@corner) over 13 SAME-CLOCK recordings
+        # (RingFlow landings + output runs) — avoids the Img/GT cross-clock smear of
+        # the GT-direct retro path, and makes ring_cal ~= corner_cal so the
+        # marker->ring handoff is continuous. Per-axis R^2: Hx 0.63 Hy 0.84 Hz 0.76
+        # Wz 0.89 (approaching corner). Wx/Wy rows EXACTLY 0 (inherited from the
+        # corner standard's zeroed rows; CTRL_ZERO_WXY=1). CAVEAT: Wz gain 3.45 with
+        # high inter-run STD — the ring sees yaw weakly (concentric, low texture);
+        # trust the h-block, treat ring-yaw as coarse. PROVISIONAL: keyed to the
+        # current corner M (re-derive if that changes). For the GT-DIRECT cal, re-run
+        # output_calibration (now co-samples the ring) + RING_CAL_MODE=gt. Ring is a
+        # SAFETY NET (control consumes corner flow), so this is inert for landing today.
+        self._sensor_cal_ring = np.array([
+            [+1.1025, +0.0087, -0.0276, -0.0153, +1.0961, -0.0108],
+            [-0.1342, +0.6537, +0.0773, -0.5734, -0.1888, +0.0148],
+            [-0.2249, -0.1145, +1.3463, +0.1159, -0.2570, -0.0325],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [-0.0520, +0.5225, +0.0433, -0.3763, -0.1761, +3.4510]])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE

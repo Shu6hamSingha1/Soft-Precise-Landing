@@ -11,7 +11,7 @@ Reports, on block-averaged (K=15, removes fps/LK per-frame noise) data:
 """
 import numpy as np, os, glob, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import calibrate_flow_to_touchdown as cft
+import validate_flow_to_touchdown as cft
 CAL = cft.CAL
 LBL = ['h_x', 'h_y', 'h_z(div)', 'w_x', 'w_y', 'w_z']
 

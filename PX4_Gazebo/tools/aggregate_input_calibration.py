@@ -23,7 +23,7 @@ CAL_DIR = '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/input'
 AXES = ['wx', 'wy', 'wz']        # cmd[:, 0..2] vs tel ω FRD[:, 0..2]
 
 
-def per_run_metrics(run_dir):
+def per_run_metrics(run_dir, return_series=False):
     tel = np.load(f'{run_dir}/Telemetry_Data.npy', allow_pickle=True).item()
     gt  = np.load(f'{run_dir}/Ground_Truth.npy',   allow_pickle=True).item()
 
@@ -83,6 +83,8 @@ def per_run_metrics(run_dir):
 
         out[ax] = dict(r=r, lag_ms=lag_s*1000, gain=gain)
 
+    if return_series:
+        return out, dict(t=t_uniform, cmd=cmd_u, tel=tel_u)   # aligned, for plotting
     return out
 
 

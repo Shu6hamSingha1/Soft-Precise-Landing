@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Calibrate/validate the optical-flow OUTPUT against Gazebo GT, all the way to touchdown.
+"""VALIDATE the optical-flow OUTPUT against Gazebo GT, all the way to touchdown.
+
+Read-only validation (NOT calibration — the cal is derived by derive_board_cal.py /
+derive_ring_cal.py). It checks how well the ALREADY-calibrated flow tracks truth.
 
 Checks:
-  (i)  the texture-free RING flow V_v_ring (calibrated) tracks GT V-frame flow into the final
+  (i)  the texture-free RING flow V_v_ring (via _sensor_cal_ring; raw until M_ring derived) tracks GT V-frame flow into the final
        0.5m (R^2/slope) binned by ALTITUDE -> the L+/V-frame computation is bug-free to touchdown.
   (ii) marker->ring SWITCH continuity: corner V_v vs ring V_v_ring agreement over the overlap.
   (iii) angular w sign-check (manuscript w = -V_w_ug; flag if +V_w_ug fits better).
@@ -12,19 +15,31 @@ Improvements over v1:
     touchdown (replicates compute_gt_signals recipe; reuses agg helpers).
   - Alignment by brute-force offset that maximises corner-divergence vs GT-divergence correlation
     (the img/GT clocks differ + log past touchdown; time-to-touchdown align was too coarse).
-Read-only.  Usage: calibrate_flow_to_touchdown.py <landing_dir>
+Read-only.  Usage: validate_flow_to_touchdown.py <landing_dir>
 """
 import numpy as np, os, sys, warnings; warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import aggregate_calibration_phased as agg
 
-CAL = np.array([
-    [+0.7126,-0.0190,+0.0115,-0.0268,+0.4315,+0.0042],
-    [-0.0291,+0.6817,+0.0072,-0.3727,+0.0732,-0.0099],
-    [+0.0005,+0.0010,+0.8583,-0.0545,-0.0106,+0.0023],
-    [+0.0050,-0.7570,-0.0153,+0.6147,-0.0552,-0.0101],
-    [+0.7930,+0.0092,+0.0106,-0.0370,+0.6207,+0.0014],
-    [+0.0052,+0.0364,+0.0238,+0.0171,-0.1310,+0.6088]])
+def _load_cal(name, default):
+    """Load a sensor-cal matrix literal from src/img_data.py (single source of
+    truth — no stale hard-coded copy). Falls back to `default` if not found."""
+    import os, re
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'img_data.py')
+    try:
+        src = open(path).read()
+        m = re.search(r'self\.%s\s*=\s*(np\.\w+\(\[.*?\]\))' % name, src, re.S)
+        return eval(m.group(1), {'np': np})
+    except Exception:
+        return default
+
+# CORNER cal is what the runtime applies (getOptFlowAngVel = CAL @ corner-KF).
+# RING cal is _sensor_cal_ring (identity until the co-sampled M_ring is derived);
+# the runtime applies NONE to the ring today, so identity == runtime-faithful.
+# NOTE the earlier bug: this tool used to apply the CORNER CAL to the ring, which
+# the runtime never does — fixed to CAL_RING.
+CAL      = _load_cal('_sensor_cal_hw', np.eye(6))
+CAL_RING = _load_cal('_sensor_cal_ring', np.eye(6))
 LBL = ['h_x','h_y','h_z(div)','w_x','w_y','w_z']
 
 
@@ -77,14 +92,20 @@ def best_offset(ti, idiv, t_g, gdiv):
 
 def r2_slope(meas, gt):
     m = np.isfinite(meas) & np.isfinite(gt)
-    if m.sum() < 8: return (np.nan, np.nan)
-    a = np.polyfit(gt[m], meas[m], 1); pred = a[0]*gt[m]+a[1]
+    if m.sum() < 8 or np.ptp(gt[m]) < 1e-9:   # need >=8 finite pts and non-degenerate x
+        return (np.nan, np.nan)
+    try:
+        a = np.polyfit(gt[m], meas[m], 1)      # can throw SVD-non-converge on pathological data
+    except np.linalg.LinAlgError:
+        return (np.nan, np.nan)
+    pred = a[0]*gt[m]+a[1]
     ss = 1 - np.sum((meas[m]-pred)**2)/(np.sum((meas[m]-np.mean(meas[m]))**2)+1e-12)
     return (float(ss), float(a[0]))
 
 
-def main():
-    d = sys.argv[1]
+def validate(d):
+    """Run the to-touchdown validation on one landing dir. Importable from the
+    validation notebook; main() wraps it for CLI use."""
     img = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
     gt = np.load(os.path.join(d, 'Ground_Truth.npy'), allow_pickle=True).item()
     t_g, Vh, Vw, Vz = gt_v_flow(gt)
@@ -94,7 +115,8 @@ def main():
     ncr = np.asarray(img['N Ring Corners'], float); ncc = np.asarray(img['N Flow Corners'], float)
     n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc))
     ti, ring, corn, ncr, ncc = ti[:n], ring[:n], corn[:n], ncr[:n], ncc[:n]
-    ring_cal = (CAL @ ring.T).T; corn_cal = (CAL @ corn.T).T
+    ring_cal = (CAL_RING @ ring.T).T   # runtime-faithful: ring uses _sensor_cal_ring, NOT corner CAL
+    corn_cal = (CAL @ corn.T).T
 
     idiv_full = np.where(ncc > 0, corn_cal[:, 2], np.nan)
     off, xr = best_offset(ti, idiv_full, t_g, GT[:, 2])
@@ -104,7 +126,7 @@ def main():
     print(f"=== {os.path.basename(d.rstrip('/'))} ===  img {n}f, GT {len(t_g)}f")
     print(f"alignment: offset {off:+.2f}s (corner-div vs GT-div corr r={xr:.2f}); GT h ungated to touchdown\n")
 
-    print("(i) RING V_v_ring (cal) vs GT V-frame flow, binned by ALTITUDE  [R^2 | slope]")
+    print("(i) RING V_v_ring (_sensor_cal_ring) vs GT V-frame flow, binned by ALTITUDE  [R^2 | slope]")
     print(f"{'altitude':>10} {'nfr':>4} " + " ".join(f"{l:>13}" for l in LBL))
     for hi, lo in [(9, 1.0), (1.0, 0.5), (0.5, 0.2), (0.2, 0.0)]:
         m = (Vz_i <= hi) & (Vz_i > lo) & (ncr > 0)
@@ -132,6 +154,10 @@ def main():
         r_plus = r2_slope(ring_cal[mok, k], gpos[mok])[0]
         flag = "  <- +sign fits better (CHECK)" if r_plus > r_minus + 0.05 else ""
         print(f"  {LBL[k]}: R2(-V_w)={r_minus:.2f}  R2(+V_w)={r_plus:.2f}{flag}")
+
+
+def main():
+    validate(sys.argv[1])
 
 
 if __name__ == '__main__':

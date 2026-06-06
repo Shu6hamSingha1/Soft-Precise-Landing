@@ -215,11 +215,17 @@ if __name__ == "__main__":
 
     # Auto-save (no input prompt — runs headless via run_input_calibration.sh).
     if CONTROLLER_READY:
+        # Output routing (mirrors output_calibration):
+        #   INPUT_CALIB_OUT_BASE — parent folder; each run gets a timestamped subdir.
+        #     Default = calibration_data/input (the aggregator's scan dir). Set to
+        #     e.g. validation_data/input_multi for a VALIDATION run so it never
+        #     contaminates the calibration set.
+        #   INPUT_CALIB_OUT_DIR — full path override (no timestamp); precedence.
+        base = os.environ.get(
+            "INPUT_CALIB_OUT_BASE",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/input")
         dir_name = os.environ.get(
-            "INPUT_CALIB_OUT_DIR",
-            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/input/"
-            f"{time.ctime().replace(':', '-')}"
-        )
+            "INPUT_CALIB_OUT_DIR", f"{base}/{time.ctime().replace(':', '-')}")
         os.makedirs(dir_name, exist_ok=True)
 
         np.save(f'{dir_name}/Img_Data', image_data)

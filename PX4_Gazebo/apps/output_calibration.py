@@ -133,6 +133,7 @@ async def main(record = 'n'):
     UAV_pose = []
     target_pose = []
     opt_flow_ang_vel = []
+    ring_opt_flow_ang_vel = []   # RAW texture-free ring [h;w], co-sampled for M_ring
     img_feature_param = []
     phase_log = []           # per-sample tag: 'x', 'y', 'z', 'yaw', or 'settle'
     start_pose = None
@@ -353,6 +354,7 @@ async def main(record = 'n'):
                 target_pose.append(pose_node.getPose().target)
                 # Log RAW values (pre sensor_cal) so this script can be used to recalibrate.
                 opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
+                ring_opt_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
                 img_feature_param.append(img_node.getRawImgFeatureParam())
                 cmd.append(pos_cmd)
                 phase_log.append(ph_name)
@@ -393,7 +395,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd, "Phase": phase_log}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd, "Phase": phase_log}
             img_params = img_node.getParams()
 
         # Close img_node thread
@@ -429,12 +431,18 @@ if __name__ == "__main__":
 
     # Auto-save (no input prompt — runs headless via run_output_calibration.sh)
     if CONTROLLER_READY:
-        # Allow override via env var so the launcher can predict the path.
+        # Output routing:
+        #   CALIB_OUT_BASE — parent folder; each run gets a timestamped subdir.
+        #     Default = calibration_data/output (the cal-of-record source that the
+        #     derive tools scan). Set to e.g. validation_data/multisine for a
+        #     VALIDATION run so it NEVER contaminates the calibration set.
+        #   CALIB_OUT_DIR — full path override (no timestamp); for launchers that
+        #     need to predict the exact path. Takes precedence if set.
+        base = os.environ.get(
+            "CALIB_OUT_BASE",
+            "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output")
         dir_name = os.environ.get(
-            "CALIB_OUT_DIR",
-            f"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output/"
-            f"{time.ctime().replace(':', '-')}"
-        )
+            "CALIB_OUT_DIR", f"{base}/{time.ctime().replace(':', '-')}")
         os.makedirs(dir_name, exist_ok=True)
 
         np.save(f'{dir_name}/Img_Data', image_data)
