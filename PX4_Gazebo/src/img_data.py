@@ -385,6 +385,14 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_prev_t = None
         self._kf_feat_initialized = False
         self._kf_feat_last_n = 0
+        # Centroid-KF (q, r) are DECOUPLED from the flow KF: the flow's q=5.0/r=0.1
+        # are sized for optic-flow ang-vel (rad/s); the centroid (xc, yc, scale,
+        # alpha) is order-1 with measured per-frame noise std ~0.04 (variance
+        # ~0.0016, pooled n=6), so the flow's r=0.1 is ~10-60x too large and would
+        # over-smooth. Default r=0.004 (std 0.063; between the savgol-residual floor
+        # and the raw level) keeps q/r ratio responsive. Env-tunable for the A/B.
+        self._kf_feat_q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
+        self._kf_feat_r = float(os.environ.get("IMG_FEAT_KF_R", "0.004"))
 
         # Video recording
         self._video = None
@@ -1011,8 +1019,9 @@ class IMG_PROCESSOR(Thread):
     def _kf_feat_update(self, z, t):
         """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
 
-        Identical constant-velocity model + (q, r) tuning as _kf_update, but on
-        its own (4,2) state — the low-lag alternative to savgol(13) for the
+        Same constant-velocity model as _kf_update but with its OWN (q, r)
+        (self._kf_feat_q/_r) — the flow KF's q=5/r=0.1 are mis-scaled for the
+        order-1 centroid (see __init__). Low-lag alternative to savgol(13) for the
         OUTER-loop centroid input. z : (4,) raw feature; t : perf_counter.
         """
         z = np.asarray(z, dtype=float)
@@ -1026,9 +1035,9 @@ class IMG_PROCESSOR(Thread):
         dt = max(min(t - self._kf_feat_prev_t, 0.1), 1e-3)
         self._kf_feat_prev_t = t
         F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = self._kf_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
-                                   [dt**3 / 2.0, dt**2]])
-        R = self._kf_r
+        Q = self._kf_feat_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
+                                        [dt**3 / 2.0, dt**2]])
+        R = self._kf_feat_r
         x_pred = self._kf_feat_x @ F.T                       # (4, 2)
         P_pred = F @ self._kf_feat_P @ F.T + Q               # (4, 2, 2)
         y = z - x_pred[:, 0]                                 # (4,)
