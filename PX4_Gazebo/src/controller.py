@@ -30,8 +30,15 @@
 #   - Camera intrinsics: 640x480 @ fx=fy=270 (Gazebo SDF, hfov=1.74 rad).
 #     MATLAB uses 320x240 @ f=135. Same hfov → image-normalized PLASMC gains
 #     are invariant; only pixel-space quantities (rho_fov) scale 2x.
-#   - Sensor-cal matrices _sensor_cal_s / _sensor_cal_hw are applied in
-#     img_data.py from a 5-run output_calibration sweep (2026-05-12).
+#   - Image cals live in img_data.py (single source of truth): _sensor_cal_hw
+#     (corner flow), _sensor_cal_ring (ring flow), _sensor_cal_s (centroid).
+#     The controller consumes ONE already-calibrated flow via getOptFlowAngVel():
+#     the corner KF by default, or — with FLOW_FUSE_RING=1 — the corner+ring
+#     fusion EKF's target-relative [h_tr; w]. The fused signal is a SINGLE
+#     calibrated quantity in the corner-cal (_sensor_cal_hw) units (the ring is
+#     transfer-matched to that scale, and the two source cals + EKF are internal
+#     to img_data); the controller applies no cal of its own. Current cal of
+#     record: 8-run phased corner M + transfer-derived ring M_ring (2026-06-06).
 # **************************************************************************
 import os
 import time

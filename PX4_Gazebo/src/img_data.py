@@ -612,7 +612,12 @@ class IMG_PROCESSOR(Thread):
         results = self._detector.detectMarkers(imgs[0])
 
         FEATURE_DATA_IS_LOGGED = False
-        _corner_ok = False; _corner_cal = None   # per-frame corner measurement for the fused KF
+        # per-frame corner measurement + RELIABILITY for the fusion EKF. conf in
+        # (0,1]: 1.0 = clean ArUco decode; ramps toward 0 as the KLT fallback
+        # deepens (corners detected-but-degrading -> below ~0.5 m near touchdown).
+        # The EKF scales corner R by 1/conf, so low conf hands the flow to the ring.
+        # Image-based only (no altitude) -> scale-free compliant.
+        _corner_ok = False; _corner_cal = None; _corner_conf = 1.0
 
         # === Marker corner acquisition (ArUco primary, KLT fallback) ===
         # When ArUco detection fails on the current frame, fall back to LK
@@ -842,6 +847,14 @@ class IMG_PROCESSOR(Thread):
                 # per-frame value, NOT the KF output — avoids double filtering).
                 _corner_ok = True
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
+                # Corner RELIABILITY: clean ArUco -> 1.0; KLT-fallback corners are
+                # less trustworthy the deeper the LK track (corners degrading toward
+                # touchdown), so conf ramps down with the KLT step depth -> the EKF
+                # gives the ring the flow below ~0.5 m as the decode becomes unreliable.
+                if used_klt_fallback:
+                    _corner_conf = max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1))
+                else:
+                    _corner_conf = 1.0
                 # Log both filters' calibrated outputs every frame for A/B.
                 self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
                 self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
@@ -915,8 +928,8 @@ class IMG_PROCESSOR(Thread):
             if self._fuse_ring:
                 _ring_ok = (_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
                 _ring_cal = self._sensor_cal_ring @ _vvr
-                self._ekf_fuse_step(_corner_cal, _corner_ok, _ring_cal, _ring_ok,
-                                    self._time.perf_counter())
+                self._ekf_fuse_step(_corner_cal, _corner_ok, _corner_conf,
+                                    _ring_cal, _ring_ok, self._time.perf_counter())
                 self._opt_flow_fused_log.append(
                     np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]]) if self._ekf_init else np.zeros(6))
                 self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
@@ -1072,13 +1085,16 @@ class IMG_PROCESSOR(Thread):
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
 
-    def _ekf_fuse_step(self, corner_cal, corner_ok, ring_cal, ring_ok, t):
+    def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t):
         """Augmented-state EKF fusing corner (target-relative) + ring (ego) flow.
         State [h_tr(3), h_tv(3), w(3)]. Measurement models are linear (constant
         Jacobians H_corner/H_ring), so the EKF update is the standard KF update;
         kept in EKF form so a nonlinear term (e.g. ring deck-takeover near
         touchdown) can be added later. Works for stationary (h_tv->0) and moving
-        (h_tv = ring-corner) targets; reconstructs h_tr through corner dropout."""
+        (h_tv = ring-corner) targets; reconstructs h_tr through corner dropout.
+        corner_conf in (0,1] scales the corner R by 1/conf: as corners become
+        unreliable (deep KLT-fallback near touchdown) the corner is down-weighted
+        and the ring carries the flow — image-based, no altitude gate."""
         if not self._ekf_init:
             if corner_ok:
                 self._ekf_x[0:3] = corner_cal[0:3]      # h_tr <- corner h
@@ -1105,7 +1121,8 @@ class IMG_PROCESSOR(Thread):
             return x, P
 
         if corner_ok:
-            x, P = _update(x, P, corner_cal, self._H_corner, self._R_corner)
+            R_c = self._R_corner / max(corner_conf, 0.02)   # low conf -> high R -> ring carries
+            x, P = _update(x, P, corner_cal, self._H_corner, R_c)
         if ring_ok:
             x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
         self._ekf_x, self._ekf_P = x, P
