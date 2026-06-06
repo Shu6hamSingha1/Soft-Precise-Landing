@@ -231,6 +231,10 @@ class Image_Node(Node):
         # return 1/self._meanTimePerImage
         return self._fps
 
+    def getStamp(self):
+        # latest image CAPTURE stamp (msg.header.stamp, sim time); for clock diagnostics
+        return self._t1
+
     def getImgResolution(self):
         if self._res is None:
             start_time = time.perf_counter()

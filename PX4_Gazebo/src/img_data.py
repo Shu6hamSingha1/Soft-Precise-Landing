@@ -295,6 +295,7 @@ class IMG_PROCESSOR(Thread):
         # Data storage
         self._time_log = []
         self._fps_log = []
+        self._stamp_log = []   # image CAPTURE stamp per frame (clock-diag vs perf_counter Time)
         self._feature_pts = []
         self._virtual_feature_pts = []
         # _fill_A allocates A fresh each frame now (variable N with hybrid flow)
@@ -387,6 +388,7 @@ class IMG_PROCESSOR(Thread):
                 quaternions = self._image_node.getQuaternions()
                 angvels = self._image_node.getAngVels()   # IMU body rate (FRD), paired w/ flow
                 self._fps = self._image_node.getFPS()
+                self._stamp = self._image_node.getStamp()   # image capture stamp, same frame as fps
                 # print(f"Image FPS: {self._fps}")
 
                 # Check if at least 2 frames of images have been received
@@ -809,6 +811,7 @@ class IMG_PROCESSOR(Thread):
         self._time_log.append(self._time.perf_counter())
         self._quats.append(quats)
         self._fps_log.append(self._fps)
+        self._stamp_log.append(getattr(self, '_stamp', 0.0))   # capture stamp vs perf_counter Time (clock diag)
         # Texture-free ring flow — computed EVERY frame (survives the marker death), logged
         # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
         # still consumes the corner flow. PRIMARY goal remains reducing perception death.
@@ -1272,7 +1275,8 @@ class IMG_PROCESSOR(Thread):
             "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
-            "FPS": self._fps_log
+            "FPS": self._fps_log,
+            "Image Stamp": self._stamp_log
         }
     
     def getParams(self):
