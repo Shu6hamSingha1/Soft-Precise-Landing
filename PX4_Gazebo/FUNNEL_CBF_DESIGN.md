@@ -12,90 +12,71 @@ observed and carries `β` + `d_h`, so a barrier on the flow *dynamics* is unreli
 cross-val −0.98, ring −0.04). Visibility is fundamentally an **attitude** constraint — the tilt shifts
 the FoV — so we filter the desired tilt directly, on the *real* camera plane.
 
-**Barrier (REAL camera plane), per binding axis `k`:**
+**Barrier (real camera plane), per image axis `k`** — on the MEASURED camera feature `ᶜr̂` (tangent
+units `(px−centre)/f`):
 ```
-h_k = ρ_k − |c_cam,k| − δ_k ,      c_cam = c_V + f·θ
+h_k = φ_max,k − |ᶜr̂_k| − δ_k ,      φ_max = R/(2f)   (full FoV edge)
 ```
-- `c_cam` = measured camera-plane feature (the REAL FoV position).
-- `c_V = c_cam − f·θ` = de-rotated (tilt-removed) target component (slow; homography centroid).
-- `f·θ` = tilt-induced displacement; `∂c_cam/∂θ = f` — exact geometric Jacobian, **no `β`, no flow, no `d_h`**.
-- `δ` = marker extent (continuous, §3); `ρ = R/2` (full FoV).
+`h_k ≥ 0` ⇔ the marker's outermost feature is on the sensor. `δ` = visible-set half-extent (§3, two-phase).
 
-**WHY NOT the V-frame:** a barrier on `c_V` does NOT ensure visibility. With `c_V = 0` (target centred
-in the de-rotated frame) a tilt gives `c_cam = f·θ`, which can exceed `ρ` — target out of the *real*
-FoV while the V-frame reads "safe." The photons land on the tilted sensor → the barrier must be on
-`c_cam`.
+**WHY NOT the V-frame:** a barrier on the de-rotated centroid `s` does NOT ensure visibility — with `s=0`
+(target centred in the level frame) a tilt still moves the *real* feature off the sensor. The photons
+land on the tilted plane → the barrier is on `ᶜr̂`.
 
-**Visibility filter (QP over the body tilt `θ`):**
+**Tilt→feature coupling = the rotational interaction matrix `L_ω`** at the measured point `ᶜr̂=(x,y)` —
+exact, **depth-independent**, no de-rotation / virtual frame:
 ```
-θ* = argmin_θ ‖θ − θ_d‖²   s.t.   |c_V + τ·ċ_V + f·θ| ≤ ρ − δ ,   |θ| ≤ θ_cap
+ᶜṙ = L_ω(ᶜr̂)·ω_rp + d ,    L_ω = [[ xy , −(1+x²) ],
+                                   [ 1+y² ,  −xy   ]]
 ```
-- `θ_d` = desired body tilt from the geometric (SO(3)) tracking law.
-- Per-axis **box** ⇒ the QP is a trivial clamp:
-  `θ_k ∈ [(−(ρ−δ) − c_V − τċ_V)/f , ((ρ−δ) − c_V − τċ_V)/f] ∩ [−θ_cap, θ_cap]`.
-- `τ·ċ_V` = drift look-ahead (`ċ_V` from the centroid finite-diff) → forward-invariance under
-  velocity-driven drift. `θ_cap` = input-awareness, built in.
+`ω_rp` = body roll/pitch rate (the control), `d` = exogenous (translation) drift. The earlier
+`ᶜr̂ = c_V + f·θ` (an additive `tan θ` map) was **WRONG** — a camera rotation applies a *homography*, not
+a shift; `L_ω` is the correct (linearized) coupling. The drift strips the rotational part:
+`d = ᶜṙ_obs − L_ω·ω_rp` (target motion only, not our own tilting).
 
-**Controller insertion:** `outer loop → θ_d → [visibility clamp] → θ* → SO(3) inner loop`. Replaces the
-cone clamp (`controller.py:~825-860`) at the **same level** (the clamp already lives in tilt space).
+**Visibility filter — QP over the body tilt `θ`:**
+```
+θ* = argmin_θ ‖θ − θ_d‖²   s.t.   |ᶜr̂ + L_ω·(θ − θ_curr) + τ·d| ≤ m ,   |θ| ≤ θ_cap
+```
+- Constraint on the **predicted camera feature**, anchored at the CURRENT tilt `θ_curr` (where the `L_ω`
+  linearization is accurate — NOT the V-frame `s`). `m = φ_max − δ − τ·δ̇` (predicted margin).
+- `θ` = camera image-axis tilt; `θ_d = Rz(−yaw)·(a_xy_d/a_z)` (from the desired accel); then
+  `a_xy* = a_z·Rz(yaw)·θ*`.
+- `τ·d` = drift look-ahead → forward-invariance; `θ_cap` = input-awareness. `τ=0` = the static clamp.
 
-### §0.1 Comparison: CBF QP (rel. deg. 1) vs directional static cone clamp (rel. deg. 0)
-The **directional static cone clamp IS this box with `τ=0`**: `θ ≤ θ_curr + tan⁻¹(d_min/f)` ≡ the box
-without the look-ahead. So the *only* difference is the `τ·ċ_V` drift term.
+**Controller insertion:** between the desired accel/attitude `θ_d` and the SO(3) inner loop; the modes
+live at the cone-clamp application (`controller.py:~900`), the same (tilt/accel) level as the old clamp.
 
-| | static clamp (deg. 0, `τ=0`) | CBF QP (deg. 1, `τ>0`) |
-|---|---|---|
-| Visibility | instantaneous (now) | **forward-invariant** (anticipates) |
-| Velocity drift | **not prevented** — if `θ_d≈0` while sliding, `c_V` walks out | braked — box tightens ahead, forces inward tilt |
-| Inputs | `c_cam` + tilt + thrust (minimal noise) | + `ċ_V` (centroid finite-diff) |
-| Robustness | bullet-proof | `ċ_V` noise (smooth centroid → manageable) |
-| Conservatism | none, but no anticipation | `τ` trades anticipation vs over-braking |
-| Tuning | none (geometric) | `τ` (look-ahead) |
+### §0.1 Static (`τ=0`) vs forward-invariant (`τ>0`)
+With `τ=0` the clamp is instantaneous — it keeps the feature in *now*, but a built-up velocity can still
+walk it out (`θ_d≈0` while sliding). The `τ·d` look-ahead uses the predicted margin (drift `d` + loom
+`δ̇`), tightening the box *before* the feature exits → forward-invariance. `τ` trades anticipation vs
+over-braking; `d` adds centroid-finite-diff noise (smooth centroid → manageable). Optical flow is
+reserved for the 3D soft-landing *velocity* loop, not this barrier.
 
-**Plan:** ship the **deg.-0 static clamp first** (cone clamp made directional + real-FoV + a clean
-`θ_d` projection — robust, tuning-free), which already cures the old clamp's two defects (magnitude
-strangle, shrinking-funnel early death) but only guarantees *instantaneous* visibility. **Add the
-`τ·ċ_V` look-ahead (deg. 1)** for the forward-invariance guarantee, gated on whether the static version
-is observed to lose the target under drift. Both env-gated (`FUNNEL_MODE=cone0|cbf1`). Optical flow is
-reserved for the *vertical* loom only.
+### §0.2 Implementation status (2026-06-06) — env-gated modes, default `cone` unchanged
+| `FUNNEL_MODE` | form |
+|---|---|
+| `cone` *(default)* | magnitude clamp `‖a_xy‖ ≤ a_z·tan θ_cone` — the original heuristic (§1) |
+| `cone0` | directional clamp + `L_ω` headroom, `τ=0` (lean-magnitude form) |
+| `cbf1` | `cone0` + drift look-ahead `τ>0` (lean-magnitude form) |
+| `cbf2` | **camera-frame `θ`-QP** — the literal QP above, in image-axis tilt |
 
-**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cone0`):** the deg.-0 directional clamp is live in
-`controller.py` at the cone-clamp application — it limits ONLY the outward (away-from-marker) accel and
-frees the inward/tangential, vs the default `"cone"` magnitude clamp. The marker direction is the
-V-frame centroid `s[:2]` mapped to NED via `Rz(yaw)`; the image→NED **sign/axis map is uncalibrated** —
-env knobs `CONE0_SWAP` (swap u/v), `CONE0_SIGN_X`, `CONE0_SIGN_Y` (default no-swap, +1). **A wrong sign
-drives the marker OUT (CBF doc Assumption 1) — calibrate empirically (small lateral accel, watch the
-centroid) before trusting it.** Falls back to the magnitude clamp when no marker direction is available.
-Default unchanged (`"cone"`).
-
-**IMPLEMENTED + MATCHED TO THE `L_ω` DOC 2026-06-06:** `cone0` and `cbf1` now compute the tilt headroom
-from the **rotational interaction matrix `L_ω` at the measured camera centroid** (tangent units,
-depth-free, no virtual frame), per `CBF_visibility.pdf`:
-`headroom = min_k m_k / ‖L_ω[k]‖`, `m = φ_max − |ᶜr̂ + τ·d| − δ − τ·δ̇`, `θ_cone = θ_curr + headroom`.
-`cone0` is `τ=0` (static); **`cbf1`** adds `τ>0` with the exogenous drift `d = ᶜṙ_obs − L_ω·ω` (body-rate
-stripped; EMA-filtered) — forward-invariant. Reduces to `atan(d_min/f)` for a centred marker and refines
-the off-centre/edge case (the `L_ω` coupling). The directional `a_xy` clamp (cone0's `t̂`) still supplies
-the *directionality* (a calibrated-inertial hybrid; a fully camera-frame `θ`-QP would need the
-`a_xy↔image-tilt` convention, a second cal gate — deferred). Env: `CBF_TAU`≈0.3, `CBF_DMIN_EMA`≈0.3.
-
-**Usage gate for BOTH cone0 and cbf1:** the `d_min` term is only active with `PLASMC_THETA_FLOOR_DEG < 60`
-(the default floor=60 pins `θ_cone=θ_cap` and disables it). Test config: `FUNNEL_MODE=cone0|cbf1` +
-`PLASMC_THETA_FLOOR_DEG=15..30` — the directional clamp is what makes that low floor safe (it no longer
-strangles recovery, the reason the floor was pinned at 60 under the magnitude clamp). The sign-cal
-default map (`SWAP=0,+1,+1`) is validated offline (`tools/calibrate_cone0_sign.py`, cos·I_a=0.84).
-
-**IMPLEMENTED 2026-06-06 (`FUNNEL_MODE=cbf2`):** the EXACT camera-frame `θ`-QP (the literal doc QP),
-retiring cone0/cbf1's lean-magnitude approximation. Solves, in image-axis tilt, on the **measured C-frame feature anchored at the current tilt**:
-`θ* = argmin‖θ−θ_d‖² s.t. |ᶜr̂ + L_ω·(θ−θ_curr) + τd| ≤ m, |θ| ≤ θ_cap`,
-where `ᶜr̂` = measured camera centroid, `θ_curr` = current tilt from the attitude
-(`Rz(−yaw)·(−R[:2,2]/R₃₃)`), `m = φ_max − δ`, `θ_d = Rz(−yaw)·(a_xy/a_z)`; then `a_xy* = a_z·Rz(yaw)·θ*`.
-(NB: anchor on `ᶜr̂`, NOT the V-frame `s` — the barrier is C-frame, and anchoring at `θ_curr` keeps the
-`L_ω` linearization accurate at the operating point.) Solved by
-iterative projection (box + cap). The `a_xy↔tilt` yaw map needs no new cal gate — both `cone0` and the
-`L_ω·ω` drift calibrated to the **identity** map (`tools/calibrate_cone0_sign.py`,
-`tools/calibrate_cbf1_drift_sign.py`, cos 0.84/0.85), so the body→image axes are no-swap. Falls back to
-the magnitude clamp on any failure. This is the rigorous form; behaviorally it differs from cbf1 mainly
-**off-centre** (the binding case near touchdown is ~centred, where cbf1 was already ~exact).
+- **cone0 / cbf1 — lean-magnitude form.** Collapse `L_ω` to a scalar headroom `min_k m_k/‖L_ω[k]‖`
+  applied as the lean magnitude (`θ_cone = θ_curr + headroom`), with the directionality from the inertial
+  `t̂` (limit only the outward accel, free re-centering; `d = ᶜṙ_obs − L_ω·ω` for cbf1). Exact at centre,
+  approximate off-centre. The headroom term is active only with `PLASMC_THETA_FLOOR_DEG < 60` (default 60
+  pins `θ_cone=θ_cap` and disables it); the directional clamp is what makes a low floor safe (no strangle).
+- **cbf2 — camera-frame form.** Solves the 2-D box QP in image-axis tilt directly (no lean collapse),
+  anchored on `ᶜr̂` at `θ_curr` (iterative projection; magnitude-clamp fallback). Retires the
+  lean-magnitude approximation. Still `L_ω`-LINEARIZED (not homography-exact) and iteratively solved.
+- **Conventions — validated offline as IDENTITY maps:** the image→inertial direction
+  (`tools/calibrate_cone0_sign.py`, cos·I_a 0.84) and the `L_ω·ω` drift axes
+  (`tools/calibrate_cbf1_drift_sign.py`, cos 0.85) are both no-swap, +1/+1, so the `a_xy↔tilt` map needs
+  no new cal gate. `θ_curr = Rz(−yaw)·(−R[:2,2]/R₃₃)` is derived-consistent (reasoning-only). A wrong
+  direction map drives the marker OUT — the live "small accel, watch the centroid" test is the gold check.
+- **Env:** `CBF_TAU`≈0.3 (look-ahead s), `CBF_DMIN_EMA`≈0.3 (drift EMA), `CONE0_SWAP/SIGN_X/SIGN_Y`.
+  Test: `FUNNEL_MODE=cone0|cbf1 PLASMC_THETA_FLOOR_DEG=20`, or `FUNNEL_MODE=cbf2`.
 
 ---
 
