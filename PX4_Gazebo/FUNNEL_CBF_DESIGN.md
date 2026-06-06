@@ -85,12 +85,31 @@ reserved for the 3D soft-landing *velocity* loop, not this barrier.
 forward-invariance, **no visibility guarantee** (it caps accel from the present geometry; the existing
 velocity can still carry the centroid out). Earlier text loosely called it "centroid CBF" — that was
 wrong, fixed throughout. A **CBF** is a formal barrier `h(x) ≥ 0` with `ḣ ≥ −α(h)` (or the HOCBF form)
-giving *forward-invariance* of the safe set — see §3, now in its **input-aware** form (never commands
-accel the lagged inner loop can't deliver, so the guarantee is one the plant can honor).
+giving *forward-invariance* of the safe set — see **§0** (the `L_ω` camera-plane CBF; the §3 optic-flow
+form below is superseded). The input-aware idea survives: the `θ_cap` box never commands a tilt the
+lagged inner loop can't deliver, so the guarantee is one the plant can honor.
 
 Standing decisions: cone clamp stays the env-gated fallback (`FUNNEL_MODE=cone`); `ρ_fov` held CONSTANT
 at `ρ_fov_0` (`PLASMC_LFOV=0`); **precision is a SEPARATE** PPC funnel on `s_e_n` (§9, implemented);
 the perception-death floor hands off to the ring flow (§7/§8).
+
+---
+> ⚠️ **§1–§6 below are SUPERSEDED — historical analysis only; the current design is §0.**
+> They describe the *abandoned* optic-flow HOCBF-on-accel approach (relative-degree-2 on lateral
+> accel `a`, `ċ` from optic flow, the **depth-dependent** interaction matrix `J ≈ −(1/Z)·R_img`,
+> env `FUNNEL_MODE=cbf` + `FUNNEL_CBF_K0/K1`, a "closed-form projection" solve). Where they now
+> **contradict** §0 / the code:
+> - **§2** anchors the barrier on the **V-frame** centroid `c = s[:2]·f` — §0 anchors on the **C-frame**
+>   `ᶜr̂` (a V-frame barrier does NOT ensure visibility).
+> - **§3** uses **optic flow** and a **depth `1/Z`** Jacobian — §0's `L_ω` coupling is **depth-free** and
+>   uses the **tilt** (no flow in the barrier).
+> - **§3/§4** `FUNNEL_MODE=cbf` + `FUNNEL_CBF_K0/K1` + "closed-form" → replaced by `cone0/cbf1/cbf2` +
+>   `CBF_TAU/CBF_DMIN_EMA` + iterative projection (see §0.2).
+> - Line numbers (`757-818`, `825-860`) are stale — the clamp/CBF block is now ~`819-987`.
+>
+> Kept for the motivation (§1: why the *magnitude* cone clamp strangles) and the still-valid standing
+> decisions (ring-flow handoff §7/§8, the separate `s_e_n` precision funnel §9). **Read §0 for the design.**
+---
 
 ## 1. Problem with the current clamp (D1)
 
