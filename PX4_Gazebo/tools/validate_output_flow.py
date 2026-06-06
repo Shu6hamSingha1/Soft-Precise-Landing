@@ -15,7 +15,13 @@ Improvements over v1:
     touchdown (replicates compute_gt_signals recipe; reuses agg helpers).
   - Alignment by brute-force offset that maximises corner-divergence vs GT-divergence correlation
     (the img/GT clocks differ + log past touchdown; time-to-touchdown align was too coarse).
-Read-only.  Usage: validate_flow_to_touchdown.py <landing_dir>
+Read-only.  Usage: validate_output_flow.py <landing_dir>
+
+The single OUTPUT-flow validation/QA module (renamed from validate_flow_to_touchdown).
+Views: channel_r2() (GT-direct per-channel — the multisine view), validate()
+(GT-direct, altitude-binned to touchdown), cross_validate_ring() (GT-free
+leave-one-run-out ring-cal check, folded in from compare_ring_corner_cal). prep()
+is the shared load+cal+align core used by all views and by the notebook.
 """
 import numpy as np, os, sys, warnings; warnings.filterwarnings('ignore')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -103,35 +109,72 @@ def r2_slope(meas, gt):
     return (float(ss), float(a[0]))
 
 
-def validate(d):
-    """Run the to-touchdown validation on one landing dir. Importable from the
-    validation notebook; main() wraps it for CLI use."""
+def prep(d):
+    """SHARED load + calibrate + GT-align used by every validation view (the
+    to-touchdown/altitude `validate`, the per-channel `channel_r2`, and the
+    output-validation notebook plots). One source of truth for: GT V-frame flow,
+    runtime-faithful cal application (corner=_sensor_cal_hw, ring=_sensor_cal_ring,
+    EKF fused if present), and the corner-divergence time alignment. Returns a dict
+    of img-grid aligned arrays."""
     img = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
-    gt = np.load(os.path.join(d, 'Ground_Truth.npy'), allow_pickle=True).item()
+    gt  = np.load(os.path.join(d, 'Ground_Truth.npy'), allow_pickle=True).item()
     t_g, Vh, Vw, Vz = gt_v_flow(gt)
     GT = np.hstack([Vh, -Vw])                                    # manuscript sign on w
-    ti = np.asarray(img['Time'], float)
+    ti   = np.asarray(img['Time'], float)
     corn = np.asarray(img['Opt Flow Ang Vel'], float)
-    # Ring may be absent/empty on recordings predating the ring logging — fill
-    # with NaN so the ring checks return nan instead of crashing the matmul.
     ring = np.asarray(img.get('Ring Opt Flow Ang Vel', []), float)
     if ring.ndim != 2 or ring.shape[1:] != (6,) or len(ring) == 0:
-        print("  (no ring data in this recording — ring checks -> nan)")
-        ring = np.full((len(corn), 6), np.nan)
+        ring = np.full((len(corn), 6), np.nan)                   # ring-less recording -> nan
+    fused = np.asarray(img.get('Opt Flow Fused', []), float)     # EKF (FLOW_FUSE_RING=1) or absent
+    fused = fused if (fused.ndim == 2 and len(fused) and np.any(fused)) else None
+    tvel = np.asarray(img.get('Target Vel', []), float)          # EKF h_tv (FLOW_FUSE_RING=1)
+    tvel = tvel if (tvel.ndim == 2 and len(tvel)) else None
     ncr = np.asarray(img.get('N Ring Corners', np.zeros(len(corn))), float)
     ncc = np.asarray(img['N Flow Corners'], float)
-    n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc))
+    n = min(len(ti), len(ring), len(corn), len(ncr), len(ncc), len(fused) if fused is not None else 1 << 30)
     ti, ring, corn, ncr, ncc = ti[:n], ring[:n], corn[:n], ncr[:n], ncc[:n]
-    ring_cal = (CAL_RING @ ring.T).T   # runtime-faithful: ring uses _sensor_cal_ring, NOT corner CAL
+    if fused is not None: fused = fused[:n]
+    if tvel is not None:  tvel = tvel[:n]
+    ring_cal = (CAL_RING @ ring.T).T
     corn_cal = (CAL @ corn.T).T
+    off, ar = best_offset(ti, np.where(ncc > 0, corn_cal[:, 2], np.nan), t_g, GT[:, 2])
+    ti_r, tg_r = ti - ti[0], t_g - t_g[0]
+    GTi = np.column_stack([np.interp(ti_r - off, tg_r, GT[:, k], left=np.nan, right=np.nan) for k in range(6)])
+    Vzi = np.interp(ti_r - off, tg_r, Vz, left=np.nan, right=np.nan)
+    return dict(name=os.path.basename(d.rstrip('/')), n=n, ti_r=ti_r, off=off, align_r=ar,
+                corn_cal=corn_cal, ring_cal=ring_cal, fused=fused, target_vel=tvel, GTi=GTi, Vz_i=Vzi,
+                ncc=ncc, ncr=ncr, GT=GT, Vw=Vw, t_g=t_g)
 
-    idiv_full = np.where(ncc > 0, corn_cal[:, 2], np.nan)
-    off, xr = best_offset(ti, idiv_full, t_g, GT[:, 2])
-    ti_r = ti - ti[0]; tg_r = t_g - t_g[0]
-    GT_i = np.column_stack([np.interp(ti_r - off, tg_r, GT[:, k], left=np.nan, right=np.nan) for k in range(6)])
-    Vz_i = np.interp(ti_r - off, tg_r, Vz, left=np.nan, right=np.nan)
-    print(f"=== {os.path.basename(d.rstrip('/'))} ===  img {n}f, GT {len(t_g)}f")
-    print(f"alignment: offset {off:+.2f}s (corner-div vs GT-div corr r={xr:.2f}); GT h ungated to touchdown\n")
+
+def channel_r2(d, show=True):
+    """Per-CHANNEL R^2 of the calibrated corner / ring / EKF-fused flow vs GT —
+    the MULTISINE view (cross-axis generalization). Returns {estimator: {chan: r2}}."""
+    P = d if isinstance(d, dict) else prep(d)
+    ests = [('corner', P['corn_cal']), ('ring', P['ring_cal'])]
+    if P['fused'] is not None: ests.append(('EKF', P['fused']))
+    out = {}
+    if show:
+        print(f"=== {P['name']} ===  align r={P['align_r']:.2f}, off={P['off']:+.1f}s")
+        print(f"  {'estimator':>9} " + " ".join(f"{l:>8}" for l in ['hx','hy','hz','wx','wy','wz']))
+    for nm, est in ests:
+        rs = [r2_slope(est[:, k], P['GTi'][:, k])[0] for k in range(6)]
+        out[nm] = dict(zip(['hx','hy','hz','wx','wy','wz'], rs))
+        if show: print(f"  {nm:>9} " + " ".join(f"{r:8.2f}" for r in rs))
+    return out
+
+
+def validate(d):
+    """To-touchdown (ALTITUDE-binned) validation on one landing dir, via prep().
+    Importable from the validation notebook; main() wraps it for CLI use."""
+    P = prep(d)
+    corn_cal, ring_cal = P['corn_cal'], P['ring_cal']
+    GT_i, Vz_i, ncr, ncc = P['GTi'], P['Vz_i'], P['ncr'], P['ncc']
+    off, ti_r, Vw, t_g, n = P['off'], P['ti_r'], P['Vw'], P['t_g'], P['n']
+    tg_r = t_g - t_g[0]
+    if not np.any(np.isfinite(ring_cal)):
+        print("  (no ring data in this recording — ring checks -> nan)")
+    print(f"=== {P['name']} ===  img {n}f, GT {len(t_g)}f")
+    print(f"alignment: offset {off:+.2f}s (corner-div vs GT-div corr r={P['align_r']:.2f}); GT h ungated to touchdown\n")
 
     print("(i) RING V_v_ring (_sensor_cal_ring) vs GT V-frame flow, binned by ALTITUDE  [R^2 | slope]")
     print(f"{'altitude':>10} {'nfr':>4} " + " ".join(f"{l:>13}" for l in LBL))
@@ -163,8 +206,60 @@ def validate(d):
         print(f"  {LBL[k]}: R2(-V_w)={r_minus:.2f}  R2(+V_w)={r_plus:.2f}{flag}")
 
 
+def cross_validate_ring(glob_pat='calibration_data/output/*/', K=15):
+    """GT-FREE ring-cal cross-validation (folded in from compare_ring_corner_cal).
+    On block-denoised (K) data: (1) ring tracking survival, (2) ring_raw↔corner_raw
+    correlation per DOF, (3) leave-one-run-out ring-cal R^2 (target = corner-cal
+    proxy, co-sampled so no clock skew) — catches a ring cal that overfits one run.
+    Read-only; no Gazebo GT needed."""
+    import glob as _glob
+    R, C, NR = [], [], []
+    for d in sorted(_glob.glob(glob_pat), key=os.path.getmtime):
+        try:
+            img = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
+            ring = np.asarray(img['Ring Opt Flow Ang Vel'], float)
+            corn = np.asarray(img['Opt Flow Ang Vel'], float)
+            ncr = np.asarray(img['N Ring Corners'], float); ncc = np.asarray(img['N Flow Corners'], float)
+            n = min(len(ring), len(corn), len(ncr), len(ncc))
+            idx = np.where((ncr[:n] > 0) & (ncc[:n] > 0))[0]
+            rb = [ring[idx[j:j+K]].mean(0) for j in range(0, len(idx) - K, K)]
+            cb = [corn[idx[j:j+K]].mean(0) for j in range(0, len(idx) - K, K)]
+        except Exception:
+            continue
+        if len(rb) > 5:
+            R.append(np.array(rb)); C.append(np.array(cb)); NR.append(ncr[:n])
+    if len(R) < 2:
+        print("cross_validate_ring: need >=2 usable runs"); return None
+    NRall = np.concatenate(NR)
+    print(f"GT-FREE ring-cal cross-validation: {len(R)} runs, {sum(len(r) for r in R)} blocks (K={K})")
+    print(f"  (1) N_ring mean {np.nanmean(NRall):.0f}, %>=40: {100*np.mean(NRall >= 40):.0f}%")
+    Rall, Call = np.vstack(R), np.vstack(C)
+    print("  (2) ring_raw vs corner_raw corr:", " ".join(
+        f"{LBL[k]}={np.corrcoef(Rall[:,k], Call[:,k])[0,1]:+.2f}" for k in range(6)))
+    def _r2(p, t): return 1 - np.sum((p - t) ** 2, 0) / (np.sum((t - t.mean(0)) ** 2, 0) + 1e-9)
+    held = np.zeros((len(R), 6))
+    for i in range(len(R)):
+        Rtr = np.vstack([R[j] for j in range(len(R)) if j != i])
+        Ctr = np.vstack([C[j] for j in range(len(R)) if j != i])
+        M, _, _, _ = np.linalg.lstsq(Rtr, (CAL @ Ctr.T).T, rcond=None)
+        held[i] = _r2(R[i] @ M, (CAL @ C[i].T).T)
+    print("  (3) ring-cal leave-one-run-out R^2:", dict(zip(LBL, np.round(np.nanmean(held, 0), 2))))
+    return np.nanmean(held, 0)
+
+
 def main():
-    validate(sys.argv[1])
+    import argparse
+    ap = argparse.ArgumentParser(description="output-flow validation/QA")
+    ap.add_argument("dir", nargs="?", help="landing dir for to-touchdown validate()")
+    ap.add_argument("--cross-ring", metavar="GLOB", nargs="?", const="calibration_data/output/*/",
+                    help="GT-free ring-cal leave-one-out cross-validation over GLOB")
+    a = ap.parse_args()
+    if a.cross_ring:
+        cross_validate_ring(a.cross_ring)
+    elif a.dir:
+        validate(a.dir)
+    else:
+        ap.print_help()
 
 
 if __name__ == '__main__':

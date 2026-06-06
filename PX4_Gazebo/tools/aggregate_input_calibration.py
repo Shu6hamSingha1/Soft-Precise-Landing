@@ -28,7 +28,19 @@ def per_run_metrics(run_dir, return_series=False):
     gt  = np.load(f'{run_dir}/Ground_Truth.npy',   allow_pickle=True).item()
 
     t_cmd = np.array(gt['Time'])                                  # cmd timeline
-    cmd   = np.array(gt['Command'])[:, :3]                        # ωx, ωy, ωz only
+    cmd   = np.array(gt['Command'])
+    if cmd.ndim != 2 or cmd.shape[1] < 3:
+        return None
+    cmd = cmd[:, :3]                                              # ωx, ωy, ωz only
+    # LANDING recordings log 'Time' every loop iter but 'Command' only when the
+    # controller fires (pre-command warmup frames have no cmd), so the two differ
+    # in length and are NOT co-indexed. The commands are the controller-active
+    # TAIL — align cmd[i] to its timestamp there. (Input-cal runs are co-indexed,
+    # so min==len and this is a no-op.)
+    nm = min(len(t_cmd), len(cmd))
+    if nm < 10:
+        return None
+    t_cmd, cmd = t_cmd[-nm:], cmd[-nm:]
     imu_ts = np.array(tel['IMU Timestamp']) - gt['Start Time']    # align to cmd t=0
     w_tel  = np.array([[a.forward_rad_s, a.right_rad_s, a.down_rad_s]
                        for a in tel['Angular Velocity FRD']])

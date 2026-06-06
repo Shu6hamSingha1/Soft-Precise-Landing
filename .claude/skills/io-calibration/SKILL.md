@@ -61,7 +61,7 @@ into the GT dict by `output_calibration.py` so the derive tools can fit.
 
 **Validate:** `notebooks/plotter_output_validation.ipynb` — GT-direct, auto-loads the live cal,
 checks calibrated corner + ring flow vs GT on a multisine run (per-channel R²) and runs the
-landing-to-touchdown check via `tools/validate_flow_to_touchdown.py::validate(dir)`.
+landing-to-touchdown check via `tools/validate_output_flow.py::validate(dir)`.
 
 # INPUT calibration (FC command → achieved body-rate / thrust)
 
@@ -114,11 +114,11 @@ for i in $(seq 1 10); do timeout 220 bash scripts/run_output_calibration.sh; don
 ~/ws/scripts/env2025/bin/python3 tools/derive_board_cal.py     # corner M  -> paste into img_data.py
 ~/ws/scripts/env2025/bin/python3 tools/derive_ring_cal.py      # ring M_ring (transfer) -> paste
 # VALIDATION (dedicated apps via CALIB_APP/INPUT_APP override; VALIDATION_PROFILE=multisine|landing)
-CALIB_APP=apps/output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
-INPUT_APP=apps/input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
+CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
+INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
 LANDING_OUT_BASE=$PWD/validation_data/landing bash scripts/run_aruco_landing.sh   # landing serves BOTH
 ```
-The validation apps (`apps/output_validation.py`, `apps/input_validation.py`) each fly one of two
+The validation apps (`apps/record_output_validation.py`, `apps/record_input_validation.py`) each fly one of two
 `cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`.
 
 **Validation maneuver tuning (from the 2026-06-06 SITL shakedown — see `validation-runs-status`):**
@@ -135,12 +135,17 @@ These were runnable from an agent session with the Bash sandbox disabled, but pe
 - `tools/derive_ring_cal.py` — ring M_ring (transfer|gt)
 - `tools/aggregate_calibration_phased.py` — diagonal corner cal + GT-signal helpers (compute_gt_signals)
 - `tools/aggregate_input_calibration.py` — input per-axis gain/lag (per_run_metrics)
-- `tools/validate_flow_to_touchdown.py` — to-touchdown flow validation (importable `validate(dir)`)
-- `tools/compare_ring_corner_cal.py` — ring-vs-corner cross-check
+- `tools/validate_output_flow.py` — THE output-flow validation/QA module (single source). Views:
+  `prep()` (shared load+cal+align core), `channel_r2(dir)` (GT-direct per-channel — multisine view),
+  `validate(dir)` (GT-direct altitude-binned to touchdown), `cross_validate_ring(glob)` (GT-free
+  leave-one-run-out ring-cal check — folded in from the former `compare_ring_corner_cal.py`).
+  Renamed from `validate_flow_to_touchdown.py`. The validation notebook calls these (no duplication).
+- Recording (flight) apps: `apps/record_output_validation.py` / `apps/record_input_validation.py`
+  (fly the validation maneuver, save to `validation_data/`) — distinct from the validation TOOL above.
 - Notebooks: `plotter_{output,input}_calibration.ipynb` (derive/inspect) + `plotter_{output,input}_validation.ipynb` (validate)
 
 # Load-bearing facts & gotchas
-- **Single source of truth:** the validation notebooks + `validate_flow_to_touchdown.py` **auto-load**
+- **Single source of truth:** the validation notebooks + `validate_output_flow.py` **auto-load**
   the cal from `src/img_data.py` (regex-parse the np.array literals). Don't hardcode cal values in
   scripts — edit `img_data.py` and everything tracks it. The corner derivation/inspection notebook
   shows the live matrix on run.
