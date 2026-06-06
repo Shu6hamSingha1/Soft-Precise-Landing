@@ -373,13 +373,51 @@ class IMG_PROCESSOR(Thread):
         self._kf_ring_prev_t = None
         self._kf_ring_initialized = False
 
+        # FUSED corner+ring optical flow — augmented-state EKF. Env FLOW_FUSE_RING=1
+        # (default OFF — co-tuning + IC2-5 gate before defaulting). Works for BOTH
+        # stationary AND MOVING targets by separating the two sources' physical
+        # meaning instead of blending them:
+        #   corner = TARGET-relative  (corners are ON the target)        -> h_tr
+        #   ring   = EGO/ground motion (rings sample the static ground)  -> h_ego = h_tr + h_tv
+        #   ring - corner = TARGET velocity in flow units (h_tv); == 0 for a stationary target.
+        # State x(9) = [h_tr(3) target-rel flow (the CONTROL signal),
+        #               h_tv(3) target/rover velocity (0 if stationary),
+        #               w(3)    angular velocity (common to both sources)].
+        # Measurement models are LINEAR (constant Jacobians -> EKF reduces to a KF):
+        #   corner z=[h_tr; w]      H_corner=[[I,0,0],[0,0,I]]   low R
+        #   ring   z=[h_tr+h_tv; w] H_ring  =[[I,I,0],[0,0,I]]   moderate R on h, HUGE on w
+        # During corner DROPOUT only the ring fires, but h_tv persists (low process
+        # noise) so the EKF RECONSTRUCTS h_tr = ring - h_tv -> keeps tracking the
+        # moving target through the gap instead of reverting to ego-motion. (The
+        # transfer-derived M_ring puts the ring on the corner SCALE; the EKF supplies
+        # the FRAME decomposition.) Control consumes [h_tr; w]; h_tv is feedforward.
+        self._ekf_x = np.zeros(9)
+        self._ekf_P = np.eye(9) * 1.0
+        self._ekf_init = False
+        self._ekf_prev_t = None
+        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
+        _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
+        self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
+        self._H_ring   = np.block([[_I3, _I3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr+h_tv; w]
+        _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
+        _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
+        self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
+        self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
+        _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
+        _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
+        _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
+        self._ekf_Q = np.diag([_qtr] * 3 + [_qtv] * 3 + [_qw] * 3)
+        self._opt_flow_fused_log = []   # fused target-relative [h_tr; w] per frame (A/B)
+        self._target_vel_log = []       # estimated target velocity h_tv (flow units)
+
         # Centroid-feature KF (4 channels: xc, yc, scale, alpha) — same 2-state
-        # constant-velocity model as the flow KF, env IMG_FEATURE_FILTER=kf.
+        # constant-velocity model as the flow KF. DEFAULT since 2026-06-06
+        # (IMG_FEATURE_FILTER=savgol restores the legacy filter).
         # Cuts the ~110 ms group delay of savgol(13) on the OUTER-loop centroid
         # input (savgol lags the flow KF by ~7 samples + is ~2x noisier). That
         # lag is exactly where off-center convergence stalls: KP=9 commands the
-        # correction but the outer PID reacts to a ~110 ms-stale centroid.
-        # Default 'savgol' until A/B-validated.
+        # correction but the outer PID reacts to a ~110 ms-stale centroid — the
+        # whole image path (flow + ring + now centroid) is on the KF.
         self._kf_feat_x = np.zeros((4, 2))
         self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
         self._kf_feat_prev_t = None
@@ -524,7 +562,7 @@ class IMG_PROCESSOR(Thread):
         r~0.95 across the whole descent, verified 2026-06-06). A FIXED M_ring therefore generalizes
         and is derived like the corner cal (tools/derive_ring_cal.py). The loom is preferred for
         ROBUSTNESS (texture-free median, survives marker death), NOT for depth-invariance. See
-        FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
+        docs/FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
         detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
         death; this is the safety net."""
         zero = (np.zeros(6), 0.0, 0)
@@ -574,6 +612,7 @@ class IMG_PROCESSOR(Thread):
         results = self._detector.detectMarkers(imgs[0])
 
         FEATURE_DATA_IS_LOGGED = False
+        _corner_ok = False; _corner_cal = None   # per-frame corner measurement for the fused KF
 
         # === Marker corner acquisition (ArUco primary, KLT fallback) ===
         # When ArUco detection fails on the current frame, fall back to LK
@@ -799,6 +838,10 @@ class IMG_PROCESSOR(Thread):
                 self._n_flow_corners.append(int(len(flow_pts_1)))
                 # 2-state KF update — only on a fresh raw measurement.
                 self._kf_update(V_v_scaled, self._time.perf_counter())
+                # Calibrated corner measurement this frame, for the fused KF (the raw
+                # per-frame value, NOT the KF output — avoids double filtering).
+                _corner_ok = True
+                _corner_cal = self._sensor_cal_hw @ V_v_scaled
                 # Log both filters' calibrated outputs every frame for A/B.
                 self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
                 self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
@@ -864,6 +907,19 @@ class IMG_PROCESSOR(Thread):
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
                 self._kf_ring_initialized, _vvr, self._time.perf_counter())
             self._ring_opt_flow_kf_log.append(self._kf_x_ring[:, 0].copy())
+
+            # FUSION EKF: corner (this frame, if detected) + ring, decomposed into
+            # target-relative flow + target velocity. Runs every frame so the ring
+            # carries h_tr through corner dropouts (reconstructed via h_tv). Inert
+            # unless FLOW_FUSE_RING=1.
+            if self._fuse_ring:
+                _ring_ok = (_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
+                _ring_cal = self._sensor_cal_ring @ _vvr
+                self._ekf_fuse_step(_corner_cal, _corner_ok, _ring_cal, _ring_ok,
+                                    self._time.perf_counter())
+                self._opt_flow_fused_log.append(
+                    np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]]) if self._ekf_init else np.zeros(6))
+                self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
 
         if not FEATURE_DATA_IS_LOGGED:
             # Intervention 2: increment the stale streak and flip the flag
@@ -1015,6 +1071,49 @@ class IMG_PROCESSOR(Thread):
         """Corner-flow KF — thin wrapper around _kf_step on the corner state."""
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
+
+    def _ekf_fuse_step(self, corner_cal, corner_ok, ring_cal, ring_ok, t):
+        """Augmented-state EKF fusing corner (target-relative) + ring (ego) flow.
+        State [h_tr(3), h_tv(3), w(3)]. Measurement models are linear (constant
+        Jacobians H_corner/H_ring), so the EKF update is the standard KF update;
+        kept in EKF form so a nonlinear term (e.g. ring deck-takeover near
+        touchdown) can be added later. Works for stationary (h_tv->0) and moving
+        (h_tv = ring-corner) targets; reconstructs h_tr through corner dropout."""
+        if not self._ekf_init:
+            if corner_ok:
+                self._ekf_x[0:3] = corner_cal[0:3]      # h_tr <- corner h
+                self._ekf_x[6:9] = corner_cal[3:6]      # w    <- corner w
+                if ring_ok:
+                    self._ekf_x[3:6] = ring_cal[0:3] - corner_cal[0:3]   # h_tv <- ring-corner
+            elif ring_ok:
+                self._ekf_x[0:3] = ring_cal[0:3]; self._ekf_x[6:9] = ring_cal[3:6]
+            else:
+                return
+            self._ekf_P = np.eye(9) * 1.0
+            self._ekf_prev_t = t; self._ekf_init = True
+            return
+        dt = max(min(t - self._ekf_prev_t, 0.1), 1e-3)
+        self._ekf_prev_t = t
+        x = self._ekf_x.copy()
+        P = self._ekf_P + self._ekf_Q * dt                  # predict (random walk F=I)
+
+        def _update(x, P, z, H, R):
+            S = H @ P @ H.T + R
+            K = P @ H.T @ np.linalg.inv(S)
+            x = x + K @ (z - H @ x)
+            P = (np.eye(9) - K @ H) @ P
+            return x, P
+
+        if corner_ok:
+            x, P = _update(x, P, corner_cal, self._H_corner, self._R_corner)
+        if ring_ok:
+            x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
+        self._ekf_x, self._ekf_P = x, P
+
+    def getTargetVel(self):
+        """Estimated target/rover velocity in flow units (h_tv) from the fusion EKF;
+        ~0 for a stationary target. Zeros unless FLOW_FUSE_RING=1. Control feedforward."""
+        return self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3)
 
     def _kf_feat_update(self, z, t):
         """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
@@ -1314,6 +1413,8 @@ class IMG_PROCESSOR(Thread):
             "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
             "Opt Flow Savgol": self._opt_flow_savgol_log,
+            "Opt Flow Fused": self._opt_flow_fused_log,   # corner+ring EKF target-rel [h_tr;w] (FLOW_FUSE_RING=1)
+            "Target Vel": self._target_vel_log,           # EKF target/rover velocity h_tv (flow units)
             "FPS": self._fps_log,
             "Image Stamp": self._stamp_log
         }
@@ -1391,23 +1492,32 @@ class IMG_PROCESSOR(Thread):
         getter just selects which one the controller sees via IMG_FILTER:
           'kf'     (default) → 2-state constant-velocity Kalman.
           'savgol'           → legacy Savgol(13, 1).
+        FLOW_FUSE_RING=1 overrides both: the corner+ring fusion EKF returns the
+        TARGET-relative flow [h_tr; w] (works for stationary AND moving targets).
+        Its state is already calibrated, so return as-is.
         """
+        if self._fuse_ring and self._ekf_init:
+            return np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]])
         if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
             return self._sensor_cal_hw @ self._compute_savgol_output()
         return self._sensor_cal_hw @ self._kf_x[:, 0]
 
     def getImgFeatureParam(self):
-        """Calibrated, savgol-smoothed image-feature vector (4-vec).
+        """Calibrated, KF-smoothed image-feature vector (4-vec).
 
-        Same pattern as getOptFlowAngVel — sliding-window savgol on raw centroid /
-        scale / alpha. Until buffer fills, fall back to mean.
+        IMG_FEATURE_FILTER selects the OUTER-loop centroid filter:
+          'kf'     (default since 2026-06-06) → 2-state constant-velocity Kalman.
+          'savgol'                            → legacy Savgol(13, 1).
+        Switched to KF by default: savgol(13) adds ~110 ms group delay on the
+        centroid and is ~2x noisier than the KF; the KF cuts both. (Both outputs
+        are logged every frame for A/B.)
         """
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
-        # KF path (env IMG_FEATURE_FILTER=kf): low-lag alternative to savgol.
+        # KF path (default; IMG_FEATURE_FILTER=savgol selects the legacy filter).
         # Step the centroid KF once per fresh raw sample (the controller calls
         # this getter every control iteration, possibly faster than the camera).
-        if os.environ.get('IMG_FEATURE_FILTER', 'savgol') == 'kf':
+        if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
             n = len(self._img_feature_param)
             if n != self._kf_feat_last_n:
                 self._kf_feat_last_n = n

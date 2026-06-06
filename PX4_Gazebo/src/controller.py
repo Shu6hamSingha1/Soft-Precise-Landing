@@ -101,7 +101,7 @@ class Controller(Thread):
         #
         # Manuscript (MATLAB) values: K_rp=diag(9,9), K_ri=diag(0.1,0.1),
         # K_rd=diag(1.4375,1.4375). PX4 default K_ri=1.0 (10× MATLAB — SITL
-        # LK-centroid drift correction, see CONTROLLER_PARITY.md §3).
+        # LK-centroid drift correction, see docs/CONTROLLER_PARITY.md §3).
         #
         # Axis convention: image axis 0 (V-frame x) → PITCH/North,
         #                  image axis 1 (V-frame y) → ROLL/East.
@@ -116,11 +116,11 @@ class Controller(Thread):
                               float(os.environ.get("PLASMC_KD_Y", "1.4375"))])
 
         # ════ Middle-loop control parameters — DIRECT per-axis values ════
-        # Manuscript symbol mapping (CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
+        # Manuscript symbol mapping (docs/CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
         # P2INF=p₂∞, OMEGA=𝒳 (PI surface integrator), GAMMA=Γ (surface
         # proportional), E=ℰ (boundary layer), N=𝒩 (adaptive growth),
         # P=𝒫 (adaptive leakage), KAPPA0=κ(0).
-        # PX4 defaults differing from MATLAB (CONTROLLER_PARITY.md §3):
+        # PX4 defaults differing from MATLAB (docs/CONTROLLER_PARITY.md §3):
         # N_z 0.02 (vs 0.05), P_z 2.5 (vs 5.0), kappa_0 = 1.25× MATLAB.
         def pa(key, dx, dy, dz):
             """Per-axis direct parameter PLASMC_<KEY>_{X,Y,Z}; defaults given."""
@@ -188,7 +188,7 @@ class Controller(Thread):
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
         # Defaults = 2× MATLAB (camera is 640×480 @ f=270 vs 320×240 @ f=135).
         # In BOARD mode these protect the PRIMARY marker's corners only (see
-        # CONTROLLER_PARITY.md board-mode note). The validated IC1 config sizes
+        # docs/CONTROLLER_PARITY.md board-mode note). The validated IC1 config sizes
         # the envelope to the sensor edge: U0=290, V0=315, Uinf=220, Vinf=300.
         self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0")),
                                       float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0"))])
@@ -812,7 +812,7 @@ class Controller(Thread):
         # Raw inertial accel (net of gravity).
         # NOTE: a_u lives in the V frame; MATLAB uses I_R_V = rotz(yaw) here,
         # Python uses the full body DCM R — open parity item D1 in
-        # CONTROLLER_PARITY.md (zero difference when level; grows with tilt).
+        # docs/CONTROLLER_PARITY.md (zero difference when level; grows with tilt).
         I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 

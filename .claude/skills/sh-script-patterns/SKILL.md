@@ -7,7 +7,7 @@ description: Canonical bash patterns for the PX4_Gazebo PLASMC project — proce
 
 Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the master reference:
 
-**`PX4_Gazebo/SH_REFERENCE.md`** — single source of truth for the canonical patterns.
+**`PX4_Gazebo/docs/SH_REFERENCE.md`** — single source of truth for the canonical patterns.
 
 ## When to invoke
 
@@ -18,7 +18,7 @@ Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the maste
 
 ## What to do
 
-1. **Read `PX4_Gazebo/SH_REFERENCE.md` first** — it's ~300 lines, covers the 9 patterns the canonical launchers use.
+1. **Read `PX4_Gazebo/docs/SH_REFERENCE.md` first** — it's ~300 lines, covers the 9 patterns the canonical launchers use.
 2. **Check section 0 / section 9 of the reference**: does an existing launcher already do this with an env-var override? If yes, parameterize that instead of forking a new script. Most "I need a sweep for X" requests are answered by `env <X>=<VAL> N_REPS=5 bash run_aruco_landing_retry.sh` in a `for` loop — no new file needed.
 3. **Check memory** for whether the tuning regime is exhausted before authoring a parameter sweep:
    - `feedback_strict_coord_descent_dry` — per-axis gain sweeps converged dry
@@ -38,7 +38,7 @@ Need to run something repeatedly?
 ├── Once, < 15 lines, throwaway       → inline shell `for` loop, no file
 ├── Once, needs metric extraction     → /tmp/loop.sh (not tracked); delete after
 ├── Recurring methodology / new harness → PX4_Gazebo/scripts/run_<name>.sh (tracked),
-│                                          following SH_REFERENCE.md patterns
+│                                          following docs/SH_REFERENCE.md patterns
 └── Variation on existing launcher    → env-var override, NOT a fork
 ```
 

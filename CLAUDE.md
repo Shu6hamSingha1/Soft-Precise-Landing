@@ -97,7 +97,7 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     validate_pose_transforms.py — 6 sanity checks on frame conventions
     tune_savgol.py             — offline + runtime savgol picks
     analyze_*.py / scan_all_landings.py / coord_descent_tune.py — diagnostics
-  scripts/                     — bash launchers (canonical patterns in SH_REFERENCE.md)
+  scripts/                     — bash launchers (canonical patterns in docs/SH_REFERENCE.md)
     run_aruco_landing.sh       — one-command landing-test launcher
                                  (HEADLESS=1 for offscreen Qt; auto-cleans)
     run_aruco_landing_retry.sh — retry-on-flake wrapper around run_aruco_landing
@@ -114,7 +114,7 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   calibration_data/output/<timestamp>/  — output_calibration recordings (gitignored)
   calibration_data/input/<timestamp>/   — input_calibration recordings  (gitignored)
   run_logs/                    — per-component logs (gitignored)
-  SH_REFERENCE.md              — canonical .sh patterns; read before authoring new .sh
+  docs/SH_REFERENCE.md              — canonical .sh patterns; read before authoring new .sh
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 

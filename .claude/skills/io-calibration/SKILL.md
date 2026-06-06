@@ -121,6 +121,15 @@ LANDING_OUT_BASE=$PWD/validation_data/landing bash scripts/run_aruco_landing.sh 
 The validation apps (`apps/output_validation.py`, `apps/input_validation.py`) each fly one of two
 `cmd_profiles` (`VALIDATION_PROFILE=multisine|landing`) and route to `validation_data/`.
 
+**Validation maneuver tuning (from the 2026-06-06 SITL shakedown — see `validation-runs-status`):**
+the apps run end-to-end, but the DEFAULT amplitudes are too aggressive:
+- **output multisine** drops the marker (KLT-fallback spam → align r drops, vertical/yaw R² corrupts).
+  Reduce `VAL_MS_AMP_XY` (0.30→~0.15) + `VAL_MS_AMP_YAW_DEG` (15→~8) to keep it framed.
+- **input multisine is OPEN-LOOP** (no attitude feedback) → `VAL_RATE_AMP=0.15` rad/s flips the
+  drone (impact ~20 s). Drop to `VAL_RATE_AMP≈0.03–0.05`. wx/wy still validated well (r=0.98); wz poor.
+These were runnable from an agent session with the Bash sandbox disabled, but per CLAUDE.md the
+**user normally drives Gazebo** — prefer handing them the commands.
+
 # Tools inventory
 - `tools/derive_board_cal.py` — corner 6×6 M (GT=M@raw)
 - `tools/derive_ring_cal.py` — ring M_ring (transfer|gt)
