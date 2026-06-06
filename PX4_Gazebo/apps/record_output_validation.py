@@ -194,7 +194,7 @@ if __name__ == "__main__":
     if CONTROLLER_READY:
         # Route to validation_data/<sub> by default; honor the launcher's
         # CALIB_OUT_DIR (when run via run_output_calibration.sh with CALIB_APP).
-        sub = 'multisine' if PROFILE == 'multisine' else 'landing'
+        sub = 'output_multisine' if PROFILE == 'multisine' else 'output_landing'
         dir_name = os.environ.get("VAL_OUT_DIR") or os.environ.get("CALIB_OUT_DIR")
         if not dir_name:
             base = os.environ.get(

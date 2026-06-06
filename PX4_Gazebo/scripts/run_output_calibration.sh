@@ -15,7 +15,7 @@ mkdir -p "$LOG_DIR"
 # convention which used time.ctime()-style names). A `latest` symlink in the
 # same parent tracks the most recent run for analyze/validate scripts.
 # CALIB_PARENT overridable so a VALIDATION run routes elsewhere (e.g.
-# CALIB_PARENT=$PWD/validation_data/multisine CALIB_MODE=multisine ...) without
+# CALIB_PARENT=$PWD/validation_data/output_multisine CALIB_MODE=multisine ...) without
 # contaminating the calibration set the derive tools scan.
 CALIB_PARENT="${CALIB_PARENT:-$SCRIPT_DIR/../calibration_data/output}"
 mkdir -p "$CALIB_PARENT"
@@ -128,6 +128,6 @@ cd "$SCRIPT_DIR/.."
 source "$VENV/bin/activate"
 # CALIB_APP overridable so this launcher can also fly the VALIDATION app, e.g.
 #   CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine \
-#   CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
+#   CALIB_PARENT=$PWD/validation_data/output_multisine bash scripts/run_output_calibration.sh
 CALIB_OUT_DIR="$CALIB_OUT_DIR" python3 "${CALIB_APP:-apps/record_output_calibration.py}"
 echo "[calib] script exit $?"

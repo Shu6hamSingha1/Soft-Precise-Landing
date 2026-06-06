@@ -218,7 +218,7 @@ if __name__ == "__main__":
         # Output routing (mirrors output_calibration):
         #   INPUT_CALIB_OUT_BASE — parent folder; each run gets a timestamped subdir.
         #     Default = calibration_data/input (the aggregator's scan dir). Set to
-        #     e.g. validation_data/input_multi for a VALIDATION run so it never
+        #     e.g. validation_data/input_multiaxis for a VALIDATION run so it never
         #     contaminates the calibration set.
         #   INPUT_CALIB_OUT_DIR — full path override (no timestamp); precedence.
         base = os.environ.get(

@@ -631,7 +631,7 @@ if __name__ == "__main__":
 
             # Create a directory named based on timestamp.
             # LANDING_OUT_BASE routes a VALIDATION landing elsewhere (e.g.
-            # validation_data/landing) without polluting the default test set.
+            # validation_data/output_landing) without polluting the default test set.
             _land_base = os.environ.get(
                 "LANDING_OUT_BASE",
                 "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Landing_Test")

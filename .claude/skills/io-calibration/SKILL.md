@@ -94,9 +94,10 @@ per-axis lag, reusing `per_run_metrics`.
 ```
 calibration_data/output/   phased runs (derive_board_cal/derive_ring_cal SCAN here)  — gitignored
 calibration_data/input/    input-cal runs (aggregate_input_calibration scans here)   — gitignored
-validation_data/multisine/    output multisine validation                            — gitignored
-validation_data/input_multi/  input multi-axis validation                            — gitignored
-validation_data/landing/      landing-to-touchdown (serves BOTH input + output)      — gitignored
+validation_data/output_multisine/    output multisine validation                            — gitignored
+validation_data/input_multiaxis/  input multi-axis validation                            — gitignored
+validation_data/output_landing/   output landing (position-SP descent, flow vs GT)       — gitignored
+validation_data/input_landing/    input landing (thrust staircase -> thrust map)          — gitignored
 ```
 
 **Routing env knobs** (keep validation OUT of `calibration_data/`):
@@ -117,11 +118,11 @@ for i in $(seq 1 10); do timeout 220 bash scripts/run_output_calibration.sh; don
 ~/ws/scripts/env2025/bin/python3 tools/derive_board_cal.py     # corner M  -> paste into img_data.py
 ~/ws/scripts/env2025/bin/python3 tools/derive_ring_cal.py      # ring M_ring (transfer) -> paste
 # VALIDATION (dedicated apps via CALIB_APP/INPUT_APP override; VALIDATION_PROFILE=multisine|landing)
-CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/multisine bash scripts/run_output_calibration.sh
-INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
+CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/output_multisine bash scripts/run_output_calibration.sh
+INPUT_APP=apps/record_input_validation.py  VALIDATION_PROFILE=multisine CALIB_PARENT=$PWD/validation_data/input_multiaxis bash scripts/run_input_calibration.sh
 # LANDINGS use POSITION-SETPOINT / thrust-staircase descents (NOT the untuned PLASMC
 # controller — it has a descent regressor that hovers; run_aruco_landing is for tuning, not validation):
-CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=landing bash scripts/run_output_calibration.sh   # output: position-SP descent, flow vs GT to touchdown
+CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=landing CALIB_PARENT=$PWD/validation_data/output_landing bash scripts/run_output_calibration.sh   # output: position-SP descent, flow vs GT. CALIB_PARENT routes it OUT of calibration_data/output.
 INPUT_APP=apps/record_input_validation.py VALIDATION_PROFILE=landing CALIB_PARENT=$PWD/validation_data/input_landing bash scripts/run_input_calibration.sh   # input: thrust staircase (0.74↓0.01), GT-stop 1m. CALIB_PARENT routes it OUT of calibration_data/input (else it contaminates the rate-cal aggregate).
 ```
 The validation apps (`apps/record_output_validation.py`, `apps/record_input_validation.py`) each fly one of two

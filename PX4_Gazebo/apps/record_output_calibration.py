@@ -434,7 +434,7 @@ if __name__ == "__main__":
         # Output routing:
         #   CALIB_OUT_BASE — parent folder; each run gets a timestamped subdir.
         #     Default = calibration_data/output (the cal-of-record source that the
-        #     derive tools scan). Set to e.g. validation_data/multisine for a
+        #     derive tools scan). Set to e.g. validation_data/output_multisine for a
         #     VALIDATION run so it NEVER contaminates the calibration set.
         #   CALIB_OUT_DIR — full path override (no timestamp); for launchers that
         #     need to predict the exact path. Takes precedence if set.

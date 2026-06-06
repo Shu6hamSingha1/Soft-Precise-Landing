@@ -171,7 +171,7 @@ if __name__ == "__main__":
         print("Clean exit on Ctrl+C")
 
     if CONTROLLER_READY:
-        sub = 'input_multi' if PROFILE == 'multisine' else 'landing'
+        sub = 'input_multiaxis' if PROFILE == 'multisine' else 'input_landing'
         dir_name = os.environ.get("VAL_OUT_DIR") or os.environ.get("INPUT_CALIB_OUT_DIR")
         if not dir_name:
             base = os.environ.get(

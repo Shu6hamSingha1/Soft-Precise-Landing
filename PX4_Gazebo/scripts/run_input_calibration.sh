@@ -12,7 +12,7 @@ LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
 # CALIB_PARENT overridable so a VALIDATION run routes elsewhere (e.g.
-# CALIB_PARENT=$PWD/validation_data/input_multi ...) without contaminating
+# CALIB_PARENT=$PWD/validation_data/input_multiaxis ...) without contaminating
 # the calibration set the aggregator scans.
 CALIB_PARENT="${CALIB_PARENT:-$SCRIPT_DIR/../calibration_data/input}"
 mkdir -p "$CALIB_PARENT"
@@ -117,6 +117,6 @@ cd "$SCRIPT_DIR/.."
 source "$VENV/bin/activate"
 # INPUT_APP overridable so this launcher can also fly the VALIDATION app, e.g.
 #   INPUT_APP=apps/record_input_validation.py VALIDATION_PROFILE=multisine \
-#   CALIB_PARENT=$PWD/validation_data/input_multi bash scripts/run_input_calibration.sh
+#   CALIB_PARENT=$PWD/validation_data/input_multiaxis bash scripts/run_input_calibration.sh
 INPUT_CALIB_OUT_DIR="$INPUT_CALIB_OUT_DIR" python3 "${INPUT_APP:-apps/record_input_calibration.py}"
 echo "[input-calib] script exit $?"
