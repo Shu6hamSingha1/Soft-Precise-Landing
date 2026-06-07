@@ -694,13 +694,19 @@ class Controller(Thread):
 
     def _yawCtrl(self):
         """Yaw adaptive SMC (MATLAB kappa_a) -> body yaw-rate setpoint u_a."""
-        # Yaw feature error wrapped to [-pi/2, pi/2] (ellipse symmetry):
-        # Wrap signed-angular error to [-π/2, π/2] via factor-of-2 trick.
-        # alpha is π-period (2nd-moment formula is 180°-symmetric on
-        # square corners), so this is the natural wrap.
-        # MATLAB visualControl_IBVS_adaptive.m:483.
+        # FULL 2π wrap to [-π, π] (NOT the old factor-of-2 π-fold). Our alpha is a
+        # DISAMBIGUATED 2π DIRECTION: img_data._marker_principal_angle uses the
+        # [4,3,2,1] corner weights + the 1st-moment centroid displacement to resolve
+        # the 180° axis ambiguity ("clean 360°"). The old fold to [-π/2,π/2] re-
+        # collapsed that into the π-form, re-creating the 90° saddle (two equilibria
+        # 0°/180° with an unstable point at ±π/2): noise flipped e_a across ±π/2 →
+        # the yaw-rate command flipped → LIMIT CYCLE. With the 2π wrap the only
+        # discontinuity sits at ±180° — which a landing never reaches → no saddle,
+        # no limit cycle. (Diverges from MATLAB:483, which used a π-period alpha on
+        # asymmetric T_nP3 geometry; the alpha SOURCE stays moment-based — this is
+        # NOT the reverted geometric-source swap. 2026-06-07.)
         e_a_raw = self._s[-1][3] - self._s_d[3]
-        e_a = np.arctan2(np.sin(2 * e_a_raw), np.cos(2 * e_a_raw)) / 2.0
+        e_a = np.arctan2(np.sin(e_a_raw), np.cos(e_a_raw))
         self._e_a.append(e_a)
 
         # Terminal yaw-hold (2026-06-05): the marker ORIENTATION (alpha) becomes
