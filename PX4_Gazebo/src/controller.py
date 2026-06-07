@@ -166,8 +166,8 @@ class Controller(Thread):
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
                      "P2INF": (2.5, 2.5, 1.5), "OMEGA": (0.05, 0.05, 0.025),
-                     "GAMMA": (0.4375, 0.5, 0.75), "E": (1.0, 1.0, 1.0),
-                     "N": (0.02, 0.02, 0.02), "P": (1.5, 1.5, 2.5),
+                     "GAMMA": (0.4375, 1.0, 0.75), "E": (1.5, 1.5, 1.0),
+                     "N": (0.02, 0.02, 0.02), "P": (3.0, 3.0, 5.0),
                      "KAPPA0": (0.15625, 0.15625, 0.3125)}
         _values = {"XI2": np.diag(self._gamma), "P20": self._p_0, "P2INF": self._p_inf,
                    "OMEGA": np.diag(self._Omega), "GAMMA": np.diag(self._Gma),
@@ -727,7 +727,7 @@ class Controller(Thread):
                 self._yaw_hold = True
             elif len(self._e_a) > 1 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
                 _de = self._e_a[-1] - self._e_a[-2]
-                _de = np.arctan2(np.sin(2 * _de), np.cos(2 * _de)) / 2.0   # wrap (pi-fold)
+                _de = np.arctan2(np.sin(_de), np.cos(_de))   # 2π wrap (e_a is a full 2π direction; was a stale π-fold)
                 if abs(_de) / self._dt[-1] > float(os.environ.get("YAW_HOLD_ALPHA_RATE", "3.0")):
                     self._yaw_hold = True
 
@@ -780,9 +780,13 @@ class Controller(Thread):
         # compass races ahead of the measured yaw -> e_R saturates -> the SO(3)
         # commands max yaw rate -> overshoot and ±180° psi_d windup (the IC yaw
         # divergence: w_u_z saturated 73% of frames, 3 sign-flips; diagnosed
-        # 2026-06-04). Limit the psi_d advance rate to a fraction of W_U_MAX so the
-        # inner loop can actually track the setpoint. The SMC's u_a (logged) is left
-        # unclamped so sigma_a/kappa_a keep adapting to the true alpha error.
+        # 2026-06-04). Cap the psi_d advance rate at YAW_PSID_RATE·W_U_MAX so the
+        # inner loop can actually track the setpoint. The `≤ W_U_MAX` ceiling is the
+        # load-bearing part (psi_d must not race past the achievable yaw rate); the
+        # factor is now 1.0 (full W_U_MAX) — the old 0.7 was over-conservative and
+        # throttled convergence from a large initial yaw (2026-06-08, un-throttled
+        # for the arbitrary-initial-yaw case; MATLAB has no clamp as it spawns square).
+        # The SMC's u_a (logged) is left unclamped so sigma_a/kappa_a keep adapting.
         _w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
         _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))

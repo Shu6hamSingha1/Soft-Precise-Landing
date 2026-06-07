@@ -1314,12 +1314,14 @@ class IMG_PROCESSOR(Thread):
           coincide with the SMC equilibrium so no yaw rotation is needed
           during descent (minimizes lateral leak via PX4 mixer coupling).
 
-          Fundamental limitation: 2nd-moment alpha has π-period symmetry
-          (mu_11, mu_20, mu_02 all invariant under 180° rotation), so
-          alpha=0 has two equilibria 180° apart. For a symmetric ArUco
-          this is harmless (orientation doesn't affect landing precision);
-          for directional landings, an asymmetric marker geometry would
-          be needed.
+          The raw 2nd-moment AXIS is π-period (mu_11, mu_20, mu_02 all
+          invariant under 180° rotation), but _marker_principal_angle
+          disambiguates it into a full 2π DIRECTION via the weighted-
+          centroid displacement (see its docstring), so the alpha returned
+          here sweeps a clean 360° with a SINGLE equilibrium at alpha=0 —
+          the controller wraps the yaw error over the full 2π. (An
+          asymmetric ArUco geometry, as in MATLAB, would make even the raw
+          axis directional.)
 
           Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
         """
