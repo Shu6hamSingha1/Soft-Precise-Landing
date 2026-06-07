@@ -117,8 +117,8 @@ class Controller(Thread):
         # The two axes run at DIFFERENT effective loop gains for the same physical
         # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
         # than y) — per-axis values are how that gets compensated.
-        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "9.0")),
-                              float(os.environ.get("PLASMC_KP_Y", "9.0"))])
+        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "12.0")),
+                              float(os.environ.get("PLASMC_KP_Y", "12.0"))])   # 9->12 (2026-06-08)
         self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "1.0")),
                               float(os.environ.get("PLASMC_KI_Y", "1.0"))])
         self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "1.4375")),
@@ -156,11 +156,11 @@ class Controller(Thread):
                                   float(os.environ.get("PLASMC_PSINF_Y", "0.1"))])
         # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
         self._Omega = np.diag(pa("OMEGA", 0.05, 0.05, 0.025))
-        self._Gma   = np.diag(pa("GAMMA", 0.4375, 0.5, 0.75))
-        self._E     = np.diag(pa("E",     1.0, 1.0, 1.0))
+        self._Gma   = np.diag(pa("GAMMA", 0.4375, 1.0, 0.75))    # GAMMA_Y 0.5->1.0 (lateral braking, 2026-06-08)
+        self._E     = np.diag(pa("E",     1.5, 1.5, 1.0))        # E 1->1.5/1.5/1.0 (lateral stiffen + descent, 2026-06-08)
         # Adaptive-gain ODE
         self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
-        self._P       = np.diag(pa("P",      1.5, 1.5, 2.5))
+        self._P       = np.diag(pa("P",      3.0, 3.0, 5.0))     # P 1.5/1.5/2.5->3/3/5 (kappa-leakage; P_Z=5 MATLAB parity, 2026-06-08)
         self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 0.3125)
 
         # Print every parameter whose value differs from its default.
@@ -228,7 +228,10 @@ class Controller(Thread):
         # integral contribution X·∫ζ to σ stays ≤ λ_max(X)·5 ≤ 0.25, within
         # the boundary-layer thickness ε_k = 1 used in the simulations.
         self._izeta_clamp = 5.0
-        self._ie_a_clamp = 2.0
+        # _ie_a_clamp REMOVED 2026-06-08 — the fixed yaw-integral clamp was a band-aid
+        # that masked integral windup during large initial-yaw slews (and drove the
+        # post-slew overshoot). Replaced by CONDITIONAL INTEGRATION in _yawCtrl
+        # (freeze ie_a while the heading rate is saturated) — proper anti-windup.
 
         # ════ SO(3) attitude-error proportional gain  [manuscript: k_R] ════
         # DIRECT per-axis values in (rad/s)/rad — rate-mode unit, not the
@@ -728,13 +731,22 @@ class Controller(Thread):
                 if abs(_de) / self._dt[-1] > float(os.environ.get("YAW_HOLD_ALPHA_RATE", "3.0")):
                     self._yaw_hold = True
 
-        # Trapezoidal integral with anti-windup
+        # Trapezoidal integral with CONDITIONAL INTEGRATION (proper anti-windup):
+        # freeze the yaw integral while the heading-rate command was SATURATED last
+        # step (i.e. during a long initial-yaw slew). The integral only needs to
+        # accumulate near the target to null steady-state error; letting it wind up
+        # over a 100° slew left ie_a pinned (~2.0) so sigma_a = e_a + Omega_a*ie_a
+        # stayed positive AT the zero-crossing -> u_a kept commanding yaw -> overshoot
+        # past zero (102°->-22°). This REPLACES the old fixed `_ie_a_clamp` band-aid
+        # (dropped) and introduces NO new threshold — it reuses the psi_d-rate
+        # saturation flag set at the end of this method (prior step). 2026-06-08.
         if len(self._ie_a) == 0:
             self._ie_a.append(0.0)
+        elif getattr(self, "_yaw_rate_saturated", False):
+            self._ie_a.append(self._ie_a[-1])          # hold — do not integrate while saturated
         else:
             new_int = self._ie_a[-1] + self._dt[-1] * 0.5 * (self._e_a[-1] + self._e_a[-2])
-            new_int = float(np.clip(new_int, -self._ie_a_clamp, self._ie_a_clamp))
-            self._ie_a.append(new_int)
+            self._ie_a.append(float(new_int))
 
         # Sliding surface
         sigma_a = self._e_a[-1] + self._Omega_a * self._ie_a[-1]
@@ -772,8 +784,11 @@ class Controller(Thread):
         # inner loop can actually track the setpoint. The SMC's u_a (logged) is left
         # unclamped so sigma_a/kappa_a keep adapting to the true alpha error.
         _w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
-        _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "0.7")) * _w_max
+        _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
+        # Heading-rate saturation flag -> next step's CONDITIONAL INTEGRATION
+        # (anti-windup on ie_a, above). True while the slew is rate-limited.
+        self._yaw_rate_saturated = bool(abs(u_a) > _psid_rate)
 
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
         #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]   (u_a rate-limited, see above)
