@@ -349,6 +349,7 @@ class Controller(Thread):
         self._a_u = []
         self._I_a_raw = []    # pre-LPF, pre-clamp inertial accel command
         self._I_a = []        # post-LPF, post-clamp inertial accel command
+        self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
         # FoV-cone diagnostics
         self._rho_fov_log = []
         self._d_min_fov_log = []
@@ -722,9 +723,20 @@ class Controller(Thread):
         # freeze psi_d below + zero w_u[2] in _attCtrl, so the drone lands at its last
         # good aligned heading instead of spinning off-square.
         self._yaw_hold = False
+        # MARKER-EXTENT trigger (2026-06-08): when the marker fills the FoV near touchdown it
+        # corrupts BOTH alpha AND the loom (h_z) — the loom runs away (-0.2 -> -7) so the
+        # DESCENT accelerates into the ground (vz -> 6.8 m/s, unregulated, was unguarded). Firing
+        # the hold on the scale-free proximity signal MARKER_EXTENT_PX freezes the whole command
+        # (yaw + descent, via TERMINAL_STABILIZE) at its last-good controlled value, so the drone
+        # completes the descent at its pre-corruption rate instead of chasing garbage loom. This
+        # is the descent analogue of the measured-yaw hold (704e577). Default 0 = off.
+        _ext_thr = float(os.environ.get("PLASMC_TERMINAL_HOLD_EXTENT", "0"))   # DEFAULT OFF: validated n=6 NEGATIVE — TERMINAL_STABILIZE holds the ACCEL command, which does NOT arrest a descent (drone keeps falling). The real descent fix is in the loom-tracking control, not a terminal freeze. (2026-06-08)
+        self._marker_extent.append(self.MARKER_EXTENT_PX)
         if os.environ.get("YAW_TERMINAL_HOLD", "1") == "1":
             if self.FEATURE_IS_STALE:
                 self._yaw_hold = True
+            elif _ext_thr > 0 and self._marker_extent[-1] > _ext_thr:
+                self._yaw_hold = True                        # marker fills FoV -> alpha+loom unreliable
             elif len(self._e_a) > 1 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
                 _de = self._e_a[-1] - self._e_a[-2]
                 _de = np.arctan2(np.sin(_de), np.cos(_de))   # 2π wrap (e_a is a full 2π direction; was a stale π-fold)
@@ -1244,6 +1256,7 @@ class Controller(Thread):
             "w(t)": self._w,
             "h(t)": self._h,
             "h_d(t)": self._h_d,
+            "MARKER_EXTENT_PX(t)": self._marker_extent,
             "dh_d(t)": self._dh_d,
             "s(t)": self._s,
             "s_e(t)": self._s_e,
