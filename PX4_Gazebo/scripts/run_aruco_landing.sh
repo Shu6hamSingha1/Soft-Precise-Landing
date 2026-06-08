@@ -206,7 +206,7 @@ PY_OUT="$LOG_DIR/landing_test.out"
 # lockstep-race retry signal below.
 PY_TIMEOUT_S="${PY_TIMEOUT_S:-180}"
 PY_SCRIPT="${PY_SCRIPT:-apps/landing_test.py}"
-timeout --kill-after=10 "$PY_TIMEOUT_S" python3 "$PY_SCRIPT" 2>&1 | tee "$PY_OUT"
+LANDING_AUTOSAVE=1 timeout --kill-after=10 "$PY_TIMEOUT_S" python3 "$PY_SCRIPT" 2>&1 | tee "$PY_OUT"
 PY_EXIT=${PIPESTATUS[0]}
 # coreutils timeout returns 124 (or 137 with SIGKILL after grace) on timeout
 if [ "$PY_EXIT" = "124" ] || [ "$PY_EXIT" = "137" ]; then
