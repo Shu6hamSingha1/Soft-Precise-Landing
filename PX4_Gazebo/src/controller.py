@@ -178,8 +178,21 @@ class Controller(Thread):
             for i, ax in enumerate(("X", "Y", "Z")):
                 if abs(_values[k][i] - dflt[i]) > 1e-12:
                     _print_lines.append(f"  {k}_{ax} = {_values[k][i]:g}  (default {dflt[i]:g})")
+        # Log FoV / funnel env vars that can silently override behaviour and are NOT
+        # covered by the per-axis checker above (e.g. FUNNEL_MODE, THETA_FLOOR_DEG).
+        _fov_vars = [
+            ("FUNNEL_MODE",          "cone"),
+            ("PLASMC_THETACAP_DEG",  "60.0"),
+            ("PLASMC_THETA_FLOOR_DEG", "60.0"),
+            ("FLOW_FUSE_RING",       "1"),
+            ("BODY_YAW_SOURCE",      "alpha"),
+        ]
+        for _var, _dflt in _fov_vars:
+            _val = os.environ.get(_var, _dflt)
+            if _val != _dflt:
+                _print_lines.append(f"  {_var} = {_val}  (default {_dflt})")
         if _print_lines:
-            print("[PLASMC] non-default middle-loop parameters:")
+            print("[PLASMC] non-default parameters:")
             for line in _print_lines: print(line)
 
         # ════ Yaw ASMC  [manuscript: χ_α, γ_α, η_α, ρ_α, κ_α(0), ε_α] ════
