@@ -52,6 +52,52 @@ were removed — see parameter_record.ods sheet `Removed_Parameters`. (THETA_FLO
 > `YAW_TERMINAL_HOLD`(on)+`YAW_HOLD_ALPHA_RATE`(3.0)+`TERMINAL_STABILIZE`(off); `IMG_FEAT_KF_R`(0.004, centroid-KF noise).
 > Sweep harness: `scripts/run_knob_sweep.sh`. IC2-5 gate: `run_ic_validation.sh` — never pass it `LANDING_OUT_BASE`.
 
+> **🔑 2026-06-07 NEW-CAL CONTROLLER RESULTS — read [[feedback_newcal_tuning_results]] + [[feedback_sitl_reliability_fixes]].**
+> First controller-engaged flights under correct cal. **The boundary layer `E` is THE knob that bounds the
+> κ-runaway at full authority** (κ-ODE grows only when `|σ|>E`): `PLASMC_E=2.5` (CBF relaxed) → κ≈k0,
+> a_u 6 (vs 16705 at E=1), lateral held **0.04 m dead-center** — BUT too soft → hover (need `E_Z` lower
+> for descent). **cbf2 was MASKING the κ-runaway** (clamps a_xy 51–84%); it's a SAFETY NET, not a
+> controller — keep it RELAXED (`THETA_FLOOR_DEG=60`) and bound κ via `E`. If the CBF triggers in normal
+> ops, the control law is failing. This UPDATES the "lateral drift = pure lag floor" story — it was largely
+> κ-runaway + CBF-masking; lateral CAN converge once κ is bounded.
+> **TUNE PER-AXIS, NOT ALL-AXES-TOGETHER** (user directive 2026-06-07, reinforces [[feedback_per_axis_tuning]]):
+> e.g. sweep `E_Z` alone (descent) vs `E_X`/`E_Y` (lateral) — `E=2.5` on all axes solved lateral but killed descent.
+> **New-cal dead-ends:** `KP≥13` overshoot; `KI≥2` integral-windup → κ-runaway returns; `W_U_MAX>1.7` breaks
+> LK (TARGET_LOST); `THETA_FLOOR` low just masks κ. `P_Z=5` (MATLAB parity, κ_eq∝1/P) tames κ_z. **n=1 is
+> noise** — KP=12 looked like 1.5 m at n=1, gave mean 6.1 m / 0 SP at n=5. Per-rep root cause:
+> `tools/diagnose_failure_cause.py <rep>` (perception vs control via image-`s_e_n` vs GT-lateral at onset).
+
+> **🧭 METHODOLOGY RULES (user, 2026-06-07) — read [[feedback_dont_conclude_lag_floor]].**
+> **(1) Don't conclude "lag floor / architectural ceiling" while control levers remain.** If relaxing a
+> SAFETY-NET clamp (cbf2 cone via `THETA_FLOOR=60`) makes a failure WORSE, that clamp was **MASKING an
+> under-tuned controller** — relaxing it EXPOSES a tuning gap to FIX at the control level (same as κ: cbf2
+> masked it → relax exposed it → `E` fixed it). It is NOT proof the clamp is load-bearing or that the
+> residual is lag. The 125 Hz control loop is *fast*; actuation lag (38–61 ms roll / 287 ms yaw) is the LAST
+> resort, not the first explanation. **(2) One knob, one job.** `E` was doing two conflicting jobs — it
+> bounds κ (raise E) AND sets SMC stiffness (raise E → softer tracking). `E=2.5` bounded κ but *softened*
+> the lateral hold→drift and the descent→hover. Decompose: **use `P` (κ_eq∝1/P) to bound κ; use `E` only for
+> stiffness**, PER-AXIS. Don't let a κ-bounding move silently detune tracking.
+
+> **📊 2026-06-09 DEEP SWEEP RESULTS — 42 rows in PX4_NewCal_Record. [[feedback_newcal_tuning_results]] [[feedback_kp_e_coupling]] [[project_tuning_campaign_newcal_reset]].**
+> **BEST CONFIRMED STACK:** `KP=9, E=[2.5,2.5,0.5], P=[5,5,5], KI=1.0` → median **3.80m**, min 1.95m (n=5).
+> **KP×E COUPLING (new):** KP and E_XY cannot be tuned independently. KP=12+E=1.5 works (3.20m, SEN_FUNNEL blocks t=0 LK spike). KP=12+E=2.5 is WORSE (4.79m) — wide E keeps σ<E so κ≈κ_0; higher KP drives h_d windup faster → earlier funnel breach. **Rule: KP=9 with E_XY≥2.5; KP=12 only with E_XY≤1.5.**
+> **ALL PARAMETERS CONFIRMED AT OPTIMAL DEFAULTS (no further gain headroom):** Gamma_Z=0.75, KR_YAW=2.0, P2INF_Z=1.5, TERMINAL_HOLD_EXTENT=70, YAW_OMEGA=0.5, PSID_RATE=1.0, tau_ua=0.1, E_Z=0.5 (marginal over 1.0).
+> **DEAD-ENDS (do not retry):** KI≤0.35, E_Z≥1.5, KP=12+E=2.5, N_Z=0.05 alone, tau_ua=0.3, P_XY=3 (9.75m — P controls κ_eq∝1/P), KP≥13.
+> **HOVER-AT-CENTER (NOT SP):** 3 events where xy=0.0/vel=0.0/flight>50s. Boundary-layer-induced (σ<E throughout). Classified FAIL.
+> **BINDING FAILURE (2026-06-09):** Stochastic LK/ArUco collapses — 1-2 TL per 5 reps even at perfect IC. LK dynamic range ceiling ~2 m/s. NOT gain-tunable. Gap between xy_min (~2m) and xy_med (~4-6m) is entirely stochastic perception.
+> **DEAD-ENDS (do not retry):** KI≤0.35, E_Z≥1.5, KP=12+E=2.5, N_Z=0.05 alone, tau_ua=0.3, P_XY=3, KP≥13, **N_XY=0.05** (5.87m vs 3.80m — faster κ without σ signal = noisy).
+> **ALL GAIN-SIDE LEVERS EXHAUSTED. Next: code-level perception fix.**
+> (1) **Pyramidal LK levels 2→3** in `img_data.py:getLKFlowAngVel` — directly extends dynamic range ceiling ~2 m/s → ~4 m/s; addresses binding stochastic TL failures. (2) `KP_Y < KP_X` — asymmetric KP (low priority). (3) Anti-windup on outer PID: freeze `is_e_n` when `h_e/p > 0.7`.
+
+> **🔧 CLAMPS ARE BAND-AIDS — disable during tuning, re-engage after (user, 2026-06-08). [[feedback_clamps_during_tuning]].**
+> A clamp that BITES during tuning is masking poor control + hiding the signal you need. Tune the bare law,
+> then re-engage protective clamps. Prefer proper control techniques (conditional integration, gain shaping)
+> over fixed clamps. **Clamp audit vs MATLAB:** A=canonical/keep (`sat(σ/E)`, FoV cone, `izeta`); B=PX4-physics/
+> keep (`W_U_MAX` LK>1.7, `DH_D_MAX` 1/Z spike, `W_I_MAX`, `YAW_TERMINAL_HOLD`/`STALE`); C=large-yaw band-aids
+> MATLAB has NEITHER (psi_d-rate clamp + `_ie_a_clamp`). **DONE: `_ie_a_clamp` REMOVED → conditional integration**
+> in `_yawCtrl` (freeze `ie_a` while heading-rate saturated) — fixed the windup→overshoot (102°→−22°). MATLAB
+> spawns SQUARE (never perturbs initial yaw); PX4's large-initial-yaw is the (B) extension beyond the reference.
+
 **The validated IC1 config (28% SP @ 10cm, n=25 — parameter_record trial 46), in direct-value form:**
 ```
 PLASMC_KP_X=1.4 PLASMC_KP_Y=1.4  PLASMC_KI_X=0.35 PLASMC_KI_Y=0.35  PLASMC_KD_X=0.5031 PLASMC_KD_Y=0.5031
