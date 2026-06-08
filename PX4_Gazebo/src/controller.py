@@ -123,6 +123,13 @@ class Controller(Thread):
                               float(os.environ.get("PLASMC_KI_Y", "1.0"))])
         self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "1.4375")),
                               float(os.environ.get("PLASMC_KD_Y", "1.4375"))])
+        # LPF time-constant on ds_d (the outer-PID output that feeds h_d).
+        # Control runs at 125 Hz; images arrive at ~42 Hz. Each new frame causes
+        # a discrete jump in s_e_n -> step in ds_d -> raw dh_d spike ~17 m/s³ at
+        # K_rp=12. The EMA smooths this: at tau=50ms raw p50 11→2 m/s³, clipping
+        # 64%→32%. Adds ~50ms lag to the outer loop (acceptable given 38-60ms inner lag).
+        # Set PLASMC_TAU_DS=0 to disable.
+        self._tau_ds = float(os.environ.get("PLASMC_TAU_DS", "0.05"))
 
         # ════ Middle-loop control parameters — DIRECT per-axis values ════
         # Manuscript symbol mapping (docs/CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
@@ -187,6 +194,7 @@ class Controller(Thread):
             ("FLOW_FUSE_RING",       "1"),
             ("PLASMC_SEN_FUNNEL",    "1"),
             ("BODY_YAW_SOURCE",      "alpha"),
+            ("PLASMC_TAU_DS",        "0.05"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -326,7 +334,9 @@ class Controller(Thread):
         self._s_e_n = []      # normalized error (s_e[:2] / p_10)
         self._is_e_n = []     # integral of s_e_n
         self._ds_e_n_deque = deque([np.zeros(2)] * 4)
-        self._ds_d = []       # desired feature-derivative output of outer PID
+        self._ds_d = []       # desired feature-derivative output of outer PID (LPF-smoothed)
+        self._ds_d_lpf = np.zeros(N_DIM)   # LPF state for ds_d smoothing
+        self._ds_d_lpf_init = False
 
         # Middle-loop barrier (optical flow)
         self._p = []
@@ -568,7 +578,17 @@ class Controller(Thread):
             V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
                          - self._K_ri @ self._is_e_n[-1]
                          - self._K_rd @ ds_e_n)
-        self._ds_d.append(np.concatenate([V_ds_d_xy, [0.0]]))
+        raw_ds_d = np.concatenate([V_ds_d_xy, [0.0]])
+        if self._tau_ds > 0 and len(self._dt) > 0:
+            if not self._ds_d_lpf_init:
+                self._ds_d_lpf = raw_ds_d.copy()
+                self._ds_d_lpf_init = True
+            else:
+                alpha = self._dt[-1] / (self._tau_ds + self._dt[-1])
+                self._ds_d_lpf += alpha * (raw_ds_d - self._ds_d_lpf)
+            self._ds_d.append(self._ds_d_lpf.copy())
+        else:
+            self._ds_d.append(raw_ds_d)
 
     def _updateOptFlow(self, h):
         """Middle-loop: barrier-transform optical flow error, prep zeta / sigma inputs."""
