@@ -183,7 +183,7 @@ async def main(record = 'n'):
         # σ0 spread. Env-overridable for experimentation.
         IC_POS_TOL  = float(os.environ.get("LANDING_IC_POS_TOL",  "0.5"))
         IC_VEL_TOL  = float(os.environ.get("LANDING_IC_VEL_TOL",  "0.5"))
-        IC_YAW_TOL  = np.deg2rad(float(os.environ.get("LANDING_IC_YAW_TOL_DEG", "2.0")))
+        IC_YAW_TOL  = np.deg2rad(float(os.environ.get("LANDING_IC_YAW_TOL_DEG", "5.0")))
         IC_TILT_TOL = np.deg2rad(float(os.environ.get("LANDING_IC_TILT_TOL_DEG", "3.0")))
         STABLE_HITS = int(os.environ.get("LANDING_IC_STABLE_HITS", "20"))
         MAX_ITERS   = int(os.environ.get("LANDING_IC_BUDGET_S", "30")) * 50
