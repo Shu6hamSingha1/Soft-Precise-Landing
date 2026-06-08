@@ -230,7 +230,7 @@ async def main(record = 'n'):
                                 1.0 - 2.0*(_q.y*_q.y + _q.z*_q.z))
                 _e = np.arctan2(np.sin(_y - INITIAL_YAW_RAD), np.cos(_y - INITIAL_YAW_RAD))
             _k = float(os.environ.get("IC_YAW_SERVO_K", "0.2"))
-            _dmax = float(os.environ.get("IC_YAW_SERVO_DMAX_DEG", "1.0"))
+            _dmax = float(os.environ.get("IC_YAW_SERVO_DMAX_DEG", "0.3"))
             return yc + float(np.clip(np.rad2deg(_k * _e), -_dmax, _dmax))
         for k in range(MAX_ITERS):
             drone_enu  = pose_node.getPose().UAV.position
@@ -435,11 +435,44 @@ async def main(record = 'n'):
         # tagged as a failure regardless of touchdown xy/vel.
         target_lost = False
 
+        # ── Hover / descent-stall watchdog (added 2026-06-07) ──────────────────
+        # The control loop below terminates ONLY on FC_node.LANDED or the controller
+        # thread dying — it has NO time bound. A non-descending drone (e.g. a
+        # kappa-runaway drives a_v upward -> hover) therefore sits airborne until
+        # run_aruco_landing.sh's external `timeout 180` SIGKILLs it, yielding no
+        # result and burning ~3 min. This watchdog aborts a stuck/hovering descent
+        # fast. Scale-free: Gazebo-truth altitude is used for the TEST abort only,
+        # never in the control law. Env-tunable; set CONTROL_TIMEOUT_S huge to disable.
+        CONTROL_TIMEOUT_S = float(os.environ.get("LANDING_CONTROL_TIMEOUT_S", "90.0"))
+        HOVER_STALL_S     = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
+        HOVER_STALL_DZ    = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
+        _ctrl_t0    = time_node.perf_counter()
+        _best_alt   = None     # lowest ENU altitude reached so far (descent progress)
+        _stall_t0   = None
+
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
             target_pose.append(pose_node.getPose().target)
 
             t_c.append(time_node.perf_counter() - start_time)
+
+            # ── hover / descent-stall watchdog (state set above the loop) ──
+            _now_w = time_node.perf_counter()
+            _alt_w = UAV_pose[-1].position.z          # ENU up; smaller = lower (descending)
+            if _best_alt is None or _alt_w < _best_alt - HOVER_STALL_DZ:
+                _best_alt = _alt_w                    # fresh >DZ of descent progress
+                _stall_t0 = _now_w
+            if _stall_t0 is None:
+                _stall_t0 = _now_w
+            if (_now_w - _ctrl_t0) > CONTROL_TIMEOUT_S:
+                raise RuntimeError(
+                    f"control timeout: no landing in {CONTROL_TIMEOUT_S:.0f}s "
+                    f"(alt={_alt_w:.2f} m) — drone stuck/hovering, aborting")
+            if (_now_w - _stall_t0) > HOVER_STALL_S:
+                raise RuntimeError(
+                    f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
+                    f"{HOVER_STALL_S:.0f}s (alt={_alt_w:.2f} m) — hovering, aborting")
+
             # Intervention 3 (2026-05-22): treat FEATURE_IS_STALE the same as
             # marker-loss — if img_data has been extrapolating for STALE_THRESH+
             # consecutive frames, route to the grace-hold path instead of
