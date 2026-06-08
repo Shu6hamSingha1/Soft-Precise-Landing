@@ -591,8 +591,20 @@ class Controller(Thread):
         S = np.eye(N_DIM)
         zeta = np.zeros(N_DIM)
         G = np.eye(N_DIM)
+        # SINGHAL-2025 OUTLIER CONTAINMENT (their controller.py SMC). A flow error beyond the funnel
+        # (|h_e/p| >= 1) is a perception OUTLIER (e.g. a loom glitch h_z -0.3 -> -8, held across
+        # several control steps until the next image frame). HOLD the last-good eta (sign-adjusted)
+        # and RECONSTRUCT h_e and h onto the funnel boundary, so the glitch can't leak into the
+        # c-term's quadratic h-feed-forward (dot(h,e3)*h ~ 64) -> a_u explosion (-2000) -> 54 m crash.
+        # (A |Δh| rate-gate was tried 2026-06-08 and REVERTED: the glitch is held for several control
+        # steps with Δh=0, so the rate gate missed the held frames -> explosions returned. The
+        # funnel-bound trigger catches every glitch-affected frame.) 2026-06-08.
         for idx in range(N_DIM):
             ratio = self._h_e[-1][idx] / self._p[-1][idx]
+            if abs(ratio) >= 1.0 and len(self._S) > 0:
+                ratio = float(self._S[-1][idx, idx]) * np.sign(ratio)      # hold last-good eta
+                self._h_e[-1][idx] = ratio * self._p[-1][idx]             # reconstruct contained h_e
+                self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]  # and h (used by c-term)
             ratio = float(np.clip(ratio, -1.0 + S_MARGIN, 1.0 - S_MARGIN))
             S[idx, idx] = ratio
             zeta[idx] = np.log((1 + ratio) / (1 - ratio))
