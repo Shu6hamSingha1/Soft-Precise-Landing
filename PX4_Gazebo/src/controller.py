@@ -181,7 +181,7 @@ class Controller(Thread):
         # Log FoV / funnel env vars that can silently override behaviour and are NOT
         # covered by the per-axis checker above (e.g. FUNNEL_MODE, THETA_FLOOR_DEG).
         _fov_vars = [
-            ("FUNNEL_MODE",          "cone"),
+            ("FUNNEL_MODE",          "cbf2"),
             ("PLASMC_THETACAP_DEG",  "60.0"),
             ("PLASMC_THETA_FLOOR_DEG", "60.0"),
             ("FLOW_FUSE_RING",       "1"),
@@ -935,7 +935,7 @@ class Controller(Thread):
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
         foc = np.asarray(self._img_node.focal, float)            # [fx, fy]
-        funnel_mode = os.environ.get("FUNNEL_MODE", "cone")
+        funnel_mode = os.environ.get("FUNNEL_MODE", "cbf2")
         if funnel_mode in ("cone0", "cbf1"):
             # === L_omega camera-plane CBF (docs/CBF_visibility.pdf), per-cycle steps ===
             # The tilt->feature coupling is the rotational interaction matrix L_omega at
