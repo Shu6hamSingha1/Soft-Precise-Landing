@@ -147,7 +147,7 @@ class Controller(Thread):
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
         # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
         # PID at small error (G_s^-1·zeta_dot -> -K_rp·s_e_n); the barrier bites as s_e_n -> p_s.
-        self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "0") == "1"
+        self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "1") == "1"   # default ON — all PX4_NewCal_Record trials ran with SEN_FUNNEL=1
         self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "0.1")),
                                  float(os.environ.get("PLASMC_XIS_Y", "0.1"))])
         self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", "1.2")),
@@ -185,6 +185,7 @@ class Controller(Thread):
             ("PLASMC_THETACAP_DEG",  "60.0"),
             ("PLASMC_THETA_FLOOR_DEG", "60.0"),
             ("FLOW_FUSE_RING",       "1"),
+            ("PLASMC_SEN_FUNNEL",    "1"),
             ("BODY_YAW_SOURCE",      "alpha"),
         ]
         for _var, _dflt in _fov_vars:
