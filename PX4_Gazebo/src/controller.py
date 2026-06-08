@@ -160,14 +160,14 @@ class Controller(Thread):
         self._E     = np.diag(pa("E",     1.5, 1.5, 1.0))        # E 1->1.5/1.5/1.0 (lateral stiffen + descent, 2026-06-08)
         # Adaptive-gain ODE
         self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
-        self._P       = np.diag(pa("P",      3.0, 3.0, 5.0))     # P 1.5/1.5/2.5->3/3/5 (kappa-leakage; P_Z=5 MATLAB parity, 2026-06-08)
+        self._P       = np.diag(pa("P",      5.0, 5.0, 5.0))     # P -> 5/5/5 (kappa-leakage; P_X/Y=5 bounds the lateral kappa amplifier at E=1.5; a_u 33589->440, 2026-06-08)
         self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 0.3125)
 
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
                      "P2INF": (2.5, 2.5, 1.5), "OMEGA": (0.05, 0.05, 0.025),
                      "GAMMA": (0.4375, 1.0, 0.75), "E": (1.5, 1.5, 1.0),
-                     "N": (0.02, 0.02, 0.02), "P": (3.0, 3.0, 5.0),
+                     "N": (0.02, 0.02, 0.02), "P": (5.0, 5.0, 5.0),
                      "KAPPA0": (0.15625, 0.15625, 0.3125)}
         _values = {"XI2": np.diag(self._gamma), "P20": self._p_0, "P2INF": self._p_inf,
                    "OMEGA": np.diag(self._Omega), "GAMMA": np.diag(self._Gma),
@@ -835,10 +835,21 @@ class Controller(Thread):
             # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the
             # compass yaw did) or e_R winds up -> overshoot (diagnosed 2026-06-04: the
             # +0.949 sign made yaw_alpha and psi_d diverge -> ±135° yaw ring-out).
+            # PERCEPTION-DEATH GUARD (2026-06-08): when _yaw_hold is active (marker stale,
+            # OR alpha jumping faster than the body can yaw = the marker filling the FoV and
+            # corrupting alpha), FREEZE the measured yaw at its last-good snapshot instead of
+            # rebuilding the measured attitude from the corrupted live s[3]. Before this, the
+            # setpoint (psi_d) and outputs (w_u[2], I_a) were held but THIS measured-yaw source
+            # still read live alpha -> corrupted e_R / IK roll-pitch -> terminal spin (rep3 158°).
+            # Roll/pitch stay live (EKF, drift-free, trustworthy); only the alpha-yaw is held.
             _k = float(os.environ.get("BODY_YAW_ALPHA_K", "-0.949"))
             _b = float(os.environ.get("BODY_YAW_ALPHA_B", "0.0"))
-            _ya = _k * float(self._s[-1][3]) + _b
-            yaw_c = float(np.arctan2(np.sin(_ya), np.cos(_ya)))    # wrapped alpha yaw
+            if getattr(self, "_yaw_hold", False) and getattr(self, "_yaw_c_hold", None) is not None:
+                yaw_c = self._yaw_c_hold                              # held last-good alpha yaw
+            else:
+                _ya = _k * float(self._s[-1][3]) + _b
+                yaw_c = float(np.arctan2(np.sin(_ya), np.cos(_ya)))   # wrapped alpha yaw
+                self._yaw_c_hold = yaw_c                              # snapshot last-good (perception alive)
             _roll, _pitch = float(euler[0]), float(euler[1])       # EKF roll/pitch (drift-free)
             _cz, _sz = np.cos(yaw_c), np.sin(yaw_c)
             _cp, _sp = np.cos(_pitch), np.sin(_pitch)
@@ -849,6 +860,7 @@ class Controller(Thread):
         else:
             R = Quaternion(self._quat[-1]).to_DCM()
             yaw_c = float(euler[2])
+            self._yaw_c_hold = None                                # compass path: release the held snapshot
 
         # Raw inertial accel (net of gravity).
         # NOTE: a_u lives in the V frame; MATLAB uses I_R_V = rotz(yaw) here,
