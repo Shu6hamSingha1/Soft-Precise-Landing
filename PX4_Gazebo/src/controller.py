@@ -121,8 +121,8 @@ class Controller(Thread):
                               float(os.environ.get("PLASMC_KP_Y", "9.0"))])    # 12->9 (2026-06-09): K_rp=12 drives h_d to 14 rad/s at s_e_n~0.5 → infeasible demand → funnel fills → kappa explosion
         self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "1.0")),
                               float(os.environ.get("PLASMC_KI_Y", "1.0"))])
-        self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "1.4375")),
-                              float(os.environ.get("PLASMC_KD_Y", "1.4375"))])
+        self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "0.0")),
+                              float(os.environ.get("PLASMC_KD_Y", "0.0"))])    # K_rd=0 (2026-06-10): D-term spikes overwhelm PI; gamma_s=1.0 outer funnel replaces damping role
         # LPF time-constant on ds_d (the outer-PID output that feeds h_d).
         # Control runs at 125 Hz; images arrive at ~42 Hz. Each new frame causes
         # a discrete jump in s_e_n -> step in ds_d -> raw dh_d spike ~17 m/s³ at
@@ -130,8 +130,8 @@ class Controller(Thread):
         # 64%→32%. BUT n=5 (2026-06-09): median 6.41m WORSE than 3.80m baseline.
         # 50ms lag delays outer PID correction of lateral drift → s_e_n grows faster
         # to funnel breach. Flow underreport is the binding constraint; LPF can't help
-        # once s_e_n is large. Default OFF; set PLASMC_TAU_DS>0 to re-enable.
-        self._tau_ds = float(os.environ.get("PLASMC_TAU_DS", "0.0"))
+        # once s_e_n is large. Default ON (0.05s); set PLASMC_TAU_DS=0 to disable.
+        self._tau_ds = float(os.environ.get("PLASMC_TAU_DS", "0.05"))
 
         # ════ Middle-loop control parameters — DIRECT per-axis values ════
         # Manuscript symbol mapping (docs/CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
@@ -157,8 +157,8 @@ class Controller(Thread):
         # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
         # PID at small error (G_s^-1·zeta_dot -> -K_rp·s_e_n); the barrier bites as s_e_n -> p_s.
         self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "1") == "1"   # default ON — all PX4_NewCal_Record trials ran with SEN_FUNNEL=1
-        self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "0.1")),
-                                 float(os.environ.get("PLASMC_XIS_Y", "0.1"))])
+        self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "1.0")),
+                                 float(os.environ.get("PLASMC_XIS_Y", "1.0"))])    # gamma_s=1.0 (2026-06-10): sweep winner — fastest outer funnel, 1/5 SP at 0.03m; replaces D-term's damping role
         self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", "1.2")),
                                   float(os.environ.get("PLASMC_PS0_Y", "1.2"))])
         self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.1")),
@@ -170,7 +170,8 @@ class Controller(Thread):
         # Adaptive-gain ODE
         self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
         self._P       = np.diag(pa("P",      5.0, 5.0, 5.0))     # P -> 5/5/5 (kappa-leakage; P_X/Y=5 bounds the lateral kappa amplifier at E=1.5; a_u 33589->440, 2026-06-08)
-        self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 0.3125)
+        self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 1.0)      # KAPPA0_Z 0.3125→1.0 (2026-06-10): bootstrap fix for gamma_s=1.0 fast-centering
+        self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0: cap kappa_z to prevent high-flow-speed theta_norm runaway
 
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
@@ -196,7 +197,7 @@ class Controller(Thread):
             ("FLOW_FUSE_RING",       "1"),
             ("PLASMC_SEN_FUNNEL",    "1"),
             ("BODY_YAW_SOURCE",      "alpha"),
-            ("PLASMC_TAU_DS",        "0.0"),
+            ("PLASMC_TAU_DS",        "0.05"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -233,7 +234,10 @@ class Controller(Thread):
         # ~290px). Constant rho_fov_0 = a fixed near-camera-FoV visibility limit; precision/convergence
         # is the SMC's job, not the visibility funnel's. Set PLASMC_LFOV>0 to restore the decay. (2026-06-05)
         self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.0"))
-        self._theta_cap = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
+        self._theta_cap   = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
+        self._theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
+        self._funnel_mode = os.environ.get("FUNNEL_MODE", "cbf2")
+        self._DH_D_MAX    = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -545,9 +549,7 @@ class Controller(Thread):
             else:
                 ni = (self._izeta_s[-1]
                       + self._dt[-1] * 0.5 * (self._zeta_s[-1] + self._zeta_s[-2]))
-                nn = np.linalg.norm(ni)
-                if nn > self._izeta_clamp:
-                    ni = ni * (self._izeta_clamp / nn)
+                ni = np.clip(ni, -self._izeta_clamp, self._izeta_clamp)
                 self._izeta_s.append(ni)
             # smoothed derivative of zeta_s
             if len(self._zeta_s) > 1:
@@ -627,6 +629,7 @@ class Controller(Thread):
         S = np.eye(N_DIM)
         zeta = np.zeros(N_DIM)
         G = np.eye(N_DIM)
+        contained = np.zeros(N_DIM, dtype=bool)   # True on axes where outlier containment fired
         # SINGHAL-2025 OUTLIER CONTAINMENT (their controller.py SMC). A flow error beyond the funnel
         # (|h_e/p| >= 1) is a perception OUTLIER (e.g. a loom glitch h_z -0.3 -> -8, held across
         # several control steps until the next image frame). HOLD the last-good eta (sign-adjusted)
@@ -638,9 +641,10 @@ class Controller(Thread):
         for idx in range(N_DIM):
             ratio = self._h_e[-1][idx] / self._p[-1][idx]
             if abs(ratio) >= 1.0 and len(self._S) > 0:
-                ratio = float(self._S[-1][idx, idx]) * np.sign(ratio)      # hold last-good eta
+                ratio = np.abs(float(self._S[-1][idx, idx])) * np.sign(ratio)  # hold last-good magnitude, trust current sign
                 self._h_e[-1][idx] = ratio * self._p[-1][idx]             # reconstruct contained h_e
                 self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]  # and h (used by c-term)
+                contained[idx] = True
             ratio = float(np.clip(ratio, -1.0 + S_MARGIN, 1.0 - S_MARGIN))
             S[idx, idx] = ratio
             zeta[idx] = np.log((1 + ratio) / (1 - ratio))
@@ -648,6 +652,7 @@ class Controller(Thread):
         self._S.append(S)
         self._zeta.append(zeta)
         self._G.append(G)
+        self._contained = contained   # used by κ-ODE: freeze adaptation on outlier axes
 
         # Smoothed derivative of desired optical flow, with physical cap.
         # Without the cap, the PID's first non-zero firing produces a step
@@ -663,7 +668,7 @@ class Controller(Thread):
         # validated 28%-SP config was gated and approved WITH 5.0 baked
         # (commit 2b43983, IC2-5 gate passed); it is load-bearing until the
         # 1/Z touchdown spike has a manuscript-parameter fix.
-        DH_D_MAX = float(os.environ.get("PLASMC_DH_D_MAX", "5.0"))
+        DH_D_MAX = self._DH_D_MAX
         if len(self._h_d) > 1:
             self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
@@ -716,11 +721,14 @@ class Controller(Thread):
 
         # Adaptive-gain (translational) update via RK5
         # MATLAB: dkappa/dt = Theta_norm * N * G * |sigma| - N * P * kappa
+        # Freeze κ on axes where outlier containment fired — the clipped G/σ would
+        # drive κ up via the barrier singularity (G→∞ near funnel edge), not real error.
         if len(self._dt) > 0:
-            self._kappa.append(
-                RK5(self._kappaSolver, t, self._kappa[-1],
-                    [self._sigma[-1], self._theta[-1]], self._dt[-1])
-            )
+            new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
+                            [self._sigma[-1], self._theta[-1]], self._dt[-1])
+            if hasattr(self, '_contained'):
+                new_kappa[self._contained] = self._kappa[-1][self._contained]
+            self._kappa.append(np.minimum(new_kappa, self._kappa_max))
         else:
             self._kappa.append(self._kappa[-1])
 
@@ -958,7 +966,7 @@ class Controller(Thread):
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
         foc = np.asarray(self._img_node.focal, float)            # [fx, fy]
-        funnel_mode = os.environ.get("FUNNEL_MODE", "cbf2")
+        funnel_mode = self._funnel_mode
         if funnel_mode in ("cone0", "cbf1"):
             # === L_omega camera-plane CBF (docs/CBF_visibility.pdf), per-cycle steps ===
             # The tilt->feature coupling is the rotational interaction matrix L_omega at
@@ -1004,8 +1012,7 @@ class Controller(Thread):
         # The validated 28%-SP config ran with floor=60 (=θ_cap, disables the
         # d_min term); it is the default. Set PLASMC_THETA_FLOOR_DEG=0 for the
         # legacy collapsing cone, or 15-30 for a softened intermediate clamp.
-        theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
-        theta_cone = float(max(theta_cone, min(theta_floor, self._theta_cap)))
+        theta_cone = float(max(theta_cone, min(self._theta_floor, self._theta_cap)))
 
         # 5) Apply cone to inertial accel (NED; z=down, gravity subtracted).
         # MATLAB-equivalent safety: I_a represents required thrust acceleration
@@ -1037,12 +1044,21 @@ class Controller(Thread):
                 cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
                 Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
                 tau = float(os.environ.get("CBF_TAU", "0.3"))
-                delta2 = 0.5 * (ct.max(0) - ct.min(0))                       # per-axis half-extent
-                ddelta2 = np.zeros(2)                                        # loom (marker-fill rate), growth only
+                delta2 = 0.5 * (ct.max(0) - ct.min(0))                       # actual per-axis half-extent
+                # Track delta and its loom rate for Phase 2 τδ̇_eff term
                 if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_delta_prev", None) is not None:
-                    ddelta2 = np.maximum((delta2 - self._lw_delta_prev) / self._dt[-1], 0.0)
+                    self._lw_ddelta_ref = np.maximum((delta2 - self._lw_delta_prev) / self._dt[-1], 0.0)
+                else:
+                    self._lw_ddelta_ref = np.zeros(2)
                 self._lw_delta_prev = delta2.copy()
-                m2 = np.maximum(np.asarray(self._p_10, float) - delta2 - tau * ddelta2, 1e-3)   # phi_max - delta - tau*ddelta
+                # Two-phase δ (PDF Sec. 4): Phase 1 = central marker decoded (always here).
+                # δ_eff = 0: centroid-only barrier; deliberately allow the marker to grow and
+                # overflow as the UAV closes in — using its large extent fires the barrier early.
+                # m2 = phi_max only; τδ̇ excluded (δ is held at 0, not the measured fill rate).
+                # Reset Phase 2 ramp counters on every successful decode.
+                self._lw_decode_fail_n = 0
+                self._lw_phase2_alpha = 0.0
+                m2 = np.maximum(np.asarray(self._p_10, float), 1e-3)            # phi_max only
                 dft = np.zeros(2)
                 if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_cr_prev", None) is not None:
                     w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
@@ -1051,28 +1067,59 @@ class Controller(Thread):
                     self._lw_d = (1 - ema) * getattr(self, "_lw_d", np.zeros(2)) + ema * d_raw
                     dft = tau * self._lw_d
                 self._lw_cr_prev = cr2.copy()
+                self._lw_Lw2_prev = Lw2.copy()                                  # stash for Phase 2 headroom calc
                 cz, sz = np.cos(yaw_c), np.sin(yaw_c)
                 Rzm = np.array([[cz, sz], [-sz, cz]])                          # Rz(-yaw): inertial -> image
-                R33 = float(R[2, 2]) if abs(float(R[2, 2])) > 1e-3 else 1e-3
-                th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / R33)           # current image-axis tilt (attitude)
+                th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3))           # current image-axis tilt (attitude)
                 th = Rzm @ (I_a[:2] / max(a_z, 1e-6))                          # theta_d = Rz(-yaw)@(a_xy/a_z)
                 anchor = cr2 - Lw2 @ th_curr + dft                            # so f = cr + L_w@(theta-theta_curr) + tau*d
-                for _ in range(10):                                           # project onto box + cap
+                for _ in range(10):                                           # project onto FoV box only
                     f = anchor + Lw2 @ th
                     for k in range(2):
                         if f[k] > m2[k]:
                             r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
                         elif f[k] < -m2[k]:
                             r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-                    tn = float(np.linalg.norm(th))
-                    if tn > self._theta_cap:
-                        th = th * (self._theta_cap / tn)
+                # post-QP deliverability cap: applied after box projection so it never
+                # interacts with the FoV constraint and cannot create QP infeasibility
+                tn = float(np.linalg.norm(th))
+                if tn > self._theta_cap:
+                    th = th * (self._theta_cap / tn)
                 I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)        # a_xy* = a_z*Rz(yaw)@theta*
                 theta_cone = float(np.linalg.norm(th))                       # log the commanded tilt magnitude (cbf2 diag)
                 ok = True
             except (IndexError, AttributeError, ValueError, TypeError):
                 ok = False
-            if not ok:                                                             # magnitude-clamp fallback
+            if not ok:
+                # Phase 2: central marker overflowed / decode failed.
+                # Hysteresis-gate (PDF Sec. 4): require CBF_PHASE2_HYSTERESIS consecutive
+                # decode-fails before activating, to suppress flicker near touchdown.
+                # Ramp δ_eff from 0 → last measured ½ptp over CBF_PHASE2_RAMP_FRAMES frames
+                # (PDF: "ramp, not a step — keeps h from dropping discontinuously at engagement").
+                self._lw_decode_fail_n = getattr(self, "_lw_decode_fail_n", 0) + 1
+                fail_thresh = int(os.environ.get("CBF_PHASE2_HYSTERESIS", "3"))
+                ramp_frames = float(os.environ.get("CBF_PHASE2_RAMP_FRAMES", "5"))
+                if self._lw_decode_fail_n >= fail_thresh:
+                    alpha = getattr(self, "_lw_phase2_alpha", 0.0)
+                    # clamp ramp so δ never lags the fill (PDF: "clamp ramp gain so δ never lags")
+                    self._lw_phase2_alpha = min(alpha + 1.0 / ramp_frames, 1.0)
+                delta_ref = getattr(self, "_lw_delta_prev", None)
+                Lw2_ref = getattr(self, "_lw_Lw2_prev", None)
+                p2_alpha = getattr(self, "_lw_phase2_alpha", 0.0)
+                if delta_ref is not None and Lw2_ref is not None and p2_alpha > 0:
+                    delta_eff = delta_ref * p2_alpha
+                    ddelta_eff = getattr(self, "_lw_ddelta_ref", np.zeros(2)) * p2_alpha
+                    tau_p2 = float(os.environ.get("CBF_TAU", "0.3"))
+                    m2_p2 = np.maximum(np.asarray(self._p_10, float) - delta_eff - tau_p2 * ddelta_eff, 1e-3)
+                    # Per-axis headroom → conservative theta tightening for magnitude clamp.
+                    # Subtract centroid offset + drift from available margin before dividing by Lw row-norm.
+                    cr_ref = np.asarray(getattr(self, "_lw_cr_prev", np.zeros(2)), float)
+                    dft_ref = tau_p2 * np.asarray(getattr(self, "_lw_d", np.zeros(2)), float)
+                    effective_margin = np.maximum(m2_p2 - np.abs(cr_ref + dft_ref), 0.0)
+                    row_norms = np.linalg.norm(Lw2_ref, axis=1)
+                    theta_tight = float(np.min(effective_margin / (row_norms + 1e-9)))
+                    theta_cone = float(min(theta_cone, max(theta_tight, 0.0)))
+                # magnitude-clamp fallback (direction preserved)
                 a_xy_lim = a_z * np.tan(theta_cone); a_xy_n = np.linalg.norm(I_a[:2])
                 if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
                     I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
@@ -1275,6 +1322,7 @@ class Controller(Thread):
             "N": self._N,
             "P": self._P,
             "kappa_0": self._kappa_0,
+            "kappa_max": self._kappa_max,
             # Yaw SMC
             "Omega_a": self._Omega_a,
             "Gamma_a": self._Gma_a,
@@ -1284,10 +1332,21 @@ class Controller(Thread):
             "E_a": self._E_a,
             # FoV / LPF
             "theta_cap_deg": np.rad2deg(self._theta_cap),
+            "theta_floor_deg": np.rad2deg(self._theta_floor),
+            "funnel_mode": self._funnel_mode,
             "rho_fov_0": self._rho_fov_0,
             "rho_fov_inf": self._rho_fov_inf,
             "l_fov": self._l_fov,
             "tau_ia": self._tau_ia,
+            "tau_ua": self._tau_ua,
+            # Outer SEN_FUNNEL
+            "sen_funnel": self._sen_funnel,
+            "gamma_s": self._gamma_s,
+            "p_s_0": self._p_s_0,
+            "p_s_inf": self._p_s_inf,
+            # Outer PID LPF / descent clamp
+            "tau_ds": self._tau_ds,
+            "DH_D_MAX": self._DH_D_MAX,
             # SO(3) inner-loop gain
             "K_R": self._K_R,
         }

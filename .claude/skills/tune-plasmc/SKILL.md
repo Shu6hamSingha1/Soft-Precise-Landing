@@ -44,10 +44,16 @@ were removed — see parameter_record.ods sheet `Removed_Parameters`. (THETA_FLO
 > "28% SP @ 10cm" ran under the *multisine* cal (regime 2, still had the V-frame g-sign bug) — it is now a
 > HYPOTHESIS, not a result. Everything in "Known winners / dead-ends / frontier" below is regime-1/2 and
 > mostly GAIN-STARVED; the memory has the re-classified prioritized 6-knob sweep order.
-> **Corrected current code defaults vs the tables below:** `PLASMC_DH_D_MAX`=**5.0** (not 50),
+> **Corrected current code defaults vs the tables below:** `PLASMC_DH_D_MAX`=**50.0** (default; NOT reduced — intentionally kept to expose real failures),
 > `PLASMC_THETA_FLOOR_DEG`=**60** (not 0), `PLASMC_LFOV`=**0.0** (not 0.1, rho_fov held constant).
+> **2026-06-10 baked defaults:** `PLASMC_KD_{X,Y}`=**0.0** (K_rd=0; gamma_s=1.0 replaces D-term damping role),
+> `PLASMC_XIS_{X,Y}`=**1.0** (gamma_s=1.0 outer funnel), `PLASMC_KAPPA0_Z`=**1.0** (bootstrap fix),
+> `PLASMC_KAPPA_MAX_Z`=**3.0** (κ_z cap), `PLASMC_DH_D_MAX`=**50.0** (stays at 50 to expose real failures).
+> **θ_norm blowup root cause fixed in img_data.py:** KLT stopped when any corner exits image bounds
+> (prevents both off-screen centroid s[0]→3.15 AND bogus w_z=4.54 rad/s — same root cause).
+> IC2-5 validation of KLT fix pending (trial 49).
 > **New knobs not in the tables:** outer PPC funnel `PLASMC_SEN_FUNNEL`(off)+`XIS/PS0/PSINF_{X,Y}`;
-> visibility CBF `FUNNEL_MODE`(cone|cone0|cbf1|cbf2, default cone)+`CBF_TAU`+`CBF_DMIN_EMA`+`CONE0_{SWAP,SIGN_X,SIGN_Y}`;
+> visibility CBF `FUNNEL_MODE`(cone|cone0|cbf1|**cbf2**, **default cbf2**)+`CBF_TAU`+`CBF_DMIN_EMA`+`CONE0_{SWAP,SIGN_X,SIGN_Y}`+`CBF_PHASE2_HYSTERESIS`(3)+`CBF_PHASE2_RAMP_FRAMES`(5); cbf2 now uses two-phase δ: Phase 1 (decode) m2=φ_max (centroid-only, δ=0); Phase 2 (overflow/fail) ramps δ→½ptp with hysteresis; theta_cap applied post-QP (not inside loop);
 > `PLASMC_TAU_UA`(0.1 yaw-rate LPF); `PLASMC_YAW_PSID_RATE`(0.7); `W_XY_DEROT`(zero|imu|image, =zero via CTRL_ZERO_WXY=1);
 > `YAW_TERMINAL_HOLD`(on)+`YAW_HOLD_ALPHA_RATE`(3.0)+`TERMINAL_STABILIZE`(off); `IMG_FEAT_KF_R`(0.004, centroid-KF noise).
 > Sweep harness: `scripts/run_knob_sweep.sh`. IC2-5 gate: `run_ic_validation.sh` — never pass it `LANDING_OUT_BASE`.
@@ -121,7 +127,7 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 |---|---|---|---|
 | `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_{X,Y}` (direct per-axis values; defaults 9.0) | Boost >1.5× → instability cascade |
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_{X,Y}` (direct; defaults 1.0) | 10× MATLAB's 0.1; needed for SITL drift correction |
-| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_{X,Y}` (direct; defaults 1.4375) | **LOAD-BEARING for drift arrest.** Amplifies dzeta_s corner-instability spikes (28.7 rad/s at close range). K_rd=0 n=5: dead-end (median 11.96m, 3 TL). Future fix: LPF on dzeta_s (only lags D-term, not P/I) once outer funnel is fixed. |
+| `K_rd` (D gain) | **`diag(0, 0)` (BAKED 2026-06-10)** | `PLASMC_KD_{X,Y}` (direct; defaults 0.0) | **K_rd=0 + gamma_s=1.0 is the sweep winner** (1/5 SP at 0.03m, xy_med=1.32m). gamma_s=1.0 replaces D-term's damping role via fast funnel pressure. K_rd=0 alone dead-end (11.96m); K_rd=0+gamma_s=1.0 resolves the root cause. |
 | `gamma_s` | `diag(0.1, 0.1)` | `PLASMC_XIS_{X,Y}` | **Primary binding constraint (2026-06-09).** Outer funnel contraction rate. 0.1 too slow → p_s(4s)=0.837 → P-term weak → drift not arrested before 1/alt amplification. Sweep: 0.2/0.3/0.5/1.0 (in progress). |
 | `p_s_0` | `[1.2, 1.2]` | `PLASMC_PS0_{X,Y}` | Initial outer funnel half-width (normalized). Barely wider than FoV edge (1.185 on x). |
 | `p_s_inf` | `[0.1, 0.1]` | `PLASMC_PSINF_{X,Y}` | Terminal outer funnel half-width. 0.1 → |s_e_n|<0.089–0.119 rad at touchdown. Fine. |
@@ -138,7 +144,7 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 | `E` | `diag(1, 1, 1)` | `PLASMC_E_{X,Y,Z}` (direct) | Boundary-layer thickness; sat() arg scaled by 1/E |
 | `N` | `diag(0.02, 0.02, 0.02)` | `PLASMC_N_{X,Y,Z}` (direct) | Drives e-modification term in κ-ODE |
 | `P` | `diag(1.5, 1.5, 2.5)` | `PLASMC_P_{X,Y,Z}` (direct) | Anti-windup-like gain on κ-ODE (P_z=2.5 baked) |
-| `kappa_0` (init κ) | `[0.15625, 0.15625, 0.3125]` (1.25× baked into base) | `PLASMC_KAPPA0_{X,Y,Z}` (direct) | Already at best singleton (big sweep) |
+| `kappa_0` (init κ) | `[0.15625, 0.15625, 1.0]` (X/Y unchanged; Z=**1.0 BAKED 2026-06-10**) | `PLASMC_KAPPA0_{X,Y,Z}` (direct) | Z bootstrap fix: KAPPA0_Z=1.0 → descent starts in 0.4–0.9s (vs 25–43s hover with gamma_s=1.0 fast-centering). KAPPA_MAX_Z=3.0 also baked (κ_z cap). |
 
 ### Yaw SMC (low-impact per supplement S3-A)
 | Param | Default | Env knob |

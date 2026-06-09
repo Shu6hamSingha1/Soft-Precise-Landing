@@ -719,11 +719,26 @@ class IMG_PROCESSOR(Thread):
                     lk_pts, lk_status = lk_out[0], lk_out[1]
                     if (lk_pts is not None and lk_status is not None
                             and int(np.sum(np.asarray(lk_status).flatten() == 1)) == 4):
-                        aruco_pts_0 = lk_pts.reshape(-1, 2).astype(np.float32)
-                        used_klt_fallback = True
-                        self._lk_step_count += 1
-                        if self._lk_step_count == 1:
-                            print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                        _tracked = lk_pts.reshape(-1, 2).astype(np.float32)
+                        # Abort KLT if any corner has left the image — the marker is
+                        # gone and continuing to extrapolate produces off-screen centroids
+                        # (s[0] up to 3× beyond image boundary) that blow up cross(dw,s)
+                        # in θ_norm → κ runaway. Reset so next frame starts fresh.
+                        _img_h, _img_w = imgs[0].shape[:2]
+                        _in_bounds = (np.all(_tracked[:, 0] >= 0) and
+                                      np.all(_tracked[:, 0] < _img_w) and
+                                      np.all(_tracked[:, 1] >= 0) and
+                                      np.all(_tracked[:, 1] < _img_h))
+                        if _in_bounds:
+                            aruco_pts_0 = _tracked
+                            used_klt_fallback = True
+                            self._lk_step_count += 1
+                            if self._lk_step_count == 1:
+                                print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                        else:
+                            print(f"KLT corners left image bounds — stopping fallback")
+                            self._lk_step_count = 0
+                            self._prev_aruco_pts = None
             except Exception as _e:
                 # Defensive: if anything in the KLT fallback path errors, fall
                 # through to the normal stale path rather than killing the thread.
