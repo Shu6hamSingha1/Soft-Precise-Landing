@@ -127,9 +127,11 @@ class Controller(Thread):
         # Control runs at 125 Hz; images arrive at ~42 Hz. Each new frame causes
         # a discrete jump in s_e_n -> step in ds_d -> raw dh_d spike ~17 m/s³ at
         # K_rp=12. The EMA smooths this: at tau=50ms raw p50 11→2 m/s³, clipping
-        # 64%→32%. Adds ~50ms lag to the outer loop (acceptable given 38-60ms inner lag).
-        # Set PLASMC_TAU_DS=0 to disable.
-        self._tau_ds = float(os.environ.get("PLASMC_TAU_DS", "0.05"))
+        # 64%→32%. BUT n=5 (2026-06-09): median 6.41m WORSE than 3.80m baseline.
+        # 50ms lag delays outer PID correction of lateral drift → s_e_n grows faster
+        # to funnel breach. Flow underreport is the binding constraint; LPF can't help
+        # once s_e_n is large. Default OFF; set PLASMC_TAU_DS>0 to re-enable.
+        self._tau_ds = float(os.environ.get("PLASMC_TAU_DS", "0.0"))
 
         # ════ Middle-loop control parameters — DIRECT per-axis values ════
         # Manuscript symbol mapping (docs/CONTROLLER_PARITY.md): XI2=Ξ₂, P20=p₂₀,
@@ -194,7 +196,7 @@ class Controller(Thread):
             ("FLOW_FUSE_RING",       "1"),
             ("PLASMC_SEN_FUNNEL",    "1"),
             ("BODY_YAW_SOURCE",      "alpha"),
-            ("PLASMC_TAU_DS",        "0.05"),
+            ("PLASMC_TAU_DS",        "0.0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
