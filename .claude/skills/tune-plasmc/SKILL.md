@@ -345,3 +345,14 @@ PID_SCALE=0.54 stacking adds nothing. Open: raise SP rate (terminal softness) + 
 - `tools/analyze_timeseries.py`, `tools/analyze_loop_latency.py`, `tools/analyze_sensor_noise.py`,
   `tools/analyze_marker_switch.py`, `tools/analyze_sigma_compare.py`,
   `tools/diagnose_intervention_reps.py`, `tools/analyze_impulse_response.py` — diagnostics
+
+## Campaign history (read before re-deriving anything)
+
+- `PX4_Gazebo/test_data/Landing_Test/parameter_record.ods` — the raw quantitative log. 4 sheets:
+  `PX4_Gain_Record` (old eras, trials `G1–G60`), `PX4_NewCal_Record` (current honest-cal era, `NC1–NC49`),
+  `MATLAB_Test_Record` (delay-robustness sweep), `Removed_Parameters` (every knob tried & removed, with why).
+- **Memory `reference-tuning-trajectory`** (`reference_tuning_trajectory.md`) — the *connected* timeline: what each
+  trial varied, the hypothesis, and the outcome, grouped by **cal-regime epoch** (R0 broken / R1-2 multisine / R3
+  honest). Read it before proposing any sweep — most "new" ideas have a trial number already. It links out to the
+  ~50 per-decision `feedback_*`/`project_*` memories. **Cardinal rule it encodes: a result is only valid within its
+  cal regime** — the famous "28% SP @10cm" (G46) is a *multisine-cal hypothesis*, not an honest-cal result.
