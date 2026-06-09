@@ -109,11 +109,22 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 ```
 
 ### Outer loop (image-error → desired optic-flow rate)
+
+> **SEN_FUNNEL coordinate geometry (2026-06-09):**
+> `s_e_n = s_e[:2] / p_10` where `p_10 = center/focal = [240,320]/270 = [0.889, 1.185] rad` (half-FoV per axis).
+> `r = s_e_n / p_s(t)`, `zeta_s = log((1+r)/(1-r))` — PID runs on zeta_s. Outer PID output: `ds_d = G_s^{-1}(−K_rp·zeta_s − K_ri·izeta_s − K_rd·dzeta_s) + S_s·dp_s`.
+> **D-term spike mechanism:** close-range ArUco corner jump → s_e_n swings Δr≈0.57 in one 42Hz frame → dzeta_s=54 rad/s² → `K_rd × G_s_inv × dzeta_s = 28.7 rad/s` (99.7% of ds_d peak). P-term self-limits via G_s_inv; D-term does NOT self-limit (it tracks the derivative of the nonlinear transform).
+> **K_rd=0 n=5 (2026-06-09): median 11.96m, 3 TL — DEAD-END.** D-term is LOAD-BEARING for drift arrest between instability events. Without it PI cannot arrest 4-21% flow underreport before 1/alt amplification causes funnel breach.
+> **Outer funnel too slow (primary binding constraint 2026-06-09):** `p_s_0=1.2 ≈ FoV edge (1.185); gamma_s=0.1 → p_s(4s)=0.837`. P-term = K_rp × G_inv × zeta_s ≈ 1.8 rad/s at s_e_n=0.1 — too weak. Fix lever: **gamma_s** (faster contraction → r grows sooner → stronger P-term drive while altitude headroom remains). Env: `PLASMC_XIS_X/Y`.
+
 | Param | Default | Env knob | Notes |
 |---|---|---|---|
 | `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_{X,Y}` (direct per-axis values; defaults 9.0) | Boost >1.5× → instability cascade |
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_{X,Y}` (direct; defaults 1.0) | 10× MATLAB's 0.1; needed for SITL drift correction |
-| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_{X,Y}` (direct; defaults 1.4375) | Sensitive to centroid noise; ↑ → chatter |
+| `K_rd` (D gain) | `diag(1.4375, 1.4375)` | `PLASMC_KD_{X,Y}` (direct; defaults 1.4375) | **LOAD-BEARING for drift arrest.** Amplifies dzeta_s corner-instability spikes (28.7 rad/s at close range). K_rd=0 n=5: dead-end (median 11.96m, 3 TL). Future fix: LPF on dzeta_s (only lags D-term, not P/I) once outer funnel is fixed. |
+| `gamma_s` | `diag(0.1, 0.1)` | `PLASMC_XIS_{X,Y}` | **Primary binding constraint (2026-06-09).** Outer funnel contraction rate. 0.1 too slow → p_s(4s)=0.837 → P-term weak → drift not arrested before 1/alt amplification. Sweep: 0.2/0.3/0.5/1.0 (in progress). |
+| `p_s_0` | `[1.2, 1.2]` | `PLASMC_PS0_{X,Y}` | Initial outer funnel half-width (normalized). Barely wider than FoV edge (1.185 on x). |
+| `p_s_inf` | `[0.1, 0.1]` | `PLASMC_PSINF_{X,Y}` | Terminal outer funnel half-width. 0.1 → |s_e_n|<0.089–0.119 rad at touchdown. Fine. |
 | `DH_D_MAX` | **5.0** m/s³ (baked) | `PLASMC_DH_D_MAX` | Clamp on h_d derivative. **LOAD-BEARING (2026-06-02): the clamp value feeds Θ_norm → κ-runaway; =5.0 eliminates IC1 hard impacts (n=5: rel_vel max 9.5→0.4 m/s, κ bounded, xy unchanged). IC2-5 gate PASSED 2026-06-03 (no regression; note both arms ~5-6m there — see memory multisine-cal-ic25-collapse).** |
 
 ### Middle loop (PLASMC funnel + sliding)
