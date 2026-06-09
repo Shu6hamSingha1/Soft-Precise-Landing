@@ -103,7 +103,7 @@ VDF-ASMC achieves $25/25$ soft-precise landings under the disturbance model, wit
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/plasmc_funnel_combined.pdf}
-    \caption{\new{Closed-loop funnel invariance for VDF-ASMC on the representative IC$_2$ Case~3 run. \emph{Left}: target image funnel. The four image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ stay strictly inside $\pm\boldsymbol{p}_1(t)$ throughout the descent. \emph{Right three}: optic-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_2(t)$ on the $x$, $y$, $z$ axes. The error stays inside the envelope on every axis at every time instant. Empirical demonstration of Theorem~1 and Corollary~1.}}
+    \caption{\new{Closed-loop funnel invariance for VDF-ASMC on the representative IC$_2$ Case~3 run. \emph{Left}: target feature funnel. The four image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ stay strictly inside $\pm\boldsymbol{p}_1(t)$ throughout the descent. \emph{Right three}: optic-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_2(t)$ on the $x$, $y$, $z$ axes. The error stays inside the envelope on every axis at every time instant. Empirical demonstration of Theorem~1 and Corollary~1.}}
     \label{funnel internals: figure}
 \end{figure*}
 
@@ -217,7 +217,7 @@ The comparison establishes the following observations.
 \toprule
 \textbf{Baseline} & \textbf{Structural failure mode} & \textbf{VDF-ASMC mechanism that prevents it} & \textbf{Main-paper reference} \\
 \midrule
-\cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Funnel-margin cone clamp sizes the attitude cone state-dependently and tightens with the target image funnel & Property~1 + Corollary~1 \\
+\cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Funnel-margin cone clamp sizes the attitude cone state-dependently and tightens with the target feature funnel & Property~1 + Corollary~1 \\
 \cite{zhang2026} & Fixed closed-loop bandwidth produces terminal lateral error proportional to target velocity; cannot couple descent rate to image-plane error closure & Depth-aware $\beta=1/\,^\mathcal{V}z_\text{t}$ accelerates convergence as $z\to h_\text{lg}$, shrinking the terminal error within the precise bound & Theorem~1 ($\beta$-adaptive ASMC) + Remark~3 \\
 \cite{lin2023} & Prescribed-performance funnel on image features carries no disturbance-rejection integrator; constant wind produces a steady lateral offset and the off-center target exits the FoV on moving platforms & Leakage-type adaptive sliding-mode law identifies and rejects the disturbance online with no steady offset, and the funnel-margin cone clamp holds the features in view & Theorem~1 + Remark~3 + Corollary~1 \\
 \cite{cho2022} & Pseudo-inverse couples lateral velocity to the adaptive altitude gate; UAV pitches hard while barely descending and breaks visibility within control steps & Outer loop produces $\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}$ and $\,^\mathcal{I}a_{\text{d},z}$ through independent feedback paths rather than pseudo-inverse decomposition & Section~III-A \\

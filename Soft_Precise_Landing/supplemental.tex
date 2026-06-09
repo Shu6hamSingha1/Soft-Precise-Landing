@@ -41,7 +41,7 @@ i.e.\ the perspective projection of the 3-D point $\,^\mathcal{C}\boldsymbol{r}_
 \begin{equation} \label{sup:visibility_constraints}
     -\frac{\mathcal{R}}{2} \le \,^\mathcal{C}\hat{\boldsymbol{r}}_i \le \frac{\mathcal{R}}{2},\qquad \mathcal{R}=[r_h,r_w]^\top,\quad i\in\{1,\ldots,N\},
 \end{equation}
-where $\mathcal{R}$ is the camera-sensor resolution. The funnel-margin cone clamp of Section~III-A3 tightens this bound through the target image funnel $\boldsymbol{p}_1(t)\preceq\mathcal{R}/2$ and enforces the visibility constraint kinematically for all $t\ge 0$.
+where $\mathcal{R}$ is the camera-sensor resolution. The funnel-margin cone clamp of Section~III-A3 tightens this bound through the target feature funnel $\boldsymbol{p}_1(t)\preceq\mathcal{R}/2$ and enforces the visibility constraint kinematically for all $t\ge 0$.
 
 The image feature point trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ (right panels of Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss}) remain inside the FoV bound throughout the descent and couple UAV translation, target motion, and body roll/pitch tilt. A controller designed directly on $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ would have to estimate and compensate the tilt-induced apparent motion online, complicating the design. The virtual-camera abstraction of \cite{fink2017, xie2016_2} resolves this by kinematically decoupling the translational dynamics of the image feature points from the rotational motion of the underactuated quadrotor.
 

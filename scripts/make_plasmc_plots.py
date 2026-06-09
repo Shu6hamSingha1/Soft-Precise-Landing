@@ -150,7 +150,7 @@ if False:
     ax.set_xlabel(r"$t$ [s]")
     ax.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]")
     ax.set_zlabel(r"$\,^\mathcal{C}\hat{x}$ [px]")
-    ax.set_title("Target Image Funnel and Feature Point Trajectories")
+    ax.set_title("Target Feature Funnel and Feature Point Trajectories")
     ax.legend(loc="upper left", fontsize=7, ncol=2)
     ax.view_init(elev=18, azim=-60)
     fig.tight_layout()
@@ -182,7 +182,7 @@ if False:
 
 # ---------- Plot B+: combined outer + inner funnel (1x4 figure*) ----------
 # 1x4 layout mirroring comparison_combined_circular.pdf:
-#   col 1 = outer 3-D funnel (target image funnel + corner trajectories)
+#   col 1 = outer 3-D funnel (target feature funnel + corner trajectories)
 #   cols 2-4 = inner optic-flow funnel per axis
 # Common bottom-center legend.
 fig = plt.figure(figsize=(18.0, 5.0))
@@ -255,7 +255,7 @@ ax3d.locator_params(axis="x", nbins=4)
 ax3d.locator_params(axis="y", nbins=4)
 ax3d.locator_params(axis="z", nbins=4)
 ax3d.tick_params(pad=1, labelsize=14)
-ax3d.set_title("Target Image Funnel", fontsize=20, x=0.55, y=0.95)
+ax3d.set_title("Target Feature Funnel", fontsize=20, x=0.55, y=0.95)
 ax3d.view_init(elev=18, azim=-60)
 
 # --- cols 2-4: inner optic-flow funnel per axis ---
