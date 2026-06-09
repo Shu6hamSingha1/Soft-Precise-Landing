@@ -114,7 +114,12 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   calibration_data/output/<timestamp>/  — output_calibration recordings (gitignored)
   calibration_data/input/<timestamp>/   — input_calibration recordings  (gitignored)
   run_logs/                    — per-component logs (gitignored)
-  docs/SH_REFERENCE.md              — canonical .sh patterns; read before authoring new .sh
+  docs/                        — design/analysis notes (check these before re-deriving; status as of 2026-06-10):
+    SH_REFERENCE.md            — canonical .sh patterns; read before authoring new .sh (CURRENT)
+    FUNNEL_CBF_DESIGN.md       — target-visibility cbf2 design (CURRENT; Jun-9 two-phase-δ addendum at top)
+    CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math CURRENT; Jun-4–10 intentional divergences in top addendum)
+    PARAMETER_ANALYSIS.md      — comprehensive honest-cal parameter analysis + failure diagnosis (rewritten 2026-06-10; CURRENT)
+    PERCEPTION_FLOW_FINDINGS.md  — perception-layer findings (CURRENT): flow honest at altitude, LK dynamic range ~2 m/s is the binding limit (next lever = pyramidal LK)
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 

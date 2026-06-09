@@ -6,6 +6,14 @@ Reference files:
 
 Compiled 2026-06-02 at the start of the post-calibration gain-tuning campaign.
 
+> 📌 **Addendum (current as of 2026-06-10):** the Python port has since **intentionally diverged** from
+> the MATLAB canonical on several axes (all post-2026-06-04, deliberate SITL adaptations — not parity bugs):
+> `CTRL_ZERO_WXY=1` (zeros the uncalibrated wx/wy flow feedforward), yaw **2π-wrap + conditional ie_a
+> integration** (MATLAB has neither, and it spawns square), **K_rd=0** (MATLAB 1.4375), **gamma_s=1.0**
+> outer funnel, **KAPPA0_Z=1.0 + KAPPA_MAX_Z=3.0 + κ-freeze on containment axes**, and **cbf2** visibility
+> CBF (replaces the cone clamp). The §1 control-law math ports below remain valid; the *defaults* differ.
+> See `test_data/Landing_Test/parameter_record.ods` (PX4_NewCal_Record) for the why behind each.
+
 ---
 
 ## 1. Control-law parity — what is mathematically IDENTICAL

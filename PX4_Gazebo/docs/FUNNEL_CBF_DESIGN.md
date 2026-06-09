@@ -3,6 +3,12 @@
 **Status (2026-06-05):** SWITCHING the visibility mechanism from the **cone clamp** to an
 **input-aware Control Barrier Function**.
 
+> 📌 **Addendum (2026-06-09):** cbf2 is now the live default (`FUNNEL_MODE=cbf2`). Two refinements made
+> after this doc: **theta_cap is applied post-QP only** (removed from inside the QP loop), and δ is now
+> **two-phase** — Phase 1 (marker decodes) `m2 = φ_max` centroid-only, the marker allowed to overflow;
+> Phase 2 (overflow / decode-fail) ramps δ → ½·ptp with hysteresis=3, ramp=5 frames. The §0 converged
+> design below is otherwise current.
+
 ---
 ## §0. CONVERGED DESIGN (2026-06-06): camera-plane visibility CBF as a QP over body tilt
 

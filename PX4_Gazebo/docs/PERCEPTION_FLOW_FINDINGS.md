@@ -1,0 +1,56 @@
+# Perception layer — optic flow at landing: what's real & the binding limit
+
+> _Rewritten 2026-06-10; renamed from `PERCEPTION_FLOW_UNDERREPORT_BRIEF.md` (that old name was a misnomer —
+> flow does **not** under-report). It was an advocacy brief for the hypothesis "optic flow under-reports the
+> real velocity 5–25×, the fusion EKF over-suppresses", which was **GT-FALSIFIED (2026-06-08)**; this file now
+> records the **correct** understanding. Concise copies of this finding: `PARAMETER_ANALYSIS.md` §4 and memory
+> `feedback_flow_underreport_brief_falsified` / `feedback_optic_flow_underreports_root`._
+
+**One line:** the binding perception limit at landing is **LK dynamic range (~2 m/s)**, not a flow
+under-report and not the fusion EKF. The at-altitude flow is honest; the divergence that ends in a crash
+begins on the **control/latency** side (see `PARAMETER_ANALYSIS.md` §2, the κ-runaway explosion chain).
+
+---
+
+## The correct picture (GT-verified — correct time-alignment + smoothed GT velocity)
+
+1. **Flow is HONEST at altitude.** measured corner `h_xy` / GT `v/Z`, binned by altitude:
+   `4–6 m ≈ 1.0 · 3–4 m ≈ 1.0 · 2–3 m ≈ 0.85 · 1.5–2 m ≈ 0.7`. **Not 5–25× under.**
+2. **The corner+ring fusion EKF is NOT a suppressor.** Offline reproduction of `_ekf_fuse_step` (matches logged
+   `Opt Flow Fused`) shows it consumes the **raw per-frame corner** (not a lagging corner-KF) and `h_tr` tracks
+   it; it correctly down-weights an *over-reading* ring. The original "fused 0.07 below both inputs" compared
+   against a corner-KF that was lagging (carrying the takeoff transient) and an over-reading ring-KF.
+3. **The real `h→0` collapse is downstream.** Below ~1.5 m it is **ArUco detection loss** (`N Flow Corners → 0`),
+   once the marker has already drifted out of the FoV — i.e. *after* a divergence that starts at altitude where
+   the flow is honest.
+
+## The binding perception limit (current)
+
+**LK dynamic range ≈ 2 m/s.** `cv2.calcOpticalFlowPyrLK` saturates to ~0 when apparent motion exceeds its
+search window, so fast (>~1.5–2 m/s) lateral/loom motion reads as zero. This is the stochastic TARGET_LOST
+failure (1–2 per 5 reps **even at a perfect IC**) and the entire gap between xy_min (~2 m) and xy_median
+(~4–6 m). It is **not gain-tunable** — it is a property of the raw flow estimator.
+
+## The one evidence-supported perception lever
+
+**Pyramidal LK levels 2 → 3** (+ a larger search window) in `img_data.getLKFlowAngVel` — lifts the dynamic-range
+ceiling from ~2 m/s toward ~4 m/s. Important caveat: it only engages **after** divergence is already underway,
+so it is a *robustness* fix, not the primary cure. Since the at-altitude flow is honest, the **primary** cure is
+on the control/latency side.
+- *Validation:* on a fast-motion rep, measured `h` tracks GT `v/Z` (ratio → 1) up to ~4 m/s instead of
+  collapsing to ~0.
+
+## Don't-retry (falsified branches)
+
+- **Retuning the corner+ring fusion EKF Q/R** — the original "primary fix". The fusion is honest; it won't help.
+- **Treating "flow under-reports 5–25×" as real** — it was a GT **mis-alignment** artifact: raw finite-difference
+  of the jittery bridge pose inflates `|v|` ~2× and manufactures a fake under-report. Use
+  `GT_abs = Ground_Truth['Start Time'] + GT['Time']`, uniform-dt resample + savgol before differencing.
+- **Fusing IMU/VIO for metric velocity** — violates the hard scale-free / depth-free constraint.
+
+## Method note (why the original brief was wrong)
+
+GT time-alignment + velocity smoothing are load-bearing for any flow-vs-GT check; verify the alignment by
+cross-correlating measured loom `h_z` vs GT `v_z/Z` (corr 0.98 at lag ≈ 0). Separately, the KLT off-screen
+drift that once produced bogus `s[0]=3.15 rad` / `w_z=4.54 rad/s` is fixed — `img_data` stops the KLT fallback
+when any corner exits the image bounds (memory `feedback_theta_norm_klt_drift`).
