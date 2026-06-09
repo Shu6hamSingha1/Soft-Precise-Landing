@@ -117,8 +117,8 @@ class Controller(Thread):
         # The two axes run at DIFFERENT effective loop gains for the same physical
         # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
         # than y) — per-axis values are how that gets compensated.
-        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "12.0")),
-                              float(os.environ.get("PLASMC_KP_Y", "12.0"))])   # 9->12 (2026-06-08)
+        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "9.0")),
+                              float(os.environ.get("PLASMC_KP_Y", "9.0"))])    # 12->9 (2026-06-09): K_rp=12 drives h_d to 14 rad/s at s_e_n~0.5 → infeasible demand → funnel fills → kappa explosion
         self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "1.0")),
                               float(os.environ.get("PLASMC_KI_Y", "1.0"))])
         self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "1.4375")),
