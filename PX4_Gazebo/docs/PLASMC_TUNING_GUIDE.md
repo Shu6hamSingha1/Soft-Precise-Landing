@@ -1,0 +1,88 @@
+<!--
+  PLASMC PARAMETER-TUNING GUIDE — the single entry point for any tuning / landing-diagnosis work.
+  A SessionStart hook (.claude/settings.json) injects the STATUS block below into every session and
+  tells the assistant to read this whole file before tuning. KEEP THE STATUS BLOCK CURRENT — update it
+  (and the rest) at the end of every tuning round. This file is the orientation layer; it points to the
+  deep docs (§11) rather than duplicating them.
+-->
+
+# PLASMC Parameter-Tuning Guide — START HERE
+
+<!-- STATUS:BEGIN -->
+## ⏱ STATUS (last updated 2026-06-10 — keep current)
+- **Platform:** PX4 SITL + Gazebo Harmonic, `x500_mono_cam_down`, ArUco world, 640×480 down-cam. MATLAB phase done; PX4 phase active. **Cal regime = R3 (honest 8-run cal, `d60973a`).** Results only compare *within* a regime.
+- **Baked defaults (`src/controller.py`, R3):** `K_rp=9 · K_ri=1 · K_rd=0 · gamma_s=1.0 · P=5/5/5 · E=1.5/1.5/1.0 · Γ=0.4375/1.0/0.75 · Ω=0.05/0.05/0.025 · N=0.02 · KAPPA0_Z=1.0 · KAPPA_MAX_Z=3.0 · p2inf=2.5/2.5/1.5 · FLOOR=60 · cbf2 · SEN_FUNNEL=1 · W_U_MAX=1.0 · KR_YAW=2 · YAW_PSID_RATE=1.0 · BODY_YAW_SOURCE=alpha · CTRL_ZERO_WXY=1 · DH_D_MAX=50 · IMG_FEATURE_FILTER=kf · MARKER_KLT_MAX_STEPS=20`.
+- **Pending task:** trial **NC49** (KLT-bounds θ_norm fix) is committed but **needs IC1 n≥5 validation** → then the **IC2-5 gate** (`run_ic_validation.sh`). The user runs SITL.
+- **Best so far:** xy_median **1.32 m** (gamma_s=1.0) / **2.34 m** (with KAPPA0_Z bootstrap). ⚠️ **NO verified SP in the saved R3 data** — the only sub-10 cm rep was a frozen-GT false positive; the "0.03 m SP" headline is unverified. **Sanity-check every SP** (see §8).
+- **All gain-side levers are exhausted under R3.** The next real lever is **code-level perception** (pyramidal LK 2→3 in `img_data.getLKFlowAngVel`) + the **IC-rig compass-drift fix** for IC2-5 yaw. Knob sweeps will not move the needle further.
+- **Hard rules:** never run SITL yourself (GUI-bound — the user runs it); use **default params** (ask before any non-default env var); **n≥5** per cell; **IC2-5 gate** before defaulting; tune **per-axis**.
+<!-- STATUS:END -->
+
+## §0 — What this is & how to use it
+This is the orientation layer for PLASMC tuning. At session start the hook gives you the STATUS block; for any real tuning or failure-diagnosis work, **read this whole file**, then pull live data (§2) and open the relevant deep doc (§11). Update §STATUS + the relevant section when a round finishes.
+
+## §1 — The system in one paragraph
+PLASMC lands a quadrotor by image-based visual servoing, **scale-free & depth-free** (no altitude/metric in the control law — hard constraint). **Outer loop** (Python PID): normalized pixel error `s_e_n` → desired optic-flow `h_d`. **Middle loop** (Python adaptive SMC): drives measured optic flow `h` to `h_d` through a log-barrier performance funnel with an adaptive gain `κ`. **Yaw** (Python SMC on the image `alpha` feature — compass-free). **Inner loop:** PX4's geometric controller (we ship body-rates + thrust over MAVSDK; PX4 does actuator allocation). NED frame throughout.
+
+## §2 — How to gather the current data (run these to orient)
+- **Parameter record (canonical):** `test_data/Landing_Test/parameter_record.ods`. `pandas` is absent — use odfpy:
+  ```python
+  from odf.opendocument import load; from odf.table import Table,TableRow,TableCell; from odf.text import P
+  def cell(c): return " ".join(str(p) for p in c.getElementsByType(P)).strip()
+  def row(r):
+      o=[]; [o.extend([cell(c)]*int(c.getAttribute("numbercolumnsrepeated") or 1)) for c in r.getElementsByType(TableCell)]; return o
+  doc=load("test_data/Landing_Test/parameter_record.ods")
+  for t in doc.spreadsheet.getElementsByType(Table):       # sheets:
+      print(t.getAttribute("name"))                        #   PX4_NewCal_Record (NC1-49 = current R3 era, the one to read)
+      for r in t.getElementsByType(TableRow): print(row(r))#   PX4_Gain_Record (G1-60 = R1/R2 history) · MATLAB_Test_Record · Removed_Parameters
+  ```
+  Each NC/G row now carries **`Bundle` + `Timestamp`** provenance columns → maps a trial to its `test_data/` data.
+- **Test data:** named bundles `test_data/<Name>/<YYYYMMDD-HHMMSS>/rep<N>/` (+ a `summary.tsv` per bundle) AND raw per-landing autosaves `test_data/Landing_Test/<Day Mon D HH-MM-SS YYYY>/`. Each rep dir: `Control_Params.npy` (the gains that ran), `Ground_Truth.npy` (`UAV/Target Pose`, `SoftPrecise`), `Control_Data.npy`, `Img_Data.npy`, `Telemetry_Data.npy`.
+- **Memory (auto-loaded index):** `~/.claude/projects/-home-shubham-Soft-Precise-Landing/memory/MEMORY.md`. Key files: `reference_tuning_trajectory` (the whole campaign arc), `reference_docs_folder`, and the `feedback_*` lessons.
+- **Code defaults:** `src/controller.py` (the `pa()` / `os.environ.get` block, ~lines 120–175) is the source of truth for baked values.
+- **Git history:** tuning milestones are in the commit log (`git log --oneline -- PX4_Gazebo/src/controller.py`).
+
+## §3 — Cal regimes (the master variable)
+| Regime | When | Trust |
+|---|---|---|
+| R0 (broken) | pre-June | ~2000 reps at 2–13× mis-scale. **Confounded.** Only lag timing (38/52–61/287 ms) survives. |
+| R1/R2 (multisine) | Jun 2–4 | the "28% SP @10cm" (G46) is a **hypothesis**, not a result. |
+| **R3 (honest)** | Jun 5–10 | **the only trustworthy data** (NC1–49). |
+A number from one regime does **not** transfer to another — the #1 historical analysis error.
+
+## §4 — Parameter inventory
+Knobs are **direct per-axis values** `PLASMC_<PARAM>_{X,Y,Z}` (all `*_SCALE` factors removed 2026-06-03). Current baked defaults are in §STATUS. For the full per-parameter role/empirical analysis, read **`docs/PARAMETER_ANALYSIS.md` §3**; for the complete env-knob table + sweep methodology, the **`tune-plasmc` skill**. Groups: Outer PID + outer funnel (`KP, KI, KD, XIS/gamma_s, PS0, PSINF, DH_D_MAX, TAU_DS`); middle SMC (`XI2, P20, P2INF, OMEGA, GAMMA, E, N, P, KAPPA0, KAPPA_MAX`); yaw (`YAW_*, KR_YAW, PSID_RATE, TAU_UA`); visibility (`FUNNEL_MODE, THETA_FLOOR, RHOFOV*`); inner (`KR_*, W_U_MAX`); image (`IMG_FEATURE_FILTER, MARKER_KLT_MAX_STEPS, ARUCO_*, BODY_YAW_SOURCE, CTRL_ZERO_WXY`); landing-test (`LANDING_REF_RAD_OPT_FLOW, LANDING_IC_*`).
+
+## §5 — Failure modes & the κ-runaway explosion chain
+Almost every catastrophe is one chain (detail in `PARAMETER_ANALYSIS.md` §2):
+```
+lateral drift → outer PID windup (h_d ≈ K_rp·s_e_n/G_s) → loom funnel can't track within p_2inf
+   → barrier ζ→∞ → |σ|>E → κ-ODE runaway → a_u blowup → hard impact / fly-away / TARGET_LOST
+```
+Bounding rules: **P** bounds κ cleanly (`κ_eq∝1/P`); **E** bounds κ but softens tracking (one-knob-one-job: P for κ, E for stiffness); **N, Γ** can't fix it (math-excluded); **cbf2 masks it** (if the CBF bites in normal ops the control law is failing); **funnel width = gain** (never widen a funnel for a transient). The **current binding limit is stochastic LK/ArUco perception** (~2 m/s dynamic-range ceiling → 1–2 TARGET_LOST per 5 reps even at a perfect IC) — *not* gain-tunable. Lag (38 ms roll / 287 ms yaw) is the **last** explanation, not the first.
+
+## §6 — Methodology (the rules — violate at your peril)
+1. **n ≥ 5** per cell — n=1 is noise (debunked repeatedly). 2. **IC2-5 gate** (`run_ic_validation.sh`, never pass it `LANDING_OUT_BASE`) before changing any default — IC1 wins routinely regress off-center. 3. **Per-axis**, not uniform (image-x is 1.39× hotter than y). 4. **One knob, one job.** 5. **Reject a value on a single TL/crash** (100% reliability needed; a single failure reveals the binding constraint — fix that first). 6. **Clamps are band-aids** — tune the bare law, re-engage protective clamps after. 7. **Sanity-check every SP** against its trajectory (§8). 8. **Use defaults; ask before non-default env vars.** 9. **Don't run SITL** — prepare the command, the user runs it.
+
+## §7 — Known dead-ends & winners (R3)
+**Dead-ends (don't retry):** `KI≥2` / `KI=0.35` · `KP≥13` · `KP=12 + E_XY=2.5` · `W_U_MAX>1.7` · `E_Z≥1.5` · `N_XY=0.05` · `N_Z=0.05` alone · `tau_ua=0.3` · `P_XY=3` · `TAU_DS=0.05` · `K_rd=0` alone (needs gamma_s=1.0) · `gamma_s=0.1` · `KR_YAW≠2` · `YAW_OMEGA=1` · `YAW_GAMMA=1` · RHOFOVINF/THETACAP terminal sweeps (frontier mapped) · `MC_*RATE_P>1` via MAVSDK · enlarging the marker · sensor-cal refresh via `aggregate_calibration.py`.
+**Winners / baked:** `K_rd=0 + gamma_s=1.0` (the 1.32 m stack) · `KAPPA0_Z=1.0 + KAPPA_MAX_Z=3.0 + κ-freeze` (descent bootstrap) · `P=5/5/5` (κ bound) · yaw 2π-wrap + conditional `ie_a` integration · cbf2 · `BODY_YAW_SOURCE=alpha`.
+
+## §8 — Data-integrity gotchas
+- **Cal regime** (§3) — check it before trusting any number.
+- **False SPs (frozen GT).** The `SoftPrecise` flag can fire on a degenerate GT: if `UAV Pose` freezes at the IC then resets to the origin, `xy_err`→~1e-21 trips `precise` with no real landing. **There is currently no verified SP in the saved R3 data** (the only sub-10 cm rep was this artifact — `Landing_Test/Wed Jun 10 01-22-38`, marked FALSE). Before trusting an SP: did the drone **descend** (min alt→~0)? Is `xy_err` physical (~0.02–0.06), not ~1e-21? Is the pose non-frozen? See memory `feedback_false_sp_frozen_gt`.
+- **Provenance:** the `.ods` carries `Bundle`/`Timestamp`; some Jun-9/10 trials are loose autosaves bundled retroactively (`GammaS_sweep_n25`, `BootstrapFix_n21`, …).
+
+## §9 — Diagnostic tools (`tools/`)
+`analyze_explosion_chain.py <rep>` (first-exploding state + causal chain) · `analyze_saturation_audit.py --glob/--events` (limit duty cycle + per-event reason; the standard batch diagnostic) · `analyze_timeseries.py` (per-channel corr with xy_end) · `diagnose_failure_cause.py <rep>` (perception-vs-control at onset) · `analyze_impulse_response.py` (per-axis lag) · `analyze_sigma_compare.py` (MATLAB-vs-PX4 σ).
+
+## §10 — Workflow for a new tuning task
+1. Read §STATUS + this guide; pull the latest `.ods` (§2). 2. **Identify the failure mode** (§5) — if it's stochastic perception or lag, a knob won't fix it. 3. Pick **ONE** parameter; sweep **3–5 values** spanning [0.5×,2×], **n≥5** at IC1 (write the command, the user runs `run_knob_sweep.sh`). 4. Analyze (§9); reject on a single failure (§6). 5. If promising at n≥5 → **IC2-5 gate**. 6. **Update** the `.ods` (with provenance), the relevant memory, this §STATUS block, and `PARAMETER_ANALYSIS.md` if a default changes.
+
+## §11 — Deep-dive pointers
+- **`tune-plasmc` skill** (`/tune-plasmc`) — the tuning playbook: full env-knob inventory, sweep methodology, the 8 failure modes, known-bad/known-good configs, the diagnostic chain.
+- **`docs/PARAMETER_ANALYSIS.md`** — comprehensive per-parameter analysis + the explosion chain + dead-ends + SP-flag integrity (honest-cal rewrite).
+- **memory `reference_tuning_trajectory`** — the connected campaign timeline (every trial G#/NC#: what varied, why, outcome).
+- **`docs/CONTROLLER_PARITY.md`** (MATLAB↔Python diff + intentional divergences) · **`docs/FUNNEL_CBF_DESIGN.md`** (cbf2) · **`docs/PERCEPTION_FLOW_FINDINGS.md`** (perception layer + LK dynamic-range lever) · **`docs/SH_REFERENCE.md`** (bash patterns).
+- **`parameter_record.ods`** — the raw quantitative record (4 sheets).
+- **memory `MEMORY.md`** — the full index of `feedback_*`/`project_*` lessons.

@@ -115,6 +115,7 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   calibration_data/input/<timestamp>/   — input_calibration recordings  (gitignored)
   run_logs/                    — per-component logs (gitignored)
   docs/                        — design/analysis notes (check these before re-deriving; status as of 2026-06-10):
+    PLASMC_TUNING_GUIDE.md     — ⭐ START HERE for any tuning/landing-diagnosis work: end-to-end guide (current state, data map, param inventory, dead-ends, methodology, gotchas; indexes the rest). Auto-injected each session by a SessionStart hook (.claude/settings.json, local).
     SH_REFERENCE.md            — canonical .sh patterns; read before authoring new .sh (CURRENT)
     FUNNEL_CBF_DESIGN.md       — target-visibility cbf2 design (CURRENT; Jun-9 two-phase-δ addendum at top)
     CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math CURRENT; Jun-4–10 intentional divergences in top addendum)
