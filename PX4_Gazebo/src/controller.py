@@ -172,6 +172,7 @@ class Controller(Thread):
         self._P       = np.diag(pa("P",      5.0, 5.0, 5.0))     # P -> 5/5/5 (kappa-leakage; P_X/Y=5 bounds the lateral kappa amplifier at E=1.5; a_u 33589->440, 2026-06-08)
         self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 1.0)      # KAPPA0_Z 0.3125→1.0 (2026-06-10): bootstrap fix for gamma_s=1.0 fast-centering
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0: cap kappa_z to prevent high-flow-speed theta_norm runaway
+        self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
 
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
@@ -326,6 +327,7 @@ class Controller(Thread):
         self._w = []       # body angular velocity (full 3-axis, FRD->body-NED)
         self._dw = []
         self._dw_deque = deque([np.zeros(N_DIM)] * 4)
+        self._w_i_last_t = None       # time of last w_i change → image-rate dw magnitude (2026-06-10)
 
         # Optical flow / middle-loop state
         self._h = []
@@ -690,11 +692,22 @@ class Controller(Thread):
             new_int = np.clip(new_int, -self._izeta_clamp, self._izeta_clamp)
             self._izeta.append(new_int)
 
-        # Angular acceleration: smoothed derivative of V_w. MATLAB derives V_dw
-        # from V_w_i (visualControl_IBVS_adaptive.m:295-299); we mirror that by
-        # differentiating self._w_i (NOT self._w body rate).
+        # Angular acceleration: smoothed derivative of V_w_i (MATLAB derives V_dw from V_w_i,
+        # visualControl_IBVS_adaptive.m:295-299). V_w_i is FRAME-HELD — img_data updates it ~42 Hz
+        # while control runs ~125 Hz. Cleaner dw (2026-06-10): on a NEW frame, divide the frame-jump
+        # by the REAL inter-frame interval (not control_dt → removes the ~3× over-amplification that
+        # made cross(dw,s)→θ_norm spike, |dw|=252); BETWEEN frames the numerator is 0 so dw is 0 — it
+        # stays a BRIEF spike, NOT held (a held dw poisons the κ-integrator with sustained moderate θ:
+        # tested + reverted). Plus a physical |dw| clamp. NOTE: this only tidies the θ PEAK; the κ
+        # runaway is the SUSTAINED θ, ~74% the non-dw c-terms — handled by the close-range κ-freeze.
         if len(self._w_i) > 1:
-            self._dw_deque.append((self._w_i[-1] - self._w_i[-2]) / self._dt[-1])
+            if not np.allclose(self._w_i[-1], self._w_i[-2]):
+                dt_frame = (self._t[-1] - self._w_i_last_t) if self._w_i_last_t is not None else self._dt[-1]
+                self._w_i_last_t = self._t[-1]
+            else:
+                dt_frame = self._dt[-1]      # irrelevant: numerator is 0 between frames
+            dw_raw = (self._w_i[-1] - self._w_i[-2]) / max(dt_frame, 1e-3)
+            self._dw_deque.append(np.clip(dw_raw, -self._dw_max, self._dw_max))
             self._dw_deque.popleft()
         self._dw.append(smooth4(self._dw_deque))
 
@@ -721,8 +734,13 @@ class Controller(Thread):
 
         # Adaptive-gain (translational) update via RK5
         # MATLAB: dkappa/dt = Theta_norm * N * G * |sigma| - N * P * kappa
-        # Freeze κ on axes where outlier containment fired — the clipped G/σ would
-        # drive κ up via the barrier singularity (G→∞ near funnel edge), not real error.
+        # Freeze κ on axes where Singhal outlier containment fired (funnel-breach glitch — the clipped
+        # G/σ would drive κ up via the barrier singularity, G→∞ near the funnel edge).
+        # NOTE (2026-06-10): a 2nd "sustained-high-θ" κ-freeze trigger was prototyped + DROPPED — it is
+        # mis-targeted. At E_Z=0.5 κ_z ratchets up during the MODERATE-θ stretches (median ~3-7, with
+        # the freeze OFF) via large G·|σ| at close range — NOT the brief high-θ spikes the trigger
+        # chased (θ>50 on only ~19% of frames). No θ threshold (50 or 200) catches it. The lever for
+        # the E_Z=0.5 κ-bound is P_z (κ_eq ∝ 1/P leakage). See memory feedback_theta_norm_klt_drift.
         if len(self._dt) > 0:
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
                             [self._sigma[-1], self._theta[-1]], self._dt[-1])
