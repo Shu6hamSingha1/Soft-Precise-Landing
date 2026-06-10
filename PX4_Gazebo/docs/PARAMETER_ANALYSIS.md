@@ -55,6 +55,8 @@ lateral drift (perception/IC)
    → cone/CBF clamp saturates OR the drone hard-impacts / flies away
 ```
 
+> **θ_norm is *contained downstream*, not *eliminated* (corrected 2026-06-10).** θ_norm = ‖Θ‖_F drives `dκ/dt`; it is ~99% `cross(dw, s)` at a spike. It still **spikes** — ~480 at the baked config, up to 1226 when E_z is narrowed — from two sources: (1) *sustained* off-screen-KLT drift (removed by the `img_data` KLT-bounds guard), and (2) the **dominant residual: a frame-jump `dw` artifact** (`dw` = finite-diff of frame-held `w_i` ÷ control-dt → 252 rad/s², unphysical). What stops the *runaway* is **downstream**: the spikes are brief (they barely move the integrated κ), `P_z=5` keeps `κ_eq∝1/P` low, and `KAPPA_MAX_Z=3.0` is a backstop that **didn't even bind at the baked config** (κ_z≤1.6). **Do NOT source-fix θ_norm by rewriting `dw`** — an image-rate `dw` was tried 2026-06-10 (cut θ_norm offline 480→53) but `dw` feeds the load-bearing `c` feedforward, so closed-loop it caused *more* κ-runaways (3/5 vs 1/5). Containment is correct.
+
 Bounding rules that fell out of this (each verified in R3):
 - **`P` bounds κ cleanly** — `κ_eq ∝ 1/P`. `P=5/5/5` dropped a_u from 33 589 → 440. The clean κ knob.
 - **`E` also bounds κ but *softens tracking*** — wide `E` keeps `|σ|<E` so κ≈κ_0, but the same wideness detunes the lateral hold (→ drift) and descent (→ hover). **One knob, one job:** use `P` for κ, `E` for stiffness, per-axis.
@@ -109,7 +111,7 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 ### 3.6 Image pipeline (`img_data.py`)
 
-`IMG_FEATURE_FILTER=kf` (centroid KF default; savgol(13) added ~110 ms lag + 2× noise). `MARKER_KLT_MAX_STEPS=20` bridges ArUco outages by LK-tracking last good corners — **now stops when any corner exits the image** (the θ_norm root-cause fix: off-screen KLT drift gave `s[0]=3.15` + `w_z=4.54` → `cross(dw,s)`=689 → κ-runaway). ArUco interventions (`ARUCO_*`) baked. `BODY_YAW_SOURCE=alpha`, `CTRL_ZERO_WXY=1` (wx/wy observable but uncalibrated → zero for the stationary target).
+`IMG_FEATURE_FILTER=kf` (centroid KF default; savgol(13) added ~110 ms lag + 2× noise). `MARKER_KLT_MAX_STEPS=20` bridges ArUco outages by LK-tracking last good corners — **now stops when any corner exits the image** (removes the *sustained* off-screen-KLT θ_norm source: `s[0]=3.15` + `w_z=4.54` → `cross(dw,s)` — but does **not** eliminate θ_norm, which is contained downstream; see §2). ArUco interventions (`ARUCO_*`) baked. `BODY_YAW_SOURCE=alpha`, `CTRL_ZERO_WXY=1` (wx/wy observable but uncalibrated → zero for the stationary target).
 
 ### 3.7 Landing-test (`landing_test.py`)
 

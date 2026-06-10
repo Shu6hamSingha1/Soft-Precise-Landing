@@ -48,10 +48,12 @@ were removed — see parameter_record.ods sheet `Removed_Parameters`. (THETA_FLO
 > `PLASMC_THETA_FLOOR_DEG`=**60** (not 0), `PLASMC_LFOV`=**0.0** (not 0.1, rho_fov held constant).
 > **2026-06-10 baked defaults:** `PLASMC_KD_{X,Y}`=**0.0** (K_rd=0; gamma_s=1.0 replaces D-term damping role),
 > `PLASMC_XIS_{X,Y}`=**1.0** (gamma_s=1.0 outer funnel), `PLASMC_KAPPA0_Z`=**1.0** (bootstrap fix),
-> `PLASMC_KAPPA_MAX_Z`=**3.0** (κ_z cap), `PLASMC_DH_D_MAX`=**50.0** (stays at 50 to expose real failures).
-> **θ_norm blowup root cause fixed in img_data.py:** KLT stopped when any corner exits image bounds
-> (prevents both off-screen centroid s[0]→3.15 AND bogus w_z=4.54 rad/s — same root cause).
-> IC2-5 validation of KLT fix pending (trial 49).
+> `PLASMC_KAPPA_MAX_Z`=**3.0** (κ_z cap), `PLASMC_DH_D_MAX`=**50.0** (stays at 50 to expose real failures),
+> `PLASMC_DW_MAX`=**30.0** (cleaner image-rate dw clamp, commit 85e1011).
+> **θ_norm is CONTAINED downstream, NOT eliminated** (corrected 2026-06-10): the img_data KLT-bounds guard
+> removes the *sustained off-screen-KLT* source (s[0]→3.15, w_z→4.54); the cleaner image-rate dw tidies the
+> *frame-jump* peak; but θ still spikes (~480) and the κ-cap + P-leakage contain it. **dw source-fix +
+> θ-freeze are DEAD-ENDS** (see the 2026-06-10 addendum below). Trial-49 IC1 done; IC2-5 still pending.
 > **New knobs not in the tables:** outer PPC funnel `PLASMC_SEN_FUNNEL`(off)+`XIS/PS0/PSINF_{X,Y}`;
 > visibility CBF `FUNNEL_MODE`(cone|cone0|cbf1|**cbf2**, **default cbf2**)+`CBF_TAU`+`CBF_DMIN_EMA`+`CONE0_{SWAP,SIGN_X,SIGN_Y}`+`CBF_PHASE2_HYSTERESIS`(3)+`CBF_PHASE2_RAMP_FRAMES`(5); cbf2 now uses two-phase δ: Phase 1 (decode) m2=φ_max (centroid-only, δ=0); Phase 2 (overflow/fail) ramps δ→½ptp with hysteresis; theta_cap applied post-QP (not inside loop);
 > `PLASMC_TAU_UA`(0.1 yaw-rate LPF); `PLASMC_YAW_PSID_RATE`(0.7); `W_XY_DEROT`(zero|imu|image, =zero via CTRL_ZERO_WXY=1);
@@ -103,6 +105,12 @@ were removed — see parameter_record.ods sheet `Removed_Parameters`. (THETA_FLO
 > MATLAB has NEITHER (psi_d-rate clamp + `_ie_a_clamp`). **DONE: `_ie_a_clamp` REMOVED → conditional integration**
 > in `_yawCtrl` (freeze `ie_a` while heading-rate saturated) — fixed the windup→overshoot (102°→−22°). MATLAB
 > spawns SQUARE (never perturbs initial yaw); PX4's large-initial-yaw is the (B) extension beyond the reference.
+
+> **🟢 2026-06-10 DESCENT-HOVER THREAD + TL CAUSES — [[feedback_descent_hover_thread]] [[feedback_theta_norm_klt_drift]].**
+> **BAKED: cleaner image-rate `dw`** (commit 85e1011) — divides the frame-jump by the REAL inter-frame interval + zero-between-frames + clamp `PLASMC_DW_MAX=30`; tidies the θ_norm *peak*, integrator-safe; no regression at E_z=1.0 (κz=1.00).
+> **DESCENT HOVER (1/5 at E_z=1.0):** fixed by `E_z=0.5` (stronger descent drive) BUT it un-bounds κ → touchdown κ-runaway (**one-knob-one-job**: E_z does descent stiffness AND κ-bound). **The κ-bound lever is `P_z`** (κ_eq∝1/P) — `E_z=0.5 + P_z=8` is the principled UNTESTED next step. E_z=0.5 NOT baked (hover↔κ trade).
+> **NEW DEAD-ENDS (do not retry):** (1) **image-rate-HOLD dw** — holding dw between frames turns brief θ spikes into *sustained* moderate θ → poisons the κ-INTEGRATOR → MORE runaways (3/5 vs 1/5). (2) **sustained-high-θ κ-freeze** (2nd trigger) — mis-targeted: κ ratchets at MODERATE θ (median 3-7, freeze OFF) via large G·|σ|, NOT the brief spikes it chased; no θ threshold (50/200) catches it. Both reverted/dropped. **Validate κ-ODE fixes against the time-INTEGRAL/sustained θ, never the peak; judge feedforward changes in closed loop.**
+> **TL CAUSE BREAKDOWN (6 TLs across this thread):** 2/6 **κ-runaway** (control — bound via P_z); **4/6 PERCEPTION** — 3 close-range *touchdown* marker-loss (descended to alt≈0 at xy **1–3 m** then lost the marker; κ contained, a_u low; **mode 2**, NOT gain-tunable) + 1 far lateral drift (20 m, κ contained). The dominant + binding TL cause is **perception**, esp. the close-range touchdown-loss → re-confirms "next lever = code-level perception (pyramidal LK / multi-marker)."
 
 **The validated IC1 config (28% SP @ 10cm, n=25 — parameter_record trial 46), in direct-value form:**
 ```
