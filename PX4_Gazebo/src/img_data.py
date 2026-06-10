@@ -305,16 +305,17 @@ class IMG_PROCESSOR(Thread):
         #     extreme tilt). Floor |z_v| (numerical), clamp output to ±(p_10+δ) (FoV + marker extent).
         # #1: the marker-LOST centroid extrapolation (clipped ±5) ran off-screen → clip it to ±(p_10+δ)
         #     instead (keeps the short-dropout trend, bounds the long-dropout); + keep the FC quat valid.
-        # ⛔ DEFAULT-OFF — NET-NEGATIVE in closed-loop SITL (2026-06-10, VirtGuard_EZ_IC1). The guards
-        # DID bound κ_xy (≤0.53 vs 7.26) + s (≤2 vs 6), but the landings REGRESSED (E_z=1.0 mean
-        # 1.94→10.3 w/ far TLs 15/29m; E_z=0.5 3 TL incl 91m). Clamping the feature s removes the
-        # off-screen error signal that drives the lateral correction → UNDER-correction → far drift
-        # (κ stays low — not a runaway). The off-screen s was load-bearing for correction authority.
-        # 3rd open-loop-validated-but-closed-loop-negative fix (after dw-rewrite + θ-freeze). The real
-        # lever is UPSTREAM: keep the marker decoded (KLT corner-tracking), not symptom-clamping s.
-        self._virt_guard   = os.environ.get("PLASMC_VIRT_GUARD", "0") == "1"
+        # 2026-06-10 root-cause of the VirtGuard_EZ_IC1 regression (traced): the far-drift reps did NOT
+        # lose the marker (decode worked, "lost 0%"). So #2 (PLASMC_VIRT_GUARD, the GLOBAL _getVirtualPts
+        # clamp) clamped the GENUINE in-FoV centroid when the drone was off-center → bounded s_e_n + the
+        # κ-growth (θ·G·|σ|) → SMC UNDER-corrected (a_u≤8, κ≤0.2) → far drift (29/91 m). #2 over-reaches
+        # (clamps genuine features; the off-screen s was load-bearing for correction authority) →
+        # DEFAULT-OFF. #1 (PLASMC_FEAT_FOV_CLIP) only clips the marker-LOST EXTRAPOLATION — conditional,
+        # never touches a genuine detection — so it bounds only the phantom that caused the ORIGINAL
+        # κ-runaway (P_z=8 rep3, marker lost) and did NOT cause the regression → kept DEFAULT-ON.
+        self._virt_guard   = os.environ.get("PLASMC_VIRT_GUARD", "0") == "1"   # #2: global clamp — OFF (over-reaches)
         self._virt_zmin    = float(os.environ.get("PLASMC_VIRT_ZMIN", "0.01"))
-        self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "0") == "1"
+        self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "1") == "1"  # #1: marker-LOST clip — ON (phantom only)
         self._prev_aruco_pts = None       # most recent good corners (ArUco or KLT)
         self._prev_img = None             # frame those corners were measured in
 
