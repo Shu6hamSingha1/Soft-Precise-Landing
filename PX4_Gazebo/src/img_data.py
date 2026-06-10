@@ -433,12 +433,18 @@ class IMG_PROCESSOR(Thread):
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
-        # Flow-source switch (user 2026-06-10): the 6-DOF corner lstsq is ill-conditioned when only the
-        # single planar marker survives (n_flow_corners=4 → 8×6 minimal → planar translation/rotation
-        # ambiguity → spurious h up to 14 rad/s). When n_flow_corners > this, trust the corner; when ≤ it,
-        # mark the corner NOT-ok so the EKF lets the RING carry the flow. (Centroid s is separate — always
-        # corner-based via getImgFeatureParam, unaffected.) Data: n≥12 caps |h|≈2; n≤11 lets it spike.
-        self._flow_ncorn_switch = int(os.environ.get("FLOW_NCORN_SWITCH", "4"))
+        # Spurious-flow-h guards. The 6-DOF corner lstsq is ill-conditioned when only the single planar
+        # marker survives (n=4 → 8×6 minimal → planar translation/rotation ambiguity → spurious h up to
+        # 14 rad/s vs the ~2 ceiling at n≥12).
+        # (a) n-switch (DEFAULT-OFF=0): n≤switch → corner NOT-ok → ring carries h. REGRESSED the baked
+        #     E_z=1.0 (0→4 TL, FlowSwitch_EZ_IC1): the ring has ~0 LATERAL info (divergence/vertical) →
+        #     routing h there gives h_xy≈0 → under-correction → drift. The ring is the wrong fallback.
+        # (b) EKF innovation gate (FLOW_GATE, the KEEPER): reject the corner update when its Mahalanobis
+        #     innovation d²=yᵀS⁻¹y exceeds the gate (the spike → huge d² vs the ~constant prediction) →
+        #     the constant-velocity prediction carries h through the spike, keeping the corner's GOOD
+        #     lateral h on the normal frames. Rejects the OUTLIER, not the source. Centroid s unaffected.
+        self._flow_ncorn_switch = int(os.environ.get("FLOW_NCORN_SWITCH", "0"))
+        self._flow_gate = float(os.environ.get("FLOW_GATE", "50.0"))
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
@@ -1193,7 +1199,14 @@ class IMG_PROCESSOR(Thread):
 
         if corner_ok:
             R_c = self._R_corner / max(corner_conf, 0.02)   # low conf -> high R -> ring carries
-            x, P = _update(x, P, corner_cal, self._H_corner, R_c)
+            # Innovation gate (2026-06-10): reject the corner update when its Mahalanobis innovation
+            # exceeds FLOW_GATE. An ill-conditioned lstsq spike (h up to 14 vs the ~constant prediction)
+            # → huge d² → rejected → the prediction carries h through the spike, while normal frames
+            # (good lateral h) pass. Rejects the OUTLIER, not the source (ring has ~0 lateral).
+            _y = corner_cal - self._H_corner @ x
+            _S = self._H_corner @ P @ self._H_corner.T + R_c
+            if float(_y @ np.linalg.solve(_S, _y)) <= self._flow_gate:
+                x, P = _update(x, P, corner_cal, self._H_corner, R_c)
         if ring_ok:
             x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
         self._ekf_x, self._ekf_P = x, P
