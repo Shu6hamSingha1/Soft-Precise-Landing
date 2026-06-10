@@ -154,7 +154,7 @@ This section presents the rigid-body dynamics of the quadrotor, defines the scal
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/frames_planes.pdf}
-    \caption{Frames and image planes. Inertial $\mathcal{I}$ locates UAV and target. Body frame $\mathcal{B}$ is fixed to the UAV with camera frame $\mathcal{C}$ rigidly mounted on it. Virtual frame $\mathcal{V}$ shares $\mathcal{C}$'s origin and is de-rotated so its $X_\text{v}$--$Y_\text{v}$ plane stays parallel to the inertial $X_\text{i}$--$Y_\text{i}$ plane. Centroids $\,^\mathcal{C}\hat{\boldsymbol{r}}$ and $\,^\mathcal{V}\hat{\boldsymbol{r}}$ of the $N$ feature points (illustrated for $N=4$) project on the tilted image plane (axes $\hat{X}_\text{c},\hat{Y}_\text{c}$) and the virtual image plane (axes $\hat{X}_\text{v},\hat{Y}_\text{v}$), respectively.}
+    \caption{Frames and image planes. Inertial $\mathcal{I}$ locates UAV and target. Body frame $\mathcal{B}$ is fixed to the UAV with camera frame $\mathcal{C}$ rigidly mounted on it. Virtual camera frame $\mathcal{V}$ shares $\mathcal{C}$'s origin and is de-rotated so its $X_\text{v}$--$Y_\text{v}$ plane stays parallel to the inertial $X_\text{i}$--$Y_\text{i}$ plane. Centroids $\,^\mathcal{C}\hat{\boldsymbol{r}}$ and $\,^\mathcal{V}\hat{\boldsymbol{r}}$ of the $N$ feature points (illustrated for $N=4$) project on the tilted image plane (axes $\hat{X}_\text{c},\hat{Y}_\text{c}$) and the virtual image plane (axes $\hat{X}_\text{v},\hat{Y}_\text{v}$), respectively.}
     \label{frames planes: figure}
 \end{figure}
 
@@ -171,7 +171,7 @@ Let $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote
 Here $m$ is the body mass, $J$ is the body inertia matrix, $\,^\mathcal{B} \boldsymbol{F}_u = [0,0,-\,^\mathcal{B} T_u]^\top$ with $\,^\mathcal{B} T_u\ge 0$ the rotor thrust magnitude along $-Z_\text{b}$, $\,^\mathcal{B} \boldsymbol{\tau}_u$ is the control torque, $\,^\mathcal{B} \boldsymbol{F}_\text{g}$ is the gravitational force, and $\,^\mathcal{B} \boldsymbol{F}_\text{d},\,^\mathcal{B} \boldsymbol{\tau}_\text{d}$ are the unknown bounded body-frame disturbance force and torque introduced in Section~\ref{background: section}-\ref{problem statement: section}. The combined thrust-torque actuation is $\boldsymbol{u}=[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top\in\mathbb{R}^4$.
 
 \subsection{Image Parameters} \label{image parameters: section}
-In place of the inertial pose of \eqref{quadrotor dynamics: equation}, VDF-ASMC drives the control loop from three scale-independent image parameters---the virtual image position, the virtual image orientation, and the optical flow defined below---computed from the target image as shown in Fig.~\ref{block diagram: figure}. The target is observed by a downward-facing monocular camera whose optical axis is aligned with $Z_\text{b}$. Consider the camera frame $\mathcal{C}=\{O_{\text{c}},X_{\text{c}},Y_{\text{c}},Z_{\text{c}}\}$ rigidly attached to the camera (Fig.~\ref{frames planes: figure}), with $X_{\text{c}}$ and $Y_{\text{c}}$ aligned with the image horizontal and vertical directions and $Z_{\text{c}}$ along the optical axis. Under the standard pinhole camera model~\cite{chaumette2006}, an image feature point on the image plane is
+In place of the inertial pose of \eqref{quadrotor dynamics: equation}, VDF-ASMC drives the control loop from three scale-independent image parameters---the image position, the image orientation, and the optical flow defined below---computed from the target image as shown in Fig.~\ref{block diagram: figure}. The target is observed by a downward-facing monocular camera whose optical axis is aligned with $Z_\text{b}$. Consider the camera frame $\mathcal{C}=\{O_{\text{c}},X_{\text{c}},Y_{\text{c}},Z_{\text{c}}\}$ rigidly attached to the camera (Fig.~\ref{frames planes: figure}), with $X_{\text{c}}$ and $Y_{\text{c}}$ aligned with the image horizontal and vertical directions and $Z_{\text{c}}$ along the optical axis. Under the standard pinhole camera model~\cite{chaumette2006}, an image feature point on the image plane is
 \begin{equation}
 \label{pinhole camera model: equation}
     \,^\mathcal{C}\hat{\boldsymbol{r}}_i = \begin{bmatrix} \,^\mathcal{C}\hat{x}_i \\ \,^\mathcal{C}\hat{y}_i \end{bmatrix}
@@ -188,7 +188,7 @@ The image feature point trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ c
 \label{virtual 3D point: equation}
     \,^\mathcal{V}\boldsymbol{r}_i = \,^\mathcal{V}R_\mathcal{C}\,^\mathcal{C}\boldsymbol{r}_i, \qquad \,^\mathcal{V}R_\mathcal{C} = R_y(\theta)R_x(\phi),
 \end{equation}
-and combining \eqref{virtual 3D point: equation} with the pinhole model \eqref{pinhole camera model: equation} yields the closed-form virtual-feature map for the $i$-th virtual image feature point $\,^\mathcal{V}\hat{\boldsymbol{r}}_i=[\,^\mathcal{V}\hat{x}_i,\,^\mathcal{V}\hat{y}_i]^\top$,
+and combining \eqref{virtual 3D point: equation} with the pinhole model \eqref{pinhole camera model: equation} yields the closed-form map of the $i$-th image feature point onto the virtual image plane, $\,^\mathcal{V}\hat{\boldsymbol{r}}_i=[\,^\mathcal{V}\hat{x}_i,\,^\mathcal{V}\hat{y}_i]^\top$,
 \begin{equation}
 \label{virtual feature point: equation}
     \,^\mathcal{V}\hat{\boldsymbol{r}}_i = \frac{1}{\,^\mathcal{V}z_i}\begin{bmatrix} \,^\mathcal{V}x_i \\ \,^\mathcal{V}y_i \end{bmatrix} = \begin{bmatrix}
@@ -196,24 +196,24 @@ and combining \eqref{virtual 3D point: equation} with the pinhole model \eqref{p
         \dfrac{C_\theta\,^\mathcal{C}\hat{y}_i - S_\phi}{-S_\theta\,^\mathcal{C}\hat{x}_i + C_\theta S_\phi\,^\mathcal{C}\hat{y}_i + C_\theta C_\phi}
     \end{bmatrix},
 \end{equation}
-with $S_x=\sin(x)$, $C_x=\cos(x)$. All image parameters below are expressed in $\mathcal{V}$.
+with $S_x=\sin(x)$, $C_x=\cos(x)$. All three image parameters below are computed from the image feature points expressed in the virtual image plane.
 
-\subsubsection{Virtual Image Pose} \label{virtual image pose: section}
-Let $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$, $i\in\{1,\dots,N\}$ with $N\ge 3$, denote $N$ distinguishable image feature points on the camera image plane (Fig.~\ref{frames planes: figure}). De-rotated through $\,^\mathcal{V}R_\mathcal{C}$, they re-project as virtual image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ via \eqref{virtual feature point: equation}, and their mean $\,^\mathcal{V}\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ is the virtual image point. The homogeneous augmentation yields the \emph{virtual image position}
-\begin{equation} \label{virtual image position: equation}
+\subsubsection{Image Pose} \label{virtual image pose: section}
+Let $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$, $i\in\{1,\dots,N\}$ with $N\ge 3$, denote $N$ distinguishable image feature points on the camera image plane (Fig.~\ref{frames planes: figure}). De-rotated through $\,^\mathcal{V}R_\mathcal{C}$, they re-project on the virtual image plane as image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ via \eqref{virtual feature point: equation}, and their mean $\,^\mathcal{V}\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ is the image point. The homogeneous augmentation yields the \emph{image position}
+\begin{equation} \label{image position: equation}
     \boldsymbol{s} = \begin{bmatrix}\,^\mathcal{V}\hat{\boldsymbol{r}}\\ 1\end{bmatrix} = \frac{\,^\mathcal{V}\boldsymbol{r}_\text{t}}{\,^\mathcal{V}z_\text{t}}.
 \end{equation}
-Differentiating \eqref{virtual image position: equation} yields the image position kinematics
+Differentiating \eqref{image position: equation} yields the image position kinematics
 \begin{equation} \label{s dot: equation}
     \dot{\boldsymbol{s}} = \boldsymbol{h} - \boldsymbol{w}\times\boldsymbol{s} - \big[(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
 \end{equation}
 where $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$, and $\boldsymbol{h}$ and $\boldsymbol{w}$ are the translational and rotational optical flow components defined in Section~\ref{background: section}-\ref{image parameters: section}\ref{optic flow: section} below.
 
-The \emph{virtual image orientation} $\alpha$ is extracted from the second-order centered image moments of the $N$ virtual feature points,
-\begin{equation} \label{virtual image orientation: equation}
+The \emph{image orientation} $\alpha$ is extracted from the second-order centered image moments of the $N$ image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$,
+\begin{equation} \label{image orientation: equation}
     \alpha = \tfrac12\tan^{-1}\!\big(2\mu_{11}/(\mu_{20}-\mu_{02})\big),
 \end{equation}
-with $\mu_{pq} = \sum_{i=1}^{N}(\,^\mathcal{V}\hat{x}_i - \,^\mathcal{V}\hat{x})^p(\,^\mathcal{V}\hat{y}_i - \,^\mathcal{V}\hat{y})^q$, where $\alpha$ is unwrapped to $(-\pi/2,\pi/2]$. Differentiating \eqref{virtual image orientation: equation} by the chain rule,
+with $\mu_{pq} = \sum_{i=1}^{N}(\,^\mathcal{V}\hat{x}_i - \,^\mathcal{V}\hat{x})^p(\,^\mathcal{V}\hat{y}_i - \,^\mathcal{V}\hat{y})^q$, where $\alpha$ is unwrapped to $(-\pi/2,\pi/2]$. Differentiating \eqref{image orientation: equation} by the chain rule,
 \begin{equation} \label{alpha chain: equation}
     \dot{\alpha} = \frac{(\mu_{20}-\mu_{02})\dot{\mu}_{11} - \mu_{11}(\dot{\mu}_{20}-\dot{\mu}_{02})}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2},
 \end{equation}
@@ -238,7 +238,7 @@ The optical flow on the virtual image plane (Fig.~\ref{frames planes: figure}) d
 \end{equation}
 the visual velocity (normalized by depth) and angular rate of the target relative to $\mathcal{V}$, expressed in $\mathcal{V}$, respectively. The lateral body rates $\,^\mathcal{V}\boldsymbol{\omega}_{\text{b},xy}$ are absorbed by construction in the de-rotation $\,^\mathcal{V}R_\mathcal{C}$ and do not appear in $\boldsymbol{w}$.
 
-Both components are recovered online from the time derivative of the virtual image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ through the standard image Jacobian~\cite{chaumette2006}, which splits into translational and rotational sub-Jacobians,
+Both components are recovered online from the time derivative of the image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ through the standard image Jacobian~\cite{chaumette2006}, which splits into translational and rotational sub-Jacobians,
 \begin{align} \label{interaction matrix: equation}
 L_{s,i}^\text{t} &= \begin{bmatrix} f & 0 & -\,^\mathcal{V}\hat{x}_i \\ 0 & f & -\,^\mathcal{V}\hat{y}_i \end{bmatrix},\nonumber\\
 L_{s,i}^\text{r} &= \begin{bmatrix} -\,^\mathcal{V}\hat{x}_i\,^\mathcal{V}\hat{y}_i/f & (f^2+\,^\mathcal{V}\hat{x}_i^2)/f & -\,^\mathcal{V}\hat{y}_i \\ -(f^2+\,^\mathcal{V}\hat{y}_i^2)/f & \,^\mathcal{V}\hat{x}_i\,^\mathcal{V}\hat{y}_i/f & \,^\mathcal{V}\hat{x}_i \end{bmatrix},
@@ -253,7 +253,7 @@ Of the two components, only the translational optical flow $\boldsymbol{h}$ has 
 \begin{equation} \label{h dot: equation}
     \dot{\boldsymbol{h}} = -\beta\,^\mathcal{I}R_\mathcal{V}^\top\,^\mathcal{I}\boldsymbol{a}_\text{d} + \tilde{\boldsymbol{c}}_h + \boldsymbol{d}_h,
 \end{equation}
-where $\beta = 1/\,^\mathcal{V}z_\text{t}$ is the depth scale, $\,^\mathcal{I}R_\mathcal{V}$ rotates from the virtual frame to the inertial frame, and
+where $\beta = 1/\,^\mathcal{V}z_\text{t}$ is the depth scale, $\,^\mathcal{I}R_\mathcal{V}$ rotates from the virtual camera frame to the inertial frame, and
 \begin{align}
 \tilde{\boldsymbol{c}}_h &= -\dot{\boldsymbol{w}}\times\boldsymbol{s} - \boldsymbol{w}\times(\boldsymbol{w}\times\boldsymbol{s}) - 2\,(\boldsymbol{w}\times\boldsymbol{h}) \nonumber \\
 &\quad - [(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3]\,\boldsymbol{h}, \label{c tilde h: equation} \\
@@ -293,7 +293,7 @@ These perturbations are summarized by the following assumption used in the stabi
 \subsubsection{Control Objective} \label{control objective: section}
 Under Assumption~1 and the constraints of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section}, the control problem is to design the combined thrust-torque input $\boldsymbol{u}=[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top$ in \eqref{quadrotor dynamics: equation} such that the closed loop simultaneously achieves the following:
 \begin{enumerate}
-    \item the virtual image position $\boldsymbol{s}$ and virtual image orientation $\alpha$ converge to small bounded neighborhoods of their references;
+    \item the image position $\boldsymbol{s}$ and image orientation $\alpha$ converge to small bounded neighborhoods of their references;
     \item the optical flow $\boldsymbol{h}$ is regulated such that $\|\boldsymbol{v}_\text{rel}\|\to 0$ as $\,^\mathcal{V}z_\text{t}\to 0$, delivering the soft-touchdown functional requirement of Section~\ref{intro: section};
     \item the target visibility constraint of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section} holds throughout the descent;
     \item the actuator capability constraint of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section} is respected at all times.
@@ -304,7 +304,7 @@ Formally, with $\,^\mathcal{I}\boldsymbol{r}_\text{t/b}$ and $\,^\mathcal{I}\bol
 \begin{figure*}[hbt!]
 \centering
     \includegraphics[width=\textwidth]{Figures/block_diagram_v3.pdf}
-    \caption{VDF-ASMC pipeline. Image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ from the monocular camera feed the Virtual Image Point PID, which produces the desired optical flow $\boldsymbol{h}_\text{d}$. The optical-flow error $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ drives the ASMC and yields the inertial commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$. The funnel-margin cone clamp projects $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ to the visibility-safe $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$, which together with the desired yaw $\psi_\text{d}$ forms the desired attitude $R_\text{d}$ and thrust $\,^\mathcal{B}T_u$. The SO(3) inner loop (Section~\ref{control design: section}-\ref{inner loop: section}\ref{so3 inner loop: section}) closes the loop by tracking $R_\text{d}$ and producing the body-frame torque $\,^\mathcal{B}\boldsymbol{\tau}_u$.}
+    \caption{VDF-ASMC pipeline. Image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ from the monocular camera feed the Image Point PID, which produces the desired optical flow $\boldsymbol{h}_\text{d}$. The optical-flow error $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ drives the ASMC and yields the inertial commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$. The funnel-margin cone clamp projects $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ to the visibility-safe $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$, which together with the desired yaw $\psi_\text{d}$ forms the desired attitude $R_\text{d}$ and thrust $\,^\mathcal{B}T_u$. The SO(3) inner loop (Section~\ref{control design: section}-\ref{inner loop: section}\ref{so3 inner loop: section}) closes the loop by tracking $R_\text{d}$ and producing the body-frame torque $\,^\mathcal{B}\boldsymbol{\tau}_u$.}
     \label{block diagram: figure}
 \end{figure*}
 
@@ -321,14 +321,14 @@ The cascaded analysis throughout this section rests on the following standard ti
 \textit{Remark 1} (dual-funnel coupling). The dual-funnel architecture above contrasts with dual-PPC designs whose two performance envelopes act on tracking errors in a single state space~\cite{lin2022}, where the envelopes evolve independently without explicit coupling.
 
 \subsection{Outer Loop: Dual Funnel and ASMC} \label{outer loop: section}
-The outer loop transforms image-parameter feedback into the commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ of \eqref{h dot: equation} through three sub-blocks: Sections~\ref{control design: section}-\ref{outer loop: section}\ref{virtual image point control: section}, \ref{control design: section}-\ref{outer loop: section}\ref{optic flow control: section}, and \ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section}.
+The outer loop transforms image-parameter feedback into the commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ of \eqref{h dot: equation} through three sub-blocks: Sections~\ref{control design: section}-\ref{outer loop: section}\ref{image point control: section}, \ref{control design: section}-\ref{outer loop: section}\ref{optic flow control: section}, and \ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section}.
 
-\subsubsection{Virtual Image Point Control Design} \label{virtual image point control: section}
-Let $\mathcal{R}=[r_h,r_w]^\top$ denote the camera-sensor resolution and $f$ the focal length (both in pixels). The camera half-FoV in tangent (feature) units is $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)\in\mathbb{R}^2_{>0}$. Define the \emph{virtual image point error} $\hat{\boldsymbol{r}}_\text{e}$ and its \emph{normalized virtual image point error} $\bar{\boldsymbol{r}}_\text{e}$ by
+\subsubsection{Image Point Control Design} \label{image point control: section}
+Let $\mathcal{R}=[r_h,r_w]^\top$ denote the camera-sensor resolution and $f$ the focal length (both in pixels). The camera half-FoV in tangent (feature) units is $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)\in\mathbb{R}^2_{>0}$. Define the \emph{image point error} $\hat{\boldsymbol{r}}_\text{e}$ and its \emph{normalized image point error} $\bar{\boldsymbol{r}}_\text{e}$ by
 \begin{equation} \label{normalized error: equation}
     \bar{\boldsymbol{r}}_\text{e} = \hat{\boldsymbol{r}}_\text{e}\oslash\boldsymbol{\varphi}_\text{max},\qquad\hat{\boldsymbol{r}}_\text{e}=\,^\mathcal{V}\hat{\boldsymbol{r}}-\hat{\boldsymbol{r}}_\text{d},
 \end{equation}
-where $\oslash$ is componentwise division, $\hat{\boldsymbol{r}}_\text{d}=\boldsymbol{0}$ is the desired centroid on the optical axis, and $|\bar{r}_{\text{e}_k}|=1$ marks the FoV boundary. With $\boldsymbol{s}_\text{d}=[0,0,1]^\top$ (constant), $\dot{\boldsymbol{s}}_\text{e}=\dot{\boldsymbol{s}}$ from~\eqref{s dot: equation}. The \emph{Virtual Image Point PID} specifies the desired $\dot{\boldsymbol{s}}_{\text{e},xy}$
+where $\oslash$ is componentwise division, $\hat{\boldsymbol{r}}_\text{d}=\boldsymbol{0}$ is the desired centroid on the optical axis, and $|\bar{r}_{\text{e}_k}|=1$ marks the FoV boundary. With $\boldsymbol{s}_\text{d}=[0,0,1]^\top$ (constant), $\dot{\boldsymbol{s}}_\text{e}=\dot{\boldsymbol{s}}$ from~\eqref{s dot: equation}. The \emph{Image Point PID} specifies the desired $\dot{\boldsymbol{s}}_{\text{e},xy}$
 \begin{equation} \label{s_e_dot_d: equation}
     \dot{\boldsymbol{s}}_{\text{e},xy} = -K_{rp}\bar{\boldsymbol{r}}_\text{e} - K_{ri}\!\int\bar{\boldsymbol{r}}_\text{e}\,d\tau - K_{rd}\frac{\delta\bar{\boldsymbol{r}}_\text{e}}{\delta t},
 \end{equation}
@@ -455,7 +455,7 @@ where $(\cdot)^\vee:\mathfrak{so}(3)\to\mathbb{R}^3$ is the vee map and $\,^\mat
 \end{equation}
 with $k_R,k_\Omega\succ 0$. The closed-loop attitude tracker inherits the almost-global exponential stability of \cite[Thm.~3.1]{lee2010}. For any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
 
-\textit{Remark 7.} The de-rotation $\,^\mathcal{V}R_\mathcal{C}$ from the camera frame $\mathcal{C}$ onto the virtual frame $\mathcal{V}$ (Section~\ref{background: section}-\ref{image parameters: section}) removes the body-rate-coupled rotational terms from the image position kinematics \eqref{s dot: equation} and the optical-flow dynamics \eqref{h dot: equation}, so the commanded acceleration enters the optical-flow dynamics linearly through $\boldsymbol{u}_h$. Likewise, the desired yaw rate $\dot{\psi}_\text{d}$ enters the image orientation kinematics \eqref{alpha_e_dot: equation} linearly. This linearity admits tractable Lyapunov analyses for the optical-flow and yaw error dynamics and lets the SO(3) tracker be designed independently~\cite{fink2017, xie2016_2}.
+\textit{Remark 7.} The de-rotation $\,^\mathcal{V}R_\mathcal{C}$ from the camera frame $\mathcal{C}$ onto the virtual camera frame $\mathcal{V}$ (Section~\ref{background: section}-\ref{image parameters: section}) removes the body-rate-coupled rotational terms from the image position kinematics \eqref{s dot: equation} and the optical-flow dynamics \eqref{h dot: equation}, so the commanded acceleration enters the optical-flow dynamics linearly through $\boldsymbol{u}_h$. Likewise, the desired yaw rate $\dot{\psi}_\text{d}$ enters the image orientation kinematics \eqref{alpha_e_dot: equation} linearly. This linearity admits tractable Lyapunov analyses for the optical-flow and yaw error dynamics and lets the SO(3) tracker be designed independently~\cite{fink2017, xie2016_2}.
 
 \subsection{Lyapunov Stability Analysis} \label{stability: section}
 The stability analysis follows a layered Lyapunov argument for cascaded nonlinear systems \cite{khalil2002}, built on the following standard notion of boundedness.
@@ -506,9 +506,9 @@ Comparing the negative-definite quadratic form with $V$ of \eqref{V candidate: e
 \end{equation}
 For any $0<\varphi_2<\varphi_1$, this implies $\dot{V}\le-\varphi_2 V$ whenever $V\ge\Theta\triangleq \tfrac{3\beta_{\min}\lambda_{\max}(\mathcal{P})\tilde{d}^2}{2(\varphi_1-\varphi_2)}$. Invoking Lemma~1, every trajectory enters the ball $\{V\le\Theta\}$ in finite time and remains there. Using $V\ge\|\boldsymbol{\sigma}\|^2/2$ gives the UUB bound \eqref{UUB bound: equation}, and the inverse PPC transformation \eqref{optical flow error transformation: equation} enforces $-\boldsymbol{p}_2(t)<\boldsymbol{h}_\text{e}<\boldsymbol{p}_2(t)$ for all $t\ge 0$. $\hfill\blacksquare$
 
-\textit{Corollary 1 (Closed-loop target visibility).} Under the conditions of Theorem~1, the Virtual Image Point PID \eqref{s_e_dot_d: equation} renders $\hat{\boldsymbol{r}}_\text{e}$ UUB by an affine function of $\vartheta$, and the cone-clamp projection \eqref{cone clamp: equation} enforces the visibility constraint kinematically for all $t\ge 0$.
+\textit{Corollary 1 (Closed-loop target visibility).} Under the conditions of Theorem~1, the Image Point PID \eqref{s_e_dot_d: equation} renders $\hat{\boldsymbol{r}}_\text{e}$ UUB by an affine function of $\vartheta$, and the cone-clamp projection \eqref{cone clamp: equation} enforces the visibility constraint kinematically for all $t\ge 0$.
 
-\textit{Proof of Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ UUB inside $\boldsymbol{p}_2(t)$. From the image position kinematics \eqref{s dot: equation}, the lateral component of $\dot{\boldsymbol{s}}_\text{e}$ equals the image-point error time derivative $\dot{\hat{\boldsymbol{r}}}_\text{e}=\boldsymbol{\varphi}_\text{max}\odot\dot{\bar{\boldsymbol{r}}}_\text{e}$ (since $\,^\mathcal{V}\hat{\boldsymbol{r}}=\boldsymbol{\varphi}_\text{max}\odot\bar{\boldsymbol{r}}_\text{e}$, with $\odot$ componentwise multiplication). Equating with the Virtual Image Point PID law \eqref{s_e_dot_d: equation} and differentiating once more, then substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ to expose the residual driver, yields the horizontal-axis closed loop
+\textit{Proof of Corollary~1.} Theorem~1 renders $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ UUB inside $\boldsymbol{p}_2(t)$. From the image position kinematics \eqref{s dot: equation}, the lateral component of $\dot{\boldsymbol{s}}_\text{e}$ equals the image-point error time derivative $\dot{\hat{\boldsymbol{r}}}_\text{e}=\boldsymbol{\varphi}_\text{max}\odot\dot{\bar{\boldsymbol{r}}}_\text{e}$ (since $\,^\mathcal{V}\hat{\boldsymbol{r}}=\boldsymbol{\varphi}_\text{max}\odot\bar{\boldsymbol{r}}_\text{e}$, with $\odot$ componentwise multiplication). Equating with the Image Point PID law \eqref{s_e_dot_d: equation} and differentiating once more, then substituting $\boldsymbol{h}=\boldsymbol{h}_\text{d}+\boldsymbol{h}_\text{e}$ to expose the residual driver, yields the horizontal-axis closed loop
 \begin{equation*}
     \big(\text{diag}(\boldsymbol{\varphi}_\text{max})+K_{rd}\big)\ddot{\bar{\boldsymbol{r}}}_\text{e} + K_{rp}\dot{\bar{\boldsymbol{r}}}_\text{e} + K_{ri}\bar{\boldsymbol{r}}_\text{e} = \boldsymbol{\delta}_\text{e}(\boldsymbol{h}_\text{e},\boldsymbol{s}),
 \end{equation*}
@@ -566,8 +566,8 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
     \toprule
         \textbf{Symbol} & \textbf{Value} & \textbf{Role}\\
     \midrule
-        \multicolumn{3}{l}{\textit{Virtual Image Point PID}} \\
-        $K_{rp}$ & $\text{diag}([9.0,9.0])$ & Proportional gain on virtual-image-point error \\
+        \multicolumn{3}{l}{\textit{Image Point PID}} \\
+        $K_{rp}$ & $\text{diag}([9.0,9.0])$ & Proportional gain on image-point error \\
         $K_{ri}$ & $\text{diag}([0.1,0.1])$ & Integral gain \\
         $K_{rd}$ & $\text{diag}([1.4375,1.4375])$ & Derivative gain \\
         $h_\text{rd}$ & $-0.42$~s$^{-1}$ & Constant desired descent optical flow \\
@@ -604,7 +604,7 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
     \end{tabular}
 \end{table}
 
-\subsubsection{Virtual Image Point PID gains $(K_{rp}, K_{ri}, K_{rd}, h_\text{rd})$} The proportional gain $K_{rp}$ sets the lateral chase rate. Increasing it shortens the centroid convergence transient at the cost of larger optical-flow demand $\boldsymbol{h}_\text{d}$. The derivative gain $K_{rd}$ damps the resulting overshoot and is sized to track $K_{rp}$ for near-critical damping on each axis. The integral gain $K_{ri}$ is kept small to suppress steady-state drift under residual disturbances without slowing the transient. The descent reference $h_\text{rd}<0$ sets the constant vertical optical flow; less-negative values yield slower descent with larger time-to-contact margin.
+\subsubsection{Image Point PID gains $(K_{rp}, K_{ri}, K_{rd}, h_\text{rd})$} The proportional gain $K_{rp}$ sets the lateral chase rate. Increasing it shortens the centroid convergence transient at the cost of larger optical-flow demand $\boldsymbol{h}_\text{d}$. The derivative gain $K_{rd}$ damps the resulting overshoot and is sized to track $K_{rp}$ for near-critical damping on each axis. The integral gain $K_{ri}$ is kept small to suppress steady-state drift under residual disturbances without slowing the transient. The descent reference $h_\text{rd}<0$ sets the constant vertical optical flow; less-negative values yield slower descent with larger time-to-contact margin.
 
 \subsubsection{Optical-Flow Funnel $(\Xi_2, \boldsymbol{p}_{2_0}, \boldsymbol{p}_{2_\infty}, \epsilon_S)$} The decay rate $\Xi_2$ governs the time scale on which the funnel tightens from $\boldsymbol{p}_{2_0}$ to $\boldsymbol{p}_{2_\infty}$. Tightening the funnel (smaller $\boldsymbol{p}_{2_\infty}$ or larger $\Xi_2$) sharpens the closed-loop optical-flow regulation but raises the demanded control effort and the activation rate of the funnel-saturation guard $\epsilon_S$. The initial half-width $\boldsymbol{p}_{2_0}$ must satisfy $|\boldsymbol{h}_\text{e}(0)|<\boldsymbol{p}_{2_0}$ for Theorem~1 to hold.
 
@@ -752,7 +752,7 @@ The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run o
     \label{funnel internals: figure}
 \end{figure*}
 
-The right three panels of Fig.~\ref{funnel internals: figure} expose three distinct behaviors of $\boldsymbol{h}_\text{e}(t)$ that originate from the controller design and the trajectory geometry. (i)~\emph{Initial transient}: $\boldsymbol{h}_\text{e}(0)\approx -\boldsymbol{h}_\text{d}(0)$ on the lateral axes, since $\boldsymbol{h}(0)\approx\boldsymbol{0}$ (UAV at rest) while the Virtual Image Point PID demands a large desired flow to correct the IC$_2$ image-plane displacement. (ii)~\emph{Lateral asymmetry}: the $x$-axis peak $|h_{\text{e},x}|\approx 4.06$ exceeds the $y$-axis peak $\approx 3.08$ because Case~3 has a sinusoidal $x$-component but a linear-ramp $y$-component, requiring continuous oscillatory chase on $x$. (iii)~\emph{Vertical positivity}: $h_{\text{e},z}(t)>0$ throughout, since the descent reference $h_{\text{d},z}=h_\text{rd}=-0.42$ is a constant negative value and $h_z$ approaches it from above. The persistent positive residual reflects steady-state disturbance absorption by the leakage-type adaptive gain (Remark~3). Across all three axes $\max_k|h_{\text{e},k}|/p_{2,k}\approx 0.28$, well below the $1-\epsilon_S=0.95$ funnel-saturation threshold of Remark~5, so the funnel-saturation guard stays dormant on this run.
+The right three panels of Fig.~\ref{funnel internals: figure} expose three distinct behaviors of $\boldsymbol{h}_\text{e}(t)$ that originate from the controller design and the trajectory geometry. (i)~\emph{Initial transient}: $\boldsymbol{h}_\text{e}(0)\approx -\boldsymbol{h}_\text{d}(0)$ on the lateral axes, since $\boldsymbol{h}(0)\approx\boldsymbol{0}$ (UAV at rest) while the Image Point PID demands a large desired flow to correct the IC$_2$ image-plane displacement. (ii)~\emph{Lateral asymmetry}: the $x$-axis peak $|h_{\text{e},x}|\approx 4.06$ exceeds the $y$-axis peak $\approx 3.08$ because Case~3 has a sinusoidal $x$-component but a linear-ramp $y$-component, requiring continuous oscillatory chase on $x$. (iii)~\emph{Vertical positivity}: $h_{\text{e},z}(t)>0$ throughout, since the descent reference $h_{\text{d},z}=h_\text{rd}=-0.42$ is a constant negative value and $h_z$ approaches it from above. The persistent positive residual reflects steady-state disturbance absorption by the leakage-type adaptive gain (Remark~3). Across all three axes $\max_k|h_{\text{e},k}|/p_{2,k}\approx 0.28$, well below the $1-\epsilon_S=0.95$ funnel-saturation threshold of Remark~5, so the funnel-saturation guard stays dormant on this run.
 
 \begin{figure}[!t]
 \centering
