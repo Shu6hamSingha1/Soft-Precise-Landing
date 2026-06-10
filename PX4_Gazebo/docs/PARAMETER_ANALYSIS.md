@@ -29,10 +29,10 @@ Under the honest cal the controller engages correctly; the campaign is now a hun
 | Config (n=5 IC1) | xy median | Note |
 |---|---|---|
 | KP=9, E=[2.5,2.5,0.5], P=5 ("best stack" Jun-9) | 3.80 m | superseded |
-| **K_rd=0 + gamma_s=1.0** (NC47e, baked) | **1.32 m** | 1/5 SP at **0.03 m** — the current winner |
+| **K_rd=0 + gamma_s=1.0** (NC47e, baked) | **1.32 m** | current winner on median xy — but the logged "1/5 SP at 0.03 m" is **UNVERIFIED** (no saved recording; see §4) |
 | + KAPPA0_Z=1.0 bootstrap (NC48e, baked) | 2.34 m | descent now starts in 0.4–0.9 s; 0/5 TL |
 
-**There is no validated *repeatable* SP under R3 yet.** The story is **not** "lag is the floor". Two mechanisms dominate:
+**There is no *verified* SP under R3 at all** (2026-06-10 audit): across all 101 Jun-9/10 recordings the *only* sub-10 cm rep is a frozen-GT logging artifact (marked FALSE), and the headline NC47e "SP at 0.03 m" has no saved recording behind it (§4). The story is **not** "lag is the floor". Two mechanisms dominate:
 
 1. **The κ-runaway explosion chain** (§2) — the controller-side failure, and the thing every gain bounds.
 2. **Stochastic LK/ArUco perception collapse** (§4) — the current *binding* limit. 1–2 TARGET_LOST per 5 reps even at a perfect IC; the gap between xy_min (~2 m) and xy_median (~4–6 m) is *entirely* stochastic perception, **not** gain-tunable. The next real lever is code-level (pyramidal LK), not a knob.
@@ -118,6 +118,8 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 ---
 
 ## 4. Cross-rep — what actually separates good from bad reps (R3)
+
+> **⚠️ SP-flag integrity (2026-06-10 audit).** The SoftPrecise flag can fire on a **degenerate GT**: if the logged `UAV Pose` freezes at the IC pose then resets to the origin, `xy_err`→~0 trips "precise" with no real landing. Exactly one such **false SP** exists in the saved R3 data (`Landing_Test/Wed Jun 10 01-22-38` = NC48d, marked FALSE in its `summary.tsv` + `FALSE_SP.md`). It was the **only** sub-10 cm rep across all 101 Jun-9/10 recordings → **there is no genuine SP in the saved honest-cal data**, and the NC47e "0.03 m SP" headline is unverified. Always sanity-check an SP against its trajectory (did the drone descend? is `xy_err` a physical number, not ~1e-21?).
 
 **It is not a single tunable.** The old doc's "lateral velocity at touchdown is the single 40× factor" was a cal artifact. Under R3:
 

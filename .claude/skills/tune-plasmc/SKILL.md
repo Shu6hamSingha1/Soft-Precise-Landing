@@ -127,7 +127,7 @@ CTRL_ZERO_WXY=1 BOARD_ALPHA0=1.23 BODY_YAW_SOURCE=alpha
 |---|---|---|---|
 | `K_rp` (P gain) | `diag(9, 9)` | `PLASMC_KP_{X,Y}` (direct per-axis values; defaults 9.0) | Boost >1.5× → instability cascade |
 | `K_ri` (I gain) | `diag(1, 1)` | `PLASMC_KI_{X,Y}` (direct; defaults 1.0) | 10× MATLAB's 0.1; needed for SITL drift correction |
-| `K_rd` (D gain) | **`diag(0, 0)` (BAKED 2026-06-10)** | `PLASMC_KD_{X,Y}` (direct; defaults 0.0) | **K_rd=0 + gamma_s=1.0 is the sweep winner** (1/5 SP at 0.03m, xy_med=1.32m). gamma_s=1.0 replaces D-term's damping role via fast funnel pressure. K_rd=0 alone dead-end (11.96m); K_rd=0+gamma_s=1.0 resolves the root cause. |
+| `K_rd` (D gain) | **`diag(0, 0)` (BAKED 2026-06-10)** | `PLASMC_KD_{X,Y}` (direct; defaults 0.0) | **K_rd=0 + gamma_s=1.0 is the sweep winner** (xy_med=1.32m; the logged "1/5 SP at 0.03m" is UNVERIFIED — frozen-GT artifact, no genuine R3 SP, see memory `feedback_false_sp_frozen_gt`). gamma_s=1.0 replaces D-term's damping role via fast funnel pressure. K_rd=0 alone dead-end (11.96m); K_rd=0+gamma_s=1.0 resolves the root cause. |
 | `gamma_s` | `diag(0.1, 0.1)` | `PLASMC_XIS_{X,Y}` | **Primary binding constraint (2026-06-09).** Outer funnel contraction rate. 0.1 too slow → p_s(4s)=0.837 → P-term weak → drift not arrested before 1/alt amplification. Sweep: 0.2/0.3/0.5/1.0 (in progress). |
 | `p_s_0` | `[1.2, 1.2]` | `PLASMC_PS0_{X,Y}` | Initial outer funnel half-width (normalized). Barely wider than FoV edge (1.185 on x). |
 | `p_s_inf` | `[0.1, 0.1]` | `PLASMC_PSINF_{X,Y}` | Terminal outer funnel half-width. 0.1 → |s_e_n|<0.089–0.119 rad at touchdown. Fine. |
