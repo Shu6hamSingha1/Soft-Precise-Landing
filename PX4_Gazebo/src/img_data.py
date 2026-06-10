@@ -433,6 +433,12 @@ class IMG_PROCESSOR(Thread):
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
+        # Flow-source switch (user 2026-06-10): the 6-DOF corner lstsq is ill-conditioned when only the
+        # single planar marker survives (n_flow_corners=4 → 8×6 minimal → planar translation/rotation
+        # ambiguity → spurious h up to 14 rad/s). When n_flow_corners > this, trust the corner; when ≤ it,
+        # mark the corner NOT-ok so the EKF lets the RING carry the flow. (Centroid s is separate — always
+        # corner-based via getImgFeatureParam, unaffected.) Data: n≥12 caps |h|≈2; n≤11 lets it spike.
+        self._flow_ncorn_switch = int(os.environ.get("FLOW_NCORN_SWITCH", "4"))
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
@@ -890,7 +896,9 @@ class IMG_PROCESSOR(Thread):
                 self._kf_update(V_v_scaled, self._time.perf_counter())
                 # Calibrated corner measurement this frame, for the fused KF (the raw
                 # per-frame value, NOT the KF output — avoids double filtering).
-                _corner_ok = True
+                # n>switch → trust the corner lstsq; n≤switch → ill-conditioned (single planar marker)
+                # → corner NOT-ok so the EKF's ring branch carries the flow (spurious-h fix, 2026-06-10).
+                _corner_ok = (int(len(flow_pts_1)) > self._flow_ncorn_switch)
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
                 # Corner RELIABILITY: clean ArUco -> 1.0; KLT-fallback corners are
                 # less trustworthy the deeper the LK track (corners degrading toward
