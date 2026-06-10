@@ -444,7 +444,12 @@ class IMG_PROCESSOR(Thread):
         #     the constant-velocity prediction carries h through the spike, keeping the corner's GOOD
         #     lateral h on the normal frames. Rejects the OUTLIER, not the source. Centroid s unaffected.
         self._flow_ncorn_switch = int(os.environ.get("FLOW_NCORN_SWITCH", "0"))
-        self._flow_gate = float(os.environ.get("FLOW_GATE", "50.0"))
+        # DEFAULT-OFF (1e9 → never rejects): the innovation gate REGRESSED both cells (FlowGate_EZ_IC1) —
+        # it self-defeats on a SUSTAINED spurious regime (rejecting grows P → S → gate opens → spike
+        # passes → κ-runaway, E_z=1.0 rep2 κ=4.91) AND over-rejects genuine flow → stale-h drift (E_z=0.5
+        # rep3 40.7m). Filtering the spurious h after the fact doesn't work; the root fix is keeping the
+        # lstsq over-determined (IMG_EXTRA_PTS so n_flow_corners never drops to 4). Kept env-gated.
+        self._flow_gate = float(os.environ.get("FLOW_GATE", "1e9"))
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
