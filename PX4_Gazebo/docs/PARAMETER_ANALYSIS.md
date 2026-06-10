@@ -3,7 +3,7 @@
 _Rewritten 2026-06-10 under the **honest sensor cal**. Supersedes the 2026-05-24 version (in git history),
 whose "1205 reps / SP = 0.08% / lag is the architectural floor" conclusions were **confounded** by a 2–13×
 mis-scaled calibration that ran the controller at 0.08–0.53× its design gains. Sources of truth:
-`test_data/Landing_Test/parameter_record.ods` (sheet `PX4_NewCal_Record`, trials NC1–49), `src/controller.py`,
+`test_data/Landing_Test/parameter_record.ods` (sheet `PX4_NewCal_Record`, trials NC1–55), `src/controller.py`,
 and the memory `reference-tuning-trajectory`._
 
 ---
@@ -16,7 +16,7 @@ No result is interpretable without its cal regime. The image→`[h;w]` sensor ca
 |---|---|---|
 | **R0 (broken)** | pre-June | ~2000 reps at 2–13× mis-scale → controller at 0.08–0.53× gains. **All conclusions confounded.** Only the lag *timing* (38 / 52–61 / 287 ms) survives. |
 | **R1/R2 (multisine)** | Jun 2–4 | The "28% SP @ 10 cm" headline (trial G46) lives here — now a **hypothesis**, not a result (still had the V-frame g-sign bug). |
-| **R3 (honest, 8-run)** | Jun 5–10 | `d60973a`. The **only trustworthy** campaign (NC1–49). Everything below is R3. |
+| **R3 (honest, 8-run)** | Jun 5–10 | `d60973a`. The **only trustworthy** campaign (NC1–55). Everything below is R3. |
 
 A number from one regime does **not** transfer to another. This is the single most common analysis error in this project's history (see memory `feedback_historical_cal_confound`).
 
@@ -64,6 +64,8 @@ Bounding rules that fell out of this (each verified in R3):
 - **cbf2 *masks* it** — the visibility CBF clamps the blown-up `a_xy`, so if it fires in normal ops the control law is failing, not the CBF. Keep it relaxed (`THETA_FLOOR=60`) and bound κ at the control level.
 - **Funnel width = barrier gain** (`G⁻¹ ≈ p/2`). Never widen a funnel component to "make room" for a transient — it raises that axis's gain proportionally (learned twice: Ξ₂ and p_2inf_z).
 
+> **BUT the lateral κ-runaway at touchdown is a FUNNEL BREACH that NO gain bounds (2026-06-10).** "P bounds κ cleanly" holds for *moderate* growth — it **fails at the barrier singularity**. Decomposed (P_z=8 rep3, κ_xy=7.26): at alt<0.5 m the 1/Z geometry breaches the *lateral* funnel (`|h_e/p_2|→0.99`) → ζ→5.3 → σ→3.6, G→3.1 → growth `θ·N·G·|σ|`=16.1 overwhelms leakage `N·P·κ`=0.10 by **160×** (to balance it you'd need `P_xy≈800`). So **P can't bound a breach, θ-freeze can't** (θ moderate ~37–72), **and the Singhal freeze misses it** (fires at `|h_e/p|≥1.0`; growth is at 0.9–0.99). Worse, **κ_xy is UNCAPPED** (`KAPPA_MAX=[1e6,1e6,3.0]` — only z capped, which is why κ_x hit 7.26 vs κ_z's 3.0). The fix is **convergence-ordering** — gate the descent on `|s_e_n|` so lateral centers *before* the 1/Z zone — + a κ_xy-cap backstop, NOT a gain. Same root as the close-range touchdown marker-losses (4/6 of TLs). See memory `feedback_lateral_kappa_runaway`.
+
 ---
 
 ## 3. Parameter-by-parameter (current **direct per-axis** knobs)
@@ -77,7 +79,7 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 | `K_rp` (P) | `9, 9` | `PLASMC_KP_{X,Y}` | **12→9 (baked).** KP=12 drives `h_d`→14 rad/s at `s_e_n≈0.5` → infeasible demand → funnel fills → κ explosion; also exceeds LK dynamic range at t=0. KP=9 = 52% better (3.06 vs 6.41 m). **KP≥13 dead-end.** KP×E coupled: KP=12 only safe with E_XY≤1.5 (+SEN_FUNNEL); KP=9 with E_XY≥2.5. |
 | `K_ri` (I) | `1, 1` | `PLASMC_KI_{X,Y}` | **Load-bearing for FoV retention.** 10× MATLAB's 0.1. `KI=0.35` (MATLAB parity) → 4/5 TL (less correction authority → marker drifts out). `KI≥2` → integral windup → κ-runaway returns. **Both directions dead-end; keep 1.0.** |
 | `K_rd` (D) | **`0, 0` (baked 2026-06-10)** | `PLASMC_KD_{X,Y}` | **D-term removed.** A close-range ArUco corner jump makes `dζ_s` spike (Δr≈0.57 in one 42 Hz frame → 54 rad/s²); the D-term is **99.7%** of the resulting `ds_d` spike and does **not** self-limit (P-term does). `K_rd=0` *alone* is a dead-end (11.96 m — D was load-bearing for drift arrest); the fix is `K_rd=0` **paired with** `gamma_s=1.0`. |
-| `gamma_s` (outer funnel rate) | **`1.0, 1.0` (baked)** | `PLASMC_XIS_{X,Y}` | **The 2026-06-10 winner.** Outer PPC funnel on `s_e_n` (`SEN_FUNNEL=1`, default ON). gamma_s sweep 0.1→1.0: 0.1=11.8 m (funnel too slow, drift not arrested before 1/alt amplifies it), 0.2=2.76, 0.8=2.21, **1.0=1.32 m, 1/5 SP at 0.03 m**. Fast funnel pressure replaces the D-term's damping role without its noise. `p_s_0=1.2`, `p_s_inf=0.1`. |
+| `gamma_s` (outer funnel rate) | **`1.0, 1.0` (baked)** | `PLASMC_XIS_{X,Y}` | **The 2026-06-10 winner.** Outer PPC funnel on `s_e_n` (`SEN_FUNNEL=1`, default ON). gamma_s sweep 0.1→1.0: 0.1=11.8 m (funnel too slow, drift not arrested before 1/alt amplifies it), 0.2=2.76, 0.8=2.21, **1.0=1.32 m** (the "1/5 SP at 0.03 m" here is **UNVERIFIED** — see §1/§4). Fast funnel pressure replaces the D-term's damping role without its noise. `p_s_0=1.2`, `p_s_inf=0.1`. **gamma_s >1.0 was NEVER swept** (correction 2026-06-10) — higher = faster lateral convergence; sweeping 1.2/1.4/1.6/2.0 now (NC56+, IC1). Ceiling: if it outruns the LK-limited error reduction, the *outer* funnel breaches too. |
 | `tau_ds` (LPF on `ds_d`) | `0.05 s` | `PLASMC_TAU_DS` | **Dead-end found (flag to revert to 0).** 50 ms LPF on the outer-PID output; n=5 gave 6.41 m WORSE than 0. It adds outer-PID lag that can't help once `s_e_n` is already large. |
 
 ### 3.2 Middle loop — optic-flow SMC (funnel + adaptive gain)
@@ -93,7 +95,7 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 | `N` | `0.02, 0.02, 0.02` | `PLASMC_N_{X,Y,Z}` | Adaptive growth. `N_XY=0.05` dead-end (5.87 vs 3.80 — faster κ without σ signal = noisy). `N_Z=0.05` alone dead-end. |
 | `P` (κ leakage) | **`5, 5, 5` (baked)** | `PLASMC_P_{X,Y,Z}` | **The clean κ-bounding knob** (`κ_eq ∝ 1/P`). `P_Z`: 2.5→5 tamed κ_z 39→6.5; `P_XY`: 1.5→5 dropped a_u 33 589→440. `P_XY=3` dead-end (9.75 m). |
 | `kappa_0` | `0.156, 0.156, **1.0**` | `PLASMC_KAPPA0_{X,Y,Z}` | **`KAPPA0_Z` 0.3125→1.0 baked (descent bootstrap).** With gamma_s=1.0's fast centering, the old κ_z bootstrapped too slowly → 6 m **hover**; KAPPA0_Z=1.0 starts descent in 0.4–0.9 s. (Smaller, e.g. 0.5, is *worse* for the κ_z runaway it exposed.) |
-| `kappa_max` | `1e6, 1e6, **3.0**` | `PLASMC_KAPPA_MAX_{X,Y,Z}` | **`KAPPA_MAX_Z=3.0` baked** — caps κ_z so a high-flow `θ_norm` spike can't run it away. Paired with κ-freeze on outlier-containment axes. |
+| `kappa_max` | `1e6, 1e6, **3.0**` | `PLASMC_KAPPA_MAX_{X,Y,Z}` | **`KAPPA_MAX_Z=3.0` baked** — caps κ_z so a high-flow `θ_norm` spike can't run it away. Paired with the Singhal κ-freeze on funnel-breach (`\|h_e/p\|≥1`) axes. **NOTE: κ_xy is UNCAPPED (1e6)** — *that's why* the lateral touchdown breach runs κ_x to 7.26 while κ_z stops at 3.0 (§2). A symmetric **κ_xy cap=3.0 is the backstop (B1)** for the lateral breach. |
 
 ### 3.3 Yaw SMC
 
@@ -135,7 +137,7 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 ## 5. Known dead-ends (do NOT retry without new evidence — all R3)
 
-`KI≥2` or `KI=0.35` · `KP≥13` · `KP=12 with E_XY=2.5` · `W_U_MAX>1.7` · `E_Z≥1.5` · `N_XY=0.05` · `N_Z=0.05` alone · `tau_ua=0.3` · `P_XY=3` · `TAU_DS=0.05` · `K_rd=0` alone (needs gamma_s=1.0) · `gamma_s=0.1` · `KR_YAW≠2.0` · `YAW_OMEGA=1.0` · `YAW_GAMMA=1.0` · RHOFOVINF/THETACAP terminal sweeps (frontier is mapped) · `MC_*RATE_P>1.0` via MAVSDK (preflight fail) · enlarging the marker (FoV-match constraint) · sensor-cal refresh via `aggregate_calibration.py` (7–10× wrong).
+`KI≥2` or `KI=0.35` · `KP≥13` · `KP=12 with E_XY=2.5` · `W_U_MAX>1.7` · `E_Z≥1.5` · `N_XY=0.05` · `N_Z=0.05` alone · `tau_ua=0.3` · `P_XY=3` · `TAU_DS=0.05` · `K_rd=0` alone (needs gamma_s=1.0) · `gamma_s=0.1` · `KR_YAW≠2.0` · `YAW_OMEGA=1.0` · `YAW_GAMMA=1.0` · RHOFOVINF/THETACAP terminal sweeps (frontier is mapped) · `MC_*RATE_P>1.0` via MAVSDK (preflight fail) · enlarging the marker (FoV-match constraint) · sensor-cal refresh via `aggregate_calibration.py` (7–10× wrong) · **image-rate-`dw` HOLD rewrite** (poisons the κ-integrator → 3/5 runaways; the *no-hold* cleaner-dw is BAKED, commit 85e1011) · **sustained-θ κ-freeze** (mis-targeted — κ ratchets at moderate θ, not the spikes) · **`E_z=0.5 + P_z=8`** (NC55: the touchdown runaway is LATERAL, P_z is z-only — §2).
 
 ---
 
@@ -143,17 +145,17 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 **Baked R3 defaults:** `K_rp=9, K_ri=1, K_rd=0, gamma_s=1.0, P=5/5/5, E=1.5/1.5/1.0, Γ=0.4375/1.0/0.75, Ω=0.05/0.05/0.025, N=0.02, KAPPA0=0.156/0.156/1.0, KAPPA_MAX=·/·/3.0, FLOOR=60, cbf2, SEN_FUNNEL=1, W_U_MAX=1.0, BODY_YAW_SOURCE=alpha, KR_YAW=2, YAW_PSID_RATE=1.0`.
 
-**All gain-side levers are exhausted under R3.** Open problems, in priority:
-1. **Code-level perception robustness** — pyramidal LK levels 2→3 in `getLKFlowAngVel` to lift the ~2 m/s dynamic-range ceiling (the binding stochastic-TL failure). This is the next real lever, not a knob.
-2. **IC-rig compass-drift fix** — servo *true* (Gazebo) yaw to null EKF drift so IC2-5 descents start aligned (the yaw-runaway cause; controller untouched).
-3. **IC1 n≥5 validation of the KLT-bounds fix** (NC49, pending), then the **IC2-5 gate**.
-4. Revert `TAU_DS`→0 (found worse than the baked 0.05).
+**Gain-side levers are MOSTLY exhausted — but `gamma_s>1.0` (outer-funnel rate) + `KP=12` (E=1.5 + SEN_FUNNEL; record shows 3.20 m) were never swept** (correction 2026-06-10; sweeping now, NC56+). The binding limit underneath is still the LK dynamic range. Open problems, in priority:
+1. **Lateral convergence-ordering** — gate the descent on `\|s_e_n\|` (center before the 1/Z zone) + a κ_xy cap, to bound the **touchdown funnel breach (§2)** that no gain fixes. This is the principled fix for the lateral κ-runaway.
+2. **Code-level perception robustness** — pyramidal LK levels 2→3 in `getLKFlowAngVel` to lift the ~2 m/s dynamic-range ceiling (the binding stochastic-TL failure + the close-range touchdown marker-loss = 4/6 of TLs). The ultimate enabler.
+3. **IC-rig compass-drift fix** — servo *true* (Gazebo) yaw to null EKF drift so IC2-5 descents start aligned (the yaw-runaway cause; controller untouched).
+4. **Status:** NC49 KLT-bounds IC1 n=5 **DONE** (2 TL + 1 hover, not clean); descent-hover thread **closed** (cleaner-dw baked; E_z=0.5 / P_z=8 / θ-freeze / dw-rewrite all dead-ends). **IC2-5 gate only once IC1 is clean** (user directive). Revert `TAU_DS`→0 (worse than baked 0.05).
 
 ---
 
 ## 7. Data sources
 
-- `test_data/Landing_Test/parameter_record.ods` — `PX4_NewCal_Record` (NC1–49, R3) is canonical; each row now carries its `Bundle`/`Timestamp` provenance. `PX4_Gain_Record` (G1–G60) is the R1/R2 history.
+- `test_data/Landing_Test/parameter_record.ods` — `PX4_NewCal_Record` (NC1–55, R3) is canonical; each row now carries its `Bundle`/`Timestamp` provenance. `PX4_Gain_Record` (G1–G60) is the R1/R2 history.
 - `test_data/<bundle>/` — named R3 bundles (incl. the Jun 9–10 `GammaS_sweep_n25`, `BootstrapFix_n21`, etc.); raw per-landing recordings under `test_data/Landing_Test/`.
 - `src/controller.py`, `src/img_data.py`, `apps/landing_test.py` — code source of truth.
 - Memory: `reference-tuning-trajectory` (the connected arc) + the `feedback_*`/`project_*` topic files it links.
