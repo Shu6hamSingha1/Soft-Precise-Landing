@@ -299,6 +299,15 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
+        # Off-screen virtual-centroid guards (2026-06-10). The controller s is the VIRTUAL
+        # (tilt-leveled) centroid; an off-screen s fabricates a wrong h_d (cross(w_i,s)) → κ-runaway.
+        # #2: _getVirtualPts perspective divide V_rays[:2]/z_v blows up at z_v→0 (gravity-horizon /
+        #     extreme tilt). Floor |z_v| (numerical), clamp output to ±(p_10+δ) (FoV + marker extent).
+        # #1: the marker-LOST centroid extrapolation (clipped ±5) ran off-screen → clip it to ±(p_10+δ)
+        #     instead (keeps the short-dropout trend, bounds the long-dropout); + keep the FC quat valid.
+        self._virt_guard   = os.environ.get("PLASMC_VIRT_GUARD", "1") == "1"
+        self._virt_zmin    = float(os.environ.get("PLASMC_VIRT_ZMIN", "0.01"))
+        self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "1") == "1"
         self._prev_aruco_pts = None       # most recent good corners (ArUco or KLT)
         self._prev_img = None             # frame those corners were measured in
 
@@ -992,6 +1001,21 @@ class IMG_PROCESSOR(Thread):
             extrapolated_img_feature_param = np.nan_to_num(
                 np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
+            if self._feat_fov_clip:
+                # 2026-06-10: the deg-1 centroid extrapolation ran to ±5 (off-screen) during a long
+                # marker-LOST → off-screen virtual s → wrong h_d (cross(w_i,s)) → κ-runaway. Clip the
+                # CENTROID [0:2] to ±(p_10 + δ) (FoV edge + last-good marker half-extent): keeps the
+                # short-dropout trend (within the FoV) but bounds the long-dropout off-screen run.
+                p10 = self.center / self.focal
+                try:
+                    _held = np.asarray(self._feature_pts[-1])
+                    _held = _held[1] if _held.ndim == 3 else _held
+                    delta = 0.5 * (_held.max(0) - _held.min(0)) / self.focal
+                except Exception:
+                    delta = np.zeros(2)
+                bound = p10 + delta
+                extrapolated_img_feature_param[0:2] = np.clip(
+                    extrapolated_img_feature_param[0:2], -bound, bound)
             # Alpha (index 3) is a WRAPPED angle — the deg-1 extrapolation + the ±5 rad
             # clip push it PAST ±π during marker loss (observed at 286°≈5 rad), handing
             # the controller a garbage phantom yaw error -> max yaw cmd -> spin-out +
@@ -1005,7 +1029,10 @@ class IMG_PROCESSOR(Thread):
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
-            self._quat_log.append(np.full(4, np.nan))
+            # Keep the quat VALID through marker-LOST — the FC attitude is genuine (2026-06-10
+            # directive: use genuine data). Only nan if the FC quat itself is missing.
+            _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+            self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
 
@@ -1420,6 +1447,19 @@ class IMG_PROCESSOR(Thread):
 
         # Reproject onto V's image plane (perspective divide by depth-in-V).
         z_v = V_rays[:, 2]
+        if self._virt_guard:
+            # z_v = ray·(world-down) = cos(angle off gravity). z_v→0 at the gravity-horizon
+            # (extreme tilt + edge feature) blows the divide off-screen → off-screen virtual s →
+            # wrong h_d → κ-runaway. Floor |z_v| (numerical only, faithful geometry), then clamp the
+            # output to ±(p_10 + δ): the centroid of a still-partially-visible marker is within the
+            # FoV edge + half the marker's apparent extent; beyond that the marker is truly gone.
+            zf = np.where(np.abs(z_v) < self._virt_zmin,
+                          np.where(z_v < 0, -self._virt_zmin, self._virt_zmin), z_v)
+            virt = np.column_stack([V_rays[:, 0] / zf, V_rays[:, 1] / zf])
+            p10 = self.center / self.focal
+            delta = 0.5 * (pts.max(0) - pts.min(0)) / self.focal      # actual marker half-extent (norm)
+            bound = p10 + delta
+            return np.clip(virt, -bound, bound)
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
     
     def _showOptFlow(self, img, C_pts, V_nP_norm):
