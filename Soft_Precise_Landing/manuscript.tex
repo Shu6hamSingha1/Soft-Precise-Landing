@@ -124,35 +124,26 @@ To address these limitations, this paper proposes Visual Dual-Funnel Adaptive Sl
 \end{enumerate}
 The remainder of this paper is organized as follows. Section~II presents the problem formulation and image parameter kinematics. Section~III details the control design and stability analysis. Section~IV provides the simulation and comparison results. Section~V concludes the paper.
 
-% TODO: rewrite this comparison table from scratch based on the new introduction —
-% columns should reflect the three gap dimensions of the gap paragraph
-% (soft touchdown / precise lateral convergence / target visibility) plus scale-free,
-% and the row set should match the works surveyed in the new SI.
 \begin{table}[!t]
 \centering
-\caption{Comparison of key features of related visual-servoing-based UAV landing strategies. \checkmark/$\times$ reflect framework intent as claimed by the original authors. Structural limitations exposed under the shared disturbance model are detailed in Section~\ref{experimentation: section}-\ref{comparison: subsec}.}
+\caption{Comparison of key features of related vision-based UAV landing strategies surveyed in this section. \checkmark/$\times$ reflect framework intent as claimed by the original authors. Structural limitations exposed under the shared disturbance model are detailed in Section~\ref{experimentation: section}-\ref{comparison: subsec}.}
 \label{tab:comparison}
-\footnotesize
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{lccccc}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccc}
 \toprule
-\textbf{Reference} & \textbf{Scale} & \textbf{Robust} & \textbf{Disturbance} & \textbf{Input} & \textbf{Stability} \\
- & \textbf{Free} & \textbf{Design} & \textbf{Handling} & \textbf{Saturation} & \textbf{Guarantee} \\
+\textbf{Reference} & \textbf{Scale} & \textbf{Own-State} & \textbf{Stability} & \textbf{Soft} & \textbf{Precise} & \textbf{Target} \\
+ & \textbf{Free} & \textbf{Free} & \textbf{Guarantee} & \textbf{Touchdown} & \textbf{Lateral} & \textbf{Visibility} \\
 \midrule
-\cite{jabbari2014}            & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
-\cite{lee2012}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{xie2016}                & $\times$ & $\times$    & $\times$    & \checkmark  & \checkmark  \\
-\cite{xie2016_2}              & $\times$ & $\times$    & \checkmark  & $\times$    & \checkmark  \\
-\cite{xie2020}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{salehi2021}             & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{paris2020}              & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{cho2022}                & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
-\cite{lin2022}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{lin2023}               & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\cite{bouazza2025}            & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
-\cite{kamath2026}             & $\times$ & \checkmark  & \checkmark  & \checkmark  & $\times$    \\
-\cite{zhang2026}              & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
-\textbf{Proposed}            & \checkmark & \checkmark & \checkmark  & \checkmark  & \checkmark  \\
+\cite{lin2022}     & $\times$   & $\times$   & \checkmark & $\times$   & \checkmark & $\times$ \\
+\cite{zhao2021}    & $\times$   & $\times$   & \checkmark & $\times$   & \checkmark & $\times$ \\
+\cite{zhang2026}   & $\times$   & $\times$   & \checkmark & $\times$   & \checkmark & $\times$ \\
+\cite{angelis2026} & $\times$   & $\times$   & $\times$   & $\times$   & \checkmark & $\times$ \\
+\cite{herisse2012} & \checkmark & \checkmark & \checkmark & \checkmark & $\times$   & $\times$ \\
+\cite{ho2018}      & $\times$   & \checkmark & $\times$   & \checkmark & $\times$   & $\times$ \\
+\cite{lin2023}     & $\times$   & $\times$   & \checkmark & $\times$   & \checkmark & $\times$ \\
+\cite{cho2022}     & $\times$   & $\times$   & $\times$   & $\times$   & \checkmark & $\times$ \\
+\textbf{Proposed}  & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
 \bottomrule
 \end{tabular}
 \end{table}
