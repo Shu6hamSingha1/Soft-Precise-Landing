@@ -179,9 +179,13 @@ class IMG_PROCESSOR(Thread):
         #   minEigThreshold 1e-3 — reject corners with min spatial eigenvalue below
         #                        this; cuts off poorly-tracked points before they
         #                        feed the lstsq solve
+        # LK pyramid env-tunable (2026-06-10): maxLevel already 3 (the memory's "2→3" lever was applied);
+        # LK_MAX_LEVEL=4 + LK_WIN=31 extend the dynamic range further (track corners through larger
+        # close-range motion/blur so they don't drop out → keeps n_flow_corners up at low alt).
+        _lk_win = int(os.environ.get("LK_WIN", "21"))
         self._lk_params = dict(
-            winSize=(21, 21),
-            maxLevel=3,
+            winSize=(_lk_win, _lk_win),
+            maxLevel=int(os.environ.get("LK_MAX_LEVEL", "3")),
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
             minEigThreshold=1e-3,
         )
