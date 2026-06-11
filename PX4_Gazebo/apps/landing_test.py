@@ -628,6 +628,15 @@ async def main(record = 'n'):
         except Exception as e:
             print(f"[landing_test] Could not compute soft-precise metrics: {e}")
 
+        # Post-touchdown video tail: with IMG_RECORD=1 the img-thread keeps writing frames
+        # while the pipeline is alive, so delaying teardown captures the settle AFTER the
+        # touchdown. Placed AFTER the soft-precise classification so the 5 s of settled
+        # hover can't alter the eval metrics. IMG_RECORD_TAIL_S to tune; only when recording.
+        if os.environ.get("IMG_RECORD", "0") == "1":
+            _tail = float(os.environ.get("IMG_RECORD_TAIL_S", "5.0"))
+            print(f"[landing_test] IMG_RECORD: capturing {_tail:.0f} s post-touchdown video tail…")
+            await asyncio.sleep(_tail)
+
         EC_node.close()
         await FC_node.close()
             
