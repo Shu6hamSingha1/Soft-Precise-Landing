@@ -421,6 +421,20 @@ async def main(record = 'n'):
         #   LANDING_STALE_COMMIT_TIME    persistence required (s) after stale fires
         STALE_COMMIT_EXTENT = float(os.environ.get("LANDING_STALE_COMMIT_EXTENT", "0.0"))
         STALE_COMMIT_TIME = float(os.environ.get("LANDING_STALE_COMMIT_TIME", "0.15"))
+        # ── Proximity commit (2026-06-11): clean-touchdown fix ──
+        # At deck height (alt ≲ 0.1 m) 1/Z amplifies the residual lateral error into violent
+        # tilt+thrust bursts (a_u_xy 22-71, B_T −13..−16) → the drone HOPS off the ground
+        # (0.05→0.26 m) instead of settling: the controller image-regulates into ground contact.
+        # Fix: when the marker extent (image-only, scale-free proximity proxy) exceeds the
+        # threshold on consecutive FRESH frames, commit to the open-loop vertical settle
+        # (zero rates + sub-hover thrust → PX4 LANDED → disarm) instead. Data (2 runs):
+        # mid-descent extent ≤72-103 px (alt>0.4 m) vs 142-166 px at the deck → threshold ~130.
+        # SUCCESS path (not target_lost).
+        #   LANDING_COMMIT_EXTENT  px threshold; 0 = OFF (default)
+        #   LANDING_COMMIT_FRAMES  consecutive fresh frames required (default 3)
+        COMMIT_EXTENT = float(os.environ.get("LANDING_COMMIT_EXTENT", "0.0"))
+        COMMIT_FRAMES = int(os.environ.get("LANDING_COMMIT_FRAMES", "3"))
+        commit_streak = 0
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
@@ -498,6 +512,19 @@ async def main(record = 'n'):
                               f"{last_fresh_extent:.0f}px >= {STALE_COMMIT_EXTENT:.0f}px "
                               f"(touchdown proximity) -> open-loop touchdown "
                               f"[terminal perception loss, not a tracking failure]")
+            # ── Proximity commitment (clean touchdown; inert when COMMIT_EXTENT=0) ──
+            if COMMIT_EXTENT > 0.0 and not in_final_descent:
+                if feature_fresh and EC_node.MARKER_EXTENT_PX >= COMMIT_EXTENT:
+                    commit_streak += 1
+                    if commit_streak >= COMMIT_FRAMES:
+                        in_final_descent = True
+                        final_descent_t0 = time_node.perf_counter()
+                        print(f"[landing_test] Proximity commitment: marker extent "
+                              f"{EC_node.MARKER_EXTENT_PX:.0f}px >= {COMMIT_EXTENT:.0f}px "
+                              f"for {commit_streak} fresh frames (deck proximity) -> "
+                              f"open-loop vertical settle [clean touchdown, SUCCESS path]")
+                else:
+                    commit_streak = 0
             if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
