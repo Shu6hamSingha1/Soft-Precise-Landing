@@ -179,13 +179,9 @@ class IMG_PROCESSOR(Thread):
         #   minEigThreshold 1e-3 — reject corners with min spatial eigenvalue below
         #                        this; cuts off poorly-tracked points before they
         #                        feed the lstsq solve
-        # LK pyramid env-tunable (2026-06-10): maxLevel already 3 (the memory's "2→3" lever was applied);
-        # LK_MAX_LEVEL=4 + LK_WIN=31 extend the dynamic range further (track corners through larger
-        # close-range motion/blur so they don't drop out → keeps n_flow_corners up at low alt).
-        _lk_win = int(os.environ.get("LK_WIN", "21"))
         self._lk_params = dict(
-            winSize=(_lk_win, _lk_win),
-            maxLevel=int(os.environ.get("LK_MAX_LEVEL", "3")),
+            winSize=(21, 21),
+            maxLevel=3,
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
             minEigThreshold=1e-3,
         )
@@ -303,23 +299,6 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
-        # Off-screen virtual-centroid guards (2026-06-10). The controller s is the VIRTUAL
-        # (tilt-leveled) centroid; an off-screen s fabricates a wrong h_d (cross(w_i,s)) → κ-runaway.
-        # #2: _getVirtualPts perspective divide V_rays[:2]/z_v blows up at z_v→0 (gravity-horizon /
-        #     extreme tilt). Floor |z_v| (numerical), clamp output to ±(p_10+δ) (FoV + marker extent).
-        # #1: the marker-LOST centroid extrapolation (clipped ±5) ran off-screen → clip it to ±(p_10+δ)
-        #     instead (keeps the short-dropout trend, bounds the long-dropout); + keep the FC quat valid.
-        # 2026-06-10 root-cause of the VirtGuard_EZ_IC1 regression (traced): the far-drift reps did NOT
-        # lose the marker (decode worked, "lost 0%"). So #2 (PLASMC_VIRT_GUARD, the GLOBAL _getVirtualPts
-        # clamp) clamped the GENUINE in-FoV centroid when the drone was off-center → bounded s_e_n + the
-        # κ-growth (θ·G·|σ|) → SMC UNDER-corrected (a_u≤8, κ≤0.2) → far drift (29/91 m). #2 over-reaches
-        # (clamps genuine features; the off-screen s was load-bearing for correction authority) →
-        # DEFAULT-OFF. #1 (PLASMC_FEAT_FOV_CLIP) only clips the marker-LOST EXTRAPOLATION — conditional,
-        # never touches a genuine detection — so it bounds only the phantom that caused the ORIGINAL
-        # κ-runaway (P_z=8 rep3, marker lost) and did NOT cause the regression → kept DEFAULT-ON.
-        self._virt_guard   = os.environ.get("PLASMC_VIRT_GUARD", "0") == "1"   # #2: global clamp — OFF (over-reaches)
-        self._virt_zmin    = float(os.environ.get("PLASMC_VIRT_ZMIN", "0.01"))
-        self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "1") == "1"  # #1: marker-LOST clip — ON (phantom only)
         self._prev_aruco_pts = None       # most recent good corners (ArUco or KLT)
         self._prev_img = None             # frame those corners were measured in
 
@@ -437,23 +416,6 @@ class IMG_PROCESSOR(Thread):
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
-        # Spurious-flow-h guards. The 6-DOF corner lstsq is ill-conditioned when only the single planar
-        # marker survives (n=4 → 8×6 minimal → planar translation/rotation ambiguity → spurious h up to
-        # 14 rad/s vs the ~2 ceiling at n≥12).
-        # (a) n-switch (DEFAULT-OFF=0): n≤switch → corner NOT-ok → ring carries h. REGRESSED the baked
-        #     E_z=1.0 (0→4 TL, FlowSwitch_EZ_IC1): the ring has ~0 LATERAL info (divergence/vertical) →
-        #     routing h there gives h_xy≈0 → under-correction → drift. The ring is the wrong fallback.
-        # (b) EKF innovation gate (FLOW_GATE, the KEEPER): reject the corner update when its Mahalanobis
-        #     innovation d²=yᵀS⁻¹y exceeds the gate (the spike → huge d² vs the ~constant prediction) →
-        #     the constant-velocity prediction carries h through the spike, keeping the corner's GOOD
-        #     lateral h on the normal frames. Rejects the OUTLIER, not the source. Centroid s unaffected.
-        self._flow_ncorn_switch = int(os.environ.get("FLOW_NCORN_SWITCH", "0"))
-        # DEFAULT-OFF (1e9 → never rejects): the innovation gate REGRESSED both cells (FlowGate_EZ_IC1) —
-        # it self-defeats on a SUSTAINED spurious regime (rejecting grows P → S → gate opens → spike
-        # passes → κ-runaway, E_z=1.0 rep2 κ=4.91) AND over-rejects genuine flow → stale-h drift (E_z=0.5
-        # rep3 40.7m). Filtering the spurious h after the fact doesn't work; the root fix is keeping the
-        # lstsq over-determined (IMG_EXTRA_PTS so n_flow_corners never drops to 4). Kept env-gated.
-        self._flow_gate = float(os.environ.get("FLOW_GATE", "1e9"))
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
@@ -524,14 +486,20 @@ class IMG_PROCESSOR(Thread):
                         if cv2.waitKey(1) == 27:
                             self.close()
 
-                    # Uncomment the following code to record video/images
+                    # IMG_RECORD=1 → save the descent video.
                     if self.RECORD and self.CONTROLLER_READY:
                         if self._video is None:
-                            # Below VideoWriter object will store video in 'timestamp.avi' file. 
                             self.timestamp = time.ctime().replace(':', '-')
-                            self._video = cv2.VideoWriter(f'/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/{self.timestamp}.mp4',  
-                                    cv2.VideoWriter_fourcc(*'mp4v'), 
-                                    self._capRate, self._resolution)
+                            _frame = images[1]
+                            # cv2.VideoWriter frameSize is (WIDTH, HEIGHT); _resolution is (H, W) —
+                            # use the actual frame dims so write() doesn't silently no-op. isColor must
+                            # match the frame (down-cam is mono → isColor=False), and use a valid FPS.
+                            _h, _w = _frame.shape[0], _frame.shape[1]
+                            _fps = self._capRate if (isinstance(self._capRate, (int, float)) and self._capRate > 1) else 30.0
+                            self._video = cv2.VideoWriter(
+                                f'/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/{self.timestamp}.mp4',
+                                cv2.VideoWriter_fourcc(*'mp4v'),
+                                _fps, (_w, _h), isColor=(_frame.ndim == 3))
 
                         self._video.write(images[1])
 
@@ -911,9 +879,7 @@ class IMG_PROCESSOR(Thread):
                 self._kf_update(V_v_scaled, self._time.perf_counter())
                 # Calibrated corner measurement this frame, for the fused KF (the raw
                 # per-frame value, NOT the KF output — avoids double filtering).
-                # n>switch → trust the corner lstsq; n≤switch → ill-conditioned (single planar marker)
-                # → corner NOT-ok so the EKF's ring branch carries the flow (spurious-h fix, 2026-06-10).
-                _corner_ok = (int(len(flow_pts_1)) > self._flow_ncorn_switch)
+                _corner_ok = True
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
                 # Corner RELIABILITY: clean ArUco -> 1.0; KLT-fallback corners are
                 # less trustworthy the deeper the LK track (corners degrading toward
@@ -1032,21 +998,6 @@ class IMG_PROCESSOR(Thread):
             extrapolated_img_feature_param = np.nan_to_num(
                 np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
-            if self._feat_fov_clip:
-                # 2026-06-10: the deg-1 centroid extrapolation ran to ±5 (off-screen) during a long
-                # marker-LOST → off-screen virtual s → wrong h_d (cross(w_i,s)) → κ-runaway. Clip the
-                # CENTROID [0:2] to ±(p_10 + δ) (FoV edge + last-good marker half-extent): keeps the
-                # short-dropout trend (within the FoV) but bounds the long-dropout off-screen run.
-                p10 = self.center / self.focal
-                try:
-                    _held = np.asarray(self._feature_pts[-1])
-                    _held = _held[1] if _held.ndim == 3 else _held
-                    delta = 0.5 * (_held.max(0) - _held.min(0)) / self.focal
-                except Exception:
-                    delta = np.zeros(2)
-                bound = p10 + delta
-                extrapolated_img_feature_param[0:2] = np.clip(
-                    extrapolated_img_feature_param[0:2], -bound, bound)
             # Alpha (index 3) is a WRAPPED angle — the deg-1 extrapolation + the ±5 rad
             # clip push it PAST ±π during marker loss (observed at 286°≈5 rad), handing
             # the controller a garbage phantom yaw error -> max yaw cmd -> spin-out +
@@ -1060,10 +1011,7 @@ class IMG_PROCESSOR(Thread):
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
-            # Keep the quat VALID through marker-LOST — the FC attitude is genuine (2026-06-10
-            # directive: use genuine data). Only nan if the FC quat itself is missing.
-            _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
-            self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
+            self._quat_log.append(np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
 
@@ -1208,14 +1156,7 @@ class IMG_PROCESSOR(Thread):
 
         if corner_ok:
             R_c = self._R_corner / max(corner_conf, 0.02)   # low conf -> high R -> ring carries
-            # Innovation gate (2026-06-10): reject the corner update when its Mahalanobis innovation
-            # exceeds FLOW_GATE. An ill-conditioned lstsq spike (h up to 14 vs the ~constant prediction)
-            # → huge d² → rejected → the prediction carries h through the spike, while normal frames
-            # (good lateral h) pass. Rejects the OUTLIER, not the source (ring has ~0 lateral).
-            _y = corner_cal - self._H_corner @ x
-            _S = self._H_corner @ P @ self._H_corner.T + R_c
-            if float(_y @ np.linalg.solve(_S, _y)) <= self._flow_gate:
-                x, P = _update(x, P, corner_cal, self._H_corner, R_c)
+            x, P = _update(x, P, corner_cal, self._H_corner, R_c)
         if ring_ok:
             x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
         self._ekf_x, self._ekf_P = x, P
@@ -1485,19 +1426,6 @@ class IMG_PROCESSOR(Thread):
 
         # Reproject onto V's image plane (perspective divide by depth-in-V).
         z_v = V_rays[:, 2]
-        if self._virt_guard:
-            # z_v = ray·(world-down) = cos(angle off gravity). z_v→0 at the gravity-horizon
-            # (extreme tilt + edge feature) blows the divide off-screen → off-screen virtual s →
-            # wrong h_d → κ-runaway. Floor |z_v| (numerical only, faithful geometry), then clamp the
-            # output to ±(p_10 + δ): the centroid of a still-partially-visible marker is within the
-            # FoV edge + half the marker's apparent extent; beyond that the marker is truly gone.
-            zf = np.where(np.abs(z_v) < self._virt_zmin,
-                          np.where(z_v < 0, -self._virt_zmin, self._virt_zmin), z_v)
-            virt = np.column_stack([V_rays[:, 0] / zf, V_rays[:, 1] / zf])
-            p10 = self.center / self.focal
-            delta = 0.5 * (pts.max(0) - pts.min(0)) / self.focal      # actual marker half-extent (norm)
-            bound = p10 + delta
-            return np.clip(virt, -bound, bound)
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
     
     def _showOptFlow(self, img, C_pts, V_nP_norm):
