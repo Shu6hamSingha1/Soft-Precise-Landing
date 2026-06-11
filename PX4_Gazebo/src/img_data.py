@@ -415,12 +415,14 @@ class IMG_PROCESSOR(Thread):
         _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
-        # z-axis ring-weighted loom PROTOTYPE (2026-06-11): below ~0.5 m the corner loom over-reports
-        # ~4× (noisy/spiky) → z-SMC over-brakes → balloon, while the actual descent is ~0.1 m/s. The ring
-        # divergence is the cleaner terminal loom (planar-observable). When n_flow_corners <= this, ignore
-        # the corner LOOM (h_tr z) in the fusion so the ring carries the vertical descent; keep the corner
-        # for LATERAL (ring has ~0 lateral). 0 = OFF (baseline). Set RING_LOOM_NCORN=12 to enable.
-        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "0"))
+        # z-axis ring-weighted loom (2026-06-11, BAKED default 12 — user decision): below ~0.5 m the
+        # corner loom over-reports ~4× (noisy/spiky) → z-SMC over-brakes → balloon, while the actual
+        # descent is ~0.1 m/s. The ring divergence is the cleaner terminal loom (planar-observable).
+        # When n_flow_corners <= this, ignore the corner LOOM (h_tr z) in the fusion so the ring carries
+        # the vertical descent; the corner keeps LATERAL (ring has ~0 lateral). Evidence: single full run
+        # no-balloon xy 0.41; honest n=5 mean 12.2 w/ 2 LATERAL fly-aways (vertical fix can't touch those)
+        # + 2 clean touchdowns (0.24/0.44 m/s). Set RING_LOOM_NCORN=0 to disable (baseline corner loom).
+        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "12"))
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
