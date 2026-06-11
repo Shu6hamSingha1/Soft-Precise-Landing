@@ -320,6 +320,19 @@ class Controller(Thread):
             pass
         return 0.0
 
+    @property
+    def LATERAL_ERR_N(self):
+        """|s_e_n| — norm of the latest normalized lateral image error (scale-free,
+        image-only). Used by landing_test's proximity commitment to require the drone
+        be CENTERED (not just close) before the open-loop touchdown handoff. Returns
+        inf when no error has been computed yet (blocks the commit)."""
+        try:
+            if len(self._s_e_n) > 0:
+                return float(np.linalg.norm(self._s_e_n[-1]))
+        except (IndexError, AttributeError, ValueError, TypeError):
+            pass
+        return float('inf')
+
     def _initialize_controller(self):
         # Attitude state
         self._quat = []

@@ -432,8 +432,13 @@ async def main(record = 'n'):
         # SUCCESS path (not target_lost).
         #   LANDING_COMMIT_EXTENT  px threshold; 0 = OFF (default)
         #   LANDING_COMMIT_FRAMES  consecutive fresh frames required (default 3)
+        #   LANDING_COMMIT_SEN     max |s_e_n| (centered gate): commit only when close
+        #                          AND centered — an extent threshold alone fired at
+        #                          ~0.5 m while 0.72 m off-center (open-loop from there
+        #                          → precision loss). Image-only, scale-free.
         COMMIT_EXTENT = float(os.environ.get("LANDING_COMMIT_EXTENT", "0.0"))
         COMMIT_FRAMES = int(os.environ.get("LANDING_COMMIT_FRAMES", "3"))
+        COMMIT_SEN = float(os.environ.get("LANDING_COMMIT_SEN", "0.35"))
         commit_streak = 0
         in_final_descent = False
         final_descent_t0 = None
@@ -514,14 +519,16 @@ async def main(record = 'n'):
                               f"[terminal perception loss, not a tracking failure]")
             # ── Proximity commitment (clean touchdown; inert when COMMIT_EXTENT=0) ──
             if COMMIT_EXTENT > 0.0 and not in_final_descent:
-                if feature_fresh and EC_node.MARKER_EXTENT_PX >= COMMIT_EXTENT:
+                if (feature_fresh and EC_node.MARKER_EXTENT_PX >= COMMIT_EXTENT
+                        and EC_node.LATERAL_ERR_N <= COMMIT_SEN):
                     commit_streak += 1
                     if commit_streak >= COMMIT_FRAMES:
                         in_final_descent = True
                         final_descent_t0 = time_node.perf_counter()
                         print(f"[landing_test] Proximity commitment: marker extent "
                               f"{EC_node.MARKER_EXTENT_PX:.0f}px >= {COMMIT_EXTENT:.0f}px "
-                              f"for {commit_streak} fresh frames (deck proximity) -> "
+                              f"AND centered (|s_e_n|={EC_node.LATERAL_ERR_N:.2f} <= "
+                              f"{COMMIT_SEN:.2f}) for {commit_streak} fresh frames -> "
                               f"open-loop vertical settle [clean touchdown, SUCCESS path]")
                 else:
                     commit_streak = 0
