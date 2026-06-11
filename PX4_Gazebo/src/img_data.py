@@ -643,6 +643,7 @@ class IMG_PROCESSOR(Thread):
         # The EKF scales corner R by 1/conf, so low conf hands the flow to the ring.
         # Image-based only (no altitude) -> scale-free compliant.
         _corner_ok = False; _corner_cal = None; _corner_conf = 1.0
+        _n_corn = 0   # fresh-corner count this frame (0 on dropout/extrapolated frames)
 
         # === Marker corner acquisition (ArUco primary, KLT fallback) ===
         # When ArUco detection fails on the current frame, fall back to LK
@@ -886,6 +887,7 @@ class IMG_PROCESSOR(Thread):
                 # Calibrated corner measurement this frame, for the fused KF (the raw
                 # per-frame value, NOT the KF output — avoids double filtering).
                 _corner_ok = True
+                _n_corn = int(len(flow_pts_1))
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
                 # Corner RELIABILITY: clean ArUco -> 1.0; KLT-fallback corners are
                 # less trustworthy the deeper the LK track (corners degrading toward
@@ -970,7 +972,7 @@ class IMG_PROCESSOR(Thread):
                 _ring_cal = self._sensor_cal_ring @ _vvr
                 self._ekf_fuse_step(_corner_cal, _corner_ok, _corner_conf,
                                     _ring_cal, _ring_ok, self._time.perf_counter(),
-                                    n_corn=int(len(flow_pts_1)))
+                                    n_corn=_n_corn)
                 self._opt_flow_fused_log.append(
                     np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]]) if self._ekf_init else np.zeros(6))
                 self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
