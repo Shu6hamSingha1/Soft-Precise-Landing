@@ -340,8 +340,14 @@ class IMG_PROCESSOR(Thread):
         # consecutive genuine detections (hysteresis) so single glimpses can't reset an
         # effectively-lost stream.
         self._stale_win   = int(os.environ.get("IMG_STALE_WIN", "40"))     # frames (~1 s @ 42 Hz)
-        self._stale_frac  = float(os.environ.get("IMG_STALE_FRAC", "0.5")) # miss fraction to latch
-        self._stale_clear = int(os.environ.get("IMG_STALE_CLEAR", "5"))    # consec hits to clear
+        # ⛔ DEFAULTS = legacy behavior (FRAC=1.0 disables the miss-frac latch; CLEAR=1 restores the
+        # 1-hit clear). The duty-cycle config (FRAC=0.5, CLEAR=5) REGRESSED at n=5 (DutyStale_IC1:
+        # mean 10.9, 3 TL, worst 23 m): it correctly latched + tagged the terminal losses, but the
+        # slow CLEAR turned benign mid-flight blips into permanent final-descent aborts from
+        # altitude → ballistic 21-23 m drifts. The 1-frame clear is load-bearing mid-flight; the
+        # terminal false-fresh fix needs PROXIMITY-AWARE staleness (strict only near the deck).
+        self._stale_frac  = float(os.environ.get("IMG_STALE_FRAC", "1.0")) # miss fraction to latch (1.0=off)
+        self._stale_clear = int(os.environ.get("IMG_STALE_CLEAR", "1"))    # consec hits to clear (1=legacy)
         self._hit_hist    = deque(maxlen=self._stale_win)
         self._consec_hits = 0
 
