@@ -148,7 +148,7 @@ The remainder of this paper is organized as follows. Section~\ref{background: se
 \end{table}
 
 \section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
-This section presents the rigid-body dynamics of the quadrotor, defines the scale-independent image parameters that drive the proposed VDF-ASMC, and formalizes the soft-precise landing problem in the presence of model uncertainty and exogenous perturbations.
+Consider a quadrotor UAV equipped with a downward-facing monocular camera and an IMU, tasked with landing on a moving platform that carries $N$ distinguishable visual feature points. Four coordinate frames describe the landing motion (Fig.~\ref{frames planes: figure}): the inertial frame $\mathcal{I}$ in North-East-Down coordinates, the body-fixed frame $\mathcal{B}$, the camera frame $\mathcal{C}$ rigidly mounted on $\mathcal{B}$, and the virtual camera frame $\mathcal{V}$ obtained by de-rotating $\mathcal{C}$. This section presents the rigid-body dynamics of the quadrotor, defines the scale-independent image parameters that drive the proposed VDF-ASMC, and formalizes the soft-precise landing problem in the presence of model uncertainty and exogenous perturbations.
 
 \begin{figure}[!t]
 \centering
@@ -157,7 +157,7 @@ This section presents the rigid-body dynamics of the quadrotor, defines the scal
     \label{frames planes: figure}
 \end{figure}
 
-\subsection{Quadrotor Dynamics} \label{quadrotor dynamics: section}
+\subsection{System Description and Quadrotor Dynamics} \label{quadrotor dynamics: section}
 Let $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote the body-fixed frame of the UAV in forward-right-down configuration, with linear and angular velocities $\,^\mathcal{B}\boldsymbol{v}_\text{b}$ and $\,^\mathcal{B}\boldsymbol{\omega}_\text{b}$. From the Newton--Euler formulation, the flight dynamics read
 \begin{equation}
 \label{quadrotor dynamics: equation}
@@ -170,19 +170,22 @@ Let $\mathcal{B}=\{O_{\text{b}},X_{\text{b}},Y_{\text{b}},Z_{\text{b}}\}$ denote
 Here $m$ is the body mass, $J$ is the body inertia matrix, $\,^\mathcal{B} \boldsymbol{F}_u = [0,0,-\,^\mathcal{B} T_u]^\top$ with $\,^\mathcal{B} T_u\ge 0$ the rotor thrust magnitude along $-Z_\text{b}$, $\,^\mathcal{B} \boldsymbol{\tau}_u$ is the control torque, $\,^\mathcal{B} \boldsymbol{F}_\text{g}$ is the gravitational force, and $\,^\mathcal{B} \boldsymbol{F}_\text{d},\,^\mathcal{B} \boldsymbol{\tau}_\text{d}$ are the unknown bounded body-frame disturbance force and torque introduced in Section~\ref{background: section}-\ref{problem statement: section}. The combined thrust-torque actuation is $\boldsymbol{u}=[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top\in\mathbb{R}^4$.
 
 \subsection{Image Parameters} \label{image parameters: section}
-In place of the inertial pose of \eqref{quadrotor dynamics: equation}, VDF-ASMC drives the control loop from three scale-independent image parameters computed from the target image as shown in Fig.~\ref{block diagram: figure}. The three image parameters are the image position, the image orientation, and the optical flow, each defined below. The target is observed by a downward-facing monocular camera whose optical axis is aligned with $Z_\text{b}$. Consider the camera frame $\mathcal{C}=\{O_{\text{c}},X_{\text{c}},Y_{\text{c}},Z_{\text{c}}\}$ rigidly attached to the camera (Fig.~\ref{frames planes: figure}), with $X_{\text{c}}$ and $Y_{\text{c}}$ aligned with the image horizontal and vertical directions and $Z_{\text{c}}$ along the optical axis. Under the standard pinhole camera model~\cite{chaumette2006}, an image feature point on the image plane is
+In place of the inertial pose of \eqref{quadrotor dynamics: equation}, VDF-ASMC drives the control loop from three scale-independent image parameters computed from the target image as shown in Fig.~\ref{block diagram: figure}. The three image parameters are the optical flow, the image position, and the image orientation. The camera geometry underlying all three parameters is presented first.
+
+\subsubsection{Virtual Camera Abstraction} \label{virtual camera: section}
+The downward-facing camera observes the target with its optical axis aligned with $Z_\text{b}$. Consider the camera frame $\mathcal{C}=\{O_{\text{c}},X_{\text{c}},Y_{\text{c}},Z_{\text{c}}\}$ rigidly attached to the camera (Fig.~\ref{frames planes: figure}), with $X_{\text{c}}$ and $Y_{\text{c}}$ aligned with the image horizontal and vertical directions and $Z_{\text{c}}$ along the optical axis. Under the standard pinhole camera model~\cite{chaumette2006}, an image feature point on the image plane is
 \begin{equation}
 \label{pinhole camera model: equation}
     \,^\mathcal{C}\hat{\boldsymbol{r}}_i = \begin{bmatrix} \,^\mathcal{C}\hat{x}_i \\ \,^\mathcal{C}\hat{y}_i \end{bmatrix}
-    = \frac{1}{\,^\mathcal{C}z_i}\begin{bmatrix} \,^\mathcal{C}x_i \\ \,^\mathcal{C}y_i \end{bmatrix},\qquad i\in\{1,\ldots,N\},
+    = \frac{f}{\,^\mathcal{C}z_i}\begin{bmatrix} \,^\mathcal{C}x_i \\ \,^\mathcal{C}y_i \end{bmatrix},\qquad i\in\{1,\ldots,N\},
 \end{equation}
-i.e.\ the perspective projection of the 3-D point $\,^\mathcal{C}\boldsymbol{r}_i=[\,^\mathcal{C}x_i,\,^\mathcal{C}y_i,\,^\mathcal{C}z_i]^{\top}$. The field-of-view visibility constraint, expressed on image feature points in pixel units, reads
+i.e.\ the perspective projection, scaled by the camera focal length $f$ (in pixels), of the 3-D point $\,^\mathcal{C}\boldsymbol{r}_i=[\,^\mathcal{C}x_i,\,^\mathcal{C}y_i,\,^\mathcal{C}z_i]^{\top}$. The field-of-view visibility constraint, expressed on image feature points in pixel units, reads
 \begin{equation} \label{visibility constraint: equation}
     -\frac{\mathcal{R}}{2} \le \,^\mathcal{C}\hat{\boldsymbol{r}}_i \le \frac{\mathcal{R}}{2},\qquad \mathcal{R}=[r_h,r_w]^\top,\quad i\in\{1,\ldots,N\},
 \end{equation}
 where $\mathcal{R}$ is the camera-sensor resolution.
 
-The image feature point trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ couple UAV translation, target motion, and body roll/pitch tilt, so a controller designed directly on them would have to estimate and compensate the tilt-induced apparent motion online. The virtual-camera abstraction of~\cite{fink2017,xie2016_2} resolves this by kinematically decoupling the translational motion of the image feature points from the rotational motion of the underactuated quadrotor. The \emph{virtual camera frame} $\mathcal{V}=\{O_{\text{v}},X_{\text{v}},Y_{\text{v}},Z_{\text{v}}\}$ moves with $\mathcal{C}$ but is constrained so that its $X_{\text{v}}$--$Y_{\text{v}}$ plane remains parallel to the inertial $X_{\text{i}}$--$Y_{\text{i}}$ plane (Fig.~\ref{frames planes: figure}). The corresponding rotation un-tilts the camera by the body roll $\phi$ and pitch $\theta$,
+The image feature point trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ couple UAV translation, target motion, and body roll/pitch tilt, so a controller designed directly on them would have to estimate and compensate the tilt-induced apparent motion online. The virtual-camera abstraction of~\cite{fink2017,xie2016_2} resolves this coupling by kinematically decoupling the translational motion of the image feature points from the rotational motion of the underactuated quadrotor. The \emph{virtual camera frame} $\mathcal{V}=\{O_{\text{v}},X_{\text{v}},Y_{\text{v}},Z_{\text{v}}\}$ moves with $\mathcal{C}$ but is constrained so that its $X_{\text{v}}$--$Y_{\text{v}}$ plane remains parallel to the inertial $X_{\text{i}}$--$Y_{\text{i}}$ plane (Fig.~\ref{frames planes: figure}). The corresponding rotation un-tilts the camera by the body roll $\phi$ and pitch $\theta$,
 \begin{equation}
 \label{virtual 3D point: equation}
     \,^\mathcal{V}\boldsymbol{r}_i = \,^\mathcal{V}R_\mathcal{C}\,^\mathcal{C}\boldsymbol{r}_i, \qquad \,^\mathcal{V}R_\mathcal{C} = R_y(\theta)R_x(\phi),
@@ -190,45 +193,12 @@ The image feature point trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$ c
 and combining \eqref{virtual 3D point: equation} with the pinhole model \eqref{pinhole camera model: equation} yields the closed-form map of the $i$-th image feature point onto the virtual image plane, $\,^\mathcal{V}\hat{\boldsymbol{r}}_i=[\,^\mathcal{V}\hat{x}_i,\,^\mathcal{V}\hat{y}_i]^\top$,
 \begin{equation}
 \label{virtual feature point: equation}
-    \,^\mathcal{V}\hat{\boldsymbol{r}}_i = \frac{1}{\,^\mathcal{V}z_i}\begin{bmatrix} \,^\mathcal{V}x_i \\ \,^\mathcal{V}y_i \end{bmatrix} = \begin{bmatrix}
-        \dfrac{C_\theta\,^\mathcal{C}\hat{x}_i + S_\theta S_\phi\,^\mathcal{C}\hat{y}_i + S_\theta C_\phi}{-S_\theta\,^\mathcal{C}\hat{x}_i + C_\theta S_\phi\,^\mathcal{C}\hat{y}_i + C_\theta C_\phi} \\[4pt]
-        \dfrac{C_\theta\,^\mathcal{C}\hat{y}_i - S_\phi}{-S_\theta\,^\mathcal{C}\hat{x}_i + C_\theta S_\phi\,^\mathcal{C}\hat{y}_i + C_\theta C_\phi}
+    \,^\mathcal{V}\hat{\boldsymbol{r}}_i = \frac{f}{\,^\mathcal{V}z_i}\begin{bmatrix} \,^\mathcal{V}x_i \\ \,^\mathcal{V}y_i \end{bmatrix} = \begin{bmatrix}
+        \dfrac{f\big(C_\theta\,^\mathcal{C}\hat{x}_i + S_\theta S_\phi\,^\mathcal{C}\hat{y}_i + f S_\theta C_\phi\big)}{-S_\theta\,^\mathcal{C}\hat{x}_i + C_\theta S_\phi\,^\mathcal{C}\hat{y}_i + f C_\theta C_\phi} \\[4pt]
+        \dfrac{f\big(C_\phi\,^\mathcal{C}\hat{y}_i - f S_\phi\big)}{-S_\theta\,^\mathcal{C}\hat{x}_i + C_\theta S_\phi\,^\mathcal{C}\hat{y}_i + f C_\theta C_\phi}
     \end{bmatrix},
 \end{equation}
 with $S_x=\sin(x)$, $C_x=\cos(x)$. All three image parameters below are computed from the image feature points expressed in the virtual image plane.
-
-\subsubsection{Image Pose} \label{virtual image pose: section}
-Let $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$, $i\in\{1,\dots,N\}$ with $N\ge 3$, denote $N$ distinguishable image feature points on the camera image plane (Fig.~\ref{frames planes: figure}). De-rotated through $\,^\mathcal{V}R_\mathcal{C}$, they re-project on the virtual image plane as image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ via \eqref{virtual feature point: equation}, and their mean $\,^\mathcal{V}\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ is the image point. The homogeneous augmentation yields the \emph{image position}
-\begin{equation} \label{image position: equation}
-    \boldsymbol{s} = \begin{bmatrix}\,^\mathcal{V}\hat{\boldsymbol{r}}\\ 1\end{bmatrix} = \frac{\,^\mathcal{V}\boldsymbol{r}_\text{t}}{\,^\mathcal{V}z_\text{t}}.
-\end{equation}
-Differentiating \eqref{image position: equation} yields the image position kinematics
-\begin{equation} \label{s dot: equation}
-    \dot{\boldsymbol{s}} = \boldsymbol{h} - \boldsymbol{w}\times\boldsymbol{s} - \big[(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
-\end{equation}
-where $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$, and $\boldsymbol{h}$ and $\boldsymbol{w}$ are the translational and rotational optical flow components defined in Section~\ref{background: section}-\ref{image parameters: section}\ref{optic flow: section} below.
-
-The \emph{image orientation} $\alpha$ is extracted from the second-order centered image moments of the $N$ image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$,
-\begin{equation} \label{image orientation: equation}
-    \alpha = \tfrac12\tan^{-1}\!\big(2\mu_{11}/(\mu_{20}-\mu_{02})\big),
-\end{equation}
-with $\mu_{pq} = \sum_{i=1}^{N}(\,^\mathcal{V}\hat{x}_i - \,^\mathcal{V}\hat{x})^p(\,^\mathcal{V}\hat{y}_i - \,^\mathcal{V}\hat{y})^q$, where $\alpha$ is unwrapped to $(-\pi/2,\pi/2]$. Differentiating \eqref{image orientation: equation} by the chain rule,
-\begin{equation} \label{alpha chain: equation}
-    \dot{\alpha} = \frac{(\mu_{20}-\mu_{02})\dot{\mu}_{11} - \mu_{11}(\dot{\mu}_{20}-\dot{\mu}_{02})}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2},
-\end{equation}
-substituting the per-feature pixel-velocity Jacobian \eqref{interaction matrix: equation} into the moment time derivatives $\dot{\mu}_{11},\dot{\mu}_{20},\dot{\mu}_{02}$, and collecting the rotational terms gives $\dot{\alpha}=\boldsymbol{l}_\alpha^\top\boldsymbol{w}$ with the orientation interaction vector
-\begin{equation} \label{l alpha: equation}
-\boldsymbol{l}_\alpha = \begin{bmatrix}
-\dfrac{\splitfrac{-(\mu_{20}-\mu_{02})(2\mu_{12} + \,^\mathcal{V}\hat{y}\,\mu_{11} + \,^\mathcal{V}\hat{x}\,\mu_{02})}{+\, 2\mu_{11}(\mu_{21} + \,^\mathcal{V}\hat{x}\,\mu_{11} - \mu_{03} - \,^\mathcal{V}\hat{y}\,\mu_{02})}}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2} \\[6pt]
-\dfrac{\splitfrac{(\mu_{20}-\mu_{02})(2\mu_{21} + \,^\mathcal{V}\hat{x}\,\mu_{11} + \,^\mathcal{V}\hat{y}\,\mu_{20})}{-\, 2\mu_{11}(\mu_{30} + \,^\mathcal{V}\hat{x}\,\mu_{20} - \mu_{12} - \,^\mathcal{V}\hat{y}\,\mu_{11})}}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2} \\[6pt]
-1
-\end{bmatrix},
-\end{equation}
-with $\,^\mathcal{V}\hat{x},\,^\mathcal{V}\hat{y}$ the components of the centroid $\,^\mathcal{V}\hat{\boldsymbol{r}}$. Substituting the rotational optical flow $\boldsymbol{w} = \,^\mathcal{V}\boldsymbol{\omega}_\text{t} - \dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ of Section~\ref{background: section}-\ref{image parameters: section}\ref{optic flow: section} and using $l_{\alpha,3}=1$ isolates the body yaw rate explicitly, yielding the image orientation kinematics
-\begin{equation} \label{alpha dot: equation}
-    \dot{\alpha} = - \dot{\psi}_\text{b} + d_{\alpha},\qquad d_\alpha = \boldsymbol{l}_\alpha^\top\,^\mathcal{V}\boldsymbol{\omega}_\text{t},
-\end{equation}
-where $\dot{\psi}_\text{b}$ is the body yaw rate and $d_{\alpha}$ is the residual coupling from the unknown target rotation. Although $\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\,^\mathcal{V}\hat{\boldsymbol{r}}_i \to 0$. Hence $d_\alpha$ is treated as an unknown disturbance bounded under Assumption~1, absorbed adaptively by the yaw control design of Section~\ref{control design: section}-\ref{inner loop: section}\ref{yaw control: section}.
 
 \subsubsection{Optical Flow} \label{optic flow: section}
 The optical flow on the virtual image plane (Fig.~\ref{frames planes: figure}) decomposes into translational and rotational components,
@@ -248,7 +218,29 @@ relating the pixel-time derivative to the optical flow as $\,^\mathcal{V}\dot{\h
 \end{equation}
 where $\dot{\boldsymbol{p}}\in\mathbb{R}^{2N}$ is the stacked pixel-time-derivative vector of the measured $\,^\mathcal{V}\hat{\boldsymbol{r}}_i(t)$. The pseudo-inverse exists for $N\ge 3$ non-collinear feature points.
 
-Of the two components, only the translational optical flow $\boldsymbol{h}$ has dynamics that couple directly to the body force $\,^\mathcal{B}\boldsymbol{F}_u$ of \eqref{quadrotor dynamics: equation}. Extending the 1D vertical-flow dynamics of~\cite{singhal2025} and denoting the inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d} \triangleq (1/m)\,^\mathcal{I}R_\mathcal{B}\,^\mathcal{B}\boldsymbol{F}_u$, the optical-flow dynamics reads
+\subsubsection{Image Pose} \label{virtual image pose: section}
+The $N\ge 3$ distinguishable image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ of \eqref{pinhole camera model: equation}, de-rotated through $\,^\mathcal{V}R_\mathcal{C}$, re-project on the virtual image plane as image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ via \eqref{virtual feature point: equation} (Fig.~\ref{frames planes: figure}), and their mean $\,^\mathcal{V}\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\,^\mathcal{V}\hat{\boldsymbol{r}}_i$ is the image point. The focal-length normalization and homogeneous augmentation yield the \emph{image position}
+\begin{equation} \label{image position: equation}
+    \boldsymbol{s} = \begin{bmatrix}\,^\mathcal{V}\hat{\boldsymbol{r}}/f\\ 1\end{bmatrix} = \frac{\,^\mathcal{V}\boldsymbol{r}_\text{t}}{\,^\mathcal{V}z_\text{t}}.
+\end{equation}
+The feature points are coplanar on the landing platform, so all virtual-frame depths coincide with the target depth $\,^\mathcal{V}z_\text{t}$ when the platform is level and the second equality of \eqref{image position: equation} holds exactly. The bounded residual induced by platform tilt is absorbed into the optical-flow disturbance $\boldsymbol{d}_h$ introduced below. Differentiating \eqref{image position: equation} yields the image position kinematics
+\begin{equation} \label{s dot: equation}
+    \dot{\boldsymbol{s}} = \boldsymbol{h} - \boldsymbol{w}\times\boldsymbol{s} - \big[(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
+\end{equation}
+where $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$, and $\boldsymbol{h}$ and $\boldsymbol{w}$ are the translational and rotational optical flow components of \eqref{optic flow def: equation}.
+
+The \emph{image orientation} $\alpha$ is extracted from the second-order centered image moments of the $N$ image feature points $\,^\mathcal{V}\hat{\boldsymbol{r}}_i$,
+\begin{equation} \label{image orientation: equation}
+    \alpha = \tfrac12\tan^{-1}\!\big(2\mu_{11}/(\mu_{20}-\mu_{02})\big),
+\end{equation}
+with $\mu_{pq} = \sum_{i=1}^{N}(\,^\mathcal{V}\hat{x}_i - \,^\mathcal{V}\hat{x})^p(\,^\mathcal{V}\hat{y}_i - \,^\mathcal{V}\hat{y})^q$, where $\alpha$ is unwrapped to $(-\pi/2,\pi/2]$. Differentiating \eqref{image orientation: equation} by the chain rule and substituting the per-feature pixel-velocity Jacobian \eqref{interaction matrix: equation} into the resulting moment time derivatives gives $\dot{\alpha}=\boldsymbol{l}_\alpha^\top\boldsymbol{w}$, where the orientation interaction vector $\boldsymbol{l}_\alpha$, derived in the Appendix, is a ratio of bounded centered moments with $l_{\alpha,3}=1$. Substituting the rotational optical flow $\boldsymbol{w} = \,^\mathcal{V}\boldsymbol{\omega}_\text{t} - \dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ of \eqref{optic flow def: equation} and using $l_{\alpha,3}=1$ isolates the body yaw rate explicitly, yielding the image orientation kinematics
+\begin{equation} \label{alpha dot: equation}
+    \dot{\alpha} = - \dot{\psi}_\text{b} + d_{\alpha},\qquad d_\alpha = \boldsymbol{l}_\alpha^\top\,^\mathcal{V}\boldsymbol{\omega}_\text{t},
+\end{equation}
+where $\dot{\psi}_\text{b}$ is the body yaw rate and $d_{\alpha}$ is the residual coupling from the unknown target rotation. Although $\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\,^\mathcal{V}\hat{\boldsymbol{r}}_i \to 0$. Hence $d_\alpha$ is treated as an unknown disturbance bounded under Assumption~1, absorbed adaptively by the yaw control design of Section~\ref{control design: section}-\ref{inner loop: section}\ref{yaw control: section}.
+
+\subsubsection{Optical-Flow Dynamics} \label{optic flow dynamics: section}
+Of the two optical-flow components in \eqref{optic flow def: equation}, only the translational flow $\boldsymbol{h}$ has dynamics that couple directly to the body force $\,^\mathcal{B}\boldsymbol{F}_u$ of \eqref{quadrotor dynamics: equation}. Extending the 1D vertical-flow dynamics of~\cite{singhal2025} and denoting the inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d} \triangleq (1/m)\,^\mathcal{I}R_\mathcal{B}\,^\mathcal{B}\boldsymbol{F}_u$, the optical-flow dynamics reads
 \begin{equation} \label{h dot: equation}
     \dot{\boldsymbol{h}} = -\beta\,^\mathcal{I}R_\mathcal{V}^\top\,^\mathcal{I}\boldsymbol{a}_\text{d} + \tilde{\boldsymbol{c}}_h + \boldsymbol{d}_h,
 \end{equation}
@@ -261,20 +253,13 @@ where $\beta = 1/\,^\mathcal{V}z_\text{t}$ is the depth scale, $\,^\mathcal{I}R_
 The kinematic coupling $\tilde{\boldsymbol{c}}_h$ collects cross products of $\boldsymbol{w}$, $\dot{\boldsymbol{w}}$, $\boldsymbol{s}$, and $\boldsymbol{h}$ that are known and available for feedback linearization. The disturbance $\boldsymbol{d}_h$ aggregates the depth-scaled target inertial acceleration, the gravity and body-frame disturbance force (rotated into $\mathcal{V}$ and depth-scaled), and a Coriolis-like coupling between body angular and translational velocities, bounded as formalized in Section~\ref{background: section}-\ref{problem statement: section}.
 
 \subsection{Problem Statement} \label{problem statement: section}
-\subsubsection{Unknowns and Challenges} \label{unknowns: section}
-The image-based dynamics in \eqref{s dot: equation}--\eqref{h dot: equation} involve four physical quantities that are unknown at flight time, each raising a distinct control challenge.
+\subsubsection{Unknowns and Perturbations} \label{unknowns: section}
+The image-based dynamics in \eqref{s dot: equation}--\eqref{h dot: equation} evolve under five practical sources of uncertainty, each raising a distinct control challenge.
 \begin{enumerate}
-    \item \emph{Target depth scale.} The depth scale $\beta=1/\,^\mathcal{V}z_\text{t}$ multiplying the commanded acceleration in \eqref{h dot: equation} is unobservable from the monocular image alone. The image Jacobian inversion of \eqref{optic flow inverse: equation} cannot recover metric depth, so the controller cannot scale its acceleration command to the unknown $\beta$.
-    \item \emph{Target motion.} The target's linear and angular velocity $\,^\mathcal{V}\boldsymbol{v}_\text{t},\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ are only partially observable through the image sequence. Direct feed-forward compensation of target motion is therefore unavailable, and any residual estimation error propagates to $\boldsymbol{d}_h$ in \eqref{h dot: equation} and to $d_\alpha$ in \eqref{alpha dot: equation}.
-    \item \emph{Disturbance bounds.} The aggregate disturbances $\boldsymbol{d}_h,d_\alpha$ acting on the optical flow and image orientation are bounded but their bounds are unknown. Standard sliding-mode laws that require a known switching gain are precluded.
-    \item \emph{Actuator effectiveness.} The actuator chain introduces a multiplicative effectiveness factor from battery dynamics and additive faults from motor friction and ESC bias. The realized thrust and torque therefore differ from the commanded values, and the closed loop must reject this input-multiplier uncertainty.
-\end{enumerate}
-
-\subsubsection{Sources of Model Uncertainty and Exogenous Perturbation} \label{perturbations: section}
-\begin{enumerate}
-    \item \emph{Imperfect attitude tracking.} The body rotation deviates from the rotation needed to realize the inertial commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ in \eqref{h dot: equation}, propagating as a tracking residual into $\boldsymbol{d}_h$.
-    \item \emph{Aerodynamic perturbations near touchdown.} The body-frame disturbance force and torque $\,^\mathcal{B}\boldsymbol{F}_\text{d},\,^\mathcal{B}\boldsymbol{\tau}_\text{d}$ aggregate wind gusts, the aerodynamic ground effect~\cite{sanchez-cuevas2017} that dominates within $\sim$1~m of the landing surface, and residual unmodeled rotor dynamics. Rotated into $\mathcal{V}$, they propagate to the optical-flow disturbance $\boldsymbol{d}_h$ of \eqref{h dot: equation}.
-    \item \emph{Actuator-chain perturbations.} The thrust output of each rotor is modulated by a slowly-varying multiplicative effectiveness factor $E(t)\in(0,1]$ that depends on battery state-of-charge, while an additive uncontrollable fault component $\boldsymbol{u}_\text{f}(t)$ captures mechanical damping from motor friction and force bias from the electronic speed controller. Both propagate to the body force and torque of \eqref{quadrotor dynamics: equation} and enter $\boldsymbol{d}_h$ of \eqref{d h: equation} as a bounded, slowly-varying disturbance. The maximum rotor thrust and torque limits additionally cap the achievable body force and torque; provided $T_\text{max}\ge mg/\cos\theta_\text{cap}$, the funnel-margin cone clamp of Section~\ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section} keeps the commanded body force feasible at all times, with residual torque saturations absorbed via the attitude-tracking residual of item~1.
+    \item \emph{Unknown target depth.} The depth scale $\beta=1/\,^\mathcal{V}z_\text{t}$ multiplying the commanded acceleration in \eqref{h dot: equation} is unobservable from the monocular image, and the Jacobian inversion \eqref{optic flow inverse: equation} cannot recover metric depth. The controller therefore cannot scale its acceleration command to the unknown $\beta$, which moreover grows unbounded as the depth shrinks toward touchdown.
+    \item \emph{Unknown target motion.} The target's linear and angular velocities $\,^\mathcal{V}\boldsymbol{v}_\text{t},\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ are only partially observable from the image sequence, so direct feed-forward compensation is unavailable. The residuals enter the optical-flow disturbance $\boldsymbol{d}_h$ in \eqref{h dot: equation} and the orientation disturbance $d_\alpha$ in \eqref{alpha dot: equation}.
+    \item \emph{Aerodynamic and attitude-tracking perturbations.} The body-frame disturbance force and torque $\,^\mathcal{B}\boldsymbol{F}_\text{d},\,^\mathcal{B}\boldsymbol{\tau}_\text{d}$ aggregate wind gusts, the aerodynamic ground effect~\cite{sanchez-cuevas2017} that dominates within $\sim$1~m of the landing surface, and residual unmodeled rotor dynamics. The body rotation additionally deviates from the rotation that realizes the commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$. Rotated into $\mathcal{V}$, both effects propagate to $\boldsymbol{d}_h$. The bounds of $\boldsymbol{d}_h$ and $d_\alpha$ are unknown, so standard sliding-mode laws that require a known switching gain are precluded.
+    \item \emph{Actuator-chain uncertainty.} The thrust of each rotor is modulated by a slowly-varying multiplicative effectiveness factor $E(t)\in(0,1]$ that depends on battery state-of-charge, while an additive fault component $\boldsymbol{u}_\text{f}(t)$ captures mechanical damping from motor friction and force bias from the electronic speed controller. Both enter $\boldsymbol{d}_h$ of \eqref{d h: equation} as a bounded, slowly-varying disturbance, and the realized thrust and torque therefore differ from the commanded values. The maximum rotor thrust and torque additionally cap the achievable body force and torque; provided $T_\text{max}\ge mg/\cos\theta_\text{cap}$, the funnel-margin cone clamp of Section~\ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section} keeps the commanded body force feasible at all times, with residual torque saturations absorbed via the attitude-tracking residual of item~3.
     \item \emph{Sensor imperfections.} Pixel-level measurement noise on $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$, finite camera frame rate, and actuator zero-order-hold delay perturb the measured image parameters and the applied control input $\boldsymbol{u}$ (numerical models in Table~\ref{uav params: table}).
 \end{enumerate}
 
@@ -285,19 +270,19 @@ The closed-loop trajectory must respect two operational constraints throughout t
     \item \emph{Actuator capability.} The rotor thrust satisfies thrust positivity ($\,^\mathcal{B}T_u\ge 0$) and the body torque remains within its physical bound at all times.
 \end{enumerate}
 
-These perturbations are summarized by the following assumption used in the stability analysis (Section~\ref{control design: section}-\ref{stability: section}).
+Driven by the practical considerations above, the following assumption is now invoked for the stability analysis (Section~\ref{control design: section}-\ref{stability: section}).
 
-\textit{Assumption 1} (uncertainty bounds): The disturbances $\boldsymbol{d}_h$, $d_{\alpha}$ are uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$. The aggregate bounds $\tilde{d}\ge\|\boldsymbol{\overline{d}}\|$ and $\tilde{d}_\alpha\ge|d_\alpha|$ used in the proofs (Section~\ref{control design: section}-\ref{stability: section}) are existence-only. The finite values follow from componentwise boundedness above and need not be known to the controller.
+\textit{Assumption 1} (uncertainty bounds): The disturbances $\boldsymbol{d}_h$, $d_{\alpha}$ are uniformly bounded with unknown componentwise bound $\boldsymbol{d}_{\max}$, and $0<\beta_{\min}\le\beta\le\beta_{\max}$ with unknown $\beta_{\min},\beta_{\max}$. The aggregate bounds $\tilde{d}\ge\|\boldsymbol{\overline{d}}\|$ and $\tilde{d}_\alpha\ge|d_\alpha|$ used in the proofs (Section~\ref{control design: section}-\ref{stability: section}) exist by the componentwise boundedness above but are unknown to the controller.
 
 \subsubsection{Control Objective} \label{control objective: section}
-Under Assumption~1 and the constraints of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section}, the control problem is to design the combined thrust-torque input $\boldsymbol{u}=[\,^\mathcal{B}T_u,\,^\mathcal{B}\boldsymbol{\tau}_u^\top]^\top$ in \eqref{quadrotor dynamics: equation} such that the closed loop simultaneously achieves the following:
+The objective is to land the low-SWaP-C quadrotor of \eqref{quadrotor dynamics: equation} softly and precisely on an unpredictable moving platform. Unpredictability means that no prior knowledge of the target dynamics is available, and neither the target pose nor its derivatives can be measured or estimated in the closed loop. The available measurements are the image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ from the monocular camera and the attitude and body rates from the IMU; neither vehicle's inertial position or velocity is measured. Under Assumption~1 and the constraints of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section}, the control problem is to design the combined thrust-torque input $\boldsymbol{u}$ of \eqref{quadrotor dynamics: equation} such that the closed loop simultaneously achieves the following:
 \begin{enumerate}
     \item the image position $\boldsymbol{s}$ and image orientation $\alpha$ converge to small bounded neighborhoods of their references;
-    \item the optical flow $\boldsymbol{h}$ is regulated such that $\|\boldsymbol{v}_\text{rel}\|\to 0$ as $\,^\mathcal{V}z_\text{t}\to 0$, delivering the soft-touchdown functional requirement of Section~\ref{intro: section};
+    \item the optical flow $\boldsymbol{h}$ is regulated such that the UAV--target relative velocity satisfies $\|\,^\mathcal{I}\boldsymbol{v}_\text{t/b}\|\to 0$ as $\,^\mathcal{V}z_\text{t}\to 0$, delivering the soft-touchdown functional requirement of Section~\ref{intro: section};
     \item the target visibility constraint of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section} holds throughout the descent;
     \item the actuator capability constraint of Section~\ref{background: section}-\ref{problem statement: section}\ref{constraints: section} is respected at all times.
 \end{enumerate}
-Formally, with $\,^\mathcal{I}\boldsymbol{r}_\text{t/b}$ and $\,^\mathcal{I}\boldsymbol{v}_\text{t/b}$ the relative UAV--target position and velocity, soft-precise touchdown requires $\|\,^\mathcal{I}\boldsymbol{r}_{\text{t/b},xy}(t_\text{f})\|\le\delta_r$ and $\|\,^\mathcal{I}\boldsymbol{v}_\text{t/b}(t_\text{f})\|\le\delta_v$ at the \emph{a priori} unknown touchdown time $t_\text{f}$; the numerical thresholds $\delta_r,\delta_v$ defining soft-precise touchdown are stated in Section~\ref{experimentation: section}.
+Formally, with $\,^\mathcal{I}\boldsymbol{r}_\text{t/b}$ the relative UAV--target position, soft-precise touchdown requires $\|\,^\mathcal{I}\boldsymbol{r}_{\text{t/b},xy}(t_\text{f})\|\le\delta_r$ and $\|\,^\mathcal{I}\boldsymbol{v}_\text{t/b}(t_\text{f})\|\le\delta_v$ at the \emph{a priori} unknown touchdown time $t_\text{f}$; the numerical thresholds $\delta_r,\delta_v$ defining soft-precise touchdown are stated in Section~\ref{experimentation: section}.
 
 \section{VDF-ASMC CONTROL DESIGN} \label{control design: section}
 \begin{figure*}[hbt!]
@@ -323,7 +308,7 @@ The cascaded analysis throughout this section rests on the following standard ti
 The outer loop transforms image-parameter feedback into the commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ of \eqref{h dot: equation} through three sub-blocks: Sections~\ref{control design: section}-\ref{outer loop: section}\ref{image point control: section}, \ref{control design: section}-\ref{outer loop: section}\ref{optic flow control: section}, and \ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section}.
 
 \subsubsection{Image Point Control Design} \label{image point control: section}
-Let $\mathcal{R}=[r_h,r_w]^\top$ denote the camera-sensor resolution and $f$ the focal length (both in pixels). The camera half-FoV in tangent (feature) units is $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)\in\mathbb{R}^2_{>0}$. Define the \emph{image point error} $\hat{\boldsymbol{r}}_\text{e}$ and its \emph{normalized image point error} $\bar{\boldsymbol{r}}_\text{e}$ by
+Recall from Section~\ref{background: section}-\ref{image parameters: section} the camera-sensor resolution $\mathcal{R}$ and focal length $f$, both in pixels. The camera half-FoV in tangent units is $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)\in\mathbb{R}^2_{>0}$. Define the \emph{image point error} $\hat{\boldsymbol{r}}_\text{e}$ and its \emph{normalized image point error} $\bar{\boldsymbol{r}}_\text{e}$ by
 \begin{equation} \label{normalized error: equation}
     \bar{\boldsymbol{r}}_\text{e} = \hat{\boldsymbol{r}}_\text{e}\oslash\boldsymbol{\varphi}_\text{max},\qquad\hat{\boldsymbol{r}}_\text{e}=\,^\mathcal{V}\hat{\boldsymbol{r}}-\hat{\boldsymbol{r}}_\text{d},
 \end{equation}
@@ -969,6 +954,22 @@ VDF-ASMC delivers both the soft-precise touchdown and target visibility in close
 Across twenty-five deterministic runs covering five ICs (nominal $+$ four displaced) and five target trajectories (including two ship-deck cases), the closed-loop simulation lands in every run with worst-case horizontal error $5.71~\text{cm}$ and remains soft and precise across a $\pm 40\%$ target-velocity envelope. In a comparative benchmark against four recent baselines, VDF-ASMC is the only controller to clear the visibility, soft-touchdown, and precise-touchdown thresholds on every trajectory in the comparison study.
 
 Future work includes PX4 hardware-in-the-loop validation on the X500 platform, an analytic bound on the cone-projection residual to tighten Theorem~1's UUB bound (which currently absorbs the cone-projection residual into $\boldsymbol{d}_h$) from implicit absorption to an explicit residual, and a target-rate-adaptive funnel schedule to widen the admissible velocity band beyond the $\pm 40\%$ envelope edge. Together, the dual-funnel architecture and its layered stability certificate establish the theoretical and empirical basis for autonomous monocular soft-precise landing on moving targets.
+
+\appendix
+\section*{APPENDIX: ORIENTATION INTERACTION VECTOR}
+Differentiating the image orientation \eqref{image orientation: equation} by the chain rule,
+\begin{equation} \label{alpha chain: equation}
+    \dot{\alpha} = \frac{(\mu_{20}-\mu_{02})\dot{\mu}_{11} - \mu_{11}(\dot{\mu}_{20}-\dot{\mu}_{02})}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2},
+\end{equation}
+substituting the per-feature pixel-velocity Jacobian \eqref{interaction matrix: equation} into the moment time derivatives $\dot{\mu}_{11},\dot{\mu}_{20},\dot{\mu}_{02}$, and collecting the rotational terms gives $\dot{\alpha}=\boldsymbol{l}_\alpha^\top\boldsymbol{w}$ with the orientation interaction vector
+\begin{equation} \label{l alpha: equation}
+\boldsymbol{l}_\alpha = \begin{bmatrix}
+\dfrac{\splitfrac{-(\mu_{20}-\mu_{02})(2\mu_{12} + \,^\mathcal{V}\hat{y}\,\mu_{11} + \,^\mathcal{V}\hat{x}\,\mu_{02})}{+\, 2\mu_{11}(\mu_{21} + \,^\mathcal{V}\hat{x}\,\mu_{11} - \mu_{03} - \,^\mathcal{V}\hat{y}\,\mu_{02})}}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2} \\[6pt]
+\dfrac{\splitfrac{(\mu_{20}-\mu_{02})(2\mu_{21} + \,^\mathcal{V}\hat{x}\,\mu_{11} + \,^\mathcal{V}\hat{y}\,\mu_{20})}{-\, 2\mu_{11}(\mu_{30} + \,^\mathcal{V}\hat{x}\,\mu_{20} - \mu_{12} - \,^\mathcal{V}\hat{y}\,\mu_{11})}}{(\mu_{20}-\mu_{02})^2 + 4\mu_{11}^2} \\[6pt]
+1
+\end{bmatrix},
+\end{equation}
+with $\,^\mathcal{V}\hat{x},\,^\mathcal{V}\hat{y}$ the components of the centroid $\,^\mathcal{V}\hat{\boldsymbol{r}}$. Each component of $\boldsymbol{l}_\alpha$ is a ratio of centered image moments that remain bounded while the feature points stay inside the FoV, and $l_{\alpha,3}=1$.
 
 \bibliography{IEEEabrv, bibliography}
 
