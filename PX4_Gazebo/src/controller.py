@@ -119,10 +119,10 @@ class Controller(Thread):
         # than y) — per-axis values are how that gets compensated.
         self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "9.0")),
                               float(os.environ.get("PLASMC_KP_Y", "9.0"))])    # 12->9 (2026-06-09): K_rp=12 drives h_d to 14 rad/s at s_e_n~0.5 → infeasible demand → funnel fills → kappa explosion
-        self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "1.0")),
-                              float(os.environ.get("PLASMC_KI_Y", "1.0"))])
-        self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "0.0")),
-                              float(os.environ.get("PLASMC_KD_Y", "0.0"))])    # K_rd=0 (2026-06-10): D-term spikes overwhelm PI; gamma_s=1.0 outer funnel replaces damping role
+        self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "0.1")),
+                              float(os.environ.get("PLASMC_KI_Y", "0.1"))])   # KI 1.0->0.1 (2026-06-11 IC=2 gain-chain bake): MATLAB parity; the 10x integral was windup fuel once the P-path works — pushed ds_d=+1.4 THROUGH the crossing
+        self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "0.5")),
+                              float(os.environ.get("PLASMC_KD_Y", "0.5"))])    # K_rd 0->0.5 (2026-06-11 IC=2 gain-chain bake): MATLAB parity 0.5031 — the only phase-LEAD element; flips the demand before the crossing (overshoot 5x smaller, first damped ring-down). The old close-range D-spike concern is guarded by DH_D_MAX.
         # LPF time-constant on ds_d (the outer-PID output that feeds h_d).
         # Control runs at 125 Hz; images arrive at ~42 Hz. Each new frame causes
         # a discrete jump in s_e_n -> step in ds_d -> raw dh_d spike ~17 m/s³ at
@@ -150,19 +150,19 @@ class Controller(Thread):
         # WARNING: funnel width IS the barrier gain (G⁻¹ ≈ p/2) — never widen a
         # funnel component to "make room" for a transient; it raises that axis's
         # gain proportionally (lesson learned twice: batches 6 and 11).
-        self._gamma = np.diag(pa("XI2",   0.2, 0.2, 0.2))
+        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.2))   # XI2 xy 0.2->0.6 (2026-06-11 IC=2 gain-chain bake): at 0.2 the middle funnel keeps sigma at 5-20% of E for ~10s — SMC ASLEEP during approach, kappa LEAKS; MATLAB gamma_2=1.2. z stays 0.2.
         self._p_0   =         pa("P20",   25.0, 25.0, 4.0)
         self._p_inf =         pa("P2INF", 2.5, 2.5, 1.5)
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
         # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
         # PID at small error (G_s^-1·zeta_dot -> -K_rp·s_e_n); the barrier bites as s_e_n -> p_s.
         self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "1") == "1"   # default ON — all PX4_NewCal_Record trials ran with SEN_FUNNEL=1
-        self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "1.0")),
-                                 float(os.environ.get("PLASMC_XIS_Y", "1.0"))])    # gamma_s=1.0 (2026-06-10): sweep winner — fastest outer funnel, 1/5 SP at 0.03m; replaces D-term's damping role
+        self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "0.5")),
+                                 float(os.environ.get("PLASMC_XIS_Y", "0.5"))])    # gamma_s 1.0->0.5 (2026-06-11 IC=2 gain-chain bake): at 1.0 the funnel OVERTAKES a large-IC error at t~1.2 → ratio saturation → G_s⁻¹∝p_s collapse → DEMAND STARVATION; 0.5 keeps the funnel valid (sustained demand, genuine closure)
         self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", "1.2")),
                                   float(os.environ.get("PLASMC_PS0_Y", "1.2"))])
-        self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.1")),
-                                  float(os.environ.get("PLASMC_PSINF_Y", "0.1"))])
+        self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.35")),
+                                  float(os.environ.get("PLASMC_PSINF_Y", "0.35"))])   # p_s_inf 0.1->0.35 (2026-06-11 IC=2 gain-chain bake): the funnel FLOOR must exceed the damped post-crossing swing or the barrier saturates exactly when needed; angular bound — at Z=0.2m, 0.35 still = ~0.07m metric
         # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
         self._Omega = np.diag(pa("OMEGA", 0.05, 0.05, 0.025))
         self._Gma   = np.diag(pa("GAMMA", 0.4375, 1.0, 0.75))    # GAMMA_Y 0.5->1.0 (lateral braking, 2026-06-08)
@@ -170,7 +170,7 @@ class Controller(Thread):
         # Adaptive-gain ODE
         self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
         self._P       = np.diag(pa("P",      5.0, 5.0, 5.0))     # P -> 5/5/5 (kappa-leakage; P_X/Y=5 bounds the lateral kappa amplifier at E=1.5; a_u 33589->440, 2026-06-08)
-        self._kappa_0 =         pa("KAPPA0", 0.15625, 0.15625, 1.0)      # KAPPA0_Z 0.3125→1.0 (2026-06-10): bootstrap fix for gamma_s=1.0 fast-centering
+        self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)      # KAPPA0_XY 0.156->0.5 (2026-06-11 IC=2 gain-chain bake): arm the crossing brake at engage (kappa leaked to 0.06 before adapting); KAPPA0_Z=1.0 (2026-06-10 bootstrap)
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0: cap kappa_z to prevent high-flow-speed theta_norm runaway
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
 

@@ -26,7 +26,7 @@ FENCE = (-5.0, 5.0, -5.0, 5.0, -5.0, 5.0) # xmin, xmax, ymin, ymax, zmin, zmax -
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
-REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.42"))  # MATLAB-aligned default; -0.70 wins on IC1 (mean xy 0.71→0.28) but REGRESSES IC2-5 severely (mean xy ~2m, IC5 crash) because off-center starts need lateral travel time. Set LANDING_REF_RAD_OPT_FLOW=-0.70 for centered-IC tuning runs.
+REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.25"))  # -0.42->-0.25 (2026-06-11 bake): the descent must not outrun the lateral ring-down — at -0.42 the deck arrives mid-transient every IC>=0.5 run  # MATLAB-aligned default; -0.70 wins on IC1 (mean xy 0.71→0.28) but REGRESSES IC2-5 severely (mean xy ~2m, IC5 crash) because off-center starts need lateral travel time. Set LANDING_REF_RAD_OPT_FLOW=-0.70 for centered-IC tuning runs.
 # Desired image features [hx, hy, s, alpha]. alpha (s_d[3]) is the DESIRED marker
 # orientation and MUST match the board's as-seen alpha at the aligned hover — else the
 # controller slews alpha ~85° at engage (the IC1/IC2-5 divergence cause, found
