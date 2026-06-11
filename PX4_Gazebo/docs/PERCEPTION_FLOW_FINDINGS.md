@@ -12,6 +12,19 @@ begins on the **control/latency** side (see `PARAMETER_ANALYSIS.md` §2, the κ-
 
 ---
 
+## ⭐ 2026-06-11 — TERMINAL touchdown blocked by a close-range LOOM over-report (clean-baseline landing + video + data)
+
+Traced on an `aruco_board` baseline landing (final xy 1.86 m; got to **min xy 0.0 @ alt 1.5 m** then drifted). The descent law is **correct down to ~1 m**: the z-SMC tracks the loom to `h_rd=−0.42` perfectly (at 0.99 m, measured `h_z=−0.41`, implied rate = ideal −0.414; proportional descent v∝Z). **Below ~0.5 m all corner optic-flow signals over-report together → terminal failure:**
+- **LOOM (binding):** corner `h_z` goes noisy/spikes (std **1.45**, a +5.06 outlier at n_corn=4) and **over-reports ~4×** — read −1.5…−2.15 at 0.21 m (implies ~0.35 m/s) while the **actual descent (GT alt-gradient) was ~0.1 m/s (near-ideal)**. The z-SMC reads "4× too fast" → `a_u_z`→−9 → the drone **BALLOONS up 0.21→0.36 m** instead of settling. On a phantom loom.
+- **LATERAL:** 1/Z-amplified (`s_e_n`≈1.1, `h_xy`≈2.3) → `a_u_xy`→42 → over-tilt + drift.
+- **DECODE:** balloon+drift pushes the board to the FoV edge → `n_corn` 32→0 → open-loop off-center touchdown.
+
+So the "no precise touchdown" is the **same close-range corner-perception breakdown, now on the vertical axis** — not control lag, not a fast descent, not gains.
+
+**The RING divergence is the cleaner terminal loom** (within-Img_Data): std **0.70** (½ the corner's), no spikes, **n_ring 127–151 (4–6× n_corn)**, and still 19–21 stations at touchdown when n_corn=0. **Per-axis is the fix:** the loom is observable from a planar target, so the **ring is a valid VERTICAL signal** → lean on it at the terminal for the descent; keep the **corner for LATERAL** (the ring has ~0 lateral — the *opposite* of the failed `FLOW_NCORN_SWITCH`, which routed the lateral to the ring). Full detail: memory `feedback_terminal_descent_loom_overreport`.
+
+---
+
 ## The correct picture (GT-verified — correct time-alignment + smoothed GT velocity)
 
 1. **Flow is HONEST at altitude.** measured corner `h_xy` / GT `v/Z`, binned by altitude:
