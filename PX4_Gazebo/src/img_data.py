@@ -299,6 +299,13 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
+        # Guard #1 RESTORED (2026-06-11): clip the marker-LOST centroid EXTRAPOLATION to the FoV.
+        # It was removed in the remove-all-guards cleanup, and the RingLoomFix n=5 fly-aways showed
+        # exactly why it existed: on marker-LOST the deg-1 extrapolation ran s OFF-SCREEN (|s|=6.65 /
+        # 4.63 vs FoV edge ~1.2) → wrong h_d/θ_norm → κ ratchet (1.99/4.61) → 29.5/27.3 m fly-away.
+        # Conditional — only bounds the PHANTOM extrapolation, never a genuine detection (the global
+        # clamp variant #2 regressed and stays dead). PLASMC_FEAT_FOV_CLIP=0 to disable.
+        self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "1") == "1"
         self._prev_aruco_pts = None       # most recent good corners (ArUco or KLT)
         self._prev_img = None             # frame those corners were measured in
 
@@ -1009,6 +1016,20 @@ class IMG_PROCESSOR(Thread):
             extrapolated_img_feature_param = np.nan_to_num(
                 np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
+            if self._feat_fov_clip:
+                # Guard #1: clip the CENTROID [0:2] to ±(p_10 + δ) — FoV edge + last-good marker
+                # half-extent. Keeps the short-dropout trend (within the FoV) but bounds the
+                # long-dropout off-screen run that fabricates h_d and ratchets κ into a fly-away.
+                p10 = self.center / self.focal
+                try:
+                    _held = np.asarray(self._feature_pts[-1])
+                    _held = _held[1] if _held.ndim == 3 else _held
+                    delta = 0.5 * (_held.max(0) - _held.min(0)) / self.focal
+                except Exception:
+                    delta = np.zeros(2)
+                bound = p10 + delta
+                extrapolated_img_feature_param[0:2] = np.clip(
+                    extrapolated_img_feature_param[0:2], -bound, bound)
             # Alpha (index 3) is a WRAPPED angle — the deg-1 extrapolation + the ±5 rad
             # clip push it PAST ±π during marker loss (observed at 286°≈5 rad), handing
             # the controller a garbage phantom yaw error -> max yaw cmd -> spin-out +
@@ -1022,7 +1043,10 @@ class IMG_PROCESSOR(Thread):
 
             self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
-            self._quat_log.append(np.full(4, np.nan))
+            # Guard #1 companion: keep the quat VALID through marker-LOST — the FC attitude is
+            # genuine (use-genuine-data directive). Only nan if the FC quat itself is missing.
+            _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+            self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
 
