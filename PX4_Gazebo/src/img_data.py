@@ -415,6 +415,12 @@ class IMG_PROCESSOR(Thread):
         _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
+        # z-axis ring-weighted loom PROTOTYPE (2026-06-11): below ~0.5 m the corner loom over-reports
+        # ~4× (noisy/spiky) → z-SMC over-brakes → balloon, while the actual descent is ~0.1 m/s. The ring
+        # divergence is the cleaner terminal loom (planar-observable). When n_flow_corners <= this, ignore
+        # the corner LOOM (h_tr z) in the fusion so the ring carries the vertical descent; keep the corner
+        # for LATERAL (ring has ~0 lateral). 0 = OFF (baseline). Set RING_LOOM_NCORN=12 to enable.
+        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "0"))
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
@@ -963,7 +969,8 @@ class IMG_PROCESSOR(Thread):
                 _ring_ok = (_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
                 _ring_cal = self._sensor_cal_ring @ _vvr
                 self._ekf_fuse_step(_corner_cal, _corner_ok, _corner_conf,
-                                    _ring_cal, _ring_ok, self._time.perf_counter())
+                                    _ring_cal, _ring_ok, self._time.perf_counter(),
+                                    n_corn=int(len(flow_pts_1)))
                 self._opt_flow_fused_log.append(
                     np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]]) if self._ekf_init else np.zeros(6))
                 self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
@@ -1119,7 +1126,7 @@ class IMG_PROCESSOR(Thread):
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
 
-    def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t):
+    def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999):
         """Augmented-state EKF fusing corner (target-relative) + ring (ego) flow.
         State [h_tr(3), h_tv(3), w(3)]. Measurement models are linear (constant
         Jacobians H_corner/H_ring), so the EKF update is the standard KF update;
@@ -1156,6 +1163,10 @@ class IMG_PROCESSOR(Thread):
 
         if corner_ok:
             R_c = self._R_corner / max(corner_conf, 0.02)   # low conf -> high R -> ring carries
+            # z-axis ring-weighted loom: when ill-conditioned at low alt, ignore the corner LOOM (index 2)
+            # so the ring divergence carries the vertical descent; keep the corner for lateral.
+            if self._ring_loom_thresh > 0 and n_corn <= self._ring_loom_thresh:
+                R_c = R_c.copy(); R_c[2, 2] = 1e6
             x, P = _update(x, P, corner_cal, self._H_corner, R_c)
         if ring_ok:
             x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
