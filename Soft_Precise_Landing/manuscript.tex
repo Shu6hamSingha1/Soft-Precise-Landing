@@ -229,17 +229,17 @@ Stacking the $N$ per-feature Jacobians row-wise gives the full interaction matri
 where $\dot{\boldsymbol{p}}\in\mathbb{R}^{2N}$ is the stacked optical-flow vector of the measured $\,^\mathcal{V}\hat{\boldsymbol{r}}_i(t)$. The pseudo-inverse exists for $N\ge 3$ non-collinear feature points.
 
 \subsubsection{Image Kinematics and Dynamics} \label{image kinematics: section}
-Differentiating \eqref{image position: equation} yields the image position kinematics
+Differentiating \eqref{image position: equation} with the transport theorem in $\mathcal{V}$, whose angular velocity is $\,^\mathcal{V}\boldsymbol{\omega}_{\mathcal{V}/\mathcal{I}}=\dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ by construction, yields the image position kinematics
 \begin{equation} \label{s dot: equation}
-    \dot{\boldsymbol{s}} = \boldsymbol{h} - \boldsymbol{w}\times\boldsymbol{s} - \big[(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s},
+    \dot{\boldsymbol{s}} = \boldsymbol{h} - \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_3\times\boldsymbol{s} - (\boldsymbol{h}\cdot\hat{\boldsymbol{e}}_3)\,\boldsymbol{s},
 \end{equation}
-where $\boldsymbol{h}$ and $\boldsymbol{w}$ are the image velocity and image angular velocity of \eqref{optic flow def: equation}.
+where $\boldsymbol{h}$ is the image velocity of \eqref{optic flow def: equation}. The target angular velocity does not enter \eqref{s dot: equation}: rotation about the target's own centroid leaves the centroid, and hence $\boldsymbol{s}$, unchanged, while the unequal-depth perturbation induced by platform roll and pitch cancels to first order in the centroid of the symmetric feature pattern, with the second-order residual absorbed into $\boldsymbol{d}_h$.
 
 Differentiating the image orientation \eqref{image orientation: equation} by the chain rule and substituting the per-feature pixel-velocity Jacobian \eqref{interaction matrix: equation} into the resulting moment time derivatives gives $\dot{\alpha}=\boldsymbol{l}_\alpha^\top\boldsymbol{w}$, where the orientation interaction vector $\boldsymbol{l}_\alpha$, derived in the Appendix, is a ratio of bounded centered moments with $l_{\alpha,3}=1$. Substituting the image angular velocity $\boldsymbol{w} = \,^\mathcal{V}\boldsymbol{\omega}_\text{t} - \dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ of \eqref{optic flow def: equation} and using $l_{\alpha,3}=1$ isolates the body yaw rate explicitly, yielding the image orientation kinematics
 \begin{equation} \label{alpha dot: equation}
     \dot{\alpha} = - \dot{\psi}_\text{b} + d_{\alpha},\qquad d_\alpha = \boldsymbol{l}_\alpha^\top\,^\mathcal{V}\boldsymbol{\omega}_\text{t},
 \end{equation}
-where $\dot{\psi}_\text{b}$ is the body yaw rate and $d_{\alpha}$ is the residual coupling from the unknown target rotation. Although $\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\,^\mathcal{V}\hat{\boldsymbol{r}}_i \to 0$. Hence $d_\alpha$ is treated as an unknown disturbance bounded under Assumption~1, absorbed adaptively by the yaw control design of Section~\ref{control design: section}-\ref{inner loop: section}\ref{yaw control: section}.
+where $\dot{\psi}_\text{b}$ is the body yaw rate and $d_{\alpha}$ is the residual coupling from the unknown target rotation. Although $\,^\mathcal{V}\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\,^\mathcal{V}\hat{\boldsymbol{r}}_i \to 0$. Hence $d_\alpha$, together with the residual perspective coupling induced by platform tilt, is treated as an unknown bounded disturbance under Assumption~1 and rejected adaptively by the yaw control design of Section~\ref{control design: section}-\ref{inner loop: section}\ref{yaw control: section}.
 
 Of the two components recovered from the optical flow in \eqref{optic flow def: equation}, only the image velocity $\boldsymbol{h}$ has dynamics that couple directly to the body force $\,^\mathcal{B}\boldsymbol{F}_u$ of \eqref{quadrotor dynamics: equation}. Extending the 1D vertical-flow dynamics of~\cite{singhal2025} and denoting the inertial acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d} \triangleq (1/m)\,^\mathcal{I}R_\mathcal{B}\,^\mathcal{B}\boldsymbol{F}_u$, the optical-flow dynamics reads
 \begin{equation} \label{h dot: equation}
@@ -247,11 +247,10 @@ Of the two components recovered from the optical flow in \eqref{optic flow def: 
 \end{equation}
 where $\beta = 1/\,^\mathcal{V}z_\text{t}$ is the depth scale, $\,^\mathcal{I}R_\mathcal{V}$ rotates from the virtual camera frame to the inertial frame, and
 \begin{align}
-\tilde{\boldsymbol{c}}_h &= -\dot{\boldsymbol{w}}\times\boldsymbol{s} - \boldsymbol{w}\times(\boldsymbol{w}\times\boldsymbol{s}) - 2\,(\boldsymbol{w}\times\boldsymbol{h}) \nonumber \\
-&\quad - [(\boldsymbol{h}-\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3]\,\boldsymbol{h}, \label{c tilde h: equation} \\
-\boldsymbol{d}_h &= \frac{\,^\mathcal{V}\boldsymbol{a}_\text{t}}{\,^\mathcal{V}z_\text{t}} - \left(\frac{\,^\mathcal{V}\boldsymbol{F}_\text{g}+\,^\mathcal{V}\boldsymbol{F}_\text{d}}{m\,^\mathcal{V}z_\text{t}} - \,^\mathcal{V}\boldsymbol{\omega}_\text{b}\times\frac{\,^\mathcal{V}\boldsymbol{v}_\text{b}}{\,^\mathcal{V}z_\text{t}}\right). \label{d h: equation}
+\tilde{\boldsymbol{c}}_h &= -\dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_3\times\boldsymbol{h} - (\boldsymbol{h}\cdot\hat{\boldsymbol{e}}_3)\,\boldsymbol{h}, \label{c tilde h: equation} \\
+\boldsymbol{d}_h &= \frac{\,^\mathcal{V}\boldsymbol{a}_\text{t}}{\,^\mathcal{V}z_\text{t}} - \frac{\,^\mathcal{V}\boldsymbol{F}_\text{g}+\,^\mathcal{V}\boldsymbol{F}_\text{d}}{m\,^\mathcal{V}z_\text{t}}. \label{d h: equation}
 \end{align}
-The kinematic coupling $\tilde{\boldsymbol{c}}_h$ collects cross products of $\boldsymbol{w}$, $\dot{\boldsymbol{w}}$, $\boldsymbol{s}$, and $\boldsymbol{h}$ that are known and available for feedback linearization. The disturbance $\boldsymbol{d}_h$ aggregates the depth-scaled target inertial acceleration, the gravity and body-frame disturbance force (rotated into $\mathcal{V}$ and depth-scaled), and a Coriolis-like coupling between body angular and translational velocities, bounded as formalized in Section~\ref{background: section}-\ref{problem statement: section}.
+The kinematic coupling $\tilde{\boldsymbol{c}}_h$ collects the yaw-rate frame rotation and the depth-rate contraction of the image velocity; both are known from the IMU yaw rate $\dot{\psi}_\text{b}$ and the measured $\boldsymbol{h}$, and available for feedback linearization. The disturbance $\boldsymbol{d}_h$ aggregates the depth-scaled target inertial acceleration and the gravity and body-frame disturbance force (rotated into $\mathcal{V}$ and depth-scaled), bounded as formalized in Section~\ref{background: section}-\ref{problem statement: section}.
 
 \subsection{Problem Statement} \label{problem statement: section}
 \subsubsection{Unknowns and Perturbations} \label{unknowns: section}
@@ -317,9 +316,9 @@ where $\oslash$ is componentwise division, $\hat{\boldsymbol{r}}_\text{d}=\bolds
 \begin{equation} \label{s_e_dot_d: equation}
     \dot{\boldsymbol{s}}_{\text{e},xy} = -K_{rp}\bar{\boldsymbol{r}}_\text{e} - K_{ri}\!\int\bar{\boldsymbol{r}}_\text{e}\,d\tau - K_{rd}\frac{\delta\bar{\boldsymbol{r}}_\text{e}}{\delta t},
 \end{equation}
-with diagonal gains $K_{rp},K_{ri},K_{rd}\in\mathbb{R}^{2\times 2}_{>0}$. The third (descent) component of $\dot{\boldsymbol{s}}_\text{e}$ vanishes identically by~\eqref{s dot: equation}, so the PID acts only on the two lateral axes. The descent reference enters $\boldsymbol{h}_\text{d}$ through a constant desired descent optical flow $h_\text{rd}<0$ (locked value in Table~\ref{sup:control params}). Substituting~\eqref{s_e_dot_d: equation} into~\eqref{s dot: equation} (solved for $\boldsymbol{h}$, with the descent component set to $h_\text{rd}$) yields the desired optical flow
+with diagonal gains $K_{rp},K_{ri},K_{rd}\in\mathbb{R}^{2\times 2}_{>0}$. The third (descent) component of $\dot{\boldsymbol{s}}_\text{e}$ vanishes identically by~\eqref{s dot: equation}, so the PID acts only on the two lateral axes. The descent reference enters $\boldsymbol{h}_\text{d}$ through a constant desired image radial velocity $h_\text{rd}<0$ (locked value in Table~\ref{sup:control params}). Substituting~\eqref{s_e_dot_d: equation} into~\eqref{s dot: equation} (solved for $\boldsymbol{h}$, with the descent component set to $h_\text{rd}$) yields the desired image velocity
 \begin{equation} \label{h_d final: equation}
-    \boldsymbol{h}_\text{d} = \dot{\boldsymbol{s}}_\text{e} + \boldsymbol{w}\times\boldsymbol{s} + \big[h_\text{rd} - (\boldsymbol{w}\times\boldsymbol{s})\cdot\hat{\boldsymbol{e}}_3\big]\boldsymbol{s}.
+    \boldsymbol{h}_\text{d} = \dot{\boldsymbol{s}}_\text{e} + \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_3\times\boldsymbol{s} + h_\text{rd}\,\boldsymbol{s}.
 \end{equation}
 \textit{Remark 2.} Normalization by $\boldsymbol{\varphi}_\text{max}$ makes the PID gains invariant under a change of camera resolution and lifts the dimensionless constraint $|\bar{r}_{\text{e}_k}|\le 1$ into a common tuning target.
 
@@ -440,7 +439,7 @@ where $(\cdot)^\vee:\mathfrak{so}(3)\to\mathbb{R}^3$ is the vee map and $\,^\mat
 \end{equation}
 with $k_R,k_\Omega\succ 0$. The closed-loop attitude tracker inherits the almost-global exponential stability of \cite[Thm.~3.1]{lee2010}. For any initial rotation outside the co-dimension-1 set $\{R:\text{tr}(R_\text{d}^\top R)=-1\}$, $(R_\text{d}^\top R,\boldsymbol{e}_\Omega)$ decays exponentially to $(I,\boldsymbol{0})$.
 
-\textit{Remark 7.} The de-rotation $\,^\mathcal{V}R_\mathcal{C}$ from the camera frame $\mathcal{C}$ onto the virtual camera frame $\mathcal{V}$ (Section~\ref{background: section}-\ref{image parameters: section}) removes the body-rate-coupled rotational terms from the image position kinematics \eqref{s dot: equation} and the optical-flow dynamics \eqref{h dot: equation}, so the commanded acceleration enters the optical-flow dynamics linearly through $\boldsymbol{u}_h$. Likewise, the desired yaw rate $\dot{\psi}_\text{d}$ enters the image orientation kinematics \eqref{alpha_e_dot: equation} linearly. This linearity admits tractable Lyapunov analyses for the optical-flow and yaw error dynamics and lets the SO(3) tracker be designed independently~\cite{fink2017, xie2016_2}.
+\textit{Remark 7.} The de-rotation $\,^\mathcal{V}R_\mathcal{C}$ from the camera frame $\mathcal{C}$ onto the virtual camera frame $\mathcal{V}$ (Section~\ref{background: section}-\ref{image parameters: section}) removes the roll- and pitch-rate couplings from the image position kinematics \eqref{s dot: equation} and the optical-flow dynamics \eqref{h dot: equation}; the only surviving body-rate term is the yaw-rate rotation $-\dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3\times(\cdot)$, which is measured by the IMU and canceled by feedback linearization. The commanded acceleration therefore enters the optical-flow dynamics linearly through $\boldsymbol{u}_h$, and the desired yaw rate $\dot{\psi}_\text{d}$ enters the image orientation kinematics \eqref{alpha_e_dot: equation} linearly. This linearity admits tractable Lyapunov analyses for the optical-flow and yaw error dynamics and lets the SO(3) tracker be designed independently~\cite{fink2017, xie2016_2}.
 
 \subsection{Lyapunov Stability Analysis} \label{stability: section}
 The stability analysis follows a layered Lyapunov argument for cascaded nonlinear systems \cite{khalil2002}, built on the following standard notion of boundedness.
@@ -555,7 +554,7 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
         $K_{rp}$ & $\text{diag}([9.0,9.0])$ & Proportional gain on image-point error \\
         $K_{ri}$ & $\text{diag}([0.1,0.1])$ & Integral gain \\
         $K_{rd}$ & $\text{diag}([1.4375,1.4375])$ & Derivative gain \\
-        $h_\text{rd}$ & $-0.42$~s$^{-1}$ & Constant desired descent optical flow \\
+        $h_\text{rd}$ & $-0.42$~s$^{-1}$ & Constant desired image radial velocity \\
     \midrule
         \multicolumn{3}{l}{\textit{Optical-Flow Funnel}} \\
         $\Xi_2$                     & $\text{diag}([0.2,0.2,0.2])$~s$^{-1}$ & Funnel exponential decay rate \\
