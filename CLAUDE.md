@@ -121,6 +121,7 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math CURRENT; Jun-4–10 intentional divergences in top addendum)
     PARAMETER_ANALYSIS.md      — comprehensive honest-cal parameter analysis + failure diagnosis (rewritten 2026-06-10; CURRENT)
     PERCEPTION_FLOW_FINDINGS.md  — perception-layer findings (CURRENT): flow honest at altitude, LK dynamic range ~2 m/s is the binding limit (next lever = pyramidal LK)
+    CONTROL_FRAMEWORK_REVIEW.md  — per-component (lateral/yaw/descent) implementation + performance review + exhaustive clamp audit (2026-06-11): control law sound + gain-exhausted, binding limit is perception front-end; clamps healthy
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 
