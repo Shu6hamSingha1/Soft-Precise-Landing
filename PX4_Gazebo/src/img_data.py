@@ -15,6 +15,7 @@ import os
 import numpy as np
 import cv2 # OpenCV library
 from threading import Thread
+from collections import deque
 import time
 from scipy.signal import savgol_filter as sgf
 from ahrs import Quaternion
@@ -330,6 +331,19 @@ class IMG_PROCESSOR(Thread):
         self._consec_misses = 0
         self.FEATURE_IS_STALE = False
         self.STALE_THRESH = int(os.environ.get("IMG_STALE_THRESH", "3"))
+        # Duty-cycle staleness (2026-06-11): consecutive-miss-only staleness was DEFEATED by
+        # intermittent 1-frame re-detections during the terminal slide — a 76%-phantom stream
+        # stayed "fresh" (each glimpse reset the counter AND cleared stale) → landing_test
+        # closed-looped on garbage for ~6 s → 7–8.6 m slide + 688 m/s² impact, target_lost
+        # never set (Guard1Restored_IC1 reps 2/5). Stale now ALSO latches when the miss
+        # FRACTION over a sliding window is high, and CLEARING requires IMG_STALE_CLEAR
+        # consecutive genuine detections (hysteresis) so single glimpses can't reset an
+        # effectively-lost stream.
+        self._stale_win   = int(os.environ.get("IMG_STALE_WIN", "40"))     # frames (~1 s @ 42 Hz)
+        self._stale_frac  = float(os.environ.get("IMG_STALE_FRAC", "0.5")) # miss fraction to latch
+        self._stale_clear = int(os.environ.get("IMG_STALE_CLEAR", "5"))    # consec hits to clear
+        self._hit_hist    = deque(maxlen=self._stale_win)
+        self._consec_hits = 0
 
         # Data storage
         self._time_log = []
@@ -929,9 +943,15 @@ class IMG_PROCESSOR(Thread):
                     self._count_check_img_feature = 0
                 # Intervention 2: detection succeeded → reset stale counter
                 self._consec_misses = 0
+                self._hit_hist.append(1)
+                self._consec_hits += 1
                 if self.FEATURE_IS_STALE:
-                    print("LANDING PAD RE-ACQUIRED (stale → fresh)")
-                    self.FEATURE_IS_STALE = False
+                    # Hysteresis: a single glimpse must NOT clear stale — require
+                    # IMG_STALE_CLEAR consecutive detections AND a healthy window.
+                    _mf = 1.0 - (sum(self._hit_hist) / max(len(self._hit_hist), 1))
+                    if self._consec_hits >= self._stale_clear and _mf <= self._stale_frac:
+                        print("LANDING PAD RE-ACQUIRED (stale → fresh)")
+                        self.FEATURE_IS_STALE = False
 
                 # Log the ArUco-only feature pts (shape (2,4,2)) — consumers
                 # (offline plotters, _getImgFeatures replay) expect 4 corners.
@@ -990,8 +1010,16 @@ class IMG_PROCESSOR(Thread):
             # Intervention 2: increment the stale streak and flip the flag
             # if we've been extrapolating for too many consecutive frames.
             self._consec_misses += 1
-            if self._consec_misses >= self.STALE_THRESH and not self.FEATURE_IS_STALE:
-                print(f"FEATURE_IS_STALE = True  ({self._consec_misses} consec misses)")
+            self._hit_hist.append(0)
+            self._consec_hits = 0
+            _mf = 1.0 - (sum(self._hit_hist) / max(len(self._hit_hist), 1))
+            if not self.FEATURE_IS_STALE and (
+                    self._consec_misses >= self.STALE_THRESH
+                    or (len(self._hit_hist) >= self._stale_win // 2
+                        and _mf > self._stale_frac)):
+                print(f"FEATURE_IS_STALE = True  ({self._consec_misses} consec misses, "
+                      f"miss-frac {_mf:.2f} > {self._stale_frac})" if _mf > self._stale_frac
+                      else f"FEATURE_IS_STALE = True  ({self._consec_misses} consec misses)")
                 self.FEATURE_IS_STALE = True
             # No new feature data this frame (LK failed or marker not seen).
             # 2026-05-13: do NOT extrapolate the optical-flow / angular-velocity vector.
