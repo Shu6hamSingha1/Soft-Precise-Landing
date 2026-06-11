@@ -280,6 +280,12 @@ class Controller(Thread):
         # Reference depth-rate (MATLAB h_rd was -0.42; user has chosen -0.30 historically via REF_RAD_OPT_FLOW)
         # We keep ref_rad_opt_flow from the constructor; do not override.
 
+        # Log segments archived across mid-flight re-initializations: a full visibility
+        # loss re-inits the controller, which WIPES the live log lists — losing exactly
+        # the initial-approach data needed to diagnose the failure that caused the loss.
+        # _archive in run() snapshots the lists before each re-init; getLogData merges.
+        self._log_segments = []
+
         self._initialize_controller()
         self.start()
 
@@ -497,6 +503,11 @@ class Controller(Thread):
                     self._attCtrl()
 
                 if not self.TARGET_IS_VISIBLE:
+                    # Archive the current log segment BEFORE the re-init wipes it, so the
+                    # record runs continuously up to (and through) the controller failure.
+                    if len(self._t) > 0:
+                        self._log_segments.append(
+                            {k: list(v) for k, v in self._buildLogDict().items()})
                     self._initialize_controller()
                     self.TARGET_IS_VISIBLE = True
 
@@ -1383,6 +1394,23 @@ class Controller(Thread):
         }
 
     def getLogData(self):
+        """Full-flight log: archived pre-re-init segments + the live segment, merged
+        per key. The time axis 't' stays monotonic across segments (perf_counter),
+        so a re-init shows up as continuous data — locate re-inits via kappa
+        resetting to kappa_0 or the p_2 funnel re-widening."""
+        cur = self._buildLogDict()
+        if not self._log_segments:
+            return cur
+        merged = {}
+        for k in cur:
+            vals = []
+            for seg in self._log_segments:
+                vals.extend(seg.get(k, []))
+            vals.extend(cur[k])
+            merged[k] = vals
+        return merged
+
+    def _buildLogDict(self):
         return {
             "t": self._t,
             "w_i(t)": self._w_i,
