@@ -104,14 +104,10 @@ class IMG_PROCESSOR(Thread):
         # 2026-06-04 claim was OVERTURNED 2026-06-07: in the raw/body frame wx/wy ARE
         # observable with the multi-marker board's corner SPREAD + adequate excitation
         # (see memory wxy-unobservable-imu-fusion-deferred). Zeroing here is a choice.
-        self._sensor_cal_hw = np.array([
-            [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
-            [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],
-            [+0.0124, +0.0148, +1.0744, +0.0128, +0.0068, -0.0046],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161, +1.0151]])
-        self._sensor_cal_s  = np.diag([1.1162, 1.1629, 1.0, 1.0])
+        # RESET to identity (2026-06-11) — board cal cleared for fresh re-calibration on the
+        # aruco_board. The previous all-13-corner board matrices are preserved in git history.
+        self._sensor_cal_hw = np.eye(6)
+        self._sensor_cal_s  = np.diag([1.0, 1.0, 1.0, 1.0])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -132,13 +128,7 @@ class IMG_PROCESSOR(Thread):
         # co-sampled fused runs (noisy, stressed SITL session: R^2 Hx 0.34 Hz 0.57
         # Wz 0.56) — so transfer (13 recordings) wins.
         # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
-        self._sensor_cal_ring = np.array([
-            [+1.0380, +0.0353, -0.0134, -0.0416, +1.0246, -0.0672],
-            [-0.0677, +0.6101, +0.0457, -0.5329, -0.0970, -0.0876],
-            [-0.2966, -0.0732, +1.3655, +0.0711, -0.2970, -0.1485],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.0720, +0.5884, +0.0018, -0.4402, -0.1344, +2.9790]])
+        self._sensor_cal_ring = np.eye(6)   # RESET to identity (2026-06-11) — re-derive with the corner cal
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
