@@ -450,6 +450,33 @@ class IMG_PROCESSOR(Thread):
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
         self._H_ring   = np.block([[_I3, _I3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr+h_tv; w]
+        # Loom-only safety net (2026-06-13). When the ring 6-DOF lstsq is REJECTED (ill-conditioned
+        # under a lateral fly-away — exactly when RING_LOOM_NCORN hands it the loom), the robust
+        # radial divergence (pure_div) still survives. Feed it as a SCALAR ego-loom measurement
+        # (h_tr[2]+h_tv[2], = the 3rd row of H_ring) so the loom keeps updating. Without this, the
+        # design's premise ("ring carries the vertical") was never wired in — the EKF's ring input
+        # is the lstsq V_v_ring, which gets zeroed when rejected, so the loom got NO update and the
+        # random-walk predictor FROZE on a stale value (a +0.6 balloon apex while plummeting → the
+        # z-SMC saw the wrong sign and commanded MORE descent). RING_LOOM_PUREDIV=0 disables.
+        self._H_ring_loom = np.array([[0., 0., 1., 0., 0., 1., 0., 0., 0.]])
+        self._R_ring_loom = np.array([[float(os.environ.get("FLOW_R_RING_DIV", "0.5"))]])
+        self._ring_div_loom_on = int(os.environ.get("RING_LOOM_PUREDIV", "1"))
+        self._ring_div_cal = self._sensor_cal_ring[2, 2]   # raw pure_div -> calibrated loom units
+        # GROUND-target vertical-velocity prior (2026-06-13). The ring measures EGO loom
+        # (h_tr[2]+h_tv[2]); when corners die that scalar is under-determined and the EKF parked the
+        # descent in h_tv[2], FREEZING h_tr[2] (the loom the controller reads) at its last corner
+        # value (h_tr=-1.06, h_tv=+1.06, sum=0). A ground target — stationary OR a moving rover —
+        # does NOT change its own altitude, so the LOOM component of its velocity h_tv[2] ~ 0 (only
+        # the HORIZONTAL h_tv[0:2] is nonzero for a moving target, and that stays free). Anchoring
+        # h_tv[2]->0 makes the ego-loom resolve to h_tr[2] for BOTH stationary and moving targets.
+        self._H_htv_z = np.array([[0., 0., 0., 0., 0., 1., 0., 0., 0.]])
+        self._R_htv_z = np.array([[float(os.environ.get("FLOW_R_HTVZ", "0.3"))]])
+        self._htv_z_prior_on = int(os.environ.get("FLOW_HTVZ_PRIOR", "1"))
+        # Anti-freeze: if NO source updated the loom for this many frames, decay h_tr/h_tv loom
+        # toward 0 (the random-walk predictor would otherwise hold a stale value forever).
+        self._loom_stale = 0
+        self._loom_stale_max = int(os.environ.get("FLOW_LOOM_STALE_MAX", "6"))
+        self._loom_decay     = float(os.environ.get("FLOW_LOOM_DECAY", "0.85"))
         _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
@@ -1019,9 +1046,13 @@ class IMG_PROCESSOR(Thread):
             if self._fuse_ring:
                 _ring_ok = (_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
                 _ring_cal = self._sensor_cal_ring @ _vvr
+                # robust radial-divergence loom (survives the lstsq rejection): scaled to calibrated
+                # loom units, fed only when the 6-DOF lstsq is rejected (see _ekf_fuse_step).
+                _ring_loom = self._ring_div_cal * _pdiv
+                _ring_loom_ok = bool(self._ring_div_loom_on and _nr >= 6 and np.isfinite(_pdiv))
                 self._ekf_fuse_step(_corner_cal, _corner_ok, _corner_conf,
                                     _ring_cal, _ring_ok, self._time.perf_counter(),
-                                    n_corn=_n_corn)
+                                    n_corn=_n_corn, ring_loom=_ring_loom, ring_loom_ok=_ring_loom_ok)
                 self._opt_flow_fused_log.append(
                     np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]]) if self._ekf_init else np.zeros(6))
                 self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
@@ -1202,7 +1233,8 @@ class IMG_PROCESSOR(Thread):
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
 
-    def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999):
+    def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999,
+                       ring_loom=0.0, ring_loom_ok=False):
         """Augmented-state EKF fusing corner (target-relative) + ring (ego) flow.
         State [h_tr(3), h_tv(3), w(3)]. Measurement models are linear (constant
         Jacobians H_corner/H_ring), so the EKF update is the standard KF update;
@@ -1237,15 +1269,42 @@ class IMG_PROCESSOR(Thread):
             P = (np.eye(9) - K @ H) @ P
             return x, P
 
+        loom_updated = False
         if corner_ok:
             R_c = self._R_corner / max(corner_conf, 0.02)   # low conf -> high R -> ring carries
             # z-axis ring-weighted loom: when ill-conditioned at low alt, ignore the corner LOOM (index 2)
             # so the ring divergence carries the vertical descent; keep the corner for lateral.
             if self._ring_loom_thresh > 0 and n_corn <= self._ring_loom_thresh:
                 R_c = R_c.copy(); R_c[2, 2] = 1e6
+            else:
+                loom_updated = True                          # corner supplied the loom this frame
             x, P = _update(x, P, corner_cal, self._H_corner, R_c)
         if ring_ok:
             x, P = _update(x, P, ring_cal, self._H_ring, self._R_ring)
+            loom_updated = True                              # ring 6-DOF lstsq supplied the loom
+        elif ring_loom_ok:
+            # lstsq V_v_ring was REJECTED but the robust radial divergence survives: feed pure_div
+            # as a scalar ego-loom measurement so the ring still carries the vertical. THE safety
+            # net the RING_LOOM_NCORN design assumed (see __init__). 2026-06-13.
+            x, P = _update(x, P, np.array([ring_loom]), self._H_ring_loom, self._R_ring_loom)
+            loom_updated = True
+        # GROUND-target prior: anchor the vertical target-velocity loom h_tv[2]->0 (a ground target
+        # — stationary or a moving rover — doesn't change its own altitude). This makes the ring's
+        # ego-loom (h_tr[2]+h_tv[2]) resolve to h_tr[2] (what the controller reads) instead of being
+        # absorbed into h_tv[2] and freezing h_tr. h_tv[0:2] (horizontal target motion) stays free,
+        # so moving-rover lateral estimation is untouched. 2026-06-13.
+        if self._htv_z_prior_on:
+            x, P = _update(x, P, np.array([0.0]), self._H_htv_z, self._R_htv_z)
+        # Anti-FREEZE: no source updated the loom -> the F=I predictor would HOLD the last value
+        # (a stale balloon-apex +0.6 while plummeting -> z-SMC sees the wrong sign). Decay toward 0
+        # after a short stale streak so the controller stops trusting a frozen estimate. 2026-06-13.
+        if loom_updated:
+            self._loom_stale = 0
+        else:
+            self._loom_stale += 1
+            if self._loom_stale >= self._loom_stale_max:
+                x[2] *= self._loom_decay                     # h_tr loom -> 0
+                x[5] *= self._loom_decay                     # h_tv loom -> 0
         self._ekf_x, self._ekf_P = x, P
 
     def getTargetVel(self):
