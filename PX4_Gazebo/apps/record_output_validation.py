@@ -135,6 +135,7 @@ async def main(record='y'):
                 else:
                     start_time = time_node.perf_counter(); phase_t0 = start_time
                     CONTROLLER_READY = True; t_c = [0.0]
+                    img_node.CONTROLLER_READY = True   # gate IMG_RECORD/_RAW to the descent (no PLASMC here)
 
                 tau = time_node.perf_counter() - phase_t0
                 pos = np.array([fn_x(tau), fn_y(tau), fn_z(tau), yaw0 + fn_yaw(tau)])

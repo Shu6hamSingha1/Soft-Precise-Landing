@@ -47,6 +47,12 @@ class IMG_PROCESSOR(Thread):
     def __init__(self, resolution = (1280, 960), capRate = 60, time_keeper=time, controller=None):
         Thread.__init__(self)
         self.RECORD = os.environ.get("IMG_RECORD", "0") == "1"   # IMG_RECORD=1 saves the descent video
+        # IMG_RECORD_RAW=1 → ALSO dump LOSSLESS PNG frames (+ per-frame stamp) for offline LK/GFT
+        # tuning. The mp4 (mp4v ~50:1) destroys the sub-pixel inter-frame flow the loom is made of;
+        # raw frames let the offline tuner see exactly what the live pipeline sees. Quaternion for the
+        # V-frame is recovered offline from Ground_Truth by stamp. 2026-06-13.
+        self.RECORD_RAW = os.environ.get("IMG_RECORD_RAW", "0") == "1"
+        self._raw_dir = None; self._raw_i = 0; self._raw_stamps = []
         self.CONTROLLER_READY = False
 
         # Image streaming setup
@@ -108,7 +114,7 @@ class IMG_PROCESSOR(Thread):
         self._sensor_cal_hw = np.array([
             [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
             [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],
-            [+0.0124, +0.0148, +1.0744, +0.0128, +0.0068, -0.0046],
+            [+0.0124, +0.0148, +1.2988, +0.0128, +0.0068, -0.0046],   # loom [2,2] 1.0744->1.2988 (2026-06-13): recalibrated on a clean centered position-setpoint descent (binned raw_h_z vs GT loom, corr 0.994) — corrected ~18-21% under-report. NOTE: under-report GROWS with loom (LK dynamic-range saturation) so this slow-descent cal still under-reports FAST descents; that's a dynamic-range limit, not a cal scalar
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161, +1.0151]])
@@ -180,11 +186,14 @@ class IMG_PROCESSOR(Thread):
         #   minEigThreshold 1e-3 — reject corners with min spatial eigenvalue below
         #                        this; cuts off poorly-tracked points before they
         #                        feed the lstsq solve
+        # Env-tunable (2026-06-13) for offline LK tuning to improve the corner loom h_z
+        # (the descent loom under-reports GT ~2x + corners die at close range — LK front-end limits).
         self._lk_params = dict(
-            winSize=(21, 21),
-            maxLevel=3,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
-            minEigThreshold=1e-3,
+            winSize=(int(os.environ.get("FLOW_LK_WIN", "21")),) * 2,
+            maxLevel=int(os.environ.get("FLOW_LK_LVL", "3")),
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,
+                      int(os.environ.get("FLOW_LK_ITER", "30")), float(os.environ.get("FLOW_LK_EPS", "0.01"))),
+            minEigThreshold=float(os.environ.get("FLOW_LK_EIG", "1e-3")),
         )
 
         # Ring stations for the TEXTURE-FREE V-frame optic flow (Singhal ring sampler):
@@ -480,17 +489,16 @@ class IMG_PROCESSOR(Thread):
         _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
-        # z-axis ring-weighted loom (threshold lowered 12→4, 2026-06-13 — user decision): below ~0.5 m the
-        # corner loom over-reports ~4× (noisy/spiky) → z-SMC over-brakes → balloon, while the actual
-        # descent is ~0.1 m/s. The ring divergence is the cleaner loom THERE (planar-observable).
+        # z-axis ring-weighted loom (threshold lowered 12→4→3, 2026-06-13 — user decision).
         # When n_flow_corners <= this, ignore the corner LOOM (h_tr z) in the fusion so the ring carries
         # the vertical descent; the corner keeps LATERAL (ring has ~0 lateral).
-        # WHY 4 NOT 12: GT-loom recheck (2026-06-13) showed n_corn collapses to ~4 by 4 m altitude (ArUco
-        # decode-fail), so thresh=12 fired the handoff across the WHOLE descent — but the ring loom reads
-        # ~0 at altitude (worse than the corner there) → fused pinned ~−0.15 vs GT −0.8…−6.7 (16× under-
-        # report; |fused| 0.15 vs 1.09 with it off). thresh=4 keeps the corner loom at altitude (where it
-        # tracks GT) and only hands to the ring at the TRUE terminal (n_corn→0–4, <~0.5 m). Set =0 to disable.
-        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "4"))
+        # WHY 3 NOT 4/12: GT recheck (2026-06-13) showed the threshold was DISCARDING a live, GT-tracking
+        # corner loom. At n_corn=4 the corner loom is still good (IC5 alt 0.78 m: corner −4.26 tracked GT
+        # −6.57) but thresh=4 (n_corn≤4) handed it to the ring, which reads ~0 → fused collapsed to ~0.
+        # =3 keeps the corner loom whenever n_corn≥4 (where it tracks GT) and only hands to the ring at
+        # the TRUE terminal (n_corn≤3). (thresh=12 was worse still — fired the handoff from 4 m altitude,
+        # 16× loom under-report.) Set =0 to disable entirely (trust the corner loom at all n_corn≥1).
+        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "3"))
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
@@ -579,6 +587,18 @@ class IMG_PROCESSOR(Thread):
 
                         self._video.write(images[1])
 
+                    # IMG_RECORD_RAW=1 → dump LOSSLESS PNG frames + stamps (offline LK tuning).
+                    if self.RECORD_RAW and self.CONTROLLER_READY:
+                        if self._raw_dir is None:
+                            self.timestamp = getattr(self, 'timestamp', None) or time.ctime().replace(':', '-')
+                            self._raw_dir = f'/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/{self.timestamp}_raw'
+                            os.makedirs(self._raw_dir, exist_ok=True)
+                        _rg = images[1] if images[1].ndim == 2 else cv2.cvtColor(images[1], cv2.COLOR_BGR2GRAY)
+                        cv2.imwrite(f'{self._raw_dir}/f{self._raw_i:05d}.png', _rg,
+                                    [cv2.IMWRITE_PNG_COMPRESSION, 1])   # lossless, fast
+                        self._raw_stamps.append(self._stamp)
+                        self._raw_i += 1
+
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
                     if self._imgProcess(images, quaternions, angvels, showVideo = VIDEO) is AVAILABLE:
                         if not AVAILABLE:
@@ -629,6 +649,9 @@ class IMG_PROCESSOR(Thread):
             # When everything done, release the video write object
             if self._video:
                 self._video.release()
+            if self.RECORD_RAW and self._raw_dir is not None:
+                np.save(f'{self._raw_dir}/stamps.npy', np.asarray(self._raw_stamps, dtype=float))
+                print(f"IMG_RECORD_RAW: saved {self._raw_i} lossless PNG frames + stamps to {self._raw_dir}")
 
             cv2.destroyAllWindows()
             print("Video recording stopped...")
