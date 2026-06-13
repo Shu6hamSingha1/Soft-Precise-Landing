@@ -339,6 +339,17 @@ class IMG_PROCESSOR(Thread):
         # FRACTION over a sliding window is high, and CLEARING requires IMG_STALE_CLEAR
         # consecutive genuine detections (hysteresis) so single glimpses can't reset an
         # effectively-lost stream.
+        # PROXIMITY-AWARE staleness (2026-06-11): the strict duty-cycle rules apply ONLY when the
+        # last GENUINE marker extent says we're near the deck (image-only, scale-free; data:
+        # mid-descent extent ≤72–103 px, deck 135–166 px → threshold 120). Near the deck a
+        # glimpse-punctuated phantom stream is fatal (closed-loop slide → 688 m/s² impact);
+        # at altitude a dropout is benign (extrapolation bridges it) and an abort is expensive
+        # (the GLOBAL-strict config ballistic-drifted 21–23 m from altitude — DutyStale_IC1).
+        # IMG_STALE_PROX_EXTENT=0 disables (pure legacy everywhere).
+        self._stale_prox_extent = float(os.environ.get("IMG_STALE_PROX_EXTENT", "120"))  # px
+        self._stale_prox_frac   = float(os.environ.get("IMG_STALE_PROX_FRAC", "0.5"))
+        self._stale_prox_clear  = int(os.environ.get("IMG_STALE_PROX_CLEAR", "5"))
+        self._last_extent_px    = 0.0     # span of the most recent GENUINE detection
         self._stale_win   = int(os.environ.get("IMG_STALE_WIN", "40"))     # frames (~1 s @ 42 Hz)
         # ⛔ DEFAULTS = legacy behavior (FRAC=1.0 disables the miss-frac latch; CLEAR=1 restores the
         # 1-hit clear). The duty-cycle config (FRAC=0.5, CLEAR=5) REGRESSED at n=5 (DutyStale_IC1:
@@ -442,14 +453,17 @@ class IMG_PROCESSOR(Thread):
         _rc = float(os.environ.get("FLOW_R_CORNER", "0.05"))
         _rr = float(os.environ.get("FLOW_R_RING_H", "0.5"))
         self._R_corner = np.diag([_rc] * 6)                                  # trust corner (h AND w)
-        # z-axis ring-weighted loom (2026-06-11, BAKED default 12 — user decision): below ~0.5 m the
+        # z-axis ring-weighted loom (threshold lowered 12→4, 2026-06-13 — user decision): below ~0.5 m the
         # corner loom over-reports ~4× (noisy/spiky) → z-SMC over-brakes → balloon, while the actual
-        # descent is ~0.1 m/s. The ring divergence is the cleaner terminal loom (planar-observable).
+        # descent is ~0.1 m/s. The ring divergence is the cleaner loom THERE (planar-observable).
         # When n_flow_corners <= this, ignore the corner LOOM (h_tr z) in the fusion so the ring carries
-        # the vertical descent; the corner keeps LATERAL (ring has ~0 lateral). Evidence: single full run
-        # no-balloon xy 0.41; honest n=5 mean 12.2 w/ 2 LATERAL fly-aways (vertical fix can't touch those)
-        # + 2 clean touchdowns (0.24/0.44 m/s). Set RING_LOOM_NCORN=0 to disable (baseline corner loom).
-        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "12"))
+        # the vertical descent; the corner keeps LATERAL (ring has ~0 lateral).
+        # WHY 4 NOT 12: GT-loom recheck (2026-06-13) showed n_corn collapses to ~4 by 4 m altitude (ArUco
+        # decode-fail), so thresh=12 fired the handoff across the WHOLE descent — but the ring loom reads
+        # ~0 at altitude (worse than the corner there) → fused pinned ~−0.15 vs GT −0.8…−6.7 (16× under-
+        # report; |fused| 0.15 vs 1.09 with it off). thresh=4 keeps the corner loom at altitude (where it
+        # tracks GT) and only hands to the ring at the TRUE terminal (n_corn→0–4, <~0.5 m). Set =0 to disable.
+        self._ring_loom_thresh = int(os.environ.get("RING_LOOM_NCORN", "4"))
         self._R_ring   = np.diag([_rr, _rr, _rr, 1e6, 1e6, 1e6])             # ring h ok; w garbage
         _qtr = float(os.environ.get("FLOW_Q_HTR", "5.0"))                    # target-rel responsive
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
