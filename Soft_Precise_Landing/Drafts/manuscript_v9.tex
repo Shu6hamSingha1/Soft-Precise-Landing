@@ -535,7 +535,7 @@ The locked gain set (Table~\ref{sup:control params}) meets the precise and soft 
 
 \subsection{Robustness Across Initial Conditions and Target Velocities}
 \label{multi init: subsec}
-Sweeping the five ICs of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{experimentation: section}-\ref{test conditions: subsec} with deterministic noise realizations yields Table~\ref{multi init: table}. Case~5 (circular ship-deck), the most demanding trajectory, is shown in Fig.~\ref{Circular_3D: figure}; the remaining cases are in Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss} of Appendix~\ref{extended results appendix: section}. The right panels show the camera-frame feature trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, which the virtual-camera abstraction of Section~\ref{background: section}-\ref{image parameters: section} reduces to the rotation-decoupled form used by the controller.
+Sweeping the five ICs of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{experimentation: section}-\ref{test conditions: subsec} with deterministic noise realizations yields Table~\ref{multi init: table}. Case~5 (circular ship-deck), the most demanding trajectory, is shown in Fig.~\ref{Circular_3D: figure}; the remaining cases are in Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss}. The right panels show the camera-frame feature trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, which the virtual-camera abstraction of Section~\ref{background: section}-\ref{image parameters: section} reduces to the rotation-decoupled form used by the controller.
 
 \begin{table}[!t]
 \centering
@@ -562,12 +562,40 @@ Sweeping the five ICs of Table~\ref{initial conditions: table} against the five 
     \label{Circular_3D: figure}
 \end{figure}
 
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_combined.pdf}
+    \caption{VDF-ASMC on Case~1 (static target). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
+    \label{fig:sup-static}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_combined.pdf}
+    \caption{VDF-ASMC on Case~2 (linear target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
+    \label{fig:sup-linear}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_combined.pdf}
+    \caption{VDF-ASMC on Case~3 (sinusoidal target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
+    \label{fig:sup-sin}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_combined.pdf}
+    \caption{VDF-ASMC on Case~4 (Lissajous target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
+    \label{fig:sup-liss}
+\end{figure}
+
 VDF-ASMC achieves $25/25$ soft-precise landings under the disturbance model, with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.71~\text{cm}$. The cone clamp and the funnel-saturation guard (Appendix~
 \ref{implementation appendix: section}) are active for less than $1\%$ and $0.5\%$ of control steps, respectively, with zero FoV bound violations. Worst-case physical-pixel excursions of $|\,^\mathcal{C}\hat{x}|_{\max}=134$~px and $|\,^\mathcal{C}\hat{y}|_{\max}=115$~px stay well within the $\mathcal{R}/2=\pm[160,120]$~px FoV bound, empirically confirming Corollary~1.
 
 The four displaced ICs stress the closed loop in distinct modes. IC$_2$ ($[2,2,-5]$~m, diagonal lateral offset) drives the roll and pitch commands into the cone clamp during the first $1$--$2$~s while $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral chase, adding $\sim 0.5$--$1$~s to landing time with terminal $r_{xy,\text{f}}$ within a few centimeters of IC$_1$, since the terminal phase is dominated by disturbance variance rather than initial geometry. IC$_3$ ($[2,-2,-5]$~m) is the sign-reversed counterpart of IC$_2$ across $y$; its touchdown errors confirm no hidden $y$-axis bias, with the $1$--$2$~cm deviations on the rotating Cases~4--5 reflecting target-rotation phase rather than gain bias. IC$_4$ ($[2,2,-7]$~m, high altitude plus lateral) extends the descent by $\sim 3$--$4$~s and gives the worst-case $t_\text{f}^{\max}\approx 34$--$36$~s (Table~\ref{multi init: table}); the features start depth-scaled by $5/7$, so the cone clamp is less stressed at $t=0$ and the target feature funnel contracts to its terminal bound while the UAV still has altitude, pulling $r_{xy,\text{f}}$ into the IC$_1$ range. IC$_5$ ($[2,2,-3]$~m, low altitude plus lateral) is the tightest visibility case: the pinhole projection magnifies the lateral offset by $5/3\approx 1.67\times$, producing the worst-case pixel excursions of the $25$-run set, with the cone clamp activating at its tightest $\theta_\text{cone}(t)$ in the first $1$--$2$~s and $d_\text{min}^\text{fov}(t)$ remaining strictly positive throughout. Across the five ICs, landing time clusters around IC$_1$ while touchdown error tracks terminal-phase disturbance variance, not initial geometry; cone-clamp activation intensity, by contrast, follows initial geometry.
 
-The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run on Case~3 (sinusoidal trajectory) are reported in Fig.~\ref{funnel internals: figure}, with the adaptive-gain, sliding-surface, and thrust trajectories in Appendix~\ref{extended results appendix: section} (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}). The run combines a $2.83$-m diagonal lateral offset with oscillatory $x$-axis chase, exercising both the funnel-margin cone clamp and the leakage-type adaptive law.
+The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run on Case~3 (sinusoidal trajectory) are reported in Figs.~\ref{funnel internals: figure}--\ref{fig:sup-thrust}. The run combines a $2.83$-m diagonal lateral offset with oscillatory $x$-axis chase, exercising both the funnel-margin cone clamp and the leakage-type adaptive law.
 
 \begin{figure*}[!t]
 \centering
@@ -578,6 +606,33 @@ The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run o
 
 The right three panels of Fig.~\ref{funnel internals: figure} expose three distinct behaviors of $\boldsymbol{h}_\text{e}(t)$ that originate from the controller design and the trajectory geometry. (i)~\emph{Initial transient}: $\boldsymbol{h}_\text{e}(0)\approx -\boldsymbol{h}_\text{d}(0)$ on the lateral axes, since $\boldsymbol{h}(0)\approx\boldsymbol{0}$ (UAV at rest) while the Image Point PID demands a large desired flow to correct the IC$_2$ image-plane displacement. (ii)~\emph{Lateral asymmetry}: the $x$-axis peak $|h_{\text{e},x}|\approx 4.06$ exceeds the $y$-axis peak $\approx 3.08$ because Case~3 has a sinusoidal $x$-component but a linear-ramp $y$-component, requiring continuous oscillatory chase on $x$. (iii)~\emph{Vertical positivity}: $h_{\text{e},z}(t)>0$ throughout, since the descent reference $h_{\text{d},z}=h_\text{rd}=-0.42$ is a constant negative value and $h_z$ approaches it from above. The persistent positive residual reflects steady-state disturbance absorption by the leakage-type adaptive gain (Remark~3). Across all three axes $\max_k|h_{\text{e},k}|/p_{2,k}\approx 0.28$, well below the $1-\epsilon_S=0.95$ funnel-saturation threshold of Appendix~
 \ref{implementation appendix: section}, so the funnel-saturation guard stays dormant on this run.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
+    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\alpha(t)$ for the representative IC$_2$ Case~3 run. The gains rise during the reaching phase and leak down once the surface is inside the boundary layer, exhibiting the leakage-adaptation behavior prescribed by the update laws of Theorem~1 and Theorem~2. Empirical confirmation of Remark~3: $\boldsymbol{\kappa}$ self-tunes to the actual disturbance magnitude online without any \emph{a priori} bound.}
+    \label{adaptive gain: figure}
+\end{figure}
+
+Fig.~\ref{adaptive gain: figure} shows the four adaptive gains. (i)~\emph{Lateral $\kappa_x$, $\kappa_y$}: both stay near their initial $0.125$ throughout the descent (terminal $0.110$ and $0.116$), with the gain-growth and leakage terms in approximate balance under the persistent wind plus $x$/$y$-chase disturbances. (ii)~\emph{Vertical $\kappa_z$}: stays at its initial $0.25$ essentially unchanged (terminal $0.250$). The larger initial value reflects the persistent vertical disturbance from gravity-scaled depth coupling, ground effect, and the descent-rate transient. (iii)~\emph{Yaw $\kappa_\alpha$}: decays from $2.0$ to $0.003$ ($700\times$ reduction) since Case~3 has stationary heading $\psi_\text{t}=0$ and only sensor-induced $d_\alpha$ remains for the leakage term to bleed off. Both translational and yaw behaviors are signatures of the same Remark~3 mechanism.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
+    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~3 run. After a short reaching phase, $\boldsymbol{\sigma}$ enters and stays inside the boundary layer $\mathcal{E}$ for the remainder of the descent. Confirms the boundary-layer attraction predicted by Theorem~1 with chattering suppressed.}
+    \label{fig:sup-sliding}
+\end{figure}
+
+The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface behaviors per axis. (i)~\emph{$\sigma_x$ (lateral)}: stays small through most of the descent (range $[-0.34, 0.47]$), peaking at $|\sigma_x|=0.47$ near touchdown ($t\approx 22.3$~s) under intensifying depth-dependent pixel noise and oscillatory $x$-chase on Case~3. (ii)~\emph{$\sigma_y$ (lateral)}: similar shape with smaller late peak ($|\sigma_y|=0.41$ at $t\approx 22.9$~s) since Case~3's $y$-component is a linear ramp without oscillatory content. (iii)~\emph{$\sigma_z$ (vertical)}: peaks early at $|\sigma_z|=0.62$ ($t\approx 6.5$~s) during the descent-rate adaptation toward $h_\text{rd}$, then decays as $h_z$ tracks the reference. The worst-case excursion $\max_k|\sigma_k|=0.62$ stays comfortably inside $\mathcal{E}=\text{diag}(1,1,1)$, so the switching term operates in the linear regime.
+
+\begin{figure}[!t]
+\centering
+    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
+    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit for the representative IC$_2$ Case~3 run. The lateral command stays strictly below the cone-induced bound, so the funnel-margin cone clamp does not saturate on this run. Confirms the cone-induced bound of Property~1 holds with positive margin.}
+    \label{fig:sup-thrust}
+\end{figure}
+
+The two panels of Fig.~\ref{fig:sup-thrust} show distinct command behaviors. (i)~\emph{Total thrust $\,^\mathcal{B}T_u(t)$}: stays in $[19.4, 20.7]$~N around $mg=20.73$~N, with the SO(3) tracker realizing the commanded acceleration without over-actuation; small variations near touchdown reflect ground-effect compensation. (ii)~\emph{Lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$}: peaks at $4.14$~m/s$^2$ during the initial 1--2~s of IC$_2$ chase from the $2.83$-m diagonal offset, then settles to $\sim 1.3$~m/s$^2$ as features re-center, staying strictly below the cone-induced limit $|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)$ throughout.
 
 A target-velocity sweep then applies a symmetric multiplicative scale $\lambda\in\{0.6,0.8,1.0,1.2,1.4\}$ to every moving trajectory (Cases~2--5) from IC$_1=[0,0,-5]~\text{m}$ with the same locked gains. The resulting $4\times 5=20$ runs all yield soft-precise touchdowns (Fig.~\ref{speed envelope: figure}), with worst-case $r_{xy,\text{f}}=5.03~\text{cm}$ (Case~4, $\lambda=1.4$) and $v_\text{f}=0.154~\text{m/s}$ (Case~5, $\lambda=1.4$), establishing a $\pm 40\%$ guaranteed soft-precise envelope \emph{without retuning}. Outside the $[0.6,1.4]$ band the $\theta_\text{cap}=60^\circ$ ceiling becomes the binding constraint and the airframe runs out of lateral acceleration; the dual-funnel certificates of Theorem~1 and Corollary~1 still hold, but the cone-clamped lateral acceleration is no longer enough to keep the chase converging.
 
@@ -921,65 +976,6 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
 \subsection{Funnel-Margin Cone Clamp $(\boldsymbol{p}_{1_0}, \boldsymbol{p}_{1_\infty}, \xi_1, \theta_\text{cap})$} The target feature funnel half-widths $\boldsymbol{p}_{1_0}, \boldsymbol{p}_{1_\infty}$ are derived from the camera resolution $\mathcal{R}$ with a per-side inset and are not free tuning knobs. The decay rate $\xi_1$ sets how quickly the visibility envelope tightens. The cone cap $\theta_\text{cap}=60^\circ$ reserves a $2\times$-hover-thrust margin against actuator saturation and is treated as a hardware-derived constant.
 
 \subsection{Yaw ASMC and SO(3) tracker} The yaw gains $(\chi_\alpha, \gamma_\alpha, \eta_\alpha, \rho_\alpha, \kappa_\alpha(0), \varepsilon_\alpha)$ follow the same growth--leakage logic as the optical-flow ASMC, with $(\eta_\alpha, \rho_\alpha)$ playing the role of $(\mathcal{N}, \mathcal{P})$. The SO(3) tracker gains $(k_R, k_\Omega)$ are sized so the inner loop closes at least an order of magnitude faster than the outer optical-flow funnel, maintaining the time-scale separation of Assumption~2.
-
-
-\section{Extended Single-Run and Multi-Initial-Condition Results} \label{extended results appendix: section}
-This appendix collects the multi-initial-condition results for Cases~1--4 of Section~\ref{experimentation: section}-\ref{multi init: subsec} (Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss}) and the internal closed-loop trajectories for the representative IC$_2$ Case~3 run (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}), referenced from Section~\ref{experimentation: section}.
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_combined.pdf}
-    \caption{VDF-ASMC on Case~1 (static target). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-static}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_combined.pdf}
-    \caption{VDF-ASMC on Case~2 (linear target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-linear}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_combined.pdf}
-    \caption{VDF-ASMC on Case~3 (sinusoidal target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-sin}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_combined.pdf}
-    \caption{VDF-ASMC on Case~4 (Lissajous target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-liss}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
-    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\alpha(t)$ for the representative IC$_2$ Case~3 run. The gains rise during the reaching phase and leak down once the surface is inside the boundary layer, exhibiting the leakage-adaptation behavior prescribed by the update laws of Theorem~1 and Theorem~2. Empirical confirmation of Remark~3: $\boldsymbol{\kappa}$ self-tunes to the actual disturbance magnitude online without any \emph{a priori} bound.}
-    \label{adaptive gain: figure}
-\end{figure}
-
-Fig.~\ref{adaptive gain: figure} shows the four adaptive gains. (i)~\emph{Lateral $\kappa_x$, $\kappa_y$}: both stay near their initial $0.125$ throughout the descent (terminal $0.110$ and $0.116$), with the gain-growth and leakage terms in approximate balance under the persistent wind plus $x$/$y$-chase disturbances. (ii)~\emph{Vertical $\kappa_z$}: stays at its initial $0.25$ essentially unchanged (terminal $0.250$). The larger initial value reflects the persistent vertical disturbance from gravity-scaled depth coupling, ground effect, and the descent-rate transient. (iii)~\emph{Yaw $\kappa_\alpha$}: decays from $2.0$ to $0.003$ ($700\times$ reduction) since Case~3 has stationary heading $\psi_\text{t}=0$ and only sensor-induced $d_\alpha$ remains for the leakage term to bleed off. Both translational and yaw behaviors are signatures of the same Remark~3 mechanism.
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
-    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~3 run. After a short reaching phase, $\boldsymbol{\sigma}$ enters and stays inside the boundary layer $\mathcal{E}$ for the remainder of the descent. Confirms the boundary-layer attraction predicted by Theorem~1 with chattering suppressed.}
-    \label{fig:sup-sliding}
-\end{figure}
-
-The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface behaviors per axis. (i)~\emph{$\sigma_x$ (lateral)}: stays small through most of the descent (range $[-0.34, 0.47]$), peaking at $|\sigma_x|=0.47$ near touchdown ($t\approx 22.3$~s) under intensifying depth-dependent pixel noise and oscillatory $x$-chase on Case~3. (ii)~\emph{$\sigma_y$ (lateral)}: similar shape with smaller late peak ($|\sigma_y|=0.41$ at $t\approx 22.9$~s) since Case~3's $y$-component is a linear ramp without oscillatory content. (iii)~\emph{$\sigma_z$ (vertical)}: peaks early at $|\sigma_z|=0.62$ ($t\approx 6.5$~s) during the descent-rate adaptation toward $h_\text{rd}$, then decays as $h_z$ tracks the reference. The worst-case excursion $\max_k|\sigma_k|=0.62$ stays comfortably inside $\mathcal{E}=\text{diag}(1,1,1)$, so the switching term operates in the linear regime.
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
-    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit for the representative IC$_2$ Case~3 run. The lateral command stays strictly below the cone-induced bound, so the funnel-margin cone clamp does not saturate on this run. Confirms the cone-induced bound of Property~1 holds with positive margin.}
-    \label{fig:sup-thrust}
-\end{figure}
-
-The two panels of Fig.~\ref{fig:sup-thrust} show distinct command behaviors. (i)~\emph{Total thrust $\,^\mathcal{B}T_u(t)$}: stays in $[19.4, 20.7]$~N around $mg=20.73$~N, with the SO(3) tracker realizing the commanded acceleration without over-actuation; small variations near touchdown reflect ground-effect compensation. (ii)~\emph{Lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$}: peaks at $4.14$~m/s$^2$ during the initial 1--2~s of IC$_2$ chase from the $2.83$-m diagonal offset, then settles to $\sim 1.3$~m/s$^2$ as features re-center, staying strictly below the cone-induced limit $|\,^\mathcal{I}a_{\text{d},z}|\tan\theta_\text{cone}(t)$ throughout.
 
 
 \bibliography{IEEEabrv, bibliography}
