@@ -259,6 +259,7 @@ cbf_state = struct('delta_prev', [], 'ddelta_ref', zeros(2,1), ...
                    'decode_fail_n', 0, 'phase2_alpha', 0.0, ...
                    'cr_prev', [], 'd', zeros(2,1), 'Lw2_prev', []);
 th_safe = [];
+th_safe_prev_n = 0;   % previous CBF lean magnitude (for TILT_RATE_MAX limit)
 kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
 kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
 e_a         = zeros(1, N_steps);
@@ -605,6 +606,26 @@ for idx=1:N_steps
         K_ctrl.theta_cap, theta_seed, dt_img, refresh, B_w_c(1:2), cbf_state);
 
     I_a_cd_filt(3) = max(I_a_cd_filt(3), -50);
+
+    % TILT-RATE LIMIT (TILT_RATE_MAX rad/s): cap how fast the CBF lean magnitude
+    % can GROW, so the startup tilt-up is gradual -> the marker centroid shifts
+    % slowly enough for the CBF to hold the edge-corner (IC5 startup ejection:
+    % the pitch slammed to 0.20 rad in 0.4 s and swung a corner out of FoV before
+    % the drone even translated). Shrinking is unrestricted (always visibility-
+    % safe). Acts on th_safe (the attitude is built from it). [] = off.
+    % Gated to the STARTUP window only (t < TILT_RATE_T, default 0.4s): a global
+    % rate limit starves the ongoing lateral corrections -> breaches. The ejection
+    % is purely the initial tilt-up, so ramp only that.
+    global TILT_RATE_MAX TILT_RATE_T;
+    if isempty(TILT_RATE_T); trate_T = 0.4; else; trate_T = TILT_RATE_T(1); end
+    if ~isempty(TILT_RATE_MAX) && TILT_RATE_MAX > 0 && ~isempty(th_safe) ...
+            && tRange(idx) < trate_T
+        tn_now = norm(th_safe);
+        if tn_now > th_safe_prev_n + TILT_RATE_MAX*dt && tn_now > 1e-9
+            th_safe = th_safe * (th_safe_prev_n + TILT_RATE_MAX*dt) / tn_now;
+        end
+    end
+    if ~isempty(th_safe); th_safe_prev_n = norm(th_safe); end
 
     theta_cur_log(idx)  = theta_current;
     theta_cone_log(idx) = theta_cone;
