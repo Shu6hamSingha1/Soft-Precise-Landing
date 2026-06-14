@@ -118,8 +118,8 @@ class Controller(Thread):
         # The two axes run at DIFFERENT effective loop gains for the same physical
         # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
         # than y) — per-axis values are how that gets compensated.
-        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "5.0")),
-                              float(os.environ.get("PLASMC_KP_Y", "5.0"))])    # 9->5 (2026-06-12 Combo bake): KP=9 is OVER-GAINED — it amplifies the (ungainnable) close-range spurious-flow perception event into a fly-away catastrophe; KP=5 halves the demand → cascade stays bounded (a_u 625 vs 1221) → recovers to a landing. Beats baked at single-axis IC2 (3.85 vs 8.42). CAVEAT: still FAILS IC2-5 gate (6/20 TL, 27m catastrophe at low-alt IC5) — working baseline, NOT gate-clean.
+        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "3.0")),
+                              float(os.environ.get("PLASMC_KP_Y", "3.0"))])    # 5->3 (2026-06-14 lateral-overshoot bake): KP sets the saturated-barrier demand ceiling (∝p_s·KP); the demand is what builds the un-brakeable lateral velocity that overshoots p_1 and flies the marker out of FoV. KP=3 is the gains sweet spot at IC2 (n=5: arrival vel 3.4→2.8, peak vel 8.1→3.8, xy 22→8.6, demand h_d 2.16→1.27) with convergence intact; KP=2 goes sluggish (flt 24s). IC2-5 gate (n=3): drift down + IC5 catastrophe FIXED (27m→2.3m), no systematic regression. CAVEAT: still TL-dominated (no soft/precise) — the residual is the inner-loop perception wall (flow under-reports velocity ~2.4x so the commanded brake is never delivered; NOT gain-tunable — PS0/KD/escalating-recovery all confirmed no-help). Drift-reduction deliverable, NOT a solution.
         self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "0.1")),
                               float(os.environ.get("PLASMC_KI_Y", "0.1"))])   # KI 1.0->0.1 (2026-06-11 IC=2 gain-chain bake): MATLAB parity; the 10x integral was windup fuel once the P-path works — pushed ds_d=+1.4 THROUGH the crossing
         self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "0.5")),
@@ -201,6 +201,7 @@ class Controller(Thread):
             ("BODY_YAW_SOURCE",      "alpha"),
             ("PLASMC_TAU_DS",        "0.05"),
             ("PLASMC_DSD_LAT_MAX",   "100.0"),
+            ("PLASMC_SEN_RECOVERY_K", "0.0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -251,6 +252,11 @@ class Controller(Thread):
         # range -- the depth-free analog of the descent h_rd governor. Caps the
         # feature-rate magnitude only (no Z/metric). Default 100 = effectively off.
         self._DSD_LAT_MAX = float(os.environ.get("PLASMC_DSD_LAT_MAX", "100.0"))
+        # Escalating recovery authority on outer-funnel breach (see _updateImgFeatureParam).
+        # Gain on the inward velocity demand added when |s_e_n| > p_s, proportional to the
+        # overflow. Restores the recovery authority the back-mapped barrier collapses + the
+        # ratio clamp freezes. Default 0.0 = OFF.
+        self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -622,6 +628,23 @@ class Controller(Thread):
             V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
                          - self._K_ri @ self._is_e_n[-1]
                          - self._K_rd @ ds_e_n)
+
+        # --- escalating recovery authority on funnel breach (PLASMC_SEN_RECOVERY_K) ---
+        # The back-mapped barrier demand g(r)=(1-r^2)*log((1+r)/(1-r)) PEAKS at r~0.65
+        # and COLLAPSES toward the boundary; the ratio clamp (|r|<=0.95) then FREEZES
+        # zeta_s, so once |s_e_n|>p_s the outer loop has NO escalating authority to pull
+        # the feature back -- the overshoot breach is structurally unrecoverable (the
+        # demand at r>3 is WEAKER than at r=0.65; see the s_e/p_s breach analysis).
+        # Add a linear recovery demand that activates on breach and GROWS with the
+        # overflow (|s_e_n|-p_s), restoring inward authority that escalates with breach
+        # severity (the signal the ratio clamp discards). Acts in feature-rate units,
+        # same as ds_d (scale-free, no Z). Default 0.0 = OFF (A/B + IC2-5 gated).
+        if self._sen_recovery_k > 0.0:
+            for _i in range(2):
+                over = abs(self._s_e_n[-1][_i]) - self._p_s[-1][_i]
+                if over > 0.0:
+                    V_ds_d_xy[_i] += -self._sen_recovery_k * over * np.sign(self._s_e_n[-1][_i])
+
         # Lateral approach-velocity governor: cap the closing feature-rate demand
         # so the drone doesn't command (and build) a lateral velocity it can't see.
         n_xy = float(np.linalg.norm(V_ds_d_xy))
