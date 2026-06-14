@@ -199,6 +199,7 @@ class Controller(Thread):
             ("PLASMC_SEN_FUNNEL",    "1"),
             ("BODY_YAW_SOURCE",      "alpha"),
             ("PLASMC_TAU_DS",        "0.05"),
+            ("PLASMC_DSD_LAT_MAX",   "100.0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -239,6 +240,16 @@ class Controller(Thread):
         self._theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
         self._funnel_mode = os.environ.get("FUNNEL_MODE", "cbf2")
         self._DH_D_MAX    = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
+        # Lateral approach-velocity governor (2026-06-14). The outer PID demand
+        # ds_d[xy] (= desired lateral optical-flow, scale-free v/Z) is pinned at
+        # the saturated-barrier ceiling ~3 for the whole approach -> commands a
+        # closing flow the drone can't see (LK under-reports) -> arrives at the
+        # target carrying ~4-5 m/s lateral -> flies through -> fly-away (the
+        # lateral wall, see feedback_lateral_overshoot_root). Capping |ds_d[xy]|
+        # gentles the closing demand so the velocity stays in the flow-observable
+        # range -- the depth-free analog of the descent h_rd governor. Caps the
+        # feature-rate magnitude only (no Z/metric). Default 100 = effectively off.
+        self._DSD_LAT_MAX = float(os.environ.get("PLASMC_DSD_LAT_MAX", "100.0"))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -608,6 +619,11 @@ class Controller(Thread):
             V_ds_d_xy = (- self._K_rp @ self._s_e_n[-1]
                          - self._K_ri @ self._is_e_n[-1]
                          - self._K_rd @ ds_e_n)
+        # Lateral approach-velocity governor: cap the closing feature-rate demand
+        # so the drone doesn't command (and build) a lateral velocity it can't see.
+        n_xy = float(np.linalg.norm(V_ds_d_xy))
+        if n_xy > self._DSD_LAT_MAX:
+            V_ds_d_xy = V_ds_d_xy * (self._DSD_LAT_MAX / n_xy)
         raw_ds_d = np.concatenate([V_ds_d_xy, [0.0]])
         if self._tau_ds > 0 and len(self._dt) > 0:
             if not self._ds_d_lpf_init:
