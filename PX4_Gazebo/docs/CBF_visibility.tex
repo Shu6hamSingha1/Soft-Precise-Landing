@@ -10,8 +10,7 @@
 \title{\textbf{Tilt-Based Control Barrier Function for Target Visibility}\\[4pt]
 \large A camera-plane QP over the body tilt via the rotational interaction matrix}
 \author{Soft--Precise--Landing}
-\date{9 June 2026 (revised 14 June 2026: lean$\leftrightarrow$rotation-axis correction
-$\bm\omega=M\bm\theta$; tilt applied directly to the desired attitude; post-QP cap; two-phase $\delta$)}
+\date{14 June 2026}
 
 \begin{document}
 \maketitle
@@ -63,19 +62,17 @@ observed feature velocity, $\bm d=\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega_{
 the true gyro rate $\bm\omega^{\rm curr}$), so it carries only the genuine target motion, not our own
 tilting.
 
-\paragraph{Lean vector vs.\ rotation axis (the load-bearing distinction).}
+\paragraph{Lean vector vs.\ rotation axis.}
 The QP variable $\bm\theta$ is the \emph{lean-direction} vector --- the horizontal direction of the
 desired thrust/acceleration, $\bm\theta_d=R_z(-\psi)\,{}^\mathcal I\!a_{xy}/a_z$ --- not the body
 angular-rate vector that drives \eqref{eq:Lw}. A lean toward $+x$ is produced by a rotation about the
 $+y$ axis, so the two differ by a fixed $90^\circ$ rotation,
 \begin{equation}\label{eq:M}
-\bm\omega \;=\; M\,\bm\theta,\qquad M=\begin{bmatrix}0&1\\-1&0\end{bmatrix},
+\bm\omega \;=\; M\,\bm\theta,\qquad M=\begin{bmatrix}0&1\\-1&0\end{bmatrix}.
 \end{equation}
-(verified against an independent pinhole$+$attitude camera model: with $M$ the predicted feature shift
-matches the true shift to ${<}8\%$ over the near-hover envelope; using $\bm\theta$ directly errs by
-${\sim}230\%$). The feature therefore moves with the \emph{effective} coupling
-$\widetilde\Lw\equiv\Lw M$. For a finite tilt change the exact map is the rotation homography of the
-measured point; the first-order form
+The feature therefore moves with the \emph{effective} coupling $\widetilde\Lw\equiv\Lw M$ (validated
+against an independent pinhole$+$attitude camera model: $<8\%$ over the near-hover envelope). For a
+finite tilt change the exact map is the rotation homography of the measured point; the first-order form
 \begin{equation}\label{eq:lin}
 \,^\Cframe\rhat(\bm\theta)\approx\,^\Cframe\rhat+\widetilde\Lw\,(\bm\theta-\bm\theta_{\rm curr})
 =\,^\Cframe\rhat+\Lw\,M\,(\bm\theta-\bm\theta_{\rm curr})
@@ -145,7 +142,7 @@ are scaled by the same ramp factor~$\alpha\in[0,1]$, where $\delta_{\rm ref}$ an
 are the half-extent and loom rate measured at the last successful decode.
 
 \section{Feasibility floor and hand-off}
-With $\theta_{\rm cap}$ moved outside the QP, the box constraint \eqref{eq:qp} is \textbf{infeasible} iff
+With $\theta_{\rm cap}$ applied outside the QP, the box constraint \eqref{eq:qp} is \textbf{infeasible} iff
 $m_k<0$ for some~$k$ (the marker fills the frame within $\tau$). In Phase~1, $m_k=\varphi_{\max,k}>0$
 always, so the QP is \textbf{always feasible} while the central marker decodes.
 
@@ -155,13 +152,11 @@ Phase~2 margins, raise the perception-floor flag and hand off to the texture-fre
 
 \section{Assumptions (and the practical challenge each carries)}
 \begin{enumerate}
-\item \textbf{The lean$\to$rotation map $M$ is applied, and $\Lw$'s residual sign convention is
-calibrated.} The QP variable is the lean vector $\bm\theta$, but $\Lw$ couples the rotation-axis rate;
-the fixed $90^\circ$ map $\bm\omega=M\bm\theta$ \eqref{eq:M} bridges them, so the QP must use
-$\widetilde\Lw=\Lw M$, \emph{not} $\Lw$ (omitting $M$ constrains a direction rotated $90^\circ$ from the
-true feature motion --- the barrier then bounds the wrong tilt axis). Any residual mount-dependent sign
-of $\Lw$ remains a one-time check: command a small tilt and confirm $\Delta\,^\Cframe\rhat$ matches
-$\widetilde\Lw$ in sign before trusting the barrier.
+\item \textbf{The coupling $\widetilde\Lw=\Lw M$ and its sign convention are calibrated.} The QP variable
+is the lean vector $\bm\theta$, but $\Lw$ couples the rotation-axis rate; the fixed $90^\circ$ map
+$\bm\omega=M\bm\theta$ \eqref{eq:M} bridges them, so the QP uses $\widetilde\Lw=\Lw M$. Any residual
+mount-dependent sign of $\Lw$ is a one-time check: command a small tilt and confirm
+$\Delta\,^\Cframe\rhat$ matches $\widetilde\Lw$ in sign before trusting the barrier.
 \item \textbf{The filtered tilt is realized} (SO(3) loop tracks $\bm\theta^\star$). \emph{Challenge:}
 attitude bandwidth $\Rightarrow$ lag; $\theta_{\rm cap}$ bounds magnitude, not delay.
 \item \textbf{The drift $\bm d$ is the translation part} ($\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega^{\rm
@@ -208,14 +203,5 @@ LPF (time constant $\tau_{ia}$) would smear the barrier's hard bound by several 
 guarantee would then not land on the commanded attitude. The direct map makes the deliverable-tilt
 guarantee exact.
 \end{enumerate}
-
-\paragraph{Why apply the tilt, not the accel.}
-$\bm\theta^\star$ is the quantity the barrier actually bounds; $R_{d3}$ depends on it alone (the thrust
-magnitude $a_z$, set by the descent/loom loop, divides out of the unit body-$z$). Routing the safe tilt
-through $a_{xy}$ and the acceleration LPF re-introduces a lag the barrier was designed to exclude, so the
-filtered attitude can momentarily violate $\bm\theta^\star$ even though the QP solution honors the FoV
-box. Applying $\bm\theta^\star$ to $R_{d3}$ directly --- while still merging the unfiltered vertical
-thrust --- keeps both the visibility guarantee and the deliverability cap exact on the attitude the
-inner loop tracks.
 
 \end{document}

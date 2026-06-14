@@ -12,7 +12,7 @@ import asyncio
 import os
 import time 
 from mavsdk import System
-from mavsdk.offboard import (OffboardError, PositionNedYaw, VelocityBodyYawspeed, AccelerationNed, AttitudeRate, ActuatorControl, ActuatorControlGroup)
+from mavsdk.offboard import (OffboardError, PositionNedYaw, VelocityBodyYawspeed, AccelerationNed, Attitude, AttitudeRate, ActuatorControl, ActuatorControlGroup)
 from mavsdk.telemetry import LandedState
     
 class FC():
@@ -309,6 +309,17 @@ class FC():
             return
         await self.vehicle.offboard.set_attitude_rate(
                 AttitudeRate(roll_rate, pitch_rate, yaw_rate, thrust))
+
+    async def send_attitude(self, roll_deg=0.0, pitch_deg=0.0, yaw_deg=0.0, thrust=0.0):
+        """Send a target ATTITUDE (Euler deg, body->NED) + normalized thrust [0,1].
+
+        PX4's default attitude/rate PID tracks the setpoint. Used by the isolated
+        CBF test (apps/cbf_isolation_test.py) to command theta_safe as a tilt while
+        the rest of the stack stays stock PX4. Always goes via MAVSDK offboard
+        (no DDS path — DDS only carries body rates).
+        """
+        await self.vehicle.offboard.set_attitude(
+                Attitude(float(roll_deg), float(pitch_deg), float(yaw_deg), float(thrust)))
 
     async def _getOdometry(self):
         try:
