@@ -100,7 +100,16 @@ if valid
         d_raw   = (cr2 - state.cr_prev) / dt_last - Lw2_base * w_rp;
         state.d = (1 - ema) * state.d + ema * d_raw;
     end
-    dft = tau * state.d;                  % held between refreshes (ZOH-aware)
+    % DRIFT_RECENTER (g, 1/s): seed the drift with the EXPECTED re-centering of
+    % the centroid (heading from its offset cr2 toward image centre, -g*cr2), so
+    % the CBF anticipates the -Y TRANSLATION its own lean produces and stops
+    % stripping the re-centering lean. Addresses d=0-at-start myopia at the root.
+    global DRIFT_RECENTER;
+    d_eff = state.d;
+    if ~isempty(DRIFT_RECENTER) && DRIFT_RECENTER > 0
+        d_eff = state.d - DRIFT_RECENTER * cr2;
+    end
+    dft = tau * d_eff;                    % held between refreshes (ZOH-aware)
     if refresh
         state.cr_prev = cr2;
     end
@@ -110,6 +119,7 @@ if valid
     Rzm = [cz, sz; -sz, cz];              % Rz(-yaw): inertial -> image
     th_curr = Rzm * (-R(1:2,3) / max(abs(R33), 1e-3));   % current image-axis tilt
     th      = Rzm * (I_a(1:2) / max(a_z, 1e-6));         % theta_d = Rz(-yaw)*(a_xy/a_z)
+    th_d_dbg = th;                                        % (debug) desired lean before QP
 
     % lean-vector -> rotation-axis correction (L_w*M); validated 5.6% vs identity
     % 216%. CORNER-BASED CBF (MATLAB): with exact analytical corners we constrain
@@ -128,24 +138,9 @@ if valid
         Lw_c(:,:,i)   = Lwi;
         anchor_c(:,i) = ct(:,i) - Lwi * th_curr + dft;          % f_i = cr_i + L_wi*(th-th_curr) + tau*d
     end
-    for it = 1:10                         % alternating projection: keep EVERY corner in the box
-        for i = 1:Ncp
-            Lwi = Lw_c(:,:,i);
-            ff  = anchor_c(:,i) + Lwi * th;
-            for k = 1:2
-                if ff(k) > m2(k)
-                    r = Lwi(k,:)';
-                    th = th - (ff(k) - m2(k)) / (r'*r + 1e-12) * r;
-                    ff = anchor_c(:,i) + Lwi * th;
-                elseif ff(k) < -m2(k)
-                    r = Lwi(k,:)';
-                    th = th - (ff(k) + m2(k)) / (r'*r + 1e-12) * r;
-                    ff = anchor_c(:,i) + Lwi * th;
-                end
-            end
-        end
-    end
+    th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % alternating projection onto FoV box
 
+    th_qp_dbg = th;                       % (debug) lean after QP projection, before cap
     % post-QP deliverability cap (outside the projection so it never creates
     % box infeasibility)
     tn = norm(th);
@@ -153,6 +148,106 @@ if valid
         th = th * (theta_cap / tn);
     end
     th_safe = th;                         % safe LEAN vector (image axes) for direct->rd3
+    % DIRECTIONAL INSET (DIR_INSET_RELAX px): restore the CBF's intended
+    % directionality. If stripping the lean to the tight box REVERSED the
+    % demanded inertial lateral sign, the constraint is killing a RE-CENTERING
+    % demand (not a runaway) -> re-solve with the box widened by DIR_INSET_RELAX
+    % toward the FoV edge, so the re-centering lean is delivered. Self-targeting:
+    % only the reversal case (seed-6-like) triggers it; good seeds keep the inset.
+    global DIR_INSET_RELAX;
+    if ~isempty(DIR_INSET_RELAX) && DIR_INSET_RELAX > 0
+        Rzy_d   = [cz, -sz; sz, cz];                 % Rz(yaw): lean -> inertial
+        axy_des = a_z * Rzy_d * th_d_dbg;
+        axy_sf  = a_z * Rzy_d * th_safe;
+        if any(axy_des .* axy_sf < 0)                % CBF reversed a lateral axis
+            m2_relax = m2 + (DIR_INSET_RELAX / f);   % widen box toward FoV edge
+            th_r = project_box(th_d_dbg, anchor_c, Lw_c, m2_relax, Ncp);
+            tnr = norm(th_r);
+            if tnr > theta_cap; th_r = th_r * (theta_cap / tnr); end
+            th = th_r; th_safe = th_r;
+            global DIR_FIRES; if isempty(DIR_FIRES); DIR_FIRES = 0; end
+            DIR_FIRES = DIR_FIRES + 1;                % (debug) count firings
+        end
+    end
+    % STRIP-RATIO-GATED DRIFT (DRIFT_GATED g): self-targeting version of
+    % DRIFT_RECENTER. Measure how much of the demanded lateral lean the tight
+    % projection STRIPPED along the demand direction; apply the -g*cr2
+    % re-centering anticipation SCALED by that strip fraction, then re-project.
+    % Good seeds (-Y survives, strip~0) -> ~no relax; seed 6 (-Y stripped/
+    % reversed, strip~1) -> full relax. Self-targets the seed-6 flip only.
+    global DRIFT_GATED;
+    if ~isempty(DRIFT_GATED) && DRIFT_GATED > 0
+        Rzg     = [cz, -sz; sz, cz];
+        axy_des = a_z * Rzg * th_d_dbg;                  % desired inertial a_xy
+        axy_tgt = a_z * Rzg * th_safe;                   % tight-projection result
+        dmag    = norm(axy_des);
+        if dmag > 1e-6
+            delivered  = (axy_tgt' * axy_des) / dmag;    % component along demand
+            strip_frac = max(0.0, 1.0 - delivered / dmag);  % 0 deliv, 1 stripped, >1 reversed
+            if strip_frac > 0.05
+                g_eff   = DRIFT_GATED * strip_frac;      % anticipation scaled by strip
+                dft_g   = tau * (state.d - g_eff * cr2);
+                anc_g   = zeros(2, Ncp);
+                for ig = 1:Ncp
+                    anc_g(:,ig) = ct(:,ig) - Lw_c(:,:,ig) * th_curr + dft_g;
+                end
+                th_g = project_box(th_d_dbg, anc_g, Lw_c, m2, Ncp);
+                tng  = norm(th_g);
+                if tng > theta_cap; th_g = th_g * (theta_cap / tng); end
+                th = th_g; th_safe = th_g;
+            end
+        end
+    end
+    % SIGN-PRESERVING GUARD (CBF_NO_REVERSE): the CBF may shrink the lateral lean
+    % toward 0 for visibility, but may NOT reverse its inertial sign. A reversal
+    % means the CBF would command motion AWAY from the target (the seed-6 flip);
+    % instead hold that axis at 0 (no inward push, but no runaway). Self-targeting
+    % -- only fires when the projection actually reversed an axis.
+    global CBF_NO_REVERSE;
+    if ~isempty(CBF_NO_REVERSE) && CBF_NO_REVERSE
+        Rzy_nr = [cz, -sz; sz, cz];                 % Rz(yaw): lean -> inertial
+        axy_des = a_z * Rzy_nr * th_d_dbg;          % desired inertial a_xy
+        axy_sf  = a_z * Rzy_nr * th_safe;           % CBF-safe inertial a_xy
+        for jj = 1:2
+            if axy_des(jj)*axy_sf(jj) < 0           % CBF reversed this axis
+                axy_sf(jj) = 0.0;                   % hold, don't fly the wrong way
+            end
+        end
+        th_safe = (Rzy_nr') * (axy_sf / a_z);       % map back to lean (Rz(-yaw))
+        th      = th_safe;
+    end
+    % (debug, default-off) Does clipping -Y improve or hurt corner margin?
+    % Identify the binding corner under the DESIRED lean th_d (most outside the
+    % box), then test how a unit -Y inertial lean moves THAT corner on its
+    % binding axis: same sign as the violation => -Y pushes it further out (clip
+    % JUSTIFIED); opposite sign => -Y pulls it toward centre (clip HARMFUL).
+    % Rows: [axy_d_y; axy_qp_y; marg_curr; marg_d; marg_qp; bind_val; bind_m2;
+    %        negY_sens; justified(+1)/harmful(-1)]
+    global CBF_DBG_ON CBF_DBG_LOG;
+    if ~isempty(CBF_DBG_ON) && CBF_DBG_ON
+        Rzy = [cz, -sz; sz, cz];
+        axy_d_y  = a_z * (Rzy(2,:) * th_d_dbg);
+        axy_qp_y = a_z * (Rzy(2,:) * th_qp_dbg);
+        thY = Rzm * [0; -1];              % image-axis lean for a -Y inertial accel
+        % worst-corner margins (m2 - |f_i|) over corners/axes
+        mc = inf; md = inf; mq = inf; viol = -inf; bi = 1; bk = 1; bf = 0;
+        for i = 1:Ncp
+            fcur = anchor_c(:,i) + Lw_c(:,:,i)*th_curr;
+            fd   = anchor_c(:,i) + Lw_c(:,:,i)*th_d_dbg;
+            fq   = anchor_c(:,i) + Lw_c(:,:,i)*th_qp_dbg;
+            for k = 1:2
+                mc = min(mc, m2(k)-abs(fcur(k)));
+                md = min(md, m2(k)-abs(fd(k)));
+                mq = min(mq, m2(k)-abs(fq(k)));
+                if abs(fd(k))/m2(k) > viol      % most-binding under desired lean
+                    viol = abs(fd(k))/m2(k); bi = i; bk = k; bf = fd(k);
+                end
+            end
+        end
+        negY_sens = Lw_c(:,:,bi)*thY;  negY_sens = negY_sens(bk);
+        justified = sign(negY_sens) * sign(bf);   % +1 -Y pushes binding OUT; -1 toward centre
+        CBF_DBG_LOG(:, end+1) = [axy_d_y; axy_qp_y; mc; md; mq; bf; m2(bk); negY_sens; justified];
+    end
     I_a(1:2) = a_z * ([cz, -sz; sz, cz] * th);   % a_xy* = a_z*Rz(yaw)*theta*
     theta_cone = norm(th);                % commanded tilt magnitude
     ok = true;
@@ -186,6 +281,27 @@ if ~ok
     a_xy_n   = norm(I_a(1:2));
     if a_xy_n > a_xy_lim && a_xy_n > 1e-9
         I_a(1:2) = a_xy_lim * I_a(1:2) / a_xy_n;
+    end
+end
+end
+
+function th = project_box(th, anchor_c, Lw_c, m2, Ncp)
+% Alternating projection of the lean th onto the per-corner FoV box |f_i|<=m2.
+for it = 1:10
+    for i = 1:Ncp
+        Lwi = Lw_c(:,:,i);
+        ff  = anchor_c(:,i) + Lwi * th;
+        for k = 1:2
+            if ff(k) > m2(k)
+                r = Lwi(k,:)';
+                th = th - (ff(k) - m2(k)) / (r'*r + 1e-12) * r;
+                ff = anchor_c(:,i) + Lwi * th;
+            elseif ff(k) < -m2(k)
+                r = Lwi(k,:)';
+                th = th - (ff(k) + m2(k)) / (r'*r + 1e-12) * r;
+                ff = anchor_c(:,i) + Lwi * th;
+            end
+        end
     end
 end
 end

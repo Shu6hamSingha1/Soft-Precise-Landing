@@ -22,7 +22,10 @@ clear mfile_dir;
 % clc;
 % close all;
 clear;
-rng('shuffle');
+% RNG_SEED_OVERRIDE (global, survives `clear`): fix the noise realization so a
+% failing case is reproducible for A/B (e.g. SEN containment). Empty => shuffle.
+global RNG_SEED_OVERRIDE;
+if isempty(RNG_SEED_OVERRIDE); rng('shuffle'); else; rng(RNG_SEED_OVERRIDE); end
 
 % header
 fprintf('Adaptive - Geometric SO(3) Flight Controller\n\n' );
@@ -55,9 +58,26 @@ K_ctrl.N       = diag([0.02,  0.02,  0.02 ]);   % N_z 0.05->0.02 (PX4 value): ka
 K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
 K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
 
+% ---- Middle-loop SMC authority hooks (globals; default = no change) -------
+% Override the LATERAL (xy) diagonal entries only (z untouched) to test the
+% "delivery" lever (the SMC isn't reaching: V_h_e stuck off-zero). Gamma=reaching
+% rate, E=boundary layer (smaller=stiffer), P=kappa-leakage, kappa0=initial gain.
+global GAMMA_XY_OVERRIDE E_XY_OVERRIDE P_XY_OVERRIDE KAPPA0_XY_OVERRIDE N_XY_OVERRIDE;
+if ~isempty(GAMMA_XY_OVERRIDE);  K_ctrl.Gamma(1,1)=GAMMA_XY_OVERRIDE(1); K_ctrl.Gamma(2,2)=GAMMA_XY_OVERRIDE(end); end
+if ~isempty(E_XY_OVERRIDE);      K_ctrl.E(1,1)=E_XY_OVERRIDE(1);         K_ctrl.E(2,2)=E_XY_OVERRIDE(end);         end
+if ~isempty(P_XY_OVERRIDE);      K_ctrl.P(1,1)=P_XY_OVERRIDE(1);         K_ctrl.P(2,2)=P_XY_OVERRIDE(end);         end
+if ~isempty(KAPPA0_XY_OVERRIDE); K_ctrl.kappa_0(1)=KAPPA0_XY_OVERRIDE(1);K_ctrl.kappa_0(2)=KAPPA0_XY_OVERRIDE(end);end
+if ~isempty(N_XY_OVERRIDE);      K_ctrl.N(1,1)=N_XY_OVERRIDE(1);         K_ctrl.N(2,2)=N_XY_OVERRIDE(end);         end
+
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
 K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
 K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
+% Geometric SO(3) tracking-gain hooks (globals; default = no change). 3-vectors
+% [roll pitch yaw] -> diag. Test whether faster/slower attitude tracking changes
+% the early roll establishment under the thrashing R_d command.
+global KR_OVERRIDE KOMEGA_OVERRIDE;
+if ~isempty(KR_OVERRIDE);     K_ctrl.kR     = diag(KR_OVERRIDE(:));     end
+if ~isempty(KOMEGA_OVERRIDE); K_ctrl.kOmega = diag(KOMEGA_OVERRIDE(:)); end
 
 % Yaw adaptive SMC — generates heading reference psi_d (no compass)
 % e_a = V_s(4) - V_s_d(4) = alpha - alpha_d   (image-based, Eq. 19)
@@ -75,10 +95,16 @@ K_ctrl.E_a       = 3.0;   % wide boundary layer to smooth sat*kappa_a at kappa_a
 % Target-visibility CBF (camera-plane theta-QP) — replaces the cone clamp.
 % Ported + validated from PX4 (docs/CBF_visibility.pdf, src/cbf_visibility.py).
 K_ctrl.theta_cap = deg2rad(60);          % post-QP deliverable-tilt cap
+% Probe hooks (globals, survive `clear`): relax visibility limits to test whether
+% the IC5 fly-away is tilt-vs-visibility coupling (recovers) or a control
+% instability (doesn't). Empty => defaults.
+global THETA_CAP_OVERRIDE FOV_INSET_OVERRIDE;
+if ~isempty(THETA_CAP_OVERRIDE); K_ctrl.theta_cap = deg2rad(THETA_CAP_OVERRIDE); end
 fov_inset_px     = 15;                    % corner safety margin (px): slack for the
                                          % one-step linearization + attitude-slew lag
                                          % so the realized corner stays inside the true
                                          % res/2 edge; matches the old rho_fov_0 inset
+if ~isempty(FOV_INSET_OVERRIDE); fov_inset_px = FOV_INSET_OVERRIDE; end
 phi_max_cbf      = ([res(1); res(2)]/2 - fov_inset_px) / f;   % inset FoV-edge tangent
                                          % half-extent, C_nP-axis order (NB: NOT K.p_10,
                                          % which is axis-swapped [res(2);res(1)]/2f)
@@ -90,6 +116,49 @@ K_ctrl.gamma_s     = diag([0.5, 0.5]);   % funnel contraction rate
 K_ctrl.p_s_0       = [1.2; 1.2];         % initial normalized-error envelope
 K_ctrl.p_s_inf     = [0.35; 0.35];       % terminal envelope floor (angular; ~0.07 m at Z=0.2)
 K_ctrl.izeta_s_max = 5.0;                % anti-windup clamp on the zeta_s integral
+
+% ---- SEN_FUNNEL tuning hooks (globals; default = no change) -------------
+% Set BEFORE calling the canonical script (survive the top-of-file `clear`).
+% SEN_CONTAIN_MODE: 0 = legacy soft-clip (current); 1 = hard outlier-
+%   containment — on breach |s_e_n|>=p_s, EXPAND the effective funnel to admit
+%   the error (p_s_eff = |s_e_n|/(1-margin)) so the back-mapped barrier stays
+%   valid and the inward demand scales with the actual error (~-1.61*p_s_eff
+%   ∝ |s_e_n|) instead of collapsing to ∝ p_s_inf (FUNNEL_CBF_DESIGN.md §9).
+global SEN_PS0_OVERRIDE SEN_PSINF_OVERRIDE SEN_GAMMAS_OVERRIDE ...
+       SEN_IZETASMAX_OVERRIDE SEN_CONTAIN_MODE SEN_RP_OVERRIDE ...
+       SEN_RI_OVERRIDE SEN_RD_OVERRIDE;
+if ~isempty(SEN_PS0_OVERRIDE);       K_ctrl.p_s_0   = SEN_PS0_OVERRIDE(:);   end
+if ~isempty(SEN_PSINF_OVERRIDE);     K_ctrl.p_s_inf = SEN_PSINF_OVERRIDE(:); end
+if ~isempty(SEN_GAMMAS_OVERRIDE);    K_ctrl.gamma_s = diag(SEN_GAMMAS_OVERRIDE(:)); end
+if ~isempty(SEN_IZETASMAX_OVERRIDE); K_ctrl.izeta_s_max = SEN_IZETASMAX_OVERRIDE; end
+if ~isempty(SEN_RP_OVERRIDE);        K_ctrl.rp = diag(SEN_RP_OVERRIDE(:));   end
+if ~isempty(SEN_RI_OVERRIDE);        K_ctrl.ri = diag(SEN_RI_OVERRIDE(:));   end
+if ~isempty(SEN_RD_OVERRIDE);        K_ctrl.rd = diag(SEN_RD_OVERRIDE(:));   end
+if isempty(SEN_CONTAIN_MODE);        sen_contain_mode = 0; ...
+else;                                sen_contain_mode = SEN_CONTAIN_MODE; end
+
+% Feature-space SETPOINT TRAJECTORY (waypoint-style reference governor). Reuses
+% the funnel's exp-decay operator on the SETPOINT (not the envelope): the SEN
+% error tracks a moving V_s_ref that walks from V_s(0) to V_s_d at rate
+% SREF_GAMMA, so the initial demand is bounded/smooth (eta(0)=0) instead of
+% barrier-amplified. [] = off (regulate to fixed V_s_d, current behavior).
+global SREF_GAMMA;
+sref_on = ~isempty(SREF_GAMMA);
+if sref_on; gamma_ref = SREF_GAMMA(1); else; gamma_ref = 0; end
+
+% Extra conditioning of V_dh_d (noisy desired-flow derivative feeding the c-term):
+% DH_D_CAP = hard clip magnitude (PX4 DH_D_MAX-style spike killer, no lag);
+% DH_D_TAU = first-order LPF time constant (smooths, adds lag). 0/[] = off.
+% BAKED 2026-06-15: DH_D_CAP default 20 (was 0). The c-term differentiates the
+% noisy desired flow; raw_dh_d spikes ~O(100) on funnel firing -> ±5 m/s^2
+% command thrash that noise-weakens/flips the lateral cmd (IC5 seed-6 runaway).
+% A hard cap (NOT an LPF -- lag hurt, SP 9->5) is the PX4 DH_D_MAX analogue.
+% Validated no-regression on the canonical 5 ICs (noiseless+noisy n=5: SP/land
+% byte-identical to base; cap only engages on pathological spikes). LPF dead-end.
+global DH_D_CAP DH_D_TAU;
+if isempty(DH_D_CAP); dhd_cap = 20; else; dhd_cap = DH_D_CAP(1); end
+if isempty(DH_D_TAU); dhd_tau = 0; else; dhd_tau = DH_D_TAU(1); end
+dh_d_prev = zeros(3,1);
 
 %% =========================================================================
 %  PRE-ALLOCATE ARRAYS
@@ -180,6 +249,7 @@ G_s          = zeros(2, 2, N_steps);
 zeta_s       = zeros(2, N_steps);
 izeta_s      = zeros(2, N_steps);
 raw_dzeta_s  = zeros(2, N_steps + 3);
+sen_breach   = false(2, N_steps);
 
 % Target-visibility CBF logging + persistent state
 theta_cur_log  = zeros(1, N_steps);
@@ -374,18 +444,41 @@ for idx=1:N_steps
 %   zeta_sd = -rp*zeta_s - ri*int(zeta_s) - rd*d(zeta_s)
 %   V_ds_d  = G_s\zeta_sd + S_s*dp_s
 % *************************************************************************
-    V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
+    if idx == 1; V_s_init = V_s(1:2); end             % initial measured feature
+    if sref_on
+        % moving setpoint: V_s_ref walks V_s(0) -> V_s_d (reuses p_s decay form)
+        sref_decay  = exp(-gamma_ref * tRange(idx));
+        V_s_ref     = V_s_d(1:2) + sref_decay * (V_s_init - V_s_d(1:2));
+        dV_s_ref    = -gamma_ref * sref_decay * (V_s_init - V_s_d(1:2));  % feedforward
+        V_s_e(:,idx)= V_s(1:2) - V_s_ref;             % small residual to track
+    else
+        V_s_e(:,idx)= V_s(1:2) - V_s_d(1:2);
+        dV_s_ref    = [0;0];
+    end
     V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
 
     p_s(:,idx)  = expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf) + K_ctrl.p_s_inf;
     dp_s(:,idx) = -K_ctrl.gamma_s * expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf);
 
     S_s_margin = 0.05;   % funnel saturation guard: keeps |zeta_s| bounded, G_s finite
+    sen_breach(:,idx) = false;
     for j=1:2
-        S_s(j,j,idx) = V_s_e_n(j,idx) / p_s(j,idx);
+        p_s_eff = p_s(j,idx);
+        raw_ratio = V_s_e_n(j,idx) / p_s(j,idx);
+        if abs(raw_ratio) >= 1.0
+            sen_breach(j,idx) = true;
+            if sen_contain_mode == 1
+                % Hard outlier-containment: expand the effective funnel to the
+                % breached error so the back-mapped barrier (and G_s^-1) stay
+                % valid -> inward demand scales with |s_e_n| instead of
+                % collapsing to ∝ p_s_inf at the clip.
+                p_s_eff = abs(V_s_e_n(j,idx)) / (1 - S_s_margin);
+            end
+        end
+        S_s(j,j,idx) = V_s_e_n(j,idx) / p_s_eff;
         S_s(j,j,idx) = min(max(S_s(j,j,idx), -1+S_s_margin), 1-S_s_margin);
         zeta_s(j,idx) = log((1+S_s(j,j,idx))/(1-S_s(j,j,idx)));
-        G_s(j,j,idx)  = (exp(zeta_s(j,idx)) + 1)^2/(2*exp(zeta_s(j,idx))*p_s(j,idx));
+        G_s(j,j,idx)  = (exp(zeta_s(j,idx)) + 1)^2/(2*exp(zeta_s(j,idx))*p_s_eff);
     end
 
     if idx == 1
@@ -400,6 +493,7 @@ for idx=1:N_steps
 
     dzeta_sd  = -K_ctrl.rp*zeta_s(:,idx) - K_ctrl.ri*izeta_s(:,idx) - K_ctrl.rd*dzeta_s;
     V_ds_d_xy = G_s(:,:,idx)\dzeta_sd + S_s(:,:,idx)*dp_s(:,idx);
+    if sref_on; V_ds_d_xy = V_ds_d_xy + dV_s_ref; end   % setpoint-trajectory feedforward
     V_ds_d    = [V_ds_d_xy; 0.0];
 
     V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
@@ -439,6 +533,14 @@ for idx=1:N_steps
         raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1))/dt;
     end
     V_dh_d = smooth4(raw_dh_d(:,idx:idx+3));
+    if dhd_tau > 0                                   % optional LPF (smooths, lags)
+        a_dhd = dhd_tau/(dhd_tau+dt);
+        V_dh_d = a_dhd*dh_d_prev + (1-a_dhd)*V_dh_d;
+    end
+    if dhd_cap > 0                                   % optional hard cap (spike killer)
+        V_dh_d = max(min(V_dh_d, dhd_cap), -dhd_cap);
+    end
+    dh_d_prev = V_dh_d;
 
     c = cross(V_dw, V_s(1:3)) + cross(V_w, cross(V_w, V_s(1:3))) ...
         + 2 * cross(V_w, V_h) - (dot(V_h + cross(V_w, V_s(1:3)), e3))*V_h - V_dh_d;
