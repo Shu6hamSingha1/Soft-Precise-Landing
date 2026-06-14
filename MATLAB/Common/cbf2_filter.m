@@ -111,24 +111,37 @@ if valid
     th_curr = Rzm * (-R(1:2,3) / max(abs(R33), 1e-3));   % current image-axis tilt
     th      = Rzm * (I_a(1:2) / max(a_z, 1e-6));         % theta_d = Rz(-yaw)*(a_xy/a_z)
 
-    % lean-vector -> rotation-axis correction: L_w couples the body angular-rate
-    % to the feature flow, but theta is the lean direction; they differ by 90deg
-    % (omega = M*theta). The QP must use L_w*M (validated: identity coupling is
-    % 216% wrong in this frame, L_w*M is 5.6%).
-    Lw2 = Lw2_base * M90;                 % M orthogonal -> row norms preserved
-
-    anchor = cr2 - Lw2 * th_curr + dft;   % f = cr + L_w*M*(theta - theta_curr) + tau*d
-    for it = 1:10                         % alternating projection onto the FoV box
-        ff = anchor + Lw2 * th;
-        for k = 1:2
-            if ff(k) > m2(k)
-                r = Lw2(k,:)';
-                th = th - (ff(k) - m2(k)) / (r'*r + 1e-12) * r;
-                ff = anchor + Lw2 * th;
-            elseif ff(k) < -m2(k)
-                r = Lw2(k,:)';
-                th = th - (ff(k) + m2(k)) / (r'*r + 1e-12) * r;
-                ff = anchor + Lw2 * th;
+    % lean-vector -> rotation-axis correction (L_w*M); validated 5.6% vs identity
+    % 216%. CORNER-BASED CBF (MATLAB): with exact analytical corners we constrain
+    % EVERY corner point to stay inside the FoV box, not just the centroid. PX4
+    % guards the board centroid because individual corners are not reliably detected
+    % at altitude (multi-marker board); MATLAB's corners are exact, so guarding them
+    % directly makes the CBF guarantee match the strict per-corner fov_fail check
+    % (phi_max = res/2f). The two-phase delta is then unnecessary (the corners ARE
+    % the marker extent), and the centroid is used only for the drift estimate.
+    Ncp      = size(ct, 2);
+    Lw_c     = zeros(2, 2, Ncp);
+    anchor_c = zeros(2, Ncp);
+    for i = 1:Ncp
+        xi = ct(1,i); yi = ct(2,i);
+        Lwi = [xi*yi, -(1 + xi*xi); 1 + yi*yi, -xi*yi] * M90;   % per-corner coupling
+        Lw_c(:,:,i)   = Lwi;
+        anchor_c(:,i) = ct(:,i) - Lwi * th_curr + dft;          % f_i = cr_i + L_wi*(th-th_curr) + tau*d
+    end
+    for it = 1:10                         % alternating projection: keep EVERY corner in the box
+        for i = 1:Ncp
+            Lwi = Lw_c(:,:,i);
+            ff  = anchor_c(:,i) + Lwi * th;
+            for k = 1:2
+                if ff(k) > m2(k)
+                    r = Lwi(k,:)';
+                    th = th - (ff(k) - m2(k)) / (r'*r + 1e-12) * r;
+                    ff = anchor_c(:,i) + Lwi * th;
+                elseif ff(k) < -m2(k)
+                    r = Lwi(k,:)';
+                    th = th - (ff(k) + m2(k)) / (r'*r + 1e-12) * r;
+                    ff = anchor_c(:,i) + Lwi * th;
+                end
             end
         end
     end

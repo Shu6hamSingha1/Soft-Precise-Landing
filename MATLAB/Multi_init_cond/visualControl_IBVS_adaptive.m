@@ -51,7 +51,7 @@ K_ctrl.p_2inf   = [2.5;  2.5;  1.5 ];          % reverted from Combo A (z-tighte
 K_ctrl.Omega   = diag([0.05, 0.05, 0.025]);   % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
 K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
-K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
+K_ctrl.N       = diag([0.02,  0.02,  0.02 ]);   % N_z 0.05->0.02 (PX4 value): kappa_z adaptation too fast on noisy flow -> runaway on funnel breach (CONTROLLER_PARITY.md:61)
 K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
 K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
 
@@ -75,9 +75,13 @@ K_ctrl.E_a       = 3.0;   % wide boundary layer to smooth sat*kappa_a at kappa_a
 % Target-visibility CBF (camera-plane theta-QP) — replaces the cone clamp.
 % Ported + validated from PX4 (docs/CBF_visibility.pdf, src/cbf_visibility.py).
 K_ctrl.theta_cap = deg2rad(60);          % post-QP deliverable-tilt cap
-phi_max_cbf      = [res(1); res(2)] / (2*f);   % FoV-edge tangent half-extent in
-                                         % C_nP-axis order (NB: NOT K.p_10, which
-                                         % is axis-swapped [res(2);res(1)]/2f)
+fov_inset_px     = 15;                    % corner safety margin (px): slack for the
+                                         % one-step linearization + attitude-slew lag
+                                         % so the realized corner stays inside the true
+                                         % res/2 edge; matches the old rho_fov_0 inset
+phi_max_cbf      = ([res(1); res(2)]/2 - fov_inset_px) / f;   % inset FoV-edge tangent
+                                         % half-extent, C_nP-axis order (NB: NOT K.p_10,
+                                         % which is axis-swapped [res(2);res(1)]/2f)
 
 % Precision: PPC funnel on the normalized position error s_e_n (SEN_FUNNEL) —
 % replaces the legacy outer PID. Decoupled from visibility (the CBF owns that).
