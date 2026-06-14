@@ -72,12 +72,20 @@ K_ctrl.p_a       = 2;
 K_ctrl.kappa_a_0 = 2.0;   % pre-seed above wz=1.5 so sat*kappa_a can provide DC feed-forward
 K_ctrl.E_a       = 3.0;   % wide boundary layer to smooth sat*kappa_a at kappa_a_0=2.0
 
-% funnel-margin cone clamp (Approach 2)
-% Shrinking box funnel on physical pixel corners -> state-dependent cone angle.
-K_ctrl.rho_fov_0   = [145; 105];         % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
-K_ctrl.rho_fov_inf = [40; 40];           % terminal pixel margin (px) — widened to keep cone authority
-K_ctrl.l_fov       = 0.1;                % reverted from Combo A (faster cone decay was a speed knob, not precision)
-K_ctrl.theta_cap   = deg2rad(60);        % soft cone ceiling
+% Target-visibility CBF (camera-plane theta-QP) — replaces the cone clamp.
+% Ported + validated from PX4 (docs/CBF_visibility.pdf, src/cbf_visibility.py).
+K_ctrl.theta_cap = deg2rad(60);          % post-QP deliverable-tilt cap
+phi_max_cbf      = [res(1); res(2)] / (2*f);   % FoV-edge tangent half-extent in
+                                         % C_nP-axis order (NB: NOT K.p_10, which
+                                         % is axis-swapped [res(2);res(1)]/2f)
+
+% Precision: PPC funnel on the normalized position error s_e_n (SEN_FUNNEL) —
+% replaces the legacy outer PID. Decoupled from visibility (the CBF owns that).
+% Back-mapped form (FUNNEL_CBF_DESIGN.md §9); reuses the outer rp/ri/rd gains.
+K_ctrl.gamma_s     = diag([0.5, 0.5]);   % funnel contraction rate
+K_ctrl.p_s_0       = [1.2; 1.2];         % initial normalized-error envelope
+K_ctrl.p_s_inf     = [0.35; 0.35];       % terminal envelope floor (angular; ~0.07 m at Z=0.2)
+K_ctrl.izeta_s_max = 5.0;                % anti-windup clamp on the zeta_s integral
 
 %% =========================================================================
 %  PRE-ALLOCATE ARRAYS
@@ -158,17 +166,25 @@ izeta_2     = zeros(3, N_steps);
 sigma       = zeros(3, N_steps);
 raw_dh_d    = zeros(3, N_steps + 3);
 
-% Outer-loop PID on normalized raw error (Approach 2 — replaces PPC/zeta_1 chain)
+% Outer-loop SEN_FUNNEL: back-mapped PPC on normalized position error s_e_n
 V_s_e        = zeros(2, N_steps);
 V_s_e_n      = zeros(2, N_steps);
-iV_s_e_n     = zeros(2, N_steps);
-raw_dV_s_e_n = zeros(2, N_steps + 3);
+p_s          = zeros(2, N_steps);
+dp_s         = zeros(2, N_steps);
+S_s          = zeros(2, 2, N_steps);
+G_s          = zeros(2, 2, N_steps);
+zeta_s       = zeros(2, N_steps);
+izeta_s      = zeros(2, N_steps);
+raw_dzeta_s  = zeros(2, N_steps + 3);
 
-% funnel-margin cone clamp logging (Approach 2)
-rho_fov_log    = zeros(2, N_steps);
-d_min_log      = zeros(1, N_steps);
+% Target-visibility CBF logging + persistent state
 theta_cur_log  = zeros(1, N_steps);
 theta_cone_log = zeros(1, N_steps);
+cbf_ok_log     = false(1, N_steps);
+cbf_state = struct('delta_prev', [], 'ddelta_ref', zeros(2,1), ...
+                   'decode_fail_n', 0, 'phase2_alpha', 0.0, ...
+                   'cr_prev', [], 'd', zeros(2,1), 'Lw2_prev', []);
+th_safe = [];
 kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
 kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
 e_a         = zeros(1, N_steps);
@@ -347,23 +363,39 @@ for idx=1:N_steps
     end
 
 % *************************************************************************
-% Computing Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
-% No virtual-feature visibility funnel: physical-corner visibility is
-% enforced downstream by the funnel-margin cone clamp on I_a_cd.
+% Computing Desired Optical Flow (SEN_FUNNEL — back-mapped PPC on s_e_n)
+% Precision-only position funnel on the normalized position error; visibility
+% is enforced downstream by the target-visibility CBF on I_a_cd.
+%   S_s = s_e_n/p_s -> zeta_s = log((1+S)/(1-S)) -> G_s
+%   zeta_sd = -rp*zeta_s - ri*int(zeta_s) - rd*d(zeta_s)
+%   V_ds_d  = G_s\zeta_sd + S_s*dp_s
 % *************************************************************************
     V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
     V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
 
-    if idx == 1
-        iV_s_e_n(:,idx) = dt * V_s_e_n(:,idx);
-        raw_dV_s_e_n(:,idx+3) = zeros(2,1);
-    else
-        iV_s_e_n(:,idx) = iV_s_e_n(:,idx-1) + dt*(V_s_e_n(:,idx-1) + V_s_e_n(:,idx))/2;
-        raw_dV_s_e_n(:,idx+3) = (V_s_e_n(:,idx) - V_s_e_n(:,idx-1))/dt;
-    end
-    dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
+    p_s(:,idx)  = expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf) + K_ctrl.p_s_inf;
+    dp_s(:,idx) = -K_ctrl.gamma_s * expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf);
 
-    V_ds_d_xy = -K_ctrl.rp*V_s_e_n(:,idx) - K_ctrl.ri*iV_s_e_n(:,idx) - K_ctrl.rd*dV_s_e_n;
+    S_s_margin = 0.05;   % funnel saturation guard: keeps |zeta_s| bounded, G_s finite
+    for j=1:2
+        S_s(j,j,idx) = V_s_e_n(j,idx) / p_s(j,idx);
+        S_s(j,j,idx) = min(max(S_s(j,j,idx), -1+S_s_margin), 1-S_s_margin);
+        zeta_s(j,idx) = log((1+S_s(j,j,idx))/(1-S_s(j,j,idx)));
+        G_s(j,j,idx)  = (exp(zeta_s(j,idx)) + 1)^2/(2*exp(zeta_s(j,idx))*p_s(j,idx));
+    end
+
+    if idx == 1
+        izeta_s(:,idx) = dt*zeta_s(:,idx);
+        raw_dzeta_s(:,idx+3) = zeros(2,1);
+    else
+        izeta_s(:,idx) = izeta_s(:,idx-1) + dt*(zeta_s(:,idx-1) + zeta_s(:,idx))/2;
+        raw_dzeta_s(:,idx+3) = (zeta_s(:,idx) - zeta_s(:,idx-1))/dt;
+    end
+    izeta_s(:,idx) = max(min(izeta_s(:,idx), K_ctrl.izeta_s_max), -K_ctrl.izeta_s_max);
+    dzeta_s = smooth4(raw_dzeta_s(:,idx:idx+3));
+
+    dzeta_sd  = -K_ctrl.rp*zeta_s(:,idx) - K_ctrl.ri*izeta_s(:,idx) - K_ctrl.rd*dzeta_s;
+    V_ds_d_xy = G_s(:,:,idx)\dzeta_sd + S_s(:,:,idx)*dp_s(:,idx);
     V_ds_d    = [V_ds_d_xy; 0.0];
 
     V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
@@ -427,53 +459,53 @@ for idx=1:N_steps
 
     V_a_cd = - G_2(:,:,idx)\(u_sw + u_eq);
 
-    I_a_cd(:,idx) = I_R_V * V_a_cd - g;
+    I_a_cd(:,idx) = I_R_V * V_a_cd - g;   % raw SMC command (logged)
 
     if any(isnan(I_a_cd(:,idx)))
        break;
     end
 
 % *************************************************************************
-% funnel-margin cone clamp (Approach 2)
-%   theta_current = acos(I_R_C(3,3))           (body-z vs inertial-z tilt)
-%   rho_fov(t)    = shrinking box half-widths centered on image center
-%   d_min         = min axis-wise margin of any physical corner to box boundary
-%   theta_cone    = min(theta_current + atan(d_min/f), theta_cap)
+% LPF BEFORE the CBF (Option 1): condition pixel-noise spikes amplified through
+% L_s^-1 / the c-term products at low altitude, on the DESIRED accel — upstream
+% of the CBF projection. The QP re-imposes the hard FoV bound on whatever it is
+% given, so filtering the input cleans noise WITHOUT smearing the bound (filtering
+% the CBF OUTPUT would mix safe leans across moving per-step boxes). One filter
+% serves both the lateral desired lean (theta_unsafe) and the vertical thrust.
+% *************************************************************************
+    I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
+
+% *************************************************************************
+% Target-visibility CBF (camera-plane theta-QP) — replaces the cone clamp.
+%   A QP over the body tilt that keeps the marker on the sensor: projects the
+%   desired lean theta_d onto the FoV box |cr + L_w*M*(theta-theta_curr)+tau d|
+%   <= phi_max, then applies the post-QP deliverability cap. Returns the safe
+%   lean th_safe; R_d is built from it directly (Fix B) below. Operates on the
+%   FILTERED desired accel so th_safe is smooth yet still exactly in-box.
 % *************************************************************************
     R33           = max(min(I_R_C(3,3), 1), -1);
     theta_current = acos(R33);
 
-    rho_fov_curr = (K_ctrl.rho_fov_0 - K_ctrl.rho_fov_inf) * ...
-                   exp(-K_ctrl.l_fov * tRange(idx)) + K_ctrl.rho_fov_inf;
-
-    % Axis-wise corner margins (C_nP is 2x4 in px: row 1=u, row 2=v)
-    d_corner_x = rho_fov_curr(1) - abs(C_nP(1,:));
-    d_corner_y = rho_fov_curr(2) - abs(C_nP(2,:));
-    d_min_fov  = max(min([d_corner_x, d_corner_y]), 0);   % clip outside to zero margin
-
-    theta_cone = min(theta_current + atan(d_min_fov / f), K_ctrl.theta_cap);
-
-    if I_a_cd(3,idx) >= 0
-        I_a_cd(3,idx) = -3.0;
+    % z-upright guard BEFORE the CBF (matches the Python contract)
+    if I_a_cd_filt(3) >= 0
+        I_a_cd_filt(3) = -3.0;
     end
-    a_xy_limit = abs(I_a_cd(3,idx)) * tan(theta_cone);
-    a_xy_norm  = norm(I_a_cd(1:2,idx));
-    if a_xy_norm > a_xy_limit
-        I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
-    end
-    I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
 
-    rho_fov_log(:,idx)  = rho_fov_curr;
-    d_min_log(idx)      = d_min_fov;
+    refresh    = (mod(idx-1,ZOH) == 0);   % image-refresh step (C_nP updated)
+    dt_img     = ZOH*dt;                  % effective image dt for drift/loom FD
+    theta_seed = K_ctrl.theta_cap;        % Phase-2 fallback cone seed
+    [I_a_cd_filt, theta_cone, cbf_ok, th_safe, cbf_state] = cbf2_filter( ...
+        I_a_cd_filt, I_R_C, R33, yaw, C_nP, f, phi_max_cbf, ...
+        K_ctrl.theta_cap, theta_seed, dt_img, refresh, B_w_c(1:2), cbf_state);
+
+    I_a_cd_filt(3) = max(I_a_cd_filt(3), -50);
+
     theta_cur_log(idx)  = theta_current;
     theta_cone_log(idx) = theta_cone;
-    if norm(I_a_cd(:,idx)) > 1e02
+    cbf_ok_log(idx)     = cbf_ok;
+    if norm(I_a_cd_filt) > 1e02
         break;
     end
-
-    % Low-pass filter I_a_cd before R_d construction (absorbs pixel-noise
-    % spikes amplified through L_s^-1 at low altitude; raw I_a_cd logged)
-    I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
 
 % *************************************************************************
 % Yaw adaptive SMC — drives alpha -> alpha_d, outputs rate u_a
@@ -512,7 +544,27 @@ for idx=1:N_steps
     if f_mag < 1e-6
         R_d = eye(3);
     else
-        rd3 = -I_F / f_mag;              % desired body-z (opposes force, NED)
+        if ~isempty(th_safe)
+            % Fix B (direct-th_safe): build the desired body-z from the CBF's
+            % unfiltered safe lean -> the CBF visibility bound lands EXACTLY on
+            % the commanded attitude (no tau_ia LPF smear of the hard bound).
+            %   rd3 = [-Rz(yaw)*th_safe; 1] / norm
+            % CONSISTENT thrust: divide |I_a_filt(3)| by the ACTUAL tilt cosine
+            % R33 (= I_R_C(3,3)) — exactly as PX4 divides B_T by cos(euler) of the
+            % MEASURED attitude, NOT by the commanded rd3(3). This realizes a
+            % vertical thrust component = m*|I_a_filt(3)| at all times, so there
+            % is no thrust/attitude timing mismatch. (Using rd3(3), the commanded
+            % cosine, inflated T_cd while the actual attitude lagged -> early
+            % climb -> a touchdown limit cycle; PX4 never had this because it
+            % divides by the measured tilt. Lands soft+precise; CBF bound exact.)
+            a_xy_dir = [cos(yaw)*th_safe(1) - sin(yaw)*th_safe(2); ...
+                        sin(yaw)*th_safe(1) + cos(yaw)*th_safe(2)];   % Rz(yaw)*th_safe
+            rd3  = [-a_xy_dir; 1];
+            rd3  = rd3 / norm(rd3);
+            T_cd = m * abs(I_a_cd_filt(3)) / max(R33, 1e-3);   % actual tilt cos (PX4-faithful)
+        else
+            rd3 = -I_F / f_mag;          % Phase-2 fallback: force-vector path
+        end
         a_h = [cos(psi_d); sin(psi_d); 0];
         rd2_raw = cross(rd3, a_h);
         n2 = norm(rd2_raw);
