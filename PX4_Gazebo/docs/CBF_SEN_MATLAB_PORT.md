@@ -4,12 +4,17 @@
 **CBF** and the **SEN_FUNNEL** (position-error PPC funnel) from the PX4/Gazebo Python pipeline
 (`PX4_Gazebo/`) into the MATLAB Phase-1 controller (`MATLAB/`).
 
-> ⚠️ **Status gate (read first).** The CBF fix below is **offline-validated (13/13,
-> `tools/validate_cbf.py`) but SITL-pending** — a 4-cell A/B (`test_data/CBF_AB/`) was running on the
-> Ubuntu box when this brief was written. **Confirm the CBF fix held up in SITL (and was kept
-> default-on) before porting it to MATLAB.** If the A/B regressed it, port the *corrected math* but
-> check the default. SEN_FUNNEL is implemented + default-on in Python but **needs tuning** (see
-> `FUNNEL_CBF_DESIGN.md` §9). Neither is "done"; this brief is the map, not a green light.
+> ✅ **Status gate (read first).** The CBF fix below is **offline-validated (13/13,
+> `tools/validate_cbf.py`) AND SITL-confirmed** on the CBF's own metric (target visibility, not
+> fly-away). 4-cell A/B at IC2, n=5 (`tools/analyze_cbf_visibility.py` on `test_data/CBF_AB/`):
+> **Fix A (`CBF_LW_ROT=1`) ~doubles marker-in-FoV under tilt (hitilt_vis 0.24→0.43–0.45) and halves
+> the runaway body tilt (max 99°→51–62°)**; the `LW_ROT=1` arms cluster, the `=0` arms cluster.
+> **Fix B (`CBF_RD3_DIRECT=1`) is visibility-neutral alone but gives the best combined margins**
+> (lowest max-tilt 51°, longest time-to-loss) — its benefit is clean attitude tracking, not the barrier
+> direction. Both are default-ON. **Port Fix A as the load-bearing correction; Fix B is a refinement.**
+> Note: the lateral **fly-away is a control-tuning issue the CBF cannot fix** — judge any MATLAB CBF
+> port by visibility, never by landing xy. SEN_FUNNEL is implemented + default-on in Python but **still
+> needs tuning** (see `FUNNEL_CBF_DESIGN.md` §9).
 
 > ℹ️ **Memory note.** The campaign auto-memory (`~/.claude/.../memory/*.md`) is machine-local and did
 > NOT travel with git. This brief + the docs below are the transferred context. The deepest design

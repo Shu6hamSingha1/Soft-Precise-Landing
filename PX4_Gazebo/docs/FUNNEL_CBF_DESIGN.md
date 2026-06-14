@@ -17,9 +17,11 @@
 > (current) → 8.7% (with `L_ω·M`)**; near-hover the fixed model is faithful to <8%. With the fix the
 > QP's predicted feature lands on the FoV box to 1e-16 and the inward/recovery accel is provably left
 > free (no-strangle). **Fix is now DEFAULT-ON** (`CBF_LW_ROT=1`; set `=0` for the old 90°-wrong
-> coupling in A/B). ⚠️ **Pending SITL + IC2-5 re-validation** — the baked controller changed; run the
-> Stage-3 A/B (cbf2-fixed vs cbf2-current vs cone) + IC gate before trusting the landing numbers.
-> This bug is a symptom of the representational laundering described next.
+> coupling in A/B). ✅ **SITL-CONFIRMED (2026-06-14, IC2 4-cell A/B n=5, `tools/analyze_cbf_visibility.py`):**
+> on the CBF's own metric (target visibility), Fix A ~doubles marker-in-FoV under tilt
+> (hitilt_vis 0.24→0.43–0.45) and halves the runaway tilt (max 99°→51–62°); the `LW_ROT=1` arms
+> cluster vs `=0`. Fly-away (a control-tuning issue) is unchanged — as expected; the CBF only owns
+> visibility. This bug is a symptom of the representational laundering described next.
 >
 > **2. The `θ_safe → I_a → attitude` round-trip (open design question, documented for later).**
 > `cbf2` natively produces a safe **tilt** `θ_safe`, but the code converts it to accel
