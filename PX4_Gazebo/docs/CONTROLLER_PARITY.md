@@ -14,6 +14,25 @@ Compiled 2026-06-02 at the start of the post-calibration gain-tuning campaign.
 > CBF (replaces the cone clamp). The §1 control-law math ports below remain valid; the *defaults* differ.
 > See `test_data/Landing_Test/parameter_record.ods` (PX4_NewCal_Record) for the why behind each.
 
+> 📌 **Addendum (2026-06-15) — the corner-vs-centroid CBF divergence has a real consequence; PX4's
+> choice is the safer one.** A deep MATLAB IC5 `[2,2,-3]` noisy study traced its runaway to: the
+> CBF strips the **−Y re-centering lean** (because that lean ejects a marker corner near the FoV
+> edge), and under noise the weakened −Y flips +Y → unbraked runaway → `s_e_n` breaches `p_s`.
+> **This is specific to MATLAB's corner-based CBF.** MATLAB guards *every* corner against an
+> inset box `(res/2−15px)/f ≈ 0.78`; the binding corner sits at ≈0.84 → outside → it strips the −Y.
+> **PX4 guards the CENTROID** (`cbf_visibility.py:123`, `m2 = p_10` = full FoV edge ≈0.889, no inset);
+> the centroid sits at ≈0.63 — well inside — and the −Y *re-centers* it, so **PX4 never strips the −Y**.
+> Implications: (1) the IC5 runaway/startup-ejection modes are corner-CBF artifacts — **PX4 is
+> structurally immune**, validating the centroid choice (PX4 accepts corner overflow via the
+> multi-marker board). (2) **PX4's lateral fly-away is therefore NOT a CBF-strip** — the CBF only
+> bites once the centroid is already near the edge (late); the fly-away is the overshoot/perception
+> wall (flow under-report), CBF exonerated. (3) `DH_D_MAX` PARITY: PX4 caps `V_dh_d` at **50**
+> (`controller.py:244`); MATLAB baked **DH_D_CAP=20** (commit 8af734a) — same spike-killer mechanism,
+> thresholds differ (different feature scales; PX4's 50 is a deliberate physics-guard — do NOT lower
+> without SITL evidence). (4) `DRIFT_RECENTER` (seed CBF drift `−g·cr2` to fix the `d=0`-at-start
+> myopia) is committed default-off in MATLAB `cbf2_filter.m`; **portable to PX4 but unneeded** (no −Y
+> strip to fix). Full mechanism: memory `feedback_ic5_cbf_strip_mechanism`.
+
 ---
 
 ## 1. Control-law parity — what is mathematically IDENTICAL
