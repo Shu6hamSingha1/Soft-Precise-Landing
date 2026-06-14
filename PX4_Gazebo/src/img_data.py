@@ -114,10 +114,13 @@ class IMG_PROCESSOR(Thread):
         self._sensor_cal_hw = np.array([
             [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
             [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],
-            [+0.0124, +0.0148, +1.2988, +0.0128, +0.0068, -0.0046],   # loom [2,2] 1.0744->1.2988 (2026-06-13): recalibrated on a clean centered position-setpoint descent (binned raw_h_z vs GT loom, corr 0.994) — corrected ~18-21% under-report. NOTE: under-report GROWS with loom (LK dynamic-range saturation) so this slow-descent cal still under-reports FAST descents; that's a dynamic-range limit, not a cal scalar
+            [+0.0124, +0.0148, +1.0744, +0.0128, +0.0068, -0.0046],   # loom [2,2] REVERTED to 1.0744 (2026-06-13): the recal to 1.2988 (fit on a slow descent) was OUTCOME-NEUTRAL — A/B at IC2 n=5 (RecalOff 1.0744 vs RecalGate 1.2988) gave identical results (1/5 close, 3-4 TL, mean ~20). IC2 non-landing is the LATERAL wall, independent of the loom cal; recal exonerated AND not beneficial, so back to the long-standing 1.0744. (recal was: binned raw_h_z vs GT loom corr 0.994, but the under-report GROWS with loom = LK dynamic-range, so a slow-descent scalar can't fix fast descents anyway.)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161, +1.0151]])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.0151]])   # w_z row: FULLY decoupled to only +1.0151·w_z_raw (2026-06-14). Was [+0.0526,+1.0862,-0.0096,-0.7395,+0.0161,+1.0151]. TWO contaminations fabricated w_iz at close range: (1) +1.0862·h_y (lateral flow), (2) -0.7395·w_x — and KF(w_x_raw) DIVERGES to ~-1.5 (while raw ~0), so even with the h-terms zeroed the w_x term gave w_iz≈+1.1. CTRL_ZERO_WXY zeros the w_x OUTPUT but the cal still leaks KF(w_x) into w_z. The raw yaw w_z_raw is clean (≈GT). Keeping only 1.0151·w_z_raw => GT-clean yaw. PLASMC_WZ_CROSS=1 restores the full old row.
+        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
+        if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
+            self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
         self._sensor_cal_s  = np.diag([1.1162, 1.1629, 1.0, 1.0])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).

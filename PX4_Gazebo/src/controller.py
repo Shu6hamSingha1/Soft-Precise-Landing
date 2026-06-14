@@ -117,8 +117,8 @@ class Controller(Thread):
         # The two axes run at DIFFERENT effective loop gains for the same physical
         # error (p_10 norm [0.889,1.185] × cal_s [1.099,1.056] → x is 1.39× hotter
         # than y) — per-axis values are how that gets compensated.
-        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "9.0")),
-                              float(os.environ.get("PLASMC_KP_Y", "9.0"))])    # 12->9 (2026-06-09): K_rp=12 drives h_d to 14 rad/s at s_e_n~0.5 → infeasible demand → funnel fills → kappa explosion
+        self._K_rp = np.diag([float(os.environ.get("PLASMC_KP_X", "5.0")),
+                              float(os.environ.get("PLASMC_KP_Y", "5.0"))])    # 9->5 (2026-06-12 Combo bake): KP=9 is OVER-GAINED — it amplifies the (ungainnable) close-range spurious-flow perception event into a fly-away catastrophe; KP=5 halves the demand → cascade stays bounded (a_u 625 vs 1221) → recovers to a landing. Beats baked at single-axis IC2 (3.85 vs 8.42). CAVEAT: still FAILS IC2-5 gate (6/20 TL, 27m catastrophe at low-alt IC5) — working baseline, NOT gate-clean.
         self._K_ri = np.diag([float(os.environ.get("PLASMC_KI_X", "0.1")),
                               float(os.environ.get("PLASMC_KI_Y", "0.1"))])   # KI 1.0->0.1 (2026-06-11 IC=2 gain-chain bake): MATLAB parity; the 10x integral was windup fuel once the P-path works — pushed ds_d=+1.4 THROUGH the crossing
         self._K_rd = np.diag([float(os.environ.get("PLASMC_KD_X", "0.5")),
@@ -150,9 +150,9 @@ class Controller(Thread):
         # WARNING: funnel width IS the barrier gain (G⁻¹ ≈ p/2) — never widen a
         # funnel component to "make room" for a transient; it raises that axis's
         # gain proportionally (lesson learned twice: batches 6 and 11).
-        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.2))   # XI2 xy 0.2->0.6 (2026-06-11 IC=2 gain-chain bake): at 0.2 the middle funnel keeps sigma at 5-20% of E for ~10s — SMC ASLEEP during approach, kappa LEAKS; MATLAB gamma_2=1.2. z stays 0.2.
-        self._p_0   =         pa("P20",   25.0, 25.0, 4.0)
-        self._p_inf =         pa("P2INF", 2.5, 2.5, 1.5)
+        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.8))   # XI2_z 0.6->0.8 (2026-06-13 user bake, Ez5_combo) — faster z funnel contraction
+        self._p_0   =         pa("P20",   25.0, 25.0, 10.0)  # P20_z 4->10 (2026-06-13 user bake, Ez5_combo) — wider initial z funnel
+        self._p_inf =         pa("P2INF", 1.5, 1.5, 0.5)   # P2INF_xy 2.5->1.5; P2INF_z 1.5->0.5 (2026-06-13): tighter z funnel floor -> tighter h_e_z -> softest touchdown (vel 0.37 m/s); binds because XI2_z=0.6 contracts the funnel
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
         # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
         # PID at small error (G_s^-1·zeta_dot -> -K_rp·s_e_n); the barrier bites as s_e_n -> p_s.
@@ -164,14 +164,14 @@ class Controller(Thread):
         self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.35")),
                                   float(os.environ.get("PLASMC_PSINF_Y", "0.35"))])   # p_s_inf 0.1->0.35 (2026-06-11 IC=2 gain-chain bake): the funnel FLOOR must exceed the damped post-crossing swing or the barrier saturates exactly when needed; angular bound — at Z=0.2m, 0.35 still = ~0.07m metric
         # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
-        self._Omega = np.diag(pa("OMEGA", 0.05, 0.05, 0.025))
-        self._Gma   = np.diag(pa("GAMMA", 0.4375, 1.0, 0.75))    # GAMMA_Y 0.5->1.0 (lateral braking, 2026-06-08)
-        self._E     = np.diag(pa("E",     1.5, 1.5, 1.0))        # E 1->1.5/1.5/1.0 (lateral stiffen + descent, 2026-06-08)
+        self._Omega = np.diag(pa("OMEGA", 0.1, 0.1, 0.1))     # OMEGA_z 0.025->0.1 (2026-06-13 user bake, Ez5_combo) — more z integral action
+        self._Gma   = np.diag(pa("GAMMA", 2.0, 2.0, 1.0))       # GAMMA_xy 0.4375/0.5->2.0 + GAMMA_z 0.75->1.0 (2026-06-13 soft-config bake): reaching gain — the un-saturated proportional term that actually speeds h_e reaching (κ_0/E are sat-gated); xy=2.0 uses full w_u authority, sharper lateral convergence
+        self._E     = np.diag(pa("E",     0.8, 0.8, 0.5))       # E_z 0.1->0.5 (2026-06-13 user bake, Ez5_combo) — WIDER z boundary layer; tames the z over-brake (κ_z held ~1.3, au_z ~41 vs the cap/122 at E_z=0.1+aggressive funnel). ⚠️ Ez5_combo (this 4-param set) was CATASTROPHIC at IC2 n=5 (4/5 TL, mean 26.5) — but the failure was LATERAL (z-loop tame); kept as a non-over-braking z baseline for lateral work. Soft-config was E_z=0.1 (vel 1.3-1.8)
         # Adaptive-gain ODE
-        self._N       = np.diag(pa("N",      0.02, 0.02, 0.02))
-        self._P       = np.diag(pa("P",      5.0, 5.0, 5.0))     # P -> 5/5/5 (kappa-leakage; P_X/Y=5 bounds the lateral kappa amplifier at E=1.5; a_u 33589->440, 2026-06-08)
-        self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)      # KAPPA0_XY 0.156->0.5 (2026-06-11 IC=2 gain-chain bake): arm the crossing brake at engage (kappa leaked to 0.06 before adapting); KAPPA0_Z=1.0 (2026-06-10 bootstrap)
-        self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0: cap kappa_z to prevent high-flow-speed theta_norm runaway
+        self._N       = np.diag(pa("N",      0.02, 0.02, 0.1))   # N_z 0.05->0.1 (2026-06-13 soft-config bake): faster κ_z adaptation -> z braking authority arrives in time (descent is only ~2s; κ_z is adaptation-rate-limited)
+        self._P       = np.diag(pa("P",      1.5, 1.5, 5.0))     # P_xy 5->1.5 (2026-06-12 Combo bake): MATLAB parity; paired with KP=5 the lateral kappa stays bounded without the over-gained P=5
+        self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
+        self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
 
         # Print every parameter whose value differs from its default.
@@ -268,9 +268,9 @@ class Controller(Thread):
         # Default 2.0: higher overdrives the LK tracking window (>1.7 rad/s
         # body rate → >15 px/frame corner motion → OPTIC FLOW UNAVAILABLE).
         # Works together with the PLASMC_W_U_MAX=1.0 rad/s command clamp.
-        self._K_R = np.diag([float(os.environ.get("PLASMC_KR_ROLL",  "2.0")),
-                             float(os.environ.get("PLASMC_KR_PITCH", "2.0")),
-                             float(os.environ.get("PLASMC_KR_YAW",   "2.0"))])
+        self._K_R = np.diag([float(os.environ.get("PLASMC_KR_ROLL",  "1.5")),
+                             float(os.environ.get("PLASMC_KR_PITCH", "1.5")),
+                             float(os.environ.get("PLASMC_KR_YAW",   "0.5"))])   # 2/2/2->1.5/1.5/0.5 (2026-06-12 Combo bake): MATLAB SO(3) parity
 
         # Virtual-compass heading state. Lazy-init on first _attCtrl call
         # from the current body yaw (manuscript: psi_d = yaw_init, line 127
@@ -1424,6 +1424,9 @@ class Controller(Thread):
             "s_e_n(t)": self._s_e_n,
             "is_e_n(t)": self._is_e_n,
             "ds_d(t)": self._ds_d,
+            # Outer-loop position funnel envelope (SEN_FUNNEL); residency r=s_e_n/p_s
+            "p_s(t)": self._p_s,
+            "dp_s(t)": self._dp_s,
             # Middle-loop barrier
             "p(t)": self._p,
             "dp(t)": self._dp,
