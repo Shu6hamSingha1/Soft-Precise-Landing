@@ -52,6 +52,7 @@ from collections import deque
 from numerical_methods import RK5, smooth4
 import img_data as ID
 from ahrs import Quaternion
+from cbf_visibility import cbf2_filter
 
 SLEEP_TIME = 1/200
 N_DIM = 3
@@ -417,6 +418,8 @@ class Controller(Thread):
         self._d_min_fov_log = []
         self._theta_cone_log = []
         self._theta_current_log = []
+        self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
+        self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
         self._w_u = []
         self._B_T = []
         self._u = []
@@ -1087,100 +1090,24 @@ class Controller(Thread):
         #   "cone" (default): MATLAB magnitude clamp (two-sided ball on ‖a_xy‖; strangles recovery).
         #   "cone0"/"cbf1": directional clamp w/ the L_omega headroom above (lean-magnitude form).
         #   "cbf2": exact camera-frame theta-QP (image-axis tilt; retires the lean approximation).
+        self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path
         if funnel_mode == "cbf2":
             # === Exact camera-frame theta-QP (docs/CBF_visibility.pdf — the literal QP) ===
-            # Barrier on the MEASURED C-frame feature, anchored at the current tilt:
-            #   |cr + L_w@(theta - theta_curr) + tau*d| <= m,  cr = measured camera centroid (tangent),
-            # theta = commanded IMAGE-AXIS tilt, theta_curr the current tilt (from the attitude),
-            # L_w@(theta-theta_curr) the shift from now, m = phi_max - delta. theta_d = Rz(-yaw)@(a_xy/a_z)
-            # (cone0+drift-validated map); solve, then a_xy* = a_z*Rz(yaw)@theta*. Image-axis tilt ->
-            # retires cone0/cbf1's lean-magnitude approximation.
-            a_z = abs(I_a[2]); ok = False
+            # Extracted verbatim into cbf_visibility.cbf2_filter so the offline
+            # validators (tools/validate_cbf.py, tools/replay_cbf.py) run the EXACT
+            # live code path. The barrier, two-phase δ, and Phase-2 fallback all live
+            # there; this site only marshals the controller state into pure args.
             try:
-                rc = np.asarray(self._img_node._feature_pts[-1][1], float)
-                ct = (rc - np.asarray(self._img_node.center, float)) / foc
-                cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
-                Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
-                tau = float(os.environ.get("CBF_TAU", "0.3"))
-                delta2 = 0.5 * (ct.max(0) - ct.min(0))                       # actual per-axis half-extent
-                # Track delta and its loom rate for Phase 2 τδ̇_eff term
-                if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_delta_prev", None) is not None:
-                    self._lw_ddelta_ref = np.maximum((delta2 - self._lw_delta_prev) / self._dt[-1], 0.0)
-                else:
-                    self._lw_ddelta_ref = np.zeros(2)
-                self._lw_delta_prev = delta2.copy()
-                # Two-phase δ (PDF Sec. 4): Phase 1 = central marker decoded (always here).
-                # δ_eff = 0: centroid-only barrier; deliberately allow the marker to grow and
-                # overflow as the UAV closes in — using its large extent fires the barrier early.
-                # m2 = phi_max only; τδ̇ excluded (δ is held at 0, not the measured fill rate).
-                # Reset Phase 2 ramp counters on every successful decode.
-                self._lw_decode_fail_n = 0
-                self._lw_phase2_alpha = 0.0
-                m2 = np.maximum(np.asarray(self._p_10, float), 1e-3)            # phi_max only
-                dft = np.zeros(2)
-                if len(self._dt) > 0 and self._dt[-1] > 1e-6 and getattr(self, "_lw_cr_prev", None) is not None:
-                    w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
-                    d_raw = (cr2 - self._lw_cr_prev) / self._dt[-1] - Lw2 @ w_rp
-                    ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
-                    self._lw_d = (1 - ema) * getattr(self, "_lw_d", np.zeros(2)) + ema * d_raw
-                    dft = tau * self._lw_d
-                self._lw_cr_prev = cr2.copy()
-                self._lw_Lw2_prev = Lw2.copy()                                  # stash for Phase 2 headroom calc
-                cz, sz = np.cos(yaw_c), np.sin(yaw_c)
-                Rzm = np.array([[cz, sz], [-sz, cz]])                          # Rz(-yaw): inertial -> image
-                th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3))           # current image-axis tilt (attitude)
-                th = Rzm @ (I_a[:2] / max(a_z, 1e-6))                          # theta_d = Rz(-yaw)@(a_xy/a_z)
-                anchor = cr2 - Lw2 @ th_curr + dft                            # so f = cr + L_w@(theta-theta_curr) + tau*d
-                for _ in range(10):                                           # project onto FoV box only
-                    f = anchor + Lw2 @ th
-                    for k in range(2):
-                        if f[k] > m2[k]:
-                            r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-                        elif f[k] < -m2[k]:
-                            r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-                # post-QP deliverability cap: applied after box projection so it never
-                # interacts with the FoV constraint and cannot create QP infeasibility
-                tn = float(np.linalg.norm(th))
-                if tn > self._theta_cap:
-                    th = th * (self._theta_cap / tn)
-                I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)        # a_xy* = a_z*Rz(yaw)@theta*
-                theta_cone = float(np.linalg.norm(th))                       # log the commanded tilt magnitude (cbf2 diag)
-                ok = True
-            except (IndexError, AttributeError, ValueError, TypeError):
-                ok = False
-            if not ok:
-                # Phase 2: central marker overflowed / decode failed.
-                # Hysteresis-gate (PDF Sec. 4): require CBF_PHASE2_HYSTERESIS consecutive
-                # decode-fails before activating, to suppress flicker near touchdown.
-                # Ramp δ_eff from 0 → last measured ½ptp over CBF_PHASE2_RAMP_FRAMES frames
-                # (PDF: "ramp, not a step — keeps h from dropping discontinuously at engagement").
-                self._lw_decode_fail_n = getattr(self, "_lw_decode_fail_n", 0) + 1
-                fail_thresh = int(os.environ.get("CBF_PHASE2_HYSTERESIS", "3"))
-                ramp_frames = float(os.environ.get("CBF_PHASE2_RAMP_FRAMES", "5"))
-                if self._lw_decode_fail_n >= fail_thresh:
-                    alpha = getattr(self, "_lw_phase2_alpha", 0.0)
-                    # clamp ramp so δ never lags the fill (PDF: "clamp ramp gain so δ never lags")
-                    self._lw_phase2_alpha = min(alpha + 1.0 / ramp_frames, 1.0)
-                delta_ref = getattr(self, "_lw_delta_prev", None)
-                Lw2_ref = getattr(self, "_lw_Lw2_prev", None)
-                p2_alpha = getattr(self, "_lw_phase2_alpha", 0.0)
-                if delta_ref is not None and Lw2_ref is not None and p2_alpha > 0:
-                    delta_eff = delta_ref * p2_alpha
-                    ddelta_eff = getattr(self, "_lw_ddelta_ref", np.zeros(2)) * p2_alpha
-                    tau_p2 = float(os.environ.get("CBF_TAU", "0.3"))
-                    m2_p2 = np.maximum(np.asarray(self._p_10, float) - delta_eff - tau_p2 * ddelta_eff, 1e-3)
-                    # Per-axis headroom → conservative theta tightening for magnitude clamp.
-                    # Subtract centroid offset + drift from available margin before dividing by Lw row-norm.
-                    cr_ref = np.asarray(getattr(self, "_lw_cr_prev", np.zeros(2)), float)
-                    dft_ref = tau_p2 * np.asarray(getattr(self, "_lw_d", np.zeros(2)), float)
-                    effective_margin = np.maximum(m2_p2 - np.abs(cr_ref + dft_ref), 0.0)
-                    row_norms = np.linalg.norm(Lw2_ref, axis=1)
-                    theta_tight = float(np.min(effective_margin / (row_norms + 1e-9)))
-                    theta_cone = float(min(theta_cone, max(theta_tight, 0.0)))
-                # magnitude-clamp fallback (direction preserved)
-                a_xy_lim = a_z * np.tan(theta_cone); a_xy_n = np.linalg.norm(I_a[:2])
-                if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
-                    I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
+                corners = self._img_node._feature_pts[-1][1]
+            except (IndexError, AttributeError, TypeError):
+                corners = None
+            dt_last = self._dt[-1] if len(self._dt) > 0 else None
+            w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+            I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
+                I_a, R, R33, yaw_c, corners,
+                self._img_node.center, self._img_node.focal,
+                self._p_10, self._theta_cap, theta_cone,
+                dt_last, w_rp, self._cbf_state)
         else:
             a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
             t_hat = None
@@ -1282,7 +1209,24 @@ class Controller(Thread):
         if f_mag < 1e-6:
             R_d = np.eye(3)
         else:
-            rd3 = -I_a_use / f_mag
+            # Fix B (2026-06-14): when cbf2 produced a safe lean vector th_safe,
+            # build the desired body-z DIRECTION from it directly
+            #   rd3 = [-Rz(yaw)@th_safe, 1] / norm
+            # instead of from the LPF'd accel. a_z cancels in -I_a/||I_a|| so the
+            # direction is identical absent filtering; this removes the LPF smear
+            # (tau_ia=0.08, alpha~0.83) of the CBF's HARD visibility bound, so the
+            # deliverable-tilt guarantee lands exactly on the commanded attitude
+            # (the round-trip tilt->accel->LPF->tilt no longer leaks). Vertical
+            # thrust magnitude (B_T) still comes from the filtered/loom I_a[2].
+            # Env CBF_RD3_DIRECT=0 reverts to the accel path for A/B.
+            ts = self._theta_safe
+            if ts is not None and os.environ.get("CBF_RD3_DIRECT", "1") == "1":
+                a_xy_dir = np.array([cy * ts[0] - sy * ts[1],
+                                     sy * ts[0] + cy * ts[1]])      # Rz(yaw)@th_safe
+                rd3 = np.array([-a_xy_dir[0], -a_xy_dir[1], 1.0])
+                rd3 = rd3 / np.linalg.norm(rd3)
+            else:
+                rd3 = -I_a_use / f_mag
             a_h = np.array([np.cos(self._psi_d), np.sin(self._psi_d), 0.0])
             rd2_raw = np.cross(rd3, a_h)
             n2 = float(np.linalg.norm(rd2_raw))

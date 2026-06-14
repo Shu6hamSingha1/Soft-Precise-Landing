@@ -3,6 +3,47 @@
 **Status (2026-06-05):** SWITCHING the visibility mechanism from the **cone clamp** to an
 **input-aware Control Barrier Function**.
 
+> 🛠 **Addendum (2026-06-14) — CBF isolated + validated; one bug found + the θ_safe round-trip.**
+> The `cbf2` block was extracted verbatim into a pure function `src/cbf_visibility.py::cbf2_filter`
+> (the live controller calls it; parity Δ=0 over randomized sequences) so it can be exercised in
+> isolation. Stage-1 synthetic validator: `tools/validate_cbf.py` (11/11). Two findings:
+>
+> **1. `L_ω` coupling bug (the QP constrained a 90°-rotated direction).** The QP enforces
+> `|cr + L_ω·(θ − θ_curr) + τd| ≤ m`, but `L_ω = [[xy,−(1+x²)],[1+y²,−xy]]` couples the body
+> **angular-rate** vector `ω_rp` to the feature flow (`ċr = L_ω·ω_rp`), whereas `θ = Rz(−yaw)·(a_xy/a_z)`
+> is the **lean-direction** vector. Lean and rotation-axis differ by 90° (to lean +x you rotate about
+> +y): `ω = M·θ`, `M = [[0,1],[−1,0]]`. The original port (and §0 below) plugged `θ` straight into
+> `L_ω`. Verified against an independent pinhole+attitude camera model: worst model error **231%
+> (current) → 8.7% (with `L_ω·M`)**; near-hover the fixed model is faithful to <8%. With the fix the
+> QP's predicted feature lands on the FoV box to 1e-16 and the inward/recovery accel is provably left
+> free (no-strangle). **Fix is now DEFAULT-ON** (`CBF_LW_ROT=1`; set `=0` for the old 90°-wrong
+> coupling in A/B). ⚠️ **Pending SITL + IC2-5 re-validation** — the baked controller changed; run the
+> Stage-3 A/B (cbf2-fixed vs cbf2-current vs cone) + IC gate before trusting the landing numbers.
+> This bug is a symptom of the representational laundering described next.
+>
+> **2. The `θ_safe → I_a → attitude` round-trip (open design question, documented for later).**
+> `cbf2` natively produces a safe **tilt** `θ_safe`, but the code converts it to accel
+> (`I_a[:2] = a_z·Rz(yaw)·θ_safe`, `controller.py:1130`), low-pass filters it (`τ_ia=0.08`, α≈0.83,
+> `:1128`), then the geometric inner loop rebuilds the desired attitude from the **filtered** accel
+> (`rd3 = −I_a_use/‖I_a_use‖`, `:1194`). Visibility is fundamentally an *attitude* constraint (§0), so
+> this tilt→accel→tilt detour is the natural place to ask "why not feed `θ_safe` straight into the
+> geometric controller?". Analysis:
+> - **Direction is near-lossless:** `a_z` cancels in `rd3 = −I_a/‖I_a‖ = [−Rz(yaw)·θ_safe, 1]/√(1+‖θ_safe‖²)`
+>   — i.e. exactly a body-z tilted by `θ_safe` (only a small `θ` vs `tan θ` slip). The accel form exists
+>   because the geometric (Lee-style) loop tracks a **force vector** and the loom/descent SMC's vertical
+>   thrust magnitude must merge with the lateral tilt — `I_a` is that merge point.
+> - **The real leak = the LPF.** `α≈0.83` ⇒ the commanded attitude is `0.83·prev + 0.17·θ_safe`-derived;
+>   the CBF's *hard* visibility bound is smeared with an ~80 ms / 5-frame lag before PX4 tracks it, so the
+>   guarantee does **not** land on the actual attitude. Injecting `θ_safe` into `rd3` directly (post-LPF,
+>   keeping vertical thrust from the loom) makes the deliverable-tilt/visibility guarantee exact.
+> - **Status: IMPLEMENTED (2026-06-14), DEFAULT-ON.** `cbf2_filter` now returns `th_safe` (the clipped
+>   safe lean); the controller builds `rd3 = [−Rz(yaw)·th_safe, 1]` normalized directly
+>   (`controller.py` R_d block) when cbf2 Phase-1 produced one, else falls back to the accel path.
+>   Vertical thrust (`B_T`) still comes from the filtered/loom `I_a[2]`. Env `CBF_RD3_DIRECT=0` reverts.
+>   Validated at the formula level (`tools/validate_cbf.py` 8a/8b: direct rd3 == unfiltered accel rd3 to
+>   1e-16; `th_safe` lands on `R_d` tilt to 1e-16). Closed-loop benefit (LPF-smear removal) is a SITL
+>   property → confirm in the Stage-3 A/B. Fix #1 (correct `θ_safe`) and Fix #2 (apply it intact) compose.
+
 > 📌 **Addendum (2026-06-09):** cbf2 is now the live default (`FUNNEL_MODE=cbf2`). Two refinements made
 > after this doc: **theta_cap is applied post-QP only** (removed from inside the QP loop), and δ is now
 > **two-phase** — Phase 1 (marker decodes) `m2 = φ_max` centroid-only, the marker allowed to overflow;
