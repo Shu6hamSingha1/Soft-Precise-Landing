@@ -1,7 +1,11 @@
-# Ubuntu / PX4 Handoff — resume CBF / SEN_FUNNEL work (2026-06-14)
+# Ubuntu Handoff — resume CBF / SEN_FUNNEL work (2026-06-14)
 
-Paste this into the Ubuntu Claude session (or read it after pulling). It resumes the work done in
-the Windows/MATLAB session and directs the PX4-SITL side.
+Resumes the work done in the Windows/MATLAB session.
+
+> **PRIORITY: the major focus is resolving the IC5 SEN_FUNNEL issue in MATLAB (§5 / TASK D) —
+> MATLAB runs on Ubuntu.** The PX4-SITL tasks (§2–§4) run **alongside**. Both implementations share
+> the *same* SEN_FUNNEL demand-starvation bug, so converging it in MATLAB (fast, deterministic, no
+> SITL flakiness) and porting the validated mechanism to PX4 is the efficient path. Start with §5.
 
 ---
 
@@ -143,7 +147,32 @@ visibility — judge it on that, never on landing xy.
 
 ---
 
-## 5. Reference
+## 5. TASK D — Resolve IC5 in MATLAB (MATLAB IS available on Ubuntu)
+
+The deferred MATLAB failure (IC5 `[2,2,-3]` noisy fly-away) is the SAME SEN_FUNNEL demand-starvation
+as TASK B. MATLAB runs on Ubuntu, so resolve it there directly — it's a faster, deterministic test
+bed than SITL (fixed dt, repeatable, no flakiness), so it's a good place to converge the SEN_FUNNEL
+mechanism before/with the PX4 SITL validation.
+
+- Tune the SEN_FUNNEL in `MATLAB/Multi_init_cond/visualControl_IBVS_adaptive.m`: the block
+  (`S_s/zeta_s/G_s/izeta_s/dzeta_sd/V_ds_d`) + params `K_ctrl.gamma_s, p_s_0, p_s_inf, izeta_s_max`,
+  using the §3 lever ranking (funnel sizing → §9 hard outlier-containment → K_rp/ri/rd).
+- Run + verify in MATLAB on Ubuntu:
+  ```bash
+  matlab -batch "global IC_OVERRIDE NOISE_OVERRIDE; IC_OVERRIDE=[2;2;-3]; NOISE_OVERRIDE=0; \
+    cd('MATLAB/Multi_init_cond'); visualControl_IBVS_adaptive"     # IC5 noiseless first
+  # then NOISE_OVERRIDE=1 for noisy; re-sweep the canonical 5 ICs [0,0,-5;2,2,-5;2,-2,-5;2,2,-7;2,2,-3].
+  ```
+  For a multi-IC/noisy sweep, drive the script from a MATLAB *function* wrapper (function scope
+  survives the script's top-of-file `clear`; set IC/NOISE globals before each call, read the result
+  vars or `temp1.mat` after). Judge IC5 by whether it lands + holds visibility (no fov_fail).
+- Because the mechanism is shared, keep MATLAB and PX4 in sync: whichever side you converge first,
+  port the validated SEN_FUNNEL *mechanism* to the other. Keep the intentional divergences (corner-
+  based CBF in MATLAB vs centroid in PX4; see CONTROLLER_PARITY.md) — only mirror the SEN_FUNNEL.
+
+---
+
+## 6. Reference
 
 - Design: `PX4_Gazebo/docs/CBF_visibility.pdf`, `FUNNEL_CBF_DESIGN.md` (§9 = SEN_FUNNEL), `CONTROLLER_PARITY.md`.
 - Pure CBF: `PX4_Gazebo/src/cbf_visibility.py`; offline validator `tools/validate_cbf.py`.
