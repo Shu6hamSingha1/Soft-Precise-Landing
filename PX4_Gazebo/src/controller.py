@@ -214,6 +214,7 @@ class Controller(Thread):
             ("PLASMC_DSD_LAT_MAX",   "100.0"),
             ("PLASMC_SEN_RECOVERY_K", "0.0"),
             ("CBF_LPF_BEFORE",       "0"),
+            ("FLOW_CENTROID_RATE",   "0.0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -269,6 +270,13 @@ class Controller(Thread):
         # overflow. Restores the recovery authority the back-mapped barrier collapses + the
         # ratio clamp freezes. Default 0.0 = OFF.
         self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
+        # LEVER 2 (flow ceiling + smoothing): blend the accurate DETECTED-centroid rate
+        # d(s[:2])/dt into the lateral flow h[:2]. The LK flow saturates ~1 rad/s AND
+        # carries lstsq garbage spikes; the centroid rate has no LK ceiling and no lstsq
+        # garbage (clean detected position -> clean derivative) -> raises the ceiling AND
+        # smooths in one move (both s and h are V-frame, so d(s)/dt IS the translational
+        # flow). FLOW_CENTROID_RATE in [0,1]: 0 = pure LK (default OFF), 1 = pure centroid.
+        self._FLOW_CENTROID_RATE = float(os.environ.get("FLOW_CENTROID_RATE", "0.0"))
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -384,6 +392,7 @@ class Controller(Thread):
         self._h_e = []
         self._dh_d = []
         self._dh_d_deque = deque([np.zeros(N_DIM)] * 4)
+        self._s_rate_deque = deque([np.zeros(2)] * 4)   # LEVER 2: smoothed centroid-rate
 
         # Image features
         self._s = []
@@ -677,6 +686,17 @@ class Controller(Thread):
     def _updateOptFlow(self, h):
         """Middle-loop: barrier-transform optical flow error, prep zeta / sigma inputs."""
         self._h.append(h)
+
+        # LEVER 2: blend the accurate centroid-rate into the lateral flow (see __init__).
+        # d(s[:2])/dt = the V-frame translational flow, free of the LK ~1 rad/s ceiling and
+        # the lstsq garbage spikes that make h noisy. Replaces ONLY h[:2] (lateral); h[2]
+        # (loom) + h[3:] (rotation) keep the LK/lstsq value. Default off (blend=0).
+        if (self._FLOW_CENTROID_RATE > 0.0 and len(self._s) > 1
+                and len(self._dt) > 0 and self._dt[-1] > 1e-6):
+            _s_rate = (self._s[-1][:2] - self._s[-2][:2]) / self._dt[-1]
+            self._s_rate_deque.append(_s_rate); self._s_rate_deque.popleft()
+            _b = self._FLOW_CENTROID_RATE
+            self._h[-1][:2] = (1.0 - _b) * self._h[-1][:2] + _b * smooth4(self._s_rate_deque)
 
         # Desired optical flow — MATLAB form (visualControl_IBVS_adaptive.m:369-370).
         # MATLAB uses V_w (optical-flow-derived target-relative ang vel in V frame),
