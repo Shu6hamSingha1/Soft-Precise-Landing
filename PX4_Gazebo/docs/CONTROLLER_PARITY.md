@@ -33,6 +33,16 @@ Compiled 2026-06-02 at the start of the post-calibration gain-tuning campaign.
 > myopia) is committed default-off in MATLAB `cbf2_filter.m`; **portable to PX4 but unneeded** (no −Y
 > strip to fix). Full mechanism: memory `feedback_ic5_cbf_strip_mechanism`.
 
+> 📌 **Addendum (2026-06-15) — thrust-scaled adaptive CoG feedforward (`GAMMA_COG`) is MATLAB-ONLY,
+> deliberately NOT ported.** MATLAB baked `τ_cog = −T·θ̂` into the **moment** command (`B_tau_cd += τ_cog`),
+> `θ̂̇ = Γ·T·(e_Ω + c₂·e_R)`, to cancel the injected CoG-offset torque `τ_d = T·[−δy;δx;0]` (fixes the
+> IC5 noisy fly-aways). **Not ported to PX4 (decided 2026-06-15):** PX4 is rate-mode (`w_u=−K_R·e_R`,
+> ships body-rates; PX4 owns rate→torque — torque refactor standing-rejected), so there's no moment to
+> inject into; PX4's rate-loop integral (`MC_*RATE_I`) already rejects the steady CoG torque (the FF
+> only substitutes for the integral rate loop MATLAB's proportional SO(3) law lacks); and since PX4
+> absorbs the torque, controller.py sees `e_Ω,e_R→0` → the adaptation has no signal (inert). PX4 SITL
+> also doesn't inject the ±5 mm random `r_cog`. Full rationale: memory `feedback_cog_adaptive_feedforward`.
+
 ---
 
 ## 1. Control-law parity — what is mathematically IDENTICAL
