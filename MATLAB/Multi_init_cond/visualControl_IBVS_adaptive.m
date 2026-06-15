@@ -186,6 +186,16 @@ if ~isempty(SEN_RI_OVERRIDE);        K_ctrl.ri = diag(SEN_RI_OVERRIDE(:));   end
 if ~isempty(SEN_RD_OVERRIDE);        K_ctrl.rd = diag(SEN_RD_OVERRIDE(:));   end
 if isempty(SEN_CONTAIN_MODE);        sen_contain_mode = 0; ...
 else;                                sen_contain_mode = SEN_CONTAIN_MODE; end
+% SEN_RECOVER_ST: past-breach STRONG recovery (default-OFF). On breach, pin S_s at
+% this small target ST via p_s_eff=|s_e_n|/ST, so the back-mapped P-demand becomes
+% -rp*[g(ST)/(2*ST)]*|s_e_n| with g(S)=(1-S^2)log((1+S)/(1-S)). Since g(S)/S -> 2 as
+% S->0, a small ST recovers ~FULL -rp linear restoring gain (vs the legacy
+% containment's 0.95 pin = 0.19*rp), eliminating the anti-restoring collapse beyond
+% breach (marginal P-gain flips +ve for |S|>0.648). [] = off. Takes precedence over
+% SEN_CONTAIN_MODE. CAVEAT: outer-demand fix only -- whether RECOVERY improves
+% depends on the inner loop delivering it (prior SEN_RECOVERY_K A/B said inner-bound).
+global SEN_RECOVER_ST;
+if isempty(SEN_RECOVER_ST); sen_recover_st = 0; else; sen_recover_st = SEN_RECOVER_ST(1); end
 
 % Feature-space SETPOINT TRAJECTORY (waypoint-style reference governor). Reuses
 % the funnel's exp-decay operator on the SETPOINT (not the envelope): the SEN
@@ -534,11 +544,15 @@ for idx=1:N_steps
         raw_ratio = V_s_e_n(j,idx) / p_s(j,idx);
         if abs(raw_ratio) >= 1.0
             sen_breach(j,idx) = true;
-            if sen_contain_mode == 1
+            if sen_recover_st > 0
+                % STRONG recovery: pin S_s at the small target ST so the
+                % back-mapped P-demand -> -rp*[g(ST)/(2*ST)]*|s_e_n| (~full -rp
+                % as ST->0), avoiding the anti-restoring collapse beyond breach.
+                p_s_eff = abs(V_s_e_n(j,idx)) / sen_recover_st;
+            elseif sen_contain_mode == 1
                 % Hard outlier-containment: expand the effective funnel to the
                 % breached error so the back-mapped barrier (and G_s^-1) stay
-                % valid -> inward demand scales with |s_e_n| instead of
-                % collapsing to ∝ p_s_inf at the clip.
+                % valid -> inward demand scales with |s_e_n| (~0.19*rp at S=0.95).
                 p_s_eff = abs(V_s_e_n(j,idx)) / (1 - S_s_margin);
             end
         end
