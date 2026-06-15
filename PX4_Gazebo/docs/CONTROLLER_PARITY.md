@@ -77,7 +77,7 @@ These are not "errors" — they are what the PX4/Gazebo platform requires.
 |---|---|---|---|
 | `K_ri` | diag(0.1, 0.1) | diag(1.0, 1.0) — **10×** | SITL LK-centroid noise makes lateral PID conditionally unstable; integral nulls persistent drift |
 | `K_rp` | diag(9, 9) fixed | **Gain-scheduled**: far=9 / close=4, tanh blend on \|s_e_n\| (thresh 0.1) | K_rp=4 gave softness at IC1 but regressed IC2-5 (insufficient authority); schedule keeps both |
-| `N` | diag(0.02, 0.02, **0.05**) | diag(0.02, 0.02, **0.02**) | N_z slowed for SITL (κ_z adaptation too fast on noisy flow) |
+| `N` | diag(0.02, 0.02, **0.02**) | diag(0.02, 0.02, **0.1**) | **N_z now DIVERGES in opposite directions from the old 0.05.** PX4 RAISED N_z→**0.1** (soft-config bake 2026-06-13) for faster κ_z adaptation in the ~2 s descent (z braking authority arrives in time → soft touchdown); its κ_z runaway is bounded instead by `KAPPA_MAX_Z=3.0`. MATLAB LOWERED N_z→**0.02** (its own κ_z-runaway-under-noise fix, `visualControl_IBVS_adaptive.m:69`). The old "N_z slowed for SITL" rationale is obsolete. |
 | `P` | diag(1.5, 1.5, **5.0**) | diag(1.5, 1.5, **2.5**) | P_z×0.5 was the only reproducible above-baseline singleton in the Big Sensitivity sweep |
 | `kappa_0` | [0.125, 0.125, 0.25] | **1.25×** that | Best singleton from IC1 sweep |
 | `K_R` (inner) | diag(1.5, 1.5, 0.5) [N·m/rad] | 0.4 × diag(5,5,5) = diag(2,2,2) [(rad/s)/rad] | Different physical unit (A1). 0.4 scale found 2026-05-21: higher overdrives LK tracking |
