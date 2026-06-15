@@ -215,6 +215,7 @@ class Controller(Thread):
             ("PLASMC_SEN_RECOVERY_K", "0.0"),
             ("CBF_LPF_BEFORE",       "0"),
             ("FLOW_CENTROID_RATE",   "0.0"),
+            ("PLASMC_CH_CLEAN",      "0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -277,6 +278,10 @@ class Controller(Thread):
         # smooths in one move (both s and h are V-frame, so d(s)/dt IS the translational
         # flow). FLOW_CENTROID_RATE in [0,1]: 0 = pure LK (default OFF), 1 = pure centroid.
         self._FLOW_CENTROID_RATE = float(os.environ.get("FLOW_CENTROID_RATE", "0.0"))
+        # Consistent c_h kinematics correction (manuscript §II): clean c-term + drop w×s from h_d.
+        # Removes the noisy V_w/V_dw cross-products + de-dominates the rotation-FF in h_d (the
+        # a_u-outward overshoot cause). MATLAB partial port regressed nominal -> A/B before trusting.
+        self._CH_CLEAN = os.environ.get("PLASMC_CH_CLEAN", "0") == "1"
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -716,11 +721,19 @@ class Controller(Thread):
         # and a lateral-error gate here — both removed (see __init__ note).
         h_ref_eff = self._h_ref
         cross_ws = np.cross(w, self._s[-1][:3])
-        self._h_d.append(
-            self._ds_d[-1]
-            + cross_ws
-            + (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
-        )
+        if self._CH_CLEAN:
+            # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
+            # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
+            # via -ψ̇_b·(ê3×h) instead (see PLASMC). Removing w×s here is the OTHER half of the consistent
+            # change (MATLAB C_SIMPLE only changed c -> convention-mixed regression; this does both). Directly
+            # de-dominates h_d (which the a_u-outward diagnosis showed is ~all cross(w_i,s) in the overshoot).
+            self._h_d.append(self._ds_d[-1] + h_ref_eff * self._s[-1][:3])
+        else:
+            self._h_d.append(
+                self._ds_d[-1]
+                + cross_ws
+                + (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
+            )
         self._h_e.append(self._h[-1] - self._h_d[-1])
 
         # Barrier transform on h_e — MATLAB visualControl_IBVS_adaptive.m:380-385.
@@ -816,11 +829,28 @@ class Controller(Thread):
         # All cross products use V-frame target-relative ω (self._w_i), matching
         # MATLAB's V_w. Self._w (body IMU rate) is logged but not used here.
         w = self._w_i[-1]
-        c = (np.cross(self._dw[-1], self._s[-1][:3])
-             + np.cross(w, np.cross(w, self._s[-1][:3]))
-             + 2 * np.cross(w, self._h[-1])
-             - (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
-             - self._dh_d[-1])
+        if self._CH_CLEAN:
+            # CONSISTENT c_h CORRECTION (manuscript §II; feedback_ch_kinematics_correction).
+            # New: c = -ψ̇_b·(ê3×h) - (h·ê3)·h - ḣ_d  (clean IMU-yaw frame rotation + loom only;
+            # NO ẇ×s / w×(w×s) / 2w×h — the noisy V_w/V_dw cross-products the old form transplanted
+            # from camera-frame static-target kinematics). Paired with the w×s drop in h_d above.
+            # ψ̇_b = ZYX yaw Euler rate from the body rate (transport term collapses to ψ̇ ê3×h in the
+            # gravity-leveled V-frame). ⚠ ψ̇_b sign/convention is SITL-unverified — if the A/B regresses,
+            # flip the _r sign first. MATLAB C_SIMPLE (partial) regressed nominal SP 9->2 (the w-terms do
+            # real FF work) — this consistent form is the fair test; DEFAULT-OFF, A/B before trusting.
+            _eul = Quaternion(self._quat[-1]).to_angles()        # [roll, pitch, yaw]
+            _phi, _th = float(_eul[0]), float(_eul[1])
+            _r = -float(self._w[-1][2])                          # true FRD yaw rate (self._w stores -down)
+            psi_dot_b = (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
+            c = (- psi_dot_b * np.cross(e3, self._h[-1])
+                 - np.dot(self._h[-1], e3) * self._h[-1]
+                 - self._dh_d[-1])
+        else:
+            c = (np.cross(self._dw[-1], self._s[-1][:3])
+                 + np.cross(w, np.cross(w, self._s[-1][:3]))
+                 + 2 * np.cross(w, self._h[-1])
+                 - (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
+                 - self._dh_d[-1])
 
         # Theta matrix and its Frobenius norm
         # MATLAB: Theta = [-c + S*dp - G\(Omega*zeta), eye(3)]
