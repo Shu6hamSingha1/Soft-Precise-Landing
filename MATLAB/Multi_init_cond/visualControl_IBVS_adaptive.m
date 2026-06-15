@@ -36,6 +36,21 @@ InitVar;
 
 init_robustness;    % samples wind / mass / inertia / CoG / pixel-noise model
 
+% Disturbance ABLATION toggles (globals; default = all disturbances active).
+% Set =1 to disable ONE source, isolating its effect on the noisy failure:
+%   ABL_PIX pixel noise | ABL_OUT outliers | ABL_PARAM mass/inertia/CoG |
+%   ABL_WIND wind | GE_OFF ground effect | DELAY_OFF actuator delay.
+global ABL_PIX ABL_OUT ABL_PARAM ABL_WIND GE_OFF DELAY_OFF ABL_MASS ABL_INERTIA ABL_COG;
+abl_pix   = ~isempty(ABL_PIX)   && ABL_PIX;
+abl_out   = ~isempty(ABL_OUT)   && ABL_OUT;
+abl_param = ~isempty(ABL_PARAM) && ABL_PARAM;
+abl_wind  = ~isempty(ABL_WIND)  && ABL_WIND;
+abl_mass  = ~isempty(ABL_MASS)    && ABL_MASS;       % isolate: nominal mass
+abl_iner  = ~isempty(ABL_INERTIA) && ABL_INERTIA;    % isolate: nominal inertia
+abl_cog   = ~isempty(ABL_COG)     && ABL_COG;        % isolate: zero CoG offset
+if ~isempty(GE_OFF)    && GE_OFF;    GE    = 0; end
+if ~isempty(DELAY_OFF) && DELAY_OFF; delay = 0; end
+
 %% =========================================================================
 %  PLASMC GAINS (from InitGains_Comparison.m — tuned for comparison study)
 % =========================================================================
@@ -62,12 +77,13 @@ K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with 
 % Override the LATERAL (xy) diagonal entries only (z untouched) to test the
 % "delivery" lever (the SMC isn't reaching: V_h_e stuck off-zero). Gamma=reaching
 % rate, E=boundary layer (smaller=stiffer), P=kappa-leakage, kappa0=initial gain.
-global GAMMA_XY_OVERRIDE E_XY_OVERRIDE P_XY_OVERRIDE KAPPA0_XY_OVERRIDE N_XY_OVERRIDE;
+global GAMMA_XY_OVERRIDE E_XY_OVERRIDE P_XY_OVERRIDE KAPPA0_XY_OVERRIDE N_XY_OVERRIDE N_Z_OVERRIDE;
 if ~isempty(GAMMA_XY_OVERRIDE);  K_ctrl.Gamma(1,1)=GAMMA_XY_OVERRIDE(1); K_ctrl.Gamma(2,2)=GAMMA_XY_OVERRIDE(end); end
 if ~isempty(E_XY_OVERRIDE);      K_ctrl.E(1,1)=E_XY_OVERRIDE(1);         K_ctrl.E(2,2)=E_XY_OVERRIDE(end);         end
 if ~isempty(P_XY_OVERRIDE);      K_ctrl.P(1,1)=P_XY_OVERRIDE(1);         K_ctrl.P(2,2)=P_XY_OVERRIDE(end);         end
 if ~isempty(KAPPA0_XY_OVERRIDE); K_ctrl.kappa_0(1)=KAPPA0_XY_OVERRIDE(1);K_ctrl.kappa_0(2)=KAPPA0_XY_OVERRIDE(end);end
 if ~isempty(N_XY_OVERRIDE);      K_ctrl.N(1,1)=N_XY_OVERRIDE(1);         K_ctrl.N(2,2)=N_XY_OVERRIDE(end);         end
+if ~isempty(N_Z_OVERRIDE);       K_ctrl.N(3,3)=N_Z_OVERRIDE(1);          end
 
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
 K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
@@ -78,6 +94,40 @@ K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
 global KR_OVERRIDE KOMEGA_OVERRIDE;
 if ~isempty(KR_OVERRIDE);     K_ctrl.kR     = diag(KR_OVERRIDE(:));     end
 if ~isempty(KOMEGA_OVERRIDE); K_ctrl.kOmega = diag(KOMEGA_OVERRIDE(:)); end
+
+% Integral attitude term (k_I·∫e_R) — rejects the CONSTANT body-frame torque from
+% a CoG offset (r_cog × F), the pinned root of the IC5 noisy failures (the
+% geometric law is P+rate only -> cannot null a constant torque). Default 0
+% (off); KIR_OVERRIDE sets the [roll pitch yaw] gain. ie_R clamp = anti-windup.
+K_ctrl.kI_R = diag([0, 0, 0]);
+global KIR_OVERRIDE;
+if ~isempty(KIR_OVERRIDE); K_ctrl.kI_R = diag(KIR_OVERRIDE(:)); end
+ie_R_max = 0.5;   % anti-windup clamp on ∫e_R
+
+% Thrust-scaled adaptive CoG feed-forward (default-OFF). The CoG offset injects a
+% PURELY THRUST-PROPORTIONAL body torque: UAVDyn_robust gives tau_d = r_cog x f_b
+% with f_b=[0;0;-T] -> tau_d = T*[-dy; dx; 0] (xy only, zero yaw). This is the
+% pinned root of the IC5 noisy failures. A plain integral term (kI_R) fails because
+% it ignores the thrust regressor (integrates e_R regardless of T -> lags, can
+% destabilize the fast loop). Here a Lee-style geometric adaptive law estimates the
+% per-thrust coefficient theta_hat ~ [-dy; dx] and cancels with tau_ff = -T*theta_hat.
+% Lyapunov-grounded adaptation on the thrust-scaled composite attitude error
+% (e_Omega + c2*e_R)_xy; the c2*e_R term makes the constant torque observable at
+% steady state (e_Omega->0). theta_hat clamped (anti-windup); |r_cog|<=5mm -> bound 0.02.
+% BAKED 2026-06-15: GAMMA_COG default 0->0.005. IC1-5 gate (validate_cogff.m) passed
+% NO-REGRESSION on all 5 canonical ICs (IC1/centered stays perfect) and IMPROVES IC3/IC4/IC5
+% (base SP 27/30 -> 29/30); fixes the IC5 noisy CoG-offset fly-aways (seed4 TL->land,
+% seed6 78m->2.8m). Set GAMMA_COG=0 to disable. See [[feedback_cog_adaptive_feedforward]].
+global GAMMA_COG COG_C2 COG_MAX;
+if isempty(GAMMA_COG); gamma_cog = 0.005; else; gamma_cog = GAMMA_COG(1); end
+if isempty(COG_C2);    cog_c2    = 2.0; else; cog_c2    = COG_C2(1);    end
+if isempty(COG_MAX);   cog_max   = 0.02; else; cog_max  = COG_MAX(1);   end
+% COG_LEAK = sigma-modification leakage rate [1/s]. Lets GAMMA_COG be larger (fast
+% EARLY convergence — the non-SP IC5 seeds 4 & 6 fail because theta_hat converges
+% too late, t~3.4s/2.1s) while the leakage bleeds off the steady-state bias that a
+% plain high gamma accrues (which over-adapts -> lateral offset -> breaks precision).
+global COG_LEAK;
+if isempty(COG_LEAK);  cog_leak  = 0;   else; cog_leak = COG_LEAK(1);   end
 
 % Yaw adaptive SMC — generates heading reference psi_d (no compass)
 % e_a = V_s(4) - V_s_d(4) = alpha - alpha_d   (image-based, Eq. 19)
@@ -159,6 +209,17 @@ global DH_D_CAP DH_D_TAU;
 if isempty(DH_D_CAP); dhd_cap = 20; else; dhd_cap = DH_D_CAP(1); end
 if isempty(DH_D_TAU); dhd_tau = 0; else; dhd_tau = DH_D_TAU(1); end
 dh_d_prev = zeros(3,1);
+
+% C_SIMPLE = first-principles c-term (manuscript form, default-OFF).
+% Derived from scratch: differentiating the PRIMITIVE optic flow h=v/z ONCE
+% gives c_tilde_h = -psi_dot_b*(e3 x h) - (e3.h)*h, i.e. clean IMU yaw-rate
+% frame rotation + loom only. The default c carries spurious second-derivative
+% (s-double-dot) terms (w x (w x s), 2 w x h, dw x s) built from the NOISY
+% optic-flow-recovered w and its derivative dw -> the c-term noise channel
+% behind the IC5 seed-4/seed-6 runaways. C_SIMPLE=1 replaces that block with
+% the manuscript c_tilde_h using the clean body yaw rate psi_dot_b.
+global C_SIMPLE;
+c_simple = ~isempty(C_SIMPLE) && C_SIMPLE(1) ~= 0;
 
 %% =========================================================================
 %  PRE-ALLOCATE ARRAYS
@@ -260,6 +321,9 @@ cbf_state = struct('delta_prev', [], 'ddelta_ref', zeros(2,1), ...
                    'cr_prev', [], 'd', zeros(2,1), 'Lw2_prev', []);
 th_safe = [];
 th_safe_prev_n = 0;   % previous CBF lean magnitude (for TILT_RATE_MAX limit)
+ie_R = zeros(3,1);    % integral of attitude error (CoG-torque rejection)
+thetahat_cog = zeros(2,1);   % adaptive per-thrust CoG-torque coeff [-dy; dx] (xy)
+THETAHAT_COG = zeros(2, N_steps);   % log of CoG estimate (diagnostics)
 kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
 kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
 e_a         = zeros(1, N_steps);
@@ -314,11 +378,13 @@ for idx=1:N_steps
         C_s_tc = transpose(I_R_C)*(x_t(1:3,idx) - I_p_c);
         C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
 
-        if NOISE
+        if NOISE && ~abl_pix
             % Depth-dependent pixel noise: sigma_px(z) = 0.3 + 0.5/(z+0.5) [px]
             z_dep = max(abs(C_s_tc(3)), 0.1);
             sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
             C_nP = C_nP + (sigma_px / f) * randn(size(C_nP));
+        end
+        if NOISE && ~abl_out
             % Outlier injection (detector glitch)
             if rand < outlier_prob
                 col = randi(size(C_nP,2));
@@ -543,8 +609,18 @@ for idx=1:N_steps
     end
     dh_d_prev = V_dh_d;
 
-    c = cross(V_dw, V_s(1:3)) + cross(V_w, cross(V_w, V_s(1:3))) ...
-        + 2 * cross(V_w, V_h) - (dot(V_h + cross(V_w, V_s(1:3)), e3))*V_h - V_dh_d;
+    if c_simple
+        % First-principles c_tilde_h (manuscript form): clean IMU yaw-rate
+        % frame rotation + loom. psi_dot_b = ZYX yaw Euler rate from body rates
+        % (matches the line-313 yaw extraction); roll/pitch from I_R_C.
+        phi_b   = atan2(I_R_C(3,2), I_R_C(3,3));
+        theta_b = -asin(max(min(I_R_C(3,1), 1), -1));
+        psi_dot_b = (B_w_c(2)*sin(phi_b) + B_w_c(3)*cos(phi_b)) / cos(theta_b);
+        c = -psi_dot_b*cross(e3, V_h) - dot(V_h, e3)*V_h - V_dh_d;
+    else
+        c = cross(V_dw, V_s(1:3)) + cross(V_w, cross(V_w, V_s(1:3))) ...
+            + 2 * cross(V_w, V_h) - (dot(V_h + cross(V_w, V_s(1:3)), e3))*V_h - V_dh_d;
+    end
 
     Theta = [- c + S_2(:,:,idx)*dp_2(:,idx) ...
         - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)), eye(3)];
@@ -711,7 +787,22 @@ for idx=1:N_steps
     e_R    = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];   % vee map
     e_Omega = B_w_c;                                    % Omega_d = 0
 
-    B_tau_cd = -K_ctrl.kR*e_R - K_ctrl.kOmega*e_Omega + cross(B_w_c, J*B_w_c);
+    ie_R = ie_R + e_R * dt;                             % integral of attitude error
+    ie_R = max(min(ie_R, ie_R_max), -ie_R_max);        % anti-windup clamp
+
+    % Thrust-scaled adaptive CoG feed-forward (tau_d = T*[-dy;dx;0] cancellation)
+    if gamma_cog > 0
+        e_comp = e_Omega(1:2) + cog_c2 * e_R(1:2);     % composite attitude error (xy)
+        thetahat_cog = thetahat_cog ...
+            + dt * (gamma_cog * T_cd * e_comp - cog_leak * thetahat_cog);  % sigma-mod
+        thetahat_cog = max(min(thetahat_cog, cog_max), -cog_max);   % anti-windup
+        tau_cog = [-T_cd * thetahat_cog; 0];           % tau_ff = -T*theta_hat
+    else
+        tau_cog = zeros(3,1);
+    end
+    THETAHAT_COG(:,idx) = thetahat_cog;
+    B_tau_cd = -K_ctrl.kR*e_R - K_ctrl.kI_R*ie_R - K_ctrl.kOmega*e_Omega ...
+        + cross(B_w_c, J*B_w_c) + tau_cog;
 
 % Ground effect on thrust
     if GE
@@ -743,7 +834,12 @@ for idx=1:N_steps
         F_turb   = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
         v_rel    = wind_mean - x_c(8:10);
         F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel;
-        x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
+        F_wind_eff = F_wind_I; if abl_wind; F_wind_eff = zeros(3,1); end   % ablate wind
+        m_eff = m_p; J_eff = J_p; cog_eff = r_cog;                          % ablate parametric:
+        if abl_param || abl_mass; m_eff   = m;           end                %  mass
+        if abl_param || abl_iner; J_eff   = J;           end                %  inertia
+        if abl_param || abl_cog;  cog_eff = zeros(3,1);  end                %  CoG offset
+        x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_eff, J_eff, F_wind_eff, cog_eff), t0, x_c, dt);
     else
         x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
     end
