@@ -998,6 +998,17 @@ class IMG_PROCESSOR(Thread):
                     _corner_conf = max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1))
                 else:
                     _corner_conf = 1.0
+                # CONDITION-AWARE OUTLIER REJECTION (2026-06-15): the fused-EKF "noise" is
+                # mostly GARBAGE SPIKES from the lstsq going ill-conditioned at low n_corners
+                # (raw |h| spikes to 6 vs p95 0.9), which the rank/cond=1e4 gate lets through.
+                # Down-weight the corner measurement by its conditioning so the EKF rejects
+                # those frames (R_c = R_corner/conf -> high R) — smooths WITHOUT lowering the
+                # flow bandwidth (unlike blanket Q/R smoothing, which attenuates genuine fast
+                # flow). FLOW_COND_REJECT = cond threshold (0 = OFF, default); conf scales as
+                # min(1, thresh/cond) so frames with cond > thresh are progressively rejected.
+                _cond_ref = float(os.environ.get("FLOW_COND_REJECT", "0"))
+                if _cond_ref > 0 and np.isfinite(cond) and cond > 0:
+                    _corner_conf *= min(1.0, _cond_ref / cond)
                 # Log both filters' calibrated outputs every frame for A/B.
                 self._opt_flow_kf_log.append(self._sensor_cal_hw @ self._kf_x[:, 0])
                 self._opt_flow_savgol_log.append(self._sensor_cal_hw @ self._compute_savgol_output())
