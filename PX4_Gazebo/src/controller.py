@@ -202,6 +202,7 @@ class Controller(Thread):
             ("PLASMC_TAU_DS",        "0.05"),
             ("PLASMC_DSD_LAT_MAX",   "100.0"),
             ("PLASMC_SEN_RECOVERY_K", "0.0"),
+            ("CBF_LPF_BEFORE",       "1"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -1109,6 +1110,19 @@ class Controller(Thread):
         # below gravity.
         if I_a[2] >= 0:
             I_a[2] = -3.0
+        # Low-pass the DESIRED accel BEFORE the CBF, so the QP re-imposes the hard FoV
+        # bound on the FILTERED input (clean attitude, bound NOT smeared — filtering the
+        # CBF OUTPUT would smear the bound). Ported from the MATLAB result
+        # (UBUNTU_HANDOFF.md §2): with Fix B the attitude direction comes from the
+        # UNfiltered th_safe, which gave a hard/noisy touchdown; filtering pre-CBF
+        # recovered the soft touchdown while keeping the exact bound. Composes with
+        # Fix B (cbf2 builds R_d from th_safe); roughly lag-neutral (it relocates the
+        # existing tau_ia filter, doesn't add one). DEFAULT-ON (2026-06-15);
+        # CBF_LPF_BEFORE=0 reverts to LPF-after-CBF. ⚠ SITL A/B (handoff TASK A) PENDING.
+        _lpf_before = os.environ.get("CBF_LPF_BEFORE", "1") == "1"
+        if _lpf_before and len(self._I_a) > 0 and len(self._dt) > 0:
+            _a = self._tau_ia / (self._tau_ia + self._dt[-1])
+            I_a = _a * self._I_a[-1] + (1.0 - _a) * I_a
         # FUNNEL_MODE selects how the lateral accel is constrained for visibility.
         #   "cone" (default): MATLAB magnitude clamp (two-sided ball on ‖a_xy‖; strangles recovery).
         #   "cone0"/"cbf1": directional clamp w/ the L_omega headroom above (lean-magnitude form).
@@ -1163,7 +1177,11 @@ class Controller(Thread):
         self._theta_current_log.append(theta_current)
 
         # ---- LPF (MATLAB tau_ia = 0.08 s) ----
-        if len(self._I_a) == 0:
+        if _lpf_before:
+            # already filtered pre-CBF; store the CBF-constrained result as-is
+            # (filtering again here would smear the hard FoV bound the QP just set).
+            self._I_a.append(I_a.copy())
+        elif len(self._I_a) == 0:
             self._I_a.append(I_a.copy())
         else:
             alpha = self._tau_ia / (self._tau_ia + self._dt[-1])
