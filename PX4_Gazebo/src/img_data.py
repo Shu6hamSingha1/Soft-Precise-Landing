@@ -416,8 +416,13 @@ class IMG_PROCESSOR(Thread):
         # Tuning: q (process noise) / r (measurement noise) ratio sets bandwidth.
         # Defaults below tuned for ~10 Hz steady-state cutoff at 60 Hz sampling
         # (matches Savgol13's effective bandwidth).
-        self._kf_q = 5.0                    # process-noise PSD (rad/s² per √s)²
-        self._kf_r = 0.1                    # measurement noise variance
+        # LEVER 3 (ceiling): q/r are env-overridable so the flow KF can be made more
+        # responsive to fast transients (raise FLOW_KF_Q and/or lower FLOW_KF_R -> higher
+        # bandwidth -> less attenuation of genuine >1 rad/s flow). NOTE: our raw-vs-filtered
+        # A/B showed raw p95 ≈ filtered p95, so the filter is NOT the dominant ceiling (it
+        # only clips noise spikes) -> expected MARGINAL; defaults preserve current behavior.
+        self._kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))   # process-noise PSD (rad/s² per √s)²
+        self._kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))   # measurement noise variance
         self._kf_x = np.zeros((6, 2))       # [value, rate] per channel
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
