@@ -202,7 +202,7 @@ class Controller(Thread):
             ("PLASMC_TAU_DS",        "0.05"),
             ("PLASMC_DSD_LAT_MAX",   "100.0"),
             ("PLASMC_SEN_RECOVERY_K", "0.0"),
-            ("CBF_LPF_BEFORE",       "1"),
+            ("CBF_LPF_BEFORE",       "0"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -1113,13 +1113,13 @@ class Controller(Thread):
         # Low-pass the DESIRED accel BEFORE the CBF, so the QP re-imposes the hard FoV
         # bound on the FILTERED input (clean attitude, bound NOT smeared — filtering the
         # CBF OUTPUT would smear the bound). Ported from the MATLAB result
-        # (UBUNTU_HANDOFF.md §2): with Fix B the attitude direction comes from the
-        # UNfiltered th_safe, which gave a hard/noisy touchdown; filtering pre-CBF
-        # recovered the soft touchdown while keeping the exact bound. Composes with
-        # Fix B (cbf2 builds R_d from th_safe); roughly lag-neutral (it relocates the
-        # existing tau_ia filter, doesn't add one). DEFAULT-ON (2026-06-15);
-        # CBF_LPF_BEFORE=0 reverts to LPF-after-CBF. ⚠ SITL A/B (handoff TASK A) PENDING.
-        _lpf_before = os.environ.get("CBF_LPF_BEFORE", "1") == "1"
+        # (UBUNTU_HANDOFF.md §2): in MATLAB, pre-CBF filtering recovered a soft touchdown.
+        # DEFAULT-OFF (REVERTED 2026-06-15): the MATLAB benefit did NOT reproduce in SITL.
+        # The s_e_n<=p_s metric showed CBF_LPF_BEFORE=1 makes it WORSE — the added attitude
+        # lag breaches the outer funnel EARLY at altitude (2-4 m) on the centered IC1
+        # descent (all 5 reps) vs LPF-after holding to the terminal ~1 m (2/5 clean); also a
+        # lateral wash at IC2 + catastrophic with KP-up. =1 to re-enable (handoff TASK A).
+        _lpf_before = os.environ.get("CBF_LPF_BEFORE", "0") == "1"
         if _lpf_before and len(self._I_a) > 0 and len(self._dt) > 0:
             _a = self._tau_ia / (self._tau_ia + self._dt[-1])
             I_a = _a * self._I_a[-1] + (1.0 - _a) * I_a
