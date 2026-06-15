@@ -160,8 +160,19 @@ class Controller(Thread):
         self._sen_funnel = os.environ.get("PLASMC_SEN_FUNNEL", "1") == "1"   # default ON — all PX4_NewCal_Record trials ran with SEN_FUNNEL=1
         self._gamma_s = np.diag([float(os.environ.get("PLASMC_XIS_X", "0.5")),
                                  float(os.environ.get("PLASMC_XIS_Y", "0.5"))])    # gamma_s 1.0->0.5 (2026-06-11 IC=2 gain-chain bake): at 1.0 the funnel OVERTAKES a large-IC error at t~1.2 → ratio saturation → G_s⁻¹∝p_s collapse → DEMAND STARVATION; 0.5 keeps the funnel valid (sustained demand, genuine closure)
-        self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", "1.2")),
-                                  float(os.environ.get("PLASMC_PS0_Y", "1.2"))])
+        # Outer position-funnel start, RESOLUTION-DERIVED (2026-06-15). The barrier runs
+        # on s_e_n = s_e / p_10 (p_10 = center/focal = half-FoV per axis), so the FoV edge
+        # is |s_e_n| = p_10/p_10 = 1.0 on BOTH axes (resolution is absorbed by p_10). The
+        # log-barrier needs p_s > |s_e_n|, so p_s_0 = FoV-edge + a validity margin keeps it
+        # valid for ANY in-FoV start (|s_e_n| up to 1.0). Default margin 0.2 → p_s_0 = 1.2
+        # (was a hardcoded 1.2 that the old "≈FoV edge 1.185" comment mis-derived by
+        # double-counting the p_10 normalization). PLASMC_PS0_MARGIN sets the margin;
+        # PLASMC_PS0_X/Y still override the final value outright.
+        _fov_edge_sen = self._p_10 / self._p_10                       # = [1,1]; FoV boundary in s_e_n units
+        _ps0_margin   = float(os.environ.get("PLASMC_PS0_MARGIN", "0.2"))
+        _ps0_def      = _fov_edge_sen * (1.0 + _ps0_margin)          # edge + barrier-validity margin
+        self._p_s_0   = np.array([float(os.environ.get("PLASMC_PS0_X", str(_ps0_def[0]))),
+                                  float(os.environ.get("PLASMC_PS0_Y", str(_ps0_def[1])))])
         self._p_s_inf = np.array([float(os.environ.get("PLASMC_PSINF_X", "0.35")),
                                   float(os.environ.get("PLASMC_PSINF_Y", "0.35"))])   # p_s_inf 0.1->0.35 (2026-06-11 IC=2 gain-chain bake): the funnel FLOOR must exceed the damped post-crossing swing or the barrier saturates exactly when needed; angular bound — at Z=0.2m, 0.35 still = ~0.07m metric
         # Optic-flow ASMC (LOAD-BEARING: OMEGA/𝒳)
