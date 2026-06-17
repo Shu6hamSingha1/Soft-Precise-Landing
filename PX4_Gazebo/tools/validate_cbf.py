@@ -19,7 +19,7 @@ analytic / independent ground truth. No SITL, no recorded data. Eight checks:
                    the outward (toward-edge) component is bounded. This is the
                    property that distinguishes the CBF from the cone clamp.
   6. CONVENTIONS — Rz(-yaw)/Rz(yaw) round-trip and the a_xy<->theta map invert.
-  7. PHASE-2     — decode-fail hysteresis + ramp + theta_cap clip behave.
+  7. PHASE-2     — decode-fail hysteresis + ramp behave (theta_cap clip moved to caller).
 
 Run:  ~/ws/scripts/env2025/bin/python3 tools/validate_cbf.py
 Exit code 0 iff every check passes.
@@ -122,10 +122,11 @@ class _S:                              # mock 'self' carrying the old _lw_* attr
 
 
 def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
-                      p_10, theta_cap, theta_cone, dt_last, w_rp, S, env):
-    """EXACT copy of controller.py's pre-extraction cbf2 block (commit 4c6b4b2),
-    rewritten to take explicit args + a mock-self ``S``. Independent transcription
-    of the original so a parity mismatch reveals an extraction error."""
+                      p_10, theta_cone, dt_last, w_rp, S, env):
+    """Independent transcription of the cbf2 block (originally commit 4c6b4b2),
+    SYNCED 2026-06-16 to the cap-moved-out form: the theta_cap deliverability clip
+    was removed from the CBF (it is now applied by the caller), so this reference
+    omits it too — a parity mismatch reveals an extraction error against the new form."""
     foc = np.asarray(focal, float)
     a_z = abs(I_a[2]); ok = False
     try:
@@ -165,9 +166,7 @@ def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
                     r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
                 elif f[k] < -m2[k]:
                     r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-        tn = float(np.linalg.norm(th))
-        if tn > theta_cap:
-            th = th * (theta_cap / tn)
+        # theta_cap deliverability clip removed (now caller-applied) — see cbf2_filter.
         I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)
         theta_cone = float(np.linalg.norm(th))
         ok = True
@@ -227,10 +226,10 @@ def test_parity():
             w_rp = RNG.uniform(-0.5, 0.5, 2)
             out_ref, tc_ref, ok_ref = _inline_reference(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
-                THETA_CAP, 0.3, dt, w_rp, S, env)
+                0.3, dt, w_rp, S, env)
             out_new, tc_new, ok_new, _ths = cbf2_filter(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
-                THETA_CAP, 0.3, dt, w_rp, state, env)
+                0.3, dt, w_rp, state, env)
             d = max(np.max(np.abs(out_ref - out_new)), abs(tc_ref - tc_new))
             worst = max(worst, d)
             if ok_ref != ok_new or d > 1e-12:
@@ -297,7 +296,7 @@ def test_barrier_and_end_to_end():
         th_des = np.sign(cr0) * RNG.uniform(0.3, 1.2, 2)
         I_a = Ia_from_tilt(th_des, yaw, a_z)
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R0, R0[2, 2], yaw, corners,
-                                  CENTER, FOCAL, P_10, THETA_CAP, 0.3,
+                                  CENTER, FOCAL, P_10, 0.3,
                                   None, np.zeros(2), {}, FIX_ENV)
         if not ok:
             continue
@@ -349,7 +348,7 @@ def test_minimal_intervention():
         I_a = Ia_from_tilt(th_des, yaw, a_z)
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(th_des, yaw),
                                   np.cos(np.linalg.norm(th_des)), yaw, corners,
-                                  CENTER, FOCAL, P_10, THETA_CAP, 0.3,
+                                  CENTER, FOCAL, P_10, 0.3,
                                   None, np.zeros(2), {}, FIX_ENV)
         worst = max(worst, np.max(np.abs(out[:2] - I_a[:2])))
     ok = worst < 1e-6
@@ -377,7 +376,7 @@ def test_no_strangle():
         I_a = Ia_from_tilt(th_des, yaw, a_z)
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(np.clip(th_des, -0.3, 0.3), yaw),
                                   np.cos(0.2), yaw, corners, CENTER, FOCAL, P_10,
-                                  THETA_CAP, 0.3, None, np.zeros(2), {}, FIX_ENV)
+                                  0.3, None, np.zeros(2), {}, FIX_ENV)
         if not ok:
             continue
         n_in = np.linalg.norm(I_a[:2]); n_out = np.linalg.norm(out[:2])
@@ -415,32 +414,23 @@ def test_phase2():
     corners = corners_from_tangent(np.array([0.4, 0.2]), (0.25, 0.2))
     I_a = Ia_from_tilt(np.array([0.1, 0.0]), yaw, 9.0)
     cbf2_filter(I_a.copy(), R_from_image_tilt(np.array([0.1, 0.0]), yaw),
-                np.cos(0.1), yaw, corners, CENTER, FOCAL, P_10, THETA_CAP, 0.3,
+                np.cos(0.1), yaw, corners, CENTER, FOCAL, P_10, 0.3,
                 0.02, np.zeros(2), state)
     env = {"CBF_PHASE2_HYSTERESIS": "3", "CBF_PHASE2_RAMP_FRAMES": "5"}
     alphas = []
     for _ in range(10):     # feed decode-fails (corners=None)
         I_a = Ia_from_tilt(np.array([0.5, 0.3]), yaw, 9.0)
         cbf2_filter(I_a.copy(), np.eye(3), 1.0, yaw, None, CENTER, FOCAL, P_10,
-                    THETA_CAP, 0.3, 0.02, np.zeros(2), state, env)
+                    0.3, 0.02, np.zeros(2), state, env)
         alphas.append(state.get("phase2_alpha", 0.0))
     # hysteresis: alpha stays 0 for first 2 fails (thresh=3), then ramps by 1/5
     hyst_ok = alphas[0] == 0.0 and alphas[1] == 0.0 and alphas[2] > 0.0
     ramp_ok = abs(alphas[2] - 0.2) < 1e-9 and abs(alphas[6] - 1.0) < 1e-9 and alphas[-1] == 1.0
-    # theta_cap clip: command a wildly outward accel, recovered |th| <= theta_cap
-    state2 = {}
-    cbf2_filter(Ia_from_tilt(np.array([0.1, 0.0]), 0.0, 9.0), np.eye(3), 1.0, 0.0,
-                corners_from_tangent(np.array([0.9, 0.7]), (0.03, 0.03)),
-                CENTER, FOCAL, P_10, THETA_CAP, 0.3, None, np.zeros(2), state2)
-    out, tc, ok, _ts = cbf2_filter(Ia_from_tilt(np.array([5.0, 5.0]), 0.0, 9.0),
-                              np.eye(3), 1.0, 0.0,
-                              corners_from_tangent(np.array([0.9, 0.7]), (0.03, 0.03)),
-                              CENTER, FOCAL, P_10, THETA_CAP, 0.3, None, np.zeros(2), state2)
-    th_out = np.linalg.norm(out[:2] / 9.0)
-    cap_ok = th_out <= THETA_CAP + 1e-9
+    # NOTE: the former "7c. theta_cap post-QP clip" check was REMOVED (2026-06-16) — the
+    # deliverability cap is no longer a CBF concern (moved to controller.py), so there is
+    # nothing to test here. The CBF's only bound is the FoV box (tests 2/3/5).
     _record("7a. Phase-2 hysteresis gate", hyst_ok, f"alpha[:3]={[round(a,3) for a in alphas[:3]]}")
     _record("7b. Phase-2 ramp 1/5 -> 1.0", ramp_ok, f"alpha[2]={alphas[2]:.3f} alpha[6]={alphas[6]:.3f}")
-    _record("7c. theta_cap post-QP clip", cap_ok, f"|th_out|={th_out:.3f} <= cap {THETA_CAP:.3f}")
 
 
 # ============================================================================

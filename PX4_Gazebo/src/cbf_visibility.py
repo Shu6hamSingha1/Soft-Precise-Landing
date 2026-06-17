@@ -32,7 +32,7 @@ import numpy as np
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cap, theta_cone, dt_last, w_rp, state, env=None):
+                p_10, theta_cone, dt_last, w_rp, state, env=None):
     """Constrain the lateral accel command for target visibility (cbf2).
 
     Pure except for the explicit ``state`` dict. Mutates and returns ``I_a``.
@@ -59,8 +59,6 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         ``[fx, fy]`` in pixels.
     p_10 : (2,) ndarray
         ``centre/focal`` = phi_max, the FoV-edge tangent half-extent.
-    theta_cap : float
-        Deliverable-tilt cap (rad); post-QP saturation.
     theta_cone : float
         Scalar tilt-cone fallback computed upstream (used only by Phase 2).
     dt_last : float or None
@@ -87,8 +85,9 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         True if the QP path ran (Phase 1, marker decoded); False if it fell
         through to the Phase-2 magnitude-clamp fallback.
     th_safe : (2,) ndarray or None
-        The safe LEAN vector (image axes, theta_cap-clipped) the QP produced on
-        the Phase-1 path; ``None`` on the Phase-2 fallback. The caller can build
+        The safe LEAN vector (image axes, UN-capped — the caller applies the
+        deliverability tilt cap) the QP produced on the Phase-1 path; it follows
+        that ``I_a[:2]`` is likewise un-capped. ``None`` on the Phase-2 fallback. The caller can build
         the desired attitude directly from this (Fix B) instead of round-tripping
         through ``I_a`` + the LPF: ``rd3 = [-Rz(yaw)@th_safe, 1]`` normalized.
     """
@@ -152,12 +151,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
                 elif f[k] < -m2[k]:
                     r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-        # post-QP deliverability cap: applied after box projection so it never
-        # interacts with the FoV constraint and cannot create QP infeasibility
-        tn = float(np.linalg.norm(th))
-        if tn > theta_cap:
-            th = th * (theta_cap / tn)
-        th_safe = th.copy()                                        # safe LEAN vector (image axes) for direct->rd3 (Fix B)
+        # NOTE: the deliverability tilt cap (theta_cap saturation) is intentionally NOT
+        # applied here — it is a thrust-DELIVERABILITY concern, not a visibility constraint.
+        # The CALLER applies it post-CBF (controller.py), so this function stays a pure
+        # visibility QP whose ONLY constraint is the FoV box projection above.
+        th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
         I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)      # a_xy* = a_z*Rz(yaw)@theta*
         theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
         ok = True

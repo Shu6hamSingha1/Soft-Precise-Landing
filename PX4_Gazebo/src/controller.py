@@ -1204,8 +1204,19 @@ class Controller(Thread):
             I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
                 I_a, R, R33, yaw_c, corners,
                 self._img_node.center, self._img_node.focal,
-                self._p_10, self._theta_cap, theta_cone,
+                self._p_10, theta_cone,
                 dt_last, w_rp, self._cbf_state)
+            # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
+            # it is a thrust-deliverability bound, not a visibility constraint. The CBF
+            # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
+            # single scale clips both consistently (|I_a[:2]| = a_z·|th_safe|).
+            if self._theta_safe is not None:
+                _tn = float(np.linalg.norm(self._theta_safe))
+                if _tn > self._theta_cap:
+                    _scl = self._theta_cap / _tn
+                    self._theta_safe = self._theta_safe * _scl
+                    I_a[:2] = I_a[:2] * _scl
+                theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
         else:
             a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
             t_hat = None
