@@ -319,8 +319,20 @@ class IMG_PROCESSOR(Thread):
         # Conditional — only bounds the PHANTOM extrapolation, never a genuine detection (the global
         # clamp variant #2 regressed and stays dead). PLASMC_FEAT_FOV_CLIP=0 to disable.
         self._feat_fov_clip = os.environ.get("PLASMC_FEAT_FOV_CLIP", "1") == "1"
-        self._prev_aruco_pts = None       # most recent good corners (ArUco or KLT)
+        self._prev_aruco_pts = None       # most recent good primary corners (ArUco or KLT)
+        self._prev_extra_pts = None       # most recent good extra (on-marker) corners
         self._prev_img = None             # frame those corners were measured in
+        # KLT corner-track PERSISTENCE (2026-06-19, thread project_decode_availability_thread).
+        # The availability dropout at close range is 100% ArUco decode-fail (corners still
+        # track). DEFAULT-OFF env gate. When ON: the KLT fallback carries the extra on-marker
+        # corners (not just the primary 4) AND uses a PER-CORNER in-bounds gate — surviving
+        # in-bounds corners drive the FLOW lstsq even when <4 primary corners remain; the
+        # CENTROID/yaw stay gated on all-4-primary (else the centroid extrapolation path runs).
+        # Offline-validated (tools/sim_klt_persistence.py): +6-12pp close-range flow availability,
+        # ratio ~1 (no extrapolation drift). Phantom-clip preserved: off-screen corners DROPPED,
+        # never extrapolated (the κ-runaway guard, feedback_lateral_kappa_runaway).
+        self._klt_persist = os.environ.get("PLASMC_KLT_PERSIST", "0") == "1"
+        self._klt_min_corn = int(os.environ.get("PLASMC_KLT_MIN_CORN", "4"))   # min combined corners for flow
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -849,6 +861,24 @@ class IMG_PROCESSOR(Thread):
                             self._lk_step_count += 1
                             if self._lk_step_count == 1:
                                 print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                            # PERSISTENCE (default-off): also carry the extra on-marker
+                            # corners through the decode gap so the FLOW lstsq keeps its
+                            # spread/conditioning while ArUco can't decode. Per-corner
+                            # in-bounds gate — off-screen extras DROPPED (phantom-clip),
+                            # never extrapolated. Centroid/yaw stay on the strict-4-primary
+                            # path below. (The <4-primary flow path is a deferred follow-up.)
+                            if (self._klt_persist and self._prev_extra_pts is not None
+                                    and len(self._prev_extra_pts) > 0):
+                                _ex_out = cv2.calcOpticalFlowPyrLK(
+                                    _prev_gray, _img0_gray, self._prev_extra_pts, None,
+                                    **self._lk_params)
+                                if _ex_out is not None and len(_ex_out) >= 2 \
+                                        and _ex_out[0] is not None and _ex_out[1] is not None:
+                                    _ex_tr = _ex_out[0].reshape(-1, 2).astype(np.float32)
+                                    _ex_ok = _ex_out[1].flatten() == 1
+                                    _ex_in = ((_ex_tr[:, 0] >= 0) & (_ex_tr[:, 0] < _img_w)
+                                              & (_ex_tr[:, 1] >= 0) & (_ex_tr[:, 1] < _img_h))
+                                    extra_pts_0 = _ex_tr[_ex_ok & _ex_in]
                         else:
                             print(f"KLT corners left image bounds — stopping fallback")
                             self._lk_step_count = 0
@@ -866,6 +896,11 @@ class IMG_PROCESSOR(Thread):
             # next iteration.
             self._prev_aruco_pts = aruco_pts_0.copy()
             self._prev_img = imgs[0].copy()
+            if self._klt_persist:
+                # Carry the current extra on-marker corners forward for the next
+                # KLT-fallback frame (empty array if none this frame).
+                self._prev_extra_pts = (extra_pts_0.copy() if extra_pts_0 is not None
+                                        and len(extra_pts_0) > 0 else None)
 
         # Check if feature detection was successful
         if aruco_pts_0 is not None:
@@ -1058,6 +1093,7 @@ class IMG_PROCESSOR(Thread):
                 # don't try to LK-track from a stale image after the gap closes
                 # (would propagate huge motion and fail anyway).
                 self._prev_aruco_pts = None
+                self._prev_extra_pts = None
                 self._prev_img = None
                 self._lk_step_count = 0
 

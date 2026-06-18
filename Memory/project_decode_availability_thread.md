@@ -33,6 +33,19 @@ at close range (it fills/over-fills the FoV). Matches [[feedback_marker_detectio
 3. **ArUco decode-param tuning = KNOWN DEAD-END** ([[feedback_descent_perception_ceiling]]:
    maxMarkerPerimeterRate / adaptiveThresh / deblur did NOT improve decode). Deprioritize.
 
+**Implementation status (2026-06-19):** OFFLINE sim `tools/sim_klt_persistence.py` sized the
+policies: per-corner gate gives +6-12pp close-range availability, ratio ~1 (no drift); cap
+(20→60) and min-corn (4→2) are INERT (over-fill is the limiter, not streak-length). LANDED
+(default-off `PLASMC_KLT_PERSIST`, py_compile clean, byte-identical when off): the SAFE half —
+KLT fallback now carries the EXTRA on-marker corners through the decode gap (per-corner
+in-bounds phantom-clip) so the flow lstsq keeps spread/conditioning while ArUco can't decode.
+⏳ DEFERRED (the part that actually captures the +12pp): the **<4-primary FLOW path** — letting
+the flow lstsq run on ≥`PLASMC_KLT_MIN_CORN` combined survivors even when fewer than 4 PRIMARY
+corners remain. Blocked on a centroid/flow-log refactor (downstream is built around
+`aruco_pts_0`==4 primary for moments/`C_nP`/board-homography; flowing with <4 needs a separate
+flow-path + an extrapolated-centroid append to keep logs aligned) + SITL validation. NOT yet
+SITL-validated. Knobs: `PLASMC_KLT_PERSIST` (gate), `PLASMC_KLT_MIN_CORN` (min combined corners).
+
 **Methodology:** extend `tune_lk_dynamic_range.py` to report AVAILABILITY (track-rate +
 ratio) under each lever OFFLINE on the existing recordings (`test_data/PyrLK_record/` +
 `Test_Videos/Fri Jun 19 01-3{5,8}-*_raw`) BEFORE SITL — close the offline loop first.
