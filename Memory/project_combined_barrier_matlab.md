@@ -115,12 +115,19 @@ CB_SDDOT_TAU (s̈ LPF), CB_SDOT_FILT (Savitzky-Golay s_dot/s̈ filter), P2INF_XY
   the SEN G_s^-1 starvation is worse under noise). The 68% is the hard-cell (Sin/Liss IC3, IC5) noise level,
   SHARED by both architectures -- NOT a combined-barrier regression. Savitzky-Golay s_dot filter helped only
   marginally (16/24 unchanged) -> s_dot is NOT the dominant noise path, the measured FLOW h is.
-- KEEPING s̈ is EXHAUSTIVELY irreconcilable: full/hard-cap(DH_D_CAP)/tau-LPF(best tau0.8=5/6)/SG-clean(diverges)/
-  symmetric-tuned(23/25)/per-axis-tuned(22/25) ALL worse than drop. ROOT: Circ IC4 needs chi_r_x>=1.1 for
-  PRECISION (s̈ over-drives it imprecise) but chi_r_x>=1.1 destabilizes Static/Liss IC3 (X-tilt cross-couples
-  to Y -> r_bar_e_y breaches; NO p_2inf/E/chi_r_y rectifies). Irreconcilable chi_r_x conflict; s̈ (1/z-inflated
-  centroid accel) IS the root. DROP it (kappa absorbs as d_h) = the clean 25/25. Per-axis method PROVED this.
+- KEEPING s̈ with LIGHT/full filter is irreconcilable: full/hard-cap/tau-LPF(tau0.8=5/6)/SG-clean(diverges)/
+  symmetric-0.85(23/25)/per-axis-chi_r=[1.1,0.65](22/25) all worse. ROOT of the LIGHT-filter wall: Circ IC4
+  needs chi_r_x>=1.1 for PRECISION (s̈ over-drives it imprecise) but chi_r_x>=1.1 destabilizes Static/Liss IC3
+  (X-tilt cross-couples to Y -> r_bar_e_y BREACHES; the divergence is on Y, NOT X; p_2inf_x/E/chi_r_y don't
+  rectify). Reducing chi_r kills the divergence (chi_r=0.7 = 21/25 STABLE no breach) but weakens X-precision.
+- ✅ **KEEP-s̈ DOES reach 25/25 via HEAVY LPF (CB_SDDOT_TAU=1.5) + chi_r=0.85** (2026-06-18, user persistence):
+  tau=1.5 removes the 1/z spike (the X over-drive) while RETAINING the smooth low-freq target-accel FF, so
+  chi_r climbs back to the drop value 0.85 WITHOUT diverging -> **25/25 SP noiseless, 74/75 noisy(3 seeds),
+  no breach (resid 0.625).** CAVEAT (corrected 2026-06-19): NOT equivalent to drop — heavy-tau is a DAMPED
+  LIMIT CYCLE (amplitude ~0.25, not converged), drop is MORE damped (~0.16) -> drop has more margin (75/75 vs
+  74/75). The lateral soft-fails are a forced under-damped cycle pumped by the s̈ FF; scale-free DROP is the
+  OPTIMUM. The no-lag z-taper fix uses ALTITUDE -> INVALID (removed). Full analysis: [[project_sddot_limit_cycle]].
 
-PENDING: control_formulation.tex w×s->ψ̇_b update (its kinematics is STALE). User exploring s̈-kept at
-REDUCED chi_r_x (queued). Backup: Obsolete/Multi_init_cond/MATLAB/visualControl_IBVS_adaptive_v3.m.
+PENDING: control_formulation.tex w×s->ψ̇_b update (its kinematics is STALE). Limit-cycle root = inner-loop
+attitude lag suspected (kR/kOmega test pending) -> see [[project_sddot_limit_cycle]]. Backup: Obsolete/Multi_init_cond/MATLAB/visualControl_IBVS_adaptive_v3.m.
 See [[project_chtilde_correction_option_b]], [[feedback_combined_surface_divergence]], [[feedback_hd_uses_measured_sdot]].

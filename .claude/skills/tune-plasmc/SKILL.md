@@ -22,6 +22,16 @@ A systematic procedure for tuning the PLASMC controller in `PX4_Gazebo/` and for
 > destabilizes other cells). PX4 port = gated `PLASMC_COMBINED_SURFACE` (purely-lateral: `ζ_r=_zeta_s[-1]`,
 > `ζ̇_r=smooth4(_dzeta_s_deque)`, drop `ds_d` from `h_d`; descent PI unchanged) — **NOT yet SITL-validated**.
 > See [[project_combined_barrier_matlab]], [[feedback_combined_surface_divergence]], [[feedback_hd_uses_measured_sdot]].
+>
+> **⚠ 2026-06-19 — the lateral terminal velocity is a FORCED LIMIT CYCLE, not a tunable offset.** It's an
+> under-damped lateral loop pumped by the `s̈` feedforward (positive feedback through the optical-flow
+> measurement). The velocity amplitude is **forcing-set** — exhaustively, NO feedback or optical-flow
+> parameter damps it (`χ_r` damps position-amplitude not velocity; `p_2,∞`/cap/`γ_2`/`E`/`N`/`κ_0`/`CB_SDOT_FILT`
+> all flat, diverge, or lag-break the fast cell). Scale-free, only **dropping `s̈`** (most damped, the optimum)
+> or heavy-`tau` LPF (damped cycle, less margin) reduces it; the no-lag z-taper fix needs altitude → invalid.
+> Underlying-cycle root (present even in drop): `σ` rings inside the boundary layer (`|σ|≪E` → switching
+> linearized away) AND `eR > commanded tilt` → **inner-loop attitude lag** (cascade-bandwidth mismatch);
+> `kR`/`kΩ`/`E` test pending. Relevant for the PX4 port too — same `s̈`/inner-loop structure. See [[project_sddot_limit_cycle]].
 
 ## When to invoke
 
