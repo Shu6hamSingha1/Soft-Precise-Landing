@@ -1,0 +1,32 @@
+---
+name: project-landing-target-design
+description: "Multi-marker ArUco board fixes single-marker rank deficiency; \"H\" helipad marker is the parked real-world deployment target"
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
+---
+
+PX4/Gazebo landing-target evolution (2026-06-02):
+
+**Root cause of all single-marker issues:** IBVS interaction matrix L is rank-deficient when 4 corners cluster near image center (small normalized x,y). Cols v_x↔ω_y and v_y↔ω_x become parallel/anti-parallel (the x²,y²,xy curvature that distinguishes translation from tilt vanishes). → lateral h_x,h_y and tilt w_x,w_y are noise (R²≈0); h_z (divergence) and w_z (curl) always worked. Every software fix failed (cal magnitudes, sign hacks, IMU prior) because the info wasn't in the image. Off-marker Shi-Tomasi added spread but broke moving-target validity.
+
+**Fix = multi-marker board** (Images/aruco_board.png, 9 markers graduated sizes, non-overlapping). Concentric/overlapping nesting was REJECTED — verified the old 0-small_10-big.png NEVER co-decodes both markers (mutually exclusive by scale). The board spreads target-rigid corners → cond 800→60 → lateral R² 0→0.55-0.90. Pipeline is corner-agnostic: only detection + the position/yaw reference (board homography from aruco_board_layout.npy) changed; LK + IBVS lstsq + V-frame unchanged.
+
+**Calibration is a FULL 6x6 matrix M** (GT[h;w]=M@raw), not diagonal — residual geometric h↔w coupling remains (cond 60≠1). See [[reference-aggregate-calibration]] superseded by tools/derive_board_cal.py.
+
+**NOT height-invariant** (tested h3/h5/h7): M's coupling ∝ corner-spread ∝ 1/Z, so M shifts with altitude (Hx<-h0 nearly doubles 5m→3m); M_5m fails when cross-applied to 7m. 7m is beyond board range (0.55m markers→21px). Lever to fix: MORE spread (bigger board) → cond→1 → M→identity → height-stable. Best fit at 3m.
+
+**"H" helipad marker = parked DEPLOYMENT target.** Real-world practical (standard marking, paintable, no codes; contour detection more shadow-robust than ArUco bit-decoding). Provides the needed spread (~12 corners). Pipeline core transfers (corner-based); needs custom contour→corner detector + H-centroid/axis reference. Trade-offs: single-scale (spread degrades near touchdown but centroid persists), yaw π-ambiguous (already handled), noisier corners than ArUco. Decision: keep board for algorithm validation, swap H for deployment after control loop proven.
+
+**INNER-CLUSTER BOARD (2026-06-02 eve) — first sub-meter near-soft landing.** The 9-marker board held the drone within 0.3m down to ~1.5m but diverged in the final ~1m (below ~1.2m the ring/corner markers leave FoV → corners collapse 22→4 → rank deficiency returns). Fix: added 4 inner markers (id 9-12, 0.08m at ±0.2m) that decode + stay framed to ~0.3m → touchdown keeps 5 markers/20 corners. IC1: xy_err 5.95→**0.675m**, impact 2.6→**0.28 m/s** (near-soft). Committed ea392b8. Best-config env: `BOARD_ALPHA0=1.23 CTRL_ZERO_WXY=1 V_YAW_SOURCE=compass`.
+
+The original "controller instability" was mostly this perception gap: zeroing w_x,w_y (CTRL_ZERO_WXY=1) stopped the catastrophic runaway and exposed that 5m→1.5m was always stable. The w-feedforward + touchdown-spread-loss together caused the runaway.
+
+**[SUPERSEDED] Earlier thought single cal M cannot span the descent** (5m M drifts <1m; 2m M crashes at altitude). This was an ARTIFACT of noisy 2-run discrete single-altitude phased sweeps.
+
+**CORRECTED by MULTISINE descent cal (4 runs, 2026-06-02 night):** M is actually fairly HEIGHT-STABLE. CALIB_MODE=multisine (apps/record_output_calibration.py): frequency-multiplexed excitation (x@0.40,y@0.55,yaw@0.25Hz, distinct freqs→decorrelated→GT=M@raw lstsq separates them) + slow 2-cycle z-sweep 5↔0.3m (commands ABSOLUTE alt; PX4 takes off to ~6m not 5; bail disabled), lateral gated >1.2m (FoV), yaw throughout (rotates in place). Fit binned by altitude: diag ~const + R²0.8+ from 0.5-5.5m. Reproducible over 4 runs: Hx 0.749±4%, Hy 0.683±2%, Hz 0.864±4%, Wz 0.610±6% (tilt Wx/Wy noisy 16-27%). Confirmed M lives in plotter_output_calibration.ipynb cell 4 for analysis. **Applying it to LANDING was WORSE than the 5m board M (1.088/0.889-crash/1.565 vs 0.675m in n≤3): the controller is co-tuned to the board M's magnitudes, and the residual is LAG-limited not cal-limited.** So perception/cal is definitively SOLVED; the descent cal proves the residual is lag. **Per user decision the multisine M IS the landing cal of record (img_data.py + notebook, committed bde925f)** — it's the correct GT-accurate cal; closing the landing gap is the lag fix / controller retune, not cal. Prior 5m board M recoverable: Obsolete/src/img_data_5mM_20260602.py + git ea392b8. multisine tooling committed 4cff4e1.
+
+**Residual 0.675m is near the documented lag-limited PX4 precision floor (~0.4m).** Perception is now solved (18m→0.675m). Further precision likely needs the LAG fix (uXRCE-DDS migration, see [[feedback-impulse-response]], [[dds-lag-fix-blocker]]) not more perception/cal. Open levers: height-scheduled M (uses scale, against Z-free stance), bigger pad (more spread→cond→1→M→identity→height-invariant), re-enable w_x,w_y now touchdown spread is good (untested), lag fix.
+
+**IC2-5 gate (2026-06-02, inner-cluster board, n=1/IC, best config BOARD_ALPHA0=1.23 CTRL_ZERO_WXY=1): DOES NOT PASS.** IC1 0.675m but all off-center regress: IC2(2,2,5) 5.15m SOFT-only, IC3(-2,2,5) 5.08m FAIL, IC4(2,2,7) 6.50m TARGET_LOST, IC5(2,2,3) 2.99m FAIL. Error scales with start altitude (more descent = more drift). Drone flies to each IC fine (converges 0.09-0.35m of offset start), but the visual landing servo CANNOT drive the 2.8m initial lateral offset to zero during the lag-delayed descent — it drifts. This is CONTROL (lag-limited lateral servo from large initial image error), NOT perception (marker + board in FoV at 2.8m offset). So the 0.675m win is IC1-specific; the inner-cluster board (perception fix) doesn't help IC2-5. The lever for IC2-5 is the LAG fix, confirming [[feedback-ic-validation]] (IC1 gains don't transfer off-center) — but now the cause is pinned to lateral-servo lag, not gain tuning.

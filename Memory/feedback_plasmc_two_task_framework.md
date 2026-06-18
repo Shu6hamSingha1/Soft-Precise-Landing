@@ -1,0 +1,29 @@
+---
+name: feedback_plasmc_two_task_framework
+description: "PLASMC two-task framework analysis (2026-06-12/13): soft-precise landing = keep s_e in p_1 (Task 1, outer) AND h_e in p_2 (Task 2, middle). Measured across 30 reps: Task 2 is MET (100% inside, h_e rides the p_2 boundary), Task 1 FAILS (62%, breaches 3-8x). Why: the outer barrier-PID is feedback-linearizing (provably gives s_e->0) but ONLY if the inner loop achieves ds_d; it doesn't (h_e!=0), so the guarantee breaks. The two signals are kinematically linked: s_dot_e - ds_d ~= h_e, so s_e leaves p_1 at rate ~h_e. h_e can't reach 0 because the SMC saturates (|sigma|>>E) tracking a huge h_d dominated by the rotational FF cross(w_i,s) (w_i spikes ~5 rad/s at close range). Lever = descent-gating (reduce h_d) + Gamma (reaching) + E (smoothing); NOT outer gains, NOT p_2 floor. Parameter roles clarified: Gamma=reaching gain, E=boundary layer, Omega=sliding-surface slope (NOT kappa-leakage), P=kappa-leakage."
+metadata:
+  node_type: memory
+  type: feedback
+  originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
+---
+
+**The two PLASMC tasks (the soft-precise landing objective decomposed).** Task 1: keep `s_e` inside `p_1` (outer position funnel; barrier `zeta_1` on `r=s_e_n/p_s`). Task 2: keep `h_e=h-h_d` inside `p_2` (middle optical-flow funnel; barrier `zeta_2`=logged `zeta(t)` on `h_e/p`). Both are controller-internal → SKEW-FREE (single clock; do NOT compare to GT via index — see [[feedback_imgdata_gt_clock_skew]]).
+
+## Measured performance (30 reps: ComboKDXIKP_IC1/IC2 + ICValidation gate)
+- **Task 2 (h_e<p_2): MET — 100% inside, every rep.** BUT `h_e` RIDES the boundary (`r2->0.99-1.0`), partly enforced by the Singhal outlier-containment clamp (controller.py:669-673 reconstructs h_e onto the boundary when |h_e/p|>=1). The middle loop tracks aggressively (delivers ~17 of a ~20 rad/s demand).
+- **Task 1 (s_e<p_1): FAILS — 62% inside, breaches 3-8x**, onset ~2-3.6 m altitude (NOT <0.5 m).
+
+## Why Task 2 holds but Task 1 fails (rigorous)
+1. **The outer barrier-PID is feedback-linearizing.** Algebra: with `G_s=2/((1-r^2)p_s)`, substituting `ds_d=G_s^-1(-Kp z1 -Ki ∫z1 -Kd ż1)+S_s ṗ_s` into the barrier dynamics — IF `ṡ_e_n=ds_d` — the `G_s·G_s^-1` cancels and `S_s·ṗ_s` cancels the funnel-tracking term, leaving `ż1 = -Kp z1 -Ki ∫z1 -Kd ż1` (clean linear PID → `z1->0` → `s_e->0` GUARANTEED). So the PID is provably sufficient; it is NOT a tuning problem.
+2. **The guarantee's one assumption — `ṡ_e=ds_d` — is violated.** Actual `ṡ_e ≈ ds_d - h_e`, so the true barrier dynamics carry an unmodeled disturbance: `ż1 = (PID) + G_s·(-h_e)`. Near the funnel edge `G_s` is huge → the `G_s·h_e` term dominates → `z1` diverges. **Convergence fails because of the unmodeled inner-loop velocity error `h_e`, not the PID gains** (explains why every outer-gain sweep was neutral).
+3. **The two signals are kinematically linked:** `ṡ_e - ds_d ≈ h_e` (on x/y). So `s_e` leaves `p_1` at rate `~h_e`. `h_e<p_2` (wide, ~3 floor) is NOT `h_e≈0` — that residual ~3 rad/s IS the velocity that drifts `s_e` out of `p_1`. **Task 1 fails because Task 2 is satisfied too loosely.**
+4. **Why `h_e` can't reach 0:** the SMC must drive `sigma->0` (`=> zeta_2->0 => h_e->0`), but terminally `|sigma|≈3.7 >> E=1` — the SMC is SATURATED, off its sliding surface. It saturates because the demand `h_d` is huge/fast and the drone can't track it: **`h_d` is 85-98% the rotational FF `cross(w_i,s)`** (decomposed: term ds_d only ~2-4 of ~20), which explodes because **`w_i` (flow-derived ang vel) spikes to ~5 rad/s at close range** (the calm landed rep had w_i=0.9, h_d=2.9). w_i spikes from the aggressive terminal descent tilt + close-range perception.
+
+## Parameter roles (clarified from code — corrects the "Omega=kappa-leakage" mislabel)
+- `sigma = zeta_2 + Omega·∫zeta_2` (surface). On the surface `zeta_2` decays as `e^(-Omega t)`. **Omega = sliding-surface slope** (on-surface convergence rate + integral offset removal), NOT kappa-leakage. Delicate: raising it inflates sigma via the integral + couples into kappa-ODE (n=5 dead-end).
+- `kappȧ = theta·N·G·|sigma| - N·P·kappa`. **P = kappa-leakage** (kappa_eq ∝ 1/P); N = adaptation gain.
+- `a_v = -Gamma·sigma - theta·sat(sigma/E)·G·kappa + ...`. **Gamma = proportional reaching-law gain** (speed of reaching the surface, hence h_e convergence). **E = boundary-layer thickness** (sat(sigma/E); the chattering/steady-state-smoothing knob — larger E = smoother but wider steady-state band; the `Omega·∫zeta` integral then zeroes the offset).
+- For fast `h_e` convergence: `Gamma↑`. For smooth steady-state: `E↑` (+ Omega integral for zero offset). BUT currently `|sigma|>>E` (reaching-limited, not chattering-limited) — `E` is moot until `h_d` is reduced so the SMC reaches the surface; `Gamma↑` fights slow reaching but is bounded by W_U_MAX/LK and doesn't reduce the un-trackable `h_d`.
+
+**Why:** soft-precise needs BOTH funnels satisfied; the controller solves the middle one and fails the outer one, and the failure mechanism is a broken feedback-linearization assumption (unmodeled `h_e`), not gains — which is why ~15 gain experiments this session were neutral/negative.
+**How to apply:** the productive sequence is (1) **descent-gate** `h_rd_eff=h_rd·g(|s_e_n|)` (reference governor — slow descent while s_e large → smaller terminal w_i → smaller h_d → SMC reaches → h_e→0 → restores `ṡ_e=ds_d` → s_e holds in p_1), then (2) `Gamma↑` to sharpen reaching, then (3) `E↑`+`Omega·∫` to smooth/zero the steady-state. Or backstepping: add a `+h_e` term to `ds_d` so the outer law is cascade-aware. NOT: outer P/I/D gains, p_2 floor (PSINF/P2INF — and P2INF doesn't even bind, the funnel never reaches its floor in the ~5 s descent), Omega↑, un-clamping the barrier. See [[feedback_ic2_lateral_gain_chain]] item 11 (de-rotation verified correct; zeta_1 saturation = control, not perception).

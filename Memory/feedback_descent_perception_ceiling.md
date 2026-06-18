@@ -1,0 +1,27 @@
+---
+name: feedback_descent_perception_ceiling
+description: "DESCENT perception is at its ceiling on a clean descent — tuning LK (corner+ring winSize/maxLevel), KLT (MARKER_KLT_MAX_STEPS), ArUco detector params (incl maxMarkerPerimeterRate), and deblur/sharpen do NOT improve corner survival or decode (2026-06-13, exhaustive offline sweeps on lossless recorded frames). On a clean CENTERED position-setpoint descent decode is 88-100% and corners survive to the deck; the decode-fails/corner-deaths/loom-freezes that kill landings are FLY-AWAY/GEOMETRY induced (lateral wall → tilt/perspective/marker-out-of-FoV), NOT image-quality or a perception param. The descent-loom ACCURACY gap is a CALIBRATION matter (recalibrated _sensor_cal_hw[2,2] 1.0744→1.2988). Tools: tune_lk_survival.py, tune_aruco_decode.py; clean-descent recorder = record_output_validation.py landing + IMG_RECORD_RAW."
+metadata:
+  node_type: memory
+  type: feedback
+  originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
+---
+
+**The whole "tune perception params to fix the descent loom" thread closed as a NEGATIVE result (2026-06-13).** Exhaustively swept, offline, on LOSSLESS recorded frames (`IMG_RECORD_RAW=1`) vs GT — NONE of these move corner survival or ArUco decode:
+- **Corner LK** (`FLOW_LK_WIN`/`FLOW_LK_LVL` 7-31 × 3-5): survival identical (decode-gated, not LK-gated). Pure-KLT-fallback (no re-decode) loses all corners in ~0.3 m regardless of params.
+- **Ring LK** / **KLT** (`MARKER_KLT_MAX_STEPS`): same — survival is gated by whether ArUco re-decodes (re-seeds), not the tracker.
+- **ArUco detector params** (errorCorrectionRate, adaptiveThresh*, polygonalApprox, perspectiveRemove, minMarker/**maxMarkerPerimeterRate**, minCornerDist): decode flat at 52-55% (off-center rep) / 88% (centered) regardless — image/geometry-limited, not param-limited.
+- **Deblur/sharpen/Gaussian/median/bilateral**: no help (52-55%). **Decode-fail frames are NOT blurrier** (Laplacian var 249 vs 269 decoded; the 2-3 m 0%-decode dead-zone has NORMAL sharpness 263). **Gazebo renders sharp, instantaneous frames — no motion blur to remove.**
+
+## Why params can't help: perception is HEALTHY on a clean descent
+On a clean CENTERED position-setpoint descent (`record_output_validation.py` PROFILE=landing, the fix below): **ArUco decode 88% overall, 100% from 1-4 m, 75-82% at the extremes; corners survive to the deck (0.24 m, ~20 corners, 90% alive); the multi-marker board NEVER fills the FoV (perim-rate max 1.13 vs the 4.0 `maxMarkerPerimeterRate` limit → that hypothesis FALSIFIED).** The decode-fails / corner-deaths / loom-freezes that wreck PLASMC landings happen during the **FLY-AWAY**: the lateral wall tilts the drone → bad perspective + markers swept out of FoV → perception breaks as a *consequence*. **Root = the lateral wall (geometry), not perception params.** `RING_LOOM_NCORN` is the one real fusion lever (it was DISCARDING the live corner loom — see [[feedback_terminal_descent_loom_overreport]]).
+
+## The loom ACCURACY lever IS calibration (not LK)
+Per user: the corner flow is sensor-calibrated, so scale/accuracy is the CALIBRATION's job — changing LK makes `sensor_cal` stale (must recalibrate); so LK tuning must target SURVIVAL, not GT-accuracy. **Recalibrated the loom on a clean centered descent: `_sensor_cal_hw[2,2] 1.0744 → 1.2988`** (binned raw `h_z` vs GT loom, corr 0.994; the per-sample fit was noise — true loom ±0.5 vs raw ±3.5 at ~0.15 m/s — binning by altitude recovered the clean relationship). **VALIDATED on a FRESH descent: mean cal/GT 0.89 → 1.07, corr 0.993.** ⚠️ Caveat: the under-report GROWS with loom (implied cal 1.06 at altitude → 1.31 at deck → ~2× at the high loom of a FAST descent) = **LK dynamic-range saturation**, which a single linear scalar can't fix; 1.2988 is correct for the slow soft-descent regime only.
+
+## Reusable: the clean-descent recorder (the right dataset for perception/cal work)
+- **`record_output_validation.py` PROFILE=landing** = monotone centered position-setpoint descent to touchdown (x=y=yaw=0), no PLASMC fly-away → clean full-altitude frames. Run via `CALIB_APP=apps/record_output_validation.py VALIDATION_PROFILE=landing HEADLESS=1 bash scripts/run_output_calibration.sh`. ~50% flake (hovers without descending) → retry until GT descent span >2 m.
+- **FIX applied:** the app only set a *global* CONTROLLER_READY; the img-node recording is gated on `img_node.CONTROLLER_READY` (set ONLY by controller.py:500 = PLASMC). Added `img_node.CONTROLLER_READY = True` in the descent loop so IMG_RECORD/_RAW fire without PLASMC.
+- **`IMG_RECORD_RAW=1`** (img_data) dumps LOSSLESS PNG frames + `stamps.npy` to `test_data/Test_Videos/<ts>_raw/` (the mp4 mp4v ~50:1 destroys the sub-pixel flow). ⚠️ PNG imwrite halves the capture rate (~62→31 fps); fine for decode/per-frame analysis, conservative for inter-frame flow. Align frames to GT via `stamp − Start Time`.
+
+**How to apply:** STOP tuning perception params for the descent loom — perception is at its ceiling on a clean descent. The descent-loom levers are: (1) `RING_LOOM_NCORN` fusion fix + loom-EKF fixes (done, [[feedback_terminal_descent_loom_overreport]]); (2) the `_sensor_cal_hw[2,2]` recal (done); (3) the LATERAL WALL (deferred — it's what breaks descent perception via geometry). Use `tools/tune_lk_survival.py` / `tools/tune_aruco_decode.py` + the clean-descent recorder for any future perception/cal work. See [[reference_gt_optical_flow]] (the GT tool every analysis used), [[feedback_lk_dynamic_range_limit]].
