@@ -44,14 +44,23 @@ search window, so fast (>~1.5–2 m/s) lateral/loom motion reads as zero. This i
 failure (1–2 per 5 reps **even at a perfect IC**) and the entire gap between xy_min (~2 m) and xy_median
 (~4–6 m). It is **not gain-tunable** — it is a property of the raw flow estimator.
 
-## The one evidence-supported perception lever
+## The perception lever — pyramidal LK FALSIFIED (2026-06-19); real lever = AVAILABILITY
 
-**Pyramidal LK levels 2 → 3** (+ a larger search window) in `img_data.getLKFlowAngVel` — lifts the dynamic-range
-ceiling from ~2 m/s toward ~4 m/s. Important caveat: it only engages **after** divergence is already underway,
-so it is a *robustness* fix, not the primary cure. Since the at-altitude flow is honest, the **primary** cure is
-on the control/latency side.
-- *Validation:* on a fast-motion rep, measured `h` tracks GT `v/Z` (ratio → 1) up to ~4 m/s instead of
-  collapsing to ~0.
+> ⚠️ **2026-06-19 — pyramidal LK is INERT for levels ≥ 3** (memory `feedback_pyramidal_lk_inert`). The
+> claim below ("levels 2→3 lifts the ceiling toward 4 m/s") was tested DIRECTLY with a new GT-dynamic-range
+> harness `tools/tune_lk_dynamic_range.py` on two IC2 fly-away recordings (`IMG_RECORD_RAW=1`):
+> `maxLevel` 3/4/5 and `winSize` 21→51 change the corner flow by **~0 in every GT-speed bin**. When LK
+> tracks, the raw lateral flow is **already proportional to GT** (ratio ~1.0–1.3 up to 3 m/s) — it does NOT
+> collapse to 0. The binding deficit is **AVAILABILITY**: only ~46–63% of frames yield a valid flow, and the
+> track-rate collapses at **close range** (90% @ 5 m → 22–41% @ ~1.7 m) — ArUco-decode / 4-corner-gate /
+> lstsq-rejection drops half the frames (close-range corner breakdown), not high-velocity LK saturation.
+> The combined-barrier "ṡ ≈ 0.5×" is the controller **holding stale flow** across those dropouts, not a
+> raw-LK under-report. **Real lever = decode/track robustness** (KLT corner-track persistence, relax the
+> strict 4-corner primary gate, marker/board design) — NOT pyramid depth. Don't sweep `FLOW_LK_LVL`/`FLOW_LK_WIN`.
+
+~~**Pyramidal LK levels 2 → 3** (+ larger search window) — lifts the dynamic-range ceiling toward ~4 m/s.~~
+**(falsified above — kept for the record.)** The at-altitude flow is honest, so the perception cure is
+**availability**, not a fancier flow estimator; the remaining control-side cure stays as previously held.
 
 ## Don't-retry (falsified branches)
 
