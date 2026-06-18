@@ -33,7 +33,7 @@ Discriminator = how off-center: runaways breach off-center (marker at FoV edge �
 The cbf2 guards the **ACTUAL** centroid, which at the breach is frozen at the **in-FoV corner (70,38)** with ~no drift → it sees "still in view" and barely acts. The controller's poison is the **VIRTUAL** centroid, which the CBF neither sees nor protects. **Actual and virtual diverge under large tilt** — so a visibility CBF on the actual image cannot bound the controller's virtual feedforward. (Also: the actual feature is *stale/frozen* — the marker is effectively lost but held at the corner — so the CBF is doubly blind.) See [[feedback_cbf_theta_cap]], [[project_cbf_visibility_design]]; cbf2 only bites with THETA_FLOOR<60 anyway (baked=60).
 
 ## Why NO gain bounds it
-- **P can't.** Growth=16.1 needs `P_xy≈800` to balance; `κ_eq∝1/P` only holds for moderate growth, not the barrier singularity. (`E_z=0.5+P_z=8` FAILED — [[feedback_descent_hover_thread]].)
+- **P can't.** Growth=16.1 needs `P_xy≈800` to balance; `κ_eq∝1/P` only holds for moderate growth, not the barrier singularity. (`E_z=0.5+P_z=8` FAILED — [[feedback_descent_softness]].)
 - **θ-freeze can't** (θ moderate 37–72; σ,G from the barrier drive it). **Singhal `_contained` MISSES it** (fires at |h_e/p|≥1.0; growth is at 0.9–0.99). **κ_xy is UNCAPPED** (`KAPPA_MAX=[1e6,1e6,3.0]`, only z capped → κ_x hit 7.26 vs κ_z's 3.0).
 
 ## The fix — IMPLEMENTED + TESTED (2026-06-10): bound the PHANTOM s, NEVER the GENUINE s

@@ -25,4 +25,4 @@ An **image-rate `dw`** rewrite (differentiate over the real inter-frame interval
 
 ## Status & how to apply
 - **Trial 49** (KLT-bounds fix) IC1 n=5: θ_norm contained, but **0 SP, 2 TL + 1 hover** — and those failures are **NOT θ-driven** (lateral-drift TL + descent-bootstrap hover). θ_norm is a contained artifact, not the binding failure.
-- If θ_norm spikes again: it's expected at touchdown; **let the cap + P-leakage contain it**. Don't rewrite `dw`. Check the *actual* failure (lateral drift / descent) instead. `DH_D_MAX` stays 50. See [[feedback_descent_bootstrap_fix]], [[feedback_dterm_outer_funnel_analysis]], and `docs/PARAMETER_ANALYSIS.md` §2.
+- If θ_norm spikes again: it's expected at touchdown; **let the cap + P-leakage contain it**. Don't rewrite `dw`. Check the *actual* failure (lateral drift / descent) instead. `DH_D_MAX` stays 50. See [[feedback_descent_softness]], [[feedback_dterm_outer_funnel_analysis]], and `docs/PARAMETER_ANALYSIS.md` §2.

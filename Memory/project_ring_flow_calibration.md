@@ -46,4 +46,4 @@ needs a manual re-sync. validate_output_flow's earlier ring bug (applied the COR
 CAL to the ring, which the runtime never does) is fixed: ring now uses `_sensor_cal_ring`.
 
 See [[cal-data-provenance-cleanup]], [[reference-aggregate-calibration]],
-[[outputcal-flow-validation-vframe]].
+[[feedback_vframe_rhs_yaw_only]].

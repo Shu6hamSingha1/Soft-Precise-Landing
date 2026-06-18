@@ -43,4 +43,15 @@ must be **yaw-only** (the V-frame doesn't tilt). This also confirms the runtime
 V-frame flow correctly drops roll/pitch — consistent with
 [[feedback_wxy_unobservable_imu_fusion]] and `CTRL_ZERO_WXY`. The earlier
 "flow-check corr stuck ~0.6" was largely this phantom r/p term, not LK noise.
-Refines [[feedback_outputcal_flow_validation_vframe]].
+Consolidates the V-frame model + naming convention from the former `feedback_outputcal_flow_validation_vframe` (folded below).
+
+## V-frame model + naming convention (consolidated from feedback_outputcal_flow_validation_vframe, 2026-06-18)
+
+**Frame model (corrected 2026-06-04, user-confirmed vs the canonical reference notebooks):**
+- **Camera frame = body-FRD** — axes aligned, no rotation (SDF mount + cv2 rotation; origin may be offset). Verified: image `s_x`↔body-forward r=+0.89, `s_y`↔body-right r=+0.95.
+- **Virtual (V) frame = gravity-LEVELED camera = `rotz(yaw)`** (roll/pitch removed, yaw kept). So `R_{V←body}` is the leveling rotation — **identity ONLY when level, ≠ I under tilt.** `R_V_from_body = I` is WRONG (it conflates camera=body [true] with V=body [false]); added 2026-06-01 (`fce9b84`), corrected 2026-06-04 across output-cal cells 5/6/13/39/40, input-cal 0/24, and the `img_data.py _getVirtualPts` comment. `_getVirtualPts` builds V via cross-product (`x=body_y×gravity`), differing from `rotz(yaw)` by a 2nd-order roll·pitch term (≤1° at 11° tilt; runtime keeps the cross-product frame to match the logged LHS).
+- The IBVS flow equation `ṡ=L·[h;w]` is validated in the V frame (runtime-faithful): `img_data` solves `[h;w]` IN the V frame via `lstsq(_fill_A(V_pts), Δ·fps)`, so the check must use V-frame quantities on both sides (`h_z=v/Z` uses `z_V=W_x_tu[2]`, the V-optical-axis altitude, NOT body-z).
+
+**Naming convention (enforced 2026-06-04, commit `ed27641`): frame prefix = ACTUAL frame.** `B_`=body-FRD, `V_`=virtual; image-velocity `y`→`h`. Renames: `B_y_g`→`B_h_g`, `B_y_g_V`→`V_h_g`, `xc_gt/yc_gt`→`V_xc_g/V_yc_g`, `B_w_tug_V`→`V_w_tug`. **Discovered during the rename:** `B_y_g` was FRAME-INCONSISTENT across tools (VIRTUAL in aggregate_calibration_phased/derive_board_cal/find_camera_rotation → `V_h_g`; BODY in validate_pose_transforms/analyze_calibration/aggregate_calibration/tune_savgol → `B_h_g`).
+
+**OPEN SEMANTIC FLAG (not yet fixed — would change cal values):** the cal derivation mixes frames per channel — even the canonical `aggregate_calibration_phased` uses `V_h_g` (virtual) for the h-axes but `B_w_ug` (body) for the w-axis. At low tilt body≈virtual so the cal is ~right; for exactness GT should be V-frame on all 6 channels. Decide separately (behavior change + re-validation). See [[feedback_getvirtualpts_g_sign]], [[feedback_imgdata_gt_clock_skew]] (the `R_V=I` claim is corrected here).

@@ -50,5 +50,5 @@ zero git impact):
 KEPT in `calibration_data/`: `output/` (cal source), `output_postreboot_20260603-222903/`
 (phased, for the planned `IMG_FEATURE_FILTER=kf` recal), `input/`, `yawagg_cal_20260604-203806/`.
 
-See [[outputcal-flow-validation-vframe]] (cal now derives V-frame GT on all channels),
+See [[feedback_vframe_rhs_yaw_only]] (cal now derives V-frame GT on all channels),
 [[reference-aggregate-calibration]].
