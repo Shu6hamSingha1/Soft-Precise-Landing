@@ -85,6 +85,10 @@ if ~isempty(KAPPA0_XY_OVERRIDE); K_ctrl.kappa_0(1)=KAPPA0_XY_OVERRIDE(1);K_ctrl.
 if ~isempty(N_XY_OVERRIDE);      K_ctrl.N(1,1)=N_XY_OVERRIDE(1);         K_ctrl.N(2,2)=N_XY_OVERRIDE(end);         end
 if ~isempty(N_Z_OVERRIDE);       K_ctrl.N(3,3)=N_Z_OVERRIDE(1);          end
 
+% Hard clamp on the adaptive gain kappa (anti-runaway backstop; PX4 KAPPA_MAX).
+% Default off. KAPPA_MAX_Z clamps the vertical axis only; KAPPA_MAX clamps all 3.
+global KAPPA_MAX KAPPA_MAX_Z;
+
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
 K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
 K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
@@ -196,6 +200,10 @@ else;                                sen_contain_mode = SEN_CONTAIN_MODE; end
 % depends on the inner loop delivering it (prior SEN_RECOVERY_K A/B said inner-bound).
 global SEN_RECOVER_ST;
 if isempty(SEN_RECOVER_ST); sen_recover_st = 0; else; sen_recover_st = SEN_RECOVER_ST(1); end
+
+% Target trajectory (override hook; default Circular as in the canonical single-run).
+global TRAJ_OVERRIDE;
+if isempty(TRAJ_OVERRIDE); traj_type = "Circular"; else; traj_type = string(TRAJ_OVERRIDE); end
 
 % Feature-space SETPOINT TRAJECTORY (waypoint-style reference governor). Reuses
 % the funnel's exp-decay operator on the SETPOINT (not the envelope): the SEN
@@ -367,11 +375,9 @@ for idx=1:N_steps
 % *************************************************************************
 % Simulating moving target
 % *************************************************************************
-    % traj_t = traj_Gen((idx-1)*dt, "Static");
-    % traj_t = traj_Gen((idx-1)*dt, "Linear");
-    % traj_t = traj_Gen((idx-1)*dt, "Sinusoidal");
-    % traj_t = traj_Gen((idx-1)*dt, "Lissajous");
-    traj_t = traj_Gen((idx-1)*dt, "Circular");
+    % Trajectory selected via TRAJ_OVERRIDE (default "Circular"); options:
+    % "Static" | "Linear" | "Sinusoidal" | "Lissajous" | "Circular"
+    traj_t = traj_Gen((idx-1)*dt, traj_type);
 
     x_t(:,idx) = traj_t(:,1);
     dx_t(:,idx) = traj_t(1:end-1,2);
@@ -644,6 +650,9 @@ for idx=1:N_steps
     const_kappa = [K_ctrl.N; K_ctrl.P];
     u_kappa = [sigma(:,idx); Theta_norm];
     kappa(:,idx+1) = RK5(@(t, X) kappa_Solver(t, X, u_kappa, const_kappa, G_2(:,:,idx)), t0, kappa(:,idx), dt);
+
+    if ~isempty(KAPPA_MAX);   kappa(:,idx+1)   = min(kappa(:,idx+1),   KAPPA_MAX(1));   end
+    if ~isempty(KAPPA_MAX_Z); kappa(3,idx+1)   = min(kappa(3,idx+1),   KAPPA_MAX_Z(1)); end
 
     if any(isnan(kappa(:,idx+1)))
         break

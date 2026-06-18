@@ -284,6 +284,16 @@ For lag characterization:
 For sensor-noise budget:
 - `analyze_sensor_noise.py` — frame-to-frame Δ methodology; absolute std is motion-contaminated
 
+For SEN-funnel control-authority ("does s_e_n stay bounded + converge?"):
+- Load a fail vs land run and compare `V_s_e_n` against `p_s` per axis, and the residency
+  `S_s = s_e_n/p_s`. The prescribed-performance guarantee `|s_e_n| < p_s(t)` HOLDS iff `|S_s|` stays
+  below the 0.95 `S_MARGIN` clamp and recedes; it FAILS when `S_s` PINS at ±0.95 and `s_e_n` then breaches
+  (grows past `p_s`). A pinned-then-breaching axis = the outer loop lacks closing authority: at the bound
+  the back-mapped demand saturates (`G_s⁻¹ ∝ p_s → 0`, the §9 demand-starvation) so the funnel gives little
+  restoring demand. Distinguishes "funnel guarantee holds" (bounded, converges, 0% breach) from "authority
+  deficit" (e.g. corrected `c̃_h` on Static IC5: 46% breach, `s_e_n_y → 6× p_s`). Candidate fixes: SEN hard-
+  containment (`SEN_CONTAIN_MODE`/`SEN_RECOVER_ST`), wider `p_s_0`, slower `γ_s` — NOT more reaching gain.
+
 For MATLAB-vs-PX4 comparison:
 - `MATLAB/Multi_init_cond/phase1_baseline_sweep.m` (MATLAB controller alone)
 - `MATLAB/Multi_init_cond/capture_sigma_trace.m` (matched h_rd σ trace)
@@ -303,6 +313,14 @@ For MATLAB-vs-PX4 comparison:
 - `PSINF_XY=0.6` (raise outer-funnel floor) → no change (NC63, 2026-06-12); terminal s_e re-grows to ~1.5 rad ≫ any floor → zeta_1 still saturates. No outer-funnel gain fixes the terminal wall.
 - `K_rd ≥ 1.0` outer D-gain (incl. MATLAB's 1.4375) and `XI2=0.2` (MATLAB canonical) at off-center IC → lazy middle funnel + close-range D-spike; MATLAB-canonical gain set TLs at IC=(2,2,5) (NC64). The baked XI2=0.6/KD=0.5 already supersede the MATLAB values for SITL.
 - `OMEGA_XY=0.1` (2× κ-leakage) → DEAD-END (NC70-71, 2026-06-12). n=1 looked best-ever (calm terminal theta 11.8/a_u 10.1) but n=5 made IC2 0→1 TL (+24.7 m) and IC5 3→4 TL — faster leakage bleeds κ too low → SMC loses authority → under-correction/drift. Cousin of the `N_XY=0.05` dead-end: perturbing the κ-dynamics rate (N↑ noisy, Ω↑ weak) without σ-signal support degrades. No κ-rate knob fixes the terminal wall.
+- **Corrected manuscript c-term (`C_SIMPLE`, simple `c̃_h = −ψ̇_b(ê₃×h) − (h·ê₃)h`) — IC5 deficit NOT
+  gain-recoverable** (2026-06-16). No-regression on the Circular IC1-5 gate (30/30) but ~1 seed worse on
+  IC5 `[2,2,-3]` across ALL trajectories (loses Static IC5 that old-c lands). Reaching gain `Γ_xy` {1.5,3.0}
+  makes it WORSE on both Static+Circular IC5; `K_rd` doesn't fix it (fails at 1.44 AND 2.5). Root: old-c's
+  *incorrect* full-`w` terms create a **productive sustained flow error** (`|V_h_e|`~1.0-1.7) that keeps
+  driving lateral closure; the leaner-correct form tracks cleanly (`|V_h_e|`~0.5-0.9) but UNDER-closes →
+  `s_e_n` breaches the funnel. Untested recovery: SEN hard-containment (`SEN_CONTAIN_MODE`/`SEN_RECOVER_ST`).
+  See memory `project_chtilde_correction_option_b`.
 
 ## The precision-softness frontier (2026-05-24, mapped via 5 N=10 sweeps)
 
