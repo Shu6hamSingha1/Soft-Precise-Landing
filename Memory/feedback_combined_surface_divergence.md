@@ -7,6 +7,8 @@ metadata:
   originSessionId: 3553f974-8018-4a1e-ba00-93060aa8d9e4
 ---
 
+**⚠️ PX4 VERDICT (2026-06-19, n=5 IC2 A/B): combined surface does NOT beat the lateral wall — perception-gated, NOT control-gated.** Ported to PX4 `controller.py` (env `PLASMC_COMBINED_BARRIER`, default-off, aligned to MATLAB `a152479`). GT-check (decisive) on the IC1 smoke run: the ṡ feeding the blended `h_d` UNDER-REPORTS the dominant lateral velocity — tracks GT ~0.8× while slow but **collapses to ~0.5× during the high-velocity overshoot** (centroid-rate 0.48 ≈ LK 0.52 — both saturate, it's the LK dynamic-range ceiling, NOT filter noise). IC2=(2,2,5) A/B n=5 each: backmap median fin_lat 13.55 (5/5 TL), combined(χ_r=0.85) 13.58 (5/5 TL — SAME wall), chir(χ_r=1.3) 24.81 (5/5 TL, WORSE — more position authority + under-delivered brake → bigger overshoot + κ-runaway 5–9). All reps: s_e_n CONVERGES first (min 0.07–0.59) then DIVERGES to 1.5–2.3 → structurally sound, brake-starved. Confirms GT prediction: same inner-loop velocity front-end is the binding limit; real lever = perception (KLT corner-track/pyr-LK) = architecture. χ_r↑ REJECTED. Code stands as paper↔code alignment (default-off), not a wall-breaker. (Alignment gotcha: logged lateral signals are axis-swapped vs GT V-frame — ignore it and corr reads ~0.) Harness `scripts/run_cb_ic2_ab.sh`; data `test_data/CB_IC2_{backmap,combined,chir}`.
+
 **The manuscript already specifies the structural fix; both code implementations diverge.**
 ⚠️ THE DESIGN ALREADY EXISTS — see [[project_stacked_barrier_backstepping]] (full design + Lyapunov +
 manuscript edits DONE 2026-06-16; draft `Soft_Precise_Landing/Drafts/STACKED_BARRIER_BACKSTEPPING.md`;
@@ -48,8 +50,43 @@ One change resolves all four: unblocks option (b) (closing authority → `ζ_r`,
 fixes the IC5 deficit, fixes the PX4 lateral wall, and aligns code↔paper (no `d_h` workaround). ⚠️
 **MATLAB code is OFF-LIMITS (Windows-owned, user directive 2026-06-18) — do NOT edit it; PX4-side only.**
 
-## PX4 IMPLEMENTATION SPEC — CODE-LEVEL MAP (controller.py @ 2026-06-18; env-gated `PLASMC_COMBINED_SURFACE` default-off)
-Worked out by reading the exact blocks (NOT yet implemented — user moved impl to a fresh chat).
+## ✅ PX4 PORT DONE (2026-06-19, controller.py, env-gated `PLASMC_COMBINED_BARRIER` default-off)
+Implemented + ALIGNED to the canonical MATLAB realization (a152479 "blended sliding surface"), NOT the
+a-priori spec below. py_compile clean; default-off byte-identical (chi_zeta_aug=Omega@zeta); combined-path
+math finite+sign-correct. **SITL A/B (IC2 vs default + IC1 regression + IC2-5 gate) PENDING — user runs.**
+CORRECTIONS to the spec below (MATLAB realization diverged from my guess):
+1. **ζ_r is NOT the SEN ζ_s.** Build a SEPARATE barrier on `r_bar_e = s_e_n` (PX4 p_10=center/focal IS
+   φ_max, so s_e_n already = FoV-normalized r̄_e) with its OWN funnel `p_r` (1.2→1.0 FoV-consistent,
+   ξ_r=0.10) — NOT the SEN p_s (floor 0.35). Built in `_updatePerfFunc`+`_updateImgFeatureParam`.
+2. **h_d KEEPS measured ṡ** (blended): `h_d=[s_dot_meas;0]+rot+descent`, s_dot_meas=smooth4 of d(s_e[:2])/dt.
+   NOT strict FF-only. The back-mapped `ds_d` is what's dropped.
+3. **s̈ dropped from dh_d:** differentiate `h_d_noS`(=rot+descent) so the 1/z-inflated s̈ never enters
+   c_h (κ absorbs it). New member `self._h_d_noS`.
+4. transport/descent follow `CH_CLEAN` (psi_dot_b vs w_i×s) to stay consistent with the c-term.
+5. Combined tightens the lateral FLOW funnel floor `p_2inf_xy=0.5` (if not overridden).
+Knobs: `PLASMC_COMBINED_BARRIER`(0) `PLASMC_CHI_R_X/Y`(0.85) `PLASMC_PR0_X/Y`(1.2) `PLASMC_PRINF_X/Y`(1.0)
+`PLASMC_XIR_X/Y`(0.10). σ/chi_zeta_aug/Theta/a_v per the generalization (chi_zeta_aug=[χ_r·ζ̇_r; Ω_z·ζ_h3]
+combined, =Ω·ζ_h back-mapped). Backups: src/controller.py.bak + .HEAD.bak.
+
+## ⚠️ FIRST SITL RESULT (2026-06-19, IC1, combined ON, headless smoke, n=1) — lateral wall RECURS
+Code SITL-STABLE (full flight, no crash/NaN) but **FLEW AWAY: xy=6.87 m, vel=4.84 m/s at IC1** (centered —
+the back-map lands this). Combined confirmed engaged (p_inf=[0.5,0.5,0.5]). Authority/breach diagnostic
+(Control_Data, `test_data/CombinedBarrier_smoke/Fri Jun 19 00-11-24 2026/`):
+- **s_e_n CONVERGES (min 0.01 @ t=1.3s) then DIVERGES** (final 2.06, max 4.19); breaches p_s@5.9s (38%) and the
+  active p_r@8.1s (20%). **Converge-then-overshoot — same lateral wall.** Authority CONVERGES it but can't KEEP it bounded.
+- **h_e bounded in p_h the WHOLE flight (0% breach)** — but TRIVIALLY: the blended h_d (=measured ṡ+FF) makes
+  h_e≈0 BY CONSTRUCTION → flow-funnel satisfaction is DECOUPLED from position. The h_e-funnel tells you nothing.
+- σ blows up (→8.6), κ_y ratchets (→4.54), |a_u_xy|→1076 m/s² but `corr(a_u,−s_e_n)≈−0.5` (anti-restoring).
+- **ROOT HYPOTHESIS:** combined h_d depends on the MEASURED centroid rate ṡ; SITL's LK flow UNDER-REPORTS velocity
+  ([[feedback_inner_loop_velocity_thread]] / [[feedback_lateral_overshoot_root]]) → h_d under-commands the brake →
+  overshoot. **The SAME inner-loop velocity-observability wall, now INSIDE the combined surface.** MATLAB (accurate
+  ṡ) = 25/25; SITL = perception-gated. The combined surface gives the structural authority but can't beat the front-end.
+- NEXT: (1) GT-verify the ṡ under-report (measured flow vs `tools/gt_optical_flow.py`) = DECISIVE. (2) The PX4 port
+  uses `smooth4(finite-diff)` for ṡ — NOT the MATLAB Savitzky-Golay `CB_SDOT_FILT`; add the SG variant if ṡ-noise compounds.
+  (3) χ_r↑ + IC2 A/B (n≥5; n=1 is noise but the mechanism is clear). If confirmed → real lever = perception (KLT/pyr-LK) = architecture.
+
+## PX4 IMPLEMENTATION SPEC — CODE-LEVEL MAP (a-priori; SUPERSEDED above re ζ_r source + h_d)
+Worked out by reading the exact blocks (the reuse-ζ_s assumption was WRONG — see corrections above).
 **KEY INSIGHT: it is a PURELY LATERAL change.** Descent (z) stays byte-identical because (a) `ds_d`'s
 z-component is ALREADY 0 (`raw_ds_d = concat([V_ds_d_xy,[0.0]])` l.679), and (b) descent keeps its PI
 form `σ_3=ζ_h3+Ω_z·∫ζ_h3`. So dropping `ds_d` and swapping the σ-augmentation only touch x,y.

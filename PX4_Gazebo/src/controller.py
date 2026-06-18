@@ -186,6 +186,30 @@ class Controller(Thread):
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
 
+        # ════ COMBINED-BARRIER sliding surface (manuscript combined surface; default OFF) ════
+        # Aligned to the canonical MATLAB realization (visualControl_IBVS_adaptive.m, a152479).
+        # Replaces the SEN back-map: the position barrier zeta_r enters sigma DIRECTLY
+        # (lateral sigma_k = zeta_h_k + chi_r*zeta_r_k), so there is no G_s^-1->0 demand
+        # starvation (the lateral-wall / IC5 deficit). h_d uses the MEASURED centroid rate
+        # s_dot (no back-mapped ds_d); s_ddot is dropped from dh_d (kappa absorbs it as d_h).
+        # zeta_r is built on r_bar_e = s_e/p_10 (= s_e_n, FoV-normalized) with its OWN funnel
+        # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
+        # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
+        self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "0") == "1"
+        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.85")),
+                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.85"))])   # surface gain (manifold |zeta_r|~|zeta_h|/chi_r); 0.85 = MATLAB max-margin
+        self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
+                                  float(os.environ.get("PLASMC_PR0_Y", "1.2"))])      # position-funnel initial half-width (FoV units)
+        self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "1.0")),
+                                  float(os.environ.get("PLASMC_PRINF_Y", "1.0"))])    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
+        self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
+                                 float(os.environ.get("PLASMC_XIR_Y", "0.10"))])      # position-funnel contraction rate
+        # Combined mode uses a tighter lateral optic-flow-funnel floor (chase-lag terminal
+        # velocity; proof manifold). Apply only in combined mode, only if not explicitly set.
+        if self._combined_barrier:
+            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 0.5
+            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 0.5
+
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
                      "P2INF": (2.5, 2.5, 1.5), "OMEGA": (0.05, 0.05, 0.025),
@@ -424,6 +448,14 @@ class Controller(Thread):
         self._izeta_s = []
         self._G_s = []
         self._dzeta_s_deque = deque([np.zeros(2)] * 4)
+        # Combined-barrier position barrier (zeta_r on r_bar_e = s_e_n) + measured centroid rate
+        self._p_r = []
+        self._dp_r = []
+        self._zeta_r = []
+        self._dzeta_r = []
+        self._s_dot_meas = []          # measured centroid rate (h_d feedforward, combined mode)
+        self._s_dot_deque = deque([np.zeros(2)] * 4)
+        self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
         self._theta = []      # ||Theta||_F
         self._sigma = []
         self._kappa = [self._kappa_0.copy()]
@@ -585,6 +617,11 @@ class Controller(Thread):
             decay_s = expm(-t * self._gamma_s)
             self._p_s.append(decay_s @ (self._p_s_0 - self._p_s_inf) + self._p_s_inf)
             self._dp_s.append(-self._gamma_s @ decay_s @ (self._p_s_0 - self._p_s_inf))
+        if self._combined_barrier:
+            # Combined-barrier position funnel envelope p_r (FoV-consistent floor; Standing Cond 1)
+            decay_r = expm(-t * self._xi_r)
+            self._p_r.append(decay_r @ (self._p_r_0 - self._p_r_inf) + self._p_r_inf)
+            self._dp_r.append(-self._xi_r @ decay_r @ (self._p_r_0 - self._p_r_inf))
 
     def _updateImgFeatureParam(self, s):
         """Outer loop: raw normalized pixel error -> PID -> desired feature derivative ds_d.
@@ -600,6 +637,32 @@ class Controller(Thread):
         # Normalized pixel error (sensor-half normalization)
         s_e_n = self._s_e[-1][:2] / self._p_10
         self._s_e_n.append(s_e_n)
+
+        if self._combined_barrier:
+            # === COMBINED-BARRIER: position barrier zeta_r enters the sliding surface (no back-map) ===
+            # measured centroid rate s_dot (= d s_e[:2]/dt, s_d const) — the h_d feedforward AND
+            # the r_bar_e rate (rel deg 2); kappa absorbs the 1/z-inflated s_ddot (dropped from dh_d).
+            if len(self._s_e) > 1 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+                self._s_dot_deque.append((self._s_e[-1][:2] - self._s_e[-2][:2]) / self._dt[-1])
+            else:
+                self._s_dot_deque.append(np.zeros(2))
+            self._s_dot_deque.popleft()
+            s_dot_meas = smooth4(self._s_dot_deque)
+            self._s_dot_meas.append(s_dot_meas)
+            # position barrier on r_bar_e = s_e_n (= s_e/p_10, FoV-normalized) with funnel p_r
+            r_bar_e  = self._s_e_n[-1]
+            dr_bar_e = s_dot_meas / self._p_10                       # measured rate (rel deg 2)
+            S_r = np.zeros(2); zeta_r = np.zeros(2); dzeta_r = np.zeros(2)
+            for _i in range(2):
+                S_r[_i]     = float(np.clip(r_bar_e[_i] / self._p_r[-1][_i], -1.0 + S_MARGIN, 1.0 - S_MARGIN))
+                zeta_r[_i]  = np.log((1 + S_r[_i]) / (1 - S_r[_i]))
+                g_r         = (np.exp(zeta_r[_i]) + 1) ** 2 / (2 * np.exp(zeta_r[_i]) * self._p_r[-1][_i])
+                dzeta_r[_i] = g_r * (dr_bar_e[_i] - S_r[_i] * self._dp_r[-1][_i])
+            self._zeta_r.append(zeta_r)
+            self._dzeta_r.append(dzeta_r)
+            # no back-mapped ds_d in combined mode (h_d uses s_dot_meas directly)
+            self._ds_d.append(np.zeros(N_DIM))
+            return
 
         if self._sen_funnel:
             # === PPC funnel on s_e_n (back-mapped form; mirrors baseline :256-289) ===
@@ -721,7 +784,25 @@ class Controller(Thread):
         # and a lateral-error gate here — both removed (see __init__ note).
         h_ref_eff = self._h_ref
         cross_ws = np.cross(w, self._s[-1][:3])
-        if self._CH_CLEAN:
+        if self._combined_barrier:
+            # blended surface: h_d = MEASURED s_dot + transport + descent (NO back-mapped ds_d).
+            # h_d_noS (transport+descent only) feeds dh_d so s_ddot is dropped (kappa absorbs it).
+            # transport/descent follow the c_h convention (CH_CLEAN = clean-IMU psi_dot_b, else w_i x s),
+            # matching the PLASMC c-term so h_d and c stay consistent.
+            if self._CH_CLEAN:
+                _eul = Quaternion(self._quat[-1]).to_angles()
+                _phi, _th = float(_eul[0]), float(_eul[1])
+                _r = -float(self._w[-1][2])
+                psi_dot_b = (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
+                rot = psi_dot_b * np.cross(e3, self._s[-1][:3])
+                h_d_ff = h_ref_eff * self._s[-1][:3]
+            else:
+                rot = cross_ws
+                h_d_ff = (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
+            h_d_noS = rot + h_d_ff
+            self._h_d_noS.append(h_d_noS)
+            self._h_d.append(np.concatenate([self._s_dot_meas[-1], [0.0]]) + h_d_noS)
+        elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
             # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
             # via -ψ̇_b·(ê3×h) instead (see PLASMC). Removing w×s here is the OTHER half of the consistent
@@ -782,8 +863,10 @@ class Controller(Thread):
         # (commit 2b43983, IC2-5 gate passed); it is load-bearing until the
         # 1/Z touchdown spike has a manuscript-parameter fix.
         DH_D_MAX = self._DH_D_MAX
-        if len(self._h_d) > 1:
-            self._dh_d_deque.append((self._h_d[-1] - self._h_d[-2]) / self._dt[-1])
+        # In combined mode, differentiate h_d_noS (transport+descent) — drops s_ddot (kappa absorbs it).
+        _hd_src = self._h_d_noS if self._combined_barrier else self._h_d
+        if len(_hd_src) > 1:
+            self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
         self._dh_d.append(np.clip(smooth4(self._dh_d_deque), -DH_D_MAX, DH_D_MAX))
 
@@ -822,8 +905,24 @@ class Controller(Thread):
             self._dw_deque.popleft()
         self._dw.append(smooth4(self._dw_deque))
 
-        # Sliding surface (MATLAB: sigma = zeta + Omega * integral(zeta))
-        self._sigma.append(self._zeta[-1] + self._Omega @ self._izeta[-1])
+        # Sliding surface. Back-mapped (default): sigma = zeta_h + Omega*int(zeta_h).
+        # Combined-barrier: lateral sigma_k = zeta_h_k + chi_r*zeta_r_k (PD), descent
+        # sigma_3 = zeta_h_3 + chi_z*int(zeta_h_3) (PI, chi_z = Omega_z, unchanged). chi_zeta_aug =
+        # chi*zeta_dot_aug is the measured drift folded into u_eq/Theta (= Omega*zeta_h back-mapped;
+        # = [chi_r*dzeta_r; Omega_z*zeta_h_3] combined). Relative degree 1 preserved.
+        if self._combined_barrier:
+            _zr = self._zeta_r[-1]
+            _sig = self._zeta[-1].copy()
+            _sig[0] += self._chi_r[0] * _zr[0]
+            _sig[1] += self._chi_r[1] * _zr[1]
+            _sig[2] += self._Omega[2, 2] * self._izeta[-1][2]
+            self._sigma.append(_sig)
+            chi_zeta_aug = np.array([self._chi_r[0] * self._dzeta_r[-1][0],
+                                     self._chi_r[1] * self._dzeta_r[-1][1],
+                                     self._Omega[2, 2] * self._zeta[-1][2]])
+        else:
+            self._sigma.append(self._zeta[-1] + self._Omega @ self._izeta[-1])
+            chi_zeta_aug = self._Omega @ self._zeta[-1]
 
         # Known dynamics term c — MATLAB visualControl_IBVS_adaptive.m:407-408.
         # All cross products use V-frame target-relative ω (self._w_i), matching
@@ -853,10 +952,10 @@ class Controller(Thread):
                  - self._dh_d[-1])
 
         # Theta matrix and its Frobenius norm
-        # MATLAB: Theta = [-c + S*dp - G\(Omega*zeta), eye(3)]
+        # Theta = [-c + S*dp - G\(chi*zeta_dot_aug), eye(3)]  (chi_zeta_aug set at the surface above)
         vector = (- c
                   + self._S[-1] @ self._dp[-1]
-                  - np.linalg.solve(self._G[-1], self._Omega @ self._zeta[-1]))
+                  - np.linalg.solve(self._G[-1], chi_zeta_aug))
         Theta = np.hstack([vector.reshape(-1, 1), np.eye(N_DIM)])
         self._theta.append(np.linalg.norm(Theta, ord='fro'))
 
@@ -885,7 +984,7 @@ class Controller(Thread):
         a_v = (- self._Gma @ self._sigma[-1]
                - self._theta[-1] * np.diag(sat_sigma) @ self._G[-1] @ self._kappa[-1]
                + self._G[-1] @ (- c + self._S[-1] @ self._dp[-1])
-               - self._Omega @ self._zeta[-1])
+               - chi_zeta_aug)
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
