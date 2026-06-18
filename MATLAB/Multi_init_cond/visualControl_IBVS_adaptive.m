@@ -84,6 +84,14 @@ if ~isempty(P_XY_OVERRIDE);      K_ctrl.P(1,1)=P_XY_OVERRIDE(1);         K_ctrl.
 if ~isempty(KAPPA0_XY_OVERRIDE); K_ctrl.kappa_0(1)=KAPPA0_XY_OVERRIDE(1);K_ctrl.kappa_0(2)=KAPPA0_XY_OVERRIDE(end);end
 if ~isempty(N_XY_OVERRIDE);      K_ctrl.N(1,1)=N_XY_OVERRIDE(1);         K_ctrl.N(2,2)=N_XY_OVERRIDE(end);         end
 if ~isempty(N_Z_OVERRIDE);       K_ctrl.N(3,3)=N_Z_OVERRIDE(1);          end
+% Velocity-funnel initial width p_20 lateral override (z untouched). NB: p_s_0
+% (SEN/position funnel) is FoV-locked, do NOT override it; p_20 is free.
+global P20_XY_OVERRIDE P20_Z_OVERRIDE P2INF_XY_OVERRIDE GAMMA2_XY_OVERRIDE;
+if ~isempty(P20_XY_OVERRIDE);    K_ctrl.p_20(1)=P20_XY_OVERRIDE(1);      K_ctrl.p_20(2)=P20_XY_OVERRIDE(end); end
+if ~isempty(P20_Z_OVERRIDE);     K_ctrl.p_20(3)=P20_Z_OVERRIDE(1);       end  % descent flow funnel (combined-barrier coupling)
+% Flow-funnel TERMINAL tightness (combined-barrier chase-lag / terminal-velocity lever)
+if ~isempty(P2INF_XY_OVERRIDE);  K_ctrl.p_2inf(1)=P2INF_XY_OVERRIDE(1);  K_ctrl.p_2inf(2)=P2INF_XY_OVERRIDE(end); end
+if ~isempty(GAMMA2_XY_OVERRIDE); K_ctrl.gamma_2(1)=GAMMA2_XY_OVERRIDE(1);K_ctrl.gamma_2(2)=GAMMA2_XY_OVERRIDE(end); end
 
 % Hard clamp on the adaptive gain kappa (anti-runaway backstop; PX4 KAPPA_MAX).
 % Default off. KAPPA_MAX_Z clamps the vertical axis only; KAPPA_MAX clamps all 3.
@@ -171,6 +179,39 @@ K_ctrl.p_s_0       = [1.2; 1.2];         % initial normalized-error envelope
 K_ctrl.p_s_inf     = [0.35; 0.35];       % terminal envelope floor (angular; ~0.07 m at Z=0.2)
 K_ctrl.izeta_s_max = 5.0;                % anti-windup clamp on the zeta_s integral
 
+% ---- COMBINED-BARRIER sliding surface (control_formulation.tex S-III) -------
+% Gated mode (default OFF = the back-mapped SEN funnel above). Replaces the
+% back-map with the position barrier zeta_r entering the sliding surface DIRECTLY:
+% lateral sigma_k = zeta_h_k + chi_r*zeta_r_k (PD), descent sigma_3 = zeta_h_3 +
+% chi_z*int(zeta_h_3) (PI, unchanged). h_d uses the setpoint rate V_sd (replacing
+% V_ds_d). No back-map -> no G_s^-1->0 demand-starvation (the IC5 deficit).
+global COMBINED_BARRIER CB_DROP_SDDOT CB_SDDOT_TAU CB_SDOT_FILT;
+combined_barrier = ~isempty(COMBINED_BARRIER) && COMBINED_BARRIER(1) ~= 0;
+% s_ddot feedforward (d/dt of the measured s_dot in h_d) handling in c_h:
+%   CB_DROP_SDDOT : drop it entirely (kappa absorbs it as d_h) — blunt, loses target-accel FF.
+%   CB_SDDOT_TAU>0: LPF it (time constant tau) — keeps the smooth target-accel feedforward,
+%                   low-passes out the 1/z-inflated terminal spike. Preferred over dropping.
+% s_ddot-drop is part of the validated combined-barrier design -> default-ON in
+% combined mode (set CB_DROP_SDDOT=0 to force it off); always off in back-mapped mode.
+cb_drop_sddot = combined_barrier && (isempty(CB_DROP_SDDOT) || CB_DROP_SDDOT(1) ~= 0);
+cb_sddot_tau  = 0; if ~isempty(CB_SDDOT_TAU); cb_sddot_tau = CB_SDDOT_TAU(1); end
+K_ctrl.p_r_0   = [1.2; 1.2];             % image-feature funnel initial half-width (r_bar_e = s_e/phi_max, FoV units)
+K_ctrl.p_r_inf = [1.0; 1.0];             % terminal floor — FoV-consistent (proof Standing Condition 1: p_r_inf>=1)
+K_ctrl.xi_r    = diag([0.10, 0.10]);     % funnel contraction rate Xi_r
+K_ctrl.chi_r   = [0.85; 0.85];           % surface gain (manifold |zeta_r|~|zeta_h|/chi_r; 0.85 = max-margin 25/25)
+K_ctrl.chi_z   =  K_ctrl.Omega(3,3);     % descent surface gain = Omega_z (unchanged descent PI)
+phi_max_xy     = [res(1); res(2)] / (2*f);   % half-FoV tangent (C_nP-axis order) for r_bar_e
+global CHI_R_OVERRIDE PR0_OVERRIDE PRINF_OVERRIDE;
+if ~isempty(CHI_R_OVERRIDE); K_ctrl.chi_r   = CHI_R_OVERRIDE(:); end
+if ~isempty(PR0_OVERRIDE);   K_ctrl.p_r_0   = PR0_OVERRIDE(:);   end
+if ~isempty(PRINF_OVERRIDE); K_ctrl.p_r_inf = PRINF_OVERRIDE(:); end  % position-funnel floor (precision lever)
+% Combined-barrier uses a tighter lateral optic-flow-funnel floor p_2inf_xy=0.5
+% (chase-lag terminal velocity; proof manifold |zeta_r|~|zeta_h|/chi_r). p_2inf is
+% the SHARED flow funnel -> apply only in combined mode, only if not overridden.
+if combined_barrier && isempty(P2INF_XY_OVERRIDE)
+    K_ctrl.p_2inf(1) = 0.5; K_ctrl.p_2inf(2) = 0.5;
+end
+
 % ---- SEN_FUNNEL tuning hooks (globals; default = no change) -------------
 % Set BEFORE calling the canonical script (survive the top-of-file `clear`).
 % SEN_CONTAIN_MODE: 0 = legacy soft-clip (current); 1 = hard outlier-
@@ -227,6 +268,7 @@ global DH_D_CAP DH_D_TAU;
 if isempty(DH_D_CAP); dhd_cap = 20; else; dhd_cap = DH_D_CAP(1); end
 if isempty(DH_D_TAU); dhd_tau = 0; else; dhd_tau = DH_D_TAU(1); end
 dh_d_prev = zeros(3,1);
+sddot_filt = zeros(3,1);   % LPF state for the filtered-s_ddot combined-barrier variant
 
 % C_SIMPLE = first-principles c-term (manuscript form, default-OFF).
 % Derived from scratch: differentiating the PRIMITIVE optic flow h=v/z ONCE
@@ -329,6 +371,15 @@ zeta_s       = zeros(2, N_steps);
 izeta_s      = zeros(2, N_steps);
 raw_dzeta_s  = zeros(2, N_steps + 3);
 sen_breach   = false(2, N_steps);
+
+% Combined-barrier position-barrier logging (lateral)
+r_bar_e      = zeros(2, N_steps);
+p_r          = zeros(2, N_steps);
+S_r          = zeros(2, N_steps);
+zeta_r       = zeros(2, N_steps);
+dzeta_r      = zeros(2, N_steps);
+raw_ds_meas  = zeros(2, N_steps + 3);   % measured finite-diff centroid rate (h_d feedforward)
+h_d_noS      = zeros(3, N_steps);        % h_d WITHOUT the s_dot term (transport+descent) for s_ddot-drop variant
 
 % Target-visibility CBF logging + persistent state
 theta_cur_log  = zeros(1, N_steps);
@@ -538,8 +589,10 @@ for idx=1:N_steps
         V_s_e(:,idx)= V_s(1:2) - V_s_d(1:2);
         dV_s_ref    = [0;0];
     end
-    V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
+    V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half (logging / SEN funnel)
 
+  if ~combined_barrier
+    % ====================== BACK-MAPPED SEN FUNNEL (default) ======================
     p_s(:,idx)  = expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf) + K_ctrl.p_s_inf;
     dp_s(:,idx) = -K_ctrl.gamma_s * expm(-K_ctrl.gamma_s*tRange(idx)) * (K_ctrl.p_s_0 - K_ctrl.p_s_inf);
 
@@ -551,14 +604,8 @@ for idx=1:N_steps
         if abs(raw_ratio) >= 1.0
             sen_breach(j,idx) = true;
             if sen_recover_st > 0
-                % STRONG recovery: pin S_s at the small target ST so the
-                % back-mapped P-demand -> -rp*[g(ST)/(2*ST)]*|s_e_n| (~full -rp
-                % as ST->0), avoiding the anti-restoring collapse beyond breach.
                 p_s_eff = abs(V_s_e_n(j,idx)) / sen_recover_st;
             elseif sen_contain_mode == 1
-                % Hard outlier-containment: expand the effective funnel to the
-                % breached error so the back-mapped barrier (and G_s^-1) stay
-                % valid -> inward demand scales with |s_e_n| (~0.19*rp at S=0.95).
                 p_s_eff = abs(V_s_e_n(j,idx)) / (1 - S_s_margin);
             end
         end
@@ -586,6 +633,64 @@ for idx=1:N_steps
     V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
         - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3);
 
+  else
+    % ============ COMBINED-BARRIER: position barrier zeta_r + h_d via V_sd ============
+    % rotation feedforward (c_simple selects the corrected clean-IMU psi_dot_b form);
+    % MEASURED finite-difference centroid rate s_dot (V_s_d=0 => s_e=centroid):
+    % this is the h_d feedforward AND the r_bar_e rate (NOT a desired/PID rate) —
+    % collapses h_e to the descent error (h.e3-h_rd)s; lateral via zeta_r in surface.
+    % s_dot filter. Default = 2-pt diff + smooth4 (noisy under pixel noise). BETTER
+    % (CB_SDOT_FILT=W>=3): causal Savitzky-Golay (quadratic least-squares) derivative
+    % over the last W centroid samples -> strong noise rejection; the SAME fit yields a
+    % clean s_ddot (2nd-deriv coeff) with NO double finite-difference.
+    s_ddot_meas = [];
+    if ~isempty(CB_SDOT_FILT) && CB_SDOT_FILT(1) >= 3
+        W = round(CB_SDOT_FILT(1)); w0 = max(1, idx-W+1); seg = V_s_e(:, w0:idx); n = size(seg,2);
+        if n >= 3
+            T  = ((0:n-1) - (n-1))' * dt;          % sample times rel. to latest (=0)
+            B  = [ones(n,1), T, T.^2];             % quadratic basis (poly order 2)
+            Pd = (B'*B) \ B';                      % 3 x n least-squares projector
+            s_dot_meas  = (Pd(2,:) * seg')';       % 1st-deriv at t=0  (2x1)
+            s_ddot_meas = (2*Pd(3,:) * seg')';     % clean 2nd-deriv   (2x1)
+        else
+            s_dot_meas = (V_s_e(:,idx) - V_s_e(:,max(1,idx-1)))/dt;
+        end
+    else
+        if idx == 1
+            raw_ds_meas(:,idx+3) = [0;0];
+        else
+            raw_ds_meas(:,idx+3) = (V_s_e(:,idx) - V_s_e(:,idx-1))/dt;
+        end
+        s_dot_meas = smooth4(raw_ds_meas(:,idx:idx+3));
+    end
+    % transport feedforward; c_simple selects the corrected clean-IMU psi_dot_b form
+    if c_simple
+        phi_b   = atan2(I_R_C(3,2), I_R_C(3,3));
+        theta_b = -asin(max(min(I_R_C(3,1), 1), -1));
+        psi_dot_b = (B_w_c(2)*sin(phi_b) + B_w_c(3)*cos(phi_b)) / cos(theta_b);
+        rot    = psi_dot_b * cross(e3, V_s(1:3));            % psi_dot_b (e3 x s)
+        h_d_ff = h_rd * V_s(1:3);                            % rot . e3 = 0
+    else
+        rot    = cross(V_w, V_s(1:3));                       % w x s
+        h_d_ff = (h_rd - dot(rot, e3)) * V_s(1:3);
+    end
+    % image-feature funnel + position barrier on r_bar_e = s_e_xy / phi_max (FoV units)
+    r_bar_e(:,idx) = V_s_e(:,idx) ./ phi_max_xy;
+    dr_bar_e       = s_dot_meas  ./ phi_max_xy;              % measured rate (rel deg 2)
+    p_r(:,idx) = expm(-K_ctrl.xi_r*tRange(idx)) * (K_ctrl.p_r_0 - K_ctrl.p_r_inf) + K_ctrl.p_r_inf;
+    dp_r       = -K_ctrl.xi_r * expm(-K_ctrl.xi_r*tRange(idx)) * (K_ctrl.p_r_0 - K_ctrl.p_r_inf);
+    S_r_margin = 0.05;
+    for j=1:2
+        S_r(j,idx)    = min(max(r_bar_e(j,idx)/p_r(j,idx), -1+S_r_margin), 1-S_r_margin);
+        zeta_r(j,idx) = log((1+S_r(j,idx))/(1-S_r(j,idx)));
+        g_rj          = (exp(zeta_r(j,idx))+1)^2 / (2*exp(zeta_r(j,idx))*p_r(j,idx));
+        dzeta_r(j,idx)= g_rj * (dr_bar_e(j) - S_r(j,idx)*dp_r(j));
+    end
+    % desired optic flow: h_d = s_dot(MEASURED) + transport + h_rd*s (blended surface)
+    h_d_noS(:,idx) = rot + h_d_ff;                  % transport+descent only (no s_dot -> no s_ddot in dh_d)
+    V_h_d(:,idx)   = [s_dot_meas; 0.0] + h_d_noS(:,idx);
+  end
+
     V_h_e(:,idx) = V_h - V_h_d(:,idx);
 
 % *************************************************************************
@@ -611,13 +716,37 @@ for idx=1:N_steps
     izeta_2_max = 5.0;   % 50/50 lock-in (synced with run_simulation.m)
     izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
 
-    sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega*izeta_2(:,idx);
+    if ~combined_barrier
+        sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega*izeta_2(:,idx);
+        chi_zeta_aug = K_ctrl.Omega*zeta_2(:,idx);   % chi*zeta_dot_aug (PI: d/dt int zeta = zeta)
+    else
+        % combined surface: lateral PD (zeta_h + chi_r*zeta_r), descent PI (zeta_h + chi_z*int zeta_h3)
+        sigma(:,idx) = [ zeta_2(1,idx) + K_ctrl.chi_r(1)*zeta_r(1,idx);
+                         zeta_2(2,idx) + K_ctrl.chi_r(2)*zeta_r(2,idx);
+                         zeta_2(3,idx) + K_ctrl.chi_z   *izeta_2(3,idx) ];
+        chi_zeta_aug = [ K_ctrl.chi_r(1)*dzeta_r(1,idx);   % chi*zeta_dot_aug = [chi_r.*dzeta_r; chi_z*zeta_h3]
+                         K_ctrl.chi_r(2)*dzeta_r(2,idx);
+                         K_ctrl.chi_z   *zeta_2(3,idx) ];
+    end
 
 % Computing Known System Dynamics (c)
     if idx == 1
         raw_dh_d(:,idx+3) = zeros(3,1);
+    elseif combined_barrier && cb_drop_sddot
+        raw_dh_d(:,idx+3) = (h_d_noS(:,idx) - h_d_noS(:,idx-1))/dt;   % drop s_ddot -> absorbed by kappa as d_h
+    elseif combined_barrier && cb_sddot_tau > 0
+        % FILTERED s_ddot: LPF the centroid-accel contribution -> keeps the smooth
+        % target-accel feedforward, low-passes out the 1/z-inflated terminal spike.
+        sddot_raw  = ((V_h_d(:,idx)-h_d_noS(:,idx)) - (V_h_d(:,idx-1)-h_d_noS(:,idx-1)))/dt;
+        a_sdd      = cb_sddot_tau/(cb_sddot_tau+dt);
+        sddot_filt = a_sdd*sddot_filt + (1-a_sdd)*sddot_raw;
+        raw_dh_d(:,idx+3) = (h_d_noS(:,idx) - h_d_noS(:,idx-1))/dt + sddot_filt;
+    elseif combined_barrier && ~isempty(s_ddot_meas)
+        % KEEP s_ddot but use the CLEAN 2nd-deriv from the Savitzky-Golay fit (no double
+        % finite-difference) -> removes the s_ddot noise at the source.
+        raw_dh_d(:,idx+3) = [s_ddot_meas; 0.0] + (h_d_noS(:,idx) - h_d_noS(:,idx-1))/dt;
     else
-        raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1))/dt;
+        raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1))/dt;       % full s_ddot (double finite-diff)
     end
     V_dh_d = smooth4(raw_dh_d(:,idx:idx+3));
     if dhd_tau > 0                                   % optional LPF (smooths, lags)
@@ -643,7 +772,7 @@ for idx=1:N_steps
     end
 
     Theta = [- c + S_2(:,:,idx)*dp_2(:,idx) ...
-        - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)), eye(3)];
+        - G_2(:,:,idx)\chi_zeta_aug, eye(3)];
     Theta_norm = norm(Theta,'fro');
 
 % Updating Control Parameter 'kappa' using RK-5 Method
@@ -661,7 +790,7 @@ for idx=1:N_steps
 % Computing Outer Loop Control Output
     u_sw = -K_ctrl.Gamma*sigma(:,idx) - Theta_norm*diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1);
     u_eq = G_2(:,:,idx)*(-c + S_2(:,:,idx)*dp_2(:,idx) ...
-        - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)));
+        - G_2(:,:,idx)\chi_zeta_aug);
 
     V_a_cd = - G_2(:,:,idx)\(u_sw + u_eq);
 

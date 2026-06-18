@@ -7,6 +7,22 @@ description: Systematic parameter tuning + failure diagnosis for the PLASMC visi
 
 A systematic procedure for tuning the PLASMC controller in `PX4_Gazebo/` and for diagnosing why a given landing failed. Read this end-to-end before any tuning sweep. The memory under `~/.claude/projects/-home-shubham-Soft-Precise-Landing/memory/` has the historical findings — this skill is the **playbook** that ties them together.
 
+> **⭐ 2026-06-18 — STRUCTURAL RESOLUTION (combined/blended sliding surface).** The lateral-authority
+> wall this skill spends most of its levers chasing (s_e_n won't converge / `G_s⁻¹→0` SEN-funnel demand-
+> starvation / a_u outward) is **structurally fixed** by the manuscript's combined surface, now VALIDATED
+> in the MATLAB single-run (gated `COMBINED_BARRIER`): the position barrier `ζ_r` enters the sliding
+> surface DIRECTLY (`σ_xy = ζ_h + χ_r·ζ_r`) instead of back-mapping to a desired feature rate — so there
+> is **no `G_s⁻¹` starvation**. Winning config = corrected `c̃_h` + **`s̈`-drop** + `p_2inf_xy=0.5` +
+> `χ_r=0.85` + `p_r_inf=1.0` (proof Standing-Condition-1) → **25/25 SP + 75/75 noisy, no breach**, beats
+> the back-mapped form (24/25) and is comparably-to-MORE noise-robust (16/24 vs 13/24 on the hard cells).
+> Two design facts that matter for the PX4 port: (1) `h_d = measured-finite-diff ṡ + transport + h_rd·s`
+> (the MEASURED centroid rate, NOT a PID `ṡ_d`); (2) the `s̈` term in `c_h=c̃_h−ḣ_d` is `1/z`-inflated and
+> over-aggressive at terminal — **DROP it** (κ absorbs it as `d_h`); keeping it (cap / tau-LPF / SG-clean /
+> per-axis-tuned) was exhaustively shown irreconcilable (Circ-IC4 needs `χ_r_x≥1.1` for precision but that
+> destabilizes other cells). PX4 port = gated `PLASMC_COMBINED_SURFACE` (purely-lateral: `ζ_r=_zeta_s[-1]`,
+> `ζ̇_r=smooth4(_dzeta_s_deque)`, drop `ds_d` from `h_d`; descent PI unchanged) — **NOT yet SITL-validated**.
+> See [[project_combined_barrier_matlab]], [[feedback_combined_surface_divergence]], [[feedback_hd_uses_measured_sdot]].
+
 ## When to invoke
 
 - "Tune the controller", "tune gain X", "sweep parameter Y"
