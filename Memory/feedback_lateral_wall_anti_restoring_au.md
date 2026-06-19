@@ -67,8 +67,18 @@ DEMONSTRABLY kills the 1/Z blow-up — commit reps `sen_max` 0.7–1.0 vs baseli
 0.000, cleanly frozen) → confirms the root diagnosis. BUT `FREEZE-AT-HELD` is unstable: the extent>100
 trigger fires LATE (s_e_n already ~1.0 at the funnel edge), and freezing a LARGE value makes the lateral
 loop apply a CONSTANT OPEN-LOOP push (no feedback) → unbounded drift (rep2 froze s_e_n=1.01 → 110 m,
-climbed to 8.7 m). When it froze a small value (0.50) it landed clean (2.18 m). FIX = **FREEZE-AT-ZERO**
-(commit ⇒ zero the lateral feature error, descend level, land at the residual ~0.85 m offset) — removes
-the open-loop-push instability; trigger timing becomes non-critical. (Avoid clamp-at-p_s: r→1 collapses
-the barrier G_s⁻¹ = the demand-starvation, [[feedback_plasmc_two_task_framework]].) Re-test pending.
-`PLASMC_COMMIT_EXTENT` knob in controller.py `_updateImgFeatureParam`.
+climbed to 8.7 m). When it froze a small value (0.50) it landed clean (2.18 m). FIX tried = **FREEZE-AT-ZERO**
+(commit ⇒ zero the lateral feature error, descend level). `PLASMC_COMMIT_EXTENT` knob in controller.py
+`_updateImgFeatureParam`; both freeze modes default-off (neither baked).
+
+**⚠️ META-FINDING (2026-06-19): the lateral-wall outcome is STOCHASTICITY-DOMINATED → n=5 A/Bs are
+UNDERPOWERED.** freeze-at-zero IC1 A/B: within-run baseline median max_lat 1.98 (1/5 fly) vs commit 3.15
+(3/5 fly) — looks worse. BUT the BASELINE median across 4 identical-config runs swung **7.21 / 7.21 / 8.21
+/ 1.98 m** — a 4× run-to-run swing with NO config change. This run's baseline got anomalously lucky; the
+commit arm hit typical values. The gate still suppresses the blow-up (sen_max 1.0 vs 1.5) but neither
+freeze variant CLEANLY lands (residual offset + velocity at commit → coast-out 2–3 m). **Conclusion: the
+wall severity is dominated by a STOCHASTIC source (startup transient / initial drift), not the control
+config — which is why the project's long history of lateral "fixes" is inconclusive.** To validate ANY
+lateral fix needs n≥15–20 per arm (avg out the variance) OR identifying+controlling the stochastic source
+(characterize the t=0 drift/transient). The terminal-commit mechanism is real (blow-up suppressed) but
+unconfirmed as a net win. Don't bake; don't run more n=5 lateral A/Bs (noise). Root diagnosis stands.
