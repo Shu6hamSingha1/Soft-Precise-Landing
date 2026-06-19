@@ -106,3 +106,17 @@ fail: held-late (rep 110 m), zero-late (3/5 fly vs lucky baseline), zero-early (
 real but FREEZING THE ERROR is the wrong fix. NEXT (if pursued): bound/attenuate the lateral COMMAND
 (cap |V_ds_d_xy|, or taper K_rp near terminal) while keeping LIVE consistent s_e_n — never lie about the
 error. Or accept the wall is a fundamental scale-free terminal limit. Stop firing freeze variants.
+
+**✅ COMMAND-BOUNDING WORKS — first real lead (2026-06-20).** `PLASMC_COMMIT_DSD_MAX` caps |V_ds_d_xy|
+once committed while keeping s_e_n LIVE (direction preserved, magnitude bounded → no controller
+inconsistency, unlike freeze). IC1 A/B (`PLASMC_COMMIT_EXTENT=50 PLASMC_COMMIT_DSD_MAX=0.6`, n=5):
+td_lat **STD 21.35→3.39 (6× collapse)**, **max fly 55→10 m** (tails tamed), flyaway 2/5 both, median
+1.64→2.69 (baseline got a lucky median again). FIRST intervention that REDUCES variance instead of
+exploding it (all freeze variants exploded it). Per-rep: 4/5 commit@~1.32 m and the cap BINDS perfectly
+(post-commit ds_d max 0.59–0.60 = the cap) → 3 land well (0.49/1.77/2.69 m), 1 borderline (3.16). The
+one bad rep (10.23 m) was a SPURIOUS EARLY commit (extent-spike latched @1.89 m, marker-switching noise).
+Cap motivated by data: terminal ds_d spikes 4–6.6 vs controlled-descent ~0.5; cap 0.6 clips spikes,
+keeps normal correction. NEXT to push to a clean win: (a) robustify the commit trigger vs extent-spikes
+(higher/smoothed threshold or require extent monotone) to kill the spurious-early-commit failure; (b)
+small cap sweep (0.4 / 0.8); (c) larger n (≥15) + IC2-5 gate before baking. Default-off; not baked.
+controller.py `_updateImgFeatureParam` + the DSD cap site. Supersedes the freeze dead-end.
