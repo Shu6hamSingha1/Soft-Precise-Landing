@@ -295,6 +295,17 @@ class Controller(Thread):
         # overflow. Restores the recovery authority the back-mapped barrier collapses + the
         # ratio clamp freezes. Default 0.0 = OFF.
         self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
+        # TERMINAL COMMIT (2026-06-19, feedback_lateral_wall_anti_restoring_au). The lateral wall
+        # ROOT = terminal 1/Z amplification: the drone descends fine to ~0.6 m with a small residual
+        # offset (~0.85 m), then s_e_n=lat/Z blows up near touchdown → funnel breach → violent lateral
+        # over-reaction → marker leaves FoV → TARGET_LOST → open-loop fly-away. FIX: once the marker
+        # fills the FoV (MARKER_EXTENT_PX > threshold, scale-free proxy, latched + 3-frame confirm to
+        # survive the switching-noisy extent), FREEZE s_e_n at its modest pre-amplification value so
+        # the lateral loop stops chasing the 1/Z blow-up and just commits to descend. Default 0 = OFF.
+        self._commit_extent = float(os.environ.get("PLASMC_COMMIT_EXTENT", "0"))
+        self._committed = False
+        self._commit_count = 0
+        self._s_e_n_hold = None
         # LEVER 2 (flow ceiling + smoothing): blend the accurate DETECTED-centroid rate
         # d(s[:2])/dt into the lateral flow h[:2]. The LK flow saturates ~1 rad/s AND
         # carries lstsq garbage spikes; the centroid rate has no LK ceiling and no lstsq
@@ -636,6 +647,18 @@ class Controller(Thread):
 
         # Normalized pixel error (sensor-half normalization)
         s_e_n = self._s_e[-1][:2] / self._p_10
+        # TERMINAL COMMIT: latch once the marker fills the FoV (3-frame confirm), then FREEZE
+        # s_e_n at the modest pre-amplification value — stops the lateral loop chasing the 1/Z
+        # terminal blow-up that triggers the marker-loss fly-away. Default-off (commit_extent=0).
+        if self._commit_extent > 0:
+            if not self._committed:
+                self._commit_count = (self._commit_count + 1
+                                      if self.MARKER_EXTENT_PX > self._commit_extent else 0)
+                if self._commit_count >= 3:
+                    self._committed = True
+                    self._s_e_n_hold = s_e_n.copy()
+            if self._committed:
+                s_e_n = self._s_e_n_hold
         self._s_e_n.append(s_e_n)
 
         if self._combined_barrier:
