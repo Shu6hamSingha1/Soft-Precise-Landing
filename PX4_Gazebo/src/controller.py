@@ -1171,10 +1171,20 @@ class Controller(Thread):
             self._yaw_c_hold = None                                # compass path: release the held snapshot
 
         # Raw inertial accel (net of gravity).
-        # NOTE: a_u lives in the V frame; MATLAB uses I_R_V = rotz(yaw) here,
-        # Python uses the full body DCM R — open parity item D1 in
-        # docs/CONTROLLER_PARITY.md (zero difference when level; grows with tilt).
-        I_a_raw = R @ self._a_u[-1] - np.array([0.0, 0.0, g])
+        # a_u lives in the gravity-LEVELED V frame; MATLAB uses I_R_V = rotz(yaw),
+        # Python historically used the full body DCM R (parity item D1) — which
+        # MIS-ROTATES the leveled command by the current tilt. During the lateral
+        # overshoot the drone tilts 10-35° (IC1 diag 2026-06-19), so the full-DCM
+        # transform mis-directs the commanded brake → not delivered → fly-away
+        # (lateral wall = commanded-but-not-delivered, NOT perception, NOT a sign bug;
+        # feedback_lateral_wall_anti_restoring_au). PLASMC_AU_ROTZ_ONLY=1 uses the
+        # MATLAB-correct rotz(yaw_c) only. Default-off pending IC1 A/B.
+        if os.environ.get("PLASMC_AU_ROTZ_ONLY", "0") == "1":
+            _czA, _szA = np.cos(yaw_c), np.sin(yaw_c)
+            R_au = np.array([[_czA, -_szA, 0.0], [_szA, _czA, 0.0], [0.0, 0.0, 1.0]])
+        else:
+            R_au = R
+        I_a_raw = R_au @ self._a_u[-1] - np.array([0.0, 0.0, g])
         self._I_a_raw.append(I_a_raw.copy())
 
         # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
