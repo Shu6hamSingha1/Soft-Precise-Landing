@@ -1,5 +1,6 @@
 % Shared helpers live in ../Common (collapsed from per-folder duplicates)
 addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'VDF_ASMC'));  % +blocks + vdf_params (ctrl-1 = verified VDF-ASMC)
 
 %% =========================================================================
 % visualControl_comparison.m
@@ -31,9 +32,9 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'Common'));
 % clc;
 % close all;
 if exist('MC_SEED','var') == 1
-    clearvars -except MC_SEED SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results;
+    clearvars -except MC_SEED SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE;
 else
-    clearvars -except SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results;
+    clearvars -except SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE;
 end
 if ~exist('SPEED_MULT','var') || isempty(SPEED_MULT)
     SPEED_MULT = 1.0;
@@ -63,11 +64,19 @@ fprintf('%s\n\n', ctrl_names{CTRL_SEL});
 % =========================================================================
 Constants;
 InitVar;
+% Noiseless override hook (default off; for canonical parity verification). Baselines
+% unaffected when unset. Mirrors the canonical's NOISE_OVERRIDE.
+if exist('NOISE_OVERRIDE','var') && ~isempty(NOISE_OVERRIDE), NOISE = NOISE_OVERRIDE; end
 % Allow caller-side IC override (e.g., multi-speed sweep at IC_1=[0,0,-5]).
 % When IC_OVERRIDE is set, replace the position component of x_c/X_DS.
 if exist('IC_OVERRIDE','var') && ~isempty(IC_OVERRIDE)
     x_c(1:3)    = IC_OVERRIDE(:);
     X_DS(1:3,1) = IC_OVERRIDE(:);
+    % Refresh the per-step state vars so the FIRST control step uses the overridden
+    % IC. The loop only refreshes I_p_c=x_c(1:3) at its END, so without this, step 1
+    % uses InitVar's default I_p_c=[2,2,-5] -> a step-1 wrong-position spike (only
+    % IC2=[2,2,-5] matched). Pre-existing latent bug exposed by per-IC sweeps.
+    I_p_c = x_c(1:3); q_c = x_c(4:7); I_v_c = x_c(8:10); B_w_c = x_c(11:13);
 end
 init_robustness;    % samples wind / mass / inertia / CoG / pixel-noise model
 InitGains_Comparison;
@@ -181,6 +190,26 @@ if CTRL_SEL == 1
     kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
     e_a         = zeros(1, N_steps);
     ie_a        = zeros(1, N_steps);
+
+    % --- VDF-ASMC verified-blocks controller state (single source of truth) ---
+    % ctrl-1 now uses MATLAB/VDF_ASMC/+blocks/* (bit-exact to the canonical), gains
+    % from vdf_params(); cs carries the per-step controller state, identical to
+    % run_simulation/simulate_landing so the comparison cannot drift from them.
+    P = vdf_params();
+    cs = struct();
+    cs.kappa = P.kappa0;  cs.kappa_a = P.kappa_a0;  cs.psi_d = yaw_init;
+    cs.izeta3 = 0; cs.zeta3_prev = 0; cs.ie_a = 0; cs.e_a_prev = 0;
+    cs.ie_R = zeros(3,1); cs.thetahat = zeros(2,1);
+    cs.V_2nP_i_prev = zeros(8,1); cs.V_w_i_prev = zeros(3,1);
+    cs.V_s_prev = zeros(2,1); cs.h_d_noS_prev = zeros(3,1);
+    cs.raw_ds = zeros(2,4); cs.raw_dh = zeros(3,4);
+    cs.V_s_raw = zeros(4,N_steps); cs.V_h_raw = zeros(3,N_steps);
+    cs.V_w_raw = zeros(3,N_steps); cs.V_dw_raw = zeros(3,N_steps);
+    cs.I_a_cd_filt = -P.g;
+    cs.cbf_state = struct('delta_prev',[],'ddelta_ref',zeros(2,1),'decode_fail_n',0, ...
+                          'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
+    cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
+    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,4);
 end
 
 %% =========================================================================
@@ -374,6 +403,16 @@ for idx = 1:N_steps
         V_dw = V_dw_a;
     end
 
+    % ctrl-1 (VDF-ASMC) uses the VERIFIED image_features block for V_s/V_h instead
+    % of the shared inline pipeline: the block zeros dPdt at the first refresh and
+    % holds the raw flow between refreshes (the inline version's V_2nP_i_prev=0 gives
+    % a spurious startup flow -> IC1/3/5 fly-away). This makes V_s/V_h bit-identical
+    % to run_simulation/simulate_landing. Baselines 2-5 keep the inline V_s/V_h.
+    if CTRL_SEL == 1
+        cs.k = idx;
+        [V_s, V_h, ~, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
+    end
+
 % *************************************************************************
 % Early landing check (before controller can violate barrier at boundary)
 % *************************************************************************
@@ -398,132 +437,30 @@ for idx = 1:N_steps
         case 1   % PLASMC (Approach 2) — raw-error PID + funnel-margin cone clamp
         %------------------------------------------------------------------
 
-        % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
-        % No virtual-feature visibility funnel: physical-corner visibility is
-        % enforced downstream by the funnel-margin cone clamp on I_a_cd.
-        V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
-        V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
-
-        if idx == 1
-            iV_s_e_n(:,idx) = dt * V_s_e_n(:,idx);
-            raw_dV_s_e_n(:,idx+3) = zeros(2,1);
-        else
-            iV_s_e_n(:,idx) = iV_s_e_n(:,idx-1) + dt*(V_s_e_n(:,idx-1) + V_s_e_n(:,idx))/2;
-            raw_dV_s_e_n(:,idx+3) = (V_s_e_n(:,idx) - V_s_e_n(:,idx-1))/dt;
-        end
-        dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
-
-        V_ds_d_xy = -K_ctrl.rp*V_s_e_n(:,idx) - K_ctrl.ri*iV_s_e_n(:,idx) - K_ctrl.rd*dV_s_e_n;
-        V_ds_d    = [V_ds_d_xy; 0.0];
-
-        V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
-            - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3);
-
-        V_h_e(:,idx) = V_h - V_h_d(:,idx);
-
-        % Optical flow performance function
-        p_2(:,idx)  = expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * ...
-                      (K_ctrl.p_20 - K_ctrl.p_2inf) + K_ctrl.p_2inf;
-        dp_2(:,idx) = -diag(K_ctrl.gamma_2) * ...
-                       expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * ...
-                       (K_ctrl.p_20 - K_ctrl.p_2inf);
-
-        % Transformation S_2, zeta_2
-        S_2_margin = 0.05;   % funnel saturation guard: keeps |zeta_2|<=3.66, G_2 finite
-        for j = 1:3
-            S_2(j,j,idx) = V_h_e(j,idx) / p_2(j,idx);
-            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+S_2_margin), 1-S_2_margin);
-            zeta_2(j,idx) = log((1 + S_2(j,j,idx)) / (1 - S_2(j,j,idx)));
-            G_2(j,j,idx)  = (exp(zeta_2(j,idx)) + 1)^2 / ...
-                             (2 * exp(zeta_2(j,idx)) * p_2(j,idx));
-        end
-
-        % Integral of zeta_2
-        if idx == 1
-            izeta_2(:,idx) = dt * zeta_2(:,idx);
-        else
-            izeta_2(:,idx) = izeta_2(:,idx-1) + ...
-                             dt*(zeta_2(:,idx-1) + zeta_2(:,idx))/2;
-        end
-        izeta_2_max = 5.0;
-        izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
-        sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega * izeta_2(:,idx);
-
-        % Known dynamics c
-        if idx == 1
-            raw_dh_d(:,idx+3) = zeros(3,1);
-        else
-            raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1)) / dt;
-        end
-        V_dh_d = smooth4(raw_dh_d(:,idx:idx+3));
-
-        c_dyn = cross(V_dw, V_s(1:3)) ...
-              + cross(V_w, cross(V_w, V_s(1:3))) ...
-              + 2*cross(V_w, V_h) ...
-              - (dot(V_h + cross(V_w, V_s(1:3)), e3)) * V_h ...
-              - V_dh_d;
-
-        Theta = [-c_dyn + S_2(:,:,idx)*dp_2(:,idx) ...
-                           - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)), eye(3)];
-        Theta_norm = norm(Theta, 'fro');
-
-        % Update kappa
-        const_kappa = [K_ctrl.N; K_ctrl.P];
-        u_kappa     = [sigma(:,idx); Theta_norm];
-        kappa(:,idx+1) = RK5(@(t,X) kappa_Solver(t, X, u_kappa, ...
-                              const_kappa, G_2(:,:,idx)), t0, kappa(:,idx), dt);
-        if any(isnan(kappa(:,idx+1))), break; end
-
-        % Control law
-        u_sw = -K_ctrl.Gamma * sigma(:,idx) ...
-               - Theta_norm * diag(sat(K_ctrl.E \ sigma(:,idx))) ...
-                 * G_2(:,:,idx) * kappa(:,idx+1);
-        u_eq = G_2(:,:,idx) * (-c_dyn + S_2(:,:,idx)*dp_2(:,idx) ...
-               - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)));
-
-        V_a_cd        = -G_2(:,:,idx) \ (u_sw + u_eq);
-        I_a_cd(:,idx) = I_R_V * V_a_cd - g;
-
-        if norm(I_a_cd(:,idx)) > 1e02 || any(isnan(I_a_cd(:,idx)))
-            fprintf('  BREAK: I_a_cd norm=%.2f or NaN at idx=%d (t=%.2f)\n', ...
-                    norm(I_a_cd(:,idx)), idx, tRange(idx));
+        % VDF-ASMC combined-barrier outer loop (verified blocks). ONE smooth4
+        % s_dot_meas feeds BOTH the position funnel (dr_bar_e) and the flow h_d;
+        % the cbf2 target-visibility filter conditions the lean -> th_safe (Fix-B).
+        cs.k = idx;  tt = (idx-1)*dt;
+        s_e_xy = V_s(1:2) - V_s_d(1:2);
+        if idx==1, raw_s=[0;0]; else, raw_s=(s_e_xy - cs.s_e_prev)/dt; end
+        cs.s_e_prev = s_e_xy;
+        cs.raw_ds = [cs.raw_ds(:,2:end), raw_s];
+        s_dot_meas = smooth4(cs.raw_ds);
+        [zeta_r, dzeta_r] = blocks.position_funnel(s_e_xy, s_dot_meas, tt, P);
+        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_meas, tt, P, cs);
+        [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
+        [I_a_cd_filt, th_safe, theta_cone, ~, R33, cs] = ...
+            blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
+        if any(isnan(Iacd))
+            fprintf('  BREAK: I_a_cd NaN at idx=%d (t=%.2f)\n', idx, tRange(idx));
             break;
         end
-
-        % funnel-margin cone clamp (Approach 2)
-        %   theta_current = acos(I_R_C(3,3))
-        %   rho_fov(t)    = shrinking box half-widths centered on image center
-        %   d_min         = min axis-wise margin of any physical corner to box
-        %   theta_cone    = min(theta_current + atan(d_min/f), theta_cap)
-        R33           = max(min(I_R_C(3,3), 1), -1);
-        theta_current = acos(R33);
-
-        rho_fov_curr = (K_ctrl.rho_fov_0 - K_ctrl.rho_fov_inf) * ...
-                       exp(-K_ctrl.l_fov * tRange(idx)) + K_ctrl.rho_fov_inf;
-
-        d_corner_x = rho_fov_curr(1) - abs(C_nP(1,:));
-        d_corner_y = rho_fov_curr(2) - abs(C_nP(2,:));
-        d_min_fov  = max(min([d_corner_x, d_corner_y]), 0);
-
-        theta_cone = min(theta_current + atan(d_min_fov / f), K_ctrl.theta_cap);
-
-        if I_a_cd(3,idx) >= 0
-            I_a_cd(3,idx) = -3.0;
-        end
-        a_xy_limit = abs(I_a_cd(3,idx)) * tan(theta_cone);
-        a_xy_norm  = norm(I_a_cd(1:2,idx));
-        if a_xy_norm > a_xy_limit
-            I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
-        end
-        I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
-
-        rho_fov_log(:,idx)  = rho_fov_curr;
-        d_min_log(idx)      = d_min_fov;
-        theta_cur_log(idx)  = theta_current;
+        I_a_cd(:,idx)       = Iacd;
+        V_h_d(:,idx)        = o.V_h_d;
+        V_h_e(:,idx)        = o.V_h_e;
+        sigma(:,idx)        = o.sigma;
+        theta_cur_log(idx)  = acos(R33);
         theta_cone_log(idx) = theta_cone;
-
-        % LPF I_a_cd before R_d construction (noise absorber)
-        I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
 
         %------------------------------------------------------------------
         case 2   % Lin 2022 — outer loop + geometric SO(3) inner loop
@@ -655,49 +592,11 @@ for idx = 1:N_steps
 % CASE 1 (PLASMC): Yaw ASMC heading generator + geometric SO(3) torque
 % *************************************************************************
     if CTRL_SEL == 1
-        % alpha has period pi -> wrap e_a to [-pi/2, pi/2]
-        e_raw    = V_s(4) - V_s_d(4);
-        e_a(idx) = atan2(sin(2*e_raw), cos(2*e_raw)) / 2;
-        if idx == 1
-            ie_a(idx) = dt * e_a(idx);
-        else
-            ie_a(idx) = ie_a(idx-1) + dt*(e_a(idx-1) + e_a(idx))/2;
-        end
-        sigma_a = e_a(idx) + K_ctrl.Omega_a * ie_a(idx);
-
-        const_kappa_a  = [K_ctrl.n_a; K_ctrl.p_a];
-        kappa_a(idx+1) = RK5(@(t,X) kappa_a_Solver(t, X, sigma_a, const_kappa_a), ...
-                             t0, kappa_a(idx), dt);
-        u_a = K_ctrl.Gamma_a*sigma_a + sat(sigma_a/K_ctrl.E_a)*kappa_a(idx+1) ...
-              + K_ctrl.Omega_a*e_a(idx);
-        if ~isfinite(u_a), break; end
-
-        % Integrate ASMC rate into desired heading (replaces compass)
-        psi_d = psi_d + u_a * dt;
-        psi_d = atan2(sin(psi_d), cos(psi_d));
-
-        % Construct R_d from filtered I_a_cd + psi_d
-        I_F   = m * I_a_cd_filt;
-        f_mag = norm(I_F);
-        T_cd  = f_mag;
-        if f_mag < 1e-6
-            R_d = eye(3);
-        else
-            rd3 = -I_F / f_mag;
-            a_h = [cos(psi_d); sin(psi_d); 0];
-            rd2_raw = cross(rd3, a_h);
-            n2 = norm(rd2_raw);
-            if n2 < 1e-6, rd2_raw = [0;1;0]; n2 = 1; end
-            rd2 = rd2_raw / n2;
-            rd1 = cross(rd2, rd3);
-            R_d = [rd1, rd2, rd3];
-        end
-
-        % Geometric SO(3) torque
-        eR_mat  = 0.5 * (R_d' * I_R_C - I_R_C' * R_d);
-        e_R     = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];
-        e_Omega = B_w_c;
-        B_tau_cd = -K_ctrl.kR*e_R - K_ctrl.kOmega*e_Omega + cross(B_w_c, J*B_w_c);
+        % Virtual-compass yaw ASMC + geometric SO(3) tracker (verified blocks).
+        % R_d uses Fix-B (body-z from the cbf2 safe lean th_safe); thrust uses the
+        % measured tilt cosine R33. Identical to run_simulation/simulate_landing.
+        [psi_d, u_a, cs]     = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
         % Ground effect on thrust
         if GE
@@ -711,7 +610,7 @@ for idx = 1:N_steps
         T_cd          = max(min(T_cd, T_max), T_min);
 
         B_T_cd(idx)         = T_cd;
-        eR_log(:,idx)       = e_R;
+        eR_log(:,idx)       = zeros(3,1);   % e_R not exposed by so3_tracker block
         B_tau_cd_log(:,idx) = B_tau_cd;
         psi_d_log(idx)      = psi_d;
         u_a_log(idx)        = u_a;
@@ -792,7 +691,7 @@ for idx = 1:N_steps
         end
         E_crd_log1 = [phi_log1; theta_log1];
         D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); E_crd_log1; ...
-                       e_R; B_tau_cd; zeros(3,1)];
+                       eR_log(:,idx); B_tau_cd; zeros(3,1)];   % e_R not exposed by so3_tracker -> logged zeros
     else
         % Cases 2-5: inner loop runs inside controller function.
         % E_crd, dE_cd, B_w_cd, B_dw_cd extracted from u_2 for logging.
