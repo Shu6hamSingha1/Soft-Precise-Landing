@@ -333,6 +333,16 @@ class IMG_PROCESSOR(Thread):
         # never extrapolated (the κ-runaway guard, feedback_lateral_kappa_runaway).
         self._klt_persist = os.environ.get("PLASMC_KLT_PERSIST", "0") == "1"
         self._klt_min_corn = int(os.environ.get("PLASMC_KLT_MIN_CORN", "4"))   # min combined corners for flow
+        # Corner-flow lstsq regularization (2026-06-19). rcond = RELATIVE singular-value
+        # cutoff (numpy semantics: σ < rcond·σmax are truncated). Default 1e-3 = unchanged.
+        # Raising it regularizes the rank-deficient LOOM direction (σmin column): on a
+        # CENTERED descent this halved close-range loom RMSE (0.78→0.42 at rcond=3e-2) by
+        # killing the phantom-loom spikes (feedback_terminal_descent_loom_overreport) — but
+        # it ALSO attenuates loom magnitude (ratio 0.90→0.66) and barely moves correlation,
+        # so it's a spike/magnitude tradeoff = SITL-validate before baking. NB the MATLAB
+        # pinv(L_s, tol=0.01) does NOT map here: that tol is ABSOLUTE and below σmin~0.077
+        # (feedback_pinv_tol_loom_scaling); the PX4 analog is this RELATIVE rcond≈3e-2.
+        self._flow_lstsq_rcond = float(os.environ.get("FLOW_LSTSQ_RCOND", "1e-3"))
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -996,7 +1006,7 @@ class IMG_PROCESSOR(Thread):
 
                 # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
                 # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
-                V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
+                V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=self._flow_lstsq_rcond)
                 cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
                 bad = (
                     rank < 6

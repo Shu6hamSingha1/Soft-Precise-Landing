@@ -19,10 +19,17 @@ number.** Checked 2026-06-19 against PX4 offline (loom V_v[2] vs `gt_optical_flo
 - **The regularizing effect (truncate the σmin loom direction) ≈ `lstsq rcond=1e-2` in PX4.**
   n=2 MIXED: rep1 loom corr 0.11→0.27, ratio 1.34→1.13, rmse 1.62→0.99 (better); rep2
   corr 0.52→0.38, rmse 0.64→0.77 (worse). Not a clean win by the sweep methodology.
-- **Wrong regime:** both recordings are off-center fly-aways where the loom column of `L_s`
-  is well-conditioned (x,y large) → regularization barely helps / can hurt. The MATLAB benefit
-  is expected in a **CENTERED descent** (x,y→0 ⇒ loom genuinely rank-deficient). To verify:
-  record a centered descent with `IMG_RECORD_RAW=1` and rerun the loom-vs-GT solve sweep
-  (the one-off script lived in-session; rebuild from `tune_lk_dynamic_range.py` helpers +
-  swappable solve fn). Pairs with [[feedback_terminal_descent_loom_overreport]] (close-range
-  loom over-report) and [[feedback_pyramidal_lk_inert]] (the offline harness).
+- **VERIFIED on a CENTERED descent (2026-06-19)** — `validation_data/loom_descent` (lateral
+  median 0.70 m, alt 4.2→0 m, `record_output_validation.py VALIDATION_PROFILE=landing` +
+  `IMG_RECORD_RAW=1`; raw frames `test_data/Test_Videos/Fri Jun 19 10-12-55 2026_raw`). Here the
+  loom column IS rank-deficient and the EFFECT reproduces **monotonically**: loom-vs-GT RMSE
+  0.88 (rcond 1e-3) → 0.67 (1e-2) → **0.47 (3e-2)**, and CLOSE-RANGE (<1.5 m, where loom drives
+  touchdown) **0.78 → 0.42 (nearly halved)**. BUT it's a **spike/magnitude TRADEOFF, not free
+  accuracy**: correlation barely moves (0.16→0.19) and loom magnitude ATTENUATES (ratio
+  0.90→0.66, ~1.5× under). Mechanism = truncating σmin kills the phantom-loom SPIKES (the
+  [[feedback_terminal_descent_loom_overreport]] balloon-on-phantom-loom failure) while also
+  shrinking genuine loom. The literal MATLAB `tol=0.01` STILL inert here (σmin=0.077). 
+- **PX4 lever = `FLOW_LSTSQ_RCOND` (default 1e-3 = unchanged)**, added to `img_data.py` corner
+  lstsq. Set `FLOW_LSTSQ_RCOND=3e-2` to test the regularized loom. **NOT baked — SITL-validate**
+  (spike-vs-magnitude tradeoff; n=1 recording). Pairs with [[feedback_pyramidal_lk_inert]]
+  (offline harness `tune_lk_dynamic_range.py`).
