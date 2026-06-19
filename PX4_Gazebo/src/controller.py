@@ -303,6 +303,11 @@ class Controller(Thread):
         # survive the switching-noisy extent), FREEZE s_e_n at its modest pre-amplification value so
         # the lateral loop stops chasing the 1/Z blow-up and just commits to descend. Default 0 = OFF.
         self._commit_extent = float(os.environ.get("PLASMC_COMMIT_EXTENT", "0"))
+        # Terminal lateral-command cap applied once committed (command-bounding, NOT freezing
+        # s_e_n — the freeze lies to the controller and destabilizes, 0/3 variants). Bounds
+        # |V_ds_d_xy| so the 1/Z-amplified s_e_n can't whip the drone out of FoV near touchdown,
+        # while the loop still sees the live, consistent error. 0 = OFF.
+        self._commit_dsd_max = float(os.environ.get("PLASMC_COMMIT_DSD_MAX", "0"))
         self._committed = False
         self._commit_count = 0
         self._s_e_n_hold = None
@@ -647,22 +652,17 @@ class Controller(Thread):
 
         # Normalized pixel error (sensor-half normalization)
         s_e_n = self._s_e[-1][:2] / self._p_10
-        # TERMINAL COMMIT: latch once the marker fills the FoV (3-frame confirm), then FREEZE
-        # s_e_n at the modest pre-amplification value — stops the lateral loop chasing the 1/Z
-        # terminal blow-up that triggers the marker-loss fly-away. Default-off (commit_extent=0).
-        if self._commit_extent > 0:
-            if not self._committed:
-                self._commit_count = (self._commit_count + 1
-                                      if self.MARKER_EXTENT_PX > self._commit_extent else 0)
-                if self._commit_count >= 3:
-                    self._committed = True
-                    self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (the offset committed at)
-            if self._committed:
-                # FREEZE-AT-ZERO: zero the lateral feature error so the loop commits to
-                # descend LEVEL (lands at the residual offset) instead of either chasing
-                # the 1/Z blow-up (no commit) or applying a constant open-loop push (freeze
-                # -at-held → rep2 fly-away). Trigger timing becomes non-critical.
-                s_e_n = np.zeros(2)
+        # TERMINAL COMMIT latch: once the marker fills the FoV (MARKER_EXTENT_PX > threshold,
+        # 3-frame confirm), set self._committed. s_e_n STAYS LIVE (freezing it = lying to the
+        # flow SMC / CBF / descent → destabilizes, 0/3 freeze variants; feedback_lateral_wall).
+        # The committed flag instead TERMINAL-CAPS the lateral command V_ds_d_xy below (bounds
+        # the reaction to the 1/Z-amplified s_e_n without inconsistency). Default-off.
+        if self._commit_extent > 0 and not self._committed:
+            self._commit_count = (self._commit_count + 1
+                                  if self.MARKER_EXTENT_PX > self._commit_extent else 0)
+            if self._commit_count >= 3:
+                self._committed = True
+                self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (offset committed at)
         self._s_e_n.append(s_e_n)
 
         if self._combined_barrier:
@@ -766,6 +766,13 @@ class Controller(Thread):
         n_xy = float(np.linalg.norm(V_ds_d_xy))
         if n_xy > self._DSD_LAT_MAX:
             V_ds_d_xy = V_ds_d_xy * (self._DSD_LAT_MAX / n_xy)
+        # TERMINAL COMMAND CAP (command-bounding, keeps s_e_n LIVE/consistent): once committed
+        # (marker fills FoV), bound the lateral feature-rate demand so the 1/Z-amplified s_e_n
+        # can't whip the drone laterally → marker-loss fly-away. Unlike freezing s_e_n, the loop
+        # still SEES the real error (direction preserved, magnitude capped) → no controller
+        # inconsistency. PLASMC_COMMIT_DSD_MAX=0 → OFF (the cap only acts when commit_extent>0).
+        if self._committed and self._commit_dsd_max > 0 and n_xy > self._commit_dsd_max:
+            V_ds_d_xy = V_ds_d_xy * (self._commit_dsd_max / n_xy)
         raw_ds_d = np.concatenate([V_ds_d_xy, [0.0]])
         if self._tau_ds > 0 and len(self._dt) > 0:
             if not self._ds_d_lpf_init:
