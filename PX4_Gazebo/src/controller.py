@@ -656,9 +656,13 @@ class Controller(Thread):
                                       if self.MARKER_EXTENT_PX > self._commit_extent else 0)
                 if self._commit_count >= 3:
                     self._committed = True
-                    self._s_e_n_hold = s_e_n.copy()
+                    self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (the offset committed at)
             if self._committed:
-                s_e_n = self._s_e_n_hold
+                # FREEZE-AT-ZERO: zero the lateral feature error so the loop commits to
+                # descend LEVEL (lands at the residual offset) instead of either chasing
+                # the 1/Z blow-up (no commit) or applying a constant open-loop push (freeze
+                # -at-held → rep2 fly-away). Trigger timing becomes non-critical.
+                s_e_n = np.zeros(2)
         self._s_e_n.append(s_e_n)
 
         if self._combined_barrier:
