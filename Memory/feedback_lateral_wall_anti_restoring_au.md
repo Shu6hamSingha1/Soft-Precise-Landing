@@ -95,3 +95,14 @@ commit (extent>100) fired too LATE (~1.0 m, offset already 0.6–1.8 m). FIX = l
 (~50–70 px) to commit at ~1.5 m before the stochastic blow-up. Tradeoff: too-early = longer uncontrolled
 descent (mild, offset stable to 2 m); too-late = 1/Z already grown. Target ~1.5 m. Re-test = early-commit
 A/B, judge by VARIANCE COLLAPSE (all reps land tight) not just median. Diag: pooled `*_IC1_baseline`.
+
+**⛔ FREEZE-s_e_n IS A DEAD-END (2026-06-19, 0/3 variants).** Early-commit A/B (`PLASMC_COMMIT_EXTENT=50`,
+commits @~1.3 m, freeze-at-zero): CATASTROPHIC — td_lat STD 4.95→**28.75** (variance EXPLODED not
+collapsed), one rep flew **64 m**, another path-peaked 53 m. `sen_max` low (0.2–1.2) CONFIRMS the gate
+fires + freezes s_e_n — yet it flies away. ROOT WHY: **freezing s_e_n=0 LIES to the controller** — only
+the outer lateral error is zeroed while the flow SMC (h_d depends on live s), the CBF, and the descent
+coupling still see the REAL off-center features → the inconsistency destabilizes. All 3 freeze variants
+fail: held-late (rep 110 m), zero-late (3/5 fly vs lucky baseline), zero-early (64 m). The 1/Z root is
+real but FREEZING THE ERROR is the wrong fix. NEXT (if pursued): bound/attenuate the lateral COMMAND
+(cap |V_ds_d_xy|, or taper K_rp near terminal) while keeping LIVE consistent s_e_n — never lie about the
+error. Or accept the wall is a fundamental scale-free terminal limit. Stop firing freeze variants.
