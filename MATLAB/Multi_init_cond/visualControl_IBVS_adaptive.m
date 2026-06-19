@@ -86,11 +86,12 @@ if ~isempty(N_XY_OVERRIDE);      K_ctrl.N(1,1)=N_XY_OVERRIDE(1);         K_ctrl.
 if ~isempty(N_Z_OVERRIDE);       K_ctrl.N(3,3)=N_Z_OVERRIDE(1);          end
 % Velocity-funnel initial width p_20 lateral override (z untouched). NB: p_s_0
 % (SEN/position funnel) is FoV-locked, do NOT override it; p_20 is free.
-global P20_XY_OVERRIDE P20_Z_OVERRIDE P2INF_XY_OVERRIDE GAMMA2_XY_OVERRIDE;
+global P20_XY_OVERRIDE P20_Z_OVERRIDE P2INF_XY_OVERRIDE P2INF_Z_OVERRIDE GAMMA2_XY_OVERRIDE;
 if ~isempty(P20_XY_OVERRIDE);    K_ctrl.p_20(1)=P20_XY_OVERRIDE(1);      K_ctrl.p_20(2)=P20_XY_OVERRIDE(end); end
 if ~isempty(P20_Z_OVERRIDE);     K_ctrl.p_20(3)=P20_Z_OVERRIDE(1);       end  % descent flow funnel (combined-barrier coupling)
 % Flow-funnel TERMINAL tightness (combined-barrier chase-lag / terminal-velocity lever)
 if ~isempty(P2INF_XY_OVERRIDE);  K_ctrl.p_2inf(1)=P2INF_XY_OVERRIDE(1);  K_ctrl.p_2inf(2)=P2INF_XY_OVERRIDE(end); end
+if ~isempty(P2INF_Z_OVERRIDE);   K_ctrl.p_2inf(3)=P2INF_Z_OVERRIDE(1);   end  % descent-axis terminal-velocity lever (per-axis vz margin)
 if ~isempty(GAMMA2_XY_OVERRIDE); K_ctrl.gamma_2(1)=GAMMA2_XY_OVERRIDE(1);K_ctrl.gamma_2(2)=GAMMA2_XY_OVERRIDE(end); end
 
 % Hard clamp on the adaptive gain kappa (anti-runaway backstop; PX4 KAPPA_MAX).
@@ -320,6 +321,13 @@ raw_dw_a  = zeros(3,  N_steps + 3);
 
 % _prev variables
 V_2nP_i_prev = zeros(8, 1);
+% --- SCALE-FREE moment loom estimator (USE_MOMENT_LOOM, default off) --------
+% V_h(3) = vz/z from the apparent-area rate: -1/2 * d(ln M)/dt, M = 2nd-moment
+% corner spread. Only the FRACTIONAL rate is used (M ~ (size/Z)^2 -> dlnM/dt =
+% -2 Zdot/Z) -> independent of marker size, units, depth; fixed factor 1/2, no
+% calibration. Rotation-immune (area-preserving curl/shear). Replaces the
+% ill-conditioned pinv(L_s) loom (sigma_min~2 weak mode). [[project_moment_loom]]
+M_prev = [];  raw_dlnM = zeros(1,4);  Vh3_mom = 0;
 V_w_i_prev   = zeros(3, 1);
 V_w_a_prev   = zeros(3, 1);
 
@@ -510,6 +518,18 @@ for idx=1:N_steps
         V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
         V_s_a = image_feature(V_nP_a/f);
         V_h_a = transpose(I_R_V) * (dx_t(1:3,idx) - I_v_c) / (V_s_tc(3)+zf);
+        % SCALE-FREE moment loom: M = 2nd-moment spread of the corners (any units; only
+        % its FRACTIONAL rate is used -> scale/depth-invariant). V_h(3) = -1/2 d(ln M)/dt.
+        cenM = mean(V_nP_i, 2);
+        M_now = sum(sum((V_nP_i - cenM).^2));
+        if isempty(M_prev) || M_prev <= 0 || M_now <= 0
+            dlnM = 0;
+        else
+            dlnM = (log(M_now) - log(M_prev)) / (dt*ZOH);
+        end
+        M_prev = M_now;
+        raw_dlnM = [raw_dlnM(2:end), dlnM];
+        Vh3_mom = -0.5 * smooth4(raw_dlnM);
     end
 
     I_w_c = I_R_C * B_w_c;
@@ -553,6 +573,14 @@ for idx=1:N_steps
         V_h = V_h_a;
         V_w = V_w_a;
         V_dw = V_dw_a;
+    end
+    % SCALE-FREE moment loom: replace the pinv-derived V_h(3) with the area-rate
+    % divergence (decoupled, rotation-immune, no ill-conditioned inversion, no scale).
+    % MOMENT_LOOM_GAIN default 1.0 (compensation hurts -> keep raw). [[project_moment_loom]]
+    global USE_MOMENT_LOOM MOMENT_LOOM_GAIN;
+    if ~isempty(USE_MOMENT_LOOM) && USE_MOMENT_LOOM(1) ~= 0
+        klg = 1.0; if ~isempty(MOMENT_LOOM_GAIN); klg = MOMENT_LOOM_GAIN(1); end
+        V_h(3) = klg * Vh3_mom;
     end
 
 % *************************************************************************
