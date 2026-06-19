@@ -1,7 +1,20 @@
 function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_override, seed)
+%RUN_SIMULATION  Multi-init manuscript driver — wraps the VERIFIED VDF-ASMC blocks.
+%   result = run_simulation(x0, trajType, K_override, speed_mult, cfg_override, seed)
+%   runs the soft-precise-landing loop using the ONE verified controller
+%   (MATLAB/VDF_ASMC/+blocks/*, reproduces the canonical bit-exact 25/25), the moving
+%   target, the monocular image model, and the realistic robustness model
+%   (UAVDyn_robust + wind + CoG offset + parameter uncertainty when NOISE). It packages
+%   the full result + data struct the manuscript plotters read.
+%
+%   The control LOGIC is NOT here — it lives in the blocks (single source of truth),
+%   so this driver cannot drift from the canonical. Everything here is the plant model,
+%   the image model, logging (X_DS/P_DS/V_X_DS/x_t), fov_fail, and result packaging.
+
     mfile_dir = fileparts(mfilename('fullpath'));
     addpath(fullfile(mfile_dir, '..', 'Common'));
     addpath(fullfile(mfile_dir, 'plotters'));
+    addpath(fullfile(mfile_dir, '..', 'VDF_ASMC'));   % blocks + vdf_params (the controller)
     if nargin < 3, K_override = []; end
     if nargin < 4 || isempty(speed_mult), speed_mult = 1.0; end
     if nargin < 5, cfg_override = []; end
@@ -14,675 +27,200 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
 
     Constants;
     InitVar;
+    init_robustness;          % robustness params (only active when NOISE=1)
 
-    %% ---------------------------------------------------------------------
-    %  Robustness model (depth-dep pixel noise, outliers, wind, param uncert)
-    %  Only active when NOISE=1. Noiseless mode bypasses all perturbations.
-    %  Sourced from ../Common/init_robustness.m (shared across 3 sim files).
-    %  ---------------------------------------------------------------------
-    init_robustness;
-
-    % Optional environment override (NOISE / GE / delay / delay_outer) for
-    % sweep harnesses that need to vary disturbances without editing InitVar.m.
-    %   delay       — steps of TORQUE delay (inside the attitude loop; the
-    %                 manuscript's computational-delay model)
-    %   delay_outer — steps of OUTER-LOOP delay (the attitude/thrust REFERENCE
-    %                 is stale but the inner SO(3) feedback stays current).
-    %                 Models the PX4 lag structure: MAVSDK transport sits
-    %                 between our controller and PX4's internal rate loop.
-    %   delay_outer_lat / delay_outer_yaw — per-channel outer delay. PX4's
-    %                 measured lag is asymmetric (roll/pitch chain 52-61 ms,
-    %                 yaw chain 287 ms); these let the sweep apply the real
-    %                 profile. `lat` delays I_a_cd_filt (roll/pitch/thrust
-    %                 reference); `yaw` delays psi_d (heading reference).
-    %                 delay_outer is the both-channel shorthand.
-    delay_outer     = 0;
-    delay_outer_lat = 0;
-    delay_outer_yaw = 0;
+    % Optional environment override (NOISE / GE / delay) for the sweep harnesses.
     if ~isempty(cfg_override)
         if isfield(cfg_override, 'NOISE'), NOISE = cfg_override.NOISE; end
         if isfield(cfg_override, 'GE'),    GE    = cfg_override.GE;    end
         if isfield(cfg_override, 'delay'), delay = cfg_override.delay; end
-        if isfield(cfg_override, 'delay_outer'), delay_outer = cfg_override.delay_outer; end
-        if isfield(cfg_override, 'delay_outer_lat'), delay_outer_lat = cfg_override.delay_outer_lat; end
-        if isfield(cfg_override, 'delay_outer_yaw'), delay_outer_yaw = cfg_override.delay_outer_yaw; end
-    end
-    % delay_outer expands to both channels unless a per-channel value is given
-    if delay_outer > 0
-        if delay_outer_lat == 0, delay_outer_lat = delay_outer; end
-        if delay_outer_yaw == 0, delay_outer_yaw = delay_outer; end
     end
 
-    % Override initial state — also re-derive component variables
-    % so the first loop iteration sees the correct IC.
-    x_c   = x0;
-    I_p_c = x_c(1:3);
-    q_c   = x_c(4:7);   q_c = q_c / norm(q_c);
-    I_v_c = x_c(8:10);
-    B_w_c = x_c(11:13);
-    X_DS  = x_c;
-
-    %% =====================================================================
-    %  PLASMC GAINS — Geometric SO(3) inner-loop baseline (2026-04-13)
-    % =====================================================================
-    K_ctrl = struct();
-
-    K_ctrl.p_10     = K.p_10;                     % sensor-half, used for r_e normalization (Approach 2)
-
-    K_ctrl.rp = diag([9.0, 9.0]);                 % Combo D: x1.5 from 6.0 (deep-sweep precision winner, -25% maxXY)
-    K_ctrl.ri = diag([0.1, 0.1]);
-    K_ctrl.rd = diag([1.4375, 1.4375]);           % Combo D: x1.25 from 1.15 (D-damping pair for rp x1.5; recovers soft margin)
-
-    K_ctrl.gamma_2  = [0.2, 0.2, 0.2];            % prior 25/25 baseline
-    K_ctrl.p_20     = [25.0; 25.0; 4.0];  % vertical tightened (deep-sweep, -4.8% aggT)
-    K_ctrl.p_2inf   = [2.5;  2.5;  1.5 ];          % reverted from Combo A (z-tightening acted as speed knob under FW=11)
-
-    K_ctrl.Omega   = diag([0.05,  0.05,  0.025]);  % vertical bumped 4x (0.006->0.025) to close IC4 hover-fail after Approach 2
-    K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
-    K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
-    K_ctrl.N       = diag([0.02,  0.02,  0.05 ]);
-    K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-    K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
-
-    % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
-    K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
-    K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
-
-    % Yaw adaptive SMC — generates heading reference psi_d (no compass)
-    % e_a = V_s(4) - V_s_d(4) = alpha - alpha_d (image-based)
-    % psi_d(t) = psi_d(t-1) + u_a*dt (integrated ASMC rate)
-    % R_d uses psi_d as heading vector; geometric controller tracks R_d
-    K_ctrl.Omega_a   = 0.5;
-    K_ctrl.Gamma_a   = 0.5;
-    K_ctrl.n_a       = 1.0;
-    K_ctrl.p_a       = 2;
-    K_ctrl.kappa_a_0 = 2.0;                       % pre-seed for high-wz rotating targets
-    K_ctrl.E_a       = 3.0;                       % wide boundary layer smooths sat*kappa_a
-
-    % funnel-margin cone clamp (Approach 2)
-    K_ctrl.rho_fov_0   = [145; 105];              % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
-    K_ctrl.rho_fov_inf = [40; 40];                % terminal pixel margin (px) — widened to keep cone authority
-    K_ctrl.l_fov       = 0.1;                     % reverted from Combo A (faster cone decay was a speed knob, not precision)
-    K_ctrl.theta_cap   = deg2rad(60);             % soft cone ceiling
-
-    % Apply optional gain overrides (used by sweep harness)
+    % Controller gains live in vdf_params (single source of truth). multi_Init_Var
+    % passes K_override = []; keep h_rd / FILTER_WINDOW overrides for sweep harnesses.
+    P = vdf_params();
     if ~isempty(K_override)
-        % Workspace-level constants (populated by Constants;) come in via
-        % K_override too — strip them out before splattering into K_ctrl.
-        if isfield(K_override, 'h_rd')
-            h_rd = K_override.h_rd;
-            K_override = rmfield(K_override, 'h_rd');
-        end
-        if isfield(K_override, 'FILTER_WINDOW')
-            FILTER_WINDOW = K_override.FILTER_WINDOW;
-            K_override = rmfield(K_override, 'FILTER_WINDOW');
-        end
-        ovr_fields = fieldnames(K_override);
-        for ii = 1:numel(ovr_fields)
-            K_ctrl.(ovr_fields{ii}) = K_override.(ovr_fields{ii});
-        end
+        if isfield(K_override, 'h_rd'),          P.h_rd = K_override.h_rd;          end
+        if isfield(K_override, 'FILTER_WINDOW'), P.fw   = K_override.FILTER_WINDOW;  end
     end
 
-    %% =====================================================================
-    %  PRE-ALLOCATE ARRAYS
-    % =====================================================================
-    N_steps = numel(tRange);
+    % --- state init ---
+    x_c = x0; I_p_c = x_c(1:3); q_c = x_c(4:7)/norm(x_c(4:7));
+    I_v_c = x_c(8:10); B_w_c = x_c(11:13);
+    yaw0 = atan2(2*(q_c(1)*q_c(4)+q_c(2)*q_c(3)), 1-2*(q_c(3)^2+q_c(4)^2));
+    N_steps = numel(tRange); e3 = [0;0;1];
 
-    U_DS      = zeros(4,  N_steps);
-    X_DS      = zeros(13, N_steps + 1);   X_DS(:,1) = x_c;
-    V_X_DS    = zeros(24, N_steps);
-    D_DS      = zeros(15, N_steps);       % [V_h_d(3); I_a_cd(3); e_R(3); tau(3); T(1); psi_d(1); u_a(1)]
-    P_DS      = zeros(2,  12, N_steps);
+    % --- controller state cs (the blocks read/write this; identical to simulate_landing) ---
+    cs = struct();
+    cs.kappa = P.kappa0;  cs.kappa_a = P.kappa_a0;  cs.psi_d = yaw0;
+    cs.izeta3 = 0; cs.zeta3_prev = 0; cs.ie_a = 0; cs.e_a_prev = 0;
+    cs.ie_R = zeros(3,1); cs.thetahat = zeros(2,1);
+    cs.V_2nP_i_prev = zeros(8,1); cs.V_w_i_prev = zeros(3,1);
+    cs.V_s_prev = zeros(2,1); cs.h_d_noS_prev = zeros(3,1);
+    cs.raw_ds = zeros(2,4); cs.raw_dh = zeros(3,4);
+    cs.V_s_raw = zeros(4,N_steps); cs.V_h_raw = zeros(3,N_steps);
+    cs.V_w_raw = zeros(3,N_steps); cs.V_dw_raw = zeros(3,N_steps);
+    cs.I_a_cd_filt = -P.g;
+    cs.cbf_state = struct('delta_prev',[],'ddelta_ref',zeros(2,1),'decode_fail_n',0, ...
+                          'phase2_alpha',0.0,'cr_prev',[],'d',zeros(2,1),'Lw2_prev',[]);
+    cs.V_s_i = zeros(4,1); cs.V_h_i = zeros(3,1); cs.V_w_i = zeros(3,1);
+    cs.V_dw_i = zeros(3,1); cs.V_nP_i = zeros(2,4);
 
-    x_t       = zeros(7,  N_steps);
-    dx_t      = zeros(6,  N_steps);
-
-    V_h_d     = zeros(3,  N_steps);
-    V_h_e     = zeros(3,  N_steps);
-    I_a_cd    = zeros(3,  N_steps);
-
-    % Inner-loop logging (geometric SO(3))
-    eR_log       = zeros(3, N_steps);
+    % --- logging arrays the manuscript plotters / analyzers read ---
+    U_DS   = zeros(4,  N_steps);
+    X_DS   = zeros(13, N_steps + 1);  X_DS(:,1) = x_c;
+    V_X_DS = zeros(24, N_steps);
+    D_DS   = zeros(15, N_steps);       % [V_h_d(3); I_a_cd(3); e_R(3); tau(3); T; psi_d; u_a]
+    P_DS   = zeros(2, 12, N_steps);
+    x_t    = zeros(7,  N_steps);
+    dx_t   = zeros(6,  N_steps);
+    V_h_d  = zeros(3,  N_steps);
+    V_h_e  = zeros(3,  N_steps);
+    I_a_cd = zeros(3,  N_steps);
+    sigma  = zeros(3,  N_steps);
+    eR_log       = zeros(3, N_steps);   % e_R not exposed by so3_tracker block -> zeros
     B_tau_cd_log = zeros(3, N_steps);
     B_T_cd       = zeros(1, N_steps);
     psi_d_log    = zeros(1, N_steps);
-    Ia_outer_buf = zeros(3, N_steps);   % outer-loop delay buffers (delay_outer)
-    psi_outer_buf= zeros(1, N_steps);
     u_a_log      = zeros(1, N_steps);
-
-    % Delay buffer for u_2 = [tau; T]
     u_2_buf      = zeros(4, N_steps);
+    raw_dw_a     = zeros(3, N_steps + 3);
+    V_w_a_prev   = zeros(3,1);
+    V_nP_i = zeros(2,4); V_nP_a = zeros(2,4); C_nP = zeros(2,4);
+    V_s_a = zeros(4,1); V_h_a = zeros(3,1); V_w_a = zeros(3,1); V_dw_a = zeros(3,1);
+    V_s = zeros(4,1); V_h = zeros(3,1); V_w = zeros(3,1);
+    precise = false; soft = false;
 
-    % Raw visual signal storage for Savitzky-Golay filter (ACTUAL mode)
-    V_s_raw   = zeros(4,  N_steps);
-    V_h_raw   = zeros(3,  N_steps);
-    V_w_raw   = zeros(3,  N_steps);
-    V_dw_raw  = zeros(3,  N_steps);
+    landed = false; fov_fail = false; fov_fail_t = NaN; t0 = 0; idx = N_steps;
 
-    % V_w_a buffer for smooth derivative
-    raw_dw_a  = zeros(3,  N_steps + 3);
+    fprintf('Running Simulation (VDF-ASMC blocks)\n\n');
 
-    % _prev variables
-    V_2nP_i_prev = zeros(8, 1);
-    V_w_i_prev   = zeros(3, 1);
-    V_w_a_prev   = zeros(3, 1);
-
-    % Initial desired heading = current UAV yaw
-    yaw_init = atan2(2*(q_c(1)*q_c(4) + q_c(2)*q_c(3)), ...
-                     1 - 2*(q_c(3)^2 + q_c(4)^2));
-    psi_d    = yaw_init;
-
-    % I_a_cd low-pass filter state (matches tau_w=0.08s ~ 2Hz cutoff);
-    % mimics the PID cascade's implicit filtering budget so R_d/e_R
-    % don't chatter on noisy outer-loop output
-    tau_ia      = 0.08;   % LPF tau on I_a_cd (noise absorption dominates phase lag)
-    alpha_ia    = tau_ia / (tau_ia + dt);
-    I_a_cd_filt = -g;   % hover initial condition
-
-    % Initialise image-block variables so they persist across ZOH steps
-    V_nP_i  = zeros(2, 4);
-    V_nP_a  = zeros(2, 4);
-    C_nP    = zeros(2, 4);
-    L_s     = zeros(8, 6);
-    V_s_i   = zeros(4, 1);
-    V_s_a   = zeros(4, 1);
-    V_h_i   = zeros(3, 1);
-    V_h_a   = zeros(3, 1);
-    V_w_i   = zeros(3, 1);
-    V_dw_i  = zeros(3, 1);
-    V_s     = zeros(4, 1);
-    V_h     = zeros(3, 1);
-    V_w     = zeros(3, 1);
-    V_dw    = zeros(3, 1);
-
-    % PLASMC-specific arrays
-    p_2         = zeros(3, N_steps);
-    dp_2        = zeros(3, N_steps);
-    S_2         = zeros(3, 3, N_steps);
-    G_2         = zeros(3, 3, N_steps);
-    zeta_2      = zeros(3, N_steps);
-    izeta_2     = zeros(3, N_steps);
-    sigma       = zeros(3, N_steps);
-    raw_dh_d    = zeros(3, N_steps + 3);
-
-    % Outer-loop PID on normalized raw error (Approach 2)
-    V_s_e        = zeros(2, N_steps);
-    V_s_e_n      = zeros(2, N_steps);
-    iV_s_e_n     = zeros(2, N_steps);
-    raw_dV_s_e_n = zeros(2, N_steps + 3);
-
-    % funnel-margin cone clamp logging (Approach 2)
-    rho_fov_log    = zeros(2, N_steps);
-    d_min_log      = zeros(1, N_steps);
-    theta_cur_log  = zeros(1, N_steps);
-    theta_cone_log = zeros(1, N_steps);
-    kappa       = [K_ctrl.kappa_0, zeros(3, N_steps)];
-    kappa_a     = [K_ctrl.kappa_a_0, zeros(1, N_steps)];
-    e_a         = zeros(1, N_steps);
-    ie_a        = zeros(1, N_steps);
-
-    landed = false;
-
-    % FoV failure flag (Approach 2): any physical-corner pixel leaving the
-    % sensor box [-res(1)/2, res(1)/2] x [-res(2)/2, res(2)/2] strictly
-    % counts as controller failure — the camera has lost the target.
-    fov_fail   = false;
-    fov_fail_t = NaN;
-
-    fprintf('Running Simulation for Adaptive - PID Flight Controller\n\n' );
-
-    %% Main simulation loop
-    for idx=1:N_steps
-    % *********************************************************************
-    % Compute rotation matrices and yaw
-    % *********************************************************************
+    for idx = 1:N_steps
+        cs.k = idx;  t = (idx-1)*dt;
         I_R_C = quat2rotm(q_c');
-        E_cr = quat2eul(q_c', 'XYZ');
-
-        yaw = atan2(2*(q_c(1)*q_c(4) + q_c(2)*q_c(3)), ...
-            1 - 2*(q_c(3)^2 + q_c(4)^2));
-
+        yaw = atan2(2*(q_c(1)*q_c(4)+q_c(2)*q_c(3)), 1-2*(q_c(3)^2+q_c(4)^2));
         I_R_V = rotz(rad2deg(yaw));
 
-    % *********************************************************************
-    % Simulating moving target
-    % *********************************************************************
-        traj_t = traj_Gen((idx-1)*dt, trajType, speed_mult);
-
-        x_t(:,idx) = traj_t(:,1);
+        traj_t = traj_Gen(t, trajType, speed_mult);
+        x_t(:,idx)  = traj_t(:,1);
         dx_t(:,idx) = traj_t(1:end-1,2);
-
         I_R_T = quat2rotm(x_t(4:7,idx)');
 
-    if mod(idx-1,ZOH) == 0
-    % *********************************************************************
-    % Image Feature Points
-    % *********************************************************************
-        I_nP3 = I_R_T * T_nP3 + x_t(1:3,idx);
-        C_nP3 = transpose(I_R_C)*(I_nP3 - I_p_c);
-        C_s_tc = transpose(I_R_C)*(x_t(1:3,idx) - I_p_c);
-        C_nP = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
-
-        if NOISE
-            % Depth-dependent pixel noise: stronger as target fills frame less
-            z_dep = max(abs(C_s_tc(3)), 0.1);
-            sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);  % [px]
-            C_nP = C_nP + (sigma_px / f) * randn(size(C_nP));   % f scales px -> normalized
-            % Outlier injection (detector glitch)
-            if rand < outlier_prob
-                col = randi(size(C_nP,2));
-                C_nP(:,col) = C_nP(:,col) + (outlier_mag / f) * sign(randn(2,1));
+        % --- image model (ZOH-gated): physical corners C_nP (+ aux/analytical) ---
+        if mod(idx-1, P.ZOH) == 0
+            I_nP3  = I_R_T*T_nP3 + x_t(1:3,idx);
+            C_nP3  = I_R_C'*(I_nP3 - I_p_c);
+            C_s_tc = I_R_C'*(x_t(1:3,idx) - I_p_c);
+            C_nP   = (f/(C_s_tc(3)+zf))*C_nP3(1:2,:);
+            if NOISE
+                z_dep = max(abs(C_s_tc(3)), 0.1);
+                sigma_px = px_sigma0 + px_sigma1 / (z_dep + px_depth_offset);
+                C_nP = C_nP + (sigma_px/f)*randn(size(C_nP));
+                if rand < outlier_prob
+                    col = randi(size(C_nP,2));
+                    C_nP(:,col) = C_nP(:,col) + (outlier_mag/f)*sign(randn(2,1));
+                end
             end
+            if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
+                fov_fail = true; fov_fail_t = tRange(idx);
+                fprintf('  BREAK: FoV violation at idx=%d (t=%.2f)\n', idx, tRange(idx));
+                break;
+            end
+            % auxiliary virtual corners (P_DS cols 5-8) + analytical features (V_X_DS)
+            V_nP3  = I_R_V'*(I_nP3 - I_p_c);
+            V_s_tc = I_R_V'*(x_t(1:3,idx) - I_p_c);
+            V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
+            V_s_a  = image_feature(V_nP_a/f);
+            V_h_a  = I_R_V'*(dx_t(1:3,idx) - I_v_c)/(V_s_tc(3)+zf);
         end
-
-        % FoV failure check — strict.  Any physical-corner pixel outside the
-        % sensor box terminates the run with success=false.
-        if any(abs(C_nP(1,:)) > res(1)/2) || any(abs(C_nP(2,:)) > res(2)/2)
-            fov_fail   = true;
-            fov_fail_t = tRange(idx);
-            fprintf('  BREAK: FoV violation at idx=%d (t=%.2f), max|u|=%.1f, max|v|=%.1f\n', ...
-                idx, tRange(idx), max(abs(C_nP(1,:))), max(abs(C_nP(2,:))));
-            break;
-        end
-
-    % *********************************************************************
-    % Scale-Independent Target Image Parameters
-    % *********************************************************************
-        V_R_C = I_R_V' * I_R_C;
-        rays = [C_nP; f*ones(1,size(C_nP, 2))];
-        vr = V_R_C * rays;
-        V_nP_i = f*vr(1:2,:)./vr(3,:);
-        for j=1:size(C_nP,2)
-            L_s(2*j-1:2*j,:) = [f, 0, -V_nP_i(1,j), -V_nP_i(1,j)*V_nP_i(2,j)/f, (f^2+V_nP_i(1,j)^2)/f, -V_nP_i(2,j);
-                0, f, -V_nP_i(2,j), -(f^2+V_nP_i(2,j)^2)/f, V_nP_i(1,j)*V_nP_i(2,j)/f, V_nP_i(1,j)];
-        end
-        V_s_i = image_feature(V_nP_i/f);
-
-        V_2nP_i = reshape(V_nP_i,[],1);
-
-        if idx == 1
-            dPdt = zeros(size(V_2nP_i));
-        else
-            dPdt = (V_2nP_i - V_2nP_i_prev)/dt/ZOH;
-        end
-        V_2nP_i_prev = V_2nP_i;
-
-        V_v_i = pinv(L_s,4)*dPdt;
-        V_h_i = V_v_i(1:3);
-        V_w_i = V_v_i(4:6);
-
-        if idx == 1
-            V_dw_i = zeros(3,1);
-        else
-            V_dw_i = (V_w_i - V_w_i_prev)/dt/ZOH;
-        end
-        V_w_i_prev = V_w_i;
-
-    % *********************************************************************
-    % Analytical Image Parameters
-    % *********************************************************************
-        V_nP3 = transpose(I_R_V)*(I_nP3 - I_p_c);
-        V_s_tc = transpose(I_R_V)*(x_t(1:3,idx) - I_p_c);
-        V_nP_a = (f/(V_s_tc(3)+zf))*V_nP3(1:2,:);
-        V_s_a = image_feature(V_nP_a/f);
-        V_h_a = transpose(I_R_V) * (dx_t(1:3,idx) - I_v_c) / (V_s_tc(3)+zf);
-    end
-
-        I_w_c = I_R_C * B_w_c;
-        V_w_a = transpose(I_R_V) * (dx_t(4:6,idx) - [0;0;I_w_c(3)]);
-
-        if idx == 1
-            raw_dw_a(:,idx+3) = zeros(3,1);
-        else
-            raw_dw_a(:,idx+3) = (V_w_a - V_w_a_prev)/dt;
-        end
+        I_w_c = I_R_C*B_w_c;
+        V_w_a = I_R_V'*(dx_t(4:6,idx) - [0;0;I_w_c(3)]);
+        if idx == 1, raw_dw_a(:,idx+3) = zeros(3,1);
+        else,        raw_dw_a(:,idx+3) = (V_w_a - V_w_a_prev)/dt; end
         V_dw_a = smooth4(raw_dw_a(:,end-3:end));
         V_w_a_prev = V_w_a;
 
-    % *********************************************************************
-    % Actual vs Analytical (Savitzky-Golay filter)
-    % *********************************************************************
-        if ACTUAL
-            V_s_raw(:,idx) = V_s_i;
-            V_h_raw(:,idx) = V_h_i;
-            V_w_raw(:,idx) = V_w_i;
-            V_dw_raw(:,idx) = V_dw_i;
+        % --- VERIFIED controller: image features (single source = the blocks) ---
+        [V_s, V_h, V_w, V_nP_i, cs] = blocks.image_features(C_nP, I_R_V, I_R_C, P, cs);
 
-            if idx < FILTER_WINDOW
-                V_s  = mean(V_s_raw(:,  1:idx), 2);
-                V_h  = mean(V_h_raw(:,  1:idx), 2);
-                V_w  = mean(V_w_raw(:,  1:idx), 2);
-                V_dw = mean(V_dw_raw(:, 1:idx), 2);
-            else
-                V_s_vec = sgolayfilt(V_s_raw(:,idx-FILTER_WINDOW+1:idx),2,FILTER_WINDOW,[],2);
-                V_s = V_s_vec(:, end);
-                V_h_vec = sgolayfilt(V_h_raw(:,idx-FILTER_WINDOW+1:idx),2,FILTER_WINDOW,[],2);
-                V_h = V_h_vec(:, end);
-                V_w_vec = sgolayfilt(V_w_raw(:,idx-FILTER_WINDOW+1:idx),2,FILTER_WINDOW,[],2);
-                V_w = V_w_vec(:, end);
-                V_dw_vec = sgolayfilt(V_dw_raw(:,idx-FILTER_WINDOW+1:idx),2,FILTER_WINDOW,[],2);
-                V_dw = V_dw_vec(:, end);
-            end
-
-        else
-            V_s = V_s_a;
-            V_h = V_h_a;
-            V_w = V_w_a;
-            V_dw = V_dw_a;
-        end
-
-    % *********************************************************************
-    % Early landing check
-    % *********************************************************************
+        % --- early landing check ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));
-        xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
-        rel_vel  = norm(I_v_c - dx_t(1:3,idx));
+        xy_err    = norm(I_p_c(1:2) - x_t(1:2,idx));
+        rel_vel   = norm(I_v_c - dx_t(1:3,idx));
         if alt_above <= zf
-            precise = xy_err <= 0.08;
-            soft    = rel_vel <= 0.2;
-            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
+            precise = xy_err <= 0.08;  soft = rel_vel <= 0.2;
+            fprintf('Landed at t=%.2f s (alt=%.3f, xy=%.3f, v=%.3f, p=%d, s=%d)\n', ...
                     tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
-            landed = true;
-            break;
+            landed = true; break;
         end
 
-    % *********************************************************************
-    % Desired Optical Flow (Approach 2 — raw-error PID on normalized r_e)
-    % No virtual-feature visibility funnel: physical-corner visibility is
-    % enforced downstream by the funnel-margin cone clamp on I_a_cd.
-    % *********************************************************************
-        V_s_e(:,idx)   = V_s(1:2) - V_s_d(1:2);
-        V_s_e_n(:,idx) = V_s_e(:,idx) ./ K_ctrl.p_10;     % normalize by sensor half
+        % --- outer loop: ONE smooth4 s_dot_meas -> dual funnel + ASMC ---
+        s_e_xy = V_s(1:2) - V_s_d(1:2);
+        if idx==1, raw=[0;0]; else, raw=(s_e_xy - cs.s_e_prev)/dt; end
+        cs.s_e_prev = s_e_xy;
+        cs.raw_ds = [cs.raw_ds(:,2:end), raw];
+        s_dot_meas = smooth4(cs.raw_ds);
+        [zeta_r, dzeta_r] = blocks.position_funnel(s_e_xy, s_dot_meas, t, P);
+        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_meas, t, P, cs);
+        [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
 
-        if idx == 1
-            iV_s_e_n(:,idx) = dt * V_s_e_n(:,idx);
-            raw_dV_s_e_n(:,idx+3) = zeros(2,1);
-        else
-            iV_s_e_n(:,idx) = iV_s_e_n(:,idx-1) + dt*(V_s_e_n(:,idx-1) + V_s_e_n(:,idx))/2;
-            raw_dV_s_e_n(:,idx+3) = (V_s_e_n(:,idx) - V_s_e_n(:,idx-1))/dt;
-        end
-        dV_s_e_n = smooth4(raw_dV_s_e_n(:,idx:idx+3));
+        % --- visibility CBF + inner loop ---
+        [I_a_filt, th_safe, ~, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
+        [psi_d, u_a, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
+        [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
-        V_ds_d_xy = -K_ctrl.rp*V_s_e_n(:,idx) - K_ctrl.ri*iV_s_e_n(:,idx) - K_ctrl.rd*dV_s_e_n;
-        V_ds_d    = [V_ds_d_xy; 0.0];
-
-        V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd ...
-            - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3);
-
-        V_h_e(:,idx) = V_h - V_h_d(:,idx);
-
-    % *********************************************************************
-    % Outer Loop Control Inputs
-    % *********************************************************************
-        p_2(:,idx) = expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * (K_ctrl.p_20 - K_ctrl.p_2inf) + K_ctrl.p_2inf;
-        dp_2(:,idx) = -diag(K_ctrl.gamma_2) * expm(-diag(K_ctrl.gamma_2)*tRange(idx)) * (K_ctrl.p_20 - K_ctrl.p_2inf);
-
-        S_2_margin = 0.05;   % funnel saturation guard: keeps |zeta_2|<=3.66, G_2 finite
-        for j=1:3
-            S_2(j,j,idx) = V_h_e(j,idx) / p_2(j,idx);
-            S_2(j,j,idx) = min(max(S_2(j,j,idx), -1+S_2_margin), 1-S_2_margin);
-            zeta_2(j,idx) = log((1+S_2(j,j,idx))/(1-S_2(j,j,idx)));
-            G_2(j, j,idx) = (exp(zeta_2(j,idx)) + 1)^2/(2*exp(zeta_2(j,idx))*p_2(j,idx));
-        end
-
-        if idx == 1
-            izeta_2(:,idx) = dt*zeta_2(:,idx);
-        else
-            izeta_2(:,idx) = izeta_2(:,idx-1) + dt*(zeta_2(:,idx-1) + zeta_2(:,idx))/2;
-        end
-        % Anti-windup: clamp izeta_2
-        izeta_2_max = 5.0;
-        izeta_2(:,idx) = max(min(izeta_2(:,idx), izeta_2_max), -izeta_2_max);
-
-        sigma(:,idx) = zeta_2(:,idx) + K_ctrl.Omega*izeta_2(:,idx);
-
-    % Known System Dynamics (c)
-        if idx == 1
-            raw_dh_d(:,idx+3) = zeros(3,1);
-        else
-            raw_dh_d(:,idx+3) = (V_h_d(:,idx) - V_h_d(:,idx-1))/dt;
-        end
-        V_dh_d = smooth4(raw_dh_d(:,idx:idx+3));
-
-        c = cross(V_dw, V_s(1:3)) + cross(V_w, cross(V_w, V_s(1:3))) ...
-            + 2 * cross(V_w, V_h) - (dot(V_h + cross(V_w, V_s(1:3)), e3))*V_h - V_dh_d;
-
-        Theta = [- c + S_2(:,:,idx)*dp_2(:,idx) ...
-            - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)), eye(3)];
-        Theta_norm = norm(Theta,'fro');
-
-    % Updating kappa
-        const_kappa = [K_ctrl.N; K_ctrl.P];
-        u_kappa = [sigma(:,idx); Theta_norm];
-        kappa(:,idx+1) = RK5(@(t, X) kappa_Solver(t, X, u_kappa, const_kappa, G_2(:,:,idx)), t0, kappa(:,idx), dt);
-
-        if any(isnan(kappa(:,idx+1)))
-            fprintf('  BREAK: kappa NaN at idx=%d (t=%.2f)\n', idx, tRange(idx));
-            break
-        end
-
-    % Outer Loop Control Output
-        u_sw = -K_ctrl.Gamma*sigma(:,idx) - Theta_norm*diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1);
-        u_eq = G_2(:,:,idx)*(-c + S_2(:,:,idx)*dp_2(:,idx) ...
-            - G_2(:,:,idx)\(K_ctrl.Omega*zeta_2(:,idx)));
-
-        V_a_cd = - G_2(:,:,idx)\(u_sw + u_eq);
-
-        I_a_cd(:,idx) = I_R_V * V_a_cd - g;
-
-        if norm(I_a_cd(:,idx)) > 1e02 || any(isnan(I_a_cd(:,idx)))
-           fprintf('  BREAK: I_a_cd norm=%.2f or NaN at idx=%d (t=%.2f)\n', norm(I_a_cd(:,idx)), idx, tRange(idx));
-           break;
-        end
-
-    % *********************************************************************
-    % funnel-margin cone clamp (Approach 2)
-    %   theta_current = acos(I_R_C(3,3))
-    %   rho_fov(t)    = shrinking box half-widths centered on image center
-    %   d_min         = min axis-wise margin of any physical corner to box
-    %   theta_cone    = min(theta_current + atan(d_min/f), theta_cap)
-    % *********************************************************************
-        R33           = max(min(I_R_C(3,3), 1), -1);
-        theta_current = acos(R33);
-
-        rho_fov_curr = (K_ctrl.rho_fov_0 - K_ctrl.rho_fov_inf) * ...
-                       exp(-K_ctrl.l_fov * tRange(idx)) + K_ctrl.rho_fov_inf;
-
-        d_corner_x = rho_fov_curr(1) - abs(C_nP(1,:));
-        d_corner_y = rho_fov_curr(2) - abs(C_nP(2,:));
-        d_min_fov  = max(min([d_corner_x, d_corner_y]), 0);
-
-        theta_cone = min(theta_current + atan(d_min_fov / f), K_ctrl.theta_cap);
-
-        if I_a_cd(3,idx) >= 0
-            I_a_cd(3,idx) = -3.0;
-        end
-        a_xy_limit = abs(I_a_cd(3,idx)) * tan(theta_cone);
-        a_xy_norm  = norm(I_a_cd(1:2,idx));
-        if a_xy_norm > a_xy_limit
-            I_a_cd(1:2,idx) = a_xy_limit * I_a_cd(1:2,idx) / a_xy_norm;
-        end
-        I_a_cd(3,idx) = max(I_a_cd(3,idx), -50);
-
-        rho_fov_log(:,idx)  = rho_fov_curr;
-        d_min_log(idx)      = d_min_fov;
-        theta_cur_log(idx)  = theta_current;
-        theta_cone_log(idx) = theta_cone;
-
-        % Low-pass filter I_a_cd before feeding R_d construction.
-        % Matches tau_w=0.08s: absorbs pixel-noise spikes propagated
-        % through L_s^-1 at low altitude; raw I_a_cd still logged.
-        I_a_cd_filt = alpha_ia * I_a_cd_filt + (1 - alpha_ia) * I_a_cd(:,idx);
-
-    % *********************************************************************
-    % Yaw adaptive SMC — drives alpha -> alpha_d, outputs rate u_a
-    % *********************************************************************
-        % alpha has period pi -> wrap e_a to [-pi/2, pi/2]
-        e_raw    = V_s(4) - V_s_d(4);
-        e_a(idx) = atan2(sin(2*e_raw), cos(2*e_raw)) / 2;
-        if idx == 1
-            ie_a(idx) = dt * e_a(idx);
-        else
-            ie_a(idx) = ie_a(idx-1) + dt*(e_a(idx-1) + e_a(idx))/2;
-        end
-        sigma_a = e_a(idx) + K_ctrl.Omega_a * ie_a(idx);
-
-        const_kappa_a = [K_ctrl.n_a; K_ctrl.p_a];
-        kappa_a(idx+1) = RK5(@(t,X) kappa_a_Solver(t, X, sigma_a, const_kappa_a), ...
-                             t0, kappa_a(idx), dt);
-        u_a = K_ctrl.Gamma_a*sigma_a + sat(sigma_a/K_ctrl.E_a)*kappa_a(idx+1) ...
-              + K_ctrl.Omega_a*e_a(idx);
-
-        if ~isfinite(u_a)
-            fprintf('  BREAK: u_a non-finite at idx=%d (t=%.2f)\n', idx, tRange(idx));
-            break;
-        end
-
-        % Integrate ASMC rate into desired heading (replaces compass)
-        psi_d = psi_d + u_a * dt;
-        psi_d = atan2(sin(psi_d), cos(psi_d));
-
-    % *********************************************************************
-    % Construct R_d from filtered I_a_cd (roll/pitch) + psi_d (heading)
-    % *********************************************************************
-        % Outer-loop delay (per-channel): the attitude/thrust reference
-        % tracks a STALE outer-loop command while the inner SO(3) feedback
-        % (e_R, e_Omega from the CURRENT state) stays live. Models the PX4
-        % lag structure (transport between outer controller and PX4's rate
-        % loop). Contrast with `delay`, which delays the final torque and
-        % therefore destabilizes the inner stabilization itself.
-        Ia_outer_buf(:, idx) = I_a_cd_filt;
-        psi_outer_buf(idx)   = psi_d;
-        % Lateral/thrust channel (I_a_cd_filt -> R_d roll/pitch + T_cd)
-        if delay_outer_lat > 0 && idx > delay_outer_lat
-            I_a_for_Rd = Ia_outer_buf(:, idx - delay_outer_lat);
-        elseif delay_outer_lat > 0
-            I_a_for_Rd = -g;            % hover reference until buffer fills
-        else
-            I_a_for_Rd = I_a_cd_filt;
-        end
-        % Heading channel (psi_d -> R_d yaw alignment)
-        if delay_outer_yaw > 0 && idx > delay_outer_yaw
-            psi_for_Rd = psi_outer_buf(idx - delay_outer_yaw);
-        elseif delay_outer_yaw > 0
-            psi_for_Rd = yaw_init;
-        else
-            psi_for_Rd = psi_d;
-        end
-
-        I_F   = m * I_a_for_Rd;
-        f_mag = norm(I_F);
-        T_cd  = f_mag;
-
-        if f_mag < 1e-6
-            R_d = eye(3);
-        else
-            rd3 = -I_F / f_mag;
-            a_h = [cos(psi_for_Rd); sin(psi_for_Rd); 0];
-            rd2_raw = cross(rd3, a_h);
-            n2 = norm(rd2_raw);
-            if n2 < 1e-6, rd2_raw = [0;1;0]; n2 = 1; end
-            rd2 = rd2_raw / n2;
-            rd1 = cross(rd2, rd3);
-            R_d = [rd1, rd2, rd3];
-        end
-
-    % *********************************************************************
-    % Geometric SO(3) attitude controller
-    % *********************************************************************
-        eR_mat = 0.5 * (R_d' * I_R_C - I_R_C' * R_d);
-        e_R    = [eR_mat(3,2); eR_mat(1,3); eR_mat(2,1)];   % vee map
-        e_Omega = B_w_c;                                    % Omega_d = 0
-
-        B_tau_cd = -K_ctrl.kR*e_R - K_ctrl.kOmega*e_Omega + cross(B_w_c, J*B_w_c);
-
-    % Ground effect on thrust
-        if GE
-            z_ge = -max(abs(x_c(3)), r);
-            T_cd = 1/(1-(r/(4*z_ge))^2) * T_cd;
-        end
-
-    % Saturate torques and thrust
+        % --- ground effect + saturation + 1-step actuator delay ---
+        if GE, z_ge = -max(abs(x_c(3)), r); T_cd = 1/(1-(r/(4*z_ge))^2) * T_cd; end
         B_tau_cd(1:2) = min(max(B_tau_cd(1:2), -tau_xy_max), tau_xy_max);
         B_tau_cd(3)   = min(max(B_tau_cd(3),   -tau_z_max),  tau_z_max);
         T_cd          = max(min(T_cd, T_max), T_min);
 
-        B_T_cd(idx) = T_cd;
-
-    % *********************************************************************
-    % Computational Delay
-    % *********************************************************************
         u_2_buf(:,idx) = [B_tau_cd; T_cd];
-        if idx > delay
-            u_2 = u_2_buf(:, idx - delay);
-        else
-            u_2 = [zeros(3,1); m*norm(g)];
-        end
-
+        if idx > delay, u_2 = u_2_buf(:, idx - delay);
+        else,           u_2 = [zeros(3,1); m*norm(g)]; end
         if any(isnan(u_2)) || norm(u_2) > 1e4
-            fprintf('  BREAK: u_2 invalid at idx=%d (t=%.2f)\n', idx, tRange(idx));
-            break;
+            fprintf('  BREAK: u_2 invalid at idx=%d (t=%.2f)\n', idx, tRange(idx)); break;
         end
 
-        % Update wind state: mean + colored turbulence + velocity-drag
+        % --- robustness plant (wind / CoG / parameter uncertainty when NOISE) ---
         if NOISE
-            F_turb = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
-            v_rel  = wind_mean - x_c(8:10);
-            F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel;
-        else
-            F_wind_I = zeros(3,1);
-        end
-
-        if NOISE
+            F_turb  = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
+            v_rel_w = wind_mean - x_c(8:10);
+            F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel_w;
             x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
         else
             x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
         end
+        if any(isnan(x_c)), fprintf('  BREAK: x_c NaN at idx=%d\n', idx); break; end
+        I_p_c=x_c(1:3); q_c=x_c(4:7)/norm(x_c(4:7)); I_v_c=x_c(8:10); B_w_c=x_c(11:13);
 
-        if any(isnan(x_c))
-            fprintf('  BREAK: x_c NaN at idx=%d (t=%.2f)\n', idx, tRange(idx));
-            break;
-        end
+        % --- logging (X_DS/P_DS/V_X_DS for the plotters; D_DS e_R slot = 0, unused) ---
+        U_DS(:,idx)        = u_2;
+        X_DS(:,idx+1)      = x_c;
+        V_X_DS(:,idx)      = [cs.V_s_i(1:2); cs.V_s_i(4); cs.V_h_i; cs.V_w_i; cs.V_dw_i; ...
+                              V_s_a(1:2); V_s_a(4); V_h_a; V_w_a; V_dw_a];
+        V_h_d(:,idx)       = o.V_h_d;
+        V_h_e(:,idx)       = o.V_h_e;
+        I_a_cd(:,idx)      = Iacd;
+        sigma(:,idx)       = o.sigma;
+        B_tau_cd_log(:,idx)= B_tau_cd;
+        B_T_cd(idx)        = T_cd;
+        psi_d_log(idx)     = psi_d;
+        u_a_log(idx)       = u_a;
+        D_DS(:,idx)        = [o.V_h_d; Iacd; zeros(3,1); B_tau_cd; T_cd; psi_d; u_a];
+        P_DS(:,:,idx)      = [V_nP_i, V_nP_a, C_nP];
 
-    % *********************************************************************
-    % Update States
-    % *********************************************************************
-        I_p_c = x_c(1:3);
-        q_c = x_c(4:7);
-        I_v_c = x_c(8:10);
-        B_w_c = x_c(11:13);
-
-        q_c = q_c / norm(q_c);
-
-    % *********************************************************************
-    % Logging
-    % *********************************************************************
-        U_DS(:,idx) = u_2;
-        X_DS(:,idx+1) = x_c;
-        V_X_DS(:,idx) = [V_s_i(1:2); V_s_i(4); V_h_i; V_w_i; V_dw_i; V_s_a(1:2); V_s_a(4); V_h_a; V_w_a; V_dw_a];
-        eR_log(:,idx) = e_R;
-        B_tau_cd_log(:,idx) = B_tau_cd;
-        psi_d_log(idx) = psi_d;
-        u_a_log(idx)   = u_a;
-        D_DS(:,idx) = [V_h_d(:,idx); I_a_cd(:,idx); e_R; B_tau_cd; T_cd; psi_d; u_a];
-        P_DS(:,:,idx) = [V_nP_i, V_nP_a, C_nP];
-
-    % *********************************************************************
-    % Termination
-    % *********************************************************************
+        % --- termination ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));
-        xy_err   = norm(I_p_c(1:2) - x_t(1:2,idx));
-        rel_vel  = norm(I_v_c - dx_t(1:3,idx));
+        xy_err    = norm(I_p_c(1:2) - x_t(1:2,idx));
+        rel_vel   = norm(I_v_c - dx_t(1:3,idx));
         if alt_above <= zf
-            precise = xy_err <= 0.08;
-            soft    = rel_vel <= 0.2;
-            fprintf('Landed at t = %.2f s  (alt=%.3fm, xy=%.3fm, v_rel=%.3fm/s, precise=%d, soft=%d)\n', ...
+            precise = xy_err <= 0.08;  soft = rel_vel <= 0.2;
+            fprintf('Landed at t=%.2f s (alt=%.3f, xy=%.3f, v=%.3f, p=%d, s=%d)\n', ...
                     tRange(idx), alt_above, xy_err, rel_vel, precise, soft);
-            landed = true;
-            break;
+            landed = true; break;
         end
-
-         t0 = t0+dt;
+        t0 = t0 + dt;
     end
 
     result.success     = landed && ~fov_fail;
@@ -696,9 +234,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     result.fov_fail    = fov_fail;
     result.fov_fail_t  = fov_fail_t;
 
-    if ~landed
-        idx = idx - 1;
-    end
+    if ~landed, idx = idx - 1; end
 
     scratch = [tempname, '.mat'];
     save(scratch);
