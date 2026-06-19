@@ -39,8 +39,22 @@ Matches MATLAB's clean-loom test (termVz 2.19→0.41). Relates to the existing R
 CAUSAL short-window linear fit (`FLOW_LOOM_WIN`, default 9) over a `(stamp, ln M)` deque; cleared
 on marker-loss so the slope never spans a gap. `FLOW_LOOM_GAIN` (default 1.0) = the FoV-overflow
 cal gain. Causal-estimator offline check vs GT loom (centered descent): WIN=5 corr 0.69, **WIN=9
-corr 0.93 rmse 0.06**, WIN=13 corr 0.97 — vs joint-lstsq 0.16/0.88. ⏳ NOT SITL-validated yet
-(IC1 terminal-touchdown A/B `FLOW_LOOM_DECOUPLE=1` vs off, n≥5 + the gain calibration are next).
+corr 0.93 rmse 0.06**, WIN=13 corr 0.97 — vs joint-lstsq 0.16/0.88. ⏳ NOT SITL-validated yet.
+
+**⚠️ SWITCHING BUG found + FIXED during gain calibration (2026-06-19):** the runtime primary =
+`min(decoded IDs)` FLICKERS as the board's markers (which span ~7× in physical size, layout
+`Images/aruco_board_layout.npy` `[x,y,sz]`) enter/leave decode → M jumps on every switch →
+d(lnM)/dt garbage (the corr-0.93 was on a SINGLE pinned marker; raw min-ID = corr 0.41). FIX:
+**size-normalize `M/sz²=(f/Z)²`** (marker-independent, switch-continuous) using `_board_layout[primary_id][2]`
+(stored `self._primary_id`; fallback sz=1 single-marker). Restores min-ID corr 0.41→0.65, all-markers
+0.70. all-markers-median is +0.05 better but needs all-corner plumbing (unavailable in KLT fallback) →
+shipped the **min-ID size-norm** (minimal). **GAIN CALIBRATION** (`tools/calibrate_loom_gain.py`, 2 CLEAN
+centered descents `validation_data/loom_descent{,_2}`; a 3rd `_1` was a fly-away, excluded):
+`FLOW_LOOM_GAIN=1.15` global best-fit (BAKED default) — but MARGINAL (rmse 0.172→0.170) because the
+error is ALTITUDE-DEPENDENT not constant-scale: per-alt gain 0.75 @2-3m (noise on |loom|~0.09) → **1.61
+@<0.5m** (causal-lag UNDER-read of the ramping terminal loom — OPPOSITE the predicted FoV-overflow
+over-read). A scalar can't fix the trend; the terminal under-read needs WIN tuning (lag↔noise, the same
+bias/variance tension) — settle by SITL. ⏳ IC1 A/B `FLOW_LOOM_DECOUPLE=1` vs off still pending.
 
 ---
 ## Earlier framing (superseded by the above; kept for the trail)

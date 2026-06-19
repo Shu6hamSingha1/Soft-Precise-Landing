@@ -352,7 +352,8 @@ class IMG_PROCESSOR(Thread):
         # Offline-verified vs GT loom on a centered descent: corr 0.16→0.85, rmse 0.88→0.06.
         # DEFAULT-OFF. When ON, overrides ONLY V_v[2] (lateral h_x/h_y + ω stay from the lstsq).
         self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "0") == "1"
-        self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))   # FoV-overflow cal gain
+        self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.15"))  # calibrated scale (2 clean descents)
+        self._primary_id = None   # smallest-ID decoded marker; for size-normalizing the loom scale M
         # FLOW_LOOM_WIN = causal linear-fit window (frames). Offline on a centered descent the
         # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse
         # ~0.06; joint-lstsq was 0.16/0.88). 9 balances accuracy vs lag (~0.15s @ 60fps).
@@ -815,6 +816,7 @@ class IMG_PROCESSOR(Thread):
             ids = np.asarray(results[1]).flatten()
             M = len(ids)
             primary_i = int(np.argmin(ids))
+            self._primary_id = int(ids[primary_i])   # for the decoupled-loom marker-size normalization
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -1039,7 +1041,16 @@ class IMG_PROCESSOR(Thread):
                 if self._loom_decouple:
                     _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
                     _ctr = _vp.mean(axis=0)
-                    _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02
+                    _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # SIZE-NORMALIZE by the primary marker's physical size² so the scale is
+                    # continuous across primary-ID SWITCHES (the board's markers span ~7× in
+                    # size; min-ID flickers as markers enter/leave decode → d(lnM)/dt jumps).
+                    # M/sz² = (f/Z)², marker-independent. Without this the loom is GARBAGE
+                    # (offline corr 0.41 vs 0.65 with norm). Fallback sz=1 (single-marker world).
+                    _sz = 1.0
+                    if self._board_layout is not None and self._primary_id in self._board_layout:
+                        _sz = float(self._board_layout[self._primary_id][2]) or 1.0
+                    _M = _M / (_sz * _sz)
                     _t = float(getattr(self, '_stamp', 0.0))
                     if _M > 1e-12 and np.isfinite(_M):
                         self._mtrace_hist.append((_t, np.log(_M)))
