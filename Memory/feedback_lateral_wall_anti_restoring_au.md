@@ -82,3 +82,16 @@ config — which is why the project's long history of lateral "fixes" is inconcl
 lateral fix needs n≥15–20 per arm (avg out the variance) OR identifying+controlling the stochastic source
 (characterize the t=0 drift/transient). The terminal-commit mechanism is real (blow-up suppressed) but
 unconfirmed as a net win. Don't bake; don't run more n=5 lateral A/Bs (noise). Root diagnosis stands.
+
+**✅ TRANSIENT CHARACTERIZED (2026-06-19) — the stochasticity is PURELY TERMINAL, not t=0.** Pooled 20
+IC1 baseline reps: t=0 state is tiny+consistent (offset 0.13 m, vel 0.04 m/s, s_e_n 0.02) and does NOT
+predict the outcome (t=0-vel→max_lat corr +0.09; 60% fly either way). The startup-transient hypothesis is
+FALSE. Lateral offset vs altitude on descent (n=19): **rock-solid 0.25 m ±0.3 from 5→2 m**, then grows
+0.47 (1.5 m) → 0.61 (1.0 m) → **1.33 ±3.80 (0.5 m) → 2.44 ±10.10 (0.3 m)** — the variance EXPLODES only
+below ~1 m = the 1/Z terminal window. So the lateral control works FINE during descent; the wall is 100%
+terminal. ⇒ **Commit EARLY (~1.5–2 m, where offset is still ~0.25–0.47 m and tight) with freeze-at-zero
+should COLLAPSE the variance** → deterministic precise landing within the small frozen offset. My earlier
+commit (extent>100) fired too LATE (~1.0 m, offset already 0.6–1.8 m). FIX = lower `PLASMC_COMMIT_EXTENT`
+(~50–70 px) to commit at ~1.5 m before the stochastic blow-up. Tradeoff: too-early = longer uncontrolled
+descent (mild, offset stable to 2 m); too-late = 1/Z already grown. Target ~1.5 m. Re-test = early-commit
+A/B, judge by VARIANCE COLLAPSE (all reps land tight) not just median. Diag: pooled `*_IC1_baseline`.
