@@ -54,7 +54,19 @@ centered descents `validation_data/loom_descent{,_2}`; a 3rd `_1` was a fly-away
 error is ALTITUDE-DEPENDENT not constant-scale: per-alt gain 0.75 @2-3m (noise on |loom|~0.09) → **1.61
 @<0.5m** (causal-lag UNDER-read of the ramping terminal loom — OPPOSITE the predicted FoV-overflow
 over-read). A scalar can't fix the trend; the terminal under-read needs WIN tuning (lag↔noise, the same
-bias/variance tension) — settle by SITL. ⏳ IC1 A/B `FLOW_LOOM_DECOUPLE=1` vs off still pending.
+bias/variance tension) — settle by SITL.
+
+**IC1 SITL A/B DONE (2026-06-19, n=5 each, `scripts/run_loom_ic1_ab.sh`): designed effect CONFIRMED
+but CONFOUNDED + a real downside → NOT baked (stays default-off).** baseline vs `FLOW_LOOM_DECOUPLE=1`:
+balloon median **0.59→0.00** (baseline ballooned 4/5 up to 3.05 m, loomdec 1/5) = the decoupled loom
+reduces the phantom-loom over-brake balloon ([[feedback_terminal_descent_loom_overreport]]) as designed.
+BUT terminal vz median **0.74→1.06 m/s** = it UNDER-brakes near ground — exactly the predicted causal-lag
+under-read (gain~1.6 @<0.5m). AND the A/B can't judge net touchdown: BOTH arms fly away laterally
+(fin_lat 9–36 m, vz_peak 10–23 = crash trajectories) — IC1 closed-loop hits the unsolved lateral wall,
+which a vertical loom fix can't touch and which confounds the terminal metrics. NEXT to make it bakeable:
+(a) clean-descent regime (lateral wall fixed first) to isolate it, OR (b) cut the terminal under-read via
+shorter `FLOW_LOOM_WIN` (more lag↓ but noise↑) or an altitude-adaptive gain. Implementation + cal stand;
+just not a closed-loop win yet.
 
 ---
 ## Earlier framing (superseded by the above; kept for the trail)
