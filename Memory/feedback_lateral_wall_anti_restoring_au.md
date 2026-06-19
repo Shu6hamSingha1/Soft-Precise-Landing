@@ -42,12 +42,21 @@ added a 78 m blowup + a no-descent hover. The mis-rotation is real but not the b
 Knob kept default-off (harmless, parity-correct). So the "commanded-but-not-delivered" gap is NOT
 the V→inertial transform.
 
-**OPEN — refined.** IC1 starts CENTERED (min_lat 0.00–0.07) and CANNOT HOLD: it drifts out and
-flies away (centered hover is unstable), distinct from the IC2–5 "converge-then-overshoot." Remaining
-candidates for the delivery/stability gap (D1 excluded): (a) inner-loop/PX4 body-rate tracking lag on
-the brake (compare commanded I_a → commanded body-rate → GT achieved tilt/accel; impulse lag ~38 ms,
-[[feedback_impulse_response]]); (b) authority (brake too weak to arrest the drift in time);
-(c) outer-loop hold has no stable equilibrium at center. NEXT decisive diagnostic = commanded I_a vs
-GT ACTUAL accel (not vel) — if I_a inward but GT accel outward → delivery (inner loop); if both inward
-but small → authority. Don't fire more blind fixes; characterize delivery first. Still NOT perception
-(solid: decode 100% + flow accurate during overshoot). Refines [[feedback_lateral_overshoot_root]].
+**✅ ROOT FOUND (2026-06-19): TERMINAL 1/Z amplification of a residual lateral offset — NOT a fly-away.**
+Brake is commanded AND delivered (cmd I_a inward −0.8 to −1.5; GT ACTUAL accel inward and LARGER, 4–14
+m/s²) → rules out delivery, authority, sign, perception. The drone DESCENDS FINE from 5 m to ~0.6 m
+staying reasonably centered (lat 0.5–1.4 m). The funnel breach happens at **alt 0.3–0.9 m with small lat
+0.5–1.4 m**: `s_e_n = lat/Z` so a modest ~0.85 m residual offset at Z=0.6 m → `s_e_n≈1.4` (breach). The
+1/Z blow-up of a residual offset near touchdown → controller reacts violently to the amplified error →
+hard tilt → marker leaves FoV → TARGET_LOST → THEN the open-loop fly-away (the 7–40 m `fin_lat` numbers
+are POST-marker-loss, not controlled divergence). So the "lateral wall" = (1) a residual lateral offset
+(~0.85 m) never nulled during descent + (2) terminal 1/Z amplification + (3) violent reaction + FoV loss.
+
+**LEVERS (grounded):** (a) null the lateral offset EARLIER / faster lateral bandwidth before terminal
+(limited, [[feedback_convergence_ordering]] lateral×0.35); (b) TERMINAL COMMIT — below an altitude/
+marker-extent proxy, stop reacting to the 1/Z-corrupted s_e_n and just descend (cf. CommitGate,
+`test_data/CommitGate_*`); (c) widen the funnel / FoV margin near touchdown so the amplified s_e_n
+doesn't trigger the violent reaction (cf. cbf2, THETA_FLOOR). The 1/Z amplification is intrinsic to
+image features — the fix is to TOLERATE the residual offset terminally (commit) or null it before Z→0,
+NOT more brake authority. Supersedes the "overshoot/fly-away" framing of
+[[feedback_lateral_overshoot_root]]; still NOT perception. Diag on `test_data/Rotz_IC1_baseline`.
