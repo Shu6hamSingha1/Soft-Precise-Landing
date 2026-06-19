@@ -352,7 +352,11 @@ class IMG_PROCESSOR(Thread):
         # Offline-verified vs GT loom on a centered descent: corr 0.16→0.85, rmse 0.88→0.06.
         # DEFAULT-OFF. When ON, overrides ONLY V_v[2] (lateral h_x/h_y + ω stay from the lstsq).
         self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "0") == "1"
-        self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.15"))  # calibrated scale (2 clean descents)
+        # FLOW_LOOM_GAIN=1.0 (2026-06-19): offline RMSE-fit gave 1.15, but the MATLAB
+        # CLOSED-LOOP suite ([[project_moment_loom]]) shows gain>1.0 HURTS (1.0→95, 1.1→91,
+        # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
+        # filter attenuation; lag-compensating over-drives). Keep 1.0; offline RMSE 1.15 is a red herring.
+        self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))
         self._primary_id = None   # smallest-ID decoded marker; for size-normalizing the loom scale M
         # FLOW_LOOM_WIN = causal linear-fit window (frames). Offline on a centered descent the
         # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse

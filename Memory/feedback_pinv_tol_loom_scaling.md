@@ -33,6 +33,15 @@ not the weak coupled mode). Pixel≈virtual on a level descent; use VIRTUAL (til
 Matches MATLAB's clean-loom test (termVz 2.19→0.41). Relates to the existing Ring Divergence
 ([[feedback_terminal_descent_loom_overreport]]).
 
+**⭐ MATLAB CLOSED-LOOP VALIDATION (2026-06-19, [[project_moment_loom]]):** the moment area-rate loom
+is confirmed on the MATLAB suite — noiseless 25/25 (no regression), **NOISY 92→95/100**, breach
+1.91→1.49; slope 0.90-0.99 (scale-free), corr 0.86-0.98, better than pinv esp. noisy. CRUCIAL for the
+PX4 port: **MOMENT_LOOM_GAIN>1.0 HURTS in closed loop** (1.0→95, 1.1→91, 1.2→88) — the ~0.82 under-read
+is BENIGN (controller gains are tuned around the filter attenuation; lag-comp over-drives). → PX4
+`FLOW_LOOM_GAIN` default REVERTED 1.15→1.0 (the offline-RMSE 1.15 was a red herring). MATLAB keeps the
+pinv LATERAL (hybrid = moment loom + pinv lateral); PX4 matches (FLOW_LOOM_DECOUPLE overrides only V_v[2]).
+Pathological seeds fail under EVERY estimator = perception FRONT-END limit, not estimator choice.
+
 **PX4 IMPLEMENTATION LANDED (2026-06-19, default-off, py_compile clean):** `img_data.py` env
 `FLOW_LOOM_DECOUPLE=1` overrides ONLY `V_v[2]` (lateral h_x/h_y + ω stay from the lstsq) with
 `-½·d(ln M)/dt`, M=μ20+μ02 = trace of the de-rotated (V-frame) primary-corner scatter, via a
