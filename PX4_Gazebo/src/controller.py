@@ -308,6 +308,8 @@ class Controller(Thread):
         # |V_ds_d_xy| so the 1/Z-amplified s_e_n can't whip the drone out of FoV near touchdown,
         # while the loop still sees the live, consistent error. 0 = OFF.
         self._commit_dsd_max = float(os.environ.get("PLASMC_COMMIT_DSD_MAX", "0"))
+        self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
+        self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
         self._commit_count = 0
         self._s_e_n_hold = None
@@ -652,15 +654,16 @@ class Controller(Thread):
 
         # Normalized pixel error (sensor-half normalization)
         s_e_n = self._s_e[-1][:2] / self._p_10
-        # TERMINAL COMMIT latch: once the marker fills the FoV (MARKER_EXTENT_PX > threshold,
-        # 3-frame confirm), set self._committed. s_e_n STAYS LIVE (freezing it = lying to the
-        # flow SMC / CBF / descent → destabilizes, 0/3 freeze variants; feedback_lateral_wall).
-        # The committed flag instead TERMINAL-CAPS the lateral command V_ds_d_xy below (bounds
-        # the reaction to the 1/Z-amplified s_e_n without inconsistency). Default-off.
+        # TERMINAL COMMIT latch: commit once the marker reliably fills the FoV. Trigger =
+        # MEDIAN of MARKER_EXTENT_PX over the last _commit_win frames > threshold (the raw
+        # extent is switching-noisy and SPIKES transiently — a 3-frame confirm let a spike
+        # latch a spurious early commit @1.89 m → 10 m fly; the median filters those). s_e_n
+        # STAYS LIVE (freezing it destabilizes, 0/3 variants); the committed flag instead
+        # TERMINAL-CAPS the lateral command V_ds_d_xy below. Default-off (commit_extent=0).
         if self._commit_extent > 0 and not self._committed:
-            self._commit_count = (self._commit_count + 1
-                                  if self.MARKER_EXTENT_PX > self._commit_extent else 0)
-            if self._commit_count >= 3:
+            self._ext_win.append(float(self.MARKER_EXTENT_PX))
+            if (len(self._ext_win) >= self._commit_win
+                    and float(np.median(self._ext_win)) > self._commit_extent):
                 self._committed = True
                 self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (offset committed at)
         self._s_e_n.append(s_e_n)
