@@ -1,10 +1,40 @@
 ---
 name: feedback_pinv_tol_loom_scaling
-description: "MATLAB pinv(L_s, tol=0.01) loom improvement does NOT transfer literally to PX4: PX4's interaction matrix _fill_A is on V-frame NORMALIZED coords (σmin~0.047 > 0.01) so an absolute tol=0.01 never truncates = INERT (byte-identical to current lstsq rcond=1e-3). The regularizing EFFECT it would have (truncate the rank-deficient loom σ-direction, ≈ lstsq rcond=1e-2) is MIXED n=2 on off-center fly-aways (helps one rep loom corr 0.11→0.27 rmse 1.62→0.99, hurts another 0.52→0.38). Proper test = CENTERED descent (loom rank-deficient at x,y→0), not fly-aways."
+description: "⭐ The loom V_h(3)=vz/z is the σ_min (weak depth-observability) mode of the joint pinv(L_s) flow solve → the SVD tolerance is a truncated-SVD BIAS/VARIANCE dial and NO value wins (truncate=lose loom→sign-flip; keep=amplify noise→limit cycle). MATLAB σ_min(L_s)≈2 (tol=4 kills it, tol=0.01 keeps it); PX4 _fill_A σ_min≈0.077 — spectra scaled ~26-130× apart so the absolute tol doesn't transfer. ESCAPE (PX4-verified): estimate the loom DECOUPLED from the marker's apparent-AREA RATE (loom=-½ d(lnA)/dt on ONE consistent marker) — corr 0.16→0.85, rmse 0.88→0.06 vs joint lstsq. NOT the rcond knob."
 metadata:
   node_type: feedback
   type: feedback
 ---
+
+## ⭐ THE RESOLUTION (2026-06-19): decoupled area-rate divergence, NOT a tolerance
+
+`pinv(L_s)·dP/dt` recovers the scale-free flow `V_h=[vx/z; vy/z; vz/z]` (L_s carries no 1/Z;
+no metric vz is ever extracted — monocular-safe). The descent loop correctly consumes the
+**divergence** `V_h(3)=vz/z`. The problem is purely the ESTIMATOR: the joint 8×6 least-squares
+couples the weak loom row to the lateral/rotational columns, and the loom is the **σ_min mode**,
+so the SVD tolerance becomes a truncated-SVD bias/variance dial:
+- MATLAB Static-IC5-seed4 spectrum: σ_max≈611, σ_min≈2.09 (1.6–4.7), cond≈292; σ_min∈(0.01,4] for
+  93% of steps. `tol=4` zeroes σ_min≈2 → loses loom → V_h(3) under-reports → **terminal sign-flip
+  → blow-up (peak|vz| 2.10, land=0)**. `tol=0.01` keeps it (×1/σ_min≈0.5) → recovers loom →
+  **arrests descent (|vz|→1.19, land=1)** BUT amplifies the noisiest direction → limit cycle →
+  suite 44/100 (mean loom err even slightly WORSE 0.248 vs 0.227). No single tolerance wins.
+- PX4 `_fill_A` is on V-frame NORMALIZED coords: σ_min≈0.077, σ_max≈4.7 — **scaled ~26–130× off
+  MATLAB**, so the absolute `tol=0.01` is below σ_min → INERT (byte-identical to lstsq rcond=1e-3).
+  The PX4 analog of the dial is the RELATIVE `FLOW_LSTSQ_RCOND` (added, default 1e-3); raising it
+  to 3e-2 halves close-range loom RMSE by killing spikes but attenuates magnitude (0.90→0.66) and
+  barely moves corr — same bias/variance tradeoff, confirming no rcond wins.
+
+**ESCAPE = decoupled estimator (PX4-verified offline, centered descent `validation_data/loom_descent`,
+raw `test_data/Test_Videos/Fri Jun 19 10-12-55 2026_raw`):** loom from the marker apparent-AREA RATE,
+`loom = -½ · d(lnA)/dt` (planar target ⇒ A∝1/z²). On ONE CONSISTENT marker (pin ID=0; pooling the
+13-marker board jumps area across sizes — that bug masked it at first) → **corr 0.85, rmse 0.06,
+rmse<1.5m 0.07** vs joint-lstsq 0.16/0.88/0.78. >10× better, escapes the dial (no truncation bias,
+not the weak coupled mode). Pixel≈virtual on a level descent; use VIRTUAL (tilt-removed) in general.
+Matches MATLAB's clean-loom test (termVz 2.19→0.41). NEXT = implement a marker-area-rate divergence
+loom (decoupled V_h(3)), env-gated; relates to the existing Ring Divergence ([[feedback_terminal_descent_loom_overreport]]).
+
+---
+## Earlier framing (superseded by the above; kept for the trail)
 
 **The MATLAB `pinv(L_s, tol)` loom finding is scale- and regime-specific; don't port the
 number.** Checked 2026-06-19 against PX4 offline (loom V_v[2] vs `gt_optical_flow` loom on
