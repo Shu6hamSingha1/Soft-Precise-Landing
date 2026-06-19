@@ -60,3 +60,15 @@ doesn't trigger the violent reaction (cf. cbf2, THETA_FLOOR). The 1/Z amplificat
 image features — the fix is to TOLERATE the residual offset terminally (commit) or null it before Z→0,
 NOT more brake authority. Supersedes the "overshoot/fly-away" framing of
 [[feedback_lateral_overshoot_root]]; still NOT perception. Diag on `test_data/Rotz_IC1_baseline`.
+
+**TERMINAL-COMMIT GATE — MECHANISM VALIDATED, action wrong (2026-06-19, IC1 A/B `PLASMC_COMMIT_EXTENT=100`,
+`test_data/Commit_IC1_*`):** the gate (latch on MARKER_EXTENT_PX>thr + 3-frame confirm, freeze s_e_n)
+DEMONSTRABLY kills the 1/Z blow-up — commit reps `sen_max` 0.7–1.0 vs baseline 2.6–4.4 (post-commit std
+0.000, cleanly frozen) → confirms the root diagnosis. BUT `FREEZE-AT-HELD` is unstable: the extent>100
+trigger fires LATE (s_e_n already ~1.0 at the funnel edge), and freezing a LARGE value makes the lateral
+loop apply a CONSTANT OPEN-LOOP push (no feedback) → unbounded drift (rep2 froze s_e_n=1.01 → 110 m,
+climbed to 8.7 m). When it froze a small value (0.50) it landed clean (2.18 m). FIX = **FREEZE-AT-ZERO**
+(commit ⇒ zero the lateral feature error, descend level, land at the residual ~0.85 m offset) — removes
+the open-loop-push instability; trigger timing becomes non-critical. (Avoid clamp-at-p_s: r→1 collapses
+the barrier G_s⁻¹ = the demand-starvation, [[feedback_plasmc_two_task_framework]].) Re-test pending.
+`PLASMC_COMMIT_EXTENT` knob in controller.py `_updateImgFeatureParam`.
