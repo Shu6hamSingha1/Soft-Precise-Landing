@@ -343,6 +343,20 @@ class IMG_PROCESSOR(Thread):
         # pinv(L_s, tol=0.01) does NOT map here: that tol is ABSOLUTE and below σmin~0.077
         # (feedback_pinv_tol_loom_scaling); the PX4 analog is this RELATIVE rcond≈3e-2.
         self._flow_lstsq_rcond = float(os.environ.get("FLOW_LSTSQ_RCOND", "1e-3"))
+        # DECOUPLED LOOM (2026-06-19, feedback_pinv_tol_loom_scaling). The loom V_v[2]=vz/z is the
+        # σ_min (weak depth-observability) mode of the joint pinv(L_s) flow solve → coupled to the
+        # lateral/rotational columns + at the mercy of the SVD tolerance (bias/variance dial, no
+        # value wins). ESCAPE: estimate it DECOUPLED from the primary marker's apparent-scale rate
+        # M = μ20+μ02 (trace of the V-frame corner scatter, ∝ s² ∝ 1/Z²): loom = -½·d(ln M)/dt.
+        # Scale-free (no Z), well-conditioned (strongest/most-averaged signal, no inversion).
+        # Offline-verified vs GT loom on a centered descent: corr 0.16→0.85, rmse 0.88→0.06.
+        # DEFAULT-OFF. When ON, overrides ONLY V_v[2] (lateral h_x/h_y + ω stay from the lstsq).
+        self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "0") == "1"
+        self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))   # FoV-overflow cal gain
+        # FLOW_LOOM_WIN = causal linear-fit window (frames). Offline on a centered descent the
+        # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse
+        # ~0.06; joint-lstsq was 0.16/0.88). 9 balances accuracy vs lag (~0.15s @ 60fps).
+        self._mtrace_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))  # (t, ln M)
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -1018,6 +1032,24 @@ class IMG_PROCESSOR(Thread):
                     V_v = np.zeros(6)
                 V_v = np.clip(V_v, -10.0, 10.0)
 
+                # DECOUPLED LOOM override (default-off): replace the lstsq loom row V_v[2]
+                # with -½·d(ln M)/dt from the primary marker's V-frame scale M=μ20+μ02
+                # (trace of the de-rotated corner scatter ∝ 1/Z²). A short-window linear-fit
+                # derivative (causal); lateral/rotational rows of V_v are untouched.
+                if self._loom_decouple:
+                    _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
+                    _ctr = _vp.mean(axis=0)
+                    _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02
+                    _t = float(getattr(self, '_stamp', 0.0))
+                    if _M > 1e-12 and np.isfinite(_M):
+                        self._mtrace_hist.append((_t, np.log(_M)))
+                        if len(self._mtrace_hist) >= 3:
+                            _ta = np.array([h[0] for h in self._mtrace_hist])
+                            _la = np.array([h[1] for h in self._mtrace_hist])
+                            if (_ta.max() - _ta.min()) > 1e-4:
+                                _slope = np.polyfit(_ta - _ta[0], _la, 1)[0]   # d(ln M)/dt
+                                V_v[2] = float(np.clip(-0.5 * _slope * self._loom_gain, -10.0, 10.0))
+
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
                 _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
@@ -1106,6 +1138,7 @@ class IMG_PROCESSOR(Thread):
                 self._prev_extra_pts = None
                 self._prev_img = None
                 self._lk_step_count = 0
+                self._mtrace_hist.clear()    # drop scale history so the decoupled-loom slope never spans a gap
 
         # Log the recorded data
         self._time_log.append(self._time.perf_counter())

@@ -30,8 +30,17 @@ raw `test_data/Test_Videos/Fri Jun 19 10-12-55 2026_raw`):** loom from the marke
 13-marker board jumps area across sizes — that bug masked it at first) → **corr 0.85, rmse 0.06,
 rmse<1.5m 0.07** vs joint-lstsq 0.16/0.88/0.78. >10× better, escapes the dial (no truncation bias,
 not the weak coupled mode). Pixel≈virtual on a level descent; use VIRTUAL (tilt-removed) in general.
-Matches MATLAB's clean-loom test (termVz 2.19→0.41). NEXT = implement a marker-area-rate divergence
-loom (decoupled V_h(3)), env-gated; relates to the existing Ring Divergence ([[feedback_terminal_descent_loom_overreport]]).
+Matches MATLAB's clean-loom test (termVz 2.19→0.41). Relates to the existing Ring Divergence
+([[feedback_terminal_descent_loom_overreport]]).
+
+**PX4 IMPLEMENTATION LANDED (2026-06-19, default-off, py_compile clean):** `img_data.py` env
+`FLOW_LOOM_DECOUPLE=1` overrides ONLY `V_v[2]` (lateral h_x/h_y + ω stay from the lstsq) with
+`-½·d(ln M)/dt`, M=μ20+μ02 = trace of the de-rotated (V-frame) primary-corner scatter, via a
+CAUSAL short-window linear fit (`FLOW_LOOM_WIN`, default 9) over a `(stamp, ln M)` deque; cleared
+on marker-loss so the slope never spans a gap. `FLOW_LOOM_GAIN` (default 1.0) = the FoV-overflow
+cal gain. Causal-estimator offline check vs GT loom (centered descent): WIN=5 corr 0.69, **WIN=9
+corr 0.93 rmse 0.06**, WIN=13 corr 0.97 — vs joint-lstsq 0.16/0.88. ⏳ NOT SITL-validated yet
+(IC1 terminal-touchdown A/B `FLOW_LOOM_DECOUPLE=1` vs off, n≥5 + the gain calibration are next).
 
 ---
 ## Earlier framing (superseded by the above; kept for the trail)
