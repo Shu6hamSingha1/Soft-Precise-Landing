@@ -34,8 +34,20 @@ transform uses the **FULL body DCM** `I_a = R@a_u − g` instead of MATLAB's **`
 `a_u` is a gravity-LEVELED V-frame vector; rotating it by the full tilted DCM mis-rotates it by the
 current tilt (~17% cross-axis at 10°). The overshoot is exactly an aggressive lateral maneuver =
 high tilt → the commanded inward brake gets mis-rotated → not delivered → drift grows. Documented
-candidate fix: **use rotz(yaw) only** for `a_u`→inertial. NOT yet tested. This is tilt-triggered,
-matches "command inward but drone goes out," and is a clean localized parity fix (env-gate + IC A/B).
-Other candidates: inner-loop/PX4 rate-tracking lag on the brake; authority. Diagnostic = the
-world-frame `I_a`-vs-GT radial decomposition on `test_data/Loom_IC1_baseline`. Supersedes the
-"perception-gated"/"flow under-report" framings of [[feedback_lateral_overshoot_root]] for IC1.
+candidate fix: **use rotz(yaw) only** for `a_u`→inertial (`PLASMC_AU_ROTZ_ONLY`, controller.py:1177).
+
+**⛔ D1 RULED OUT (2026-06-19 IC1 A/B n=5, `test_data/Rotz_IC1_{baseline,rotz}`):** rotz(yaw) did
+NOT fix the wall — median max_lat 7.21→7.17 m (unchanged), flyaway 4/5→3/5 (n=5 noise), and rotz
+added a 78 m blowup + a no-descent hover. The mis-rotation is real but not the binding mechanism.
+Knob kept default-off (harmless, parity-correct). So the "commanded-but-not-delivered" gap is NOT
+the V→inertial transform.
+
+**OPEN — refined.** IC1 starts CENTERED (min_lat 0.00–0.07) and CANNOT HOLD: it drifts out and
+flies away (centered hover is unstable), distinct from the IC2–5 "converge-then-overshoot." Remaining
+candidates for the delivery/stability gap (D1 excluded): (a) inner-loop/PX4 body-rate tracking lag on
+the brake (compare commanded I_a → commanded body-rate → GT achieved tilt/accel; impulse lag ~38 ms,
+[[feedback_impulse_response]]); (b) authority (brake too weak to arrest the drift in time);
+(c) outer-loop hold has no stable equilibrium at center. NEXT decisive diagnostic = commanded I_a vs
+GT ACTUAL accel (not vel) — if I_a inward but GT accel outward → delivery (inner loop); if both inward
+but small → authority. Don't fire more blind fixes; characterize delivery first. Still NOT perception
+(solid: decode 100% + flow accurate during overshoot). Refines [[feedback_lateral_overshoot_root]].
