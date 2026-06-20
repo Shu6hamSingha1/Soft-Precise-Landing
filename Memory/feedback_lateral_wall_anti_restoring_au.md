@@ -133,3 +133,15 @@ fly-away; capping ds_d (~0.5-0.8) with LIVE s_e_n bounds the reaction → lands 
 IC2-5 gate ([[feedback_ic_validation]]) — IC1 is centered, off-center may need a different cap/extent;
 (3) size-normalize the commit extent (kills the residual spurious-early-commit). Candidate winner =
 cap 0.8 (full n=5, 5/5 land<2.5 m). This UNBLOCKS the PX4 moment-loom benefit ([[feedback_pinv_tol_loom_scaling]]).
+
+**⛔ IC2-5 GATE FAILED (2026-06-20) — the IC1 fix is CENTERED-SPECIFIC, NOT bakeable.** Paired A/B
+(baseline vs cap0.8, n=5/IC, `test_data/CapGate_IC{2,3,4,5}_*`), td_lat STD / fly>3 / land<2.5m:
+IC2 8.07/4·5/0·5 → 3.71/4·5/0·5 (no change); IC3 11.91/4·5/0 → 12.04/3·5/1 (slight); IC4 3.20/3·4/1 →
+9.60/1·5/3 (gain but a 26 m outlier); IC5 1.78/3·5/2 → 3.17/3·5/1 (slight regression). NET = a WASH
+off-center — none of the IC1-style variance collapse (22→0.6). KEY: the off-center reps DO converge
+(min_lat 0.06–0.62 m @ alt>1 m, like IC1) then STILL diverge terminally (touchdown 2.8–13.5 m) — same
+terminal-1/Z mechanism, but the IC1-tuned cap/extent does NOT contain it off-center, because the drone
+reaches terminal with RESIDUAL LATERAL VELOCITY (having converged from the 2 m offset) that the position-
+only cap can't arrest. cap0.8 is necessary-but-not-sufficient off-center. So the "wall closed" milestone
+holds ONLY for centered IC1; the off-center terminal needs velocity-aware handling (e.g. also bound/brake
+the terminal lateral VELOCITY, not just the ds_d demand) or IC-robust commit tuning. NOT baked; default-off.
