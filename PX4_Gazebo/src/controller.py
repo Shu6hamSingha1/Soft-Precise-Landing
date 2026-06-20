@@ -334,6 +334,9 @@ class Controller(Thread):
         # |V_ds_d_xy| so the 1/Z-amplified s_e_n can't whip the drone out of FoV near touchdown,
         # while the loop still sees the live, consistent error. 0 = OFF.
         self._commit_dsd_max = float(os.environ.get("PLASMC_COMMIT_DSD_MAX", "0"))
+        # Terminal a_u-cap (combined-barrier: bounds the zeta_r->a_u spike that the V_ds_d cap can't
+        # reach). Caps |a_u_xy| once committed. 0 = OFF. See PLASMC() a_u computation.
+        self._commit_au_max = float(os.environ.get("PLASMC_COMMIT_AU_MAX", "0"))
         self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
@@ -1063,6 +1066,15 @@ class Controller(Thread):
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
+        # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
+        # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
+        # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker
+        # whipped out of FoV. Cap |a_u_xy| once committed (direction preserved) so the spike can't
+        # whip out, keeping s_e_n LIVE. PLASMC_COMMIT_AU_MAX=0 -> OFF (acts only when commit_extent>0).
+        if self._committed and self._commit_au_max > 0:
+            _nau = float(np.linalg.norm(a_u[:2]))
+            if _nau > self._commit_au_max:
+                a_u[:2] = a_u[:2] * (self._commit_au_max / _nau)
         # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
         # rate setpoints internally to physical limits (~±220 deg/s); an
         # over-large a_u from a noisy startup PID firing just produces a
