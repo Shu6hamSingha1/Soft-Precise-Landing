@@ -36,7 +36,7 @@ P.Xi_h   = diag([0.2, 0.2, 0.2]);       % Xi_h      contraction rate    (code ga
 
 % ---- Combined sliding surface  sigma = zeta_h + chi*zeta_aug  (tex eq. sliding) -
 P.chi_r = [1.15; 1.15];                 % lateral surface gain (PD: zeta_h + chi_r*zeta_r). Baked 0.85->1.15 (2026-06-20): drives terminal lateral barrier harder -> clears the Sinusoidal +40% precision edge for FULL +/-40% guaranteed, keeps 25/25; 1.2 regresses Liss-IC3 (upper edge)
-P.chi_z = 0.025;                        % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3)
+P.chi_z = 0.1;                          % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3). 0.025->0.1 baked 2026-06-20: stronger descent integral drives h_ez->0 (loom regulated to h_rd -> constant area rate, no dPdt ramp) -> kills the terminal 1/z fly-away. Fly-aways -91% (35->3/300), SP 87->97%, full gate. (the integral GAIN matters, not the izeta clamp)
 
 % ---- Leakage ASMC  (tex eq. adaptive control law + adaptive law) ---------------
 P.Gamma   = diag([0.4375, 0.5, 0.75]);  % Gamma    linear sliding gain

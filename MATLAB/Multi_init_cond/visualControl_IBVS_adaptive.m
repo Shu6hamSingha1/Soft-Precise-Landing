@@ -200,7 +200,7 @@ K_ctrl.p_r_0   = [1.2; 1.2];             % image-feature funnel initial half-wid
 K_ctrl.p_r_inf = [1.0; 1.0];             % terminal floor — FoV-consistent (proof Standing Condition 1: p_r_inf>=1)
 K_ctrl.xi_r    = diag([0.10, 0.10]);     % funnel contraction rate Xi_r
 K_ctrl.chi_r   = [1.15; 1.15];           % surface gain (manifold |zeta_r|~|zeta_h|/chi_r). Baked 0.85->1.15 (2026-06-20): clears Sinusoidal +40% precision edge -> full +/-40% guaranteed, keeps 25/25 (1.2 regresses Liss-IC3)
-K_ctrl.chi_z   =  K_ctrl.Omega(3,3);     % descent surface gain = Omega_z (unchanged descent PI)
+K_ctrl.chi_z   =  0.1;                    % descent surface gain. 0.025(=Omega_z)->0.1 baked 2026-06-20: stronger descent integral drives h_ez->0 -> kills the terminal 1/z fly-away (fly-aways -91%); decoupled from Omega(3,3). See vdf_params.
 phi_max_xy     = [res(1); res(2)] / (2*f);   % half-FoV tangent (C_nP-axis order) for r_bar_e
 global CHI_R_OVERRIDE PR0_OVERRIDE PRINF_OVERRIDE;
 if ~isempty(CHI_R_OVERRIDE); K_ctrl.chi_r   = CHI_R_OVERRIDE(:); end
