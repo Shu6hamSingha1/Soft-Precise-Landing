@@ -43,7 +43,7 @@ K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
 K_PLASMC.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
 
 % Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
-K_PLASMC.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 broke Linear realistic Run 5 soft-landing (v_rel=0.237 m/s > 0.20 m/s on IC [2,2,-3])
+K_PLASMC.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20 (synced w/ vdf_params); vestigial for ctrl-1 (uses vdf_params), kept for sync. NB: baselines 2-5 use kR_shared, NOT this.
 K_PLASMC.kOmega = diag([0.3, 0.3, 0.1]);
 
 % Yaw adaptive SMC — heading-rate generator (SO(3) baseline)

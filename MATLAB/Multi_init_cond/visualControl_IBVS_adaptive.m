@@ -99,7 +99,7 @@ if ~isempty(GAMMA2_XY_OVERRIDE); K_ctrl.gamma_2(1)=GAMMA2_XY_OVERRIDE(1);K_ctrl.
 global KAPPA_MAX KAPPA_MAX_Z;
 
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
-K_ctrl.kR     = diag([1.5, 1.5, 0.5]);  % reverted 2026-04-16: combo3 kR x1.25 failed Linear realistic IC [2,2,-3] soft landing
+K_ctrl.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20: Y-attitude damping kills the Liss-IC3 terminal limit cycle -> noiseless 25/25 + full +/-40% (sharp optimum; see vdf_params)
 K_ctrl.kOmega = diag([0.3, 0.3, 0.1]);
 % Geometric SO(3) tracking-gain hooks (globals; default = no change). 3-vectors
 % [roll pitch yaw] -> diag. Test whether faster/slower attitude tracking changes

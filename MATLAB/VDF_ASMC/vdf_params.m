@@ -65,7 +65,7 @@ P.tau_ia    = 0.08;                     % upstream LPF time constant on commande
 P.a_floor   = -50;                      % inertial-z accel floor (keep thrust direction realizable)
 
 % ---- Geometric SO(3) tracker  (tex eq. so3 torque) ----------------------------
-P.kR     = diag([1.5, 1.5, 0.5]);
+P.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20: stiffer roll adds Y-attitude damping that kills the terminal lateral limit cycle (Liss-IC3) -> noiseless 25/25 + real 25/25 + full +/-40%; sharp optimum (2.0/3.0 worse, phase-damping)
 P.kOmega = diag([0.3, 0.3, 0.1]);
 P.kI_R   = diag([0,0,0]);  P.ie_R_max = 0.5;     % integral attitude term (off) + anti-windup
 
