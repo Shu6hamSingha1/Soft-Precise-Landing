@@ -54,11 +54,16 @@ K_PLASMC.p_a       = 2;
 K_PLASMC.kappa_a_0 = 2.0;
 K_PLASMC.E_a       = 3.0;
 
-% funnel-margin cone clamp (Approach 2) — synced with Multi_init/run_simulation.m
-K_PLASMC.rho_fov_0   = [145; 105];              % was res/2=[160;120]; inset 15 px per side to widen safety margin against IC5 transient v-axis breach
-K_PLASMC.rho_fov_inf = [40; 40];                % terminal pixel margin (px)
-K_PLASMC.l_fov       = 0.1;                     % cone-decay rate
-K_PLASMC.theta_cap   = deg2rad(60);             % soft cone ceiling
+% VESTIGIAL for ctrl-1: the comparison's VDF-ASMC (ctrl-1) now runs on the verified
+% VDF_ASMC blocks + vdf_params() (single source of truth), so these K_PLASMC fields
+% are no longer the control source. Kept only for back-compat / logging. The
+% funnel-margin cone clamp (rho_fov, l_fov) was REPLACED by the cbf2 visibility CBF;
+% theta_cap MOVED OUT of the CBF into the inner-loop deliverable-tilt saturation
+% (so3_tracker, vdf_params.theta_cap). Do not tune these expecting an effect on ctrl-1.
+K_PLASMC.rho_fov_0   = [145; 105];              % (dead) superseded by cbf2
+K_PLASMC.rho_fov_inf = [40; 40];                % (dead) superseded by cbf2
+K_PLASMC.l_fov       = 0.1;                     % (dead) superseded by cbf2
+K_PLASMC.theta_cap   = deg2rad(60);             % (dead) now vdf_params.theta_cap, inner-loop
 
 %% =========================================================================
 %  Shared geometric SO(3) inner-loop gains  (controllers 2-5)

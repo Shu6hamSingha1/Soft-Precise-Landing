@@ -78,4 +78,26 @@ P.fw       = 11;                         % Savitzky-Golay window (FILTER_WINDOW)
 P.pinv_tol = 4;                          % pinv(L_s, tol) singular-value cutoff
 P.dhd_cap  = 20;                         % hard cap on d/dt(h_d) (DH_D_CAP spike killer)
 P.alpha_ia = P.tau_ia/(P.tau_ia + P.dt); % I_a_cd LPF coefficient
+
+% ---- Tuning override hooks (globals; default OFF -> no behavior change) --------
+% Lateral-precision levers for high-speed-target sweeps. Empty => baked values.
+global GAMMA_XY_OVERRIDE CHI_R_OVERRIDE P2INF_XY_OVERRIDE THETA_CAP_OVERRIDE
+if ~isempty(GAMMA_XY_OVERRIDE), P.Gamma(1,1)=GAMMA_XY_OVERRIDE(1); P.Gamma(2,2)=GAMMA_XY_OVERRIDE(end); end
+if ~isempty(CHI_R_OVERRIDE),    P.chi_r = CHI_R_OVERRIDE(:); end
+if ~isempty(P2INF_XY_OVERRIDE), P.p_hinf(1)=P2INF_XY_OVERRIDE(1); P.p_hinf(2)=P2INF_XY_OVERRIDE(end); end
+if ~isempty(THETA_CAP_OVERRIDE), P.theta_cap = deg2rad(THETA_CAP_OVERRIDE(1)); end
+
+% Generic field overlay (master override; default OFF). Lets a sweep harness set
+% ANY combined-barrier field by name without a dedicated global, e.g.
+%   global VDF_OVERRIDE; VDF_OVERRIDE.chi_r = [1.15;1.15];
+% Applied LAST so it wins over the specific hooks above. Unknown names error out
+% (a struct field that is not a P field is a typo, not a silent no-op).
+global VDF_OVERRIDE
+if ~isempty(VDF_OVERRIDE)
+    fn = fieldnames(VDF_OVERRIDE);
+    for i = 1:numel(fn)
+        assert(isfield(P, fn{i}), 'vdf_params:VDF_OVERRIDE unknown field "%s"', fn{i});
+        P.(fn{i}) = VDF_OVERRIDE.(fn{i});
+    end
+end
 end

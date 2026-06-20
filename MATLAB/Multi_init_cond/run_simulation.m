@@ -40,8 +40,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % passes K_override = []; keep h_rd / FILTER_WINDOW overrides for sweep harnesses.
     P = vdf_params();
     if ~isempty(K_override)
-        if isfield(K_override, 'h_rd'),          P.h_rd = K_override.h_rd;          end
-        if isfield(K_override, 'FILTER_WINDOW'), P.fw   = K_override.FILTER_WINDOW;  end
+        if isfield(K_override, 'h_rd'),          P.h_rd      = K_override.h_rd;          end
+        if isfield(K_override, 'FILTER_WINDOW'), P.fw        = K_override.FILTER_WINDOW;  end
+        if isfield(K_override, 'theta_cap'),     P.theta_cap = K_override.theta_cap;     end
     end
 
     % --- state init ---

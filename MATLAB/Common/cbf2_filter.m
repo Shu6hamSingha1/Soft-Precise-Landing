@@ -140,13 +140,12 @@ if valid
     end
     th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % alternating projection onto FoV box
 
-    th_qp_dbg = th;                       % (debug) lean after QP projection, before cap
-    % post-QP deliverability cap (outside the projection so it never creates
-    % box infeasibility)
-    tn = norm(th);
-    if tn > theta_cap
-        th = th * (theta_cap / tn);
-    end
+    th_qp_dbg = th;                       % (debug) lean after QP projection
+    % NOTE: the post-QP deliverable-tilt cap (theta_cap) has been MOVED OUT of the
+    % CBF into the inner-loop SO(3) tracker (deliverable-tilt saturation, Property 1).
+    % cbf2_filter now performs ONLY the visibility QP; theta_cap is retained in the
+    % signature for call-site compatibility but is no longer applied here. The caller
+    % clips th_safe to theta_cap before building R_d.
     th_safe = th;                         % safe LEAN vector (image axes) for direct->rd3
     % DIRECTIONAL INSET (DIR_INSET_RELAX px): restore the CBF's intended
     % directionality. If stripping the lean to the tight box REVERSED the
@@ -162,9 +161,7 @@ if valid
         if any(axy_des .* axy_sf < 0)                % CBF reversed a lateral axis
             m2_relax = m2 + (DIR_INSET_RELAX / f);   % widen box toward FoV edge
             th_r = project_box(th_d_dbg, anchor_c, Lw_c, m2_relax, Ncp);
-            tnr = norm(th_r);
-            if tnr > theta_cap; th_r = th_r * (theta_cap / tnr); end
-            th = th_r; th_safe = th_r;
+            th = th_r; th_safe = th_r;     % deliverable cap applied by caller (inner loop)
             global DIR_FIRES; if isempty(DIR_FIRES); DIR_FIRES = 0; end
             DIR_FIRES = DIR_FIRES + 1;                % (debug) count firings
         end
@@ -192,9 +189,7 @@ if valid
                     anc_g(:,ig) = ct(:,ig) - Lw_c(:,:,ig) * th_curr + dft_g;
                 end
                 th_g = project_box(th_d_dbg, anc_g, Lw_c, m2, Ncp);
-                tng  = norm(th_g);
-                if tng > theta_cap; th_g = th_g * (theta_cap / tng); end
-                th = th_g; th_safe = th_g;
+                th = th_g; th_safe = th_g; % deliverable cap applied by caller (inner loop)
             end
         end
     end

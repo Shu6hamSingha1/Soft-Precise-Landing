@@ -11,6 +11,8 @@ function [B_tau, T_cd, cs] = so3_tracker(I_a_cd_filt, th_safe, R33, yaw, psi_d, 
         R_d = eye(3);
     else
         if ~isempty(th_safe)                                   % Fix B: lean from CBF
+            tn = norm(th_safe);                                % inner-loop deliverable-tilt
+            if tn > P.theta_cap, th_safe = th_safe*(P.theta_cap/tn); end  % saturation (Property 1)
             a_xy = [cos(yaw)*th_safe(1) - sin(yaw)*th_safe(2); ...
                     sin(yaw)*th_safe(1) + cos(yaw)*th_safe(2)];
             rd3  = [-a_xy; 1]; rd3 = rd3/norm(rd3);

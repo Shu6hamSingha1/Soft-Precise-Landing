@@ -861,6 +861,14 @@ for idx=1:N_steps
         I_a_cd_filt, I_R_C, R33, yaw, C_nP, f, phi_max_cbf, ...
         K_ctrl.theta_cap, theta_seed, dt_img, refresh, B_w_c(1:2), cbf_state);
 
+    % Inner-loop deliverable-tilt saturation (Property 1): the deliverable cap was
+    % MOVED OUT of cbf2_filter (now pure visibility QP) to here, clipping the safe
+    % lean before the attitude is built.
+    if ~isempty(th_safe)
+        tn_cap = norm(th_safe);
+        if tn_cap > K_ctrl.theta_cap; th_safe = th_safe*(K_ctrl.theta_cap/tn_cap); end
+    end
+
     I_a_cd_filt(3) = max(I_a_cd_filt(3), -50);
 
     % TILT-RATE LIMIT (TILT_RATE_MAX rad/s): cap how fast the CBF lean magnitude
