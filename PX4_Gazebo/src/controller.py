@@ -196,8 +196,8 @@ class Controller(Thread):
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
         self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
-        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.85")),
-                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.85"))])   # surface gain (manifold |zeta_r|~|zeta_h|/chi_r); 0.85 = MATLAB max-margin
+        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.5")),
+                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.5"))])   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
                                   float(os.environ.get("PLASMC_PR0_Y", "1.2"))])      # position-funnel initial half-width (FoV units)
         self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "1.0")),
