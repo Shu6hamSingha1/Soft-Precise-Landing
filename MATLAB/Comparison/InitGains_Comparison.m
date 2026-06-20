@@ -99,14 +99,17 @@ K_Lin2022 = struct();
 %    descent authority
 %  - l slowed so bound stays wide during catch-up
 K_Lin2022.k1 = 0.6;
-K_Lin2022.k2 = 4.0;
+K_Lin2022.k2 = 3.0;   % R1 4.0->3.0: lower force gain -> smaller tilt spike on funnel-boundary saturation (FoV-survival)
 
 % z-bound widened to 0.15: Linear/Circ carry Lin heave (A_z=0.2, w_z=0.5)
 % so target v_z oscillates ±0.1 m/s. Tighter bound barrier-saturated xi_v(3).
+% R1: l_{p,v}_xy 0.03->0.02 slow the lateral funnel contraction so the bound
+% stays wide longer -> e_p sits inside rho_p instead of pinning xi_p at the
+% barrier (the Static soft-stall + moving force spikes were barrier saturation).
 K_Lin2022.rho_inf_p     = [0.30; 0.30; 0.15];
 K_Lin2022.rho_inf_v     = [0.30; 0.30; 0.15];
-K_Lin2022.l_p           = [0.03; 0.03; 0.10];
-K_Lin2022.l_v           = [0.03; 0.03; 0.10];
+K_Lin2022.l_p           = [0.02; 0.02; 0.10];
+K_Lin2022.l_v           = [0.02; 0.02; 0.10];
 K_Lin2022.rho_p0_margin = 1.5;
 K_Lin2022.rho_v0_margin = 1.5;
 
@@ -136,8 +139,13 @@ K_Zhang2026 = struct();
 % Inner-loop Kc4/Kc5 unused — shared geometric SO(3) replaces eq. 212.
 % z slowed further: omega_n_z ~0.4 rad/s so peak descent v_z from 5m
 % stays <1.5 m/s for soft landing. xy unchanged.
-K_Zhang2026.Kc1 = diag([0.25, 0.25, 0.03]);
-K_Zhang2026.Kc2 = diag([2.0,  2.0,  0.15]);
+% R1 (FoV-survival): the xy position term killed Static at 0.5s. pos_gain =
+% Kc1*Kc3+Kc2 = 2.625 -> a_lat@2m=5.25 m/s² -> 28° tilt -> corner crosses the
+% ±120px (41.6° half-FoV) v-axis at 29° off-nadir. Drop Kc2_xy 2.0->1.0:
+% pos_gain=0.2*2.5+1.0=1.5 -> a_lat@2m=3.0 -> ~17° tilt (within ~18° budget).
+% vel_gain=m*Kc1+Kc3=2.7, omega_n=1.22, zeta=1.1 (slightly overdamped, OK).
+K_Zhang2026.Kc1 = diag([0.20, 0.20, 0.03]);
+K_Zhang2026.Kc2 = diag([1.0,  1.0,  0.15]);
 K_Zhang2026.Kc3 = diag([2.5,  2.5,  0.5 ]);
 
 % AEDO: lAF1/2 and PNF tightened further (prev PNF=50 still caused
@@ -172,11 +180,15 @@ K_Lin2023 = struct();
 K_Lin2023.k1 = [0.4; 0.4; 0.40];             % feature -> virtual velocity (Kt), per-axis
                                              % (lateral raised for centring; depth=0.40 is the
                                              %  FoV-safe sweet spot: 0.60 reintroduces FoV loss)
-K_Lin2023.k2 = 4.0;                          % velocity -> force           (Kv)
+% R1: moving targets blew up via velocity-funnel barrier (e_v grows faster
+% than rho_v contracts on a fast target -> xi_v->1 -> eps_v->inf -> T sat 60N
+% -> break). Lower k2 4.0->2.5 (force gain) + widen rho_inf_v + slow l_v_xy so
+% the velocity barrier stays clear of the moving-target tracking error.
+K_Lin2023.k2 = 2.5;                          % velocity -> force           (Kv)
 K_Lin2023.rho_inf_t = [0.10; 0.10; 0.03];    % feature funnel steady-state (tight depth floor -> an->1 -> z->0.2m touchdown)
-K_Lin2023.rho_inf_v = [0.30; 0.30; 0.15];    % velocity funnel steady-state
+K_Lin2023.rho_inf_v = [0.50; 0.50; 0.20];    % velocity funnel steady-state (widened: avoid barrier blow-up)
 K_Lin2023.l_t       = [0.05; 0.05; 0.10];    % feature funnel decay rate (depth contraction tuned for touchdown)
-K_Lin2023.l_v       = [0.03; 0.03; 0.10];    % velocity funnel decay rate
+K_Lin2023.l_v       = [0.02; 0.02; 0.08];    % velocity funnel decay rate (slowed: bound wider longer)
 K_Lin2023.rho_t0_margin = [1.5; 1.5; 5.0];   % rho_t(0)=|e_t(0)|+margin, per-axis
                                              % (large depth margin: literal e_t(3)~12 needs
                                              %  funnel room so xi_t(3) doesn't start near 1)
@@ -205,14 +217,19 @@ K_Cho2022 = struct();
 % targets; Kv lateral 2->3.5 fights wind drift; k_sigmoid 0.002->0.02
 % so adaptive altitude gain ad_z saturates to 1 near landing (was stuck
 % at 0.5, halving descent); v_sat(3) 0.4->0.7 removes descent cap.
-K_Cho2022.lambda_IBVS = [-1.2; -1.2; -2.0; 0; 0; 0];
+% R1 (FoV-survival): Cho lost FoV in <2s on EVERY trajectory. At t=0 v=0 and
+% v_des jumps to v_sat -> instant Kv_xy*v_sat_xy=3.5 m/s² lateral accel -> 20°
+% tilt + 29° off-nadir -> corner out. Cap the initial lateral demand: v_sat_xy
+% 1.0->0.5 and Kv_xy 3.5->1.8 -> a_lat_max=0.9 m/s² -> ~5° tilt (well inside
+% budget). lambda_xy -1.2->-0.8 gentles the IBVS velocity / terminal jitter.
+K_Cho2022.lambda_IBVS = [-0.8; -0.8; -2.0; 0; 0; 0];
 % k_sigmoid=0.1 was tested and broke moving targets: feature centroid
 % fluctuates on moving trajs -> ad_z jitters -> z-command jitters. Kept
 % k_sigmoid=0.02 and v_sat(3)=0.7. Static stall at ~0.35m is accepted.
-K_Cho2022.v_sat       = [1.0; 1.0; 0.7; 0.2];
+K_Cho2022.v_sat       = [0.5; 0.5; 0.7; 0.2];
 K_Cho2022.k_sigmoid   = 0.02;
 K_Cho2022.use_sq_comp = true;
-K_Cho2022.Kv          = diag([3.5, 3.5, 2.0]);
+K_Cho2022.Kv          = diag([1.8, 1.8, 2.0]);
 K_Cho2022.psi_des     = 0;
 
 K_Cho2022.kR     = kR_shared;
