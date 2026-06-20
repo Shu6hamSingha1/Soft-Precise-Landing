@@ -1082,6 +1082,14 @@ class IMG_PROCESSOR(Thread):
                 _corner_ok = True
                 _n_corn = int(len(flow_pts_1))
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
+                if self._loom_decouple:
+                    # CAL BYPASS for the moment loom: V_v[2] is already the calibrated vz/Z
+                    # (scale-free -½·d(lnM)/dt). _sensor_cal_hw row 2 = the raw-pinv→cal map
+                    # (×1.0744 + cross-terms from h/w) would OVER-scale it ~7% AND re-inject the
+                    # lateral/rotational coupling the decoupling removed. So take the loom straight
+                    # from V_v_scaled[2] (no cal). This is ALSO what feeds the fusion EKF as the
+                    # corner ego-loom → corner-MOMENT + ring-DIVERGENCE dual decoupled-loom hybrid.
+                    _corner_cal[2] = V_v_scaled[2]
                 # Corner RELIABILITY: clean ArUco -> 1.0; KLT-fallback corners are
                 # less trustworthy the deeper the LK track (corners degrading toward
                 # touchdown), so conf ramps down with the KLT step depth -> the EKF
@@ -1832,10 +1840,16 @@ class IMG_PROCESSOR(Thread):
         Its state is already calibrated, so return as-is.
         """
         if self._fuse_ring and self._ekf_init:
-            return np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]])
+            return np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]])   # corner-moment loom fed via _corner_cal[2]
         if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
-            return self._sensor_cal_hw @ self._compute_savgol_output()
-        return self._sensor_cal_hw @ self._kf_x[:, 0]
+            _out = self._sensor_cal_hw @ self._compute_savgol_output()
+            if self._loom_decouple:
+                _out[2] = self._compute_savgol_output()[2]   # loom = raw vz/Z, bypass cal
+            return _out
+        _out = self._sensor_cal_hw @ self._kf_x[:, 0]
+        if self._loom_decouple:
+            _out[2] = self._kf_x[2, 0]                       # loom already vz/Z, bypass cal row 2
+        return _out
 
     def getImgFeatureParam(self):
         """Calibrated, KF-smoothed image-feature vector (4-vec).
