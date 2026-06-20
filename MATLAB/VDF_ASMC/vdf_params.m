@@ -49,7 +49,7 @@ P.S_margin   = 0.05;                    % funnel-saturation guard (|zeta|<=3.66,
 P.drop_sddot = true;                    % s_ddot-drop (validated combined-barrier default)
 
 % ---- Descent reference  (tex h_d final: h_rd < 0) ------------------------------
-P.h_rd = -0.42;                         % desired descent optic flow (locked Table S1)
+P.h_rd = -0.40;                         % desired descent optic flow. -0.42->-0.40 baked 2026-06-20: gentler descent shrinks the descent limit cycle (-21%) for robust soft touchdown, keeps real 25/25 + full +-40% (headroom from kR=2.5+kOmega_z=0.2)
 
 % ---- Virtual-compass yaw ASMC  (tex eq. yaw control law) -----------------------
 P.Omega_a = 0.5;   % chi_alpha  (sigma_a = alpha_e + chi_a*int alpha_e)

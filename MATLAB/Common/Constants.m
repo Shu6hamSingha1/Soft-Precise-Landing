@@ -15,7 +15,7 @@ res = [320;240];  % Image resolution
 
 %% Defining system constants
 g = [0;0;9.81];
-h_rd = -0.42;                     % slowed further (-0.50->-0.46->-0.42) to close Linear IC5 soft threshold; -0.38 over-slows and kills IC4 hover-authority
+h_rd = -0.40;                     % -0.42->-0.40 baked 2026-06-20: gentler descent shrinks the descent limit cycle (-21%, 0.48->0.375) for more robust soft touchdown, keeping real 25/25 (all seeds) + full +-40%. Old "-0.38 over-slows" limit was PRE-damping; kR=2.5+kOmega_z=0.2 gave the headroom. -0.40 = gentlest h_rd holding the clean gate
 % Honor batch-wrapper global if set (e.g. to match PX4's -0.70 default).
 global H_RD_OVERRIDE;
 if ~isempty(H_RD_OVERRIDE); h_rd = H_RD_OVERRIDE; end
