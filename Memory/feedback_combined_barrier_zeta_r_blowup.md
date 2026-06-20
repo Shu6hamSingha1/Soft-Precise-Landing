@@ -52,3 +52,16 @@ insufficient) rescues it. REVERTED PLASMC_COMBINED_BARRIER + PLASMC_VDS_KF back 
 undone). Knobs (COMMIT_AU_MAX, VDS_KF, etc.) KEPT default-off for future combined work. The lateral wall
 remains: back-mapped is the baked baseline; the only thing that closed IC1 was V_ds_d command-bounding
 (centered-specific, failed IC2-5). Net: combined-barrier is a DEAD-END as a PX4 default.
+
+**⛔ DECISIVE (2026-06-20): the lateral wall is DECOUPLED from outer-loop convergence/authority.**
+Combined+KF+global-a_u-cap IC2 sweep (PLASMC_AU_MAX_XY 15/10/6, n=5): the a_u cap MONOTONICALLY improves
+convergence — s_e_n min 0.44(uncapped,au242) -> 0.48(15) -> 0.10(10) -> 0.04(6, DEAD-CENTER, fully
+arrested) — but landings get WORSE not better: land<2.5m 1/5 -> 1/5 -> 1/5 -> 0/5; fly>3 4-5/5 across ALL.
+So the drone CONVERGES PERFECTLY to center (s_e_n 0.04) and STILL flies away; tighter caps converge better
+yet starve terminal authority -> 0 lands. CONCLUSION: the off-center fly-away is NOT poor convergence, NOT
+approach over-aggression, NOT outer-authority — it is a TERMINAL/perception failure fully DECOUPLED from
+the outer loop. Every control-side lever this session (combined surface=more authority, command-bounding,
+a_u-cap=less aggression, KF filtering) moves convergence but NONE change the landing rate, because the
+failure happens AFTER convergence at the terminal marker-loss. The lateral wall is confirmed NOT
+gain-tunable from the control side -> architecture/perception (velocity-aware terminal handling or the
+terminal 1/Z perception limit). Combined-barrier thread CLOSED.
