@@ -30,3 +30,14 @@ log-barrier. **FIX = COMMAND-BOUNDING CAP** (`PLASMC_COMMIT_DSD_MAX`): bound the
 zeta_r blow-up can't produce the catastrophic spike → combined+cap = position authority delivered WITHOUT
 the violent terminal command. NEXT = gate combined+cap IC2-5 vs back-mapped. Relates to
 [[feedback_lateral_wall_anti_restoring_au]] (command-bounding closed IC1) + [[feedback_combined_surface_divergence]].
+
+**⛔ combined+cap GATE FAILED — the V_ds_d cap is INERT in combined mode (2026-06-20).** IC2-5 (IC2,IC5,
+IC3 done): combined+cap WORSE than back-mapped (IC2 STD 7.3->24.9 + 63m blowup; IC5 3/5fly 2land ->
+5/5fly 0land). ROOT: PLASMC_COMMIT_DSD_MAX caps V_ds_d (controller.py:806) but the combined-barrier path
+RETURNS at line 724 (before the cap) and uses ds_d=0 — its lateral demand is zeta_r->sigma->a_u, NOT
+V_ds_d. So the cap NEVER fires in combined mode -> combined+cap == combined == fly-away. To bound the
+combined-barrier's a_u=130 spike you must cap **a_u_xy DIRECTLY** (in PLASMC after a_u computed, when
+committed), NOT V_ds_d. (The sigma is actually bounded ~7 by the S_r/S clamps; the a_u 130 is G^-1
+amplification of a_v when the interaction matrix G goes ill-conditioned near terminal -> cap the OUTPUT
+a_u.) NEXT = either implement an a_u_xy commit-cap for combined mode + re-gate, OR REVERT the combined
+bake (a82328b) since it regresses and the existing cap can't fix it.
