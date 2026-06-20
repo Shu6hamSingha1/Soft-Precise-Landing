@@ -352,6 +352,13 @@ class IMG_PROCESSOR(Thread):
         # Offline-verified vs GT loom on a centered descent: corr 0.16→0.85, rmse 0.88→0.06.
         # DEFAULT-OFF. When ON, overrides ONLY V_v[2] (lateral h_x/h_y + ω stay from the lstsq).
         self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "0") == "1"
+        # 8×5 REDUCED-PINV (FLOW_LSTSQ_DROP_LOOM_COL): when the loom is decoupled, drop the loom
+        # column (v_z = [-x;-y], the σ_min weak mode) from L_s so the lstsq solves only the
+        # well-conditioned lateral/rotational [h_x,h_y,w_x,w_y,w_z]. The loom comes from the moment
+        # override. MATLAB's "reduced-pinv": well-calibrated (slope 1.02=pinv) but no closed-loop
+        # gain over full 8×6 (lateral is strong either way) → cleanliness/conditioning, not a win.
+        # Only acts with FLOW_LOOM_DECOUPLE=1. Default-off.
+        self._loom_drop_col = os.environ.get("FLOW_LSTSQ_DROP_LOOM_COL", "0") == "1"
         # FLOW_LOOM_GAIN=1.0 (2026-06-19): offline RMSE-fit gave 1.15, but the MATLAB
         # CLOSED-LOOP suite ([[project_moment_loom]]) shows gain>1.0 HURTS (1.0→95, 1.1→91,
         # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
@@ -1037,10 +1044,18 @@ class IMG_PROCESSOR(Thread):
 
                 # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
                 # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
-                V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=self._flow_lstsq_rcond)
+                if self._loom_decouple and self._loom_drop_col:
+                    # 8×5 reduced-pinv: drop the loom column (idx 2); loom from the moment override.
+                    A5 = np.delete(A, 2, axis=1)
+                    V5, residuals, rank, sv = np.linalg.lstsq(A5, Y, rcond=self._flow_lstsq_rcond)
+                    V_v = np.array([V5[0], V5[1], 0.0, V5[2], V5[3], V5[4]])
+                    _min_rank = 5
+                else:
+                    V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=self._flow_lstsq_rcond)
+                    _min_rank = 6
                 cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
                 bad = (
-                    rank < 6
+                    rank < _min_rank
                     or cond > 1e4
                     or not np.all(np.isfinite(V_v))
                     or np.max(np.abs(V_v)) > 50.0
