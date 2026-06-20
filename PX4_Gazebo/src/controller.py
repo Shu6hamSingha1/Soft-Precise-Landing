@@ -337,6 +337,9 @@ class Controller(Thread):
         # Terminal a_u-cap (combined-barrier: bounds the zeta_r->a_u spike that the V_ds_d cap can't
         # reach). Caps |a_u_xy| once committed. 0 = OFF. See PLASMC() a_u computation.
         self._commit_au_max = float(os.environ.get("PLASMC_COMMIT_AU_MAX", "0"))
+        # Global (all-altitude) lateral-accel cap — tames the off-center APPROACH over-aggression
+        # (a_u_xy ~102 at ~2.3m), which is where 53% of combined fly-aways breach. 0 = OFF.
+        self._au_max_xy = float(os.environ.get("PLASMC_AU_MAX_XY", "0"))
         self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
@@ -1075,6 +1078,15 @@ class Controller(Thread):
             _nau = float(np.linalg.norm(a_u[:2]))
             if _nau > self._commit_au_max:
                 a_u[:2] = a_u[:2] * (self._commit_au_max / _nau)
+        # GLOBAL a_u_xy cap (PLASMC_AU_MAX_XY): bound the lateral accel at ALL altitudes, not just
+        # terminal. Diagnosis (2026-06-20): 53% of combined-barrier fly-aways breach AT ALTITUDE
+        # (~2.3m) during the off-center approach where a_u_xy hits ~102 (over-aggression overshoots),
+        # BEFORE the terminal commit cap fires. Bounding |a_u_xy| globally tames the approach
+        # over-aggression while keeping direction (s_e_n live). 0 = OFF.
+        if self._au_max_xy > 0:
+            _nag = float(np.linalg.norm(a_u[:2]))
+            if _nag > self._au_max_xy:
+                a_u[:2] = a_u[:2] * (self._au_max_xy / _nag)
         # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
         # rate setpoints internally to physical limits (~±220 deg/s); an
         # over-large a_u from a noisy startup PID firing just produces a
