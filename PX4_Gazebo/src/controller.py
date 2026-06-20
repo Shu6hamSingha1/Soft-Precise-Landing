@@ -46,6 +46,7 @@ import os
 import time
 import numpy as np
 from scipy.linalg import expm
+from scipy.signal import savgol_filter
 from threading import Thread
 from collections import deque
 
@@ -195,20 +196,34 @@ class Controller(Thread):
         # zeta_r is built on r_bar_e = s_e/p_10 (= s_e_n, FoV-normalized) with its OWN funnel
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
-        self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "0") == "1"
-        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.85")),
-                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.85"))])   # surface gain (manifold |zeta_r|~|zeta_h|/chi_r); 0.85 = MATLAB max-margin
+        self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
+        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.5")),
+                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.5"))])   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
                                   float(os.environ.get("PLASMC_PR0_Y", "1.2"))])      # position-funnel initial half-width (FoV units)
         self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "1.0")),
                                   float(os.environ.get("PLASMC_PRINF_Y", "1.0"))])    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
         self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
                                  float(os.environ.get("PLASMC_XIR_Y", "0.10"))])      # position-funnel contraction rate
-        # Combined mode uses a tighter lateral optic-flow-funnel floor (chase-lag terminal
-        # velocity; proof manifold). Apply only in combined mode, only if not explicitly set.
+        # Combined mode = the MATLAB VDF-ASMC manuscript controller. The baked PX4 defaults
+        # above are the BACK-MAPPED soft-config gains (GAMMA=2.0, KAPPA0=0.5, XI2=0.6, E=0.8/0.5,
+        # P2INF_z=0.5) which are 3-5x too HOT for the combined surface (zeta_r already supplies
+        # position authority) -> a_u over-aggression (~102 m/s2) -> off-center fly-aways. Auto-align
+        # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
+        # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
             if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 0.5
             if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 0.5
+            if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
+            if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
+                self._Gma = np.diag([0.4375, 0.5, 0.75])                     # vdf Gamma (was 2/2/1)
+            if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
+                self._kappa_0 = np.array([0.125, 0.125, 0.25])              # vdf kappa0 (was .5/.5/1)
+            if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
+                self._E = np.diag([1.0, 1.0, 1.0])                          # vdf E (was .8/.8/.5)
+            if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
+                self._gamma = np.diag([0.2, 0.2, 0.2])                      # vdf Xi_h (was .6/.6/.8)
+            # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
 
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
@@ -259,6 +274,28 @@ class Controller(Thread):
         self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))
         self._kappa_a_0 = float(os.environ.get("PLASMC_YAW_KAPPA0", "2.0"))
         self._E_a       = float(os.environ.get("PLASMC_YAW_E",      "3.0"))
+        # YAW ALPHA SAVGOL-PREDICTION FILTER (2026-06-20): reject the terminal alpha (s[3])
+        # corruption spike (single-frame -22° outlier at touchdown when the marker fills the FoV).
+        # Fit a low-order Savgol/poly to the recent alpha history -> a smooth PREDICTION; if the raw
+        # alpha deviates from it by > YAW_ALPHA_REJECT rad, use the prediction (KLT-style outlier
+        # reject), else blend toward raw. Tracks genuine slow yaw, kills the spike. Default-ON.
+        self._yaw_alpha_filt = os.environ.get("PLASMC_YAW_ALPHA_FILT", "1") == "1"
+        self._yaw_alpha_win = int(os.environ.get("PLASMC_YAW_ALPHA_WIN", "9"))    # savgol window (frames)
+        self._yaw_alpha_max_rate = float(os.environ.get("PLASMC_YAW_ALPHA_MAX_RATE", "0.30"))  # rad/s (~17°/s) drift cap (genuine yaw ~0.04 rad/s, corruption ~1 rad/s)
+        self._alpha_hist = deque(maxlen=self._yaw_alpha_win)   # recent (unwrapped) raw alpha
+        self._alpha_smooth = None      # last smoothed/predicted alpha (unwrapped)
+        # ALPHA CV-KF (2026-06-20): constant-velocity Kalman on the yaw angle [yaw, yaw_rate] with
+        # INNOVATION GATING — the principled alternative to rate-limit+Savgol. Models the yaw
+        # dynamics (predicts via the estimated rate), and a measurement inconsistent with the
+        # prediction (the corruption drift) produces a large innovation that the Mahalanobis gate
+        # down-weights/rejects. PLASMC_YAW_ALPHA_KF=1 selects it over the Savgol path (both gated
+        # by PLASMC_YAW_ALPHA_FILT). Genuine slow yaw passes (small innovation). Default-off (A/B).
+        self._yaw_alpha_kf = os.environ.get("PLASMC_YAW_ALPHA_KF", "0") == "1"
+        self._yaw_kf_q = float(os.environ.get("PLASMC_YAW_KF_Q", "5.0"))     # process (yaw-accel) noise
+        self._yaw_kf_r = float(os.environ.get("PLASMC_YAW_KF_R", "1e-3"))    # measurement (alpha) noise var
+        self._yaw_kf_gate = float(os.environ.get("PLASMC_YAW_KF_GATE", "9.0"))  # innovation² gate (χ², ~3σ)
+        self._yaw_kf_x = None          # [yaw, yaw_rate] state (yaw unwrapped)
+        self._yaw_kf_P = None          # 2×2 covariance
 
         # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
@@ -295,6 +332,32 @@ class Controller(Thread):
         # overflow. Restores the recovery authority the back-mapped barrier collapses + the
         # ratio clamp freezes. Default 0.0 = OFF.
         self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
+        # CV-KF for V_ds (combined-barrier centroid rate). Default-off (PLASMC_VDS_KF=0 → the
+        # MATLAB-parity smooth4(backward finite-diff)). When ON: a constant-velocity Kalman filter
+        # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
+        # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
+        self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))   # process (accel) noise PSD (q=10 best vs GT)
+        self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
+        # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
+        # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
+        # h_e=h-h_d carries _sensor_cal_hw — a DIFFERENT cal. So V_ds and h are on mismatched scales
+        # by construction (measured |V_ds|/|h|~1.26 ≈ cal_s/cal_hw), biasing h_e. Rescale V_ds onto the
+        # h scale (×cal_hw/cal_s≈0.79) so h_d and h are commensurate. Applies to BOTH KF and smooth4
+        # V_ds (cal mismatch is estimator-independent). Default 1.0 = off; set ~0.79.
+        self._vds_kf_scale = float(os.environ.get("PLASMC_VDS_KF_SCALE", "0.79"))
+        self._vds_x = None         # KF state [px,py,vx,vy]
+        self._vds_P = None         # KF covariance (4x4)
+        # CV-KF options for the c-term derivatives dh_d (rate of h_d_noS) and dw (rate of w_i).
+        # Default-off → smooth4(finite-diff) (MATLAB parity). A CV-KF on the underlying signal
+        # outputs the rate as a state (lower lag + spike-spreading vs differencing). dw especially:
+        # w_i is frame-held (stair-step) so finite-diff SPIKES at frame changes; the KF spreads it.
+        self._dhd_kf = os.environ.get("PLASMC_DHD_KF", "1") == "1"   # BAKED 2026-06-20 (CV-KF, spike -60% vs smooth4)
+        self._dw_kf  = os.environ.get("PLASMC_DW_KF", "1") == "1"   # BAKED 2026-06-20 (CV-KF, spike -80%; w_i frame-held)
+        self._deriv_kf_q = float(os.environ.get("PLASMC_DERIV_KF_Q", "10.0"))
+        self._deriv_kf_r = float(os.environ.get("PLASMC_DERIV_KF_R", "1e-3"))
+        self._dhd_kf_st = {"x": None, "P": None}
+        self._dw_kf_st  = {"x": None, "P": None}
         # TERMINAL COMMIT (2026-06-19, feedback_lateral_wall_anti_restoring_au). The lateral wall
         # ROOT = terminal 1/Z amplification: the drone descends fine to ~0.6 m with a small residual
         # offset (~0.85 m), then s_e_n=lat/Z blows up near touchdown → funnel breach → violent lateral
@@ -308,6 +371,14 @@ class Controller(Thread):
         # |V_ds_d_xy| so the 1/Z-amplified s_e_n can't whip the drone out of FoV near touchdown,
         # while the loop still sees the live, consistent error. 0 = OFF.
         self._commit_dsd_max = float(os.environ.get("PLASMC_COMMIT_DSD_MAX", "0"))
+        # Terminal a_u-cap (combined-barrier: bounds the zeta_r->a_u spike that the V_ds_d cap can't
+        # reach). Caps |a_u_xy| once committed. 0 = OFF. See PLASMC() a_u computation.
+        self._commit_au_max = float(os.environ.get("PLASMC_COMMIT_AU_MAX", "0"))
+        # Global (all-altitude) lateral-accel cap — tames the off-center APPROACH over-aggression
+        # (a_u_xy ~102 at ~2.3m), which is where 53% of combined fly-aways breach. 0 = OFF.
+        self._au_max_xy = float(os.environ.get("PLASMC_AU_MAX_XY", "0"))
+        self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
+        self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
         self._commit_count = 0
         self._s_e_n_hold = None
@@ -652,15 +723,16 @@ class Controller(Thread):
 
         # Normalized pixel error (sensor-half normalization)
         s_e_n = self._s_e[-1][:2] / self._p_10
-        # TERMINAL COMMIT latch: once the marker fills the FoV (MARKER_EXTENT_PX > threshold,
-        # 3-frame confirm), set self._committed. s_e_n STAYS LIVE (freezing it = lying to the
-        # flow SMC / CBF / descent → destabilizes, 0/3 freeze variants; feedback_lateral_wall).
-        # The committed flag instead TERMINAL-CAPS the lateral command V_ds_d_xy below (bounds
-        # the reaction to the 1/Z-amplified s_e_n without inconsistency). Default-off.
+        # TERMINAL COMMIT latch: commit once the marker reliably fills the FoV. Trigger =
+        # MEDIAN of MARKER_EXTENT_PX over the last _commit_win frames > threshold (the raw
+        # extent is switching-noisy and SPIKES transiently — a 3-frame confirm let a spike
+        # latch a spurious early commit @1.89 m → 10 m fly; the median filters those). s_e_n
+        # STAYS LIVE (freezing it destabilizes, 0/3 variants); the committed flag instead
+        # TERMINAL-CAPS the lateral command V_ds_d_xy below. Default-off (commit_extent=0).
         if self._commit_extent > 0 and not self._committed:
-            self._commit_count = (self._commit_count + 1
-                                  if self.MARKER_EXTENT_PX > self._commit_extent else 0)
-            if self._commit_count >= 3:
+            self._ext_win.append(float(self.MARKER_EXTENT_PX))
+            if (len(self._ext_win) >= self._commit_win
+                    and float(np.median(self._ext_win)) > self._commit_extent):
                 self._committed = True
                 self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (offset committed at)
         self._s_e_n.append(s_e_n)
@@ -674,7 +746,10 @@ class Controller(Thread):
             else:
                 self._s_dot_deque.append(np.zeros(2))
             self._s_dot_deque.popleft()
-            s_dot_meas = smooth4(self._s_dot_deque)
+            if self._vds_kf and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+                s_dot_meas = self._vdsKFStep(self._s_e[-1][:2], self._dt[-1])   # CV-KF velocity state
+            else:
+                s_dot_meas = smooth4(self._s_dot_deque)                          # MATLAB-parity finite-diff
             self._s_dot_meas.append(s_dot_meas)
             # position barrier on r_bar_e = s_e_n (= s_e/p_10, FoV-normalized) with funnel p_r
             r_bar_e  = self._s_e_n[-1]
@@ -902,7 +977,11 @@ class Controller(Thread):
         if len(_hd_src) > 1:
             self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
-        self._dh_d.append(np.clip(smooth4(self._dh_d_deque), -DH_D_MAX, DH_D_MAX))
+        if self._dhd_kf and len(_hd_src) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            _dhd = self._cvkfVecRate(self._dhd_kf_st, _hd_src[-1], self._dt[-1])   # CV-KF rate of h_d_noS
+        else:
+            _dhd = smooth4(self._dh_d_deque)                                       # MATLAB-parity finite-diff
+        self._dh_d.append(np.clip(_dhd, -DH_D_MAX, DH_D_MAX))
 
     def PLASMC(self):
         """Middle-loop adaptive SMC -> body-frame acceleration command a_u."""
@@ -937,7 +1016,12 @@ class Controller(Thread):
             dw_raw = (self._w_i[-1] - self._w_i[-2]) / max(dt_frame, 1e-3)
             self._dw_deque.append(np.clip(dw_raw, -self._dw_max, self._dw_max))
             self._dw_deque.popleft()
-        self._dw.append(smooth4(self._dw_deque))
+        if self._dw_kf and len(self._w_i) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            # CV-KF on w_i → rate; spreads the frame-held stair-step jump instead of spiking it
+            self._dw.append(np.clip(self._cvkfVecRate(self._dw_kf_st, self._w_i[-1], self._dt[-1]),
+                                    -self._dw_max, self._dw_max))
+        else:
+            self._dw.append(smooth4(self._dw_deque))
 
         # Sliding surface. Back-mapped (default): sigma = zeta_h + Omega*int(zeta_h).
         # Combined-barrier: lateral sigma_k = zeta_h_k + chi_r*zeta_r_k (PD), descent
@@ -1022,6 +1106,24 @@ class Controller(Thread):
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
+        # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
+        # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
+        # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker
+        # whipped out of FoV. Cap |a_u_xy| once committed (direction preserved) so the spike can't
+        # whip out, keeping s_e_n LIVE. PLASMC_COMMIT_AU_MAX=0 -> OFF (acts only when commit_extent>0).
+        if self._committed and self._commit_au_max > 0:
+            _nau = float(np.linalg.norm(a_u[:2]))
+            if _nau > self._commit_au_max:
+                a_u[:2] = a_u[:2] * (self._commit_au_max / _nau)
+        # GLOBAL a_u_xy cap (PLASMC_AU_MAX_XY): bound the lateral accel at ALL altitudes, not just
+        # terminal. Diagnosis (2026-06-20): 53% of combined-barrier fly-aways breach AT ALTITUDE
+        # (~2.3m) during the off-center approach where a_u_xy hits ~102 (over-aggression overshoots),
+        # BEFORE the terminal commit cap fires. Bounding |a_u_xy| globally tames the approach
+        # over-aggression while keeping direction (s_e_n live). 0 = OFF.
+        if self._au_max_xy > 0:
+            _nag = float(np.linalg.norm(a_u[:2]))
+            if _nag > self._au_max_xy:
+                a_u[:2] = a_u[:2] * (self._au_max_xy / _nag)
         # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
         # rate setpoints internally to physical limits (~±220 deg/s); an
         # over-large a_u from a noisy startup PID firing just produces a
@@ -1044,7 +1146,32 @@ class Controller(Thread):
         # no limit cycle. (Diverges from MATLAB:483, which used a π-period alpha on
         # asymmetric T_nP3 geometry; the alpha SOURCE stays moment-based — this is
         # NOT the reverted geometric-source swap. 2026-06-07.)
-        e_a_raw = self._s[-1][3] - self._s_d[3]
+        # ALPHA RATE-LIMIT + SAVGOL filter (default-on): kill the terminal marker-fill corruption.
+        # The corruption is a GRADUAL drift (alpha -5°→-22° over ~0.3s as the marker fills the FoV)
+        # while genuine yaw is slow (~2°/s) — so (1) RATE-LIMIT the alpha change to YAW_ALPHA_MAX_RATE
+        # (caps the ~57°/s corruption drift, passes genuine slow yaw), then (2) SAVGOL-smooth the
+        # rate-limited history (removes per-frame jitter). Tracks real yaw, rejects the drift.
+        _alpha = float(self._s[-1][3])
+        if self._yaw_alpha_filt and self._yaw_alpha_kf and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            # CV-KF path: dynamics + innovation-gated outlier rejection (PLASMC_YAW_ALPHA_KF).
+            _alpha = self._yawKFStep(_alpha, self._dt[-1])
+        elif self._yaw_alpha_filt and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            if self._alpha_smooth is None:
+                self._alpha_smooth = _alpha
+            # unwrap raw vs the running smoothed value (alpha is a 2π angle)
+            _araw_uw = self._alpha_smooth + np.arctan2(
+                np.sin(_alpha - self._alpha_smooth), np.cos(_alpha - self._alpha_smooth))
+            _max_step = self._yaw_alpha_max_rate * self._dt[-1]
+            _alpha_uw = self._alpha_smooth + float(np.clip(_araw_uw - self._alpha_smooth, -_max_step, _max_step))
+            self._alpha_hist.append(_alpha_uw)
+            if len(self._alpha_hist) >= 5:
+                _w = len(self._alpha_hist) if len(self._alpha_hist) % 2 else len(self._alpha_hist) - 1
+                _w = min(_w, self._yaw_alpha_win | 1)
+                if _w >= 5:
+                    _alpha_uw = float(savgol_filter(np.array(self._alpha_hist), _w, 2)[-1])
+            self._alpha_smooth = _alpha_uw
+            _alpha = float(np.arctan2(np.sin(_alpha_uw), np.cos(_alpha_uw)))   # re-wrap
+        e_a_raw = _alpha - self._s_d[3]
         e_a = np.arctan2(np.sin(e_a_raw), np.cos(e_a_raw))
         self._e_a.append(e_a)
 
@@ -1146,6 +1273,74 @@ class Controller(Thread):
                 np.arctan2(np.sin(self._psi_d + _ua_psid * self._dt[-1]),
                            np.cos(self._psi_d + _ua_psid * self._dt[-1]))
             )
+
+    def _vdsKFStep(self, z, dt):
+        """Constant-velocity KF on the centroid s_e[:2] → V_ds = velocity state (2,).
+        State x=[px,py,vx,vy]; z=position measurement. Predict (CV model) + update."""
+        z = np.asarray(z, float)
+        if self._vds_x is None:                       # lazy init at the first measurement
+            self._vds_x = np.array([z[0], z[1], 0.0, 0.0])
+            self._vds_P = np.diag([1e-2, 1e-2, 1.0, 1.0])
+            return np.zeros(2)
+        F = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], float)
+        q = self._vds_kf_q
+        # CV process-noise (white-accel) Q
+        Q = q * np.array([[dt**3/3, 0, dt**2/2, 0], [0, dt**3/3, 0, dt**2/2],
+                          [dt**2/2, 0, dt, 0], [0, dt**2/2, 0, dt]], float)
+        H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], float)
+        R = self._vds_kf_r * np.eye(2)
+        x = F @ self._vds_x
+        P = F @ self._vds_P @ F.T + Q
+        S = H @ P @ H.T + R
+        K = P @ H.T @ np.linalg.inv(S)
+        x = x + K @ (z - H @ x)
+        P = (np.eye(4) - K @ H) @ P
+        self._vds_x, self._vds_P = x, P
+        return self._vds_kf_scale * x[2:4]   # rescale onto the measured-flow h scale
+
+    def _yawKFStep(self, z_raw, dt):
+        """Scalar angle CV-KF on yaw [yaw, yaw_rate] with innovation gating. z_raw = raw alpha
+        (wrapped). Returns the wrapped filtered yaw. Genuine slow yaw passes; corruption-drift
+        measurements (large innovation) are down-weighted by inflating R via the Mahalanobis gate."""
+        if self._yaw_kf_x is None:
+            self._yaw_kf_x = np.array([float(z_raw), 0.0]); self._yaw_kf_P = np.diag([1e-2, 1.0])
+            return float(z_raw)
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self._yaw_kf_q * np.array([[dt**3/3, dt**2/2], [dt**2/2, dt]])
+        H = np.array([[1.0, 0.0]])
+        x = F @ self._yaw_kf_x; P = F @ self._yaw_kf_P @ F.T + Q
+        # unwrap the measurement relative to the predicted yaw (angle continuity)
+        z = x[0] + np.arctan2(np.sin(float(z_raw) - x[0]), np.cos(float(z_raw) - x[0]))
+        S = float(H @ P @ H.T) + self._yaw_kf_r
+        nu = z - x[0]                                   # innovation
+        d2 = nu * nu / S                                # Mahalanobis distance²
+        r_eff = self._yaw_kf_r
+        if d2 > self._yaw_kf_gate:                      # GATE: inflate R ∝ d² so the spike is rejected
+            r_eff = self._yaw_kf_r * (d2 / self._yaw_kf_gate)
+            S = float(H @ P @ H.T) + r_eff
+        K = (P @ H.T).flatten() / S
+        x = x + K * nu; P = (np.eye(2) - np.outer(K, H.flatten())) @ P
+        self._yaw_kf_x, self._yaw_kf_P = x, P
+        return float(np.arctan2(np.sin(x[0]), np.cos(x[0])))
+
+    def _cvkfVecRate(self, st, z, dt):
+        """Per-axis constant-velocity KF on a vector signal z; returns the RATE state (n,).
+        st = {'x':(n,2),'P':(n,2,2)} persisted across calls. Used for dh_d / dw."""
+        z = np.asarray(z, float); n = len(z)
+        q, r = self._deriv_kf_q, self._deriv_kf_r
+        if st["x"] is None:
+            st["x"] = np.column_stack([z, np.zeros(n)])
+            st["P"] = np.tile(np.diag([1e-2, 1.0]), (n, 1, 1)).astype(float)
+            return np.zeros(n)
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = q * np.array([[dt**3/3, dt**2/2], [dt**2/2, dt]])
+        H = np.array([[1.0, 0.0]]); out = np.zeros(n)
+        for i in range(n):
+            x = F @ st["x"][i]; P = F @ st["P"][i] @ F.T + Q
+            S = float(H @ P @ H.T) + r; K = (P @ H.T).flatten() / S
+            x = x + K * (z[i] - x[0]); P = (np.eye(2) - np.outer(K, H.flatten())) @ P
+            st["x"][i], st["P"][i], out[i] = x, P, x[1]
+        return out
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
@@ -1643,6 +1838,8 @@ class Controller(Thread):
             # Outer-loop position funnel envelope (SEN_FUNNEL); residency r=s_e_n/p_s
             "p_s(t)": self._p_s,
             "dp_s(t)": self._dp_s,
+            "p_r(t)": self._p_r,            # combined-barrier position funnel (s_e_n vs p_r)
+            "zeta_r(t)": self._zeta_r,      # combined-barrier position barrier
             # Middle-loop barrier
             "p(t)": self._p,
             "dp(t)": self._dp,

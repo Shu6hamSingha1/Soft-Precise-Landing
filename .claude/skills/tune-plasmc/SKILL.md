@@ -77,6 +77,26 @@ If the failure is mode 1 → no controller-side tuning fixes it. Mode 2 → alre
 
 ## Complete parameter inventory
 
+> **⭐ 2026-06-20 — LATERAL WALL MECHANISM SOLVED + partial fix ([[feedback_lateral_wall_anti_restoring_au]]).** The
+> "perception-gated / flow-under-report" conclusion below is OVERTURNED by GT-grounded diagnosis on IC1 fly-aways.
+> **ROOT = terminal 1/Z amplification, NOT perception:** the drone descends FINE to ~2 m (offset 0.25 m ±0.3, tight,
+> decode 100%, flow accurate) — then `s_e_n = lat/Z` blows up a SMALL residual offset (~0.85 m) near touchdown →
+> funnel breach → violent `ds_d` spike (4–6.6, vs ~0.5 controlled) → marker leaves FoV → TARGET_LOST → open-loop
+> fly-away (the 7–60 m numbers are POST-loss). Ruled out, GT-verified: perception (decode/flow fine in overshoot),
+> delivery/authority (brake commanded AND delivered, GT accel inward 4–14 m/s²), D1 sign (`PLASMC_AU_ROTZ_ONLY` no
+> change), and **freeze-`s_e_n` (0/3 — lying to the flow-SMC/CBF/descent destabilizes; 64–110 m)**. **FIX = COMMAND-
+> BOUNDING, `PLASMC_COMMIT_DSD_MAX`:** once committed (marker fills FoV, `PLASMC_COMMIT_EXTENT`≈50 px ≈1.3 m, median
+> trigger `PLASMC_COMMIT_WIN`), cap `|V_ds_d|` while keeping `s_e_n` LIVE → bounds the reaction, no inconsistency.
+> **IC1: variance STD 22.9→0.6 (38×), fly-aways 4/5→0–1/5 = WALL CLOSED (centered).** ⛔ **IC2-5 GATE FAILED
+> (centered-specific):** off-center reps converge then still diverge — the position cap can't arrest the RESIDUAL
+> LATERAL VELOCITY carried from the 2 m offset. **Next = velocity-aware terminal handling.** All default-off, NOT baked.
+> **METHODOLOGY:** the lateral outcome is STOCHASTICITY-DOMINATED (baseline STD swings 2–22 m run-to-run) → n=5 single-
+> config A/Bs measure noise; judge by VARIANCE COLLAPSE, not median. The stochasticity is purely TERMINAL (<1 m), not t=0.
+> **Other 2026-06-19/20 (all default-off):** combined-barrier ported (parity-clean vs MATLAB except D1/D2/centroid-CBF;
+> `PLASMC_COMBINED_BARRIER`); moment-loom (`FLOW_LOOM_DECOUPLE`, `FLOW_LOOM_GAIN=1.0`, MATLAB 92→95/100); CV-KF V_ds
+> (`PLASMC_VDS_KF`, corr 0.41→0.52 vs smooth4; `PLASMC_VDS_KF_SCALE=0.79` = cal_hw/cal_s consistency); pyramidal-LK
+> ruled INERT (deficit = ArUco decode-availability, [[feedback_pyramidal_lk_inert]]).
+
 > **🟢 2026-06-15/16 — `KP 5→3` BAKED + INNER-LOOP/FLOW thread (read [[feedback_inner_loop_velocity_thread]] [[feedback_lateral_overshoot_root]]).**
 > **BAKED: `KP_{X,Y}`=3.0** (6ee0f2c; KP sets the saturated-barrier demand ceiling ∝p_s·KP; 3 cuts arrival vel 3.4→2.8, peak vel 8.1→3.8, xy 22→8.6; IC2-5 gate fixed the IC5 catastrophe 27→2.3 m; KP=2 sluggish). `PS0` now **resolution-derived** (FoV-edge=1.0 in s_e_n + `PLASMC_PS0_MARGIN` default 0.2 = 1.2). `CBF_LPF_BEFORE` default-**off** (reverted; breaches funnel early at altitude). `N_z`=0.1 (≠ MATLAB 0.02; parity doc fixed). `theta_cap` moved OUT of cbf2_filter → controller (CBF now pure-visibility).
 > **GAINS PLATEAUED — every signal-side lever ruled out as a SOLE cure (NC80-87):** KP↓ (winner, not curer), PS0-widen (raises demand, dead-end), KD 0.8/1.0 (no TL removal), XI2_xy=0.8 (stochastic), N_xy=0.1 (neutral), `SEN_RECOVERY_K` (outer authority — didn't reduce breach), `FLOW_CENTROID_RATE` (inner velocity — beat the LK ceiling h/true 0.37→0.96 but still 5/5 TL), both-pillars CR0.5+REC (5/5→2/5, not cured), `CH_CLEAN` consistent c_h (smoother+non-regressing, not wall-breaker).

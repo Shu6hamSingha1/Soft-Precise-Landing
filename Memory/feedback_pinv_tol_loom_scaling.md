@@ -42,6 +42,27 @@ is BENIGN (controller gains are tuned around the filter attenuation; lag-comp ov
 pinv LATERAL (hybrid = moment loom + pinv lateral); PX4 matches (FLOW_LOOM_DECOUPLE overrides only V_v[2]).
 Pathological seeds fail under EVERY estimator = perception FRONT-END limit, not estimator choice.
 
+**⭐ LOOM METHOD COMPARISON — LIVE (2026-06-20, corrects an offline artifact).** Decoupled (moment/
+divergence) loom beats pinv for the CORNER (0.85 vs 0.33, loom_descent logged). For the RING, computed
+LIVE (`validation_data/ringmoment`, Img_Data 'Ring Moment' logged in `_compute_ring_flow`): ring
+DIVERGENCE 0.88 ≈ ring MOMENT 0.86 ≈ ring PINV 0.85 — all EXCELLENT and tied; the ring moment is NOT
+worse (my earlier OFFLINE ring-moment 0.20 was a broken raw-frame-LK replication artifact — offline
+ring LK ≠ live ring flow; the corner moment matched offline, the ring did not). So: corner-MOMENT is the
+clear loom (0.85 vs pinv 0.33); for the ring all three are competitive and the DIVERGENCE (robust median)
+is marginally best (already wired in the fusion EKF). Cal-bypass for the corner moment loom FIXED (it
+was inheriting _sensor_cal_hw ×1.0744 + cross-terms; now feeds the EKF as clean vz/Z). 8×5 reduced-pinv
+option added (`FLOW_LSTSQ_DROP_LOOM_COL`) — MATLAB: no closed-loop gain over full 8×6.
+
+**CAL-FIX CLOSED-LOOP A/B (2026-06-20, INCONCLUSIVE — lateral confound).** IC1 n=5, cap0.8 CONTAINING
+the lateral wall, capbase(pinv loom) vs caploom(FLOW_LOOM_DECOUPLE, cal-fixed): med td_lat 10.09 vs 1.53,
+fly 4/5 vs 1/5 — BUT that's LATERAL STOCHASTICITY (capbase got unlucky; cap0.8 is centered-specific +
+stochasticity-dominated), NOT the loom (a VERTICAL signal can't change the lateral fly-rate). On the
+LANDED reps the loom-relevant terminal metrics (vz_term ~0.8-1.4, balloon 0-0.78) are SIMILAR between
+arms → no clear closed-loop loom benefit. So the cal fix stands as an ESTIMATOR-level correctness fix
+(validated: clean vz/Z, 0.85 corr, no ×1.0744/cross-terms) but its CLOSED-LOOP benefit is unjudgeable
+until the lateral wall is actually SOLVED (cap-containment is itself stochastic). Same obstacle as the
+original loom A/B: the lateral stochasticity confounds every IC1 terminal/loom closed-loop test.
+
 **PX4 IMPLEMENTATION LANDED (2026-06-19, default-off, py_compile clean):** `img_data.py` env
 `FLOW_LOOM_DECOUPLE=1` overrides ONLY `V_v[2]` (lateral h_x/h_y + ω stay from the lstsq) with
 `-½·d(ln M)/dt`, M=μ20+μ02 = trace of the de-rotated (V-frame) primary-corner scatter, via a
