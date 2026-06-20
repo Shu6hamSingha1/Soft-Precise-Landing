@@ -300,7 +300,7 @@ class Controller(Thread):
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
         # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "0") == "1"
-        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "50.0"))   # process (accel) noise PSD
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))   # process (accel) noise PSD (q=10 best vs GT)
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
         self._vds_x = None         # KF state [px,py,vx,vy]
         self._vds_P = None         # KF covariance (4x4)
