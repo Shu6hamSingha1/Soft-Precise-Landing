@@ -302,6 +302,13 @@ class Controller(Thread):
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "0") == "1"
         self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))   # process (accel) noise PSD (q=10 best vs GT)
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
+        # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
+        # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
+        # h_e=h-h_d carries _sensor_cal_hw — a DIFFERENT cal. So V_ds and h are on mismatched scales
+        # by construction (measured |V_ds|/|h|~1.26 ≈ cal_s/cal_hw), biasing h_e. Rescale V_ds onto the
+        # h scale (×cal_hw/cal_s≈0.79) so h_d and h are commensurate. Applies to BOTH KF and smooth4
+        # V_ds (cal mismatch is estimator-independent). Default 1.0 = off; set ~0.79.
+        self._vds_kf_scale = float(os.environ.get("PLASMC_VDS_KF_SCALE", "0.79"))
         self._vds_x = None         # KF state [px,py,vx,vy]
         self._vds_P = None         # KF covariance (4x4)
         # TERMINAL COMMIT (2026-06-19, feedback_lateral_wall_anti_restoring_au). The lateral wall
@@ -1184,7 +1191,7 @@ class Controller(Thread):
         x = x + K @ (z - H @ x)
         P = (np.eye(4) - K @ H) @ P
         self._vds_x, self._vds_P = x, P
-        return x[2:4].copy()
+        return self._vds_kf_scale * x[2:4]   # rescale onto the measured-flow h scale
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
