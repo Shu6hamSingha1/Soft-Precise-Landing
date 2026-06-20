@@ -33,6 +33,13 @@ A systematic procedure for tuning the PLASMC controller in `PX4_Gazebo/` and for
 > linearized away) AND `eR > commanded tilt` → **inner-loop attitude lag** (cascade-bandwidth mismatch);
 > `kR`/`kΩ`/`E` test pending. Relevant for the PX4 port too — same `s̈`/inner-loop structure. See [[project_sddot_limit_cycle]].
 
+> **⭐ 2026-06-20 — CYCLE-DAMPING CAMPAIGN + FLY-AWAY ROOT CAUSE (MATLAB clean blocks; [[project_cycle_damping_campaign]]).** Follow-up to the 06-19 limit-cycle block; the `kR`/`kΩ` test "pending" above is now DONE.
+> - **The yaw limit cycle is the hidden MASTER driver.** Per-axis analysis: a YAW cycle (worst Circular-IC3=1.78 swing-pp, concentrated on the `[2,-2]` IC3 offset, rotating-target-worst) PUMPS the lateral cycles through yaw↔image-frame coupling. **`kΩ_z` (SO(3) yaw-rate gain) under-damped at 0.1 → root cause.** `kΩ_z=0.2` kills the yaw cycle −90% AND the lateral cycles (Y 0.98→0.11) at zero gate cost, MONOTONICALLY (robust, unlike a sharp `kR` optimum). **Check the yaw cycle FIRST on any lateral-cycle problem.** Baked: `chi_r=1.15` (full ±40%) + `kR-roll=2.5` (Y-attitude damping, but SHARP/fragile optimum) + `kΩ_z=0.2` (root).
+> - **The terminal fly-away is a 1/z geometric POSITIVE-FEEDBACK instability, NOT a noise outlier.** Drone descends cleanly to ~0.33m then LAUNCHES upward (descVz=-22). The loom `V_h(3)=vz/z` has loop gain ∝1/z→∞ near touchdown; it self-excites (V_h(3)↑→thrust↑→ascent→corner-velocity dPdt↑ RAMPS gradually→V_h(3)↑). Noise only SEEDS it; geometry provides the gain. It's a race: descent-to-zf vs the loop igniting. **κ can't fix it** — the spike enters `u_eq`'s c-term `-h_z·h` (quadratic in flow), bypassing `u_sw`/κ; and κ assumes σ is correctly measured (this is a sensor-side amplification).
+> - **`h_ez` does NOT converge to 0** (so the loom isn't held at `h_rd` → area rate not constant → dPdt ramps → enables the instability). Root = weak descent integral (`χ_z=0.025`+izeta clamp). Proper fix = strengthen descent integral so `h_ez→0`; band-aid = clamp `V_h(3)` before the SG filter (gated `LOOM_CLAMP`).
+> - **`h_rd` paradox:** gentler `h_rd` SHRINKS the descent cycle but is LESS robust (more time in the low-alt 1/z danger zone → more fly-aways). `h_rd=-0.40` looked clean on seeds 1-3, flew away on seed 1002. **`h_rd=-0.42` stands.**
+> - **METHODOLOGY (load-bearing): validate gains across a SEED ENSEMBLE, not seed 1.** The whole campaign optimized on seed1+noiseless and shipped a fragile `h_rd`. Even the original config is only 80% over the hard ensemble (IC2/3/5 × seeds 1000-1014). A sharp single-seed optimum is a robustness RED FLAG. Use `sweep_vdf` + a multi-seed fly-away/SP-rate metric.
+
 ## When to invoke
 
 - "Tune the controller", "tune gain X", "sweep parameter Y"
