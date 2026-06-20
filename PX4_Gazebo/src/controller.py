@@ -46,6 +46,7 @@ import os
 import time
 import numpy as np
 from scipy.linalg import expm
+from scipy.signal import savgol_filter
 from threading import Thread
 from collections import deque
 
@@ -273,6 +274,16 @@ class Controller(Thread):
         self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))
         self._kappa_a_0 = float(os.environ.get("PLASMC_YAW_KAPPA0", "2.0"))
         self._E_a       = float(os.environ.get("PLASMC_YAW_E",      "3.0"))
+        # YAW ALPHA SAVGOL-PREDICTION FILTER (2026-06-20): reject the terminal alpha (s[3])
+        # corruption spike (single-frame -22° outlier at touchdown when the marker fills the FoV).
+        # Fit a low-order Savgol/poly to the recent alpha history -> a smooth PREDICTION; if the raw
+        # alpha deviates from it by > YAW_ALPHA_REJECT rad, use the prediction (KLT-style outlier
+        # reject), else blend toward raw. Tracks genuine slow yaw, kills the spike. Default-ON.
+        self._yaw_alpha_filt = os.environ.get("PLASMC_YAW_ALPHA_FILT", "1") == "1"
+        self._yaw_alpha_win = int(os.environ.get("PLASMC_YAW_ALPHA_WIN", "9"))    # savgol window (frames)
+        self._yaw_alpha_max_rate = float(os.environ.get("PLASMC_YAW_ALPHA_MAX_RATE", "0.30"))  # rad/s (~17°/s) drift cap (genuine yaw ~0.04 rad/s, corruption ~1 rad/s)
+        self._alpha_hist = deque(maxlen=self._yaw_alpha_win)   # recent (unwrapped) raw alpha
+        self._alpha_smooth = None      # last smoothed/predicted alpha (unwrapped)
 
         # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
@@ -1123,7 +1134,29 @@ class Controller(Thread):
         # no limit cycle. (Diverges from MATLAB:483, which used a π-period alpha on
         # asymmetric T_nP3 geometry; the alpha SOURCE stays moment-based — this is
         # NOT the reverted geometric-source swap. 2026-06-07.)
-        e_a_raw = self._s[-1][3] - self._s_d[3]
+        # ALPHA RATE-LIMIT + SAVGOL filter (default-on): kill the terminal marker-fill corruption.
+        # The corruption is a GRADUAL drift (alpha -5°→-22° over ~0.3s as the marker fills the FoV)
+        # while genuine yaw is slow (~2°/s) — so (1) RATE-LIMIT the alpha change to YAW_ALPHA_MAX_RATE
+        # (caps the ~57°/s corruption drift, passes genuine slow yaw), then (2) SAVGOL-smooth the
+        # rate-limited history (removes per-frame jitter). Tracks real yaw, rejects the drift.
+        _alpha = float(self._s[-1][3])
+        if self._yaw_alpha_filt and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            if self._alpha_smooth is None:
+                self._alpha_smooth = _alpha
+            # unwrap raw vs the running smoothed value (alpha is a 2π angle)
+            _araw_uw = self._alpha_smooth + np.arctan2(
+                np.sin(_alpha - self._alpha_smooth), np.cos(_alpha - self._alpha_smooth))
+            _max_step = self._yaw_alpha_max_rate * self._dt[-1]
+            _alpha_uw = self._alpha_smooth + float(np.clip(_araw_uw - self._alpha_smooth, -_max_step, _max_step))
+            self._alpha_hist.append(_alpha_uw)
+            if len(self._alpha_hist) >= 5:
+                _w = len(self._alpha_hist) if len(self._alpha_hist) % 2 else len(self._alpha_hist) - 1
+                _w = min(_w, self._yaw_alpha_win | 1)
+                if _w >= 5:
+                    _alpha_uw = float(savgol_filter(np.array(self._alpha_hist), _w, 2)[-1])
+            self._alpha_smooth = _alpha_uw
+            _alpha = float(np.arctan2(np.sin(_alpha_uw), np.cos(_alpha_uw)))   # re-wrap
+        e_a_raw = _alpha - self._s_d[3]
         e_a = np.arctan2(np.sin(e_a_raw), np.cos(e_a_raw))
         self._e_a.append(e_a)
 
