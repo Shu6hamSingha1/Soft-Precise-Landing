@@ -40,7 +40,7 @@ P.chi_z = 0.1;                          % descent surface gain (PI: zeta_h3 + ch
 
 % ---- Leakage ASMC  (tex eq. adaptive control law + adaptive law) ---------------
 P.Gamma   = diag([0.4375, 0.5, 0.75]);  % Gamma    linear sliding gain
-P.E       = diag([1.0, 1.0, 1.0]);      % E        boundary-layer thickness (sat E^-1 sigma)
+P.E       = diag([1.0, 1.0, 0.5]);      % E boundary-layer thickness (sat E^-1 sigma). E_z 1.0->0.5 baked 2026-06-20: tightens the DESCENT boundary layer so kappa's switching ENGAGES on the Z limit cycle (was 100% inside the layer -> linearized/locked out) -> Z cycle -8% (0.63->0.58) + better h_ez convergence, full gate. 0.5 = sweet spot; E_z<0.5 hard-switch over-drives the aggressive cells (S3/S5/L3/C5)
 P.N       = diag([0.02, 0.02, 0.02]);   % N        adaptation rate
 P.Pleak   = diag([1.5, 1.5, 5.0]);      % P        kappa leakage
 P.kappa0  = [0.125; 0.125; 0.25];       % kappa(0) initial switching gain

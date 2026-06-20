@@ -71,7 +71,7 @@ K_ctrl.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2)
 K_ctrl.P       = diag([1.5,   1.5,   5.0  ]);
 K_ctrl.N       = diag([0.02,  0.02,  0.02 ]);   % N_z 0.05->0.02 (PX4 value): kappa_z adaptation too fast on noisy flow -> runaway on funnel breach (CONTROLLER_PARITY.md:61)
 K_ctrl.kappa_0 = [0.125; 0.125; 0.25];
-K_ctrl.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
+K_ctrl.E       = diag([1.0,   1.0,   0.5  ]);  % E_z 1.0->0.5 baked 2026-06-20: tighter descent boundary layer engages kappa switching on the Z limit cycle -> -8%, better h_ez. See vdf_params.
 
 % ---- Middle-loop SMC authority hooks (globals; default = no change) -------
 % Override the LATERAL (xy) diagonal entries only (z untouched) to test the

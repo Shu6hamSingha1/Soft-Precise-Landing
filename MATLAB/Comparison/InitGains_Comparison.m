@@ -40,7 +40,7 @@ K_PLASMC.Gamma   = diag([0.4375, 0.5,   0.75 ]); % lateral symmetry lock (IC=±2
 K_PLASMC.P       = diag([1.5,   1.5,   5.0  ]);
 K_PLASMC.N       = diag([0.02,  0.02,  0.05 ]);
 K_PLASMC.kappa_0 = [0.125; 0.125; 0.25];
-K_PLASMC.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired with rd=1.15); 1.1 was saturated
+K_PLASMC.E       = diag([1.0,   1.0,   0.5  ]);  % E_z 1.0->0.5 baked 2026-06-20 (synced w/ vdf_params); descent boundary layer engages kappa on Z cycle. Vestigial for ctrl-1 (uses vdf_params).
 
 % Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
 K_PLASMC.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20 (synced w/ vdf_params); vestigial for ctrl-1 (uses vdf_params), kept for sync. NB: baselines 2-5 use kR_shared, NOT this.
