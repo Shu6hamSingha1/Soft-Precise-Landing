@@ -204,11 +204,25 @@ class Controller(Thread):
                                   float(os.environ.get("PLASMC_PRINF_Y", "1.0"))])    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
         self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
                                  float(os.environ.get("PLASMC_XIR_Y", "0.10"))])      # position-funnel contraction rate
-        # Combined mode uses a tighter lateral optic-flow-funnel floor (chase-lag terminal
-        # velocity; proof manifold). Apply only in combined mode, only if not explicitly set.
+        # Combined mode = the MATLAB VDF-ASMC manuscript controller. The baked PX4 defaults
+        # above are the BACK-MAPPED soft-config gains (GAMMA=2.0, KAPPA0=0.5, XI2=0.6, E=0.8/0.5,
+        # P2INF_z=0.5) which are 3-5x too HOT for the combined surface (zeta_r already supplies
+        # position authority) -> a_u over-aggression (~102 m/s2) -> off-center fly-aways. Auto-align
+        # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
+        # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
             if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 0.5
             if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 0.5
+            if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
+            if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
+                self._Gma = np.diag([0.4375, 0.5, 0.75])                     # vdf Gamma (was 2/2/1)
+            if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
+                self._kappa_0 = np.array([0.125, 0.125, 0.25])              # vdf kappa0 (was .5/.5/1)
+            if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
+                self._E = np.diag([1.0, 1.0, 1.0])                          # vdf E (was .8/.8/.5)
+            if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
+                self._gamma = np.diag([0.2, 0.2, 0.2])                      # vdf Xi_h (was .6/.6/.8)
+            # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
 
         # Print every parameter whose value differs from its default.
         _defaults = {"XI2": (0.2, 0.2, 0.2), "P20": (25.0, 25.0, 4.0),
@@ -1751,6 +1765,8 @@ class Controller(Thread):
             # Outer-loop position funnel envelope (SEN_FUNNEL); residency r=s_e_n/p_s
             "p_s(t)": self._p_s,
             "dp_s(t)": self._dp_s,
+            "p_r(t)": self._p_r,            # combined-barrier position funnel (s_e_n vs p_r)
+            "zeta_r(t)": self._zeta_r,      # combined-barrier position barrier
             # Middle-loop barrier
             "p(t)": self._p,
             "dp(t)": self._dp,
