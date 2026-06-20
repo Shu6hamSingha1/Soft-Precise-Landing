@@ -311,6 +311,16 @@ class Controller(Thread):
         self._vds_kf_scale = float(os.environ.get("PLASMC_VDS_KF_SCALE", "0.79"))
         self._vds_x = None         # KF state [px,py,vx,vy]
         self._vds_P = None         # KF covariance (4x4)
+        # CV-KF options for the c-term derivatives dh_d (rate of h_d_noS) and dw (rate of w_i).
+        # Default-off → smooth4(finite-diff) (MATLAB parity). A CV-KF on the underlying signal
+        # outputs the rate as a state (lower lag + spike-spreading vs differencing). dw especially:
+        # w_i is frame-held (stair-step) so finite-diff SPIKES at frame changes; the KF spreads it.
+        self._dhd_kf = os.environ.get("PLASMC_DHD_KF", "0") == "1"
+        self._dw_kf  = os.environ.get("PLASMC_DW_KF", "0") == "1"
+        self._deriv_kf_q = float(os.environ.get("PLASMC_DERIV_KF_Q", "10.0"))
+        self._deriv_kf_r = float(os.environ.get("PLASMC_DERIV_KF_R", "1e-3"))
+        self._dhd_kf_st = {"x": None, "P": None}
+        self._dw_kf_st  = {"x": None, "P": None}
         # TERMINAL COMMIT (2026-06-19, feedback_lateral_wall_anti_restoring_au). The lateral wall
         # ROOT = terminal 1/Z amplification: the drone descends fine to ~0.6 m with a small residual
         # offset (~0.85 m), then s_e_n=lat/Z blows up near touchdown → funnel breach → violent lateral
@@ -924,7 +934,11 @@ class Controller(Thread):
         if len(_hd_src) > 1:
             self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
-        self._dh_d.append(np.clip(smooth4(self._dh_d_deque), -DH_D_MAX, DH_D_MAX))
+        if self._dhd_kf and len(_hd_src) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            _dhd = self._cvkfVecRate(self._dhd_kf_st, _hd_src[-1], self._dt[-1])   # CV-KF rate of h_d_noS
+        else:
+            _dhd = smooth4(self._dh_d_deque)                                       # MATLAB-parity finite-diff
+        self._dh_d.append(np.clip(_dhd, -DH_D_MAX, DH_D_MAX))
 
     def PLASMC(self):
         """Middle-loop adaptive SMC -> body-frame acceleration command a_u."""
@@ -959,7 +973,12 @@ class Controller(Thread):
             dw_raw = (self._w_i[-1] - self._w_i[-2]) / max(dt_frame, 1e-3)
             self._dw_deque.append(np.clip(dw_raw, -self._dw_max, self._dw_max))
             self._dw_deque.popleft()
-        self._dw.append(smooth4(self._dw_deque))
+        if self._dw_kf and len(self._w_i) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            # CV-KF on w_i → rate; spreads the frame-held stair-step jump instead of spiking it
+            self._dw.append(np.clip(self._cvkfVecRate(self._dw_kf_st, self._w_i[-1], self._dt[-1]),
+                                    -self._dw_max, self._dw_max))
+        else:
+            self._dw.append(smooth4(self._dw_deque))
 
         # Sliding surface. Back-mapped (default): sigma = zeta_h + Omega*int(zeta_h).
         # Combined-barrier: lateral sigma_k = zeta_h_k + chi_r*zeta_r_k (PD), descent
@@ -1192,6 +1211,25 @@ class Controller(Thread):
         P = (np.eye(4) - K @ H) @ P
         self._vds_x, self._vds_P = x, P
         return self._vds_kf_scale * x[2:4]   # rescale onto the measured-flow h scale
+
+    def _cvkfVecRate(self, st, z, dt):
+        """Per-axis constant-velocity KF on a vector signal z; returns the RATE state (n,).
+        st = {'x':(n,2),'P':(n,2,2)} persisted across calls. Used for dh_d / dw."""
+        z = np.asarray(z, float); n = len(z)
+        q, r = self._deriv_kf_q, self._deriv_kf_r
+        if st["x"] is None:
+            st["x"] = np.column_stack([z, np.zeros(n)])
+            st["P"] = np.tile(np.diag([1e-2, 1.0]), (n, 1, 1)).astype(float)
+            return np.zeros(n)
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = q * np.array([[dt**3/3, dt**2/2], [dt**2/2, dt]])
+        H = np.array([[1.0, 0.0]]); out = np.zeros(n)
+        for i in range(n):
+            x = F @ st["x"][i]; P = F @ st["P"][i] @ F.T + Q
+            S = float(H @ P @ H.T) + r; K = (P @ H.T).flatten() / S
+            x = x + K * (z[i] - x[0]); P = (np.eye(2) - np.outer(K, H.flatten())) @ P
+            st["x"][i], st["P"][i], out[i] = x, P, x[1]
+        return out
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
