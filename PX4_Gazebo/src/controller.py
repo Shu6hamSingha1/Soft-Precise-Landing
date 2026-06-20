@@ -315,8 +315,8 @@ class Controller(Thread):
         # Default-off → smooth4(finite-diff) (MATLAB parity). A CV-KF on the underlying signal
         # outputs the rate as a state (lower lag + spike-spreading vs differencing). dw especially:
         # w_i is frame-held (stair-step) so finite-diff SPIKES at frame changes; the KF spreads it.
-        self._dhd_kf = os.environ.get("PLASMC_DHD_KF", "0") == "1"
-        self._dw_kf  = os.environ.get("PLASMC_DW_KF", "0") == "1"
+        self._dhd_kf = os.environ.get("PLASMC_DHD_KF", "1") == "1"   # BAKED 2026-06-20 (CV-KF, spike -60% vs smooth4)
+        self._dw_kf  = os.environ.get("PLASMC_DW_KF", "1") == "1"   # BAKED 2026-06-20 (CV-KF, spike -80%; w_i frame-held)
         self._deriv_kf_q = float(os.environ.get("PLASMC_DERIV_KF_Q", "10.0"))
         self._deriv_kf_r = float(os.environ.get("PLASMC_DERIV_KF_R", "1e-3"))
         self._dhd_kf_st = {"x": None, "P": None}
