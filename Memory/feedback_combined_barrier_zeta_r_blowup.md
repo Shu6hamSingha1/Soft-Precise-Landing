@@ -41,3 +41,14 @@ committed), NOT V_ds_d. (The sigma is actually bounded ~7 by the S_r/S clamps; t
 amplification of a_v when the interaction matrix G goes ill-conditioned near terminal -> cap the OUTPUT
 a_u.) NEXT = either implement an a_u_xy commit-cap for combined mode + re-gate, OR REVERT the combined
 bake (a82328b) since it regresses and the existing cap can't fix it.
+
+**⛔ FINAL VERDICT — combined-barrier REVERTED (2026-06-20).** The a_u-cap (PLASMC_COMMIT_AU_MAX=6)
+PROVABLY bounds the spike (n=1: post-commit a_u_xy 130->6, that rep LANDED 2.33m) but does NOT make
+combined bakeable. Full IC2-5 gate n=5 vs back-mapped: land<2.5m **1/20 vs 5/20** (WORSE), fly>3
+**19/20 vs 17/20** (WORSE). The terminal a_u spike was A symptom, not THE binding cause — bounding it cut
+IC2 median drift (12.65->3.73) but produced NO landings; off-center stochasticity dominates. So the
+combined surface regresses off-center and neither the V_ds_d cap (inert) nor the a_u-cap (works but
+insufficient) rescues it. REVERTED PLASMC_COMBINED_BARRIER + PLASMC_VDS_KF back to default-OFF (a82328b
+undone). Knobs (COMMIT_AU_MAX, VDS_KF, etc.) KEPT default-off for future combined work. The lateral wall
+remains: back-mapped is the baked baseline; the only thing that closed IC1 was V_ds_d command-bounding
+(centered-specific, failed IC2-5). Net: combined-barrier is a DEAD-END as a PX4 default.
