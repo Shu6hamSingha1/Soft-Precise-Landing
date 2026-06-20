@@ -53,6 +53,16 @@ is marginally best (already wired in the fusion EKF). Cal-bypass for the corner 
 was inheriting _sensor_cal_hw ×1.0744 + cross-terms; now feeds the EKF as clean vz/Z). 8×5 reduced-pinv
 option added (`FLOW_LSTSQ_DROP_LOOM_COL`) — MATLAB: no closed-loop gain over full 8×6.
 
+**CAL-FIX CLOSED-LOOP A/B (2026-06-20, INCONCLUSIVE — lateral confound).** IC1 n=5, cap0.8 CONTAINING
+the lateral wall, capbase(pinv loom) vs caploom(FLOW_LOOM_DECOUPLE, cal-fixed): med td_lat 10.09 vs 1.53,
+fly 4/5 vs 1/5 — BUT that's LATERAL STOCHASTICITY (capbase got unlucky; cap0.8 is centered-specific +
+stochasticity-dominated), NOT the loom (a VERTICAL signal can't change the lateral fly-rate). On the
+LANDED reps the loom-relevant terminal metrics (vz_term ~0.8-1.4, balloon 0-0.78) are SIMILAR between
+arms → no clear closed-loop loom benefit. So the cal fix stands as an ESTIMATOR-level correctness fix
+(validated: clean vz/Z, 0.85 corr, no ×1.0744/cross-terms) but its CLOSED-LOOP benefit is unjudgeable
+until the lateral wall is actually SOLVED (cap-containment is itself stochastic). Same obstacle as the
+original loom A/B: the lateral stochasticity confounds every IC1 terminal/loom closed-loop test.
+
 **PX4 IMPLEMENTATION LANDED (2026-06-19, default-off, py_compile clean):** `img_data.py` env
 `FLOW_LOOM_DECOUPLE=1` overrides ONLY `V_v[2]` (lateral h_x/h_y + ω stay from the lstsq) with
 `-½·d(ln M)/dt`, M=μ20+μ02 = trace of the de-rotated (V-frame) primary-corner scatter, via a
