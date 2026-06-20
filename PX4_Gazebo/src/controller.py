@@ -284,6 +284,18 @@ class Controller(Thread):
         self._yaw_alpha_max_rate = float(os.environ.get("PLASMC_YAW_ALPHA_MAX_RATE", "0.30"))  # rad/s (~17°/s) drift cap (genuine yaw ~0.04 rad/s, corruption ~1 rad/s)
         self._alpha_hist = deque(maxlen=self._yaw_alpha_win)   # recent (unwrapped) raw alpha
         self._alpha_smooth = None      # last smoothed/predicted alpha (unwrapped)
+        # ALPHA CV-KF (2026-06-20): constant-velocity Kalman on the yaw angle [yaw, yaw_rate] with
+        # INNOVATION GATING — the principled alternative to rate-limit+Savgol. Models the yaw
+        # dynamics (predicts via the estimated rate), and a measurement inconsistent with the
+        # prediction (the corruption drift) produces a large innovation that the Mahalanobis gate
+        # down-weights/rejects. PLASMC_YAW_ALPHA_KF=1 selects it over the Savgol path (both gated
+        # by PLASMC_YAW_ALPHA_FILT). Genuine slow yaw passes (small innovation). Default-off (A/B).
+        self._yaw_alpha_kf = os.environ.get("PLASMC_YAW_ALPHA_KF", "0") == "1"
+        self._yaw_kf_q = float(os.environ.get("PLASMC_YAW_KF_Q", "5.0"))     # process (yaw-accel) noise
+        self._yaw_kf_r = float(os.environ.get("PLASMC_YAW_KF_R", "1e-3"))    # measurement (alpha) noise var
+        self._yaw_kf_gate = float(os.environ.get("PLASMC_YAW_KF_GATE", "9.0"))  # innovation² gate (χ², ~3σ)
+        self._yaw_kf_x = None          # [yaw, yaw_rate] state (yaw unwrapped)
+        self._yaw_kf_P = None          # 2×2 covariance
 
         # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
@@ -1140,7 +1152,10 @@ class Controller(Thread):
         # (caps the ~57°/s corruption drift, passes genuine slow yaw), then (2) SAVGOL-smooth the
         # rate-limited history (removes per-frame jitter). Tracks real yaw, rejects the drift.
         _alpha = float(self._s[-1][3])
-        if self._yaw_alpha_filt and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+        if self._yaw_alpha_filt and self._yaw_alpha_kf and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            # CV-KF path: dynamics + innovation-gated outlier rejection (PLASMC_YAW_ALPHA_KF).
+            _alpha = self._yawKFStep(_alpha, self._dt[-1])
+        elif self._yaw_alpha_filt and len(self._dt) > 0 and self._dt[-1] > 1e-6:
             if self._alpha_smooth is None:
                 self._alpha_smooth = _alpha
             # unwrap raw vs the running smoothed value (alpha is a 2π angle)
@@ -1282,6 +1297,31 @@ class Controller(Thread):
         P = (np.eye(4) - K @ H) @ P
         self._vds_x, self._vds_P = x, P
         return self._vds_kf_scale * x[2:4]   # rescale onto the measured-flow h scale
+
+    def _yawKFStep(self, z_raw, dt):
+        """Scalar angle CV-KF on yaw [yaw, yaw_rate] with innovation gating. z_raw = raw alpha
+        (wrapped). Returns the wrapped filtered yaw. Genuine slow yaw passes; corruption-drift
+        measurements (large innovation) are down-weighted by inflating R via the Mahalanobis gate."""
+        if self._yaw_kf_x is None:
+            self._yaw_kf_x = np.array([float(z_raw), 0.0]); self._yaw_kf_P = np.diag([1e-2, 1.0])
+            return float(z_raw)
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self._yaw_kf_q * np.array([[dt**3/3, dt**2/2], [dt**2/2, dt]])
+        H = np.array([[1.0, 0.0]])
+        x = F @ self._yaw_kf_x; P = F @ self._yaw_kf_P @ F.T + Q
+        # unwrap the measurement relative to the predicted yaw (angle continuity)
+        z = x[0] + np.arctan2(np.sin(float(z_raw) - x[0]), np.cos(float(z_raw) - x[0]))
+        S = float(H @ P @ H.T) + self._yaw_kf_r
+        nu = z - x[0]                                   # innovation
+        d2 = nu * nu / S                                # Mahalanobis distance²
+        r_eff = self._yaw_kf_r
+        if d2 > self._yaw_kf_gate:                      # GATE: inflate R ∝ d² so the spike is rejected
+            r_eff = self._yaw_kf_r * (d2 / self._yaw_kf_gate)
+            S = float(H @ P @ H.T) + r_eff
+        K = (P @ H.T).flatten() / S
+        x = x + K * nu; P = (np.eye(2) - np.outer(K, H.flatten())) @ P
+        self._yaw_kf_x, self._yaw_kf_P = x, P
+        return float(np.arctan2(np.sin(x[0]), np.cos(x[0])))
 
     def _cvkfVecRate(self, st, z, dt):
         """Per-axis constant-velocity KF on a vector signal z; returns the RATE state (n,).
