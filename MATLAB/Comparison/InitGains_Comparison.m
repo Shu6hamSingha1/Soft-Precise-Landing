@@ -44,7 +44,7 @@ K_PLASMC.E       = diag([1.0,   1.0,   1.0  ]);  % z firmed 0.9->1.0 (paired wit
 
 % Geometric SO(3) attitude gains (SO(3) baseline — 2026-04-13)
 K_PLASMC.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20 (synced w/ vdf_params); vestigial for ctrl-1 (uses vdf_params), kept for sync. NB: baselines 2-5 use kR_shared, NOT this.
-K_PLASMC.kOmega = diag([0.3, 0.3, 0.1]);
+K_PLASMC.kOmega = diag([0.3, 0.3, 0.2]);  % yaw-rate 0.1->0.2 baked 2026-06-20 (synced w/ vdf_params); root yaw-cycle fix. Vestigial for ctrl-1 (uses vdf_params); baselines use their own kOmega.
 
 % Yaw adaptive SMC — heading-rate generator (SO(3) baseline)
 K_PLASMC.Omega_a   = 0.5;
