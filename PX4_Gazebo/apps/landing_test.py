@@ -26,7 +26,7 @@ FENCE = (-5.0, 5.0, -5.0, 5.0, -5.0, 5.0) # xmin, xmax, ymin, ymax, zmin, zmax -
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
-REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.3"))  # -0.42->-0.3 (2026-06-13, user decision): gentler descent -> smaller h_e_z reference-gap. ⚠️ CAVEAT: marginal h_e_z benefit but a LATERAL COST — slower descent = longer lateral-wall exposure (1/2 n=1 reps was an 11m fly-away TL). -0.42 gave vel 0.37/land. (-0.70 fast wins IC1 but regresses IC2-5.)
+REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.42"))  # BAKED -0.42 2026-06-20: MATLAB VDF-ASMC manuscript value (vdf_params h_rd=-0.42; Table S1 locked) -> parity with the manuscript-combined formulation now baked. -0.42 gives softer touchdown (vel 0.37/land). (Earlier -0.3 was a 2026-06-13 back-mapped-era decision; the lateral-exposure caveat was a back-mapped-wall concern, now superseded by the combined surface.)
 # Desired image features [hx, hy, s, alpha]. alpha (s_d[3]) is the DESIRED marker
 # orientation and MUST match the board's as-seen alpha at the aligned hover — else the
 # controller slews alpha ~85° at engage (the IC1/IC2-5 divergence cause, found
