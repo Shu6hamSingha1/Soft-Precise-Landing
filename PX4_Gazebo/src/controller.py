@@ -295,6 +295,15 @@ class Controller(Thread):
         # overflow. Restores the recovery authority the back-mapped barrier collapses + the
         # ratio clamp freezes. Default 0.0 = OFF.
         self._sen_recovery_k = float(os.environ.get("PLASMC_SEN_RECOVERY_K", "0.0"))
+        # CV-KF for V_ds (combined-barrier centroid rate). Default-off (PLASMC_VDS_KF=0 → the
+        # MATLAB-parity smooth4(backward finite-diff)). When ON: a constant-velocity Kalman filter
+        # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
+        # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
+        self._vds_kf = os.environ.get("PLASMC_VDS_KF", "0") == "1"
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "50.0"))   # process (accel) noise PSD
+        self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
+        self._vds_x = None         # KF state [px,py,vx,vy]
+        self._vds_P = None         # KF covariance (4x4)
         # TERMINAL COMMIT (2026-06-19, feedback_lateral_wall_anti_restoring_au). The lateral wall
         # ROOT = terminal 1/Z amplification: the drone descends fine to ~0.6 m with a small residual
         # offset (~0.85 m), then s_e_n=lat/Z blows up near touchdown → funnel breach → violent lateral
@@ -677,7 +686,10 @@ class Controller(Thread):
             else:
                 self._s_dot_deque.append(np.zeros(2))
             self._s_dot_deque.popleft()
-            s_dot_meas = smooth4(self._s_dot_deque)
+            if self._vds_kf and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+                s_dot_meas = self._vdsKFStep(self._s_e[-1][:2], self._dt[-1])   # CV-KF velocity state
+            else:
+                s_dot_meas = smooth4(self._s_dot_deque)                          # MATLAB-parity finite-diff
             self._s_dot_meas.append(s_dot_meas)
             # position barrier on r_bar_e = s_e_n (= s_e/p_10, FoV-normalized) with funnel p_r
             r_bar_e  = self._s_e_n[-1]
@@ -1149,6 +1161,30 @@ class Controller(Thread):
                 np.arctan2(np.sin(self._psi_d + _ua_psid * self._dt[-1]),
                            np.cos(self._psi_d + _ua_psid * self._dt[-1]))
             )
+
+    def _vdsKFStep(self, z, dt):
+        """Constant-velocity KF on the centroid s_e[:2] → V_ds = velocity state (2,).
+        State x=[px,py,vx,vy]; z=position measurement. Predict (CV model) + update."""
+        z = np.asarray(z, float)
+        if self._vds_x is None:                       # lazy init at the first measurement
+            self._vds_x = np.array([z[0], z[1], 0.0, 0.0])
+            self._vds_P = np.diag([1e-2, 1e-2, 1.0, 1.0])
+            return np.zeros(2)
+        F = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], float)
+        q = self._vds_kf_q
+        # CV process-noise (white-accel) Q
+        Q = q * np.array([[dt**3/3, 0, dt**2/2, 0], [0, dt**3/3, 0, dt**2/2],
+                          [dt**2/2, 0, dt, 0], [0, dt**2/2, 0, dt]], float)
+        H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], float)
+        R = self._vds_kf_r * np.eye(2)
+        x = F @ self._vds_x
+        P = F @ self._vds_P @ F.T + Q
+        S = H @ P @ H.T + R
+        K = P @ H.T @ np.linalg.inv(S)
+        x = x + K @ (z - H @ x)
+        P = (np.eye(4) - K @ H) @ P
+        self._vds_x, self._vds_P = x, P
+        return x[2:4].copy()
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
