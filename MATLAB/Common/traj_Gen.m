@@ -44,12 +44,12 @@ function [X] = traj_Gen(t, type, speed_mult)
             A_z = 0.2;                   % heave amplitude [m]  (Lin 2022)
             w_z = 0.5;                   % heave angular freq [rad/s]
 
-            p = [1.0*speed_mult*t;
-                 1.0*speed_mult*t;
+            p = [1.1*speed_mult*t;
+                 1.1*speed_mult*t;
                  A_z*sin(w_z*t)];
 
-            v = [1.0*speed_mult;
-                 1.0*speed_mult;
+            v = [1.1*speed_mult;
+                 1.1*speed_mult;
                  A_z*w_z*cos(w_z*t)];
 
             phi_max   = deg2rad(15);
@@ -76,7 +76,7 @@ function [X] = traj_Gen(t, type, speed_mult)
         case "Circular"
 
             r  = 0.5;                      % rescaled to match prior 5/5 multi-init baseline
-            wz = 0.25 * speed_mult;         % backed off from 0.5: r*wz^2 centripetal broke Run 5
+            wz = 0.4 * speed_mult;         % backed off from 0.5: r*wz^2 centripetal broke Run 5
 
             A_z = 0.2;                     % heave amplitude [m]  (Lin 2022)
             w_hz = 0.5;                    % heave angular freq [rad/s]
@@ -128,7 +128,7 @@ function [X] = traj_Gen(t, type, speed_mult)
 
             A  = 0.5;
             w0 = 0.8 * speed_mult;   % x-axis oscillation frequency
-            v0 = 0.3 * speed_mult;   % y-axis drift velocity
+            v0 = 0.5 * speed_mult;   % y-axis drift velocity
 
             p = [A*sin(w0*t);
                  v0*t;
@@ -146,8 +146,8 @@ function [X] = traj_Gen(t, type, speed_mult)
 
             A  = 0.4;
             B  = 0.8;
-            w1 = -0.8 * speed_mult;
-            w2 =  0.4 * speed_mult;
+            w1 = -0.5 * speed_mult;
+            w2 =  0.85 * speed_mult;
 
             p = [A*sin(w1*t);
                  B*sin(w2*t);
