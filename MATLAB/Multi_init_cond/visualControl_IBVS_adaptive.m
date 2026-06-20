@@ -199,7 +199,7 @@ cb_sddot_tau  = 0; if ~isempty(CB_SDDOT_TAU); cb_sddot_tau = CB_SDDOT_TAU(1); en
 K_ctrl.p_r_0   = [1.2; 1.2];             % image-feature funnel initial half-width (r_bar_e = s_e/phi_max, FoV units)
 K_ctrl.p_r_inf = [1.0; 1.0];             % terminal floor — FoV-consistent (proof Standing Condition 1: p_r_inf>=1)
 K_ctrl.xi_r    = diag([0.10, 0.10]);     % funnel contraction rate Xi_r
-K_ctrl.chi_r   = [0.85; 0.85];           % surface gain (manifold |zeta_r|~|zeta_h|/chi_r; 0.85 = max-margin 25/25)
+K_ctrl.chi_r   = [1.15; 1.15];           % surface gain (manifold |zeta_r|~|zeta_h|/chi_r). Baked 0.85->1.15 (2026-06-20): clears Sinusoidal +40% precision edge -> full +/-40% guaranteed, keeps 25/25 (1.2 regresses Liss-IC3)
 K_ctrl.chi_z   =  K_ctrl.Omega(3,3);     % descent surface gain = Omega_z (unchanged descent PI)
 phi_max_xy     = [res(1); res(2)] / (2*f);   % half-FoV tangent (C_nP-axis order) for r_bar_e
 global CHI_R_OVERRIDE PR0_OVERRIDE PRINF_OVERRIDE;

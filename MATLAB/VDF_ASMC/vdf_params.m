@@ -35,7 +35,7 @@ P.p_hinf = [0.5;  0.5;  1.5];           % p_{h,inf} terminal floor (lateral 0.5 
 P.Xi_h   = diag([0.2, 0.2, 0.2]);       % Xi_h      contraction rate    (code gamma_2)
 
 % ---- Combined sliding surface  sigma = zeta_h + chi*zeta_aug  (tex eq. sliding) -
-P.chi_r = [0.85; 0.85];                 % lateral surface gain (PD: zeta_h + chi_r*zeta_r)
+P.chi_r = [1.15; 1.15];                 % lateral surface gain (PD: zeta_h + chi_r*zeta_r). Baked 0.85->1.15 (2026-06-20): drives terminal lateral barrier harder -> clears the Sinusoidal +40% precision edge for FULL +/-40% guaranteed, keeps 25/25; 1.2 regresses Liss-IC3 (upper edge)
 P.chi_z = 0.025;                        % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3)
 
 % ---- Leakage ASMC  (tex eq. adaptive control law + adaptive law) ---------------
