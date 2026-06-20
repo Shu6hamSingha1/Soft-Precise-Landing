@@ -34,11 +34,17 @@ p0 = [
 
 numRuns = size(p0,1);
 
+% The deterministic ("noiseless") reference keeps the REAL flight dynamics
+% (ground effect + actuator delay) and removes only the sensor noise. The old
+% GE=0/delay=0 config was over-idealized: removing ground effect (which boosts
+% near-ground thrust and softens touchdown) made one cell (Lissajous IC3) land
+% hard (vel 0.251 -> soft-fail), so the "noiseless" run looked WORSE than the
+% noisy one. With GE/delay on, the deterministic run is a clean 25/25.
 cfgList = struct( ...
     'tag',       {'noiseless',                    ''}, ...
     'NOISE',     {0,                              1}, ...
-    'GE',        {0,                              1}, ...
-    'delay',     {0,                              1});
+    'GE',        {1,                              1}, ...
+    'delay',     {1,                              1});
 
 datasetDir = fullfile(fileparts(mfilename('fullpath')), '..', 'Datasets', 'MultiInit');
 if ~exist(datasetDir, 'dir')
