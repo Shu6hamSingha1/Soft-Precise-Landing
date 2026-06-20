@@ -430,6 +430,7 @@ class IMG_PROCESSOR(Thread):
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
         self._ring_opt_flow_log = []   # texture-free ring V-frame flow [h;w] per frame (V_v_ring)
         self._ring_div_log = []        # pure depth-independent divergence (loom) — safety-net vertical
+        self._ring_moment_log = []     # ring MOMENT loom (area-rate) — live A/B vs the divergence
         self._ring_opt_flow_kf_log = []  # ring V-frame flow through the SAME KF as corner flow
         self._n_ring_corners = []      # # ring stations fed to the ring lstsq per frame
         # Online post-filter logs (both filters computed every frame, regardless
@@ -732,7 +733,7 @@ class IMG_PROCESSOR(Thread):
         docs/FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
         detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
         death; this is the safety net."""
-        zero = (np.zeros(6), 0.0, 0)
+        zero = (np.zeros(6), 0.0, 0, np.nan)
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
@@ -742,7 +743,7 @@ class IMG_PROCESSOR(Thread):
             p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._ring_pts0, None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
             if int(st.sum()) < 6:
-                return (np.zeros(6), 0.0, int(st.sum()))
+                return (np.zeros(6), 0.0, int(st.sum()), np.nan)
             r0 = self._ring_pts0[st]
             r1 = p1.reshape(-1, 2)[st]
             # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
@@ -760,6 +761,16 @@ class IMG_PROCESSOR(Thread):
             # identical V-frame chain to the corner flow (gravity-leveled, same L+)
             V0 = self._getVirtualPts(r0, quats[0])
             V1 = self._getVirtualPts(r1, quats[1])
+            # RING MOMENT loom (the ring analog of the corner moment): area-rate of the
+            # tracked stations, M=μ20+μ02 = trace of the V-frame scatter ∝ 1/Z². loom =
+            # -½·d(lnM)/dt = -½·(ln M1 - ln M0)·fps (one-frame, uses the SAME MAD-rejected
+            # stations as pure_div). Logged for the live ring-moment vs ring-divergence A/B.
+            ring_moment = np.nan
+            _c0 = V0.mean(0); _c1 = V1.mean(0)
+            _M0 = float(np.mean(np.sum((V0 - _c0) ** 2, axis=1)))
+            _M1 = float(np.mean(np.sum((V1 - _c1) ** 2, axis=1)))
+            if _M0 > 1e-12 and _M1 > 1e-12:
+                ring_moment = float(np.clip(-0.5 * (np.log(_M1) - np.log(_M0)) * self._fps, -10.0, 10.0))
             A = self._fill_A(V1)
             Y = np.reshape(V1 - V0, (-1,)) * self._fps
             V_v_ring, _, rank, sv = np.linalg.lstsq(A, Y, rcond=1e-3)
@@ -767,7 +778,7 @@ class IMG_PROCESSOR(Thread):
             if (rank < 6 or cond > 1e4 or not np.all(np.isfinite(V_v_ring))
                     or np.max(np.abs(V_v_ring)) > 50.0):
                 V_v_ring = np.zeros(6)
-            return (np.clip(V_v_ring, -10.0, 10.0), pure_div, int(len(r0)))
+            return (np.clip(V_v_ring, -10.0, 10.0), pure_div, int(len(r0)), ring_moment)
         except Exception:
             return zero
 
@@ -1172,9 +1183,10 @@ class IMG_PROCESSOR(Thread):
         # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
         # still consumes the corner flow. PRIMARY goal remains reducing perception death.
         if self._ring_log_on:
-            _vvr, _pdiv, _nr = self._compute_ring_flow(imgs, quats)
+            _vvr, _pdiv, _nr, _rmom = self._compute_ring_flow(imgs, quats)
             self._ring_opt_flow_log.append(_vvr)
             self._ring_div_log.append(_pdiv)
+            self._ring_moment_log.append(_rmom)
             self._n_ring_corners.append(_nr)
             # run V_v_ring through the SAME KF the corner flow uses (separate state)
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
@@ -1752,6 +1764,7 @@ class IMG_PROCESSOR(Thread):
             "N Flow Corners": self._n_flow_corners,
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
             "Ring Divergence": self._ring_div_log,              # pure depth-independent loom (safety-net vertical)
+            "Ring Moment": self._ring_moment_log,               # ring area-rate loom (live A/B vs divergence)
             "Ring Opt Flow KF": self._ring_opt_flow_kf_log,     # ring flow through the corner-flow KF
             "N Ring Corners": self._n_ring_corners,
             "Opt Flow KF": self._opt_flow_kf_log,
