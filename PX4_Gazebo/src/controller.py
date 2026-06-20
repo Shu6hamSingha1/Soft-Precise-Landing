@@ -195,7 +195,7 @@ class Controller(Thread):
         # zeta_r is built on r_bar_e = s_e/p_10 (= s_e_n, FoV-normalized) with its OWN funnel
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
-        self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "0") == "1"
+        self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # BAKED 2026-06-20 (default-on)
         self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.85")),
                                   float(os.environ.get("PLASMC_CHI_R_Y", "0.85"))])   # surface gain (manifold |zeta_r|~|zeta_h|/chi_r); 0.85 = MATLAB max-margin
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
@@ -299,7 +299,7 @@ class Controller(Thread):
         # MATLAB-parity smooth4(backward finite-diff)). When ON: a constant-velocity Kalman filter
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
         # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
-        self._vds_kf = os.environ.get("PLASMC_VDS_KF", "0") == "1"
+        self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # BAKED 2026-06-20 with combined-barrier (V_ds estimator)
         self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))   # process (accel) noise PSD (q=10 best vs GT)
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
