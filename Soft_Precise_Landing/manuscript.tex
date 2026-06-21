@@ -809,10 +809,10 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
         $\boldsymbol{\kappa}(0)$ & $[0.125,0.125,0.25]^\top$ & Adaptive switching-gain initial value \\
         $\mathcal{E}$           & $\text{diag}([1.0,1.0,0.5])$ & Boundary-layer thickness \\
     \midrule
-        \multicolumn{3}{l}{\textit{Target-Visibility CBF}} \\
-        $\boldsymbol{\varphi}_\text{max}$ & $(\mathcal{R}/2-15~\text{px})/f$ & Inset field-of-view half-extent \\
-        $\tau$                      & $0.3$~s & Drift look-ahead horizon \\
-        $\theta_\text{cap}$         & $60^\circ$ & Deliverable-tilt cap \\
+        \multicolumn{3}{l}{\textit{Acceleration Conditioning}} \\
+        $\boldsymbol{\varphi}_\text{max}$ & $(\mathcal{R}/2-15~\text{px})/f$ & Inset field-of-view half-extent (CBF) \\
+        $\theta_\text{cap}$         & $60^\circ$ & Deliverable-tilt cap (CBF) \\
+        $\tau$                      & $0.08$~s & Upstream commanded-acceleration LPF time constant \\
     \midrule
         \multicolumn{3}{l}{\textit{Yaw ASMC}} \\
         $\chi_\alpha,\,\gamma_\alpha$       & $0.25,\,0.25$ & Yaw integrator and proportional gains \\
@@ -832,7 +832,7 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
 
 \subsection{Optical-Flow ASMC gains $(\chi_z, \Gamma, \mathcal{P}, \mathcal{N}, \boldsymbol{\kappa}(0), \mathcal{E})$} The descent flow-integral gain $\chi_z$ (the lateral position-barrier weight $\boldsymbol{\chi}_r$ is set with the image feature funnel above) and the proportional surface gain $\Gamma$ control the rate at which the unconstrained coordinate $\boldsymbol{\zeta}_h$ is driven toward the sliding manifold. Larger $\Gamma$ tightens the UUB bound \eqref{UUB bound: equation} but amplifies high-frequency switching. The adaptive growth rate $\mathcal{N}$ and leakage rate $\mathcal{P}$ govern how quickly $\boldsymbol{\kappa}(t)$ tracks the unknown disturbance magnitude. Faster growth and slower leakage favor robustness; the reverse favors low-effort steady-state operation. The boundary-layer thickness $\mathcal{E}$ trades steady-state chattering against the residual $r_{\varepsilon_k}$ of the Theorem~1 proof.
 
-\subsection{Target-Visibility CBF $(\boldsymbol{\varphi}_\text{max}, \tau, \theta_\text{cap})$} The inset field-of-view half-extent $\boldsymbol{\varphi}_\text{max}=(\mathcal{R}/2-15~\text{px})/f$ is the robustness margin that the control-cycle realization (Appendix~\ref{implementation appendix: section}) reserves against the sampled barrier and the attitude-slew lag; it is derived from the camera resolution $\mathcal{R}$, not a free tuning knob. The drift look-ahead $\tau$ sets the anticipation horizon of the barrier condition, the discrete counterpart of the class-$\mathcal{K}$ rate $\alpha_k$ of \eqref{cbf qp: equation}. The cap $\theta_\text{cap}=60^\circ$ reserves a $2\times$-hover-thrust margin against actuator saturation and is a hardware-derived constant.
+\subsection{Acceleration Conditioning $(\boldsymbol{\varphi}_\text{max}, \theta_\text{cap}, \tau)$} The inset field-of-view half-extent $\boldsymbol{\varphi}_\text{max}=(\mathcal{R}/2-15~\text{px})/f$ is the robustness margin that the control-cycle realization (Appendix~\ref{implementation appendix: section}) reserves against the sampled barrier and the attitude-slew lag; it is derived from the camera resolution $\mathcal{R}$, not a free tuning knob. The cap $\theta_\text{cap}=60^\circ$ reserves a $2\times$-hover-thrust margin against actuator saturation and is a hardware-derived constant. The upstream low-pass filter time constant $\tau=0.08$~s denoises the pseudo-inverse commanded acceleration before the visibility barrier \eqref{cbf qp: equation}, suppressing the pixel-noise amplification without smearing the hard field-of-view bound.
 
 \subsection{Yaw ASMC and SO(3) tracker} The yaw gains $(\chi_\alpha, \gamma_\alpha, \eta_\alpha, \rho_\alpha, \kappa_\alpha(0), \varepsilon_\alpha)$ follow the same growth--leakage logic as the optical-flow ASMC, with $(\eta_\alpha, \rho_\alpha)$ playing the role of $(\mathcal{N}, \mathcal{P})$. The SO(3) tracker gains $(k_R, k_\Omega)$ are sized so the inner loop closes at least an order of magnitude faster than the outer optical-flow funnel, maintaining the time-scale separation of Assumption~2.
 
