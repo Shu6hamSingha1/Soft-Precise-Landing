@@ -801,13 +801,13 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
 \ref{implementation appendix: section}) \\
     \midrule
         \multicolumn{3}{l}{\textit{Optical-Flow ASMC}} \\
-        $\boldsymbol{\chi}_r$   & $\text{diag}([0.85,0.85])$ & Lateral position-barrier weight \\
-        $\chi_z$                & $0.025$ & Descent flow-integral gain \\
+        $\boldsymbol{\chi}_r$   & $\text{diag}([1.15,1.15])$ & Lateral position-barrier weight \\
+        $\chi_z$                & $0.1$ & Descent flow-integral gain \\
         $\Gamma$                & $\text{diag}([0.4375,0.5,0.75])$ & Sliding-surface proportional gain \\
         $\mathcal{P}$           & $\text{diag}([1.5,1.5,5.0])$ & Adaptive-law leakage rate \\
         $\mathcal{N}$           & $\text{diag}([0.02,0.02,0.02])$ & Adaptive-law growth rate \\
         $\boldsymbol{\kappa}(0)$ & $[0.125,0.125,0.25]^\top$ & Adaptive switching-gain initial value \\
-        $\mathcal{E}$           & $\text{diag}([1.0,1.0,1.0])$ & Boundary-layer thickness \\
+        $\mathcal{E}$           & $\text{diag}([1.0,1.0,0.5])$ & Boundary-layer thickness \\
     \midrule
         \multicolumn{3}{l}{\textit{Target-Visibility CBF}} \\
         $\boldsymbol{\varphi}_\text{max}$ & $(\mathcal{R}/2-15~\text{px})/f$ & Inset field-of-view half-extent \\
@@ -815,13 +815,13 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
         $\theta_\text{cap}$         & $60^\circ$ & Deliverable-tilt cap \\
     \midrule
         \multicolumn{3}{l}{\textit{Yaw ASMC}} \\
-        $\chi_\alpha,\,\gamma_\alpha$       & $0.5,\,0.5$ & Yaw integrator and proportional gains \\
+        $\chi_\alpha,\,\gamma_\alpha$       & $0.25,\,0.25$ & Yaw integrator and proportional gains \\
         $\eta_\alpha,\,\rho_\alpha$         & $1.0,\,2$ & Yaw adaptive-law growth and leakage rates \\
         $\kappa_{\alpha}(0),\,\varepsilon_\alpha$ & $2.0,\,3.0$ & Yaw switching-gain initial value and boundary-layer thickness \\
     \midrule
         \multicolumn{3}{l}{\textit{SO(3) Attitude Tracker}} \\
-        $k_R$      & $\text{diag}([1.5,1.5,0.5])$ & Rotation-error gain \\
-        $k_\Omega$ & $\text{diag}([0.3,0.3,0.1])$ & Angular-velocity-error gain \\
+        $k_R$      & $\text{diag}([2.5,1.5,0.5])$ & Rotation-error gain \\
+        $k_\Omega$ & $\text{diag}([0.3,0.3,0.2])$ & Angular-velocity-error gain \\
     \bottomrule
     \end{tabular}
 \end{table}
@@ -926,7 +926,7 @@ The backstepping law of~\cite{zhang2026} gives a per-axis second-order closed lo
 The controller of~\cite{lin2023} drives circle-feature image moments to their desired values through a prescribed-performance funnel on the transformed feature error, with a geometric SO(3) attitude tracker on the inner loop. The funnel bounds the feature error, but the control law contains no disturbance-rejection integrator, and the funnel constrains the feature \emph{error} rather than retaining a growing, off-center target inside the field of view. These two omissions are structural. Under the constant-mean wind of the shared disturbance model, the proportional funnel law settles at a non-zero steady lateral image offset that no within-framework gain choice removes. On the static case the scheme descends softly but stalls at $r_{z,\text{f}}=0.22~\text{m}$ with $r_{xy,\text{f}}=0.147~\text{m}$ ($1.8\times$ the precise bound) without touching down; on the four moving trajectories the off-center target leaves the camera FoV $2.8$--$17~\text{s}$ after launch, $0.6$--$4.0~\text{m}$ above the surface. Extending to the full five-IC, five-trajectory grid yields $0/25$ soft-precise landings. The limitation follows from the missing integrator and the missing visibility-retention mechanism, not from gain selection.
 
 \subsection{Feed-Forward IBVS \cite{cho2022}}
-The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain on the image-centroid displacement norm. The scheme fails to reach the target surface on any of the five cases, with the visibility break firing at $t_\text{f}=0.35$--$1.67~\text{s}$ with separations $1.96$--$2.77~\text{m}$ and altitudes $4.78$--$5.02~\text{m}$ (no meaningful descent). The pseudo-inverse $\lambda\hat{L}_e^+\boldsymbol{e}$ commands a lateral velocity that, under the IC$_2$ initial feature displacement, exceeds the rate at which the altitude gate admits descent, so the UAV pitches hard while barely losing altitude and features cross the FoV within a few control steps. Tuning $k_\sigma$ cannot decouple: lowering it throttles descent, raising it introduces sigmoid chatter from centroid jitter under pixel noise.
+The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\boldsymbol{e}+\boldsymbol{v}_{\text{ff}}$ and gates the $z$ axis by the sigmoid altitude gain on the image-centroid displacement norm. Under the shared disturbance model the altitude gate throttles the vertical command whenever the lateral centroid error is non-zero, so the UAV descends most of the way but stalls $0.43$--$0.51~\text{m}$ above the surface, timing out at the $40~\text{s}$ cap on four of the five cases; on the Lissajous case the lateral chase drives the features out of view at $t_\text{f}=20.66~\text{s}$. Because the pseudo-inverse $\lambda\hat{L}_e^+\boldsymbol{e}$ ties the lateral velocity command to the same gate, no choice of $k_\sigma$ both admits the final descent and holds the lateral error small: lowering it throttles descent further, raising it introduces sigmoid chatter from centroid jitter under pixel noise.
 
 
 \begin{table*}[!t]
@@ -942,7 +942,7 @@ The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\bold
 \cite{lin2022} & PPC barrier saturates under wind plus mean target motion, forcing image features outside the camera FoV before touchdown & Target-visibility control barrier function conditions the commanded body tilt to keep every feature point in view, independently of the funnel transients & Property~1 + Theorem~3 \\
 \cite{zhang2026} & Fixed closed-loop bandwidth produces terminal lateral error proportional to target velocity; cannot couple descent rate to image-plane error closure & Depth-aware $\beta=1/\,^\mathcal{V}z_\text{t}$ accelerates convergence as $z\to h_\text{lg}$, shrinking the terminal error within the precise bound & Theorem~1 ($\beta$-adaptive ASMC) + Remark~3 \\
 \cite{lin2023} & Prescribed-performance funnel on image features carries no disturbance-rejection integrator; constant wind produces a steady lateral offset and the off-center target exits the FoV on moving platforms & Leakage-type adaptive sliding-mode law identifies and rejects the disturbance online with no steady offset, and the target-visibility control barrier function holds the features in view & Theorem~1 + Theorem~3 \\
-\cite{cho2022} & Pseudo-inverse couples lateral velocity to the adaptive altitude gate; UAV pitches hard while barely descending and breaks visibility within control steps & Outer loop produces $\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}$ and $\,^\mathcal{I}a_{\text{d},z}$ through independent feedback paths rather than pseudo-inverse decomposition & Section~\ref{control design: section}-\ref{outer loop: section} \\
+\cite{cho2022} & Pseudo-inverse couples lateral velocity to the adaptive altitude gate; residual lateral error keeps the gate partly closed, stalling the UAV above the surface until time-out & Outer loop produces $\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}$ and $\,^\mathcal{I}a_{\text{d},z}$ through independent feedback paths rather than pseudo-inverse decomposition & Section~\ref{control design: section}-\ref{outer loop: section} \\
 \bottomrule
 \end{tabular}
 \end{table*}
