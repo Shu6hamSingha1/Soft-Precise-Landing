@@ -88,6 +88,7 @@ def main():
     # group every leaf run by its top-level config dir
     configs: dict[str, list] = {}
     config_dates: dict[str, list] = {}
+    sp_reps = []  # per-rep drill-down of full-SP candidates
     for gt in TEST_DATA.rglob("Ground_Truth.npy"):
         rel = gt.relative_to(TEST_DATA)
         config = rel.parts[0]
@@ -99,6 +100,17 @@ def main():
         d = parse_date(str(gt.parent))
         if d:
             config_dates.setdefault(config, []).append(d)
+        if rep["cat"] == "SP":
+            sp_reps.append({
+                "config": config,
+                "path": rep["path"],
+                "date": d,
+                "xy_err": round(rep["xy"], 4),
+                "rel_vel": round(rep["vel"], 4),
+                # frozen-GT artifact: GT resets to origin -> xy_err ~ 1e-21
+                "frozen_GT": rep["xy"] < 0.005,
+            })
+    sp_reps.sort(key=lambda r: (r["frozen_GT"], r["xy_err"]))
 
     rows = []
     for config in sorted(configs):
@@ -133,7 +145,7 @@ def main():
     out_json = TEST_DATA / "test_record_runs.json"
     out_json.write_text(json.dumps(
         {"n_configs": len(rows), "n_reps": total_reps, "n_SP": total_sp,
-         "configs": rows}, indent=1))
+         "configs": rows, "sp_reps": sp_reps}, indent=1))
 
     # ---- TSV ----
     cols = ["config", "date", "n", "SP", "TL", "near_SP", "catastrophic",
@@ -171,6 +183,22 @@ def main():
         d = {k: ("" if r[k] is None else r[k]) for k in r}
         lines.append("| {config} | {date} | {n} | {SP} | {TL} | {catastrophic} | "
                      "{xy_med} | {xy_min} | {vel_med} | ".format(**d) + flag + " |")
+
+    genuine = [r for r in sp_reps if not r["frozen_GT"]]
+    lines += [
+        "",
+        f"## Genuine-SP candidate reps ({len(genuine)} of {len(sp_reps)} SP reps; "
+        f"{len(sp_reps) - len(genuine)} excluded as frozen-GT xy≈0)",
+        "",
+        "Per-rep drill-down of every full-SP rep with `xy_err >= 0.005 m` "
+        "(frozen-GT artifacts excluded). Verify against the trajectory before citing.",
+        "",
+        "| Config | Rep path | Date | xy_err (m) | rel_vel (m/s) |",
+        "|---|---|---|--:|--:|",
+    ]
+    for r in genuine:
+        lines.append(f"| {r['config']} | {r['path']} | {r['date']} | "
+                     f"{r['xy_err']} | {r['rel_vel']} |")
     md.write_text("\n".join(lines) + "\n")
 
     print(f"configs={len(rows)} reps={total_reps} SP={total_sp}")

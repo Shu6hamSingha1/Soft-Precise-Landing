@@ -286,3 +286,26 @@ For full per-axis gains per trial, see `parameter_record.ods` (`PX4_Gain_Record`
 | CentroidRate_IC2_observer | 2026-06-23 | 5 | 0 | 1 | 3 | 2.482 | 0.629 | 2.197 |  |
 | IC2_SingleMarker | 2026-06-23 | 5 | 0 | 2 | 0 | 0.801 | 0.297 | 1.583 |  |
 | SingleWorldRecal_test | 2026-06-23 | 5 | 0 | 3 | 0 | 1.837 | 0.341 | 3.35 |  |
+
+## Genuine-SP candidate reps (16 of 18 SP reps; 2 excluded as frozen-GT xy≈0)
+
+Per-rep drill-down of every full-SP rep with `xy_err >= 0.005 m` (frozen-GT artifacts excluded). Verify against the trajectory before citing.
+
+| Config | Rep path | Date | xy_err (m) | rel_vel (m/s) |
+|---|---|---|--:|--:|
+| SPCampaign | SPCampaign/b9A_ordering_handoff_20260603-105615/rep3 | 2026-06-03 | 0.0096 | 0.0075 |
+| SPCampaign | SPCampaign/b13_both_fixes_20260603-133607/rep3 | 2026-06-03 | 0.0183 | 0.1786 |
+| SPCampaign | SPCampaign/b9A_ordering_handoff_20260603-105615/rep5 | 2026-06-03 | 0.0213 | 0.0144 |
+| SPCampaign | SPCampaign/b9A_ordering_handoff_20260603-105615/rep1 | 2026-06-03 | 0.0265 | 0.0874 |
+| SPCampaign | SPCampaign/b10B_no_yaw_ablation_20260603-113652/rep4 | 2026-06-03 | 0.0278 | 0.057 |
+| SPCampaign | SPCampaign/b10C_ordering_normdesc_20260603-113652/rep1 | 2026-06-03 | 0.044 | 0.1476 |
+| SPCampaign | SPCampaign/b14_span_commit_20260603-135420/rep2 | 2026-06-03 | 0.0485 | 0.014 |
+| CoordDescent | CoordDescent/20260525-201532/pass1/RHOFOV0_241.8_rep2 | 2026-05-25 | 0.0521 | 0.0611 |
+| SPCampaign | SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep4 | 2026-06-03 | 0.0525 | 0.0652 |
+| SPCampaign | SPCampaign/b10C_ordering_normdesc_20260603-113652/rep3 | 2026-06-03 | 0.0542 | 0.0915 |
+| SPCampaign | SPCampaign/b2A_floor60_20260603-033719/rep4 | 2026-06-03 | 0.0599 | 0.1491 |
+| SPCampaign | SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep3 | 2026-06-03 | 0.0599 | 0.0437 |
+| SPCampaign | SPCampaign/b14_span_commit_20260603-135420/rep3 | 2026-06-03 | 0.0639 | 0.1515 |
+| SPCampaign | SPCampaign/b13_both_fixes_20260603-133607/rep2 | 2026-06-03 | 0.0659 | 0.054 |
+| CoordDescent | CoordDescent/20260526-014855/pass1/E_Z_0.1067_rep1 | 2026-05-26 | 0.0662 | 0.165 |
+| SPCampaign | SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep1 | 2026-06-03 | 0.0671 | 0.0185 |
