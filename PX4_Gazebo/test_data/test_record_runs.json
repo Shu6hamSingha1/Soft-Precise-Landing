@@ -1,0 +1,4586 @@
+{
+ "n_configs": 276,
+ "n_reps": 2593,
+ "n_SP": 18,
+ "configs": [
+  {
+   "config": "RingFlow",
+   "date": "",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 2.199,
+   "xy_min": 0.531,
+   "vel_med": 3.759,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 2,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "SenFunnel",
+   "date": "",
+   "n": 6,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 0.617,
+   "xy_min": 0.439,
+   "vel_med": 0.741,
+   "cats": {
+    "POOR": 4,
+    "SOFT_only": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CoordDescent",
+   "date": "2026-05-25",
+   "n": 2,
+   "SP": 2,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.059,
+   "xy_min": 0.052,
+   "vel_med": 0.113,
+   "cats": {
+    "SP": 2
+   }
+  },
+  {
+   "config": "DhdClampSweep",
+   "date": "2026-06-02",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.098,
+   "xy_min": 0.741,
+   "vel_med": 0.277,
+   "cats": {
+    "TARGET_LOST": 2,
+    "POOR": 1,
+    "SOFT_only": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "SPCampaign",
+   "date": "2026-06-03",
+   "n": 131,
+   "SP": 14,
+   "TL": 12,
+   "near_SP": 3,
+   "catastrophic": 34,
+   "xy_med": 0.603,
+   "xy_min": 0.01,
+   "vel_med": 0.413,
+   "cats": {
+    "POOR": 27,
+    "CATASTROPHIC": 34,
+    "SP": 14,
+    "MOD_PRECISE": 11,
+    "PRECISE_only": 6,
+    "near_SP": 3,
+    "SOFT_only": 24,
+    "TARGET_LOST": 12
+   }
+  },
+  {
+   "config": "Landing_Test",
+   "date": "2026-06-05",
+   "n": 887,
+   "SP": 1,
+   "TL": 332,
+   "near_SP": 0,
+   "catastrophic": 449,
+   "xy_med": 4.62,
+   "xy_min": 0.0,
+   "vel_med": 2.844,
+   "cats": {
+    "CATASTROPHIC": 449,
+    "TARGET_LOST": 332,
+    "POOR": 79,
+    "SOFT_only": 11,
+    "MOD_PRECISE": 14,
+    "SP": 1,
+    "PRECISE_only": 1
+   }
+  },
+  {
+   "config": "Exy15_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 7.559,
+   "xy_min": 5.768,
+   "vel_med": 4.723,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Ez_sweep",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 9.258,
+   "xy_min": 7.491,
+   "vel_med": 7.387,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "GammaY1_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 5.821,
+   "xy_min": 3.245,
+   "vel_med": 6.525,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "KI_test",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 7.05,
+   "xy_min": 7.05,
+   "vel_med": 3.461,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "KP13_test",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.684,
+   "xy_min": 3.684,
+   "vel_med": 6.387,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "KP_test",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.533,
+   "xy_min": 1.533,
+   "vel_med": 0.365,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "P_XY_test",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.377,
+   "xy_min": 3.377,
+   "vel_med": 3.182,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "P_Z_test",
+   "date": "2026-06-07",
+   "n": 2,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 3.71,
+   "xy_min": 2.613,
+   "vel_med": 2.515,
+   "cats": {
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "RestartProbe",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.387,
+   "xy_min": 4.387,
+   "vel_med": 4.722,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "YawGamma1_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 5.285,
+   "xy_min": 4.196,
+   "vel_med": 4.754,
+   "cats": {
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "thetafloor60_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 10.376,
+   "xy_min": 7.34,
+   "vel_med": 8.478,
+   "cats": {
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "trial4_n5",
+   "date": "2026-06-07",
+   "n": 4,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 5.66,
+   "xy_min": 1.672,
+   "vel_med": 3.612,
+   "cats": {
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "wumax_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 8.507,
+   "xy_min": 3.434,
+   "vel_med": 2.654,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "yaw2pi_n3",
+   "date": "2026-06-07",
+   "n": 3,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 9.64,
+   "xy_min": 8.863,
+   "vel_med": 7.429,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "yaw2pi_test",
+   "date": "2026-06-07",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 3.679,
+   "xy_min": 3.679,
+   "vel_med": 3.486,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CondInteg_n6",
+   "date": "2026-06-08",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 7.708,
+   "xy_min": 2.345,
+   "vel_med": 8.643,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "DescentFix_n6",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 5.727,
+   "xy_min": 1.72,
+   "vel_med": 3.317,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "ExtentCapture",
+   "date": "2026-06-08",
+   "n": 2,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 7.391,
+   "xy_min": 4.17,
+   "vel_med": 4.523,
+   "cats": {
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "ExtentHold_sweep",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 3.693,
+   "xy_min": 1.665,
+   "vel_med": 4.26,
+   "cats": {
+    "CATASTROPHIC": 6
+   }
+  },
+  {
+   "config": "GammaZ_sweep",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 4.216,
+   "xy_min": 1.868,
+   "vel_med": 4.113,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "KrYaw_sweep",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.354,
+   "xy_min": 2.171,
+   "vel_med": 4.039,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "NewDefaultsBaseline",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 9.752,
+   "xy_min": 3.935,
+   "vel_med": 7.073,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "Nz05_n6",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 6.116,
+   "xy_min": 2.488,
+   "vel_med": 5.179,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "P2infZ_sweep",
+   "date": "2026-06-08",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 8.285,
+   "xy_min": 3.929,
+   "vel_med": 6.725,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "P2infZ_up",
+   "date": "2026-06-08",
+   "n": 2,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 14.846,
+   "xy_min": 6.631,
+   "vel_med": 7.537,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "PsidRate1_n3",
+   "date": "2026-06-08",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 5.858,
+   "xy_min": 2.801,
+   "vel_med": 2.889,
+   "cats": {
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "PsidRate1_n6",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 4.221,
+   "xy_min": 2.283,
+   "vel_med": 3.621,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "Pxy5_n3",
+   "date": "2026-06-08",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.195,
+   "xy_min": 2.552,
+   "vel_med": 3.879,
+   "cats": {
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "RateGate_n6",
+   "date": "2026-06-08",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 9.304,
+   "xy_min": 6.483,
+   "vel_med": 9.715,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Singhal_outlier_n6",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.386,
+   "xy_min": 1.179,
+   "vel_med": 3.256,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "TauUa03_n3",
+   "date": "2026-06-08",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 11.062,
+   "xy_min": 5.007,
+   "vel_med": 9.832,
+   "cats": {
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "YawHoldFix_n6",
+   "date": "2026-06-08",
+   "n": 6,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 6.725,
+   "xy_min": 1.66,
+   "vel_med": 5.221,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "YawOmega1_n6",
+   "date": "2026-06-08",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 10.069,
+   "xy_min": 1.476,
+   "vel_med": 7.694,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "DhdMax50_misc_n12",
+   "date": "2026-06-09",
+   "n": 12,
+   "SP": 0,
+   "TL": 6,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 7.701,
+   "xy_min": 1.666,
+   "vel_med": 6.373,
+   "cats": {
+    "TARGET_LOST": 6,
+    "CATASTROPHIC": 6
+   }
+  },
+  {
+   "config": "EzSweep_n5",
+   "date": "2026-06-09",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 7.862,
+   "xy_min": 2.326,
+   "vel_med": 5.189,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "GammaS_sweep_n25",
+   "date": "2026-06-09",
+   "n": 24,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 16,
+   "xy_med": 3.439,
+   "xy_min": 0.569,
+   "vel_med": 1.821,
+   "cats": {
+    "CATASTROPHIC": 16,
+    "TARGET_LOST": 5,
+    "POOR": 2,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "KP12_E2505_n5",
+   "date": "2026-06-09",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.788,
+   "xy_min": 2.57,
+   "vel_med": 3.101,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "KP9revert_n6",
+   "date": "2026-06-09",
+   "n": 6,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 3.687,
+   "xy_min": 2.241,
+   "vel_med": 2.884,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "KrdRestore_probe_n5",
+   "date": "2026-06-09",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 2.781,
+   "xy_min": 2.065,
+   "vel_med": 3.483,
+   "cats": {
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "Nxy05_n5",
+   "date": "2026-06-09",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 5.87,
+   "xy_min": 1.522,
+   "vel_med": 4.166,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "TauDs05_n5",
+   "date": "2026-06-09",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 6.411,
+   "xy_min": 2.52,
+   "vel_med": 7.117,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "BootstrapFix_n21",
+   "date": "2026-06-10",
+   "n": 21,
+   "SP": 1,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 0.957,
+   "xy_min": 0.0,
+   "vel_med": 1.073,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "POOR": 10,
+    "TARGET_LOST": 5,
+    "SP": 1
+   }
+  },
+  {
+   "config": "Bootstrap_k0z0312_n4",
+   "date": "2026-06-10",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.346,
+   "xy_min": 1.006,
+   "vel_med": 2.689,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Bootstrap_k0z05_n3",
+   "date": "2026-06-10",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.273,
+   "xy_min": 0.63,
+   "vel_med": 3.244,
+   "cats": {
+    "TARGET_LOST": 1,
+    "POOR": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Bootstrap_k0z1_n5",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 2.673,
+   "xy_min": 1.365,
+   "vel_med": 2.251,
+   "cats": {
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "DescentEZ05_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.283,
+   "xy_min": 0.757,
+   "vel_med": 1.068,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "POOR": 1,
+    "TARGET_LOST": 1,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "DescentEZ05_dwfix_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 9.1,
+   "xy_min": 1.222,
+   "vel_med": 12.224,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "DescentEZ05_kfreeze_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.093,
+   "xy_min": 0.811,
+   "vel_med": 1.992,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "EZ05_Pz8_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 3.105,
+   "xy_min": 1.548,
+   "vel_med": 2.487,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "EZsweep_kfreeze_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.684,
+   "xy_min": 0.74,
+   "vel_med": 1.709,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "TARGET_LOST": 2,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "FeatClip_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.211,
+   "xy_min": 0.683,
+   "vel_med": 1.549,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 3,
+    "POOR": 4
+   }
+  },
+  {
+   "config": "FlowGate_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 2.162,
+   "xy_min": 0.755,
+   "vel_med": 1.123,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "TARGET_LOST": 4,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "FlowSwitch_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.794,
+   "xy_min": 0.8,
+   "vel_med": 1.927,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 2,
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "GFTdense_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 2.278,
+   "xy_min": 0.461,
+   "vel_med": 2.013,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "GammaS1p2_IC1",
+   "date": "2026-06-10",
+   "n": 4,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.572,
+   "xy_min": 0.525,
+   "vel_med": 2.125,
+   "cats": {
+    "POOR": 2,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "GammaS1p4_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 9.794,
+   "xy_min": 1.658,
+   "vel_med": 4.143,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "GammaS1p6_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.226,
+   "xy_min": 1.031,
+   "vel_med": 1.801,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "GammaS2p0_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.312,
+   "xy_min": 0.736,
+   "vel_med": 2.029,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1,
+    "POOR": 2
+   }
+  },
+  {
+   "config": "KP12_IC1",
+   "date": "2026-06-10",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.495,
+   "xy_min": 0.344,
+   "vel_med": 1.08,
+   "cats": {
+    "POOR": 1,
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "PyrLK_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 2.485,
+   "xy_min": 0.33,
+   "vel_med": 2.668,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 6,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Trial49_KLTbounds_IC1",
+   "date": "2026-06-10",
+   "n": 4,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.47,
+   "xy_min": 0.749,
+   "vel_med": 1.869,
+   "cats": {
+    "TARGET_LOST": 2,
+    "POOR": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "VirtGuard_EZ_IC1",
+   "date": "2026-06-10",
+   "n": 10,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.295,
+   "xy_min": 0.605,
+   "vel_med": 2.221,
+   "cats": {
+    "TARGET_LOST": 5,
+    "POOR": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CommitGate_IC1",
+   "date": "2026-06-11",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.327,
+   "xy_min": 0.16,
+   "vel_med": 0.288,
+   "cats": {
+    "POOR": 3,
+    "SOFT_only": 2
+   }
+  },
+  {
+   "config": "DutyStale_IC1",
+   "date": "2026-06-11",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.514,
+   "xy_min": 0.544,
+   "vel_med": 6.435,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 1,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Guard1Restored_IC1",
+   "date": "2026-06-11",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 1.71,
+   "xy_min": 1.121,
+   "vel_med": 0.856,
+   "cats": {
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "Multiscale_EZ_IC1",
+   "date": "2026-06-11",
+   "n": 9,
+   "SP": 0,
+   "TL": 6,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 5.348,
+   "xy_min": 0.575,
+   "vel_med": 1.042,
+   "cats": {
+    "TARGET_LOST": 6,
+    "CATASTROPHIC": 1,
+    "POOR": 2
+   }
+  },
+  {
+   "config": "RingLoomFix_IC1",
+   "date": "2026-06-11",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.65,
+   "xy_min": 0.622,
+   "vel_med": 1.285,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 2,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "RingLoom_IC1",
+   "date": "2026-06-11",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.463,
+   "xy_min": 0.273,
+   "vel_med": 0.499,
+   "cats": {
+    "POOR": 4,
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "BakedStack_IC1",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.01,
+   "xy_min": 1.906,
+   "vel_med": 2.287,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "BakedStack_IC2",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 10.143,
+   "xy_min": 1.596,
+   "vel_med": 7.313,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "ComboKDXIKP_IC1",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.762,
+   "xy_min": 1.522,
+   "vel_med": 1.784,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "ComboKDXIKP_IC2",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 3.343,
+   "xy_min": 2.829,
+   "vel_med": 2.127,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "ICValidation",
+   "date": "2026-06-12",
+   "n": 83,
+   "SP": 0,
+   "TL": 34,
+   "near_SP": 0,
+   "catastrophic": 43,
+   "xy_med": 3.45,
+   "xy_min": 0.25,
+   "vel_med": 2.652,
+   "cats": {
+    "TARGET_LOST": 34,
+    "MOD_PRECISE": 1,
+    "POOR": 4,
+    "CATASTROPHIC": 43,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "MATLABvals_IC22",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 6.48,
+   "xy_min": 6.48,
+   "vel_med": 3.992,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "MATLABvals_KD05_IC22",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 5.748,
+   "xy_min": 5.748,
+   "vel_med": 3.459,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "MATLABvals_KD05_KP5_IC22",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.608,
+   "xy_min": 4.608,
+   "vel_med": 3.389,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "MATLABvals_KD05_XI06_IC22",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 7.755,
+   "xy_min": 7.755,
+   "vel_med": 2.946,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "MATLABvals_KD05_XI06_KP5_IC22",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 5.351,
+   "xy_min": 1.083,
+   "vel_med": 2.481,
+   "cats": {
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "Omega01n5_IC2",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.763,
+   "xy_min": 4.098,
+   "vel_med": 3.199,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "Omega01n5_IC5",
+   "date": "2026-06-12",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.692,
+   "xy_min": 3.163,
+   "vel_med": 3.899,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "OmegaSwp_0075_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.404,
+   "xy_min": 4.404,
+   "vel_med": 2.425,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "OmegaSwp_015_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.935,
+   "xy_min": 2.935,
+   "vel_med": 2.735,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "OmegaSwp_01_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.067,
+   "xy_min": 4.067,
+   "vel_med": 3.698,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "OmegaXY01_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.847,
+   "xy_min": 2.847,
+   "vel_med": 2.122,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "P2INF15_Om01_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 5.09,
+   "xy_min": 5.09,
+   "vel_med": 3.207,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "PSINF06_IC2",
+   "date": "2026-06-12",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.377,
+   "xy_min": 2.377,
+   "vel_med": 2.152,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "BakedEz5_IC2",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 20.183,
+   "xy_min": 1.245,
+   "vel_med": 9.746,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "E05_GAM10_XI2Z06_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 5.893,
+   "xy_min": 5.893,
+   "vel_med": 2.152,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Ez01_Nz01_GAM20xy_K0p5_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.097,
+   "xy_min": 3.097,
+   "vel_med": 5.392,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Ez5_combo_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 51.163,
+   "xy_min": 51.163,
+   "vel_med": 10.536,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Ez5_combo_IC2_n5",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 32.15,
+   "xy_min": 9.61,
+   "vel_med": 6.92,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "GAM10E15_P2INF15_Om01_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.458,
+   "xy_min": 4.458,
+   "vel_med": 3.589,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "GAM10E15_XI2Z06_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 4.246,
+   "xy_min": 4.246,
+   "vel_med": 1.724,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "GAM20_K0p5_E08_XI2Z06_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.422,
+   "xy_min": 1.422,
+   "vel_med": 3.09,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "GAM20all_K0p5_E08_XI2Z06_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.796,
+   "xy_min": 0.796,
+   "vel_med": 3.352,
+   "cats": {
+    "POOR": 1
+   }
+  },
+  {
+   "config": "GAM20xy_Gz1_K0p5_E08_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.811,
+   "xy_min": 1.811,
+   "vel_med": 4.373,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "GammaXY1_IC1",
+   "date": "2026-06-13",
+   "n": 2,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 9.981,
+   "xy_min": 2.743,
+   "vel_med": 4.931,
+   "cats": {
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "HtvzGate_IC1",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 13.43,
+   "xy_min": 4.319,
+   "vel_med": 7.607,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "HtvzOff_IC1",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 4.855,
+   "xy_min": 3.057,
+   "vel_med": 2.288,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "HtvzPrior_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.929,
+   "xy_min": 0.929,
+   "vel_med": 2.476,
+   "cats": {
+    "POOR": 1
+   }
+  },
+  {
+   "config": "K0p5_E08_GAM10_XI2Z06_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 6.419,
+   "xy_min": 6.419,
+   "vel_med": 2.944,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "K0z1_E08_Nz01_GAM20xy_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.282,
+   "xy_min": 1.282,
+   "vel_med": 2.381,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "K0z1_Ez01_Nz01_GAM20xy_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.36,
+   "xy_min": 1.36,
+   "vel_med": 1.316,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "K0z1_Ez01_Nz01_SOFT_n5_IC2",
+   "date": "2026-06-13",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.393,
+   "xy_min": 0.852,
+   "vel_med": 2.109,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "K0z1_Nz05_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 36.765,
+   "xy_min": 36.765,
+   "vel_med": 12.841,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "K0z2_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 8.286,
+   "xy_min": 8.286,
+   "vel_med": 1.494,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "K0z2_Nz5_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 8.359,
+   "xy_min": 8.359,
+   "vel_med": 3.303,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "KzMax10_hrd03_P2INFz05_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.075,
+   "xy_min": 2.075,
+   "vel_med": 0.586,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "LKraw_IC1",
+   "date": "2026-06-13",
+   "n": 2,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 24.539,
+   "xy_min": 6.112,
+   "vel_med": 8.783,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "LKraw_IC3",
+   "date": "2026-06-13",
+   "n": 2,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.794,
+   "xy_min": 1.145,
+   "vel_med": 5.221,
+   "cats": {
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "LKvid_IC3",
+   "date": "2026-06-13",
+   "n": 2,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 9.883,
+   "xy_min": 0.915,
+   "vel_med": 10.866,
+   "cats": {
+    "TARGET_LOST": 1,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Nz01_GAM20xy_Gz1_K0p5_E08_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.961,
+   "xy_min": 0.961,
+   "vel_med": 2.837,
+   "cats": {
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Nz05_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.879,
+   "xy_min": 0.879,
+   "vel_med": 2.857,
+   "cats": {
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Omegaz01_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.228,
+   "xy_min": 0.228,
+   "vel_med": 2.608,
+   "cats": {
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "Omegaz02_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.45,
+   "xy_min": 1.45,
+   "vel_med": 1.93,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Omz1_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.182,
+   "xy_min": 2.182,
+   "vel_med": 5.712,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Omz1_Xi8_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 9.877,
+   "xy_min": 9.877,
+   "vel_med": 3.743,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Omz2_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 10.017,
+   "xy_min": 10.017,
+   "vel_med": 2.117,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Omz2_Xi8_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 46.285,
+   "xy_min": 46.285,
+   "vel_med": 14.757,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "P20z10_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 49.634,
+   "xy_min": 49.634,
+   "vel_med": 19.007,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "P2INFz05_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.064,
+   "xy_min": 1.064,
+   "vel_med": 0.366,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "P2INFz1_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.859,
+   "xy_min": 1.859,
+   "vel_med": 1.06,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "PureDivLoom_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 20.495,
+   "xy_min": 20.495,
+   "vel_med": 14.944,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "RL0_IC3",
+   "date": "2026-06-13",
+   "n": 3,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.848,
+   "xy_min": 0.076,
+   "vel_med": 6.175,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "PRECISE_only": 1
+   }
+  },
+  {
+   "config": "RL0_IC5",
+   "date": "2026-06-13",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 2.072,
+   "xy_min": 1.603,
+   "vel_med": 2.169,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "RecalGate_IC2",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 12.622,
+   "xy_min": 2.041,
+   "vel_med": 6.395,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "RecalOff_IC2",
+   "date": "2026-06-13",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 15.07,
+   "xy_min": 2.244,
+   "vel_med": 7.234,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "RingLoom0_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.955,
+   "xy_min": 0.955,
+   "vel_med": 4.491,
+   "cats": {
+    "POOR": 1
+   }
+  },
+  {
+   "config": "RingLoom12_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 1.811,
+   "xy_min": 1.811,
+   "vel_med": 2.452,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "RingLoom4_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 10.318,
+   "xy_min": 10.318,
+   "vel_med": 2.343,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "hrd03_P2INFz05_soft_IC2",
+   "date": "2026-06-13",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 11.083,
+   "xy_min": 11.083,
+   "vel_med": 4.222,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CBF_AB",
+   "date": "2026-06-14",
+   "n": 21,
+   "SP": 0,
+   "TL": 17,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 14.137,
+   "xy_min": 4.577,
+   "vel_med": 8.915,
+   "cats": {
+    "TARGET_LOST": 17,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "DsdGovBaseline_IC2",
+   "date": "2026-06-14",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 10.479,
+   "xy_min": 7.394,
+   "vel_med": 5.71,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "DsdGov_IC2",
+   "date": "2026-06-14",
+   "n": 15,
+   "SP": 0,
+   "TL": 13,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 6.942,
+   "xy_min": 2.541,
+   "vel_med": 1.582,
+   "cats": {
+    "TARGET_LOST": 13,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "KPdown_IC2",
+   "date": "2026-06-14",
+   "n": 20,
+   "SP": 0,
+   "TL": 15,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 8.269,
+   "xy_min": 1.18,
+   "vel_med": 3.282,
+   "cats": {
+    "TARGET_LOST": 15,
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "LPF_AB_baseline",
+   "date": "2026-06-14",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.515,
+   "xy_min": 4.515,
+   "vel_med": 0.658,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "LPF_AB_lpfbefore",
+   "date": "2026-06-14",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.106,
+   "xy_min": 6.106,
+   "vel_med": 2.36,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "Recovery_KP3",
+   "date": "2026-06-14",
+   "n": 10,
+   "SP": 0,
+   "TL": 6,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 6.42,
+   "xy_min": 2.306,
+   "vel_med": 2.655,
+   "cats": {
+    "SOFT_only": 1,
+    "TARGET_LOST": 6,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "Stage2_PS0_KP3",
+   "date": "2026-06-14",
+   "n": 10,
+   "SP": 0,
+   "TL": 7,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 6.159,
+   "xy_min": 2.481,
+   "vel_med": 2.012,
+   "cats": {
+    "TARGET_LOST": 7,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "Stage2b_KD_KP3",
+   "date": "2026-06-14",
+   "n": 10,
+   "SP": 0,
+   "TL": 8,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 5.932,
+   "xy_min": 1.479,
+   "vel_med": 2.839,
+   "cats": {
+    "TARGET_LOST": 8,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "WzDecouple_IC2",
+   "date": "2026-06-14",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 25.241,
+   "xy_min": 10.729,
+   "vel_med": 12.594,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "WzFull_IC2",
+   "date": "2026-06-14",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 18.223,
+   "xy_min": 18.223,
+   "vel_med": 10.883,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Xi2xy8_IC2",
+   "date": "2026-06-14",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 17.952,
+   "xy_min": 1.654,
+   "vel_med": 10.627,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "BothPillars_IC2",
+   "date": "2026-06-15",
+   "n": 10,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 6.838,
+   "xy_min": 4.082,
+   "vel_med": 2.813,
+   "cats": {
+    "CATASTROPHIC": 6,
+    "TARGET_LOST": 4
+   }
+  },
+  {
+   "config": "CentroidRate_IC2",
+   "date": "2026-06-15",
+   "n": 15,
+   "SP": 0,
+   "TL": 13,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 6.146,
+   "xy_min": 3.131,
+   "vel_med": 3.64,
+   "cats": {
+    "TARGET_LOST": 13,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "ChClean_IC2",
+   "date": "2026-06-15",
+   "n": 10,
+   "SP": 0,
+   "TL": 9,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.298,
+   "xy_min": 0.471,
+   "vel_med": 3.343,
+   "cats": {
+    "CATASTROPHIC": 1,
+    "TARGET_LOST": 9
+   }
+  },
+  {
+   "config": "IC1_Confirm_LpfOff",
+   "date": "2026-06-15",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 5.494,
+   "xy_min": 2.492,
+   "vel_med": 2.842,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "LpfBefore_IC2",
+   "date": "2026-06-15",
+   "n": 10,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 3.796,
+   "xy_min": 1.517,
+   "vel_med": 1.147,
+   "cats": {
+    "TARGET_LOST": 5,
+    "SOFT_only": 1,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "LpfDescent_IC1",
+   "date": "2026-06-15",
+   "n": 10,
+   "SP": 0,
+   "TL": 6,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 7.505,
+   "xy_min": 0.604,
+   "vel_med": 2.131,
+   "cats": {
+    "TARGET_LOST": 6,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "LpfKP_IC2",
+   "date": "2026-06-15",
+   "n": 9,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 7.618,
+   "xy_min": 2.627,
+   "vel_med": 3.986,
+   "cats": {
+    "TARGET_LOST": 5,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "Nxy_IC2",
+   "date": "2026-06-15",
+   "n": 9,
+   "SP": 0,
+   "TL": 6,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.801,
+   "xy_min": 1.479,
+   "vel_med": 1.378,
+   "cats": {
+    "TARGET_LOST": 6,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CB_IC2_backmap",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 13.653,
+   "xy_min": 5.655,
+   "vel_med": 3.424,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "CB_IC2_chir",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 25.979,
+   "xy_min": 3.59,
+   "vel_med": 11.625,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "CB_IC2_combined",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 14.077,
+   "xy_min": 2.866,
+   "vel_med": 6.541,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CombinedBarrier_smoke",
+   "date": "2026-06-19",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 6.869,
+   "xy_min": 6.869,
+   "vel_med": 4.843,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CommitEarly_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.389,
+   "xy_min": 1.295,
+   "vel_med": 1.222,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CommitEarly_IC1_commit",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 7.88,
+   "xy_min": 3.079,
+   "vel_med": 2.697,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CommitZero_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 2.132,
+   "xy_min": 1.557,
+   "vel_med": 1.111,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 2,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "CommitZero_IC1_commit",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 3.187,
+   "xy_min": 2.084,
+   "vel_med": 1.744,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Commit_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 8.243,
+   "xy_min": 0.774,
+   "vel_med": 2.566,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 1,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Commit_IC1_commit",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.534,
+   "xy_min": 2.202,
+   "vel_med": 2.188,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "Loom_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 9.987,
+   "xy_min": 2.589,
+   "vel_med": 4.562,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "Loom_IC1_loomdec",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 14.173,
+   "xy_min": 4.328,
+   "vel_med": 10.487,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "PyrLK_record",
+   "date": "2026-06-19",
+   "n": 2,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 6.015,
+   "xy_min": 4.815,
+   "vel_med": 1.486,
+   "cats": {
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "Rcond_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 5.041,
+   "xy_min": 1.689,
+   "vel_med": 2.239,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "Rcond_IC1_rcond3e2",
+   "date": "2026-06-19",
+   "n": 3,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 3.232,
+   "xy_min": 1.864,
+   "vel_med": 2.358,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "Rotz_IC1_baseline",
+   "date": "2026-06-19",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 7.412,
+   "xy_min": 2.139,
+   "vel_med": 7.4,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "Rotz_IC1_rotz",
+   "date": "2026-06-19",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 9.099,
+   "xy_min": 2.829,
+   "vel_med": 3.794,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "AuCapT_IC2_cap15",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 2.204,
+   "xy_min": 0.453,
+   "vel_med": 0.87,
+   "cats": {
+    "POOR": 2,
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "AuCapT_IC2_cap30",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.404,
+   "xy_min": 0.425,
+   "vel_med": 1.141,
+   "cats": {
+    "POOR": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "AuCapT_IC2_nocap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 0.925,
+   "xy_min": 0.719,
+   "vel_med": 0.705,
+   "cats": {
+    "CATASTROPHIC": 1,
+    "POOR": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "AuMax_IC2_aumax10",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 10.826,
+   "xy_min": 5.602,
+   "vel_med": 4.151,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "AuMax_IC2_aumax15",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 12.902,
+   "xy_min": 6.636,
+   "vel_med": 5.853,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "AuMax_IC2_aumax6",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 8.262,
+   "xy_min": 6.448,
+   "vel_med": 4.792,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "AuMax_IC2_kfonly",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 11.445,
+   "xy_min": 2.413,
+   "vel_med": 4.186,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CapGate_IC2_baseline",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 5.08,
+   "xy_min": 2.777,
+   "vel_med": 2.415,
+   "cats": {
+    "CATASTROPHIC": 1,
+    "TARGET_LOST": 4
+   }
+  },
+  {
+   "config": "CapGate_IC2_cap08",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 5.467,
+   "xy_min": 2.815,
+   "vel_med": 1.889,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CapGate_IC3_baseline",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 17.15,
+   "xy_min": 2.891,
+   "vel_med": 1.841,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CapGate_IC3_cap08",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 3.288,
+   "xy_min": 1.777,
+   "vel_med": 0.27,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 2,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "CapGate_IC4_baseline",
+   "date": "2026-06-20",
+   "n": 4,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.852,
+   "xy_min": 1.481,
+   "vel_med": 1.21,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CapGate_IC4_cap08",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.295,
+   "xy_min": 1.699,
+   "vel_med": 2.732,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CapGate_IC5_baseline",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 4.66,
+   "xy_min": 1.706,
+   "vel_med": 2.549,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CapGate_IC5_cap08",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.394,
+   "xy_min": 1.648,
+   "vel_med": 1.265,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "CapSweep_IC1_baseline",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 9.922,
+   "xy_min": 2.116,
+   "vel_med": 3.725,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CapSweep_IC1_cap04",
+   "date": "2026-06-20",
+   "n": 4,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.593,
+   "xy_min": 0.734,
+   "vel_med": 1.057,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "CapSweep_IC1_cap06",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 0.988,
+   "xy_min": 0.188,
+   "vel_med": 1.316,
+   "cats": {
+    "POOR": 2,
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CapSweep_IC1_cap08",
+   "date": "2026-06-20",
+   "n": 4,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.68,
+   "xy_min": 1.414,
+   "vel_med": 1.258,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CombAU_IC2_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 12.847,
+   "xy_min": 4.095,
+   "vel_med": 2.909,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "CombAU_IC2_combaucap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 8.81,
+   "xy_min": 3.129,
+   "vel_med": 5.178,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "CombAU_IC3_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 4.757,
+   "xy_min": 2.189,
+   "vel_med": 5.324,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "CombAU_IC3_combaucap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 9.408,
+   "xy_min": 3.794,
+   "vel_med": 4.196,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "CombAU_IC4_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.941,
+   "xy_min": 0.875,
+   "vel_med": 0.603,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CombAU_IC4_combaucap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 8.64,
+   "xy_min": 6.737,
+   "vel_med": 4.39,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CombAU_IC5_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.546,
+   "xy_min": 1.704,
+   "vel_med": 7.787,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CombAU_IC5_combaucap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 3.284,
+   "xy_min": 2.129,
+   "vel_med": 0.853,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CombCap_IC2_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 12.438,
+   "xy_min": 5.112,
+   "vel_med": 2.993,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "CombCap_IC2_combinedcap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 12.678,
+   "xy_min": 2.701,
+   "vel_med": 6.583,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "CombCap_IC3_backmap",
+   "date": "2026-06-20",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 4.778,
+   "xy_min": 4.778,
+   "vel_med": 1.089,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CombCap_IC3_combinedcap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 16.354,
+   "xy_min": 1.331,
+   "vel_med": 6.477,
+   "cats": {
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "CombCap_IC5_backmap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 3.355,
+   "xy_min": 1.755,
+   "vel_med": 1.761,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 4
+   }
+  },
+  {
+   "config": "CombCap_IC5_combinedcap",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 8.544,
+   "xy_min": 3.122,
+   "vel_med": 2.269,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "CommitCap_IC1_baseline",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.611,
+   "xy_min": 1.438,
+   "vel_med": 2.668,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "CommitCap_IC1_commit",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.688,
+   "xy_min": 0.484,
+   "vel_med": 1.208,
+   "cats": {
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 3,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "DwKF_IC2_kfon",
+   "date": "2026-06-20",
+   "n": 2,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 4.533,
+   "xy_min": 1.815,
+   "vel_med": 1.197,
+   "cats": {
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "IC2_aucap_check",
+   "date": "2026-06-20",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.334,
+   "xy_min": 2.334,
+   "vel_med": 0.882,
+   "cats": {
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "IC2_combined_check",
+   "date": "2026-06-20",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 36.852,
+   "xy_min": 36.852,
+   "vel_med": 16.065,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "IC2_funnelcheck",
+   "date": "2026-06-20",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 4.725,
+   "xy_min": 4.725,
+   "vel_med": 1.705,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "LatVel_IC2_chir050",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.587,
+   "xy_min": 0.401,
+   "vel_med": 0.741,
+   "cats": {
+    "SOFT_only": 1,
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 2,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "LatVel_IC2_chir130",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.731,
+   "xy_min": 1.49,
+   "vel_med": 4.618,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "LoomCal_IC1_capbase",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 10.982,
+   "xy_min": 2.024,
+   "vel_med": 9.158,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "LoomCal_IC1_caploom",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.547,
+   "xy_min": 0.951,
+   "vel_med": 1.059,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 1,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "LoomKF_IC2_base",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 6.772,
+   "xy_min": 2.59,
+   "vel_med": 3.831,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "LoomKF_IC2_loomkf",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 10.817,
+   "xy_min": 3.329,
+   "vel_med": 6.189,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "LoomKF_IC3_base",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 11.683,
+   "xy_min": 1.437,
+   "vel_med": 7.807,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "LoomKF_IC3_loomkf",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 2.723,
+   "xy_min": 2.048,
+   "vel_med": 2.859,
+   "cats": {
+    "CATASTROPHIC": 5
+   }
+  },
+  {
+   "config": "LoomKF_IC5_base",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 5.062,
+   "xy_min": 3.88,
+   "vel_med": 1.975,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "LoomKF_IC5_loomkf",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 3.61,
+   "xy_min": 2.064,
+   "vel_med": 2.329,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "P2inf_IC2_p025",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.306,
+   "xy_min": 0.78,
+   "vel_med": 1.204,
+   "cats": {
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1,
+    "POOR": 2
+   }
+  },
+  {
+   "config": "P2inf_IC2_p035",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 26.262,
+   "xy_min": 0.913,
+   "vel_med": 17.505,
+   "cats": {
+    "POOR": 1,
+    "CATASTROPHIC": 1,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "P2inf_IC2_p050",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 5.923,
+   "xy_min": 0.912,
+   "vel_med": 4.601,
+   "cats": {
+    "POOR": 1,
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "VdfBake_IC2_backmap",
+   "date": "2026-06-20",
+   "n": 1,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 19.142,
+   "xy_min": 19.142,
+   "vel_med": 1.671,
+   "cats": {
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "VdfBake_IC2_combined",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 1.244,
+   "xy_min": 0.19,
+   "vel_med": 1.951,
+   "cats": {
+    "MOD_PRECISE": 2,
+    "CATASTROPHIC": 2,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "VdfGains_IC2_hotgains",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 23.173,
+   "xy_min": 9.859,
+   "vel_med": 12.187,
+   "cats": {
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "VdfGains_IC2_manuscript",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.585,
+   "xy_min": 1.384,
+   "vel_med": 1.67,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "YawConv_IC2_base",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 1.419,
+   "xy_min": 0.934,
+   "vel_med": 0.814,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "YawConv_IC2_ga10",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 4.003,
+   "xy_min": 0.294,
+   "vel_med": 3.993,
+   "cats": {
+    "CATASTROPHIC": 1,
+    "MOD_PRECISE": 1,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "YawConv_IC2_oa10",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 1.573,
+   "xy_min": 0.417,
+   "vel_med": 0.776,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "YawFilt_IC2_filtoff",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 0.944,
+   "xy_min": 0.737,
+   "vel_med": 0.722,
+   "cats": {
+    "POOR": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "YawFilt_IC2_filton",
+   "date": "2026-06-20",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.249,
+   "xy_min": 0.91,
+   "vel_med": 2.087,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "Ez_IC2_baseline",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 2.293,
+   "xy_min": 0.352,
+   "vel_med": 1.612,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "POOR": 5,
+    "TARGET_LOST": 5
+   }
+  },
+  {
+   "config": "Ez_IC2_ez05",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.092,
+   "xy_min": 0.184,
+   "vel_med": 1.141,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 6,
+    "MOD_PRECISE": 1,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "KltPersist_IC2_baseline",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 2.107,
+   "xy_min": 0.239,
+   "vel_med": 3.131,
+   "cats": {
+    "POOR": 2,
+    "MOD_PRECISE": 2,
+    "TARGET_LOST": 4,
+    "CATASTROPHIC": 7
+   }
+  },
+  {
+   "config": "KltPersist_IC2_persist",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 5,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 0.698,
+   "xy_min": 0.285,
+   "vel_med": 0.715,
+   "cats": {
+    "POOR": 5,
+    "TARGET_LOST": 5,
+    "MOD_PRECISE": 2,
+    "SOFT_only": 1,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "MomLoom_IC2_base",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 0.857,
+   "xy_min": 0.398,
+   "vel_med": 0.827,
+   "cats": {
+    "POOR": 8,
+    "CATASTROPHIC": 6,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "MomLoom_IC2_momloom",
+   "date": "2026-06-21",
+   "n": 15,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.386,
+   "xy_min": 0.338,
+   "vel_med": 0.91,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 6,
+    "SOFT_only": 1,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "SoftZ_IC2_base",
+   "date": "2026-06-21",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.015,
+   "xy_min": 0.55,
+   "vel_med": 0.329,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 2
+   }
+  },
+  {
+   "config": "SoftZ_IC2_softz",
+   "date": "2026-06-21",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 2,
+   "xy_med": 15.505,
+   "xy_min": 4.916,
+   "vel_med": 9.172,
+   "cats": {
+    "TARGET_LOST": 3,
+    "CATASTROPHIC": 2
+   }
+  },
+  {
+   "config": "CommitSen_IC2_gate",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 8,
+   "xy_med": 1.599,
+   "xy_min": 0.556,
+   "vel_med": 1.129,
+   "cats": {
+    "CATASTROPHIC": 8,
+    "POOR": 3,
+    "TARGET_LOST": 4
+   }
+  },
+  {
+   "config": "CommitSen_IC2_gatecommit_sen",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 8,
+   "xy_med": 1.749,
+   "xy_min": 0.477,
+   "vel_med": 1.053,
+   "cats": {
+    "CATASTROPHIC": 8,
+    "TARGET_LOST": 2,
+    "POOR": 4,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "Commit_IC2_gate",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.459,
+   "xy_min": 0.303,
+   "vel_med": 1.017,
+   "cats": {
+    "POOR": 4,
+    "CATASTROPHIC": 7,
+    "TARGET_LOST": 4
+   }
+  },
+  {
+   "config": "Commit_IC2_gatecommit",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 10,
+   "xy_med": 1.92,
+   "xy_min": 1.192,
+   "vel_med": 1.191,
+   "cats": {
+    "CATASTROPHIC": 10,
+    "TARGET_LOST": 4,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "Dgate_IC2_baseline",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 1.33,
+   "xy_min": 0.369,
+   "vel_med": 1.171,
+   "cats": {
+    "CATASTROPHIC": 6,
+    "POOR": 6,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "Dgate_IC2_gate",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 6,
+   "xy_med": 1.999,
+   "xy_min": 0.7,
+   "vel_med": 0.965,
+   "cats": {
+    "CATASTROPHIC": 6,
+    "POOR": 5,
+    "TARGET_LOST": 4
+   }
+  },
+  {
+   "config": "KltMargin_IC2_baseline",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.809,
+   "xy_min": 0.349,
+   "vel_med": 1.121,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 4,
+    "TARGET_LOST": 3,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "KltMargin_IC2_margin",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 8,
+   "xy_med": 1.639,
+   "xy_min": 0.368,
+   "vel_med": 0.772,
+   "cats": {
+    "SOFT_only": 1,
+    "POOR": 4,
+    "CATASTROPHIC": 8,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "MomLoomSz_default",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 0.84,
+   "xy_min": 0.477,
+   "vel_med": 0.681,
+   "cats": {
+    "POOR": 8,
+    "SOFT_only": 1,
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "MomLoomSz_momentsz",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 0.795,
+   "xy_min": 0.27,
+   "vel_med": 0.788,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 7,
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "Nz_IC2_nz002",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 9,
+   "xy_med": 1.778,
+   "xy_min": 0.535,
+   "vel_med": 1.691,
+   "cats": {
+    "CATASTROPHIC": 9,
+    "TARGET_LOST": 3,
+    "POOR": 3
+   }
+  },
+  {
+   "config": "Nz_IC2_nz010",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 8,
+   "xy_med": 1.898,
+   "xy_min": 0.168,
+   "vel_med": 1.487,
+   "cats": {
+    "CATASTROPHIC": 8,
+    "SOFT_only": 3,
+    "POOR": 2,
+    "TARGET_LOST": 1,
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "PureDivVal_default",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 0.883,
+   "xy_min": 0.403,
+   "vel_med": 0.455,
+   "cats": {
+    "POOR": 3,
+    "TARGET_LOST": 1,
+    "CATASTROPHIC": 1
+   }
+  },
+  {
+   "config": "PureDivVal_vframe",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.173,
+   "xy_min": 0.667,
+   "vel_med": 1.237,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "SOFT_only": 1,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "RingOT_IC2_baseline",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 1.238,
+   "xy_min": 0.178,
+   "vel_med": 0.92,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "POOR": 4,
+    "TARGET_LOST": 3,
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "RingOT_IC2_ringovertarget",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 12,
+   "xy_med": 1.849,
+   "xy_min": 0.743,
+   "vel_med": 1.247,
+   "cats": {
+    "POOR": 2,
+    "CATASTROPHIC": 12,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "RingVF15_default",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 8,
+   "xy_med": 1.582,
+   "xy_min": 0.414,
+   "vel_med": 1.747,
+   "cats": {
+    "CATASTROPHIC": 8,
+    "POOR": 5,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "RingVF15_vframe",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 4,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 1.396,
+   "xy_min": 0.31,
+   "vel_med": 0.712,
+   "cats": {
+    "CATASTROPHIC": 5,
+    "TARGET_LOST": 4,
+    "POOR": 6
+   }
+  },
+  {
+   "config": "RingVF_IC2_real_ot",
+   "date": "2026-06-22",
+   "n": 2,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 30.629,
+   "xy_min": 3.225,
+   "vel_med": 10.095,
+   "cats": {
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "RingVF_IC2_vframe_ot",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 5,
+   "xy_med": 1.069,
+   "xy_min": 0.14,
+   "vel_med": 1.273,
+   "cats": {
+    "POOR": 6,
+    "CATASTROPHIC": 5,
+    "MOD_PRECISE": 1,
+    "TARGET_LOST": 3
+   }
+  },
+  {
+   "config": "SingleGFT_momentsz",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.057,
+   "xy_min": 0.413,
+   "vel_med": 0.876,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "POOR": 2
+   }
+  },
+  {
+   "config": "SingleGFT_single_gft",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.443,
+   "xy_min": 1.1,
+   "vel_med": 1.18,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "SingleMarker_momentsz",
+   "date": "2026-06-22",
+   "n": 9,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.717,
+   "xy_min": 0.251,
+   "vel_med": 1.155,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1,
+    "POOR": 3,
+    "MOD_PRECISE": 1
+   }
+  },
+  {
+   "config": "SingleMarker_single",
+   "date": "2026-06-22",
+   "n": 15,
+   "SP": 0,
+   "TL": 7,
+   "near_SP": 0,
+   "catastrophic": 7,
+   "xy_med": 4.287,
+   "xy_min": 0.532,
+   "vel_med": 3.04,
+   "cats": {
+    "CATASTROPHIC": 7,
+    "TARGET_LOST": 7,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "SingleMoment_momentsz",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.058,
+   "xy_min": 0.553,
+   "vel_med": 0.625,
+   "cats": {
+    "POOR": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "SingleMoment_single_moment",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 1.662,
+   "xy_min": 1.003,
+   "vel_med": 1.079,
+   "cats": {
+    "TARGET_LOST": 2,
+    "CATASTROPHIC": 3
+   }
+  },
+  {
+   "config": "SingleRcond_sq",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 2.088,
+   "xy_min": 1.285,
+   "vel_med": 1.212,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "SingleRcond_sq_rcond3e2",
+   "date": "2026-06-22",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 4,
+   "xy_med": 1.465,
+   "xy_min": 0.802,
+   "vel_med": 0.884,
+   "cats": {
+    "CATASTROPHIC": 4,
+    "TARGET_LOST": 1
+   }
+  },
+  {
+   "config": "SingleWorld_smoke",
+   "date": "2026-06-22",
+   "n": 2,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.819,
+   "xy_min": 0.078,
+   "vel_med": 1.791,
+   "cats": {
+    "TARGET_LOST": 1,
+    "PRECISE_only": 1
+   }
+  },
+  {
+   "config": "CentroidRate_IC2_baseline",
+   "date": "2026-06-23",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.887,
+   "xy_min": 0.479,
+   "vel_med": 2.166,
+   "cats": {
+    "POOR": 3,
+    "TARGET_LOST": 2
+   }
+  },
+  {
+   "config": "CentroidRate_IC2_observer",
+   "date": "2026-06-23",
+   "n": 5,
+   "SP": 0,
+   "TL": 1,
+   "near_SP": 0,
+   "catastrophic": 3,
+   "xy_med": 2.482,
+   "xy_min": 0.629,
+   "vel_med": 2.197,
+   "cats": {
+    "CATASTROPHIC": 3,
+    "TARGET_LOST": 1,
+    "POOR": 1
+   }
+  },
+  {
+   "config": "IC2_SingleMarker",
+   "date": "2026-06-23",
+   "n": 5,
+   "SP": 0,
+   "TL": 2,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.801,
+   "xy_min": 0.297,
+   "vel_med": 1.583,
+   "cats": {
+    "MOD_PRECISE": 1,
+    "TARGET_LOST": 2,
+    "POOR": 1,
+    "SOFT_only": 1
+   }
+  },
+  {
+   "config": "SingleWorldRecal_test",
+   "date": "2026-06-23",
+   "n": 5,
+   "SP": 0,
+   "TL": 3,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 1.837,
+   "xy_min": 0.341,
+   "vel_med": 3.35,
+   "cats": {
+    "TARGET_LOST": 3,
+    "POOR": 2
+   }
+  }
+ ],
+ "sp_reps": [
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep3",
+   "date": "2026-06-03",
+   "xy_err": 0.0096,
+   "rel_vel": 0.0075,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b13_both_fixes_20260603-133607/rep3",
+   "date": "2026-06-03",
+   "xy_err": 0.0183,
+   "rel_vel": 0.1786,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep5",
+   "date": "2026-06-03",
+   "xy_err": 0.0213,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep1",
+   "date": "2026-06-03",
+   "xy_err": 0.0265,
+   "rel_vel": 0.0874,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b10B_no_yaw_ablation_20260603-113652/rep4",
+   "date": "2026-06-03",
+   "xy_err": 0.0278,
+   "rel_vel": 0.057,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b10C_ordering_normdesc_20260603-113652/rep1",
+   "date": "2026-06-03",
+   "xy_err": 0.044,
+   "rel_vel": 0.1476,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b14_span_commit_20260603-135420/rep2",
+   "date": "2026-06-03",
+   "xy_err": 0.0485,
+   "rel_vel": 0.014,
+   "frozen_GT": false
+  },
+  {
+   "config": "CoordDescent",
+   "path": "CoordDescent/20260525-201532/pass1/RHOFOV0_241.8_rep2",
+   "date": "2026-05-25",
+   "xy_err": 0.0521,
+   "rel_vel": 0.0611,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep4",
+   "date": "2026-06-03",
+   "xy_err": 0.0525,
+   "rel_vel": 0.0652,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b10C_ordering_normdesc_20260603-113652/rep3",
+   "date": "2026-06-03",
+   "xy_err": 0.0542,
+   "rel_vel": 0.0915,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b2A_floor60_20260603-033719/rep4",
+   "date": "2026-06-03",
+   "xy_err": 0.0599,
+   "rel_vel": 0.1491,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep3",
+   "date": "2026-06-03",
+   "xy_err": 0.0599,
+   "rel_vel": 0.0437,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b14_span_commit_20260603-135420/rep3",
+   "date": "2026-06-03",
+   "xy_err": 0.0639,
+   "rel_vel": 0.1515,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b13_both_fixes_20260603-133607/rep2",
+   "date": "2026-06-03",
+   "xy_err": 0.0659,
+   "rel_vel": 0.054,
+   "frozen_GT": false
+  },
+  {
+   "config": "CoordDescent",
+   "path": "CoordDescent/20260526-014855/pass1/E_Z_0.1067_rep1",
+   "date": "2026-05-26",
+   "xy_err": 0.0662,
+   "rel_vel": 0.165,
+   "frozen_GT": false
+  },
+  {
+   "config": "SPCampaign",
+   "path": "SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep1",
+   "date": "2026-06-03",
+   "xy_err": 0.0671,
+   "rel_vel": 0.0185,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jun 10 01-22-38 2026",
+   "date": "2026-06-10",
+   "xy_err": 0.0,
+   "rel_vel": 0.1337,
+   "frozen_GT": true
+  },
+  {
+   "config": "BootstrapFix_n21",
+   "path": "BootstrapFix_n21/20260610-010904/rep6",
+   "date": "2026-06-10",
+   "xy_err": 0.0,
+   "rel_vel": 0.1337,
+   "frozen_GT": true
+  }
+ ]
+}
