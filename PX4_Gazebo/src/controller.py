@@ -69,7 +69,8 @@ S_MARGIN = 0.05
 
 
 class Controller(Thread):
-    def __init__(self, ref_rad_opt_flow, des_img_feature, time_keeper=time, controller=None, record='n'):
+    def __init__(self, ref_rad_opt_flow, des_img_feature, time_keeper=time, controller=None, record='n',
+                 pose_node=None):
         Thread.__init__(self)
         self._h_ref = ref_rad_opt_flow
         # NOTE: previously had a soft-engagement ramp (PLASMC_HRD_RAMP_S) and
@@ -82,6 +83,21 @@ class Controller(Thread):
         # shrinks the (h_rd − dot(cross(w,s), e3))·s cross-coupling on x/y
         # which alters SMC stability. Direct MATLAB-style use of h_ref
         # is the cleanest.
+        # DESCENT-GATE (2026-06-22, reference-governor): RE-ATTEMPT of the above with
+        # the failure mode fixed. The 05-18 gate failed because varying h_ref made h_d[z]
+        # non-steady -> dh_d transients -> c-term destabilization. Fix = RATE-LIMIT the
+        # gate (1-pole LPF, tau) so d(h_ref)/dt is tiny -> no dh_d spike, while still
+        # slowing descent when off-center. Goal: null the lateral offset BEFORE Z (and
+        # the FoV footprint ~0.89*Z) shrinks, so the marker never reaches the edge ->
+        # corners stay decoded -> lateral flow stays honest (GT-verified honest at
+        # altitude, corrupted <0.8m). g_min floor avoids permanent hover. Scale-free
+        # (gates on normalized |s_e_n|). Default-OFF.
+        self._descent_gate = os.environ.get("PLASMC_DESCENT_GATE", "0") == "1"
+        self._dgate_slo  = float(os.environ.get("PLASMC_DGATE_SLO",  "0.4"))   # |s_e_n| <= slo -> g=1 (full descent)
+        self._dgate_shi  = float(os.environ.get("PLASMC_DGATE_SHI",  "0.8"))   # |s_e_n| >= shi -> g=g_min (engages before the FoV edge 1.0)
+        self._dgate_gmin = float(os.environ.get("PLASMC_DGATE_GMIN", "0.15"))  # descent floor (avoid permanent hover)
+        self._dgate_tau  = float(os.environ.get("PLASMC_DGATE_TAU",  "0.5"))   # LPF tau on g -> rate-limit -> no dh_d transient (the 05-18 failure)
+        self._dgate_g    = 1.0                                                 # filtered gate state
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -98,6 +114,19 @@ class Controller(Thread):
 
         self._time = time_keeper
         self._s_d = des_img_feature
+
+        # GT-FEEDBACK scaffold (PLASMC_GT_FEEDBACK=1): replace perception s/h with the
+        # exact V-frame ground truth from the Gazebo poses, to isolate CONTROL from
+        # PERCEPTION. See src/gt_feedback.py + tools/validate_gt_feedback.py.
+        self._pose_node = pose_node
+        self._gt_feedback = None
+        if os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1":
+            if pose_node is None:
+                print("[controller] PLASMC_GT_FEEDBACK=1 but no pose_node passed — DISABLED")
+            else:
+                from gt_feedback import GTFeedback
+                self._gt_feedback = GTFeedback()
+                print("[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -181,7 +210,7 @@ class Controller(Thread):
         self._Gma   = np.diag(pa("GAMMA", 2.0, 2.0, 1.0))       # GAMMA_xy 0.4375/0.5->2.0 + GAMMA_z 0.75->1.0 (2026-06-13 soft-config bake): reaching gain — the un-saturated proportional term that actually speeds h_e reaching (κ_0/E are sat-gated); xy=2.0 uses full w_u authority, sharper lateral convergence
         self._E     = np.diag(pa("E",     0.8, 0.8, 0.5))       # E_z 0.1->0.5 (2026-06-13 user bake, Ez5_combo) — WIDER z boundary layer; tames the z over-brake (κ_z held ~1.3, au_z ~41 vs the cap/122 at E_z=0.1+aggressive funnel). ⚠️ Ez5_combo (this 4-param set) was CATASTROPHIC at IC2 n=5 (4/5 TL, mean 26.5) — but the failure was LATERAL (z-loop tame); kept as a non-over-braking z baseline for lateral work. Soft-config was E_z=0.1 (vel 1.3-1.8)
         # Adaptive-gain ODE
-        self._N       = np.diag(pa("N",      0.02, 0.02, 0.1))   # N_z 0.05->0.1 (2026-06-13 soft-config bake): faster κ_z adaptation -> z braking authority arrives in time (descent is only ~2s; κ_z is adaptation-rate-limited)
+        self._N       = np.diag(pa("N",      0.02, 0.02, 0.1))   # N_z=0.1: a LEGITIMATE PX4-specific divergence from MATLAB vdf_params (P.N_z=0.02), NOT a stale bug. VDF-parity A/B 2026-06-22 (Nz_IC2, N=15, clean combined baseline) REJECTED N_z=0.02: it RAISED terminal descent |vz| spikes (vzmax med 3.57→5.10, p90 6.56→9.59) + regressed sub-meter 5→3/15 + TL 1→3. Reason: PX4's SITL descent is only ~2s so κ_z is ADAPTATION-RATE-LIMITED — faster N_z=0.1 ramps κ_z up in time for terminal z-BRAKING; the slow VDF 0.02 under-brakes (MATLAB's slower dynamics make 0.02 right THERE). N = κ-ODE adapt rate (dκ/dt=Θ·N·G·|σ|−N·P·κ). Like chi_r=0.5 vs 0.85, a SITL-timing divergence. Do NOT re-align to 0.02.
         self._P       = np.diag(pa("P",      1.5, 1.5, 5.0))     # P_xy 5->1.5 (2026-06-12 Combo bake): MATLAB parity; paired with KP=5 the lateral kappa stays bounded without the over-gained P=5
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
@@ -220,7 +249,7 @@ class Controller(Thread):
             if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
                 self._kappa_0 = np.array([0.125, 0.125, 0.25])              # vdf kappa0 (was .5/.5/1)
             if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
-                self._E = np.diag([1.0, 1.0, 1.0])                          # vdf E (was .8/.8/.5)
+                self._E = np.diag([1.0, 1.0, 0.5])                          # vdf E; E_z 1.0->0.5 BAKED 2026-06-21 (IC2 N=15 x2: xy std 29.5->~4, fly 5/15->2-4/15, TL 5/15->1/15; engages kappa switching damping on the terminal Z cycle per MATLAB CB57). X/Y stay 1.0 (NOISE-pumped, kappa hurts there). Env PLASMC_E_* still overrides.
             if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
                 self._gamma = np.diag([0.2, 0.2, 0.2])                      # vdf Xi_h (was .6/.6/.8)
             # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
@@ -268,7 +297,16 @@ class Controller(Thread):
         # (ROBUST class per supplement S3-A — ±50% moves metrics <0.5cm in MATLAB;
         # in PX4 the yaw chain has 287ms lag so values ~0.2 are used — memory
         # convergence-ordering.)
-        self._Omega_a   = float(os.environ.get("PLASMC_YAW_OMEGA",  "0.5"))
+        # YAW Omega_a 0.5->0.1 BAKED 2026-06-23 (GT-feedback per-axis study, NC116-121):
+        # u_a is a yaw-RATE command (psi_d=int(u_a)), so the rate structure already
+        # integrates e_a; the Omega_a*ie_a term added a SECOND integrator -> no phase
+        # margin vs the PX4 inner-loop lag (K_R_YAW + rate loop + tau_ua LPF, absent in
+        # MATLAB) -> growing yaw limit cycle that pumps lateral via image-frame coupling.
+        # 0.1 removes the double-integrator: yaw cycle eliminated (ncross 5-6->2, single
+        # bounded overshoot) across DES_ALPHA 0/10/30/45 at IC1, no fly-aways. A PX4-lag
+        # divergence (cf chi_r=0.5, N_z=0.1). RULED OUT: K_R_YAW^ (worse), E_a v (no help
+        # at Omega_a=0.5). Env PLASMC_YAW_OMEGA still overrides.
+        self._Omega_a   = float(os.environ.get("PLASMC_YAW_OMEGA",  "0.1"))
         self._Gma_a     = float(os.environ.get("PLASMC_YAW_GAMMA",  "0.5"))
         self._n_a       = float(os.environ.get("PLASMC_YAW_N",      "1.0"))
         self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))
@@ -381,6 +419,21 @@ class Controller(Thread):
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
         self._commit_count = 0
+        # TERMINAL-COMMIT LATERAL TAPER (2026-06-22): the descent-gate centers the drone to the
+        # deck (commit-ready 14/15 IC2) but the final ~0.3 m destabilizes — at Z<0.3 the 1/Z-
+        # corrupted lateral flow spikes a_u -> launch. Once committed (marker fills FoV at the
+        # centered-low state), STOP active lateral steering: ramp a_u_xy -> COMMIT_LAT_FLOOR so
+        # the controller can't react to the garbage flow; coast laterally + descend level. Stronger
+        # than COMMIT_AU_MAX (a cap still pushes on bad flow). Rate-ramped. Stacks on DESCENT_GATE.
+        self._commit_lat_taper = os.environ.get("PLASMC_COMMIT_LAT_TAPER", "0") == "1"
+        self._commit_lat_floor = float(os.environ.get("PLASMC_COMMIT_LAT_FLOOR", "0.0"))   # a_u_xy scale floor once committed
+        self._commit_ramp_s    = float(os.environ.get("PLASMC_COMMIT_RAMP_S", "0.5"))      # taper time const
+        self._commit_taper_c   = 1.0
+        # CENTERED-GATING (2026-06-22): the extent-only latch commits on ALTITUDE alone, so it
+        # can fire while still off-center (LAT@commit up to 2.74 m IC2) -> coasts to that offset
+        # -> 0/15 sub-meter. Require |s_e_n| < COMMIT_SEN (centered) AT the trigger too, so the
+        # commit only fires from a centered state -> lands near center. 0 = extent-only (old).
+        self._commit_sen = float(os.environ.get("PLASMC_COMMIT_SEN", "0.3"))
         self._s_e_n_hold = None
         # LEVER 2 (flow ceiling + smoothing): blend the accurate DETECTED-centroid rate
         # d(s[:2])/dt into the lateral flow h[:2]. The LK flow saturates ~1 rad/s AND
@@ -422,9 +475,9 @@ class Controller(Thread):
         # Default 2.0: higher overdrives the LK tracking window (>1.7 rad/s
         # body rate → >15 px/frame corner motion → OPTIC FLOW UNAVAILABLE).
         # Works together with the PLASMC_W_U_MAX=1.0 rad/s command clamp.
-        self._K_R = np.diag([float(os.environ.get("PLASMC_KR_ROLL",  "1.5")),
-                             float(os.environ.get("PLASMC_KR_PITCH", "1.5")),
-                             float(os.environ.get("PLASMC_KR_YAW",   "0.5"))])   # 2/2/2->1.5/1.5/0.5 (2026-06-12 Combo bake): MATLAB SO(3) parity
+        self._K_R = np.diag([float(os.environ.get("PLASMC_KR_ROLL",  "2.5")),
+                             float(os.environ.get("PLASMC_KR_PITCH", "2.5")),
+                             float(os.environ.get("PLASMC_KR_YAW",   "0.5"))])   # 2/2/2->1.5/1.5/0.5 (2026-06-12), rp 1.5->2.5 (2026-06-24): LATERAL mid-descent limit-cycle fix (per-axis GT-FB campaign NC125-126). The lateral outer loop is under-damped (not unstable); the binding limit was the inner-loop attitude lag (eR_pitch -22deg vs cmd 33deg). roll/pitch rate loop is FAST (~40ms) so K_R rp^ cuts the lag (-22->+-5deg) -> restores effective damping -> mid-descent lateral cycle eliminated (s_e_n 0.05-0.14, ncross4, alt 4->1.5m). YAW stays 0.5: K_R_YAW^ RULED OUT (worse) - yaw rate loop is SLOW (287ms) so stiffening over-drives the lag; yaw under-damping is the outer windup + rate lag (fixed by Omega_a->0.1), NOT attitude tracking. Validated GT-FB; raises body rate -> affects image-mode LK window (sharp optimum, GT-FB-validated only).
 
         # Virtual-compass heading state. Lazy-init on first _attCtrl call
         # from the current body yaw (manuscript: psi_d = yaw_init, line 127
@@ -582,7 +635,10 @@ class Controller(Thread):
 
     def run(self):
         while self._img_node.is_alive() and self._STAY_OPEN:
-            if self._img_node.FEATURE_IS_VISIBLE:
+            # GT-FEEDBACK: keep the loop alive on GT even if perception loses the
+            # marker (the GT target pose is always available) — isolates control
+            # from the perception-visibility gate through terminal descent.
+            if self._img_node.FEATURE_IS_VISIBLE or self._gt_feedback is not None:
 
                 if self._CONTROLLER_READY:
                     self._updateTime()
@@ -600,6 +656,12 @@ class Controller(Thread):
 
                     feature_param = self._img_node.getImgFeatureParam()
                     opt_flow_ang_vel = self._img_node.getOptFlowAngVel()
+                    # GT-FEEDBACK: substitute exact V-frame GT s/h (perception bypassed).
+                    if self._gt_feedback is not None:
+                        _p = self._pose_node.getPose()
+                        if _p.UAV is not None and _p.target is not None:
+                            feature_param, opt_flow_ang_vel = self._gt_feedback.update(
+                                _p.UAV, _p.target, self._time.perf_counter())
                     self._updateImgFeatureParam(feature_param)
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the
@@ -731,8 +793,12 @@ class Controller(Thread):
         # TERMINAL-CAPS the lateral command V_ds_d_xy below. Default-off (commit_extent=0).
         if self._commit_extent > 0 and not self._committed:
             self._ext_win.append(float(self.MARKER_EXTENT_PX))
+            # Centered-gating: also require |s_e_n| < COMMIT_SEN so the commit fires only from a
+            # centered state (else it coasts to an off-center offset -> 0/15 sub-meter). 0 = disabled.
+            _centered = (self._commit_sen <= 0 or float(np.linalg.norm(s_e_n)) < self._commit_sen)
             if (len(self._ext_win) >= self._commit_win
-                    and float(np.median(self._ext_win)) > self._commit_extent):
+                    and float(np.median(self._ext_win)) > self._commit_extent
+                    and _centered):
                 self._committed = True
                 self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (offset committed at)
         self._s_e_n.append(s_e_n)
@@ -892,6 +958,19 @@ class Controller(Thread):
         # Direct h_ref (MATLAB-equivalent). Previously had a soft-engage ramp
         # and a lateral-error gate here — both removed (see __init__ note).
         h_ref_eff = self._h_ref
+        if self._descent_gate and len(self._s_e_n) > 0:
+            sen = float(np.linalg.norm(self._s_e_n[-1]))
+            if sen <= self._dgate_slo:
+                g_t = 1.0
+            elif sen >= self._dgate_shi:
+                g_t = self._dgate_gmin
+            else:
+                u = (sen - self._dgate_slo) / max(self._dgate_shi - self._dgate_slo, 1e-6)
+                g_t = 1.0 - (u * u * (3.0 - 2.0 * u)) * (1.0 - self._dgate_gmin)   # smoothstep
+            # rate-limit g via 1-pole LPF -> bounded d(h_ref)/dt -> no destabilizing dh_d transient
+            _dt = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
+            self._dgate_g += (_dt / max(self._dgate_tau, _dt)) * (g_t - self._dgate_g)
+            h_ref_eff = self._h_ref * self._dgate_g
         cross_ws = np.cross(w, self._s[-1][:3])
         if self._combined_barrier:
             # blended surface: h_d = MEASURED s_dot + transport + descent (NO back-mapped ds_d).
@@ -1115,6 +1194,13 @@ class Controller(Thread):
             _nau = float(np.linalg.norm(a_u[:2]))
             if _nau > self._commit_au_max:
                 a_u[:2] = a_u[:2] * (self._commit_au_max / _nau)
+        # TERMINAL-COMMIT LATERAL TAPER (see __init__): once committed, ramp a_u_xy toward the
+        # floor so the terminal 1/Z-corrupted lateral flow can't drive a launch — coast + descend.
+        if self._commit_lat_taper and self._committed:
+            _dtc = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
+            self._commit_taper_c = max(self._commit_lat_floor,
+                                       self._commit_taper_c - _dtc / max(self._commit_ramp_s, _dtc))
+            a_u[:2] = a_u[:2] * self._commit_taper_c
         # GLOBAL a_u_xy cap (PLASMC_AU_MAX_XY): bound the lateral accel at ALL altitudes, not just
         # terminal. Diagnosis (2026-06-20): 53% of combined-barrier fly-aways breach AT ALTITUDE
         # (~2.3m) during the off-center approach where a_u_xy hits ~102 (over-aggression overshoots),

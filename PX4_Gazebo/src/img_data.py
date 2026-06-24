@@ -111,17 +111,22 @@ class IMG_PROCESSOR(Thread):
         # 2026-06-04 claim was OVERTURNED 2026-06-07: in the raw/body frame wx/wy ARE
         # observable with the multi-marker board's corner SPREAD + adequate excitation
         # (see memory wxy-unobservable-imu-fusion-deferred). Zeroing here is a choice.
+        # SINGLE-MARKER cal (2026-06-23): re-derived in the single ~1m-ArUco world with
+        # PLASMC_SINGLE_MARKER=1 (derive_board_cal, 5 phased runs). Large-marker lateral R^2
+        # Hx 0.63 Hy 0.62 — vs the nested-board single-marker collapse 0.07 (the large marker
+        # escapes the rank-deficiency). The BOARD cal (multi-marker world) is preserved in
+        # src/img_data.py.pre_singlemarker_cal_bak + git history.
         self._sensor_cal_hw = np.array([
-            [+0.9474, -0.0036, +0.0075, +0.0022, +0.8056, -0.0026],
-            [-0.0156, +0.8946, +0.0024, -0.6885, -0.0426, -0.0034],
-            [+0.0124, +0.0148, +1.0744, +0.0128, +0.0068, -0.0046],   # loom [2,2] REVERTED to 1.0744 (2026-06-13): the recal to 1.2988 (fit on a slow descent) was OUTCOME-NEUTRAL — A/B at IC2 n=5 (RecalOff 1.0744 vs RecalGate 1.2988) gave identical results (1/5 close, 3-4 TL, mean ~20). IC2 non-landing is the LATERAL wall, independent of the loom cal; recal exonerated AND not beneficial, so back to the long-standing 1.0744. (recal was: binned raw_h_z vs GT loom corr 0.994, but the under-report GROWS with loom = LK dynamic-range, so a slow-descent scalar can't fix fast descents anyway.)
+            [+0.8587, -0.0378, +0.0136, +0.0346, +0.8656, +0.0066],
+            [+0.0128, +0.7865, -0.0570, -0.7819, +0.0155, +0.0081],
+            [-0.1031, -0.0147, +0.5514, +0.0136, -0.1013, +0.0399],   # loom row; control uses the MOMENT loom (FLOW_LOOM_DECOUPLE) so the lstsq h_z cal is secondary
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.0151]])   # w_z row: FULLY decoupled to only +1.0151·w_z_raw (2026-06-14). Was [+0.0526,+1.0862,-0.0096,-0.7395,+0.0161,+1.0151]. TWO contaminations fabricated w_iz at close range: (1) +1.0862·h_y (lateral flow), (2) -0.7395·w_x — and KF(w_x_raw) DIVERGES to ~-1.5 (while raw ~0), so even with the h-terms zeroed the w_x term gave w_iz≈+1.1. CTRL_ZERO_WXY zeros the w_x OUTPUT but the cal still leaks KF(w_x) into w_z. The raw yaw w_z_raw is clean (≈GT). Keeping only 1.0151·w_z_raw => GT-clean yaw. PLASMC_WZ_CROSS=1 restores the full old row.
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.9773]])   # w_z decoupled to w_z_raw only (board practice; avoids close-range h_y/w_x contamination of yaw)
         self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.1162, 1.1629, 1.0, 1.0])
+        self._sensor_cal_s  = np.diag([1.0273, 1.0669, 1.0, 1.0])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -142,13 +147,14 @@ class IMG_PROCESSOR(Thread):
         # co-sampled fused runs (noisy, stressed SITL session: R^2 Hx 0.34 Hz 0.57
         # Wz 0.56) — so transfer (13 recordings) wins.
         # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
+        # SINGLE-MARKER ring cal (2026-06-23, transfer mode keyed to the new corner cal).
         self._sensor_cal_ring = np.array([
-            [+1.0380, +0.0353, -0.0134, -0.0416, +1.0246, -0.0672],
-            [-0.0677, +0.6101, +0.0457, -0.5329, -0.0970, -0.0876],
-            [-0.2966, -0.0732, +1.3655, +0.0711, -0.2970, -0.1485],
+            [+1.0803, -0.3005, -0.4927, +0.4782, +0.8557, +0.5029],
+            [-0.1462, +0.8626, +0.5851, -0.6551, -0.3149, +0.5336],
+            [-0.4810, -0.0463, +1.6539, +0.0359, -0.4477, -0.3487],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.0720, +0.5884, +0.0018, -0.4402, -0.1344, +2.9790]])
+            [-0.9229, +0.6559, +0.4264, -0.7377, -0.8550, +0.7238]])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -219,12 +225,19 @@ class IMG_PROCESSOR(Thread):
                       os.environ.get("FLOW_RING_FRACS", "0.17,0.33,0.50,0.67,0.83").split(",")]
             _ring_radii = [f * _Rmax for f in _fracs]
         _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "60"))
-        _rcx, _rcy = float(self.center[0]), float(self.center[1])
-        _ring_pts = []
+        # Ring stations are formed on the VIRTUAL (gravity-leveled) image plane in NORMALIZED coords,
+        # concentric about the V-frame nadir, then re-projected (POINTS, not an image warp) into the
+        # real image at the current tilt via _getRealPtsFromV -> LK flow on the REAL image -> tracked
+        # points projected BACK to virtual (_getVirtualPts) -> h_i,w_i from pinv(L_s). So the ring
+        # ALWAYS tracks the NADIR patch (uniform depth) regardless of tilt = tilt-invariant flow.
+        # (The legacy FIXED real-image ring sampled OFF-nadir under tilt -> ring-loom GT-correlation
+        # collapsed near the deck; it was geometrically WRONG and was REMOVED 2026-06-24. The V-frame
+        # ring is now the only ring.)
+        _ring_pts_V = []
         for _rr in _ring_radii:
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
-            _ring_pts.append(np.c_[_rr * np.cos(_ra) + _rcx, _rr * np.sin(_ra) + _rcy])
-        self._ring_pts0 = np.vstack(_ring_pts).astype(np.float32)
+            _ring_pts_V.append(np.c_[(_rr / fx) * np.cos(_ra), (_rr / fy) * np.sin(_ra)])
+        self._ring_pts0_V = np.vstack(_ring_pts_V).astype(np.float32)
         # Ring LK params (separate from the corner LK): larger winSize + higher
         # minEigThreshold reject ill-textured ring stations (the board's white cells lack
         # texture). Tuned offline 2026-06-05 (win 21->41, eig 1e-3->1e-2): ring spread
@@ -300,6 +313,24 @@ class IMG_PROCESSOR(Thread):
         # out by FPS). Kept env-selectable for a future high-res/real-camera run.
         self._feature_source = os.environ.get("IMG_FEATURE_SOURCE", "board")
         self._dense_pts_per_side = int(os.environ.get("IMG_DENSE_PER_SIDE", "15"))
+        # SINGLE-MARKER mode (2026-06-22, default-off). Kills the nested-ArUco primary-marker
+        # SWITCHING that spikes the terminal loom -> vertical launch. Lock the loom/centroid to
+        # ONE marker (re-lock only when the locked one disappears -> no per-frame min-ID flicker)
+        # and feed the flow with baseline-style scaled-quad DENSE points (ported from
+        # ~/ws/.../img_data_LK.py — deterministic, texture-independent; ~sqrt(N) loom-noise
+        # reduction through the ill-conditioned single-marker L_s; does NOT fix cond, which is
+        # spread-set). When the single marker is NOT VISIBLE (decode-fail AND KLT out-of-bounds
+        # = left FoV, ~Z<0.42m for a 1m marker), hand the loom to the RING (visibility-triggered,
+        # not the n_corn<=3 threshold). The detection-vs-visibility classifier IS the existing
+        # KLT _in_bounds check. A/B before baking.
+        self._single_marker = os.environ.get("PLASMC_SINGLE_MARKER", "1") == "1"   # default-on 2026-06-23 (single ~1m-ArUco world + matched cal). PROVISIONAL — escapes the nested-board rank-deficiency (R²0.62) but FAILED the IC2-5 gate (2/12 sub, 6/12 fly): off-center ICs trigger the off-center spurious corner-flow spike (position-term confounding). NOT git-committed; needs the off-center fix (ring-carries-lateral when s_e_n breaches). Set =0 for the board (also restore board cal+SDF).
+        self._locked_marker_id = None   # the locked single marker (None = unacquired)
+        # Visibility-by-MARGIN: when ANY marker corner comes within this many px of the FoV edge
+        # (the marker is LEAVING/overflowing the frame), the corner is DROPPED (aruco_pts_0=None) ->
+        # corner_ok stays False -> the fusion EKF lets the RING carry ALL flow components. One
+        # mechanism (no separate visible-flag): the margin switches to rings a few frames BEFORE the
+        # marker fully leaves, off cleaner (non-edge) corners. 0 = strict (switch only on full exit).
+        self._marker_fov_margin = float(os.environ.get("PLASMC_MARKER_FOV_MARGIN", "40"))
 
         # 2026-05-31 — KLT fallback for marker re-acquisition.
         # When ArUco detection fails on a frame (drone shadow, low contrast,
@@ -333,6 +364,27 @@ class IMG_PROCESSOR(Thread):
         # never extrapolated (the κ-runaway guard, feedback_lateral_kappa_runaway).
         self._klt_persist = os.environ.get("PLASMC_KLT_PERSIST", "0") == "1"
         self._klt_min_corn = int(os.environ.get("PLASMC_KLT_MIN_CORN", "4"))   # min combined corners for flow
+        # PARTIAL-DECODE persistence (2026-06-21, terminal-fly-away fix). When the board
+        # only PARTIALLY decodes near touchdown (e.g. only the primary marker -> N Flow
+        # Corners collapses to 4), the 8x6 flow lstsq goes ill-conditioned -> spurious
+        # lateral flow h_x -> terminal kick -> marker leaves FoV -> fly-away (traced on
+        # the E_z=0.5 IC2 residual: decode-fail-dominated reps, corners still IN-FoV).
+        # When PLASMC_KLT_PERSIST=1, carry the PREVIOUS frame's extra corners forward by
+        # 1-frame LK (the primary re-decodes every frame, so _prev_img is last frame =
+        # minimal drift) and merge in-FoV survivors NOT already covered by a freshly
+        # decoded corner (dedup radius below). Keeps Nfc high -> conditioned lstsq.
+        # Self-limiting: on a FULL decode the carried pts dedup out (already covered).
+        self._klt_persist_dedup = float(os.environ.get("PLASMC_KLT_PERSIST_DEDUP_PX", "8.0"))
+        # Edge margin (px): carried corners within this distance of any image edge are
+        # DROPPED. Backs persistence off when the marker is leaving the FoV (geometric
+        # fly-away flavor) so it doesn't feed near-edge/drifting corners; 0 = no margin
+        # (the original full-frame gate). REVERTED to 0 default (2026-06-22): the 40px margin
+        # A/B REGRESSED (KltMargin) -- it dropped near-edge corners that ARE the close-range
+        # conditioning (marker fills FoV at terminal) so the within-session sub-meter lift fell
+        # +4->+1 vs no-margin, AND did NOT kill the geometric tail (103m rep) because that's a
+        # geometry/leaving problem needing the descent-gate/commit, not a perception gate.
+        # Knob kept for experiments; default 0 = the better no-margin persist.
+        self._klt_persist_margin = float(os.environ.get("PLASMC_KLT_PERSIST_MARGIN_PX", "0.0"))
         # Corner-flow lstsq regularization (2026-06-19). rcond = RELATIVE singular-value
         # cutoff (numpy semantics: σ < rcond·σmax are truncated). Default 1e-3 = unchanged.
         # Raising it regularizes the rank-deficient LOOM direction (σmin column): on a
@@ -351,7 +403,7 @@ class IMG_PROCESSOR(Thread):
         # Scale-free (no Z), well-conditioned (strongest/most-averaged signal, no inversion).
         # Offline-verified vs GT loom on a centered descent: corr 0.16→0.85, rmse 0.88→0.06.
         # DEFAULT-OFF. When ON, overrides ONLY V_v[2] (lateral h_x/h_y + ω stay from the lstsq).
-        self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "0") == "1"
+        self._loom_decouple = os.environ.get("FLOW_LOOM_DECOUPLE", "1") == "1"   # BAKED default-on 2026-06-23 with single-marker: corner MOMENT loom (−½d(lnM)/dt) sidesteps the loom rank-deficiency (no pinv). Set FLOW_LOOM_DECOUPLE=0 for the pinv loom.
         # 8×5 REDUCED-PINV (FLOW_LSTSQ_DROP_LOOM_COL): when the loom is decoupled, drop the loom
         # column (v_z = [-x;-y], the σ_min weak mode) from L_s so the lstsq solves only the
         # well-conditioned lateral/rotational [h_x,h_y,w_x,w_y,w_z]. The loom comes from the moment
@@ -369,6 +421,23 @@ class IMG_PROCESSOR(Thread):
         # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse
         # ~0.06; joint-lstsq was 0.16/0.88). 9 balances accuracy vs lag (~0.15s @ 60fps).
         self._mtrace_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))  # (t, ln M)
+
+        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (PLASMC_CENTROID_RATE, default-off; single-marker).
+        # At altitude the small single marker's LK fails (Nfc=0) → the lstsq lateral flow is
+        # unavailable. The DECODED corners survive (100% decode), so derive the lateral flow from the
+        # decoded-corner centroid RATE instead: ṡ = L_v·v + L_w·w → h_x = ṡ_x + x0·h_z + (L_w·w)_x, etc.,
+        # with w from the IMU GYRO (rotated to V), NOT the ill-conditioned corner lstsq. Works at Nfc=0
+        # AND avoids the off-center spurious spikes. h_z stays the moment loom. A/B before baking.
+        # ⛔ DEAD-END (2026-06-23): the centroid-rate observer REGRESSED (IC2 1/5 vs baseline 3/5).
+        # Differentiating the DECODED centroid = NOISE (sub-pixel decode jitter amplified -> alt corr
+        # 0.05, |h_lat| 5-6x inflated vs GT) — fundamentally noisier than LK flow. AND the premise was
+        # wrong: the baseline altitude flow is NOT starved (alt corr 0.39-0.59; KF + flow-by-3m bridge
+        # the top Nfc=0). The IC2 fly-aways are STOCHASTIC/terminal (1-2/5 run-to-run), the same ceiling
+        # as the multi-marker board — NOT altitude velocity starvation. Keep default-off.
+        self._centroid_rate = os.environ.get("PLASMC_CENTROID_RATE", "0") == "1"
+        self._centroid_hist = deque(maxlen=int(os.environ.get("CENTROID_RATE_WIN", "9")))  # (t, x0, y0, ln M)
+        self._observer_flow = np.zeros(6)   # [h_x, h_y, h_z, 0, 0, w_z] from the observer
+        self._observer_valid = False        # reset per-frame; True when the observer produced flow
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -561,6 +630,18 @@ class IMG_PROCESSOR(Thread):
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
         self._ekf_Q = np.diag([_qtr] * 3 + [_qtv] * 3 + [_qw] * 3)
+        # POSITIVE-LOOM SIGN GUARD (2026-06-24, default-on). A descending landing can never have a
+        # positive ego-loom: h_z = vz/Z < 0 the whole approach (vz<0 toward the deck, Z>0). When ArUco
+        # decode is lost near the deck (single ~1m marker OVERFLOWS the FoV at Z≈0.4m → corners off-frame
+        # → N flow corners→0), the fusion EKF falls back to the RING loom, which is noisy at that geometry
+        # and swings WRONG-SIGNED (+); the z-SMC reads that as "marker receding" → commands UP thrust →
+        # balloon → s_e_n breach → fly-away. Traced on IC3_rep1 (bundle 20260624-132414): loom −0.8→+1.8
+        # right as N flow corners 89→0; GT-grounded audit (bundle 20260624-150335) confirmed the wrong-sign
+        # frames are 86/93 at aruco=0 (ring takeover). The existing anti-stale decay only catches a FROZEN
+        # loom, not an actively-updated wrong-signed one — so clamp the consumed loom ≤ 0 directly. This is
+        # the physical-impossibility guard (NOT a control fix): the off-center CONTROL divergence the GT-FB
+        # gate exposed (IC3/IC4 fail on perfect loom) is a separate, control-side problem. FLOW_LOOM_SIGN_GUARD=0 reverts.
+        self._loom_sign_guard = os.environ.get("FLOW_LOOM_SIGN_GUARD", "1") == "1"
         self._opt_flow_fused_log = []   # fused target-relative [h_tr; w] per frame (A/B)
         self._target_vel_log = []       # estimated target velocity h_tv (flow units)
 
@@ -747,11 +828,15 @@ class IMG_PROCESSOR(Thread):
         try:
             g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
             g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
-            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._ring_pts0, None, **self._ring_lk_params)
+            # Re-project the leveled (V-frame) ring into the real image at the frame-0 tilt so LK
+            # tracks the NADIR patch (uniform depth, tilt-invariant). The legacy fixed real-image ring
+            # was removed 2026-06-24 — it sampled off-nadir under tilt (geometrically wrong).
+            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed, None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
             if int(st.sum()) < 6:
                 return (np.zeros(6), 0.0, int(st.sum()), np.nan)
-            r0 = self._ring_pts0[st]
+            r0 = _seed[st]
             r1 = p1.reshape(-1, 2)[st]
             # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
             fm = np.linalg.norm(r1 - r0, axis=1)
@@ -759,15 +844,17 @@ class IMG_PROCESSOR(Thread):
             keep = fm < med + 3.0 * 1.4826 * mad
             if int(keep.sum()) >= 6:
                 r0, r1 = r0[keep], r1[keep]
-            # pure divergence (Singhal radial mean / loom): the robust safety-net VERTICAL
-            # signal. Preferred over the lstsq V_v_ring for ROBUSTNESS (texture-free median,
-            # survives marker death) — NOT for depth: on the coplanar ground both give vz/Z.
-            rvec = np.asarray(self.center, float) - r0
-            radial = np.einsum('ij,ij->i', (r1 - r0), rvec) / (np.sum(rvec**2, axis=1) + 1e-6)
-            pure_div = float(np.median(radial)) * self._fps
             # identical V-frame chain to the corner flow (gravity-leveled, same L+)
             V0 = self._getVirtualPts(r0, quats[0])
             V1 = self._getVirtualPts(r1, quats[1])
+            # pure divergence (Singhal radial mean / loom): the robust safety-net VERTICAL signal.
+            # FIXED 2026-06-22 to compute in the VIRTUAL plane (was real-image-plane: rvec about the
+            # REAL centre on real-px flow -> GT-uncorrelated, corr~0). Now radial divergence of the
+            # de-rotated flow (V1-V0) about the V-frame ORIGIN (nadir) -> matches the moment loom /
+            # V_v_ring / MATLAB (everything on the virtual points). Robust median over stations.
+            rvecV = -V0
+            radial = np.einsum('ij,ij->i', (V1 - V0), rvecV) / (np.sum(rvecV**2, axis=1) + 1e-6)
+            pure_div = float(np.median(radial)) * self._fps
             # RING MOMENT loom (the ring analog of the corner moment): area-rate of the
             # tracked stations, M=μ20+μ02 = trace of the V-frame scatter ∝ 1/Z². loom =
             # -½·d(lnM)/dt = -½·(ln M1 - ln M0)·fps (one-frame, uses the SAME MAD-rejected
@@ -789,6 +876,55 @@ class IMG_PROCESSOR(Thread):
         except Exception:
             return zero
 
+    def _persist_extras(self, extra_pts_0, current_pts, img0):
+        """Partial-decode persistence: 1-frame LK-carry of the previous frame's extra
+        corners through a partial board decode, appending in-FoV survivors that aren't
+        already covered by a freshly-decoded corner. Keeps the flow lstsq conditioned
+        (high N Flow Corners) when only the primary marker decodes near touchdown.
+        Default-off (gated on self._klt_persist by the caller). Identity-free: the flow
+        [h;w] is a rigid-body twist, so extra corners need no marker ID. Self-limiting:
+        on a full decode every carried point dedups out (already covered)."""
+        try:
+            if self._prev_extra_pts is None or len(self._prev_extra_pts) == 0 \
+                    or self._prev_img is None:
+                return extra_pts_0
+            g1 = img0 if img0.ndim == 2 else cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+            g0 = (self._prev_img if self._prev_img.ndim == 2
+                  else cv2.cvtColor(self._prev_img, cv2.COLOR_BGR2GRAY))
+            out = cv2.calcOpticalFlowPyrLK(g0, g1, self._prev_extra_pts, None, **self._lk_params)
+            if out is None or len(out) < 2 or out[0] is None or out[1] is None:
+                return extra_pts_0
+            tr = out[0].reshape(-1, 2).astype(np.float32)
+            ok = out[1].flatten() == 1
+            h, w = g1.shape[:2]
+            # Edge-MARGIN gate (2026-06-22): only carry corners safely INSIDE the FoV
+            # (>= _klt_persist_margin px from every edge). On a partial decode where the
+            # marker is genuinely LEAVING the frame (geometric flavor), the carried
+            # corners are themselves near-edge/drifting -> feeding them keeps the loop
+            # reacting to bad flow longer -> a BIGGER launch (the 74 m tail in the first
+            # A/B). The margin backs persistence off as the marker leaves, so the
+            # geometric flavor falls to the descent-gate/commit instead, while the
+            # decode-fail flavor (corners central) still gets the conditioning benefit.
+            m = self._klt_persist_margin
+            inb = ((tr[:, 0] >= m) & (tr[:, 0] < w - m)
+                   & (tr[:, 1] >= m) & (tr[:, 1] < h - m))
+            cand = tr[ok & inb]
+            if len(cand) == 0:
+                return extra_pts_0
+            present = (np.vstack([current_pts, extra_pts_0])
+                       if len(extra_pts_0) else np.asarray(current_pts, np.float32))
+            keep = []
+            for p in cand:
+                if len(present) == 0 or np.min(np.hypot(*(present - p).T)) > self._klt_persist_dedup:
+                    keep.append(p)
+                    present = np.vstack([present, p[None]])
+            if keep:
+                extra_pts_0 = (np.vstack([extra_pts_0, np.array(keep, np.float32)])
+                               if len(extra_pts_0) else np.array(keep, np.float32)).astype(np.float32)
+        except Exception:
+            pass
+        return extra_pts_0
+
     def _imgProcess(self, imgs, quats, angvels=None, showVideo = False):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
@@ -797,6 +933,7 @@ class IMG_PROCESSOR(Thread):
         results = self._detector.detectMarkers(imgs[0])
 
         FEATURE_DATA_IS_LOGGED = False
+        self._observer_valid = False   # centroid-rate observer: reset per-frame (no stale leak)
         # per-frame corner measurement + RELIABILITY for the fusion EKF. conf in
         # (0,1]: 1.0 = clean ArUco decode; ramps toward 0 as the KLT fallback
         # deepens (corners detected-but-degrading -> below ~0.5 m near touchdown).
@@ -837,7 +974,18 @@ class IMG_PROCESSOR(Thread):
         if results[0]:
             ids = np.asarray(results[1]).flatten()
             M = len(ids)
-            primary_i = int(np.argmin(ids))
+            if self._single_marker:
+                # SINGLE-MARKER LOCK: re-lock only when the locked marker is gone -> no per-frame
+                # min-ID flicker (the loom-spike root). On (re)lock pick the LARGEST-spread marker
+                # (best-conditioned, visible longest).
+                if self._locked_marker_id is None or self._locked_marker_id not in ids:
+                    _spreads = [float(np.std(results[0][i][0].reshape(-1, 2))) for i in range(M)]
+                    primary_i = int(np.argmax(_spreads))
+                    self._locked_marker_id = int(ids[primary_i])
+                else:
+                    primary_i = int(np.where(ids == self._locked_marker_id)[0][0])
+            else:
+                primary_i = int(np.argmin(ids))
             self._primary_id = int(ids[primary_i])   # for the decoupled-loom marker-size normalization
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
@@ -846,7 +994,15 @@ class IMG_PROCESSOR(Thread):
             marker_corners_0 = [results[0][i][0].reshape(-1, 2).astype(np.float32)
                                 for i in order]
             aruco_pts_0 = marker_corners_0[0]
-            if self._feature_source == 'dense':
+            if self._single_marker:
+                # Single-marker flow: baseline scaled-quad dense points on the ONE locked marker
+                # (no other markers). 2026-06-22: GFT was tried here and REGRESSED (A/B: lat_noise
+                # 0.126->0.173, vz>3 5/5) — a clean ArUco marker has only ~4-8 resolvable cell
+                # corners, so GFT STARVES the point count -> less sqrt(N) averaging -> MORE noise
+                # than the 180 scaled-quad points (point-count beats the aperture-problem gain).
+                marker_ids = None
+                extra_pts_0 = self._scaled_quad_points(aruco_pts_0, per_side=self._dense_pts_per_side)
+            elif self._feature_source == 'dense':
                 # Approach A (resolution-correct): extra LSTSQ points = REAL
                 # corners found INSIDE the primary marker via goodFeaturesToTrack,
                 # masked to the marker polygon. At 640x480 the only on-marker
@@ -874,6 +1030,12 @@ class IMG_PROCESSOR(Thread):
                 marker_ids = [int(ids[i]) for i in order]
                 if len(marker_corners_0) > 1:
                     extra_pts_0 = np.vstack(marker_corners_0[1:]).astype(np.float32)
+                # Partial-decode persistence: carry last frame's extras through a
+                # partial board decode so the flow lstsq stays conditioned (Nfc high).
+                # marker_ids is left as the decoded IDs (centroid/yaw use the primary
+                # moment path); carried corners only feed the rigid-twist flow lstsq.
+                if self._klt_persist:
+                    extra_pts_0 = self._persist_extras(extra_pts_0, aruco_pts_0, imgs[0])
             if self._lk_step_count > 0:
                 print(f"ArUco re-acquired after {self._lk_step_count} KLT-fallback frame(s)")
             self._lk_step_count = 0
@@ -909,6 +1071,10 @@ class IMG_PROCESSOR(Thread):
                             self._lk_step_count += 1
                             if self._lk_step_count == 1:
                                 print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                            # SINGLE-MARKER: decode-fail but still IN FoV (KLT in-bounds). Keep the
+                            # dense scaled-quad flow on the tracked corners (centroid uses them too).
+                            if self._single_marker:
+                                extra_pts_0 = self._scaled_quad_points(_tracked, per_side=self._dense_pts_per_side)
                             # PERSISTENCE (default-off): also carry the extra on-marker
                             # corners through the decode gap so the FLOW lstsq keeps its
                             # spread/conditioning while ArUco can't decode. Per-corner
@@ -931,6 +1097,11 @@ class IMG_PROCESSOR(Thread):
                             print(f"KLT corners left image bounds — stopping fallback")
                             self._lk_step_count = 0
                             self._prev_aruco_pts = None
+                            # SINGLE-MARKER: KLT out-of-bounds = the marker fully LEFT the FoV. Drop
+                            # the lock (allow re-lock if a marker reappears). With no corners,
+                            # corner_ok stays False -> ring carries the flow; centroid extrapolates.
+                            if self._single_marker:
+                                self._locked_marker_id = None
             except Exception as _e:
                 # Defensive: if anything in the KLT fallback path errors, fall
                 # through to the normal stale path rather than killing the thread.
@@ -949,6 +1120,65 @@ class IMG_PROCESSOR(Thread):
                 # KLT-fallback frame (empty array if none this frame).
                 self._prev_extra_pts = (extra_pts_0.copy() if extra_pts_0 is not None
                                         and len(extra_pts_0) > 0 else None)
+
+        # SINGLE-MARKER visibility-by-MARGIN: the marker is LEAVING when any corner comes within
+        # _marker_fov_margin px of the FoV edge (near-edge/overflowing). When leaving, route the
+        # FLOW to the ring (corner_ok forced False below) but KEEP the corners so the CENTROID still
+        # tracks the marker via KLT (the 1st moment is robust to near-edge corners; the flow, a
+        # derivative, is not). Only the FLOW switches to rings, not the position.
+        _marker_leaving = False
+        if (self._single_marker and aruco_pts_0 is not None and self._marker_fov_margin > 0):
+            _m = self._marker_fov_margin; _ih, _iw = imgs[0].shape[:2]
+            _cc = np.asarray(aruco_pts_0, float)
+            _marker_leaving = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
+                                   or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
+
+        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (default-off). Computed from the DECODED corners
+        # (aruco_pts_0) — NOT the LK-tracked V_aruco_norm — so it runs even when LK fails (Nfc=0) at
+        # altitude. Provides the lateral flow h_x,h_y from ṡ + loom + gyro-rotation compensation:
+        #   h_x = ṡ_x + x0·h_z + y0·wz   (V-frame: roll/pitch leveled out, yaw preserved -> wz only)
+        #   h_y = ṡ_y + y0·h_z − x0·wz
+        # h_z from the moment loom; w from the IMU gyro rotated into the V-frame (clean, not the
+        # off-center-ill-conditioned lstsq). Stored for injection at the flow-output sites below.
+        if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
+                and quats is not None and len(quats) > 1 and quats[1] is not None):
+            try:
+                _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[1])
+                _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
+                _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
+                _to = float(getattr(self, '_stamp', 0.0))
+                if _Mo > 1e-12 and np.isfinite(_Mo):
+                    self._centroid_hist.append((_to, _x0, _y0, np.log(_Mo)))
+                if len(self._centroid_hist) >= 3:
+                    _ta = np.array([c[0] for c in self._centroid_hist])
+                    if (_ta.max() - _ta.min()) > 1e-4:
+                        _t0 = _ta - _ta[0]
+                        _sdx = float(np.polyfit(_t0, [c[1] for c in self._centroid_hist], 1)[0])
+                        _sdy = float(np.polyfit(_t0, [c[2] for c in self._centroid_hist], 1)[0])
+                        _loom_dec = float(-0.5 * np.polyfit(_t0, [c[3] for c in self._centroid_hist], 1)[0]
+                                          * self._loom_gain)   # sz=1 single-marker (size-norm inert)
+                        _avo = angvels[1] if (angvels is not None and len(angvels) > 1
+                                              and angvels[1] is not None) else None
+                        if _avo is not None:
+                            _wv = self._vframe_w([_avo.forward_rad_s, _avo.right_rad_s, _avo.down_rad_s], quats[1])
+                        else:
+                            _wv = np.zeros(3)
+                        _alpha_rate = 0.0   # TODO moving-target: w_target_z = d(alpha)/dt; 0 for stationary
+                        _wv[2] -= _alpha_rate                  # relative yaw = camera (gyro) − target
+                        _hz = _loom_dec
+                        # FRAME FIX (2026-06-23): ṡ is the VIRTUAL (de-rotated) centroid rate, and
+                        # _getVirtualPts ALREADY levels out roll/pitch (z→world-down) while preserving
+                        # yaw (rotz(yaw)). So w_x,w_y rotation flow is already removed by the de-rotation
+                        # — subtracting L_w with the full gyro DOUBLE-COUNTS it (the tilt terms inflated
+                        # h 6.2× off-center: meas|h_lat| 1.20 vs GT 0.19). Keep ONLY the yaw term (w_z,
+                        # preserved) + the loom term. Signs from _fill_A (wz col = [−y, x]).
+                        _hx = _sdx + _x0 * _hz + _y0 * _wv[2]
+                        _hy = _sdy + _y0 * _hz - _x0 * _wv[2]
+                        self._observer_flow = np.clip(
+                            np.array([_hx, _hy, _hz, 0.0, 0.0, _wv[2]]), -10.0, 10.0)
+                        self._observer_valid = True
+            except Exception:
+                self._observer_valid = False
 
         # Check if feature detection was successful
         if aruco_pts_0 is not None:
@@ -1091,6 +1321,13 @@ class IMG_PROCESSOR(Thread):
                                 _slope = np.polyfit(_ta - _ta[0], _la, 1)[0]   # d(ln M)/dt
                                 V_v[2] = float(np.clip(-0.5 * _slope * self._loom_gain, -10.0, 10.0))
 
+                # CENTROID-RATE OBSERVER injection (a): when the LK flow IS available, still prefer
+                # the gyro-compensated centroid-rate lateral (robust to the off-center spurious spikes
+                # the lstsq produces). h_z stays the moment loom (V_v[2]). Default-off.
+                if self._single_marker and self._centroid_rate and self._observer_valid:
+                    V_v[0] = float(self._observer_flow[0])
+                    V_v[1] = float(self._observer_flow[1])
+
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
                 _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
@@ -1105,7 +1342,9 @@ class IMG_PROCESSOR(Thread):
                 self._kf_update(V_v_scaled, self._time.perf_counter())
                 # Calibrated corner measurement this frame, for the fused KF (the raw
                 # per-frame value, NOT the KF output — avoids double filtering).
-                _corner_ok = True
+                # corner FLOW is rejected when the marker is leaving (ring carries the flow);
+                # the centroid below still uses these corners (computed in this same block).
+                _corner_ok = not _marker_leaving
                 _n_corn = int(len(flow_pts_1))
                 _corner_cal = self._sensor_cal_hw @ V_v_scaled
                 if self._loom_decouple:
@@ -1194,6 +1433,20 @@ class IMG_PROCESSOR(Thread):
         self._quats.append(quats)
         self._fps_log.append(self._fps)
         self._stamp_log.append(getattr(self, '_stamp', 0.0))   # capture stamp vs perf_counter Time (clock diag)
+        # CENTROID-RATE OBSERVER injection (b): when LK FAILED (Nfc=0, FEATURE_DATA_IS_LOGGED False) but
+        # the marker is decoded, the observer (decoded-corner centroid rate + gyro) supplies the corner
+        # flow that the LK lstsq couldn't — so the controller gets VELOCITY at altitude instead of 0.
+        # Feed it as the corner measurement for the fusion EKF (default-on path the controller consumes)
+        # AND update the corner KF (IMG_FILTER=kf path). n_corn=4 > RING_LOOM_NCORN(3) keeps the
+        # observer's moment loom (else the ring would override h_z). size_factor=1.0 for the id-0 marker.
+        if (self._single_marker and self._centroid_rate and self._observer_valid
+                and not FEATURE_DATA_IS_LOGGED):
+            _obs_scaled = size_factor * self._observer_flow
+            _corner_cal = self._sensor_cal_hw @ _obs_scaled
+            _corner_ok = not _marker_leaving
+            _corner_conf = 1.0
+            _n_corn = 4
+            self._kf_update(_obs_scaled, self._time.perf_counter())
         # Texture-free ring flow — computed EVERY frame (survives the marker death), logged
         # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
         # still consumes the corner flow. PRIMARY goal remains reducing perception death.
@@ -1291,7 +1544,12 @@ class IMG_PROCESSOR(Thread):
                 extrapolated_img_feature_param[3] = float(
                     np.arctan2(np.sin(_hold_a), np.cos(_hold_a)))
 
-            self._opt_flow_ang_vel_raw.append(extrapolated_opt_flow_ang_vel_raw)
+            # CENTROID-RATE OBSERVER injection: log the observer flow (decoded-corner centroid rate)
+            # instead of the zero "no information" default when it produced a value this frame.
+            _of = (size_factor * self._observer_flow
+                   if (self._single_marker and self._centroid_rate and self._observer_valid)
+                   else extrapolated_opt_flow_ang_vel_raw)
+            self._opt_flow_ang_vel_raw.append(_of)
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
             # Guard #1 companion: keep the quat VALID through marker-LOST — the FC attitude is
             # genuine (use-genuine-data directive). Only nan if the FC quat itself is missing.
@@ -1331,6 +1589,23 @@ class IMG_PROCESSOR(Thread):
             A = quad[i]; B = quad[(i + 1) % 4]
             pts.append(np.outer(1 - t, A) + np.outer(t, B))
         return np.vstack(pts)
+
+    def _scaled_quad_points(self, corners, scales=(1.0, 2.0/3.0, 1.0/3.0), per_side=15):
+        """Baseline (img_data_LK.py) DENSE flow points: 3 concentric scaled quadrilaterals
+        (scaled toward the centroid) with `per_side` points along each side (~180 pts).
+        Deterministic + texture-independent (unlike goodFeaturesToTrack). Reduces single-marker
+        loom NOISE (~sqrt(N) averaging through the ill-conditioned L_s); does NOT change cond
+        (spread-set). Returns (M,2) float32 in the same image frame as `corners`."""
+        c = np.asarray(corners, np.float32).reshape(-1, 2)
+        ctr = c.mean(axis=0)
+        pts = []
+        for s in scales:
+            q = ctr + s * (c - ctr)
+            for i in range(4):
+                A, B = q[i], q[(i + 1) % 4]
+                tv = np.linspace(0.0, 1.0, per_side)
+                pts.append(np.outer(1.0 - tv, A) + np.outer(tv, B))
+        return np.vstack(pts).astype(np.float32)
 
     def _get_all_feature_points(self, pts, n_per_side=15):
         """All dense interior points (3 scaled quads × side points) for the
@@ -1446,7 +1721,7 @@ class IMG_PROCESSOR(Thread):
             # z-axis ring-weighted loom: when ill-conditioned at low alt, ignore the corner LOOM (index 2)
             # so the ring divergence carries the vertical descent; keep the corner for lateral.
             if self._ring_loom_thresh > 0 and n_corn <= self._ring_loom_thresh:
-                R_c = R_c.copy(); R_c[2, 2] = 1e6
+                R_c = R_c.copy(); R_c[2, 2] = 1e6            # degraded corners present -> ring carries LOOM only
             else:
                 loom_updated = True                          # corner supplied the loom this frame
             x, P = _update(x, P, corner_cal, self._H_corner, R_c)
@@ -1476,6 +1751,11 @@ class IMG_PROCESSOR(Thread):
             if self._loom_stale >= self._loom_stale_max:
                 x[2] *= self._loom_decay                     # h_tr loom -> 0
                 x[5] *= self._loom_decay                     # h_tv loom -> 0
+        # Positive-loom sign guard (see __init__): the consumed ego-loom h_tr[2] is clamped <= 0 so a
+        # wrong-signed ring-takeover loom (ArUco lost near the deck) can never command an ascent. Catches
+        # the actively-updated wrong sign the anti-stale decay above misses (it only handles a frozen loom).
+        if self._loom_sign_guard:
+            x[2] = min(x[2], 0.0)
         self._ekf_x, self._ekf_P = x, P
 
     def getTargetVel(self):
@@ -1744,6 +2024,35 @@ class IMG_PROCESSOR(Thread):
         # Reproject onto V's image plane (perspective divide by depth-in-V).
         z_v = V_rays[:, 2]
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+
+    def _vframe_w(self, w_body, quat):
+        """Rotate a body-FRD angular velocity into the virtual (gravity-leveled) frame, using the
+        SAME C_R_V basis as _getVirtualPts. w_V = V_R_C·w_body = C_R_V.T·w_body. For the
+        centroid-rate observer's L_w·w rotation compensation (gyro -> V-frame)."""
+        R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
+        g = R.T @ np.array([0, 0, 1.0])
+        z_axis = g / np.linalg.norm(g)
+        x_axis = np.cross([0, 1, 0], z_axis); x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        C_R_V = np.column_stack([x_axis, y_axis, z_axis])
+        return C_R_V.T @ np.asarray(w_body, float)
+
+    def _getRealPtsFromV(self, V_pts, quat):
+        """INVERSE of _getVirtualPts: project V-frame (gravity-leveled) NORMALIZED image points
+        back to REAL camera pixels for the current tilt. Used to seed the virtual-plane ring into
+        the real image each frame so LK tracks the NADIR patch regardless of tilt. Round-trip with
+        _getVirtualPts is exact to machine precision (verified)."""
+        R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
+        g = R.T @ np.array([0, 0, 1])
+        z_axis = g / np.linalg.norm(g)
+        x_axis = np.cross([0, 1, 0], z_axis); x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        C_R_V = np.column_stack([x_axis, y_axis, z_axis])
+        V_rays = np.column_stack([V_pts[:, 0], V_pts[:, 1], np.ones(len(V_pts))])
+        C_rays = V_rays @ C_R_V.T                                            # rotate V rays -> camera rays
+        cx, cy = self.center
+        xc = C_rays[:, 0] / C_rays[:, 2]; yc = C_rays[:, 1] / C_rays[:, 2]
+        return np.column_stack([xc * fx + cx, yc * fy + cy]).astype(np.float32)
     
     def _showOptFlow(self, img, C_pts, V_nP_norm):
         # 1. Ensure pixel coordinates for both frames are int32
@@ -1873,10 +2182,14 @@ class IMG_PROCESSOR(Thread):
             _out = self._sensor_cal_hw @ self._compute_savgol_output()
             if self._loom_decouple:
                 _out[2] = self._compute_savgol_output()[2]   # loom = raw vz/Z, bypass cal
+            if self._loom_sign_guard:
+                _out[2] = min(_out[2], 0.0)                  # positive-loom sign guard (non-fuse path)
             return _out
         _out = self._sensor_cal_hw @ self._kf_x[:, 0]
         if self._loom_decouple:
             _out[2] = self._kf_x[2, 0]                       # loom already vz/Z, bypass cal row 2
+        if self._loom_sign_guard:
+            _out[2] = min(_out[2], 0.0)                      # positive-loom sign guard (non-fuse path)
         return _out
 
     def getImgFeatureParam(self):

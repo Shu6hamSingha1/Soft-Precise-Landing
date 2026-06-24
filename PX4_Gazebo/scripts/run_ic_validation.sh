@@ -24,6 +24,7 @@ mkdir -p "$BUNDLE_DIR"
 N_REPS="${N_REPS:-2}"
 
 declare -A IC_ENU
+IC_ENU[IC1]="0.0,0.0,5.0"
 IC_ENU[IC2]="2.0,2.0,5.0"
 IC_ENU[IC3]="-2.0,2.0,5.0"
 IC_ENU[IC4]="2.0,2.0,7.0"
@@ -62,7 +63,7 @@ PY
   printf "%s\t%s\t%s\tYES\t%s\t%s\n" "$ic" "$enu" "$rep" "$m" "$(basename "$dst")" >> "$SUMMARY"
 }
 
-for ic in IC2 IC3 IC4 IC5; do
+for ic in IC1 IC2 IC3 IC4 IC5; do
   for r in $(seq 1 "$N_REPS"); do run_one "$ic" "$r"; sleep 2; done
 done
 
