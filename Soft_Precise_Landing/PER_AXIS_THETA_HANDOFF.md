@@ -11,10 +11,14 @@ manuscript — both done on Windows. The Lyapunov proof is already written:
 disturbance bound; the shared scalar over-bounds every axis by the worst row, which is what let the
 lateral position-barrier `ζ_r` explosion detonate the z switching term (the collateral z over-brake).
 
-**PX4 validation (the evidence to cite).** GT-FB IC1–5: per-axis θ → **9/10 sub-meter, 0 fly-aways,
-0 stalls** (best of campaign; shared-θ baseline 8/10, 1 stall). Mechanism confirmed: terminal `|a_u_z|`
-stays 3.6–7.8 even when `|a_u_xy|` explodes to 2995 (shared-θ fly-aways detonated z to 92–320).
-[n≥3 confirmation: PENDING — fill in from `run_logs/ic_gate_thetaperaxis_n3.log` before baking the paper.]
+**PX4 validation (the evidence to cite).** GT-FB IC1–5 **n=3 (15 reps): 12/15 sub-meter, 0 stalls**,
+z DECOUPLED. Mechanism confirmed on every rep incl the fly-aways: terminal `|a_u_z|` stays ~3.3–7.8
+even when `|a_u_xy|` explodes to 2000–4400 (shared-θ fly-aways detonated z to 92–320). **The 2/15
+fly-aways (IC4 8.0 m, IC5 1.54 m) are the un-fixed LATERAL `ζ_r`/`s_e_n` runaway, NOT this change**
+(`a_u_z` stayed 4.0 in both; `s_e_n`→17–94, `a_u_xy`→2000–4400). So per-axis θ is the **z-decoupling /
+tight-bound** contribution — it removes the *collateral* z over-brake (and all stalls) but does **not**
+cure the lateral runaway. Frame it that way in the paper; do NOT claim it eliminates fly-aways. BAKED
+default-ON in PX4 (`PLASMC_THETA_PER_AXIS` 2026-06-25); the lateral root is the separate next lever.
 
 ---
 

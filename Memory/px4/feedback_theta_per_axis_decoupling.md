@@ -1,6 +1,6 @@
 ---
 name: feedback_theta_per_axis_decoupling
-description: "Per-axis theta (regressor ROW-norm) replaces the shared scalar ||Theta||_F in the optic-flow ASMC — UUB-proven (tight bound, same V), empirically decouples the z over-brake from the lateral zeta_r explosion. GT-FB IC1-5: 9/10 sub, 0 fly, 0 stall (best yet). PLASMC_THETA_PER_AXIS, default-off."
+description: "Per-axis theta (regressor ROW-norm) replaces the shared scalar ||Theta||_F in the optic-flow ASMC — UUB-proven (tight bound, same V), empirically decouples the z over-brake from the lateral zeta_r explosion. BAKED default-ON (PLASMC_THETA_PER_AXIS). n=3 GT-FB: 12/15 sub, 0 stall, z decoupled; the 2/15 fly = un-fixed LATERAL zeta_r root (NOT this change), the next lever."
 metadata:
   node_type: memory
   type: feedback
@@ -28,9 +28,13 @@ switching dissipation AND the axis-k κ-driving term → V̇ collapses line-for-
 inequality. Manuscript edit (when validated): eq (sliding/adaptive law) ‖θ‖→diag(‖e_k^⊤θ‖); Thm 1 proof
 insert the per-axis collection; scalar law = conservative corollary.
 
-**EMPIRICAL (GT-FB IC1-5, bundle 20260625-022346, vs SHARED-θ κz=0.03 baseline 20260624-234905):**
-- **9/10 sub-meter, 0 fly-aways, 0 STALLS** (best gate of the campaign) vs baseline 8/10, 1 stall —
-  removed the stall too. xy spread 0.23-0.71 (only IC5_rep2 marginal 1.20).
+**EMPIRICAL — BAKED default-ON 2026-06-25 (user call, despite 2/15 fly = lateral root).**
+- n=2 (bundle 022346): 9/10 sub, 0 fly, 0 stall. **n=3 CONFIRMATION (bundle 025444, 15 reps): 12/15
+  sub-meter, 1 marg, 0 STALLS, 2 FLY** (IC4_rep1 8.0m, IC5_rep3 1.54m). The n=2 "0 fly" was OPTIMISTIC
+  — the n=3 stress reps (IC4 from 7m, IC5 from 3m) surfaced the truth: per-axis θ DECOUPLES z + removes
+  stalls but does NOT make landing fly-free. BOTH flys = the un-fixed LATERAL zeta_r/s_e_n runaway, NOT
+  a θ regression (terminal a_u_z stayed 4.0/3.9 = z decoupled as designed; s_e_n→94/17, a_u_xy→4420/1945).
+  Baked anyway = it's the PROVEN z-decoupling/tight-bound contribution; the lateral root is attacked next.
 - MECHANISM CONFIRMED: terminal (alt<0.3) peak |a_u_z| stays **3.6-7.8** even when |a_u_xy| explodes to
   **2995** (logged ‖θ‖_F to 2968) — vs shared-θ FLY-AWAYS where the same lateral spike detonated z to
   **92-320** (collateral over-brake). z is structurally decoupled (θ_z driven by the small loom row only).
@@ -42,10 +46,11 @@ insert the per-axis collection; scalar law = conservative corollary.
 improvement, not a clamp band-aid ([[feedback_kappa_clamp_bandaid]]). The κ caps (z AND xy) now bound a
 DECOUPLED, healthy z; the lateral runaway is isolated.
 
-**How to apply.** Confirm at n≥3 then BAKE `PLASMC_THETA_PER_AXIS=1` for GT-FB (production/perception-on
-needs separate validation). The REMAINING isolated root = the lateral a_u_xy spike (s_e_n 1/Z + ζ_r
-barrier) — the next lever (chi_r PD balance / p_r funnel shaping / lateral convergence speed), h_rd
-CONSTANT. Continues [[project_gt_feedback_control_tuning]], [[feedback_terminal_root_lateral_zeta_r]].
+**How to apply.** BAKED default-ON 2026-06-25 (n=3 confirmed; user call despite 2/15 lateral-root fly).
+Set `PLASMC_THETA_PER_AXIS=0` for the legacy scalar (parity). Production/perception-on still needs
+separate validation. The REMAINING isolated root = the lateral a_u_xy spike (s_e_n 1/Z + ζ_r barrier) —
+the ACTIVE next lever (chi_r PD balance / p_r funnel shaping / lateral convergence speed), h_rd CONSTANT.
+Continues [[project_gt_feedback_control_tuning]], [[feedback_terminal_root_lateral_zeta_r]].
 
 **WINDOWS TRANSFER (user plan, 2026-06-25): once baked → port to MATLAB + update manuscript on Windows.**
 Turnkey spec written: `Soft_Precise_Landing/PER_AXIS_THETA_HANDOFF.md` — (A) MATLAB port = 3 edits in

@@ -215,15 +215,18 @@ class Controller(Thread):
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
-        # PER-AXIS theta decoupling (default OFF). The shared scalar theta=||Theta||_F couples the
-        # axes: the LATERAL position-barrier (zeta_r) terminal explosion inflates theta -> detonates
-        # the switching term + kappa-ODE on EVERY axis incl z (the z over-brake is COLLATERAL, see
-        # feedback_terminal_root_lateral_zeta_r). Per-axis theta_i = sqrt(vector_i^2 + 1) (row-i norm
-        # of Theta=[vector|I3]) gives each axis its OWN uncertainty bound; sqrt(sum theta_i^2)==||F||
-        # so it's an EXACT decomposition. Isolates z (and cross-lateral) from the zeta_r blow-up.
-        self._theta_per_axis = os.environ.get("PLASMC_THETA_PER_AXIS", "0") == "1"
+        # PER-AXIS theta decoupling (BAKED default-ON 2026-06-25). The shared scalar theta=||Theta||_F
+        # couples the axes: the LATERAL position-barrier (zeta_r) terminal explosion inflates theta ->
+        # detonates the switching term + kappa-ODE on EVERY axis incl z (the z over-brake is COLLATERAL,
+        # see feedback_terminal_root_lateral_zeta_r). Per-axis theta_i = sqrt(vector_i^2 + 1) (row-i norm
+        # of Theta=[vector|I3]) gives each axis its OWN uncertainty bound; sqrt(sum theta_i^2)==||F|| so
+        # it's an EXACT decomposition (UUB-PRESERVED, tight bound -- proof Drafts/PER_AXIS_THETA_PROOF.md).
+        # n=3 GT-FB IC1-5: 12/15 sub-meter, 0 stalls, z DECOUPLED (terminal a_u_z bounded ~4 while lateral
+        # a_u_xy explodes). The 2/15 fly-aways are the un-fixed LATERAL zeta_r/s_e_n root (NOT this change
+        # -- a_u_z stayed 4.0 in both flys), the next lever. Set PLASMC_THETA_PER_AXIS=0 for legacy scalar.
+        self._theta_per_axis = os.environ.get("PLASMC_THETA_PER_AXIS", "1") == "1"
         if self._theta_per_axis:
-            print("[PLASMC] PLASMC_THETA_PER_AXIS=1 — per-axis theta (decoupled switching + kappa-ODE)")
+            print("[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)")
 
         # ════ COMBINED-BARRIER sliding surface (manuscript combined surface; default OFF) ════
         # Aligned to the canonical MATLAB realization (visualControl_IBVS_adaptive.m, a152479).
