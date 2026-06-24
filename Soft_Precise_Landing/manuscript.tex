@@ -748,7 +748,7 @@ substituting the per-feature pixel-velocity Jacobian \eqref{interaction matrix: 
 1
 \end{bmatrix},
 \end{equation}
-with $\hat{x},\hat{y}$ the components of the centroid $\hat{\boldsymbol{r}}$. Each component of $\boldsymbol{l}_\alpha$ is a ratio of centered image moments that remain bounded while the feature points stay inside the FoV, and $l_{\alpha,3}=1$. Although $\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\hat{\boldsymbol{r}}_i \to 0$. The coupling $d_\alpha$ of \eqref{alpha dot: equation} is therefore treated as an unknown bounded disturbance in Section~\ref{background: section}-\ref{image parameters: section}.
+with $\hat{x},\hat{y}$ the components of the centroid $\hat{\boldsymbol{r}}$. Each component of $\boldsymbol{l}_\alpha$ is a ratio of centered image moments that remain bounded while the feature points stay inside the FoV, and $l_{\alpha,3}=1$. Although $\boldsymbol{\omega}_\text{t}$ is recoverable in principle from the optical-flow pseudo-inverse \eqref{optic flow inverse: equation}, the recovery is noise-sensitive especially near touchdown, and the lateral target-rotation contributions to the pixel velocity scale as second-order coordinate products that vanish as $\hat{\boldsymbol{r}}_i \to 0$. The coupling $d_\alpha$ of \eqref{alpha dot: equation} is therefore treated as an unknown bounded disturbance in Section~\ref{background: section}-\ref{problem statement: section}.
 
 \section{Sources of Uncertainty and Perturbation} \label{uncertainty appendix: section}
 The five uncertainty sources of Section~\ref{background: section}-\ref{problem statement: section} are detailed below.
@@ -765,14 +765,14 @@ Two numerical guards complete the optical-flow control design without altering t
 
 Upstream of the barrier, a first-order \emph{low-pass filter}
 \begin{align} \label{lpf: equation}
-    \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_{k+1}) &= \alpha_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_k)+(1-\alpha_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_{k+1}), \nonumber\\
+    \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_{k+1}) &= \lambda_\text{a}\,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_k)+(1-\lambda_\text{a})\,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_{k+1}), \nonumber\\
     \,^\mathcal{I}\!\tilde{\boldsymbol{a}}_\text{d}(t_0) &= \,^\mathcal{I}\!\boldsymbol{a}_\text{d}(t_0),
 \end{align}
-with smoothing factor $\alpha_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and time constant $\tau_\text{a}=0.08$~s, suppresses the pixel-noise amplification induced by the image-Jacobian pseudo-inverse \eqref{optic flow inverse: equation} as the target depth $z$ shrinks toward touchdown. Filtering the barrier's \emph{input} denoises the command without smearing the hard FoV bound, which the projection then re-imposes exactly on the filtered command $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$. An \emph{acceleration floor} keeps its inertial $z$-component strictly negative,
+with smoothing factor $\lambda_\text{a}=\tau_\text{a}/(\tau_\text{a}+\Delta t)$ and time constant $\tau_\text{a}=0.08$~s, suppresses the pixel-noise amplification induced by the image-Jacobian pseudo-inverse \eqref{optic flow inverse: equation} as the target depth $z$ shrinks toward touchdown. Filtering the barrier's \emph{input} denoises the command without smearing the hard FoV bound, which the projection then re-imposes exactly on the filtered command $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$. An \emph{acceleration floor} keeps its inertial $z$-component strictly negative,
 \begin{equation} \label{acceleration floor: equation}
     \,^\mathcal{I}\tilde{a}_{\text{d},z}\leftarrow \min(\,^\mathcal{I}\tilde{a}_{\text{d},z},\,-a_{\text{d},z}^{\min}),
 \end{equation}
-with $a_{\text{d},z}^{\min}=3.0$~m/s$^2$ in NED ($+z$ down): if $\,^\mathcal{I}\tilde{a}_{\text{d},z}\ge 0$ the desired body-$z$ axis points upward in the world, which rotors producing only upward thrust cannot realize, and the deliverable lateral authority $|\,^\mathcal{I}\tilde{a}_{\text{d},z}|\tan\theta_\text{cap}$ collapses to zero.
+with $a_{\text{d},z}^{\min}=3.0$~m/s$^2$ in NED ($+z$ down). If $\,^\mathcal{I}\tilde{a}_{\text{d},z}\ge 0$, the desired body-$z$ axis points upward in the world, which rotors producing only upward thrust cannot realize, and the deliverable lateral authority $|\,^\mathcal{I}\tilde{a}_{\text{d},z}|\tan\theta_\text{cap}$ collapses to zero.
 
 The target-visibility CBF \eqref{cbf qp: equation} is realized on the filtered command as a per-cycle sampled projection. The desired image-axis tilt $\boldsymbol{\theta}_\text{d}=R_z(-\psi_\text{b})(\,^\mathcal{I}\tilde{\boldsymbol{a}}_{\text{d},xy}/\,^\mathcal{I}\tilde{a}_{\text{d},z})$ is projected, in one-step-prediction form, onto the per-feature FoV box
 \begin{equation} \label{cbf projection: equation}
