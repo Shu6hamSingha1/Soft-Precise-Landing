@@ -270,7 +270,7 @@ for n=1:10000000
     
     % Updating Control Parameter 'kappa' using RK-5 Method
         const_kappa = [K.N; K.P];
-        u_kappa = [sigma(:,idx); Theta_norm];
+        u_kappa = [sigma(:,idx); Theta_norm*ones(3,1)];   % kappa_Solver now takes per-axis theta (3x1); replicated scalar == old law
         kappa(:,idx+1) = 1.0*RK5(@(t, X) kappa_Solver(t, X, u_kappa, const_kappa, G_2(:,:,idx)), t0, kappa(:,idx), dt);
     
         if any(isnan(kappa(:,idx+1)))

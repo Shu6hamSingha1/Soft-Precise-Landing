@@ -7,7 +7,7 @@ function [I_a_cd, cs] = asmc(o, I_R_V, P, cs)
 
     % adaptive gain kappa: leakage law  kappa_dot = ||theta|| N G |sigma| - N P kappa
     const_kappa = [P.N; P.Pleak];
-    u_kappa     = [o.sigma; o.Theta_norm];
+    u_kappa     = [o.sigma; o.Theta_norm*ones(3,1)];   % kappa_Solver now takes per-axis theta (3x1); replicated scalar == old law
     cs.kappa    = RK5(@(t,X) kappa_Solver(t, X, u_kappa, const_kappa, o.G_2), 0, cs.kappa, P.dt);
 
     u_sw = -P.Gamma*o.sigma - o.Theta_norm*diag(sat(P.E\o.sigma))*o.G_2*cs.kappa;

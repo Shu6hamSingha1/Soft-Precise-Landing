@@ -97,6 +97,10 @@ if ~isempty(GAMMA2_XY_OVERRIDE); K_ctrl.gamma_2(1)=GAMMA2_XY_OVERRIDE(1);K_ctrl.
 % Hard clamp on the adaptive gain kappa (anti-runaway backstop; PX4 KAPPA_MAX).
 % Default off. KAPPA_MAX_Z clamps the vertical axis only; KAPPA_MAX clamps all 3.
 global KAPPA_MAX KAPPA_MAX_Z;
+% Per-axis regressor-norm theta (mirror PX4 PLASMC_THETA_PER_AXIS). Empty/false -> scalar
+% ||Theta||_F path == published law (parity). True -> per-axis row-norm theta_k=sqrt(v_k^2+1)
+% (tight bound; decouples z from the lateral zeta_r blow-up). See PER_AXIS_THETA_PROOF.md.
+global THETA_PER_AXIS;
 
 % Geometric SO(3) attitude gains (tuned for X500 Gazebo inertia)
 K_ctrl.kR     = diag([2.5, 1.5, 0.5]);  % roll 1.5->2.5 baked 2026-06-20: Y-attitude damping kills the Liss-IC3 terminal limit cycle -> noiseless 25/25 + full +/-40% (sharp optimum; see vdf_params)
@@ -801,11 +805,19 @@ for idx=1:N_steps
 
     Theta = [- c + S_2(:,:,idx)*dp_2(:,idx) ...
         - G_2(:,:,idx)\chi_zeta_aug, eye(3)];
-    Theta_norm = norm(Theta,'fro');
+    Theta_norm = norm(Theta,'fro');                 % scalar ||Theta||_F (logging/compat)
+    % PER-AXIS regressor norm: theta_k = ||row_k(Theta)|| = sqrt(v_k^2 + 1). Tight per-axis
+    % bound; decouples the axes so the lateral zeta_r blow-up can't detonate z (see
+    % PER_AXIS_THETA_PROOF.md). sqrt(sum(theta_k^2)) == ||Theta||_F -> exact decomposition.
+    if ~isempty(THETA_PER_AXIS) && THETA_PER_AXIS
+        theta_ctrl = sqrt(sum(Theta.^2, 2));        % 3x1 per-axis row-norm
+    else
+        theta_ctrl = Theta_norm * ones(3,1);        % 3x1 replicated scalar == published law
+    end
 
 % Updating Control Parameter 'kappa' using RK-5 Method
     const_kappa = [K_ctrl.N; K_ctrl.P];
-    u_kappa = [sigma(:,idx); Theta_norm];
+    u_kappa = [sigma(:,idx); theta_ctrl];           % was [sigma; Theta_norm] (4x1) -> now 6x1 (per-axis theta)
     kappa(:,idx+1) = RK5(@(t, X) kappa_Solver(t, X, u_kappa, const_kappa, G_2(:,:,idx)), t0, kappa(:,idx), dt);
 
     if ~isempty(KAPPA_MAX);   kappa(:,idx+1)   = min(kappa(:,idx+1),   KAPPA_MAX(1));   end
@@ -816,7 +828,8 @@ for idx=1:N_steps
     end
 
 % Computing Outer Loop Control Output
-    u_sw = -K_ctrl.Gamma*sigma(:,idx) - Theta_norm*diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1);
+    u_sw = -K_ctrl.Gamma*sigma(:,idx) ...
+           - theta_ctrl .* (diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1));   % per-axis theta (.* ); scalar-replicated == old Theta_norm* form
     u_eq = G_2(:,:,idx)*(-c + S_2(:,:,idx)*dp_2(:,idx) ...
         - G_2(:,:,idx)\chi_zeta_aug);
 

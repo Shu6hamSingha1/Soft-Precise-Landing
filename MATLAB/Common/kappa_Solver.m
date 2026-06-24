@@ -14,8 +14,8 @@ function [dkappadt] = kappa_Solver(~, kappa, X, K, G)
 
 % Initial Condition
     sigma = X(1:3);
-    Theta_norm = X(4);
-    
-    % ODE
-    dkappadt =  Theta_norm * N * G * abs(sigma) - N * P * kappa;
+    theta = X(4:6);          % per-axis row-norm theta_k (3x1); scalar-replicated reproduces old law
+
+    % ODE  (N,G diagonal -> N*G*abs(sigma) is 3x1; theta .* applies the bound per-axis)
+    dkappadt =  theta .* (N * G * abs(sigma)) - N * P * kappa;
 end
