@@ -32,9 +32,9 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..', 'VDF_ASMC'));  % +block
 % clc;
 % close all;
 if exist('MC_SEED','var') == 1
-    clearvars -except MC_SEED SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE;
+    clearvars -except MC_SEED SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE SWEEP_STATE;
 else
-    clearvars -except SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE;
+    clearvars -except SPEED_MULT IC_OVERRIDE MS_STATE CTRL_SEL TRAJ_TYPE c ctrl_list ctrl_names trajType all_results NOISE_OVERRIDE SWEEP_STATE;
 end
 if ~exist('SPEED_MULT','var') || isempty(SPEED_MULT)
     SPEED_MULT = 1.0;
@@ -87,6 +87,20 @@ switch CTRL_SEL
     case 3,  K_ctrl = K_Zhang2026;
     case 4,  K_ctrl = K_Lin2023;
     case 5,  K_ctrl = K_Cho2022;
+end
+
+% --- Deep-sweep override hook (default OFF -> no behavior change) ----------
+% A sweep harness sets:  global CMP_OVERRIDE; CMP_OVERRIDE = struct('Kv',...,'v_sat',...)
+% to overlay fields onto the ACTIVE controller's gains (K_ctrl) only. Unknown
+% field names error out (typo guard). Empty => baked InitGains values.
+global CMP_OVERRIDE
+if ~isempty(CMP_OVERRIDE)
+    fn = fieldnames(CMP_OVERRIDE);
+    for ii_ov = 1:numel(fn)
+        assert(isfield(K_ctrl, fn{ii_ov}), ...
+            'visualControl_comparison:CMP_OVERRIDE unknown field "%s"', fn{ii_ov});
+        K_ctrl.(fn{ii_ov}) = CMP_OVERRIDE.(fn{ii_ov});
+    end
 end
 
 N_steps = numel(tRange);

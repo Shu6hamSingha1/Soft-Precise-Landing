@@ -49,11 +49,11 @@ P.S_margin   = 0.05;                    % funnel-saturation guard (|zeta|<=3.66,
 P.drop_sddot = true;                    % s_ddot-drop (validated combined-barrier default)
 
 % ---- Descent reference  (tex h_d final: h_rd < 0) ------------------------------
-P.h_rd = -0.42;                         % desired descent optic flow (locked Table S1)
+P.h_rd = -0.42;                         % desired descent optic flow (locked Table S1). NB: deep-sweep flagged -0.38 as +SP on the run_simulation seed-ensemble, but re-running EVERYTHING exposed it reintroduces the terminal 1/z fly-away (Linear 28 m fly-away on comparison seed 1002; L1/L2/L4 fails in the combo). NOT a clean win -> reverted. (Yaw 0.25 below IS clean and kept.)
 
 % ---- Virtual-compass yaw ASMC  (tex eq. yaw control law) -----------------------
-P.Omega_a = 0.5;   % chi_alpha  (sigma_a = alpha_e + chi_a*int alpha_e)
-P.Gamma_a = 0.5;   % gamma_alpha
+P.Omega_a = 0.25;  % chi_alpha  (sigma_a = alpha_e + chi_a*int alpha_e). Re-baked 0.5->0.25 (2026-06-21 deep sweep, clean win): yaw ASMC was slightly over-gained -> gentler yaw cuts the yaw->image->lateral pumping; eliminates the S3 fails, +SP, edge held. Pairs with Gamma_a=0.25.
+P.Gamma_a = 0.25;  % gamma_alpha. Re-baked 0.5->0.25 with Omega_a (see above).
 P.n_a     = 1.0;   % eta_alpha
 P.p_a     = 2.0;   % rho_alpha
 P.kappa_a0 = 2.0;  % kappa_alpha(0)

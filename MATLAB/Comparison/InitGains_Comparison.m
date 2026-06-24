@@ -99,17 +99,16 @@ K_Lin2022 = struct();
 %    descent authority
 %  - l slowed so bound stays wide during catch-up
 K_Lin2022.k1 = 0.6;
-K_Lin2022.k2 = 3.0;   % R1 4.0->3.0: lower force gain -> smaller tilt spike on funnel-boundary saturation (FoV-survival)
+K_Lin2022.k2 = 4.0;
 
 % z-bound widened to 0.15: Linear/Circ carry Lin heave (A_z=0.2, w_z=0.5)
 % so target v_z oscillates ±0.1 m/s. Tighter bound barrier-saturated xi_v(3).
-% R1: l_{p,v}_xy 0.03->0.02 slow the lateral funnel contraction so the bound
-% stays wide longer -> e_p sits inside rho_p instead of pinning xi_p at the
-% barrier (the Static soft-stall + moving force spikes were barrier saturation).
+% (R1 FoV-survival attempt l_xy=0.02/k2=3.0 REVERTED: broke FoV earlier, no gain
+%  — Lin2022 loses FoV from the lateral chase tilt regardless; structural.)
 K_Lin2022.rho_inf_p     = [0.30; 0.30; 0.15];
 K_Lin2022.rho_inf_v     = [0.30; 0.30; 0.15];
-K_Lin2022.l_p           = [0.02; 0.02; 0.10];
-K_Lin2022.l_v           = [0.02; 0.02; 0.10];
+K_Lin2022.l_p           = [0.03; 0.03; 0.10];
+K_Lin2022.l_v           = [0.03; 0.03; 0.10];
 K_Lin2022.rho_p0_margin = 1.5;
 K_Lin2022.rho_v0_margin = 1.5;
 
@@ -139,13 +138,19 @@ K_Zhang2026 = struct();
 % Inner-loop Kc4/Kc5 unused — shared geometric SO(3) replaces eq. 212.
 % z slowed further: omega_n_z ~0.4 rad/s so peak descent v_z from 5m
 % stays <1.5 m/s for soft landing. xy unchanged.
-% R1 (FoV-survival): the xy position term killed Static at 0.5s. pos_gain =
-% Kc1*Kc3+Kc2 = 2.625 -> a_lat@2m=5.25 m/s² -> 28° tilt -> corner crosses the
-% ±120px (41.6° half-FoV) v-axis at 29° off-nadir. Drop Kc2_xy 2.0->1.0:
-% pos_gain=0.2*2.5+1.0=1.5 -> a_lat@2m=3.0 -> ~17° tilt (within ~18° budget).
-% vel_gain=m*Kc1+Kc3=2.7, omega_n=1.22, zeta=1.1 (slightly overdamped, OK).
-K_Zhang2026.Kc1 = diag([0.20, 0.20, 0.03]);
-K_Zhang2026.Kc2 = diag([1.0,  1.0,  0.15]);
+% R1 FoV-survival attempt (Kc2_xy 2.0->1.0 to drop initial tilt below the 18°
+% budget) REVERTED: it let Static survive but slowed lateral tracking so all 4
+% moving-case precise errors WORSENED (0.17-0.24 -> 0.31-0.45) and Circular then
+% lost FoV by falling behind. The FoV-vs-precise trade is the structural ceiling.
+% zSlow (Kc2_z 0.10, Kc3_z 0.35) was trialed 2026-06-21: it looked best on the
+% baseline deep sweep (run_simulation, 15/15 land), but a 5-seed ensemble on THE
+% COMPARISON HARNESS (zhang_resolve.m, seeds 1002-1006 @ IC2) showed it does NOT
+% transfer: land 11/25 vs 12/25 baked (loses a Lissajous cell), vrel WORSE
+% (1.21 vs 1.04); only meanXY better (0.167 vs 0.225). Net not a win + visible
+% seed-1002 Lissajous regression -> REVERTED to baked-old. (Same harness-transfer
+% lesson as VDF h_rd=-0.38.) Original gains are Zhang's best-effort face.
+K_Zhang2026.Kc1 = diag([0.25, 0.25, 0.03]);
+K_Zhang2026.Kc2 = diag([2.0,  2.0,  0.15]);
 K_Zhang2026.Kc3 = diag([2.5,  2.5,  0.5 ]);
 
 % AEDO: lAF1/2 and PNF tightened further (prev PNF=50 still caused
@@ -180,15 +185,15 @@ K_Lin2023 = struct();
 K_Lin2023.k1 = [0.4; 0.4; 0.40];             % feature -> virtual velocity (Kt), per-axis
                                              % (lateral raised for centring; depth=0.40 is the
                                              %  FoV-safe sweet spot: 0.60 reintroduces FoV loss)
-% R1: moving targets blew up via velocity-funnel barrier (e_v grows faster
-% than rho_v contracts on a fast target -> xi_v->1 -> eps_v->inf -> T sat 60N
-% -> break). Lower k2 4.0->2.5 (force gain) + widen rho_inf_v + slow l_v_xy so
-% the velocity barrier stays clear of the moving-target tracking error.
-K_Lin2023.k2 = 2.5;                          % velocity -> force           (Kv)
+% R1 anti-blowup attempt (k2 4.0->2.5, rho_inf_v widened, l_v slowed) REVERTED:
+% it stopped the thrust-sat but cut lateral authority so Static precise worsened
+% (0.147 -> 0.255) while moving targets STILL lost FoV from the chase tilt.
+% Original gains are Lin2023's best-effort face; FoV loss on moving is structural.
+K_Lin2023.k2 = 4.0;                          % velocity -> force           (Kv)
 K_Lin2023.rho_inf_t = [0.10; 0.10; 0.03];    % feature funnel steady-state (tight depth floor -> an->1 -> z->0.2m touchdown)
-K_Lin2023.rho_inf_v = [0.50; 0.50; 0.20];    % velocity funnel steady-state (widened: avoid barrier blow-up)
+K_Lin2023.rho_inf_v = [0.30; 0.30; 0.15];    % velocity funnel steady-state
 K_Lin2023.l_t       = [0.05; 0.05; 0.10];    % feature funnel decay rate (depth contraction tuned for touchdown)
-K_Lin2023.l_v       = [0.02; 0.02; 0.08];    % velocity funnel decay rate (slowed: bound wider longer)
+K_Lin2023.l_v       = [0.03; 0.03; 0.10];    % velocity funnel decay rate
 K_Lin2023.rho_t0_margin = [1.5; 1.5; 5.0];   % rho_t(0)=|e_t(0)|+margin, per-axis
                                              % (large depth margin: literal e_t(3)~12 needs
                                              %  funnel room so xi_t(3) doesn't start near 1)
