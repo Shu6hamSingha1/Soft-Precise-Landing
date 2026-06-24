@@ -215,6 +215,15 @@ class Controller(Thread):
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
+        # PER-AXIS theta decoupling (default OFF). The shared scalar theta=||Theta||_F couples the
+        # axes: the LATERAL position-barrier (zeta_r) terminal explosion inflates theta -> detonates
+        # the switching term + kappa-ODE on EVERY axis incl z (the z over-brake is COLLATERAL, see
+        # feedback_terminal_root_lateral_zeta_r). Per-axis theta_i = sqrt(vector_i^2 + 1) (row-i norm
+        # of Theta=[vector|I3]) gives each axis its OWN uncertainty bound; sqrt(sum theta_i^2)==||F||
+        # so it's an EXACT decomposition. Isolates z (and cross-lateral) from the zeta_r blow-up.
+        self._theta_per_axis = os.environ.get("PLASMC_THETA_PER_AXIS", "0") == "1"
+        if self._theta_per_axis:
+            print("[PLASMC] PLASMC_THETA_PER_AXIS=1 — per-axis theta (decoupled switching + kappa-ODE)")
 
         # ════ COMBINED-BARRIER sliding surface (manuscript combined surface; default OFF) ════
         # Aligned to the canonical MATLAB realization (visualControl_IBVS_adaptive.m, a152479).
@@ -1154,7 +1163,12 @@ class Controller(Thread):
                   + self._S[-1] @ self._dp[-1]
                   - np.linalg.solve(self._G[-1], chi_zeta_aug))
         Theta = np.hstack([vector.reshape(-1, 1), np.eye(N_DIM)])
-        self._theta.append(np.linalg.norm(Theta, ord='fro'))
+        self._theta.append(np.linalg.norm(Theta, ord='fro'))   # scalar ||Theta||_F (logged for continuity)
+        # theta used by the control law: per-axis row-norm (decoupled) or the shared scalar (default).
+        if self._theta_per_axis:
+            theta_ctrl = np.sqrt(vector ** 2 + 1.0)            # theta_i = ||row_i(Theta)|| = sqrt(vec_i^2+1)
+        else:
+            theta_ctrl = self._theta[-1]
 
         # Adaptive-gain (translational) update via RK5
         # MATLAB: dkappa/dt = Theta_norm * N * G * |sigma| - N * P * kappa
@@ -1167,7 +1181,7 @@ class Controller(Thread):
         # the E_Z=0.5 κ-bound is P_z (κ_eq ∝ 1/P leakage). See memory feedback_theta_norm_klt_drift.
         if len(self._dt) > 0:
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
-                            [self._sigma[-1], self._theta[-1]], self._dt[-1])
+                            [self._sigma[-1], theta_ctrl], self._dt[-1])
             if hasattr(self, '_contained'):
                 new_kappa[self._contained] = self._kappa[-1][self._contained]
             self._kappa.append(np.minimum(new_kappa, self._kappa_max))
@@ -1179,7 +1193,7 @@ class Controller(Thread):
         #   u_sw + u_eq when summed -> V_a_cd = -G\(u_sw + u_eq)
         sat_sigma = np.clip(self._sigma[-1] / np.diag(self._E), -1.0, 1.0)
         a_v = (- self._Gma @ self._sigma[-1]
-               - self._theta[-1] * np.diag(sat_sigma) @ self._G[-1] @ self._kappa[-1]
+               - theta_ctrl * (np.diag(sat_sigma) @ self._G[-1] @ self._kappa[-1])
                + self._G[-1] @ (- c + self._S[-1] @ self._dp[-1])
                - chi_zeta_aug)
         self._a_v.append(a_v)
@@ -1430,8 +1444,10 @@ class Controller(Thread):
 
     def _kappaSolver(self, _, kappa, X):
         sigma = X[0]
-        theta_norm = X[1]
-        return theta_norm * self._N @ self._G[-1] @ np.abs(sigma) - self._N @ self._P @ kappa
+        theta = X[1]   # scalar ||Theta||_F, or per-axis 3-vec (PLASMC_THETA_PER_AXIS)
+        # theta*(N G |sigma|): scalar broadcasts identically to the old form; a 3-vec multiplies
+        # element-wise -> dkappa_i/dt = theta_i N_i G_i |sigma_i| - N_i P_i kappa_i (per-axis bound).
+        return theta * (self._N @ self._G[-1] @ np.abs(sigma)) - self._N @ self._P @ kappa
 
     def _kappa_a_solver(self, _, kappa_a, X):
         sigma_a = X[0]
