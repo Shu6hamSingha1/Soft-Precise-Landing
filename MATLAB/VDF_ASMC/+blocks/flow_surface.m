@@ -56,5 +56,7 @@ function [o, cs] = flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_m
     Theta = [-c + S_2*dp_h - G_2\chi_zeta_aug, eye(3)];
     o.sigma = sigma; o.G_2 = G_2; o.S_2 = S_2; o.dp_h = dp_h; o.c = c;
     o.chi_zeta_aug = chi_zeta_aug; o.Theta_norm = norm(Theta,'fro');
+    % per-axis row-norm theta_k = ||row_k(Theta)|| = sqrt(v_k^2+1); sqrt(sum_k theta_k^2)==||Theta||_F
+    o.theta_perax = sqrt(sum(Theta.^2, 2));   % 3x1; used by asmc when P.theta_per_axis
     o.V_h_d = V_h_d; o.V_h_e = V_h_e;
 end

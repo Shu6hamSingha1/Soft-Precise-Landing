@@ -72,6 +72,14 @@ P.kI_R   = diag([0,0,0]);  P.ie_R_max = 0.5;     % integral attitude term (off) 
 % ---- Adaptive CoG feedforward (Lee-style; baked-on) ---------------------------
 P.gamma_cog = 0.005;  P.cog_c2 = 2.0;  P.cog_max = 0.02;  P.cog_leak = 0;
 
+% ---- Per-axis regressor-norm theta (mirror PX4 PLASMC_THETA_PER_AXIS) ----------
+% false -> switching gain uses the shared scalar ||Theta||_F (published law, parity).
+% true  -> per-axis row-norm theta_k=sqrt(v_k^2+1) (tight bound; decouples z from the
+% lateral zeta_r blow-up). theta_k==||Theta||_F recovers the scalar law exactly ->
+% strict generalization. Enable via VDF_OVERRIDE.theta_per_axis=true. See
+% Soft_Precise_Landing/Drafts/PER_AXIS_THETA_PROOF.md.
+P.theta_per_axis = false;
+
 % ---- Estimation / timing -------------------------------------------------------
 P.ZOH      = floor(100/30);              % image refresh decimation (=3)
 P.fw       = 11;                         % Savitzky-Golay window (FILTER_WINDOW)

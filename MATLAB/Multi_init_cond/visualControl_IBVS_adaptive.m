@@ -828,8 +828,10 @@ for idx=1:N_steps
     end
 
 % Computing Outer Loop Control Output
+    % diag(theta_ctrl)* (not theta_ctrl.*) so the scalar folds into the diagonal FIRST:
+    % off-path is then BIT-EXACT to old Theta_norm*diag(sat)*G*kappa (FP non-assoc); per-axis ON.
     u_sw = -K_ctrl.Gamma*sigma(:,idx) ...
-           - theta_ctrl .* (diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1));   % per-axis theta (.* ); scalar-replicated == old Theta_norm* form
+           - diag(theta_ctrl)*diag(sat(K_ctrl.E\sigma(:,idx)))*G_2(:,:,idx)*kappa(:,idx+1);
     u_eq = G_2(:,:,idx)*(-c + S_2(:,:,idx)*dp_2(:,idx) ...
         - G_2(:,:,idx)\chi_zeta_aug);
 

@@ -16,6 +16,7 @@ function [dkappadt] = kappa_Solver(~, kappa, X, K, G)
     sigma = X(1:3);
     theta = X(4:6);          % per-axis row-norm theta_k (3x1); scalar-replicated reproduces old law
 
-    % ODE  (N,G diagonal -> N*G*abs(sigma) is 3x1; theta .* applies the bound per-axis)
-    dkappadt =  theta .* (N * G * abs(sigma)) - N * P * kappa;
+    % ODE: diag(theta)* (not theta.*) folds the gain into N FIRST -> off-path BIT-EXACT to
+    % old Theta_norm*N*G*abs(sigma) (FP non-assoc); per-axis bound when theta is a 3-vec.
+    dkappadt =  diag(theta) * N * G * abs(sigma) - N * P * kappa;
 end
