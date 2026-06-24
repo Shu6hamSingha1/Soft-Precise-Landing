@@ -195,11 +195,13 @@ where $\boldsymbol{v}_{\text{t/b}}$ is the velocity of the target relative to th
 where the right-hand stack collects the measured optical flow. The pseudo-inverse exists for $N\ge 3$ non-collinear feature points.
 
 \subsubsection{Image Kinematics and Dynamics} \label{image kinematics: section}
+\begin{assumption}[rigid coplanar features]\label{asm:features} The $N$ feature points are rigidly attached to the target and lie in a common plane on the landing platform. The target's rigid-body motion is referred to the feature centroid, so that $\boldsymbol{v}_{\text{t/b}}$ is the relative translational velocity of the centroid and $\boldsymbol{\omega}_\text{t}$ the angular velocity of the pattern about the centroid.\end{assumption}
+
 Differentiating \eqref{image position: equation} with the transport theorem in $\mathcal{V}$ yields the image position kinematics
 \begin{equation} \label{s dot: equation}
     \dot{\boldsymbol{s}} = \boldsymbol{h} - \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_3\times\boldsymbol{s} - (\boldsymbol{h}\cdot\hat{\boldsymbol{e}}_3)\,\boldsymbol{s},
 \end{equation}
-where $\boldsymbol{h}$ is the image velocity of \eqref{optic flow def: equation}. The target angular velocity does not enter \eqref{s dot: equation} (Appendix~\ref{virtual camera: section}).
+where $\boldsymbol{h}$ is the image velocity of \eqref{optic flow def: equation}. The target angular velocity does not enter \eqref{s dot: equation}. By Assumption~\ref{asm:features} the target rotation about the centroid leaves the centroid, and hence $\boldsymbol{s}$, unchanged (Appendix~\ref{virtual camera: section}).
 
 Differentiating the image orientation \eqref{image orientation: equation} by the chain rule and substituting the per-feature pixel-velocity Jacobian (Appendix~\ref{virtual camera: section}) into the resulting moment time derivatives gives $\dot{\alpha}=\boldsymbol{l}_\alpha^\top\boldsymbol{w}$. The orientation interaction vector $\boldsymbol{l}_\alpha$, derived in Appendix~\ref{l alpha appendix: section}, is a ratio of bounded centered moments with $l_{\alpha,3}=1$. Substituting the image angular velocity $\boldsymbol{w} = \boldsymbol{\omega}_\text{t} - \dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ of \eqref{optic flow def: equation} and using $l_{\alpha,3}=1$ isolates the body yaw rate explicitly, yielding the image orientation kinematics
 \begin{equation} \label{alpha dot: equation}
