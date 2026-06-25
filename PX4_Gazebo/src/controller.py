@@ -575,6 +575,22 @@ class Controller(Thread):
             pass
         return float('inf')
 
+    @property
+    def LOOM_Z(self):
+        """h_z — the z-component (loom / flow divergence) of the latest calibrated
+        optic flow (= vz/Z, rad/s). SCALE-FREE and image-only (no depth/altitude).
+        In GT-feedback mode this is the GT-derived loom, so it is perception-free.
+        Used by landing_test's loom-accumulation commitment: a clean h_rd descent
+        holds h_z ≈ h_rd (constant), so the INSTANTANEOUS loom is not a proximity
+        signal — the harness integrates it (∫h_z dt = ln(Z/Z_start)) for a scale-
+        free proximity. Returns 0.0 (no accumulation) before any flow is computed."""
+        try:
+            if len(self._h) > 0:
+                return float(self._h[-1][2])
+        except (IndexError, AttributeError, ValueError, TypeError):
+            pass
+        return 0.0
+
     def _initialize_controller(self):
         # Attitude state
         self._quat = []

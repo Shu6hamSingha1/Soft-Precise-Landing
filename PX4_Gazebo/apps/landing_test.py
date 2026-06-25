@@ -441,6 +441,23 @@ async def main(record = 'n'):
         COMMIT_FRAMES = int(os.environ.get("LANDING_COMMIT_FRAMES", "3"))
         COMMIT_SEN = float(os.environ.get("LANDING_COMMIT_SEN", "0.35"))
         commit_streak = 0
+        # ── Loom-accumulation commit (2026-06-26): scale-free, perception-free ──
+        # The terminal 1/Z kick fires in the last ~10 cm BEFORE ground contact, so
+        # the contact-based detectors (impact spike / PX4 ON_GROUND) catch only the
+        # post-kick balloon. This gate commits to an open-loop vertical settle just
+        # ABOVE the deck so the live a_u command stops before the kick can fire.
+        # Proximity proxy = ACCUMULATED loom: a clean h_rd descent holds the loom
+        # h_z ≈ h_rd (constant), so we integrate it — ∫h_z dt = ln(Z/Z_start) — a
+        # scale-free measure of how many e-folds of altitude have been descended
+        # (no depth/altitude used). Loom is image-only and, in GT-FB, GT-derived
+        # (perception-free) — unlike marker extent. Commit when |∫h_z dt| exceeds
+        # the threshold (descended to e^-thr of the start altitude) AND centered.
+        #   LANDING_COMMIT_LOOM   |accumulated loom| threshold; 0 = OFF (default)
+        #   reuses LANDING_COMMIT_FRAMES / LANDING_COMMIT_SEN (centered guard)
+        COMMIT_LOOM = float(os.environ.get("LANDING_COMMIT_LOOM", "0.0"))
+        loom_accum = 0.0
+        loom_streak = 0
+        _loom_prev_t = None
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
@@ -477,9 +494,11 @@ async def main(record = 'n'):
         # MINIMUM altitude reached over the whole descent = the genuine
         # precision/softness. Pure diagnostic: does NOT change control or the
         # existing fly-away tally. See HANDOFF_velocity_damping.md.
-        _min_alt        = None   # lowest ENU altitude actually reached (true min)
+        _min_alt        = None   # lowest ENU altitude reached on the FIRST descent
         _min_alt_xy     = None   # lateral err to target at that lowest sample
         _min_alt_relvel = None   # UAV rel speed at that lowest sample
+        _min_alt_frozen = False  # latched once the drone balloons back up
+        _MINALT_FREEZE_DZ = float(os.environ.get("LANDING_MINALT_FREEZE_DZ", "0.3"))
 
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
@@ -493,8 +512,14 @@ async def main(record = 'n'):
             if _best_alt is None or _alt_w < _best_alt - HOVER_STALL_DZ:
                 _best_alt = _alt_w                    # fresh >DZ of descent progress
                 _stall_t0 = _now_w
-            # True-minimum-altitude precision capture (honest metric; see above).
-            if _min_alt is None or _alt_w < _min_alt:
+            # First-descent-bottom precision capture (honest metric; see above).
+            # Freeze once the drone climbs >BALLOON_DZ above the running min: the
+            # terminal kick balloons it back up, and a later (off-target) second
+            # descent can reach a LOWER global min than the clean first approach —
+            # we want the precision at the FIRST approach, not the post-kick crash.
+            if _min_alt is not None and _alt_w > _min_alt + _MINALT_FREEZE_DZ:
+                _min_alt_frozen = True
+            if (not _min_alt_frozen) and (_min_alt is None or _alt_w < _min_alt):
                 _min_alt = _alt_w
                 _tgt = target_pose[-1].position
                 _uav = UAV_pose[-1].position
@@ -559,6 +584,29 @@ async def main(record = 'n'):
                               f"open-loop vertical settle [clean touchdown, SUCCESS path]")
                 else:
                     commit_streak = 0
+            # ── Loom-accumulation commitment (clean touchdown; inert when COMMIT_LOOM=0) ──
+            if COMMIT_LOOM > 0.0 and not in_final_descent:
+                _now_l = time_node.perf_counter()
+                if feature_fresh:
+                    # Integrate the loom only over fresh frames (h_z is meaningful);
+                    # accumulate |h_z|*dt so the threshold is a positive descent depth.
+                    if _loom_prev_t is not None:
+                        loom_accum += abs(EC_node.LOOM_Z) * (_now_l - _loom_prev_t)
+                    if (loom_accum >= COMMIT_LOOM
+                            and EC_node.LATERAL_ERR_N <= COMMIT_SEN):
+                        loom_streak += 1
+                        if loom_streak >= COMMIT_FRAMES:
+                            in_final_descent = True
+                            final_descent_t0 = _now_l
+                            print(f"[landing_test] Loom commitment: accumulated loom "
+                                  f"{loom_accum:.2f} >= {COMMIT_LOOM:.2f} "
+                                  f"(~descended to e^-{loom_accum:.2f} of start alt) "
+                                  f"AND centered (|s_e_n|={EC_node.LATERAL_ERR_N:.2f} <= "
+                                  f"{COMMIT_SEN:.2f}) for {loom_streak} fresh frames -> "
+                                  f"open-loop vertical settle [clean touchdown, SUCCESS path]")
+                    else:
+                        loom_streak = 0
+                _loom_prev_t = _now_l
             if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
