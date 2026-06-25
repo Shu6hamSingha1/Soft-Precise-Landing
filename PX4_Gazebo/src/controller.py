@@ -248,14 +248,22 @@ class Controller(Thread):
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
         self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
-        # Backstepping h_d (2026-06-26): blend the MEASURED feature rate s_dot_meas with the
-        # DESIRED rate that drives the position barrier zeta_r->0. Default-off (beta=0) = current
-        # (h_d = s_dot_meas -> h_e~0, velocity-blind at altitude). beta>0 restores velocity-error
-        # content in h_e so zeta_h can brake the descent-start outward drift. The desired rate is
-        # the barrier inversion  rdot_e_des = phi_max * (zetadot_r_des/g_r + S_r*p_r_dot),
-        # phi_max = self._p_10, zetadot_r_des = -lambda*zeta_r (prescribed convergence).
-        self._hd_zetar        = float(os.environ.get("PLASMC_HD_ZETAR", "0.0"))
+        # Backstepping h_d (2026-06-26): make h_d carry the DESIRED feature rate that drives the
+        # position barrier zeta_r->0, instead of the MEASURED rate s_dot_meas. Default-off (ENABLE=0)
+        # = current (h_d = s_dot_meas -> h_e~0, velocity-blind at altitude). ENABLE=1 -> h_d = the
+        # PURE desired rate; the velocity error h_e = h - h_d then carries genuine velocity content
+        # (h itself supplies the MEASURED side -> no blend needed; a blend would just scale h_e,
+        # duplicating chi_r/funnel gains). Desired rate = barrier inversion
+        #   rdot_e_des = phi_max * (zetadot_r_des/g_r + S_r*p_r_dot),  zetadot_r_des = -lambda*zeta_r,
+        # phi_max = self._p_10. Shaped by lambda (convergence rate) and a feasibility cap (below).
+        self._hd_zetar        = os.environ.get("PLASMC_HD_ZETAR", "0") == "1"
         self._hd_zetar_lambda = float(os.environ.get("PLASMC_HD_ZETAR_LAMBDA", "1.0"))
+        # Feasibility cap on the desired feature rate (per-axis, rad/s). rdot_e_des is
+        # UNBOUNDED in zeta_r, so a large initial offset demands an infeasible inward rate
+        # -> h_e blows up -> over-drive (IC3). Cap to an achievable rate so large offsets
+        # get a feasible (saturated) demand while small offsets keep full responsiveness.
+        # 0 = no cap.
+        self._hd_zetar_max    = float(os.environ.get("PLASMC_HD_ZETAR_MAX", "0.0"))
         self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.5")),
                                   float(os.environ.get("PLASMC_CHI_R_Y", "0.5"))])   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
@@ -886,12 +894,15 @@ class Controller(Thread):
             # carries the rate driving zeta_r->0 instead of the measured rate, restoring velocity
             # error in h_e at altitude.  rdot_e_des = phi_max*(zetadot_r_des/g_r + S_r*p_r_dot),
             # zetadot_r_des = -lambda*zeta_r.  g_r vectorized = 2/((1-S_r^2)*p_r) (= code form).
-            if self._hd_zetar > 0.0:
+            if self._hd_zetar:
                 g_r_vec     = 2.0 / ((1.0 - S_r ** 2) * self._p_r[-1])
                 dzeta_r_des = -self._hd_zetar_lambda * zeta_r
-                self._s_dot_des.append(self._p_10 * (dzeta_r_des / g_r_vec + S_r * self._dp_r[-1]))
+                s_dot_des   = self._p_10 * (dzeta_r_des / g_r_vec + S_r * self._dp_r[-1])
+                if self._hd_zetar_max > 0.0:                  # feasibility cap (per-axis)
+                    s_dot_des = np.clip(s_dot_des, -self._hd_zetar_max, self._hd_zetar_max)
+                self._s_dot_des.append(s_dot_des)
             else:
-                self._s_dot_des.append(s_dot_meas)            # inert (blend is a no-op at beta=0)
+                self._s_dot_des.append(s_dot_meas)            # off: h_d uses measured rate
             # no back-mapped ds_d in combined mode (h_d uses s_dot_meas directly)
             self._ds_d.append(np.zeros(N_DIM))
             return
@@ -1053,10 +1064,9 @@ class Controller(Thread):
                 h_d_ff = (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
             h_d_noS = rot + h_d_ff
             self._h_d_noS.append(h_d_noS)
-            # Backstepping blend: (1-beta)*measured + beta*desired feature rate (PLASMC_HD_ZETAR).
-            _sd = ((1.0 - self._hd_zetar) * self._s_dot_meas[-1]
-                   + self._hd_zetar * self._s_dot_des[-1])
-            self._h_d.append(np.concatenate([_sd, [0.0]]) + h_d_noS)
+            # h_d carries the DESIRED feature rate (PLASMC_HD_ZETAR on) or the measured rate (off);
+            # the measured side of h_e = h - h_d comes from h itself, so no blend is needed.
+            self._h_d.append(np.concatenate([self._s_dot_des[-1], [0.0]]) + h_d_noS)
         elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
             # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
