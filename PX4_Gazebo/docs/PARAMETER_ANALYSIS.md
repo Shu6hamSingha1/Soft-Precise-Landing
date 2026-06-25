@@ -103,9 +103,9 @@ All `*_SCALE` factors were removed 2026-06-03 — knobs are now direct values `P
 
 **The real yaw failure is not a gain.** `_ie_a_clamp` was replaced by **conditional integration** (freeze `ie_a` while heading-rate saturated; halved overshoot). The IC2-5 "yaw runaway" is **compass drift at landing start**: EKF yaw drifts ~77° during takeoff/IC so the drone *begins* the descent yawed → `psi_d`→180°. `alpha` is correct (tracks GT r=1.00). **Fix is the test rig** (servo true yaw), not the controller — three alpha redesigns all failed because the cause is the bad start. Yaw is image-`alpha` end-to-end (`BODY_YAW_SOURCE=alpha`, compass-free); compass enters only the rotation matrix.
 
-### 3.4 Visibility barrier — cbf2 (replaces the cone clamp)
+### 3.4 Visibility barrier — cbf2
 
-`FUNNEL_MODE=cbf2` (default), `THETA_FLOOR_DEG=60` (= θ_cap → the old d_min collapse is OFF). cbf2 is a camera-plane tilt-QP (`docs/FUNNEL_CBF_DESIGN.md`): theta_cap post-QP, two-phase δ. **It is a safety net, not a controller** — if it bites in normal ops, bound κ at the control level instead (it was *masking* the κ-runaway). `RHOFOV0=[290,210]`, `RHOFOVINF=[80,80]`, `LFOV=0` (rho_fov held constant). The old analysis's "RHOFOVINF is the strongest lever" is **false** — a cal artifact of the mapped precision-softness frontier (memory `feedback_precision_softness_frontier`).
+The visibility barrier is **cbf2**, the only mode (the legacy cone/cone0/cbf1 forms were retired 2026-06-26). `THETA_FLOOR_DEG=60` (= θ_cap → the old d_min collapse is OFF). cbf2 is a camera-plane tilt-QP (`docs/FUNNEL_CBF_DESIGN.md`): theta_cap post-QP, two-phase δ. **It is a safety net, not a controller** — if it bites in normal ops, bound κ at the control level instead (it was *masking* the κ-runaway). `RHOFOV0=[290,210]`, `RHOFOVINF=[80,80]`, `LFOV=0` (rho_fov held constant). The old analysis's "RHOFOVINF is the strongest lever" is **false** — a cal artifact of the mapped precision-softness frontier (memory `feedback_precision_softness_frontier`).
 
 ### 3.5 Inner loop (SO(3)) & misc
 

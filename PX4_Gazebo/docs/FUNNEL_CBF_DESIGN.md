@@ -1,7 +1,9 @@
-# Target-visibility funnel — cone clamp (current heuristic) → input-aware CBF (the guarantee)
+# Target-visibility CBF (cbf2)
 
-**Status (2026-06-05):** SWITCHING the visibility mechanism from the **cone clamp** to an
-**input-aware Control Barrier Function**.
+**Status (2026-06-26):** **cbf2 is the finalized and ONLY visibility mechanism.** The legacy
+alternates — the magnitude **cone clamp**, the lean-magnitude `cone0`/`cbf1` forms, and the abandoned
+optic-flow HOCBF — were **removed from the code** (`FUNNEL_MODE` and its env retired). The §0 camera-plane
+θ-QP below is the live design; §1–§9 are kept only as the **design motivation/history** that led to it.
 
 > 🛠 **Addendum (2026-06-14) — CBF isolated + validated; one bug found + the θ_safe round-trip.**
 > The `cbf2` block was extracted verbatim into a pure function `src/cbf_visibility.py::cbf2_filter`
@@ -103,29 +105,18 @@ walk it out (`θ_d≈0` while sliding). The `τ·d` look-ahead uses the predicte
 over-braking; `d` adds centroid-finite-diff noise (smooth centroid → manageable). Optical flow is
 reserved for the 3D soft-landing *velocity* loop, not this barrier.
 
-### §0.2 Implementation status (2026-06-06) — env-gated modes, default `cone` unchanged
-| `FUNNEL_MODE` | form |
-|---|---|
-| `cone` *(default)* | magnitude clamp `‖a_xy‖ ≤ a_z·tan θ_cone` — the original heuristic (§1) |
-| `cone0` | directional clamp + `L_ω` headroom, `τ=0` (lean-magnitude form) |
-| `cbf1` | `cone0` + drift look-ahead `τ>0` (lean-magnitude form) |
-| `cbf2` | **camera-frame `θ`-QP** — the literal QP above, in image-axis tilt |
+### §0.2 Implementation — cbf2 is the only form (2026-06-26)
+**cbf2 — camera-frame θ-QP.** Solves the 2-D box QP in image-axis tilt directly (no lean collapse),
+anchored on `ᶜr̂` at `θ_curr` (iterative projection; magnitude-clamp fallback). It is `L_ω`-LINEARIZED
+(not homography-exact) and iteratively solved. `θ_curr = Rz(−yaw)·(−R[:2,2]/R₃₃)`. The deliverable-tilt
+cap `θ_cap` is applied post-QP (thrust-deliverability, not visibility). Lives in
+`src/cbf_visibility.py::cbf2_filter` (the live controller calls it; offline validator `tools/validate_cbf.py`).
 
-- **cone0 / cbf1 — lean-magnitude form.** Collapse `L_ω` to a scalar headroom `min_k m_k/‖L_ω[k]‖`
-  applied as the lean magnitude (`θ_cone = θ_curr + headroom`), with the directionality from the inertial
-  `t̂` (limit only the outward accel, free re-centering; `d = ᶜṙ_obs − L_ω·ω` for cbf1). Exact at centre,
-  approximate off-centre. The headroom term is active only with `PLASMC_THETA_FLOOR_DEG < 60` (default 60
-  pins `θ_cone=θ_cap` and disables it); the directional clamp is what makes a low floor safe (no strangle).
-- **cbf2 — camera-frame form.** Solves the 2-D box QP in image-axis tilt directly (no lean collapse),
-  anchored on `ᶜr̂` at `θ_curr` (iterative projection; magnitude-clamp fallback). Retires the
-  lean-magnitude approximation. Still `L_ω`-LINEARIZED (not homography-exact) and iteratively solved.
-- **Conventions — validated offline as IDENTITY maps:** the image→inertial direction
-  (`tools/calibrate_cone0_sign.py`, cos·I_a 0.84) and the `L_ω·ω` drift axes
-  (`tools/calibrate_cbf1_drift_sign.py`, cos 0.85) are both no-swap, +1/+1, so the `a_xy↔tilt` map needs
-  no new cal gate. `θ_curr = Rz(−yaw)·(−R[:2,2]/R₃₃)` is derived-consistent (reasoning-only). A wrong
-  direction map drives the marker OUT — the live "small accel, watch the centroid" test is the gold check.
-- **Env:** `CBF_TAU`≈0.3 (look-ahead s), `CBF_DMIN_EMA`≈0.3 (drift EMA), `CONE0_SWAP/SIGN_X/SIGN_Y`.
-  Test: `FUNNEL_MODE=cone0|cbf1 PLASMC_THETA_FLOOR_DEG=20`, or `FUNNEL_MODE=cbf2`.
+- **Env:** `CBF_TAU`≈0.3 (Phase-2 look-ahead s), `CBF_DMIN_EMA`≈0.3 (drift EMA), the two-phase-δ knobs
+  (`CBF_PHASE2_HYSTERESIS`, `CBF_PHASE2_RAMP_FRAMES`).
+- **Retired 2026-06-26:** the lean-magnitude `cone0`/`cbf1` forms, the magnitude `cone` clamp, the
+  `FUNNEL_MODE` selector, the `CONE0_*` env, and the `calibrate_cone0/cbf1` sign tools were all removed
+  from the code (cbf2 was the validated default; the alternates were dead env-gated paths).
 
 ---
 
@@ -138,8 +129,8 @@ giving *forward-invariance* of the safe set — see **§0** (the `L_ω` camera-p
 form below is superseded). The input-aware idea survives: the `θ_cap` box never commands a tilt the
 lagged inner loop can't deliver, so the guarantee is one the plant can honor.
 
-Standing decisions: cone clamp stays the env-gated fallback (`FUNNEL_MODE=cone`); `ρ_fov` held CONSTANT
-at `ρ_fov_0` (`PLASMC_LFOV=0`); **precision is a SEPARATE** PPC funnel on `s_e_n` (§9, implemented);
+Standing decisions: cbf2 is the only visibility mechanism (the cone clamp fallback was removed 2026-06-26);
+`ρ_fov` held CONSTANT at `ρ_fov_0` (`PLASMC_LFOV=0`); **precision is a SEPARATE** PPC funnel on `s_e_n` (§9, implemented);
 the perception-death floor hands off to the ring flow (§7/§8).
 
 ---

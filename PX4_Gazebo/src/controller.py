@@ -248,22 +248,6 @@ class Controller(Thread):
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
         self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
-        # Backstepping h_d (2026-06-26): make h_d carry the DESIRED feature rate that drives the
-        # position barrier zeta_r->0, instead of the MEASURED rate s_dot_meas. Default-off (ENABLE=0)
-        # = current (h_d = s_dot_meas -> h_e~0, velocity-blind at altitude). ENABLE=1 -> h_d = the
-        # PURE desired rate; the velocity error h_e = h - h_d then carries genuine velocity content
-        # (h itself supplies the MEASURED side -> no blend needed; a blend would just scale h_e,
-        # duplicating chi_r/funnel gains). Desired rate = barrier inversion
-        #   rdot_e_des = phi_max * (zetadot_r_des/g_r + S_r*p_r_dot),  zetadot_r_des = -lambda*zeta_r,
-        # phi_max = self._p_10. Shaped by lambda (convergence rate) and a feasibility cap (below).
-        self._hd_zetar        = os.environ.get("PLASMC_HD_ZETAR", "0") == "1"
-        self._hd_zetar_lambda = float(os.environ.get("PLASMC_HD_ZETAR_LAMBDA", "1.0"))
-        # Feasibility cap on the desired feature rate (per-axis, rad/s). rdot_e_des is
-        # UNBOUNDED in zeta_r, so a large initial offset demands an infeasible inward rate
-        # -> h_e blows up -> over-drive (IC3). Cap to an achievable rate so large offsets
-        # get a feasible (saturated) demand while small offsets keep full responsiveness.
-        # 0 = no cap.
-        self._hd_zetar_max    = float(os.environ.get("PLASMC_HD_ZETAR_MAX", "0.0"))
         self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.5")),
                                   float(os.environ.get("PLASMC_CHI_R_Y", "0.5"))])   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
@@ -308,9 +292,8 @@ class Controller(Thread):
                 if abs(_values[k][i] - dflt[i]) > 1e-12:
                     _print_lines.append(f"  {k}_{ax} = {_values[k][i]:g}  (default {dflt[i]:g})")
         # Log FoV / funnel env vars that can silently override behaviour and are NOT
-        # covered by the per-axis checker above (e.g. FUNNEL_MODE, THETA_FLOOR_DEG).
+        # covered by the per-axis checker above (e.g. THETA_FLOOR_DEG).
         _fov_vars = [
-            ("FUNNEL_MODE",          "cbf2"),
             ("PLASMC_THETACAP_DEG",  "60.0"),
             ("PLASMC_THETA_FLOOR_DEG", "60.0"),
             ("FLOW_FUSE_RING",       "1"),
@@ -391,7 +374,6 @@ class Controller(Thread):
         self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.0"))
         self._theta_cap   = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
         self._theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
-        self._funnel_mode = os.environ.get("FUNNEL_MODE", "cbf2")
         self._DH_D_MAX    = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
         # Lateral approach-velocity governor (2026-06-14). The outer PID demand
         # ds_d[xy] (= desired lateral optical-flow, scale-free v/Z) is pinned at
@@ -655,7 +637,6 @@ class Controller(Thread):
         self._zeta_r = []
         self._dzeta_r = []
         self._s_dot_meas = []          # measured centroid rate (h_d feedforward, combined mode)
-        self._s_dot_des  = []          # backstepping desired feature rate (PLASMC_HD_ZETAR blend)
         self._s_dot_deque = deque([np.zeros(2)] * 4)
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
         self._theta = []      # ||Theta||_F
@@ -890,19 +871,6 @@ class Controller(Thread):
                 dzeta_r[_i] = g_r * (dr_bar_e[_i] - S_r[_i] * self._dp_r[-1][_i])
             self._zeta_r.append(zeta_r)
             self._dzeta_r.append(dzeta_r)
-            # Backstepping desired feature rate (PLASMC_HD_ZETAR>0): invert the barrier so h_d
-            # carries the rate driving zeta_r->0 instead of the measured rate, restoring velocity
-            # error in h_e at altitude.  rdot_e_des = phi_max*(zetadot_r_des/g_r + S_r*p_r_dot),
-            # zetadot_r_des = -lambda*zeta_r.  g_r vectorized = 2/((1-S_r^2)*p_r) (= code form).
-            if self._hd_zetar:
-                g_r_vec     = 2.0 / ((1.0 - S_r ** 2) * self._p_r[-1])
-                dzeta_r_des = -self._hd_zetar_lambda * zeta_r
-                s_dot_des   = self._p_10 * (dzeta_r_des / g_r_vec + S_r * self._dp_r[-1])
-                if self._hd_zetar_max > 0.0:                  # feasibility cap (per-axis)
-                    s_dot_des = np.clip(s_dot_des, -self._hd_zetar_max, self._hd_zetar_max)
-                self._s_dot_des.append(s_dot_des)
-            else:
-                self._s_dot_des.append(s_dot_meas)            # off: h_d uses measured rate
             # no back-mapped ds_d in combined mode (h_d uses s_dot_meas directly)
             self._ds_d.append(np.zeros(N_DIM))
             return
@@ -1064,9 +1032,7 @@ class Controller(Thread):
                 h_d_ff = (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
             h_d_noS = rot + h_d_ff
             self._h_d_noS.append(h_d_noS)
-            # h_d carries the DESIRED feature rate (PLASMC_HD_ZETAR on) or the measured rate (off);
-            # the measured side of h_e = h - h_d comes from h itself, so no blend is needed.
-            self._h_d.append(np.concatenate([self._s_dot_des[-1], [0.0]]) + h_d_noS)
+            self._h_d.append(np.concatenate([self._s_dot_meas[-1], [0.0]]) + h_d_noS)
         elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
             # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
@@ -1629,44 +1595,12 @@ class Controller(Thread):
 
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
-        foc = np.asarray(self._img_node.focal, float)            # [fx, fy]
-        funnel_mode = self._funnel_mode
-        if funnel_mode in ("cone0", "cbf1"):
-            # === L_omega camera-plane CBF (docs/CBF_visibility.pdf), per-cycle steps ===
-            # The tilt->feature coupling is the rotational interaction matrix L_omega at
-            # the MEASURED camera image point (tangent units) — exact, depth-free, no
-            # virtual frame. The headroom is the binding-axis margin / ||L_omega row||.
-            tau = float(os.environ.get("CBF_TAU", "0.3")) if funnel_mode == "cbf1" else 0.0
-            theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
-                                   self._theta_cap))   # d_min fallback; overwritten below if cr available
-            try:
-                rc = np.asarray(self._img_node._feature_pts[-1][1], float)   # (N,2) u-v
-                ct = (rc - np.asarray(self._img_node.center, float)) / foc    # corners, tangent
-                cr = ct.mean(0)                                              # (step 2) ^C r_hat centroid
-                delta = 0.5 * (ct.max(0) - ct.min(0))                        # visible-set half-extent
-                x, y = float(cr[0]), float(cr[1])
-                L_w = np.array([[x * y, -(1.0 + x * x)], [1.0 + y * y, -x * y]])   # (step 3) L_omega
-                d = np.zeros(2); ddelta = 0.0
-                if funnel_mode == "cbf1" and len(self._dt) > 0 and self._dt[-1] > 1e-6 \
-                        and getattr(self, "_lw_cr_prev", None) is not None:
-                    # (step 3) exogenous drift d = cr_dot_obs - L_omega @ omega_rp (strip our tilt)
-                    w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
-                    d_raw = (cr - self._lw_cr_prev) / self._dt[-1] - L_w @ w_rp
-                    ema = float(os.environ.get("CBF_DMIN_EMA", "0.3"))
-                    self._lw_d = (1 - ema) * getattr(self, "_lw_d", np.zeros(2)) + ema * d_raw
-                    d = self._lw_d
-                    ddelta = max((float(np.linalg.norm(delta)) - getattr(self, "_lw_dprev",
-                                  float(np.linalg.norm(delta)))) / self._dt[-1], 0.0)
-                self._lw_cr_prev = cr.copy(); self._lw_dprev = float(np.linalg.norm(delta))
-                # (step 4) predicted margin m = phi_max - |cr + tau*d| - delta - tau*ddelta
-                m = np.maximum(np.asarray(self._p_10, float) - np.abs(cr + tau * d) - delta - tau * ddelta, 0.0)
-                headroom = float(np.min(m / (np.linalg.norm(L_w, axis=1) + 1e-9)))   # rad
-                theta_cone = float(min(theta_current + headroom, self._theta_cap))
-            except (IndexError, AttributeError, ValueError, TypeError):
-                pass   # keep the d_min fallback above
-        else:
-            theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
-                                   self._theta_cap))
+        # Visibility tilt-cone headroom = current tilt + how far we can still tilt
+        # before the nearest marker corner exits the FoV envelope, capped at theta_cap.
+        # This is the cbf2 Phase-2 fallback cone (the exact camera-frame theta-QP below
+        # refines it when corners are available).
+        theta_cone = float(min(theta_current + np.arctan(d_min_fov / focal_px),
+                               self._theta_cap))
         # θ_cone floor — RESTORED 2026-06-03 (removed by the 14:20 refactor; second
         # refactor regression after DH_D_MAX). The d_min collapse logic assumes
         # tilt moves the marker OUT of the image, but tilting toward the marker
@@ -1702,62 +1636,34 @@ class Controller(Thread):
         if _lpf_before and len(self._I_a) > 0 and len(self._dt) > 0:
             _a = self._tau_ia / (self._tau_ia + self._dt[-1])
             I_a = _a * self._I_a[-1] + (1.0 - _a) * I_a
-        # FUNNEL_MODE selects how the lateral accel is constrained for visibility.
-        #   "cone" (default): MATLAB magnitude clamp (two-sided ball on ‖a_xy‖; strangles recovery).
-        #   "cone0"/"cbf1": directional clamp w/ the L_omega headroom above (lean-magnitude form).
-        #   "cbf2": exact camera-frame theta-QP (image-axis tilt; retires the lean approximation).
+        # Visibility constraint = exact camera-frame theta-QP (docs/CBF_visibility.pdf —
+        # the literal QP). Extracted verbatim into cbf_visibility.cbf2_filter so the
+        # offline validators (tools/validate_cbf.py, tools/replay_cbf.py) run the EXACT
+        # live code path. The barrier, two-phase δ, and Phase-2 fallback all live there;
+        # this site only marshals the controller state into pure args.
         self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path
-        if funnel_mode == "cbf2":
-            # === Exact camera-frame theta-QP (docs/CBF_visibility.pdf — the literal QP) ===
-            # Extracted verbatim into cbf_visibility.cbf2_filter so the offline
-            # validators (tools/validate_cbf.py, tools/replay_cbf.py) run the EXACT
-            # live code path. The barrier, two-phase δ, and Phase-2 fallback all live
-            # there; this site only marshals the controller state into pure args.
-            try:
-                corners = self._img_node._feature_pts[-1][1]
-            except (IndexError, AttributeError, TypeError):
-                corners = None
-            dt_last = self._dt[-1] if len(self._dt) > 0 else None
-            w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
-            I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
-                I_a, R, R33, yaw_c, corners,
-                self._img_node.center, self._img_node.focal,
-                self._p_10, theta_cone,
-                dt_last, w_rp, self._cbf_state)
-            # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
-            # it is a thrust-deliverability bound, not a visibility constraint. The CBF
-            # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
-            # single scale clips both consistently (|I_a[:2]| = a_z·|th_safe|).
-            if self._theta_safe is not None:
-                _tn = float(np.linalg.norm(self._theta_safe))
-                if _tn > self._theta_cap:
-                    _scl = self._theta_cap / _tn
-                    self._theta_safe = self._theta_safe * _scl
-                    I_a[:2] = I_a[:2] * _scl
-                theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
-        else:
-            a_xy_lim = abs(I_a[2]) * np.tan(theta_cone)
-            t_hat = None
-            if funnel_mode in ("cone0", "cbf1") and len(self._s) > 0:
-                s_xy = np.asarray(self._s[-1][:2], float)
-                s_n = float(np.linalg.norm(s_xy))
-                if s_n > 1e-6:
-                    v = s_xy / s_n
-                    # image->inertial toward-target map (SIGN-CAL gate; default validated cos.I_a=0.84)
-                    if os.environ.get("CONE0_SWAP", "0") == "1":
-                        v = v[::-1]
-                    v = v * np.array([float(os.environ.get("CONE0_SIGN_X", "1.0")),
-                                      float(os.environ.get("CONE0_SIGN_Y", "1.0"))])
-                    cz, sz = np.cos(yaw_c), np.sin(yaw_c)
-                    t_hat = np.array([cz * v[0] - sz * v[1], sz * v[0] + cz * v[1]])  # Rz(yaw)·v
-            if t_hat is not None:
-                a_par = float(I_a[:2] @ t_hat)        # >0 = toward marker (free)
-                if a_par < -a_xy_lim:                 # outward faster than allowed
-                    I_a[:2] = I_a[:2] + (-a_xy_lim - a_par) * t_hat
-            else:
-                a_xy_n = np.linalg.norm(I_a[:2])      # magnitude clamp (cone / fallback)
-                if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
-                    I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
+        try:
+            corners = self._img_node._feature_pts[-1][1]
+        except (IndexError, AttributeError, TypeError):
+            corners = None
+        dt_last = self._dt[-1] if len(self._dt) > 0 else None
+        w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+        I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
+            I_a, R, R33, yaw_c, corners,
+            self._img_node.center, self._img_node.focal,
+            self._p_10, theta_cone,
+            dt_last, w_rp, self._cbf_state)
+        # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
+        # it is a thrust-deliverability bound, not a visibility constraint. The CBF
+        # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
+        # single scale clips both consistently (|I_a[:2]| = a_z·|th_safe|).
+        if self._theta_safe is not None:
+            _tn = float(np.linalg.norm(self._theta_safe))
+            if _tn > self._theta_cap:
+                _scl = self._theta_cap / _tn
+                self._theta_safe = self._theta_safe * _scl
+                I_a[:2] = I_a[:2] * _scl
+            theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
         I_a[2] = max(I_a[2], -50.0)
 
         # log FoV diagnostics
@@ -1966,7 +1872,6 @@ class Controller(Thread):
             # FoV / LPF
             "theta_cap_deg": np.rad2deg(self._theta_cap),
             "theta_floor_deg": np.rad2deg(self._theta_floor),
-            "funnel_mode": self._funnel_mode,
             "rho_fov_0": self._rho_fov_0,
             "rho_fov_inf": self._rho_fov_inf,
             "l_fov": self._l_fov,
