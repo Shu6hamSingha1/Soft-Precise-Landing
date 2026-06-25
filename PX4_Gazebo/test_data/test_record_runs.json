@@ -1,6 +1,6 @@
 {
  "n_configs": 276,
- "n_reps": 3043,
+ "n_reps": 3137,
  "n_SP": 18,
  "configs": [
   {
@@ -95,20 +95,20 @@
   {
    "config": "Landing_Test",
    "date": "2026-06-05",
-   "n": 1130,
+   "n": 1177,
    "SP": 1,
    "TL": 356,
    "near_SP": 0,
-   "catastrophic": 526,
-   "xy_med": 3.426,
+   "catastrophic": 552,
+   "xy_med": 3.144,
    "xy_min": 0.0,
-   "vel_med": 2.363,
+   "vel_med": 2.258,
    "cats": {
-    "CATASTROPHIC": 526,
+    "CATASTROPHIC": 552,
     "TARGET_LOST": 356,
     "SOFT_only": 19,
-    "POOR": 167,
-    "MOD_PRECISE": 59,
+    "MOD_PRECISE": 65,
+    "POOR": 182,
     "SP": 1,
     "PRECISE_only": 2
    }
@@ -1270,19 +1270,19 @@
   {
    "config": "ICValidation",
    "date": "2026-06-12",
-   "n": 290,
+   "n": 337,
    "SP": 0,
    "TL": 54,
    "near_SP": 0,
-   "catastrophic": 101,
-   "xy_med": 1.145,
+   "catastrophic": 127,
+   "xy_med": 1.173,
    "xy_min": 0.062,
-   "vel_med": 1.405,
+   "vel_med": 1.321,
    "cats": {
     "TARGET_LOST": 54,
-    "MOD_PRECISE": 41,
-    "POOR": 85,
-    "CATASTROPHIC": 101,
+    "MOD_PRECISE": 47,
+    "POOR": 100,
+    "CATASTROPHIC": 127,
     "SOFT_only": 8,
     "PRECISE_only": 1
    }
