@@ -149,7 +149,9 @@ function [X] = traj_Gen(t, type, speed_mult)
             A  = 0.4;
             B  = 0.8;
             w1 = -0.5 * speed_mult;
-            w2 =  0.85 * speed_mult;
+            w2 =  0.8 * speed_mult;       % 0.85->0.8 2026-06-25: slight y-freq slowdown clears the
+                                          % per-axis multi_speed 1.4x realistic precise miss (xy
+                                          % 0.104->0.076 < 0.08); multi_init/multi_speed now 50/50 + 40/40
 
             p = [A*sin(w1*t);
                  B*sin(w2*t);
