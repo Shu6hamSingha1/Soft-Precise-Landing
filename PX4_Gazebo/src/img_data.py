@@ -116,6 +116,11 @@ class IMG_PROCESSOR(Thread):
         # Hx 0.63 Hy 0.62 — vs the nested-board single-marker collapse 0.07 (the large marker
         # escapes the rank-deficiency). The BOARD cal (multi-marker world) is preserved in
         # src/img_data.py.pre_singlemarker_cal_bak + git history.
+        # ⚠ h_x/h_y rows (0,1) are a DEGENERACY-RECOMBINATION: h_x = .86*h_x_raw + .87*w_y_raw,
+        # h_y = .79*h_y_raw - .78*w_x_raw — they fold the split-off raw w_xy back into h_xy (the
+        # FULL-solve fix for the h_xy/w_xy degeneracy, done at the cal stage). With FLOW_LAT_REDUCED
+        # the solve drops w_xy (w_xy=0) so these cross-terms go INERT -> h_xy under-reads ~3x. The
+        # reduced solve needs these rows RE-DERIVED to ~DIAGONAL (output-cal w/ FLOW_LAT_REDUCED=1).
         self._sensor_cal_hw = np.array([
             [+0.8587, -0.0378, +0.0136, +0.0346, +0.8656, +0.0066],
             [+0.0128, +0.7865, -0.0570, -0.7819, +0.0155, +0.0081],
@@ -411,6 +416,29 @@ class IMG_PROCESSOR(Thread):
         # gain over full 8×6 (lateral is strong either way) → cleanliness/conditioning, not a win.
         # Only acts with FLOW_LOOM_DECOUPLE=1. Default-off.
         self._loom_drop_col = os.environ.get("FLOW_LSTSQ_DROP_LOOM_COL", "0") == "1"
+        # REDUCED LATERAL SOLVE (FLOW_LAT_REDUCED, default-off; 2026-06-25). The lateral
+        # translation h_xy and the tilt w_xy occupy the SAME pixel-motion subspace — the
+        # principal angle between A's [h_x,h_y] and [w_x,w_y] column spans is only ~0.4° — so in
+        # the full 8×6 lstsq h_xy is the σ_min mode and per-corner LK jitter is amplified into it
+        # (the corr-vs-GT 0.1-0.66 noise floor; SVD: cond 14, lateral noise gain ~146). Since the
+        # V-frame is gravity-leveled, a LEVEL target has rotational flow w_xy≈0 (drone tilt
+        # leveled out, no target tilt) → DROP the w_xy columns: h_xy becomes the LARGEST-σ mode
+        # (cond 14→2, lateral noise gain 146→0.71, ~200× cleaner). Gated on FLOW_TARGET_LEVEL
+        # (default-on): a TILTING target (ship deck) has real w_xy that is NOT zero and NOT in the
+        # IMU, and dropping it mis-reads target tilt as phantom h_xy → set FLOW_TARGET_LEVEL=0 for
+        # the full-solve fallback. Target yaw/translation are fine either way (w_z is orthogonal,
+        # 90°; h_xy is the relative velocity). h_z still from the moment loom (FLOW_LOOM_DECOUPLE).
+        # BAKED default-ON 2026-06-25 (offline-validated: lateral corr-vs-GT 0.2-0.3 -> 0.5-0.65).
+        # ⚠ HARD PREREQUISITE FOR PRODUCTION: the sensor_cal_hw h_x/h_y rows below are a
+        # DEGENERACY-RECOMBINATION (h_x_cal = 0.86*h_x_raw + 0.87*w_y_raw ; h_y likewise with w_x)
+        # tuned for the FULL solve — they fold the split-off raw w_xy back into h_xy. The reduced
+        # solve ZEROS w_xy, so those cross-terms go inert and the calibrated h_xy MIS-SCALES
+        # (~3x under-read). So perception-on REQUIRES a PAIRED RECAL first: re-run output-cal with
+        # FLOW_LAT_REDUCED=1 -> the h_x/h_y cal rows become ~DIAGONAL (no w_xy cross-terms).
+        # GT-FB is UNAFFECTED (controller consumes GT, not perception). Set FLOW_LAT_REDUCED=0 for
+        # the old full solve. (feedback_lateral_flow_reduced_solve + the cal-coupling note.)
+        self._lat_reduced  = os.environ.get("FLOW_LAT_REDUCED", "1") == "1"
+        self._target_level = os.environ.get("FLOW_TARGET_LEVEL", "1") == "1"
         # FLOW_LOOM_GAIN=1.0 (2026-06-19): offline RMSE-fit gave 1.15, but the MATLAB
         # CLOSED-LOOP suite ([[project_moment_loom]]) shows gain>1.0 HURTS (1.0→95, 1.1→91,
         # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
@@ -1274,7 +1302,17 @@ class IMG_PROCESSOR(Thread):
 
                 # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
                 # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
-                if self._loom_decouple and self._loom_drop_col:
+                if self._lat_reduced and self._target_level:
+                    # REDUCED 4-DOF lateral solve: drop the w_xy columns (3,4). h_xy is the σ_min
+                    # mode of the full 8×6 (degenerate with tilt w_xy, 0.4°) → noise-amplified;
+                    # dropping w_xy makes it the LARGEST-σ mode (cond 14→2). w_xy set 0 (V-frame
+                    # leveled + level target; controller zeros it anyway), h_z overridden by the
+                    # moment loom below. Tilting-target fallback = FLOW_TARGET_LEVEL=0 (full solve).
+                    A4 = np.delete(A, [3, 4], axis=1)             # keep [h_x, h_y, h_z, w_z]
+                    V4, residuals, rank, sv = np.linalg.lstsq(A4, Y, rcond=self._flow_lstsq_rcond)
+                    V_v = np.array([V4[0], V4[1], V4[2], 0.0, 0.0, V4[3]])
+                    _min_rank = 4
+                elif self._loom_decouple and self._loom_drop_col:
                     # 8×5 reduced-pinv: drop the loom column (idx 2); loom from the moment override.
                     A5 = np.delete(A, 2, axis=1)
                     V5, residuals, rank, sv = np.linalg.lstsq(A5, Y, rcond=self._flow_lstsq_rcond)
