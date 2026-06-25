@@ -31,11 +31,20 @@ P.Xi_r   = diag([0.10, 0.10]);          % Xi_r     funnel contraction rate
 
 % ---- Optic-flow funnel  (tex eq. PPC on h_e; p_h(t)) ---------------------------
 P.p_h0   = [25.0; 25.0; 4.0];           % p_{h0}    initial half-width  (code p_20)
-P.p_hinf = [0.5;  0.5;  1.5];           % p_{h,inf} terminal floor (lateral 0.5 = chase-lag lever)
+P.p_hinf = [1.0;  1.0;  1.5];           % p_{h,inf} terminal floor. Lateral 0.5->1.0 baked 2026-06-25:
+                                        % LOOSER feature funnel reduces terminal y-chase-lag on the fast
+                                        % Lissajous axis (tighter funnel over-constrained -> worse). Pairs
+                                        % with chi_r 2.0 -> Lissajous 1.4x xy 0.0758->0.0654, 45/45 held
 P.Xi_h   = diag([0.2, 0.2, 0.2]);       % Xi_h      contraction rate    (code gamma_2)
 
 % ---- Combined sliding surface  sigma = zeta_h + chi*zeta_aug  (tex eq. sliding) -
-P.chi_r = [1.15; 1.15];                 % lateral surface gain (PD: zeta_h + chi_r*zeta_r). Baked 0.85->1.15 (2026-06-20): drives terminal lateral barrier harder -> clears the Sinusoidal +40% precision edge for FULL +/-40% guaranteed, keeps 25/25; 1.2 regresses Liss-IC3 (upper edge)
+P.chi_r = [2.0; 2.0];                   % lateral surface gain (PD: zeta_h + chi_r*zeta_r). 1.15->2.0 baked
+                                        % 2026-06-25: drives terminal lateral barrier harder to kill the
+                                        % per-axis terminal y-chase-lag (the standing lateral limit, proof
+                                        % S6). With p_hinf 1.0 + per-axis: Lissajous 1.4x 0.0758->0.0654 at
+                                        % ORIGINAL w2=0.85 (removes the w2 0.8 trim), 45/45 held, multi_init
+                                        % worst xy improved 0.041->0.034. (Old "1.2 regresses Liss-IC3"
+                                        % warning was scalar-theta/w2=0.85 era; stale under per-axis+p_hinf)
 P.chi_z = 0.1;                          % descent surface gain (PI: zeta_h3 + chi_z*int zeta_h3). 0.025->0.1 baked 2026-06-20: stronger descent integral drives h_ez->0 (loom regulated to h_rd -> constant area rate, no dPdt ramp) -> kills the terminal 1/z fly-away. Fly-aways -91% (35->3/300), SP 87->97%, full gate. (the integral GAIN matters, not the izeta clamp)
 
 % ---- Leakage ASMC  (tex eq. adaptive control law + adaptive law) ---------------
