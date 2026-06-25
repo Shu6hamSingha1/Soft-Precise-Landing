@@ -19,6 +19,11 @@ addpath(fullfile(mfile_dir, '..', 'Common'));
 addpath(fullfile(mfile_dir, 'plotters'));
 clear mfile_dir;
 
+% Results config: per-axis regressor-norm theta ON (current formulation). Set AFTER
+% the clc;clear above so it survives into run_simulation -> vdf_params (VDF_OVERRIDE).
+global VDF_OVERRIDE       %#ok<GVMIS>
+VDF_OVERRIDE.theta_per_axis = true;
+
 trajList = ["Static", "Linear", "Sinusoidal", "Lissajous", "Circular"];
 
 % Global target-speed multiplier for moving trajectories. Static ignores it.

@@ -76,7 +76,9 @@ function [X] = traj_Gen(t, type, speed_mult)
         case "Circular"
 
             r  = 0.5;                      % rescaled to match prior 5/5 multi-init baseline
-            wz = 0.4 * speed_mult;         % backed off from 0.5: r*wz^2 centripetal broke Run 5
+            wz = 0.48 * speed_mult;        % baked 0.4->0.48 (1.2x base) 2026-06-25: per-axis-theta
+                                           % stress search held 25/25 SP across the +-40% speed sweep
+                                           % (wz 0.288-0.672, i.e. speed_mult 0.6-1.4) at nominal noise
 
             A_z = 0.2;                     % heave amplitude [m]  (Lin 2022)
             w_hz = 0.5;                    % heave angular freq [rad/s]

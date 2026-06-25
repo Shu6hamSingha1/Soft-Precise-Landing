@@ -24,6 +24,11 @@ addpath(fullfile(mfile_dir, '..', 'Common'));
 addpath(fullfile(mfile_dir, 'plotters'));
 clear mfile_dir;
 
+% Results config: per-axis regressor-norm theta ON (current formulation). Set AFTER
+% the clc;clear above so it survives into run_simulation -> vdf_params (VDF_OVERRIDE).
+global VDF_OVERRIDE       %#ok<GVMIS>
+VDF_OVERRIDE.theta_per_axis = true;
+
 trajList = ["Linear", "Sinusoidal", "Lissajous", "Circular"];
 mults    = [0.6, 0.8, 1.0, 1.2, 1.4];
 
