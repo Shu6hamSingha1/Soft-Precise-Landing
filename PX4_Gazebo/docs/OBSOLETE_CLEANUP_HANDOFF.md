@@ -22,7 +22,13 @@ Pick up here in the new chat.
   (gates), Test_Videos, RingFlow/SenFunnel, anything ≥06-21 (live single-marker /
   moment-loom / GT-feedback thread), + the 2 fix-validation dirs above.
 
-## Phase 1 — dir-level (READY, 101 dirs / 2.46 GB / 489 reps: 76 bug-era + 25 falsified)
+## Phase 1 — dir-level (✅ DONE 2026-06-26, commit 0dbbd51 pushed)
+101 dirs / 2.46 GB / 489 reps (76 bug-era + 25 falsified) archived to
+`~/spl_obsolete_archive/obsolete_bugera_nc_falsified.tar.gz` (980 MB, 101 roots verified)
+then deleted; records re-scanned (configs 175, genuine SP unchanged 16+2 frozen) and pushed.
+KEPT `VdfGains_IC2_manuscript` + `VdfBake_IC2_combined` (confirmed on disk). Original plan below.
+
+### (original Phase 1 plan — 101 dirs / 2.46 GB / 489 reps: 76 bug-era + 25 falsified)
 Manifest: `test_data/OBSOLETE_MANIFEST.tsv` (rebuild via `tools/build_obsolete_manifest.py`).
 ```bash
 cd ~/Soft-Precise-Landing/PX4_Gazebo

@@ -1,6 +1,6 @@
 ---
 name: project_obsolete_cleanup
-description: "⭐ IN-PROGRESS handoff: removing obsolete test_data (combined-barrier gain-parity-bug era + NC-falsified). Phase-1 manifest+executor READY (101 dirs/2.46GB, NOTHING deleted yet); Phase-2 Landing_Test rep-prune TODO. Full plan in PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md"
+description: "⭐ Obsolete test_data cleanup (combined-barrier gain-parity-bug era + NC-falsified). Phase-1 DONE 2026-06-26 (101 dirs/2.46GB archived+deleted, commit 0dbbd51 pushed); Phase-2 Landing_Test rep-prune STILL TODO. Full plan in PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md"
 metadata: 
   node_type: memory
   type: project
