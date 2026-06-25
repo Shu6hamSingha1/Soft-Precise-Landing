@@ -116,14 +116,17 @@ class IMG_PROCESSOR(Thread):
         # Hx 0.63 Hy 0.62 — vs the nested-board single-marker collapse 0.07 (the large marker
         # escapes the rank-deficiency). The BOARD cal (multi-marker world) is preserved in
         # src/img_data.py.pre_singlemarker_cal_bak + git history.
-        # ⚠ h_x/h_y rows (0,1) are a DEGENERACY-RECOMBINATION: h_x = .86*h_x_raw + .87*w_y_raw,
-        # h_y = .79*h_y_raw - .78*w_x_raw — they fold the split-off raw w_xy back into h_xy (the
-        # FULL-solve fix for the h_xy/w_xy degeneracy, done at the cal stage). With FLOW_LAT_REDUCED
-        # the solve drops w_xy (w_xy=0) so these cross-terms go INERT -> h_xy under-reads ~3x. The
-        # reduced solve needs these rows RE-DERIVED to ~DIAGONAL (output-cal w/ FLOW_LAT_REDUCED=1).
+        # h_x/h_y rows (0,1): DIAGONAL recal for FLOW_LAT_REDUCED — RECAL DONE 2026-06-25 (5
+        # reduced-solve output-cal recordings, std-ratio beta=sigma_GT/sigma_raw, median; w_xy=0
+        # confirmed). The reduced solve separates h_xy from w_xy at the SOLVE stage (drops the w_xy
+        # cols), so the OLD DEGENERACY-RECOMBINATION rows (h_x=.86*h_x_raw+.87*w_y_raw /
+        # h_y=.79*h_y_raw-.78*w_x_raw, which folded the split-off raw w_xy back into h_xy for the
+        # FULL solve) are REPLACED by a pure per-axis scale: beta_x=0.73, beta_y=0.59 (the reduced
+        # raw slightly OVER-reads GT). ⚠ paired with FLOW_LAT_REDUCED=1: set FLOW_LAT_REDUCED=0
+        # (full solve) -> restore the recombination rows from git (pre-commit a081af9).
         self._sensor_cal_hw = np.array([
-            [+0.8587, -0.0378, +0.0136, +0.0346, +0.8656, +0.0066],
-            [+0.0128, +0.7865, -0.0570, -0.7819, +0.0155, +0.0081],
+            [+0.7300, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = beta_x * h_x_raw (reduced-solve diagonal recal)
+            [+0.0000, +0.5900, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = beta_y * h_y_raw
             [-0.1031, -0.0147, +0.5514, +0.0136, -0.1013, +0.0399],   # loom row; control uses the MOMENT loom (FLOW_LOOM_DECOUPLE) so the lstsq h_z cal is secondary
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
