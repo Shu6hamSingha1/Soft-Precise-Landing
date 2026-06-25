@@ -564,18 +564,18 @@ Sweeping the five ICs of Table~\ref{initial conditions: table} against the five 
 
 \begin{table}[!t]
 \centering
-\caption{Multi-initial-condition robustness of VDF-ASMC under the disturbance model of Table~\ref{uav params: table}; each row aggregates the five initial conditions for one target trajectory.}
+\caption{Multi-initial-condition robustness of VDF-ASMC under the disturbance model of Table~\ref{uav params: table}; each row aggregates the five target trajectories for one initial condition.}
 \label{multi init: table}
 \begin{tabular}{lccccc}
 \toprule
-\textbf{Case} & \textbf{Lands} & $\bar{t}_\text{f}$ & $t_\text{f}^{\max}$ & $\bar{r}_{xy,\text{f}}$ & $r_{xy,\text{f}}^{\max}$ \\
+\textbf{IC} & \textbf{Lands} & $\bar{t}_\text{f}$ & $t_\text{f}^{\max}$ & $\bar{r}_{xy,\text{f}}$ & $r_{xy,\text{f}}^{\max}$ \\
               &                & [s]                & [s]                 & [cm]                     & [cm] \\
 \midrule
-1 (Static)     & 5/5 & 9.73 & 10.51 & 0.40 & 0.46 \\
-2 (Linear)     & 5/5 & 9.63 & 10.36 & 0.67 & 0.86 \\
-3 (Sinusoidal) & 5/5 & 9.73 & 10.50 & 1.78 & 2.32 \\
-4 (Lissajous)  & 5/5 & 9.75 & 10.49 & 2.94 & 3.38 \\
-5 (Circular)   & 5/5 & 9.54 & 10.37 & 0.89 & 1.16 \\
+1      & 5/5 & 9.63  & 9.72  & 1.42 & 3.34 \\
+2      & 5/5 & 9.92  & 10.05 & 1.48 & 3.38 \\
+3      & 5/5 & 10.01 & 10.13 & 1.53 & 3.09 \\
+4      & 5/5 & 10.45 & 10.51 & 1.50 & 2.89 \\
+5      & 5/5 & 8.37  & 8.58  & 0.76 & 2.01 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -587,9 +587,9 @@ Sweeping the five ICs of Table~\ref{initial conditions: table} against the five 
     \label{Circular_3D: figure}
 \end{figure}
 
-VDF-ASMC achieves $25/25$ soft-precise landings under the disturbance model, with an aggregate mean landing time of $9.7~\text{s}$ and worst-case horizontal error of $3.38~\text{cm}$. The target-visibility CBF and the implementation safeguards (Appendix~\ref{implementation appendix: section}) hold every tracked feature point inside the FoV, with zero FoV-bound violations across the $25$ runs. Worst-case physical-pixel excursions of $|\,^\mathcal{C}\hat{x}|_{\max}=127$~px and $|\,^\mathcal{C}\hat{y}|_{\max}=109$~px stay within the $\mathcal{R}/2=\pm[160,120]$~px FoV bound, empirically confirming the visibility certificate of Theorem~\ref{thm:visibility}.
+VDF-ASMC achieves $25/25$ soft-precise landings under the disturbance model, with an aggregate mean landing time of $9.68~\text{s}$ and worst-case horizontal error of $3.38~\text{cm}$. The target-visibility CBF and the implementation safeguards (Appendix~\ref{implementation appendix: section}) hold every tracked feature point inside the FoV, with zero FoV-bound violations across the $25$ runs. Worst-case physical-pixel excursions of $|\,^\mathcal{C}\hat{x}|_{\max}=127$~px and $|\,^\mathcal{C}\hat{y}|_{\max}=109$~px stay within the $\mathcal{R}/2=\pm[160,120]$~px FoV bound, empirically confirming the visibility certificate of Theorem~\ref{thm:visibility}.
 
-The five trajectories and the displaced ICs stress the closed loop in distinct modes. Lateral difficulty tracks the target's image-plane excursion rate: the Lissajous Case~4, whose two lateral axes oscillate fastest, gives the largest terminal error of the set at $3.38$~cm, while the static Case~1 gives the smallest at $0.46$~cm; the rotating ship-deck Cases~2 and~5 sit between, their residual deviations reflecting target-rotation phase rather than gain bias. Among the displaced ICs, the diagonal offset IC$_2=[2,2,-5]$~m drives the roll and pitch commands hardest in the first $1$--$2$~s, where the visibility CBF conditions the commanded tilt while $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral chase. The sign-reversed IC$_3=[2,-2,-5]$~m confirms no hidden $y$-axis bias. The high-altitude IC$_4=[2,2,-7]$~m starts the descent highest: the features begin depth-scaled by $5/7$, so the visibility constraint is slack at $t=0$ and the image-position error contracts toward its terminal bound while the UAV still has altitude. The low-altitude IC$_5=[2,2,-3]$~m is the tightest visibility case, the pinhole projection magnifying the lateral offset by $5/3\approx 1.67\times$ to produce the worst-case pixel excursions of the $25$-run set, with the visibility barrier most active in the first $1$--$2$~s and the FoV margin remaining strictly positive throughout. Across the set, landing time follows initial altitude while touchdown error tracks terminal-phase disturbance variance more than initial geometry.
+The four displaced ICs stress the closed loop in distinct modes. IC$_2=[2,2,-5]$~m (diagonal lateral offset) drives the roll and pitch commands hardest in the first $1$--$2$~s, where the visibility CBF conditions the commanded tilt while $\boldsymbol{\kappa}(t)$ rises to absorb the combined lateral chase, producing the largest terminal error of the set at $3.38$~cm; the nominal IC$_1$ stays within a tenth of a centimeter, since the terminal phase is dominated by disturbance variance rather than initial geometry. IC$_3=[2,-2,-5]$~m, the sign-reversed counterpart of IC$_2$ across $y$, lands within $3.09$~cm and confirms no hidden $y$-axis bias, the residual deviations on the rotating Cases~2 and~5 reflecting target-rotation phase rather than gain bias. The high-altitude IC$_4=[2,2,-7]$~m extends the descent the most, to $t_\text{f}^{\max}=10.51$~s: the features start depth-scaled by $5/7$, so the visibility constraint is slack at $t=0$ and the image-position error contracts toward its terminal bound while the UAV still has altitude, holding the terminal error to $2.89$~cm. The low-altitude IC$_5=[2,2,-3]$~m is the tightest visibility case and the fastest to land ($t_\text{f}^{\max}=8.58$~s): the pinhole projection magnifies the lateral offset by $5/3\approx 1.67\times$, producing the worst-case pixel excursions of the $25$-run set, with the visibility barrier most active in the first $1$--$2$~s and the FoV margin remaining strictly positive throughout. Across the five ICs, landing time follows initial altitude while touchdown error tracks terminal-phase disturbance variance more than initial geometry.
 
 The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run on Case~3 (sinusoidal trajectory) are reported in Fig.~\ref{funnel internals: figure}, with the adaptive-gain, sliding-surface, and thrust trajectories in Appendix~\ref{extended results appendix: section} (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}). The run combines a $2.83$-m diagonal lateral offset with oscillatory $x$-axis chase, exercising both the target-visibility CBF and the leakage-type adaptive law.
 
