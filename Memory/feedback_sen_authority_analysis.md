@@ -7,6 +7,8 @@ metadata:
   originSessionId: ce5926b8-f1ea-4718-84c8-9a29e27ac4c6
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The per-term authority analysis correctly motivated moving ζ_r INTO the surface (the baked combined surface gives direct SMC authority); 'real lever stays inner-loop velocity observability' is obsolete. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 Quantified the SEN-funnel outer-loop authority over `s_e_n` (analysis +
 capture_sen_authority.m/analyze_sen_authority2.py, IC5 seed6 breach). Chain:
 `s_e_n → S_s=s_e_n/p_s → ζ_s=log((1+S)/(1−S)) → PID dζ_sd → V_ds_d=G_s⁻¹·dζ_sd + S_s·ṗ_s`.

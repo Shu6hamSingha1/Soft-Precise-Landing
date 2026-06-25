@@ -63,7 +63,9 @@ PY
   printf "%s\t%s\t%s\tYES\t%s\t%s\n" "$ic" "$enu" "$rep" "$m" "$(basename "$dst")" >> "$SUMMARY"
 }
 
-for ic in IC1 IC2 IC3 IC4 IC5; do
+# IC_LIST env overrides the default set (space-separated, e.g. "IC4" or "IC2 IC4").
+IC_LIST="${IC_LIST:-IC1 IC2 IC3 IC4 IC5}"
+for ic in $IC_LIST; do
   for r in $(seq 1 "$N_REPS"); do run_one "$ic" "$r"; sleep 2; done
 done
 

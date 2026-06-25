@@ -7,6 +7,8 @@ metadata:
   originSessionId: ce5926b8-f1ea-4718-84c8-9a29e27ac4c6
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The literal σ=ζ_h+λζ_s rejection stands, but the blanket 'measurability ≠ actuated, cannot combine' is overturned — the baked σ=ζ_h+χ_r·ζ_r is well-posed because the MEASURED ζ̇_r enters u_eq as feedforward. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **REJECTED 2026-06-15 (user: "your control formulation is wrong, both"):** redefining the
 middle-loop sliding surface as `σ = ζ_h + Λζ_s` (stacking the image-position barrier `ζ_s` onto
 the optic-flow barrier `ζ_h=ζ_2`). WRONG on two counts, both confirmed:

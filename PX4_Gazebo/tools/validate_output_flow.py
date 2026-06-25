@@ -244,6 +244,49 @@ def validate(d):
         print(f"  {LBL[k]}: R2(-V_w)={r_minus:.2f}  R2(+V_w)={r_plus:.2f}{flag}")
 
 
+def loom_validate(d):
+    """LOOM-channel validation (2026-06-22). Validates every loom (h_z) estimator vs GT loom
+    AND checks MARKER-SWITCH continuity — the two metrics this signal actually needs.
+    Context: the board's nested concentric ArUco markers HAND OFF as primary near the deck;
+    the corner pinv/moment loom = d/dt of the corner spread, so a switch (different-size
+    marker) makes the spread jump -> loom SPIKES -> terminal vertical launch. FIXES validated:
+    (a) pure_div (Ring Divergence) now computed in the VIRTUAL plane (was real-image-plane,
+    GT corr ~0); (b) the SIZE-NORMALIZED moment loom (FLOW_LOOM_DECOUPLE, M/sz², marker-size-
+    relative) stays CONTINUOUS across switches (|Δloom| 4.4->0.4) -> vertical launches 5->1/15.
+    Imported by the output-validation notebook."""
+    P = prep(d)
+    img = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
+    n = P['n']; GTl = P['GTi'][:, 2]; Vz = P['Vz_i']
+    pinv   = P['corn_cal'][:, 2]                               # corner pinv loom (or moment if FLOW_LOOM_DECOUPLE)
+    ringvv = P['ring_cal'][:, 2]                               # ring V_v_ring loom (virtual)
+    pdiv   = np.asarray(img.get('Ring Divergence', np.full(n, np.nan)), float)[:n]   # pure_div (now virtual)
+    fused  = P['fused'][:, 2] if P['fused'] is not None else np.full(n, np.nan)
+    ests = [('corner', pinv), ('ring V_v', ringvv), ('pure_div', pdiv), ('EKF', fused)]
+    print(f"=== {P['name']} === (i) LOOM vs GT loom, alt-binned  [corr]")
+    for hi, lo in [(3.0, 1.0), (1.0, 0.5), (0.5, 0.2)]:
+        m = (Vz <= hi) & (Vz > lo) & np.isfinite(GTl)
+        row = f"  {hi:.1f}-{lo:.1f}m n={int(m.sum()):>4}: "
+        for nm, e in ests:
+            mm = m & np.isfinite(e)
+            row += f"{nm} {(np.corrcoef(e[mm], GTl[mm])[0,1] if (mm.sum()>8 and np.std(e[mm])>1e-6) else np.nan):+.2f}  "
+        print(row)
+    # (ii) MARKER-SWITCH continuity: switch = large 1-frame jump in the corner 2nd-moment
+    # M (de-rotated Virtual Feature Pts spread). A switch-robust loom has small |Δloom| there.
+    vfp = np.asarray(img.get('Virtual Feature Pts', []), float)
+    if vfp.ndim == 4 and len(vfp) >= n:
+        M = np.array([np.mean(np.sum((vfp[i, 1] - vfp[i, 1].mean(0))**2, 1))
+                      if np.isfinite(vfp[i, 1]).all() else np.nan for i in range(n)])
+        dM = np.abs(np.diff(np.log(np.where(M > 1e-9, M, np.nan))))
+        sw = np.where(dM > 0.3)[0]
+        print(f"\n  (ii) MARKER-SWITCH loom continuity  (n_switch={len(sw)}): |Δloom| at switches [lower=continuous, switch-robust]")
+        for nm, e in [('corner', pinv), ('pure_div', pdiv), ('EKF', fused)]:
+            de = np.abs(np.diff(e)); j = de[sw[sw < len(de)]]; j = j[np.isfinite(j)]
+            if len(j):
+                print(f"    {nm:>10}: med {np.median(j):.2f}  p90 {np.percentile(j, 90):.2f}  max {j.max():.2f}")
+    else:
+        print("  (ii) no Virtual Feature Pts logged -> switch-continuity check skipped")
+
+
 def cross_validate_ring(glob_pat='calibration_data/output/*/', K=15):
     """GT-FREE ring-cal cross-validation (folded in from compare_ring_corner_cal).
     On block-denoised (K) data: (1) ring tracking survival, (2) ring_raw↔corner_raw

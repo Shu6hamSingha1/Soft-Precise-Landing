@@ -1,11 +1,13 @@
 ---
 name: project_stacked_barrier_backstepping
-description: "New middle-loop design — incorporate position barrier ζ_r into the sliding surface alongside ζ_h (σ=ζ_h+χ_r·ζ_r); replaces the authority-deficient outer PID. Writeup in Drafts, .tex/code pending"
+description: "New middle-loop design — incorporate position barrier ζ_r into the sliding surface alongside ζ_h (σ=ζ_h+χ_r·ζ_r); replaces the authority-deficient outer PID. Writeup in Drafts, implemented: combined surface baked default-on in PX4 (validated in MATLAB)"
 metadata: 
   node_type: memory
   type: project
   originSessionId: ce5926b8-f1ea-4718-84c8-9a29e27ac4c6
 ---
+
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: STATUS ONLY — the design/Lyapunov math here is valid and is now IMPLEMENTED: the combined surface is baked default-on in PX4 and validated in MATLAB; the 'code pending / .tex pending / Code NOT yet changed' status lines are stale. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
 
 **New formulation (2026-06-16): incorporate ζ_r into the sliding surface with ζ_h.** Naming:
 `_r`=feature (normalized image-point error r̄_e) control, `_h`=optic-flow control. Full writeup:

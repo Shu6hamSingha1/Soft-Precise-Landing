@@ -1,0 +1,9 @@
+GPS - Unreliable near ground
+LiDAR - communication issue
+UWB - radio signal dependency
+Visual data is more accurate
+Stereo camera - 
+Monocular camera - 
+s is a function of 1/z. Convergence of s to s_d is difficult during landing
+[x] has altitude-based adaptive law to compensate for this.
+In our control formulation, we use high proportional gain to ensure convergence of s and hence, faster convergence of r wrt to z. Additionally, we have lateral acceleration clamp which is triggered by exponentially decaying target image funnel, which guarantees target visibility.

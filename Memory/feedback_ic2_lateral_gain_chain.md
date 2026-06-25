@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The outer back-mapped-PID gains tuned here (K_rd/K_ri/XIS/XI2) are no longer in the lateral path (the combined surface drops ds_d); 'architecture not gains / KLT' is obsolete. The methodology (check r=s_e_n/p_s; de-rotation verified correct) endures. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **Thread (user insisted on GAIN tuning, not patches — and was right at every step).** IC=(2,0,5), single runs with the new full-log persistence; each step's diagnosis from the ACTUAL initial-segment data.
 
 ## The four gain defects, in causal order

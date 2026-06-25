@@ -5,6 +5,8 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The decode-fail-on-in-FoV and nan-quat-sentinel observations stand, but the prescribed perception fixes (KLT corner-track / multi-marker / ArUco tuning / corners-CBF) are obsolete and moot now that fly-aways are eliminated (marker stays in FoV). The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 ## ⭐ 2026-06-10 — QUANTIFIED (12-TL audit) + the κ-runaway link
 Re-categorized **all 12 campaign TLs by the ACTUAL image centroid/corners** (not the virtual): **9/12 had the marker FULLY in-FoV at the loss (4/4 corners in, mostly centered) → ArUco DECODE failure on a visible marker** — confirming this memory's "degraded image-quality, NOT geometric" (line 59), now quantified. Only **3/12 were clips** (≥1 corner out), and 2 of those = the drone had already flown off. **The marker does NOT geometrically leave; the detector freezes on an in-frame marker.**
 - **The nan quaternion in `Img_Data["Quat"]` is the marker-LOST sentinel** (`img_data.py:1007-1008` — `# marker lost: no synced IMU pairing`), NOT an attitude failure (FC telemetry quat valid throughout, norm=1). On detection-fail img_data HOLDS `_feature_pts` + EXTRAPOLATES `_img_feature_param` + logs nan quat (`:1008-1014`).

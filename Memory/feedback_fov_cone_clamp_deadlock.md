@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7faf44bf-c5f1-4b57-a701-f6d868abfdc1
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: Cone clamp already superseded by cbf2; the 'lag→overshoot→clamp→fly-through, needs overshoot-prevention' framing is superseded — the combined surface + lateral velocity damping arrests v_lat before the deck. The design-flaw lesson (a clamp that blocks recovery) endures. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **The FoV cone clamp's d_min collapse is the dominant limiter of terminal precision (2026-06-03 diagnosis).**
 
 **Mechanism:** `theta_cone = min(theta_current + atan(d_min_fov/f), theta_cap)` (controller.py `_attCtrl`). When marker corners approach the rho_fov envelope edge, `d_min_fov → 0` → `theta_cone` collapses to the *current tilt* → `a_xy_lim = |I_a_z|·tan(theta_cone) ≈ 0` → lateral authority gone, **regardless of `theta_cap`** (this is why THETACAP sweeps never helped — the cap only matters when d_min is large).
