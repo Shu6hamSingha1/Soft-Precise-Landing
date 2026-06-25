@@ -7,6 +7,8 @@ metadata:
   originSessionId: dd8920aa-4635-40a9-ac9d-8409e37243d6
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The cal-regime taxonomy and harness/reliability notes are valid; but the campaign conclusions ('Performance ceiling under gain tuning' / 'BINDING FAILURE = stochastic LK collapse, LK dynamic-range ~2 m/s, not gain-tunable' / 'ALL GAIN-SIDE LEVERS EXHAUSTED → next = pyramidal LK') are obsolete — pyramidal-LK is inert and the wall was resolved by the combined surface + velocity damping. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 The PLASMC control-parameter tuning campaign **restarts from zero** under the honest sensor cal (8-run 2026-06-06 `d60973a`+`34917ab`, REFRESHED to all-13 on 2026-06-07). Nothing has been tuned under this cal yet.
 
 **THREE cal regimes (not two) — this dates every historical conclusion:**

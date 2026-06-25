@@ -1,11 +1,13 @@
 ---
 name: feedback_optic_flow_underreports_root
-description: "BINDING ROOT CAUSE (2026-06-08, GT-verified): the optic FLOW under-reports the real velocity — both the lateral flow h_xy (5-25x too low) AND the vertical loom h_z. The controller is BLIND to the drift/descent it must arrest -> lateral drift grows unchecked + descent runs away. This is PERCEPTION (flow estimation), NOT a controller gain — which is why ~30 control-tuning trials never cracked it. Two sub-failures: the corner+ring FUSION EKF over-suppresses the flow (fused output < BOTH raw inputs), and the raw LK flow collapses for fast (>~2 m/s) lateral motion."
+description: "CORRECTED/RETRACTED — flow under-report is NOT the binding root (the body retracts this below: the 2026-06-08 'flow under-reports = PERCEPTION binding root' claim was CAL-CONTAMINATED old-cal-era; with the correct cal, flow tracks GT 73-96%). [Original, now-falsified thesis kept for history:] BINDING ROOT CAUSE (2026-06-08, GT-verified): the optic FLOW under-reports the real velocity — both the lateral flow h_xy (5-25x too low) AND the vertical loom h_z. The controller is BLIND to the drift/descent it must arrest -> lateral drift grows unchecked + descent runs away. This is PERCEPTION (flow estimation), NOT a controller gain — which is why ~30 control-tuning trials never cracked it. Two sub-failures: the corner+ring FUSION EKF over-suppresses the flow (fused output < BOTH raw inputs), and the raw LK flow collapses for fast (>~2 m/s) lateral motion."
 metadata: 
   node_type: memory
   type: feedback
   originSessionId: dd8920aa-4635-40a9-ac9d-8409e37243d6
 ---
+
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: Flow-under-report is NOT the binding root (the body already retracts this: cal-contaminated, flow tracks GT 73-96%). The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
 
 **⚠️ REVISED 2026-06-09 — the "5-25× underreport" was CAL-CONTAMINATED (old broken cal era).**
 

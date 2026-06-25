@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: Old-form Task1/Task2 cascade — under the baked combined surface h_e is DEGENERATE (h_d=measured ṡ → h_e≈0) and cross(w_i,s) is dropped (CH_CLEAN); the resolution was gains (combined surface + VDF + velocity damping), NOT descent-gating. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **The two PLASMC tasks (the soft-precise landing objective decomposed).** Task 1: keep `s_e` inside `p_1` (outer position funnel; barrier `zeta_1` on `r=s_e_n/p_s`). Task 2: keep `h_e=h-h_d` inside `p_2` (middle optical-flow funnel; barrier `zeta_2`=logged `zeta(t)` on `h_e/p`). Both are controller-internal → SKEW-FREE (single clock; do NOT compare to GT via index — see [[feedback_imgdata_gt_clock_skew]]).
 
 ## Measured performance (30 reps: ComboKDXIKP_IC1/IC2 + ICValidation gate)

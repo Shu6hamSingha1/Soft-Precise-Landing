@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The era-by-era historical log is valid AS history; but the present-tense conclusions — theme #10 'current binding limit = stochastic perception / next lever pyramidal LK', the 'Where it stands' open-frontier = code-level perception robustness, and the ~100-170ms lateral-lag 'architectural floor' figure (superseded by the 38ms rate-loop lag) — are obsolete. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 # PX4 PLASMC tuning trajectory (Jun 2–10, 2026)
 
 The **connected timeline** of the whole SITL tuning campaign — what each trial varied, *why* (the hypothesis), and what it achieved. The playbook (methodology, dead-ends, parameter inventory) is the **tune-plasmc skill** (`.claude/skills/tune-plasmc/SKILL.md`); the raw quantitative record is `PX4_Gazebo/test_data/Landing_Test/parameter_record.ods` (4 sheets); the per-decision *why* lives in ~50 `feedback_*`/`project_*` memories, linked inline. This file is the index that orders them into one arc.

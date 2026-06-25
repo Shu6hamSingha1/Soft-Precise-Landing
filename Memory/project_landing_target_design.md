@@ -7,6 +7,8 @@ metadata:
   originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The target-design content (rank-deficiency → board → inner-cluster, calibration) is valid and the multi-marker board remains the current target; but the 2026-06-02 IC2-5 conclusion ('the visual servo CANNOT drive the offset to zero / lag-limited lateral servo, NOT gain tuning / lever = the LAG fix') is obsolete — off-center IC2-5 was resolved by gain-parity + velocity damping. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 PX4/Gazebo landing-target evolution (2026-06-02):
 
 **Root cause of all single-marker issues:** IBVS interaction matrix L is rank-deficient when 4 corners cluster near image center (small normalized x,y). Cols v_x↔ω_y and v_y↔ω_x become parallel/anti-parallel (the x²,y²,xy curvature that distinguishes translation from tilt vanishes). → lateral h_x,h_y and tilt w_x,w_y are noise (R²≈0); h_z (divergence) and w_z (curl) always worked. Every software fix failed (cal magnitudes, sign hacks, IMU prior) because the info wasn't in the image. Off-marker Shi-Tomasi added spread but broke moving-target validity.

@@ -4,8 +4,9 @@
 
 ## TL;DR
 - **The terminal fly-away = a 1/Z positive-feedback loop:** `h_xy = v_lat/Z` → control over-reacts → tilt → lateral accel → `v_lat` grows → bigger `h_xy`. Loop gain ∝ 1/Z, so it always wins as `Z→0` unless `v_lat` is already ~0.
-- **The fix = arrest `v_lat` BEFORE the deck (velocity damping):** engage `ζ_h` (the dormant flow/velocity barrier in `σ_xy = ζ_h + χ_r·ζ_r`) by tightening the lateral flow funnel. **CONFIRMED working** (XI2_xy 0.2→0.5 → GT-FB 4/2/3 → **6/2/2**).
-- **`h_xy` cannot be made to *not* spike** (geometric 1/Z at `Z→0`). The goal is to push the "safe floor" (altitude where the loop triggers) below touchdown. `ζ_h` moved it ~1 m → ~0.15 m. **Metric = safe-floor altitude, NOT `hxy_deck` magnitude.**
+- **The fix = arrest `v_lat` BEFORE the deck (velocity damping):** engage `ζ_h` (the dormant flow/velocity barrier in `σ_xy = ζ_h + χ_r·ζ_r`) by tightening the lateral flow funnel. **CONFIRMED + EXTENDED (2026-06-26):** XI2_xy 0.2→0.5 (6/2/2) → **0.7 + P20_xy=15 → GT-FB IC1-5 n=2 = 10/10 BOUNDED, ZERO fly-aways**; XI2_xy=0.9/P20=10 fixes the high-start IC4 (xy 2.84→1.04).
+- **`h_xy` cannot be made to *not* spike** (geometric 1/Z at `Z→0`). The goal is to push the "safe floor" (altitude where the loop triggers) below touchdown. `ζ_h` moved it ~1 m → **~0.08 m** at XI2_xy=0.7. **Metric = safe-floor altitude, NOT `hxy_deck` magnitude.**
+- **⭐ REFRAME (2026-06-26): the reported `xy_err` is NOT a precision failure.** The controller touches down DEAD-CENTERED (5/10 reps lat 0.005–0.09 m at min-Z, incl. all the "flys"); the 1/Z kick then balloons the landed drone 1–4 m. Score min-Z, not the post-kick endpoint. The genuine residual is the terminal VELOCITY (vlat 0.5–1.5, vz 0–1.3 m/s) ≈ the 38 ms lag. The lateral position problem is SOLVED.
 - **`h_rd` is CONSTANT (−0.42), always.** The `vz = h_rd·Z` taper IS the soft-landing mechanism. Never reference-govern / proximity-gate it.
 
 ## What's baked (current default config)
@@ -19,10 +20,16 @@
 2. **MATLAB gains DON'T transfer to PX4** → [[feedback_matlab_gains_not_portable]]. Porting `vdf_params` (χ_r=2.0, N=0.02, P2INF_xy=1.0, p20_z=4) → **1/2/7 fly** (IC1 centered 18 m, a_u_xy=2M). The 38 ms **lag** leaves a terminal residual χ_r=2.0 over-reacts to. PX4 χ_r=0.5 is the ceiling. Bundle `20260625-191808`.
 3. **s_e_n & h_e boundedness = the SP itself.** Both converge+bounded in descent, both diverge at the deck. `s_e_n=lat/Z` bounded ⟺ `lat→0` (precise); `h_e=v_rel/Z` bounded ⟺ `v_rel→0` (soft). The lag breaks both → they fail *together* (coupled via tilt). → [[feedback_sp_task2_terminal_limit_cycle]], [[feedback_terminal_smc_actuator_wall]].
 
-## NEXT STEPS (in order)
-1. **Tighten `ζ_h` further: `XI2_xy=0.7`** (and/or lower `p_2_0_xy` from 25). Goal: ζ_h share >30%, safe-floor <0.05 m → catch IC4_rep1 (the v_lat-not-arrested fly).
-2. **Trace IC2_rep1** from `20260625-202813`: flew 1.87 with `v_lat` *arrested* to Z=0.11 then a sudden late spike (v_lat 0.04→2.92). NOT a v_lat-arrest failure — likely a woken-κ (N=0.1) terminal transient. Different mechanism; may want `P_xy`↑ (leakage bounds the woken κ) or a κ check.
-3. Once a clean `XI2_xy` gate: **validate n≥5, then perception-ON** (drop `PLASMC_GT_FEEDBACK`), THEN consider baking `XI2_xy`.
+## DONE this round (2026-06-26) — see [[feedback_flow_funnel_zetah_works]] + `project_current_state.md`
+1. ✅ **`XI2_xy=0.7` + `P20_xy=15`** → GT-FB IC1-5 n=2 = **10/10 bounded, 0 fly-aways** (bundle `20260625-213624`). Safe-floor ~0.08 m.
+2. ✅ **`XI2_xy=0.9` + `P20_xy=10`** → fixes the high-start IC4 (mean xy 2.84→1.04; bundle ~`20260625-21xxxx`). rel_vel still ~1.4 (position lever can't touch terminal velocity).
+3. ✅ **IC2_rep1 traced:** NOT a v_lat-arrest failure (v_lat arrested to Z=0.11) — a terminal tilt→GT-flow positive-feedback at Z<0.1 m (κ_x asleep through the clean descent → woke too late; θ 2°→396°). Hypothesis "woken-κ N=0.1 transient" partly confirmed (κ wakes late, not over-woken).
+4. ✅ **Z-funnel A/B (XI2_z=0.6, P2INF_z=0.5; bundle `20260625-235528`):** the combined auto-align HAD loosened p_z (P2INF_z 0.5→1.5, XI2_z 0.6→0.2). Tightening scales `|h_e_z|` down 4× but `h_e_z` rides the funnel at a fixed ~0.6 ratio and does NOT systematically reduce terminal vz + adds mild bounded z-chatter → NOT the soft lever. Terminal vz is lag-set.
+
+## NEXT STEPS (open)
+1. **The terminal lateral kick magnitude** (θ detonates at Z<0.1 m, a_u→1000s) is the irreducible Z→0 residual — the controller is already dead-centered at min-Z, so the lever is likely a **touchdown-disarm / commit gate** (stop commanding through ground contact), NOT more funnel. Check `landing_test.py` scores min-Z vs the post-kick balloon.
+2. **n≥5 confirm of `XI2_xy=0.7`**, then **perception-ON** (drop `PLASMC_GT_FEEDBACK`) — the actual deployment condition — THEN consider baking `XI2_xy`.
+3. Terminal velocity (soft gap) ≈ 38 ms lag → the genuine remaining lever is the uXRCE-DDS rate-path (see [[feedback_dds_lag_fix_blocker]]), not control gains.
 
 ## Reproduce
 ```bash

@@ -6,6 +6,8 @@ metadata:
   type: feedback
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The pyramidal-LK-inert negative result stands, but 'real lever = flow AVAILABILITY / decode-track robustness' is obsolete — the real lever was control (combined surface + lateral velocity damping). The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **Pyramidal LK is NOT the perception lever for the lateral wall.** Tested directly
 (2026-06-19) with a new GT-dynamic-range harness `tools/tune_lk_dynamic_range.py`
 on two IC2 fly-away recordings (`IMG_RECORD_RAW=1`, peak GT lateral speed ~3 m/s,

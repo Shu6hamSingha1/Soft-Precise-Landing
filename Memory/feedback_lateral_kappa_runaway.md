@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The κ-runaway mechanism is valid old-form history, but the prescribed fix (keep marker DECODED / KLT corner-track) and 'binding limit = LK dynamic range ~2 m/s' are obsolete; cross(w_i,s) is also dropped under the baked CH_CLEAN h_d. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **The lateral κ-runaway is a touchdown funnel breach driven by a WRONG `h_d`** — specifically the kinematic feedforward `cross(w_i, s)` evaluated on an **off-screen VIRTUAL centroid**. Root-caused on P_z=8 rep3 (κ_xy=7.26, 21 m TL), GT + data verified 2026-06-10.
 
 **TRIGGER = ArUco detection loss, which PRECEDES the runaway** (loss at 0.80 of flight vs runaway at 0.88). The marker is mostly STILL IN the FoV when ArUco loses it (9/12 TLs had 4/4 corners in-FoV — a **DECODE** failure, not a geometric loss; [[feedback_marker_detection_stale]]). On loss, img_data freezes `_feature_pts` + **extrapolates** the centroid + logs the nan-quat sentinel (img_data:1007-1009); that stale/extrapolated feature (and, in the active phase, the tilt-reprojected one) becomes the off-screen virtual `s`. **Fix the trigger too:** during marker-LOST use genuine data (FC quat + KLT in-FoV corners), never nan+extrapolate `s` off-screen (user directive 2026-06-10).

@@ -7,6 +7,8 @@ metadata:
   originSessionId: a377a083-d63b-447a-908e-12017cf609f1
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The D-term-spike mechanism is valid old-form, but the baked 'K_rd=0 / gamma_s=1.0' defaults + 'outer funnel arrests drift' apply only to the back-mapped lateral path, which is NON-default under the baked combined surface. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **D-term spike mechanism (2026-06-09, fully decomposed).**
 
 Peak ds_d=-29 rad/s breakdown at corner instability event (t=5.15s, rep3 K_rp=9 batch):

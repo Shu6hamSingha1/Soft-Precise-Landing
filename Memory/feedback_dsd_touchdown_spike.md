@@ -7,6 +7,8 @@ metadata:
   originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: The ds_d 1/Z touchdown-spike mechanism relates to the terminal residual, but 'gains cannot break the precision-softness frontier / the genuine lever is the DDS lag fix' is obsolete — the frontier was broken by the combined surface + velocity damping. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 **Per-axis gain investigation of IC1 hard impact (2026-06-02).** User directive: "forget the lag, it's a gain issue — relax individual components."
 
 **Mechanism (solid, per-step diagnosed on the funnel×2 run):** the hard impact is driven by the X-axis **outer-PID desired flow `ds_d_x`**, NOT the measured flow `h_x` (which stays ≤1.1 px throughout — so it is NOT a perception/cal problem). Near touchdown the 1/Z growth makes `s_e_n_x` change fast (0.25→0.95 in 0.4 s) → `ds_e_n_x` spikes → the `K_rd_x` derivative term dominates `ds_d_x` (measured **−18** vs proportional `K_rp·s_e_n`≈8.5). That feeds `h_d` (line ~521) → `h_e = h − h_d` blows past funnel `p` → barrier `ratio=h_e/p` clamps (controller.py:536) → `zeta` saturates at 3.66 → `kappa` runaway → `a_u` explodes → hard touchdown. X explodes first, then z, then y (`kap_x` 0.41→14.9 leads).

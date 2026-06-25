@@ -1,12 +1,19 @@
 ---
 name: feedback_lateral_wall_anti_restoring_au
-description: "⭐ (2026-06-19) The lateral wall is NOT perception in the overshoot regime: on IC1 fly-aways the marker is DECODED 100% during the overshoot ONSET (decode collapses only AFTER the breach, as a consequence) AND the consumed flow tracks GT (ratio 1.0-1.46). So KLT/decode-availability can't fix the overshoot. The control side is a COMMANDED-but-NOT-DELIVERED gap, NOT a clean sign bug: in the WORLD frame the inertial command is weak/mixed (slightly outward in slow reps, INWARD/braking in the faster reps — rep4 I_a -1.46, corr -0.53) yet the drone drifts out. (An image-frame a_u·ŝ_e projection LOOKED 89% anti-restoring but that was a FRAME ARTIFACT — body-accel vs image-feature, camera-down Jacobian sign — corrected by the world-frame I_a-vs-GT check.) Lead candidate = D1 parity gap: a_u→inertial uses the FULL body DCM not rotz(yaw), mis-rotating the leveled command by tilt during the overshoot."
-metadata:
-  node_type: feedback
+description: "⛔ LARGELY SUPERSEDED (2026-06-21): this file's conclusion — lateral wall = a fundamental terminal-1/Z scale-free limit, only tameable by command-bounding (PLASMC_COMMIT_DSD_MAX), and the IC2-5 gate FAILED — is OVERTURNED. The real fix was switching to the COMBINED sliding surface with CORRECT gains (the wall was a gain-parity bug on the OLD back-mapped form: soft-config GAMMA 2.0/KAPPA0 0.5/XI2 0.6 too hot). With the combined surface + VDF-ASMC gains (commit 22cc732) + chi_r=0.5, IC2 lands 4/5 sub-meter, s_e_n->0, only 1/5 stochastic terminal-1/Z. So the terminal-1/Z mechanism is REAL but RESIDUAL (1/5 tail), NOT the binding wall; the back-mapped command-bounding thread (commit-gate/freeze/DSD-cap) is a DEAD-END superseded by the combined surface. STILL VALID below: perception is exonerated for the overshoot (decode 100% during onset, flow tracks GT 1.0-1.46), freeze-s_e_n lies to the controller (don't), and the t=0 transient is NOT the cause (variance is purely terminal). Authoritative state: [[project_current_state]] (2026-06-21) + [[feedback_combined_surface_divergence]]."
+metadata: 
+  node_type: memory
   type: feedback
+  originSessionId: eba9fa95-5b93-4294-bbca-81468bb36670
 ---
 
-**The lateral wall (overshoot regime) is NOT perception; the control gap is delivery, not a sign bug.**
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: Off-center IC2-5 is solved by the combined surface + lateral velocity-damping (10/10 bounded); the listed levers (command-bounding / terminal-commit / widen-funnel) are dead-ends. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/inner-loop-velocity limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on and gives 10/10 bounded landings. The residual is a terminal SOFT velocity kick (≈38ms lag), not a precision wall. See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
+**✅ SUPERSEDING NOTE (2026-06-21): the wall was a GAIN-PARITY BUG, fixed by the COMBINED SURFACE — not a fundamental terminal-1/Z limit.** The long thread below (D1 parity → terminal-1/Z → terminal-commit → freeze → command-bounding DSD-cap → IC2-5 gate FAILED) all operated on the OLD back-mapped form running soft-config gains (GAMMA 2.0, KAPPA0 0.5, XI2 0.6) that are 3–5× too hot. The actual fix: combined sliding surface + VDF-ASMC gains (GAMMA 0.4375/0.5, KAPPA0 0.125, XI2 0.2; commit 22cc732) + chi_r=0.5 → IC2 n=5 **4/5 sub-meter**, only **1/5** stochastic terminal-1/Z. So terminal-1/Z is a real but small residual tail, and the command-bounding levers here are a DEAD-END (don't pursue PLASMC_COMMIT_DSD_MAX / commit-gate / freeze). See [[feedback_combined_surface_divergence]] + [[project_current_state]]. The verified facts below (perception exonerated for overshoot, freeze lies to the controller, variance is purely terminal not t=0) still hold.
+
+---
+
+**[history] The lateral wall (overshoot regime) is NOT perception; the control gap is delivery, not a sign bug.**
 Grounded on the 2026-06-19 IC1 baseline fly-aways (`test_data/Loom_IC1_baseline`, n=5).
 
 **SOLID (verified) — perception is exonerated for the overshoot:**

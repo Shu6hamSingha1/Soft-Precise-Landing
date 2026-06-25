@@ -7,6 +7,8 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⛔ SUPERSEDED/CORRECTED 2026-06-26: One line only — the PERCEPTION_FLOW_FINDINGS.md index entry's 'binding limit is LK dynamic range ~2 m/s (next lever = pyramidal LK)' clause is obsolete; flow-honest-at-altitude is fine to keep. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
+
 # PX4_Gazebo/docs/ — in-repo design & analysis notes
 
 These weren't auto-surfaced before (only `SH_REFERENCE.md` was in CLAUDE.md); now indexed in CLAUDE.md's Project Structure too. They live in the git repo (not my memory dir) because they're project documentation. Check before re-deriving. **Status as of 2026-06-10:**
