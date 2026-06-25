@@ -1,6 +1,6 @@
 ---
 name: project_obsolete_cleanup
-description: "⭐ Obsolete test_data cleanup (combined-barrier gain-parity-bug era + NC-falsified). Phase-1 DONE 2026-06-26 (101 dirs/2.46GB archived+deleted, commit 0dbbd51 pushed); Phase-2 Landing_Test rep-prune STILL TODO. Full plan in PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md"
+description: "✅ Obsolete test_data cleanup COMPLETE 2026-06-26 (combined-barrier gain-parity-bug era + NC-falsified). Phase-1 DONE (101 dirs/2.46GB, 0dbbd51); Phase-2 DONE (Landing_Test 843 reps/4.54GB, 6.3GB→2.2GB, a428b9d+abb74a6). 3.27GB archived to ~/spl_obsolete_archive/, ~5GB reclaimed, genuine SP unchanged (16). Plan in PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md"
 metadata: 
   node_type: memory
   type: project
@@ -22,9 +22,15 @@ no git undo)→verify→delete→re-scan records.
 (980MB, 101 roots verified) then deleted; records re-scanned (configs 175, genuine SP unchanged
 16+2 frozen) + committed+pushed. KEPT (fix-validation): `VdfGains_IC2_manuscript`,
 `VdfBake_IC2_combined` (confirmed surviving on disk).
-**Phase 2 (TODO):** Landing_Test (6.3GB autosave mega-dir, 1177 mixed-era reps) — REP-level
-prune reps dated < the fix cutoff; build a rep manifest, REVIEW, archive+delete, re-scan.
-Most reclaimable GB. Its lone "SP" is frozen-GT false ([[feedback_false_sp_frozen_gt]]).
+**Phase 2 (✅ DONE 2026-06-26, commits a428b9d+abb74a6 pushed):** Landing_Test rep-level prune
+— 843 reps dated < cutoff (Jun 5-16, bug-era/cal-contaminated) archived →
+`~/spl_obsolete_archive/obsolete_landing_test_precutoff.tar.gz` (1.7GB, 843 roots verified) then
+deleted; 381 KEEP reps (Jun 23-26 live thread) retained. **Landing_Test 6.3GB→2.2GB.** Clean
+date gap (no reps Jun 16-23 → no ambiguous-cutoff reps). Genuine SP unchanged (16); removed lone
+SP was frozen-GT false ([[feedback_false_sp_frozen_gt]]). Tools (committed):
+`build_landing_test_manifest.py`, `execute_landing_test_cleanup.py`; manifest force-tracked
+`Landing_Test/LANDING_TEST_MANIFEST.tsv`. **Whole cleanup COMPLETE** (3.27GB archived, ~5GB
+test_data reclaimed).
 
 **PROTECTED (never delete):** CoordDescent (genuine SP), SPCampaign, ICValidation (gates),
 Test_Videos, RingFlow/SenFunnel, everything ≥06-21 (live single-marker/moment-loom/GT-feedback

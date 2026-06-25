@@ -39,7 +39,16 @@ cd ~/Soft-Precise-Landing/PX4_Gazebo
 `execute_obsolete_cleanup.py`: tars all DELETE dirs → verifies listing → `rm -rf` →
 re-runs `build_test_record.py` + `refresh_scan_sheets.py` (records auto-drop them).
 
-## Phase 2 — Landing_Test rep-prune (TODO, ~most of the 6.3 GB)
+## Phase 2 — Landing_Test rep-prune (✅ DONE 2026-06-26, a428b9d + abb74a6 pushed)
+843 reps dated < cutoff (Jun 5-16) archived to
+`~/spl_obsolete_archive/obsolete_landing_test_precutoff.tar.gz` (1.7 GB, 843 roots verified)
+then deleted; 381 KEEP reps (Jun 23-26 live thread) retained. **Landing_Test 6.3 GB → 2.2 GB.**
+Clean date gap (no reps Jun 16-23). Genuine SP unchanged (16); removed lone SP was frozen-GT
+false. Tools: `build_landing_test_manifest.py` + `execute_landing_test_cleanup.py`; manifest
+`Landing_Test/LANDING_TEST_MANIFEST.tsv` (force-tracked). **Whole cleanup COMPLETE.** Original
+plan below.
+
+### (original Phase 2 plan — TODO, ~most of the 6.3 GB)
 `Landing_Test/` is the autosave mega-dir (1177 reps) mixing eras; can't dir-delete.
 Build a **rep-level** manifest + execute, parallel to Phase 1:
 1. New script: walk `test_data/Landing_Test/**/Ground_Truth.npy`; get each rep's datetime
