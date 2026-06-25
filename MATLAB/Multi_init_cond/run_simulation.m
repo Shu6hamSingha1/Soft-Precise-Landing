@@ -84,6 +84,20 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     B_T_cd       = zeros(1, N_steps);
     psi_d_log    = zeros(1, N_steps);
     u_a_log      = zeros(1, N_steps);
+    % --- internals-figure logs (pure logging; do not affect the sim) ---
+    kappa_log     = zeros(3, N_steps);  % adaptive switching gain kappa(t)
+    kappa_a_log   = zeros(1, N_steps);  % yaw adaptive gain kappa_a(t)
+    theta_cone_log= zeros(1, N_steps);  % CBF tilt-cone bound for thrust/accel plot
+    s_e_log       = zeros(2, N_steps);  % lateral centroid feature error s_e_xy (for r_bar_e)
+    p_r_log       = zeros(2, N_steps);  % position (image-feature) funnel envelope p_r(t)
+    p_h_log       = zeros(3, N_steps);  % optic-flow funnel envelope p_h(t)
+    % lumped disturbance reconstruction (tex eq. h_e dot: d_h = h_e_dot - beta*u_h - c_h,
+    % u_h=-a_d=-V_a_cd, beta=1/z). d_bar = beta_min^-1 [beta-1; d_h] formed in the plotter.
+    d_h_log       = zeros(3, N_steps);  % reconstructed optic-flow disturbance d_h(t)
+    beta_log      = zeros(1, N_steps);  % depth scale beta = 1/z(t)
+    v_log         = zeros(3, N_steps);  % regressor first column v(t) (for (Y d_bar)_k per axis)
+    V_h_e_prev    = zeros(3, 1);        % for the h_e finite difference
+    F_wind_I      = zeros(3, 1);        % init (only updated in the NOISE plant branch)
     u_2_buf      = zeros(4, N_steps);
     raw_dw_a     = zeros(3, N_steps + 3);
     V_w_a_prev   = zeros(3,1);
@@ -161,12 +175,12 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         cs.s_e_prev = s_e_xy;
         cs.raw_ds = [cs.raw_ds(:,2:end), raw];
         s_dot_meas = smooth4(cs.raw_ds);
-        [zeta_r, dzeta_r] = blocks.position_funnel(s_e_xy, s_dot_meas, t, P);
+        [zeta_r, dzeta_r, p_r] = blocks.position_funnel(s_e_xy, s_dot_meas, t, P);
         [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_meas, t, P, cs);
         [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
 
         % --- visibility CBF + inner loop ---
-        [I_a_filt, th_safe, ~, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
+        [I_a_filt, th_safe, theta_cone, ~, R33, cs] = blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
         [psi_d, u_a, cs] = blocks.yaw_asmc(V_s(4), V_s_d(4), P, cs);
         [B_tau_cd, T_cd, cs] = blocks.so3_tracker(I_a_filt, th_safe, R33, yaw, psi_d, I_R_C, B_w_c, P, cs);
 
@@ -210,6 +224,22 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         u_a_log(idx)       = u_a;
         D_DS(:,idx)        = [o.V_h_d; Iacd; zeros(3,1); B_tau_cd; T_cd; psi_d; u_a];
         P_DS(:,:,idx)      = [V_nP_i, V_nP_a, C_nP];
+        % internals-figure logs
+        kappa_log(:,idx)    = cs.kappa;
+        kappa_a_log(idx)    = cs.kappa_a;
+        theta_cone_log(idx) = theta_cone;
+        s_e_log(:,idx)      = s_e_xy;
+        p_r_log(:,idx)      = p_r;
+        p_h_log(:,idx)      = o.p_h;
+        % --- lumped disturbance d_h reconstruction (the disturbance kappa rejects) ---
+        z_depth = max(abs(I_p_c(3) - x_t(3,idx)), zf);   % depth above target
+        beta_k  = 1/z_depth;                              % depth scale beta = 1/z
+        V_a_cd  = I_R_V' * (Iacd + P.g);                  % a_d in V frame (asmc: Iacd=I_R_V*V_a_cd-P.g)
+        if idx == 1, he_dot = zeros(3,1); else, he_dot = (o.V_h_e - V_h_e_prev)/dt; end
+        V_h_e_prev      = o.V_h_e;
+        d_h_log(:,idx)  = he_dot + beta_k*V_a_cd - o.c;   % d_h = h_e_dot - beta*u_h - c_h (u_h=-V_a_cd)
+        beta_log(idx)   = beta_k;
+        v_log(:,idx)    = o.v;                            % regressor column (Y=[v|I3])
 
         % --- termination ---
         alt_above = abs(I_p_c(3) - x_t(3,idx));

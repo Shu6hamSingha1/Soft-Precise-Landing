@@ -1,18 +1,25 @@
 """
 Generate publication-quality VDF-ASMC internals plots from Multi_init_cond datasets.
 
+Rebuilt 2026-06-25 for the CURRENT visibility-CBF + combined-barrier architecture
+(the previous version targeted the superseded "Approach 2" funnel-margin / cone-clamp
+design and read fields run_simulation no longer logs: rho_fov_log, p_2, a time-series
+kappa). Now driven by the internals logs added to run_simulation.m:
+  kappa_log, kappa_a_log, theta_cone_log, s_e_log, p_r_log, p_h_log, dist_log.
+
 Outputs PDFs into Figures/generated/:
-  plasmc_funnel_combined.pdf — outer visibility funnel + inner optic-flow funnel
-                               (1x4 figure*; supersedes the standalone outer/inner
-                               plots which were moved to Obsolete/ on 2026-05-07).
-  plasmc_sliding.pdf         — sliding surface sigma per axis
-  plasmc_adaptive_gain.pdf   — kappa(t) and kappa_a(t)
-  plasmc_thrust_accel.pdf    — total thrust + lateral acceleration vs cone bound
+  plasmc_funnel_combined.pdf — image-feature funnel (r_bar_e vs +/-p_r) + optic-flow
+                               funnel (h_e vs +/-p_h) per axis (1x4).
+  plasmc_sliding.pdf         — sliding surface sigma vs boundary layer +/-E.
+  plasmc_adaptive_gain.pdf   — kappa(t) overlaid with the injected disturbance it adapts
+                               against (twin axis) + yaw gain kappa_a(t).
+  plasmc_thrust_accel.pdf    — total thrust + lateral acceleration vs CBF tilt-cone bound.
 
-The standalone plasmc_outer_funnel.pdf and plasmc_inner_funnel.pdf code blocks
-are retained under `if False:` for easy revival.
-
-Representative case: IC2 = [2,2,-5] on Sinusoidal trajectory (index 1, 0-based).
+Representative case: IC2 = [2,2,-5] on Sinusoidal (Case 3) trajectory (index 1, 0-based).
+NOTE for the manuscript: the funnel figure now shows the centroid error r_bar_e in the
+p_r funnel (current theory, manuscript eq. position barrier), NOT the 4 feature points in
+an rho_fov box (old Approach 2). The caption (which still says "four feature points / p_1")
+should be reconciled to "centroid r_bar_e / p_r".
 """
 import os
 import numpy as np
@@ -20,23 +27,15 @@ import scipy.io as sio
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401  (registers 3D projection)
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 plt.rcParams.update({
     "font.family": "serif",
     "font.serif": ["cmr10", "Computer Modern Roman", "DejaVu Serif"],
     "mathtext.fontset": "cm",
     "axes.formatter.use_mathtext": True,
-    "font.size": 9,
-    "axes.labelsize": 9,
-    "axes.titlesize": 10,
-    "legend.fontsize": 8,
-    "xtick.labelsize": 8,
-    "ytick.labelsize": 8,
     "axes.grid": True,
     "grid.alpha": 0.3,
-    "lines.linewidth": 1.2,
+    "lines.linewidth": 1.4,
 })
 
 from pathlib import Path
@@ -51,304 +50,144 @@ d = run.data
 N = int(d.idx) if int(d.idx) > 0 else d.tRange.shape[0]
 t = d.tRange[:N]
 
-# Approach 2 (2026-04-18): outer p_1 funnel replaced by a funnel-margin
-# rectangular box on the four physical corner pixels. The two performance
-# functions are rho_fov_x(t), rho_fov_y(t) (exponentially decreasing).
-rho_fov = d.rho_fov_log[:, :N]   # 2 x N (px)
-corners = d.P_DS[:, 0:4, :N]     # 2 x 4 x N — physical corner pixel coords
 
-# Desired feature points (constant in pixel coordinates), per
-# MATLAB/Multi_init_cond/InitVar.m: V_nP_d = (f/(2*zf)) * V_nP3(1:2,:),
-# evaluated at init (V_nP3 = T_nP3 at t=0).
-V_nP_d = d.V_nP_d                # 2 x 4 (px), constant
-p_2     = d.p_2[:, :N]      # 3 x N
-h_e     = d.V_h_e[:, :N]    # 3 x N (optic-flow tracking error)
-sigma   = d.sigma[:, :N]    # 3 x N
-kappa   = d.kappa[:, :N]    # 3 x N
-kappa_a = d.kappa_a[:N]     # N
-B_T_cd  = d.B_T_cd[:N]      # N (total thrust command, N)
-I_a_cd  = d.I_a_cd[:, :N]   # 3 x N (desired inertial acceleration)
-theta_cone_log = d.theta_cone_log[:N]    # N (cone half-angle time series, rad)
-g_const = 9.81
-m_uav   = float(d.m)
-theta_cap = np.deg2rad(60.0)             # locked Property 1 value
+# --- current internals logs ---
+sigma   = d.sigma[:, :N]          # 3 x N  sliding surface
+kappa   = d.kappa_log[:, :N]      # 3 x N  translational adaptive gain
+kappa_a = d.kappa_a_log[:N]       # N      yaw adaptive gain
+h_e     = d.V_h_e[:, :N]          # 3 x N  optic-flow error
+p_h     = d.p_h_log[:, :N]        # 3 x N  optic-flow funnel envelope
+s_e     = d.s_e_log[:, :N]        # 2 x N  lateral centroid feature error
+p_r     = d.p_r_log[:, :N]        # 2 x N  image-feature funnel envelope
+# per-axis lumped disturbance the adaptive gain rejects:
+#   d_bar = beta_min^-1 [beta-1; d_h];  Y=[v|I3];  (Y d_bar)_k = (v_k(beta-1)+d_h,k)/beta_min
+d_h     = d.d_h_log[:, :N]        # 3 x N  reconstructed optic-flow disturbance
+beta    = d.beta_log[:N]          # N      depth scale 1/z
+v_reg   = d.v_log[:, :N]          # 3 x N  regressor first column
+beta_min = float(beta.min())
+Yd_axis = (v_reg * (beta - 1.0) + d_h) / beta_min     # 3 x N  per-axis (Y d_bar)_k
+from scipy.signal import savgol_filter
+Yd_mag = savgol_filter(np.abs(Yd_axis), 151, 1, axis=1)   # smooth the h_e finite-diff spikes
+B_T_cd  = d.B_T_cd[:N]            # N      total thrust command [N]
+I_a_cd  = d.I_a_cd[:, :N]         # 3 x N  desired inertial acceleration
+theta_cone = d.theta_cone_log[:N] # N      CBF tilt-cone half-angle [rad]
 
-T_max = float(d.T_max)
-T_min = float(d.T_min)
+phi_max = np.ravel(d.P.phi_max)[:2]            # [2] half-FoV tangent units (s-axis order)
+r_bar_e = s_e / phi_max[:, None]               # normalized lateral position error
+E_diag  = np.ravel(d.P.E) if hasattr(d.P, "E") else np.array([1.0, 1.0, 0.5])
+T_max   = float(d.T_max)
+T_min   = float(d.T_min)
 
-# Shared variables consumed by Plot B+ (combined funnel) below.
-# Originally defined inside Plots A and B; hoisted here when those two
-# standalone plots were commented out 2026-05-07.
-t_end = float(t[-1])
-sample_t = [0.0] + list(np.arange(3.0, t_end, 3.0)) + [t_end]
-# Corner colours: C4 (purple) replaces C1 (orange) so corners are visually
-# distinct from the orange funnel envelope.
-corner_colors = ["C0", "C4", "C2", "C3"]
-n_corners = V_nP_d.shape[1]
-t0_f, tF_f = float(t[0]), float(t[-1])
+axis_lbl = [r"$x$", r"$y$", r"$z$"]
 
-# OBSOLETE 2026-05-07: standalone plasmc_outer_funnel.pdf (single 3-D plot)
-# is superseded by plasmc_funnel_combined.pdf which carries the same outer
-# funnel as col 1 of a 1x4 figure*. PDF moved to
-# Obsolete/Soft_Precise_Landing/Figures/generated/. Block kept under
-# `if False:` for easy revival.
-if False:
-    # ---------- Plot A: 3-D visibility funnel + 4 corner trajectories ----------
-    # Funnel walls are the four edges of the rectangle [-rho_x, +rho_x] x
-    # [-rho_y, +rho_y] traced over t. Corner pixel trajectories live inside.
-    # Sampled quadrilaterals (start, every 3 s, end) connect the four corners.
-    fig = plt.figure(figsize=(5.0, 4.5))
-    ax = fig.add_subplot(111, projection="3d")
+# ======================================================================
+# Figure 1: combined funnels (1x4) -- image-feature funnel + optic-flow funnel
+# ======================================================================
+fig, axes = plt.subplots(1, 4, figsize=(18.0, 4.6))
 
-    edge_signs = [(+1, +1), (+1, -1), (-1, +1), (-1, -1)]
-    for idx_e, (su, sv) in enumerate(edge_signs):
-        ax.plot(t, sv * rho_fov[1], su * rho_fov[0],
-                color="orange", lw=0.9, alpha=0.85,
-                label=r"$\boldsymbol{p}_1(t)$" if idx_e == 0 else None)
+# col 1: image-feature funnel -- r_bar_e (2 lateral axes) inside +/-p_r(t)
+ax = axes[0]
+ax.fill_between(t, p_r[0], -p_r[0], color="orange", alpha=0.16,
+                label=r"$\pm\boldsymbol{p}_r(t)$")
+ax.plot(t,  p_r[0], color="orange", lw=1.0)
+ax.plot(t, -p_r[0], color="orange", lw=1.0)
+for k, c in zip(range(2), ["C0", "C2"]):
+    ax.plot(t, r_bar_e[k], color=c, lw=1.4,
+            label=fr"$\bar r_{{\mathrm{{e}},{axis_lbl[k][1]}}}(t)$")
+ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
+ax.set_ylabel(r"$\bar{\boldsymbol{r}}_{\mathrm{e}}(t)$  [FoV units]", fontsize=20, labelpad=4)
+ax.set_title("Image-Feature Funnel", fontsize=20)
+ax.tick_params(labelsize=16)
+ax.locator_params(axis="x", nbins=4)
+ax.legend(loc="upper right", fontsize=13)
 
-    for ts in sample_t:
-        ti = int(np.argmin(np.abs(t - ts)))
-        rx, ry = float(rho_fov[0, ti]), float(rho_fov[1, ti])
-        bx = np.array([-rx, +rx, +rx, -rx, -rx])
-        by = np.array([-ry, -ry, +ry, +ry, -ry])
-        bt = np.full(5, t[ti])
-        ax.plot(bt, by, bx, color="orange", lw=0.8, ls="--", alpha=0.6)
-        cx = np.append(corners[0, :, ti], corners[0, 0, ti])
-        cy = np.append(corners[1, :, ti], corners[1, 0, ti])
-        ct = np.full(5, t[ti])
-        ax.plot(ct, cy, cx, color="C0", lw=1.0, alpha=0.9)
-
-    for k in range(4):
-        ax.plot(t, corners[1, k], corners[0, k],
-                color=corner_colors[k], lw=0.9,
-                label=fr"$\,^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}_{k+1}$")
-
-    t_full = np.array([t[0], t[-1]])
-    for k in range(4):
-        ax.plot(t_full, [V_nP_d[1, k]] * 2, [V_nP_d[0, k]] * 2,
-                color="k", lw=0.8, ls="--", alpha=0.85)
-
-    walls = []
-    for i in range(n_corners):
-        j = (i + 1) % n_corners
-        walls.append([
-            (t0_f, V_nP_d[1, i], V_nP_d[0, i]),
-            (t0_f, V_nP_d[1, j], V_nP_d[0, j]),
-            (tF_f, V_nP_d[1, j], V_nP_d[0, j]),
-            (tF_f, V_nP_d[1, i], V_nP_d[0, i]),
-        ])
-    ax.add_collection3d(Poly3DCollection(
-        walls, facecolor="0.3", alpha=0.08, edgecolor="none"))
-
-    dx = np.append(V_nP_d[0, :], V_nP_d[0, 0])
-    dy = np.append(V_nP_d[1, :], V_nP_d[1, 0])
-    for ts, lbl in [(t[0], r"$\hat{\boldsymbol{r}}_{i,\text{d}}$"),
-                    (t[-1], None)]:
-        dt = np.full(5, ts)
-        ax.plot(dt, dy, dx, color="k", lw=0.9, ls="--", alpha=0.85, label=lbl)
-
-    ax.set_xlabel(r"$t$ [s]")
-    ax.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]")
-    ax.set_zlabel(r"$\,^\mathcal{C}\hat{x}$ [px]")
-    ax.set_title("Target Feature Funnel and Feature Point Trajectories")
-    ax.legend(loc="upper left", fontsize=7, ncol=2)
-    ax.view_init(elev=18, azim=-60)
-    fig.tight_layout()
-    fig.savefig(f"{OUT}/plasmc_outer_funnel.pdf")
-    plt.close(fig)
-
-# OBSOLETE 2026-05-07: standalone plasmc_inner_funnel.pdf (1x3 grid) is
-# superseded by plasmc_funnel_combined.pdf which carries the same inner
-# funnel as cols 2-4 of a 1x4 figure*. PDF moved to
-# Obsolete/Soft_Precise_Landing/Figures/generated/. Block kept under
-# `if False:` for easy revival.
-if False:
-    # ---------- Plot B: inner optic-flow funnel ----------
-    fig, axes = plt.subplots(1, 3, figsize=(7.0, 2.6), sharex=True)
-    labels = [r"$x$-axis", r"$y$-axis", r"$z$-axis"]
-    for k, ax in enumerate(axes):
-        ax.fill_between(t,  p_2[k], -p_2[k], color="orange", alpha=0.18,
-                        label=r"$\pm\boldsymbol{p}_2(t)$")
-        ax.plot(t,  p_2[k], color="orange", lw=0.9)
-        ax.plot(t, -p_2[k], color="orange", lw=0.9)
-        ax.plot(t, h_e[k], color="C0", label=r"$\boldsymbol{h}_{\text{e},k}(t)$")
-        ax.set_xlabel(r"$t$ [s]")
-        ax.set_title(labels[k])
-    axes[0].set_ylabel("optic-flow error")
-    axes[2].legend(loc="upper right")
-    fig.tight_layout()
-    fig.savefig(f"{OUT}/plasmc_inner_funnel.pdf")
-    plt.close(fig)
-
-# ---------- Plot B+: combined outer + inner funnel (1x4 figure*) ----------
-# 1x4 layout mirroring comparison_combined_circular.pdf:
-#   col 1 = outer 3-D funnel (target feature funnel + corner trajectories)
-#   cols 2-4 = inner optic-flow funnel per axis
-# Common bottom-center legend.
-fig = plt.figure(figsize=(18.0, 5.0))
-gs  = fig.add_gridspec(1, 4, left=0.05, right=0.99, wspace=0.40)
-ax3d = fig.add_subplot(gs[0, 0], projection="3d")
-ax_x = fig.add_subplot(gs[0, 1])
-ax_y = fig.add_subplot(gs[0, 2])
-ax_z = fig.add_subplot(gs[0, 3])
-
-# --- col 1: outer 3-D funnel ---
-edge_signs = [(+1, +1), (+1, -1), (-1, +1), (-1, -1)]
-edges_3d = {}
-for idx_e, (su, sv) in enumerate(edge_signs):
-    pts = np.column_stack([t, sv * rho_fov[1], su * rho_fov[0]])
-    edges_3d[(su, sv)] = pts
-    ax3d.plot(pts[:, 0], pts[:, 1], pts[:, 2],
-              color="orange", lw=0.9, alpha=0.85,
-              label=r"$\boldsymbol{p}_1(t)$" if idx_e == 0 else None)
-
-# Sampled funnel rectangles (orange dashed) and actual quadrilaterals (blue).
-for ts in sample_t:
-    ti = int(np.argmin(np.abs(t - ts)))
-    rx, ry = float(rho_fov[0, ti]), float(rho_fov[1, ti])
-    bx = np.array([-rx, +rx, +rx, -rx, -rx])
-    by = np.array([-ry, -ry, +ry, +ry, -ry])
-    bt = np.full(5, t[ti])
-    ax3d.plot(bt, by, bx, color="orange", lw=0.8, ls="--", alpha=0.6)
-    cx = np.append(corners[0, :, ti], corners[0, 0, ti])
-    cy = np.append(corners[1, :, ti], corners[1, 0, ti])
-    ct = np.full(5, t[ti])
-    ax3d.plot(ct, cy, cx, color="C0", lw=1.0, alpha=0.9)
-
-# 4 corner trajectories.
-for k in range(4):
-    ax3d.plot(t, corners[1, k], corners[0, k],
-              color=corner_colors[k], lw=0.9,
-              label=fr"$\,^\mathcal{{C}}\hat{{\boldsymbol{{r}}}}_{k+1}$")
-
-# Black dashed reference lines for desired corners.
-t_full2 = np.array([t[0], t[-1]])
-for k in range(4):
-    ax3d.plot(t_full2, [V_nP_d[1, k]] * 2, [V_nP_d[0, k]] * 2,
-              color="k", lw=0.8, ls="--", alpha=0.85)
-
-# Filled desired tunnel.
-walls2 = []
-for i in range(n_corners):
-    j = (i + 1) % n_corners
-    walls2.append([
-        (t0_f, V_nP_d[1, i], V_nP_d[0, i]),
-        (t0_f, V_nP_d[1, j], V_nP_d[0, j]),
-        (tF_f, V_nP_d[1, j], V_nP_d[0, j]),
-        (tF_f, V_nP_d[1, i], V_nP_d[0, i]),
-    ])
-ax3d.add_collection3d(Poly3DCollection(
-    walls2, facecolor="0.3", alpha=0.08, edgecolor="none"))
-
-# Desired quadrilaterals at start AND end (dashed black).
-dx2 = np.append(V_nP_d[0, :], V_nP_d[0, 0])
-dy2 = np.append(V_nP_d[1, :], V_nP_d[1, 0])
-for ts2, lbl2 in [(t[0], r"$\hat{\boldsymbol{r}}_{i,\text{d}}$"),
-                  (t[-1], None)]:
-    dt2 = np.full(5, ts2)
-    ax3d.plot(dt2, dy2, dx2, color="k", lw=0.9, ls="--", alpha=0.85, label=lbl2)
-
-ax3d.set_xlabel(r"$t$ [s]", labelpad=12, fontsize=20)
-ax3d.set_ylabel(r"$\,^\mathcal{C}\hat{y}$ [px]", labelpad=12, fontsize=20)
-ax3d.set_zlabel(r"$\,^\mathcal{C}\hat{x}$ [px]", labelpad=2, fontsize=20)
-ax3d.locator_params(axis="x", nbins=4)
-ax3d.locator_params(axis="y", nbins=4)
-ax3d.locator_params(axis="z", nbins=4)
-ax3d.tick_params(pad=1, labelsize=14)
-ax3d.set_title("Target Feature Funnel", fontsize=20, x=0.55, y=0.95)
-ax3d.view_init(elev=18, azim=-60)
-
-# --- cols 2-4: inner optic-flow funnel per axis ---
-inner_axes = (ax_x, ax_y, ax_z)
-inner_ylabels = [r"$h_{\text{e},x}$ [1/s]",
-                 r"$h_{\text{e},y}$ [1/s]",
-                 r"$h_{\text{e},z}$ [1/s]"]
-for k, ax in enumerate(inner_axes):
-    ax.fill_between(t, p_2[k], -p_2[k], color="orange", alpha=0.18,
-                    label=r"$\pm\boldsymbol{p}_2(t)$" if k == 0 else None)
-    ax.plot(t,  p_2[k], color="orange", lw=0.9)
-    ax.plot(t, -p_2[k], color="orange", lw=0.9)
-    ax.plot(t, h_e[k], color="C0", lw=1.2,
-            label=r"$\boldsymbol{h}_{\text{e},k}(t)$" if k == 0 else None)
+# cols 2-4: optic-flow funnel -- h_e_k inside +/-p_h_k(t)
+for k in range(3):
+    ax = axes[k + 1]
+    ax.fill_between(t, p_h[k], -p_h[k], color="orange", alpha=0.16,
+                    label=r"$\pm\boldsymbol{p}_h(t)$" if k == 0 else None)
+    ax.plot(t,  p_h[k], color="orange", lw=1.0)
+    ax.plot(t, -p_h[k], color="orange", lw=1.0)
+    ax.plot(t, h_e[k], color="C0", lw=1.4,
+            label=r"$h_{\mathrm{e},k}(t)$" if k == 0 else None)
     ax.set_xlabel(r"$t$ [s]", fontsize=20, labelpad=4)
-    ax.set_ylabel(inner_ylabels[k], fontsize=20, labelpad=4)
-    ax.tick_params(axis="both", labelsize=16)
-    ax.grid(axis="y", alpha=0.3)
+    ax.set_ylabel(fr"$h_{{\mathrm{{e}},{axis_lbl[k][1]}}}$ [1/s]", fontsize=20, labelpad=4)
+    ax.set_title(fr"Optic-Flow Funnel ({axis_lbl[k]})", fontsize=20)
+    ax.tick_params(labelsize=16)
+    ax.locator_params(axis="x", nbins=4)
+axes[1].legend(loc="upper right", fontsize=13)
 
-# Separate legends per panel: outer 3-D in its own subplot, inner-funnel
-# legend on the rightmost (z-axis) subplot.
-ax3d.legend(loc="upper center", bbox_to_anchor=(0.75, 0.85),
-            fontsize=12, ncol=2,
-            handlelength=1.4, columnspacing=1.2, handletextpad=0.5)
-hin, lin = ax_x.get_legend_handles_labels()
-ax_z.legend(hin, lin, loc="upper right", fontsize=14,
-            handlelength=1.4, handletextpad=0.5)
-
-fig.suptitle("Dual-Funnel Invariance under VDF-ASMC", fontsize=24, y=0.99)
-
-# Manual layout: 3-D panel hugs left edge, 3 inner panels distributed across
-# the remaining width.
-fig.subplots_adjust(bottom=0.140, top=0.865)
-ax3d.set_position([0.000, 0.02, 0.24, 0.92])
-inner_y0, inner_h = 0.16, 0.65
-inner_left, inner_right = 0.33, 0.99
-n_inner = 3
-gap = 0.07
-inner_w = (inner_right - inner_left - (n_inner - 1) * gap) / n_inner
-for k, ax in enumerate(inner_axes):
-    x0 = inner_left + k * (inner_w + gap)
-    ax.set_position([x0, inner_y0, inner_w, inner_h])
-
-# Shared subtitle "Optic Flow Funnel" spanning subplots 2-4.
-inner_center_x = (inner_left + inner_right) / 2
-fig.text(inner_center_x, inner_y0 + inner_h + 0.02,
-         "Optic Flow Funnel", ha="center", va="bottom", fontsize=20)
-
-fig.savefig(f"{OUT}/plasmc_funnel_combined.pdf")
+fig.suptitle("Dual-Funnel Invariance under VDF-ASMC", fontsize=24, y=1.0)
+fig.tight_layout(pad=0.5)
+fig.savefig(f"{OUT}/plasmc_funnel_combined.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
 
-# ---------- Plot C: sliding surface ----------
+# ======================================================================
+# Figure 2: sliding surface sigma vs boundary layer +/-E
+# ======================================================================
 fig, ax = plt.subplots(figsize=(10.5, 4.0))
-for k, lbl in enumerate([r"$\sigma_x$", r"$\sigma_y$", r"$\sigma_z$"]):
-    ax.plot(t, sigma[k], label=lbl)
+for k, c in zip(range(3), ["C0", "C2", "C3"]):
+    ax.plot(t, sigma[k], color=c, label=fr"$\sigma_{axis_lbl[k][1]}$")
+    ax.axhline(+E_diag[k], color=c, lw=0.7, ls=":", alpha=0.6)
+    ax.axhline(-E_diag[k], color=c, lw=0.7, ls=":", alpha=0.6)
 ax.axhline(0.0, color="k", lw=0.6, ls=":")
 ax.set_xlabel(r"$t$ [s]", labelpad=4, fontsize=20)
-ax.set_ylabel(r"$\sigma(t)$", labelpad=4, fontsize=20)
+ax.set_ylabel(r"$\boldsymbol{\sigma}(t)$", labelpad=4, fontsize=20)
 ax.locator_params(axis="x", nbins=4)
 ax.tick_params(pad=1, labelsize=16)
-ax.legend(loc="upper right", ncol=3, fontsize=14)
-fig.suptitle("Sliding-Surface Evolution", fontsize=24, y=0.98)
+ax.legend(loc="upper right", ncol=3, fontsize=14,
+          title=r"dotted: boundary layer $\pm\mathcal{E}$", title_fontsize=11)
+fig.suptitle("Sliding-Surface Evolution", fontsize=24, y=0.99)
 fig.tight_layout(pad=0.3)
 fig.savefig(f"{OUT}/plasmc_sliding.pdf", bbox_inches="tight", pad_inches=0.02)
 plt.close(fig)
 
-# ---------- Plot D: adaptive gains ----------
-fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.3))
-for k, lbl in enumerate([r"$\kappa_x$", r"$\kappa_y$", r"$\kappa_z$"]):
-    axes[0].plot(t, kappa[k], label=lbl)
-axes[0].set_xlabel(r"$t$ [s]", labelpad=4, fontsize=20)
-axes[0].set_ylabel(r"$\kappa(t)$", labelpad=4, fontsize=20)
-axes[0].set_title("Optic Flow ASMC Gains", fontsize=20)
-axes[0].locator_params(axis="x", nbins=4)
-axes[0].tick_params(pad=1, labelsize=16)
-axes[0].legend(loc="center right", bbox_to_anchor=(1.0, 0.425), ncol=1, fontsize=14, framealpha=0.85)
+# ======================================================================
+# Figure 3: per-axis adaptive gain kappa_k vs the per-axis disturbance it rejects
+#   kappa is a 3-vector (per-axis regressor norm); each kappa_k bounds its OWN
+#   (Y d_bar)_k = (v_k(beta-1)+d_h,k)/beta_min, not a shared scalar. The
+#   disturbance grows ~1/z near the deck; the funnel/barrier absorbs that growth
+#   so kappa stays bounded. kappa_alpha (yaw): Case 3 (Sinusoidal) has no target
+#   yaw, so kappa_alpha decays under leakage -- no spurious adaptation.
+# ======================================================================
+fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.6))
+panels = [(axes[0, 0], 0, "x", "C0"),
+          (axes[0, 1], 1, "y", "C2"),
+          (axes[1, 0], 2, "z", "C3")]
+for ax, k, lab, col in panels:
+    # kappa_k and its per-axis disturbance on the SAME (log) axis -- true values,
+    # both visible despite kappa ~0.1 << |(Y d_bar)_k| ~ O(1-30) (the funnel/barrier
+    # G_h supplies the rest of the rejection, so kappa stays small).
+    ax.semilogy(t, kappa[k], color=col, lw=1.8, label=fr"$\kappa_{{{lab}}}$")
+    ax.semilogy(t, np.clip(Yd_mag[k], 1e-3, None), color="0.35", lw=1.2, ls="--",
+                label=fr"$|(Y\bar{{\boldsymbol{{d}}}})_{{{lab}}}|$")
+    ax.set_xlabel(r"$t$ [s]", fontsize=17, labelpad=3)
+    ax.set_ylabel(fr"$\kappa_{{{lab}}},\ |(Y\bar{{d}})_{{{lab}}}|$", fontsize=17, labelpad=3)
+    ax.tick_params(axis="both", labelsize=13)
+    ax.locator_params(axis="x", nbins=4)
+    ax.set_title(fr"${lab}$-axis", fontsize=18)
+    ax.legend(loc="upper right", fontsize=12, framealpha=0.85)
 
-axes[1].plot(t, kappa_a, color="C3")
-axes[1].set_xlabel(r"$t$ [s]", labelpad=4, fontsize=20)
-axes[1].set_ylabel(r"$\kappa_\alpha(t)$", labelpad=4, fontsize=20)
-axes[1].set_title("Yaw ASMC Gain", fontsize=20)
-axes[1].locator_params(axis="x", nbins=4)
-axes[1].tick_params(pad=1, labelsize=16)
+# yaw panel
+axes[1, 1].plot(t, kappa_a, color="C4", lw=1.7, label=r"$\kappa_\alpha$")
+axes[1, 1].set_xlabel(r"$t$ [s]", fontsize=17, labelpad=3)
+axes[1, 1].set_ylabel(r"$\kappa_\alpha(t)$", fontsize=17, labelpad=3)
+axes[1, 1].set_title(r"yaw (no target yaw on Case 3)", fontsize=18)
+axes[1, 1].tick_params(labelsize=13)
+axes[1, 1].locator_params(axis="x", nbins=4)
+axes[1, 1].legend(loc="upper right", fontsize=11)
 
-fig.suptitle("Adaptive Switching Gains", fontsize=24, y=0.99)
-fig.tight_layout(pad=0.3)
-fig.subplots_adjust(wspace=0.3)
-fig.savefig(f"{OUT}/plasmc_adaptive_gain.pdf", bbox_inches="tight", pad_inches=0.02)
+fig.suptitle("Adaptive Gain Rejection of the Per-Axis Disturbance", fontsize=22, y=1.0)
+fig.tight_layout(pad=0.5)
+fig.subplots_adjust(wspace=0.42, hspace=0.42)
+fig.savefig(f"{OUT}/plasmc_adaptive_gain.pdf", bbox_inches="tight", pad_inches=0.03)
 plt.close(fig)
 
-# ---------- Plot E: thrust + lateral accel ----------
+# ======================================================================
+# Figure 4: thrust + lateral acceleration vs CBF tilt-cone bound
+# ======================================================================
 a_xy_norm = np.linalg.norm(I_a_cd[:2], axis=0)
-cone_limit_t = np.abs(I_a_cd[2]) * np.tan(theta_cone_log)
+cone_limit = np.abs(I_a_cd[2]) * np.tan(theta_cone)
 fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.3))
 axes[0].plot(t, B_T_cd, color="C0", label=r"$\,^\mathcal{B}T_u(t)$")
 axes[0].axhline(T_max, color="r", lw=0.8, ls="--", label=r"$T_{\max}$")
@@ -361,7 +200,7 @@ axes[0].tick_params(pad=1, labelsize=16)
 axes[0].legend(loc="upper right", fontsize=14)
 
 axes[1].plot(t, a_xy_norm, color="C0", label=r"$\|\,^\mathcal{I}\boldsymbol{a}_{\mathrm{d},xy}\|$")
-axes[1].plot(t, cone_limit_t, color="r", lw=0.8, ls="--",
+axes[1].plot(t, cone_limit, color="r", lw=0.9, ls="--",
              label=r"$|\,^\mathcal{I}a_{\mathrm{d},z}|\tan\theta_\mathrm{cone}(t)$")
 axes[1].set_xlabel(r"$t$ [s]", labelpad=4, fontsize=20)
 axes[1].set_ylabel(r"lateral accel [m/s$^2$]", labelpad=4, fontsize=20)
@@ -376,4 +215,4 @@ fig.subplots_adjust(wspace=0.3)
 fig.savefig(f"{OUT}/plasmc_thrust_accel.pdf", bbox_inches="tight", pad_inches=0.02)
 plt.close(fig)
 
-print("Wrote 4 VDF-ASMC internals plots to:", OUT)
+print("Wrote 4 VDF-ASMC internals plots (CBF-architecture rebuild) to:", OUT)

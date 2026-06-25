@@ -58,5 +58,7 @@ function [o, cs] = flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_m
     o.chi_zeta_aug = chi_zeta_aug; o.Theta_norm = norm(Theta,'fro');
     % per-axis row-norm theta_k = ||row_k(Theta)|| = sqrt(v_k^2+1); sqrt(sum_k theta_k^2)==||Theta||_F
     o.theta_perax = sqrt(sum(Theta.^2, 2));   % 3x1; used by asmc when P.theta_per_axis
+    o.p_h = p_h;                              % optic-flow funnel envelope (3x1) for internals plot
+    o.v   = Theta(:,1);                        % regressor first column (for per-axis (Y d_bar)_k plot)
     o.V_h_d = V_h_d; o.V_h_e = V_h_e;
 end
