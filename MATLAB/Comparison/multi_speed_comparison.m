@@ -62,7 +62,7 @@ for tIdx = 1:numel(MS_STATE.trajList)
             % Hoist parameters that visualControl_comparison consumes/preserves
             CTRL_SEL    = MS_STATE.ctrls(MS_STATE.cIdx);  %#ok<NASGU>
             TRAJ_TYPE   = MS_STATE.trajType;              %#ok<NASGU>
-            MC_SEED     = 1000;                           %#ok<NASGU>
+            MC_SEED     = 1;                              %#ok<NASGU>  % 1000->1: match Multi_init/Multi_speed seed convention
             SPEED_MULT  = MS_STATE.mults(MS_STATE.mIdx);  %#ok<NASGU>
             IC_OVERRIDE = [0; 0; -5];                     %#ok<NASGU>  % IC_1 from proposed-controller speed sweep
 
