@@ -93,6 +93,10 @@ def analyze_rep(rep_dir):
     rec = dict(name=os.path.basename(rep_dir), valid=True, reason="",
                flight_s=0.0, final_alt=np.nan,
                xy=float(sp.get("xy_err", np.nan)), vel=float(sp.get("rel_vel", np.nan)),
+               # Honest precision @ lowest altitude (before any terminal balloon).
+               xy_minz=float(sp.get("min_alt_xy", np.nan)),
+               vel_minz=float(sp.get("min_alt_rel_vel", np.nan)),
+               minz=float(sp.get("min_alt", np.nan)),
                tl=bool(sp.get("target_lost", False)),
                tpl=bool(sp.get("terminal_perception_loss", False)),
                soft=bool(sp.get("soft", False)), prec=bool(sp.get("precise", False)),
@@ -124,7 +128,8 @@ def main(argv):
         if not reps:
             print("  (no rep*/Ground_Truth.npy found)"); continue
         hdr = (f"  {'rep':<22} {'valid':<6} {'flt_s':>6} {'alt':>6} "
-               f"{'xy':>7} {'vel':>6} {'TL':>3}  {'r_x':>5} {'in%':>4} {'r_y':>5} {'in%':>4}  reason")
+               f"{'xy':>7} {'vel':>6} {'xy@mnZ':>7} {'v@mnZ':>6} {'mnZ':>5} {'TL':>3}  "
+               f"{'r_x':>5} {'in%':>4} {'r_y':>5} {'in%':>4}  reason")
         print(hdr); print("  " + "-" * (len(hdr) - 2))
         recs = [analyze_rep(r) for r in reps]
         for r in recs:
@@ -135,7 +140,9 @@ def main(argv):
             iy = f"{res['y']['inside']:>4.0f}" if res else "   -"
             print(f"  {r['name']:<22} {'Y' if r['valid'] else 'N':<6} "
                   f"{r['flight_s']:>6.1f} {r['final_alt']:>6.2f} "
-                  f"{r['xy']:>7.3f} {r['vel']:>6.3f} {('Y' if r['tl'] else ''):>3}  "
+                  f"{r['xy']:>7.3f} {r['vel']:>6.3f} "
+                  f"{r['xy_minz']:>7.3f} {r['vel_minz']:>6.3f} {r['minz']:>5.2f} "
+                  f"{('Y' if r['tl'] else ''):>3}  "
                   f"{rx} {ix} {ry} {iy}  {r['reason']}")
 
         valid = [r for r in recs if r["valid"]]
@@ -148,8 +155,20 @@ def main(argv):
             ve = np.array([r["vel"] for r in landed]) if landed else np.array([np.nan])
             nsp = sum(r["soft"] and r["prec"] for r in landed)
             print(f"  landed {len(landed)}/{len(valid)} | TL {len(tl)} | SP {nsp}")
-            print(f"  xy(landed): mean {np.nanmean(xy):.3f}  min {np.nanmin(xy):.3f}  "
+            print(f"  xy(landed,endpoint): mean {np.nanmean(xy):.3f}  min {np.nanmin(xy):.3f}  "
                   f"max {np.nanmax(xy):.3f}   vel: mean {np.nanmean(ve):.3f}")
+            # Honest precision: lateral error at the lowest altitude reached
+            # (over ALL valid reps incl. the "flys" — the kick balloons the
+            # endpoint but they touch down dead-centered; this is the real metric).
+            xymz = np.array([r["xy_minz"] for r in valid])
+            vemz = np.array([r["vel_minz"] for r in valid])
+            if np.isfinite(xymz).any():
+                print(f"  xy@min-alt (HONEST precision, all valid): "
+                      f"mean {np.nanmean(xymz):.3f}  min {np.nanmin(xymz):.3f}  "
+                      f"max {np.nanmax(xymz):.3f}   v@min-alt: mean {np.nanmean(vemz):.3f}  "
+                      f"max {np.nanmax(vemz):.3f}")
+                print(f"  dead-centered @ touchdown (xy@min-alt ≤ 0.10 m): "
+                      f"{int(np.nansum(xymz <= 0.10))}/{int(np.isfinite(xymz).sum())}")
             rr = [r["res"] for r in valid if r["res"]]
             if rr:
                 for ax in "xy":

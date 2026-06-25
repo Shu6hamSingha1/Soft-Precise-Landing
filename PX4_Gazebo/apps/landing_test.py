@@ -469,6 +469,17 @@ async def main(record = 'n'):
         _ctrl_t0    = time_node.perf_counter()
         _best_alt   = None     # lowest ENU altitude reached so far (descent progress)
         _stall_t0   = None
+        # ── Honest precision tracker (2026-06-26) ──────────────────────────
+        # The terminal 1/Z kick balloons the (already-landed) drone 1-4 m up+
+        # sideways AFTER it touches down dead-centered, so the xy_err captured
+        # at the LANDED event (below) is the POST-KICK endpoint, not the
+        # precision actually achieved. Track the lateral error + rel_vel at the
+        # MINIMUM altitude reached over the whole descent = the genuine
+        # precision/softness. Pure diagnostic: does NOT change control or the
+        # existing fly-away tally. See HANDOFF_velocity_damping.md.
+        _min_alt        = None   # lowest ENU altitude actually reached (true min)
+        _min_alt_xy     = None   # lateral err to target at that lowest sample
+        _min_alt_relvel = None   # UAV rel speed at that lowest sample
 
         while EC_node.is_alive() and not FC_node.LANDED:
             UAV_pose.append(pose_node.getPose().UAV)
@@ -482,6 +493,17 @@ async def main(record = 'n'):
             if _best_alt is None or _alt_w < _best_alt - HOVER_STALL_DZ:
                 _best_alt = _alt_w                    # fresh >DZ of descent progress
                 _stall_t0 = _now_w
+            # True-minimum-altitude precision capture (honest metric; see above).
+            if _min_alt is None or _alt_w < _min_alt:
+                _min_alt = _alt_w
+                _tgt = target_pose[-1].position
+                _uav = UAV_pose[-1].position
+                _min_alt_xy = ((_uav.x - _tgt.x)**2 + (_uav.y - _tgt.y)**2) ** 0.5
+                try:
+                    _vm = FC_node.getVelBody()
+                    _min_alt_relvel = (_vm.x_m_s**2 + _vm.y_m_s**2 + _vm.z_m_s**2) ** 0.5
+                except Exception:
+                    _min_alt_relvel = float("nan")
             if _stall_t0 is None:
                 _stall_t0 = _now_w
             if (_now_w - _ctrl_t0) > CONTROL_TIMEOUT_S:
@@ -625,11 +647,22 @@ async def main(record = 'n'):
             SOFT_PRECISE = dict(xy_err=xy_err, rel_vel=rel_vel,
                                 precise=precise, soft=soft,
                                 target_lost=target_lost,
-                                terminal_perception_loss=terminal_perception_loss)
+                                terminal_perception_loss=terminal_perception_loss,
+                                # Honest precision at the lowest altitude reached
+                                # (before any terminal balloon) — see tracker above.
+                                min_alt=_min_alt,
+                                min_alt_xy=_min_alt_xy,
+                                min_alt_rel_vel=_min_alt_relvel)
+            _ma_xy = f"{_min_alt_xy:.3f}" if _min_alt_xy is not None else "n/a"
+            _ma_z  = f"{_min_alt:.2f}"    if _min_alt    is not None else "n/a"
+            _ma_v  = f"{_min_alt_relvel:.3f}" if _min_alt_relvel is not None else "n/a"
             print(f"[landing_test] Landing classification: {tag}  "
                   f"(xy_err={xy_err:.3f} m [≤{PRECISE_TOL}], "
                   f"rel_vel={rel_vel:.3f} m/s [≤0.2]"
                   f"{', target lost mid-flight' if target_lost else ''})")
+            print(f"[landing_test] Honest precision @ min-alt: "
+                  f"xy={_ma_xy} m, rel_vel={_ma_v} m/s, min_alt={_ma_z} m "
+                  f"(endpoint xy={xy_err:.3f} m is post-kick if it ballooned)")
         except Exception as e:
             print(f"[landing_test] Could not compute soft-precise metrics: {e}")
 
