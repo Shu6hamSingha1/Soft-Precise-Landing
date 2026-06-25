@@ -1,6 +1,28 @@
-# HANDOFF — Combined-Barrier PX4 validation (2026-06-19)
+# HANDOFF — Combined-Barrier PX4 validation (2026-06-19; ✅ RESOLVED 2026-06-21)
 
-## ✅ VERDICT (2026-06-19) — COMBINED SURFACE DOES NOT BEAT THE WALL (perception-gated)
+## ✅ FINAL VERDICT (2026-06-21) — COMBINED SURFACE WORKS; the wall was a GAIN-PARITY BUG
+**The 2026-06-19 "does NOT beat the wall — perception-gated" verdict below was a MISDIAGNOSIS.**
+- **Real cause:** PX4 combined-barrier mode was running the OLD **back-mapped soft-config gains**
+  (GAMMA 2.0, KAPPA0 0.5, XI2 0.6) — **3–5× too HOT for the combined surface** → `a_u` over-aggression
+  → fly-aways. The "ṡ under-reports ~0.5× → under-braked" reading was the over-hot gains amplifying the
+  residual, NOT the binding limit.
+- **Fix (commit 22cc732):** auto-align combined-mode gains to the MATLAB VDF-ASMC `vdf_params`
+  (GAMMA 0.4375/0.5, KAPPA0 0.125, XI2 0.2) + `chi_r=0.5` (PX4-specific, vs MATLAB 0.85, for lateral-velocity arrest).
+- **Result (IC2 n=5, manuscript gains):** **4/5 sub-meter** (|xy| 0.72–0.99, td_lat med 0.92), `h_e`
+  100% bounded, `s_e_n`→0 (~96% inside `p_r`, mild terminal-1/Z breach ~1.05 in the last 0.3 m),
+  vz_med 1.6, yaw e_a ~0.9°; **1/5 stochastic terminal-1/Z fly-away** (residual, not the wall).
+- **Now BAKED DEFAULT-ON:** `PLASMC_COMBINED_BARRIER=1` + `PLASMC_VDS_KF=1` + `PLASMC_DHD_KF=1` +
+  `PLASMC_DW_KF=1` + `chi_r=0.5` + `h_rd=-0.42` + `PLASMC_YAW_ALPHA_FILT=1`.
+- **REJECTED levers (do NOT re-try):** P2INF chase-lag, terminal a_u-cap (COMMIT_AU_MAX), yaw KF,
+  Omega_a/Gamma_a>0.5, SOFT-CONFIG Z on combined (CATASTROPHIC 5/5 fly — z not orthogonal to the
+  combined lateral surface).
+- **OPEN:** the final IC2-5 gate (config tuned/validated at IC2; must confirm IC3/IC4/IC5 hold).
+  Records NC100–106. Authoritative state: `Memory/project_current_state.md` (2026-06-21) +
+  `Memory/feedback_combined_surface_divergence.md` (corrected verdict at top).
+
+⬇️ **Everything below is the SUPERSEDED 2026-06-19 perception-gated reasoning — kept for history.**
+
+## ⛔ [SUPERSEDED 2026-06-21] VERDICT (2026-06-19) — COMBINED SURFACE DOES NOT BEAT THE WALL (perception-gated)
 - **GT-check (decisive):** the ṡ feeding the blended `h_d` under-reports the dominant lateral velocity —
   ~0.8× while slow, **~0.5× during the high-velocity overshoot** (centroid-rate 0.48 ≈ LK 0.52, both
   saturate = LK dynamic-range ceiling, not filter noise). Under-braked → overshoot.
@@ -8,10 +30,12 @@
   backmap median fin_lat **13.55** (5/5 TL) · combined χ_r=0.85 **13.58** (5/5 TL, SAME wall) ·
   chir χ_r=1.3 **24.81** (5/5 TL, WORSE — κ-runaway 5–9). s_e_n converges first (min 0.07–0.59) then
   diverges to 1.5–2.3 in every rep → structurally sound, brake-starved.
-- **Conclusion:** combined surface is structurally right but blocked by the inner-loop velocity front-end
+- **[WRONG] Conclusion:** combined surface is structurally right but blocked by the inner-loop velocity front-end
   (same wall as the back-map). **χ_r↑ rejected.** Real lever = perception (KLT/pyr-LK) = architecture.
   `controller.py` stands as paper↔code alignment (default-off), NOT a wall-breaker. See
   `Memory/feedback_combined_surface_divergence.md` (verdict at top). Below = the pre-verdict state.
+  — *This conclusion was overturned 2026-06-21: the A/B above ran the OLD over-hot back-mapped gains
+  in combined mode (the gain-parity bug); with VDF-ASMC gains the fly-aways vanish (see FINAL VERDICT).*
 
 
 > Continuation point for a fresh chat. `MEMORY.md` + `CLAUDE.md` auto-load; the freshest detail lives in

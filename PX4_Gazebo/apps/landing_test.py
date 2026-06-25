@@ -146,7 +146,8 @@ async def main(record = 'n'):
         while start_pose is None:
             start_pose = pose_node.getPose().UAV
 
-        EC_node = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM, time_node, FC_node)
+        EC_node = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM, time_node, FC_node,
+                             pose_node=pose_node)
 
         await FC_node.arm_and_takeoff(TAKEOFF_HEIGHT)
 
@@ -496,8 +497,12 @@ async def main(record = 'n'):
             # marker-loss — if img_data has been extrapolating for STALE_THRESH+
             # consecutive frames, route to the grace-hold path instead of
             # letting the controller act on stale/extrapolated feature data.
-            feature_fresh = (EC_node.TARGET_IS_VISIBLE
-                             and not EC_node.FEATURE_IS_STALE)
+            # GT-FEEDBACK: the controller runs on the always-available GT target
+            # pose, so the perception freshness gate must not stop command flow
+            # (otherwise the terminal marker-loss routes to open-loop = confound).
+            feature_fresh = (os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
+                             or (EC_node.TARGET_IS_VISIBLE
+                                 and not EC_node.FEATURE_IS_STALE))
             # ── Stale-streak commitment (see env knobs above; inert when EXTENT=0) ──
             if STALE_COMMIT_EXTENT > 0.0 and not in_final_descent:
                 if feature_fresh:

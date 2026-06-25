@@ -18,7 +18,7 @@ global IC_OVERRIDE NOISE_OVERRIDE RNG_SEED_OVERRIDE WS ...
        SEN_RI_OVERRIDE SEN_RD_OVERRIDE THETA_CAP_OVERRIDE FOV_INSET_OVERRIDE ...
        GAMMA_XY_OVERRIDE E_XY_OVERRIDE P_XY_OVERRIDE KAPPA0_XY_OVERRIDE N_XY_OVERRIDE ...
        H_RD_OVERRIDE KR_OVERRIDE KOMEGA_OVERRIDE SREF_GAMMA DH_D_CAP DH_D_TAU ...
-       CBF_NO_REVERSE DIR_INSET_RELAX DRIFT_RECENTER DRIFT_GATED TILT_RATE_MAX TILT_RATE_T;
+       CBF_NO_REVERSE DIR_INSET_RELAX DRIFT_RECENTER DRIFT_GATED TILT_RATE_MAX TILT_RATE_T ABL_PIX ABL_OUT ABL_PARAM ABL_WIND GE_OFF DELAY_OFF ABL_MASS ABL_INERTIA ABL_COG KIR_OVERRIDE;
 
 WS = struct();
 WS.ic     = [2; 2; -3];
@@ -39,14 +39,18 @@ WS.nseeds = getenv_num('SEN_NSEEDS', 12);
 % STRIP-RATIO-GATED DRIFT (driftg = gain): re-centering anticipation scaled by
 % how much -Y the tight CBF stripped -> self-targets the seed-6 flip, ~0 on the
 % good seeds whose -Y survives.
-% TILT-RATE LIMIT (trate rad/s): ramp the CBF lean up gradually so the startup
-% pitch doesn't swing the marker out of FoV (IC5 seed-4 startup ejection).
+% DISTURBANCE ABLATION: disable each noise source / GE / delay one at a time to
+% find what tips IC5 from noiseless(all SP) to noisy(seed-4/6 fail). 'allnoise'
+% disables all 4 noise sources = noiseless equivalent (sanity: should recover SP).
+% INTEGRAL ATTITUDE TERM (kir = k_I_R [roll pitch yaw]): reject the constant
+% CoG-offset torque (the pinned root). noCOG = oracle (CoG disabled) for ref.
 WS.cfgs = { ...
   struct('name','base'), ...
-  struct('name','tr0.3','trate',0.3), ...
-  struct('name','tr0.5','trate',0.5), ...
-  struct('name','tr0.8','trate',0.8), ...
-  struct('name','tr1.5','trate',1.5), ...
+  struct('name','kI0.5', 'kir',[0.5;0.5;0.2]), ...
+  struct('name','kI1.0', 'kir',[1.0;1.0;0.5]), ...
+  struct('name','kI2.0', 'kir',[2.0;2.0;1.0]), ...
+  struct('name','kI4.0', 'kir',[4.0;4.0;2.0]), ...
+  struct('name','noCOG(oracle)','ablcog',1), ...
 };
 WS.R = {};
 
@@ -63,7 +67,7 @@ for s = 1:WS.nseeds
            SEN_RI_OVERRIDE SEN_RD_OVERRIDE THETA_CAP_OVERRIDE FOV_INSET_OVERRIDE ...
            GAMMA_XY_OVERRIDE E_XY_OVERRIDE P_XY_OVERRIDE KAPPA0_XY_OVERRIDE N_XY_OVERRIDE ...
            H_RD_OVERRIDE KR_OVERRIDE KOMEGA_OVERRIDE SREF_GAMMA DH_D_CAP DH_D_TAU ...
-           CBF_NO_REVERSE DIR_INSET_RELAX DRIFT_RECENTER DRIFT_GATED TILT_RATE_MAX TILT_RATE_T;
+           CBF_NO_REVERSE DIR_INSET_RELAX DRIFT_RECENTER DRIFT_GATED TILT_RATE_MAX TILT_RATE_T ABL_PIX ABL_OUT ABL_PARAM ABL_WIND GE_OFF DELAY_OFF ABL_MASS ABL_INERTIA ABL_COG KIR_OVERRIDE;
     cfg = WS.cfgs{ci};
     fprintf('\n=== seed %d/%d  cfg=%s ===\n', s, WS.nseeds, cfg.name);
     IC_OVERRIDE = WS.ic; NOISE_OVERRIDE = 1; RNG_SEED_OVERRIDE = s;
@@ -93,6 +97,16 @@ for s = 1:WS.nseeds
     DRIFT_RECENTER         = getfield_or(cfg,'drift',[]);
     DRIFT_GATED            = getfield_or(cfg,'driftg',[]);
     TILT_RATE_MAX          = getfield_or(cfg,'trate',[]);
+    ABL_PIX                = getfield_or(cfg,'ablpix',[]);
+    ABL_OUT                = getfield_or(cfg,'ablout',[]);
+    ABL_PARAM              = getfield_or(cfg,'ablparam',[]);
+    ABL_WIND               = getfield_or(cfg,'ablwind',[]);
+    GE_OFF                 = getfield_or(cfg,'geoff',[]);
+    DELAY_OFF              = getfield_or(cfg,'deloff',[]);
+    ABL_MASS               = getfield_or(cfg,'ablmass',[]);
+    ABL_INERTIA            = getfield_or(cfg,'abliner',[]);
+    ABL_COG                = getfield_or(cfg,'ablcog',[]);
+    KIR_OVERRIDE           = getfield_or(cfg,'kir',[]);
     WS.s = s; WS.ci = ci;
 
     try
@@ -162,12 +176,12 @@ fprintf('---\n');
 for ci = 1:ncfg
   nm = cfgnames{ci};
   rr = R(ci:ncfg:end);
-  nb = sum(cellfun(@(x) x.nobreach==1, rr));
-  rec= sum(cellfun(@(x) x.recovered==1, rr));
-  brk= sum(cellfun(@(x) x.nobreach==0 && x.recovered==0, rr));   % breached, never returned
+  brk= sum(cellfun(@(x) x.nobreach==0 && x.recovered==0, rr));   % breached & ran away (seed-6 mode)
+  fov= sum(cellfun(@(x) x.fov==1, rr));
+  ld = sum(cellfun(@(x) x.landed==1, rr));
   sp = sum(cellfun(@(x) x.landed==1 && x.prec==1 && x.soft==1, rr));
-  fprintf('  %-14s: NO-BREACH=%d  RECOVERED=%d  UNRECOVERED=%d  (SP=%d/%d)\n', ...
-          nm, nb, rec, brk, sp, numel(rr));
+  fprintf('  %-14s: SP=%d/%d  land=%d  fov_fail=%d  breach-runaway=%d\n', ...
+          nm, sp, numel(rr), ld, fov, brk);
 end
 fprintf('==========================================================\n');
 save('../Datasets/sen_ic5_seedtest_last.mat','R');
