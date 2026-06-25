@@ -1,7 +1,7 @@
 {
  "n_configs": 175,
- "n_reps": 2658,
- "n_SP": 18,
+ "n_reps": 1827,
+ "n_SP": 17,
  "configs": [
   {
    "config": "RingFlow",
@@ -90,27 +90,6 @@
     "near_SP": 3,
     "SOFT_only": 24,
     "TARGET_LOST": 12
-   }
-  },
-  {
-   "config": "Landing_Test",
-   "date": "2026-06-05",
-   "n": 1182,
-   "SP": 1,
-   "TL": 356,
-   "near_SP": 0,
-   "catastrophic": 554,
-   "xy_med": 3.118,
-   "xy_min": 0.0,
-   "vel_med": 2.242,
-   "cats": {
-    "CATASTROPHIC": 554,
-    "TARGET_LOST": 356,
-    "SOFT_only": 19,
-    "MOD_PRECISE": 66,
-    "POOR": 184,
-    "SP": 1,
-    "PRECISE_only": 2
    }
   },
   {
@@ -2810,6 +2789,26 @@
    }
   },
   {
+   "config": "Landing_Test",
+   "date": "2026-06-23",
+   "n": 351,
+   "SP": 0,
+   "TL": 35,
+   "near_SP": 0,
+   "catastrophic": 128,
+   "xy_med": 0.856,
+   "xy_min": 0.062,
+   "vel_med": 1.164,
+   "cats": {
+    "CATASTROPHIC": 128,
+    "SOFT_only": 8,
+    "MOD_PRECISE": 64,
+    "POOR": 115,
+    "TARGET_LOST": 35,
+    "PRECISE_only": 1
+   }
+  },
+  {
    "config": "SingleWorldRecal_test",
    "date": "2026-06-23",
    "n": 5,
@@ -2954,14 +2953,6 @@
    "xy_err": 0.0671,
    "rel_vel": 0.0185,
    "frozen_GT": false
-  },
-  {
-   "config": "Landing_Test",
-   "path": "Landing_Test/Wed Jun 10 01-22-38 2026",
-   "date": "2026-06-10",
-   "xy_err": 0.0,
-   "rel_vel": 0.1337,
-   "frozen_GT": true
   },
   {
    "config": "BootstrapFix_n21",
