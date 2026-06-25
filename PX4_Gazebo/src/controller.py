@@ -215,6 +215,16 @@ class Controller(Thread):
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
         self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
+        # Cap on the |omega_dot x s| c-term sub-term (the angular-accel feedforward). 0 = OFF (no cap).
+        # dw is already clamped to dw_max, but omega_dot x s still explodes when the centroid s is LARGE
+        # at a terminal funnel breach (s_e_n~1) -> it became the DOMINANT a_u_xy driver (-121 of -146 at
+        # the IC1 32m launch; switching was tamed to +-4 by the kappa-cap + per-axis theta). This caps
+        # that ungated feedforward so it can't saturate the tilt/thrust and launch the drone. Magnitude
+        # cap (direction preserved); small enough to bite the terminal spike, large enough to leave the
+        # normal-flight FF intact.
+        self._cterm_dws_max = float(os.environ.get("PLASMC_CTERM_DWS_MAX", "0"))
+        if self._cterm_dws_max > 0:
+            print(f"[PLASMC] PLASMC_CTERM_DWS_MAX={self._cterm_dws_max} — capping |omega_dot x s| c-term feedforward")
         # PER-AXIS theta decoupling (BAKED default-ON 2026-06-25). The shared scalar theta=||Theta||_F
         # couples the axes: the LATERAL position-barrier (zeta_r) terminal explosion inflates theta ->
         # detonates the switching term + kappa-ODE on EVERY axis incl z (the z over-brake is COLLATERAL,
@@ -295,7 +305,7 @@ class Controller(Thread):
             ("PLASMC_SEN_RECOVERY_K", "0.0"),
             ("CBF_LPF_BEFORE",       "0"),
             ("FLOW_CENTROID_RATE",   "0.0"),
-            ("PLASMC_CH_CLEAN",      "0"),
+            ("PLASMC_CH_CLEAN",      "1"),
         ]
         for _var, _dflt in _fov_vars:
             _val = os.environ.get(_var, _dflt)
@@ -454,10 +464,17 @@ class Controller(Thread):
         # smooths in one move (both s and h are V-frame, so d(s)/dt IS the translational
         # flow). FLOW_CENTROID_RATE in [0,1]: 0 = pure LK (default OFF), 1 = pure centroid.
         self._FLOW_CENTROID_RATE = float(os.environ.get("FLOW_CENTROID_RATE", "0.0"))
-        # Consistent c_h kinematics correction (manuscript §II): clean c-term + drop w×s from h_d.
-        # Removes the noisy V_w/V_dw cross-products + de-dominates the rotation-FF in h_d (the
-        # a_u-outward overshoot cause). MATLAB partial port regressed nominal -> A/B before trusting.
-        self._CH_CLEAN = os.environ.get("PLASMC_CH_CLEAN", "0") == "1"
+        # MANUSCRIPT c_h (§II correction) — BAKED default-ON 2026-06-25. Clean form
+        # c = -psi_dot_b*(e3 x h) - (h.e3)*h - dh_d : drops the SUPERSEDED camera-frame
+        # static-target cross-products (omega_dot x s, omega x(omega x s), 2 omega x h) that the old
+        # form transplanted. The manuscript main text carries this clean form; the old cross-product
+        # form (PLASMC_CH_CLEAN=0, retained for parity) was the mis-derived one. Baked to align the
+        # code with the manuscript formula. NOTE: this is a FORMULATION correction; it does NOT fix
+        # the terminal deck fly-away (a separate Task-2/optic-flow limit-cycle: h_e=v_rel/Z diverges
+        # at the deck when v_rel doesn't reach 0 -- see feedback_terminal_launch_flow_loop + the
+        # SP/limit-cycle analysis). psi_dot_b sign still SITL-unverified (PLASMC_CH_PSIDOT_SIGN knob).
+        self._CH_CLEAN = os.environ.get("PLASMC_CH_CLEAN", "1") == "1"
+        self._ch_psidot_sign = float(os.environ.get("PLASMC_CH_PSIDOT_SIGN", "1.0"))  # flip transport-term yaw rate (clean c-term); -1 retests the regressed sign
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -1149,12 +1166,22 @@ class Controller(Thread):
             _eul = Quaternion(self._quat[-1]).to_angles()        # [roll, pitch, yaw]
             _phi, _th = float(_eul[0]), float(_eul[1])
             _r = -float(self._w[-1][2])                          # true FRD yaw rate (self._w stores -down)
-            psi_dot_b = (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
+            # PLASMC_CH_PSIDOT_SIGN flips the transport-term yaw rate (default +1). The clean-form
+            # A/B regressed (IC2 58m, diverges earlier+harder = ANTI-RESTORING, not lost FF) — the
+            # psi_dot_b sign in -psi_dot_b*(e3 x h) is SITL-unverified (memory flag) and the GT-FB
+            # w_z is itself +psidot_b vs the manuscript -psidot_b, so the transport term likely pushes
+            # the wrong way. Set =-1 to flip and retest (the memory's "flip the _r sign first" remedy).
+            psi_dot_b = self._ch_psidot_sign * (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
             c = (- psi_dot_b * np.cross(e3, self._h[-1])
                  - np.dot(self._h[-1], e3) * self._h[-1]
                  - self._dh_d[-1])
         else:
-            c = (np.cross(self._dw[-1], self._s[-1][:3])
+            _dws = np.cross(self._dw[-1], self._s[-1][:3])   # omega_dot x s — angular-accel feedforward
+            if self._cterm_dws_max > 0.0:                    # cap its magnitude (terminal-launch guard)
+                _ndws = float(np.linalg.norm(_dws))
+                if _ndws > self._cterm_dws_max:
+                    _dws = _dws * (self._cterm_dws_max / _ndws)
+            c = (_dws
                  + np.cross(w, np.cross(w, self._s[-1][:3]))
                  + 2 * np.cross(w, self._h[-1])
                  - (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
