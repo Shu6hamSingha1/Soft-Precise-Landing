@@ -1,0 +1,102 @@
+rec	bucket	config	date	n	SP	TL	xy_med	size_mb	reason
+DELETE	A	AuCapT_IC2_cap15	2026-06-20	5	0	1	2.204	29	combined-barrier gain-parity bug era
+DELETE	A	AuCapT_IC2_cap30	2026-06-20	5	0	0	1.404	27	combined-barrier gain-parity bug era
+DELETE	A	AuCapT_IC2_nocap	2026-06-20	5	0	1	0.925	32	combined-barrier gain-parity bug era
+DELETE	A	AuMax_IC2_aumax10	2026-06-20	5	0	3	10.826	21	combined-barrier gain-parity bug era
+DELETE	A	AuMax_IC2_aumax15	2026-06-20	5	0	2	12.902	22	combined-barrier gain-parity bug era
+DELETE	A	AuMax_IC2_aumax6	2026-06-20	5	0	1	8.262	22	combined-barrier gain-parity bug era
+DELETE	A	AuMax_IC2_kfonly	2026-06-20	5	0	2	11.445	21	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC2_baseline	2026-06-20	5	0	4	5.08	24	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC2_cap08	2026-06-20	5	0	3	5.467	24	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC3_baseline	2026-06-20	5	0	4	17.15	27	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC3_cap08	2026-06-20	5	0	2	3.288	24	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC4_baseline	2026-06-20	4	0	3	3.852	26	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC4_cap08	2026-06-20	5	0	2	2.295	28	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC5_baseline	2026-06-20	5	0	2	4.66	24	combined-barrier gain-parity bug era
+DELETE	A	CapGate_IC5_cap08	2026-06-20	5	0	2	3.394	22	combined-barrier gain-parity bug era
+DELETE	A	CapSweep_IC1_baseline	2026-06-20	5	0	3	9.922	31	combined-barrier gain-parity bug era
+DELETE	A	CapSweep_IC1_cap04	2026-06-20	4	0	0	1.593	33	combined-barrier gain-parity bug era
+DELETE	A	CapSweep_IC1_cap06	2026-06-20	5	0	2	0.988	35	combined-barrier gain-parity bug era
+DELETE	A	CapSweep_IC1_cap08	2026-06-20	4	0	1	1.68	38	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC2_backmap	2026-06-20	5	0	5	12.847	22	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC2_combaucap	2026-06-20	5	0	2	8.81	20	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC3_backmap	2026-06-20	5	0	3	4.757	25	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC3_combaucap	2026-06-20	5	0	2	9.408	23	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC4_backmap	2026-06-20	5	0	4	4.941	26	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC4_combaucap	2026-06-20	5	0	3	8.64	22	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC5_backmap	2026-06-20	5	0	4	3.546	21	combined-barrier gain-parity bug era
+DELETE	A	CombAU_IC5_combaucap	2026-06-20	5	0	4	3.284	20	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC2_backmap	2026-06-20	5	0	5	12.438	24	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC2_combinedcap	2026-06-20	5	0	2	12.678	20	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC3_backmap	2026-06-20	1	0	1	4.778	5	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC3_combinedcap	2026-06-20	5	0	4	16.354	20	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC5_backmap	2026-06-20	5	0	1	3.355	20	combined-barrier gain-parity bug era
+DELETE	A	CombCap_IC5_combinedcap	2026-06-20	5	0	1	8.544	19	combined-barrier gain-parity bug era
+DELETE	A	CommitCap_IC1_baseline	2026-06-20	5	0	2	2.611	33	combined-barrier gain-parity bug era
+DELETE	A	CommitCap_IC1_commit	2026-06-20	5	0	1	2.688	26	combined-barrier gain-parity bug era
+DELETE	A	DwKF_IC2_kfon	2026-06-20	2	0	2	4.533	10	combined-barrier gain-parity bug era
+DELETE	A	IC2_aucap_check	2026-06-20	1	0	0	2.334	4	combined-barrier gain-parity bug era
+DELETE	A	IC2_combined_check	2026-06-20	1	0	1	36.852	4	combined-barrier gain-parity bug era
+DELETE	A	IC2_funnelcheck	2026-06-20	1	0	1	4.725	4	combined-barrier gain-parity bug era
+DELETE	A	LatVel_IC2_chir050	2026-06-20	5	0	1	1.587	28	combined-barrier gain-parity bug era
+DELETE	A	LatVel_IC2_chir130	2026-06-20	5	0	2	3.731	24	combined-barrier gain-parity bug era
+DELETE	A	LoomCal_IC1_capbase	2026-06-20	5	0	5	10.982	30	combined-barrier gain-parity bug era
+DELETE	A	LoomCal_IC1_caploom	2026-06-20	5	0	1	1.547	26	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC2_base	2026-06-20	5	0	2	6.772	19	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC2_loomkf	2026-06-20	5	0	1	10.817	20	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC3_base	2026-06-20	5	0	3	11.683	20	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC3_loomkf	2026-06-20	5	0	0	2.723	19	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC5_base	2026-06-20	5	0	1	5.062	18	combined-barrier gain-parity bug era
+DELETE	A	LoomKF_IC5_loomkf	2026-06-20	5	0	2	3.61	17	combined-barrier gain-parity bug era
+DELETE	A	P2inf_IC2_p025	2026-06-20	5	0	1	1.306	24	combined-barrier gain-parity bug era
+DELETE	A	P2inf_IC2_p035	2026-06-20	5	0	3	26.262	28	combined-barrier gain-parity bug era
+DELETE	A	P2inf_IC2_p050	2026-06-20	5	0	2	5.923	29	combined-barrier gain-parity bug era
+DELETE	A	VdfBake_IC2_backmap	2026-06-20	1	0	1	19.142	5	combined-barrier gain-parity bug era
+DELETE	A	VdfGains_IC2_hotgains	2026-06-20	5	0	5	23.173	21	combined-barrier gain-parity bug era
+DELETE	A	YawConv_IC2_base	2026-06-20	5	0	0	1.419	25	combined-barrier gain-parity bug era
+DELETE	A	YawConv_IC2_ga10	2026-06-20	5	0	3	4.003	29	combined-barrier gain-parity bug era
+DELETE	A	YawConv_IC2_oa10	2026-06-20	5	0	0	1.573	28	combined-barrier gain-parity bug era
+DELETE	A	YawFilt_IC2_filtoff	2026-06-20	5	0	0	0.944	28	combined-barrier gain-parity bug era
+DELETE	A	YawFilt_IC2_filton	2026-06-20	5	0	1	2.249	27	combined-barrier gain-parity bug era
+DELETE	A	CB_IC2_backmap	2026-06-19	5	0	5	13.653	28	combined-barrier gain-parity bug era
+DELETE	A	CB_IC2_chir	2026-06-19	5	0	3	25.979	21	combined-barrier gain-parity bug era
+DELETE	A	CB_IC2_combined	2026-06-19	5	0	3	14.077	20	combined-barrier gain-parity bug era
+DELETE	A	CombinedBarrier_smoke	2026-06-19	1	0	0	6.869	6	combined-barrier gain-parity bug era
+DELETE	A	CommitEarly_IC1_baseline	2026-06-19	5	0	1	2.389	29	combined-barrier gain-parity bug era
+DELETE	A	CommitEarly_IC1_commit	2026-06-19	5	0	3	7.88	35	combined-barrier gain-parity bug era
+DELETE	A	CommitZero_IC1_baseline	2026-06-19	4	0	1	2.132	33	combined-barrier gain-parity bug era
+DELETE	A	CommitZero_IC1_commit	2026-06-19	5	0	1	3.187	30	combined-barrier gain-parity bug era
+DELETE	A	Commit_IC1_baseline	2026-06-19	5	0	1	8.243	31	combined-barrier gain-parity bug era
+DELETE	A	Commit_IC1_commit	2026-06-19	5	0	2	3.534	31	combined-barrier gain-parity bug era
+DELETE	A	Loom_IC1_baseline	2026-06-19	5	0	2	9.987	29	combined-barrier gain-parity bug era
+DELETE	A	Loom_IC1_loomdec	2026-06-19	5	0	4	14.173	31	combined-barrier gain-parity bug era
+DELETE	A	PyrLK_record	2026-06-19	2	0	2	6.015	9	combined-barrier gain-parity bug era
+DELETE	A	Rcond_IC1_baseline	2026-06-19	5	0	1	5.041	29	combined-barrier gain-parity bug era
+DELETE	A	Rcond_IC1_rcond3e2	2026-06-19	3	0	1	3.232	16	combined-barrier gain-parity bug era
+DELETE	A	Rotz_IC1_baseline	2026-06-19	5	0	3	7.412	34	combined-barrier gain-parity bug era
+DELETE	A	Rotz_IC1_rotz	2026-06-19	4	0	1	9.099	39	combined-barrier gain-parity bug era
+DELETE	B	LpfBefore_IC2	2026-06-15	10	0	5	3.796	47	NC-falsified dead-end
+DELETE	B	LpfKP_IC2	2026-06-15	9	0	5	7.618	46	NC-falsified dead-end
+DELETE	B	Stage2_PS0_KP3	2026-06-14	10	0	7	6.159	45	NC-falsified dead-end
+DELETE	B	Stage2b_KD_KP3	2026-06-14	10	0	8	5.932	51	NC-falsified dead-end
+DELETE	B	Bootstrap_k0z0312_n4	2026-06-10	4	0	1	2.346	23	NC-falsified dead-end
+DELETE	B	DhdMax50_misc_n12	2026-06-09	12	0	6	7.701	55	NC-falsified dead-end
+DELETE	B	EzSweep_n5	2026-06-09	5	0	3	7.862	26	NC-falsified dead-end
+DELETE	B	GammaS_sweep_n25	2026-06-09	24	0	5	3.439	138	NC-falsified dead-end
+DELETE	B	KP12_E2505_n5	2026-06-09	5	0	1	4.788	21	NC-falsified dead-end
+DELETE	B	Nxy05_n5	2026-06-09	5	0	1	5.87	22	NC-falsified dead-end
+DELETE	B	TauDs05_n5	2026-06-09	5	0	2	6.411	25	NC-falsified dead-end
+DELETE	B	DescentFix_n6	2026-06-08	6	0	1	5.727	24	NC-falsified dead-end
+DELETE	B	KrYaw_sweep	2026-06-08	6	0	2	4.354	28	NC-falsified dead-end
+DELETE	B	Nz05_n6	2026-06-08	6	0	1	6.116	26	NC-falsified dead-end
+DELETE	B	RateGate_n6	2026-06-08	4	0	1	9.304	15	NC-falsified dead-end
+DELETE	B	TauUa03_n3	2026-06-08	3	0	0	11.062	12	NC-falsified dead-end
+DELETE	B	YawOmega1_n6	2026-06-08	5	0	2	10.069	30	NC-falsified dead-end
+DELETE	B	KI_test	2026-06-07	1	0	0	7.05	5	NC-falsified dead-end
+DELETE	B	KP13_test	2026-06-07	1	0	0	3.684	5	NC-falsified dead-end
+DELETE	B	KP_test	2026-06-07	1	0	0	1.533	5	NC-falsified dead-end
+DELETE	B	RestartProbe	2026-06-07	1	0	0	4.387	5	NC-falsified dead-end
+DELETE	B	YawGamma1_n3	2026-06-07	3	0	0	5.285	14	NC-falsified dead-end
+DELETE	B	thetafloor60_n3	2026-06-07	3	0	0	10.376	14	NC-falsified dead-end
+DELETE	B	trial4_n5	2026-06-07	4	0	0	5.66	26	NC-falsified dead-end
+DELETE	B	wumax_n3	2026-06-07	3	0	1	8.507	13	NC-falsified dead-end
