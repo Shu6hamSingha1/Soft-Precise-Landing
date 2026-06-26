@@ -181,7 +181,7 @@ class Controller(Thread):
         # WARNING: funnel width IS the barrier gain (G⁻¹ ≈ p/2) — never widen a
         # funnel component to "make room" for a transient; it raises that axis's
         # gain proportionally (lesson learned twice: batches 6 and 11).
-        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.8))   # XI2_z 0.6->0.8 (2026-06-13 user bake, Ez5_combo) — faster z funnel contraction
+        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.6))   # Xi_h_z 0.8->0.6 BAKED 2026-06-26 (PX4-specific z optic-flow funnel contraction; descent-rate fix, off-center flies 2/9->0/9 GT-FB). Baked in the BARE default (like N_z) so it survives the env-override path (XI2_xy env bypasses the VDF auto-align below); the auto-align keeps z, only aligns xy to VDF.
         self._p_0   =         pa("P20",   25.0, 25.0, 10.0)  # P20_z 4->10 (2026-06-13 user bake, Ez5_combo) — wider initial z funnel
         self._p_inf =         pa("P2INF", 1.5, 1.5, 0.5)   # P2INF_xy 2.5->1.5; P2INF_z 1.5->0.5 (2026-06-13): tighter z funnel floor -> tighter h_e_z -> softest touchdown (vel 0.37 m/s); binds because XI2_z=0.6 contracts the funnel
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
@@ -273,7 +273,7 @@ class Controller(Thread):
             if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
                 self._E = np.diag([1.0, 1.0, 0.5])                          # vdf E; E_z 1.0->0.5 BAKED 2026-06-21 (IC2 N=15 x2: xy std 29.5->~4, fly 5/15->2-4/15, TL 5/15->1/15; engages kappa switching damping on the terminal Z cycle per MATLAB CB57). X/Y stay 1.0 (NOISE-pumped, kappa hurts there). Env PLASMC_E_* still overrides.
             if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
-                self._gamma = np.diag([0.2, 0.2, 0.6])                      # vdf Xi_h xy=0.2; Xi_h_z=0.6 BAKED 2026-06-26 (PX4-specific): the z optic-flow funnel contraction. Faster Xi_h_z -> vz tracks h_rd*Z (suppresses the over-descent that crashes Z and 1/Z-amplifies the lateral). GT-FB IC3/4/5 no-caps: off-center fly-aways 2/9 -> 0/9 (XI2_z 0.2->0.6); 1.0 over-tightens (no gain). Diverges from MATLAB vdf Xi_h_z=0.2 (SITL descent-timing, like chi_r/N_z). [n=3 GT-FB; full IC1-5 n>=5 + perception-ON pending]
+                self._gamma = np.diag([0.2, 0.2, self._gamma[2, 2]])       # align Xi_h_xy to MATLAB vdf (0.2); KEEP Xi_h_z at the PX4 bare default (0.6, baked above) — it's a PX4-specific divergence (descent timing), not a VDF value
             # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
 
         # Print every parameter whose value differs from its default.
