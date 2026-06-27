@@ -181,7 +181,7 @@ class Controller(Thread):
         # WARNING: funnel width IS the barrier gain (G⁻¹ ≈ p/2) — never widen a
         # funnel component to "make room" for a transient; it raises that axis's
         # gain proportionally (lesson learned twice: batches 6 and 11).
-        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 0.8))   # XI2_z 0.6->0.8 (2026-06-13 user bake, Ez5_combo) — faster z funnel contraction
+        self._gamma = np.diag(pa("XI2",   0.6, 0.6, 1.0))   # XI2_z 0.8->1.0 (2026-06-26 user bake): tighter loom funnel -> lower h_e_z / better descent-rate tracking on the kappa_0_xy base (n=2 IC4, PROVISIONAL — validate IC2-5 n>=5). Earlier XI2_z=1.0 bang-bang was the FROZEN-kappa base (z-chatter coupled into the un-converged lateral); de-coupled once kappa_0_xy converges s_e_n. Takes effect when XI2_xy are env-pinned (bypasses the combined auto-align, line ~276, left coherent).
         self._p_0   =         pa("P20",   25.0, 25.0, 10.0)  # P20_z 4->10 (2026-06-13 user bake, Ez5_combo) — wider initial z funnel
         self._p_inf =         pa("P2INF", 1.5, 1.5, 0.5)   # P2INF_xy 2.5->1.5; P2INF_z 1.5->0.5 (2026-06-13): tighter z funnel floor -> tighter h_e_z -> softest touchdown (vel 0.37 m/s); binds because XI2_z=0.6 contracts the funnel
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
@@ -225,6 +225,13 @@ class Controller(Thread):
         self._cterm_dws_max = float(os.environ.get("PLASMC_CTERM_DWS_MAX", "0"))
         if self._cterm_dws_max > 0:
             print(f"[PLASMC] PLASMC_CTERM_DWS_MAX={self._cterm_dws_max} — capping |omega_dot x s| c-term feedforward")
+        # Scale on the loom×flow c-term feedforward -(h·e3)h (=+|h_z|·h). 2026-06-26 decomposition:
+        # this term is the OUTWARD driver of the mid-descent s_e_n hump (radial +0.77 vs the switching's
+        # -0.64) — a loom×flow POSITIVE feedback (lat drift -> flow h_xy -> term amplifies -> more drift).
+        # =1.0 keeps it (the honest known-dynamics FF); <1.0 gates the amplifier to kill the hump.
+        self._cterm_loom_scale = float(os.environ.get("PLASMC_CTERM_LOOM_SCALE", "1.0"))
+        if self._cterm_loom_scale != 1.0:
+            print(f"[PLASMC] PLASMC_CTERM_LOOM_SCALE={self._cterm_loom_scale} — scaling the -(h·e3)h loom×flow c-term feedforward")
         # PER-AXIS theta decoupling (BAKED default-ON 2026-06-25). The shared scalar theta=||Theta||_F
         # couples the axes: the LATERAL position-barrier (zeta_r) terminal explosion inflates theta ->
         # detonates the switching term + kappa-ODE on EVERY axis incl z (the z over-brake is COLLATERAL,
@@ -638,6 +645,25 @@ class Controller(Thread):
         self._dzeta_r = []
         self._s_dot_meas = []          # measured centroid rate (h_d feedforward, combined mode)
         self._s_dot_deque = deque([np.zeros(2)] * 4)
+        # Un-degenerate zeta_h: use the funnel-tracking reference rate S_r*dp_r (= the back-map's
+        # bounded S_s*dp_s term, NO G_s^-1 starvation) as the h_d x/y rate FF instead of measured
+        # s_dot. Then h_e = h - h_d is a GENUINE velocity error (no s_dot self-cancellation) ->
+        # zeta_h provides velocity damping alive at the converged center -> arrests the terminal
+        # drift before s_e_n breaches the funnel. Convergence stays with zeta_r-in-sigma. Default-off.
+        # UN-BAKED 2026-06-27: regressed the stationary gate (8/25 -> 1/25, gate-ON) — the loom-commit
+        # already handles the stationary terminal, so the funnel-ref's live recovery fights it. KEPT
+        # env-gated as the MOVING-TARGET (rover) candidate (there the commit is impossible, must track
+        # live to touchdown). Default-off restores the s_dot_meas 8/25 stationary config.
+        self._hd_funnel_ref = os.environ.get("PLASMC_HD_FUNNEL_REF", "0") == "1"
+        if self._hd_funnel_ref:
+            print("[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)")
+        # Back-map V_ds_e in the combined h_d: ds_d = p_10*(S_r*dp_r - k_r*zeta_r/g_r), i.e. the back-map's
+        # inv(g_r)*dzeta_rd + S_r*dp_r with proportional dzeta_rd = -k_r*zeta_r (prescribe zeta_r_dot=-k_r*zeta_r
+        # -> s_e_n converges at k_lat = |h_rd|+k_r with h_rd fixed; active convergence/recovery). The -k_r*zeta_r/g_r
+        # carries the G_s^-1 (starves at edge) and rides into dh_d (kept, not dropped). k_r=0 -> funnel-only bake.
+        self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.0"))
+        if self._hd_kr != 0.0:
+            print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
         self._theta = []      # ||Theta||_F
         self._sigma = []
@@ -1032,7 +1058,20 @@ class Controller(Thread):
                 h_d_ff = (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
             h_d_noS = rot + h_d_ff
             self._h_d_noS.append(h_d_noS)
-            self._h_d.append(np.concatenate([self._s_dot_meas[-1], [0.0]]) + h_d_noS)
+            if self._hd_funnel_ref:
+                # back-map V_ds_e = inv(g_r)*dzeta_rd + S_r*dp_r, dzeta_rd = -k_r*zeta_r (proportional
+                # prescription zeta_r_dot = -k_r*zeta_r). p_10 un-normalizes to s_dot_meas (= ds_e) units.
+                # k_r=0 -> funnel-only (S_r*dp_r); k_r>0 adds the convergence/recovery term -k_r*zeta_r/g_r.
+                _S_r = np.clip(self._s_e_n[-1][:2] / self._p_r[-1], -1.0 + S_MARGIN, 1.0 - S_MARGIN)
+                if self._hd_kr != 0.0:
+                    _zeta_r = self._zeta_r[-1]
+                    _g_r = (np.exp(_zeta_r) + 1.0) ** 2 / (2.0 * np.exp(_zeta_r) * self._p_r[-1])
+                    _hd_rate = self._p_10 * (_S_r * self._dp_r[-1] - self._hd_kr * _zeta_r / _g_r)
+                else:
+                    _hd_rate = self._p_10 * _S_r * self._dp_r[-1]
+            else:
+                _hd_rate = self._s_dot_meas[-1]
+            self._h_d.append(np.concatenate([_hd_rate, [0.0]]) + h_d_noS)
         elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
             # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
@@ -1095,7 +1134,12 @@ class Controller(Thread):
         # 1/Z touchdown spike has a manuscript-parameter fix.
         DH_D_MAX = self._DH_D_MAX
         # In combined mode, differentiate h_d_noS (transport+descent) — drops s_ddot (kappa absorbs it).
-        _hd_src = self._h_d_noS if self._combined_barrier else self._h_d
+        # funnel-ref: h_d's rate term (S_s*dp_s) is SMOOTH, so differentiate the FULL h_d (carry it in dh_d
+        # honestly) instead of dropping it to h_d_noS — no s_ddot disturbance for kappa to absorb.
+        if self._combined_barrier:
+            _hd_src = self._h_d if self._hd_funnel_ref else self._h_d_noS
+        else:
+            _hd_src = self._h_d
         if len(_hd_src) > 1:
             self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
@@ -1187,7 +1231,7 @@ class Controller(Thread):
             # the wrong way. Set =-1 to flip and retest (the memory's "flip the _r sign first" remedy).
             psi_dot_b = self._ch_psidot_sign * (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
             c = (- psi_dot_b * np.cross(e3, self._h[-1])
-                 - np.dot(self._h[-1], e3) * self._h[-1]
+                 - self._cterm_loom_scale * np.dot(self._h[-1], e3) * self._h[-1]
                  - self._dh_d[-1])
         else:
             _dws = np.cross(self._dw[-1], self._s[-1][:3])   # omega_dot x s — angular-accel feedforward
@@ -1198,7 +1242,7 @@ class Controller(Thread):
             c = (_dws
                  + np.cross(w, np.cross(w, self._s[-1][:3]))
                  + 2 * np.cross(w, self._h[-1])
-                 - (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
+                 - self._cterm_loom_scale * (np.dot(self._h[-1] + np.cross(w, self._s[-1][:3]), e3)) * self._h[-1]
                  - self._dh_d[-1])
 
         # Theta matrix and its Frobenius norm
