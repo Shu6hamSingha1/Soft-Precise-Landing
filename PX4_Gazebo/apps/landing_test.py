@@ -441,23 +441,6 @@ async def main(record = 'n'):
         COMMIT_FRAMES = int(os.environ.get("LANDING_COMMIT_FRAMES", "3"))
         COMMIT_SEN = float(os.environ.get("LANDING_COMMIT_SEN", "0.35"))
         commit_streak = 0
-        # ── Loom-accumulation commit (2026-06-26): scale-free, perception-free ──
-        # The terminal 1/Z kick fires in the last ~10 cm BEFORE ground contact, so
-        # the contact-based detectors (impact spike / PX4 ON_GROUND) catch only the
-        # post-kick balloon. This gate commits to an open-loop vertical settle just
-        # ABOVE the deck so the live a_u command stops before the kick can fire.
-        # Proximity proxy = ACCUMULATED loom: a clean h_rd descent holds the loom
-        # h_z ≈ h_rd (constant), so we integrate it — ∫h_z dt = ln(Z/Z_start) — a
-        # scale-free measure of how many e-folds of altitude have been descended
-        # (no depth/altitude used). Loom is image-only and, in GT-FB, GT-derived
-        # (perception-free) — unlike marker extent. Commit when |∫h_z dt| exceeds
-        # the threshold (descended to e^-thr of the start altitude) AND centered.
-        #   LANDING_COMMIT_LOOM   |accumulated loom| threshold; 0 = OFF (default)
-        #   reuses LANDING_COMMIT_FRAMES / LANDING_COMMIT_SEN (centered guard)
-        COMMIT_LOOM = float(os.environ.get("LANDING_COMMIT_LOOM", "0.0"))
-        loom_accum = 0.0
-        loom_streak = 0
-        _loom_prev_t = None
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
@@ -584,29 +567,6 @@ async def main(record = 'n'):
                               f"open-loop vertical settle [clean touchdown, SUCCESS path]")
                 else:
                     commit_streak = 0
-            # ── Loom-accumulation commitment (clean touchdown; inert when COMMIT_LOOM=0) ──
-            if COMMIT_LOOM > 0.0 and not in_final_descent:
-                _now_l = time_node.perf_counter()
-                if feature_fresh:
-                    # Integrate the loom only over fresh frames (h_z is meaningful);
-                    # accumulate |h_z|*dt so the threshold is a positive descent depth.
-                    if _loom_prev_t is not None:
-                        loom_accum += abs(EC_node.LOOM_Z) * (_now_l - _loom_prev_t)
-                    if (loom_accum >= COMMIT_LOOM
-                            and EC_node.LATERAL_ERR_N <= COMMIT_SEN):
-                        loom_streak += 1
-                        if loom_streak >= COMMIT_FRAMES:
-                            in_final_descent = True
-                            final_descent_t0 = _now_l
-                            print(f"[landing_test] Loom commitment: accumulated loom "
-                                  f"{loom_accum:.2f} >= {COMMIT_LOOM:.2f} "
-                                  f"(~descended to e^-{loom_accum:.2f} of start alt) "
-                                  f"AND centered (|s_e_n|={EC_node.LATERAL_ERR_N:.2f} <= "
-                                  f"{COMMIT_SEN:.2f}) for {loom_streak} fresh frames -> "
-                                  f"open-loop vertical settle [clean touchdown, SUCCESS path]")
-                    else:
-                        loom_streak = 0
-                _loom_prev_t = _now_l
             if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
@@ -639,6 +599,13 @@ async def main(record = 'n'):
                     print(f"[landing_test] Final-descent timeout "
                           f"({FINAL_DESCENT_TIMEOUT}s) — PX4 never reported LANDED.")
                     break
+
+            # Loom-inversion touchdown: the controller detected first ground contact via the loom
+            # sign-flip (soft contact the accel-spike detector misses). End the landing NOW, before
+            # the control pumps the bounce. Closed-loop until this instant; not an open-loop commit.
+            if EC_node.TOUCHDOWN_DETECTED and not FC_node.LANDED:
+                print("[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming")
+                FC_node.LANDED = True
 
             await asyncio.sleep(SLEEP_TIME)
 

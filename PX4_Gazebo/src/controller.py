@@ -182,7 +182,7 @@ class Controller(Thread):
         # funnel component to "make room" for a transient; it raises that axis's
         # gain proportionally (lesson learned twice: batches 6 and 11).
         self._gamma = np.diag(pa("XI2",   0.6, 0.6, 1.0))   # XI2_z 0.8->1.0 (2026-06-26 user bake): tighter loom funnel -> lower h_e_z / better descent-rate tracking on the kappa_0_xy base (n=2 IC4, PROVISIONAL — validate IC2-5 n>=5). Earlier XI2_z=1.0 bang-bang was the FROZEN-kappa base (z-chatter coupled into the un-converged lateral); de-coupled once kappa_0_xy converges s_e_n. Takes effect when XI2_xy are env-pinned (bypasses the combined auto-align, line ~276, left coherent).
-        self._p_0   =         pa("P20",   25.0, 25.0, 10.0)  # P20_z 4->10 (2026-06-13 user bake, Ez5_combo) — wider initial z funnel
+        self._p_0   =         pa("P20",   15.0, 15.0, 10.0)  # P20_x/y 25->15 BAKED 2026-06-29 (terminal-approach); P20_z 4->10 (2026-06-13)
         self._p_inf =         pa("P2INF", 1.5, 1.5, 0.5)   # P2INF_xy 2.5->1.5; P2INF_z 1.5->0.5 (2026-06-13): tighter z funnel floor -> tighter h_e_z -> softest touchdown (vel 0.37 m/s); binds because XI2_z=0.6 contracts the funnel
         # Outer-loop POSITION funnel on s_e_n (PPC, mirrors the velocity funnel above).
         # Env-gated, default OFF = the legacy outer PID. Back-mapped form is a drop-in for the
@@ -255,12 +255,12 @@ class Controller(Thread):
         # p_r (FoV-consistent floor p_r_inf>=1 — proof Standing Condition 1; precision comes
         # from p_2/chi_r, NOT from tightening p_r). MATLAB-validated 25/25 SP + 75/75 noisy.
         self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
-        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "0.5")),
-                                  float(os.environ.get("PLASMC_CHI_R_Y", "0.5"))])   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
+        self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "1.5")),
+                                  float(os.environ.get("PLASMC_CHI_R_Y", "1.5"))])   # BAKED 1.5 2026-06-29 (terminal-approach config; was 0.5)   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
                                   float(os.environ.get("PLASMC_PR0_Y", "1.2"))])      # position-funnel initial half-width (FoV units)
-        self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "1.0")),
-                                  float(os.environ.get("PLASMC_PRINF_Y", "1.0"))])    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
+        self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "0.8")),
+                                  float(os.environ.get("PLASMC_PRINF_Y", "0.8"))])   # BAKED 0.8 2026-06-29 (terminal-approach; was 1.0)    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
         self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
                                  float(os.environ.get("PLASMC_XIR_Y", "0.10"))])      # position-funnel contraction rate
         # Combined mode = the MATLAB VDF-ASMC manuscript controller. The baked PX4 defaults
@@ -270,17 +270,17 @@ class Controller(Thread):
         # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
         # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
-            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 0.5
-            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 0.5
+            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 1.0   # BAKED 1.0 2026-06-29 (terminal-approach; was 0.5 VDF)
+            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # BAKED 1.0 2026-06-29
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
             if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
                 self._Gma = np.diag([0.4375, 0.5, 0.75])                     # vdf Gamma (was 2/2/1)
             if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
-                self._kappa_0 = np.array([0.125, 0.125, 0.25])              # vdf kappa0 (was .5/.5/1)
+                self._kappa_0 = np.array([0.5, 0.5, 0.25])                  # BAKED 2026-06-29 terminal-approach kappa0 (was 0.125/0.125/0.25 VDF)
             if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
                 self._E = np.diag([1.0, 1.0, 0.5])                          # vdf E; E_z 1.0->0.5 BAKED 2026-06-21 (IC2 N=15 x2: xy std 29.5->~4, fly 5/15->2-4/15, TL 5/15->1/15; engages kappa switching damping on the terminal Z cycle per MATLAB CB57). X/Y stay 1.0 (NOISE-pumped, kappa hurts there). Env PLASMC_E_* still overrides.
             if not any(f"PLASMC_XI2_{a}" in os.environ for a in "XYZ"):
-                self._gamma = np.diag([0.2, 0.2, 0.2])                      # vdf Xi_h (was .6/.6/.8)
+                self._gamma = np.diag([0.7, 0.7, 1.0])                      # BAKED 2026-06-29 terminal-approach Xi_h (was 0.2/0.2/0.2 VDF)
             # (self._kappa is seeded from self._kappa_0 below at its init, picks up the new value)
 
         # Print every parameter whose value differs from its default.
@@ -462,6 +462,110 @@ class Controller(Thread):
         # commit only fires from a centered state -> lands near center. 0 = extent-only (old).
         self._commit_sen = float(os.environ.get("PLASMC_COMMIT_SEN", "0.3"))
         self._s_e_n_hold = None
+        # ───────────────────────────────────────────────────────────────────────────────
+        # TERMINAL-COMMIT FRAMEWORK (2026-06-28, design TERMINAL_KICK_COMMIT_DESIGN.md).
+        # The kick = residual lateral VELOCITY v_res, 1/Z-normalized -> s_e_n breach ->
+        # zeta_r->inf. Fix: at the corner-exit event (marker fills FoV, MARKER_EXTENT_PX >=
+        # TC_EXTENT ~= a FIXED, start-height-INDEPENDENT altitude ~0.5 m), classify and act:
+        #   case (b) COMMIT  if |s_e_n| < TC_SEN (centered) AND h_z < 0 (genuine loom) AND
+        #                    |ds_e_n| < TC_DSEN (settled — catches the zero-crossing the
+        #                    position-only gate misses), held TC_FRAMES consecutive frames.
+        #                    Action: ZERO zeta_r in the lateral surface (sigma_xy -> zeta_h
+        #                    only) — removes the zeta_r blow-up term -> no kick. One-way latch.
+        #                    (Honest: marker invisible <0.3 m, so s_e_n is fiction.) Ring/flow
+        #                    + vertical(loom) + yaw stay live.
+        #   case (a) ABORT   if at corner-exit |s_e_n| >= TC_SEN (off-center) OR ds_e_n > 0
+        #                    growing (s_e_n diverging = kick precursor). Sets _abort_requested
+        #                    for the app to ascend + re-attempt.
+        # The |ds_e_n| gate replaces the ||h_xy|| flow guard (same v_res info, centroid-robust,
+        # matching s_e_n coordinate). All triggers image-space -> scale/depth-free. Default-off.
+        self._terminal_commit = os.environ.get("PLASMC_TERMINAL_COMMIT", "1") == "1"  # BAKED ON 2026-06-29 (s_e_n->0 ramp; stability config)
+        self._tc_extent = float(os.environ.get("PLASMC_TC_EXTENT", "400"))   # corner-exit: marker px extent
+        self._tc_sen    = float(os.environ.get("PLASMC_TC_SEN",    "0.3"))   # |s_e_n| centered cut
+        self._tc_dsen   = float(os.environ.get("PLASMC_TC_DSEN",   "0.2"))   # |ds_e_n| settled cut
+        self._tc_frames = int(os.environ.get("PLASMC_TC_FRAMES",   "3"))     # consecutive-frame confirm
+        # Smooth handoff: ramp the zeta_r contribution 1->0 over TC_RAMP_S after commit (a HARD
+        # zero steps sigma_xy by chi_r*zeta_r ~0.27 at TC_SEN=0.3 -> a_u jolt). 0 = hard zero.
+        self._tc_ramp_s = float(os.environ.get("PLASMC_TC_RAMP_S", "0.3"))
+        # Option-A post-commit integral: replace the (faded) chi_r*zeta_r position barrier with a
+        # PI-on-flow term Omega_xy*int(zeta_h_xy), mirroring the bounded z-axis (sigma_z = zeta_h_z +
+        # Omega_z*int(zeta_h_z)). The integral is RESET to 0 at commit so its reference is the
+        # CENTERED commit position (holds it; captures only post-commit drift, no approach windup).
+        # Pair with loose P2INF_xy (low barrier gain) = the z-mirror (PI-on-flow, no terminal kick).
+        self._tc_integral = os.environ.get("PLASMC_TC_INTEGRAL", "0") == "1"
+        self._tc_omega_xy = float(os.environ.get("PLASMC_TC_OMEGA_XY", "0.05"))  # PI gain (cf Omega_z)
+        self._tc_izeta_reset_done = False   # one-shot: izeta_xy reset at the commit step
+        # Singhal-containment sign handling: the legacy form holds |last-good| * sign(CURRENT breach),
+        # so when the terminal limit cycle flips sign the contained value flips with it -> the
+        # containment FEEDS the sign-flipping. With this on, the LATERAL axes hold the full last-good
+        # value (sign + magnitude) -> the containment freezes through the breach instead of toggling.
+        # z keeps trust-sign (loom glitches preserve sign; that protection is load-bearing). Default-off.
+        self._contain_hold_full = os.environ.get("PLASMC_CONTAIN_HOLD_FULL", "0") == "1"
+        # LOOM-INVERSION TOUCHDOWN DETECTOR (depth-free, soft-touchdown). Throughout the descent the
+        # loom h_z = v_z/Z tracks h_rd<0 (contraction); it flips POSITIVE only when the drone reverses
+        # vertically at first ground contact (rebound). The accel-spike detector (|a|>50) misses a SOFT
+        # touchdown (gentle contact ~20 m/s², below threshold + ambiguous with descent transients), and
+        # PX4 ON_GROUND needs the drone settled (the bounce defeats it). Verified: the FIRST sustained
+        # h_z>0 (neg->pos) marks the first contact (Z~0.11-0.14); the pre-contact descent has zero
+        # inversions. Fire -> LANDED so the app disarms BEFORE the control pumps the bounce. Scale-free,
+        # moving-target-OK, closed-loop until contact (NOT an open-loop commit). Default-off.
+        self._touchdown_loom = os.environ.get("PLASMC_TOUCHDOWN_LOOM", "1") == "1"  # BAKED ON 2026-06-29 (loom-inversion touchdown detect)
+        self._td_frames = int(os.environ.get("PLASMC_TD_FRAMES", "3"))    # persistence (reject noise spikes)
+        self._td_sen    = float(os.environ.get("PLASMC_TD_SEN", "0.6"))   # near-centered gate (first contacts 0.34-0.53)
+        self._td_arm_loom = float(os.environ.get("PLASMC_TD_ARM_LOOM", "-0.1"))  # arm once a descent is established
+        self._td_streak = 0
+        self._td_armed  = False
+        self._touchdown = False
+        if self._touchdown_loom:
+            print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
+                  f"(h_z>0 for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+        # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
+        # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
+        # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
+        # estimates where h/s ACTUALLY are now (vs the lagged measurement) -> restores phase margin.
+        # SCALE-FREE (operates on the image observables h, s directly; no Z). Tests whether
+        # lag-compensation drops the relay% WITHOUT loosening the funnel. Default-off.
+        # GATED: the buffer (self._h, self._s) fills the WHOLE flight (always warm), but the savgol
+        # prediction is only APPLIED on frames where the rate |dh|/|ds| exceeds a physical limit (the
+        # 1/Z+lag-corrupted "wrongly estimated" spike, idea 2's gate). By the terminal the window is
+        # FULL (filled during the stable approach) -> no start-up transient. Lateral-only (leave the
+        # loom/descent untouched). On a flagged frame, replace the spiked value with the savgol
+        # extrapolation from the PRE-spike window (excludes the corrupted current sample).
+        self._savgol_predict = os.environ.get("PLASMC_SAVGOL_PREDICT", "1") == "1"  # BAKED ON 2026-06-29 (model-predict lag comp)
+        # PREDICTOR MODE: "model" = kinematic consistency (ṡ=h_lat−s·h_z; flow↔bearing reconstruct each
+        # other from last-good values, no window — handles the 1/Z regime change savgol can't);
+        # "savgol" = legacy polynomial extrapolation (dead-end, kept for A/B). Default model.
+        self._predict_mode = os.environ.get("PLASMC_PREDICT_MODE", "model").lower()
+        self._predict_lead = float(os.environ.get("PLASMC_PREDICT_LEAD_S", "0.04"))  # forward horizon (s; 0=just correct)
+        self._predict_win  = int(os.environ.get("PLASMC_PREDICT_WIN", "15"))         # fit window (warm at terminal)
+        self._predict_deg  = int(os.environ.get("PLASMC_PREDICT_DEG", "2"))          # poly degree (2=curvature)
+        # PER-AXIS rate-gate limits — the loom (z) has a different scale than the lateral (x,y), so
+        # its limit is separate. Derived from the terminal-kick data (approach p90 << limit << terminal p90).
+        _dh_xy = float(os.environ.get("PLASMC_DH_LIMIT_XY", "10.0"))
+        _dh_z  = float(os.environ.get("PLASMC_DH_LIMIT_Z",  "12.0"))
+        self._dh_limit = np.array([_dh_xy, _dh_xy, _dh_z])             # per-axis |dh_k| gate
+        self._ds_limit = np.array([float(os.environ.get("PLASMC_DS_LIMIT", "5.0"))] * 2)  # |ds_n_k| gate (x,y)
+        # IMMUTABLE raw buffers (EKF/KF measurement stream) — the gate reads + the savgol fits from
+        # THESE, never from the corrected self._h/self._s. Predictions write ONLY to self._h/self._s.
+        # Breaks the self-feedback loop (prediction never re-enters the fit) and makes the gate read
+        # the TRUE raw rate (terminal-selective, not the corrupted 75%-at-altitude). _good = per-frame
+        # mask (False when any axis spiked) so the fit skips genuine spikes too.
+        self._h_raw = []; self._s_raw = []
+        self._h_good = []; self._s_good = []
+        if self._savgol_predict:
+            print(f"[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE={self._predict_mode} "
+                  f"(lead={self._predict_lead}s; gate |dh|>{self._dh_limit} |ds_n|>{self._ds_limit}; "
+                  f"raw-buffer, no feedback)")
+        self._tc_commit_t = None      # sim time at case-(b) commit (taper origin)
+        self._tc_count  = 0           # consecutive frames the case-(b) condition has held
+        self._tc_seen_exit = False    # corner-exit event has fired at least once
+        self._abort_requested = False # case (a) — exposed to the app for re-ascend
+        self._abort_reason = ""
+        if self._terminal_commit:
+            print(f"[controller] PLASMC_TERMINAL_COMMIT=1: corner-exit commit "
+                  f"(extent>={self._tc_extent}, |s_e_n|<{self._tc_sen}, h_z<0, "
+                  f"|ds_e_n|<{self._tc_dsen}, {self._tc_frames}-frame) -> zero zeta_r; "
+                  f"off-center/diverging -> abort")
         # LEVER 2 (flow ceiling + smoothing): blend the accurate DETECTED-centroid rate
         # d(s[:2])/dt into the lateral flow h[:2]. The LK flow saturates ~1 rad/s AND
         # carries lstsq garbage spikes; the centroid rate has no LK ceiling and no lstsq
@@ -567,6 +671,133 @@ class Controller(Thread):
             pass
         return 0.0
 
+    def _terminalCommitStep(self, s_e_n, ds_e_n):
+        """Terminal-commit discriminator (TERMINAL_KICK_COMMIT_DESIGN.md). Called each step in
+        combined mode with the live normalized error s_e_n (=r_bar_e) and its FILTERED rate
+        ds_e_n (=dr_bar_e = s_dot_meas/p_10, CV-KF). Latches case (b) commit or flags case (a)
+        abort. Scale/depth-free: extent(px), s_e_n, h_z, ds_e_n are all image-space."""
+        if self._committed:
+            return                                          # one-way latch — never re-evaluate
+        # Corner-exit event: MEDIAN marker extent over the window crosses the FoV-fill threshold
+        # (median filters the switching-noisy raw extent that spuriously spikes — see _commit_win).
+        self._ext_win.append(float(self.MARKER_EXTENT_PX))
+        if not (len(self._ext_win) >= self._commit_win
+                and float(np.median(self._ext_win)) > self._tc_extent):
+            self._tc_count = 0
+            return
+        self._tc_seen_exit = True
+        sen  = float(np.linalg.norm(s_e_n))
+        dsen = float(np.linalg.norm(ds_e_n))
+        h_z  = float(self._h[-1][2]) if len(self._h) > 0 else 0.0
+        centered = sen  < self._tc_sen
+        looming  = h_z  < 0.0
+        settled  = dsen < self._tc_dsen
+        # case (a) ABORT: off-center at corner-exit, OR s_e_n actively DIVERGING (rate points
+        # outward, ds_e_n . s_e_n > 0, at non-trivial magnitude = the breach/kick precursor).
+        diverging = float(np.dot(ds_e_n, s_e_n)) > 0.0 and dsen >= self._tc_dsen
+        if (not centered) or diverging:
+            self._tc_count = 0
+            if not self._abort_requested:
+                self._abort_requested = True
+                self._abort_reason = "off-center" if not centered else "diverging"
+                print(f"[controller] TERMINAL-COMMIT case(a) ABORT ({self._abort_reason}): "
+                      f"|s_e_n|={sen:.3f} |ds_e_n|={dsen:.3f} extent={np.median(self._ext_win):.0f}")
+            return
+        # case (b) COMMIT candidate: centered + looming + settled. Confirm over TC_FRAMES.
+        if centered and looming and settled:
+            self._tc_count += 1
+            if self._tc_count >= self._tc_frames:
+                self._committed = True
+                self._tc_commit_t = self._t[-1]
+                self._s_e_n_hold = np.asarray(s_e_n).copy()
+                print(f"[controller] TERMINAL-COMMIT case(b) COMMIT: |s_e_n|={sen:.3f} "
+                      f"|ds_e_n|={dsen:.3f} h_z={h_z:.2f} extent={np.median(self._ext_win):.0f} "
+                      f"-> zeta_r zeroed (kick removed)")
+        else:
+            self._tc_count = 0   # centered but still converging (not settled): wait, don't latch
+
+    @property
+    def ABORT_REQUESTED(self):
+        """Case-(a) signal for the app: corner-exit reached off-center / diverging -> re-ascend."""
+        return self._abort_requested
+
+    def _predictForward(self, raw, good, lead):
+        """Savgol/poly FORWARD predictor reading ONLY the immutable `raw` buffer and GOOD (non-spiked)
+        frames -> no self-feedback, no spike contamination. Fit a degree-`_predict_deg` poly to the
+        last `_predict_win` good raw samples (vs control time, all strictly before NOW), then EVALUATE
+        at NOW+lead -> de-glitched, lag-compensated estimate. Scale-free. Falls back to the raw last
+        value when there aren't enough good frames or stamps are non-monotone."""
+        win, deg = self._predict_win, self._predict_deg
+        lo = max(0, len(raw) - 1 - 4 * win)                       # bound the search to recent frames
+        idxs = [i for i in range(lo, len(raw) - 1) if i < len(good) and good[i]]   # good frames before NOW
+        if len(idxs) < win or len(self._t) < len(raw):
+            return raw[-1]
+        idxs = idxs[-win:]
+        tt = np.asarray([self._t[i] for i in idxs], float) - float(self._t[-1])    # relative to NOW (now=0)
+        if not np.all(np.diff(tt) > 1e-6):
+            return raw[-1]
+        Y = np.asarray([raw[i] for i in idxs], float)
+        out = np.empty(Y.shape[1])
+        for k in range(Y.shape[1]):
+            out[k] = np.polyval(np.polyfit(tt, Y[:, k], deg), lead)   # lead from NOW
+        return out
+
+    def _lastGood(self, good, n=1):
+        """Up to `n` most-recent indices i with good[i]==True (ascending), searched over recent frames."""
+        out = []
+        for i in range(len(good) - 1, max(-1, len(good) - 1 - 6 * self._predict_win), -1):
+            if good[i]:
+                out.append(i)
+                if len(out) == n:
+                    break
+        return out[::-1]
+
+    def _predictModel_s(self, k, lead):
+        """MODEL-based bearing estimate for spiked lateral axis k, from the kinematics ṡ=h_lat−s·h_z:
+        s_k = s_prev_good + (h_lat_k − s_prev_good·h_z)·(Δt+lead). Anchored to last-good bearing +
+        last-good flow/loom (live values carry the 1/Z regime; no window, no extrapolation overshoot)."""
+        gi = self._lastGood(self._s_good, 1); hi = self._lastGood(self._h_good, 1)
+        if not gi or not hi:
+            return self._s_raw[-1][k]
+        ip, ih = gi[-1], hi[-1]
+        s_prev = self._s_raw[ip][k]; h_lat = self._h_raw[ih][k]; h_z = self._h_raw[ih][2]
+        dt = max(float(self._t[-1]) - float(self._t[ip]), 1e-3) + lead
+        return s_prev + (h_lat - s_prev * h_z) * dt
+
+    def _predictModel_h(self, k, lead):
+        """MODEL-based flow estimate for spiked lateral axis k, inverting the kinematics:
+        h_lat_k = ṡ_k + s_k·h_z, with ṡ_k the last-good bearing rate. Reconstructs the (velocity-like)
+        flow from the smoother (position-like) bearing + measured loom."""
+        gi = self._lastGood(self._s_good, 2); hi = self._lastGood(self._h_good, 1)
+        if len(gi) < 2 or not hi:
+            return self._h_raw[-1][k]
+        i0, i1, ih = gi[0], gi[1], hi[-1]
+        sdot = (self._s_raw[i1][k] - self._s_raw[i0][k]) / max(float(self._t[i1]) - float(self._t[i0]), 1e-3)
+        return sdot + self._s_raw[i1][k] * self._h_raw[ih][2]
+
+    def _touchdownDetect(self, s_e_n):
+        """Loom-inversion soft-touchdown detector. Arms once a descent is established (h_z < arm),
+        then latches LANDED when the loom holds POSITIVE for _td_frames frames (= the vertical
+        reversal at first contact) while near-centered. Depth-free (loom only), one-way latch."""
+        if not self._touchdown_loom or self._touchdown:
+            return
+        h_z = float(self._h[-1][2])
+        if not self._td_armed:
+            if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
+                self._td_armed = True
+            return
+        self._td_streak = self._td_streak + 1 if h_z > 0.0 else 0
+        if self._td_streak >= self._td_frames and float(np.max(np.abs(s_e_n))) < self._td_sen:
+            self._touchdown = True
+            print(f"[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x{self._td_frames}) "
+                  f"|s_e_n|={float(np.max(np.abs(s_e_n))):.2f} -> LANDED (disarm before bounce)")
+
+    @property
+    def TOUCHDOWN_DETECTED(self):
+        """One-way latch: first persistent loom inversion near-centered -> first ground contact.
+        The app reads this to disarm at touchdown (the accel-spike detector misses soft contacts)."""
+        return self._touchdown
+
     @property
     def LATERAL_ERR_N(self):
         """|s_e_n| — norm of the latest normalized lateral image error (scale-free,
@@ -654,14 +885,14 @@ class Controller(Thread):
         # already handles the stationary terminal, so the funnel-ref's live recovery fights it. KEPT
         # env-gated as the MOVING-TARGET (rover) candidate (there the commit is impossible, must track
         # live to touchdown). Default-off restores the s_dot_meas 8/25 stationary config.
-        self._hd_funnel_ref = os.environ.get("PLASMC_HD_FUNNEL_REF", "0") == "1"
+        self._hd_funnel_ref = os.environ.get("PLASMC_HD_FUNNEL_REF", "1") == "1"  # BAKED ON 2026-06-29 (funnel-ref h_d; un-degenerate zeta_h)
         if self._hd_funnel_ref:
             print("[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)")
         # Back-map V_ds_e in the combined h_d: ds_d = p_10*(S_r*dp_r - k_r*zeta_r/g_r), i.e. the back-map's
         # inv(g_r)*dzeta_rd + S_r*dp_r with proportional dzeta_rd = -k_r*zeta_r (prescribe zeta_r_dot=-k_r*zeta_r
         # -> s_e_n converges at k_lat = |h_rd|+k_r with h_rd fixed; active convergence/recovery). The -k_r*zeta_r/g_r
         # carries the G_s^-1 (starves at edge) and rides into dh_d (kept, not dropped). k_r=0 -> funnel-only bake.
-        self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.0"))
+        self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.5"))  # BAKED 0.5 2026-06-29
         if self._hd_kr != 0.0:
             print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
@@ -850,6 +1081,23 @@ class Controller(Thread):
             V_ds_d = [V_ds_d_xy; 0]
         """
         self._s.append(s)
+        if self._savgol_predict:
+            self._s_raw.append(np.asarray(s, float).copy())      # IMMUTABLE raw measurement
+            if len(self._s_raw) > 1 and len(self._dt) > 0:
+                _dtc = max(float(self._dt[-1]), 0.006)
+                dsn = np.abs((self._s_raw[-1][:2] - self._s_raw[-2][:2]) / (self._p_10 * _dtc))  # RAW |ds_n|
+                spiked = dsn > self._ds_limit                    # PER-AXIS lateral (const s[2] never trips)
+                self._s_good.append(not bool(np.any(spiked)))
+                if np.any(spiked):
+                    sc = np.asarray(self._s[-1], float).copy()
+                    pred = (self._predictForward(self._s_raw, self._s_good, self._predict_lead)
+                            if self._predict_mode == "savgol" else None)
+                    for k in range(2):
+                        if spiked[k]:
+                            sc[k] = pred[k] if self._predict_mode == "savgol" else self._predictModel_s(k, self._predict_lead)
+                    self._s[-1] = sc
+            else:
+                self._s_good.append(True)
         self._s_e.append(self._s[-1] - self._s_d)
 
         # Normalized pixel error (sensor-half normalization)
@@ -871,6 +1119,21 @@ class Controller(Thread):
                 self._committed = True
                 self._s_e_n_hold = s_e_n.copy()   # logged for diagnostics (offset committed at)
         self._s_e_n.append(s_e_n)
+        # TERMINAL-COMMIT — "s = s_d" objective change. Ramp the POSITION error s_e_n -> 0, which makes
+        # zeta_r -> 0 in BOTH paths consistently (surface sigma AND the h_d funnel-ref _hd_rate, both
+        # built from s_e_n), CONTINUOUSLY, with chi_r FIXED (changing a surface coefficient would step
+        # sigma -> discontinuous a_u). Rationale: post-commit we are over the target (marker leaving the
+        # FoV) -> stop aligning, just land soft. The remaining surface sigma_xy = zeta_h(h_e) damps the
+        # lateral velocity: h_e = h - h_d, and h is the MEASURED optical flow (lstsq, INDEPENDENT of the
+        # centroid s), so post-commit (_hd_rate -> 0) h_e -> s_dot (residual bearing rate) and the SMC
+        # drives it to 0. We zero s_e_n, NOT s itself, so that (a) h_d_noS keeps FF(s_actual) -> h_e =
+        # s_dot exactly (no FF bias), and (b) dr_bar_e = s_dot/p_10 stays actual -> the chi_r*dzeta_r
+        # residual-velocity term stays alive. (Overriding s would NOT hide the velocity -- h is measured
+        # independently of s -- it would only bias the FF and kill the dzeta_r term.) Replaces the
+        # surface-only zeta_r taper (which left the h_d path alive -> the residual kick).
+        if self._terminal_commit and self._committed and self._tc_commit_t is not None:
+            _a = min(1.0, (self._t[-1] - self._tc_commit_t) / self._tc_ramp_s) if self._tc_ramp_s > 0 else 1.0
+            self._s_e_n[-1] = (1.0 - _a) * self._s_e_n[-1]
 
         if self._combined_barrier:
             # === COMBINED-BARRIER: position barrier zeta_r enters the sliding surface (no back-map) ===
@@ -998,6 +1261,24 @@ class Controller(Thread):
     def _updateOptFlow(self, h):
         """Middle-loop: barrier-transform optical flow error, prep zeta / sigma inputs."""
         self._h.append(h)
+        if self._savgol_predict:
+            self._h_raw.append(np.asarray(h, float).copy())      # IMMUTABLE raw measurement
+            if len(self._h_raw) > 1 and len(self._dt) > 0:
+                _dtc = max(float(self._dt[-1]), 0.006)           # floor tiny/duplicate-stamp dt
+                dh = np.abs((self._h_raw[-1] - self._h_raw[-2]) / _dtc)   # gate on RAW dh (terminal-selective)
+                spiked = dh > self._dh_limit                     # PER-AXIS (loom kept in the good-mask)
+                self._h_good.append(not bool(np.any(spiked)))    # frame good iff no axis spiked
+                if np.any(spiked[:2]):                           # LATERAL spike -> reconstruct lateral only
+                    hc = np.asarray(self._h[-1], float).copy()
+                    pred = (self._predictForward(self._h_raw, self._h_good, self._predict_lead)
+                            if self._predict_mode == "savgol" else None)
+                    for k in range(2):                           # LATERAL ONLY. The loom (k=2) is LEFT as the
+                        if spiked[k]:                            # genuine measurement: its dynamics
+                            hc[k] = (pred[k] if self._predict_mode == "savgol"   # ḣ_z=-β·a_z-h_z² (manuscript
+                                     else self._predictModel_h(k, self._predict_lead))  # eq h-dot) are β-coupled,
+                    self._h[-1] = hc                             # not depth-free predictable; the z-funnel must see it
+            else:
+                self._h_good.append(True)
 
         # LEVER 2: blend the accurate centroid-rate into the lateral flow (see __init__).
         # d(s[:2])/dt = the V-frame translational flow, free of the LK ~1 rad/s ceiling and
@@ -1105,7 +1386,10 @@ class Controller(Thread):
         for idx in range(N_DIM):
             ratio = self._h_e[-1][idx] / self._p[-1][idx]
             if abs(ratio) >= 1.0 and len(self._S) > 0:
-                ratio = np.abs(float(self._S[-1][idx, idx])) * np.sign(ratio)  # hold last-good magnitude, trust current sign
+                if self._contain_hold_full and idx < 2:   # lateral: hold full last-good (no sign-flip feed)
+                    ratio = float(self._S[-1][idx, idx])
+                else:                                      # legacy / z: hold magnitude, trust current sign
+                    ratio = np.abs(float(self._S[-1][idx, idx])) * np.sign(ratio)
                 self._h_e[-1][idx] = ratio * self._p[-1][idx]             # reconstruct contained h_e
                 self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]  # and h (used by c-term)
                 contained[idx] = True
@@ -1153,6 +1437,18 @@ class Controller(Thread):
         """Middle-loop adaptive SMC -> body-frame acceleration command a_u."""
         t = self._t[-1] - self._t0
 
+        # Terminal-commit discriminator — evaluated HERE (not in _updateImgFeatureParam) so h_z is
+        # the CURRENT frame's loom (_updateOptFlow has run; _h[-1] is fresh, no one-frame lag). Sets
+        # _committed BEFORE the surface assembly below so the zeta_r-zeroing acts this same step.
+        # ds_e_n = s_dot_meas/p_10 (filtered, combined-mode only); s_e_n = last normalized error.
+        if (self._terminal_commit and self._combined_barrier
+                and len(self._s_e_n) > 0 and len(self._s_dot_meas) > 0):
+            self._terminalCommitStep(self._s_e_n[-1], self._s_dot_meas[-1] / self._p_10)
+
+        # Loom-inversion touchdown detector (depth-free). h_z is fresh (_updateOptFlow ran); s_e_n latest.
+        if self._touchdown_loom and len(self._s_e_n) > 0 and len(self._h) > 0:
+            self._touchdownDetect(self._s_e_n[-1])
+
         # Integral of zeta (trapezoidal) with anti-windup
         if len(self._izeta) == 0:
             self._izeta.append(np.zeros(N_DIM))
@@ -1164,6 +1460,12 @@ class Controller(Thread):
             # on 3-vectors at the limit (norm=√3·5 vs per-axis 5 each).
             new_int = np.clip(new_int, -self._izeta_clamp, self._izeta_clamp)
             self._izeta.append(new_int)
+        # Option-A: reset izeta_xy to 0 at the FIRST committed step so the post-commit PI integral
+        # references the centered commit position (no carried-over approach accumulation/windup).
+        if (self._tc_integral and self._committed and not self._tc_izeta_reset_done):
+            self._izeta[-1][0] = 0.0
+            self._izeta[-1][1] = 0.0
+            self._tc_izeta_reset_done = True
 
         # Angular acceleration: smoothed derivative of V_w_i (MATLAB derives V_dw from V_w_i,
         # visualControl_IBVS_adaptive.m:295-299). V_w_i is FRAME-HELD — img_data updates it ~42 Hz
@@ -1195,15 +1497,30 @@ class Controller(Thread):
         # chi*zeta_dot_aug is the measured drift folded into u_eq/Theta (= Omega*zeta_h back-mapped;
         # = [chi_r*dzeta_r; Omega_z*zeta_h_3] combined). Relative degree 1 preserved.
         if self._combined_barrier:
-            _zr = self._zeta_r[-1]
+            _zr  = self._zeta_r[-1]
+            _dzr = self._dzeta_r[-1]
+            # TERMINAL-COMMIT: zeta_r (and its rate) are zeroed AT THE SOURCE via the s_e_n->0 ramp in
+            # _updateImgFeatureParam — zeta_r is built from s_e_n, so it -> 0 in BOTH this surface AND
+            # the h_d funnel-ref _hd_rate CONSISTENTLY and continuously, with chi_r FIXED. So _zr -> 0
+            # here automatically; _dzr -> g_r*dr_bar_e (built from the ACTUAL bearing rate) stays live,
+            # so chi_r*dzeta_r in chi_zeta_aug -> a residual-VELOCITY damping term. Replaces the old
+            # surface-only taper (which faded _zr/_dzr here but left zeta_r alive in the h_d path).
             _sig = self._zeta[-1].copy()
             _sig[0] += self._chi_r[0] * _zr[0]
             _sig[1] += self._chi_r[1] * _zr[1]
             _sig[2] += self._Omega[2, 2] * self._izeta[-1][2]
-            self._sigma.append(_sig)
-            chi_zeta_aug = np.array([self._chi_r[0] * self._dzeta_r[-1][0],
-                                     self._chi_r[1] * self._dzeta_r[-1][1],
+            chi_zeta_aug = np.array([self._chi_r[0] * _dzr[0],
+                                     self._chi_r[1] * _dzr[1],
                                      self._Omega[2, 2] * self._zeta[-1][2]])
+            # Option-A: post-commit, the faded chi_r*zeta_r is replaced by a PI-on-flow integral
+            # Omega_xy*int(zeta_h_xy) (sigma_xy = zeta_h_xy + Omega_xy*izeta_xy), mirroring z. Drift
+            # fold = Omega_xy*zeta_h_xy (= d/dt of the integral term), as for z.
+            if self._tc_integral and self._committed:
+                _sig[0] += self._tc_omega_xy * self._izeta[-1][0]
+                _sig[1] += self._tc_omega_xy * self._izeta[-1][1]
+                chi_zeta_aug[0] += self._tc_omega_xy * self._zeta[-1][0]
+                chi_zeta_aug[1] += self._tc_omega_xy * self._zeta[-1][1]
+            self._sigma.append(_sig)
         else:
             self._sigma.append(self._zeta[-1] + self._Omega @ self._izeta[-1])
             chi_zeta_aug = self._Omega @ self._zeta[-1]
