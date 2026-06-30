@@ -26,7 +26,7 @@ FENCE = (-5.0, 5.0, -5.0, 5.0, -5.0, 5.0) # xmin, xmax, ymin, ymax, zmin, zmax -
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
 RESOLUTION = (640, 480)
 SLEEP_TIME = 1/200
-REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.42"))  # BAKED -0.42 2026-06-20: MATLAB VDF-ASMC manuscript value (vdf_params h_rd=-0.42; Table S1 locked) -> parity with the manuscript-combined formulation now baked. -0.42 gives softer touchdown (vel 0.37/land). (Earlier -0.3 was a 2026-06-13 back-mapped-era decision; the lateral-exposure caveat was a back-mapped-wall concern, now superseded by the combined surface.)
+REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.30"))  # BAKED -0.42->-0.30 2026-06-30 (D-gate config, with XIR=0.15 + P2INF=1.5): the slow descent gives short-runway/high-entry ICs (IC5) the runway to arrest v_lat -> 20/25 SP vs 15/25 at -0.42 (IC5 1/5->4/5, fly gone; IC2/IC3 5/5). ⚠ trades IC4 (high-altitude, long descent): the slow descent over-contracts the funnel -> XIR=0.15 edge-forcing -> a stochastic ~1/8 high-entry IC4 draw flew (IC4 4/5->2/5). Net +5 SP. (Was -0.42 2026-06-20 MATLAB VDF-ASMC value; the old -0.3 back-mapped-era fly-away caveat was superseded by the combined surface.)
 # Desired image features [hx, hy, s, alpha]. alpha (s_d[3]) is the DESIRED marker
 # orientation and MUST match the board's as-seen alpha at the aligned hover — else the
 # controller slews alpha ~85° at engage (the IC1/IC2-5 divergence cause, found
@@ -422,25 +422,9 @@ async def main(record = 'n'):
         #   LANDING_STALE_COMMIT_TIME    persistence required (s) after stale fires
         STALE_COMMIT_EXTENT = float(os.environ.get("LANDING_STALE_COMMIT_EXTENT", "0.0"))
         STALE_COMMIT_TIME = float(os.environ.get("LANDING_STALE_COMMIT_TIME", "0.15"))
-        # ── Proximity commit (2026-06-11): clean-touchdown fix ──
-        # At deck height (alt ≲ 0.1 m) 1/Z amplifies the residual lateral error into violent
-        # tilt+thrust bursts (a_u_xy 22-71, B_T −13..−16) → the drone HOPS off the ground
-        # (0.05→0.26 m) instead of settling: the controller image-regulates into ground contact.
-        # Fix: when the marker extent (image-only, scale-free proximity proxy) exceeds the
-        # threshold on consecutive FRESH frames, commit to the open-loop vertical settle
-        # (zero rates + sub-hover thrust → PX4 LANDED → disarm) instead. Data (2 runs):
-        # mid-descent extent ≤72-103 px (alt>0.4 m) vs 142-166 px at the deck → threshold ~130.
-        # SUCCESS path (not target_lost).
-        #   LANDING_COMMIT_EXTENT  px threshold; 0 = OFF (default)
-        #   LANDING_COMMIT_FRAMES  consecutive fresh frames required (default 3)
-        #   LANDING_COMMIT_SEN     max |s_e_n| (centered gate): commit only when close
-        #                          AND centered — an extent threshold alone fired at
-        #                          ~0.5 m while 0.72 m off-center (open-loop from there
-        #                          → precision loss). Image-only, scale-free.
-        COMMIT_EXTENT = float(os.environ.get("LANDING_COMMIT_EXTENT", "0.0"))
-        COMMIT_FRAMES = int(os.environ.get("LANDING_COMMIT_FRAMES", "3"))
-        COMMIT_SEN = float(os.environ.get("LANDING_COMMIT_SEN", "0.35"))
-        commit_streak = 0
+        # (Proximity commit LANDING_COMMIT_EXTENT removed 2026-06-30 — the open-loop extent-commit
+        #  was rejected. The stale-streak commit and the marker-lost fallback below still use
+        #  in_final_descent/final_descent_t0.)
         in_final_descent = False
         final_descent_t0 = None
         last_good_sys_cmd = None
@@ -552,21 +536,6 @@ async def main(record = 'n'):
                               f"{last_fresh_extent:.0f}px >= {STALE_COMMIT_EXTENT:.0f}px "
                               f"(touchdown proximity) -> open-loop touchdown "
                               f"[terminal perception loss, not a tracking failure]")
-            # ── Proximity commitment (clean touchdown; inert when COMMIT_EXTENT=0) ──
-            if COMMIT_EXTENT > 0.0 and not in_final_descent:
-                if (feature_fresh and EC_node.MARKER_EXTENT_PX >= COMMIT_EXTENT
-                        and EC_node.LATERAL_ERR_N <= COMMIT_SEN):
-                    commit_streak += 1
-                    if commit_streak >= COMMIT_FRAMES:
-                        in_final_descent = True
-                        final_descent_t0 = time_node.perf_counter()
-                        print(f"[landing_test] Proximity commitment: marker extent "
-                              f"{EC_node.MARKER_EXTENT_PX:.0f}px >= {COMMIT_EXTENT:.0f}px "
-                              f"AND centered (|s_e_n|={EC_node.LATERAL_ERR_N:.2f} <= "
-                              f"{COMMIT_SEN:.2f}) for {commit_streak} fresh frames -> "
-                              f"open-loop vertical settle [clean touchdown, SUCCESS path]")
-                else:
-                    commit_streak = 0
             if feature_fresh and not in_final_descent:
                 cmd = EC_node.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)

@@ -258,11 +258,11 @@ class Controller(Thread):
         self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "1.5")),
                                   float(os.environ.get("PLASMC_CHI_R_Y", "1.5"))])   # BAKED 1.5 2026-06-29 (terminal-approach config; was 0.5)   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
         self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "10.0")),
-                                  float(os.environ.get("PLASMC_PR0_Y", "10.0"))])     # position-funnel initial half-width (FoV units). BAKED 10.0 2026-06-29 (was 1.2): the FUNNEL-SHAPE fix. A WIDE initial funnel keeps S_r=s_e_n/p_r tiny (~0.05) the whole descent so zeta_r never enters the steep barrier edge -> no edge-forcing, no terminal 1/Z balloon. With slow XIR=0.10 the funnel decays 10->~4 (never reaches the floor -> PRINF inert), so s_e_n converges + STAYS converged. GT-FB IC1-5: clean (0 breach), xy~0.13-0.22, IC5 canary solved. The terminal funnel width p_r(T)=PRINF+(10-PRINF)e^{-XIR*T} absorbs the terminal 1/Z spike (wide -> S_r stays <1). REQUIRES slow XIR (fast XIR collapses the funnel before s_e_n converges).
+                                  float(os.environ.get("PLASMC_PR0_Y", "10.0"))])     # position-funnel initial half-width (FoV units). BAKED 10.0 2026-06-29 (was 1.2): the FUNNEL-SHAPE fix. A WIDE initial funnel keeps S_r=s_e_n/p_r tiny (~0.05) the whole descent so zeta_r never enters the steep barrier edge -> no edge-forcing, no terminal 1/Z balloon. With XIR=0.15 (BAKED 2026-06-30) the funnel decays 10->~2-3 (PRINF inert), so s_e_n converges + STAYS converged. GT-FB IC1-5: clean (0 breach), xy~0.13-0.22, IC5 canary solved. The terminal funnel width p_r(T)=PRINF+(10-PRINF)e^{-XIR*T} absorbs the terminal 1/Z spike (wide -> S_r stays <1). REQUIRES slow XIR (fast XIR collapses the funnel before s_e_n converges).
         self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "0.8")),
                                   float(os.environ.get("PLASMC_PRINF_Y", "0.8"))])   # BAKED 0.8 2026-06-29 (terminal-approach; was 1.0)    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
-        self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
-                                 float(os.environ.get("PLASMC_XIR_Y", "0.10"))])      # position-funnel contraction rate
+        self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.15")),
+                                 float(os.environ.get("PLASMC_XIR_Y", "0.15"))])      # position-funnel contraction rate. BAKED 0.10->0.15 2026-06-30 (D-gate config, validated WITH h_rd=-0.30 + P2INF=1.5): faster contraction recovers OFF-CENTER precision (IC2/IC3 5/5 SP). ⚠ 0.15 is the EDGE — it edge-forces the long high-altitude IC4 descent (IC4r2 fly, stochastic ~1/8 high-entry draw); XIR>=0.20 collapses the funnel before s_e_n converges.
         # Combined mode = the MATLAB VDF-ASMC manuscript controller. The baked PX4 defaults
         # above are the BACK-MAPPED soft-config gains (GAMMA=2.0, KAPPA0=0.5, XI2=0.6, E=0.8/0.5,
         # P2INF_z=0.5) which are 3-5x too HOT for the combined surface (zeta_r already supplies
@@ -270,8 +270,8 @@ class Controller(Thread):
         # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
         # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
-            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 1.0   # BAKED 1.0 2026-06-29 (terminal-approach; was 0.5 VDF)
-            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # BAKED 1.0 2026-06-29
+            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 1.0   # KEPT 1.0 2026-06-30: A/B at {h_rd=-0.30,XIR=0.15} (IC2/IC4/IC5 n=3) REVERSED the old 1.5 claim — P2INF=1.0 best (7/9 SP, rel_vel med 0.026, 0 fly) vs 1.5 (5/9, 0.144, 1 fly) vs 2.0 (5/9, 0.172). The old "1.5 un-saturates zeta_h" benefit is LOST at this config (h_e spikes saturate zeta_h even at 1.5); smaller p_2 = steeper zeta_h = more velocity damping at the terminal. (Briefly baked 1.5 then reverted.)
+            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # KEPT 1.0 2026-06-30 (A/B: 1.0 > 1.5/2.0)
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
             if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
                 self._Gma = np.diag([0.25, 0.25, 0.75])                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
@@ -501,6 +501,19 @@ class Controller(Thread):
         # value (sign + magnitude) -> the containment freezes through the breach instead of toggling.
         # z keeps trust-sign (loom glitches preserve sign; that protection is load-bearing). Default-off.
         self._contain_hold_full = os.environ.get("PLASMC_CONTAIN_HOLD_FULL", "0") == "1"
+        # IDEA 1 — SOFT funnel-breach handling (2026-06-30, user). At a breach the hard clamp pins the
+        # feature at the funnel edge (S_margin) where G/g_r are LARGEST -> sigma blows up AND control is
+        # starved (a_u=-G^-1*a_v->0); the containment additionally HOLDS h_e (freezes zeta_h, the velocity
+        # feedback) + freezes kappa. Instead: pull the breaching feature to FRAC*(last in-funnel value) ->
+        # OFF the singular edge -> G/g_r bounded -> zeta_h/zeta_r stay LIVE (not saturated/frozen) AND
+        # kappa_eq stays bounded (so no kappa freeze AND no runaway — resolves the containment-off dilemma).
+        # Applied to BOTH the flow barrier (h_e, in the containment block below) and the position barrier
+        # (s_e_n/zeta_r). Env-gated, default-off.
+        self._soft_breach      = os.environ.get("PLASMC_SOFT_BREACH", "0") == "1"
+        self._soft_breach_frac = float(os.environ.get("PLASMC_SOFT_BREACH_FRAC", "0.30"))
+        if self._soft_breach:
+            print(f"[controller] PLASMC_SOFT_BREACH=1: soft funnel-breach handling frac={self._soft_breach_frac} "
+                  "(pull breaching h_e & s_e_n to frac*last-in-funnel; kappa keeps adapting, no freeze)")
         # LOOM-INVERSION TOUCHDOWN DETECTOR (depth-free, soft-touchdown). Throughout the descent the
         # loom h_z = v_z/Z tracks h_rd<0 (contraction); it flips POSITIVE only when the drone reverses
         # vertically at first ground contact (rebound). The accel-spike detector (|a|>50) misses a SOFT
@@ -908,6 +921,7 @@ class Controller(Thread):
             print("[controller] PLASMC_HD_PASSIVE=1: h_d = passive FF only (no desired-rate); "
                   "chi_r*zeta_r is the sole s_e_n driver (clean stacked-barrier design)")
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
+        self._hd_rate_log = []         # DIAG (2026-06-30): the _hd_rate term of h_d (funnel-ref vs s_dot) for zeta_h-degeneracy decomposition
         self._theta = []      # ||Theta||_F
         self._sigma = []
         self._kappa = [self._kappa_0.copy()]
@@ -1146,6 +1160,17 @@ class Controller(Thread):
         if self._terminal_commit and self._committed and self._tc_commit_t is not None:
             _a = min(1.0, (self._t[-1] - self._tc_commit_t) / self._tc_ramp_s) if self._tc_ramp_s > 0 else 1.0
             self._s_e_n[-1] = (1.0 - _a) * self._s_e_n[-1]
+        # SOFT-BREACH source-fake (p_r): on a position-funnel breach, soft-clamp the BY-PRODUCT s_e_n to
+        # FRAC*last-good HERE, at the source. Every downstream consumer (zeta_r barrier, outer PID, SEN-funnel,
+        # integral, commit, h_d funnel-ref) then auto-adjusts — no per-consumer patch needed. Same pattern as
+        # the commit ramp above (fake s_e_n, not s; h is measured independently of s). Flag drives the s_dot
+        # source-fake below. p_r[-1] is available (funnel updated earlier).
+        self._pr_breached = np.zeros(2, dtype=bool)
+        if self._soft_breach and len(self._s_e_n) > 1:
+            for _j in range(2):
+                if abs(float(self._s_e_n[-1][_j]) / self._p_r[-1][_j]) >= 1.0 - S_MARGIN:
+                    self._pr_breached[_j] = True
+                    self._s_e_n[-1][_j] = self._soft_breach_frac * self._s_e_n[-2][_j]
 
         if self._combined_barrier:
             # === COMBINED-BARRIER: position barrier zeta_r enters the sliding surface (no back-map) ===
@@ -1160,13 +1185,21 @@ class Controller(Thread):
                 s_dot_meas = self._vdsKFStep(self._s_e[-1][:2], self._dt[-1])   # CV-KF velocity state
             else:
                 s_dot_meas = smooth4(self._s_dot_deque)                          # MATLAB-parity finite-diff
+            # SOFT-BREACH source-fake (p_r rate): soft-clamp the BY-PRODUCT s_dot on a position breach so
+            # dr_bar_e -> zeta_r_dot -> the drift chi_r*zeta_r_dot (and _hd_rate) auto-adjust to the contained
+            # rate instead of the raw 1/Z spike. Uses the p_r-breach flag set at the s_e_n source-fake.
+            if self._soft_breach and getattr(self, "_pr_breached", None) is not None and len(self._s_dot_meas) > 0:
+                for _j in range(2):
+                    if self._pr_breached[_j]:
+                        s_dot_meas[_j] = self._soft_breach_frac * self._s_dot_meas[-1][_j]
             self._s_dot_meas.append(s_dot_meas)
             # position barrier on r_bar_e = s_e_n (= s_e/p_10, FoV-normalized) with funnel p_r
             r_bar_e  = self._s_e_n[-1]
             dr_bar_e = s_dot_meas / self._p_10                       # measured rate (rel deg 2)
             S_r = np.zeros(2); zeta_r = np.zeros(2); dzeta_r = np.zeros(2)
             for _i in range(2):
-                S_r[_i]     = float(np.clip(r_bar_e[_i] / self._p_r[-1][_i], -1.0 + S_MARGIN, 1.0 - S_MARGIN))
+                # s_e_n is already soft-clamped at the source on a p_r breach -> S_r auto-bounds here.
+                S_r[_i] = float(np.clip(r_bar_e[_i] / self._p_r[-1][_i], -1.0 + S_MARGIN, 1.0 - S_MARGIN))
                 zeta_r[_i]  = np.log((1 + S_r[_i]) / (1 - S_r[_i]))
                 g_r         = (np.exp(zeta_r[_i]) + 1) ** 2 / (2 * np.exp(zeta_r[_i]) * self._p_r[-1][_i])
                 dzeta_r[_i] = g_r * (dr_bar_e[_i] - S_r[_i] * self._dp_r[-1][_i])
@@ -1369,6 +1402,7 @@ class Controller(Thread):
             else:
                 _hd_rate = self._s_dot_meas[-1]
             self._h_d.append(np.concatenate([_hd_rate, [0.0]]) + h_d_noS)
+            self._hd_rate_log.append(np.asarray(_hd_rate, dtype=float).copy())   # DIAG: log the rate term
         elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
             # Desired flow DROPS the w×s rotational feedforward — the corrected c-term carries the rotation
@@ -1402,13 +1436,19 @@ class Controller(Thread):
         for idx in range(N_DIM):
             ratio = self._h_e[-1][idx] / self._p[-1][idx]
             if abs(ratio) >= 1.0 and len(self._S) > 0:
-                if self._contain_hold_full and idx < 2:   # lateral: hold full last-good (no sign-flip feed)
-                    ratio = float(self._S[-1][idx, idx])
-                else:                                      # legacy / z: hold magnitude, trust current sign
-                    ratio = np.abs(float(self._S[-1][idx, idx])) * np.sign(ratio)
-                self._h_e[-1][idx] = ratio * self._p[-1][idx]             # reconstruct contained h_e
-                self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]  # and h (used by c-term)
-                contained[idx] = True
+                if self._soft_breach:                      # IDEA 1: pull to FRAC of last in-funnel value (off the singular edge); keep kappa adapting
+                    ratio = self._soft_breach_frac * float(self._S[-1][idx, idx])
+                    self._h_e[-1][idx] = ratio * self._p[-1][idx]
+                    self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]
+                    # NO contained[idx]=True: feature is off the edge -> G bounded -> kappa_eq bounded -> kappa adapts safely (no freeze/no runaway)
+                else:
+                    if self._contain_hold_full and idx < 2:   # lateral: hold full last-good (no sign-flip feed)
+                        ratio = float(self._S[-1][idx, idx])
+                    else:                                      # legacy / z: hold magnitude, trust current sign
+                        ratio = np.abs(float(self._S[-1][idx, idx])) * np.sign(ratio)
+                    self._h_e[-1][idx] = ratio * self._p[-1][idx]             # reconstruct contained h_e
+                    self._h[-1][idx] = self._h_e[-1][idx] + self._h_d[-1][idx]  # and h (used by c-term)
+                    contained[idx] = True
             ratio = float(np.clip(ratio, -1.0 + S_MARGIN, 1.0 - S_MARGIN))
             S[idx, idx] = ratio
             zeta[idx] = np.log((1 + ratio) / (1 - ratio))
@@ -2310,6 +2350,9 @@ class Controller(Thread):
             "w(t)": self._w,
             "h(t)": self._h,
             "h_d(t)": self._h_d,
+            "h_d_noS(t)": self._h_d_noS,        # DIAG: transport+descent (h_d minus rate term)
+            "s_dot_meas(t)": self._s_dot_meas,  # DIAG: measured centroid rate
+            "hd_rate(t)": self._hd_rate_log,    # DIAG: the _hd_rate term (funnel-ref or s_dot)
             "MARKER_EXTENT_PX(t)": self._marker_extent,
             "dh_d(t)": self._dh_d,
             "s(t)": self._s,
