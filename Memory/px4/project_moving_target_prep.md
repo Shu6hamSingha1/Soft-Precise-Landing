@@ -53,9 +53,35 @@ faster the rover, the more the terminal cycle / κ-deliverability is stressed. T
 (W_U_MAX=2.0, q=1, arrest-v_lat-early / descent-pacing, the entry-velocity sensitivity) carry straight
 over and likely bind harder. Expect the cycle to be the binding issue at rover speed too.
 
+## Infra (SURVEYED 2026-06-30 — concrete)
+- **No rover launch script exists** — fork `scripts/run_aruco_landing.sh` (it's stationary-only,
+  hard-codes `world/aruco`, single PX4 instance at `:101-104,129-135`). The rover procedure is a
+  manual multi-terminal one in `tips.txt:60-105`: **TWO PX4 instances** — rover target
+  (`PX4_SYS_AUTOSTART=4022 PX4_SIM_MODEL=rover_aruco PX4_GZ_WORLD=rover -i 1`) + UAV
+  (`4014 x500_mono_cam_down PX4_GZ_WORLD=rover -i 0`).
+- **World `rover.sdf` is empty** (ground+sun); both vehicles spawned by PX4. Airframe 4022 =
+  `4022_gz_rover_aruco` (Ackermann rover). Model `rover_aruco` = `rover_ackermann` + `arucotag`
+  marker mounted 0.5 m above the rover (`~/.gazebo/models/rover_aruco/model.sdf`).
+- **Pose bridge DIFFERS**: rover bridges `/world/rover/dynamic_pose/info` (moving models only)
+  vs the stationary `/world/aruco/pose/info` → **different PoseArray membership/ordering**.
+- **⚠️ LANDMINE — `gz_subscriber.py:84-85` HARD-CODES pose indices** `UAV=poses[2]`, `target=poses[1]`
+  for the aruco PoseArray. The rover `dynamic_pose` has different ordering → these WILL be wrong →
+  silently corrupts BOTH perception-NED AND GT-feedback (`controller.py:973-975` feeds them to
+  gt_feedback). **Fix these indices FIRST for the rover world.**
+- **Rover motion**: it's a full PX4 Ackermann rover on its own SITL instance (`-i 1`), driven by
+  gz joint-controller plugins. **NO trajectory plugin, NO speed knob today** — motion must be
+  commanded externally (QGC mission / MAVLink offboard / manual) on `-i 1`. Building a guidance/
+  speed source is part of the test harness.
+- **`PLASMC_HD_FUNNEL_REF` (controller.py:884-890) is the labeled "moving-target candidate"** knob
+  (h_d x/y rate = funnel ref, un-degenerates ζ_h; default-OFF, currently un-baked to the stationary
+  `s_dot_meas` config). Revisit for moving.
+- **Yaw caveats confirmed**: `gt_feedback.py:153` `w_z=−alpha_dot` is a STATIONARY-target sign
+  assumption (breaks if the rover YAWS/turns); the alpha filters (`controller.py:343-364`,
+  YAW_ALPHA_FILT, **max-rate cap 0.30 rad/s**) could reject a fast-turning rover as "corruption".
+  Straight-driving rover = fine; turning rover = needs these revisited.
+- No moving-target test code or recordings exist anywhere.
+
 ## Prep plan / first steps for the new chat
-1. **Survey rover infra** (world file, airframe 4022, how the rover motion is driven + speed knob,
-   the manual launch in tips.txt). An Explore survey was launched at session end — confirm/redo.
 2. **Build a moving-target IC/landing test** (analogue of `run_ic_validation.sh` for the rover world;
    the rover moving; pick a speed range). SoftPrecise eval is already relative.
 3. **Yaw calibration** for the moving/turning target (the moment-alpha cal; cal_s[3]).
