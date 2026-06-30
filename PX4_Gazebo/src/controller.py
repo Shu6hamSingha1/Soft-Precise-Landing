@@ -257,8 +257,8 @@ class Controller(Thread):
         self._combined_barrier = os.environ.get("PLASMC_COMBINED_BARRIER", "1") == "1"  # RE-BAKED 2026-06-20 with MANUSCRIPT gains (the earlier regress was a gain-parity bug; vdf_params auto-applied)
         self._chi_r   = np.array([float(os.environ.get("PLASMC_CHI_R_X", "1.5")),
                                   float(os.environ.get("PLASMC_CHI_R_Y", "1.5"))])   # BAKED 1.5 2026-06-29 (terminal-approach config; was 0.5)   # BAKED 0.5 (2026-06-20): PX4 LATERAL-VELOCITY-ARREST tuning. surface PD balance sigma=zeta_h+chi_r*zeta_r; LOWER chi_r weights the velocity/damping term (zeta_h) more -> less overshoot -> lower terminal lateral velocity (IC2: vlat 2.61->1.45, xy 1.04->0.43). ⚠️ DIVERGES from MATLAB manuscript 0.85 (max-margin manifold) -- PX4-specific because the SITL flow lag adds overshoot the noiseless MATLAB lacks. Env-overridable.
-        self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "1.2")),
-                                  float(os.environ.get("PLASMC_PR0_Y", "1.2"))])      # position-funnel initial half-width (FoV units)
+        self._p_r_0   = np.array([float(os.environ.get("PLASMC_PR0_X", "10.0")),
+                                  float(os.environ.get("PLASMC_PR0_Y", "10.0"))])     # position-funnel initial half-width (FoV units). BAKED 10.0 2026-06-29 (was 1.2): the FUNNEL-SHAPE fix. A WIDE initial funnel keeps S_r=s_e_n/p_r tiny (~0.05) the whole descent so zeta_r never enters the steep barrier edge -> no edge-forcing, no terminal 1/Z balloon. With slow XIR=0.10 the funnel decays 10->~4 (never reaches the floor -> PRINF inert), so s_e_n converges + STAYS converged. GT-FB IC1-5: clean (0 breach), xy~0.13-0.22, IC5 canary solved. The terminal funnel width p_r(T)=PRINF+(10-PRINF)e^{-XIR*T} absorbs the terminal 1/Z spike (wide -> S_r stays <1). REQUIRES slow XIR (fast XIR collapses the funnel before s_e_n converges).
         self._p_r_inf = np.array([float(os.environ.get("PLASMC_PRINF_X", "0.8")),
                                   float(os.environ.get("PLASMC_PRINF_Y", "0.8"))])   # BAKED 0.8 2026-06-29 (terminal-approach; was 1.0)    # terminal floor — FoV-consistent (>=1 keeps the CBF->funnel transfer exact)
         self._xi_r    = np.diag([float(os.environ.get("PLASMC_XIR_X", "0.10")),
@@ -274,7 +274,7 @@ class Controller(Thread):
             if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # BAKED 1.0 2026-06-29
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
             if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
-                self._Gma = np.diag([0.4375, 0.5, 0.75])                     # vdf Gamma (was 2/2/1)
+                self._Gma = np.diag([0.25, 0.25, 0.75])                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
             if not any(f"PLASMC_KAPPA0_{a}" in os.environ for a in "XYZ"):
                 self._kappa_0 = np.array([0.5, 0.5, 0.25])                  # BAKED 2026-06-29 terminal-approach kappa0 (was 0.125/0.125/0.25 VDF)
             if not any(f"PLASMC_E_{a}" in os.environ for a in "XYZ"):
@@ -402,7 +402,7 @@ class Controller(Thread):
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
         # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
-        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))   # process (accel) noise PSD (q=10 best vs GT)
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "1.0"))   # process (accel) noise PSD. BAKED 10.0->1.0 (2026-06-30, user): q=10 was tuned for low-lag vs GT, but it PASSES the 1/Z²-amplified terminal s_dot oscillation straight into the drift term chi_r*ζ̇_r/G (the dominant a_u cycle driver). Lower q = trust the CV model more = smooth s_dot_meas -> drift-osc amp 4.7->0.9, SP 3->6/9 (GT-FB IC2/4/5 n=3, P2INF=1.5+W_U_MAX=2.0). The added lag is acceptable (terminal v_lat is slow). q=3 intermediate (4 SP). [[project_residual_cycle_wumax_bake]]
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
         # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
@@ -895,6 +895,18 @@ class Controller(Thread):
         self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.5"))  # BAKED 0.5 2026-06-29
         if self._hd_kr != 0.0:
             print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
+        # PLASMC_HD_PASSIVE (2026-06-29, default-off): the CLEAN stacked-barrier design
+        # (STACKED_BARRIER_BACKSTEPPING.md:25) — h_d = passive rotation/descent feedforward ONLY
+        # (h_d_noS), NO desired-rate term at all (_hd_rate = 0). Then h_e = h - h_d_noS is the pure
+        # velocity-like flow error -> zeta_h is the velocity coordinate -> sigma = zeta_h + chi_r*zeta_r
+        # is a clean PD surface whose NON-VANISHING chi_r*zeta_r term is the SOLE s_e_n driver. Removes
+        # the back-map -k_r*zeta_r/g_r whose authority collapses at the funnel edge (S_r=0.648). Overrides
+        # HD_FUNNEL_REF/HD_KR on the lateral rate. NOT degenerate: h carries translational flow that the
+        # passive FF does not (the old degeneracy was h_d = s_dot_meas, NOT passive FF). A/B GT-FB IC2-5.
+        self._hd_passive = os.environ.get("PLASMC_HD_PASSIVE", "0") == "1"
+        if self._hd_passive:
+            print("[controller] PLASMC_HD_PASSIVE=1: h_d = passive FF only (no desired-rate); "
+                  "chi_r*zeta_r is the sole s_e_n driver (clean stacked-barrier design)")
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
         self._theta = []      # ||Theta||_F
         self._sigma = []
@@ -1339,7 +1351,11 @@ class Controller(Thread):
                 h_d_ff = (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
             h_d_noS = rot + h_d_ff
             self._h_d_noS.append(h_d_noS)
-            if self._hd_funnel_ref:
+            if self._hd_passive:
+                # Clean stacked-barrier design: NO desired-rate term. h_d = passive FF (h_d_noS) only,
+                # so the non-vanishing surface term chi_r*zeta_r is the sole s_e_n driver.
+                _hd_rate = np.zeros(2)
+            elif self._hd_funnel_ref:
                 # back-map V_ds_e = inv(g_r)*dzeta_rd + S_r*dp_r, dzeta_rd = -k_r*zeta_r (proportional
                 # prescription zeta_r_dot = -k_r*zeta_r). p_10 un-normalizes to s_dot_meas (= ds_e) units.
                 # k_r=0 -> funnel-only (S_r*dp_r); k_r>0 adds the convergence/recovery term -k_r*zeta_r/g_r.
@@ -1421,7 +1437,8 @@ class Controller(Thread):
         # funnel-ref: h_d's rate term (S_s*dp_s) is SMOOTH, so differentiate the FULL h_d (carry it in dh_d
         # honestly) instead of dropping it to h_d_noS — no s_ddot disturbance for kappa to absorb.
         if self._combined_barrier:
-            _hd_src = self._h_d if self._hd_funnel_ref else self._h_d_noS
+            # passive: h_d == h_d_noS (rate=0) -> differentiate h_d_noS (no s_ddot to absorb anyway)
+            _hd_src = self._h_d if (self._hd_funnel_ref and not self._hd_passive) else self._h_d_noS
         else:
             _hd_src = self._h_d
         if len(_hd_src) > 1:
@@ -1761,7 +1778,7 @@ class Controller(Thread):
         # throttled convergence from a large initial yaw (2026-06-08, un-throttled
         # for the arbitrary-initial-yaw case; MATLAB has no clamp as it spawns square).
         # The SMC's u_a (logged) is left unclamped so sigma_a/kappa_a keep adapting.
-        _w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
+        _w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))   # BAKED 1.0->2.0 2026-06-30 (see body-rate cap note below; same env)
         _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
         # Heading-rate saturation flag -> next step's CONDITIONAL INTEGRATION
@@ -2155,8 +2172,27 @@ class Controller(Thread):
         # corner motion to the LK limit. Clamping at 1.0 rad/s (= 57°/s)
         # gives a safety margin and prevents transient attitude-error
         # spikes from breaking optical-flow tracking (2026-05-21 finding).
-        # Env-overridable; default 1.0 rad/s.
-        w_max = float(os.environ.get("PLASMC_W_U_MAX", "1.0"))
+        # Env-overridable.
+        # ⚠ 2026-06-29 TUNING-PHASE DISABLE (default 1.0 -> 1000 = OFF): the W_U_MAX body-rate cap
+        # was MASKING the terminal limit cycle — it bounded the cycle AMPLITUDE (GT-FB uncap test:
+        # removing it grew the cycle 1.35->1.62 + moved it to ~14Hz bang-bang chatter, but ALSO
+        # tightened precision xy 0.087->0.055 4/4). Per [[feedback_clamps_during_tuning]] (disable the
+        # band-aid to EXPOSE the under-tuned law, then fix at the control level). The exposed 14Hz
+        # chatter = un-damped high-bandwidth SMC switching once the 1/Z forcing ejects sigma from the
+        # boundary layer. MUST re-engage (or replace with super-twisting / the descent governor that
+        # removes the 1/Z forcing) BEFORE perception-ON — uncapped rates break LK tracking (the original
+        # 2026-05-21 reason for the cap). Yaw psi_d ceiling (line ~1781) keeps its own 1.0 default.
+        # RE-ENGAGED 2026-06-30 (1000->1.0): the cap was disabled to expose the bang-bang, which was a
+        # GT-FB artifact of the non-physical Z_REG=0.01; with Z_REG=0.2 (gear floor) sigma stays in the
+        # boundary layer (no bang-bang), so the cap is INERT and safe to restore (LK perception needs it).
+        # BAKED 1.0->2.0 (2026-06-30, user): on P2INF=1.5 the 1.0 cap was CLAMPING the terminal body-rate
+        # ~24% on the not-soft reps, and the clamp DISCONTINUITY (hitting the rate limit) SEEDS/amplifies the
+        # terminal lateral limit cycle (clamp -> bang-bang -> larger cmd -> more clamp). At 2.0 the cmd stays
+        # below the cap (IC5r2 SP rep: terminal |w_u| max 0.28 << 2.0, 0% clamped) so the discontinuity never
+        # fires -> the cycle isn't seeded -> smooth settle -> SP (IC5r2 rel 0.545->0.0075). NB the cmd is
+        # LOWER at 2.0, not higher -- the cap was a cycle DRIVER, not a throttled brake. 2.0 still bounds the
+        # worst chatter (unlike the 1000-uncap, which grew the cycle in the OLD Z_REG=0.01 regime). LK-safe.
+        w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))
         w_u = np.clip(w_u, -w_max, w_max)
 
         # Terminal yaw-hold (see _yawCtrl): when the marker orientation is unreliable

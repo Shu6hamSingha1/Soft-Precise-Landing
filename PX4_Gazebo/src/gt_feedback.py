@@ -114,7 +114,17 @@ class GTFeedback:
         # transiently-small depth (Z_REG=0.01 is well below z_gear, so it only floors the
         # numerics; the gear sets the actual bound). Bearing and loom use the SAME floored
         # depth for consistency. (V_x[2] = gravity-leveled depth ≈ zB = NED rel altitude.)
-        Z_REG = 0.01
+        # Z_REG = the PHYSICAL floor on relative depth z (the gear/touchdown floor). The descent
+        # bottoms at z>=z_floor, so the true beta=1/z is bounded (Lyapunov Assumption 1 holds); it's
+        # ALSO ~where image perception saturates (marker fills the FoV). So 1/(z+Z_REG) makes the
+        # GT-synthesized features FAITHFUL to real perception, NOT a lie. BAKED 0.01->0.1 (2026-06-30):
+        # the old Z_REG=0.01 let the COMPUTED z fall to 0.01 m -> a non-physical 1/z->100 -> the terminal
+        # kappa_eq explosion / limit cycle was a GT-FB ARTIFACT. EMPIRICAL: across 27 reps the min relative
+        # z = |UAV_z-Target_z| medians 0.096 m (TOUCHDOWN_LOOM fires z~0.11-0.14) -> the real floor is
+        # ~0.1 m (NOT the 0.2 m gear-height first guessed; that over-clamped). Z_REG=0.1 caps 1/z at 10
+        # (matches the measured floor) -> bounded disturbance -> leakage-ASMC in design envelope -> SP.
+        # (Additive 1/(z+0.1) under-reads ~9% at z=1 m; 1/max(z,0.1) is exact if the altitude bias bites.)
+        Z_REG = float(os.environ.get("PLASMC_GT_Z_REG", "0.2"))   # BAKED 0.2 (user 2026-06-30): base_link min-z is ~0.1 m, but the camera is mounted +0.20 m above base_link (x500_mono_cam_down SDF), so the CAMERA-to-marker floor is ~0.3 m -> 0.2 is the conservative depth floor (between the base_link 0.1 and the camera 0.3).
 
         # --- centroid bearing s (V-frame) ---
         B_x = Ru.T @ W_x_tu

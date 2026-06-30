@@ -7,6 +7,17 @@ metadata:
   originSessionId: 31fd53ca-48b0-48f4-81a8-2e081955028f
 ---
 
+> ⛔ **2026-06-26 REFINED ([[feedback_kappa0_unfreezes_lateral]]):** the terminal 1/Z is NOT an unregulatable singularity — it's a FINITE rate race: ds_e_n/dt = (1/(p_10*Z))*[lat_dot + 0.42*lat], so s_e_n converges IFF lat converges faster than |h_rd|=0.42/s (finite, achievable). The σ-breaches-E blow-up is the s_e_n-NORMALIZED control law OVER-REACTING + the actuator saturating on an UN-converged residual (lat plateaus at the lag floor -> bracket goes +0.42*lat>0 -> s_e_n DIVERGES -> 1/Z amplifies). CAUSALITY: the s_e_n divergence is the ROOT (geometric); the σ-chatter is the control's REACTION to it (downstream symptom), NOT the cause. Regulatable by converging lat faster (kappa_0) or cutting the 38ms lag; the gate handles only the irreducible lag-floor tail. The "arrest v_lat early" conclusion STANDS.
+
+> 🟢 **2026-06-30 FURTHER REFINED ([[project_residual_cycle_wumax_bake]]):** post-Z_REG=0.2 the "wall" is a
+> small RESIDUAL ~1Hz limit cycle (Z<0.25m). The σ-breach/bang-bang is NOT purely the reaching law: the a_u
+> oscillation DRIVER is the **drift `chi_r·ζ̇_r/G`** fed by the measured bearing rate `s_dot_meas` (a velocity
+> MEASUREMENT feedback, single impact axis; the barrier derivatives g_r/G are flat = NOT a barrier blowup).
+> AND the W_U_MAX clamp's DISCONTINUITY *seeds* the cycle → BAKED W_U_MAX 1.0→2.0 (cmd LOWER at 2.0 → was a
+> cycle DRIVER, not a throttled brake). "Arrest v_lat early" still STANDS (P2INF_xy un-saturates ζ_h → 0
+> fly-aways). The actuator-bound / theta_cap framing is a downstream symptom; the live drivers are the drift
+> measurement-feedback + the clamp discontinuity + the lag-limited velocity arrest.
+
 **THE terminal fly-away = an SMC convergence failure at an actuator-bounded wall (2026-06-25, user-led GT-FB).**
 
 **Why sigma->0 is lost at the deck.** The reaching law has UNLIMITED commanded authority (a_u_xy explodes to

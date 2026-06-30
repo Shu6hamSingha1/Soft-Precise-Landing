@@ -1,42 +1,8 @@
 {
- "n_configs": 175,
- "n_reps": 1827,
- "n_SP": 17,
+ "n_configs": 38,
+ "n_reps": 1945,
+ "n_SP": 173,
  "configs": [
-  {
-   "config": "RingFlow",
-   "date": "",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 2.199,
-   "xy_min": 0.531,
-   "vel_med": 3.759,
-   "cats": {
-    "TARGET_LOST": 2,
-    "CATASTROPHIC": 2,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "SenFunnel",
-   "date": "",
-   "n": 6,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 0.617,
-   "xy_min": 0.439,
-   "vel_med": 0.741,
-   "cats": {
-    "POOR": 4,
-    "SOFT_only": 1,
-    "CATASTROPHIC": 1
-   }
-  },
   {
    "config": "CoordDescent",
    "date": "2026-05-25",
@@ -93,115 +59,6 @@
    }
   },
   {
-   "config": "Exy15_n3",
-   "date": "2026-06-07",
-   "n": 3,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 7.559,
-   "xy_min": 5.768,
-   "vel_med": 4.723,
-   "cats": {
-    "TARGET_LOST": 2,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "Ez_sweep",
-   "date": "2026-06-07",
-   "n": 3,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 9.258,
-   "xy_min": 7.491,
-   "vel_med": 7.387,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "GammaY1_n3",
-   "date": "2026-06-07",
-   "n": 3,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 5.821,
-   "xy_min": 3.245,
-   "vel_med": 6.525,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "P_XY_test",
-   "date": "2026-06-07",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 3.377,
-   "xy_min": 3.377,
-   "vel_med": 3.182,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "P_Z_test",
-   "date": "2026-06-07",
-   "n": 2,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 3.71,
-   "xy_min": 2.613,
-   "vel_med": 2.515,
-   "cats": {
-    "CATASTROPHIC": 2
-   }
-  },
-  {
-   "config": "yaw2pi_n3",
-   "date": "2026-06-07",
-   "n": 3,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 9.64,
-   "xy_min": 8.863,
-   "vel_med": 7.429,
-   "cats": {
-    "TARGET_LOST": 2,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "yaw2pi_test",
-   "date": "2026-06-07",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 3.679,
-   "xy_min": 3.679,
-   "vel_med": 3.486,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
    "config": "CondInteg_n6",
    "date": "2026-06-08",
    "n": 5,
@@ -235,189 +92,16 @@
   {
    "config": "ExtentHold_sweep",
    "date": "2026-06-08",
-   "n": 6,
+   "n": 4,
    "SP": 0,
    "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 6,
-   "xy_med": 3.693,
-   "xy_min": 1.665,
-   "vel_med": 4.26,
-   "cats": {
-    "CATASTROPHIC": 6
-   }
-  },
-  {
-   "config": "GammaZ_sweep",
-   "date": "2026-06-08",
-   "n": 6,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 4.216,
-   "xy_min": 1.868,
-   "vel_med": 4.113,
-   "cats": {
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 5
-   }
-  },
-  {
-   "config": "NewDefaultsBaseline",
-   "date": "2026-06-08",
-   "n": 6,
-   "SP": 0,
-   "TL": 2,
    "near_SP": 0,
    "catastrophic": 4,
-   "xy_med": 9.752,
-   "xy_min": 3.935,
-   "vel_med": 7.073,
+   "xy_med": 5.128,
+   "xy_min": 2.429,
+   "vel_med": 6.329,
    "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "P2infZ_sweep",
-   "date": "2026-06-08",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 8.285,
-   "xy_min": 3.929,
-   "vel_med": 6.725,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "P2infZ_up",
-   "date": "2026-06-08",
-   "n": 2,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 14.846,
-   "xy_min": 6.631,
-   "vel_med": 7.537,
-   "cats": {
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "PsidRate1_n3",
-   "date": "2026-06-08",
-   "n": 3,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 5.858,
-   "xy_min": 2.801,
-   "vel_med": 2.889,
-   "cats": {
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "PsidRate1_n6",
-   "date": "2026-06-08",
-   "n": 6,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 4.221,
-   "xy_min": 2.283,
-   "vel_med": 3.621,
-   "cats": {
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 5
-   }
-  },
-  {
-   "config": "Pxy5_n3",
-   "date": "2026-06-08",
-   "n": 3,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 3.195,
-   "xy_min": 2.552,
-   "vel_med": 3.879,
-   "cats": {
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "Singhal_outlier_n6",
-   "date": "2026-06-08",
-   "n": 6,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 4.386,
-   "xy_min": 1.179,
-   "vel_med": 3.256,
-   "cats": {
-    "TARGET_LOST": 2,
     "CATASTROPHIC": 4
-   }
-  },
-  {
-   "config": "YawHoldFix_n6",
-   "date": "2026-06-08",
-   "n": 6,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 6.725,
-   "xy_min": 1.66,
-   "vel_med": 5.221,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "KP9revert_n6",
-   "date": "2026-06-09",
-   "n": 6,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 3.687,
-   "xy_min": 2.241,
-   "vel_med": 2.884,
-   "cats": {
-    "CATASTROPHIC": 5,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "KrdRestore_probe_n5",
-   "date": "2026-06-09",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 2.781,
-   "xy_min": 2.065,
-   "vel_med": 3.483,
-   "cats": {
-    "CATASTROPHIC": 5
    }
   },
   {
@@ -554,207 +238,6 @@
    }
   },
   {
-   "config": "FeatClip_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.211,
-   "xy_min": 0.683,
-   "vel_med": 1.549,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "TARGET_LOST": 3,
-    "POOR": 4
-   }
-  },
-  {
-   "config": "FlowGate_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 2.162,
-   "xy_min": 0.755,
-   "vel_med": 1.123,
-   "cats": {
-    "CATASTROPHIC": 5,
-    "TARGET_LOST": 4,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "FlowSwitch_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 5,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.794,
-   "xy_min": 0.8,
-   "vel_med": 1.927,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "POOR": 2,
-    "TARGET_LOST": 5
-   }
-  },
-  {
-   "config": "GFTdense_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 2.278,
-   "xy_min": 0.461,
-   "vel_med": 2.013,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 2,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "GammaS1p2_IC1",
-   "date": "2026-06-10",
-   "n": 4,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.572,
-   "xy_min": 0.525,
-   "vel_med": 2.125,
-   "cats": {
-    "POOR": 2,
-    "CATASTROPHIC": 2
-   }
-  },
-  {
-   "config": "GammaS1p4_IC1",
-   "date": "2026-06-10",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 9.794,
-   "xy_min": 1.658,
-   "vel_med": 4.143,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "GammaS1p6_IC1",
-   "date": "2026-06-10",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 2.226,
-   "xy_min": 1.031,
-   "vel_med": 1.801,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "GammaS2p0_IC1",
-   "date": "2026-06-10",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.312,
-   "xy_min": 0.736,
-   "vel_med": 2.029,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1,
-    "POOR": 2
-   }
-  },
-  {
-   "config": "KP12_IC1",
-   "date": "2026-06-10",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.495,
-   "xy_min": 0.344,
-   "vel_med": 1.08,
-   "cats": {
-    "POOR": 1,
-    "CATASTROPHIC": 3,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "PyrLK_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 6,
-   "xy_med": 2.485,
-   "xy_min": 0.33,
-   "vel_med": 2.668,
-   "cats": {
-    "TARGET_LOST": 3,
-    "CATASTROPHIC": 6,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "Trial49_KLTbounds_IC1",
-   "date": "2026-06-10",
-   "n": 4,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.47,
-   "xy_min": 0.749,
-   "vel_med": 1.869,
-   "cats": {
-    "TARGET_LOST": 2,
-    "POOR": 1,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "VirtGuard_EZ_IC1",
-   "date": "2026-06-10",
-   "n": 10,
-   "SP": 0,
-   "TL": 5,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 3.295,
-   "xy_min": 0.605,
-   "vel_med": 2.221,
-   "cats": {
-    "TARGET_LOST": 5,
-    "POOR": 2,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
    "config": "CommitGate_IC1",
    "date": "2026-06-11",
    "n": 5,
@@ -785,71 +268,6 @@
     "TARGET_LOST": 3,
     "CATASTROPHIC": 1,
     "POOR": 1
-   }
-  },
-  {
-   "config": "Guard1Restored_IC1",
-   "date": "2026-06-11",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 1.71,
-   "xy_min": 1.121,
-   "vel_med": 0.856,
-   "cats": {
-    "CATASTROPHIC": 5
-   }
-  },
-  {
-   "config": "Multiscale_EZ_IC1",
-   "date": "2026-06-11",
-   "n": 9,
-   "SP": 0,
-   "TL": 6,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 5.348,
-   "xy_min": 0.575,
-   "vel_med": 1.042,
-   "cats": {
-    "TARGET_LOST": 6,
-    "CATASTROPHIC": 1,
-    "POOR": 2
-   }
-  },
-  {
-   "config": "RingLoomFix_IC1",
-   "date": "2026-06-11",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.65,
-   "xy_min": 0.622,
-   "vel_med": 1.285,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 2,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "RingLoom_IC1",
-   "date": "2026-06-11",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.463,
-   "xy_min": 0.273,
-   "vel_med": 0.499,
-   "cats": {
-    "POOR": 4,
-    "MOD_PRECISE": 1
    }
   },
   {
@@ -919,218 +337,23 @@
   {
    "config": "ICValidation",
    "date": "2026-06-12",
-   "n": 342,
-   "SP": 0,
-   "TL": 54,
-   "near_SP": 0,
-   "catastrophic": 129,
-   "xy_med": 1.161,
-   "xy_min": 0.062,
-   "vel_med": 1.32,
+   "n": 609,
+   "SP": 28,
+   "TL": 70,
+   "near_SP": 14,
+   "catastrophic": 161,
+   "xy_med": 0.542,
+   "xy_min": 0.013,
+   "vel_med": 0.936,
    "cats": {
-    "TARGET_LOST": 54,
-    "MOD_PRECISE": 48,
-    "POOR": 102,
-    "CATASTROPHIC": 129,
-    "SOFT_only": 8,
-    "PRECISE_only": 1
-   }
-  },
-  {
-   "config": "MATLABvals_IC22",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 6.48,
-   "xy_min": 6.48,
-   "vel_med": 3.992,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "MATLABvals_KD05_IC22",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 5.748,
-   "xy_min": 5.748,
-   "vel_med": 3.459,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "MATLABvals_KD05_KP5_IC22",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 4.608,
-   "xy_min": 4.608,
-   "vel_med": 3.389,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "MATLABvals_KD05_XI06_IC22",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 7.755,
-   "xy_min": 7.755,
-   "vel_med": 2.946,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "MATLABvals_KD05_XI06_KP5_IC22",
-   "date": "2026-06-12",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 5.351,
-   "xy_min": 1.083,
-   "vel_med": 2.481,
-   "cats": {
-    "CATASTROPHIC": 5
-   }
-  },
-  {
-   "config": "Omega01n5_IC2",
-   "date": "2026-06-12",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 4.763,
-   "xy_min": 4.098,
-   "vel_med": 3.199,
-   "cats": {
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 4
-   }
-  },
-  {
-   "config": "Omega01n5_IC5",
-   "date": "2026-06-12",
-   "n": 5,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 6.692,
-   "xy_min": 3.163,
-   "vel_med": 3.899,
-   "cats": {
-    "TARGET_LOST": 4,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "OmegaSwp_0075_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 4.404,
-   "xy_min": 4.404,
-   "vel_med": 2.425,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "OmegaSwp_015_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 2.935,
-   "xy_min": 2.935,
-   "vel_med": 2.735,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "OmegaSwp_01_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 4.067,
-   "xy_min": 4.067,
-   "vel_med": 3.698,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "OmegaXY01_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 2.847,
-   "xy_min": 2.847,
-   "vel_med": 2.122,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "P2INF15_Om01_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 5.09,
-   "xy_min": 5.09,
-   "vel_med": 3.207,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "PSINF06_IC2",
-   "date": "2026-06-12",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 2.377,
-   "xy_min": 2.377,
-   "vel_med": 2.152,
-   "cats": {
-    "CATASTROPHIC": 1
+    "TARGET_LOST": 70,
+    "MOD_PRECISE": 114,
+    "POOR": 165,
+    "PRECISE_only": 38,
+    "CATASTROPHIC": 161,
+    "near_SP": 14,
+    "SOFT_only": 19,
+    "SP": 28
    }
   },
   {
@@ -1160,662 +383,6 @@
    "xy_med": 5.893,
    "xy_min": 5.893,
    "vel_med": 2.152,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "Ez01_Nz01_GAM20xy_K0p5_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 3.097,
-   "xy_min": 3.097,
-   "vel_med": 5.392,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "Ez5_combo_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 51.163,
-   "xy_min": 51.163,
-   "vel_med": 10.536,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "Ez5_combo_IC2_n5",
-   "date": "2026-06-13",
-   "n": 5,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 32.15,
-   "xy_min": 9.61,
-   "vel_med": 6.92,
-   "cats": {
-    "TARGET_LOST": 4,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "GAM10E15_P2INF15_Om01_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 4.458,
-   "xy_min": 4.458,
-   "vel_med": 3.589,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "GAM10E15_XI2Z06_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 4.246,
-   "xy_min": 4.246,
-   "vel_med": 1.724,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "GAM20_K0p5_E08_XI2Z06_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.422,
-   "xy_min": 1.422,
-   "vel_med": 3.09,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "GAM20all_K0p5_E08_XI2Z06_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.796,
-   "xy_min": 0.796,
-   "vel_med": 3.352,
-   "cats": {
-    "POOR": 1
-   }
-  },
-  {
-   "config": "GAM20xy_Gz1_K0p5_E08_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.811,
-   "xy_min": 1.811,
-   "vel_med": 4.373,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "GammaXY1_IC1",
-   "date": "2026-06-13",
-   "n": 2,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 9.981,
-   "xy_min": 2.743,
-   "vel_med": 4.931,
-   "cats": {
-    "CATASTROPHIC": 2
-   }
-  },
-  {
-   "config": "HtvzGate_IC1",
-   "date": "2026-06-13",
-   "n": 5,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 13.43,
-   "xy_min": 4.319,
-   "vel_med": 7.607,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 3
-   }
-  },
-  {
-   "config": "HtvzOff_IC1",
-   "date": "2026-06-13",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 4.855,
-   "xy_min": 3.057,
-   "vel_med": 2.288,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "HtvzPrior_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.929,
-   "xy_min": 0.929,
-   "vel_med": 2.476,
-   "cats": {
-    "POOR": 1
-   }
-  },
-  {
-   "config": "K0p5_E08_GAM10_XI2Z06_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 6.419,
-   "xy_min": 6.419,
-   "vel_med": 2.944,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "K0z1_E08_Nz01_GAM20xy_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.282,
-   "xy_min": 1.282,
-   "vel_med": 2.381,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "K0z1_Ez01_Nz01_GAM20xy_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.36,
-   "xy_min": 1.36,
-   "vel_med": 1.316,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "K0z1_Ez01_Nz01_SOFT_n5_IC2",
-   "date": "2026-06-13",
-   "n": 4,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.393,
-   "xy_min": 0.852,
-   "vel_med": 2.109,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "K0z1_Nz05_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 36.765,
-   "xy_min": 36.765,
-   "vel_med": 12.841,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "K0z2_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 8.286,
-   "xy_min": 8.286,
-   "vel_med": 1.494,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "K0z2_Nz5_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 8.359,
-   "xy_min": 8.359,
-   "vel_med": 3.303,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "KzMax10_hrd03_P2INFz05_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 2.075,
-   "xy_min": 2.075,
-   "vel_med": 0.586,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "LKraw_IC1",
-   "date": "2026-06-13",
-   "n": 2,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 24.539,
-   "xy_min": 6.112,
-   "vel_med": 8.783,
-   "cats": {
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "LKraw_IC3",
-   "date": "2026-06-13",
-   "n": 2,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.794,
-   "xy_min": 1.145,
-   "vel_med": 5.221,
-   "cats": {
-    "CATASTROPHIC": 2
-   }
-  },
-  {
-   "config": "LKvid_IC3",
-   "date": "2026-06-13",
-   "n": 2,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 9.883,
-   "xy_min": 0.915,
-   "vel_med": 10.866,
-   "cats": {
-    "TARGET_LOST": 1,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "Nz01_GAM20xy_Gz1_K0p5_E08_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.961,
-   "xy_min": 0.961,
-   "vel_med": 2.837,
-   "cats": {
-    "POOR": 1
-   }
-  },
-  {
-   "config": "Nz05_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.879,
-   "xy_min": 0.879,
-   "vel_med": 2.857,
-   "cats": {
-    "POOR": 1
-   }
-  },
-  {
-   "config": "Omegaz01_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.228,
-   "xy_min": 0.228,
-   "vel_med": 2.608,
-   "cats": {
-    "MOD_PRECISE": 1
-   }
-  },
-  {
-   "config": "Omegaz02_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.45,
-   "xy_min": 1.45,
-   "vel_med": 1.93,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "Omz1_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 2.182,
-   "xy_min": 2.182,
-   "vel_med": 5.712,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "Omz1_Xi8_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 9.877,
-   "xy_min": 9.877,
-   "vel_med": 3.743,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "Omz2_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 10.017,
-   "xy_min": 10.017,
-   "vel_med": 2.117,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "Omz2_Xi8_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 46.285,
-   "xy_min": 46.285,
-   "vel_med": 14.757,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "P20z10_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 49.634,
-   "xy_min": 49.634,
-   "vel_med": 19.007,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "P2INFz05_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.064,
-   "xy_min": 1.064,
-   "vel_med": 0.366,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "P2INFz1_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.859,
-   "xy_min": 1.859,
-   "vel_med": 1.06,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "PureDivLoom_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 20.495,
-   "xy_min": 20.495,
-   "vel_med": 14.944,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "RL0_IC3",
-   "date": "2026-06-13",
-   "n": 3,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.848,
-   "xy_min": 0.076,
-   "vel_med": 6.175,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "PRECISE_only": 1
-   }
-  },
-  {
-   "config": "RL0_IC5",
-   "date": "2026-06-13",
-   "n": 3,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 2.072,
-   "xy_min": 1.603,
-   "vel_med": 2.169,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "RecalGate_IC2",
-   "date": "2026-06-13",
-   "n": 5,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 12.622,
-   "xy_min": 2.041,
-   "vel_med": 6.395,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 3
-   }
-  },
-  {
-   "config": "RecalOff_IC2",
-   "date": "2026-06-13",
-   "n": 5,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 15.07,
-   "xy_min": 2.244,
-   "vel_med": 7.234,
-   "cats": {
-    "TARGET_LOST": 4,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "RingLoom0_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.955,
-   "xy_min": 0.955,
-   "vel_med": 4.491,
-   "cats": {
-    "POOR": 1
-   }
-  },
-  {
-   "config": "RingLoom12_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 1.811,
-   "xy_min": 1.811,
-   "vel_med": 2.452,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "RingLoom4_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 10.318,
-   "xy_min": 10.318,
-   "vel_med": 2.343,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "hrd03_P2INFz05_soft_IC2",
-   "date": "2026-06-13",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 11.083,
-   "xy_min": 11.083,
-   "vel_med": 4.222,
    "cats": {
     "TARGET_LOST": 1
    }
@@ -1868,115 +435,6 @@
    }
   },
   {
-   "config": "KPdown_IC2",
-   "date": "2026-06-14",
-   "n": 20,
-   "SP": 0,
-   "TL": 15,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 8.269,
-   "xy_min": 1.18,
-   "vel_med": 3.282,
-   "cats": {
-    "TARGET_LOST": 15,
-    "CATASTROPHIC": 5
-   }
-  },
-  {
-   "config": "LPF_AB_baseline",
-   "date": "2026-06-14",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 4.515,
-   "xy_min": 4.515,
-   "vel_med": 0.658,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "LPF_AB_lpfbefore",
-   "date": "2026-06-14",
-   "n": 1,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 6.106,
-   "xy_min": 6.106,
-   "vel_med": 2.36,
-   "cats": {
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "Recovery_KP3",
-   "date": "2026-06-14",
-   "n": 10,
-   "SP": 0,
-   "TL": 6,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 6.42,
-   "xy_min": 2.306,
-   "vel_med": 2.655,
-   "cats": {
-    "SOFT_only": 1,
-    "TARGET_LOST": 6,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "WzDecouple_IC2",
-   "date": "2026-06-14",
-   "n": 5,
-   "SP": 0,
-   "TL": 5,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 25.241,
-   "xy_min": 10.729,
-   "vel_med": 12.594,
-   "cats": {
-    "TARGET_LOST": 5
-   }
-  },
-  {
-   "config": "WzFull_IC2",
-   "date": "2026-06-14",
-   "n": 1,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 18.223,
-   "xy_min": 18.223,
-   "vel_med": 10.883,
-   "cats": {
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "Xi2xy8_IC2",
-   "date": "2026-06-14",
-   "n": 5,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 17.952,
-   "xy_min": 1.654,
-   "vel_med": 10.627,
-   "cats": {
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 3
-   }
-  },
-  {
    "config": "BothPillars_IC2",
    "date": "2026-06-15",
    "n": 10,
@@ -2022,226 +480,6 @@
    "cats": {
     "CATASTROPHIC": 1,
     "TARGET_LOST": 9
-   }
-  },
-  {
-   "config": "IC1_Confirm_LpfOff",
-   "date": "2026-06-15",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 5.494,
-   "xy_min": 2.492,
-   "vel_med": 2.842,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "LpfDescent_IC1",
-   "date": "2026-06-15",
-   "n": 10,
-   "SP": 0,
-   "TL": 6,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 7.505,
-   "xy_min": 0.604,
-   "vel_med": 2.131,
-   "cats": {
-    "TARGET_LOST": 6,
-    "CATASTROPHIC": 4
-   }
-  },
-  {
-   "config": "Nxy_IC2",
-   "date": "2026-06-15",
-   "n": 9,
-   "SP": 0,
-   "TL": 6,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 2.801,
-   "xy_min": 1.479,
-   "vel_med": 1.378,
-   "cats": {
-    "TARGET_LOST": 6,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "VdfBake_IC2_combined",
-   "date": "2026-06-20",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 1.244,
-   "xy_min": 0.19,
-   "vel_med": 1.951,
-   "cats": {
-    "MOD_PRECISE": 2,
-    "CATASTROPHIC": 2,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "VdfGains_IC2_manuscript",
-   "date": "2026-06-20",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.585,
-   "xy_min": 1.384,
-   "vel_med": 1.67,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "Ez_IC2_baseline",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 5,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 2.293,
-   "xy_min": 0.352,
-   "vel_med": 1.612,
-   "cats": {
-    "CATASTROPHIC": 5,
-    "POOR": 5,
-    "TARGET_LOST": 5
-   }
-  },
-  {
-   "config": "Ez_IC2_ez05",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 1.092,
-   "xy_min": 0.184,
-   "vel_med": 1.141,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 6,
-    "MOD_PRECISE": 1,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "KltPersist_IC2_baseline",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 2.107,
-   "xy_min": 0.239,
-   "vel_med": 3.131,
-   "cats": {
-    "POOR": 2,
-    "MOD_PRECISE": 2,
-    "TARGET_LOST": 4,
-    "CATASTROPHIC": 7
-   }
-  },
-  {
-   "config": "KltPersist_IC2_persist",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 5,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 0.698,
-   "xy_min": 0.285,
-   "vel_med": 0.715,
-   "cats": {
-    "POOR": 5,
-    "TARGET_LOST": 5,
-    "MOD_PRECISE": 2,
-    "SOFT_only": 1,
-    "CATASTROPHIC": 2
-   }
-  },
-  {
-   "config": "MomLoom_IC2_base",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 6,
-   "xy_med": 0.857,
-   "xy_min": 0.398,
-   "vel_med": 0.827,
-   "cats": {
-    "POOR": 8,
-    "CATASTROPHIC": 6,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "MomLoom_IC2_momloom",
-   "date": "2026-06-21",
-   "n": 15,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 1.386,
-   "xy_min": 0.338,
-   "vel_med": 0.91,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 6,
-    "SOFT_only": 1,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "SoftZ_IC2_base",
-   "date": "2026-06-21",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.015,
-   "xy_min": 0.55,
-   "vel_med": 0.329,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "POOR": 2
-   }
-  },
-  {
-   "config": "SoftZ_IC2_softz",
-   "date": "2026-06-21",
-   "n": 5,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 2,
-   "xy_med": 15.505,
-   "xy_min": 4.916,
-   "vel_med": 9.172,
-   "cats": {
-    "TARGET_LOST": 3,
-    "CATASTROPHIC": 2
    }
   },
   {
@@ -2348,396 +586,6 @@
    }
   },
   {
-   "config": "KltMargin_IC2_baseline",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 1.809,
-   "xy_min": 0.349,
-   "vel_med": 1.121,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 4,
-    "TARGET_LOST": 3,
-    "SOFT_only": 1
-   }
-  },
-  {
-   "config": "KltMargin_IC2_margin",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 8,
-   "xy_med": 1.639,
-   "xy_min": 0.368,
-   "vel_med": 0.772,
-   "cats": {
-    "SOFT_only": 1,
-    "POOR": 4,
-    "CATASTROPHIC": 8,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "MomLoomSz_default",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 0.84,
-   "xy_min": 0.477,
-   "vel_med": 0.681,
-   "cats": {
-    "POOR": 8,
-    "SOFT_only": 1,
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "MomLoomSz_momentsz",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 0.795,
-   "xy_min": 0.27,
-   "vel_med": 0.788,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 7,
-    "MOD_PRECISE": 1
-   }
-  },
-  {
-   "config": "Nz_IC2_nz002",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 9,
-   "xy_med": 1.778,
-   "xy_min": 0.535,
-   "vel_med": 1.691,
-   "cats": {
-    "CATASTROPHIC": 9,
-    "TARGET_LOST": 3,
-    "POOR": 3
-   }
-  },
-  {
-   "config": "Nz_IC2_nz010",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 8,
-   "xy_med": 1.898,
-   "xy_min": 0.168,
-   "vel_med": 1.487,
-   "cats": {
-    "CATASTROPHIC": 8,
-    "SOFT_only": 3,
-    "POOR": 2,
-    "TARGET_LOST": 1,
-    "MOD_PRECISE": 1
-   }
-  },
-  {
-   "config": "PureDivVal_default",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 1,
-   "xy_med": 0.883,
-   "xy_min": 0.403,
-   "vel_med": 0.455,
-   "cats": {
-    "POOR": 3,
-    "TARGET_LOST": 1,
-    "CATASTROPHIC": 1
-   }
-  },
-  {
-   "config": "PureDivVal_vframe",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.173,
-   "xy_min": 0.667,
-   "vel_med": 1.237,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "SOFT_only": 1,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "RingOT_IC2_baseline",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 1.238,
-   "xy_min": 0.178,
-   "vel_med": 0.92,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "POOR": 4,
-    "TARGET_LOST": 3,
-    "MOD_PRECISE": 1
-   }
-  },
-  {
-   "config": "RingOT_IC2_ringovertarget",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 12,
-   "xy_med": 1.849,
-   "xy_min": 0.743,
-   "vel_med": 1.247,
-   "cats": {
-    "POOR": 2,
-    "CATASTROPHIC": 12,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "RingVF15_default",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 8,
-   "xy_med": 1.582,
-   "xy_min": 0.414,
-   "vel_med": 1.747,
-   "cats": {
-    "CATASTROPHIC": 8,
-    "POOR": 5,
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "RingVF15_vframe",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 4,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 1.396,
-   "xy_min": 0.31,
-   "vel_med": 0.712,
-   "cats": {
-    "CATASTROPHIC": 5,
-    "TARGET_LOST": 4,
-    "POOR": 6
-   }
-  },
-  {
-   "config": "RingVF_IC2_real_ot",
-   "date": "2026-06-22",
-   "n": 2,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 30.629,
-   "xy_min": 3.225,
-   "vel_med": 10.095,
-   "cats": {
-    "TARGET_LOST": 2
-   }
-  },
-  {
-   "config": "RingVF_IC2_vframe_ot",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 5,
-   "xy_med": 1.069,
-   "xy_min": 0.14,
-   "vel_med": 1.273,
-   "cats": {
-    "POOR": 6,
-    "CATASTROPHIC": 5,
-    "MOD_PRECISE": 1,
-    "TARGET_LOST": 3
-   }
-  },
-  {
-   "config": "SingleGFT_momentsz",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.057,
-   "xy_min": 0.413,
-   "vel_med": 0.876,
-   "cats": {
-    "CATASTROPHIC": 3,
-    "POOR": 2
-   }
-  },
-  {
-   "config": "SingleGFT_single_gft",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.443,
-   "xy_min": 1.1,
-   "vel_med": 1.18,
-   "cats": {
-    "TARGET_LOST": 2,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "SingleMarker_momentsz",
-   "date": "2026-06-22",
-   "n": 9,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 2.717,
-   "xy_min": 0.251,
-   "vel_med": 1.155,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1,
-    "POOR": 3,
-    "MOD_PRECISE": 1
-   }
-  },
-  {
-   "config": "SingleMarker_single",
-   "date": "2026-06-22",
-   "n": 15,
-   "SP": 0,
-   "TL": 7,
-   "near_SP": 0,
-   "catastrophic": 7,
-   "xy_med": 4.287,
-   "xy_min": 0.532,
-   "vel_med": 3.04,
-   "cats": {
-    "CATASTROPHIC": 7,
-    "TARGET_LOST": 7,
-    "POOR": 1
-   }
-  },
-  {
-   "config": "SingleMoment_momentsz",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 0,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.058,
-   "xy_min": 0.553,
-   "vel_med": 0.625,
-   "cats": {
-    "POOR": 2,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "SingleMoment_single_moment",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 3,
-   "xy_med": 1.662,
-   "xy_min": 1.003,
-   "vel_med": 1.079,
-   "cats": {
-    "TARGET_LOST": 2,
-    "CATASTROPHIC": 3
-   }
-  },
-  {
-   "config": "SingleRcond_sq",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 2.088,
-   "xy_min": 1.285,
-   "vel_med": 1.212,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "SingleRcond_sq_rcond3e2",
-   "date": "2026-06-22",
-   "n": 5,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 4,
-   "xy_med": 1.465,
-   "xy_min": 0.802,
-   "vel_med": 0.884,
-   "cats": {
-    "CATASTROPHIC": 4,
-    "TARGET_LOST": 1
-   }
-  },
-  {
-   "config": "SingleWorld_smoke",
-   "date": "2026-06-22",
-   "n": 2,
-   "SP": 0,
-   "TL": 1,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.819,
-   "xy_min": 0.078,
-   "vel_med": 1.791,
-   "cats": {
-    "TARGET_LOST": 1,
-    "PRECISE_only": 1
-   }
-  },
-  {
    "config": "CentroidRate_IC2_baseline",
    "date": "2026-06-23",
    "n": 5,
@@ -2771,67 +619,211 @@
    }
   },
   {
-   "config": "IC2_SingleMarker",
-   "date": "2026-06-23",
-   "n": 5,
-   "SP": 0,
-   "TL": 2,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 0.801,
-   "xy_min": 0.297,
-   "vel_med": 1.583,
-   "cats": {
-    "MOD_PRECISE": 1,
-    "TARGET_LOST": 2,
-    "POOR": 1,
-    "SOFT_only": 1
-   }
-  },
-  {
    "config": "Landing_Test",
    "date": "2026-06-23",
-   "n": 351,
-   "SP": 0,
-   "TL": 35,
-   "near_SP": 0,
-   "catastrophic": 128,
-   "xy_med": 0.856,
-   "xy_min": 0.062,
-   "vel_med": 1.164,
+   "n": 916,
+   "SP": 128,
+   "TL": 52,
+   "near_SP": 24,
+   "catastrophic": 201,
+   "xy_med": 0.339,
+   "xy_min": 0.007,
+   "vel_med": 0.709,
    "cats": {
-    "CATASTROPHIC": 128,
-    "SOFT_only": 8,
-    "MOD_PRECISE": 64,
-    "POOR": 115,
-    "TARGET_LOST": 35,
-    "PRECISE_only": 1
-   }
-  },
-  {
-   "config": "SingleWorldRecal_test",
-   "date": "2026-06-23",
-   "n": 5,
-   "SP": 0,
-   "TL": 3,
-   "near_SP": 0,
-   "catastrophic": 0,
-   "xy_med": 1.837,
-   "xy_min": 0.341,
-   "vel_med": 3.35,
-   "cats": {
-    "TARGET_LOST": 3,
-    "POOR": 2
+    "POOR": 233,
+    "CATASTROPHIC": 201,
+    "SOFT_only": 46,
+    "MOD_PRECISE": 167,
+    "PRECISE_only": 65,
+    "SP": 128,
+    "TARGET_LOST": 52,
+    "near_SP": 24
    }
   }
  ],
  "sp_reps": [
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 03-16-04 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0067,
+   "rel_vel": 0.0242,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-29-21 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0076,
+   "rel_vel": 0.0255,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 20-37-03 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0081,
+   "rel_vel": 0.0249,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sat Jun 27 01-47-02 2026",
+   "date": "2026-06-27",
+   "xy_err": 0.0083,
+   "rel_vel": 0.0952,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-07-12 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0083,
+   "rel_vel": 0.0344,
+   "frozen_GT": false
+  },
   {
    "config": "SPCampaign",
    "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep3",
    "date": "2026-06-03",
    "xy_err": 0.0096,
    "rel_vel": 0.0075,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 17-52-54 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0097,
+   "rel_vel": 0.0179,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-04-05 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0107,
+   "rel_vel": 0.0268,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 19-35-13 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.011,
+   "rel_vel": 0.014,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 03-14-37 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0114,
+   "rel_vel": 0.1519,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-43-16 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0128,
+   "rel_vel": 0.0322,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sat Jun 27 01-47-59 2026",
+   "date": "2026-06-27",
+   "xy_err": 0.0135,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 21-42-35 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0136,
+   "rel_vel": 0.0522,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 20-39-33 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0144,
+   "rel_vel": 0.0277,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-38-13 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0149,
+   "rel_vel": 0.0048,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-10-23 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0152,
+   "rel_vel": 0.1544,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-16-11 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0152,
+   "rel_vel": 0.0506,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 19-31-55 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0164,
+   "rel_vel": 0.0218,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-041054/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.017,
+   "rel_vel": 0.1279,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-21-07 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.017,
+   "rel_vel": 0.1279,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 03-29-26 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0178,
+   "rel_vel": 0.0212,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-33-45 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.018,
+   "rel_vel": 0.126,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 21-40-31 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0182,
+   "rel_vel": 0.139,
    "frozen_GT": false
   },
   {
@@ -2843,11 +835,155 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sat Jun 27 01-51-08 2026",
+   "date": "2026-06-27",
+   "xy_err": 0.0183,
+   "rel_vel": 0.0229,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 19-18-38 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0196,
+   "rel_vel": 0.0262,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-34-17 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0198,
+   "rel_vel": 0.0221,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 20-36-08 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0201,
+   "rel_vel": 0.0334,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep5",
    "date": "2026-06-03",
    "xy_err": 0.0213,
    "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 03-17-31 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0218,
+   "rel_vel": 0.1347,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 04-35-26 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0218,
+   "rel_vel": 0.0112,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-20-12 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0221,
+   "rel_vel": 0.0721,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-44-58 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0236,
+   "rel_vel": 0.1044,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-41-47 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0239,
+   "rel_vel": 0.157,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-040141/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0246,
+   "rel_vel": 0.0151,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-09-39 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0246,
+   "rel_vel": 0.0151,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-13-24 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0373,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-23-59 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0347,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sat Jun 27 01-52-02 2026",
+   "date": "2026-06-27",
+   "xy_err": 0.0253,
+   "rel_vel": 0.112,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-16-27 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0253,
+   "rel_vel": 0.0156,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-040141/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0257,
+   "rel_vel": 0.1903,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-04-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0257,
+   "rel_vel": 0.1903,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 20-33-06 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0262,
+   "rel_vel": 0.0752,
    "frozen_GT": false
   },
   {
@@ -2859,11 +995,243 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-05-40 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0267,
+   "rel_vel": 0.0167,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-030306/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0276,
+   "rel_vel": 0.1371,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 03-07-04 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0276,
+   "rel_vel": 0.1371,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b10B_no_yaw_ablation_20260603-113652/rep4",
    "date": "2026-06-03",
    "xy_err": 0.0278,
    "rel_vel": 0.057,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-011600/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0281,
+   "rel_vel": 0.0247,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-18-49 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0281,
+   "rel_vel": 0.0247,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-020720/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0299,
+   "rel_vel": 0.0516,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-17-05 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0299,
+   "rel_vel": 0.0516,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-03-18 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0312,
+   "rel_vel": 0.1868,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-012527/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0318,
+   "rel_vel": 0.1522,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-28-33 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0318,
+   "rel_vel": 0.1522,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 20-31-55 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0332,
+   "rel_vel": 0.1327,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-15-31 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0336,
+   "rel_vel": 0.0441,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 04-18-27 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0339,
+   "rel_vel": 0.1904,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-39-46 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0342,
+   "rel_vel": 0.112,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-012527/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0373,
+   "rel_vel": 0.1483,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-35-18 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0373,
+   "rel_vel": 0.1483,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-48-02 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0378,
+   "rel_vel": 0.0201,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-023742/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0384,
+   "rel_vel": 0.0183,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-43-56 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0384,
+   "rel_vel": 0.0183,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-030306/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.1498,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 03-09-05 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.1498,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-012527/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0398,
+   "rel_vel": 0.0826,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-34-21 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0398,
+   "rel_vel": 0.0826,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-17-28 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0409,
+   "rel_vel": 0.1012,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 01-47-13 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0414,
+   "rel_vel": 0.1461,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 12-02-02 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0422,
+   "rel_vel": 0.1249,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-37-42 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0428,
+   "rel_vel": 0.1662,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-21-34 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0433,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-41-41 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0439,
+   "rel_vel": 0.0243,
    "frozen_GT": false
   },
   {
@@ -2875,11 +1243,131 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-36-35 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0445,
+   "rel_vel": 0.0326,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-43-41 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0456,
+   "rel_vel": 0.0076,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-34-41 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0469,
+   "rel_vel": 0.1804,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-25-56 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0478,
+   "rel_vel": 0.0125,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 04-10-22 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0481,
+   "rel_vel": 0.0104,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-24-32 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0482,
+   "rel_vel": 0.1549,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b14_span_commit_20260603-135420/rep2",
    "date": "2026-06-03",
    "xy_err": 0.0485,
    "rel_vel": 0.014,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-040141/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0497,
+   "rel_vel": 0.0862,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-07-51 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0497,
+   "rel_vel": 0.0862,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-46-35 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0504,
+   "rel_vel": 0.0277,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-51-57 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0509,
+   "rel_vel": 0.0249,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-40-12 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0509,
+   "rel_vel": 0.0155,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-023742/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0518,
+   "rel_vel": 0.0142,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-57-42 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0518,
+   "rel_vel": 0.0529,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 19-20-06 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0518,
+   "rel_vel": 0.1675,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-42-00 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0518,
+   "rel_vel": 0.0142,
    "frozen_GT": false
   },
   {
@@ -2899,11 +1387,163 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-05-36 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0525,
+   "rel_vel": 0.0134,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-54-49 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0525,
+   "rel_vel": 0.0775,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-53-13 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0526,
+   "rel_vel": 0.1362,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-15-17 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.054,
+   "rel_vel": 0.0798,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b10C_ordering_normdesc_20260603-113652/rep3",
    "date": "2026-06-03",
    "xy_err": 0.0542,
    "rel_vel": 0.0915,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-014019/IC1_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0544,
+   "rel_vel": 0.0288,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-41-16 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0544,
+   "rel_vel": 0.0288,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 21-38-26 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0554,
+   "rel_vel": 0.1337,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-51-44 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0555,
+   "rel_vel": 0.0399,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-36-35 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0556,
+   "rel_vel": 0.092,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-14-44 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0557,
+   "rel_vel": 0.0476,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-36-45 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0559,
+   "rel_vel": 0.0456,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-040141/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0567,
+   "rel_vel": 0.03,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-06-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0567,
+   "rel_vel": 0.03,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 01-51-34 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0575,
+   "rel_vel": 0.0109,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sat Jun 27 04-34-41 2026",
+   "date": "2026-06-27",
+   "xy_err": 0.0578,
+   "rel_vel": 0.0503,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-04-12 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0587,
+   "rel_vel": 0.0872,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 01-59-43 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.059,
+   "rel_vel": 0.1404,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-12-19 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0595,
+   "rel_vel": 0.0222,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-23-03 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0597,
+   "rel_vel": 0.1795,
    "frozen_GT": false
   },
   {
@@ -2923,11 +1563,91 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-02-06 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0606,
+   "rel_vel": 0.0433,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-24-17 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0621,
+   "rel_vel": 0.1649,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-23-09 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0622,
+   "rel_vel": 0.0283,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-38-09 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0628,
+   "rel_vel": 0.06,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-004716/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0638,
+   "rel_vel": 0.058,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 00-48-12 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0638,
+   "rel_vel": 0.058,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b14_span_commit_20260603-135420/rep3",
    "date": "2026-06-03",
    "xy_err": 0.0639,
    "rel_vel": 0.1515,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 17-45-14 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.064,
+   "rel_vel": 0.0511,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-32-54 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0649,
+   "rel_vel": 0.0672,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-014019/IC1_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.065,
+   "rel_vel": 0.0371,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-44-04 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.065,
+   "rel_vel": 0.0371,
    "frozen_GT": false
   },
   {
@@ -2947,11 +1667,355 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-011600/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0667,
+   "rel_vel": 0.0914,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-17-49 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0667,
+   "rel_vel": 0.0914,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b9C_ordering_no_handoff_SKIP_20260603-105615/rep1",
    "date": "2026-06-03",
    "xy_err": 0.0671,
    "rel_vel": 0.0185,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-040141/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0676,
+   "rel_vel": 0.1703,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-08-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0676,
+   "rel_vel": 0.1703,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 22-39-37 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0688,
+   "rel_vel": 0.1484,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-11-51 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0694,
+   "rel_vel": 0.078,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 13-53-25 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0696,
+   "rel_vel": 0.0503,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-25-47 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0698,
+   "rel_vel": 0.0352,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-08-40 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0702,
+   "rel_vel": 0.0582,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-44-46 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0709,
+   "rel_vel": 0.0619,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 12-00-37 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0715,
+   "rel_vel": 0.0518,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-020720/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0718,
+   "rel_vel": 0.0979,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-10-35 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0718,
+   "rel_vel": 0.0979,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-020720/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0723,
+   "rel_vel": 0.1786,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-16-07 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0723,
+   "rel_vel": 0.1786,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 15-41-14 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0754,
+   "rel_vel": 0.0134,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-18-07 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0767,
+   "rel_vel": 0.0292,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 14-39-43 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0768,
+   "rel_vel": 0.0481,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 01-58-14 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0771,
+   "rel_vel": 0.0179,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-011316/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0788,
+   "rel_vel": 0.0675,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-19-45 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0788,
+   "rel_vel": 0.1007,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 01-15-02 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0788,
+   "rel_vel": 0.0675,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-021709/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.079,
+   "rel_vel": 0.0781,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-24-42 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.079,
+   "rel_vel": 0.0781,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 18-46-53 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0791,
+   "rel_vel": 0.1632,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 01-55-14 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.081,
+   "rel_vel": 0.0727,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-43-20 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0824,
+   "rel_vel": 0.0447,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-030306/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0846,
+   "rel_vel": 0.0075,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 03-10-54 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0846,
+   "rel_vel": 0.0075,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-51-30 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0852,
+   "rel_vel": 0.0813,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-54-30 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0861,
+   "rel_vel": 0.0926,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 02-01-14 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0871,
+   "rel_vel": 0.1174,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-041054/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0875,
+   "rel_vel": 0.0722,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-23-05 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0875,
+   "rel_vel": 0.0722,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 11-35-03 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0882,
+   "rel_vel": 0.0129,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-041054/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.091,
+   "rel_vel": 0.174,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 04-20-07 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.091,
+   "rel_vel": 0.174,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-021709/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0933,
+   "rel_vel": 0.1359,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-20-52 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0933,
+   "rel_vel": 0.1359,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Fri Jun 26 03-32-21 2026",
+   "date": "2026-06-26",
+   "xy_err": 0.0953,
+   "rel_vel": 0.1026,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Sun Jun 28 23-36-30 2026",
+   "date": "2026-06-28",
+   "xy_err": 0.0961,
+   "rel_vel": 0.1967,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-021709/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0997,
+   "rel_vel": 0.0662,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 02-21-51 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0997,
+   "rel_vel": 0.0662,
    "frozen_GT": false
   },
   {
