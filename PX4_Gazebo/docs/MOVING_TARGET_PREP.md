@@ -48,6 +48,16 @@ min-alt **0.51 m, dead-centered (0.05 m), bounded, no fly-away** (vs 2/3
 fly-aways before). Full writeup: [[feedback_rover_flyaway_no_platform]].
 Harness: scratchpad/ab_flyaway.sh + ab_analyze.py.
 
+## Recording (both views)
+- First-person (drone down-cam): `IMG_RECORD=1` → test_data/Test_Videos/<ts>.mp4.
+- Third-person (external chase): `CHASE_CAM=1` → chase_<ts>.mp4 (apps/record_chase.py).
+  The chase camera is a SENSOR on the ground_plane link (rover.sdf, outside repo)
+  at (6,-6,4) aimed at (0,0,2.84). ⚠ It MUST be on an existing link, NOT a
+  separate model — a separate world model adds a top-level pose entry that shifts
+  the pose/info vehicle indices non-deterministically → wrong poses → fly-away.
+  Example (both views, retry until a clean platform landing):
+  `MAXTRIES=6 bash scratchpad/chase_until_clean.sh` (CHASE_CAM=1 + IMG_RECORD=1).
+
 ## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +
   UAV 4014 `-i 0`, `rover` world, `dynamic_pose/info` pose bridge). Forked from
