@@ -17,11 +17,19 @@ altitude and 900 m laterally (`descent stall ... alt=207.60 m` abort). Pose
 correct throughout (smooth traj; target x=0.000 stationary confirmed).
 → This is the terminal-1/Z kick (memory campaign) but FAR more violent than the
 stationary-aruco GT-FB (~1-4 m balloon). NOT a setup bug; the first control
-finding to diagnose. Candidate leads: (a) target-pose z-offset — gt_feedback
-target = rover_aruco_1 base (z≈0.01) but the MARKER sits 0.5 m up, so the loom/z
-relative pose may be biased vs the stationary marker; (b) the baked terminal
-gates (TERMINAL_COMMIT/HD_FUNNEL_REF) behaving differently here. Judge by
-breach%/s_dot_entry, not SP count.
+finding to diagnose. Judge by breach%/s_dot_entry, not SP count.
+
+### Lead (a) TESTED — camera/marker mount offsets FIXED, fly-away PERSISTS (2026-07-02)
+gt_feedback computed (rover-base − uav-base), ignoring the +0.50 m marker mount
+and +0.20 m camera mount → a ~0.30 m depth bias (near-deck TRUE camera-marker
+depth ~0.10 m vs old ~0.40 m, a 4× 1/z error). Fixed it (commit: marker − camera
+in V-frame, offsets rotated by body attitude). Re-run (GT-FB, stationary):
+IC 0.165 m, but STILL a terminal fly-away (alt 243 m). So the mount-offset bias
+alone is NOT the cause. ⚠ n=1 each, different IC settle (0.199/0.46° vs
+0.165/3.40°) → the min-alt difference (0.25 vs 1.5 m) is within the ±5-7 SITL
+noise, not attributable. The correction is still correct/more-faithful (keep it).
+NEXT leads: the baked terminal gates (TERMINAL_COMMIT/HD_FUNNEL_REF/HD_KR) on the
+rover geometry; controlled n≥3 A/B; Z_REG 0.2→~0.1 now the offset is honest.
 
 ## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +
