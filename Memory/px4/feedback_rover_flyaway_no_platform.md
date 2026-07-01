@@ -55,3 +55,21 @@ Harness: scratchpad/ab_flyaway.sh + ab_analyze.py (world A/B, per-arm autosave, 
 alt + fly-away metric). Stochastic — judge by fly-away RATE over n≥3, not single runs
 (the ±5–7 noise floor + terminal-1/Z amplification, [[project_why_sp_achieved]]).
 See [[feedback_rover_spawn_infra_fixes]], docs/MOVING_TARGET_PREP.md.
+
+## ⭐ TERMINAL LATERAL-DRIFT IS RESOLVED — baseline 5/5 CLEAN (2026-07-02)
+Attempted to "tune the terminal lateral-drift to improve the landing rate", but the
+premise was CONTAMINATED. A clean landing-rate batch (rover+platform, GT-FB, CORRECT
+config — pose-index fixed, chase cam on ground_plane so no index shift) gave **baseline
+5/5 CLEAN**, every rep dead-centered on the platform (min 0.51 m = platform top, lateral
+0.02–0.05 m, 0 fly). So the terminal lateral-drift the task targeted is ALREADY resolved
+by (1) the landing PLATFORM (contact arrests before the open-air terminal-1/Z regime) and
+(2) the POSE-INDEX fixes. The earlier "~1/3 clean / drifts / flys" were the CHASE-CAM
+POSE-INDEX BUG (separate chase_cam model shifted target/UAV indices → wrong poses → garbage
+control, see [[feedback_rover_spawn_infra_fixes]]) + no-platform geometry — NOT a control
+deficit. My interim s_e_n-divergence / ζ_r-saturation diagnosis was run on index-bug-era
+data (03-51/03-52) → also contaminated. **No GT-FB control tuning is warranted (baseline at
+ceiling).** Candidate levers (P2INF_xy=2.0, PRINF=1.0) NOT run — no upside vs a 5/5 ceiling.
+Next real frontier = perception-ON (GT-FB control is clean; perception may reintroduce
+failures) and yaw-cal for a MOVING (turning) rover. Batch: scratchpad/batch_landrate.sh.
+⚠ SITL still flaky: a frozen-pose startup race (huge pos_err + speed 0) costs ~2 retry
+attempts/rep — self-recovers, but makes n≥6 batches slow (~5 min/rep).
