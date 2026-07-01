@@ -1051,6 +1051,18 @@ class Controller(Thread):
                     self._updateOptFlow(opt_flow_ang_vel[:3])
 
                     self._img_node.CONTROLLER_READY = True   # gates IMG_RECORD video to the descent
+                    # Same gate for the external CHASE recorder (a separate
+                    # process): touch the flag file once so record_chase.py starts
+                    # recording at descent-start, matching the down-cam. Env-gated
+                    # (no-op unless CHASE_GATE_FILE is set by the chase launch path).
+                    if not getattr(self, "_chase_gated", False):
+                        _cgf = os.environ.get("CHASE_GATE_FILE")
+                        if _cgf:
+                            try:
+                                open(_cgf, "w").close()
+                            except Exception:
+                                pass
+                        self._chase_gated = True
                     self.PLASMC()
                     self._yawCtrl()
                     self._attCtrl()

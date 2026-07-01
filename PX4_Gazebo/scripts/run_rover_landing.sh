@@ -251,6 +251,12 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
 # test_data/Test_Videos/chase_<ts>.mp4 for RECORD_S seconds. Independent of the
 # UAV's down-cam recording (IMG_RECORD).
 if [ "${CHASE_CAM:-0}" = "1" ]; then
+  # Gate the chase recorder to descent-start (like the down-cam IMG_RECORD): the
+  # controller touches CHASE_GATE_FILE when it engages; record_chase.py waits for
+  # it. Export so BOTH landing_test (controller) and the recorder see it; clear
+  # any stale flag from a previous run first.
+  export CHASE_GATE_FILE="${CHASE_GATE_FILE:-$LOG_DIR/chase_gate.flag}"
+  rm -f "$CHASE_GATE_FILE" 2>/dev/null
   CHASE_TOPIC_GZ="/world/$WORLD/model/ground_plane/link/link/sensor/chase/image"
   start_bg bridge_chase ros2 run ros_gz_bridge parameter_bridge \
     "${CHASE_TOPIC_GZ}@sensor_msgs/msg/Image@gz.msgs.Image" \
