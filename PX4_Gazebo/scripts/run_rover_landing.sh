@@ -49,8 +49,18 @@ WORLD="rover"
 # [ground_plane, rover_aruco_1, x500_mono_cam_down_0, ...links...] -> exactly the
 # stationary-aruco layout: target=poses[1], UAV=poses[2]. So the gz_subscriber
 # defaults (2/1) already match; export explicitly for clarity.
-export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
-export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
+# The chase_cam (CHASE_CAM=1) is a static WORLD model, so it appears in pose/info
+# BEFORE the spawned vehicles: [ground_plane, chase_cam, rover_aruco_1, x500...]
+# -> it shifts the vehicle indices by +1 (target 1->2, UAV 2->3). Without this
+# the controller reads the chase camera as the target and the rover as the UAV
+# (12.35 m frozen IC error / garbage control -> fly-away). Verified 2026-07-02.
+if [ "${CHASE_CAM:-0}" = "1" ]; then
+  export POSE_IDX_TARGET="${POSE_IDX_TARGET:-2}"
+  export POSE_IDX_UAV="${POSE_IDX_UAV:-3}"
+else
+  export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
+  export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
+fi
 
 # GT-feedback marker mount offset: the rover carries the ArUco marker +0.50 m
 # above its base (rover_aruco SDF), unlike the flat stationary aruco marker. So
