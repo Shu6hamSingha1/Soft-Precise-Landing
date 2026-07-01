@@ -30,7 +30,22 @@ import numpy as np
 from ahrs import Quaternion
 
 NED_FROM_ENU = np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]])   # self-inverse
-FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=180°)
+FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=180°), self-inverse
+
+# Rigid mount offsets (from the Gazebo model SDFs), expressed in each body's
+# FLU/model frame (z up). The pose feedback gives the base_link / rover-model
+# ORIGIN poses, but the camera and the ArUco marker are mounted off those:
+#   - x500_mono_cam_down: mono_cam at <pose>0 0 .20 ...> -> camera +0.20 m above
+#     base_link (body up).
+#   - rover_aruco: arucotag at <pose>0 0 .50 ...> -> marker +0.50 m above the
+#     rover base (body up).
+# The controller's target is the MARKER as seen by the CAMERA, so the relative
+# vector must be (marker - camera), not (rover_base - uav_base). Ignoring these
+# offsets biases the relative DEPTH by ~0.30 m, which distorts the 1/z loom right
+# where the terminal kick lives. Env-overridable. FLU here; converted to FRD
+# (FRD_2_FLU is self-inverse) before rotating by the body->NED DCM.
+_CAM_OFF_FLU    = np.array([0., 0., float(os.environ.get("PLASMC_GT_CAM_DZ",    "0.20"))])
+_MARKER_OFF_FLU = np.array([0., 0., float(os.environ.get("PLASMC_GT_MARKER_DZ", "0.50"))])
 
 
 def _v_frame(R):
@@ -73,7 +88,7 @@ class GTFeedback:
         self._win = int(os.environ.get("PLASMC_GT_FB_WIN", "7"))
         _maxlen = 64
         self._t = deque(maxlen=_maxlen)
-        self._wx = deque(maxlen=_maxlen)        # W_x_tu history (NED, target-UAV)
+        self._wx = deque(maxlen=_maxlen)        # W_x history (NED, marker - camera)
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
 
@@ -94,10 +109,18 @@ class GTFeedback:
         Returns (s_4vec, flow_6vec) in the controller's consumed convention."""
         qu, qt = uav_pose.orientation, target_pose.orientation
         Rfu = Quaternion([qu.w, qu.x, qu.y, qu.z]).to_DCM()
-        Ru  = NED_FROM_ENU @ Rfu @ FRD_2_FLU                      # body-FRD -> NED
+        Ru  = NED_FROM_ENU @ Rfu @ FRD_2_FLU                      # UAV body-FRD -> NED
+        Rft = Quaternion([qt.w, qt.x, qt.y, qt.z]).to_DCM()
+        Rt  = NED_FROM_ENU @ Rft @ FRD_2_FLU                      # target body-FRD -> NED
         up  = NED_FROM_ENU @ np.array([uav_pose.position.x, uav_pose.position.y, uav_pose.position.z])
         tpp = NED_FROM_ENU @ np.array([target_pose.position.x, target_pose.position.y, target_pose.position.z])
-        W_x_tu = tpp - up                                          # target-UAV, NED
+        # Apply the rigid mount offsets so the relative vector is MARKER w.r.t.
+        # CAMERA (not rover-base w.r.t. uav-base). Each offset is rotated by its
+        # body attitude, so camera/marker translate correctly as the drone tilts
+        # or the rover pitches (FLU offset -> FRD via the self-inverse FRD_2_FLU).
+        cam_ned    = up  + Ru @ (FRD_2_FLU @ _CAM_OFF_FLU)         # camera position, NED
+        marker_ned = tpp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)      # marker position, NED
+        W_x_tu = marker_ned - cam_ned                             # marker - camera, NED
 
         # relative yaw (uav - target), unwrapped across calls for a clean rate
         ry = _yaw_of(qu) - _yaw_of(qt)
@@ -124,7 +147,14 @@ class GTFeedback:
         # ~0.1 m (NOT the 0.2 m gear-height first guessed; that over-clamped). Z_REG=0.1 caps 1/z at 10
         # (matches the measured floor) -> bounded disturbance -> leakage-ASMC in design envelope -> SP.
         # (Additive 1/(z+0.1) under-reads ~9% at z=1 m; 1/max(z,0.1) is exact if the altitude bias bites.)
-        Z_REG = float(os.environ.get("PLASMC_GT_Z_REG", "0.2"))   # BAKED 0.2 (user 2026-06-30): base_link min-z is ~0.1 m, but the camera is mounted +0.20 m above base_link (x500_mono_cam_down SDF), so the CAMERA-to-marker floor is ~0.3 m -> 0.2 is the conservative depth floor (between the base_link 0.1 and the camera 0.3).
+        # NOTE (2026-07-02): the camera/marker mount offsets are now applied
+        # explicitly above (W_x_tu = marker - camera), so Z_REG is a pure depth
+        # floor on the TRUE camera-to-marker depth, no longer a fudge that also
+        # absorbs the mount offset. Measured min first-descent camera-marker
+        # depth ~0.10 m, so Z_REG may warrant revisiting (0.2 -> ~0.1); left at
+        # 0.2 pending a sweep. (Pre-fix rationale "0.2 sits between base_link 0.1
+        # and camera 0.3" is superseded — that offset is no longer double-counted.)
+        Z_REG = float(os.environ.get("PLASMC_GT_Z_REG", "0.2"))
 
         # --- centroid bearing s (V-frame) ---
         B_x = Ru.T @ W_x_tu
