@@ -49,18 +49,12 @@ WORLD="rover"
 # [ground_plane, rover_aruco_1, x500_mono_cam_down_0, ...links...] -> exactly the
 # stationary-aruco layout: target=poses[1], UAV=poses[2]. So the gz_subscriber
 # defaults (2/1) already match; export explicitly for clarity.
-# The chase_cam (CHASE_CAM=1) is a static WORLD model, so it appears in pose/info
-# BEFORE the spawned vehicles: [ground_plane, chase_cam, rover_aruco_1, x500...]
-# -> it shifts the vehicle indices by +1 (target 1->2, UAV 2->3). Without this
-# the controller reads the chase camera as the target and the rover as the UAV
-# (12.35 m frozen IC error / garbage control -> fly-away). Verified 2026-07-02.
-if [ "${CHASE_CAM:-0}" = "1" ]; then
-  export POSE_IDX_TARGET="${POSE_IDX_TARGET:-2}"
-  export POSE_IDX_UAV="${POSE_IDX_UAV:-3}"
-else
-  export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
-  export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
-fi
+export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
+export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
+# NOTE: the chase camera (CHASE_CAM=1) is attached to the EXISTING ground_plane
+# link, NOT a separate model, precisely so it does NOT add a top-level pose entry
+# and the indices above stay correct. (An earlier separate chase_cam model shifted
+# them by +1 non-deterministically and broke control — do not reintroduce it.)
 
 # GT-feedback marker mount offset: the rover carries the ArUco marker +0.50 m
 # above its base (rover_aruco SDF), unlike the flat stationary aruco marker. So
@@ -257,7 +251,7 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
 # test_data/Test_Videos/chase_<ts>.mp4 for RECORD_S seconds. Independent of the
 # UAV's down-cam recording (IMG_RECORD).
 if [ "${CHASE_CAM:-0}" = "1" ]; then
-  CHASE_TOPIC_GZ="/world/$WORLD/model/chase_cam/link/link/sensor/chase/image"
+  CHASE_TOPIC_GZ="/world/$WORLD/model/ground_plane/link/link/sensor/chase/image"
   start_bg bridge_chase ros2 run ros_gz_bridge parameter_bridge \
     "${CHASE_TOPIC_GZ}@sensor_msgs/msg/Image@gz.msgs.Image" \
     --ros-args -r "${CHASE_TOPIC_GZ}:=/chase_image"
