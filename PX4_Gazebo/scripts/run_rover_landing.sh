@@ -18,8 +18,9 @@
 #     Harmonic (SDF 1.11) cannot convert -> bumped model.sdf + model.config to
 #     1.9 in BOTH ~/.gazebo/models/rover_aruco/ and the PX4 copy. Rover now
 #     spawns as `rover_aruco_1`.
-#   * Pose indices: verified rover dynamic_pose ordering (target=0, UAV=1) and
-#     exported POSE_IDX_TARGET/POSE_IDX_UAV below; gz_subscriber.py reads them.
+#   * Pose topic + indices: bridge the FULL /world/rover/pose/info (stable order
+#     [ground_plane, rover_aruco_1, x500...] -> target=1, UAV=2, same as aruco),
+#     NOT dynamic_pose/info (variable membership -> 375 m IC error). Details below.
 #
 # STILL OPEN before a meaningful rover landing (see docs/MOVING_TARGET_PREP.md):
 #   1. Yaw calibration (cal_s[3]) — inert for the stationary square marker,
@@ -40,13 +41,16 @@ mkdir -p "$LOG_DIR"
 
 WORLD="rover"
 
-# PoseArray indices for the rover world's /world/rover/dynamic_pose/info topic.
-# Verified 2026-07-01 by echoing the topic with both vehicles spawned: top-level
-# models are listed in spawn order (rover via -i 1 first, UAV via -i 0 second),
-# so target=poses[0], UAV=poses[1]. Exported so landing_test.py's gz_subscriber
-# picks the right poses (defaults there are the stationary aruco 2/1).
-export POSE_IDX_TARGET="${POSE_IDX_TARGET:-0}"
-export POSE_IDX_UAV="${POSE_IDX_UAV:-1}"
+# Pose topic: use the FULL /world/rover/pose/info (below), NOT dynamic_pose/info.
+# dynamic_pose/info only carries entities that MOVED that step, so its PoseArray
+# membership/order varies frame-to-frame -> fixed indices there point at random
+# links during flight (verified 2026-07-01: caused a 375 m IC pos_err). pose/info
+# publishes the full pose graph every step (~54 Hz, same rate) with STABLE order
+# [ground_plane, rover_aruco_1, x500_mono_cam_down_0, ...links...] -> exactly the
+# stationary-aruco layout: target=poses[1], UAV=poses[2]. So the gz_subscriber
+# defaults (2/1) already match; export explicitly for clarity.
+export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
+export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
 
 # HEADLESS=1 -> no Gazebo GUI client, no QGroundControl.
 HEADLESS="${HEADLESS:-}"
@@ -124,10 +128,16 @@ sleep 1
 # 2a) PX4 SITL instance -i 1 = the ROVER target (spawns the gz sim server +
 # the `rover` world). This MUST start first; the UAV instance attaches to the
 # already-running gz sim via PX4_GZ_STANDALONE=1.
+# Headless: offscreen Qt AND px4 daemon mode (-d, no pxh shell). Without -d a
+# headless px4 (no TTY) spams the pxh prompt + clear-line escapes to its log at
+# ~GB/min; -d keeps the INFO logs we grep ("Ready for takeoff", lockstep race)
+# but drops the interactive shell. GUI mode keeps pxh for interactive debugging.
 if [ -n "$HEADLESS" ]; then
   EXTRA_ENV_HEADLESS="QT_QPA_PLATFORM=offscreen"
+  PX4_DAEMON="-d"
 else
   EXTRA_ENV_HEADLESS=""
+  PX4_DAEMON=""
 fi
 echo "[run] starting PX4 SITL rover (-i 1, airframe 4022, world $WORLD)..."
 setsid env $EXTRA_ENV_HEADLESS \
@@ -135,7 +145,7 @@ setsid env $EXTRA_ENV_HEADLESS \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=rover_aruco \
   PX4_GZ_WORLD="$WORLD" \
-  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 1" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 1" \
   > "$LOG_DIR/px4_rover.log" 2>&1 &
 ROVER_PID=$!
 PIDS+=("$ROVER_PID")
@@ -166,7 +176,7 @@ setsid env $EXTRA_ENV_HEADLESS \
   PX4_GZ_MODEL_POSE="1,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
   PX4_GZ_WORLD="$WORLD" \
-  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PX4_PID=$!
 PIDS+=("$PX4_PID")
@@ -189,14 +199,14 @@ while ! gz topic -l 2>/dev/null | grep -q "x500_mono_cam_down_0/link/camera_link
 done
 echo " up after ${WAITED}s."
 
-# 3) ros_gz bridges (rover world; NOTE: pose is dynamic_pose/info, not pose/info).
+# 3) ros_gz bridges (rover world; pose is the FULL pose/info — see note above).
 start_bg bridge_clock ros2 run ros_gz_bridge parameter_bridge \
   "/world/$WORLD/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock" \
   --ros-args -r "/world/$WORLD/clock:=/clock"
 
 start_bg bridge_pose ros2 run ros_gz_bridge parameter_bridge \
-  "/world/$WORLD/dynamic_pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V" \
-  --ros-args -r "/world/$WORLD/dynamic_pose/info:=/pose"
+  "/world/$WORLD/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V" \
+  --ros-args -r "/world/$WORLD/pose/info:=/pose"
 
 start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \

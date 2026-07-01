@@ -79,15 +79,15 @@ class Pose_Node(Node):
 
         self._pose = PoseData()  # Initialize the pose data object
 
-        # PoseArray index of the UAV / target top-level model poses. These
-        # differ per world because the bridged topic differs:
-        #   - stationary `aruco` world -> /world/aruco/pose/info: UAV=2, target=1
-        #   - moving `rover` world     -> /world/rover/dynamic_pose/info: the
-        #     PoseArray lists top-level models in spawn order (rover first via
-        #     -i 1, UAV second via -i 0) -> target=0, UAV=1.
-        # Defaults preserve the stationary-world behavior; the launch script
-        # overrides them for the rover world via POSE_IDX_UAV / POSE_IDX_TARGET.
-        # Inspect ordering with: gz topic -t /world/<world>/dynamic_pose/info -e
+        # PoseArray index of the UAV / target top-level model poses. Both worlds
+        # bridge the FULL /world/<world>/pose/info, whose PoseArray order is
+        # stable: [ground_plane, <target>, <UAV>, ...links...] -> UAV=2, target=1.
+        #   - stationary `aruco`: [ground_plane, aruco_marker, x500...]
+        #   - moving `rover`    : [ground_plane, rover_aruco_1, x500...]
+        # (Do NOT bridge dynamic_pose/info — it only carries entities that moved
+        # that step, so its membership/order varies frame-to-frame.)
+        # Env-overridable via POSE_IDX_UAV / POSE_IDX_TARGET for other layouts.
+        # Inspect ordering with: gz topic -t /world/<world>/pose/info -e
         self._uav_idx = int(os.environ.get("POSE_IDX_UAV", "2"))
         self._target_idx = int(os.environ.get("POSE_IDX_TARGET", "1"))
 

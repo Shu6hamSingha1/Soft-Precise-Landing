@@ -74,7 +74,9 @@ Step 5:
 ros2 run ros_gz_bridge parameter_bridge /world/rover/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock --ros-args -r /world/rover/clock:=/clock
 
 Step 6:
-ros2 run ros_gz_bridge parameter_bridge /world/rover/dynamic_pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V --ros-args -r /world/rover/dynamic_pose/info:=/pose
+# Use the FULL pose/info (stable order [ground_plane, rover_aruco_1, x500...] =>
+# target=1, UAV=2), NOT dynamic_pose/info (variable membership => wrong indices).
+ros2 run ros_gz_bridge parameter_bridge /world/rover/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V --ros-args -r /world/rover/pose/info:=/pose
 
 Step 7:
 ros2 run ros_gz_bridge parameter_bridge /world/rover/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image --ros-args -r /world/rover/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
