@@ -50,9 +50,9 @@ accepts offboard. Launcher hook `ROVER_MOTION=1`; env `ROVER_TRAJ` /
 `ROVER_SPEED_MULT` / `ROVER_YAW_MODE`.
 
 ⚠ **Ackermann min turn radius ≈ 0.56 m** (RA_WHEEL_BASE 0.321, RA_MAX_STR_ANG
-30°). The MATLAB `Circular` r=0.5 is BELOW it → the rover can't track that tight
-circle, drifts wide. Use `Linear`/`Sinusoidal`/larger-radius for faithful
-tracking. Also RO_SPEED_LIM=3 m/s caps top speed.
+30°). The MATLAB `Circular` r=0.5 is BELOW it → `rover_trajectory.py` bumps
+`Circular` to **r=0.8** (user-directed; speed ≈0.38 m/s at speed_mult=1).
+`Linear`/`Sinusoidal` also track fine. RO_SPEED_LIM=3 m/s caps top speed.
 
 See [[project_moving_target_prep]] + docs/MOVING_TARGET_PREP.md (RESOLVED
 2026-07-01). Next open items: yaw cal (`cal_s[3]`), first moving-target landing run.

@@ -82,7 +82,10 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         spec_yaw, spec_yaw_rate = 0.0, 0.0   # MATLAB psi = 0
 
     elif traj_type == "Circular":
-        r = 0.5
+        # r bumped 0.5 -> 0.8 for the rover: MATLAB uses r=0.5, but the
+        # Ackermann min turn radius is ~0.56 m (wheelbase 0.321, 30° max steer),
+        # so r=0.5 is un-trackable (drifts wide). 0.8 clears it.
+        r = 0.8
         wz = 0.48 * speed_mult
         x = -r * (math.cos(wz * t) - 1.0)
         y = r * math.sin(wz * t)

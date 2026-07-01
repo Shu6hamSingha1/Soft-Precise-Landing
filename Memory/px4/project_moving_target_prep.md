@@ -74,7 +74,7 @@ over and likely bind harder. Expect the cycle to be the binding issue at rover s
   `udp://:14541` = instance-1 Onboard port). Live-verified: connects/arms/offboard-starts, rover
   MOVES (offboard accepted by `rover_ackermann` pos controller). Launcher: `ROVER_MOTION=1`; config
   `ROVER_TRAJ`/`ROVER_SPEED_MULT`/`ROVER_YAW_MODE`. ⚠ Ackermann MIN TURN RADIUS ≈0.56m (wheelbase
-  0.321, 30° steer) → `Circular` r=0.5 is too tight (drifts wide); use `Linear`/`Sinusoidal`/larger.
+  0.321, 30° steer) → `Circular` bumped to r=0.8 (from MATLAB 0.5); `Linear`/`Sinusoidal` also fine.
   See [[feedback_rover_spawn_infra_fixes]].
 - **`PLASMC_HD_FUNNEL_REF` (controller.py:884-890) is the labeled "moving-target candidate"** knob
   (h_d x/y rate = funnel ref, un-degenerates ζ_h; default-OFF, currently un-baked to the stationary

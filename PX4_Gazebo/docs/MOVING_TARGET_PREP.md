@@ -63,10 +63,9 @@ clean spawn:
      (origin → path) — offboard accepted by the `rover_ackermann` controller.
    - Launcher hook: `ROVER_MOTION=1` in `run_rover_landing.sh` starts the driver.
    - ⚠ **Ackermann min-turn-radius ≈ 0.56 m** (wheelbase 0.321, 30° steer). The
-     `Circular` r=0.5 is BELOW this → rover can't track it tightly, drifts wide.
-     For faithful tracking use `Linear` / `Sinusoidal` / a larger-radius path, or
-     scale up. Start slow (`ROVER_SPEED_MULT` low) — rover speed stresses the
-     terminal cycle.
+     MATLAB `Circular` r=0.5 is BELOW this, so `rover_trajectory.py` bumps
+     `Circular` to **r=0.8** (speed ≈0.38 m/s at speed_mult=1) to clear it.
+     Start slow (`ROVER_SPEED_MULT` low) — rover speed stresses the terminal cycle.
 4. **Moving-target IC/landing test harness** — analogue of `run_ic_validation.sh`
    with the rover moving. `SoftPrecise` eval already uses RELATIVE xy/rel_vel, so
    no eval change needed.
