@@ -53,10 +53,27 @@ was already capable.
 physically-bounded 1/Z (computed z >= gear height); judge SP onset by the `rel_med` collapse, not gains.
 Don't chase new gains for a terminal wall before ruling out a harness/observability artifact.
 
-## Side-finding this session (the XIR bake regression)
-The 486f713 bake flipped XIR 0.10 -> 0.15 (validated at P2INF=1.5), but at the baked P2INF=1.0 a
-controlled same-binary A/B (212524 vs 220308, soft-breach off both, only XIR differs) shows
-XIR=0.15 REGRESSES: 12/25 vs 19/25 (gain concentrated in off-center IC2 1->5 / IC3 2->5, the XIR
-funnel-contraction mechanism; IC5 4->2 = the predicted short-runway tradeoff). Revert XIR -> 0.10
-recommended. Soft-breach (Idea 1) re-confirmed NET REGRESSION (155825/175837 baseline 5,7/10 ->
-160942/181147 soft-breach 4,4/10). Relates [[feedback_validate_on_establishment_base]].
+## Side-finding this session — XIR 0.15->0.10 revert (COMMITTED f068774, HIGH-N CONFIRMED)
+The 486f713 bake flipped XIR 0.10 -> 0.15 (validated at P2INF=1.5), but at the baked P2INF=1.0 it
+REGRESSES. Committed the revert (f068774), then CONFIRMED at high n:
+- **Pooled: XIR=0.10 = 56/98 (57% SP, breach 44%, sdot_entry 0.045) vs XIR=0.15 = 33/75 (44% SP,
+  breach 65%, sdot 0.068).** Advantage concentrated in OFF-CENTER IC2 (80% vs 47%) & IC3 (68% vs 47%)
+  = the funnel-contraction mechanism (slow XIR keeps p_r wide -> off-center s_e_n converges & STAYS
+  converged); IC4 better (35 vs 20%), IC1/IC5 tied. Mechanism reproduces at high n. Revert JUSTIFIED.
+
+## ⭐ METHODOLOGY: the GT-FB IC1-5 n=5 SP-count NOISE FLOOR is +-5-7 SP; use breach% instead
+Same config (chi_r=1.5/XIR=0.10/P2INF=1.0), same effective binary (verified: only inert XIR-default
+commit between them, env-overridden identically; config banners byte-identical; descent-START states
+matched lat0/vh0/tilt0), gave **19/25 (220308) vs 12/24 (154758 repeat)** = +-7 SP genuine stochasticity.
+ROOT: the terminal 1/Z regime AMPLIFIES mid-descent SITL noise into the terminal-entry velocity (s_dot),
+which is only WEAKLY coupled to the start state -> which reps breach is set by unrepeatable mid-flight
+noise, NOT ICs or config. So SP-count single-gate A/Bs at n=5 are underpowered.
+- **s_dot_entry is the clean SP/non-SP separator: SP 0.024 vs non-SP 0.298 (12x, NO overlap)**; 4/6
+  non-SP reps were DEAD-CENTERED (s_e_n~0) but still MOVING -> it's a VELOCITY failure, not position.
+- **breach% separates configs MORE than SP-count at equal n** (XIR n=10: breach 70 vs 51% = 19pp gap
+  vs SP 42 vs 51% = 9pp). USE breach% / s_dot_entry as the primary tuning metric, not SP count.
+- Consequence: the run-to-run SP variance is IRREDUCIBLE by config/IC tuning; the robust fix is a
+  TERMINAL s_dot COMMIT/ABORT GATE (commit the settle only when measured s_dot is low; abort/hold via
+  h_rd->0 when high) -- acts on the amplified quantity directly, noise-immune. Spec drafted this session.
+Soft-breach (Idea 1) re-confirmed NET REGRESSION at every frac (see [[project_soft_breach_idea1]]).
+Relates [[feedback_validate_on_establishment_base]], [[feedback_terminal_smc_actuator_wall]].
