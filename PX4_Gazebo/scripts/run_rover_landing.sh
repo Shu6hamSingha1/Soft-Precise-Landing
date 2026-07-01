@@ -94,6 +94,15 @@ cleanup() {
   pkill -9 -f "parameter_bridge.*world/$WORLD" 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
   pkill -9 -f 'QGroundControl' 2>/dev/null || true
+  # The standalone gz server (spawned by the -i 1 rover px4) has repeatedly
+  # OUTLIVED the single pkill above; if it survives, the NEXT run attaches to
+  # this stale world -> frozen/garbage pose -> 375 m IC error. Verify it's gone
+  # and re-kill until it is (bounded), so retries start from a clean slate.
+  for _ in 1 2 3 4 5; do
+    pgrep -f 'gz sim' >/dev/null 2>&1 || break
+    pkill -9 -f 'gz sim' 2>/dev/null || true
+    sleep 1
+  done
   echo "[run] done."
 }
 trap cleanup EXIT INT TERM
@@ -114,7 +123,22 @@ start_bg() {
   fi
 }
 
-# 0) Reset PX4 SITL persistent param state for BOTH instances (rootfs/0 and
+# 0a) Stale-server guard: a gz server / px4 left over from a previous (crashed
+# or incompletely-cleaned) run poisons this one — the new px4 attaches to the
+# old world -> wrong/frozen pose -> 375 m IC error. If anything is already up,
+# clear it before starting so every run (and every retry) boots clean.
+if pgrep -f 'gz sim' >/dev/null 2>&1 || gz topic -l 2>/dev/null | grep -q "/world/$WORLD/clock"; then
+  echo "[run] stale sim detected (gz server / $WORLD clock already up) — clearing..."
+  pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    pgrep -f 'gz sim' >/dev/null 2>&1 || break
+    pkill -9 -f 'gz sim' 2>/dev/null || true
+    sleep 1
+  done
+  sleep 1
+fi
+
+# 0b) Reset PX4 SITL persistent param state for BOTH instances (rootfs/0 and
 # rootfs/1) so each run boots from airframe defaults.
 for inst in 0 1; do
   rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/$inst/parameters.bson"        2>/dev/null

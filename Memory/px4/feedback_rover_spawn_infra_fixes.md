@@ -54,5 +54,32 @@ accepts offboard. Launcher hook `ROVER_MOTION=1`; env `ROVER_TRAJ` /
 `Circular` to **r=0.8** (user-directed; speed ≈0.38 m/s at speed_mult=1).
 `Linear`/`Sinusoidal` also track fine. RO_SPEED_LIM=3 m/s caps top speed.
 
-See [[project_moving_target_prep]] + docs/MOVING_TARGET_PREP.md (RESOLVED
-2026-07-01). Next open items: yaw cal (`cal_s[3]`), first moving-target landing run.
+## Baseline run bring-up (2026-07-02) — 3 more fixes + first datapoint
+Running the full baseline surfaced:
+- **WRONG POSE TOPIC (the real 375 m landmine).** The launcher bridged
+  `dynamic_pose/info`, which only carries entities that MOVED that step → its
+  PoseArray membership/order VARIES frame-to-frame → fixed indices point at
+  random links during flight (IC pos_err 375 m; sometimes a FROZEN 382 m). FIX:
+  bridge the FULL `/world/rover/pose/info` (stable order `[ground_plane,
+  rover_aruco_1, x500...]` → **target=1, UAV=2, SAME as stationary aruco**;
+  ~54 Hz, tracks live motion — verified by driving the rover). pos_err 375→0.199.
+  So the earlier "dynamic_pose target=0/UAV=1" fix was the WRONG topic; env
+  indices reverted to 2/1 (the gz_subscriber defaults). tips.txt step 6 updated.
+- **Headless px4 log blowup** → `px4 -d` (daemon, no pxh shell) in HEADLESS →
+  logs 8 KB vs GB/min.
+- **Stale gz server poisons the next run.** The standalone gz server (spawned by
+  the -i 1 rover px4) repeatedly OUTLIVES the launcher's single `pkill gz sim` →
+  the next run/retry attaches to the old world → frozen/garbage pose. FIX:
+  pre-launch stale-server GUARD + a verify-and-rekill loop in cleanup; plus a
+  `run_rover_landing_retry.sh` (mirrors the aruco retry; PX4 SITL startup is
+  ~50% flaky: lockstep is_armable race + IC non-settle both exit 42 → reboot).
+
+**FIRST BASELINE DATAPOINT (GT-FB, STATIONARY rover, baked config):** IC clean
+(0.199 m) → descends DEAD-CENTERED to **min alt 0.25 m** → then VIOLENT terminal
+fly-away (balloons to 235 m alt / 900 m lateral). Pose correct throughout (target
+x=0.000). = the terminal-1/Z kick, but FAR worse than stationary-aruco GT-FB
+(~1-4 m). NOT a setup bug — first control finding. Lead: gt_feedback target =
+rover_aruco_1 BASE (z≈0.01) but the MARKER is 0.5 m up → possible loom/z bias.
+
+See [[project_moving_target_prep]] + docs/MOVING_TARGET_PREP.md. Next: diagnose
+the terminal fly-away; yaw cal (`cal_s[3]`).

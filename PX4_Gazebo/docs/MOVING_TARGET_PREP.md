@@ -1,10 +1,27 @@
 # Moving-target (rover) phase — preparation & deferred work
 
-Status: **PREP staged 2026-06-30, code changes DEFERRED until the stationary
-ArUco test is finished** (per user: no pipeline-code changes until then).
+Status: **Baseline stack RUNS end-to-end (2026-07-01/02).** Two-instance rover
+world comes up reliably (retry wrapper + stale-server guard), pose is correct,
+GT-FB controller engages. First baseline run diagnosed below.
 
 Canonical handoff: `Memory/px4/project_moving_target_prep.md`. This file is the
 actionable checklist + entry point; the memory note has the reasoning.
+
+## FIRST BASELINE RUN (2026-07-02, GT-FB, STATIONARY rover, baked config)
+Command: `HEADLESS=1 PLASMC_GT_FEEDBACK=1 ROVER_MOTION=0 MAX_ATTEMPTS=4 \
+LANDING_AUTOSAVE=1 bash scripts/run_rover_landing_retry.sh`
+Result (test_data/Landing_Test/<ts>): IC converged clean (pos_err 0.199 m).
+Drone DESCENDED DEAD-CENTERED to **min alt 0.25 m** (xy still ~(0.5,-0.3)) — an
+excellent approach — then a **violent terminal fly-away**: ballooned to 235 m
+altitude and 900 m laterally (`descent stall ... alt=207.60 m` abort). Pose
+correct throughout (smooth traj; target x=0.000 stationary confirmed).
+→ This is the terminal-1/Z kick (memory campaign) but FAR more violent than the
+stationary-aruco GT-FB (~1-4 m balloon). NOT a setup bug; the first control
+finding to diagnose. Candidate leads: (a) target-pose z-offset — gt_feedback
+target = rover_aruco_1 base (z≈0.01) but the MARKER sits 0.5 m up, so the loom/z
+relative pose may be biased vs the stationary marker; (b) the baked terminal
+gates (TERMINAL_COMMIT/HD_FUNNEL_REF) behaving differently here. Judge by
+breach%/s_dot_entry, not SP count.
 
 ## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +
