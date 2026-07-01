@@ -1,7 +1,7 @@
 {
  "n_configs": 38,
- "n_reps": 2145,
- "n_SP": 271,
+ "n_reps": 3092,
+ "n_SP": 785,
  "configs": [
   {
    "config": "CoordDescent",
@@ -337,23 +337,23 @@
   {
    "config": "ICValidation",
    "date": "2026-06-12",
-   "n": 708,
-   "SP": 77,
+   "n": 1182,
+   "SP": 334,
    "TL": 70,
-   "near_SP": 17,
-   "catastrophic": 160,
-   "xy_med": 0.401,
+   "near_SP": 35,
+   "catastrophic": 163,
+   "xy_med": 0.167,
    "xy_min": 0.0,
-   "vel_med": 0.798,
+   "vel_med": 0.431,
    "cats": {
     "TARGET_LOST": 70,
-    "MOD_PRECISE": 133,
-    "POOR": 171,
-    "PRECISE_only": 43,
-    "CATASTROPHIC": 160,
-    "near_SP": 17,
-    "SOFT_only": 37,
-    "SP": 77
+    "MOD_PRECISE": 187,
+    "POOR": 207,
+    "PRECISE_only": 87,
+    "CATASTROPHIC": 163,
+    "SP": 334,
+    "SOFT_only": 99,
+    "near_SP": 35
    }
   },
   {
@@ -621,27 +621,75 @@
   {
    "config": "Landing_Test",
    "date": "2026-06-23",
-   "n": 1017,
-   "SP": 177,
+   "n": 1490,
+   "SP": 434,
    "TL": 52,
-   "near_SP": 28,
-   "catastrophic": 201,
-   "xy_med": 0.296,
+   "near_SP": 46,
+   "catastrophic": 203,
+   "xy_med": 0.162,
    "xy_min": 0.0,
-   "vel_med": 0.638,
+   "vel_med": 0.402,
    "cats": {
-    "POOR": 239,
-    "CATASTROPHIC": 201,
-    "SOFT_only": 64,
-    "MOD_PRECISE": 186,
-    "SP": 177,
-    "PRECISE_only": 70,
-    "near_SP": 28,
+    "POOR": 275,
+    "SP": 434,
+    "CATASTROPHIC": 203,
+    "SOFT_only": 126,
+    "MOD_PRECISE": 240,
+    "PRECISE_only": 114,
+    "near_SP": 46,
     "TARGET_LOST": 52
    }
   }
  ],
  "sp_reps": [
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC1_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0053,
+   "rel_vel": 0.1428,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-02-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0053,
+   "rel_vel": 0.1428,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC1_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0058,
+   "rel_vel": 0.0146,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-48-06 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0058,
+   "rel_vel": 0.0146,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.006,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-52-25 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.006,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
   {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 03-16-04 2026",
@@ -667,6 +715,22 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC1_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0082,
+   "rel_vel": 0.1099,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-53-29 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0082,
+   "rel_vel": 0.1099,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Sat Jun 27 01-47-02 2026",
    "date": "2026-06-27",
@@ -680,6 +744,22 @@
    "date": "2026-06-26",
    "xy_err": 0.0083,
    "rel_vel": 0.0344,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0095,
+   "rel_vel": 0.0083,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-43-39 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0095,
+   "rel_vel": 0.0083,
    "frozen_GT": false
   },
   {
@@ -707,6 +787,22 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC1_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0109,
+   "rel_vel": 0.0644,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-50-27 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0109,
+   "rel_vel": 0.0644,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 19-35-13 2026",
    "date": "2026-06-26",
@@ -723,6 +819,38 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC3_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0119,
+   "rel_vel": 0.0202,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-41-17 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0119,
+   "rel_vel": 0.0202,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0123,
+   "rel_vel": 0.0198,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-12-06 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0123,
+   "rel_vel": 0.0198,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 14-43-16 2026",
    "date": "2026-06-26",
@@ -731,11 +859,43 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-152833/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0131,
+   "rel_vel": 0.0103,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-39-42 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0131,
+   "rel_vel": 0.0103,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0135,
+   "rel_vel": 0.0201,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Sat Jun 27 01-47-59 2026",
    "date": "2026-06-27",
    "xy_err": 0.0135,
    "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-12-31 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0135,
+   "rel_vel": 0.0201,
    "frozen_GT": false
   },
   {
@@ -755,11 +915,43 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0146,
+   "rel_vel": 0.013,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-50-51 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0146,
+   "rel_vel": 0.013,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 14-38-13 2026",
    "date": "2026-06-26",
    "xy_err": 0.0149,
    "rel_vel": 0.0048,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-155825/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.015,
+   "rel_vel": 0.0151,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-05-55 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.015,
+   "rel_vel": 0.0151,
    "frozen_GT": false
   },
   {
@@ -779,6 +971,38 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC3_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0158,
+   "rel_vel": 0.0056,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-41-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0158,
+   "rel_vel": 0.0056,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-102536/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0161,
+   "rel_vel": 0.0062,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-26-34 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0161,
+   "rel_vel": 0.0062,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 19-31-55 2026",
    "date": "2026-06-26",
@@ -788,10 +1012,34 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0169,
+   "rel_vel": 0.0087,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-18-02 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0169,
+   "rel_vel": 0.0087,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-041054/IC2_rep3",
    "date": "2026-06-30",
    "xy_err": 0.017,
    "rel_vel": 0.1279,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC2_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.017,
+   "rel_vel": 0.0109,
    "frozen_GT": false
   },
   {
@@ -819,6 +1067,22 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-37-57 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.017,
+   "rel_vel": 0.0109,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-151804/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0172,
+   "rel_vel": 0.0104,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-052129/IC2_rep3",
    "date": "2026-06-30",
@@ -836,10 +1100,34 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-19-56 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0172,
+   "rel_vel": 0.0104,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC3_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0178,
+   "rel_vel": 0.0127,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 03-29-26 2026",
    "date": "2026-06-26",
    "xy_err": 0.0178,
    "rel_vel": 0.0212,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-40-21 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0178,
+   "rel_vel": 0.0127,
    "frozen_GT": false
   },
   {
@@ -875,6 +1163,118 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC5_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0184,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-55-31 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0184,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-181147/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0187,
+   "rel_vel": 0.1213,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-20-43 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0187,
+   "rel_vel": 0.1213,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC3_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0189,
+   "rel_vel": 0.0179,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC3_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0189,
+   "rel_vel": 0.0228,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-13-05 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0189,
+   "rel_vel": 0.0228,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-17-23 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0189,
+   "rel_vel": 0.0179,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC3_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0192,
+   "rel_vel": 0.0095,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0192,
+   "rel_vel": 0.0121,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-18-23 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0192,
+   "rel_vel": 0.0095,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-22-43 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0192,
+   "rel_vel": 0.0121,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC3_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0196,
+   "rel_vel": 0.0112,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-20-40 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0196,
+   "rel_vel": 0.0112,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 19-18-38 2026",
    "date": "2026-06-26",
@@ -891,11 +1291,83 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0199,
+   "rel_vel": 0.0177,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-34-41 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0199,
+   "rel_vel": 0.0177,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-160942/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0201,
+   "rel_vel": 0.0224,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 20-36-08 2026",
    "date": "2026-06-26",
    "xy_err": 0.0201,
    "rel_vel": 0.0334,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-18-58 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0201,
+   "rel_vel": 0.0224,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC2_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0203,
+   "rel_vel": 0.0113,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-13-31 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0203,
+   "rel_vel": 0.0113,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC3_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0204,
+   "rel_vel": 0.0213,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-15-43 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0204,
+   "rel_vel": 0.0213,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0205,
+   "rel_vel": 0.0067,
    "frozen_GT": false
   },
   {
@@ -908,10 +1380,42 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-18-00 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0205,
+   "rel_vel": 0.0067,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 05-30-57 2026",
    "date": "2026-06-30",
    "xy_err": 0.0205,
    "rel_vel": 0.1858,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0206,
+   "rel_vel": 0.0098,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-10-32 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0206,
+   "rel_vel": 0.0098,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-151804/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0213,
+   "rel_vel": 0.1443,
    "frozen_GT": false
   },
   {
@@ -924,10 +1428,66 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-20-56 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0213,
+   "rel_vel": 0.1443,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-035438/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0216,
+   "rel_vel": 0.0839,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-56-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0216,
+   "rel_vel": 0.0839,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0217,
+   "rel_vel": 0.0047,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-48-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0217,
+   "rel_vel": 0.0047,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0218,
+   "rel_vel": 0.0407,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 03-17-31 2026",
    "date": "2026-06-26",
    "xy_err": 0.0218,
    "rel_vel": 0.1347,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-41-49 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0218,
+   "rel_vel": 0.0407,
    "frozen_GT": false
   },
   {
@@ -948,6 +1508,38 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-045313/IC4_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0222,
+   "rel_vel": 0.0135,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-59-55 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0222,
+   "rel_vel": 0.0135,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0224,
+   "rel_vel": 0.0037,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-41-34 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0224,
+   "rel_vel": 0.0037,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-045437/IC2_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0225,
@@ -960,6 +1552,22 @@
    "date": "2026-06-30",
    "xy_err": 0.0225,
    "rel_vel": 0.1415,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC2_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.023,
+   "rel_vel": 0.0239,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-00-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.023,
+   "rel_vel": 0.0239,
    "frozen_GT": false
   },
   {
@@ -979,6 +1587,38 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0234,
+   "rel_vel": 0.025,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0234,
+   "rel_vel": 0.0425,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-02-12 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0234,
+   "rel_vel": 0.025,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-27-22 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0234,
+   "rel_vel": 0.0425,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 13-44-58 2026",
    "date": "2026-06-26",
@@ -987,11 +1627,43 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0237,
+   "rel_vel": 0.0201,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-56-22 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0237,
+   "rel_vel": 0.0201,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0239,
+   "rel_vel": 0.0096,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 11-41-47 2026",
    "date": "2026-06-26",
    "xy_err": 0.0239,
    "rel_vel": 0.157,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-57-12 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0239,
+   "rel_vel": 0.0096,
    "frozen_GT": false
   },
   {
@@ -1012,6 +1684,38 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0243,
+   "rel_vel": 0.0121,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-00-33 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0243,
+   "rel_vel": 0.0121,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC1_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0244,
+   "rel_vel": 0.0097,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-44-41 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0244,
+   "rel_vel": 0.0097,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-040141/IC5_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0246,
@@ -1024,6 +1728,30 @@
    "date": "2026-06-30",
    "xy_err": 0.0246,
    "rel_vel": 0.0151,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0122,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC1_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0481,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-05-13 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0122,
    "frozen_GT": false
   },
   {
@@ -1043,6 +1771,30 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-03-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0248,
+   "rel_vel": 0.0481,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.025,
+   "rel_vel": 0.0363,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-30-43 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.025,
+   "rel_vel": 0.0363,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-052129/IC4_rep1",
    "date": "2026-06-30",
@@ -1056,6 +1808,38 @@
    "date": "2026-06-30",
    "xy_err": 0.0251,
    "rel_vel": 0.1119,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0252,
+   "rel_vel": 0.0309,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0252,
+   "rel_vel": 0.018,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-01-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0252,
+   "rel_vel": 0.018,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-55-21 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0252,
+   "rel_vel": 0.0309,
    "frozen_GT": false
   },
   {
@@ -1092,6 +1876,22 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep8",
+   "date": "2026-07-01",
+   "xy_err": 0.0254,
+   "rel_vel": 0.021,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-00-53 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0254,
+   "rel_vel": 0.021,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-040141/IC2_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0257,
@@ -1104,6 +1904,22 @@
    "date": "2026-06-30",
    "xy_err": 0.0257,
    "rel_vel": 0.1903,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-151804/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0259,
+   "rel_vel": 0.0417,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-26-34 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0259,
+   "rel_vel": 0.0417,
    "frozen_GT": false
   },
   {
@@ -1123,6 +1939,30 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-152833/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0261,
+   "rel_vel": 0.0253,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-35-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0261,
+   "rel_vel": 0.0253,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-035438/IC4_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0262,
+   "rel_vel": 0.0222,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 20-33-06 2026",
    "date": "2026-06-26",
@@ -1131,11 +1971,35 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-57-43 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0262,
+   "rel_vel": 0.0222,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-022000/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0265,
+   "rel_vel": 0.0242,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b9A_ordering_handoff_20260603-105615/rep1",
    "date": "2026-06-03",
    "xy_err": 0.0265,
    "rel_vel": 0.0874,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-26-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0265,
+   "rel_vel": 0.0242,
    "frozen_GT": false
   },
   {
@@ -1164,6 +2028,38 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-043429/IC4_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0272,
+   "rel_vel": 0.0255,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-39-25 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0272,
+   "rel_vel": 0.0255,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-155825/IC5_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0275,
+   "rel_vel": 0.0143,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-08-41 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0275,
+   "rel_vel": 0.0143,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-030306/IC4_rep1",
    "date": "2026-06-30",
    "xy_err": 0.0276,
@@ -1179,11 +2075,59 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0278,
+   "rel_vel": 0.181,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC5_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0278,
+   "rel_vel": 0.0234,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b10B_no_yaw_ablation_20260603-113652/rep4",
    "date": "2026-06-03",
    "xy_err": 0.0278,
    "rel_vel": 0.057,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-55-41 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0278,
+   "rel_vel": 0.181,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-32-07 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0278,
+   "rel_vel": 0.0234,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-045313/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0279,
+   "rel_vel": 0.0129,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-54-43 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0279,
+   "rel_vel": 0.0129,
    "frozen_GT": false
   },
   {
@@ -1195,11 +2139,27 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC1_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.028,
+   "rel_vel": 0.0415,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 04-30-42 2026",
    "date": "2026-06-30",
    "xy_err": 0.028,
    "rel_vel": 0.1476,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-26-22 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.028,
+   "rel_vel": 0.0415,
    "frozen_GT": false
   },
   {
@@ -1220,6 +2180,118 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC2_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0286,
+   "rel_vel": 0.0348,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-14-30 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0286,
+   "rel_vel": 0.0348,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-035438/IC4_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0287,
+   "rel_vel": 0.1234,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-02-19 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0287,
+   "rel_vel": 0.1234,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC2_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0289,
+   "rel_vel": 0.1514,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-56-34 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0289,
+   "rel_vel": 0.1514,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-152833/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.029,
+   "rel_vel": 0.0635,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-30-29 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.029,
+   "rel_vel": 0.0635,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-160942/IC5_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0292,
+   "rel_vel": 0.0072,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-20-49 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0292,
+   "rel_vel": 0.0072,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0295,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep9",
+   "date": "2026-07-01",
+   "xy_err": 0.0295,
+   "rel_vel": 0.1703,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-42-26 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0295,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-43-26 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0295,
+   "rel_vel": 0.1703,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-020720/IC4_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0299,
@@ -1235,6 +2307,86 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC5_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0304,
+   "rel_vel": 0.012,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-33-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0304,
+   "rel_vel": 0.012,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC3_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0114,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0473,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC1_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0642,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-44-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0114,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-53-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0473,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-32-18 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0307,
+   "rel_vel": 0.0642,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0309,
+   "rel_vel": 0.152,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-11-50 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0309,
+   "rel_vel": 0.152,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 22-03-18 2026",
    "date": "2026-06-26",
@@ -1244,10 +2396,26 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC2_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0313,
+   "rel_vel": 0.0162,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-055319/IC2_rep1",
    "date": "2026-06-30",
    "xy_err": 0.0313,
    "rel_vel": 0.1956,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-39-45 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0313,
+   "rel_vel": 0.0162,
    "frozen_GT": false
   },
   {
@@ -1275,6 +2443,70 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-152833/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0319,
+   "rel_vel": 0.0821,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-38-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0319,
+   "rel_vel": 0.0821,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0325,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-00-30 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0325,
+   "rel_vel": 0.0182,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC3_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0327,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-20-10 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0327,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-155825/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0329,
+   "rel_vel": 0.0258,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-07-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0329,
+   "rel_vel": 0.0258,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 20-31-55 2026",
    "date": "2026-06-26",
@@ -1291,6 +2523,22 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0338,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-54-18 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0338,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 04-18-27 2026",
    "date": "2026-06-26",
@@ -1299,11 +2547,171 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-043429/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.034,
+   "rel_vel": 0.0157,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-50-13 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.034,
+   "rel_vel": 0.0157,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-033947/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0341,
+   "rel_vel": 0.0232,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-51-02 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0341,
+   "rel_vel": 0.0232,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 15-39-46 2026",
    "date": "2026-06-26",
    "xy_err": 0.0342,
    "rel_vel": 0.112,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC3_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0347,
+   "rel_vel": 0.1108,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-14-35 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0347,
+   "rel_vel": 0.1108,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC4_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0348,
+   "rel_vel": 0.1443,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-10-51 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0348,
+   "rel_vel": 0.1443,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0349,
+   "rel_vel": 0.023,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-13-08 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0349,
+   "rel_vel": 0.023,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC3_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0355,
+   "rel_vel": 0.104,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-50-07 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0355,
+   "rel_vel": 0.104,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0358,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC1_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0358,
+   "rel_vel": 0.1261,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0358,
+   "rel_vel": 0.0294,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-55-13 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0358,
+   "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-27-19 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0358,
+   "rel_vel": 0.1261,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-21-40 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0358,
+   "rel_vel": 0.0294,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-181147/IC4_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0359,
+   "rel_vel": 0.0233,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-19-42 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0359,
+   "rel_vel": 0.0233,
    "frozen_GT": false
   },
   {
@@ -1340,10 +2748,66 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0364,
+   "rel_vel": 0.0282,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-29-12 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0364,
+   "rel_vel": 0.0282,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-102927/IC3_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0368,
+   "rel_vel": 0.0439,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-31-34 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0368,
+   "rel_vel": 0.0439,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.037,
+   "rel_vel": 0.0353,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-43-21 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.037,
+   "rel_vel": 0.0353,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-012527/IC4_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0373,
    "rel_vel": 0.1483,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC3_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0373,
+   "rel_vel": 0.0159,
    "frozen_GT": false
   },
   {
@@ -1352,6 +2816,30 @@
    "date": "2026-06-30",
    "xy_err": 0.0373,
    "rel_vel": 0.1483,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-13-03 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0373,
+   "rel_vel": 0.0159,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0374,
+   "rel_vel": 0.1845,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-49-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0374,
+   "rel_vel": 0.1845,
    "frozen_GT": false
   },
   {
@@ -1380,6 +2868,22 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-142625/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0381,
+   "rel_vel": 0.1043,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 14-27-24 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0381,
+   "rel_vel": 0.1043,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-023742/IC4_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0384,
@@ -1396,6 +2900,70 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC3_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0386,
+   "rel_vel": 0.0494,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-10-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0386,
+   "rel_vel": 0.0494,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-041153/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0387,
+   "rel_vel": 0.0145,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-035438/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0387,
+   "rel_vel": 0.0661,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-08-49 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0387,
+   "rel_vel": 0.0661,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-21-44 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0387,
+   "rel_vel": 0.0145,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC2_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.0032,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.1629,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-030306/IC4_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0388,
@@ -1408,6 +2976,54 @@
    "date": "2026-06-30",
    "xy_err": 0.0388,
    "rel_vel": 0.1498,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-51-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.1629,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-38-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0388,
+   "rel_vel": 0.0032,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC4_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0389,
+   "rel_vel": 0.021,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC3_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0389,
+   "rel_vel": 0.016,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-47-13 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0389,
+   "rel_vel": 0.016,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-27-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0389,
+   "rel_vel": 0.021,
    "frozen_GT": false
   },
   {
@@ -1428,6 +3044,22 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0397,
+   "rel_vel": 0.0338,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-04-30 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0397,
+   "rel_vel": 0.0338,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-012527/IC4_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0398,
@@ -1444,6 +3076,14 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0402,
+   "rel_vel": 0.0247,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-055319/IC2_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0402,
@@ -1452,10 +3092,42 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-11-05 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0402,
+   "rel_vel": 0.0247,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 05-55-10 2026",
    "date": "2026-06-30",
    "xy_err": 0.0402,
    "rel_vel": 0.0729,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep6",
+   "date": "2026-07-01",
+   "xy_err": 0.0407,
+   "rel_vel": 0.1192,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-38-48 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0407,
+   "rel_vel": 0.1192,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-043429/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0409,
+   "rel_vel": 0.0194,
    "frozen_GT": false
   },
   {
@@ -1468,10 +3140,82 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-48-45 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0409,
+   "rel_vel": 0.0194,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 01-47-13 2026",
    "date": "2026-06-26",
    "xy_err": 0.0414,
    "rel_vel": 0.1461,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0415,
+   "rel_vel": 0.016,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-29-06 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0415,
+   "rel_vel": 0.016,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0416,
+   "rel_vel": 0.0312,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-12-36 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0416,
+   "rel_vel": 0.0312,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC4_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0417,
+   "rel_vel": 0.008,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-155825/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0417,
+   "rel_vel": 0.1368,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-04-57 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0417,
+   "rel_vel": 0.1368,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-40-35 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0417,
+   "rel_vel": 0.008,
    "frozen_GT": false
   },
   {
@@ -1499,6 +3243,54 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-033947/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0424,
+   "rel_vel": 0.037,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-54-34 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0424,
+   "rel_vel": 0.037,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC3_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0425,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-11-50 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0425,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.0426,
+   "rel_vel": 0.0342,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-44-54 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0426,
+   "rel_vel": 0.0342,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 22-37-42 2026",
    "date": "2026-06-26",
@@ -1512,6 +3304,38 @@
    "date": "2026-06-26",
    "xy_err": 0.0433,
    "rel_vel": 0.0214,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC1_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0437,
+   "rel_vel": 0.1036,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 15-57-21 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0437,
+   "rel_vel": 0.1036,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0438,
+   "rel_vel": 0.0252,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-21-14 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0438,
+   "rel_vel": 0.0252,
    "frozen_GT": false
   },
   {
@@ -1531,6 +3355,22 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC5_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0441,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-54-37 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0441,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 11-36-35 2026",
    "date": "2026-06-26",
@@ -1539,11 +3379,99 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC5_rep6",
+   "date": "2026-07-01",
+   "xy_err": 0.0446,
+   "rel_vel": 0.013,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-21-42 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0446,
+   "rel_vel": 0.013,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-043429/IC4_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0449,
+   "rel_vel": 0.0404,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-40-57 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0449,
+   "rel_vel": 0.0404,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC3_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0455,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-19-11 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0455,
+   "rel_vel": 0.0144,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 02-43-41 2026",
    "date": "2026-06-26",
    "xy_err": 0.0456,
    "rel_vel": 0.0076,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-152833/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0457,
+   "rel_vel": 0.1718,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-37-48 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0457,
+   "rel_vel": 0.1718,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.046,
+   "rel_vel": 0.0194,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-10-05 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.046,
+   "rel_vel": 0.0194,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0469,
+   "rel_vel": 0.0272,
    "frozen_GT": false
   },
   {
@@ -1556,10 +3484,66 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-08-10 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0469,
+   "rel_vel": 0.0272,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0477,
+   "rel_vel": 0.1504,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-39-30 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0477,
+   "rel_vel": 0.1504,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0478,
+   "rel_vel": 0.1397,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 14-25-56 2026",
    "date": "2026-06-26",
    "xy_err": 0.0478,
    "rel_vel": 0.0125,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-23-01 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0478,
+   "rel_vel": 0.1397,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC4_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0479,
+   "rel_vel": 0.0794,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-04-11 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0479,
+   "rel_vel": 0.0794,
    "frozen_GT": false
   },
   {
@@ -1579,11 +3563,27 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-151804/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0485,
+   "rel_vel": 0.0544,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b14_span_commit_20260603-135420/rep2",
    "date": "2026-06-03",
    "xy_err": 0.0485,
    "rel_vel": 0.014,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-18-57 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0485,
+   "rel_vel": 0.0544,
    "frozen_GT": false
   },
   {
@@ -1595,11 +3595,75 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep8",
+   "date": "2026-07-01",
+   "xy_err": 0.0489,
+   "rel_vel": 0.1097,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 08-38-48 2026",
    "date": "2026-06-30",
    "xy_err": 0.0489,
    "rel_vel": 0.0098,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-41-55 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0489,
+   "rel_vel": 0.1097,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.049,
+   "rel_vel": 0.0171,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-11-33 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.049,
+   "rel_vel": 0.0171,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0494,
+   "rel_vel": 0.0842,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-35-17 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0494,
+   "rel_vel": 0.0842,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC1_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0496,
+   "rel_vel": 0.0176,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-04-04 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0496,
+   "rel_vel": 0.0176,
    "frozen_GT": false
   },
   {
@@ -1635,11 +3699,107 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0498,
+   "rel_vel": 0.0263,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-41-32 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0498,
+   "rel_vel": 0.0263,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC1_rep9",
+   "date": "2026-07-01",
+   "xy_err": 0.0499,
+   "rel_vel": 0.0204,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC3_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0499,
+   "rel_vel": 0.0498,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC3_rep8",
+   "date": "2026-07-01",
+   "xy_err": 0.0499,
+   "rel_vel": 0.1543,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-33-31 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0499,
+   "rel_vel": 0.1543,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-01-25 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0499,
+   "rel_vel": 0.0204,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-03-32 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0499,
+   "rel_vel": 0.0498,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.0504,
+   "rel_vel": 0.0722,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-46-06 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0504,
+   "rel_vel": 0.0722,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 14-46-35 2026",
    "date": "2026-06-26",
    "xy_err": 0.0504,
    "rel_vel": 0.0277,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0507,
+   "rel_vel": 0.1527,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-01-09 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0507,
+   "rel_vel": 0.1527,
    "frozen_GT": false
   },
   {
@@ -1692,6 +3852,30 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC4_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0514,
+   "rel_vel": 0.0036,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-55-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0514,
+   "rel_vel": 0.0036,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0518,
+   "rel_vel": 0.1456,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-023742/IC2_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0518,
@@ -1723,11 +3907,83 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-36-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0518,
+   "rel_vel": 0.1456,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep8",
+   "date": "2026-07-01",
+   "xy_err": 0.0519,
+   "rel_vel": 0.1105,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-43-04 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0519,
+   "rel_vel": 0.1105,
+   "frozen_GT": false
+  },
+  {
    "config": "CoordDescent",
    "path": "CoordDescent/20260525-201532/pass1/RHOFOV0_241.8_rep2",
    "date": "2026-05-25",
    "xy_err": 0.0521,
    "rel_vel": 0.0611,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC3_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0522,
+   "rel_vel": 0.1279,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-45-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0522,
+   "rel_vel": 0.1279,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0524,
+   "rel_vel": 0.1005,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC3_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0524,
+   "rel_vel": 0.1866,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-02-37 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0524,
+   "rel_vel": 0.1866,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-08-01 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0524,
+   "rel_vel": 0.1005,
    "frozen_GT": false
   },
   {
@@ -1764,10 +4020,106 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0529,
+   "rel_vel": 0.0239,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC3_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0529,
+   "rel_vel": 0.0671,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-04-28 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0529,
+   "rel_vel": 0.0671,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-19-56 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0529,
+   "rel_vel": 0.0239,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC1_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.053,
+   "rel_vel": 0.0172,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC4_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.053,
+   "rel_vel": 0.0213,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 15-49-26 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.053,
+   "rel_vel": 0.0172,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-06-43 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.053,
+   "rel_vel": 0.0213,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-102730/IC2_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0533,
+   "rel_vel": 0.1329,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-28-27 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0533,
+   "rel_vel": 0.1329,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-094816/IC5_rep1",
    "date": "2026-06-30",
    "xy_err": 0.0535,
    "rel_vel": 0.0246,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep8",
+   "date": "2026-07-01",
+   "xy_err": 0.0535,
+   "rel_vel": 0.0334,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-17-07 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0535,
+   "rel_vel": 0.0334,
    "frozen_GT": false
   },
   {
@@ -1776,6 +4128,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0535,
    "rel_vel": 0.0246,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-160942/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0537,
+   "rel_vel": 0.0997,
    "frozen_GT": false
   },
   {
@@ -1795,6 +4155,14 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-11-38 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0537,
+   "rel_vel": 0.0997,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-060211/IC4_rep3",
    "date": "2026-06-30",
@@ -1808,6 +4176,38 @@
    "date": "2026-06-30",
    "xy_err": 0.0539,
    "rel_vel": 0.1051,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC3_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.054,
+   "rel_vel": 0.0789,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.054,
+   "rel_vel": 0.1317,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-05-24 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.054,
+   "rel_vel": 0.0789,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-08-19 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.054,
+   "rel_vel": 0.1317,
    "frozen_GT": false
   },
   {
@@ -1843,6 +4243,54 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0548,
+   "rel_vel": 0.159,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-47-53 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0548,
+   "rel_vel": 0.159,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC1_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.055,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 15-50-57 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.055,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC1_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0553,
+   "rel_vel": 0.0278,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-41-04 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0553,
+   "rel_vel": 0.0278,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 21-38-26 2026",
    "date": "2026-06-26",
@@ -1856,6 +4304,22 @@
    "date": "2026-06-30",
    "xy_err": 0.0555,
    "rel_vel": 0.0532,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC5_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0555,
+   "rel_vel": 0.1716,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-10-48 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0555,
+   "rel_vel": 0.1716,
    "frozen_GT": false
   },
   {
@@ -1916,6 +4380,14 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0567,
+   "rel_vel": 0.092,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-040141/IC4_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0567,
@@ -1924,10 +4396,42 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-46-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0567,
+   "rel_vel": 0.092,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 04-06-47 2026",
    "date": "2026-06-30",
    "xy_err": 0.0567,
    "rel_vel": 0.03,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC3_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0569,
+   "rel_vel": 0.0544,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-16-54 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0569,
+   "rel_vel": 0.0544,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC5_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0571,
+   "rel_vel": 0.0282,
    "frozen_GT": false
   },
   {
@@ -1947,6 +4451,14 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-23-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0571,
+   "rel_vel": 0.0282,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-062539/IC2_rep2",
    "date": "2026-06-30",
@@ -1963,6 +4475,38 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0574,
+   "rel_vel": 0.011,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-07-35 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0574,
+   "rel_vel": 0.011,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC2_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0575,
+   "rel_vel": 0.004,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-04-10 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0575,
+   "rel_vel": 0.004,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 01-51-34 2026",
    "date": "2026-06-26",
@@ -1971,11 +4515,51 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.0577,
+   "rel_vel": 0.103,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-26-14 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0577,
+   "rel_vel": 0.103,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Sat Jun 27 04-34-41 2026",
    "date": "2026-06-27",
    "xy_err": 0.0578,
    "rel_vel": 0.0503,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC3_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.058,
+   "rel_vel": 0.0399,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-16-25 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.058,
+   "rel_vel": 0.0399,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0583,
+   "rel_vel": 0.0227,
    "frozen_GT": false
   },
   {
@@ -1996,10 +4580,58 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-01-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0583,
+   "rel_vel": 0.0227,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 22-04-12 2026",
    "date": "2026-06-26",
    "xy_err": 0.0587,
    "rel_vel": 0.0872,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC5_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0589,
+   "rel_vel": 0.1437,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC5_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0589,
+   "rel_vel": 0.1679,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-11-43 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0589,
+   "rel_vel": 0.1679,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-05-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0589,
+   "rel_vel": 0.1437,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC5_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.059,
+   "rel_vel": 0.0681,
    "frozen_GT": false
   },
   {
@@ -2008,6 +4640,14 @@
    "date": "2026-06-26",
    "xy_err": 0.059,
    "rel_vel": 0.1404,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-02-08 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.059,
+   "rel_vel": 0.0681,
    "frozen_GT": false
   },
   {
@@ -2075,6 +4715,14 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-035438/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0606,
+   "rel_vel": 0.0689,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 15-02-06 2026",
    "date": "2026-06-26",
@@ -2083,11 +4731,27 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-11-49 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0606,
+   "rel_vel": 0.0689,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-063418/IC2_rep1",
    "date": "2026-06-30",
    "xy_err": 0.0607,
    "rel_vel": 0.0132,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep6",
+   "date": "2026-07-01",
+   "xy_err": 0.0607,
+   "rel_vel": 0.0398,
    "frozen_GT": false
   },
   {
@@ -2100,10 +4764,114 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-14-03 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0607,
+   "rel_vel": 0.0398,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC4_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.061,
+   "rel_vel": 0.1337,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-10-26 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.061,
+   "rel_vel": 0.1337,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC3_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0611,
+   "rel_vel": 0.1272,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-43-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0611,
+   "rel_vel": 0.1272,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC2_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0612,
+   "rel_vel": 0.0504,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-05-30 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0612,
+   "rel_vel": 0.0504,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC4_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0618,
+   "rel_vel": 0.1097,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-49-20 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0618,
+   "rel_vel": 0.1097,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0619,
+   "rel_vel": 0.1734,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-06-01 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0619,
+   "rel_vel": 0.1734,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 18-24-17 2026",
    "date": "2026-06-26",
    "xy_err": 0.0621,
    "rel_vel": 0.1649,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0622,
+   "rel_vel": 0.0171,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-51-49 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0622,
+   "rel_vel": 0.0171,
    "frozen_GT": false
   },
   {
@@ -2131,11 +4899,123 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0626,
+   "rel_vel": 0.1392,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-17-02 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0626,
+   "rel_vel": 0.1392,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-102730/IC3_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0627,
+   "rel_vel": 0.1137,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-29-23 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0627,
+   "rel_vel": 0.1137,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0628,
+   "rel_vel": 0.1736,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-12-44 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0628,
+   "rel_vel": 0.1736,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 13-38-09 2026",
    "date": "2026-06-26",
    "xy_err": 0.0628,
    "rel_vel": 0.06,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0629,
+   "rel_vel": 0.0054,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-09-26 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0629,
+   "rel_vel": 0.0054,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-043429/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0634,
+   "rel_vel": 0.0372,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 04-51-40 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0634,
+   "rel_vel": 0.0372,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0635,
+   "rel_vel": 0.0209,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-12-33 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0635,
+   "rel_vel": 0.0209,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0636,
+   "rel_vel": 0.0259,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-09-32 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0636,
+   "rel_vel": 0.0259,
    "frozen_GT": false
   },
   {
@@ -2172,10 +5052,50 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC3_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0642,
+   "rel_vel": 0.0636,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-155825/IC5_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0642,
+   "rel_vel": 0.0119,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-07-10 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0642,
+   "rel_vel": 0.0636,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-09-38 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0642,
+   "rel_vel": 0.0119,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-041054/IC5_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0643,
    "rel_vel": 0.0072,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-024723/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0643,
+   "rel_vel": 0.0657,
    "frozen_GT": false
   },
   {
@@ -2184,6 +5104,30 @@
    "date": "2026-06-30",
    "xy_err": 0.0643,
    "rel_vel": 0.0072,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-51-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0643,
+   "rel_vel": 0.0657,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-181147/IC5_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0648,
+   "rel_vel": 0.0097,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-29-51 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0648,
+   "rel_vel": 0.0097,
    "frozen_GT": false
   },
   {
@@ -2211,6 +5155,94 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC1_rep6",
+   "date": "2026-07-01",
+   "xy_err": 0.0651,
+   "rel_vel": 0.0117,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-51-01 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0651,
+   "rel_vel": 0.0117,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC5_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0652,
+   "rel_vel": 0.0609,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0652,
+   "rel_vel": 0.1491,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-03-04 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0652,
+   "rel_vel": 0.0609,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-28-38 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0652,
+   "rel_vel": 0.1491,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC4_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0655,
+   "rel_vel": 0.1875,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-14-09 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0655,
+   "rel_vel": 0.1875,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-022000/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0657,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-27-17 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0657,
+   "rel_vel": 0.0217,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-160942/IC4_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0659,
+   "rel_vel": 0.0105,
+   "frozen_GT": false
+  },
+  {
    "config": "SPCampaign",
    "path": "SPCampaign/b13_both_fixes_20260603-133607/rep2",
    "date": "2026-06-03",
@@ -2219,11 +5251,35 @@
    "frozen_GT": false
   },
   {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 16-13-50 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0659,
+   "rel_vel": 0.0105,
+   "frozen_GT": false
+  },
+  {
    "config": "CoordDescent",
    "path": "CoordDescent/20260526-014855/pass1/E_Z_0.1067_rep1",
    "date": "2026-05-26",
    "xy_err": 0.0662,
    "rel_vel": 0.165,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0665,
+   "rel_vel": 0.1915,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-26-35 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0665,
+   "rel_vel": 0.1915,
    "frozen_GT": false
   },
   {
@@ -2260,6 +5316,22 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-045313/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.067,
+   "rel_vel": 0.0904,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 05-16-38 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.067,
+   "rel_vel": 0.0904,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-055319/IC2_rep3",
    "date": "2026-06-30",
    "xy_err": 0.0671,
@@ -2284,6 +5356,38 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0673,
+   "rel_vel": 0.1484,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC2_rep9",
+   "date": "2026-07-01",
+   "xy_err": 0.0673,
+   "rel_vel": 0.0162,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-37-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0673,
+   "rel_vel": 0.1484,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-24-44 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0673,
+   "rel_vel": 0.0162,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-040141/IC5_rep1",
    "date": "2026-06-30",
    "xy_err": 0.0676,
@@ -2299,6 +5403,118 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0678,
+   "rel_vel": 0.0163,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC3_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0678,
+   "rel_vel": 0.0116,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-16-07 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0678,
+   "rel_vel": 0.0116,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-52-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0678,
+   "rel_vel": 0.0163,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0679,
+   "rel_vel": 0.0301,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-27-44 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0679,
+   "rel_vel": 0.0301,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0681,
+   "rel_vel": 0.1142,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-14-36 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0681,
+   "rel_vel": 0.1142,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC3_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0683,
+   "rel_vel": 0.0581,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-49-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0683,
+   "rel_vel": 0.0581,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC2_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0685,
+   "rel_vel": 0.0181,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-12-04 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0685,
+   "rel_vel": 0.0181,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC3_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0686,
+   "rel_vel": 0.1232,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-42-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0686,
+   "rel_vel": 0.1232,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 22-39-37 2026",
    "date": "2026-06-26",
@@ -2307,11 +5523,35 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-022000/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.069,
+   "rel_vel": 0.0337,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-31-15 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.069,
+   "rel_vel": 0.0337,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 15-11-51 2026",
    "date": "2026-06-26",
    "xy_err": 0.0694,
    "rel_vel": 0.078,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC2_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0696,
+   "rel_vel": 0.0107,
    "frozen_GT": false
   },
   {
@@ -2324,10 +5564,34 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-07-22 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0696,
+   "rel_vel": 0.0107,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 18-25-47 2026",
    "date": "2026-06-26",
    "xy_err": 0.0698,
    "rel_vel": 0.0352,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC3_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.07,
+   "rel_vel": 0.009,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-15-28 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.07,
+   "rel_vel": 0.009,
    "frozen_GT": false
   },
   {
@@ -2347,11 +5611,27 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0703,
+   "rel_vel": 0.0118,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 04-27-50 2026",
    "date": "2026-06-30",
    "xy_err": 0.0703,
    "rel_vel": 0.1395,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-55-28 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0703,
+   "rel_vel": 0.0118,
    "frozen_GT": false
   },
   {
@@ -2371,11 +5651,43 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC3_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0709,
+   "rel_vel": 0.0251,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-10-11 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0709,
+   "rel_vel": 0.0251,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 11-44-46 2026",
    "date": "2026-06-26",
    "xy_err": 0.0709,
    "rel_vel": 0.0619,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.071,
+   "rel_vel": 0.0194,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-08-21 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.071,
+   "rel_vel": 0.0194,
    "frozen_GT": false
   },
   {
@@ -2435,11 +5747,187 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC4_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0727,
+   "rel_vel": 0.0395,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-50-54 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0727,
+   "rel_vel": 0.0395,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.073,
+   "rel_vel": 0.0238,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.073,
+   "rel_vel": 0.0317,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-59-18 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.073,
+   "rel_vel": 0.0238,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-31-21 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.073,
+   "rel_vel": 0.0317,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC2_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0736,
+   "rel_vel": 0.0083,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-59-03 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0736,
+   "rel_vel": 0.0083,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC2_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0739,
+   "rel_vel": 0.1283,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-08-50 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0739,
+   "rel_vel": 0.1283,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-175837/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0741,
+   "rel_vel": 0.0565,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-03-12 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0741,
+   "rel_vel": 0.0565,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC2_rep5",
+   "date": "2026-06-30",
+   "xy_err": 0.0743,
+   "rel_vel": 0.1199,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-40-43 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0743,
+   "rel_vel": 0.1199,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC2_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0749,
+   "rel_vel": 0.0594,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-09-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0749,
+   "rel_vel": 0.0594,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC4_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.075,
+   "rel_vel": 0.0189,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-02-22 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.075,
+   "rel_vel": 0.0189,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-033947/IC4_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0753,
+   "rel_vel": 0.0669,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-45-38 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0753,
+   "rel_vel": 0.0669,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 15-41-14 2026",
    "date": "2026-06-26",
    "xy_err": 0.0754,
    "rel_vel": 0.0134,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-150907/IC4_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0762,
+   "rel_vel": 0.0259,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-15-12 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0762,
+   "rel_vel": 0.0259,
    "frozen_GT": false
   },
   {
@@ -2500,6 +5988,54 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC1_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0772,
+   "rel_vel": 0.0659,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-39-13 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0772,
+   "rel_vel": 0.0659,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC2_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0775,
+   "rel_vel": 0.0065,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-39-47 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0775,
+   "rel_vel": 0.0065,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0786,
+   "rel_vel": 0.0858,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-47-25 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0786,
+   "rel_vel": 0.0858,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-011316/IC2_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0788,
@@ -2539,11 +6075,51 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC5_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0791,
+   "rel_vel": 0.1839,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 18-46-53 2026",
    "date": "2026-06-26",
    "xy_err": 0.0791,
    "rel_vel": 0.1632,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-14-34 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0791,
+   "rel_vel": 0.1839,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC4_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0803,
+   "rel_vel": 0.0813,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-53-56 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0803,
+   "rel_vel": 0.0813,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC2_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.081,
+   "rel_vel": 0.0223,
    "frozen_GT": false
   },
   {
@@ -2556,10 +6132,114 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-05-40 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.081,
+   "rel_vel": 0.0223,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC5_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0813,
+   "rel_vel": 0.1737,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC4_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0813,
+   "rel_vel": 0.0835,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 11-06-21 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0813,
+   "rel_vel": 0.0835,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-17-05 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0813,
+   "rel_vel": 0.1737,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-103813/IC2_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0817,
+   "rel_vel": 0.0697,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 10-54-45 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0817,
+   "rel_vel": 0.0697,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC3_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0823,
+   "rel_vel": 0.0575,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-181147/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0823,
+   "rel_vel": 0.147,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 18-21-38 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0823,
+   "rel_vel": 0.147,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 21-29-14 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0823,
+   "rel_vel": 0.0575,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 11-43-20 2026",
    "date": "2026-06-26",
    "xy_err": 0.0824,
    "rel_vel": 0.0447,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC5_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0835,
+   "rel_vel": 0.1754,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-56-18 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0835,
+   "rel_vel": 0.1754,
    "frozen_GT": false
   },
   {
@@ -2576,6 +6256,54 @@
    "date": "2026-06-30",
    "xy_err": 0.0846,
    "rel_vel": 0.0075,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC3_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.0848,
+   "rel_vel": 0.062,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-36-32 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0848,
+   "rel_vel": 0.062,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC4_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0849,
+   "rel_vel": 0.1788,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 20-06-31 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0849,
+   "rel_vel": 0.1788,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-151804/IC5_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.085,
+   "rel_vel": 0.0233,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 15-27-33 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.085,
+   "rel_vel": 0.0233,
    "frozen_GT": false
   },
   {
@@ -2635,11 +6363,91 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC1_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.088,
+   "rel_vel": 0.0747,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-34-47 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.088,
+   "rel_vel": 0.0747,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 11-35-03 2026",
    "date": "2026-06-26",
    "xy_err": 0.0882,
    "rel_vel": 0.0129,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-164657/IC3_rep2",
+   "date": "2026-07-01",
+   "xy_err": 0.0896,
+   "rel_vel": 0.0233,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 17-08-40 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0896,
+   "rel_vel": 0.0233,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC2_rep10",
+   "date": "2026-07-01",
+   "xy_err": 0.0899,
+   "rel_vel": 0.1031,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 19-11-33 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0899,
+   "rel_vel": 0.1031,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-045313/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0903,
+   "rel_vel": 0.1031,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 05-18-06 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0903,
+   "rel_vel": 0.1031,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-023345/IC4_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0907,
+   "rel_vel": 0.1318,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-38-31 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0907,
+   "rel_vel": 0.1318,
    "frozen_GT": false
   },
   {
@@ -2660,6 +6468,38 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-203731/IC5_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0914,
+   "rel_vel": 0.1615,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 22-16-03 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0914,
+   "rel_vel": 0.1615,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-013120/IC3_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0926,
+   "rel_vel": 0.0948,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-48-11 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0926,
+   "rel_vel": 0.0948,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-021709/IC2_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0933,
@@ -2672,6 +6512,54 @@
    "date": "2026-06-30",
    "xy_err": 0.0933,
    "rel_vel": 0.1359,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-154758/IC2_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0938,
+   "rel_vel": 0.047,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 16-03-59 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0938,
+   "rel_vel": 0.047,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-025716/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0945,
+   "rel_vel": 0.1796,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC2_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0945,
+   "rel_vel": 0.0288,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-06-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0945,
+   "rel_vel": 0.0288,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-58-15 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0945,
+   "rel_vel": 0.1796,
    "frozen_GT": false
   },
   {
@@ -2724,6 +6612,22 @@
   },
   {
    "config": "ICValidation",
+   "path": "ICValidation/20260701-022000/IC4_rep3",
+   "date": "2026-07-01",
+   "xy_err": 0.0967,
+   "rel_vel": 0.0854,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-23-09 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0967,
+   "rel_vel": 0.0854,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
    "path": "ICValidation/20260630-060211/IC2_rep2",
    "date": "2026-06-30",
    "xy_err": 0.0987,
@@ -2763,11 +6667,43 @@
    "frozen_GT": false
   },
   {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-020619/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0997,
+   "rel_vel": 0.0237,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 02-18-58 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0997,
+   "rel_vel": 0.0237,
+   "frozen_GT": false
+  },
+  {
    "config": "Landing_Test",
    "path": "Landing_Test/Tue Jun 30 02-21-51 2026",
    "date": "2026-06-30",
    "xy_err": 0.0997,
    "rel_vel": 0.0662,
+   "frozen_GT": false
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-182954/IC1_rep7",
+   "date": "2026-07-01",
+   "xy_err": 0.0999,
+   "rel_vel": 0.1821,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 18-40-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0999,
+   "rel_vel": 0.1821,
    "frozen_GT": false
   },
   {
@@ -2808,6 +6744,182 @@
    "date": "2026-06-10",
    "xy_err": 0.0,
    "rel_vel": 0.1337,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC1_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.001,
+   "rel_vel": 0.0166,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-32-45 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.001,
+   "rel_vel": 0.0166,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC1_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0014,
+   "rel_vel": 0.0165,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC1_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0014,
+   "rel_vel": 0.0252,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-04-23 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0014,
+   "rel_vel": 0.0252,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-06-01 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0014,
+   "rel_vel": 0.0165,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-212524/IC1_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0024,
+   "rel_vel": 0.02,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 21-28-19 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0024,
+   "rel_vel": 0.02,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC1_rep1",
+   "date": "2026-06-30",
+   "xy_err": 0.0025,
+   "rel_vel": 0.0183,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-31-45 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0025,
+   "rel_vel": 0.0183,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-133048/IC1_rep3",
+   "date": "2026-06-30",
+   "xy_err": 0.0028,
+   "rel_vel": 0.005,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 13-33-46 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0028,
+   "rel_vel": 0.005,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-033947/IC4_rep1",
+   "date": "2026-07-01",
+   "xy_err": 0.0034,
+   "rel_vel": 0.0696,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 03-40-45 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0034,
+   "rel_vel": 0.0696,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC1_rep2",
+   "date": "2026-06-30",
+   "xy_err": 0.0042,
+   "rel_vel": 0.0302,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-05-02 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0042,
+   "rel_vel": 0.0302,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC1_rep5",
+   "date": "2026-07-01",
+   "xy_err": 0.0043,
+   "rel_vel": 0.0514,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-05-24 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0043,
+   "rel_vel": 0.0514,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260701-010031/IC5_rep4",
+   "date": "2026-07-01",
+   "xy_err": 0.0044,
+   "rel_vel": 0.0169,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Wed Jul  1 01-30-04 2026",
+   "date": "2026-07-01",
+   "xy_err": 0.0044,
+   "rel_vel": 0.0169,
+   "frozen_GT": true
+  },
+  {
+   "config": "ICValidation",
+   "path": "ICValidation/20260630-220308/IC1_rep4",
+   "date": "2026-06-30",
+   "xy_err": 0.0046,
+   "rel_vel": 0.0095,
+   "frozen_GT": true
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Tue Jun 30 22-08-37 2026",
+   "date": "2026-06-30",
+   "xy_err": 0.0046,
+   "rel_vel": 0.0095,
    "frozen_GT": true
   }
  ]
