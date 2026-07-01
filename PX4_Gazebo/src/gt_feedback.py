@@ -33,19 +33,21 @@ NED_FROM_ENU = np.array([[0., 1., 0.], [1., 0., 0.], [0., 0., -1.]])   # self-in
 FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=180°), self-inverse
 
 # Rigid mount offsets (from the Gazebo model SDFs), expressed in each body's
-# FLU/model frame (z up). The pose feedback gives the base_link / rover-model
-# ORIGIN poses, but the camera and the ArUco marker are mounted off those:
-#   - x500_mono_cam_down: mono_cam at <pose>0 0 .20 ...> -> camera +0.20 m above
-#     base_link (body up).
-#   - rover_aruco: arucotag at <pose>0 0 .50 ...> -> marker +0.50 m above the
-#     rover base (body up).
-# The controller's target is the MARKER as seen by the CAMERA, so the relative
-# vector must be (marker - camera), not (rover_base - uav_base). Ignoring these
-# offsets biases the relative DEPTH by ~0.30 m, which distorts the 1/z loom right
-# where the terminal kick lives. Env-overridable. FLU here; converted to FRD
-# (FRD_2_FLU is self-inverse) before rotating by the body->NED DCM.
+# FLU/model frame (z up). The pose feedback gives the base_link / target-model
+# ORIGIN poses, but the camera and (on some targets) the marker are mounted off
+# those, so the controller's target = MARKER as seen by the CAMERA needs the
+# relative vector (marker - camera), not (target_origin - uav_base).
+#   - CAMERA: x500_mono_cam_down mono_cam at <pose>0 0 .20 ...> -> +0.20 m above
+#     base_link. UNIVERSAL (same drone in every world) -> default 0.20.
+#   - MARKER: WORLD-SPECIFIC. The stationary `aruco` world's arucotag is FLAT on
+#     the ground (target origin AT the marker plane, z~0) -> offset 0. The rover
+#     mounts the marker +0.50 m up (rover_aruco SDF) -> the rover launcher sets
+#     PLASMC_GT_MARKER_DZ=0.5. So the DEFAULT is 0.0 (flat-marker worlds); do NOT
+#     hardcode 0.5 or it biases every non-rover target's depth.
+# FLU here; converted to FRD (FRD_2_FLU is self-inverse) before rotating by the
+# body->NED DCM.
 _CAM_OFF_FLU    = np.array([0., 0., float(os.environ.get("PLASMC_GT_CAM_DZ",    "0.20"))])
-_MARKER_OFF_FLU = np.array([0., 0., float(os.environ.get("PLASMC_GT_MARKER_DZ", "0.50"))])
+_MARKER_OFF_FLU = np.array([0., 0., float(os.environ.get("PLASMC_GT_MARKER_DZ", "0.00"))])
 
 
 def _v_frame(R):

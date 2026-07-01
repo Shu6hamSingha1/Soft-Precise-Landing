@@ -93,16 +93,21 @@ sleep 1
 if [ -n "$HEADLESS" ]; then
   echo "[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)..."
   EXTRA_ENV_HEADLESS="QT_QPA_PLATFORM=offscreen"
+  # -d (daemon, no pxh shell): a headless px4 (no TTY) otherwise spams the pxh
+  # prompt to its log at ~GB/min. -d keeps the INFO lines we grep. GUI mode keeps
+  # the interactive shell.
+  PX4_DAEMON="-d"
 else
   echo "[run] starting PX4 SITL (Gazebo Harmonic window should open momentarily)..."
   EXTRA_ENV_HEADLESS=""
+  PX4_DAEMON=""
 fi
 setsid env $EXTRA_ENV_HEADLESS \
   PX4_SYS_AUTOSTART=4014 \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
   PX4_GZ_WORLD=aruco \
-  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PX4_PID=$!
 PIDS+=("$PX4_PID")

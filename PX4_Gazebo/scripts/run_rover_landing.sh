@@ -52,6 +52,12 @@ WORLD="rover"
 export POSE_IDX_TARGET="${POSE_IDX_TARGET:-1}"
 export POSE_IDX_UAV="${POSE_IDX_UAV:-2}"
 
+# GT-feedback marker mount offset: the rover carries the ArUco marker +0.50 m
+# above its base (rover_aruco SDF), unlike the flat stationary aruco marker. So
+# the GT camera-to-marker depth needs this offset here (gt_feedback default is
+# 0.0 for flat-marker worlds). Camera offset (0.20 m) is universal -> its default.
+export PLASMC_GT_MARKER_DZ="${PLASMC_GT_MARKER_DZ:-0.5}"
+
 # HEADLESS=1 -> no Gazebo GUI client, no QGroundControl.
 HEADLESS="${HEADLESS:-}"
 if [ -n "$HEADLESS" ]; then
