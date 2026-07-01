@@ -6,11 +6,35 @@ ArUco test is finished** (per user: no pipeline-code changes until then).
 Canonical handoff: `Memory/px4/project_moving_target_prep.md`. This file is the
 actionable checklist + entry point; the memory note has the reasoning.
 
-## What is already staged (no pipeline code touched)
+## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +
   UAV 4014 `-i 0`, `rover` world, `dynamic_pose/info` pose bridge). Forked from
   `run_aruco_landing.sh`, follows the canonical cleanup/`start_bg`/setsid/param-
-  reset patterns. **Will not produce a correct landing until item 1 below is done.**
+  reset patterns. Exports the rover pose indices (below).
+
+## RESOLVED 2026-07-01 (spawn + pose landmine)
+Brought up the two-instance rover stack headless and fixed the blockers to a
+clean spawn:
+1. **Model not on PX4's gz path.** `rover_aruco` lived only in
+   `~/.gazebo/models/rover_aruco/`; PX4 spawns via
+   `~/PX4-Autopilot/Tools/simulation/gz/models/` and errored
+   "Error finding file .../rover_aruco/model.sdf". **Fix:** installed a copy
+   under the PX4 model dir (its includes `rover_ackermann` + `arucotag` already
+   live there).
+2. **SDF version too old.** `model.sdf`/`model.config` declared
+   `<sdf version='1.0'>` → Gazebo Harmonic errored "Unable to convert from SDF
+   version 1.0 to 1.11". **Fix:** bumped to `1.9` (matches `arucotag`; `merge`
+   includes need ≥1.9) in BOTH `~/.gazebo/models/rover_aruco/` and the PX4 copy.
+   Rover now spawns as `rover_aruco_1`.
+3. **Pose-index landmine (was item 1).** Echoed `/world/rover/dynamic_pose/info`
+   with both vehicles up: top-level model poses are in spawn order → **target =
+   `poses[0]`, UAV = `poses[1]`** (vs stationary aruco UAV=`[2]`/target=`[1]`).
+   **Fix:** `src/gz_subscriber.py` now reads `POSE_IDX_UAV`/`POSE_IDX_TARGET`
+   from env (defaults 2/1 = aruco unchanged); `run_rover_landing.sh` exports
+   `POSE_IDX_TARGET=0 POSE_IDX_UAV=1`.
+
+> ⚠ Ordering assumes rover (`-i 1`) spawns before UAV (`-i 0`) — which the
+> launcher guarantees. If launch order ever changes, re-verify with the echo.
 
 ## Infra confirmed present (2026-06-30)
 - Airframe `4022_gz_rover_aruco` (Ackermann rover) + `4014_gz_x500_mono_cam_down`
@@ -21,26 +45,28 @@ actionable checklist + entry point; the memory note has the reasoning.
   marker 0.5 m above the rover).
 - Manual launch reference: `tips.txt:55-82`.
 
-## Deferred code changes (apply AFTER the stationary test)
-1. **`src/gz_subscriber.py:84-85` pose indices (DO FIRST — load-bearing).**
-   Hard-codes `UAV=poses[2]`, `target=poses[1]` for the stationary `aruco`
-   PoseArray. The rover world bridges `/world/rover/dynamic_pose/info`, which has
-   different membership/ordering → these indices will silently corrupt BOTH
-   perception-NED and GT-feedback (`controller.py:973-975`). First inspect the
-   live ordering:
-   ```
-   gz topic -t /world/rover/dynamic_pose/info -e
-   ```
-   then set the correct indices (prefer world-conditioned selection over a second
-   hard-code, so the same code serves both worlds).
+## Remaining work items
+1. ✅ **DONE — pose indices** (see RESOLVED above). `gz_subscriber.py` is now
+   env-driven; `run_rover_landing.sh` sets the rover mapping.
 2. **Yaw calibration** (`cal_s[3]`, currently `1.0`). Inert for the stationary
    square marker; ACTIVE once the target translates/turns. Moment-alpha κ_a yaw
    path is already tuned ([[feedback_moment_yaw_canonical]]); only the feature
    cal is pending ([[project_yaw_calibration_pending]]).
-3. **Rover motion source.** No trajectory plugin / speed knob exists. Drive the
-   rover externally on `-i 1` (QGC mission / MAVLink offboard / manual) and wire
-   it into `run_rover_landing.sh` via the `ROVER_DRIVE` env hook (placeholder,
-   default OFF). Pick a speed range for the IC/landing test.
+3. ✅ **DONE — rover motion source** (2026-07-01). Built + live-verified:
+   - `src/rover_trajectory.py` — planar (x,y,yaw) port of `traj_Gen.m` (7 types;
+     z-heave/roll/pitch ship-deck terms dropped as un-realizable by a ground
+     rover). Velocity = d/dt position verified to 1e-10; constants copied verbatim.
+   - `apps/rover_drive.py` — MAVSDK offboard POSITION setpoints on `udp://:14541`
+     (instance-1 Onboard MAVLink port, confirmed from PX4 console). Env-config:
+     `ROVER_TRAJ` / `ROVER_SPEED_MULT` / `ROVER_YAW_MODE` / `ROVER_RATE_HZ` /
+     `ROVER_MAX_T`. Live test: connects, arms, offboard starts, rover MOVES
+     (origin → path) — offboard accepted by the `rover_ackermann` controller.
+   - Launcher hook: `ROVER_MOTION=1` in `run_rover_landing.sh` starts the driver.
+   - ⚠ **Ackermann min-turn-radius ≈ 0.56 m** (wheelbase 0.321, 30° steer). The
+     `Circular` r=0.5 is BELOW this → rover can't track it tightly, drifts wide.
+     For faithful tracking use `Linear` / `Sinusoidal` / a larger-radius path, or
+     scale up. Start slow (`ROVER_SPEED_MULT` low) — rover speed stresses the
+     terminal cycle.
 4. **Moving-target IC/landing test harness** — analogue of `run_ic_validation.sh`
    with the rover moving. `SoftPrecise` eval already uses RELATIVE xy/rel_vel, so
    no eval change needed.

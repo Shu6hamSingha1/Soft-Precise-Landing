@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+# Launch PX4 SITL + Gazebo Harmonic + ros_gz bridges + the landing
+# controller for the MOVING-target (rover) scenario, in one shot.
+# Background processes are tracked so Ctrl+C in the foreground (the
+# landing_test.py run) cleans up everything.
+#
+# Scenario: moving rover_aruco target (airframe 4022, -i 1) + x500_mono_cam_down
+# drone (airframe 4014, -i 0), both in the `rover` world. Adapted from the
+# stationary launcher scripts/run_aruco_landing.sh and tips.txt steps 1-7
+# (moving-target variant).
+#
+# ============================== STATUS / PREREQUISITES ======================
+# Infra blockers RESOLVED 2026-07-01 (see docs/MOVING_TARGET_PREP.md):
+#   * Model install: `rover_aruco` lived only in ~/.gazebo/models and PX4's gz
+#     could not find it -> installed a copy under
+#     ~/PX4-Autopilot/Tools/simulation/gz/models/rover_aruco/.
+#   * SDF version: the model declared `<sdf version='1.0'>`, which Gazebo
+#     Harmonic (SDF 1.11) cannot convert -> bumped model.sdf + model.config to
+#     1.9 in BOTH ~/.gazebo/models/rover_aruco/ and the PX4 copy. Rover now
+#     spawns as `rover_aruco_1`.
+#   * Pose indices: verified rover dynamic_pose ordering (target=0, UAV=1) and
+#     exported POSE_IDX_TARGET/POSE_IDX_UAV below; gz_subscriber.py reads them.
+#
+# STILL OPEN before a meaningful rover landing (see docs/MOVING_TARGET_PREP.md):
+#   1. Yaw calibration (cal_s[3]) — inert for the stationary square marker,
+#      ACTIVE for a moving/turning target.
+#   2. Rover motion source — there is no trajectory plugin / speed knob today.
+#      Motion must be commanded externally on -i 1 (QGC mission / MAVLink
+#      offboard / manual). See ROVER_DRIVE below (placeholder, default OFF).
+#      A stationary rover already exercises the full stack as a first baseline.
+# ============================================================================
+
+set -u
+
+PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
+VENV="${VENV:-$HOME/ws/scripts/env2025}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/../run_logs"
+mkdir -p "$LOG_DIR"
+
+WORLD="rover"
+
+# PoseArray indices for the rover world's /world/rover/dynamic_pose/info topic.
+# Verified 2026-07-01 by echoing the topic with both vehicles spawned: top-level
+# models are listed in spawn order (rover via -i 1 first, UAV via -i 0 second),
+# so target=poses[0], UAV=poses[1]. Exported so landing_test.py's gz_subscriber
+# picks the right poses (defaults there are the stationary aruco 2/1).
+export POSE_IDX_TARGET="${POSE_IDX_TARGET:-0}"
+export POSE_IDX_UAV="${POSE_IDX_UAV:-1}"
+
+# HEADLESS=1 -> no Gazebo GUI client, no QGroundControl.
+HEADLESS="${HEADLESS:-}"
+if [ -n "$HEADLESS" ]; then
+  echo "[run] HEADLESS mode: Gazebo will run server-only, QGC skipped."
+fi
+
+# ROVER_MOTION: 1 = drive the rover along a traj_Gen trajectory via MAVSDK
+# offboard (apps/rover_drive.py on udp://:14541); 0 = rover sits still (a valid
+# first baseline for the full stack). Trajectory/speed via ROVER_TRAJ /
+# ROVER_SPEED_MULT (see apps/rover_drive.py). ROVER_DRIVE overrides with a
+# fully custom command if set.
+ROVER_MOTION="${ROVER_MOTION:-0}"
+ROVER_DRIVE="${ROVER_DRIVE:-}"
+if [ -z "$ROVER_DRIVE" ] && [ "$ROVER_MOTION" = "1" ]; then
+  ROVER_DRIVE="'$VENV/bin/python3' '$SCRIPT_DIR/../apps/rover_drive.py'"
+fi
+
+declare -a PIDS=()
+declare -A NAMES=()
+
+cleanup() {
+  echo
+  echo "[run] Shutting down background processes..."
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      name="${NAMES[$pid]:-pid$pid}"
+      echo "[run]   killing $name (pid $pid + group)"
+      kill -TERM "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
+    fi
+  done
+  sleep 1
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
+    fi
+  done
+  # Belt and suspenders: matching strays (both PX4 instances, gz, bridges, QGC).
+  pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
+  pkill -9 -f 'gz sim' 2>/dev/null || true
+  pkill -9 -f "parameter_bridge.*world/$WORLD" 2>/dev/null || true
+  pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
+  pkill -9 -f 'QGroundControl' 2>/dev/null || true
+  echo "[run] done."
+}
+trap cleanup EXIT INT TERM
+
+start_bg() {
+  local name="$1"; shift
+  local logfile="$LOG_DIR/$name.log"
+  echo "[run] launching $name (log: $logfile)"
+  setsid "$@" > "$logfile" 2>&1 &
+  local pid=$!
+  PIDS+=("$pid")
+  NAMES[$pid]="$name"
+  sleep 0.3
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "[run] $name died immediately; last lines:"
+    tail -n 20 "$logfile" || true
+    exit 1
+  fi
+}
+
+# 0) Reset PX4 SITL persistent param state for BOTH instances (rootfs/0 and
+# rootfs/1) so each run boots from airframe defaults.
+for inst in 0 1; do
+  rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/$inst/parameters.bson"        2>/dev/null
+  rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/$inst/parameters_backup.bson" 2>/dev/null
+done
+
+# 1) uXRCE-DDS agent
+start_bg microxrce MicroXRCEAgent udp4 -p 8888
+sleep 1
+
+# 2a) PX4 SITL instance -i 1 = the ROVER target (spawns the gz sim server +
+# the `rover` world). This MUST start first; the UAV instance attaches to the
+# already-running gz sim via PX4_GZ_STANDALONE=1.
+if [ -n "$HEADLESS" ]; then
+  EXTRA_ENV_HEADLESS="QT_QPA_PLATFORM=offscreen"
+else
+  EXTRA_ENV_HEADLESS=""
+fi
+echo "[run] starting PX4 SITL rover (-i 1, airframe 4022, world $WORLD)..."
+setsid env $EXTRA_ENV_HEADLESS \
+  PX4_SYS_AUTOSTART=4022 \
+  PX4_GZ_MODEL_POSE="0,0" \
+  PX4_SIM_MODEL=rover_aruco \
+  PX4_GZ_WORLD="$WORLD" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 1" \
+  > "$LOG_DIR/px4_rover.log" 2>&1 &
+ROVER_PID=$!
+PIDS+=("$ROVER_PID")
+NAMES[$ROVER_PID]="px4_rover"
+
+# Wait for Gazebo /world/rover/clock to come up before launching the UAV.
+echo -n "[run] waiting for Gazebo (rover) to come up "
+WAITED=0
+while ! gz topic -l 2>/dev/null | grep -q "/world/$WORLD/clock"; do
+  sleep 1
+  echo -n "."
+  WAITED=$((WAITED + 1))
+  if [ "$WAITED" -gt 60 ]; then
+    echo " timed out!"
+    echo "[run] PX4 rover did not bring up /world/$WORLD/clock in 60s."
+    tail -n 30 "$LOG_DIR/px4_rover.log" || true
+    exit 1
+  fi
+done
+echo " up after ${WAITED}s."
+
+# 2b) PX4 SITL instance -i 0 = the UAV (x500_mono_cam_down), STANDALONE so it
+# attaches to the rover instance's gz sim rather than spawning a second one.
+echo "[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)..."
+setsid env $EXTRA_ENV_HEADLESS \
+  PX4_GZ_STANDALONE=1 \
+  PX4_SYS_AUTOSTART=4014 \
+  PX4_GZ_MODEL_POSE="1,0" \
+  PX4_SIM_MODEL=x500_mono_cam_down \
+  PX4_GZ_WORLD="$WORLD" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
+  > "$LOG_DIR/px4_sitl.log" 2>&1 &
+PX4_PID=$!
+PIDS+=("$PX4_PID")
+NAMES[$PX4_PID]="px4_sitl"
+
+# Wait for the UAV camera image topic to register (confirms the standalone
+# UAV model spawned and its sensors initialized).
+echo -n "[run] waiting for UAV camera topic "
+WAITED=0
+while ! gz topic -l 2>/dev/null | grep -q "x500_mono_cam_down_0/link/camera_link/sensor/imager/image"; do
+  sleep 1
+  echo -n "."
+  WAITED=$((WAITED + 1))
+  if [ "$WAITED" -gt 60 ]; then
+    echo " timed out!"
+    echo "[run] UAV camera topic never registered in 60s."
+    tail -n 30 "$LOG_DIR/px4_sitl.log" || true
+    exit 1
+  fi
+done
+echo " up after ${WAITED}s."
+
+# 3) ros_gz bridges (rover world; NOTE: pose is dynamic_pose/info, not pose/info).
+start_bg bridge_clock ros2 run ros_gz_bridge parameter_bridge \
+  "/world/$WORLD/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock" \
+  --ros-args -r "/world/$WORLD/clock:=/clock"
+
+start_bg bridge_pose ros2 run ros_gz_bridge parameter_bridge \
+  "/world/$WORLD/dynamic_pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V" \
+  --ros-args -r "/world/$WORLD/dynamic_pose/info:=/pose"
+
+start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
+  "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \
+  --ros-args -r "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image"
+
+# 4) QGroundControl — heartbeat for the UAV's preflight "GCS connected" check.
+if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
+  echo "[run] launching qgc (log: $LOG_DIR/qgc.log) — non-fatal"
+  setsid env QT_QPA_PLATFORM=offscreen "$HOME/Downloads/QGroundControl.AppImage" \
+      > "$LOG_DIR/qgc.log" 2>&1 &
+  qgc_pid=$!
+  PIDS+=("$qgc_pid")
+  NAMES[$qgc_pid]="qgc"
+fi
+
+# 4b) Wait for the UAV preflight to settle.
+echo -n "[run] waiting for UAV preflight to clear "
+WAITED=0
+while ! strings "$LOG_DIR/px4_sitl.log" 2>/dev/null | grep -q 'Ready for takeoff' \
+      && [ "$WAITED" -lt 30 ]; do
+  sleep 2
+  echo -n "."
+  WAITED=$((WAITED + 2))
+done
+if [ "$WAITED" -ge 30 ]; then
+  echo " (timeout, proceeding anyway)"
+else
+  echo " ready after ${WAITED}s."
+fi
+
+# 4c) Optional: start the rover motion source on -i 1 (MAVSDK offboard, driving
+# a traj_Gen trajectory). Set ROVER_MOTION=1 (or a custom ROVER_DRIVE command).
+if [ -n "$ROVER_DRIVE" ]; then
+  echo "[run] starting rover motion source: $ROVER_DRIVE"
+  # Run inside the venv-activated environment (mavsdk); this shell has already
+  # sourced $VENV below step 5, but the bg child starts before that — activate
+  # explicitly so rover_drive.py finds mavsdk.
+  start_bg rover_drive bash -c "source '$VENV/bin/activate'; $ROVER_DRIVE"
+else
+  echo "[run] NOTE: rover motion OFF (ROVER_MOTION!=1) — rover sits still (valid baseline)."
+fi
+
+echo "[run] short settle (5s) before launching landing_test (arm() polls is_armable)..."
+sleep 5
+
+# 5) Run the landing controller in the foreground (connects to the UAV on
+#    udp://:14540). Ctrl+C triggers cleanup of all background processes.
+echo
+echo "[run] All background processes up. Starting landing_test.py..."
+echo "[run] Press Ctrl+C to abort and clean everything up."
+echo
+cd "$SCRIPT_DIR/.."
+# shellcheck disable=SC1091
+source "$VENV/bin/activate"
+if [ -f "$HOME/ros2_ws/install/setup.bash" ]; then
+  set +u
+  # shellcheck disable=SC1091
+  source "$HOME/ros2_ws/install/setup.bash"
+  set -u
+fi
+PY_OUT="$LOG_DIR/landing_test.out"
+PY_TIMEOUT_S="${PY_TIMEOUT_S:-180}"
+PY_SCRIPT="${PY_SCRIPT:-apps/landing_test.py}"
+LANDING_AUTOSAVE=1 timeout --kill-after=10 "$PY_TIMEOUT_S" python3 "$PY_SCRIPT" 2>&1 | tee "$PY_OUT"
+PY_EXIT=${PIPESTATUS[0]}
+if [ "$PY_EXIT" = "124" ] || [ "$PY_EXIT" = "137" ]; then
+  echo "[run] DETECTED: landing_test.py hung past ${PY_TIMEOUT_S}s wall-clock — treating as failure."
+  exit 42
+fi
+if grep -qE 'is_armable did not go True|arm\(\) failed even after is_armable' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: PX4 lockstep race did not recover (is_armable timeout)."
+  exit 42
+fi
+if grep -q 'IC convergence timeout' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle)."
+  exit 42
+fi
+exit "$PY_EXIT"

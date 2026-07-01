@@ -79,10 +79,22 @@ class Pose_Node(Node):
 
         self._pose = PoseData()  # Initialize the pose data object
 
+        # PoseArray index of the UAV / target top-level model poses. These
+        # differ per world because the bridged topic differs:
+        #   - stationary `aruco` world -> /world/aruco/pose/info: UAV=2, target=1
+        #   - moving `rover` world     -> /world/rover/dynamic_pose/info: the
+        #     PoseArray lists top-level models in spawn order (rover first via
+        #     -i 1, UAV second via -i 0) -> target=0, UAV=1.
+        # Defaults preserve the stationary-world behavior; the launch script
+        # overrides them for the rover world via POSE_IDX_UAV / POSE_IDX_TARGET.
+        # Inspect ordering with: gz topic -t /world/<world>/dynamic_pose/info -e
+        self._uav_idx = int(os.environ.get("POSE_IDX_UAV", "2"))
+        self._target_idx = int(os.environ.get("POSE_IDX_TARGET", "1"))
+
     def pose_callback(self, data):
         try:
-            self._pose.UAV = data.poses[2] # Third element is the UAV pose; For rest, use this CTL code: gz topic -t /world/aruco/pose/info -e 
-            self._pose.target = data.poses[1] # Second element is the UAV pose; for rest, use this CTL code: gz topic -t /world/aruco/pose/info -e 
+            self._pose.UAV = data.poses[self._uav_idx]
+            self._pose.target = data.poses[self._target_idx]
             # Display the message on the console
             # self.get_logger().info(f"Model Pose: {self._pose}")
             # time.sleep(0.01)  # Sleep for a short time to avoid high CPU usage

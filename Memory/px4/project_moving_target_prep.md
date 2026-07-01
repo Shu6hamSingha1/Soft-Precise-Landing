@@ -64,14 +64,18 @@ over and likely bind harder. Expect the cycle to be the binding issue at rover s
   marker mounted 0.5 m above the rover (`~/.gazebo/models/rover_aruco/model.sdf`).
 - **Pose bridge DIFFERS**: rover bridges `/world/rover/dynamic_pose/info` (moving models only)
   vs the stationary `/world/aruco/pose/info` → **different PoseArray membership/ordering**.
-- **⚠️ LANDMINE — `gz_subscriber.py:84-85` HARD-CODES pose indices** `UAV=poses[2]`, `target=poses[1]`
-  for the aruco PoseArray. The rover `dynamic_pose` has different ordering → these WILL be wrong →
-  silently corrupts BOTH perception-NED AND GT-feedback (`controller.py:973-975` feeds them to
-  gt_feedback). **Fix these indices FIRST for the rover world.**
-- **Rover motion**: it's a full PX4 Ackermann rover on its own SITL instance (`-i 1`), driven by
-  gz joint-controller plugins. **NO trajectory plugin, NO speed knob today** — motion must be
-  commanded externally (QGC mission / MAVLink offboard / manual) on `-i 1`. Building a guidance/
-  speed source is part of the test harness.
+- **✅ RESOLVED 2026-07-01 (was LANDMINE) — pose indices.** Verified rover
+  `dynamic_pose/info` ordering (target=`poses[0]`, UAV=`poses[1]`); `gz_subscriber.py` now reads
+  `POSE_IDX_UAV`/`POSE_IDX_TARGET` from env (defaults 2/1=aruco), `run_rover_landing.sh` exports 1/0.
+  ALSO fixed 2 spawn blockers (model not on PX4 gz path; SDF 1.0→1.9). See
+  [[feedback_rover_spawn_infra_fixes]].
+- **Rover motion**: ✅ BUILT 2026-07-01. `src/rover_trajectory.py` (planar port of `traj_Gen.m`,
+  7 types, z/roll/pitch dropped) + `apps/rover_drive.py` (MAVSDK offboard POSITION setpoints on
+  `udp://:14541` = instance-1 Onboard port). Live-verified: connects/arms/offboard-starts, rover
+  MOVES (offboard accepted by `rover_ackermann` pos controller). Launcher: `ROVER_MOTION=1`; config
+  `ROVER_TRAJ`/`ROVER_SPEED_MULT`/`ROVER_YAW_MODE`. ⚠ Ackermann MIN TURN RADIUS ≈0.56m (wheelbase
+  0.321, 30° steer) → `Circular` r=0.5 is too tight (drifts wide); use `Linear`/`Sinusoidal`/larger.
+  See [[feedback_rover_spawn_infra_fixes]].
 - **`PLASMC_HD_FUNNEL_REF` (controller.py:884-890) is the labeled "moving-target candidate"** knob
   (h_d x/y rate = funnel ref, un-degenerates ζ_h; default-OFF, currently un-baked to the stationary
   `s_dot_meas` config). Revisit for moving.
