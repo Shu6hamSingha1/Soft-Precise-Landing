@@ -39,9 +39,13 @@ collision** (highest rover collision = body box ~0.1 m). The elevated marker
 puts the terminal high-1/Z danger-zone at ~0.8 m base altitude (open air, no
 contact below), so the LATENT terminal-1/Z kick develops and launches the drone;
 the ground-level aruco marker coincides with contact that harmlessly arrests it.
-**FIX** = give the rover a solid landing PLATFORM at the marker height (drone
-lands ON it at ~0.5 m, like a real moving platform), or lower the marker to the
-body top; then re-run the A/B. Full writeup: [[feedback_rover_flyaway_no_platform]].
+**FIX = solid landing PLATFORM at the marker height. ✅ APPLIED + CONFIRMED.**
+Added a `landing_platform` pedestal (0.6×0.6, 0.1→0.5 m) fixed to the rover
+base_link, marker as a visual on its top face, in the `rover_aruco` model.sdf
+(both `~/.gazebo/models/` and `~/PX4-Autopilot/Tools/simulation/gz/models/` —
+OUTSIDE the repo). Re-run (GT-FB, stationary): drone lands ON the platform at
+min-alt **0.51 m, dead-centered (0.05 m), bounded, no fly-away** (vs 2/3
+fly-aways before). Full writeup: [[feedback_rover_flyaway_no_platform]].
 Harness: scratchpad/ab_flyaway.sh + ab_analyze.py.
 
 ## What is staged

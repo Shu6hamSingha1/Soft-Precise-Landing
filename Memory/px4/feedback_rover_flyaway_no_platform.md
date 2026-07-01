@@ -36,9 +36,20 @@ campaign) is the SAME latent instability; the rover geometry just UNMASKS it.
 
 **FIX (setup, and physically correct for a moving-PLATFORM landing):** give the rover a
 solid landing PLATFORM (collision box) at the marker height so the drone lands ON it at
-~0.5 m — restoring the contact-arrest the aruco case has — or lower the marker onto the
-rover body top. Optionally a terminal commit that fires at platform height. Then re-run
-the A/B; the rover should match the aruco arm.
+~0.5 m — restoring the contact-arrest the aruco case has.
+
+**✅ FIX APPLIED + CONFIRMED (2026-07-02).** Added a `landing_platform` link to the
+`rover_aruco` model.sdf: a 0.6×0.6 pedestal (0.1→0.5 m), fixed-jointed to `base_link`,
+with the 1 m ArUco marker as a VISUAL on its top face (top at 0.5 m). ⚠ The marker must
+be a visual ON the platform link, NOT the old separate `<include model://arucotag>` —
+that static/massless link DETACHED and fell to z=−48 m once the model's link/joint tree
+changed. Model files are OUTSIDE the repo: `~/.gazebo/models/rover_aruco/model.sdf` AND
+`~/PX4-Autopilot/Tools/simulation/gz/models/rover_aruco/model.sdf` (keep both in sync;
+gz reads ~/.gazebo first). Re-run (GT-FB, stationary, same config): the drone **lands ON
+the platform at min-alt 0.51 m, dead-centered (lat 0.05 m), BOUNDED, no fly-away** — vs
+2/3 fly-aways without the platform. Confirms the root cause + fix. (A/B rover+platform
+arm was flaky on the frozen-pose infra flake so n was small, but the 0.51 m bounded
+landing is decisive and matches the aruco parity.)
 
 Harness: scratchpad/ab_flyaway.sh + ab_analyze.py (world A/B, per-arm autosave, min/peak
 alt + fly-away metric). Stochastic — judge by fly-away RATE over n≥3, not single runs
