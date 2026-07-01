@@ -28,8 +28,21 @@ IC 0.165 m, but STILL a terminal fly-away (alt 243 m). So the mount-offset bias
 alone is NOT the cause. ⚠ n=1 each, different IC settle (0.199/0.46° vs
 0.165/3.40°) → the min-alt difference (0.25 vs 1.5 m) is within the ±5-7 SITL
 noise, not attributable. The correction is still correct/more-faithful (keep it).
-NEXT leads: the baked terminal gates (TERMINAL_COMMIT/HD_FUNNEL_REF/HD_KR) on the
-rover geometry; controlled n≥3 A/B; Z_REG 0.2→~0.1 now the offset is honest.
+
+### DIAGNOSED via controlled n=3 A/B (2026-07-02) — ROVER-SPECIFIC, root = no platform
+Identical GT-FB baked config, only the world differs: **aruco 0/3 fly-aways**
+(all land dead-centered 0.08–0.20 m, min-alt at ground) vs **rover 2/3 fly-aways**
+(peaks 270–299 m). So the fly-away is rover-specific, NOT a control-law regression.
+Ruled out: target jitter (~0 in both), mount-offset (fixed, persists).
+ROOT: the rover `arucotag` is a 1 m **visual-only plane at +0.5 m with NO
+collision** (highest rover collision = body box ~0.1 m). The elevated marker
+puts the terminal high-1/Z danger-zone at ~0.8 m base altitude (open air, no
+contact below), so the LATENT terminal-1/Z kick develops and launches the drone;
+the ground-level aruco marker coincides with contact that harmlessly arrests it.
+**FIX** = give the rover a solid landing PLATFORM at the marker height (drone
+lands ON it at ~0.5 m, like a real moving platform), or lower the marker to the
+body top; then re-run the A/B. Full writeup: [[feedback_rover_flyaway_no_platform]].
+Harness: scratchpad/ab_flyaway.sh + ab_analyze.py.
 
 ## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +
