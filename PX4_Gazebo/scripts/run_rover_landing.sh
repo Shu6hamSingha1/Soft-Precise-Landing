@@ -242,6 +242,21 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \
   --ros-args -r "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image"
 
+# 3b) CHASE_CAM=1 -> bridge the static chase camera (external view, from the
+# chase_cam model in rover.sdf) and start a recorder that writes an mp4 to
+# test_data/Test_Videos/chase_<ts>.mp4 for RECORD_S seconds. Independent of the
+# UAV's down-cam recording (IMG_RECORD).
+if [ "${CHASE_CAM:-0}" = "1" ]; then
+  CHASE_TOPIC_GZ="/world/$WORLD/model/chase_cam/link/link/sensor/chase/image"
+  start_bg bridge_chase ros2 run ros_gz_bridge parameter_bridge \
+    "${CHASE_TOPIC_GZ}@sensor_msgs/msg/Image@gz.msgs.Image" \
+    --ros-args -r "${CHASE_TOPIC_GZ}:=/chase_image"
+  # Recorder needs the venv (cv2) on top of the ROS env already in scope.
+  start_bg chase_rec bash -c "source '$VENV/bin/activate'; \
+    if [ -f \"\$HOME/ros2_ws/install/setup.bash\" ]; then set +u; source \"\$HOME/ros2_ws/install/setup.bash\"; set -u; fi; \
+    exec python3 '$SCRIPT_DIR/../apps/record_chase.py'"
+fi
+
 # 4) QGroundControl — heartbeat for the UAV's preflight "GCS connected" check.
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
   echo "[run] launching qgc (log: $LOG_DIR/qgc.log) — non-fatal"
