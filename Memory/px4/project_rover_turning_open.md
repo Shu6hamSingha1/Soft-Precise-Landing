@@ -83,7 +83,19 @@ upgrade killing the ±90° saddle limit cycle — do NOT revert; under a ramp th
 now reach ±180 and wind up); (3) psi_d rate clamp + conditional integration + alpha-
 sourced measured yaw (stationary-tuned band-aids).
 
-## NO yaw-rate feedforward was ever attempted in MATLAB (2026-07-02, exhaustive check)
+> **⚠ CORRECTED by the 2026-07-02 pull ([[project_yaw_observability_campaign]], MATLAB side):**
+> (a) a yaw-rate FF **WAS attempted** in MATLAB — `Omega_d=[0;0;u_a]` into so3_tracker — and
+> REVERTED (it recycles the ASMC's LAGGED OUTPUT, "circular"; helped constant yaw, broke Sin
+> 5/5→3/5). The measured-`w_z`→u_a DISTURBANCE cancellation below remains untried and is
+> architecturally different (measure the disturbance, don't recycle the output).
+> (b) MATLAB now ALSO has the 2π alpha (ported from PX4, 25/25) — pre-2π MATLAB was PINNED at
+> e_a 88–90° (not gracefully folding); post-2π it tracks 0.48 rad/s with termEa≈17° on baked
+> gains → the MATLAB-vs-PX4 gap reduces to LAG + the Ω_a detune.
+> (c) MATLAB names the yaw-rate CEILING (~0.5 rad/s ok, 2× fails) as ARCHITECTURAL-LATERAL:
+> s_e ORBITS in the yaw-aligned V frame at the yaw rate → CBF cone sat + funnel breach — the
+> same yaw→lateral detonation as our PX4 spin_active arm.
+
+## NO yaw-rate feedforward into u_a was attempted in MATLAB (2026-07-02, exhaustive check)
 Every `u_a` in the codebase (canonical single-run :932, VDF `+blocks/yaw_asmc.m`,
 comparison ctrls, Obsolete/, git -S history) is the pure error law
 `u_a = Γ_a·σ_a + sat(σ_a/E_a)·κ_a + Ω_a·e_a`. **By DESIGN, per the manuscript**
