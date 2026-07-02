@@ -1,7 +1,7 @@
 {
- "n_configs": 42,
- "n_reps": 3116,
- "n_SP": 789,
+ "n_configs": 45,
+ "n_reps": 3151,
+ "n_SP": 795,
  "configs": [
   {
    "config": "CoordDescent",
@@ -687,6 +687,22 @@
    }
   },
   {
+   "config": "Rover_CompassFree",
+   "date": "2026-07-02",
+   "n": 3,
+   "SP": 2,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.017,
+   "xy_min": 0.008,
+   "vel_med": 0.111,
+   "cats": {
+    "SP": 2,
+    "PRECISE_only": 1
+   }
+  },
+  {
    "config": "Rover_SpeedSweep",
    "date": "2026-07-02",
    "n": 9,
@@ -702,6 +718,39 @@
     "PRECISE_only": 4,
     "CATASTROPHIC": 1,
     "POOR": 1
+   }
+  },
+  {
+   "config": "Rover_Turning",
+   "date": "2026-07-02",
+   "n": 31,
+   "SP": 4,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 19,
+   "xy_med": 1.104,
+   "xy_min": 0.026,
+   "vel_med": 2.884,
+   "cats": {
+    "MOD_PRECISE": 4,
+    "SP": 4,
+    "POOR": 4,
+    "CATASTROPHIC": 19
+   }
+  },
+  {
+   "config": "Rover_VelFF",
+   "date": "2026-07-02",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 2.135,
+   "xy_min": 2.135,
+   "vel_med": 4.189,
+   "cats": {
+    "CATASTROPHIC": 1
    }
   }
  ],
@@ -808,6 +857,14 @@
    "date": "2026-06-26",
    "xy_err": 0.0083,
    "rel_vel": 0.0344,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_CompassFree",
+   "path": "Rover_CompassFree/Thu Jul  2 18-07-18 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0085,
+   "rel_vel": 0.1112,
    "frozen_GT": false
   },
   {
@@ -1168,6 +1225,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0172,
    "rel_vel": 0.1864,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_CompassFree",
+   "path": "Rover_CompassFree/Thu Jul  2 18-00-01 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0172,
+   "rel_vel": 0.0692,
    "frozen_GT": false
   },
   {
@@ -1987,6 +2052,14 @@
    "frozen_GT": false
   },
   {
+   "config": "Rover_Turning",
+   "path": "Rover_Turning/spin_hold_n2/Thu Jul  2 15-23-35 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0258,
+   "rel_vel": 0.0658,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260630-151804/IC5_rep1",
    "date": "2026-06-30",
@@ -2152,6 +2225,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0276,
    "rel_vel": 0.1371,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_Turning",
+   "path": "Rover_Turning/yawff_spin_n2/Thu Jul  2 17-20-33 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0276,
+   "rel_vel": 0.0528,
    "frozen_GT": false
   },
   {
@@ -2368,6 +2449,14 @@
    "date": "2026-07-01",
    "xy_err": 0.0295,
    "rel_vel": 0.1703,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_Turning",
+   "path": "Rover_Turning/yawff_spin_n2/Thu Jul  2 17-19-01 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0297,
+   "rel_vel": 0.0572,
    "frozen_GT": false
   },
   {
@@ -2944,6 +3033,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0378,
    "rel_vel": 0.0284,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_Turning",
+   "path": "Rover_Turning/spin_hold_n2/Thu Jul  2 15-16-27 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.038,
+   "rel_vel": 0.1291,
    "frozen_GT": false
   },
   {
