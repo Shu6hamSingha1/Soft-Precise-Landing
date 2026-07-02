@@ -72,6 +72,35 @@ w_z feedforward into u_a so the loop handles only the residual.
 Perception-ON on a turning rover also needs the alpha-rate cap raised
 ([[feedback_rover_yaw_cal_resolved]]).
 
+## Why MATLAB tracks a rotating deck but PX4 can't (2026-07-02, verified)
+MATLAB Circular (deck ψ=wz·t @0.48) is 25/25 SP with the SAME error-driven u_a law.
+Three deliberate PX4 divergences broke ramp-tracking, each forced by the **~287 ms PX4
+yaw actuation lag** ([[feedback_input_cal_yaw_lag]]; MATLAB inner = lag-free SO(3) sim):
+(1) `Ω_a` 0.5→0.1 bake (the integral IS the ramp-tracker; detuned because u_a→∫psi_d is
+a double integrator with no phase margin vs the lag); (2) e_a wrap π-fold(±90°, MATLAB —
+its ellipse alpha is intrinsically π-periodic) → 2π-disambiguated (PX4; DELIBERATE
+upgrade killing the ±90° saddle limit cycle — do NOT revert; under a ramp the error can
+now reach ±180 and wind up); (3) psi_d rate clamp + conditional integration + alpha-
+sourced measured yaw (stationary-tuned band-aids).
+
+## NO yaw-rate feedforward was ever attempted in MATLAB (2026-07-02, exhaustive check)
+Every `u_a` in the codebase (canonical single-run :932, VDF `+blocks/yaw_asmc.m`,
+comparison ctrls, Obsolete/, git -S history) is the pure error law
+`u_a = Γ_a·σ_a + sat(σ_a/E_a)·κ_a + Ω_a·e_a`. **By DESIGN, per the manuscript**
+(manuscript.tex:213): `α̇ = −ψ̇_b + d_α, d_α = l_α^T ω_t` — target rotation is modeled
+as the DISTURBANCE d_α, handled by ADAPTIVE DOMINATION (the MATLAB gain comments are its
+implementation: `kappa_a_0=2.0 "pre-seed so sat*kappa_a can provide DC feed-forward"`,
+`Omega_a 0.8→0.5 "curb integral windup at high wz"`). Works lag-free; winds up through
+PX4's 287 ms. ASYMMETRY: the TRANSLATIONAL channel already measures-and-cancels its
+rotation terms (h_d's cross(w_i,s) transport FF) while the yaw channel leaves d_α to
+adaptation — even though the measured `w = ω_t − ψ̇_b·ê3` (manuscript def) means the
+lstsq `w_z` literally CONTAINS the needed signal. **The `u_a ← u_a + k_ff·w_z` FF is
+therefore a NEW design element** (candidate manuscript contribution: measured-w
+cancellation of d_α under actuation lag, no phase-margin cost), consistent with the
+paper's own kinematics. Pin sign/gain EMPIRICALLY on the spin harness (yaw signs have
+burned us twice: [[feedback_gtfb_wz_sign_bug]], PLASMC_GT_ALPHA_SIGN); acceptance = pure
+spin 0.48 with yaw SMC active → e_a converges ~0 (vs today's ±180 windup), then Circular.
+
 Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
 `PLASMC_GT_SPIN_WZ` (synthetic in-place spin). Heading-hold recipe: PLASMC_YAW_GAMMA=0
 KAPPA0=0 OMEGA=0 **N=0** (all four). Data test_data/Rover_Turning/{yawhold_arm_n3,
