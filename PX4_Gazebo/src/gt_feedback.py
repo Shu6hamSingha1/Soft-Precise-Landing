@@ -93,42 +93,12 @@ class GTFeedback:
         self._wx = deque(maxlen=_maxlen)        # W_x history (NED, marker - camera)
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
-        # TARGET-MOTION FEEDFORWARD source (PLASMC_TGT_VEL_FF consumer in the
-        # controller): the curved-translation lag is the loop generating the
-        # target's ACCELERATION (the rate of its velocity vector — rotating on a
-        # circle) purely from error -> rotating e≈v·τ miss. Estimate the TARGET's
-        # own velocity (windowed LS slope of the marker position, same estimator
-        # as the relative velocity) and then a_t = windowed slope of that
-        # velocity; expose V-frame tgt_acc_V for the controller to feed forward.
-        # Velocity-matching itself needs no FF (h is RELATIVE flow); only the
-        # velocity's RATE does. PLASMC_GT_TGT_FF_TAU = accel window (s).
-        # ⚠ ESTIMATOR NOISE (2026-07-02 live finding): the control loop reads the
-        # pose at ~125 Hz but /pose updates at ~54 Hz → stair-stepped positions.
-        # A single differentiation tolerates it (the relative-velocity path), but
-        # DOUBLE differentiation amplifies the stairs ~5× (live median |a_t| 0.85
-        # vs true 0.184 → terminal 1/Z detonated the injected noise). Fixes:
-        # (1) DEDUP — sample the target position only when it actually CHANGES
-        #     (bridge update), on its own deques;
-        # (2) longer accel window (default 1.0 s ≈ 27° smear at wz=0.48 — fine);
-        # (3) clamp |a_ff| ≤ PLASMC_GT_TGT_FF_MAX (default 0.5; physical rover
-        #     a_t = w²r ≈ 0.18) so worst-case injection is bounded.
-        self._ff_pt_t = deque(maxlen=128)       # dedup'd target-pos sample times
-        self._ff_pt = deque(maxlen=128)         # dedup'd target NED positions
-        self._ff_vt_t = deque(maxlen=128)       # target-velocity sample times
-        self._ff_vt = deque(maxlen=128)         # target NED velocity samples
-        self._ff_tau = float(os.environ.get("PLASMC_GT_TGT_FF_TAU", "1.0"))
-        self._ff_max = float(os.environ.get("PLASMC_GT_TGT_FF_MAX", "0.5"))
-        self.tgt_acc_V = np.zeros(3)
-        self._vt_last = np.zeros(3)             # latest target NED velocity estimate
-        self._at_last = np.zeros(3)             # latest target NED accel estimate (clamped)
-        # LEAD PURSUIT (PLASMC_GT_TGT_LEAD, s, default 0 = off): regulate to the
-        # target's PREDICTED position p + v·τ + ½a·τ² instead of its current one.
-        # The a_t FF removes the CURVE penalty but the ordinary v·τ tracking lag
-        # (τ≈0.9–1.0 s, [[project_rover_speed_sweep]]) still ROTATES on a circle,
-        # so the terminal can't null it (2026-07-02: FF-only reps ride the descent
-        # at rel_lat 0.25–0.43 ≈ the 0.3 m platform edge and coin-flip the
-        # touchdown). Leading by ~τ makes the standing lag land ON target.
-        self._lead = float(os.environ.get("PLASMC_GT_TGT_LEAD", "0.0"))
+        # (The 2026-07-02 target-acceleration FF / lead-pursuit estimator was
+        # REMOVED per user: the "curved-translation lag" it targeted turned out
+        # to be a self-sustained lateral LIMIT CYCLE, not a lag — and the FF
+        # consumed target-pose derivatives forbidden by the manuscript Problem
+        # Statement anyway. See [[project_rover_turning_open]] for the oracle-
+        # bound results (steady 0.9-1.6 -> 0.31-0.51 m) retained as an ablation.)
 
         # SYNTHETIC TARGET SPIN (PLASMC_GT_SPIN_WZ, rad/s, default 0 = off):
         # add wz_spin*(t-t0) to the target yaw, i.e. a target rotating IN PLACE
@@ -170,39 +140,7 @@ class GTFeedback:
         cam_ned    = up  + Ru @ (FRD_2_FLU @ _CAM_OFF_FLU)         # camera position, NED
         marker_ned = tpp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)      # marker position, NED
 
-        # --- target-motion estimation (dedup'd; see __init__ noise note) ---
-        # Sample the target position only when it actually CHANGED (bridge
-        # update): the 125 Hz control loop reading a 54 Hz topic stair-steps,
-        # and double differentiation amplifies stairs ~5x. Two-stage windowed
-        # LS: position->v_t (velocity window), v_t->a_t (_ff_tau window),
-        # |a_t| clamped to _ff_max.
-        if (len(self._ff_pt) == 0
-                or float(np.max(np.abs(marker_ned - self._ff_pt[-1]))) > 1e-12):
-            self._ff_pt_t.append(t); self._ff_pt.append(marker_ned)
-            pt_t = np.asarray(self._ff_pt_t, float)
-            if len(pt_t) >= 3:
-                kv = pt_t >= (pt_t[-1] - max(self._tau, 0.12))
-                if kv.sum() >= 3:
-                    v_t = np.asarray(_slope(pt_t[kv], np.asarray(self._ff_pt)[kv]), float)
-                    self._vt_last = v_t
-                    self._ff_vt_t.append(float(pt_t[-1]))
-                    self._ff_vt.append(v_t)
-                    vts = np.asarray(self._ff_vt_t, float)
-                    ka = vts >= (vts[-1] - self._ff_tau)
-                    if ka.sum() >= 3:
-                        a_t = np.asarray(_slope(vts[ka], np.asarray(self._ff_vt)[ka]), float)
-                        _na = float(np.linalg.norm(a_t))
-                        if _na > self._ff_max:
-                            a_t *= self._ff_max / _na
-                        self._at_last = a_t
-
-        # LEAD PURSUIT (see __init__): regulate to the predicted target position.
-        if self._lead > 0.0:
-            marker_used = (marker_ned + self._lead * self._vt_last
-                           + 0.5 * self._lead ** 2 * self._at_last)
-        else:
-            marker_used = marker_ned
-        W_x_tu = marker_used - cam_ned                            # (led) marker - camera, NED
+        W_x_tu = marker_ned - cam_ned                             # marker - camera, NED
 
         # relative yaw (uav - target), unwrapped across calls for a clean rate
         ry = _yaw_of(qu) - _yaw_of(qt)
@@ -278,9 +216,6 @@ class GTFeedback:
             B_v = Ru.T @ W_v_tu
             V_v = _v_frame(Ru) @ B_v
             h = V_v / (zB + Z_REG)
-            # --- target-motion FF: expose the (clamped) a_t estimate in V-frame
-            # (estimated above from dedup'd samples, before the lead shift). ---
-            self.tgt_acc_V = _v_frame(Ru) @ (Ru.T @ self._at_last)
             # SIGN FIX (2026-06-25): the rotational optic flow is w_z = -alpha_dot, NOT +alpha_dot.
             # Validated vs IMU: the perception lstsq w_z correlates -0.91 with the body yaw rate
             # (w_z = -psi_dot_b, per manuscript w = ^Vw_t - psi_dot_b*e3); alpha_dot = +psi_dot_b for a

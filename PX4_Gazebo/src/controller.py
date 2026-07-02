@@ -1705,34 +1705,11 @@ class Controller(Thread):
         # SMC adapt and recover instead of killing the run permanently.
         # _warmup_remaining is retained as a state variable for future use
         # but no longer gates anything here.
-        # ⚠ ORACLE DIAGNOSTIC — NOT part of the proposed controller (2026-07-02).
-        # The manuscript Problem Statement FORBIDS this information ("neither the
-        # target pose nor its derivatives can be measured or estimated in the
-        # closed loop"; a_t/z is inside d_h, Assumption 1: unknown bounds, handled
-        # by ADAPTIVE DOMINATION). This knob quantifies the ORACLE BOUND (the value
-        # of target-motion knowledge: curve steady-lag 0.9-1.6 -> 0.31-0.51 m) vs
-        # the manuscript-compliant adaptive residual — an ablation, not a fix.
-        # Deployable only under a declared COOPERATIVE-platform extension (deck IMU).
-        # TARGET-MOTION VELOCITY FEEDFORWARD (PLASMC_TGT_VEL_FF=1, default OFF;
-        # GT-FB only): add the target's own acceleration (the RATE of its velocity
-        # vector, V-frame, gt_feedback.tgt_acc_V) to the lateral command.
-        # Velocity-MATCHING needs no FF (the flow h is RELATIVE); on a CURVED path
-        # the target's velocity direction rotates and the loop must otherwise
-        # generate a_t = w x v_t from error -> the rotating e≈v·τ lag that misses
-        # the platform (heading-hold Circular 0/4, [[project_rover_turning_open]]).
-        # Applied AFTER the commit taper/caps above (2026-07-02 A/B: injecting
-        # BEFORE let the terminal-commit lateral taper STRIP the centripetal
-        # command exactly at touchdown -> rotating error reappears at max 1/Z ->
-        # 3/3 terminal miss despite steady-lag halving 0.9-1.6->0.37-0.51). The FF
-        # is reference-driven (not error-driven) and self-clamped in gt_feedback
-        # (PLASMC_GT_TGT_FF_MAX=0.5 m/s² vs physical rover a_t≈0.18) -> safe to
-        # ride above the error-command caps; zero for stationary/straight targets.
-        if (os.environ.get("PLASMC_TGT_VEL_FF", "0") == "1"
-                and self._gt_feedback is not None):
-            _aff = getattr(self._gt_feedback, "tgt_acc_V", None)
-            if _aff is not None:
-                a_u = a_u.copy()
-                a_u[:2] += np.asarray(_aff, float)[:2]
+        # (The 2026-07-02 target-acceleration FF (PLASMC_TGT_VEL_FF) was REMOVED
+        # per user: the "curved-translation lag" it targeted is a self-sustained
+        # lateral LIMIT CYCLE, not a lag — and the FF consumed target-pose
+        # derivatives forbidden by the manuscript Problem Statement. Oracle-bound
+        # results retained in [[project_rover_turning_open]] as an ablation.)
         self._a_u.append(a_u)
 
     def _yawCtrl(self):
