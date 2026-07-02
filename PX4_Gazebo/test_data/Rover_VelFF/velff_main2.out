@@ -1,0 +1,9 @@
+----- circvff rep 1/3 -----
+[RESULT] circvff rep1: MISS/FAIL min_alt=0.17 lat=3.007 relspd=3.34 steady_lag=0.51 peak=5.0
+----- circvff rep 2/3 -----
+[RESULT] circvff rep2: MISS/FAIL min_alt=0.10 lat=1.322 relspd=2.50 steady_lag=0.38 peak=5.0
+----- circvff rep 3/3 -----
+[RESULT] circvff rep3: NEAR min_alt=0.59 lat=0.447 relspd=6.08 steady_lag=0.37 peak=5.0
+----- linvff rep 1/1 -----
+[RESULT] linvff rep1: ON-PLATFORM min_alt=0.51 lat=0.106 relspd=0.64 steady_lag=0.14 peak=5.0
+VELFF DONE

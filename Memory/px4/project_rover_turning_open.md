@@ -130,9 +130,31 @@ the ASMC's lagged output — only valid for slow/constant rates). Candidate defa
 the rover scenario only. The measured-w_z→u_a variant (true disturbance FF) remains
 untried — would handle varying rates too.
 
-**REMAINING single open item for Circular: the curved-translation lag** (rotating
-velocity direction × τ≈1 s ⇒ ~1–1.7 m systematic miss at 0.38 m/s). Lever = target
-velocity/curvature feedforward in the lateral channel.
+## ⭐ CURVED-TRANSLATION LAG: the a_t FF WORKS (steady lag −60%); terminal edge-margin remains (2026-07-02)
+Implemented `PLASMC_TGT_VEL_FF=1` (default OFF): gt_feedback estimates the TARGET's own
+acceleration a_t (rate of its velocity vector — the quantity a curve demands; velocity-
+MATCHING needs no FF since the flow h is RELATIVE) and the controller adds tgt_acc_V[:2]
+to a_u after the caps. RESULTS (Circular wz=0.48 + yaw-FF, GT-FB):
+- **Steady tracking lag 0.9–1.6 → 0.31–0.51 m** (n=6 across arms) — the CURVE PENALTY is
+  removed (≈ the plain v·τ straight-line lag). Linear side-benefit: 0.40 → **0.14 m**
+  (the FF also covers the gate-start acceleration). No fly-aways.
+- **Terminal still misses at ~platform-edge margin**: the residual ~0.3–0.4 m lag still
+  ROTATES, drone rides the descent at rel_lat 0.25–0.43 vs the 0.3 m half-width →
+  coin-flip touchdowns (1 NEAR 0.447; misses 1.1–3.0).
+⚠ ESTIMATOR LESSON: the first live version read |a_t|≈0.85 vs true 0.184 — the 125 Hz
+control loop reading the 54 Hz /pose stair-steps, and DOUBLE differentiation amplifies
+stairs ~5× → terminal detonation (17.7 m). FIX: dedup sampling (only on pose CHANGE) +
+1.0 s accel window + |a_ff|≤PLASMC_GT_TGT_FF_MAX=0.5 clamp → unit-exact (0.183) under
+stair-stepped input. (The single-diff relative-velocity path tolerates stairs; double
+diff does not — cousin of [[feedback_gt_noise_uniform_dt]].)
+- Injection order tested: before vs after the commit taper/caps = NO difference (the
+  TERMINAL_COMMIT extent gate never fires in GT-FB — extent max 295 < 400).
+- **LEAD PURSUIT (`PLASMC_GT_TGT_LEAD`, predict p+v·τ+½a·τ², default 0=off): UNVALIDATED
+  and n=1-REGRESSED** (τ=0.8: steady lag 1.11, MISS 2.13; 2 of 3 reps lost to a NEW
+  silent startup flake `set_rate_odometry TIMEOUT` → exits 0 → false-SUCCESS, detection
+  since added to the launcher). Candidates for the last ~0.3 m: smaller lead (0.4–0.5)
+  or phase-advanced v (rotate v_t by wz·τ) instead of quadratic; OR shrink the FF's own
+  phase lag (FF_TAU 1.0→0.5). Data test_data/Rover_VelFF/.
 
 Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
 `PLASMC_GT_SPIN_WZ` (synthetic in-place spin), `PLASMC_YAW_OMEGA_D_FF` (the windup fix).

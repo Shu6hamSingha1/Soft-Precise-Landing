@@ -356,4 +356,10 @@ if grep -q 'Unable to get simulation time' "$PY_OUT" 2>/dev/null; then
   echo "[run] DETECTED: /clock bridge race (no simulation time)."
   exit 42
 fi
+# MAVSDK telemetry-rate timeout at startup (set_rate_* TIMEOUT -> "Unable to get
+# data from Flight Controller") — exits 0 without saving; retriable flake.
+if grep -qE "origin: set_rate_|Unable to get data from Flight Controller" "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: MAVSDK telemetry startup timeout."
+  exit 42
+fi
 exit "$PY_EXIT"
