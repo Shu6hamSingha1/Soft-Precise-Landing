@@ -79,6 +79,20 @@ if [ -z "$ROVER_DRIVE" ] && [ "$ROVER_MOTION" = "1" ]; then
   ROVER_DRIVE="'$VENV/bin/python3' '$SCRIPT_DIR/../apps/rover_drive.py'"
 fi
 
+# Descent-start gate flag: the controller touches CHASE_GATE_FILE when it engages
+# (CONTROLLER_READY). Both the chase recorder AND the rover motion driver key off
+# it, so set it up whenever either consumer is active. Cleared each run.
+if [ "$ROVER_MOTION" = "1" ] || [ "${CHASE_CAM:-0}" = "1" ]; then
+  export CHASE_GATE_FILE="${CHASE_GATE_FILE:-$LOG_DIR/chase_gate.flag}"
+  rm -f "$CHASE_GATE_FILE" 2>/dev/null
+fi
+if [ "$ROVER_MOTION" = "1" ]; then
+  # Rover holds its start position until descent-start, then drives the
+  # trajectory — the drone's ~60 s arm/takeoff/IC happens over a stationary
+  # rover (the IC rig doesn't chase a moving target).
+  export ROVER_GATE_FILE="${ROVER_GATE_FILE:-$CHASE_GATE_FILE}"
+fi
+
 declare -a PIDS=()
 declare -A NAMES=()
 
@@ -251,12 +265,8 @@ start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
 # test_data/Test_Videos/chase_<ts>.mp4 for RECORD_S seconds. Independent of the
 # UAV's down-cam recording (IMG_RECORD).
 if [ "${CHASE_CAM:-0}" = "1" ]; then
-  # Gate the chase recorder to descent-start (like the down-cam IMG_RECORD): the
-  # controller touches CHASE_GATE_FILE when it engages; record_chase.py waits for
-  # it. Export so BOTH landing_test (controller) and the recorder see it; clear
-  # any stale flag from a previous run first.
-  export CHASE_GATE_FILE="${CHASE_GATE_FILE:-$LOG_DIR/chase_gate.flag}"
-  rm -f "$CHASE_GATE_FILE" 2>/dev/null
+  # CHASE_GATE_FILE already exported/cleared above (shared with the rover driver);
+  # record_chase.py waits for it, so the video starts at descent-start.
   CHASE_TOPIC_GZ="/world/$WORLD/model/ground_plane/link/link/sensor/chase/image"
   start_bg bridge_chase ros2 run ros_gz_bridge parameter_bridge \
     "${CHASE_TOPIC_GZ}@sensor_msgs/msg/Image@gz.msgs.Image" \
@@ -337,6 +347,13 @@ if grep -qE 'is_armable did not go True|arm\(\) failed even after is_armable' "$
 fi
 if grep -q 'IC convergence timeout' "$PY_OUT" 2>/dev/null; then
   echo "[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle)."
+  exit 42
+fi
+# /clock bridge race: landing_test dies at startup with "Unable to get
+# simulation time" (clock node got no /clock messages) but exits 0 — without
+# this detection the retry wrapper mistakes the dead run for success.
+if grep -q 'Unable to get simulation time' "$PY_OUT" 2>/dev/null; then
+  echo "[run] DETECTED: /clock bridge race (no simulation time)."
   exit 42
 fi
 exit "$PY_EXIT"

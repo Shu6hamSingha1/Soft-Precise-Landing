@@ -29,6 +29,14 @@ Env config:
   ROVER_YAW_MODE   spec | tangent | zero (default spec).
   ROVER_RATE_HZ    Setpoint stream rate (default 20).
   ROVER_MAX_T      Optional stop time [s]; unset = run until killed.
+  ROVER_GATE_FILE  If set, HOLD the start position (offboard active) until this
+                   flag file appears, then begin the trajectory with t=0 at the
+                   gate moment. The controller touches the same flag at
+                   descent-start (CHASE_GATE_FILE mechanism), so the rover starts
+                   moving exactly when the landing starts — the drone's arm/
+                   takeoff/IC sequence (~60 s) happens over a stationary rover
+                   (the IC rig doesn't have to chase a moving target).
+  ROVER_GATE_TIMEOUT  Max seconds to wait for the gate (default 180).
 """
 
 import os
@@ -50,6 +58,8 @@ YAW_MODE = os.environ.get("ROVER_YAW_MODE", "spec")
 RATE_HZ = float(os.environ.get("ROVER_RATE_HZ", "20"))
 MAX_T = os.environ.get("ROVER_MAX_T")
 MAX_T = float(MAX_T) if MAX_T else None
+GATE_FILE = os.environ.get("ROVER_GATE_FILE", "")
+GATE_TIMEOUT = float(os.environ.get("ROVER_GATE_TIMEOUT", "180"))
 
 
 async def _wait_connected(rover):
@@ -92,7 +102,11 @@ async def run():
     print(f"[rover_drive] traj={TRAJ} speed_mult={SPEED_MULT} yaw={YAW_MODE} "
           f"rate={RATE_HZ}Hz max_t={MAX_T}", flush=True)
 
-    rover = System()
+    # Dedicated mavsdk_server gRPC port: the default System() port is 50051,
+    # which landing_test's FC also uses (its own embedded server). Sharing the
+    # port makes the FC connect to THIS rover server (bound to udp 14541) ->
+    # landing_test hangs waiting for the UAV on 14540. 50052 keeps them separate.
+    rover = System(port=int(os.environ.get("ROVER_MAVSDK_PORT", "50052")))
     await _wait_connected(rover)
     await _arm(rover)
 
@@ -109,6 +123,28 @@ async def run():
         raise
 
     dt = 1.0 / RATE_HZ
+
+    # Gate: hold the start position (keep streaming setpoints so offboard stays
+    # alive) until the descent-start flag appears; trajectory t=0 = gate moment.
+    if GATE_FILE:
+        print(f"[rover_drive] holding start pos; waiting for gate {GATE_FILE} "
+              f"(timeout {GATE_TIMEOUT:.0f}s)", flush=True)
+        import time as _time
+        _w0 = _time.time()
+        while not os.path.exists(GATE_FILE):
+            if _time.time() - _w0 > GATE_TIMEOUT:
+                print("[rover_drive] gate never opened — exiting (rover stays put).",
+                      flush=True)
+                try:
+                    await rover.offboard.stop()
+                except Exception:
+                    pass
+                return
+            await rover.offboard.set_position_ned(
+                PositionNedYaw(s0.x, s0.y, 0.0, math.degrees(s0.yaw)))
+            await asyncio.sleep(dt)
+        print("[rover_drive] gate open — starting trajectory.", flush=True)
+
     t = 0.0
     prev_yaw = s0.yaw
     try:
