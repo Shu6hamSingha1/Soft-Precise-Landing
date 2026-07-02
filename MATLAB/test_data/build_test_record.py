@@ -75,6 +75,11 @@ f = [
  ["F14", "[back-filled 2026-07-02, from 2026-06-15 session] Adaptive CoG feedforward gate (validate_cogff.m): base 27/30 SP -> GAMMA_COG=0.003: 29/30, =0.005: 29/30 (tied; xy_med 0.017 -> 0.005/0.006). Improves IC3/4/5, no regression on IC1/2 -> GAMMA_COG 0->0.005 baked (2ec4477).", "MATLAB/Datasets/validate_cogff.mat (90 rows: ic1-5 x ci{base,0.003,0.005} x 6 reps); memory feedback_cog_adaptive_feedforward", "First IC5-recovering lever that passes the full IC1-5 gate; thrust-scaled Lee-style tau_ff=-T*theta_hat"],
  ["F15", "[back-filled 2026-07-02, from 2026-06-15/17 sessions] IC5 12-seed matched harness (sen_ic5_seedtest.m): base 9/12 SP (2 fly) vs outer-integral scaling kI=0.5: 8/12 (3 fly), kI=1.0: 2/12 (10 fly), kI>=2.0: 0/12 (12 fly) vs noCOG ORACLE 11/12 (0 fly).", "MATLAB/Datasets/sen_ic5_seedtest_last.mat (72 rows: seed1-12 x cfg{base,kI0.5-4.0,noCOG}); memory feedback_ic5_cbf_strip_mechanism", "The IC5 binding uncertainty IS the CoG offset (oracle nearly perfect); raising the outer integral is a catastrophic dead-end"],
  ["F16", "[back-filled 2026-07-02, from ~2026-06-17 session] SEN-funnel sweep, final baseline arm (sen_funnel_sweep.m): 18/25 SP over IC1-5 x 5 reps; failures = IC3 FoV-fails at t~0.42 s (the CBF corner-strip era) + soft-misses; per-rep funnel residency (maxsen), saturation (ssat), breach (brc), and izeta-saturation columns recorded.", "MATLAB/Datasets/sen_funnel_sweep_last.mat (25 rows); memory feedback_sen_authority_analysis", "Quantifies the pre-combined-barrier SEN-funnel baseline the authority analysis was run against"],
+ ["F17", "LOCKED kappa-engaged config baked in vdf_params.m (kappa0 .05 / N .10 / Pleak [.5;.5;1.5] / E .5 / Xi_r .3 / p_rinf .85 / theta_per_axis): 25/25 SP gate + 7x-stress 5/5 (vs 3/5 old baked) + kappa_z adapts MONOTONE 5.6x RMS (.057->.318) / 7.2x peak over the {0,1,3,5,7}x stress ladder. E gates switching DELIVERY not adaptation; E_xy=0.5 floor (lower pumps terminal velocity); p_h untightenable (funnel overtakes h_e); p_rinf floor ~0.85 (engR->1 below).", "LK1-LK9 (locked_yaw_hd_log sheet); MATLAB/Datasets/MultiInit/kappa_adapt.mat; memory Memory/matlab/project_locked_kappa_engagement", "Funnels+kappa now ENGAGED -> real disturbance margin for Gazebo; p_rinf=0.85<1 needs Standing-Cond-1 manuscript framing"],
+ ["F18", "Yaw +-90deg observability ceiling: alpha = 0.5*atan2(2mu11, mu20-mu02) uses only EVEN-order (2nd) moments -> invariant under 180deg -> orientation observable mod 180 only; yaw_asmc's x2../2 unwrap folds e_a to +-90 and fast heading swings PIN e_a at 90 (no gain can act on unrepresentable error -- e_a stays 88-90deg across EVERY yaw param). FIX = PX4-parity weighted 2pi port (corner weights [4,3,2,1], weighted-centroid displacement = odd 1st moment disambiguates the pi-axis); verified clean 360 sweep; unwrap removed; gate 25/25.", "Y1-Y7 (locked_yaw_hd_log); Obsolete/image_feature_pre_weighted2pi.m; memory Memory/matlab/project_yaw_observability_campaign", "MATLAB perception now matches PX4 _marker_principal_angle; yaw error is a faithful +-180 signal"],
+ ["F19", "Yaw-rate ceiling ~0.5 rad/s is ARCHITECTURAL, not gain-tunable: at 2x Circular yaw (0.96 rad/s) the failure is LATERAL (termEa only 14-18deg) -- s_e expressed in the drone-yaw-aligned V frame ORBITS at the yaw rate; radial convergence must ride on top of orbit-tracking and the accel budget saturates (CBF cone-sat frac 0.66->0.86) until the position funnel breaches (engR 1.16). chi_r 2->4 no help; kR_yaw=1.0 marginal (2/5, breaks oscillating-heading cases); yaw-rate FF Omega_d=u_a REVERTED (u_a is the lagged output -- circular).", "Y5-Y6, Y9 (locked_yaw_hd_log); cone-sat/engR vs yaw-mult audit", "Levers = wider accel budget or yaw-fixed lateral frame (research scope); manuscript range 0.29-0.67 rad/s sits inside the ceiling"],
+ ["F20", "Heading-yaw (tangent atan2(vy,vx)) on Sin/Liss: Sinusoidal trackable post-2pi with gentle Gamma_a=0.15 (5/5 realistic + speed; its vy=v0>0 bounds the swing); Lissajous INTRACTABLE -- velocity ~vanishes at reversals (A=0.4: max|psi_dot|=32 rad/s) -> ~180 snaps; rate-limited stateful heading does NOT fix (Sin regresses 4/5, Liss 1/5); larger A softens (worstXY 39->5) but 0/5 at all A. REVERTED -- traj_Gen restored (Sin/Liss non-rotating); Circular remains the yaw-exercising case (kappa_a adapts to sigma_a~0.95 -> ~0.5 equilibrium).", "Y1-Y4, Y8, Y10 (locked_yaw_hd_log)", "A non-rotating Liss target is the physically honest model; heading-yaw enablement parked, revertible from Obsolete/"],
+ ["F21", "Prescribed-rate h_d (user design): h_d xy term s_dot_meas -> phi_max.*S_r.*dp_r; derivative is 1000x smaller (RMS .007 vs measured s_ddot ~7) -> folded into dh_d/c-term, s_ddot-drop REMOVED. Gate 25/25+25/25 noiseless, speed 20/20; A/B: standard stress equivalent (no breach occurs), BREACHING scenario (2x yaw) prescribed engR 0.76 NO-breach vs measured 1.16 breach. OPEN: formula incomplete -- s_e=phi_max*S_r*p_r => full deriv needs phi_max*(S_r_dot*p_r + S_r*dp_r); current form assumes S_r_dot=0; awaiting prescribed S_r_dot contraction law.", "Y11-Y13 (locked_yaw_hd_log); Obsolete/{position_funnel,flow_surface}_pre_prescrate.m; memory Memory/matlab/project_prescribed_rate_hd", "Bounded-on-breach h_d = recovery authority (validated); DO NOT commit/port to PX4 until the S_r_dot term is resolved"],
 ]
 for r in f:
     ws2.append(r)
@@ -165,7 +170,50 @@ for r in range(2, ws3.max_row + 1):
     elif "out" in v or "wash" in v or "bug" in v or "trades" in v:
         ws3.cell(r, 6).font = vfail
 
+# ===== Sheet 4: LOCKED-config + yaw + prescribed-h_d trial log (2026-06-26..07-02 session) =====
+ws4 = wb.create_sheet("locked_yaw_hd_log")
+s4_cols = ["Trial", "Date", "Harness (cb_*.m)", "What varied", "Result", "Verdict"]
+ws4.append(s4_cols)
+s4 = [
+ ["LK1", "2026-06-26", "cb_engage_probe/sweep", "nominal engagement audit on old baked config", "funnel/kappa IDLE in nominal (engR~0.6 only at IC5); no margin for real disturbance", "retune needed"],
+ ["LK2", "2026-06-26", "cb_D_fulltest", "config D (kappa0 .05, N .10, Pleak [.5;.5;1.5]) 5 traj x 5 IC", "25/25 SP realistic; kappa active", "D holds the gate"],
+ ["LK3", "2026-06-27", "cb_kappa_reject", "D vs old-baked under stress escalation per axis", "kappa adapts UP under stress (kRMS_xy .07->.19) where baked stays flat; 7x stress 5/5 vs baked 3/5", "kappa DEMONSTRABLY rejects; 7x margin"],
+ ["LK4", "2026-06-28", "cb_E_kappa_sigma/E25_validate", "boundary layer E_xy {0.25,0.5,1.0}", "wide E_x=1.0 gates lateral switching (delivery); E_xy<0.5 pumps terminal velocity", "E=0.5 floor; E gates delivery NOT adaptation"],
+ ["LK5", "2026-06-28", "cb_kappa_validate/threshold", "KNOWN_DIST hook: Fx=3N step on [2,6]s (Static)", "kappa_x rises +43% while force on, leak-decays after off", "adaptation law verified against known input"],
+ ["LK6", "2026-06-29", "cb_funnel_tighten/imgfunnel/lock_ph", "Xi_r .10->.3 + p_rinf 1.0->.85; then p_h tighten", "pr-tight: xy .013->.011 (~15%), 25/25 held; p_h tighten FAILS (funnel overtakes h_e convergence, 14/25)", "bake pr-tight; p_h untightenable"],
+ ["LK7", "2026-06-30", "cb_lock_fulltest", "LOCKED (D + E.5 + pr-tight) full manuscript battery", "25/25 gate + speed 40/40 (+-40%) + multi-init 50/50 + comparison Proposed SP all", "LOCKED baked into vdf_params"],
+ ["LK8", "2026-07-01", "cb_pr_reduce", "p_rinf {0.85,0.70,0.60,0.50} below the bake", "lower p_rinf -> maxEngR climbs toward 1 (breach margin gone); no precision gain worth it", "0.85 = floor"],
+ ["LK9", "2026-07-01", "cb_lock_kappa/cb_kappa_adapt_data", "kappa vs disturbance ladder {0,1,3,5,7}x, 10 cells", "kappa_z RMS .057/.073/.137/.220/.318 MONOTONE (5.6x); peak 7.2x; x 2.7x, y 1.7x (peak)", "genuine adaptation; kappa_adapt.mat"],
+ ["LK10", "2026-06-30", "cb_gamma_why/cb_au_decomp", "why Gamma can't replace kappa (terminal balloon mechanics)", "switching term theta*sat*kappa = 94% of terminal a_u spike; reaching a_u 47.3 @Gamma=2 vs 10.4 baked (G_2^-1 amplification)", "Gamma over-drives; kappa is the right lever"],
+ ["Y1", "2026-06-27", "(traj_Gen heading yaw)", "tangent heading atan2(vy,vx) on Sin/Liss", "Sin: realistic 5/5, speed 5/5, noiseless 4/5; Liss: 0/3 fly-away (~180deg heading snaps)", "Sin near-works; Liss pathological"],
+ ["Y2", "2026-06-27", "cb_yawret", "yaw-gain screen on Sin noiseless failure", "gentler recovers (Gamma_a .15 -> 5/5, E_a 8 -> 5/5); faster (Gamma_a .5, Omega_a .5) -> 3/5", "failure = yaw->lateral PUMP, not lag"],
+ ["Y3", "2026-06-27", "cb_yawlag/cb_yawlc", "trace target/drone yaw + limit-cycle check", "drone swings 140deg vs target 77deg (~90deg phase lag, overshoot); sat(sigma_a/E_a) frac 0.00, rate flips 4-6", "bandwidth-limited FORCED track; NO limit cycle"],
+ ["Y4", "2026-06-27", "cb_eaconv", "e_a convergence per 2s window", "amplitude steady 20-90deg ALL windows to touchdown; peaks pinned at 90deg", "bounded NOT converging; 90deg = observability ceiling"],
+ ["Y5", "2026-06-27", "cb_kryaw/cb_yawall", "kR_yaw {0.5-2.5}, kOmega_yaw {0.1-0.6}, all ASMC levers", "e_a stays 88-90deg at EVERY setting; kR_yaw>=1 breaks Sin (3/5); kOmega_yaw pinned 0.2 (down=cycle, up=lag)", "NO gain reduces the lag; inner levers exhausted"],
+ ["Y6", "2026-06-28", "(so3_tracker yaw FF)", "Omega_d=[0;0;u_a] feedforward", "Circular helped (e_a 53deg, 5/5); Sin 5/5->3/5 (u_a = lagged output, FF amplifies the swing)", "REVERTED; circular feedback"],
+ ["Y7", "2026-07-01", "cb_rotsweep + gate", "2pi weighted-corner orientation port (PX4 parity) + unwrap removal", "synthetic 360 sweep CLEAN (15deg steps, no fold); full gate 25/25 realistic + 25/25 noiseless; alpha_d auto-correct (Static termEa -0.0deg)", "2pi orientation KEPT (uncommitted)"],
+ ["Y8", "2026-07-01", "cb_yawtune/cb_yawterm", "post-2pi gentle retune + terminal-lag levers", "Ga.15/Oa.15/Ea6 all recover Sin heading-yaw 5/5; Omega_a=0.4 cuts Circ termEa 17->9deg but Sin 41->60deg (windup on oscillating ref)", "gentle linear yaw wins; integral only for constant yaw"],
+ ["Y9", "2026-07-02", "cb_circyaw/cb_coupling/cb_caps/cb_chitest/cb_kryaw2", "Circular yaw-rate mult {1,2,3,4,6}x + cap audit", "1x 5/5 -> 2x 1/5 -> 3x+ 0/5; s_e ORBITS at yaw rate; cone-sat frac .66/.71/.86; funnel breach engR 1.16 @2x; chi_r 2-4 flat; kR_yaw1.0 2/5", "~0.5 rad/s ceiling ARCHITECTURAL (frame coupling + accel budget)"],
+ ["Y10", "2026-07-02", "cb_wmax/cb_lissA*/cb_relax", "rate-limited stateful heading (w_max .05-.4) + Liss A/freq relax", "rate-limit does NOT fix (Sin 4/5 all w_max; Liss 1/5); bigger A softens raw-heading severity (worstXY 39->5) but 0/5", "REVERTED -- traj_Gen restored; Liss stays non-rotating"],
+ ["Y11", "2026-07-02", "cb_dhd/cb_presc/cb_fold/cb_sinliss", "prescribed-rate h_d: s_dot_meas -> phi_max.*S_r.*dp_r, then folded into dh_d", "d(s_dot_presc)/dt RMS .007 vs measured s_ddot ~7 (1000x smaller) -> s_ddot-drop removed; gate 25/25 + 25/25 noiseless (baked gains)", "smooth + consistent h_d/dh_d; validated"],
+ ["Y12", "2026-07-02", "cb_ab/cb_ab2", "A/B prescribed vs measured h_d, same seeds", "standard stress 1-7x EQUIVALENT (5/5 both, engR .59, no breach); BREACHING 2x-yaw: prescribed engR .76 NO-breach + worstXY 1.12 vs measured 1.16 breach + 1.56; speed sweep 20/20", "bounded-on-breach benefit CONFIRMED"],
+ ["Y13", "2026-07-02", "(user review)", "formula audit of s_dot_presc", "phi_max.*S_r.*dp_r assumes S_r CONSTANT; s_e=phi_max*S_r*p_r => missing phi_max*S_r_dot*p_r term; measured S_r_dot would collapse to s_dot_meas (circular)", "OPEN -- awaiting prescribed S_r_dot contraction law"],
+]
+for r in s4:
+    ws4.append(r)
+for i, w in enumerate([7, 11, 30, 40, 62, 40], 1):
+    ws4.column_dimensions[get_column_letter(i)].width = w
+style_header(ws4, len(s4_cols))
+for r in range(2, ws4.max_row + 1):
+    for c in range(1, len(s4_cols) + 1):
+        cell = ws4.cell(r, c); cell.alignment = wrap; cell.border = border; cell.font = Font(size=9)
+    v = (ws4.cell(r, 6).value or "")
+    if any(k in v for k in ("holds", "margin", "verified", "bake", "KEPT", "CONFIRMED", "validated", "wins", "right lever", "genuine")):
+        ws4.cell(r, 6).font = vpass
+    elif any(k in v for k in ("REVERTED", "OPEN", "FAILS", "exhausted", "pathological", "ARCHITECTURAL", "untightenable", "retune needed")):
+        ws4.cell(r, 6).font = vfail
+
 import os
 out = os.path.join(os.path.dirname(__file__), "MATLAB_test_record.xlsx")
 wb.save(out)
-print("wrote", out, "-", ws.max_row - 1, "trials,", ws2.max_row - 1, "findings")
+print("wrote", out, "-", ws.max_row - 1, "trials,", ws2.max_row - 1, "findings,", ws4.max_row - 1, "session-4 rows")

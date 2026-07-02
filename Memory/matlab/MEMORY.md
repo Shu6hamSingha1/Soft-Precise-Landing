@@ -4,6 +4,11 @@
 > NEW entries here (not the legacy ../MEMORY.md). Topic files for new MATLAB work live
 > in this folder. Cross-cutting findings go in ../shared/. PX4 work -> ../px4/.
 
+## Current (2026-06-26 → 07-02 controller campaign — code UNCOMMITTED in tree, datasets stale vs it)
+
+- ⭐ **[Prescribed-rate h_d — OPEN handoff](project_prescribed_rate_hd.md)** — s_dot_meas → phi_max·S_r·dp_r in h_d, s̈-drop removed (deriv 1000× smaller → c-term); 25/25+25/25 gate, A/B breach benefit (engR .76 vs 1.16); ⛔ formula incomplete (S_r not constant — missing phi_max·Ṡ_r·p_r term), awaiting prescribed Ṡ_r law
+- ⭐ [Yaw observability campaign](project_yaw_observability_campaign.md) — 2π weighted-corner orientation ported PX4→MATLAB (±90° second-moment fold removed; 360° verified; gate 25/25); yaw gain map exhausted (e_a pinned 90° pre-2π at ALL gains); yaw-rate ceiling ~0.5 rad/s ARCHITECTURAL (s_e orbits in yaw frame → cone-sat 0.86 + funnel breach 1.16); heading-yaw Sin/Liss explored → REVERTED (Liss path untrackable); yaw-rate FF reverted (u_a = lagged output)
+- ⭐ [LOCKED kappa-engaged config](project_locked_kappa_engagement.md) — vdf_params bake: kappa0 .05/N .10/Pleak [.5;.5;1.5]/E .5/Xi_r .3/p_rinf .85/per-axis-θ → 25/25 + 7× stress 5/5 (vs 3/5 old) + κ_z adapts 5.6× monotone over stress ladder (kappa_adapt.mat); E gates delivery not adaptation; p_h untightenable; p_rinf=0.85<1 needs Standing-Cond-1 manuscript framing
 
 ## Legacy manuscript-side index (migrated 2026-07-02 from the legacy ../MEMORY.md; files live in `Memory/` root)
 
