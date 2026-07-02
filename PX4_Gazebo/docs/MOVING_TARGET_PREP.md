@@ -8,6 +8,21 @@ relative lateral 0.28 m (inside the 0.3 m platform half-width), relative speed
 (rel lateral 0.28/0.044/0.048 m, rel speed 0.08/0.23/0.23 m/s, all min-alt at
 the platform top, 0 fly-aways).
 
+## SPEED SWEEP (2026-07-02, GT-FB Linear, n=3/cell) — envelope ≤ ~1.1 m/s
+| rover speed | on-platform | touchdown rel-lat | steady lag (3→1 m alt) |
+|---|---|---|---|
+| 0.47 m/s | 3/3 | 0.044–0.28 m | 0.40 m |
+| 0.78 m/s | 3/3 | 0.034–0.143 m | 0.72 m |
+| 1.09 m/s | 3/3 | 0.048–0.110 m | 0.94 m |
+| 1.56 m/s | 1/3 (+near-miss 0.324, +miss 1.06) | 0.167–1.06 m | 1.65 m |
+
+0 fly-aways at any speed. Mechanism: steady tracking lag ∝ target speed
+(equivalent servo lag τ≈0.9–1.0 s, outer-loop bandwidth — NOT the 38 ms
+actuation lag); the terminal closure nulls the lag up to ~1.1 m/s, at 1.56 m/s
+the 1.65 m residual exceeds the 0.3 m platform margin. Lever if faster targets
+needed: target-velocity feedforward / outer integral (untested). Full analysis:
+[[project_rover_speed_sweep]].
+
 **Moving-landing run command:**
 ```bash
 HEADLESS=1 PLASMC_GT_FEEDBACK=1 ROVER_MOTION=1 ROVER_TRAJ=Linear \
