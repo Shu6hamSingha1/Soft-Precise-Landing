@@ -359,6 +359,26 @@ async def main(record = 'n'):
                       f"using fixed DES_ALPHA_DEG s_d[3]={np.rad2deg(DES_IMG_FEATURE_PARAM[3]):.1f}°")
         cur_z = FC_node.getPosBody().z_m       # for the brief PID warmup below
 
+        # ── COMPASS-FREE VALIDATION (env COMPASS_FREE_VALIDATE=1, default off) ──
+        # The pre-descent scaffolding above (takeoff + IC rig) MAY use the compass;
+        # but the validated DESCENT must carry no magnetometer influence, internal
+        # or external (mag keeps publishing for logs only). At engage:
+        #   INTERNAL: EKF2_MAG_TYPE=5 (None) → EKF2 stops fusing the mag; its yaw
+        #     gyro-propagates for the short descent (PX4's rate loop, which executes
+        #     our body-rate setpoints, is gyro-only regardless).
+        #   EXTERNAL: BODY_YAW_SOURCE=alpha (default) is REQUIRED — the SO(3)
+        #     measured yaw + psi_d lazy-init are then alpha-derived, not compass.
+        if os.environ.get("COMPASS_FREE_VALIDATE", "0") == "1":
+            if os.environ.get("BODY_YAW_SOURCE", "alpha") == "compass":
+                raise RuntimeError(
+                    "COMPASS_FREE_VALIDATE=1 requires BODY_YAW_SOURCE=alpha "
+                    "(the compass measured-yaw path defeats the validation)")
+            _rb = await FC_node.set_px4_param_int("EKF2_MAG_TYPE", 5)
+            if _rb != 5:
+                raise RuntimeError(f"COMPASS_FREE_VALIDATE: EKF2_MAG_TYPE readback {_rb} != 5")
+            print("[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage "
+                  "(EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)")
+
         # Start controller (its thread begins iterating); send_attitude_rate
         # output is NOT used yet — we keep sending hover setpoints to PX4 while
         # the controller's internal buffers (PID integrator, _ds_d_deque,
