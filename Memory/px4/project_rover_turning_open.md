@@ -147,6 +147,37 @@ untried — would handle varying rates too.
 > (velocity-matching is free — h is RELATIVE, within the formulation); curved targets
 > land within the UUB residual → platform size vs curvature is an operational spec.
 
+## ⭐⭐⭐ CURVED-LAG SOURCE IDENTIFIED (2026-07-02 deep-dive): a SELF-SUSTAINED LATERAL LIMIT CYCLE that the curve keeps ENGAGED at altitude
+Data-driven decomposition on the heading-hold Circular reps (u_a≡0, no yaw coupling), with
+three falsifications on the way:
+1. ✗ NOT a static v·τ servo offset: the error is a constant-amplitude (~0.7 m) EPICYCLE —
+   the e-vector rotates at 1.10–1.12 rad/s (rock-solid across reps), NOT the target's
+   wz=0.48; |a_u| median 1.3–1.6 m/s² = 7–8× the centripetal need. LINEAR contrast: same-
+   size error but DIRECTION-LOCKED (rot 0–0.3) → decays into the terminal → lands.
+2. ✗ NOT the transport-term parity bug: hypothesized cross(w_rel,s) vs manuscript ψ̇_b —
+   but `PLASMC_CH_CLEAN=1` is ALREADY BAKED (controller.py:314; user caught it); the
+   epicycle occurs WITH the correct ψ̇_b transport (≈0 under heading-hold). (My CH_CLEAN
+   "falsification arm" was vacuous — identical config to baseline.)
+3. ✗ NOT forced resonance: e_x spectrum in the tracking window = fundamental ~1.7–1.8
+   rad/s + CLEAN HARMONICS (3.4, 5.1) and ~NO energy at the 0.48 drive. Also the
+   commanded a_u projects NET-DAMPING onto ė (−0.13…−0.15) — the command opposes the
+   motion, yet the cycle persists (harmonic-rich = relay-like waveform).
+→ **SOURCE: the lateral loop carries a self-sustained NONLINEAR (relay-type) LIMIT CYCLE
+(fundamental ~1.7 rad/s, amplitude ~0.3–0.7 m) — the same relay(κ·sat/E boundary-layer)
++lag family as the stationary campaign's terminal cycle ([[project_residual_cycle_wumax_bake]],
+E_xy-tightening relay+lag dead-end). The CURVE's role is NOT forcing: the persistent
+centripetal demand HOLDS THE LOOP AWAY from the quiet σ≈0 equilibrium, keeping the relay
+engaged at ALTITUDE — straight lines let the error decay into |σ|≪E where the switching
+is linear/quiet (direction-locked residual, closed terminally); stationary targets only
+meet the cycle at TERMINAL 1/z. The oracle a_t FF removed the cycle's BIAS (center →
+near-zero: steady 0.9–1.6→0.31–0.51) but not the cycle — its ~0.3–0.4 m amplitude is
+exactly the platform-edge coin-flip in the FF runs.**
+Implications: the curved-landing lever = REDUCE THE CYCLE AMPLITUDE (relay describing-
+function levers: boundary layer/κ/lag — note the stationary wins W_U_MAX=2.0 + VDS_KF_Q=1
+are already ON; P2INF_xy widening = the known ζ_h-unsaturation lever, untested here), NOT
+more tracking gain and NOT (only) target-motion FF. Analysis scripts inline (energy
+projection + spectrum); data = yawhold_arm_n3 + Rover_SpeedSweep contrast.
+
 ## ⭐ CURVED-TRANSLATION LAG: the a_t FF WORKS (steady lag −60%); terminal edge-margin remains (2026-07-02)
 Implemented `PLASMC_TGT_VEL_FF=1` (default OFF): gt_feedback estimates the TARGET's own
 acceleration a_t (rate of its velocity vector — the quantity a curve demands; velocity-
