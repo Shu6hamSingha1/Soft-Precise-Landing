@@ -1,0 +1,458 @@
+=================================================================
+[retry] Attempt 1 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_TERMINAL_COMMIT=1: corner-exit commit (extent>=400.0, |s_e_n|<0.3, h_z<0, |ds_e_n|<0.2, 3-frame) -> zero zeta_r; off-center/diverging -> abort
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+FEATURE_IS_STALE = True  (3 consec misses)
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached
+-4.788333892822266 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.0054145618341863155, y_m: -0.02307800203561783, z_m: -5.206603527069092]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 1 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 3 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 1 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 7 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 2 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 2 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+ArUco re-acquired after 20 KLT-fallback frame(s)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[landing_test] IC convergence TIMEOUT after 30 s (last pos_err=299.355 m, speed=0.000 m/s, yaw_err=0.00°, tilt=7.90°)
+RuntimeError: Main Thread: IC convergence timeout (pos_err=299.35 m, speed=0.00 m/s) — aborting before controller engage
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle).
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2072621 + group)
+[run]   killing px4_rover (pid 2072653 + group)
+[run]   killing px4_sitl (pid 2073124 + group)
+[run]   killing bridge_clock (pid 2073800 + group)
+[run]   killing bridge_pose (pid 2073851 + group)
+[run]   killing bridge_image (pid 2073874 + group)
+[run]   killing rover_drive (pid 2074775 + group)
+[run] done.
+[retry] Attempt 1 hit a PX4 SITL startup flake (lockstep race /
+[retry]   IC non-settle); rebooting the stack after 10 s...
+=================================================================
+[retry] Attempt 2 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_TERMINAL_COMMIT=1: corner-exit commit (extent>=400.0, |s_e_n|<0.3, h_z<0, |ds_e_n|<0.2, 3-frame) -> zero zeta_r; off-center/diverging -> abort
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+FEATURE_IS_STALE = True  (3 consec misses)
+RuntimeError: Main Thread: is_armable did not go True within 60.0s — PX4 lockstep race is not recovering.
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: PX4 lockstep race did not recover (is_armable timeout).
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2076747 + group)
+[run]   killing px4_rover (pid 2076791 + group)
+[run]   killing px4_sitl (pid 2077243 + group)
+[run]   killing bridge_clock (pid 2077940 + group)
+[run]   killing bridge_pose (pid 2077960 + group)
+[run]   killing bridge_image (pid 2078015 + group)
+[run]   killing rover_drive (pid 2078901 + group)
+[run] done.
+[retry] Attempt 2 hit a PX4 SITL startup flake (lockstep race /
+[retry]   IC non-settle); rebooting the stack after 10 s...
+=================================================================
+[retry] Attempt 3 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_TERMINAL_COMMIT=1: corner-exit commit (extent>=400.0, |s_e_n|<0.3, h_z<0, |ds_e_n|<0.2, 3-frame) -> zero zeta_r; off-center/diverging -> abort
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+FEATURE_IS_STALE = True  (3 consec misses)
+  is_armable after 0.4s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached
+-4.685302734375 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.0030890649650245905, y_m: -0.010771257802844048, z_m: -5.112286567687988]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 1 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 3 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 2 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 13 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+ArUco re-acquired after 3 KLT-fallback frame(s)
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+ArUco re-acquired after 20 KLT-fallback frame(s)
+LANDING PAD RE-ACQUIRED (stale → fresh)
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[landing_test] IC convergence TIMEOUT after 30 s (last pos_err=305.348 m, speed=0.000 m/s, yaw_err=0.00°, tilt=7.94°)
+RuntimeError: Main Thread: IC convergence timeout (pos_err=305.35 m, speed=0.00 m/s) — aborting before controller engage
+
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+[run] DETECTED: IC convergence timeout (PX4 SITL didn't settle).
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2081149 + group)
+[run]   killing px4_rover (pid 2081192 + group)
+[run]   killing px4_sitl (pid 2081651 + group)
+[run]   killing bridge_clock (pid 2082363 + group)
+[run]   killing bridge_pose (pid 2082383 + group)
+[run]   killing bridge_image (pid 2082403 + group)
+[run]   killing rover_drive (pid 2083329 + group)
+[run] done.
+[retry] Attempt 3 hit a PX4 SITL startup flake (lockstep race /
+[retry]   IC non-settle); rebooting the stack after 10 s...
+=================================================================
+[retry] Attempt 4 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_TERMINAL_COMMIT=1: corner-exit commit (extent>=400.0, |s_e_n|<0.3, h_z<0, |ds_e_n|<0.2, 3-frame) -> zero zeta_r; off-center/diverging -> abort
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+FEATURE_IS_STALE = True  (3 consec misses)
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached
+-4.758559226989746 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.02763865888118744, y_m: 0.0448649525642395, z_m: -5.182403087615967]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.88s (pos_err=0.014 m, speed=0.027 m/s, yaw_err=0.91°, tilt=0.19°)
+[landing_test] board alpha (settled) = 2.5° std=3.1°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[landing_test] PID warmup (100 ms — fills deques only)…
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x3) |s_e_n|=0.27 -> LANDED (disarm before bounce)
+[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.106 m [≤0.1], rel_vel=1.237 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.110 m, rel_vel=1.351 m/s, min_alt=0.51 m (endpoint xy=0.106 m is post-kick if it ballooned)
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+Saved to CSV!
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2085286 + group)
+[run]   killing px4_rover (pid 2085330 + group)
+[run]   killing px4_sitl (pid 2085789 + group)
+[run]   killing bridge_clock (pid 2086478 + group)
+[run]   killing bridge_pose (pid 2086521 + group)
+[run]   killing bridge_image (pid 2086541 + group)
+[run]   killing rover_drive (pid 2087448 + group)
+[run] done.
+[retry] SUCCESS after attempt 4

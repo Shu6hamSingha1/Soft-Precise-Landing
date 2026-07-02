@@ -1,6 +1,6 @@
 {
- "n_configs": 41,
- "n_reps": 3107,
+ "n_configs": 42,
+ "n_reps": 3116,
  "n_SP": 789,
  "configs": [
   {
@@ -684,6 +684,24 @@
    "vel_med": 0.117,
    "cats": {
     "SP": 1
+   }
+  },
+  {
+   "config": "Rover_SpeedSweep",
+   "date": "2026-07-02",
+   "n": 9,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 1,
+   "xy_med": 0.106,
+   "xy_min": 0.037,
+   "vel_med": 1.483,
+   "cats": {
+    "MOD_PRECISE": 3,
+    "PRECISE_only": 4,
+    "CATASTROPHIC": 1,
+    "POOR": 1
    }
   }
  ],

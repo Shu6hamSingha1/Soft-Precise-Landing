@@ -35,6 +35,10 @@ PX4_Gazebo/test_data/Test_Videos/
 PX4_Gazebo/test_data/Rover_AB_aruco/
 PX4_Gazebo/test_data/Rover_AB_rover/
 PX4_Gazebo/test_data/Rover_AB_rover_platform/
+# Rover speed sweep (2026-07-02, envelope <=1.1 m/s): same policy — data local-only,
+# summary log tracked.
+PX4_Gazebo/test_data/Rover_SpeedSweep/*
+!PX4_Gazebo/test_data/Rover_SpeedSweep/sweep_results.log
 # DhdClampSweep (2026-06-02 DH_D_MAX=5 n=5 validation): bulk .npy reps ignored
 # (regenerable); summary + per-rep console logs tracked as the campaign record.
 PX4_Gazebo/test_data/DhdClampSweep/**/rep*/

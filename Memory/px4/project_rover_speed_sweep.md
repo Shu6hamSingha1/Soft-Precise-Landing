@@ -36,8 +36,10 @@ capability is needed. Also candidate: start the descent AFTER the lag transient 
 (the velocity-step transient peaks ~0.74 m at 0.47 m/s; gate-start means the step happens
 at descent start).
 
-Harness: scratchpad speed_sweep.sh (cells via LANDING_OUT_BASE); data
-scratchpad/spd_{0.5,0.7,1.0}/ + the 0.3 reps in test_data/Landing_Test (09-14/16/18).
+Harness: speed_sweep.sh (cells via LANDING_OUT_BASE; durable copy
+`test_data/Rover_AB_harness/speed_sweep.sh` + per-rep .out logs there); data preserved →
+`test_data/Rover_SpeedSweep/spd_{0.5,0.7,1.0}/` + `sweep_results.log`; the 0.3 reps live in
+test_data/Landing_Test (09-14/16/18).
 n=3/cell = direction-of-effect per the ±5–7 noise-floor rule; the lag CURVE (monotone,
 tight per-rep spread ±0.1–0.3) is the robust finding, the exact 1.56 rate is not.
 Continues [[project_moving_rover_landing_works]]. NEXT: Circular r=0.8 turning validation

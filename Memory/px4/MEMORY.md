@@ -23,7 +23,9 @@
 > no collision) → platform fix CONFIRMED → stationary-rover baseline **5/5 clean (0.02–0.05 m)** = at
 > ceiling → **moving Linear @0.47 m/s: 3/3 ON the platform** (rel lat 0.28/0.044/0.048 m, vel-matched);
 > yaw "cal" RESOLVED (already calibrated; turning gap = alpha-rate cap, [[feedback_rover_yaw_cal_resolved]]).
-> NEXT: rover speed sweep, Circular (turning) validation, perception-ON. A/B data preserved:
+> SPEED SWEEP DONE: reliable envelope ≤1.09 m/s (9/9 on-platform), binds 1.56 m/s via lag ∝ speed τ≈0.9-1.0 s
+> ([[project_rover_speed_sweep]]; data test_data/Rover_SpeedSweep/). NEXT: Circular (turning)
+> validation, perception-ON, velocity-FF lever if >1.1 m/s needed. A/B data preserved:
 > test_data/Rover_AB_{aruco,rover,rover_platform,harness}/. Entry: docs/MOVING_TARGET_PREP.md +
 > [[project_moving_rover_landing_works]] [[feedback_rover_flyaway_no_platform]] [[feedback_zreg_gear_floor_artifact]].
 
