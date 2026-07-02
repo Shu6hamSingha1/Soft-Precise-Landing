@@ -1,6 +1,6 @@
 ---
 name: project_prescribed_rate_hd
-description: "Prescribed-rate h_d (user design, 2026-07-02): s_dot_meas -> phi_max.*S_r.*dp_r in h_d, s_ddot-drop removed (deriv 1000x smaller, folded into c-term); 25/25+25/25 gate + A/B breach benefit (engR .76 vs 1.16) — but OPEN: formula incomplete, S_r is NOT constant; awaiting prescribed S_r_dot law"
+description: "Prescribed-rate h_d (user design, 2026-07-02): s_dot_meas -> phi_max.*S_r.*dp_r in h_d, s_ddot-drop removed; 25/25+25/25 gate + A/B breach benefit (engR .76 vs 1.16). RESOLVED: formula complete as a DEFINITION (h_e = p_10*zeta_r_dot/g_r — S_r varying IS the signal); NO S_r_dot law; finite-diff dh_d kept per user"
 metadata:
   type: project
 ---
@@ -27,12 +27,14 @@ sweep 20/20 (+-40%, 4 moving traj). A/B vs measured (same seeds): standard stres
 yaw): prescribed engR 0.76 NO BREACH + worstXY 1.12 vs measured engR 1.16 BREACH + 1.56 — the
 recovery-authority design works exactly as argued.
 
-**⛔ OPEN — formula incomplete (user 2026-07-02):** `phi_max.*S_r.*dp_r` is d/dt(s_e) along the
-funnel ONLY if S_r is constant. Since s_e = phi_max·S_r·p_r, the full derivative is
-`phi_max·(S_r_dot·p_r + S_r·dp_r)` — the S_r_dot·p_r term is MISSING. S_r_dot must be a
-PRESCRIBED contraction (a measured S_r_dot collapses the expression back to s_dot_meas —
-circular). Candidates offered (exponential pull S_r_dot=−k·S_r; barrier-driven); awaiting the
-user's chosen S_r_dot law, then re-verify the derivative into the c-term stays smooth.
-Current tree holds the incomplete-but-validated form. PX4 side untouched (uses measured s_dot;
-port only after the completed form is validated — [[feedback_shared_issue_fix_in_ubuntu]] pattern
-reversed: this originated in MATLAB).
+**✅ RESOLVED (user 2026-07-02): the formula is COMPLETE as a DEFINITION — no Ṡ_r law.** A
+prescribed Ṡ_r contraction was the WRONG approach (it would make the reference the convergence
+driver, violating funnel-as-constraint / ASMC-drives-convergence). The correct reading:
+`h_d,xy = p_10·S_r·ṗ_r` is the funnel-consistent desired rate, and S_r VARYING is the design
+signal, not a flaw — `h_e,xy = ṡ − p_10·S_r·ṗ_r = p_10·(dr̄_e − S_r·ṗ_r) = p_10·ζ̇_r/g_r`,
+i.e. h_e IS the (scaled) barrier-coordinate rate: zero when riding the funnel at constant S_r,
+grows exactly on adverse S_r motion (incl. the clamp-on-breach recovery case). σ = ζ_h + χ_r·ζ_r
+is thus a true PD pair on the barrier coordinate (ζ_r position, ζ_h its rate). dh_d: user chose
+KEEP the smooth4 finite-diff of h_d_all as-is (carries a tiny measured Ṡ_r content, RMS .007 vs
+old s̈ ~7; gate-validated) over the analytic S_r-frozen alternative. Code as committed (016855e)
+is the final form. PX4 side untouched (uses measured s_dot; port is a separate decision).
