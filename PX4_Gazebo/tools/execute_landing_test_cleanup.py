@@ -52,6 +52,13 @@ def main():
         print("\nRe-run with --execute to perform archive+delete+rescan.")
         return
 
+    if not present:
+        print("\nNothing to do — all manifest DELETE reps are already gone "
+              "(cleanup completed 2026-06-26). REFUSING --execute: tarring an "
+              "empty set would overwrite the real archive "
+              "(~/spl_obsolete_archive/obsolete_landing_test_precutoff.tar.gz).")
+        return
+
     ARCHIVE_DIR.mkdir(exist_ok=True)
     tar = ARCHIVE_DIR / "obsolete_landing_test_precutoff.tar.gz"
     print(f"\n[1/4] archiving {len(present)} reps -> {tar}")

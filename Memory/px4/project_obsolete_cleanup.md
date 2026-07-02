@@ -8,9 +8,11 @@ metadata:
 ---
 
 **Obsolete test-data cleanup — ✅ COMPLETE 2026-06-26 (both phases executed the same night the
-handoff was written; the "NOTHING DELETED YET" header was stale until 2026-07-02 — a dry-run of
-`execute_obsolete_cleanup.py` then confirmed present:0 / already-gone:101. ⚠ Do NOT re-run
-`--execute`: it would tar an empty set over the real 980 MB archive).**
+handoff was written; the "NOTHING DELETED YET" header was stale until 2026-07-02).**
+**2026-07-02 staleness re-check, BOTH phases:** Phase-1 present:0/gone:101; Phase-2 DELETE 843→0
+on disk, KEEP 381/381 present, 1157 post-manifest reps untouched; BOTH archives root-count
+verified (101 + 843 exact). Both executors now REFUSE an empty-set `--execute` (guard added —
+previously it would have tarred an empty set over the only recovery archives).
 ⭐ Full decisions + history: `PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md`.
 
 **Goal:** remove test_data tied to a "false config later corrected" + their records.
