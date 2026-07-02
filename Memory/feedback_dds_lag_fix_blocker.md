@@ -27,3 +27,5 @@ metadata:
 **Pickup leads:** (1) grep landing_test for an exception-triggered `finally: rclpy.shutdown()` firing early (the error is on "Main Thread"; a swallowed exception in warmup/startController could run cleanup while a coroutine still publishes). (2) publish() thread-safety: send_attitude_rate is awaited on the asyncio main thread while the DDS node's executor spins in a daemon thread. (3) Add live logging of `rclpy.ok()` / context id around warmup and the first publish. Debug with instrumentation, NOT 4-min batch SITL runs (slow). The lazy-create deadlock (a) confirms node creation contends the shared context lock while executors spin — so the eventual fix likely needs the DDS node fully set up and the publish made thread-safe before the gz executors are hot.
 
 **Default mavsdk => the working 0.675 m board+inner-cluster landing is unaffected** ([[project-landing-target-design]]).
+
+**⛔ CLOSED 2026-07-02 (user): "We will not go ahead with the uXRCE-DDS low-latency rate path. Forget it." Do NOT re-propose the DDS path — for the lag/actuation-phase limits the accepted answer is operational spec (see [[project_rover_turning_open]]).**

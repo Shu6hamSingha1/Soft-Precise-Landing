@@ -218,9 +218,14 @@ pinned mechanism: widening lowers the ζ_h barrier slope, but the cycle's carrie
 DRIFT/c group and the >90° actuation phase is untouched. With the ENTIRE stationary
 playbook already baked (K_R=2.5, W_U_MAX=2.0, VDS_KF_Q=1, Γ=0.25, Z_REG=0.2) and P2INF now
 tested-weak, the curve-cycle residual is STRUCTURAL at the current actuation phase —
-remaining real levers: reduce actuation phase (uXRCE-DDS rate path = the one architectural
-lever on the books) or operational spec (platform size vs curvature). Data
-test_data/Rover_Turning/p2inf_sweep/.
+remaining real levers: ~~reduce actuation phase (uXRCE-DDS rate path)~~ — **⛔ RULED OUT
+BY USER 2026-07-02 ("we will not go ahead with the uXRCE-DDS low-latency rate path");
+do not re-propose** — leaving OPERATIONAL SPEC as the accepted resolution: the curved-
+target residual (~0.3–0.7 m cycle amplitude) is a characterized property of the
+lag-limited plant; platform size vs path curvature is the deployment-side answer
+(a ≥1 m platform accepts it). Straight/stationary performance unaffected. This CLOSES
+the curved-target control thread — remaining rover-phase work is perception-ON.
+Data test_data/Rover_Turning/p2inf_sweep/.
 
 ### Why MATLAB doesn't show this cycle (2026-07-02 analysis)
 MATLAB DID have the same cycle FAMILY (06-19/20 campaign: X/Y noise-pumped cycles inside
