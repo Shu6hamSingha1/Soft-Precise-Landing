@@ -178,6 +178,47 @@ are already ON; P2INF_xy widening = the known ζ_h-unsaturation lever, untested 
 more tracking gain and NOT (only) target-motion FF. Analysis scripts inline (energy
 projection + spectrum); data = yawhold_arm_n3 + Rover_SpeedSweep contrast.
 
+### ⭐⭐ CYCLE SOURCE PINNED (2026-07-02, cross-spectral): ACTUATION PHASE flips the
+### velocity-damping sign at ~1.7 rad/s; the drift/c-term group CARRIES the cycle
+- **Phase(delivered accel vs commanded a_x) at 1.75 rad/s = −120°** (cross-spectrum,
+  GT-derived delivered vs logged command; ~±25° uncertainty incl. the boxcar smoothing
+  ≈−15° — even −60…−90° flips most of the damping). A command intended as damping
+  (anti-ė) is DELIVERED rotated past quadrature → its projection on ė turns POSITIVE →
+  **negative effective damping**. Phase budget: tau_ia LPF (~8°) + PX4 attitude dynamics
+  from rate setpoints (~30–40° at 1.75 with K_R≈2–2.5) + rate loop/motors + 38 ms
+  transport + ZOH — physically fixed (MC_*RATE_P dead).
+- **Per-term spectral amplitude at the 1.7 fundamental:** resid(c-term + drift
+  χ_r·ζ̇_r/G) = 1.68 m/s² ≫ κ·sat 0.16 ≫ ζ_h 0.09 ≫ ζ_r 0.03 — the cycle's command
+  content is overwhelmingly the VELOCITY-FEEDBACK group (drift via s_dot_meas + c_h),
+  matching the stationary campaign's "drift term = a_u oscillation driver".
+- **Mechanism:** velocity feedback (drift/c) + >90° actuation phase at ~1.7 rad/s =
+  self-excited oscillator; the nonlinearities (barrier slopes, κ·sat) set the AMPLITUDE.
+  Amplitude is OPERATING-POINT dependent: straight/stationary → error decays to small
+  σ (low barrier slope) → residual cycle only ~5–7 cm (measured on Linear reps!);
+  CURVE holds a standing bias 0.3–1 m → steeper barrier slope → bigger loop gain →
+  0.3–0.7 m cycle; stationary TERMINAL → 1/z inflates gain → the known ~1 Hz cycle.
+  ONE mechanism, three regimes.
+
+### Limit-cycle presence in the OTHER loops (validated 2026-07-02, cfree stationary reps)
+- **YAW: NO cycle** — e_a std 0.57–0.87°, 1–2 sign flips, no coherent fundamental
+  (post YAW_OMEGA=0.1 bake). Yaw's failure mode is ramp WINDUP (turning targets), not
+  self-oscillation.
+- **DESCENT: bounded RIPPLE, not a destructive cycle** — loom h_z ripple std 0.071
+  about the −0.30 ref (~24%), σ_z std 0.09, spectral content 0.8–1.7 rad/s (same
+  family); consistent with the stationary z-story (E_z=0.5 engages κ damping).
+
+### Why MATLAB doesn't show this cycle (2026-07-02 analysis)
+MATLAB DID have the same cycle FAMILY (06-19/20 campaign: X/Y noise-pumped cycles inside
+the boundary layer, z-cycle, yaw cycle, "σ rings + eR > commanded tilt = inner-loop
+attitude lag") — but at small amplitude and FIXABLE there, because:
+(1) **actuation phase ≈ 0 at 1.7 rad/s** — torque-level inner loop at integration rate,
+no MAVSDK transport, no PX4 rate loop, no tau_ia-equivalent → the velocity-damping sign
+NEVER flips → no self-excitation; cycles arose only via other pumps (s̈ noise) and were
+(2) **damped at the inner loop** (kΩ_z 0.2, kR, E_z bakes) — MATLAB's inner gains are
+free; PX4's are not. PX4 sits in a qualitatively different regime: ~100–120° actuation
+phase at the cycle frequency makes negative damping STRUCTURAL for any velocity-feedback
+path, leaving only amplitude management (operating point/barrier slope/κ) as levers.
+
 ## ⭐ CURVED-TRANSLATION LAG: the a_t FF WORKS (steady lag −60%); terminal edge-margin remains (2026-07-02)
 Implemented `PLASMC_TGT_VEL_FF=1` (default OFF): gt_feedback estimates the TARGET's own
 acceleration a_t (rate of its velocity vector — the quantity a curve demands; velocity-
