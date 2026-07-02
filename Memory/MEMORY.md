@@ -2,6 +2,14 @@
 > entries go in `matlab/MEMORY.md`, `px4/MEMORY.md`, or `shared/MEMORY.md` (one index
 > per phase). This file remains the index for the existing flat topic files only.
 >
+> **⚠ SIZE / TRUNCATED AUTO-LOAD (2026-07-02: 229 lines, ~58 KB).** This file exceeds the
+> session auto-load budget, so only PART of it reaches context at session start — entries can be
+> silently missing from the auto-loaded view. Never conclude a legacy topic "has no memory" from
+> that view alone: `grep -il <topic> Memory/*.md` or Read this file directly. Do NOT add lines
+> (corrections edit the existing line in place, ≤1 line / ~200 chars). If it must shrink: migrate
+> the hooks of still-load-bearing entries into the per-phase indexes, then delete superseded
+> lines here (superseded topic files already carry their own ⛔ stamps).
+>
 > **⛔ 2026-06-26 GLOBAL CORRECTION.** The PX4 lateral "wall" is RESOLVED — a gain-parity bug + the
 > velocity-damping lever (tighten the lateral flow funnel `XI2_xy` to engage `ζ_h` in the baked
 > combined surface `σ_xy=ζ_h+χ_r·ζ_r`) → GT-FB **10/10 bounded, 0 fly-aways**. The residual is a
