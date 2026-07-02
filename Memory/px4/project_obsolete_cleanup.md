@@ -7,8 +7,11 @@ metadata:
   originSessionId: 5919ddc2-a345-4241-aa4a-569e274e340e
 ---
 
-**Obsolete test-data cleanup — started 2026-06-26, handed to a NEW CHAT. NOTHING DELETED YET.**
-⭐ READ FIRST: `PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md` (full decisions + exact commands).
+**Obsolete test-data cleanup — ✅ COMPLETE 2026-06-26 (both phases executed the same night the
+handoff was written; the "NOTHING DELETED YET" header was stale until 2026-07-02 — a dry-run of
+`execute_obsolete_cleanup.py` then confirmed present:0 / already-gone:101. ⚠ Do NOT re-run
+`--execute`: it would tar an empty set over the real 980 MB archive).**
+⭐ Full decisions + history: `PX4_Gazebo/docs/OBSOLETE_CLEANUP_HANDOFF.md`.
 
 **Goal:** remove test_data tied to a "false config later corrected" + their records.
 **Scope (user-approved):** (A) combined-barrier GAIN-PARITY-BUG era — runs before fix
