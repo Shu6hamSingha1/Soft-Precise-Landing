@@ -4,7 +4,9 @@
 > NEW entries here (not the legacy ../MEMORY.md). Topic files for new MATLAB work live
 > in this folder. Cross-cutting findings go in ../shared/. PX4 work -> ../px4/.
 
-## Current (2026-06-26 → 07-02 controller campaign — code UNCOMMITTED in tree, datasets stale vs it)
+## Current (2026-06-26 → 07-03 controller campaign — code+datasets COMMITTED through 625fc84)
+
+- ⭐ **[MATLAB↔PX4 parity audit 2026-07-03](project_matlab_px4_parity_audit.md)** — control law IDENTICAL layer-by-layer (funnel/σ/c-term/Θ/a_u/κ-ODE); funnel-ref h_d + DHD_SRC=full + 2π orientation CONVERGED; ⚑ PX4 HD_KR=0.5 = the contraction law user rejected in MATLAB (Ubuntu decision pending); ⚑ PX4 ψ̇_b sign flagged SITL-unverified (their comment); divergences documented (CBF corner-vs-centroid, inner loop, terminal machinery, gains regime)
 
 - ⭐ **[Prescribed-rate h_d — RESOLVED](project_prescribed_rate_hd.md)** — s_dot_meas → phi_max·S_r·dp_r in h_d, s̈-drop removed; 25/25+25/25 gate, A/B breach benefit (engR .76 vs 1.16); formula COMPLETE as a definition: h_e,xy = p_10·ζ̇_r/g_r (S_r varying IS the signal; a prescribed Ṡ_r law was the WRONG approach — funnel must stay a constraint, not become the convergence driver); finite-diff dh_d kept per user; code final at 016855e
 - ⭐ [Yaw observability campaign](project_yaw_observability_campaign.md) — 2π weighted-corner orientation ported PX4→MATLAB (±90° second-moment fold removed; 360° verified; gate 25/25); yaw gain map exhausted (e_a pinned 90° pre-2π at ALL gains); yaw-rate ceiling ~0.5 rad/s ARCHITECTURAL (s_e orbits in yaw frame → cone-sat 0.86 + funnel breach 1.16); heading-yaw Sin/Liss explored → REVERTED (Liss path untrackable); yaw-rate FF reverted (u_a = lagged output)
