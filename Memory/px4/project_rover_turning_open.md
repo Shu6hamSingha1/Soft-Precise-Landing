@@ -38,16 +38,42 @@ stationary_regression_neg1}.**
    phase may or may not close depending on phase → could explain both the 0.158 landing
    and the 1.0 miss as the SAME distribution (n=1 noise).
 
-**NEXT (in order):** (a) n≥3 the heading-hold and sign-flip arms — decide whether they
-actually differ or are one noisy distribution; (b) if heading-hold tracks poorly, test
-w_z=0 for the target-spin component (or CTRL zero-w_z variant) to isolate mechanism 2;
-(c) yaw-rate feedforward design for genuine heading TRACKING (needed if the mission
-requires touchdown alignment on a rotating platform; position-only landing may be
-acceptable otherwise — the platform is square, marker π/2-symmetric for ArUco decode!).
-Note: perception-ON on a turning rover ALSO needs the alpha-rate cap raised
+## ✅ RESOLVED into a 2-mechanism decomposition (2026-07-02, pure-spin isolation)
+New knob `PLASMC_GT_SPIN_WZ` (gt_feedback): SYNTHETIC in-place target spin (adds
+wz·(t−t0) to target yaw; alpha AND w_z self-consistent through the slope estimator;
+unit-verified alpha ramp −0.48, w_z=+0.480). The Ackermann rover physically CANNOT spin
+in place (min turn radius 0.56 m); for perception-ON use a revolute platform_joint +
+gz JointController instead (and POSE_IDX_TARGET → the landing_platform link).
+
+| arm | config | result |
+|-----|--------|--------|
+| heading-hold, Circular (n=4 pooled) | translation+rotation, u_a≡0 | **0/4, systematic miss 1.011/1.084/1.214/1.680 m** |
+| heading-hold, PURE SPIN (n=2) | rotation only, rover parked | **2/2 ON-PLATFORM 0.034/0.025 m** (e_a sweeps ±145 un-tracked, harmless) |
+| yaw ACTIVE, PURE SPIN (n=2) | rotation only | **windup in BOTH** (u_a 3.7/3.3, e_a ±180/156): 1 FAIL 2.44 m, 1 landed 0.203 (lucky) |
+| yaw ACTIVE, Circular (n=1) | translation+rotation | FAIL 8.1 m (windup + translation) |
+
+**VERDICTS:**
+- **Mechanism 1 (yaw ramp windup) CONFIRMED IN ISOLATION** — pure spin with the yaw SMC
+  active winds u_a to 3.3–3.7 and stochastically detonates the lateral, with ZERO
+  translation present. The current yaw loop must NOT chase a 0.48 rad/s rotation.
+- **Mechanism 2 (spurious target-spin w_z) RULED OUT** — the same w_z=+0.48 flowed
+  through the flow FF in the pure-spin heading-hold arm and the landing was dead-center.
+- **Mechanism 3 (curved-translation lag) CONFIRMED as the heading-hold Circular miss** —
+  0/4 at ~1.0–1.7 m on a 0.38 m/s circle while a FASTER 0.47 m/s straight line is 3/3:
+  the ROTATING VELOCITY DIRECTION defeats the τ≈1 s type-1 tracker (rotating offset
+  e≈v·τ that the terminal phase can't null in phase), not the speed.
+
+**STATE: pure-rotation landing SOLVED (heading-hold, 2/2 dead-center). Remaining gaps:**
+(1) CURVED-translation tracking → needs target velocity/acceleration (curvature) FF —
+the same τ-lag lever as [[project_rover_speed_sweep]], but binding at 0.38 m/s when the
+velocity direction rotates; (2) heading TRACKING on a rotating platform (only if
+touchdown ALIGNMENT is required — note the square marker/platform is π/2-symmetric) →
+w_z feedforward into u_a so the loop handles only the residual.
+Perception-ON on a turning rover also needs the alpha-rate cap raised
 ([[feedback_rover_yaw_cal_resolved]]).
 
-Knob added: `PLASMC_GT_ALPHA_SIGN` (gt_feedback.py, default +1 = unchanged; −1 = the
-falsified flip, kept as a diagnostic). Heading-hold recipe: PLASMC_YAW_GAMMA=0
-PLASMC_YAW_KAPPA0=0 PLASMC_YAW_OMEGA=0 **PLASMC_YAW_N=0** (all four).
+Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
+`PLASMC_GT_SPIN_WZ` (synthetic in-place spin). Heading-hold recipe: PLASMC_YAW_GAMMA=0
+KAPPA0=0 OMEGA=0 **N=0** (all four). Data test_data/Rover_Turning/{yawhold_arm_n3,
+spin_hold_n2,spin_active_n2,...}; harnesses in test_data/Rover_AB_harness/.
 Continues [[project_moving_rover_landing_works]].

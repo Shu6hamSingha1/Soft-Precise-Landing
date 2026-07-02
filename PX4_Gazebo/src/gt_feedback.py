@@ -93,6 +93,16 @@ class GTFeedback:
         self._wx = deque(maxlen=_maxlen)        # W_x history (NED, marker - camera)
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
+        # SYNTHETIC TARGET SPIN (PLASMC_GT_SPIN_WZ, rad/s, default 0 = off):
+        # add wz_spin*(t-t0) to the target yaw, i.e. a target rotating IN PLACE
+        # with NO translation. Pure-rotation isolation experiment for the
+        # turning-rover problem ([[project_rover_turning_open]]): the Ackermann
+        # rover physically cannot spin in place (min turn radius ~0.56 m), and a
+        # circular drive convolves rotation with the translation-lag geometry.
+        # alpha AND w_z stay self-consistent automatically (both flow from ry;
+        # the slope estimator picks the spin up exactly like a real rotation).
+        self._spin_wz = float(os.environ.get("PLASMC_GT_SPIN_WZ", "0.0"))
+        self._spin_t0 = None
 
     def _vel_window(self):
         """Return (ts, wx_arr, ry_arr) restricted to the velocity window: last _tau
@@ -126,6 +136,12 @@ class GTFeedback:
 
         # relative yaw (uav - target), unwrapped across calls for a clean rate
         ry = _yaw_of(qu) - _yaw_of(qt)
+        if self._spin_wz != 0.0:
+            # synthetic in-place target spin (see __init__): target yaw advances
+            # at wz_spin, so the RELATIVE yaw loses wz_spin*(t-t0).
+            if self._spin_t0 is None:
+                self._spin_t0 = t
+            ry -= self._spin_wz * (t - self._spin_t0)
         if self._last_ry is not None:
             ry = self._last_ry + np.arctan2(np.sin(ry - self._last_ry), np.cos(ry - self._last_ry))
         self._last_ry = ry
