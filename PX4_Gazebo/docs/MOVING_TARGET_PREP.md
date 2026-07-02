@@ -100,10 +100,16 @@ clean spawn:
 ## Remaining work items
 1. ✅ **DONE — pose indices** (see RESOLVED above). `gz_subscriber.py` is now
    env-driven; `run_rover_landing.sh` sets the rover mapping.
-2. **Yaw calibration** (`cal_s[3]`, currently `1.0`). Inert for the stationary
-   square marker; ACTIVE once the target translates/turns. Moment-alpha κ_a yaw
-   path is already tuned ([[feedback_moment_yaw_canonical]]); only the feature
-   cal is pending ([[project_yaw_calibration_pending]]).
+2. ✅ **DONE — Yaw calibration** (2026-07-02). NOT a scale/offset task: the alpha
+   feature is already calibrated (`cal_s[3]=1.0`, alpha tracks GT yaw r=1.00) and
+   stationary-rover yaw is verified clean (baseline `e_a→0`, `u_a`≤0.22 rad/s).
+   GT-FB is turning-target-correct by construction (relative yaw+rate). The one
+   turning-rover gap: the alpha-rate cap `PLASMC_YAW_ALPHA_MAX_RATE=0.30 rad/s`
+   clamps a rover turning >~17°/s (Circular turns ~27°/s) → for a TURNING rover set
+   `PLASMC_YAW_ALPHA_FILT=0` (GT-FB) or `PLASMC_YAW_ALPHA_MAX_RATE≈0.8`. Validation =
+   a turning-rover landing (merges with the moving-rover test). Full writeup:
+   [[feedback_rover_yaw_cal_resolved]]. (Moment-alpha κ_a path already tuned,
+   [[feedback_moment_yaw_canonical]]; do NOT swap the alpha source.)
 3. ✅ **DONE — rover motion source** (2026-07-01). Built + live-verified:
    - `src/rover_trajectory.py` — planar (x,y,yaw) port of `traj_Gen.m` (7 types;
      z-heave/roll/pitch ship-deck terms dropped as un-realizable by a ground
