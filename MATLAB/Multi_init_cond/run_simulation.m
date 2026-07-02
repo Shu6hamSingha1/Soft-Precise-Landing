@@ -87,6 +87,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     % --- internals-figure logs (pure logging; do not affect the sim) ---
     kappa_log     = zeros(3, N_steps);  % adaptive switching gain kappa(t)
     kappa_a_log   = zeros(1, N_steps);  % yaw adaptive gain kappa_a(t)
+    sigma_a_log   = zeros(1, N_steps);  % yaw sliding surface sigma_a(t) = the yaw disturbance kappa_a rejects
+    e_a_log       = zeros(1, N_steps);  % yaw orientation error e_a(t)
     theta_cone_log= zeros(1, N_steps);  % CBF tilt-cone bound for thrust/accel plot
     s_e_log       = zeros(2, N_steps);  % lateral centroid feature error s_e_xy (for r_bar_e)
     p_r_log       = zeros(2, N_steps);  % position (image-feature) funnel envelope p_r(t)
@@ -97,6 +99,10 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
     beta_log      = zeros(1, N_steps);  % depth scale beta = 1/z(t)
     v_log         = zeros(3, N_steps);  % regressor first column v(t) (for (Y d_bar)_k per axis)
     V_h_e_prev    = zeros(3, 1);        % for the h_e finite difference
+    F_known_log   = zeros(3, N_steps);  % injected known-disturbance force (KNOWN_DIST hook)
+    au_comp_log   = zeros(3, N_steps);  % a_u component norms [reach; switch; equiv] (asmc decomposition)
+    I_a_filt_log  = zeros(3, N_steps);  % CBF-FILTERED (delivered) accel vs commanded Iacd -> saturation
+    hd_comp_log   = zeros(9, N_steps);  % h_d components [sdot(3); rot(3); desc(3)] -> what stops h_e converging
     F_wind_I      = zeros(3, 1);        % init (only updated in the NOISE plant branch)
     u_2_buf      = zeros(4, N_steps);
     raw_dw_a     = zeros(3, N_steps + 3);
@@ -175,8 +181,8 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         cs.s_e_prev = s_e_xy;
         cs.raw_ds = [cs.raw_ds(:,2:end), raw];
         s_dot_meas = smooth4(cs.raw_ds);
-        [zeta_r, dzeta_r, p_r] = blocks.position_funnel(s_e_xy, s_dot_meas, t, P);
-        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_meas, t, P, cs);
+        [zeta_r, dzeta_r, p_r, s_dot_presc] = blocks.position_funnel(s_e_xy, s_dot_meas, t, P);
+        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_presc, t, P, cs);
         [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
 
         % --- visibility CBF + inner loop ---
@@ -202,6 +208,16 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
             F_turb  = F_turb + (dt/wind_tau) * (-F_turb + wind_sigma*randn(3,1));
             v_rel_w = wind_mean - x_c(8:10);
             F_wind_I = wind_mean*C_d_wind + F_turb + C_d_wind*v_rel_w;
+            % KNOWN-DISTURBANCE injection (default OFF): a deterministic, fully-known
+            % external force (N), optionally stepped on [t_on,t_off). init_robustness
+            % has already zeroed all stochastic disturbance, so F_wind_I == the injection.
+            if ~isempty(KNOWN_DIST)
+                ton = 0; toff = inf;
+                if isfield(KNOWN_DIST,'t_on'),  ton  = KNOWN_DIST.t_on;  end
+                if isfield(KNOWN_DIST,'t_off'), toff = KNOWN_DIST.t_off; end
+                if t0 >= ton && t0 < toff, F_wind_I = KNOWN_DIST.force(:); else, F_wind_I = zeros(3,1); end
+            end
+            F_known_log(:,idx) = F_wind_I;     %#ok<AGROW>  log the injected force
             x_c = RK5(@(t, x) UAVDyn_robust(t, x, u_2, m_p, J_p, F_wind_I, r_cog), t0, x_c, dt);
         else
             x_c = RK5(@(t, x) UAVDyn(t, x, u_2), t0, x_c, dt);
@@ -218,6 +234,9 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         V_h_e(:,idx)       = o.V_h_e;
         I_a_cd(:,idx)      = Iacd;
         sigma(:,idx)       = o.sigma;
+        if isfield(cs,'au_reach'), au_comp_log(:,idx) = [cs.au_reach; cs.au_sw; cs.au_eq]; end
+        I_a_filt_log(:,idx) = I_a_filt;     % delivered (CBF-capped) accel
+        if isfield(o,'hd_sdot'), hd_comp_log(:,idx) = [o.hd_sdot; o.hd_rot; o.hd_desc]; end
         B_tau_cd_log(:,idx)= B_tau_cd;
         B_T_cd(idx)        = T_cd;
         psi_d_log(idx)     = psi_d;
@@ -227,6 +246,7 @@ function result = run_simulation(x0, trajType, K_override, speed_mult, cfg_overr
         % internals-figure logs
         kappa_log(:,idx)    = cs.kappa;
         kappa_a_log(idx)    = cs.kappa_a;
+        if isfield(cs,'sigma_a'), sigma_a_log(idx)=cs.sigma_a; e_a_log(idx)=cs.e_a; end
         theta_cone_log(idx) = theta_cone;
         s_e_log(:,idx)      = s_e_xy;
         p_r_log(:,idx)      = p_r;

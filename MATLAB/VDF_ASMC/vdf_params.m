@@ -26,8 +26,12 @@ P.phi_max_cbf = (P.res/2 - P.fov_inset_px) / P.f;% CBF inset FoV-edge tangent (C
 
 % ---- Image-feature funnel  (tex eq. position barrier; constrains r_bar_e) ------
 P.p_r0   = [1.2; 1.2];                  % p_{r0}   initial half-width (FoV units)
-P.p_rinf = [1.0; 1.0];                  % p_{r,inf} terminal floor (Standing Cond. 1: >=1)
-P.Xi_r   = diag([0.10, 0.10]);          % Xi_r     funnel contraction rate
+P.p_rinf = [0.85; 0.85];                % p_{r,inf} terminal floor. LOCKED 1.0->0.85 (2026-06-26):
+                                        % tighter terminal position barrier -> ~15% precision (multi-init
+                                        % worst xy 0.013->0.011). NB <1 dips below Standing Cond 1 (proof
+                                        % caveat); chosen precision variant (proof-clean alt = 1.0).
+P.Xi_r   = diag([0.3, 0.3]);            % Xi_r funnel contraction rate. LOCKED 0.10->0.3: faster position
+                                        % contraction; benign (engR<0.65, no overtake), pairs with p_rinf 0.85
 
 % ---- Optic-flow funnel  (tex eq. PPC on h_e; p_h(t)) ---------------------------
 P.p_h0   = [25.0; 25.0; 4.0];           % p_{h0}    initial half-width  (code p_20)
@@ -49,10 +53,17 @@ P.chi_z = 0.1;                          % descent surface gain (PI: zeta_h3 + ch
 
 % ---- Leakage ASMC  (tex eq. adaptive control law + adaptive law) ---------------
 P.Gamma   = diag([0.4375, 0.5, 0.75]);  % Gamma    linear sliding gain
-P.E       = diag([1.0, 1.0, 0.5]);      % E boundary-layer thickness (sat E^-1 sigma). E_z 1.0->0.5 baked 2026-06-20: tightens the DESCENT boundary layer so kappa's switching ENGAGES on the Z limit cycle (was 100% inside the layer -> linearized/locked out) -> Z cycle -8% (0.63->0.58) + better h_ez convergence, full gate. 0.5 = sweet spot; E_z<0.5 hard-switch over-drives the aggressive cells (S3/S5/L3/C5)
-P.N       = diag([0.02, 0.02, 0.02]);   % N        adaptation rate
-P.Pleak   = diag([1.5, 1.5, 5.0]);      % P        kappa leakage
-P.kappa0  = [0.125; 0.125; 0.25];       % kappa(0) initial switching gain
+P.E       = diag([0.5, 0.5, 0.5]);      % E boundary-layer thickness. E_xy 1.0->0.5 LOCKED 2026-06-26:
+                                        % escapes the boundary layer so kappa's switching is DELIVERED
+                                        % against sigma (56% engaged under stress vs 4% at E_xy=1.0);
+                                        % E_z=0.5 (engages the Z cycle damping, 2026-06-20). E_xy<0.5 pumps
+                                        % terminal v_lat -> soft-fail at the stress edge (E25 7x 5/5->4/5).
+P.N       = diag([0.10, 0.10, 0.10]);   % N adaptation rate. LOCKED 0.02->0.10: primes the kappa-ODE
+                                        % (tau 1/(N P) ~33s->7s) so kappa adapts within the descent
+P.Pleak   = diag([0.5, 0.5, 1.5]);      % P kappa leakage. LOCKED [1.5;1.5;5.0]->[0.5;0.5;1.5]: lower
+                                        % leakage raises sustained kappa (k*=thG|s|/P); z-kappa doubles
+P.kappa0  = [0.05; 0.05; 0.05];         % kappa(0). LOCKED [.125;.125;.25]->.05: lower start so kappa
+                                        % adapts UP under stress (demonstrable rejection; 7x SP 5/5 vs baked 3/5)
 P.izeta2_max = 5.0;                     % anti-windup clamp on int(zeta_h3)
 P.S_margin   = 0.05;                    % funnel-saturation guard (|zeta|<=3.66, G finite)
 P.drop_sddot = true;                    % s_ddot-drop (validated combined-barrier default)
@@ -87,7 +98,8 @@ P.gamma_cog = 0.005;  P.cog_c2 = 2.0;  P.cog_max = 0.02;  P.cog_leak = 0;
 % lateral zeta_r blow-up). theta_k==||Theta||_F recovers the scalar law exactly ->
 % strict generalization. Enable via VDF_OVERRIDE.theta_per_axis=true. See
 % Soft_Precise_Landing/Drafts/PER_AXIS_THETA_PROOF.md.
-P.theta_per_axis = false;
+P.theta_per_axis = true;   % LOCKED default 2026-06-26: the current formulation (all harnesses pin it ON;
+                           % strict generalization, recovers the scalar law when theta_k==||Theta||_F).
 
 % ---- Estimation / timing -------------------------------------------------------
 P.ZOH      = floor(100/30);              % image refresh decimation (=3)

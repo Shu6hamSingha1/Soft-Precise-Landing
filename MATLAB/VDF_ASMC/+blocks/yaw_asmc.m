@@ -7,12 +7,13 @@ function [psi_d, u_a, cs] = yaw_asmc(alpha, alpha_d, P, cs)
 %   orientation (pi/4 for the square marker), NOT zero.
 
     e_raw = alpha - alpha_d;
-    e_a   = atan2(sin(2*e_raw), cos(2*e_raw))/2;     % unwrap to (-pi/2, pi/2]
+    e_a   = atan2(sin(e_raw), cos(e_raw));           % full +-pi (alpha is now 2pi-disambiguated)
     if cs.k == 1, cs.ie_a = P.dt*e_a;
     else,         cs.ie_a = cs.ie_a + P.dt*(cs.e_a_prev + e_a)/2; end
     cs.e_a_prev = e_a;
 
     sigma_a  = e_a + P.Omega_a*cs.ie_a;
+    cs.sigma_a = sigma_a;  cs.e_a = e_a;       % expose yaw surface/error for logging
     cs.kappa_a = RK5(@(t,X) kappa_a_Solver(t, X, sigma_a, [P.n_a; P.p_a]), 0, cs.kappa_a, P.dt);
     u_a = P.Gamma_a*sigma_a + sat(sigma_a/P.E_a)*cs.kappa_a + P.Omega_a*e_a;
 

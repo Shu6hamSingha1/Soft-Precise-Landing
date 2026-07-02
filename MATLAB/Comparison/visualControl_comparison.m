@@ -460,8 +460,8 @@ for idx = 1:N_steps
         cs.s_e_prev = s_e_xy;
         cs.raw_ds = [cs.raw_ds(:,2:end), raw_s];
         s_dot_meas = smooth4(cs.raw_ds);
-        [zeta_r, dzeta_r] = blocks.position_funnel(s_e_xy, s_dot_meas, tt, P);
-        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_meas, tt, P, cs);
+        [zeta_r, dzeta_r, ~, s_dot_presc] = blocks.position_funnel(s_e_xy, s_dot_meas, tt, P);
+        [o, cs] = blocks.flow_surface(V_s, V_h, B_w_c, I_R_C, zeta_r, dzeta_r, s_dot_presc, tt, P, cs);
         [Iacd, cs] = blocks.asmc(o, I_R_V, P, cs);
         [I_a_cd_filt, th_safe, theta_cone, ~, R33, cs] = ...
             blocks.cbf_visibility(Iacd, I_R_C, yaw, C_nP, B_w_c, P, cs);
