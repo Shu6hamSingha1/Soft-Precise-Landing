@@ -1833,6 +1833,10 @@ class Controller(Thread):
         _w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))   # BAKED 1.0->2.0 2026-06-30 (see body-rate cap note below; same env)
         _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
+        # Store the rate psi_d actually advances at, for the optional inner-loop
+        # yaw-rate feedforward Omega_d=[0;0;u_a] in _attCtrl (PLASMC_YAW_OMEGA_D_FF).
+        # Zeroed during yaw-hold below (psi_d frozen -> no reference rate to track).
+        self._ua_psid_ff = 0.0 if self._yaw_hold else _ua_psid
         # Heading-rate saturation flag -> next step's CONDITIONAL INTEGRATION
         # (anti-windup on ie_a, above). True while the slew is rate-limited.
         self._yaw_rate_saturated = bool(abs(u_a) > _psid_rate)
@@ -2217,6 +2221,20 @@ class Controller(Thread):
         # PX4's onboard rate controller (since we ship body rates here,
         # not torques, via MAVSDK set_attitude_rate).
         w_u = -self._K_R @ e_R
+
+        # Optional inner-loop YAW-RATE FEEDFORWARD Omega_d = [0;0;u_a]
+        # (PLASMC_YAW_OMEGA_D_FF=1, default OFF): add the rate psi_d is actually
+        # advancing at (the rate-limited ASMC output) to the yaw body-rate
+        # command, so the inner loop TRACKS the moving psi_d instead of lagging
+        # it through -K_R·e_R alone. MATLAB tried the same FF in so3_tracker:
+        # helped CONSTANT-rate yaw (Circular e_a 180->53 deg) but broke the
+        # oscillating Sinusoidal reference (it feeds back the ASMC's own lagged
+        # output -> circular for fast-varying u_a) -> use for constant-rate
+        # rotating targets (the rover), keep OFF elsewhere.
+        # [[project_yaw_observability_campaign]] / [[project_rover_turning_open]]
+        if os.environ.get("PLASMC_YAW_OMEGA_D_FF", "0") == "1":
+            w_u = w_u.copy()
+            w_u[2] += getattr(self, "_ua_psid_ff", 0.0)
 
         # Hard clamp on body-rate command magnitude. LK optical flow has a
         # ~15 px tracking window; at our 540 px focal length and 60 Hz
