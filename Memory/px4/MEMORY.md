@@ -14,14 +14,21 @@
 > "catastrophic" were the OLD frozen-kappa base (XI2_z=1.0 BAKED provisional). Authoritative:
 > [[feedback_kappa0_unfreezes_lateral]] (PROVISIONAL — GT-FB n=2, pending IC2-5 n>=5 + perception-ON).
 
-> **🟢🟢🟢 2026-07-02 LATE (LATEST) — CURVED-TARGET LIMIT CYCLE fully attributed (single-source SISO loop);
-> k_r RESOLVED: HD_KR=0 REJECTED (wrong reference; user-led), c3-noise falsified surgically, DEFAULTS
-> STAND; oracle-FF reverted; compass-free BAKED.**
-> The Circular "curved-translation lag" is NOT a lag: a self-sustained lateral LIMIT CYCLE (~1.7 rad/s
-> fundamental + harmonics; e-vector epicycle 1.10–1.12 rad/s ≠ wz=0.48; amp 0.3–0.7 m) — ONE SISO loop:
-> (e,ė)→1/z bearing→parallel branches {Γζ, χζ_r, drift, sat·κ relay, ḣ_d, loom; corr 0.8–0.99}→a_u→
-> **−120° actuation phase** (cross-spectral, delivered vs commanded)→(e,ė). Caps/clamps all exonerated
-> (~0% duty); recoverable filter phase only ~25° → GAIN attenuation is the only tunable family. Singleton
+> **🟢🟢🟢 2026-07-03 (LATEST) — CYCLE MECHANISM CORRECTED (deep-dive on 9 curve reps): the −120°
+> actuation phase + "locked 1.7 rad/s fundamental + harmonics" were METHOD ARTIFACTS (FFT bins of the
+> 3.7 s tracking window at exactly 1.71/3.42/5.13 + smoothed GT double-diff). REAL: W* = 1.3–1.7
+> rep-scattered rotating phasor (orbit sense), A·W*² ≈ 1 m/s² CONSTANT (amplitude is CONE-CLAMP-set:
+> gain 0.43, duty 26–38%); actuation phase only −25…−55° (attitude −8°, tau_ia −9°, geo −15°; kinematic
+> closure ±180° holds 9/9). FUEL: anti-position command + ANY lag pumps a rotating error (P_cyc>0 in
+> 7/9; sign predicted by χ vs Wτ 9/9; the one Circular landing IS the χ≈Wτ rep). Damping quadrature is
+> DESTROYED in the barrier chain (branch audit, recon 0%: switch 0.47 @ +7°, drift 0.25 @ −1.5° — the
+> designed damping branch, killed by scale-free normalization + funnel-rate mixing + barrier-slope AM;
+> c3 0.24 @ −1.4°; loom 0.08 @ +85° = only correct branch) → gain knobs re-balance χ≈0 branches, can't
+> move phase = why every lever failed; K_R=2.5 worked via Wτ. EXIT sized +25–40° at 1.3–1.7 rad/s:
+> **PLASMC_AU_LEAD USER-APPROVED 07-03, under test.** Tools: Rover_AB_harness/cycle_{tone_fit_v2,
+> stage_phase,branch_audit}.py (⚠ fit complex tones in ENU — NED conjugates the rotation).
+> [[project_rover_turning_open]]. Same thread 07-02: k_r RESOLVED (below), oracle-FF reverted,
+> compass-free BAKED. Singleton
 > sweep: HD_KR 0.5→0 looked best (1/3 ON-PLATFORM 0.200 = first Circular landing; e-rot 1.11→0.85) —
 > **REJECTED late-session (user algebra, echoing [[feedback_prinf_standing_condition]]): ζ̇_r,d=−k_r·ζ_r
 > ⇒ k_r=0 prescribes ζ_r=const (freeze-the-offset) ⇒ ζ_h damps the closure χ_r·ζ_r commands; stationary
@@ -31,8 +38,8 @@
 > = demand-level DETUNING**; `nos` = 2/3 NEAR 0.34 + 1 WANDER 78 m. **HD_KR=0.5 + DHD_SRC=full STAND**
 > (honest ḣ_d load-bearing-neutral; 06-29 "regression" framing corrected). P_xy=5 FALSIFIED
 > (adaptive-leakage κ-ratchet →3.04); E_xy=1.5 + P2INF 2.0/3.0
-> FLAT/weak. FRONTIER: at fixed actuation phase the gain levers trade cycle↔bias; exits = AU lead
-> compensation (new code, unapproved) or platform size. ⛔ USER: uXRCE-DDS path RULED OUT (never
+> FLAT/weak. FRONTIER (updated 07-03): gain levers can't move command phase (χ≈0 branches); exits = AU
+> lead (+25–40° at 1.3–1.7 rad/s — approved, testing) or platform size. ⛔ USER: uXRCE-DDS path RULED OUT (never
 > re-propose); K_R=2.5 spent (same phase fix, 06-24). ⛔ Oracle a_t-FF + lead pursuit REVERTED (manuscript
 > forbids target-pose derivatives; retained as the ORACLE-BOUND ablation: curve steady-lag 0.9–1.6→
 > 0.31–0.51 m). ✅ COMPASS_FREE_VALIDATE BAKED default-ON (every descent mag-free at engage). MATLAB
