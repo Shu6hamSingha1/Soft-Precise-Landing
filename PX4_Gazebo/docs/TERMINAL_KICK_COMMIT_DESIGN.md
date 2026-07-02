@@ -1,6 +1,21 @@
 # Terminal-Kick Resolution — Approach & Commit Design
 
 **Status:** finalized design, pre-implementation (2026-06-28, user-led, GT-FB).
+
+> **⚠ STALENESS STAMP (2026-07-02 audit) — partially implemented + partially superseded:**
+> (1) "pre-implementation" is stale — the §6a framework WAS built; the Part-1 approach knobs were then
+> **BAKED ON** (`HD_FUNNEL_REF=1` + `HD_KR=0.5`, 787cf2d) with `PRINF` corrected 0.8→**1.0**
+> (Standing-Cond-1, [[feedback_prinf_standing_condition]]) — the provisional `P2INF_xy≈0.12` floor
+> direction was dropped (tight-funnel edge-forcing; baked value is **1.0**, 486f713), and `HD_KR=1.0`
+> tested WORSE (NC173; keep 0.5). `PLASMC_TERMINAL_COMMIT` is **baked ON** (user decision, 06-30);
+> `LANDING_COMMIT_EXTENT` stays rejected/off. (2) The root-cause was REFINED on 06-30: the violent GT-FB
+> kick was **substantially the Z_REG=0.01 harness artifact** (fake 1/z below the gear floor,
+> [[feedback_zreg_gear_floor_artifact]] → Z_REG=0.2 → 19/25 SP), and the rover-side kick was the
+> **no-platform geometry** ([[feedback_rover_flyaway_no_platform]]). (3) §1's velocity discriminator
+> SURVIVES the audit (s_dot_entry separates SP/non-SP with no overlap, [[project_why_sp_achieved]]) —
+> the case(b)/case(a) **s_dot commit/abort gate remains the open robust-fix spec** for the residual
+> ±5–7-SP stochasticity. Still open from §7: the case-(a) re-ascend module + the perception-ON
+> ring-handoff validation (§6b trap).
 **Constraints honored:** `h_rd = −0.42` fixed; scale-free / depth-free (every trigger
 quantity is image-space; Z is analysis-only, never in control).
 **Supersedes** the open-loop loom-commit (`LANDING_COMMIT_LOOM`) as the primary terminal

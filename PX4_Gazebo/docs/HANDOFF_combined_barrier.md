@@ -1,5 +1,14 @@
 # HANDOFF — Combined-Barrier PX4 validation (2026-06-19; ✅ RESOLVED 2026-06-21)
 
+> **⚠ STALENESS STAMP (2026-07-02 audit) — HISTORICAL; even the 06-21 FINAL VERDICT below has dated parts:**
+> (1) its "OPEN: final IC2-5 gate" was overtaken by events (GT-FB campaign → Z_REG gear-floor fix →
+> **19/25 SP across IC1-5** → rover phase; see `px4/MEMORY.md` top). (2) The listed bakes were re-baked
+> later: `chi_r` 0.5→**1.5**, `XI2_xy`→0.7, `PRINF`→1.0, `HD_FUNNEL_REF/HD_KR` ON (787cf2d, 06-29);
+> `h_rd` −0.42→**−0.30**, `P2INF_xy`→1.0 (486f713); `XIR`→0.10 (f068774). (3) The REJECTED-list anchor
+> "SOFT-CONFIG Z on combined = CATASTROPHIC 5/5 fly" is a **STALE anchor** (measured on the pre-velocity-
+> damping over-hot base — do not cite as binding). (4) `project_current_state.md` is itself historical;
+> live state = `px4/MEMORY.md` top + the tuning-guide STATUS.
+
 ## ✅ FINAL VERDICT (2026-06-21) — COMBINED SURFACE WORKS; the wall was a GAIN-PARITY BUG
 **The 2026-06-19 "does NOT beat the wall — perception-gated" verdict below was a MISDIAGNOSIS.**
 - **Real cause:** PX4 combined-barrier mode was running the OLD **back-mapped soft-config gains**

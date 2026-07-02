@@ -1,5 +1,19 @@
 # HANDOFF — Velocity-damping / ζ_h thread (2026-06-25)
 
+> **⚠ STALENESS STAMP (2026-07-02 audit) — HISTORICAL; the thread continued via the terminal-kick
+> commit design → the Z_REG gear-floor resolution → SP ACHIEVED (GT-FB 19/25) → the rover phase.**
+> Stale within: (1) NEXT-STEPS item 1's "✅ DONE loom-commit gate, 9 SP/1 P" — the gate code was
+> **REMOVED entirely on 06-28** (stationary-only + masks the driver) and the tally audit-corrects to
+> **8 SP/2 P**; (2) the "What's baked" list — later bakes: `chi_r` 0.5→**1.5** (the "0.5 is the
+> ceiling" claim is superseded; 2.0 is still dead), `XI2_xy` 0.2→**0.7**, `PRINF`→1.0, `HD_FUNNEL_REF/
+> HD_KR=0.5` ON (787cf2d); `h_rd`→**−0.30**, `P2INF_xy`→1.0 (486f713); `XIR`→0.10 (f068774);
+> `W_U_MAX`→2.0 + `VDS_KF_Q`→1 + `Z_REG`→0.2 (b5c992d + gear-floor fix); (3) "terminal velocity ≈ the
+> 38 ms lag" — the GT-FB terminal cycle was **substantially the Z_REG=0.01 harness artifact**
+> ([[feedback_zreg_gear_floor_artifact]]); the residual cleaned by W_U_MAX/VDS_KF_Q, and the rover-side
+> kick was the no-platform geometry. STILL VALID: the velocity-damping ζ_h mechanism, h_rd CONSTANT,
+> the auto-align gotcha, the analysis metrics. perception-ON remains the open deployment step.
+> Live state: `px4/MEMORY.md` top + the tuning-guide STATUS.
+
 **For the next chat.** This continues the GT-FB terminal-fly-away thread. The binding failure is now fully understood and the fix is identified and partially validated. Read the linked memory files for detail; this is the operational map.
 
 ## TL;DR

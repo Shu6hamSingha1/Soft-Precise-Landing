@@ -119,6 +119,10 @@ clean spawn:
    **Fix:** `src/gz_subscriber.py` now reads `POSE_IDX_UAV`/`POSE_IDX_TARGET`
    from env (defaults 2/1 = aruco unchanged); `run_rover_landing.sh` exports
    `POSE_IDX_TARGET=0 POSE_IDX_UAV=1`.
+   > ⚠ SUPERSEDED same day (see "Baseline run bring-up" above): `dynamic_pose/info`
+   > was the WRONG TOPIC (variable membership → the ~376 m landmine). Final fix =
+   > bridge the FULL `/world/rover/pose/info`, indices **TARGET=1 / UAV=2** (same as
+   > aruco); the launcher now exports 1/2 (verified in `run_rover_landing.sh:52-53`).
 
 > ⚠ Ordering assumes rover (`-i 1`) spawns before UAV (`-i 0`) — which the
 > launcher guarantees. If launch order ever changes, re-verify with the echo.
