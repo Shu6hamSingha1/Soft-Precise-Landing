@@ -158,6 +158,19 @@ class GTFeedback:
         # and camera 0.3" is superseded — that offset is no longer double-counted.)
         Z_REG = float(os.environ.get("PLASMC_GT_Z_REG", "0.2"))
 
+        # Alpha sign convention (PLASMC_GT_ALPHA_SIGN, default +1 = historical):
+        # GT-FB feeds alpha = SIGN * ry, ry = yaw(uav) - yaw(target). The perception
+        # moment-alpha the yaw chain was tuned on is ANTI-correlated with drone yaw
+        # (BODY_YAW_ALPHA_K = -0.949), i.e. the perception convention is ~ -ry.
+        # With +ry the alpha-servo cascade is still self-consistent at e_a~0 (the
+        # stationary/straight-rover landings converge), but a persistently ROTATING
+        # target drives the loop through the inverted disturbance path -> yaw
+        # runaway to the +-180 antipode (Circular rover, 2026-07-02). SIGN=-1
+        # matches the perception convention (cousin of the 2026-06-25 w_z sign
+        # fix). w_z below keeps the VALIDATED relation w_z = -d(alpha)/dt in
+        # either convention.
+        _asign = float(os.environ.get("PLASMC_GT_ALPHA_SIGN", "1"))
+
         # --- centroid bearing s (V-frame) ---
         B_x = Ru.T @ W_x_tu
         V_x = _v_frame(Ru) @ B_x
@@ -167,7 +180,7 @@ class GTFeedback:
         # depth stays in [Z_REG, inf) (strictly positive) and the feature sign is correct.
         _zb = max(float(V_x[2]), 0.0) + Z_REG                      # regularized, non-negative V-frame depth
         s_xy = np.array([V_x[0] / _zb, V_x[1] / _zb])
-        alpha = float(np.arctan2(np.sin(ry), np.cos(ry)))          # wrapped rel-yaw feature
+        alpha = float(np.arctan2(np.sin(_asign * ry), np.cos(_asign * ry)))   # wrapped rel-yaw feature (sign per convention above)
         s4 = np.array([s_xy[0], s_xy[1], 1.0, alpha])
 
         # --- flow h (V-frame rel velocity / depth) + w_z (rel yaw rate) ---
@@ -185,6 +198,6 @@ class GTFeedback:
             # stationary target, so alpha_dot = -w_z. The old +d(alpha)/dt fed w_z with the OPPOSITE sign
             # to the perception path, flipping the h_d rotation FF (cross(w,s)) and the old c-term's
             # w-cross-products (omega_dot x s, 2 w x h) -> spurious anti-restoring feedforward.
-            w[2] = -_slope(ts, ry_arr)                              # w_z = -d(alpha)/dt = -psi_dot_b (matches perception lstsq)
+            w[2] = -_asign * _slope(ts, ry_arr)                     # w_z = -d(alpha)/dt (alpha = _asign*ry) — validated relation kept in either sign convention
         flow6 = np.array([h[0], h[1], h[2], w[0], w[1], w[2]])
         return s4, flow6
