@@ -25,3 +25,14 @@ read" churn (both hit it that day).
 
 Existing related convention: per-subfolder memory indexes exist precisely to avoid cross-chat push
 collisions (px4/MEMORY.md header note).
+
+**Update 2026-07-02 — the root-index SHRINK changes the pointer map (and shrinks the collision
+surface):** the legacy root `Memory/MEMORY.md` (238 lines/58 KB, truncated at auto-load) is now a
+**45-line auto-loaded CORE** holding only cross-cutting rules + pointers. All phase hooks live in
+the per-phase indexes — `px4/MEMORY.md` and `matlab/MEMORY.md` each gained a "Legacy … index"
+section with the migrated pre-06-19 flat-file hooks; 19 superseded lines were dropped (listed by
+name in the root; files keep their ⛔ stamps); the pre-shrink index is recoverable via
+`git show d01c5c0:Memory/MEMORY.md`. **Lane implication:** sessions append/edit ONLY their own
+phase index; the root is COLD (touch it only to add/adjust a cross-cutting one-liner rule), so
+root-index collisions should no longer occur — the remaining HOT shared surfaces are
+`px4/MEMORY.md` (top banners + entries) and the tuning-guide STATUS block.
