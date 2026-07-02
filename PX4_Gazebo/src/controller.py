@@ -1705,6 +1705,14 @@ class Controller(Thread):
         # SMC adapt and recover instead of killing the run permanently.
         # _warmup_remaining is retained as a state variable for future use
         # but no longer gates anything here.
+        # ⚠ ORACLE DIAGNOSTIC — NOT part of the proposed controller (2026-07-02).
+        # The manuscript Problem Statement FORBIDS this information ("neither the
+        # target pose nor its derivatives can be measured or estimated in the
+        # closed loop"; a_t/z is inside d_h, Assumption 1: unknown bounds, handled
+        # by ADAPTIVE DOMINATION). This knob quantifies the ORACLE BOUND (the value
+        # of target-motion knowledge: curve steady-lag 0.9-1.6 -> 0.31-0.51 m) vs
+        # the manuscript-compliant adaptive residual — an ablation, not a fix.
+        # Deployable only under a declared COOPERATIVE-platform extension (deck IMU).
         # TARGET-MOTION VELOCITY FEEDFORWARD (PLASMC_TGT_VEL_FF=1, default OFF;
         # GT-FB only): add the target's own acceleration (the RATE of its velocity
         # vector, V-frame, gt_feedback.tgt_acc_V) to the lateral command.

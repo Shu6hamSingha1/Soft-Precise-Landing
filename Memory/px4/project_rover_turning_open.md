@@ -130,6 +130,23 @@ the ASMC's lagged output — only valid for slow/constant rates). Candidate defa
 the rover scenario only. The measured-w_z→u_a variant (true disturbance FF) remains
 untried — would handle varying rates too.
 
+> **⛔ RECLASSIFIED (2026-07-02, user catch): the a_t FF below is an ORACLE DIAGNOSTIC,
+> NOT a deployable fix.** The manuscript Problem Statement forbids it: "unpredictability
+> means that no model of the target dynamics is available and NEITHER THE TARGET POSE NOR
+> ITS DERIVATIVES can be measured or estimated in the closed loop"; a_t/z sits inside
+> d_h = a_t/z − (F_g+F_d)/(mz) (Assumption 1, unknown bounds → adaptive domination is the
+> paper's designed answer; UUB ≠ zero residual). PLASMC_TGT_VEL_FF + PLASMC_GT_TGT_LEAD
+> therefore quantify the ORACLE BOUND (value of target-motion knowledge) vs the compliant
+> adaptive residual — a publishable ABLATION: compliant curved residual ~1.0–1.7 m
+> (rotating d_h at ~loop bandwidth maximizes the realized UUB radius, exactly as theory
+> predicts) vs oracle 0.31–0.51 m. Deployable ONLY under a declared COOPERATIVE-platform
+> extension (deck broadcasts IMU — realistic for ship decks). Image-only d_h observation
+> is blocked by unknown β (why the paper chose domination). The yaw Omega_d=[0;0;u_a] FF
+> is UNAFFECTED (feeds back the controller's OWN output — no target knowledge).
+> Manuscript-compliant framing: straight/const-v targets ≤1.1 m/s land reliably
+> (velocity-matching is free — h is RELATIVE, within the formulation); curved targets
+> land within the UUB residual → platform size vs curvature is an operational spec.
+
 ## ⭐ CURVED-TRANSLATION LAG: the a_t FF WORKS (steady lag −60%); terminal edge-margin remains (2026-07-02)
 Implemented `PLASMC_TGT_VEL_FF=1` (default OFF): gt_feedback estimates the TARGET's own
 acceleration a_t (rate of its velocity vector — the quantity a curve demands; velocity-
