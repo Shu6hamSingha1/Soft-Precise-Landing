@@ -1,9 +1,10 @@
 ---
 name: project_rover_turning_open
-description: "TURNING-rover (Circular r=0.8, wz=0.48 rad/s) landing is the OPEN rover-phase problem (2026-07-02): baseline FAILS via yaw-loop ramp WINDUP (e_a -> -152 deg, psi_d races, couples to lateral, 8 m); GT-FB alpha sign-flip FALSIFIED as the fix (regresses stationary yaw-align); clean heading-hold (u_a=0, needs YAW_N=0 too) missed 1.0 m n=1 while the dirty sign-flip landed 0.158 n=1 — inconsistent n=1s, needs n>=3 arms. Candidate mechanisms: yaw double-integrator can't track a ramp (needs w_z feedforward); w_z=relative-yaw-rate is WRONG for target-spin in the centroid-flow FF (target rotation doesn't move the centroid); circular tracking-lag geometry (v*tau~0.36 m rotating offset)."
-metadata:
+description: "TURNING-rover (Circular r=0.8, wz=0.48) thread, closed layer by layer (2026-07-02): yaw ramp windup SOLVED (Omega_d=[0;0;u_a] FF); curved-translation miss = self-sustained lateral limit cycle at -120deg actuation phase (gain levers trade bias<->cycle). k_r RESOLVED late-session (user-led): HD_KR=0 is a WRONG REFERENCE (zeta_r_dot=-k_r*zeta_r => k_r=0 prescribes zeta_r=const; zeta_h then damps the closure chi_r*zeta_r commands) — stationary IC1 1/5 vs 4/5, NOT baked; PLASMC_DHD_SRC nokr/nos falsified the c3-noise hypothesis surgically (c3 band content drops, cycle unchanged — DF re-balances; hdkr_0's win was demand-level detuning). DEFAULTS STAND (HD_KR=0.5, DHD_SRC=full); frontier exits: AU lead (unapproved) / platform size."
+metadata: 
   node_type: memory
   type: project
+  originSessionId: 3c2f4c67-05c1-4e6f-966b-0e62018fc8a7
 ---
 
 **TURNING-rover landing (Circular r=0.8, wz=0.48 rad/s ≈ 27°/s, 0.38 m/s tangential,
@@ -301,9 +302,43 @@ diff does not — cousin of [[feedback_gt_noise_uniform_dt]].)
   or phase-advanced v (rotate v_t by wz·τ) instead of quadratic; OR shrink the FF's own
   phase lag (FF_TAU 1.0→0.5). Data test_data/Rover_VelFF/.
 
+## ⭐⭐⭐ k_r RESOLVED (2026-07-02 late, user-led): HD_KR=0 REJECTED as a WRONG REFERENCE; the c3-noise hypothesis FALSIFIED surgically; defaults stand
+**User catch (algebra):** the funnel-ref back-map is the prescription `ζ̇_r,d = −k_r·ζ_r`.
+Setting k_r=0 prescribes `ζ̇_r,d = 0` ⇒ **ζ_r = const** (exactly: S_r held; with ṗ_r≈0 at
+the funnel floor it degenerates to ṡ_e,d≈0 = FREEZE-THE-OFFSET). Off-center the velocity
+barrier ζ_h then DAMPS the very closure velocity the σ-side χ_r·ζ_r commands — the two
+channels CONTRADICT. k_r>0 is what makes them consistent (velocity reference demands the
+exponential funnel-state decay the position term wants; s_e_n closes at k_lat=|h_rd|+k_r).
+Same indictment applies to HD_PASSIVE (rate≡0, default-off). So k_r's purpose = consistent
+closure demand through the velocity channel + the depth-free MOVING-target live recovery +
+un-degenerating ζ_h off-center (mid-flight it is ~all of hd_rate; terminal-centered ~0).
+- **Stationary cost confirmed before the stop:** HD_KR=0 GT-FB IC1 n=5 = **1/5 SP vs 4/5
+  same-binary baseline** (0.104/0.563/0.133/0.196/0.061). Gate stopped (user); partial data
+  preserved `ICValidation/20260702-224508`. HD_KR=0 will NOT be baked.
+- **The "complete job" test (new env knob `PLASMC_DHD_SRC`, default `full`=06-29 behavior;
+  `nokr` drops only the −k_r·ζ_r/g_r branch from dh_d, keeping k_r=0.5 live in h_d/h_e;
+  `nos` = pre-06-29 s̈-drop of the whole rate term). Heading-hold Circular n=3 each:**
+  - **nokr 0/3** (lat 1.64/2.16/6.78), e_rot ~1.02 — **cycle UNCHANGED although the c3
+    band-rms dropped to hdkr_0's level** (offline spectral, 1.4–2.1 rad/s: c3_x 0.243→0.175,
+    c3_y 0.189→0.101 vs hdkr_0 0.197/0.110; full baseline e_rot 1.11). ⇒ **the k_r-branch
+    c3 noise is NOT the cycle carrier; the DF re-balances through the remaining branches —
+    the single-source model confirmed surgically.** The 06-29 `_hd_src=full` "regression"
+    framing is hereby CORRECTED: honest differentiation is load-bearing-neutral on the curve.
+  - **hdkr_0's e_rot 1.11→0.88 win = DEMAND-LEVEL detuning** (the wrong reference lowers
+    inward-velocity demand at a standing offset → loop gain down) — an operating-point move
+    along the bias↔cycle frontier, not noise removal.
+  - **nos 2/3 NEAR 0.343/0.335 + 1 catastrophic WANDER** (e_mean 78.6 m, lat 13.7) — the
+    lost-restoring-stiffness tail class (cf. the P2INF=2.0 outlier). No winner.
+- **DEFAULTS STAND: HD_KR=0.5 + PLASMC_DHD_SRC=full.** The curve-cycle residual remains on
+  the −120° actuation-phase frontier; the c3/derivative route is now EXHAUSTED (both
+  variants tested). Remaining exits unchanged: AU lead compensation (unapproved) or platform
+  size. Tools: `Rover_AB_harness/dhd_arms.sh` + the c3 spectral check (scratchpad-born,
+  band-rms of logged dh_d + GT e_x/e_y in the 0.8–3.5 m window).
+
 Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
-`PLASMC_GT_SPIN_WZ` (synthetic in-place spin), `PLASMC_YAW_OMEGA_D_FF` (the windup fix).
+`PLASMC_GT_SPIN_WZ` (synthetic in-place spin), `PLASMC_YAW_OMEGA_D_FF` (the windup fix),
+`PLASMC_DHD_SRC` (full|nokr|nos, default full; both alternates tested-not-better).
 Heading-hold recipe: PLASMC_YAW_GAMMA=0 KAPPA0=0 OMEGA=0 **N=0** (all four). Data
 test_data/Rover_Turning/{yawff_spin_n2,yawff_circular_n2,yawhold_arm_n3,spin_hold_n2,
-spin_active_n2,...}; harnesses in test_data/Rover_AB_harness/.
+spin_active_n2,dhd_src_sweep,...}; harnesses in test_data/Rover_AB_harness/.
 Continues [[project_moving_rover_landing_works]].

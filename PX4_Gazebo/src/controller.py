@@ -908,6 +908,21 @@ class Controller(Thread):
         self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.5"))  # BAKED 0.5 2026-06-29
         if self._hd_kr != 0.0:
             print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
+        # PLASMC_DHD_SRC (2026-07-02): WHICH h_d list feeds dh_d (-> c3 = -dh_d) in combined+funnel-ref
+        # mode. The 06-27 "differentiate the FULL h_d honestly" call was premised on the rate term being
+        # SMOOTH — true for S_r*dp_r, NOT for the -k_r*zeta_r/g_r branch baked 06-29 (barrier-inflated,
+        # s_ddot-class; carries ~half of c3's content at the rover-curve cycle fundamental ~1.7 rad/s).
+        # k_r's FUNCTION (recovery demand in h_e, via h_d) is separate from its DERIVATIVE (noise in c3):
+        #   full (default, 06-29 behavior): differentiate the full h_d (rate incl. the k_r branch)
+        #   nokr: differentiate h_d_noS + p_10*S_r*dp_r — s_ddot-drop applied ONLY to the k_r branch
+        #         (kappa absorbs it as d_h; the MATLAB-validated s_ddot-drop pattern, 2026-06-18)
+        #   nos:  differentiate h_d_noS only (pre-06-29 s_ddot-drop of the entire rate term)
+        self._dhd_src = os.environ.get("PLASMC_DHD_SRC", "full").strip().lower()
+        if self._dhd_src not in ("full", "nokr", "nos"):
+            raise ValueError(f"PLASMC_DHD_SRC={self._dhd_src!r} (use full|nokr|nos)")
+        if self._dhd_src != "full":
+            print(f"[controller] PLASMC_DHD_SRC={self._dhd_src}: dh_d drops the "
+                  + ("k_r branch (keeps S_r*dp_r)" if self._dhd_src == "nokr" else "whole h_d rate term"))
         # PLASMC_HD_PASSIVE (2026-06-29, default-off): the CLEAN stacked-barrier design
         # (STACKED_BARRIER_BACKSTEPPING.md:25) — h_d = passive rotation/descent feedforward ONLY
         # (h_d_noS), NO desired-rate term at all (_hd_rate = 0). Then h_e = h - h_d_noS is the pure
@@ -921,6 +936,7 @@ class Controller(Thread):
             print("[controller] PLASMC_HD_PASSIVE=1: h_d = passive FF only (no desired-rate); "
                   "chi_r*zeta_r is the sole s_e_n driver (clean stacked-barrier design)")
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
+        self._h_d_kfree = []           # h_d minus the -k_r*zeta_r/g_r branch only (dh_d 'nokr' source, 2026-07-02)
         self._hd_rate_log = []         # DIAG (2026-06-30): the _hd_rate term of h_d (funnel-ref vs s_dot) for zeta_h-degeneracy decomposition
         self._theta = []      # ||Theta||_F
         self._sigma = []
@@ -1400,20 +1416,24 @@ class Controller(Thread):
                 # Clean stacked-barrier design: NO desired-rate term. h_d = passive FF (h_d_noS) only,
                 # so the non-vanishing surface term chi_r*zeta_r is the sole s_e_n driver.
                 _hd_rate = np.zeros(2)
+                _hd_rate_smooth = _hd_rate
             elif self._hd_funnel_ref:
                 # back-map V_ds_e = inv(g_r)*dzeta_rd + S_r*dp_r, dzeta_rd = -k_r*zeta_r (proportional
                 # prescription zeta_r_dot = -k_r*zeta_r). p_10 un-normalizes to s_dot_meas (= ds_e) units.
                 # k_r=0 -> funnel-only (S_r*dp_r); k_r>0 adds the convergence/recovery term -k_r*zeta_r/g_r.
                 _S_r = np.clip(self._s_e_n[-1][:2] / self._p_r[-1], -1.0 + S_MARGIN, 1.0 - S_MARGIN)
+                _hd_rate_smooth = self._p_10 * _S_r * self._dp_r[-1]
                 if self._hd_kr != 0.0:
                     _zeta_r = self._zeta_r[-1]
                     _g_r = (np.exp(_zeta_r) + 1.0) ** 2 / (2.0 * np.exp(_zeta_r) * self._p_r[-1])
-                    _hd_rate = self._p_10 * (_S_r * self._dp_r[-1] - self._hd_kr * _zeta_r / _g_r)
+                    _hd_rate = _hd_rate_smooth - self._p_10 * self._hd_kr * _zeta_r / _g_r
                 else:
-                    _hd_rate = self._p_10 * _S_r * self._dp_r[-1]
+                    _hd_rate = _hd_rate_smooth
             else:
                 _hd_rate = self._s_dot_meas[-1]
+                _hd_rate_smooth = _hd_rate
             self._h_d.append(np.concatenate([_hd_rate, [0.0]]) + h_d_noS)
+            self._h_d_kfree.append(np.concatenate([_hd_rate_smooth, [0.0]]) + h_d_noS)
             self._hd_rate_log.append(np.asarray(_hd_rate, dtype=float).copy())   # DIAG: log the rate term
         elif self._CH_CLEAN:
             # Consistent c_h kinematics correction (manuscript §II, 2026-06-11; feedback_ch_kinematics_correction).
@@ -1422,12 +1442,14 @@ class Controller(Thread):
             # change (MATLAB C_SIMPLE only changed c -> convention-mixed regression; this does both). Directly
             # de-dominates h_d (which the a_u-outward diagnosis showed is ~all cross(w_i,s) in the overshoot).
             self._h_d.append(self._ds_d[-1] + h_ref_eff * self._s[-1][:3])
+            self._h_d_kfree.append(self._h_d[-1])       # no k_r branch outside combined mode
         else:
             self._h_d.append(
                 self._ds_d[-1]
                 + cross_ws
                 + (h_ref_eff - np.dot(cross_ws, e3)) * self._s[-1][:3]
             )
+            self._h_d_kfree.append(self._h_d[-1])       # no k_r branch outside combined mode
         self._h_e.append(self._h[-1] - self._h_d[-1])
 
         # Barrier transform on h_e — MATLAB visualControl_IBVS_adaptive.m:380-385.
@@ -1486,18 +1508,24 @@ class Controller(Thread):
         # 1/Z touchdown spike has a manuscript-parameter fix.
         DH_D_MAX = self._DH_D_MAX
         # In combined mode, differentiate h_d_noS (transport+descent) — drops s_ddot (kappa absorbs it).
-        # funnel-ref: h_d's rate term (S_s*dp_s) is SMOOTH, so differentiate the FULL h_d (carry it in dh_d
-        # honestly) instead of dropping it to h_d_noS — no s_ddot disturbance for kappa to absorb.
+        # funnel-ref: the S_r*dp_r rate part is SMOOTH -> carried honestly; the -k_r*zeta_r/g_r branch
+        # (baked 06-29) is BARRIER-INFLATED (s_ddot-class; ~half of c3's rover-curve cycle content at
+        # ~1.7 rad/s) -> PLASMC_DHD_SRC picks full (06-29) / nokr (drop k_r branch only) / nos (drop all).
         if self._combined_barrier:
             # passive: h_d == h_d_noS (rate=0) -> differentiate h_d_noS (no s_ddot to absorb anyway)
-            _hd_src = self._h_d if (self._hd_funnel_ref and not self._hd_passive) else self._h_d_noS
+            if self._hd_funnel_ref and not self._hd_passive:
+                _hd_src = (self._h_d if self._dhd_src == "full"
+                           else self._h_d_kfree if self._dhd_src == "nokr"
+                           else self._h_d_noS)
+            else:
+                _hd_src = self._h_d_noS
         else:
             _hd_src = self._h_d
         if len(_hd_src) > 1:
             self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
             self._dh_d_deque.popleft()
         if self._dhd_kf and len(_hd_src) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
-            _dhd = self._cvkfVecRate(self._dhd_kf_st, _hd_src[-1], self._dt[-1])   # CV-KF rate of h_d_noS
+            _dhd = self._cvkfVecRate(self._dhd_kf_st, _hd_src[-1], self._dt[-1])   # CV-KF rate of the selected _hd_src
         else:
             _dhd = smooth4(self._dh_d_deque)                                       # MATLAB-parity finite-diff
         self._dh_d.append(np.clip(_dhd, -DH_D_MAX, DH_D_MAX))
