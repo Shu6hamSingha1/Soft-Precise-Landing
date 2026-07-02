@@ -85,7 +85,7 @@
 - [FoV cone clamp deadlock → SP #6](feedback_fov_cone_clamp_deadlock.md) — THETA_FLOOR=60+DH_D_MAX=5 → SP #6 (xy 0.060); IC2-5 impacts violent (mechanism superseded by cbf2; SP#6 numbers CAL-contaminated; cone-clamp design-flaw lesson endures)
 - [Test data at PX4_Gazebo/test_data/](project_test_data_cleanup.md) — moved 2026-06-02; SP reps git-tracked; closed-sweep raw deleted
 - [Log PX4 runs in parameter_record.ods](feedback_parameter_record_logging.md) — odfpy + backup before edit; git-tracked via carve-out
-- [Yaw calibration pending](project_yaw_calibration_pending.md) — alpha/s[3] uncalibrated (cal_s[3]=1.0); inert for stationary board, needed for moving targets
+- [Yaw calibration pending](project_yaw_calibration_pending.md) — ✅ RESOLVED 2026-07-02: cal_s[3]=1.0 is CORRECT (alpha tracks GT yaw r=1.00); moving-rover "yaw cal" dissolved — turning gap = controller alpha-rate cap, not cal (px4/feedback_rover_yaw_cal_resolved)
 - [Moment-yaw is canonical](feedback_moment_yaw_canonical.md) — yaw SMC tuned to moment alpha (π-period, [4,3,2,1], -0.9379); geometric swap regressed+reverted; don't swap
 - [Clamps are band-aids](feedback_clamps_during_tuning.md) — disable during tuning, re-engage after; _ie_a_clamp REMOVED→conditional integration; A/B/C audit in file
 - [IC2-5 yaw runaway = COMPASS DRIFT at start](feedback_yaw_compass_drift_ic_start.md) — EKF drifts ~77° at descent start, not alpha; fix the test rig (servo GT yaw), not the controller

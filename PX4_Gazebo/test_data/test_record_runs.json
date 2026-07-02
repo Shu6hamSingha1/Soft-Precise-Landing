@@ -1,7 +1,7 @@
 {
- "n_configs": 38,
- "n_reps": 3092,
- "n_SP": 785,
+ "n_configs": 41,
+ "n_reps": 3107,
+ "n_SP": 789,
  "configs": [
   {
    "config": "CoordDescent",
@@ -621,23 +621,69 @@
   {
    "config": "Landing_Test",
    "date": "2026-06-23",
-   "n": 1490,
-   "SP": 434,
+   "n": 1500,
+   "SP": 436,
    "TL": 52,
    "near_SP": 46,
-   "catastrophic": 203,
-   "xy_med": 0.162,
+   "catastrophic": 206,
+   "xy_med": 0.161,
    "xy_min": 0.0,
-   "vel_med": 0.402,
+   "vel_med": 0.404,
    "cats": {
     "POOR": 275,
-    "SP": 434,
-    "CATASTROPHIC": 203,
-    "SOFT_only": 126,
-    "MOD_PRECISE": 240,
-    "PRECISE_only": 114,
+    "SP": 436,
+    "CATASTROPHIC": 206,
+    "SOFT_only": 127,
+    "MOD_PRECISE": 241,
+    "PRECISE_only": 117,
     "near_SP": 46,
     "TARGET_LOST": 52
+   }
+  },
+  {
+   "config": "Rover_AB_aruco",
+   "date": "2026-07-02",
+   "n": 3,
+   "SP": 1,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.192,
+   "xy_min": 0.074,
+   "vel_med": 0.041,
+   "cats": {
+    "SP": 1,
+    "SOFT_only": 2
+   }
+  },
+  {
+   "config": "Rover_AB_rover",
+   "date": "2026-07-02",
+   "n": 1,
+   "SP": 0,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.083,
+   "xy_min": 0.083,
+   "vel_med": 0.271,
+   "cats": {
+    "PRECISE_only": 1
+   }
+  },
+  {
+   "config": "Rover_AB_rover_platform",
+   "date": "2026-07-02",
+   "n": 1,
+   "SP": 1,
+   "TL": 0,
+   "near_SP": 0,
+   "catastrophic": 0,
+   "xy_med": 0.047,
+   "xy_min": 0.047,
+   "vel_med": 0.117,
+   "cats": {
+    "SP": 1
    }
   }
  ],
@@ -852,6 +898,14 @@
   },
   {
    "config": "Landing_Test",
+   "path": "Landing_Test/Thu Jul  2 04-34-55 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0125,
+   "rel_vel": 0.0876,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
    "path": "Landing_Test/Fri Jun 26 14-43-16 2026",
    "date": "2026-06-26",
    "xy_err": 0.0128,
@@ -1000,6 +1054,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0161,
    "rel_vel": 0.0062,
+   "frozen_GT": false
+  },
+  {
+   "config": "Landing_Test",
+   "path": "Landing_Test/Thu Jul  2 04-15-18 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0162,
+   "rel_vel": 0.1165,
    "frozen_GT": false
   },
   {
@@ -3491,6 +3553,14 @@
    "frozen_GT": false
   },
   {
+   "config": "Rover_AB_rover_platform",
+   "path": "Rover_AB_rover_platform/Thu Jul  2 03-09-04 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0471,
+   "rel_vel": 0.1166,
+   "frozen_GT": false
+  },
+  {
    "config": "ICValidation",
    "path": "ICValidation/20260701-023345/IC4_rep4",
    "date": "2026-07-01",
@@ -5832,6 +5902,14 @@
    "date": "2026-06-30",
    "xy_err": 0.0741,
    "rel_vel": 0.0565,
+   "frozen_GT": false
+  },
+  {
+   "config": "Rover_AB_aruco",
+   "path": "Rover_AB_aruco/Thu Jul  2 00-44-48 2026",
+   "date": "2026-07-02",
+   "xy_err": 0.0741,
+   "rel_vel": 0.0295,
    "frozen_GT": false
   },
   {

@@ -59,7 +59,7 @@ Running the full baseline surfaced:
 - **WRONG POSE TOPIC (the real 375 m landmine).** The launcher bridged
   `dynamic_pose/info`, which only carries entities that MOVED that step → its
   PoseArray membership/order VARIES frame-to-frame → fixed indices point at
-  random links during flight (IC pos_err 375 m; sometimes a FROZEN 382 m). FIX:
+  random links during flight (IC pos_err 304–388 m across attempts, "375" the typical; sometimes FROZEN ~379–388). FIX:
   bridge the FULL `/world/rover/pose/info` (stable order `[ground_plane,
   rover_aruco_1, x500...]` → **target=1, UAV=2, SAME as stationary aruco**;
   ~54 Hz, tracks live motion — verified by driving the rover). pos_err 375→0.199.
@@ -75,9 +75,10 @@ Running the full baseline surfaced:
   ~50% flaky: lockstep is_armable race + IC non-settle both exit 42 → reboot).
 
 **FIRST BASELINE DATAPOINT (GT-FB, STATIONARY rover, baked config):** IC clean
-(0.199 m) → descends DEAD-CENTERED to **min alt 0.25 m** → then VIOLENT terminal
-fly-away (balloons to 235 m alt / 900 m lateral). Pose correct throughout (target
-x=0.000). = the terminal-1/Z kick, but FAR worse than stationary-aruco GT-FB
+(0.199 m) → descends CENTERED (lat 0.11 m at z=4, drifting 0.62 m by z=0.3, 0.90 m
+at bottom — audit 2026-07-02: NOT dead-centered at the deck) to **min alt 0.25 m**
+→ then VIOLENT terminal fly-away (balloons to 235 m alt / 939 m lateral). Pose
+correct throughout (target x=0.000). = the terminal-1/Z kick, but FAR worse than stationary-aruco GT-FB
 (~1-4 m). NOT a setup bug — first control finding. Lead: gt_feedback target =
 rover_aruco_1 BASE (z≈0.01) but the MARKER is 0.5 m up → possible loom/z bias.
 

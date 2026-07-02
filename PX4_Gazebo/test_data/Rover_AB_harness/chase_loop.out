@@ -1,0 +1,5 @@
+===== CHASE try 1/6 =====
+[chase] try 1 -> DIRTY min_alt=4.47 lat=2.28 peak=242.8  chase=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/chase_2026-07-02_03-49-23.mp4
+===== CHASE try 2/6 =====
+[chase] try 2 -> DIRTY min_alt=0.06 lat=2.26 peak=8.9  chase=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/chase_2026-07-02_03-51-30.mp4
+===== CHASE try 3/6 =====

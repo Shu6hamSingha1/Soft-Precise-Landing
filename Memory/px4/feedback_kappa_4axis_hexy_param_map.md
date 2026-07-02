@@ -7,6 +7,8 @@ metadata:
   originSessionId: 31fd53ca-48b0-48f4-81a8-2e081955028f
 ---
 
+> ⛔ **2026-06-26 REFINED ([[feedback_kappa0_unfreezes_lateral]]):** the "raise **N_xy** to wake frozen κ_xy" framing here is superseded — the lever is **kappa_0_xy** (0.125→0.5), the BOOTSTRAP gain, which PERSISTS through the descent via the slow τ_xy=6.7s (N_xy alone regresses: woken κ amplifies the terminal). κ_xy IS gain-fixable → holds ~0.40 → s_e_n converges → GT-FB IC4 2/2 SP, IC1 2/2 SP (n=2). The "FROZEN κ_xy = no fix" implication is wrong; κ_0 is the fix.
+
 **KAPPA HEALTH across all 4 axes + the h_e_xy convergence/boundedness parameter map (2026-06-25, user-led).**
 
 **kappa is FROZEN on the lateral, adaptive on z/yaw.** The kappa-ODE convergence time constant is

@@ -8,6 +8,17 @@ metadata:
 
 **WHY we now achieve SP (GT-FB IC1-5), reconstructed from the session's full test history.**
 
+> ⚠ **2026-07-02 AUDIT (recomputed vs raw npy — headline conclusions HOLD; three framings need scope):**
+> (1) "06-25→06-29: 0 SP" is CONFIG-SCOPED (this gate family; Jun-29 = 0 SP in all 196 recorded runs ✓) —
+> Jun-26 has **94 SPs on disk** from the κ0/χ_r/loom-gate era (since invalidated, but recorded). (2) The
+> "rel_med 1.3–2.8" band is the IC-gate bundles of this family; DAY-WIDE Landing_Test medians run
+> 0.64–0.91 (Jun-27/28/29) → **0.14** (Jun-30) → 0.11 (Jul-1): the collapse is real but ~5× day-wide
+> (~50× only config-matched endpoint-to-endpoint). (3) The s_dot_entry separator is CONFIRMED
+> (non-overlapping, ≥12×; SP side 0.023–0.036 ✓), but the non-SP "0.298" is terminal-window-definition-
+> dependent (0.10–1.95 across windows). Everything else checked exact: 012527 3/8 rel 0.385, 150907 7/9
+> 0.026, 220308 19/25 0.023, 154758 12/24, pooled 56/98 vs 33/75 + per-IC %, breach 44/65% (as σ-saturation
+> \|σ_xy\|>2, not literal funnel exit), 103813→133048 15→20.
+
 ## Evidence: SP onset is a sharp terminal-velocity collapse at the 06-29 -> 06-30 boundary
 Same config (XIR=0.10 / P2INF_xy=1.0, "Arm B" family), `rel_med` (terminal relative
 velocity = the softness tell) across the whole campaign:

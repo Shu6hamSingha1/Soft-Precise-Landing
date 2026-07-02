@@ -1,10 +1,15 @@
 ---
 name: yaw-calibration-pending
-description: "TODO (user-requested 2026-06-03): calibrate the yaw/orientation channel (alpha = s[3]) under output_calibration. Currently uncalibrated — sensor_cal_s[3]=1.0 (identity), board_alpha_0=0. Low-priority for stationary aligned board (alpha proven inert there), but REQUIRED for moving/rotating targets and before V_YAW_SOURCE=alpha."
+description: "RESOLVED 2026-07-02 (was: TODO calibrate the yaw/alpha channel): cal_s[3]=1.0 is CORRECT — alpha tracks GT yaw r=1.00, no scale/offset cal needed; the moving-rover 'yaw cal' task dissolved (see px4/feedback_rover_yaw_cal_resolved — the only turning-target gap is the controller alpha-rate cap, not calibration). This file = the full alpha-investigation history."
 metadata:
   type: project
   originSessionId: 7faf44bf-c5f1-4b57-a701-f6d868abfdc1
 ---
+
+> ✅ **RESOLVED 2026-07-02** ([[feedback_rover_yaw_cal_resolved]], px4/): `cal_s[3]=1.0` is CORRECT
+> (alpha tracks GT yaw r=1.00, confirmed again on the rover); stationary-rover yaw verified clean.
+> No scale/offset calibration is needed; the only TURNING-target gap is the controller alpha-rate
+> cap `PLASMC_YAW_ALPHA_MAX_RATE` (control-side, not cal). This file remains as the investigation history.
 
 **User request (2026-06-03): "we need to calibrate yaw under output calibration later."**
 

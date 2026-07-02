@@ -13,6 +13,9 @@ metadata:
   originSessionId: a377a083-d63b-447a-908e-12017cf609f1
 ---
 
+## 🟢🟢🟢 2026-07-02 — SP ACHIEVED (GT-FB 19/25) + ROVER PHASE OPEN — this file's sections below are HISTORY; live state = `px4/MEMORY.md` top
+The Jun-27→Jul-2 arc (recorded in `Memory/px4/`, indexed there): terminal-kick commit design → stability-stack bake `787cf2d` (0/12 SP) → **the terminal "wall" was substantially the `Z_REG=0.01` GT-FB HARNESS ARTIFACT** (computed z below the ~0.2 m gear floor → fake 1/z→100 → κ_eq 107/σ 3.66) → **`Z_REG=0.2` + `W_U_MAX=2.0` + `VDS_KF_Q=1` + breach-leak fix + `XIR=0.10` → 19/25 SP** ([[project_why_sp_achieved]], [[feedback_zreg_gear_floor_artifact]]). ⭐ Metric rule: SP-count noise floor ±5–7 → judge by breach% + `s_dot_entry`. Soft-breach (Idea 1) = dead-end at every frac. **Moving-target (rover) phase open:** infra fixed (spawn/pose/`POSE_IDX`), rover fly-away root = NO landing platform (marker +0.5 m visual-only, no collision) → platform fix CONFIRMED → **baseline 5/5 clean on the platform (0.02–0.05 m)** = GT-FB rover at ceiling → **FIRST MOVING-TARGET LANDINGS 3/3** (Linear @0.47 m/s, velocity-matched; [[project_moving_rover_landing_works]]); yaw "cal" RESOLVED (turning gap = alpha-rate cap only, [[feedback_rover_yaw_cal_resolved]]); NEXT = speed sweep / Circular turning / perception-ON ([[feedback_rover_flyaway_no_platform]], [[project_moving_target_prep]], `docs/MOVING_TARGET_PREP.md`). A/B data: `test_data/Rover_AB_*/`.
+
 ## 🟢🟢 2026-06-26 — VELOCITY-DAMPING LEVER EXTENDED → fly-aways GONE; residual is SOFT, not precision (user-led GT-FB)
 **The lateral fly-away is solved by the velocity-damping lever; the only residual is terminal velocity (lag-limited). See [[feedback_flow_funnel_zetah_works]].**
 - **`XI2_xy=0.7` + `P20_xy=15` (GT-FB IC1-5, n=2) = 10/10 BOUNDED, ZERO fly-aways** (vs the `XI2=0.5` 6/2/2). Safe-floor (alt where the terminal 1/Z loop fires) ~0.15m→~0.08m; terminal velocity crushed. Bundle `20260625-213624`.

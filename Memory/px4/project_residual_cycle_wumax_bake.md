@@ -43,7 +43,20 @@ hypothesis; the clamp was a cycle DRIVER. 2.0 still bounds the worst chatter (un
 **3 SP** (IC4r1, IC4r3, **IC5r2** = first IC5 SP). Partly stochastic (IC5r1/r3 still borderline — the
 cycle has the OTHER driver, the s_dot_meas/drift).
 
-## P2INF_xy (flow funnel) = the fly-away fix (env, NOT baked)
+> **⛔ 2026-06-30 UPDATE — the P2INF=1.5 claim below is REVERSED at the new baked config.** A/B at
+> {h_rd=-0.30, XIR=0.15} (IC2/IC4/IC5 n=3): **P2INF=1.0 = 7/9 SP, rel_vel med 0.026, 0 fly** vs **1.5 =
+> 5/9, 0.144, 1 fly** vs **2.0 = 5/9, 0.172**. So **P2INF=1.0 is BEST** — kept baked 1.0 (briefly baked 1.5
+> 2026-06-30 then reverted). WHY the reversal: at this config the terminal flow error h_e is large enough
+> that zeta_h SATURATES (3.66) even at P2INF=1.5 (verified) -> the "un-saturate zeta_h" benefit is GONE;
+> only the cost remains (wider p_2 = smaller/shallower zeta_h = WEAKER velocity damping in the run-up).
+> Smaller p_2 = steeper zeta_h = stronger terminal velocity damping (the [[feedback_flow_funnel_zetah_works]]
+> lever). NON-monotonic (1.5 worse than 2.0) = n=3 IC4-stochastic noise; the solid signal is 1.0 >= both.
+> The 2 P2INF=1.0 non-SPs (IC4r1/IC5r1) are NOT a distinct mode (no containment/no zeta_r breach/same zeta_h
+> sat as the SP reps) — they're the high tail of a high-VARIANCE terminal velocity (rel 0.007-0.563 across
+> 9 reps) = the SOFTNESS wall (marginally-damped loop -> phase-sensitive touchdown vel). Current baked config
+> = {h_rd=-0.30, XIR=0.15, P2INF=1.0} UNCOMMITTED; needs a full IC1-5 n=5 gate (D-gate 20/25 was at P2INF=1.5).
+
+## P2INF_xy (flow funnel) = the fly-away fix (env, NOT baked) [SUPERSEDED — see banner above]
 Widening the flow funnel floor **un-saturates `ζ_h`** → breaks the chain
 `v_lat→h_e>p_h→ζ_h pins@3.66→σ out of layer→bang-bang→κ-runaway→FLY`. P2INF_xy 2.0/3.0: **3 SP, 0
 fly** (vs baked 1.0 = flies). P2INF_xy=1.5 = tightest un-saturated → **stronger ζ_h damping** (mean

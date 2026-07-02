@@ -13,7 +13,7 @@ Before writing or substantively editing a `.sh` in `PX4_Gazebo/`, read the maste
 
 - User asks to write a new sweep / harness / cal-loop / multi-IC / impulse-response script
 - User asks "can you make a .sh that ..."
-- About to substantively edit `scripts/run_aruco_landing.sh`, `scripts/run_output_calibration.sh`, `scripts/run_input_calibration.sh`, `scripts/run_ic_validation.sh`, or `scripts/run_multi_ic_landing.sh`
+- About to substantively edit `scripts/run_aruco_landing.sh`, `scripts/run_output_calibration.sh`, `scripts/run_input_calibration.sh`, `scripts/run_ic_validation.sh`, `scripts/run_multi_ic_landing.sh`, or the rover pair `scripts/run_rover_landing.sh` / `run_rover_landing_retry.sh`
 - A bash sweep loop in a one-shot Bash tool call would be more than ~15 lines (write a file instead, applying these patterns)
 
 ## What to do
@@ -49,6 +49,13 @@ Need to run something repeatedly?
 - Never spawn background children without `setsid` — kill -group needs the PGID.
 - Never use system `python3` in heredocs — always `$HOME/ws/scripts/env2025/bin/python3`.
 - Never skip the empty-dir cleanup in cal loops — `record_output_calibration.py` mkdirs eagerly.
+
+## 2026-07-02 addendum — A/B harnesses, rover launchers, new knobs
+
+- **The A/B harness is now a canonical pattern** (see reference §10): ~25 committed `run_*_ab.sh` follow it. Exemplar: `scripts/run_ez_ic2_ab.sh` — per-arm `run_arm` fn, arm data to `test_data/<Name>_<arm>/`, loop-until-N-valid with a `MAXLAUNCH` budget, `before`/`latest` dir-diff detection, venv-python summary. Copy it; don't invent a new shape.
+- **`IC_LIST` env subsets `run_ic_validation.sh`** (e.g. `IC_LIST="IC4"`) — prefer it over a new IC-specific script.
+- **Rover (two-instance) launches** have their own landmines — read `docs/SH_REFERENCE.md` §10 and `docs/MOVING_TARGET_PREP.md` before touching them: bridge the FULL `/world/rover/pose/info` (never `dynamic_pose/info`); `POSE_IDX_TARGET=1 POSE_IDX_UAV=2`; stale-gz-server guard; a second MAVSDK client needs its own gRPC port (rover_drive uses 50052); `CHASE_GATE_FILE` gates rover motion + chase recording to descent-start.
+- **One-off harnesses that produced load-bearing results do NOT live in the session scratchpad** — `/tmp` scratchpads are wiped on reboot (the 2026-07-02 rover A/B evidence nearly vanished). Preserve harness+data under `test_data/<Name>_*/` (e.g. `test_data/Rover_AB_harness/`).
 
 ## After writing
 

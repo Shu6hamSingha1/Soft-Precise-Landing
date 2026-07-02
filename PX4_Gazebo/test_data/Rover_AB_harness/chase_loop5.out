@@ -1,0 +1,7 @@
+===== CHASE try 1/5 =====
+[chase] try 1 -> CLEAN min_alt=0.51 lat=0.02 peak=5.0
+         chase=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/chase_2026-07-02_04-33-38.mp4
+         drone=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/Thu Jul  2 04-34-39 2026.mp4
+CLEAN_CHASE=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/chase_2026-07-02_04-33-38.mp4
+CLEAN_DRONE=/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/Thu Jul  2 04-34-39 2026.mp4
+===== CHASE LOOP DONE =====

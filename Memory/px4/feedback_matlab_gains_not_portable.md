@@ -7,6 +7,8 @@ metadata:
   originSessionId: 31fd53ca-48b0-48f4-81a8-2e081955028f
 ---
 
+> ⛔ **2026-06-26 STALE ANCHOR ([[feedback_kappa0_unfreezes_lateral]]):** the "chi_r=2.0 catastrophic" verdict was the OLD FROZEN-kappa base (s_e_n never converged -> chi_r weighted a large, un-shrinking zeta_r -> infeasible demand -> IC1 18m). On the kappa_0_xy base (s_e_n converges) the chi_r ceiling is UNTESTED and likely MUCH higher: higher chi_r = stronger chatter mask AND more position-rate (chi_r*dzeta_r) damping of the lateral overshoot. Do NOT cite 2.0 as binding; sweep up empirically (0.85 ~ baseline at n=2 so far).
+
 **THE MATLAB GAINS DO NOT TRANSFER TO PX4 — clean negative, the LAG is the boundary (2026-06-25, user-led).**
 
 **The test.** Applied the fresh MATLAB `VDF_ASMC/vdf_params.m` gains to PX4 via env (bundle 20260625-191808, GT-FB). The real divergences (most already auto-align to VDF; chi_r and N are PX4-specific): **chi_r 0.5->2.0**, **N 0.1->0.02**, **P2INF_xy 0.5->1.0**, **p_2_0_z 10->4**. Env: `PLASMC_CHI_R_X/Y=2.0 PLASMC_N_X/Y/Z=0.02 PLASMC_P2INF_X/Y=1.0 PLASMC_P20_Z=4`.

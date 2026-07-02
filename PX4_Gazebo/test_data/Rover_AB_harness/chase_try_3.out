@@ -1,0 +1,14 @@
+=================================================================
+[retry] Attempt 1 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching bridge_chase (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_chase.log)
+[run] launching chase_rec (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/chase_rec.log)

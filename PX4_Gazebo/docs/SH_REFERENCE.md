@@ -308,3 +308,25 @@ PY
 | Test a transient idea | Inline shell `for` loop, no file | A `.sh` file that'll be dead in a week |
 
 If after reading the above the script is genuinely warranted (new methodology, new IC set, new analysis pipeline), use the patterns in sections 1-7.
+
+---
+
+## 10. A/B harness + rover two-instance addendum (2026-07-02)
+
+**A/B harness (the now-dominant sweep shape; ~25 committed `run_*_ab.sh`).** Exemplar: `run_ez_ic2_ab.sh`. Canonical structure:
+- `run_arm <name> <env...>` function; arm data to `test_data/<Name>_<arm>/` (top-level dir per arm → each arm becomes its own config bundle in `tools/build_test_record.py`).
+- Loop-until-N-valid with a `MAXLAUNCH` launch budget (SITL ~50% flaky); `before`/`latest` dir-count diff to detect "no recording produced".
+- If the tested param is auto-aligned per-axis (`PLASMC_E_*`, `PLASMC_XI2_*`, …), the arm MUST pin ALL THREE axes — a single-axis env silently reverts the others to hot defaults (the env trap).
+- Summary via `$HOME/ws/scripts/env2025/bin/python3` heredoc over `Ground_Truth.npy['SoftPrecise']`.
+- Judge stochastic terminal effects by RATE over n (fly-away %, breach %, `s_dot_entry`) — SP-count at n=5 has a ±5–7 noise floor.
+
+**Rover / two-instance launch (`run_rover_landing.sh` + `run_rover_landing_retry.sh`).** Forked from the aruco launcher, same cleanup/`start_bg`/`setsid` patterns, plus:
+- **Pose topic:** bridge the FULL `/world/rover/pose/info` — NEVER `dynamic_pose/info` (variable membership → indices point at random links → the 375 m IC-error landmine). Spawn-order indices: `POSE_IDX_TARGET=1`, `POSE_IDX_UAV=2` (same as aruco; env-overridable in `gz_subscriber.py`).
+- **Stale gz server guard:** the `-i 1` instance's gz server outlives a single `pkill` → pre-launch guard + verify-and-rekill in cleanup, else the next run attaches to a frozen world.
+- **Headless PX4:** use `px4 -d` (daemon, no pxh prompt) — otherwise GB/min logs.
+- **Second MAVSDK client** (`apps/rover_drive.py`) needs a DEDICATED gRPC port (50052); sharing the default 50051 with landing_test's FC causes 180 s hangs.
+- **`CHASE_GATE_FILE`:** the controller touches it at descent-start; rover motion (`ROVER_MOTION=1`) and chase-cam recording (`CHASE_CAM=1`) both gate on it, so arm/takeoff/IC happen over a stationary target.
+- The chase camera is a SENSOR on the existing `ground_plane` link — adding it as a separate model shifts the pose indices (fly-away via garbage poses).
+- Retriable flakes: `is_armable` lockstep race, IC non-settle (exit 42), and "Unable to get simulation time" (exits 0 — detected by pattern, not exit code).
+
+**Data preservation rule:** harnesses + raw bundles behind load-bearing findings go under `test_data/` (e.g. `test_data/Rover_AB_{aruco,rover,rover_platform,harness}/`), NOT the session scratchpad — `/tmp` is wiped on reboot.

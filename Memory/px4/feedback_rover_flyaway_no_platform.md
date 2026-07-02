@@ -51,8 +51,9 @@ the platform at min-alt 0.51 m, dead-centered (lat 0.05 m), BOUNDED, no fly-away
 arm was flaky on the frozen-pose infra flake so n was small, but the 0.51 m bounded
 landing is decisive and matches the aruco parity.)
 
-Harness: scratchpad/ab_flyaway.sh + ab_analyze.py (world A/B, per-arm autosave, min/peak
-alt + fly-away metric). Stochastic — judge by fly-away RATE over n≥3, not single runs
+Harness: `test_data/Rover_AB_harness/ab_flyaway.sh` + `ab_analyze.py` (world A/B, per-arm autosave, min/peak
+alt + fly-away metric; preserved 2026-07-02 from the volatile session scratchpad together with the raw
+A/B bundles → `test_data/Rover_AB_{aruco,rover,rover_platform}/`). Stochastic — judge by fly-away RATE over n≥3, not single runs
 (the ±5–7 noise floor + terminal-1/Z amplification, [[project_why_sp_achieved]]).
 See [[feedback_rover_spawn_infra_fixes]], docs/MOVING_TARGET_PREP.md.
 
@@ -70,6 +71,6 @@ deficit. My interim s_e_n-divergence / ζ_r-saturation diagnosis was run on inde
 data (03-51/03-52) → also contaminated. **No GT-FB control tuning is warranted (baseline at
 ceiling).** Candidate levers (P2INF_xy=2.0, PRINF=1.0) NOT run — no upside vs a 5/5 ceiling.
 Next real frontier = perception-ON (GT-FB control is clean; perception may reintroduce
-failures) and yaw-cal for a MOVING (turning) rover. Batch: scratchpad/batch_landrate.sh.
+failures) and yaw-cal for a MOVING (turning) rover. Batch: `test_data/Rover_AB_harness/batch_landrate.sh` (preserved from scratchpad).
 ⚠ SITL still flaky: a frozen-pose startup race (huge pos_err + speed 0) costs ~2 retry
 attempts/rep — self-recovers, but makes n≥6 batches slow (~5 min/rep).

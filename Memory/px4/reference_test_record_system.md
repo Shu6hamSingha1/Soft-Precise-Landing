@@ -1,6 +1,6 @@
 ---
 name: reference_test_record_system
-description: "PX4 test-record tooling + the all-runs SP scan: build_test_record.py scans test_data/ (276 cfg/3137 reps @2026-06-26), then refresh_scan_sheets.py rebuilds the 2 auto ods sheets; emits json+tsv+md; parameter_record.ods has 7 sheets; only ~few genuine closed-loop SP exist"
+description: "PX4 test-record tooling + the all-runs SP scan: build_test_record.py scans test_data/ (41 top-cfg/3107 reps/789 SP @2026-07-02 — SPs dominated by the GT-FB era), then refresh_scan_sheets.py rebuilds the 2 auto ods sheets; emits json+tsv+md; parameter_record.ods has 7 sheets (manual NC log through NC181 — LAGS unless appended each session); only ~few genuine perception-ON closed-loop SP exist"
 metadata: 
   node_type: memory
   type: reference
@@ -28,7 +28,9 @@ REFRESH WORKFLOW (every "update PX4 test records"): `git pull` → `build_test_r
 NC log) are user-maintained — NOT auto-updated; PX4 sessions append NC rows by hand.
 
 ODS now has 7 sheets: PX4_Gain_Record (trials 1-60, wide 62-col gain matrix),
-PX4_NewCal_Record (NC1..NC168 as of 2026-06-26, 36-col body — header at row 0), Removed_Parameters,
+PX4_NewCal_Record (NC1..NC181 as of 2026-07-02, 36-col body — header at row 0; ⚠ MANUAL, lags unless
+each session appends its rows — NC174-181 were back-filled 2026-07-02 for the 06-30/07-01/07-02
+sessions), Removed_Parameters,
 MATLAB_Test_Record, NewCal_Notes, All_Test_Runs, Genuine_SP_Reps. Backup before edits
 (convention [[feedback_parameter_record_logging]]); git-tracked via carve-out.
 
@@ -39,3 +41,10 @@ PX4_Gain_Record remarks + [[feedback_convergence_ordering]]). The only trustwort
 closed-loop SP candidates: 2 **CoordDescent** reps (0.052m/0.061, 0.066m/0.165) + a few
 non-handoff SPCampaign (b13/b14/b2A). Consistent with "no genuine sub-10cm SP in saved
 R3 data" [[feedback_false_sp_frozen_gt]] [[feedback_coord_descent_sp_lucky_ic]].
+
+**Update 2026-07-02:** scan = **41 configs / 3107 reps / 789 "full SP"** — the jump from 18 SP is the
+GT-FB era (idealized sensing, Z_REG-fixed harness; [[project_why_sp_achieved]]) + the rover campaign;
+the "only ~few genuine closed-loop SP" finding still holds for PERCEPTION-ON runs. ⚠ Reps that abort
+before SoftPrecise evaluation are INVISIBLE to the scan by design (e.g. `Rover_AB_rover` shows n=1 of 3
+— the 2 fly-aways never wrote SoftPrecise): read A/B fly-away RATES from the memory files / harness
+logs (`test_data/Rover_AB_harness/`), never from the tsv alone.

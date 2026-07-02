@@ -63,7 +63,9 @@ base_link, marker as a visual on its top face, in the `rover_aruco` model.sdf
 OUTSIDE the repo). Re-run (GT-FB, stationary): drone lands ON the platform at
 min-alt **0.51 m, dead-centered (0.05 m), bounded, no fly-away** (vs 2/3
 fly-aways before). Full writeup: [[feedback_rover_flyaway_no_platform]].
-Harness: scratchpad/ab_flyaway.sh + ab_analyze.py.
+Harness: `test_data/Rover_AB_harness/ab_flyaway.sh` + `ab_analyze.py` (preserved 2026-07-02
+from the volatile session scratchpad, together with the raw A/B bundles →
+`test_data/Rover_AB_{aruco,rover,rover_platform}/`).
 
 ## Recording (both views)
 - First-person (drone down-cam): `IMG_RECORD=1` → test_data/Test_Videos/<ts>.mp4.
@@ -73,7 +75,8 @@ Harness: scratchpad/ab_flyaway.sh + ab_analyze.py.
   separate model — a separate world model adds a top-level pose entry that shifts
   the pose/info vehicle indices non-deterministically → wrong poses → fly-away.
   Example (both views, retry until a clean platform landing):
-  `MAXTRIES=6 bash scratchpad/chase_until_clean.sh` (CHASE_CAM=1 + IMG_RECORD=1).
+  `MAXTRIES=6 bash scratchpad/chase_until_clean.sh` (CHASE_CAM=1 + IMG_RECORD=1;
+  durable copy: `test_data/Rover_AB_harness/chase_until_clean.sh` — session scratchpads are wiped on reboot).
 
 ## What is staged
 - `scripts/run_rover_landing.sh` — two-instance launcher (rover 4022 `-i 1` +

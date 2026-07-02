@@ -1,0 +1,12 @@
+===================== CONFIG baseline  () =====================
+----- baseline rep 1/6 -----
+[RESULT] baseline rep1: CLEAN min=0.51 lat@min=0.02 pk=5.0
+----- baseline rep 2/6 -----
+[RESULT] baseline rep2: CLEAN min=0.51 lat@min=0.02 pk=5.0
+----- baseline rep 3/6 -----
+[RESULT] baseline rep3: CLEAN min=0.51 lat@min=0.03 pk=5.0
+----- baseline rep 4/6 -----
+[RESULT] baseline rep4: CLEAN min=0.51 lat@min=0.03 pk=5.0
+----- baseline rep 5/6 -----
+[RESULT] baseline rep5: CLEAN min=0.51 lat@min=0.05 pk=5.0
+----- baseline rep 6/6 -----

@@ -27,6 +27,23 @@ The control law uses **image-based quantities only** — no Z/altitude/metric da
 cal that the controller consumes. Truth (Gazebo GT) is allowed ONLY for deriving/validating the
 cal, never in the runtime control path. See memory `feedback_scale_free_depth_free`.
 
+## ⚠ 2026-07-02 addendum — currency notes (read before any recal)
+- **The cal is WORLD/MARKER-SPECIFIC.** The single-LARGE-marker world (2026-06-23) required an
+  in-world re-cal; the live `_sensor_cal_hw` is keyed to the CURRENT world+marker (the prior board
+  cal is backed up as `.pre_singlemarker_cal_bak`). Changing marker/world (e.g. the rover's
+  platform-mounted 1 m marker) ⇒ re-derive before perception-ON runs. See
+  `feedback_single_marker_rank_deficiency`.
+- **`FLOW_LAT_REDUCED=1` (baked 2026-06-25) requires a PAIRED recal:** the cal `h_x/h_y` rows are a
+  `w_xy` recombination that breaks under the reduced solve (~3× under-read) → record any output-cal
+  WITH `FLOW_LAT_REDUCED=1` so the derive yields diagonal rows. See `feedback_lateral_flow_reduced_solve`.
+- **Yaw feature cal is RESOLVED, not pending** (2026-07-02): `cal_s[3]=1.0` is CORRECT (alpha tracks
+  GT yaw r=1.00); the moving-rover "yaw cal" task dissolved — the only turning-target gap is the
+  controller alpha-rate cap (`PLASMC_YAW_ALPHA_MAX_RATE`), which is control, not calibration.
+  Supersedes `project_yaw_calibration_pending`. See `feedback_rover_yaw_cal_resolved`.
+- **GT-FB bypasses the sensor cal entirely** (`PLASMC_GT_FEEDBACK=1` injects exact V-frame s/h) —
+  cal changes are INERT under GT-FB; only perception-ON runs exercise the cal.
+- `test_data/Landing_Test/` now holds ~1,500 recordings (the "534" figure below is a stale count).
+
 ---
 
 # OUTPUT calibration (image → optical flow `[h; w]`)
