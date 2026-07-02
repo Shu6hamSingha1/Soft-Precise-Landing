@@ -368,7 +368,11 @@ async def main(record = 'n'):
         #     our body-rate setpoints, is gyro-only regardless).
         #   EXTERNAL: BODY_YAW_SOURCE=alpha (default) is REQUIRED — the SO(3)
         #     measured yaw + psi_d lazy-init are then alpha-derived, not compass.
-        if os.environ.get("COMPASS_FREE_VALIDATE", "0") == "1":
+        # BAKED DEFAULT-ON 2026-07-02 (user): ALL test configs validate compass-free
+        # — every descent runs with EKF2 mag fusion cut at engage (ablation 3/3
+        # clean, indistinguishable from mag-on). Set COMPASS_FREE_VALIDATE=0 for a
+        # legacy mag-fused descent.
+        if os.environ.get("COMPASS_FREE_VALIDATE", "1") == "1":
             if os.environ.get("BODY_YAW_SOURCE", "alpha") == "compass":
                 raise RuntimeError(
                     "COMPASS_FREE_VALIDATE=1 requires BODY_YAW_SOURCE=alpha "

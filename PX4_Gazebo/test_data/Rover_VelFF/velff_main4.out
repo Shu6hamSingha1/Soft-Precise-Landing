@@ -1,0 +1,7 @@
+----- circvff rep 1/3 -----
+[RESULT] circvff rep1: NODATA
+----- circvff rep 2/3 -----
+[RESULT] circvff rep2: MISS/FAIL min_alt=0.11 lat=2.125 relspd=1.98 steady_lag=1.11 peak=5.2
+----- circvff rep 3/3 -----
+[RESULT] circvff rep3: MISS/FAIL min_alt=0.11 lat=2.125 relspd=1.98 steady_lag=1.11 peak=5.2
+----- linvff rep 1/1 -----

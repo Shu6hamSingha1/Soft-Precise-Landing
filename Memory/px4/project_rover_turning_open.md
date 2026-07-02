@@ -130,9 +130,176 @@ the ASMC's lagged output — only valid for slow/constant rates). Candidate defa
 the rover scenario only. The measured-w_z→u_a variant (true disturbance FF) remains
 untried — would handle varying rates too.
 
-**REMAINING single open item for Circular: the curved-translation lag** (rotating
-velocity direction × τ≈1 s ⇒ ~1–1.7 m systematic miss at 0.38 m/s). Lever = target
-velocity/curvature feedforward in the lateral channel.
+> **⛔ RECLASSIFIED (2026-07-02, user catch): the a_t FF below is an ORACLE DIAGNOSTIC,
+> NOT a deployable fix.** The manuscript Problem Statement forbids it: "unpredictability
+> means that no model of the target dynamics is available and NEITHER THE TARGET POSE NOR
+> ITS DERIVATIVES can be measured or estimated in the closed loop"; a_t/z sits inside
+> d_h = a_t/z − (F_g+F_d)/(mz) (Assumption 1, unknown bounds → adaptive domination is the
+> paper's designed answer; UUB ≠ zero residual). PLASMC_TGT_VEL_FF + PLASMC_GT_TGT_LEAD
+> therefore quantify the ORACLE BOUND (value of target-motion knowledge) vs the compliant
+> adaptive residual — a publishable ABLATION: compliant curved residual ~1.0–1.7 m
+> (rotating d_h at ~loop bandwidth maximizes the realized UUB radius, exactly as theory
+> predicts) vs oracle 0.31–0.51 m. Deployable ONLY under a declared COOPERATIVE-platform
+> extension (deck broadcasts IMU — realistic for ship decks). Image-only d_h observation
+> is blocked by unknown β (why the paper chose domination). The yaw Omega_d=[0;0;u_a] FF
+> is UNAFFECTED (feeds back the controller's OWN output — no target knowledge).
+> Manuscript-compliant framing: straight/const-v targets ≤1.1 m/s land reliably
+> (velocity-matching is free — h is RELATIVE, within the formulation); curved targets
+> land within the UUB residual → platform size vs curvature is an operational spec.
+
+## ⭐⭐⭐ CURVED-LAG SOURCE IDENTIFIED (2026-07-02 deep-dive): a SELF-SUSTAINED LATERAL LIMIT CYCLE that the curve keeps ENGAGED at altitude
+Data-driven decomposition on the heading-hold Circular reps (u_a≡0, no yaw coupling), with
+three falsifications on the way:
+1. ✗ NOT a static v·τ servo offset: the error is a constant-amplitude (~0.7 m) EPICYCLE —
+   the e-vector rotates at 1.10–1.12 rad/s (rock-solid across reps), NOT the target's
+   wz=0.48; |a_u| median 1.3–1.6 m/s² = 7–8× the centripetal need. LINEAR contrast: same-
+   size error but DIRECTION-LOCKED (rot 0–0.3) → decays into the terminal → lands.
+2. ✗ NOT the transport-term parity bug: hypothesized cross(w_rel,s) vs manuscript ψ̇_b —
+   but `PLASMC_CH_CLEAN=1` is ALREADY BAKED (controller.py:314; user caught it); the
+   epicycle occurs WITH the correct ψ̇_b transport (≈0 under heading-hold). (My CH_CLEAN
+   "falsification arm" was vacuous — identical config to baseline.)
+3. ✗ NOT forced resonance: e_x spectrum in the tracking window = fundamental ~1.7–1.8
+   rad/s + CLEAN HARMONICS (3.4, 5.1) and ~NO energy at the 0.48 drive. Also the
+   commanded a_u projects NET-DAMPING onto ė (−0.13…−0.15) — the command opposes the
+   motion, yet the cycle persists (harmonic-rich = relay-like waveform).
+→ **SOURCE: the lateral loop carries a self-sustained NONLINEAR (relay-type) LIMIT CYCLE
+(fundamental ~1.7 rad/s, amplitude ~0.3–0.7 m) — the same relay(κ·sat/E boundary-layer)
++lag family as the stationary campaign's terminal cycle ([[project_residual_cycle_wumax_bake]],
+E_xy-tightening relay+lag dead-end). The CURVE's role is NOT forcing: the persistent
+centripetal demand HOLDS THE LOOP AWAY from the quiet σ≈0 equilibrium, keeping the relay
+engaged at ALTITUDE — straight lines let the error decay into |σ|≪E where the switching
+is linear/quiet (direction-locked residual, closed terminally); stationary targets only
+meet the cycle at TERMINAL 1/z. The oracle a_t FF removed the cycle's BIAS (center →
+near-zero: steady 0.9–1.6→0.31–0.51) but not the cycle — its ~0.3–0.4 m amplitude is
+exactly the platform-edge coin-flip in the FF runs.**
+Implications: the curved-landing lever = REDUCE THE CYCLE AMPLITUDE (relay describing-
+function levers: boundary layer/κ/lag — note the stationary wins W_U_MAX=2.0 + VDS_KF_Q=1
+are already ON; P2INF_xy widening = the known ζ_h-unsaturation lever, untested here), NOT
+more tracking gain and NOT (only) target-motion FF. Analysis scripts inline (energy
+projection + spectrum); data = yawhold_arm_n3 + Rover_SpeedSweep contrast.
+
+### ⭐⭐ CYCLE SOURCE PINNED (2026-07-02, cross-spectral): ACTUATION PHASE flips the
+### velocity-damping sign at ~1.7 rad/s; the drift/c-term group CARRIES the cycle
+- **Phase(delivered accel vs commanded a_x) at 1.75 rad/s = −120°** (cross-spectrum,
+  GT-derived delivered vs logged command; ~±25° uncertainty incl. the boxcar smoothing
+  ≈−15° — even −60…−90° flips most of the damping). A command intended as damping
+  (anti-ė) is DELIVERED rotated past quadrature → its projection on ė turns POSITIVE →
+  **negative effective damping**. Phase budget: tau_ia LPF (~8°) + PX4 attitude dynamics
+  from rate setpoints (~30–40° at 1.75 with K_R≈2–2.5) + rate loop/motors + 38 ms
+  transport + ZOH — physically fixed (MC_*RATE_P dead).
+- **Per-term spectral amplitude at the 1.7 fundamental:** resid(c-term + drift
+  χ_r·ζ̇_r/G) = 1.68 m/s² ≫ κ·sat 0.16 ≫ ζ_h 0.09 ≫ ζ_r 0.03 — the cycle's command
+  content is overwhelmingly the VELOCITY-FEEDBACK group (drift via s_dot_meas + c_h),
+  matching the stationary campaign's "drift term = a_u oscillation driver".
+- **Mechanism:** velocity feedback (drift/c) + >90° actuation phase at ~1.7 rad/s =
+  self-excited oscillator; the nonlinearities (barrier slopes, κ·sat) set the AMPLITUDE.
+  Amplitude is OPERATING-POINT dependent: straight/stationary → error decays to small
+  σ (low barrier slope) → residual cycle only ~5–7 cm (measured on Linear reps!);
+  CURVE holds a standing bias 0.3–1 m → steeper barrier slope → bigger loop gain →
+  0.3–0.7 m cycle; stationary TERMINAL → 1/z inflates gain → the known ~1 Hz cycle.
+  ONE mechanism, three regimes.
+
+### Limit-cycle presence in the OTHER loops (validated 2026-07-02, cfree stationary reps)
+- **YAW: NO cycle** — e_a std 0.57–0.87°, 1–2 sign flips, no coherent fundamental
+  (post YAW_OMEGA=0.1 bake). Yaw's failure mode is ramp WINDUP (turning targets), not
+  self-oscillation.
+- **DESCENT: bounded RIPPLE, not a destructive cycle** — loom h_z ripple std 0.071
+  about the −0.30 ref (~24%), σ_z std 0.09, spectral content 0.8–1.7 rad/s (same
+  family); consistent with the stationary z-story (E_z=0.5 engages κ damping).
+
+### ✗ P2INF_xy widening TESTED on the curve cycle — WEAK/INEFFECTIVE (2026-07-02, n=3/cell)
+Heading-hold Circular, P2INF pinned all-3-axes (Z=1.5): **2.0 → 0/3** (1 NEAR 0.464 with a
+genuinely suppressed cycle osc_std 0.026/e-rot 0.69 — but 1 WANDER outlier e_mean 15.8 m =
+the memory's damping↔softness tradeoff biting as lost restoring stiffness — and 1 unchanged
+epicycle miss); **3.0 → 0/3** (2 NEAR-ish 0.62-0.74, e_rot 0.92-1.21 = cycle largely intact,
+osc_std ≈ baseline). Net vs baseline (1.0: 0/4, e 0.70, rot 1.11): touchdown lat slightly
+better (0.46-0.99 vs 1.01-1.68), cycle NOT killed, new wander risk. CONSISTENT with the
+pinned mechanism: widening lowers the ζ_h barrier slope, but the cycle's carrier is the
+DRIFT/c group and the >90° actuation phase is untouched. With the ENTIRE stationary
+playbook already baked (K_R=2.5, W_U_MAX=2.0, VDS_KF_Q=1, Γ=0.25, Z_REG=0.2) and P2INF now
+tested-weak, the curve-cycle residual is STRUCTURAL at the current actuation phase —
+remaining real levers: ~~reduce actuation phase (uXRCE-DDS rate path)~~ — **⛔ RULED OUT
+BY USER 2026-07-02 ("we will not go ahead with the uXRCE-DDS low-latency rate path");
+do not re-propose** — leaving OPERATIONAL SPEC as the accepted resolution: the curved-
+target residual (~0.3–0.7 m cycle amplitude) is a characterized property of the
+lag-limited plant; platform size vs path curvature is the deployment-side answer
+(a ≥1 m platform accepts it). Straight/stationary performance unaffected.
+⛔ "This closes the curved-target thread" was WRONG (user corrected same day) — the
+thread REOPENED with the cap-audit + exact decomposition below.
+Data test_data/Rover_Turning/p2inf_sweep/.
+
+### ⭐⭐⭐ SINGLE-SOURCE UNIFICATION (2026-07-02, user insight, correlation-verified) + GAIN-LEVER SWEEP
+**All a_u components are ONE signal:** correlation matrix on the cycle band — ζ_r↔s_e_n
++0.99, drift↔s_dot_meas +0.92, switching↔s_e_n +0.88, h/loom↔s_dot_meas −0.80, pairwise
+cluster 0.5–0.99. The lateral channel is a SISO loop: (e,ė) → 1/z bearing → parallel
+branches {Γζ, χζ_r, drift, sat·κ relay, ḣ_d, loom} → Σ=a_u → −120° actuation → (e,ė).
+The "carriers" are branches of ONE loop — explains why single-channel smoothing/pruning
+never kills the cycle (the describing function re-balances), why ONE impact axis, why
+all phases cluster within ~30°. Cap audit: NO hard cap active (w_u/tilt/izeta/w_i ~0%
+duty); the one live nonlinearity = sat(σ/E) at 29–36% duty + κ ratchet 0.27→1.3–1.7.
+Exact decomposition (recon residual 3%): switching 0.51 > c3=−ḣ_d 0.40 (half of which =
+the 06-29 `_hd_src=full h_d` regression differentiating the HD_KR funnel term; DHD-KF
+itself honest, gain 0.97–1.01) > loom 0.26 > drift 0.10 > Γζ_h 0.09.
+**Phase is NOT parameter-recoverable:** measured filter lags at 1.75 rad/s: VDS-KF −9/−16°
+(gain 0.69–0.76), TAU_IA −14°, GT-FB h −5/−12° (a −140° first read was frame-mixing in
+the reference — h is honest), DHD-KF −6°. Total ~25° vs the ~120° actuation chain → all
+velocity-branch gain is pump; only GAIN attenuation is tunable. (Re-interpretation: the
+VDS_KF_Q 10→1 bake win = gain attenuation at cycle frequency, not noise smoothing.)
+**Singleton gain-lever sweep (heading-hold Circular n=3 each, data cycle_gain_sweep/):**
+- **HD_KR 0.5→0: BEST — 1/3 ON-PLATFORM (0.200, first Circular landing of the campaign)**;
+  mechanism clean: c3 0.41→0.32, switching 0.52→0.40, sat duty 36→26%, κ peak 1.33→1.12,
+  e-rot 1.11→0.77–0.89 (crossover down with gain — DF-consistent). Removes the 06-29
+  regression branch; no robustness trade. CANDIDATE for rover configs (stationary IC gate
+  required before any bake — HD_KR=0.5 was baked on stationary evidence).
+- **P_xy 1.5→5: FALSIFIED 0/3** — κ ratchet WORSE (0.06→3.04, duty 38%): leakage drains
+  the domination the curve's real d_h needs → σ grows → adaptation re-triggers harder
+  (classic adaptive-leakage limit cycle). κ level is NOT a free amplitude knob.
+- **E_xy 1.0→1.5: FLAT 0/3** — duty 36→24% but κ compensates to 1.95; DF re-balances.
+**Frontier statement:** each branch lever shaves ~20–25% loop gain; the cycle re-balances
+at slightly lower frequency, similar amplitude. Dropping crossover below the ~90°-phase
+frequency (~1.0–1.2 rad/s) needs ~3× TOTAL gain cut = ~3× less tracking bandwidth =
+standing curve bias ~1.2–3 m → swaps miss-by-cycle for miss-by-bias. At fixed actuation
+phase the gain levers move along a bias↔cycle FRONTIER; they cannot beat both. Remaining
+structural exits: phase lead on the single shared path (PLASMC_AU_LEAD proposal, NEW code,
+not yet approved) or platform size. K_R spent; DDS ruled out by user.
+
+### Why MATLAB doesn't show this cycle (2026-07-02 analysis)
+MATLAB DID have the same cycle FAMILY (06-19/20 campaign: X/Y noise-pumped cycles inside
+the boundary layer, z-cycle, yaw cycle, "σ rings + eR > commanded tilt = inner-loop
+attitude lag") — but at small amplitude and FIXABLE there, because:
+(1) **actuation phase ≈ 0 at 1.7 rad/s** — torque-level inner loop at integration rate,
+no MAVSDK transport, no PX4 rate loop, no tau_ia-equivalent → the velocity-damping sign
+NEVER flips → no self-excitation; cycles arose only via other pumps (s̈ noise) and were
+(2) **damped at the inner loop** (kΩ_z 0.2, kR, E_z bakes) — MATLAB's inner gains are
+free; PX4's are not. PX4 sits in a qualitatively different regime: ~100–120° actuation
+phase at the cycle frequency makes negative damping STRUCTURAL for any velocity-feedback
+path, leaving only amplitude management (operating point/barrier slope/κ) as levers.
+
+## ⭐ CURVED-TRANSLATION LAG: the a_t FF WORKS (steady lag −60%); terminal edge-margin remains (2026-07-02)
+Implemented `PLASMC_TGT_VEL_FF=1` (default OFF): gt_feedback estimates the TARGET's own
+acceleration a_t (rate of its velocity vector — the quantity a curve demands; velocity-
+MATCHING needs no FF since the flow h is RELATIVE) and the controller adds tgt_acc_V[:2]
+to a_u after the caps. RESULTS (Circular wz=0.48 + yaw-FF, GT-FB):
+- **Steady tracking lag 0.9–1.6 → 0.31–0.51 m** (n=6 across arms) — the CURVE PENALTY is
+  removed (≈ the plain v·τ straight-line lag). Linear side-benefit: 0.40 → **0.14 m**
+  (the FF also covers the gate-start acceleration). No fly-aways.
+- **Terminal still misses at ~platform-edge margin**: the residual ~0.3–0.4 m lag still
+  ROTATES, drone rides the descent at rel_lat 0.25–0.43 vs the 0.3 m half-width →
+  coin-flip touchdowns (1 NEAR 0.447; misses 1.1–3.0).
+⚠ ESTIMATOR LESSON: the first live version read |a_t|≈0.85 vs true 0.184 — the 125 Hz
+control loop reading the 54 Hz /pose stair-steps, and DOUBLE differentiation amplifies
+stairs ~5× → terminal detonation (17.7 m). FIX: dedup sampling (only on pose CHANGE) +
+1.0 s accel window + |a_ff|≤PLASMC_GT_TGT_FF_MAX=0.5 clamp → unit-exact (0.183) under
+stair-stepped input. (The single-diff relative-velocity path tolerates stairs; double
+diff does not — cousin of [[feedback_gt_noise_uniform_dt]].)
+- Injection order tested: before vs after the commit taper/caps = NO difference (the
+  TERMINAL_COMMIT extent gate never fires in GT-FB — extent max 295 < 400).
+- **LEAD PURSUIT (`PLASMC_GT_TGT_LEAD`, predict p+v·τ+½a·τ², default 0=off): UNVALIDATED
+  and n=1-REGRESSED** (τ=0.8: steady lag 1.11, MISS 2.13; 2 of 3 reps lost to a NEW
+  silent startup flake `set_rate_odometry TIMEOUT` → exits 0 → false-SUCCESS, detection
+  since added to the launcher). Candidates for the last ~0.3 m: smaller lead (0.4–0.5)
+  or phase-advanced v (rotate v_t by wz·τ) instead of quadratic; OR shrink the FF's own
+  phase lag (FF_TAU 1.0→0.5). Data test_data/Rover_VelFF/.
 
 Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
 `PLASMC_GT_SPIN_WZ` (synthetic in-place spin), `PLASMC_YAW_OMEGA_D_FF` (the windup fix).

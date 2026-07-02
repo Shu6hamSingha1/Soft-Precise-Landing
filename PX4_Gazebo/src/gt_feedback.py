@@ -93,6 +93,13 @@ class GTFeedback:
         self._wx = deque(maxlen=_maxlen)        # W_x history (NED, marker - camera)
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
+        # (The 2026-07-02 target-acceleration FF / lead-pursuit estimator was
+        # REMOVED per user: the "curved-translation lag" it targeted turned out
+        # to be a self-sustained lateral LIMIT CYCLE, not a lag — and the FF
+        # consumed target-pose derivatives forbidden by the manuscript Problem
+        # Statement anyway. See [[project_rover_turning_open]] for the oracle-
+        # bound results (steady 0.9-1.6 -> 0.31-0.51 m) retained as an ablation.)
+
         # SYNTHETIC TARGET SPIN (PLASMC_GT_SPIN_WZ, rad/s, default 0 = off):
         # add wz_spin*(t-t0) to the target yaw, i.e. a target rotating IN PLACE
         # with NO translation. Pure-rotation isolation experiment for the
@@ -132,6 +139,7 @@ class GTFeedback:
         # or the rover pitches (FLU offset -> FRD via the self-inverse FRD_2_FLU).
         cam_ned    = up  + Ru @ (FRD_2_FLU @ _CAM_OFF_FLU)         # camera position, NED
         marker_ned = tpp + Rt @ (FRD_2_FLU @ _MARKER_OFF_FLU)      # marker position, NED
+
         W_x_tu = marker_ned - cam_ned                             # marker - camera, NED
 
         # relative yaw (uav - target), unwrapped across calls for a clean rate

@@ -1705,6 +1705,11 @@ class Controller(Thread):
         # SMC adapt and recover instead of killing the run permanently.
         # _warmup_remaining is retained as a state variable for future use
         # but no longer gates anything here.
+        # (The 2026-07-02 target-acceleration FF (PLASMC_TGT_VEL_FF) was REMOVED
+        # per user: the "curved-translation lag" it targeted is a self-sustained
+        # lateral LIMIT CYCLE, not a lag — and the FF consumed target-pose
+        # derivatives forbidden by the manuscript Problem Statement. Oracle-bound
+        # results retained in [[project_rover_turning_open]] as an ablation.)
         self._a_u.append(a_u)
 
     def _yawCtrl(self):

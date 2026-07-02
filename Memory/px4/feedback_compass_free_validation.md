@@ -23,7 +23,13 @@ internal (PX4) or external (PLASMC), except logging.**
 - PRE-DESCENT (action.takeoff + PositionNedYaw IC rig): PX4 position control on the
   mag-aided EKF — allowed per policy.
 
-**IMPLEMENTATION `COMPASS_FREE_VALIDATE=1` (default off):**
+**⭐ BAKED DEFAULT-ON (2026-07-02, user):** `COMPASS_FREE_VALIDATE` default flipped 0→1 in
+landing_test.py — ALL test configs now validate compass-free (every descent cuts EKF2 mag
+fusion at engage). Regression with the new default (no env): CLEAN 0.020 m on the platform,
+param readback verified. Set `COMPASS_FREE_VALIDATE=0` for a legacy mag-fused descent.
+⚠ Runs BEFORE this bake (speed sweep, turning arms, velff, batch) ran mag-fused internally.
+
+**IMPLEMENTATION `COMPASS_FREE_VALIDATE=1`:**
 - `landing_test.py` (at engage, after IC convergence, before warmup): sets
   `EKF2_MAG_TYPE=5` (None) via the new `FC.set_px4_param_int` (MAVSDK param plugin,
   READBACK-VERIFIED → hard-fail if ≠5), and hard-fails if `BODY_YAW_SOURCE=compass`.
