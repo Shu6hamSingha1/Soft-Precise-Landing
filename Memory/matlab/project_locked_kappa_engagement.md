@@ -33,7 +33,17 @@ were idle -> no margin for real Gazebo disturbance. kappa-ODE equilibrium k*=the
 An adaptation FIGURE (kappa vs stress) was added then REVERTED per user — plasmc_adaptive_gain.pdf
 keeps its original 4-panel form (x/y/z vs (Y d_bar)_k + yaw panel); the escalation data stands.
 
-**Status:** vdf_params LOCKED bake UNCOMMITTED in working tree as of 2026-07-02 (bundled with
-[[project_yaw_observability_campaign]] + [[project_prescribed_rate_hd]] changes). Datasets under
+**PX4 cross-port A/B (2026-07-02, cb_px4port.m):** the PX4 GT-FB terminal-approach bakes were
+tested on the MATLAB gate and REJECTED — Gamma_xy 0.25: 23/25, worstXY 2.63 (reaching-starved in
+the ENGAGED-funnel design; PX4's 0.25 pairs with its wide-funnel PR0=10/S_r~0.05 regime);
+Xi_h [0.7,0.7,1.0]: 22/25 + 7x stress 5/5->1/5 (the p_h-overtake failure via contraction rate);
+both: 19/25 + 0/5. Already-converged (no action): N=0.10, P2INF_xy=1.0, cbf2-only, no
+backstepping h_d. Intentional divergences stand: chi_r 1.5(PX4)/2.0(ML), E_xy 1.0/0.5,
+kappa0 big-start/adaptive, p_r0 10/1.2-FoV-locked, Pleak_xy 1.5/0.5. PX4 terminal-commit /
+loom-commit / s_e_n-ramp machinery = perception-gated terminal disarm, BANNED in MATLAB (user).
+Do NOT re-port without a regime change.
+
+**Status:** COMMITTED+pushed 016855e (2026-07-02) together with the
+[[project_yaw_observability_campaign]] + [[project_prescribed_rate_hd]] changes. Datasets under
 MATLAB/Datasets/{MultiInit,Comparison} were regenerated at LOCKED but are STALE vs the later
 2pi-orientation + prescribed-h_d code changes — regenerate before manuscript number refresh.

@@ -198,6 +198,7 @@ s4 = [
  ["Y11", "2026-07-02", "cb_dhd/cb_presc/cb_fold/cb_sinliss", "prescribed-rate h_d: s_dot_meas -> phi_max.*S_r.*dp_r, then folded into dh_d", "d(s_dot_presc)/dt RMS .007 vs measured s_ddot ~7 (1000x smaller) -> s_ddot-drop removed; gate 25/25 + 25/25 noiseless (baked gains)", "smooth + consistent h_d/dh_d; validated"],
  ["Y12", "2026-07-02", "cb_ab/cb_ab2", "A/B prescribed vs measured h_d, same seeds", "standard stress 1-7x EQUIVALENT (5/5 both, engR .59, no breach); BREACHING 2x-yaw: prescribed engR .76 NO-breach + worstXY 1.12 vs measured 1.16 breach + 1.56; speed sweep 20/20", "bounded-on-breach benefit CONFIRMED"],
  ["Y13", "2026-07-02", "(user review)", "formula audit of s_dot_presc", "phi_max.*S_r.*dp_r assumes S_r CONSTANT; s_e=phi_max*S_r*p_r => missing phi_max*S_r_dot*p_r term; measured S_r_dot would collapse to s_dot_meas (circular)", "OPEN -- awaiting prescribed S_r_dot contraction law"],
+ ["P1", "2026-07-02", "cb_px4port", "PX4 GT-FB bakes on the MATLAB gate: Gamma_xy=0.25, Xi_h=[0.7,0.7,1.0], both (vs baked LOCKED)", "baked 25/25 (mXY .011, 7x 5/5); Gxy.25 23/25 worstXY 2.63 (reaching-starved in engaged-funnel design); Xih 22/25 + 7x 1/5 (p_h-overtake via contraction rate); both 19/25 + 7x 0/5. Already-converged: N=.10, P2INF_xy=1.0, cbf2-only, no backstepping h_d", "PX4 bakes REJECTED on MATLAB -- regime-specific (wide-funnel PR0=10 vs engaged p_r0=1.2); divergences stand documented"],
 ]
 for r in s4:
     ws4.append(r)
