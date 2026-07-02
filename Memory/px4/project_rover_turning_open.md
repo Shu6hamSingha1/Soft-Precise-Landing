@@ -207,6 +207,21 @@ projection + spectrum); data = yawhold_arm_n3 + Rover_SpeedSweep contrast.
   about the −0.30 ref (~24%), σ_z std 0.09, spectral content 0.8–1.7 rad/s (same
   family); consistent with the stationary z-story (E_z=0.5 engages κ damping).
 
+### ✗ P2INF_xy widening TESTED on the curve cycle — WEAK/INEFFECTIVE (2026-07-02, n=3/cell)
+Heading-hold Circular, P2INF pinned all-3-axes (Z=1.5): **2.0 → 0/3** (1 NEAR 0.464 with a
+genuinely suppressed cycle osc_std 0.026/e-rot 0.69 — but 1 WANDER outlier e_mean 15.8 m =
+the memory's damping↔softness tradeoff biting as lost restoring stiffness — and 1 unchanged
+epicycle miss); **3.0 → 0/3** (2 NEAR-ish 0.62-0.74, e_rot 0.92-1.21 = cycle largely intact,
+osc_std ≈ baseline). Net vs baseline (1.0: 0/4, e 0.70, rot 1.11): touchdown lat slightly
+better (0.46-0.99 vs 1.01-1.68), cycle NOT killed, new wander risk. CONSISTENT with the
+pinned mechanism: widening lowers the ζ_h barrier slope, but the cycle's carrier is the
+DRIFT/c group and the >90° actuation phase is untouched. With the ENTIRE stationary
+playbook already baked (K_R=2.5, W_U_MAX=2.0, VDS_KF_Q=1, Γ=0.25, Z_REG=0.2) and P2INF now
+tested-weak, the curve-cycle residual is STRUCTURAL at the current actuation phase —
+remaining real levers: reduce actuation phase (uXRCE-DDS rate path = the one architectural
+lever on the books) or operational spec (platform size vs curvature). Data
+test_data/Rover_Turning/p2inf_sweep/.
+
 ### Why MATLAB doesn't show this cycle (2026-07-02 analysis)
 MATLAB DID have the same cycle FAMILY (06-19/20 campaign: X/Y noise-pumped cycles inside
 the boundary layer, z-cycle, yaw cycle, "σ rings + eR > commanded tilt = inner-loop
