@@ -1,8 +1,25 @@
 # Moving-target (rover) phase — preparation & deferred work
 
-Status: **Baseline stack RUNS end-to-end (2026-07-01/02).** Two-instance rover
-world comes up reliably (retry wrapper + stale-server guard), pose is correct,
-GT-FB controller engages. First baseline run diagnosed below.
+Status: **FIRST MOVING-TARGET LANDING WORKS (2026-07-02).** GT-FB, Linear @
+0.47 m/s (`ROVER_SPEED_MULT=0.3`): the rover drove 5.12 m during the descent;
+the drone tracked and touched down ON the moving platform — min-alt 0.53 m,
+relative lateral 0.28 m (inside the 0.3 m platform half-width), relative speed
+0.08 m/s (velocity-matched). **Repeatability n=3: 3/3 ON the moving platform**
+(rel lateral 0.28/0.044/0.048 m, rel speed 0.08/0.23/0.23 m/s, all min-alt at
+the platform top, 0 fly-aways).
+
+**Moving-landing run command:**
+```bash
+HEADLESS=1 PLASMC_GT_FEEDBACK=1 ROVER_MOTION=1 ROVER_TRAJ=Linear \
+ROVER_SPEED_MULT=0.3 PLASMC_YAW_ALPHA_FILT=0 MAX_ATTEMPTS=5 LANDING_AUTOSAVE=1 \
+bash scripts/run_rover_landing_retry.sh
+```
+Key mechanics: the rover HOLDS its start position until the descent-start gate
+(the controller's CHASE_GATE_FILE touch), then drives — so the ~60 s
+arm/takeoff/IC happens over a stationary rover. `PLASMC_YAW_ALPHA_FILT=0` per
+[[feedback_rover_yaw_cal_resolved]] (GT-FB has no corruption; the cap would lag
+the rover's heading change). ⚠ rover_drive uses a DEDICATED mavsdk gRPC port
+(50052) — sharing the default 50051 with landing_test's FC caused 180 s hangs.
 
 Canonical handoff: `Memory/px4/project_moving_target_prep.md`. This file is the
 actionable checklist + entry point; the memory note has the reasoning.
