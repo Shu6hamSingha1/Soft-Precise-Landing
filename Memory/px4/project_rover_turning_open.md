@@ -1,6 +1,6 @@
 ---
 name: project_rover_turning_open
-description: "TURNING-rover (Circular r=0.8, wz=0.48) thread, closed layer by layer (2026-07-02): yaw ramp windup SOLVED (Omega_d=[0;0;u_a] FF); curved-translation miss = self-sustained lateral limit cycle at -120deg actuation phase (gain levers trade bias<->cycle). k_r RESOLVED late-session (user-led): HD_KR=0 is a WRONG REFERENCE (zeta_r_dot=-k_r*zeta_r => k_r=0 prescribes zeta_r=const; zeta_h then damps the closure chi_r*zeta_r commands) — stationary IC1 1/5 vs 4/5, NOT baked; PLASMC_DHD_SRC nokr/nos falsified the c3-noise hypothesis surgically (c3 band content drops, cycle unchanged — DF re-balances; hdkr_0's win was demand-level detuning). DEFAULTS STAND (HD_KR=0.5, DHD_SRC=full); frontier exits: AU lead (unapproved) / platform size."
+description: "TURNING-rover (Circular r=0.8, wz=0.48) thread: yaw ramp windup SOLVED (Omega_d FF); k_r RESOLVED (HD_KR=0 = wrong reference, rejected; DHD_SRC falsified c3-noise surgically; defaults stand). CYCLE MECHANISM CORRECTED 2026-07-03: W*=1.3-1.7 rep-scattered (locked-1.7+harmonics was an FFT-bin artifact), A*W^2 = 1 m/s^2 const (cone-clamp-set amplitude, duty 26-38%), actuation phase only -25..-55 (NOT -120; method artifact), fuel = anti-position command + ANY lag pumps a rotating error (P_cyc>0 7/9, sign predicted by chi vs W*tau 9/9); damping quadrature destroyed in the barrier chain (drift branch chi=-1.5 instead of +90; switch 0.47 share at +7). Exit sized +25-40deg at 1.3-1.7 rad/s: PLASMC_AU_LEAD approved 07-03, under test."
 metadata: 
   node_type: memory
   type: project
@@ -179,6 +179,11 @@ are already ON; P2INF_xy widening = the known ζ_h-unsaturation lever, untested 
 more tracking gain and NOT (only) target-motion FF. Analysis scripts inline (energy
 projection + spectrum); data = yawhold_arm_n3 + Rover_SpeedSweep contrast.
 
+### ⛔ [SUPERSEDED 2026-07-03 by the corrected chain below — the −120° number and the
+### "phase not parameter-recoverable / only gain is tunable" conclusions are METHOD
+### ARTIFACTS (boxcar-smoothed GT double-diff evaluated at an FFT bin of a 3.7 s window;
+### the tracking-band bins sit at exactly 1.71/3.42/5.13 rad/s = the reported "fundamental
+### + harmonics"). Kept for the audit trail.]
 ### ⭐⭐ CYCLE SOURCE PINNED (2026-07-02, cross-spectral): ACTUATION PHASE flips the
 ### velocity-damping sign at ~1.7 rad/s; the drift/c-term group CARRIES the cycle
 - **Phase(delivered accel vs commanded a_x) at 1.75 rad/s = −120°** (cross-spectrum,
@@ -301,6 +306,48 @@ diff does not — cousin of [[feedback_gt_noise_uniform_dt]].)
   since added to the launcher). Candidates for the last ~0.3 m: smaller lead (0.4–0.5)
   or phase-advanced v (rotate v_t by wz·τ) instead of quadratic; OR shrink the FF's own
   phase lag (FF_TAU 1.0→0.5). Data test_data/Rover_VelFF/.
+
+## ⭐⭐⭐ CYCLE MECHANISM CORRECTED (2026-07-03 deep-dive, user-driven): position-phased
+## command + ANY lag = energy pump; damping quadrature destroyed by the barrier chain;
+## amplitude set by the cone clamp. The −120° story is OVERTURNED.
+Tools (preserved `test_data/Rover_AB_harness/`): `cycle_tone_fit_v2.py` (bin-free rotating-
+phasor fit), `cycle_stage_phase.py` (complex-pair stage budget, ENU convention — ⚠ NED
+complex conjugates the rotation; fit in ENU), `cycle_branch_audit.py` (exact a_u branch
+decomposition, recon resid 0.00%). 9 curve reps (yawhold_arm_n3 + dhd_nokr + hdkr_0).
+- **Cycle structure:** ONE rotating phasor, W* = 1.3–1.7 rad/s REP-SCATTERED (the locked
+  "1.7 + harmonics 3.4/5.1" was the FFT-bin artifact — bins of the 3.7 s tracking window),
+  A = 0.40–0.60 m, same rotation sense as the rover orbit, 80–93% of error variance; plus
+  orbit-locked bias 0.02–0.47 m + DC ~0.3 m. **A·W*² = a_osc ≈ 1.0 m/s² CONSTANT across
+  reps** → amplitude is authority-set: A ≈ a_osc/W*².
+- **Stage budget at W* (medians):** controller ≈ anti-position ±25°, ×2.4–10; tau_ia+cone
+  −9° but **gain 0.43 (cone active 26–38% of samples — the DF that caps growth)**; PX4
+  attitude −3..−18° ×0.86; tilt→delivered −10..−24° ×1.00; **ACTUATION TOTAL −25…−55°,
+  NOT −120°.** Built-in check the old method lacked: kinematic closure arg(a_del/e)=±180°
+  (ë=a_del) holds +154…+180° in 9/9 reps.
+- **Energy ledger (the fuel):** pump ∝ sin(φ); P_cyc>0 in 7/9, ≈0 in 2. Rep-by-rep the sign
+  is predicted by χ vs Wτ (χ = command lead beyond anti-position; damping needs χ>Wτ≈25–40°).
+  The ONE Circular rep that ever landed (hdkr_0 21-57-07, 0.200 m) is exactly the χ≈Wτ≈97°
+  neutral rep. **Mechanism: anti-position command on a circulating error + ANY lag points
+  the delivered vector ahead of the target direction → pumps ∝ sin(Wτ). No phase flip
+  needed.** Cone clamp caps delivered oscillation at a_osc≈1 m/s² → steady orbit.
+- **Branch audit (why we can't damp):** shares/χ of the a_u tone — switch θ·sat·κ **0.47 /
+  +7°**; drift χ_r·ζ̇_r/G **0.25 / −1.5°** (the DESIGNED damping branch arrives with ZERO
+  quadrature: ζ̇_r's velocity content is destroyed by (i) scale-free normalization
+  d/dt(e/Z)=ė/Z+|h_rd|·e/Z, (ii) funnel-rate mixing, (iii) barrier-slope AM g_r(r) by the
+  radial error component); c3 0.24 / −1.4°; **loom 0.08 / +85° = the only correctly-phased
+  branch, tiny**; others ≤0.04. ⇒ ~96% of the command tone is centripetal → gain knobs
+  re-balance branches that all share χ≈0 and CANNOT move total phase (why P/E/P2INF/HD_KR/
+  DHD_SRC all "re-balanced"); K_R=2.5 worked because it cut Wτ (real phase). The coin-flip
+  Circular landings = the χ-vs-Wτ margin fluctuating rep to rep.
+- **Sized exits:** need +25–40° of quadrature at 1.3–1.7 rad/s (NOT +120): (a)
+  **PLASMC_AU_LEAD** — first-order lead on the shared lateral world command (e.g. ω_z≈0.9,
+  ω_p≈3.5 → +35° at 1.4, HF ×3.9, bounded downstream by the cone) — **USER-APPROVED
+  2026-07-03, implementing for Circular test**; (b) restore drift-branch quadrature at the
+  source (feed raw measured rate, bypass barrier AM — control-law redesign, manuscript
+  implications); (c) cut Wτ further (spent); (d) platform size (operational).
+- Caveats: tone fits span ~1.4–2 cycles (descent is 7.6 s — intrinsic); trusted via the
+  identical estimator across stages + 9/9 kinematic closure + 9/9 P_cyc-sign prediction.
+  Cone duty + gain-0.43 are raw sample statistics (fit-independent).
 
 ## ⭐⭐⭐ k_r RESOLVED (2026-07-02 late, user-led): HD_KR=0 REJECTED as a WRONG REFERENCE; the c3-noise hypothesis FALSIFIED surgically; defaults stand
 **User catch (algebra):** the funnel-ref back-map is the prescription `ζ̇_r,d = −k_r·ζ_r`.
