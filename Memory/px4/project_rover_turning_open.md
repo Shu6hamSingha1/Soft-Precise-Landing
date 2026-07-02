@@ -223,9 +223,45 @@ BY USER 2026-07-02 ("we will not go ahead with the uXRCE-DDS low-latency rate pa
 do not re-propose** — leaving OPERATIONAL SPEC as the accepted resolution: the curved-
 target residual (~0.3–0.7 m cycle amplitude) is a characterized property of the
 lag-limited plant; platform size vs path curvature is the deployment-side answer
-(a ≥1 m platform accepts it). Straight/stationary performance unaffected. This CLOSES
-the curved-target control thread — remaining rover-phase work is perception-ON.
+(a ≥1 m platform accepts it). Straight/stationary performance unaffected.
+⛔ "This closes the curved-target thread" was WRONG (user corrected same day) — the
+thread REOPENED with the cap-audit + exact decomposition below.
 Data test_data/Rover_Turning/p2inf_sweep/.
+
+### ⭐⭐⭐ SINGLE-SOURCE UNIFICATION (2026-07-02, user insight, correlation-verified) + GAIN-LEVER SWEEP
+**All a_u components are ONE signal:** correlation matrix on the cycle band — ζ_r↔s_e_n
++0.99, drift↔s_dot_meas +0.92, switching↔s_e_n +0.88, h/loom↔s_dot_meas −0.80, pairwise
+cluster 0.5–0.99. The lateral channel is a SISO loop: (e,ė) → 1/z bearing → parallel
+branches {Γζ, χζ_r, drift, sat·κ relay, ḣ_d, loom} → Σ=a_u → −120° actuation → (e,ė).
+The "carriers" are branches of ONE loop — explains why single-channel smoothing/pruning
+never kills the cycle (the describing function re-balances), why ONE impact axis, why
+all phases cluster within ~30°. Cap audit: NO hard cap active (w_u/tilt/izeta/w_i ~0%
+duty); the one live nonlinearity = sat(σ/E) at 29–36% duty + κ ratchet 0.27→1.3–1.7.
+Exact decomposition (recon residual 3%): switching 0.51 > c3=−ḣ_d 0.40 (half of which =
+the 06-29 `_hd_src=full h_d` regression differentiating the HD_KR funnel term; DHD-KF
+itself honest, gain 0.97–1.01) > loom 0.26 > drift 0.10 > Γζ_h 0.09.
+**Phase is NOT parameter-recoverable:** measured filter lags at 1.75 rad/s: VDS-KF −9/−16°
+(gain 0.69–0.76), TAU_IA −14°, GT-FB h −5/−12° (a −140° first read was frame-mixing in
+the reference — h is honest), DHD-KF −6°. Total ~25° vs the ~120° actuation chain → all
+velocity-branch gain is pump; only GAIN attenuation is tunable. (Re-interpretation: the
+VDS_KF_Q 10→1 bake win = gain attenuation at cycle frequency, not noise smoothing.)
+**Singleton gain-lever sweep (heading-hold Circular n=3 each, data cycle_gain_sweep/):**
+- **HD_KR 0.5→0: BEST — 1/3 ON-PLATFORM (0.200, first Circular landing of the campaign)**;
+  mechanism clean: c3 0.41→0.32, switching 0.52→0.40, sat duty 36→26%, κ peak 1.33→1.12,
+  e-rot 1.11→0.77–0.89 (crossover down with gain — DF-consistent). Removes the 06-29
+  regression branch; no robustness trade. CANDIDATE for rover configs (stationary IC gate
+  required before any bake — HD_KR=0.5 was baked on stationary evidence).
+- **P_xy 1.5→5: FALSIFIED 0/3** — κ ratchet WORSE (0.06→3.04, duty 38%): leakage drains
+  the domination the curve's real d_h needs → σ grows → adaptation re-triggers harder
+  (classic adaptive-leakage limit cycle). κ level is NOT a free amplitude knob.
+- **E_xy 1.0→1.5: FLAT 0/3** — duty 36→24% but κ compensates to 1.95; DF re-balances.
+**Frontier statement:** each branch lever shaves ~20–25% loop gain; the cycle re-balances
+at slightly lower frequency, similar amplitude. Dropping crossover below the ~90°-phase
+frequency (~1.0–1.2 rad/s) needs ~3× TOTAL gain cut = ~3× less tracking bandwidth =
+standing curve bias ~1.2–3 m → swaps miss-by-cycle for miss-by-bias. At fixed actuation
+phase the gain levers move along a bias↔cycle FRONTIER; they cannot beat both. Remaining
+structural exits: phase lead on the single shared path (PLASMC_AU_LEAD proposal, NEW code,
+not yet approved) or platform size. K_R spent; DDS ruled out by user.
 
 ### Why MATLAB doesn't show this cycle (2026-07-02 analysis)
 MATLAB DID have the same cycle FAMILY (06-19/20 campaign: X/Y noise-pumped cycles inside
