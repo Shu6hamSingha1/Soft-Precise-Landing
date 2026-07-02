@@ -119,6 +119,17 @@ class FC():
         except Exception as e:
             print(f"Unexpected error: Flight Controller Thread: {e}\n")
 
+    async def set_px4_param_int(self, name, value, verify=True):
+        """Set (and optionally read back) a PX4 int parameter via MAVSDK.
+        Used by COMPASS_FREE_VALIDATE to cut EKF2 mag fusion at controller
+        engage (EKF2_MAG_TYPE=5). Returns the read-back value (or None)."""
+        await self.vehicle.param.set_param_int(name, int(value))
+        if verify:
+            rb = await self.vehicle.param.get_param_int(name)
+            print(f"[FC] PX4 param {name} = {rb} (requested {value})")
+            return rb
+        return None
+
     #-- Close connection
     async def close(self):
         """

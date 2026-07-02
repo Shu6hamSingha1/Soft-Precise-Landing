@@ -83,7 +83,19 @@ upgrade killing the ±90° saddle limit cycle — do NOT revert; under a ramp th
 now reach ±180 and wind up); (3) psi_d rate clamp + conditional integration + alpha-
 sourced measured yaw (stationary-tuned band-aids).
 
-## NO yaw-rate feedforward was ever attempted in MATLAB (2026-07-02, exhaustive check)
+> **⚠ CORRECTED by the 2026-07-02 pull ([[project_yaw_observability_campaign]], MATLAB side):**
+> (a) a yaw-rate FF **WAS attempted** in MATLAB — `Omega_d=[0;0;u_a]` into so3_tracker — and
+> REVERTED (it recycles the ASMC's LAGGED OUTPUT, "circular"; helped constant yaw, broke Sin
+> 5/5→3/5). The measured-`w_z`→u_a DISTURBANCE cancellation below remains untried and is
+> architecturally different (measure the disturbance, don't recycle the output).
+> (b) MATLAB now ALSO has the 2π alpha (ported from PX4, 25/25) — pre-2π MATLAB was PINNED at
+> e_a 88–90° (not gracefully folding); post-2π it tracks 0.48 rad/s with termEa≈17° on baked
+> gains → the MATLAB-vs-PX4 gap reduces to LAG + the Ω_a detune.
+> (c) MATLAB names the yaw-rate CEILING (~0.5 rad/s ok, 2× fails) as ARCHITECTURAL-LATERAL:
+> s_e ORBITS in the yaw-aligned V frame at the yaw rate → CBF cone sat + funnel breach — the
+> same yaw→lateral detonation as our PX4 spin_active arm.
+
+## NO yaw-rate feedforward into u_a was attempted in MATLAB (2026-07-02, exhaustive check)
 Every `u_a` in the codebase (canonical single-run :932, VDF `+blocks/yaw_asmc.m`,
 comparison ctrls, Obsolete/, git -S history) is the pure error law
 `u_a = Γ_a·σ_a + sat(σ_a/E_a)·κ_a + Ω_a·e_a`. **By DESIGN, per the manuscript**
@@ -101,8 +113,30 @@ paper's own kinematics. Pin sign/gain EMPIRICALLY on the spin harness (yaw signs
 burned us twice: [[feedback_gtfb_wz_sign_bug]], PLASMC_GT_ALPHA_SIGN); acceptance = pure
 spin 0.48 with yaw SMC active → e_a converges ~0 (vs today's ±180 windup), then Circular.
 
+## ✅ YAW RAMP WINDUP **SOLVED** by Omega_d=[0;0;u_a] inner-loop FF (2026-07-02, user-directed)
+Implemented `PLASMC_YAW_OMEGA_D_FF=1` (default OFF; controller.py _attCtrl: `w_u[2] +=`
+the rate-limited `_ua_psid` that psi_d actually advances at; zeroed during yaw-hold) —
+the same FF MATLAB tried in so3_tracker (helped constant-rate, broke oscillating Sin).
+On the CONSTANT-rate rotating target it works:
+- **PURE SPIN 0.48 + yaw active + FF: 2/2 ON-PLATFORM (0.030/0.025 m), e_a BOUNDED
+  ≤83°/≤76° (2nd-half mean 23–25°), u_a ≤1.40** — vs no-FF: e_a ±180 windup, u_a 3.3–3.7,
+  1 FAIL 2.44 m. The drone chases the spin with a bounded constant-rate lag (mirrors
+  MATLAB post-2π Circ e_a ~53°).
+- **Circular + FF (n=2): yaw HEALTHY in both** (e_a ≤70/100, u_a ~1.0, no windup) but
+  landing 1 MISS 1.48 / 1 NEAR 0.621 → the residual Circular failure is PURELY the
+  CURVED-TRANSLATION lag (independent, as the u_a≡0 heading-hold arm 0/4 proved).
+⚠ Keep OFF for oscillating yaw references (the MATLAB Sin 5/5→3/5 caveat: it feeds back
+the ASMC's lagged output — only valid for slow/constant rates). Candidate default-ON for
+the rover scenario only. The measured-w_z→u_a variant (true disturbance FF) remains
+untried — would handle varying rates too.
+
+**REMAINING single open item for Circular: the curved-translation lag** (rotating
+velocity direction × τ≈1 s ⇒ ~1–1.7 m systematic miss at 0.38 m/s). Lever = target
+velocity/curvature feedforward in the lateral channel.
+
 Knobs: `PLASMC_GT_ALPHA_SIGN` (default +1; −1 falsified, diagnostic only),
-`PLASMC_GT_SPIN_WZ` (synthetic in-place spin). Heading-hold recipe: PLASMC_YAW_GAMMA=0
-KAPPA0=0 OMEGA=0 **N=0** (all four). Data test_data/Rover_Turning/{yawhold_arm_n3,
-spin_hold_n2,spin_active_n2,...}; harnesses in test_data/Rover_AB_harness/.
+`PLASMC_GT_SPIN_WZ` (synthetic in-place spin), `PLASMC_YAW_OMEGA_D_FF` (the windup fix).
+Heading-hold recipe: PLASMC_YAW_GAMMA=0 KAPPA0=0 OMEGA=0 **N=0** (all four). Data
+test_data/Rover_Turning/{yawff_spin_n2,yawff_circular_n2,yawhold_arm_n3,spin_hold_n2,
+spin_active_n2,...}; harnesses in test_data/Rover_AB_harness/.
 Continues [[project_moving_rover_landing_works]].
