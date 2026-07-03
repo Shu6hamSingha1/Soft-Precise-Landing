@@ -99,7 +99,15 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         spec_yaw, spec_yaw_rate = wz * t, wz   # MATLAB psi = wz*t
 
     elif traj_type == "EightShape":
-        a, w0 = 1.0, 0.3
+        # LOOP RADIUS a=5 (2026-07-03, user): at the native a=1/w0=0.3 the figure-eight's
+        # velocity REVERSES mid-descent (~t=2.6 s y, 5.2 s x); the drone velocity-matches with
+        # lag, overshoots the reversal, and the lateral loop runs away (28-33 m miss). A LARGER
+        # loop radius makes the turns gentler AND (with the tangential speed preserved by
+        # w0=v_tan/a) pushes the reversals LATER — a>=~5 moves them past the ~9 s descent so it
+        # stays trackable. Same fix as the Circular r bump. Both env-tunable.
+        a = float(os.environ.get("ROVER_EIGHT_A", "5.0"))
+        v_tan = float(os.environ.get("ROVER_EIGHT_VTAN", "0.4")) * speed_mult
+        w0 = v_tan / a
         x = a * math.sin(w0 * t)
         y = a * math.sin(w0 * t) * math.cos(w0 * t)
         vx = a * w0 * math.cos(w0 * t)
