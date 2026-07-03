@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: historical gain-era record** (K_rp/P_z parametrization predates the combined-surface defaults). Enduring lesson = the mandatory IC2-5 gate (core rule in ../MEMORY.md).
 ## What happened
 
 Per user direction 2026-05-25, defaults were changed:

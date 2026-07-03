@@ -1,7 +1,7 @@
 # Memory Index — MATLAB phase (Phase 1: sim + controller + manuscript)
 
 > Per-subfolder index to avoid cross-chat push collisions. The MATLAB chat appends
-> NEW entries here (not the legacy ../MEMORY.md). Topic files for new MATLAB work live
+> NEW entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; the migrated legacy manuscript hooks are at the bottom of this file). Topic files for new MATLAB work live
 > in this folder. Cross-cutting findings go in ../shared/. PX4 work -> ../px4/.
 
 ## Current (2026-06-26 → 07-03 controller campaign — code+datasets COMMITTED through 625fc84)

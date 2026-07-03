@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⚠ **UPDATE 2026-07-03:** the 38 ms figure stands as the plant characteristic, but the 'uXRCE-DDS is the lag lever' framing is closed — the DDS low-latency path was ⛔ RULED OUT by user 2026-07-02 (lag accepted as a design constant).
 ## Top finding (2026-05-22)
 
 The Phase 2 cross-correlation estimate of ~168 ms loop lag was an artifact of low cross-correlation coefficients (0.05–0.20) in convergent-flight data. A dedicated impulse-response test (hover + step in body-rate command) gives a sharper measurement: **38 ± 4 ms total rate-loop lag** on the pitch axis.

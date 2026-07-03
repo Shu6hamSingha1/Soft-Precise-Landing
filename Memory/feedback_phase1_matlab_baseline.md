@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: CAL-CONTAMINATED + superseded.** '0% in PX4 / the plant is the bottleneck' predates the honest cal, the gain-parity fix, Z_REG=0.2, and the GT-FB 19/25 SP era. Clean survivor: the MATLAB baseline + toolchain shims. See [[feedback_historical_cal_confound]].
 ## Top finding (2026-05-22)
 
 The PX4 SITL precision plateau is NOT a controller-design ceiling. The same PLASMC controller, same gains, same noise model, same IC achieves **10/10 soft+precise** in MATLAB but **0/30** in PX4. The 16× gap is SITL-specific (sensor pipeline, actuator response, rate-loop lag).

@@ -1,5 +1,12 @@
 # Perception layer — optic flow at landing: what's real & the binding limit
 
+> ⚠ **STALENESS STAMP (2026-07-03):** the title's "binding limit" and the body's "LK dynamic range ~2 m/s is
+> the binding limit; next lever = pyramidal LK" are **SUPERSEDED as the wall explanation.** The PX4 lateral
+> wall was resolved as a gain-parity bug + velocity damping (06-21/26) and the terminal "wall" was substantially
+> the Z_REG=0.01 GT-FB harness artifact (Z_REG=0.2 → GT-FB 19/25 SP). Pyramidal LK was tested INERT (06-19;
+> the deficit is decode/track AVAILABILITY, not dynamic range). These perception facts REMAIN RELEVANT for the
+> still-pending perception-ON validation. Live state: `px4/MEMORY.md` top + `PLASMC_TUNING_GUIDE.md` STATUS.
+
 > _Rewritten 2026-06-10; renamed from `PERCEPTION_FLOW_UNDERREPORT_BRIEF.md` (that old name was a misnomer —
 > flow does **not** under-report). It was an advocacy brief for the hypothesis "optic flow under-reports the
 > real velocity 5–25×, the fusion EKF over-suppresses", which was **GT-FALSIFIED (2026-06-08)**; this file now

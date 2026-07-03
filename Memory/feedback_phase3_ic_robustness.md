@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: superseded framing.** 'PX4 IC-sensitivity = an effect of loop lag' predates the resolved wall; the variance driver is terminal-1/Z noise amplification ([[project_why_sp_achieved]]). The clean MATLAB datapoint (15/15 SP at 2× IC perturbation) survives.
 ## Top finding (2026-05-22)
 
 MATLAB achieves **15/15 soft+precise** with random IC velocity perturbations sampled from N(0, 0.15) m/s — perturbations up to **0.32 m/s**, which is larger than PX4's measured vh_max (0.26 m/s) and 2× PX4's vh_mean (0.089 m/s).

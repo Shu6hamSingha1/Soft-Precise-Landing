@@ -7,6 +7,7 @@ metadata:
   originSessionId: a378d3e9-67aa-42fc-ae09-63da27f370a9
 ---
 
+> ⚠ **STAMP 2026-07-03: the plan below is COMPLETE and this handoff is historical.** Infra/pose/yaw-cal items all resolved; platform fix confirmed; moving landings 3/3; speed envelope ≤1.09 m/s. Live entry point = `docs/MOVING_TARGET_PREP.md` + [[project_moving_rover_landing_works]] [[project_rover_speed_sweep]] [[feedback_rover_yaw_cal_resolved]]; the turning-rover thread continues in [[project_rover_turning_open]].
 **2026-06-30 HANDOFF — switching from STATIONARY ArUco to MOVING-target (rover) landing.**
 Written at the end of the stationary residual-cycle session so a fresh chat can pick up the
 moving-target phase. (Rover = `rover` world, airframe 4022 per CLAUDE.md; stationary = `aruco`,

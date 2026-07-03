@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: superseded conclusion.** 'Loop lag is the complete explanation' was contaminated-era; the gap was substantially cal + the gain-parity bug + the Z_REG artifact, with lag as a residual bandwidth ceiling — and the uXRCE-DDS path was ⛔ RULED OUT by user 2026-07-02 (not pursued). Clean survivor: the HF Δ/√2 methodology + the pixel-jitter match.
 ## Top finding (2026-05-22)
 
 PX4 SITL's sensor noise floor is **essentially identical to MATLAB's** depth-dependent model. The 16× xy_mean gap identified in Phase 1 is fully attributable to MAVSDK rate-loop latency (Phase 2), not sensor pipeline noise.

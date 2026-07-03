@@ -1,5 +1,12 @@
 # PLASMC Control-Framework Review (PX4/Gazebo)
 
+> ⚠ **STALENESS STAMP (2026-07-03):** this 2026-06-11 review concludes "control law sound + gain-exhausted;
+> the binding limit is the perception front-end." That verdict is **SUPERSEDED** — the wall was a gain-parity
+> bug + the dormant velocity-damping lever (`ζ_h`), and the terminal fly-away was substantially the Z_REG=0.01
+> GT-FB harness artifact; with those fixed the control law reaches GT-FB 19/25 SP across IC1-5. The per-component
+> map + the clamp audit remain accurate as an implementation reference. Live state: `px4/MEMORY.md` top +
+> `PLASMC_TUNING_GUIDE.md` STATUS.
+
 **Date:** 2026-06-11 · **Cal regime:** R3 (honest 8-run, `d60973a`) · **Scope:** `src/controller.py`, control-relevant `src/img_data.py`.
 
 This is an implementation-and-performance review of the PLASMC controller as ported to PX4 SITL. It maps each

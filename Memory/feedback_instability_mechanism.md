@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: superseded.** Cal-contaminated numbers (0.4 m floor), and the multi-factor-IC-sensitivity framing was re-attributed: SP variance is terminal-1/Z amplification of mid-descent noise (±5–7 SP floor, [[project_why_sp_achieved]]), weakly coupled to ICs. The per-step diagnosis methodology survives.
 ## Cause of instability (definitive, time-domain evidence)
 
 **Multi-factor IC sensitivity, no single dominant variable.** The SMC-driven descent's short flight time (~4s with `LANDING_REF_RAD_OPT_FLOW=-0.70`) is not long enough to wash out initial-condition variance in any of several correlated state variables. The dominant predictor of xy_end migrates as constraints tighten.
