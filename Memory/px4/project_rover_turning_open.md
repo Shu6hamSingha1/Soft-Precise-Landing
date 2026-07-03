@@ -388,6 +388,14 @@ scale-free (linear, unity DC); fixed time-constants only (same class as tau_ia �
   drone close+tilted → extent 405–416 → commit/abort DOES fire: r1.0 fly-aways = case(a) ABORT
   (diverging); raw-lead miss = case(b) COMMIT "zeta_r zeroed" — freezing tracking on a moving deck.
   So commit isn't the good-residual cause but is plausibly implicated in the variance/fly-away reps.
+- **✅ BAKED OFF 2026-07-03 (user): `PLASMC_TERMINAL_COMMIT` default 1→0** (controller.py:482).
+  The open-loop hold is wrong for any moving target and neutral-to-better on the stationary
+  platform (rarely fires, extent<400 at platform min-alt ~0.5 m). All trajectory montages
+  (static/linear/circular/sinusoidal/eightshape/lissajous) now run commit-off by default; set
+  `PLASMC_TERMINAL_COMMIT=1` to restore the stationary s_e_n→0 ramp. ⚠ validate: the stationary
+  aruco-world (ground marker, no platform) descends to the deck where extent CAN reach 400 —
+  commit-off means it regulates to touchdown instead of the open-loop hold; expected fine
+  (regulating a static target to touchdown is correct) but not yet gate-checked at n≥5.
 - **✅ CONFIRMED (user hypothesis): TERMINAL_COMMIT=0 ELIMINATES the moving-target fly-away.**
   r1.0 (loose clamp, the one that had a fly-away) commit-ON peaks 5.0/**9.2**/5.0 (1 detonation)
   → commit-OFF peaks **5.0/5.0/5.0** (NONE); the 60 m fly became a bounded 1.5 m miss. MECHANISM

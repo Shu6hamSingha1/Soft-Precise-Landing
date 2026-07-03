@@ -479,7 +479,7 @@ class Controller(Thread):
         #                    for the app to ascend + re-attempt.
         # The |ds_e_n| gate replaces the ||h_xy|| flow guard (same v_res info, centroid-robust,
         # matching s_e_n coordinate). All triggers image-space -> scale/depth-free. Default-off.
-        self._terminal_commit = os.environ.get("PLASMC_TERMINAL_COMMIT", "1") == "1"  # BAKED ON 2026-06-29 (s_e_n->0 ramp; stability config)
+        self._terminal_commit = os.environ.get("PLASMC_TERMINAL_COMMIT", "0") == "1"  # BAKED OFF 2026-07-03 (user): the open-loop hold (zero zeta_r) is WRONG for a MOVING target — it drops position regulation and only velocity-matches, so a curving/translating deck develops an un-corrected offset; it also fired the r1.0 curved fly-away (peak 9.2->5.0 m with it off). On the STATIONARY platform it rarely fires anyway (extent<400 at platform min-alt ~0.5 m) and commit-off is neutral-to-better. Was BAKED ON 2026-06-29 (stationary s_e_n->0 ramp). Set =1 to restore.
         self._tc_extent = float(os.environ.get("PLASMC_TC_EXTENT", "400"))   # corner-exit: marker px extent
         self._tc_sen    = float(os.environ.get("PLASMC_TC_SEN",    "0.3"))   # |s_e_n| centered cut
         self._tc_dsen   = float(os.environ.get("PLASMC_TC_DSEN",   "0.2"))   # |ds_e_n| settled cut
