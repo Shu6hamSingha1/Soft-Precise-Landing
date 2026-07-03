@@ -124,17 +124,20 @@ class IMG_PROCESSOR(Thread):
         # FULL solve) are REPLACED by a pure per-axis scale: beta_x=0.73, beta_y=0.59 (the reduced
         # raw slightly OVER-reads GT). ⚠ paired with FLOW_LAT_REDUCED=1: set FLOW_LAT_REDUCED=0
         # (full solve) -> restore the recombination rows from git (pre-commit a081af9).
+        # OBSERVER cal (2026-07-03): 1m NESTED marker + centroid-rate observer (PLASMC_CENTROID_RATE=1).
+        # h_x/h_y = reduced-solve std-ratio on the OBSERVER lateral flow (median of 5 runs) — recovers
+        # the lateral channel the σ_min corner-flow left at the noise floor (old NaN/unstable betas).
         self._sensor_cal_hw = np.array([
-            [+0.7300, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = beta_x * h_x_raw (reduced-solve diagonal recal)
-            [+0.0000, +0.5900, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = beta_y * h_y_raw
-            [-0.1031, -0.0147, +0.5514, +0.0136, -0.1013, +0.0399],   # loom row; control uses the MOMENT loom (FLOW_LOOM_DECOUPLE) so the lstsq h_z cal is secondary
+            [+1.4272, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x
+            [+0.0000, +1.0253, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y
+            [+0.0535, -0.0044, +0.4973, +0.0000, +0.0000, +0.0000],   # loom row (board-fit; control uses MOMENT loom, secondary)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.9773]])   # w_z decoupled to w_z_raw only (board practice; avoids close-range h_y/w_x contamination of yaw)
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.8439]])   # w_z decoupled to w_z_raw only
         self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.0273, 1.0669, 1.0, 1.0])
+        self._sensor_cal_s  = np.diag([1.1391, 1.1437, 1.0, 1.0])   # observer/1m-nested centroid (2026-07-03)
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -156,13 +159,16 @@ class IMG_PROCESSOR(Thread):
         # Wz 0.56) — so transfer (13 recordings) wins.
         # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
         # SINGLE-MARKER ring cal (2026-06-23, transfer mode keyed to the new corner cal).
+        # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
+        # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
+        # marker provides yaw. Re-derive Wz if a board/turning case needs ring yaw.
         self._sensor_cal_ring = np.array([
-            [+1.0803, -0.3005, -0.4927, +0.4782, +0.8557, +0.5029],
-            [-0.1462, +0.8626, +0.5851, -0.6551, -0.3149, +0.5336],
-            [-0.4810, -0.0463, +1.6539, +0.0359, -0.4477, -0.3487],
+            [+0.6523, +0.0317, +0.1372, -0.0371, +0.6014, -0.1252],
+            [-0.1414, +0.7969, -0.0414, -0.8080, -0.1262, +0.3377],
+            [+0.1154, +0.0131, +2.0499, -0.1148, +0.1176, +0.4799],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.9229, +0.6559, +0.4264, -0.7377, -0.8550, +0.7238]])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000]])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -292,6 +298,22 @@ class IMG_PROCESSOR(Thread):
         except Exception as _e:
             print(f"[img_data] board layout load failed ({_e}); single-marker mode")
             self._board_layout = None
+
+        # ONLINE BOARD SELF-CALIBRATION (2026-07-03, user directive: no hardcoded layout/IDs/sizes).
+        # Learn each marker's relative (cx,cy,sz) from co-visible frames instead of the
+        # aruco_board_layout.npy file. Feasible for a BOARD (markers co-visible) — unlike concentric
+        # nested (mutually exclusive). Marker IDs are used only as runtime correspondence KEYS, not
+        # hardcoded. The first multi-marker frame bootstraps the layout (scale-free: gauge = median
+        # marker size, origin = marker centroid); later frames are aligned to it via a similarity
+        # (Umeyama) on shared markers and running-averaged, accepting only low-residual (well-leveled,
+        # un-occluded) frames. Until ready (>= min_frames) the board feature falls back to the file
+        # (if present) else single-marker. Default ON; the file becomes an optional prior.
+        self._board_selfcal = os.environ.get("BOARD_SELFCAL", "1") == "1"
+        self._selfcal_layout = {}     # {id: (cx, cy, sz)} learned, scale-free (marker-arrangement gauge)
+        self._selfcal_counts = {}     # {id: n} running-average weights
+        self._selfcal_frames = 0      # reliable frames accumulated
+        self._selfcal_min_frames = int(os.environ.get("BOARD_SELFCAL_MIN_FRAMES", "5"))
+        self._selfcal_res_max = float(os.environ.get("BOARD_SELFCAL_RES_MAX", "0.15"))  # similarity RMS gate (frac of scale)
 
         # Equilibrium offset for the 2pi-disambiguated moment yaw (see
         # _marker_principal_angle). It is the steady alpha (in V) when hovering
@@ -472,7 +494,12 @@ class IMG_PROCESSOR(Thread):
         # wrong: the baseline altitude flow is NOT starved (alt corr 0.39-0.59; KF + flow-by-3m bridge
         # the top Nfc=0). The IC2 fly-aways are STOCHASTIC/terminal (1-2/5 run-to-run), the same ceiling
         # as the multi-marker board — NOT altitude velocity starvation. Keep default-off.
-        self._centroid_rate = os.environ.get("PLASMC_CENTROID_RATE", "0") == "1"
+        # REVIVED default-ON 2026-07-03 for the 1m NESTED marker: the BIG marker's σ_min corner-flow
+        # sits at the LK noise floor (recal std-ratio betas came out NaN/unstable → 15-24m fly-aways).
+        # The centroid-rate observer recovers a derivable lateral signal; with the MATCHED observer cal
+        # (h_x/h_y = 1.43/1.03) IC1 fly-away 15-24m → 0.41m (n=1). The 2026-06-23 dead-end above was the
+        # OLD ~1m single marker where lateral was NOT starved — different regime. Set =0 to disable.
+        self._centroid_rate = os.environ.get("PLASMC_CENTROID_RATE", "1") == "1"
         self._centroid_hist = deque(maxlen=int(os.environ.get("CENTROID_RATE_WIN", "9")))  # (t, x0, y0, ln M)
         self._observer_flow = np.zeros(6)   # [h_x, h_y, h_z, 0, 0, w_z] from the observer
         self._observer_valid = False        # reset per-frame; True when the observer produced flow
@@ -1032,7 +1059,10 @@ class IMG_PROCESSOR(Thread):
                     primary_i = int(np.argmax(_sz))
                 else:
                     primary_i = int(np.argmax(ids))  # nested convention: larger ID = bigger marker
-            self._primary_id = int(ids[primary_i])   # for the decoupled-loom marker-size normalization
+            _prev_primary = self._primary_id
+            self._primary_id = int(ids[primary_i])
+            if _prev_primary is not None and self._primary_id != _prev_primary:
+                self._mtrace_hist.clear()   # loom d(lnM)/dt must not span a marker switch (sz step)
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -1262,12 +1292,14 @@ class IMG_PROCESSOR(Thread):
                 # Collect per-marker frame-1 corners (only markers whose all-4
                 # corners survived LK) + IDs, for the board homography. Marker k
                 # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
-                if marker_ids is not None and self._board_layout is not None:
+                if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
                     all_pts_1_2d = all_pts_1.reshape(-1, 2)
                     grp = []
                     for k, mid in enumerate(marker_ids):
                         sl = slice(4 * k, 4 * k + 4)
-                        if np.all(status[sl] == 1) and mid in self._board_layout:
+                        # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
+                        if np.all(status[sl] == 1) and (self._board_selfcal
+                                or (self._board_layout is not None and mid in self._board_layout)):
                             grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
                     if grp:
                         board_markers_px1 = grp
@@ -1363,10 +1395,11 @@ class IMG_PROCESSOR(Thread):
                     # size; min-ID flickers as markers enter/leave decode → d(lnM)/dt jumps).
                     # M/sz² = (f/Z)², marker-independent. Without this the loom is GARBAGE
                     # (offline corr 0.41 vs 0.65 with norm). Fallback sz=1 (single-marker world).
-                    _sz = 1.0
-                    if self._board_layout is not None and self._primary_id in self._board_layout:
-                        _sz = float(self._board_layout[self._primary_id][2]) or 1.0
-                    _M = _M / (_sz * _sz)
+                    # No size normalization needed (2026-07-03): within one marker sz² cancels in
+                    # d(lnM)/dt (the absolute M level is never used downstream), and the primary-
+                    # SWITCH step is killed by _mtrace_hist.clear() on switch (see selection) and on
+                    # marker loss. So the loom is marker-agnostic — zero layout/ID/ratio dependence.
+                    # (Replaced the board_layout[primary_id][2] lookup, which cancelled anyway.)
                     _t = float(getattr(self, '_stamp', 0.0))
                     if _M > 1e-12 and np.isfinite(_M):
                         self._mtrace_hist.append((_t, np.log(_M)))
@@ -1887,6 +1920,84 @@ class IMG_PROCESSOR(Thread):
                 a += np.pi
         return float(np.arctan2(np.sin(a), np.cos(a)))   # wrap to (-pi, pi]
 
+    @staticmethod
+    def _marker_center_size(cV):
+        """V-frame center (mean corner) + size (RMS corner distance from center) of a marker."""
+        c = np.asarray(cV, dtype=float).reshape(-1, 2)
+        ctr = c.mean(axis=0)
+        sz = float(np.sqrt(np.mean(np.sum((c - ctr) ** 2, axis=1))))
+        return ctr, sz
+
+    @staticmethod
+    def _fit_similarity(src, dst):
+        """Least-squares similarity (scale s, rotation R 2x2, translation t) mapping src->dst
+        (Umeyama). Returns (s, R, t, rms) or None. rms is the fit residual in dst units."""
+        src = np.asarray(src, float); dst = np.asarray(dst, float)
+        if len(src) < 2:
+            return None
+        mu_s, mu_d = src.mean(0), dst.mean(0)
+        S, D = src - mu_s, dst - mu_d
+        var_s = float(np.mean(np.sum(S ** 2, axis=1)))
+        if var_s < 1e-18:
+            return None
+        C = (D.T @ S) / len(src)
+        U, sig, Vt = np.linalg.svd(C)
+        R = U @ Vt
+        if np.linalg.det(R) < 0:
+            U = U.copy(); U[:, -1] *= -1; R = U @ Vt
+        s = float(np.sum(sig) / var_s)
+        t = mu_d - s * (R @ mu_s)
+        pred = (s * (R @ src.T)).T + t
+        rms = float(np.sqrt(np.mean(np.sum((pred - dst) ** 2, axis=1))))
+        return s, R, t, rms
+
+    def _selfcal_ready(self):
+        return self._board_selfcal and self._selfcal_frames >= self._selfcal_min_frames
+
+    def _update_board_selfcal(self, markers_V):
+        """Self-calibrate the board layout online from co-visible markers (no file/IDs/sizes).
+        The V-frame marker centers/sizes are the board layout up to a global similarity; the first
+        multi-marker frame bootstraps it (scale-free gauge), later frames are similarity-aligned to
+        the running layout on shared markers and running-averaged. Low-residual gate rejects
+        badly-leveled/occluded frames. IDs are correspondence keys only."""
+        if not self._board_selfcal or len(markers_V) < 2:
+            return
+        obs = {int(mid): self._marker_center_size(cV) for mid, cV in markers_V}
+        if not self._selfcal_layout:
+            sizes = np.array([s for _, s in obs.values()])
+            sref = float(np.median(sizes)) or 1.0
+            origin = np.array([c for c, _ in obs.values()]).mean(axis=0)
+            for mid, (c, s) in obs.items():
+                self._selfcal_layout[mid] = (float((c[0] - origin[0]) / sref),
+                                             float((c[1] - origin[1]) / sref), float(s / sref))
+                self._selfcal_counts[mid] = 1
+            self._selfcal_frames = 1
+            return
+        shared = [m for m in obs if m in self._selfcal_layout]
+        if len(shared) < 2:
+            return
+        sim = self._fit_similarity(np.array([obs[m][0] for m in shared]),
+                                   np.array([self._selfcal_layout[m][:2] for m in shared]))
+        if sim is None:
+            return
+        s, R, t, rms = sim
+        if rms > self._selfcal_res_max:          # poorly-leveled / occluded frame — skip
+            return
+        for mid, (c, sz) in obs.items():
+            lc = s * (R @ c) + t                 # center in the layout gauge
+            lsz = s * sz                         # size in layout units
+            if mid in self._selfcal_layout:
+                n = self._selfcal_counts[mid]
+                ox, oy, osz = self._selfcal_layout[mid]
+                self._selfcal_layout[mid] = ((ox * n + lc[0]) / (n + 1),
+                                             (oy * n + lc[1]) / (n + 1),
+                                             (osz * n + lsz) / (n + 1))
+                self._selfcal_counts[mid] = n + 1
+            else:
+                self._selfcal_layout[mid] = (float(lc[0]), float(lc[1]), float(lsz))
+                self._selfcal_counts[mid] = 1
+        self._selfcal_frames += 1
+
     def _board_corners(self, mid):
         """Board-plane coords (DIMENSIONLESS — normalised to marker-0's size,
         board centre = origin) of marker `mid`'s 4 corners, in cv2.aruco order
@@ -1896,7 +2007,10 @@ class IMG_PROCESSOR(Thread):
         is identical to any global unit; normalising to marker-0 = 1 makes the
         scale-freeness manifest (no marker physical size anywhere in the pipeline).
         """
-        cx, cy, sz = self._board_layout[mid]
+        if self._selfcal_ready() and mid in self._selfcal_layout:
+            cx, cy, sz = self._selfcal_layout[mid]     # online self-calibrated (no file/IDs/sizes)
+        else:
+            cx, cy, sz = self._board_layout[mid]       # file prior (fallback until self-cal ready)
         h = sz / 2.0
         return np.array([[cx - h, cy - h],   # TL
                          [cx + h, cy - h],   # TR
@@ -1930,10 +2044,22 @@ class IMG_PROCESSOR(Thread):
         single-marker _getImgFeatures). A single marker (4 pts) is the minimum
         for a homography (8 DOF); >=2 markers over-determine it.
         """
+        # Online board self-calibration: accumulate this frame's co-visible markers into the
+        # learned layout (no file/IDs/sizes). Once ready it supplies _board_corners; until then
+        # fall back to the file prior (if present), else return None -> single-marker fallback.
+        self._update_board_selfcal(markers_V)
+        use_selfcal = self._selfcal_ready()
         board_pts, img_pts = [], []
         for mid, cV in markers_V:
+            if use_selfcal:
+                if mid not in self._selfcal_layout:
+                    continue
+            elif self._board_layout is None or mid not in self._board_layout:
+                continue
             board_pts.append(self._board_corners(mid))
             img_pts.append(np.asarray(cV, dtype=np.float64) * size_factor)
+        if len(board_pts) < 1:
+            return None
         board_pts = np.vstack(board_pts)
         img_pts = np.vstack(img_pts)
         if len(board_pts) < 4:
