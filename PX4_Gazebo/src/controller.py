@@ -958,6 +958,37 @@ class Controller(Thread):
         self._a_u = []
         self._I_a_raw = []    # pre-LPF, pre-clamp inertial accel command
         self._I_a = []        # post-LPF, post-clamp inertial accel command
+        # PLASMC_AU_LEAD (2026-07-03, user-approved): first-order phase-lead
+        # C(s) = (1+s/wz)/(1+s/wp), wz<wp, on the LATERAL inertial command — applied to
+        # I_a[:2] right after I_a_raw (BEFORE the cone clamp + tau_ia LPF, so the HF gain
+        # lands on the cone). WHY (cycle deep-dive 07-03, project_rover_turning_open): the
+        # rover-curve limit cycle is pumped by an anti-position command tone delivered
+        # through the -25..-55 deg actuation lag; damping needs command quadrature
+        # chi > W*tau ~ 25-40 deg at W* = 1.3-1.7 rad/s, and no gain knob can supply it
+        # (all large branches sit at chi ~ 0). Defaults wz=0.9, wp=3.5 -> +35.5 deg and
+        # gain x1.72 at 1.4 rad/s, HF gain wp/wz = 3.9 (bounded by the cone clamp).
+        # I_a_raw stays logged PRE-lead so cycle_stage_phase.py measures the lead inside
+        # the actuation stage (expect ACT(Iar->ad) to move ~ +35 deg when enabled).
+        self._au_lead = os.environ.get("PLASMC_AU_LEAD", "0") == "1"
+        self._au_lead_wz = float(os.environ.get("PLASMC_AU_LEAD_WZ", "0.9"))
+        self._au_lead_wp = float(os.environ.get("PLASMC_AU_LEAD_WP", "3.5"))
+        # AU_LEAD_RATIO (2026-07-03): SCALE-FREE clamp on the lead's EXTRA term
+        # (wp/wz-1)(I_a_raw-x), bounded RELATIVE to the raw command: |delta| <= ratio*|I_a_raw_xy|.
+        # Dimensionless (no fixed metric threshold) — rides the signal's own scale. The lead helps
+        # mid-descent (delta small vs command -> transparent); the terminal 1/Z spike makes the
+        # HF-amplified delta dwarf the command -> detonation, which the fraction cap neuters WITHOUT
+        # an altitude/metric gate. 0 -> unclamped. Default 1.0 (delta <= the command it corrects).
+        # (Superseded PLASMC_AU_LEAD_MAX, a fixed-m/s^2 clamp = a scale violation; removed.)
+        self._au_lead_ratio = float(os.environ.get("PLASMC_AU_LEAD_RATIO", "1.0"))
+        self._au_lead_x = np.zeros(2)          # LPF_wp state (world lateral)
+        if self._au_lead:
+            if not 0.0 < self._au_lead_wz < self._au_lead_wp:
+                raise ValueError("PLASMC_AU_LEAD needs 0 < AU_LEAD_WZ < AU_LEAD_WP")
+            _ph14 = np.degrees(np.arctan(1.4 / self._au_lead_wz)
+                               - np.arctan(1.4 / self._au_lead_wp))
+            print(f"[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/{self._au_lead_wz:g})/"
+                  f"(1+s/{self._au_lead_wp:g}) on I_a xy "
+                  f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})")
         self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
         # FoV-cone diagnostics
         self._rho_fov_log = []
@@ -2031,6 +2062,22 @@ class Controller(Thread):
 
         # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
         I_a = I_a_raw.copy()
+
+        # Lateral phase-lead (PLASMC_AU_LEAD, see __init__). y = u + (wp/wz - 1)(u - x),
+        # x' = wp(u - x): unity DC gain (no steady-state distortion), +phase in the cycle
+        # band, HF gain wp/wz — clipped downstream by the cone clamp below.
+        if self._au_lead and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            _dtl = min(float(self._dt[-1]), 0.1)
+            _al = 1.0 - np.exp(-self._au_lead_wp * _dtl)
+            self._au_lead_x += _al * (I_a_raw[:2] - self._au_lead_x)
+            _lead_delta = ((self._au_lead_wp / self._au_lead_wz) - 1.0) \
+                * (I_a_raw[:2] - self._au_lead_x)
+            if self._au_lead_ratio > 0.0:
+                _cap = self._au_lead_ratio * float(np.linalg.norm(I_a_raw[:2]))
+                _nd = float(np.linalg.norm(_lead_delta))
+                if _nd > _cap > 0.0:
+                    _lead_delta *= _cap / _nd
+            I_a[:2] = I_a_raw[:2] + _lead_delta
 
         # 1) Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
         R33 = float(np.clip(R[2, 2], -1.0, 1.0))
