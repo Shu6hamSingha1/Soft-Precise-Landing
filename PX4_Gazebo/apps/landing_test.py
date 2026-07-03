@@ -604,6 +604,15 @@ async def main(record = 'n'):
 
         if FC_node.LANDED:
             print("Landed (PX4 LandedState or impact spike)")
+            # Signal touchdown to the chase recorder so its video ends at touchdown
+            # (same as the down-cam), letting the montage sync all sources over
+            # [descent-start, touchdown]. See record_chase.py CHASE_STOP_FILE.
+            _stop = os.environ.get("CHASE_STOP_FILE", "")
+            if _stop:
+                try:
+                    open(_stop, "w").close()
+                except OSError:
+                    pass
             # Quick disarm: cut thrust + disarm motors to stop any post-touchdown
             # slide. The drone often has residual lateral velocity at impact;
             # without disarming, motors keep spinning at FINAL_DESCENT_THRUST

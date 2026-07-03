@@ -20,7 +20,7 @@ for try in $(seq 1 "$MAXTRY"); do
   pre_chase=$(newest "$VID/chase_*.mp4"); pre_run=$(ls -dt "$LT"/*/ 2>/dev/null|head -1)
   pre_drone=$(ls -t "$VID"/*.mp4 2>/dev/null | grep -vE 'chase|montage' | head -1)
   echo "----- montage $LABEL try $try/$MAXTRY -----"
-  env HEADLESS=1 PLASMC_GT_FEEDBACK=1 ROVER_MOTION=1 CHASE_CAM=1 IMG_RECORD=1 RECORD_S=15 \
+  env HEADLESS=1 PLASMC_GT_FEEDBACK=1 ROVER_MOTION=1 CHASE_CAM=1 IMG_RECORD=1 RECORD_S=15 IMG_RECORD_TAIL_S=0 \
       $CONFIG_ENV PY_TIMEOUT_S=180 MAX_ATTEMPTS=4 LANDING_AUTOSAVE=1 \
       bash "$SD/scripts/run_rover_landing_retry.sh" > "$LOG/montage_${LABEL}_${try}.out" 2>&1
   rm -f "$SD"/run_logs/px4_*.log 2>/dev/null

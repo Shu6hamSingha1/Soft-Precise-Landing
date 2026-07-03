@@ -59,7 +59,7 @@ def render_plots(series, idx, width, height, lims):
     t = series["t"]; tnow = t[idx]
     dpi = 100
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi, facecolor="#111417")
-    gs = fig.add_gridspec(3, 1, height_ratios=[1.5, 1, 1], hspace=0.55)
+    gs = fig.add_gridspec(3, 1, height_ratios=[3.0, 1, 1], hspace=0.5)
 
     # (1) 3D trajectories
     ax3 = fig.add_subplot(gs[0], projection="3d")
@@ -99,33 +99,6 @@ def render_plots(series, idx, width, height, lims):
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
     plt.close(fig)
     return cv2.cvtColor(buf, cv2.COLOR_RGBA2BGR)
-
-
-def detect_touchdown_frame(cap, nframes):
-    """Last frame with significant inter-frame motion, in the ONBOARD down-cam.
-    At touchdown the drone is rigid on the platform and the marker is fixed in its
-    FoV -> inter-frame motion collapses (true for stationary AND moving platforms).
-    Returns that frame index, or nframes-1 if no clear collapse (fallback)."""
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    prev = None; motion = []
-    while True:
-        ok, fr = cap.read()
-        if not ok:
-            break
-        g = cv2.cvtColor(cv2.resize(fr, (160, 120)), cv2.COLOR_BGR2GRAY).astype(np.float32)
-        if prev is not None:
-            motion.append(float(np.mean(np.abs(g - prev))))
-        prev = g
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    if len(motion) < 8:
-        return nframes - 1
-    motion = np.asarray(motion)
-    thr = 0.20 * float(np.percentile(motion, 90))      # 20% of the busy-phase level
-    active = np.where(motion > thr)[0]
-    if len(active) == 0:
-        return nframes - 1
-    # last active frame + 1 (the diff index i is motion between frame i and i+1)
-    return int(min(active[-1] + 1, nframes - 1))
 
 
 def fit(img, w, h):
@@ -179,17 +152,12 @@ def main():
     dfps = drone.get(cv2.CAP_PROP_FPS) or 30.0
     series = load_series(a.run)
     gN = len(series["t"])
-    # PER-SOURCE FRACTION-TO-TOUCHDOWN SYNC. Every source is mapped onto [start ->
-    # touchdown] by its OWN endpoints, so START and TOUCHDOWN coincide in all three
-    # regardless of frame counts, fps-tag lies (chase writes 20 Hz frames tagged 30),
-    # or RTF. Endpoints: GT touchdown = argmin(alt) (already trimmed); drone touchdown
-    # = onboard motion-collapse (rigid-on-platform); chase touchdown = the SAME wall
-    # fraction (both cams gated to descent-start and cut together, so touchdown sits at
-    # the same fraction of each clip). Descent plays over the GT sim duration; then a
-    # --tail-s tail rolls the real post-touchdown video frames with the graph frozen.
-    td_d = detect_touchdown_frame(drone, dN)
-    td_frac = td_d / max(dN - 1, 1)
-    td_c = int(round(td_frac * (cN - 1)))    # chase touchdown frame (same wall fraction)
+    # FULL-LENGTH SYNC. With CHASE_STOP_FILE + IMG_RECORD_TAIL_S=0 both videos END at
+    # touchdown (recorders stop there), and GT is trimmed to touchdown (argmin alt). So
+    # every source spans EXACTLY [descent-start, touchdown]; mapping each over its full
+    # length by a common fraction 0->1 makes START and TOUCHDOWN coincide in all three,
+    # independent of frame counts / fps tags / RTF. Then a frozen --tail-s hold.
+    td_c, td_d = cN - 1, dN - 1
     dur = float(series["t"][-1])             # GT sim descent duration (to touchdown)
     tail = max(0.0, a.tail_s)
     # fixed 3D axis limits over the whole descent (so the view doesn't jump per frame)
@@ -201,7 +169,7 @@ def main():
 
     H = a.height
     main_w = int(H * 4 / 3)                # chase main panel (4:3-ish)
-    plot_w = int(H * 0.62)
+    plot_w = int(H * 0.78)                 # wider column so the 3D plot fills the width
     W = main_w + plot_w
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
@@ -217,15 +185,12 @@ def main():
           flush=True)
 
     for f in range(nframes):
-        if f < nd:                          # DESCENT: fraction 0->1 to each source's touchdown
+        if f < nd:                          # DESCENT: common fraction 0->1 to each touchdown
             u = f / max(nd - 1, 1)
             ci = int(round(u * td_c)); di = int(round(u * td_d))
             gi = min(gN - 1, int(round(u * (gN - 1))))
-        else:                               # TAIL: roll real post-touchdown frames, graph frozen
-            v = (f - nd + 1) / max(nt, 1)
-            ci = min(cN - 1, td_c + int(round(v * (cN - 1 - td_c))))
-            di = min(dN - 1, td_d + int(round(v * (dN - 1 - td_d))))
-            gi = gN - 1
+        else:                               # TAIL: hold touchdown frame + graph frozen
+            ci, di, gi = td_c, td_d, gN - 1
         cf = grab(chase, ci, ccache)
         df = grab(drone, di, dcache)
         if cf is None:
