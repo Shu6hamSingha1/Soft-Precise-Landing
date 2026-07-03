@@ -7,6 +7,7 @@ metadata:
   originSessionId: a377a083-d63b-447a-908e-12017cf609f1
 ---
 
+> ⛔ **STAMP 2026-07-03: historical.** The TAU_DS dead-end + the K_rd=0/gamma_s=1.0 resolution were BOTH superseded by the combined-surface defaults (DHD-KF, DH_D_CAP, 787cf2d-era gains).
 **Root cause of dh_d saturation (2026-06-09).**
 
 Control loop runs at 125 Hz (dt=8ms); images arrive at **42 Hz** — only 37.5% of control steps have a new image frame. When a new frame does arrive, s_e_n jumps by ~0.015 normalized units, causing a step in ds_d of K_rp × Δs_e_n = 12 × 0.015 = 0.18 in one step → raw dh_d = 0.18/0.008 = **17 m/s³** median on axis-x. The `smooth4` window (4 samples, 34ms) halves this to ~9, but DH_D_MAX=5 was still clipping **70% of timesteps**.

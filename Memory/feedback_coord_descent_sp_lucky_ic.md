@@ -5,6 +5,7 @@ type: feedback
 originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **STAMP 2026-07-03: historical (cal-contaminated era).** Do not act on the config; the SPs were IC-luck. Clean survivor = the composite-score search-metric pathology.
 ## What happened
 
 Per-axis random coordinate descent over 47 PLASMC controller knobs (each sampled log-uniform [0.0001, 10000]) achieved a SOFT+PRECISE landing on axis 32 of pass 1, via `RHOFOV0 × 241.8` acceptance.

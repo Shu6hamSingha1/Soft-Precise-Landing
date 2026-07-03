@@ -7,6 +7,7 @@ metadata:
   originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⛔ **RULED OUT BY USER 2026-07-02** — "we will not go ahead with the uXRCE-DDS low-latency rate path"; the plant stays lag-limited by design and mavsdk remains the interface (deployment-side answer = platform size vs path curvature). This file = history of the build attempt only.
 **Goal:** cut the ~30 ms MAVSDK transport from the rate loop (impulse: 38 ms = 30 ms MAVSDK + 8 ms PX4, see [[feedback-impulse-response]]) by publishing body-rate setpoints over uXRCE-DDS instead of MAVSDK `offboard.set_attitude_rate`. The documented sanctioned lag fix ([[feedback-mc-rate-p-dead]]).
 
 **Built (committed 82ddff6, env-gated `CMD_TRANSPORT`, default `mavsdk` = unchanged):**

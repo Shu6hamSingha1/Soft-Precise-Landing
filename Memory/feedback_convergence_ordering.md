@@ -7,6 +7,7 @@ metadata:
   originSessionId: 7faf44bf-c5f1-4b57-a701-f6d868abfdc1
 ---
 
+> ⛔ **STAMP 2026-07-03: contaminated/superseded-era analysis** (pre-honest-cal, pre-combined-surface). The bandwidth-inversion 'collapse' framing predates the resolved lateral wall (gain-parity bug + velocity damping) and the Z_REG artifact; Batch-9 'wins' were open-loop-handoff INVALID. History; the per-channel bandwidth-matching principle survives in later files (yaw-first kΩ_z etc.).
 **User requirement (2026-06-03): x/y and yaw must converge FASTER than z. Measurement shows this ordering has collapsed in PX4.**
 
 **Design intent (manuscript gains):** lateral τ = p₁₀/K_rp = 0.13 s, yaw τ ≈ 1/(γ_α+χ_α) = 1.0 s, vertical τ = 1/|h_rd| = 2.4 s → lateral 18× faster than vertical.

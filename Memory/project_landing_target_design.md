@@ -7,6 +7,7 @@ metadata:
   originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 
+> ⚠ **STAMP 2026-07-03: design evolved since.** The nested-board era ended — current worlds: the single-LARGE-marker aruco world (in-world recal, px4/feedback_single_marker_rank_deficiency) and the rover platform-mounted 1 m marker (px4/feedback_rover_flyaway_no_platform). This file = the design history + the FoV-span rationale.
 > ⛔ SUPERSEDED/CORRECTED 2026-06-26: The target-design content (rank-deficiency → board → inner-cluster, calibration) is valid and the multi-marker board remains the current target; but the 2026-06-02 IC2-5 conclusion ('the visual servo CANNOT drive the offset to zero / lag-limited lateral servo, NOT gain tuning / lever = the LAG fix') is obsolete — off-center IC2-5 was resolved by gain-parity + velocity damping. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
 
 PX4/Gazebo landing-target evolution (2026-06-02):

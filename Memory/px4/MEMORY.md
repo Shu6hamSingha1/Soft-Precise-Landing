@@ -1,7 +1,7 @@
 # Memory Index — PX4/Gazebo phase (Phase 2: SITL + img_data + controller.py)
 
 > Per-subfolder index to avoid cross-chat push collisions. The PX4 chat appends NEW
-> entries here (not the legacy ../MEMORY.md). Topic files for new PX4 work live in this
+> entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
 > **⛔ 2026-06-26 CONTROL-PARAM CORRECTION (GT-FB, user-led).** The lateral residual IS gain-tunable:
@@ -132,7 +132,7 @@
 - [Sliding surface CAN'T stack position+flow barriers (rel-degree)](feedback_sliding_surface_relative_degree.md) — ⭐ REJECTED σ=ζ_h+λζ_s: position s is rel-deg-2 from a_d, flow h is rel-deg-1 → ζ_s rel-deg-2 (ζ̇_s has no a_d) can't sit in a first-order surface; AND ζ_h=barrier(h_e)≠ζ̇_s. The existing CASCADE (position funnel→desired flow h_d→flow ASMC) IS the correct backstepping for the rel-deg-2 position. Valid combined surface needs ζ_s AND its rate ζ̇_s, not ζ_h
 - [CBF cbf2 implementation (2026-06-14)](feedback_cbf_lw_rotation_bug.md) — ⭐ current CBF approach (port/reuse this): pure src/cbf_visibility.py::cbf2_filter — camera-plane QP over body tilt. L_eff=L_w@[[0,1],[-1,0]] (lean→rotation coupling), θ_d=Rz(−ψ)a_xy/a_z, alternating-projection QP onto L_eff rows, post-QP θ_cap, two-phase δ; apply θ*→rd3=[−Rz(ψ)θ*,1] DIRECTLY as desired attitude (thrust from loom). Env CBF_LW_ROT/CBF_RD3_DIRECT default-ON. Validated: offline tools/validate_cbf.py 13/13 + SITL tools/analyze_cbf_visibility.py (judge by VISIBILITY not fly-away — fly-away is control, CBF can't fix). Demo notebooks/cbf_validation.ipynb; port map docs/CBF_SEN_MATLAB_PORT.md
 - [Descent perception is at its ceiling (2026-06-13)](feedback_descent_perception_ceiling.md) — ⭐ NEGATIVE result: tuning LK (corner+ring win/lvl), KLT, ArUco params (incl maxMarkerPerimeterRate), deblur/sharpen do NOT improve corner survival or decode. On a CLEAN centered descent decode 88-100% + corners to deck + marker never fills FoV + frames sharp (Gazebo = no motion blur). Failures are FLY-AWAY/GEOMETRY induced (lateral wall), not params. Loom ACCURACY = calibration: _sensor_cal_hw[2,2] 1.0744→1.2988 (validated cal/GT 0.89→1.07, corr 0.993; LK-dyn-range nonlinearity caveat). Clean-descent recorder = record_output_validation landing + IMG_RECORD_RAW. Tools: tune_lk_survival.py, tune_aruco_decode.py
-- [Tuning trajectory — full campaign timeline](reference_tuning_trajectory.md) — chronological arc of every trial (G#/NC#): what varied, why, outcome; cal-regime epochs; pairs with tune-plasmc skill. (Timeline ends ~NC49; later eras in project_current_state)
+- [Tuning trajectory — full campaign timeline](reference_tuning_trajectory.md) — chronological arc of every trial (G#/NC#): what varied, why, outcome; cal-regime epochs; pairs with tune-plasmc skill. (Timeline ends ~NC49; later eras: px4/MEMORY.md top banners — project_current_state is historical)
 - [PX4_Gazebo/docs/ design notes](reference_docs_folder.md) — ⭐ PLASMC_TUNING_GUIDE.md is the tuning entry point (auto-injected via SessionStart hook); + cbf2/parity/perception/analysis/sh-patterns docs; indexed in CLAUDE.md
 - [SITL calibration lessons](feedback_calibration_lessons.md) — failsafe handling, run-until-5-valid, offline-vs-runtime savgol trade-off
 - [SO(3) body ω: quaternion-diff](feedback_so3_quaternion_omega.md) — NEVER np.gradient(W_R_B)+skew (over-reports ω_z 2.27×); drop-in code in file

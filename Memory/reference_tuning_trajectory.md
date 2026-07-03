@@ -7,6 +7,7 @@ metadata:
   originSessionId: 7415f420-9591-41b1-8349-bb9361a8dc82
 ---
 
+> ⚠ **POINTER UPDATE 2026-07-03:** 'later eras in project_current_state' is stale — project_current_state is itself historical; the live era ledger is `px4/MEMORY.md` (top banners + entries).
 > ⛔ SUPERSEDED/CORRECTED 2026-06-26: The era-by-era historical log is valid AS history; but the present-tense conclusions — theme #10 'current binding limit = stochastic perception / next lever pyramidal LK', the 'Where it stands' open-frontier = code-level perception robustness, and the ~100-170ms lateral-lag 'architectural floor' figure (superseded by the 38ms rate-loop lag) — are obsolete. The PX4 lateral "wall" was a gain-parity bug + the velocity-damping lever (tighten the lateral flow funnel XI2_xy), NOT a perception/architecture/lag limit; the combined sliding surface σ=ζ_h+χ_r·ζ_r is baked default-on (10/10 bounded landings). See [[feedback_flow_funnel_zetah_works]]. Content below kept as history.
 
 # PX4 PLASMC tuning trajectory (Jun 2–10, 2026)

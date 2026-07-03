@@ -1,6 +1,6 @@
 ---
 name: reference_test_record_system
-description: "PX4 test-record tooling + the all-runs SP scan: build_test_record.py scans test_data/ (41 top-cfg/3107 reps/789 SP @2026-07-02 — SPs dominated by the GT-FB era), then refresh_scan_sheets.py rebuilds the 2 auto ods sheets; emits json+tsv+md; parameter_record.ods has 7 sheets (manual NC log through NC181 — LAGS unless appended each session); only ~few genuine perception-ON closed-loop SP exist"
+description: "PX4 test-record tooling + the all-runs SP scan: build_test_record.py scans test_data/ (41 top-cfg/3107 reps/789 SP @2026-07-02 — SPs dominated by the GT-FB era), then refresh_scan_sheets.py rebuilds the 2 auto ods sheets; emits json+tsv+md; parameter_record.ods has 7 sheets (manual NC log — read its LAST ROW for currency; it lags unless each session appends); only ~few genuine perception-ON closed-loop SP exist"
 metadata: 
   node_type: memory
   type: reference
@@ -28,9 +28,8 @@ REFRESH WORKFLOW (every "update PX4 test records"): `git pull` → `build_test_r
 NC log) are user-maintained — NOT auto-updated; PX4 sessions append NC rows by hand.
 
 ODS now has 7 sheets: PX4_Gain_Record (trials 1-60, wide 62-col gain matrix),
-PX4_NewCal_Record (NC1..NC181 as of 2026-07-02, 36-col body — header at row 0; ⚠ MANUAL, lags unless
-each session appends its rows — NC174-181 were back-filled 2026-07-02 for the 06-30/07-01/07-02
-sessions), Removed_Parameters,
+PX4_NewCal_Record (36-col body — header at row 0; ⚠ MANUAL — read the LAST ROW for currency; NC174-182
+were back-filled 2026-07-02 for the 06-30..07-02 sessions and later sessions keep appending), Removed_Parameters,
 MATLAB_Test_Record, NewCal_Notes, All_Test_Runs, Genuine_SP_Reps. Backup before edits
 (convention [[feedback_parameter_record_logging]]); git-tracked via carve-out.
 
