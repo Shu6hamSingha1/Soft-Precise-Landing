@@ -66,7 +66,7 @@ setsid env QT_QPA_PLATFORM=offscreen \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
   PX4_GZ_WORLD=aruco \
-  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -d -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PIDS+=($!)
 
