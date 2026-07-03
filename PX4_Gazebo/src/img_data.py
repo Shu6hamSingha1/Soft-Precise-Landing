@@ -2,7 +2,7 @@
 # Changed class and node name used in gz_subscriber
 # Used simulator time instead of system time
 # Used virtual image feature points for optical flow calculation
-# Detect nested Aruco markers of different IDs and select marker with smallest ID.
+# Detect nested Aruco markers; PRIMARY = the BIGGEST detected marker (IMG_MARKER_PRIORITY=big, 2026-07-03) for observability; falls to the small marker only when the big is gone.
 # Used Lucas-Kanade method for optical flow calculation.
 # **************************************************************************
 
@@ -447,7 +447,14 @@ class IMG_PROCESSOR(Thread):
         # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
         # filter attenuation; lag-compensating over-drives). Keep 1.0; offline RMSE 1.15 is a red herring.
         self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))
-        self._primary_id = None   # smallest-ID decoded marker; for size-normalizing the loom scale M
+        self._primary_id = None   # primary decoded marker; for size-normalizing the loom scale M
+        # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
+        # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
+        # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
+        # larger corner spread -> better flow OBSERVABILITY. 'small' = legacy smallest-ID (argmin),
+        # which preferred the tiny inner marker -> rank-deficient flow / the observability issues.
+        # Concentric markers share the board centre, so switching the primary never moves the centroid.
+        self._marker_priority = os.environ.get("IMG_MARKER_PRIORITY", "big").strip().lower()
         # FLOW_LOOM_WIN = causal linear-fit window (frames). Offline on a centered descent the
         # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse
         # ~0.06; joint-lstsq was 0.16/0.88). 9 balances accuracy vs lag (~0.15s @ 60fps).
@@ -1015,8 +1022,16 @@ class IMG_PROCESSOR(Thread):
                     self._locked_marker_id = int(ids[primary_i])
                 else:
                     primary_i = int(np.where(ids == self._locked_marker_id)[0][0])
+            elif self._marker_priority == 'small':
+                primary_i = int(np.argmin(ids))      # legacy: smallest ID (innermost/smallest marker)
             else:
-                primary_i = int(np.argmin(ids))
+                # BIGGER-marker priority (default): pick the largest marker by layout size, so the
+                # big ID10 is used while detectable, then ID0 takes over when the big is gone.
+                if self._board_layout is not None:
+                    _sz = [float(self._board_layout.get(int(m), (0.0, 0.0, 0.0))[2]) for m in ids]
+                    primary_i = int(np.argmax(_sz))
+                else:
+                    primary_i = int(np.argmax(ids))  # nested convention: larger ID = bigger marker
             self._primary_id = int(ids[primary_i])   # for the decoupled-loom marker-size normalization
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
