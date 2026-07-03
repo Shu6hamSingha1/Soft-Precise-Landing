@@ -59,10 +59,13 @@ def render_plots(series, idx, width, height, lims):
     t = series["t"]; tnow = t[idx]
     dpi = 100
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi, facecolor="#111417")
-    gs = fig.add_gridspec(3, 1, height_ratios=[3.0, 1, 1], hspace=0.5)
+    # 3D spans full width (row 0); the two 2D plots are NARROWER (inset columns,
+    # row 1-2 middle sub-column) per request.
+    gs = fig.add_gridspec(3, 3, height_ratios=[3.0, 1, 1], width_ratios=[1, 2, 1],
+                          hspace=0.5, wspace=0.0)
 
-    # (1) 3D trajectories
-    ax3 = fig.add_subplot(gs[0], projection="3d")
+    # (1) 3D trajectories (full width)
+    ax3 = fig.add_subplot(gs[0, :], projection="3d")
     ax3.set_facecolor("#111417")
     k = idx + 1
     ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color="#39a7ff", lw=2.0, label="UAV")
@@ -81,7 +84,7 @@ def render_plots(series, idx, width, height, lims):
     # (2)/(3) norm line plots
     for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], "#ff5c5c")),
                                 (2, ("|rel. velocity| (m/s)", series["rvel"], "#7CFC00"))]:
-        ax = fig.add_subplot(gs[gi])
+        ax = fig.add_subplot(gs[gi, 1])          # narrower centre sub-column
         ax.set_facecolor("#111417")
         ax.plot(t, y, color=col, alpha=0.25, lw=1.2)
         ax.plot(t[:k], y[:k], color=col, lw=2.0)
