@@ -55,3 +55,19 @@ Switch to the NESTED marker for decode continuity + touchdown visibility.**
 Re-cal (output) -> re-run the perception-ON IC gate with the nested marker to check whether
 decode continuity removes the target_lost/open-loop-fallback (and whether IC5's FoV-edge
 acquisition improves). Continues [[project_perception_on_baseline]].
+
+## ⛔ GOTCHA (2026-07-03, cost ~15 failed SITL attempts): gz marker PNG MUST be RGBA
+The regenerated `0-small_10-big.png` was saved 1-channel GRAYSCALE (cv2.IMREAD_GRAYSCALE +
+imwrite). gz's PBR `<albedo_map>` loader CANNOT handle a grayscale texture → gz HANGS loading
+the model → sim clock stalls → PX4 lockstep DEADLOCK → `is_armable did not go True` (arming
+timeout). Symptom: SITL processes in D-state (blocked, not CPU), load spikes ~14, EVERY cal/land
+run fails to arm. RED HERRINGS chased first (all wrong): leaked DDS shm (264, cleared - not it),
+orphaned setsid process groups (cleared - not it), ros2 daemon pollution (reset - not it),
+machine load, even a REBOOT (fresh boot still failed → proved it was a CONFIG/ASSET issue).
+DECISIVE test: revert model.sdf to the single arucotag.png (RGBA) → ARMED OK; nested grayscale →
+fail. FIX: `cv2.cvtColor(gray, cv2.COLOR_GRAY2BGRA)` → 4-channel → arms fine. Originals
+(arucotag.png, the .bak_orig7ratio nested) are all (H,W,4) RGBA. **RULE: any gz albedo_map PNG
+must be RGBA; verify `cv2.imread(f, IMREAD_UNCHANGED).shape[2]==4` after generating a marker.**
+**META-LESSON: when SITL arming/lockstep fails right after a world/model change, suspect the
+CHANGED ASSET before machine state — the timeline (worked pre-change, fails post-change, reboot
+doesn't help) pointed at the marker all along.**
