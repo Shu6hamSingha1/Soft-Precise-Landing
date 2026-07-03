@@ -31,71 +31,69 @@ import matplotlib.pyplot as plt
 
 
 def load_series(run_dir):
-    """Physical time-series from Ground_Truth (altitude, lateral, rel speed),
-    TRIMMED to touchdown (first min-altitude sample), and the sim->wall time-scale
-    (RTF = sim_span / wall_span) measured from Control_Data's wall-clock 't' so the
-    videos (recorded in wall time) align to the GT (sim time)."""
+    """Ground-Truth series TRIMMED to touchdown (first min-altitude sample):
+    full 3D UAV & target tracks + |relative position| (incl. z) + |relative velocity|."""
     gt = np.load(os.path.join(run_dir, "Ground_Truth.npy"), allow_pickle=True).item()
     up, tp = gt["UAV Pose"], gt["Target Pose"]
     t = np.asarray(gt["Time"], float)
     n = min(len(up), len(tp), len(t))
     up, tp, t = up[:n], tp[:n], t[:n]
-    uz = np.array([p.position.z for p in up])
-    ux = np.array([p.position.x for p in up]); uy = np.array([p.position.y for p in up])
-    tx = np.array([p.position.x for p in tp]); ty = np.array([p.position.y for p in tp])
+    ux = np.array([p.position.x for p in up]); uy = np.array([p.position.y for p in up]); uz = np.array([p.position.z for p in up])
+    tx = np.array([p.position.x for p in tp]); ty = np.array([p.position.y for p in tp]); tz = np.array([p.position.z for p in tp])
     t = t - t[0]
-    lat = np.hypot(ux - tx, uy - ty)
+    rel = np.stack([ux - tx, uy - ty, uz - tz], axis=1)      # relative position vector (incl z)
+    rpos = np.linalg.norm(rel, axis=1)                        # |relative position|
     dt = np.gradient(t); dt[dt <= 0] = 1e-3
-    rvx = np.gradient(ux - tx) / dt; rvy = np.gradient(uy - ty) / dt
-    rvz = np.gradient(uz) / dt
-    spd = np.sqrt(rvx**2 + rvy**2 + rvz**2)
-    spd = np.convolve(spd, np.ones(7) / 7, mode="same")
-    # TRIM to touchdown = first global-min-altitude sample (logging may run on past
-    # it; the videos then keep rolling too, which is what broke the old sync).
-    itd = int(np.argmin(uz)) + 1
-    t, uz, lat, spd = t[:itd], uz[:itd], lat[:itd], spd[:itd]
-    # sim->wall scale from the controller's wall-clock 't' (perf_counter). ~1 for
-    # headless SITL, but measured so a non-unity RTF doesn't reintroduce drift.
-    rtf = 1.0
-    try:
-        cd = np.load(os.path.join(run_dir, "Control_Data.npy"), allow_pickle=True).item()
-        wt = np.asarray(cd["t(t)"] if "t(t)" in cd else cd["t"], float)
-        wall_span = float(wt[-1] - wt[0]); sim_span = float(t[-1] - t[0]) if len(t) > 1 else 0.0
-        # use the FULL GT sim span vs full wall span (both cover the same flight)
-        sim_full = float(np.asarray(gt["Time"], float)[-1] - np.asarray(gt["Time"], float)[0])
-        if wall_span > 0.5 and sim_full > 0.5:
-            rtf = sim_full / wall_span
-    except Exception:
-        pass
-    return dict(t=t, alt=uz, lat=lat, spd=spd, rtf=rtf)
+    rvel_vec = np.stack([np.gradient(rel[:, i]) / dt for i in range(3)], axis=1)
+    rvel = np.linalg.norm(rvel_vec, axis=1)                   # |relative velocity|
+    rvel = np.convolve(rvel, np.ones(7) / 7, mode="same")
+    itd = int(np.argmin(uz)) + 1                              # touchdown = first min-altitude sample
+    sl = slice(0, itd)
+    return dict(t=t[sl], ux=ux[sl], uy=uy[sl], uz=uz[sl], tx=tx[sl], ty=ty[sl], tz=tz[sl],
+                rpos=rpos[sl], rvel=rvel[sl])
 
 
-def render_plots(series, idx, width, height):
-    """Render the side plots revealed up to GT sample `idx` (matplotlib -> BGR)."""
-    t = series["t"]
-    tnow = t[idx]
-    panels = [("Altitude (m)", series["alt"], "#39a7ff"),
-              ("Lateral error (m)", series["lat"], "#ff5c5c"),
-              ("Rel. speed (m/s)", series["spd"], "#7CFC00")]
+def render_plots(series, idx, width, height, lims):
+    """Side column revealed up to GT sample `idx`: (1) 3D UAV+target tracks,
+    (2) |relative position| incl z, (3) |relative velocity|. -> BGR."""
+    t = series["t"]; tnow = t[idx]
     dpi = 100
-    fig, axes = plt.subplots(len(panels), 1, figsize=(width / dpi, height / dpi),
-                             dpi=dpi, facecolor="#111417")
-    if len(panels) == 1:
-        axes = [axes]
-    for ax, (label, y, col) in zip(axes, panels):
+    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi, facecolor="#111417")
+    gs = fig.add_gridspec(3, 1, height_ratios=[1.5, 1, 1], hspace=0.55)
+
+    # (1) 3D trajectories
+    ax3 = fig.add_subplot(gs[0], projection="3d")
+    ax3.set_facecolor("#111417")
+    k = idx + 1
+    ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color="#39a7ff", lw=2.0, label="UAV")
+    ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color="#ffb545", lw=2.0, label="target")
+    ax3.scatter(series["ux"][idx], series["uy"][idx], series["uz"][idx], color="#39a7ff", s=28)
+    ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color="#ffb545", s=28)
+    ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
+    ax3.set_xlabel("X (m)", color="w", fontsize=7); ax3.set_ylabel("Y (m)", color="w", fontsize=7)
+    ax3.set_zlabel("Z (m)", color="w", fontsize=7)
+    ax3.tick_params(colors="#9aa0a6", labelsize=6)
+    ax3.xaxis.pane.set_facecolor("#111417"); ax3.yaxis.pane.set_facecolor("#111417"); ax3.zaxis.pane.set_facecolor("#111417")
+    ax3.xaxis.pane.set_edgecolor("#3a3f44"); ax3.yaxis.pane.set_edgecolor("#3a3f44"); ax3.zaxis.pane.set_edgecolor("#3a3f44")
+    ax3.set_title("UAV & target (3D)", color="w", fontsize=9)
+    ax3.legend(loc="upper right", fontsize=6, facecolor="#111417", edgecolor="#3a3f44", labelcolor="w")
+
+    # (2)/(3) norm line plots
+    for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], "#ff5c5c")),
+                                (2, ("|rel. velocity| (m/s)", series["rvel"], "#7CFC00"))]:
+        ax = fig.add_subplot(gs[gi])
         ax.set_facecolor("#111417")
-        ax.plot(t, y, color=col, alpha=0.25, lw=1.2)                 # full (faint)
-        ax.plot(t[:idx + 1], y[:idx + 1], color=col, lw=2.0)         # revealed
+        ax.plot(t, y, color=col, alpha=0.25, lw=1.2)
+        ax.plot(t[:k], y[:k], color=col, lw=2.0)
         ax.plot(tnow, y[idx], "o", color=col, ms=6)
         ax.axvline(tnow, color="w", alpha=0.35, lw=1.0)
         ax.set_ylabel(label, color="w", fontsize=9)
         ax.tick_params(colors="#9aa0a6", labelsize=7)
         for s in ax.spines.values():
             s.set_color("#3a3f44")
-        ax.set_xlim(0, t[-1])
-        ax.margins(y=0.15)
-    axes[-1].set_xlabel("time since descent start (s)", color="w", fontsize=8)
-    fig.tight_layout(pad=0.6)
+        ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
+        if gi == 2:
+            ax.set_xlabel("time since descent start (s)", color="w", fontsize=8)
     fig.canvas.draw()
     buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
@@ -181,16 +179,25 @@ def main():
     dfps = drone.get(cv2.CAP_PROP_FPS) or 30.0
     series = load_series(a.run)
     gN = len(series["t"])
-    # TOUCHDOWN-ANCHORED SYNC (robust to RECORD_S overshoot, wrong fps tags, RTF!=1):
-    # both videos are gated to descent-start (frame 0 = GT t=0). Detect touchdown in
-    # the ONBOARD down-cam (motion collapses when the drone is rigid on the platform —
-    # true for a MOVING platform too, where the chase view keeps translating). Anchor
-    # the graph cursor to reach its END (= GT touchdown sample) at that SAME wall time,
-    # so footage and cursor hit touchdown together regardless of clock. Then keep the
-    # video rolling for --tail-s seconds while the graph stays frozen at touchdown.
+    # PER-SOURCE FRACTION-TO-TOUCHDOWN SYNC. Every source is mapped onto [start ->
+    # touchdown] by its OWN endpoints, so START and TOUCHDOWN coincide in all three
+    # regardless of frame counts, fps-tag lies (chase writes 20 Hz frames tagged 30),
+    # or RTF. Endpoints: GT touchdown = argmin(alt) (already trimmed); drone touchdown
+    # = onboard motion-collapse (rigid-on-platform); chase touchdown = the SAME wall
+    # fraction (both cams gated to descent-start and cut together, so touchdown sits at
+    # the same fraction of each clip). Descent plays over the GT sim duration; then a
+    # --tail-s tail rolls the real post-touchdown video frames with the graph frozen.
     td_d = detect_touchdown_frame(drone, dN)
-    td_time = td_d / dfps                    # wall seconds to touchdown
+    td_frac = td_d / max(dN - 1, 1)
+    td_c = int(round(td_frac * (cN - 1)))    # chase touchdown frame (same wall fraction)
+    dur = float(series["t"][-1])             # GT sim descent duration (to touchdown)
     tail = max(0.0, a.tail_s)
+    # fixed 3D axis limits over the whole descent (so the view doesn't jump per frame)
+    pad = 0.5
+    xs = np.concatenate([series["ux"], series["tx"]]); ys = np.concatenate([series["uy"], series["ty"]])
+    zs = np.concatenate([series["uz"], series["tz"]])
+    lims = {"x": (xs.min() - pad, xs.max() + pad), "y": (ys.min() - pad, ys.max() + pad),
+            "z": (min(zs.min(), 0.0), zs.max() + pad)}
 
     H = a.height
     main_w = int(H * 4 / 3)                # chase main panel (4:3-ish)
@@ -202,18 +209,23 @@ def main():
 
     ccache = {"i": -1, "f": None}
     dcache = {"i": -1, "f": None}
-    nframes = max(1, int((td_time + tail) * a.fps))
-    print(f"[montage] {nframes} frames  {W}x{H}@{a.fps}  (chase {cN}f@{cfps:.0f}, "
-          f"drone {dN}f@{dfps:.0f}, GT {gN}samp; touchdown drone-frame {td_d} = "
-          f"{td_time:.1f}s + {tail:.1f}s tail)  -> {a.out}", flush=True)
+    nd = max(1, int(dur * a.fps))           # descent output frames (GT sim duration)
+    nt = int(tail * a.fps)                  # tail output frames
+    nframes = nd + nt
+    print(f"[montage] {nframes} frames ({nd} descent + {nt} tail)  {W}x{H}@{a.fps}  "
+          f"(chase {cN}f td@{td_c}, drone {dN}f td@{td_d}, GT {gN}samp, {dur:.1f}s)  -> {a.out}",
+          flush=True)
 
     for f in range(nframes):
-        tw = f / a.fps                      # wall seconds since descent start (video clock)
-        ci = min(cN - 1, int(round(tw * cfps)))
-        di = min(dN - 1, int(round(tw * dfps)))
-        # graph cursor: advance to touchdown (gN-1) over [0, td_time], then FREEZE
-        u = min(1.0, tw / td_time) if td_time > 1e-6 else 1.0
-        gi = min(gN - 1, int(round(u * (gN - 1))))
+        if f < nd:                          # DESCENT: fraction 0->1 to each source's touchdown
+            u = f / max(nd - 1, 1)
+            ci = int(round(u * td_c)); di = int(round(u * td_d))
+            gi = min(gN - 1, int(round(u * (gN - 1))))
+        else:                               # TAIL: roll real post-touchdown frames, graph frozen
+            v = (f - nd + 1) / max(nt, 1)
+            ci = min(cN - 1, td_c + int(round(v * (cN - 1 - td_c))))
+            di = min(dN - 1, td_d + int(round(v * (dN - 1 - td_d))))
+            gi = gN - 1
         cf = grab(chase, ci, ccache)
         df = grab(drone, di, dcache)
         if cf is None:
@@ -234,7 +246,7 @@ def main():
             cv2.putText(canvas, "onboard", (x0 + 4, y0 + ph - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
         # side plots
-        canvas[:, main_w:] = fit(render_plots(series, gi, plot_w, H), plot_w, H)
+        canvas[:, main_w:] = fit(render_plots(series, gi, plot_w, H, lims), plot_w, H)
         vw.write(canvas)
         if f % 25 == 0:
             print(f"[montage]  frame {f}/{nframes}", flush=True)
