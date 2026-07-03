@@ -172,7 +172,7 @@ def main():
 
     H = a.height
     main_w = int(H * 4 / 3)                # chase main panel (4:3-ish)
-    plot_w = int(H * 0.52)                 # graph column width (narrower -> more room for chase)
+    plot_w = int(H * 0.48)                 # graph column width (narrower -> more room for chase)
     W = main_w + plot_w
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
