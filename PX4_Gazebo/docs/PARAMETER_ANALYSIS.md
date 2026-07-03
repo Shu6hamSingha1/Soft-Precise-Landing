@@ -1,5 +1,11 @@
 # PLASMC Controller — Comprehensive Parameter Analysis & Failure Diagnosis
 
+> ⚠ **STALENESS STAMP (2026-07-03):** this 2026-06-10 rewrite fixed the cal-contamination confound but still
+> predates the wall resolution — any conclusion here that the binding constraint is "perception / LK dynamic
+> range / lag, out of gains scope" is **SUPERSEDED** (gain-parity bug + velocity damping + Z_REG artifact →
+> GT-FB 19/25 SP). Parameter roles/mechanisms remain valid; the failure-diagnosis verdicts are historical.
+> Live state: `px4/MEMORY.md` top + `PLASMC_TUNING_GUIDE.md` STATUS.
+
 _Rewritten 2026-06-10 under the **honest sensor cal**. Supersedes the 2026-05-24 version (in git history),
 whose "1205 reps / SP = 0.08% / lag is the architectural floor" conclusions were **confounded** by a 2–13×
 mis-scaled calibration that ran the controller at 0.08–0.53× its design gains. Sources of truth:
