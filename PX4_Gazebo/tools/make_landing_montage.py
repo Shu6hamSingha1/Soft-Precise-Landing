@@ -61,11 +61,13 @@ def render_plots(series, idx, width, height, lims):
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi, facecolor="#111417")
     # 3D spans full width (row 0); the two 2D plots are NARROWER (inset columns,
     # row 1-2 middle sub-column) per request.
-    gs = fig.add_gridspec(3, 3, height_ratios=[3.0, 1, 1], width_ratios=[1, 2, 1],
+    gs = fig.add_gridspec(3, 3, height_ratios=[3.0, 1, 1], width_ratios=[1, 4, 1],
                           hspace=0.5, wspace=0.0)
 
-    # (1) 3D trajectories (full width)
+    # (1) 3D trajectories (full width, nudged left to fill the whitespace)
     ax3 = fig.add_subplot(gs[0, :], projection="3d")
+    _p = ax3.get_position()
+    ax3.set_position([_p.x0 - 0.10, _p.y0, _p.width, _p.height])
     ax3.set_facecolor("#111417")
     k = idx + 1
     ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color="#39a7ff", lw=2.0, label="UAV")
