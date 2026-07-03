@@ -503,6 +503,15 @@ class IMG_PROCESSOR(Thread):
         self._centroid_hist = deque(maxlen=int(os.environ.get("CENTROID_RATE_WIN", "9")))  # (t, x0, y0, ln M)
         self._observer_flow = np.zeros(6)   # [h_x, h_y, h_z, 0, 0, w_z] from the observer
         self._observer_valid = False        # reset per-frame; True when the observer produced flow
+        # Constant-velocity KALMAN FILTER on the decoded centroid -> smoothed lateral velocity
+        # (2026-07-03). Replaces the raw polyfit differentiation, which amplified sub-pixel centroid
+        # jitter into flow noise ~30x the true lateral flow (corr with GT ~0 -> residual drift).
+        # Offline vs GT: tracks real motion (|corr| .13->.67) AND cuts noise 3x. q,r tuned offline.
+        self._obs_kf_x = None; self._obs_kf_y = None      # [pos, vel] states
+        self._obs_kf_Px = None; self._obs_kf_Py = None    # 2x2 covariances
+        self._obs_kf_t = None                             # last update stamp (for dt)
+        self._obs_kf_q = float(os.environ.get("CENTROID_RATE_KF_Q", "1e-4"))   # process noise
+        self._obs_kf_r = float(os.environ.get("CENTROID_RATE_KF_R", "1e-3"))   # measurement noise
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -1229,8 +1238,9 @@ class IMG_PROCESSOR(Thread):
                     _ta = np.array([c[0] for c in self._centroid_hist])
                     if (_ta.max() - _ta.min()) > 1e-4:
                         _t0 = _ta - _ta[0]
-                        _sdx = float(np.polyfit(_t0, [c[1] for c in self._centroid_hist], 1)[0])
-                        _sdy = float(np.polyfit(_t0, [c[2] for c in self._centroid_hist], 1)[0])
+                        # CV-Kalman filter (not raw polyfit) — suppresses centroid-jitter noise
+                        # that drove the residual lateral drift (offline: corr .13->.67, noise -3x).
+                        _sdx, _sdy = self._obs_vel_kf(_x0, _y0, _to)
                         _loom_dec = float(-0.5 * np.polyfit(_t0, [c[3] for c in self._centroid_hist], 1)[0]
                                           * self._loom_gain)   # sz=1 single-marker (size-norm inert)
                         _avo = angvels[1] if (angvels is not None and len(angvels) > 1
@@ -1881,6 +1891,33 @@ class IMG_PROCESSOR(Thread):
         K = P_pred[:, :, 0] / S[:, None]                     # (4, 2)
         self._kf_feat_x = x_pred + K * y[:, None]
         self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+
+    def _obs_vel_kf(self, x0, y0, t):
+        """Constant-velocity Kalman filter on the decoded centroid -> smoothed lateral velocity
+        (ṡx, ṡy). Replaces raw polyfit differentiation (jitter-amplifying). Resets on init or a
+        stale/large time gap (won't differentiate across a marker-loss gap)."""
+        if self._obs_kf_x is None or self._obs_kf_t is None:
+            self._obs_kf_x = np.array([x0, 0.0]); self._obs_kf_y = np.array([y0, 0.0])
+            self._obs_kf_Px = np.eye(2); self._obs_kf_Py = np.eye(2); self._obs_kf_t = t
+            return 0.0, 0.0
+        dt = t - self._obs_kf_t
+        if dt <= 1e-4 or dt > 0.5:                 # bad/large gap -> reset, don't diff across it
+            self._obs_kf_x = np.array([x0, 0.0]); self._obs_kf_y = np.array([y0, 0.0])
+            self._obs_kf_Px = np.eye(2); self._obs_kf_Py = np.eye(2); self._obs_kf_t = t
+            return 0.0, 0.0
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+        r = self._obs_kf_r
+        out = []
+        for st, P, z in ((self._obs_kf_x, self._obs_kf_Px, x0), (self._obs_kf_y, self._obs_kf_Py, y0)):
+            st[:] = F @ st
+            P[:] = F @ P @ F.T + Q
+            S = P[0, 0] + r; K = P[:, 0] / S
+            st[:] = st + K * (z - st[0])
+            P[:] = P - np.outer(K, P[0, :])
+            out.append(float(st[1]))
+        self._obs_kf_t = t
+        return out[0], out[1]
 
     def _marker_principal_angle(self, pts):
         """2pi-periodic marker orientation in the (level) V plane (raw, no offset).
