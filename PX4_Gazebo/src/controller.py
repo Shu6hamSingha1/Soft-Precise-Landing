@@ -452,6 +452,14 @@ class Controller(Thread):
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
         self._commit_count = 0
+        # TERMINAL RING-COMMIT (2026-07-04, project_terminal_velocity_handover_design). Retarget of
+        # TERMINAL_COMMIT: keep marker s + zeta_r LIVE (moving-target position), swap ONLY the velocity —
+        # h_xy->0 (ring lateral is unobservable) + h_z->ring loom (marker-less) — gated on img
+        # HANDOVER_LATCHED + centered (|s_e_n|<TC_SEN) + settled (|ds_e_n|<TC_DSEN). Does NOT zero zeta_r
+        # (centered gate => zeta_r already small). Default off; A/B vs the (disabled) TERMINAL_COMMIT.
+        # Co-enable PLASMC_DESCENT_GATE=1 so the handover->centered window descends cautiously.
+        self._terminal_ring_commit = os.environ.get("PLASMC_TERMINAL_RING_COMMIT", "0") == "1"
+        self._ring_committed = False
         # TERMINAL-COMMIT LATERAL TAPER (2026-06-22): the descent-gate centers the drone to the
         # deck (commit-ready 14/15 IC2) but the final ~0.3 m destabilizes — at Z<0.3 the 1/Z-
         # corrupted lateral flow spikes a_u -> launch. Once committed (marker fills FoV at the
@@ -734,6 +742,28 @@ class Controller(Thread):
                       f"-> zeta_r zeroed (kick removed)")
         else:
             self._tc_count = 0   # centered but still converging (not settled): wait, don't latch
+
+    def _ringCommitStep(self, s_e_n, ds_e_n):
+        """Terminal RING-commit gate (project_terminal_velocity_handover_design). Latches
+        _ring_committed (one-way) on: img HANDOVER_LATCHED (big->small, depth-free entered-terminal)
+        AND centered (|s_e_n|<TC_SEN) AND settled (|ds_e_n|<TC_DSEN, velocity-matched -> valid for
+        moving targets). On commit the _updateOptFlow override swaps h_xy->0 + h_z->ring loom; zeta_r
+        (marker-s position) stays LIVE (centered gate => zeta_r already small, no kick to zero)."""
+        if self._ring_committed:
+            return
+        if not getattr(self._img_node, 'HANDOVER_LATCHED', False):   # gate 1: entered terminal
+            self._tc_count = 0
+            return
+        centered = float(np.linalg.norm(s_e_n)) < self._tc_sen
+        settled  = float(np.linalg.norm(ds_e_n)) < self._tc_dsen
+        if centered and settled:                                     # gates 2+3
+            self._tc_count += 1
+            if self._tc_count >= self._tc_frames:
+                self._ring_committed = True
+                print(f"[controller] RING-COMMIT: handover+centered+settled -> h_xy=0, h_z=ring loom "
+                      f"(|s_e_n|={float(np.linalg.norm(s_e_n)):.3f} |ds_e_n|={float(np.linalg.norm(ds_e_n)):.3f})")
+        else:
+            self._tc_count = 0
 
     @property
     def ABORT_REQUESTED(self):
@@ -1381,6 +1411,14 @@ class Controller(Thread):
 
     def _updateOptFlow(self, h):
         """Middle-loop: barrier-transform optical flow error, prep zeta / sigma inputs."""
+        # TERMINAL RING-COMMIT flow override (one-frame lag off _ringCommitStep, a one-way latch):
+        # h_xy->0 (centered+settled => true lateral ~0; ring lateral is unobservable) and
+        # h_z->marker-less ring loom (the flickering/staling marker moment-loom is retired). s / zeta_r
+        # (position) are untouched -> the marker position loop keeps steering (moving-target-OK).
+        if self._ring_committed:
+            h = np.array(h, dtype=float)
+            h[0] = 0.0; h[1] = 0.0
+            h[2] = float(getattr(self._img_node, 'RING_LOOM', h[2]))
         self._h.append(h)
         if self._savgol_predict:
             self._h_raw.append(np.asarray(h, float).copy())      # IMMUTABLE raw measurement
@@ -1586,9 +1624,12 @@ class Controller(Thread):
         # the CURRENT frame's loom (_updateOptFlow has run; _h[-1] is fresh, no one-frame lag). Sets
         # _committed BEFORE the surface assembly below so the zeta_r-zeroing acts this same step.
         # ds_e_n = s_dot_meas/p_10 (filtered, combined-mode only); s_e_n = last normalized error.
-        if (self._terminal_commit and self._combined_barrier
-                and len(self._s_e_n) > 0 and len(self._s_dot_meas) > 0):
-            self._terminalCommitStep(self._s_e_n[-1], self._s_dot_meas[-1] / self._p_10)
+        if (self._combined_barrier and len(self._s_e_n) > 0 and len(self._s_dot_meas) > 0):
+            _dsen = self._s_dot_meas[-1] / self._p_10
+            if self._terminal_ring_commit:          # retargeted: swap velocity source, keep zeta_r
+                self._ringCommitStep(self._s_e_n[-1], _dsen)
+            elif self._terminal_commit:             # legacy: zero zeta_r (disabled by default)
+                self._terminalCommitStep(self._s_e_n[-1], _dsen)
 
         # Loom-inversion touchdown detector (depth-free). h_z is fresh (_updateOptFlow ran); s_e_n latest.
         if self._touchdown_loom and len(self._s_e_n) > 0 and len(self._h) > 0:
