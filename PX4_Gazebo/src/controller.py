@@ -408,7 +408,7 @@ class Controller(Thread):
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
         # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
-        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "1.0"))   # process (accel) noise PSD. BAKED 10.0->1.0 (2026-06-30, user): q=10 was tuned for low-lag vs GT, but it PASSES the 1/Z²-amplified terminal s_dot oscillation straight into the drift term chi_r*ζ̇_r/G (the dominant a_u cycle driver). Lower q = trust the CV model more = smooth s_dot_meas -> drift-osc amp 4.7->0.9, SP 3->6/9 (GT-FB IC2/4/5 n=3, P2INF=1.5+W_U_MAX=2.0). The added lag is acceptable (terminal v_lat is slow). q=3 intermediate (4 SP). [[project_residual_cycle_wumax_bake]]
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))  # process (accel) noise PSD. RE-BAKED 1.0->10.0 (2026-07-04, user): the 06-30 lowering to 1.0 was to damp the terminal 1/Z² s_dot osc, but PR0=10 (06-29 funnel-shape fix) ALREADY absorbs the terminal 1/Z (A/B: termosc stays 0.009-0.012 even at q=10). The low q's only remaining effect was DRIFT-TERM-NOISE damping that masked a DIFFERENT root: the fly-aways are a TERMINAL-DECK event (drone reaches deck clean @~0.05m, marker Ncorn->0 from 1/Z fill, drone still armed -> reacts to the perc spike -> climbs+flies; q=10 makes it worse, q=1 milder — but q is a severity band-aid, NOT the fix). q=10 restores low-lag off-center velocity; the real fix is the terminal commit/disarm. ⚠ WITHOUT that fix q=10 shows 7-31m deck fly-aways.
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
         # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
@@ -1749,6 +1749,22 @@ class Controller(Thread):
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
+        if os.environ.get("AU_DECOMP_DBG", "0") == "1":
+            # a_u lateral decomposition (bounce-transition diagnosis). a_u = -G^-1 a_v splits into:
+            #   reach  = G^-1·Γ·σ                              (proportional reaching)
+            #   switch = G^-1·(θ ⊙ (sat(σ)·G·κ))              (adaptive switching)
+            #   equiv  = c - S·ṗ                               (equivalent / known-dynamics: loom, ḣ_d, cross)
+            #   drift  = G^-1·χζ_aug                           (position-funnel χ_r·ζ_r drift)
+            _reach  = np.linalg.solve(self._G[-1], self._Gma @ self._sigma[-1])
+            _switch = np.linalg.solve(self._G[-1], theta_ctrl * (np.diag(sat_sigma) @ self._G[-1] @ self._kappa[-1]))
+            _equiv  = c - self._S[-1] @ self._dp[-1]
+            _drift  = np.linalg.solve(self._G[-1], chi_zeta_aug)
+            _res = float(np.linalg.norm((_reach + _switch + _equiv + _drift - a_u)[:2]))
+            print("[au] hz=%+.2f sen=%.2f auxy=%6.1f | reach=%6.1f switch=%6.1f equiv=%6.1f drift=%6.1f | kxy=%.2f sigxy=%.2f res=%.2f" % (
+                float(self._h[-1][2]), float(np.max(np.abs(self._s_e_n[-1]))), float(np.linalg.norm(a_u[:2])),
+                float(np.linalg.norm(_reach[:2])), float(np.linalg.norm(_switch[:2])),
+                float(np.linalg.norm(_equiv[:2])), float(np.linalg.norm(_drift[:2])),
+                float(np.linalg.norm(self._kappa[-1][:2])), float(np.linalg.norm(self._sigma[-1][:2])), _res))
         # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
         # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
         # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker

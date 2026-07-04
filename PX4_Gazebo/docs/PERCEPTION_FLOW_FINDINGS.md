@@ -1,5 +1,40 @@
 # Perception layer — optic flow at landing: what's real & the binding limit
 
+> 🟢🟢 **2026-07-04 — OBSERVER FIXED + TERMINAL FAILURE RE-ROOTED (perception-ON).** The
+> centroid-rate observer got **four validated fixes** (frame-pair `quats[1]→quats[0]`; lstsq
+> consolidation; **w_z sign** `_oz=−_wv[2]`, which fixed an off-center `h_y` ANTI-correlation
+> from `_fill_A`'s ω_z=−body_yaw vs `_vframe_w`'s +body_yaw; **KF q 1e-4→1e-3** for low-v
+> attenuation). Off-center velocity now tracks GT **~0.85–0.94** (was dead/anti-correlated/0.3–0.6).
+> Recovery + descent now WORK — the drone reliably reaches the deck near-centered (~0.05 m).
+> **The remaining fly-away/TL is entirely a DECK event = terminal marker OVERFLOW as Z→0, NOT
+> drift-out:** at decode-death the marker CENTROID is centered (|s|=0.41) but its CORNERS exceed
+> the frame (bearing 0.95 > 0.89 edge); drift-out is a later *consequence* of going blind. Both
+> terminal signals die from the same overflow — **lateral goes blind** (observable only from the
+> marker corners; the ring is a loom/nadir signal with ~0 lateral) and the **loom holds stale at
+> −0.39, under-reporting the true descent ~5×** → the descent blows through the 0.2 m contact at
+> ~0.4 m/s + bounces → armed/tilted/blind drone launches. The loom-inversion touchdown detector is
+> defeated by the overflow *flicker* (never 3 consecutive h_z>0). Details:
+> memory `feedback_terminal_overflow_deck_flyaway`, `feedback_centroid_rate_observer_fixes`.
+> **Consequence for this doc:** the "LK dynamic range / availability" framing below is about the
+> at-altitude drift; the *terminal* failure is now specifically **marker overflow at Z→0** — no
+> image-based scheme (ring included) recovers lateral there; the lever is a terminal proximity
+> commit, not a better flow.
+
+> 🟢 **2026-07-04 — LK VELOCITY CHANNEL RE-DERIVED ON CLEAN DATA + PYRAMIDAL-LK EXHAUSTED (again, trustworthy this time).**
+> Methodology-corrected diagnosis (`tools/perc_diag_aligned.py`: sim-time alignment, perception-driven-only —
+> two traps that had corrupted earlier analysis: index-vs-timestamp log misalignment, and GT-FB freezing the
+> shadow features). Full-perception IC1 baseline (n=6, 2/6 clean): during the drift the **centroid + loom stay
+> correct** (corr 0.77–0.95); the **lateral LK flow saturates** — binned perc/GT tracking ratio ≈1.0 for slow
+> motion but **0.01 for true image velocity >0.8 rad/s** (reads ~0 while the drone streaks). Controller sees
+> position but not velocity → no brake → runaway → TARGET_LOST.
+> **Pyramidal-LK sweep (n=5 each): L5/W31 and L4/W41/minEig1e-4 both leave FAST-ratio 0.00–0.01 (dead); neither
+> improves landing rate; W41/low-minEig is WORSE (0/5); L5 over-reports 2.5× at slow speed.** So the death is NOT
+> the LK convergence basin (enlarging it did nothing) and NOT blur — **the Gazebo camera renders instantaneous
+> frames (SDF has no exposure/shutter/blur; ArUco decode succeeds in the same fast frames → sharp).** It is the
+> **differential-flow σ_min collapse as the marker degrades toward the FoV edge** at runaway velocities.
+> **LK front-end tuning is exhausted for the velocity channel.** Lever = **centroid-rate observer** (ArUco decode
+> is global per-frame re-detection → no basin, immune to the σ_min/edge collapse → `ṡ` stays alive where LK dies).
+
 > ⚠ **STALENESS STAMP (2026-07-03):** the title's "binding limit" and the body's "LK dynamic range ~2 m/s is
 > the binding limit; next lever = pyramidal LK" are **SUPERSEDED as the wall explanation.** The PX4 lateral
 > wall was resolved as a gain-parity bug + velocity damping (06-21/26) and the terminal "wall" was substantially
