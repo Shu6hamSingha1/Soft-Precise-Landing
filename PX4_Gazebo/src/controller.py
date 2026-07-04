@@ -126,7 +126,13 @@ class Controller(Thread):
             else:
                 from gt_feedback import GTFeedback
                 self._gt_feedback = GTFeedback()
-                print("[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)")
+                # PER-CHANNEL GT ABLATION (2026-07-04): GT_ABLATE = comma-list of channels to take
+                # from GT, REST from perception — isolate the binding perception signal one at a time.
+                # Channels: s (centroid xy), h (lateral flow xy), hz (loom), yaw (alpha), wz (yaw rate).
+                # Unset/empty/'all' -> full GT-FB (back-compat). e.g. GT_ABLATE=h -> only flow from GT.
+                _abl = os.environ.get("GT_ABLATE", "all").strip().lower()
+                self._gt_ablate = set() if _abl in ("all", "") else set(c.strip() for c in _abl.split(","))
+                print(f"[controller] PLASMC_GT_FEEDBACK=1 — GT channels: {_abl} (perception for the rest)")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -1033,8 +1039,19 @@ class Controller(Thread):
                     if self._gt_feedback is not None:
                         _p = self._pose_node.getPose()
                         if _p.UAV is not None and _p.target is not None:
-                            feature_param, opt_flow_ang_vel = self._gt_feedback.update(
+                            _gt_fp, _gt_of = self._gt_feedback.update(
                                 _p.UAV, _p.target, self._time.perf_counter())
+                            _abl = self._gt_ablate
+                            if not _abl:                      # full GT-FB (back-compat)
+                                feature_param, opt_flow_ang_vel = _gt_fp, _gt_of
+                            else:                             # per-channel: GT only the listed channels
+                                feature_param = np.array(feature_param, dtype=float)
+                                opt_flow_ang_vel = np.array(opt_flow_ang_vel, dtype=float)
+                                if 's' in _abl:   feature_param[0:2]     = _gt_fp[0:2]
+                                if 'yaw' in _abl: feature_param[3]       = _gt_fp[3]
+                                if 'h' in _abl:   opt_flow_ang_vel[0:2]  = _gt_of[0:2]
+                                if 'hz' in _abl:  opt_flow_ang_vel[2]    = _gt_of[2]
+                                if 'wz' in _abl:  opt_flow_ang_vel[5]    = _gt_of[5]
                     self._updateImgFeatureParam(feature_param)
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the

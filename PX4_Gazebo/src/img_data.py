@@ -218,6 +218,23 @@ class IMG_PROCESSOR(Thread):
                       int(os.environ.get("FLOW_LK_ITER", "30")), float(os.environ.get("FLOW_LK_EPS", "0.01"))),
             minEigThreshold=float(os.environ.get("FLOW_LK_EIG", "1e-3")),
         )
+        # DECODE-CORRESPONDENCE flow fallback (2026-07-04, user): LK is sub-pixel-accurate at LOW
+        # speed but loses the marker corners at HIGH speed (it iterates from the old position and
+        # can't reach the new one). ArUco decode re-finds the corners GLOBALLY in the next frame in
+        # canonical order -> valid correspondence with no basin. So when LK DROPS marker corners,
+        # fill them from decode: decode's ~1px corner noise is negligible vs the large high-speed
+        # displacement (signal >> noise), exactly the regime LK can't handle. LK stays primary where
+        # it succeeds (low speed). The extra detectMarkers only runs when LK actually failed.
+        self._decode_flow = os.environ.get("FLOW_DECODE_CORR", "1") == "1"   # BAKED default-on 2026-07-04 (user); FLOW_DECODE_CORR=0 to disable
+        # Decode-flow scale cal: the decode displacement over-reports ~1.4x vs GT/LK at high speed
+        # (decode corner = marker edge, slightly wider than the LK feature point). Scale the decode
+        # DISPLACEMENT so the reconstructed flow matches truth. Measured from perc_diag high-vel bin.
+        self._decode_scale = float(os.environ.get("FLOW_DECODE_SCALE", "1.0"))
+        # LK-STUCK trigger: LK reports status=1 even when it converges to a wrong nearby minimum
+        # (tiny displacement) at high speed, so status==0 never catches it. Fire the decode fallback
+        # when decode sees materially MORE motion than LK reports (px). Handles the silent-stuck case.
+        self._decode_trig = float(os.environ.get("FLOW_DECODE_TRIG", "1.5"))
+        self._decode_fills = 0
 
         # Ring stations for the TEXTURE-FREE V-frame optic flow (Singhal ring sampler):
         # fixed concentric-ring points about the image centre, LK-tracked every frame and
@@ -499,7 +516,7 @@ class IMG_PROCESSOR(Thread):
         # when only one marker is visible (marker-leaving) or the ratio isn't learned yet.
         self._sz_ratio = {}                                                   # mid -> physical-size ratio vs anchor
         self._sz_ratio_a = float(os.environ.get("LOOM_SZ_RATIO_ALPHA", "0.1"))  # running-avg rate
-        self._loom_sz_ratio_on = os.environ.get("LOOM_SZ_RATIO", "0") == "1"   # default-off 2026-07-04 (this-session, unvalidated) — clean baseline
+        self._loom_sz_ratio_on = os.environ.get("LOOM_SZ_RATIO", "1") == "1"   # BAKED default-on 2026-07-04 (user); LOOM_SZ_RATIO=0 to disable
 
         # GYRO-COMPENSATED CENTROID-RATE OBSERVER (PLASMC_CENTROID_RATE, default-off; single-marker).
         # At altitude the small single marker's LK fails (Nfc=0) → the lstsq lateral flow is
@@ -1322,6 +1339,37 @@ class IMG_PROCESSOR(Thread):
             )
 
             status = status.flatten()
+
+            if self._decode_flow and os.environ.get("DECODE_DBG") == "1":
+                self._dbg_f = getattr(self, '_dbg_f', 0) + 1
+                _lkd = float(np.mean(np.abs(all_pts_1[:n_aruco].reshape(-1, 2) - aruco_pts_0)))
+                print(f"[dd] f{self._dbg_f} lkd{_lkd:.2f} lost{int(np.sum(status[:n_aruco] == 0))}", flush=True)
+
+            # DECODE-CORRESPONDENCE fallback with LK-STUCK detection. LK re-detects the marker
+            # GLOBALLY in the next frame (canonical corner order → corner k(t)↔k(t+1), no basin).
+            # Use it per marker when LK is unreliable: either it dropped a corner (status==0) OR it
+            # reports materially LESS motion than decode sees (it silently converged to a wrong
+            # nearby min — the high-speed failure that status==0 misses). LK stays primary when it
+            # agrees with decode (low speed, sub-pixel accurate). Match on ID (nested-marker safe).
+            if self._decode_flow and marker_ids is not None:
+                _res1 = self._detector.detectMarkers(imgs[1])
+                if _res1[0]:
+                    _ids1 = np.asarray(_res1[1]).flatten()
+                    _c1 = {int(_ids1[q]): np.asarray(_res1[0][q]).reshape(-1, 2).astype(np.float32)
+                           for q in range(len(_ids1))}
+                    for k, mid in enumerate(marker_ids):
+                        mid = int(mid); sl = slice(4 * k, 4 * k + 4)
+                        if mid not in _c1:
+                            continue
+                        _d0 = all_pts_0[sl].reshape(-1, 2)                    # frame-0 corners
+                        _d1_dec = _c1[mid]                                    # decode frame-1 corners
+                        _disp_lk = float(np.mean(np.abs(all_pts_1[sl].reshape(-1, 2) - _d0)))
+                        _disp_dec = float(np.mean(np.abs(_d1_dec - _d0)))
+                        if np.any(status[sl] == 0) or _disp_dec > _disp_lk + self._decode_trig:
+                            all_pts_1[sl] = (_d0 + (_d1_dec - _d0) * self._decode_scale).reshape(-1, 1, 2)
+                            status[sl] = 1
+                            self._decode_fills += 1
+
             aruco_status = status[:n_aruco]
             extra_status = status[n_aruco:]
 
