@@ -546,7 +546,7 @@ class IMG_PROCESSOR(Thread):
         self._obs_kf_x = None; self._obs_kf_y = None      # [pos, vel] states
         self._obs_kf_Px = None; self._obs_kf_Py = None    # 2x2 covariances
         self._obs_kf_t = None                             # last update stamp (for dt)
-        self._obs_kf_q = float(os.environ.get("CENTROID_RATE_KF_Q", "1e-4"))   # process noise
+        self._obs_kf_q = float(os.environ.get("CENTROID_RATE_KF_Q", "1e-3"))   # process noise. BAKED 1e-4->1e-3 (2026-07-04): the old 1e-4 over-smoothed the centroid-rate -> low-velocity attenuation (h_x ratio 0.66@mid). q=1e-3 lifts it to 0.90 (offline+live A/B) with no landing regression -- the low q was tuned for the PRE-FIX noisy observer; the corrected observer (frame/w_z fixes) affords more gain.
         self._obs_kf_r = float(os.environ.get("CENTROID_RATE_KF_R", "1e-3"))   # measurement noise
         # ds/dh OUTLIER GATE on the lateral flow (2026-07-04). The σ_min LK corner-flow (used when
         # the marker isn't freshly decoded) intermittently ramps to physically-impossible values
