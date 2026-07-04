@@ -1284,9 +1284,9 @@ class IMG_PROCESSOR(Thread):
         # h_z from the moment loom; w from the IMU gyro rotated into the V-frame (clean, not the
         # off-center-ill-conditioned lstsq). Stored for injection at the flow-output sites below.
         if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
-                and quats is not None and len(quats) > 1 and quats[1] is not None):
+                and quats is not None and len(quats) > 0 and quats[0] is not None):
             try:
-                _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[1])
+                _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
                 _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
                 _to = float(getattr(self, '_stamp', 0.0))
@@ -1301,14 +1301,20 @@ class IMG_PROCESSOR(Thread):
                         _sdx, _sdy = self._obs_vel_kf(_x0, _y0, _to)
                         _loom_dec = float(-0.5 * np.polyfit(_t0, [c[3] for c in self._centroid_hist], 1)[0]
                                           * self._loom_gain)   # sz=1 single-marker (size-norm inert)
-                        _avo = angvels[1] if (angvels is not None and len(angvels) > 1
-                                              and angvels[1] is not None) else None
+                        _avo = angvels[0] if (angvels is not None and len(angvels) > 0
+                                              and angvels[0] is not None) else None
                         if _avo is not None:
-                            _wv = self._vframe_w([_avo.forward_rad_s, _avo.right_rad_s, _avo.down_rad_s], quats[1])
+                            _wv = self._vframe_w([_avo.forward_rad_s, _avo.right_rad_s, _avo.down_rad_s], quats[0])   # FRAME-PAIR FIX 2026-07-04: match the frame-0 centroid (was quats[1]/angvels[1])
                         else:
                             _wv = np.zeros(3)
                         _alpha_rate = 0.0   # TODO moving-target: w_target_z = d(alpha)/dt; 0 for stationary
                         _wv[2] -= _alpha_rate                  # relative yaw = camera (gyro) − target
+                        # W_Z SIGN FIX (2026-07-04): _fill_A's ω_z is the INTERACTION-matrix z-rate =
+                        # −body_yaw_rate (validated 2026-06-25: lstsq w_z corr −0.91 w/ body yaw). But
+                        # _vframe_w gives _wv[2] = +body_yaw_rate. So the interaction ω_z = −_wv[2].
+                        # The observer had used +_wv[2] → sign-flipped yaw coupling: harmless on h_x
+                        # (small y0·w_z when drifting in x) but ANTI-correlated h_y (large x0·w_z).
+                        _oz = -_wv[2]
                         _hz = _loom_dec
                         # FRAME FIX (2026-06-23): ṡ is the VIRTUAL (de-rotated) centroid rate, and
                         # _getVirtualPts ALREADY levels out roll/pitch (z→world-down) while preserving
@@ -1316,10 +1322,10 @@ class IMG_PROCESSOR(Thread):
                         # — subtracting L_w with the full gyro DOUBLE-COUNTS it (the tilt terms inflated
                         # h 6.2× off-center: meas|h_lat| 1.20 vs GT 0.19). Keep ONLY the yaw term (w_z,
                         # preserved) + the loom term. Signs from _fill_A (wz col = [−y, x]).
-                        _hx = _sdx + _x0 * _hz + _y0 * _wv[2]
-                        _hy = _sdy + _y0 * _hz - _x0 * _wv[2]
+                        _hx = _sdx + _x0 * _hz + _y0 * _oz
+                        _hy = _sdy + _y0 * _hz - _x0 * _oz
                         self._observer_flow = np.clip(
-                            np.array([_hx, _hy, _hz, 0.0, 0.0, _wv[2]]), -10.0, 10.0)
+                            np.array([_hx, _hy, _hz, 0.0, 0.0, _oz]), -10.0, 10.0)
                         self._observer_valid = True
             except Exception:
                 self._observer_valid = False
@@ -1343,7 +1349,7 @@ class IMG_PROCESSOR(Thread):
             if self._decode_flow and os.environ.get("DECODE_DBG") == "1":
                 self._dbg_f = getattr(self, '_dbg_f', 0) + 1
                 _lkd = float(np.mean(np.abs(all_pts_1[:n_aruco].reshape(-1, 2) - aruco_pts_0)))
-                print(f"[dd] f{self._dbg_f} lkd{_lkd:.2f} lost{int(np.sum(status[:n_aruco] == 0))}", flush=True)
+                print(f"[dd] t{float(getattr(self, '_stamp', 0.0)):.3f} lkd{_lkd:.2f} lost{int(np.sum(status[:n_aruco] == 0))}", flush=True)
 
             # DECODE-CORRESPONDENCE fallback with LK-STUCK detection. LK re-detects the marker
             # GLOBALLY in the next frame (canonical corner order → corner k(t)↔k(t+1), no basin).
@@ -1452,7 +1458,16 @@ class IMG_PROCESSOR(Thread):
 
                 # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
                 # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
-                if self._lat_reduced and self._target_level:
+                # CONSOLIDATION (2026-07-04, user): when the centroid-rate observer is active, its
+                # V-frame centroid-rate defines h_xy (overrides below), the moment loom defines h_z,
+                # and the gyro defines w_z — so the σ_min corner lstsq is fully redundant (only w_z
+                # ever survived it, and the observer's gyro w_z is cleaner). SKIP the second LK's
+                # degenerate 6-DOF solve. One KLT → V-frame centroid → position + rate drives the flow.
+                _obs_active = (self._single_marker and self._centroid_rate and self._observer_valid)
+                if _obs_active:
+                    V_v = np.zeros(6)
+                    V_v[5] = float(self._observer_flow[5])       # gyro yaw rate (replaces lstsq w_z)
+                elif self._lat_reduced and self._target_level:
                     # REDUCED 4-DOF lateral solve: drop the w_xy columns (3,4). h_xy is the σ_min
                     # mode of the full 8×6 (degenerate with tilt w_xy, 0.4°) → noise-amplified;
                     # dropping w_xy makes it the LARGEST-σ mode (cond 14→2). w_xy set 0 (V-frame
@@ -1471,16 +1486,17 @@ class IMG_PROCESSOR(Thread):
                 else:
                     V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=self._flow_lstsq_rcond)
                     _min_rank = 6
-                cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
-                bad = (
-                    rank < _min_rank
-                    or cond > 1e4
-                    or not np.all(np.isfinite(V_v))
-                    or np.max(np.abs(V_v)) > 50.0
-                )
-                if bad:
-                    V_v = np.zeros(6)
-                V_v = np.clip(V_v, -10.0, 10.0)
+                if not _obs_active:
+                    cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
+                    bad = (
+                        rank < _min_rank
+                        or cond > 1e4
+                        or not np.all(np.isfinite(V_v))
+                        or np.max(np.abs(V_v)) > 50.0
+                    )
+                    if bad:
+                        V_v = np.zeros(6)
+                    V_v = np.clip(V_v, -10.0, 10.0)
 
                 # DECOUPLED LOOM override (default-off): replace the lstsq loom row V_v[2]
                 # with -½·d(ln M)/dt from the primary marker's V-frame scale M=μ20+μ02
