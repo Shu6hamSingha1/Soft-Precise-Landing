@@ -487,6 +487,17 @@ class IMG_PROCESSOR(Thread):
         # filter attenuation; lag-compensating over-drives). Keep 1.0; offline RMSE 1.15 is a red herring.
         self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))
         self._primary_id = None   # primary decoded marker; for size-normalizing the loom scale M
+        # TERMINAL RING-COMMIT (2026-07-04, project_terminal_velocity_handover_design). HANDOVER_LATCHED
+        # fires (one-way) on a large NEGATIVE d(ln RAW_M) — the RAW apparent-size² M drops ~ratio² (~113x)
+        # at the big->small switch. ID/SIZE-FREE + image-space (NO marker-ID, NO physical size, NO
+        # board_layout): unmistakable vs the ~0.04 normal-descent loom. RING_LOOM = the marker-less ring
+        # loom (calibrated pure_div * scale) the controller swaps h_z onto once its gate (handover +
+        # centered + settled) fires. Both consumed by controller.py PLASMC_TERMINAL_RING_COMMIT.
+        self.HANDOVER_LATCHED = False
+        self.RING_LOOM = 0.0
+        self._ring_loom_scale = float(os.environ.get("RING_LOOM_SCALE", "1.0"))   # deck over-report correction (~0.75; re-pin on nested-marker GT-FB)
+        self._raw_lnM_prev = None
+        self._handover_ln = float(os.environ.get("HANDOVER_DLOGM", "1.0"))   # |d(ln raw_M)| latch threshold (≫0.04 loom, ≪4.7 handover)
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -1506,6 +1517,17 @@ class IMG_PROCESSOR(Thread):
                     _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
                     _ctr = _vp.mean(axis=0)
                     _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # HANDOVER LATCH (ID/size-FREE, image-space): the RAW apparent-size² M drops abruptly
+                    # (~ratio², big->small switch) -> large NEGATIVE d(ln RAW_M), unmistakable vs the
+                    # ~0.04 normal loom. Uses the RAW M here (BEFORE the LOOM_SZ_RATIO normalization below,
+                    # which deliberately makes the NORMALIZED d(lnM) continuous). One-way; only big->small
+                    # (M drop, negative) latches — small->big flicker-back (positive) is ignored.
+                    if _M > 1e-12 and np.isfinite(_M):
+                        _rlnM = float(np.log(_M))
+                        if (self._raw_lnM_prev is not None
+                                and (_rlnM - self._raw_lnM_prev) < -self._handover_ln):
+                            self.HANDOVER_LATCHED = True
+                        self._raw_lnM_prev = _rlnM
                     # SIZE-NORMALIZE by the primary marker's physical size² so the scale is
                     # continuous across primary-ID SWITCHES (the board's markers span ~7× in
                     # size; min-ID flickers as markers enter/leave decode → d(lnM)/dt jumps).
@@ -1710,6 +1732,11 @@ class IMG_PROCESSOR(Thread):
             self._ring_div_log.append(_pdiv)
             self._ring_moment_log.append(_rmom)
             self._n_ring_corners.append(_nr)
+            # Expose the marker-less ring loom for the terminal ring-commit (calibrated pure_div; the
+            # A/B-preferred, accurate-to-0.2m divergence). TODO: swap to the ring MOMENT near the deck
+            # (milder over-report) on a DEPTH-FREE trigger (Nring drop), not altitude.
+            if np.isfinite(_pdiv):
+                self.RING_LOOM = float(np.clip(_pdiv * self._ring_div_cal * self._ring_loom_scale, -10.0, 10.0))
             # run V_v_ring through the SAME KF the corner flow uses (separate state)
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
              self._kf_ring_initialized) = self._kf_step(
