@@ -126,7 +126,13 @@ class Controller(Thread):
             else:
                 from gt_feedback import GTFeedback
                 self._gt_feedback = GTFeedback()
-                print("[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)")
+                # PER-CHANNEL GT ABLATION (2026-07-04): GT_ABLATE = comma-list of channels to take
+                # from GT, REST from perception — isolate the binding perception signal one at a time.
+                # Channels: s (centroid xy), h (lateral flow xy), hz (loom), yaw (alpha), wz (yaw rate).
+                # Unset/empty/'all' -> full GT-FB (back-compat). e.g. GT_ABLATE=h -> only flow from GT.
+                _abl = os.environ.get("GT_ABLATE", "all").strip().lower()
+                self._gt_ablate = set() if _abl in ("all", "") else set(c.strip() for c in _abl.split(","))
+                print(f"[controller] PLASMC_GT_FEEDBACK=1 — GT channels: {_abl} (perception for the rest)")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -402,7 +408,7 @@ class Controller(Thread):
         # on s_e[:2] estimates position+velocity jointly; V_ds = the velocity state (lower lag + no
         # double-smoothing than diff-of-already-KF'd-position). NB: a PX4-side divergence from MATLAB.
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
-        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "1.0"))   # process (accel) noise PSD. BAKED 10.0->1.0 (2026-06-30, user): q=10 was tuned for low-lag vs GT, but it PASSES the 1/Z²-amplified terminal s_dot oscillation straight into the drift term chi_r*ζ̇_r/G (the dominant a_u cycle driver). Lower q = trust the CV model more = smooth s_dot_meas -> drift-osc amp 4.7->0.9, SP 3->6/9 (GT-FB IC2/4/5 n=3, P2INF=1.5+W_U_MAX=2.0). The added lag is acceptable (terminal v_lat is slow). q=3 intermediate (4 SP). [[project_residual_cycle_wumax_bake]]
+        self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))  # process (accel) noise PSD. RE-BAKED 1.0->10.0 (2026-07-04, user): the 06-30 lowering to 1.0 was to damp the terminal 1/Z² s_dot osc, but PR0=10 (06-29 funnel-shape fix) ALREADY absorbs the terminal 1/Z (A/B: termosc stays 0.009-0.012 even at q=10). The low q's only remaining effect was DRIFT-TERM-NOISE damping that masked a DIFFERENT root: the fly-aways are a TERMINAL-DECK event (drone reaches deck clean @~0.05m, marker Ncorn->0 from 1/Z fill, drone still armed -> reacts to the perc spike -> climbs+flies; q=10 makes it worse, q=1 milder — but q is a severity band-aid, NOT the fix). q=10 restores low-lag off-center velocity; the real fix is the terminal commit/disarm. ⚠ WITHOUT that fix q=10 shows 7-31m deck fly-aways.
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
         # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
@@ -479,7 +485,7 @@ class Controller(Thread):
         #                    for the app to ascend + re-attempt.
         # The |ds_e_n| gate replaces the ||h_xy|| flow guard (same v_res info, centroid-robust,
         # matching s_e_n coordinate). All triggers image-space -> scale/depth-free. Default-off.
-        self._terminal_commit = os.environ.get("PLASMC_TERMINAL_COMMIT", "1") == "1"  # BAKED ON 2026-06-29 (s_e_n->0 ramp; stability config)
+        self._terminal_commit = os.environ.get("PLASMC_TERMINAL_COMMIT", "0") == "1"  # BAKED OFF 2026-07-03 (user): the open-loop hold (zero zeta_r) is WRONG for a MOVING target — it drops position regulation and only velocity-matches, so a curving/translating deck develops an un-corrected offset; it also fired the r1.0 curved fly-away (peak 9.2->5.0 m with it off). On the STATIONARY platform it rarely fires anyway (extent<400 at platform min-alt ~0.5 m) and commit-off is neutral-to-better. Was BAKED ON 2026-06-29 (stationary s_e_n->0 ramp). Set =1 to restore.
         self._tc_extent = float(os.environ.get("PLASMC_TC_EXTENT", "400"))   # corner-exit: marker px extent
         self._tc_sen    = float(os.environ.get("PLASMC_TC_SEN",    "0.3"))   # |s_e_n| centered cut
         self._tc_dsen   = float(os.environ.get("PLASMC_TC_DSEN",   "0.2"))   # |ds_e_n| settled cut
@@ -958,6 +964,37 @@ class Controller(Thread):
         self._a_u = []
         self._I_a_raw = []    # pre-LPF, pre-clamp inertial accel command
         self._I_a = []        # post-LPF, post-clamp inertial accel command
+        # PLASMC_AU_LEAD (2026-07-03, user-approved): first-order phase-lead
+        # C(s) = (1+s/wz)/(1+s/wp), wz<wp, on the LATERAL inertial command — applied to
+        # I_a[:2] right after I_a_raw (BEFORE the cone clamp + tau_ia LPF, so the HF gain
+        # lands on the cone). WHY (cycle deep-dive 07-03, project_rover_turning_open): the
+        # rover-curve limit cycle is pumped by an anti-position command tone delivered
+        # through the -25..-55 deg actuation lag; damping needs command quadrature
+        # chi > W*tau ~ 25-40 deg at W* = 1.3-1.7 rad/s, and no gain knob can supply it
+        # (all large branches sit at chi ~ 0). Defaults wz=0.9, wp=3.5 -> +35.5 deg and
+        # gain x1.72 at 1.4 rad/s, HF gain wp/wz = 3.9 (bounded by the cone clamp).
+        # I_a_raw stays logged PRE-lead so cycle_stage_phase.py measures the lead inside
+        # the actuation stage (expect ACT(Iar->ad) to move ~ +35 deg when enabled).
+        self._au_lead = os.environ.get("PLASMC_AU_LEAD", "0") == "1"
+        self._au_lead_wz = float(os.environ.get("PLASMC_AU_LEAD_WZ", "0.9"))
+        self._au_lead_wp = float(os.environ.get("PLASMC_AU_LEAD_WP", "3.5"))
+        # AU_LEAD_RATIO (2026-07-03): SCALE-FREE clamp on the lead's EXTRA term
+        # (wp/wz-1)(I_a_raw-x), bounded RELATIVE to the raw command: |delta| <= ratio*|I_a_raw_xy|.
+        # Dimensionless (no fixed metric threshold) — rides the signal's own scale. The lead helps
+        # mid-descent (delta small vs command -> transparent); the terminal 1/Z spike makes the
+        # HF-amplified delta dwarf the command -> detonation, which the fraction cap neuters WITHOUT
+        # an altitude/metric gate. 0 -> unclamped. Default 1.0 (delta <= the command it corrects).
+        # (Superseded PLASMC_AU_LEAD_MAX, a fixed-m/s^2 clamp = a scale violation; removed.)
+        self._au_lead_ratio = float(os.environ.get("PLASMC_AU_LEAD_RATIO", "1.0"))
+        self._au_lead_x = np.zeros(2)          # LPF_wp state (world lateral)
+        if self._au_lead:
+            if not 0.0 < self._au_lead_wz < self._au_lead_wp:
+                raise ValueError("PLASMC_AU_LEAD needs 0 < AU_LEAD_WZ < AU_LEAD_WP")
+            _ph14 = np.degrees(np.arctan(1.4 / self._au_lead_wz)
+                               - np.arctan(1.4 / self._au_lead_wp))
+            print(f"[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/{self._au_lead_wz:g})/"
+                  f"(1+s/{self._au_lead_wp:g}) on I_a xy "
+                  f"(+{_ph14:.0f} deg @1.4 rad/s, HF x{self._au_lead_wp/self._au_lead_wz:.1f})")
         self._marker_extent = []   # MARKER_EXTENT_PX per step (proximity / terminal-hold trigger)
         # FoV-cone diagnostics
         self._rho_fov_log = []
@@ -1002,8 +1039,19 @@ class Controller(Thread):
                     if self._gt_feedback is not None:
                         _p = self._pose_node.getPose()
                         if _p.UAV is not None and _p.target is not None:
-                            feature_param, opt_flow_ang_vel = self._gt_feedback.update(
+                            _gt_fp, _gt_of = self._gt_feedback.update(
                                 _p.UAV, _p.target, self._time.perf_counter())
+                            _abl = self._gt_ablate
+                            if not _abl:                      # full GT-FB (back-compat)
+                                feature_param, opt_flow_ang_vel = _gt_fp, _gt_of
+                            else:                             # per-channel: GT only the listed channels
+                                feature_param = np.array(feature_param, dtype=float)
+                                opt_flow_ang_vel = np.array(opt_flow_ang_vel, dtype=float)
+                                if 's' in _abl:   feature_param[0:2]     = _gt_fp[0:2]
+                                if 'yaw' in _abl: feature_param[3]       = _gt_fp[3]
+                                if 'h' in _abl:   opt_flow_ang_vel[0:2]  = _gt_of[0:2]
+                                if 'hz' in _abl:  opt_flow_ang_vel[2]    = _gt_of[2]
+                                if 'wz' in _abl:  opt_flow_ang_vel[5]    = _gt_of[5]
                     self._updateImgFeatureParam(feature_param)
                     # Append _w_i BEFORE _updateOptFlow — the latter now uses
                     # self._w_i[-1] (MATLAB V_w) and would IndexError on the
@@ -1701,6 +1749,22 @@ class Controller(Thread):
         self._a_v.append(a_v)
 
         a_u = - np.linalg.solve(self._G[-1], a_v)
+        if os.environ.get("AU_DECOMP_DBG", "0") == "1":
+            # a_u lateral decomposition (bounce-transition diagnosis). a_u = -G^-1 a_v splits into:
+            #   reach  = G^-1·Γ·σ                              (proportional reaching)
+            #   switch = G^-1·(θ ⊙ (sat(σ)·G·κ))              (adaptive switching)
+            #   equiv  = c - S·ṗ                               (equivalent / known-dynamics: loom, ḣ_d, cross)
+            #   drift  = G^-1·χζ_aug                           (position-funnel χ_r·ζ_r drift)
+            _reach  = np.linalg.solve(self._G[-1], self._Gma @ self._sigma[-1])
+            _switch = np.linalg.solve(self._G[-1], theta_ctrl * (np.diag(sat_sigma) @ self._G[-1] @ self._kappa[-1]))
+            _equiv  = c - self._S[-1] @ self._dp[-1]
+            _drift  = np.linalg.solve(self._G[-1], chi_zeta_aug)
+            _res = float(np.linalg.norm((_reach + _switch + _equiv + _drift - a_u)[:2]))
+            print("[au] hz=%+.2f sen=%.2f auxy=%6.1f | reach=%6.1f switch=%6.1f equiv=%6.1f drift=%6.1f | kxy=%.2f sigxy=%.2f res=%.2f" % (
+                float(self._h[-1][2]), float(np.max(np.abs(self._s_e_n[-1]))), float(np.linalg.norm(a_u[:2])),
+                float(np.linalg.norm(_reach[:2])), float(np.linalg.norm(_switch[:2])),
+                float(np.linalg.norm(_equiv[:2])), float(np.linalg.norm(_drift[:2])),
+                float(np.linalg.norm(self._kappa[-1][:2])), float(np.linalg.norm(self._sigma[-1][:2])), _res))
         # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
         # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
         # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker
@@ -2031,6 +2095,22 @@ class Controller(Thread):
 
         # ---- Full MATLAB FoV-margin cone (visualControl_IBVS_adaptive.m:443-469) ----
         I_a = I_a_raw.copy()
+
+        # Lateral phase-lead (PLASMC_AU_LEAD, see __init__). y = u + (wp/wz - 1)(u - x),
+        # x' = wp(u - x): unity DC gain (no steady-state distortion), +phase in the cycle
+        # band, HF gain wp/wz — clipped downstream by the cone clamp below.
+        if self._au_lead and len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            _dtl = min(float(self._dt[-1]), 0.1)
+            _al = 1.0 - np.exp(-self._au_lead_wp * _dtl)
+            self._au_lead_x += _al * (I_a_raw[:2] - self._au_lead_x)
+            _lead_delta = ((self._au_lead_wp / self._au_lead_wz) - 1.0) \
+                * (I_a_raw[:2] - self._au_lead_x)
+            if self._au_lead_ratio > 0.0:
+                _cap = self._au_lead_ratio * float(np.linalg.norm(I_a_raw[:2]))
+                _nd = float(np.linalg.norm(_lead_delta))
+                if _nd > _cap > 0.0:
+                    _lead_delta *= _cap / _nd
+            I_a[:2] = I_a_raw[:2] + _lead_delta
 
         # 1) Current tilt angle from body-z direction (R[2,2] is body-z's inertial-z component)
         R33 = float(np.clip(R[2, 2], -1.0, 1.0))

@@ -2,7 +2,7 @@
 # Changed class and node name used in gz_subscriber
 # Used simulator time instead of system time
 # Used virtual image feature points for optical flow calculation
-# Detect nested Aruco markers of different IDs and select marker with smallest ID.
+# Detect nested Aruco markers; PRIMARY = the BIGGEST detected marker (IMG_MARKER_PRIORITY=big, 2026-07-03) for observability; falls to the small marker only when the big is gone.
 # Used Lucas-Kanade method for optical flow calculation.
 # **************************************************************************
 
@@ -124,17 +124,20 @@ class IMG_PROCESSOR(Thread):
         # FULL solve) are REPLACED by a pure per-axis scale: beta_x=0.73, beta_y=0.59 (the reduced
         # raw slightly OVER-reads GT). ⚠ paired with FLOW_LAT_REDUCED=1: set FLOW_LAT_REDUCED=0
         # (full solve) -> restore the recombination rows from git (pre-commit a081af9).
+        # OBSERVER cal (2026-07-03): 1m NESTED marker + centroid-rate observer (PLASMC_CENTROID_RATE=1).
+        # h_x/h_y = reduced-solve std-ratio on the OBSERVER lateral flow (median of 5 runs) — recovers
+        # the lateral channel the σ_min corner-flow left at the noise floor (old NaN/unstable betas).
         self._sensor_cal_hw = np.array([
-            [+0.7300, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = beta_x * h_x_raw (reduced-solve diagonal recal)
-            [+0.0000, +0.5900, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = beta_y * h_y_raw
-            [-0.1031, -0.0147, +0.5514, +0.0136, -0.1013, +0.0399],   # loom row; control uses the MOMENT loom (FLOW_LOOM_DECOUPLE) so the lstsq h_z cal is secondary
+            [+1.4272, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x
+            [+0.0000, +1.0253, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y
+            [+0.0535, -0.0044, +0.4973, +0.0000, +0.0000, +0.0000],   # loom row (board-fit; control uses MOMENT loom, secondary)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.9773]])   # w_z decoupled to w_z_raw only (board practice; avoids close-range h_y/w_x contamination of yaw)
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.8439]])   # w_z decoupled to w_z_raw only
         self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.0273, 1.0669, 1.0, 1.0])
+        self._sensor_cal_s  = np.diag([1.1391, 1.1437, 1.0, 1.0])   # observer/1m-nested centroid (2026-07-03)
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -156,13 +159,16 @@ class IMG_PROCESSOR(Thread):
         # Wz 0.56) — so transfer (13 recordings) wins.
         # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
         # SINGLE-MARKER ring cal (2026-06-23, transfer mode keyed to the new corner cal).
+        # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
+        # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
+        # marker provides yaw. Re-derive Wz if a board/turning case needs ring yaw.
         self._sensor_cal_ring = np.array([
-            [+1.0803, -0.3005, -0.4927, +0.4782, +0.8557, +0.5029],
-            [-0.1462, +0.8626, +0.5851, -0.6551, -0.3149, +0.5336],
-            [-0.4810, -0.0463, +1.6539, +0.0359, -0.4477, -0.3487],
+            [+0.6523, +0.0317, +0.1372, -0.0371, +0.6014, -0.1252],
+            [-0.1414, +0.7969, -0.0414, -0.8080, -0.1262, +0.3377],
+            [+0.1154, +0.0131, +2.0499, -0.1148, +0.1176, +0.4799],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.9229, +0.6559, +0.4264, -0.7377, -0.8550, +0.7238]])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000]])
 
         # ArUco marker detection setup, with sub-pixel corner refinement
         # (added 2026-05-13). Default cornerRefinementMethod is CORNER_REFINE_NONE
@@ -212,6 +218,23 @@ class IMG_PROCESSOR(Thread):
                       int(os.environ.get("FLOW_LK_ITER", "30")), float(os.environ.get("FLOW_LK_EPS", "0.01"))),
             minEigThreshold=float(os.environ.get("FLOW_LK_EIG", "1e-3")),
         )
+        # DECODE-CORRESPONDENCE flow fallback (2026-07-04, user): LK is sub-pixel-accurate at LOW
+        # speed but loses the marker corners at HIGH speed (it iterates from the old position and
+        # can't reach the new one). ArUco decode re-finds the corners GLOBALLY in the next frame in
+        # canonical order -> valid correspondence with no basin. So when LK DROPS marker corners,
+        # fill them from decode: decode's ~1px corner noise is negligible vs the large high-speed
+        # displacement (signal >> noise), exactly the regime LK can't handle. LK stays primary where
+        # it succeeds (low speed). The extra detectMarkers only runs when LK actually failed.
+        self._decode_flow = os.environ.get("FLOW_DECODE_CORR", "1") == "1"   # BAKED default-on 2026-07-04 (user); FLOW_DECODE_CORR=0 to disable
+        # Decode-flow scale cal: the decode displacement over-reports ~1.4x vs GT/LK at high speed
+        # (decode corner = marker edge, slightly wider than the LK feature point). Scale the decode
+        # DISPLACEMENT so the reconstructed flow matches truth. Measured from perc_diag high-vel bin.
+        self._decode_scale = float(os.environ.get("FLOW_DECODE_SCALE", "1.0"))
+        # LK-STUCK trigger: LK reports status=1 even when it converges to a wrong nearby minimum
+        # (tiny displacement) at high speed, so status==0 never catches it. Fire the decode fallback
+        # when decode sees materially MORE motion than LK reports (px). Handles the silent-stuck case.
+        self._decode_trig = float(os.environ.get("FLOW_DECODE_TRIG", "1.5"))
+        self._decode_fills = 0
 
         # Ring stations for the TEXTURE-FREE V-frame optic flow (Singhal ring sampler):
         # fixed concentric-ring points about the image centre, LK-tracked every frame and
@@ -292,6 +315,22 @@ class IMG_PROCESSOR(Thread):
         except Exception as _e:
             print(f"[img_data] board layout load failed ({_e}); single-marker mode")
             self._board_layout = None
+
+        # ONLINE BOARD SELF-CALIBRATION (2026-07-03, user directive: no hardcoded layout/IDs/sizes).
+        # Learn each marker's relative (cx,cy,sz) from co-visible frames instead of the
+        # aruco_board_layout.npy file. Feasible for a BOARD (markers co-visible) — unlike concentric
+        # nested (mutually exclusive). Marker IDs are used only as runtime correspondence KEYS, not
+        # hardcoded. The first multi-marker frame bootstraps the layout (scale-free: gauge = median
+        # marker size, origin = marker centroid); later frames are aligned to it via a similarity
+        # (Umeyama) on shared markers and running-averaged, accepting only low-residual (well-leveled,
+        # un-occluded) frames. Until ready (>= min_frames) the board feature falls back to the file
+        # (if present) else single-marker. Default ON; the file becomes an optional prior.
+        self._board_selfcal = os.environ.get("BOARD_SELFCAL", "1") == "1"
+        self._selfcal_layout = {}     # {id: (cx, cy, sz)} learned, scale-free (marker-arrangement gauge)
+        self._selfcal_counts = {}     # {id: n} running-average weights
+        self._selfcal_frames = 0      # reliable frames accumulated
+        self._selfcal_min_frames = int(os.environ.get("BOARD_SELFCAL_MIN_FRAMES", "5"))
+        self._selfcal_res_max = float(os.environ.get("BOARD_SELFCAL_RES_MAX", "0.15"))  # similarity RMS gate (frac of scale)
 
         # Equilibrium offset for the 2pi-disambiguated moment yaw (see
         # _marker_principal_angle). It is the steady alpha (in V) when hovering
@@ -447,11 +486,37 @@ class IMG_PROCESSOR(Thread):
         # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
         # filter attenuation; lag-compensating over-drives). Keep 1.0; offline RMSE 1.15 is a red herring.
         self._loom_gain = float(os.environ.get("FLOW_LOOM_GAIN", "1.0"))
-        self._primary_id = None   # smallest-ID decoded marker; for size-normalizing the loom scale M
+        self._primary_id = None   # primary decoded marker; for size-normalizing the loom scale M
+        # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
+        # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
+        # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
+        # larger corner spread -> better flow OBSERVABILITY. 'small' = legacy smallest-ID (argmin),
+        # which preferred the tiny inner marker -> rank-deficient flow / the observability issues.
+        # Concentric markers share the board centre, so switching the primary never moves the centroid.
+        self._marker_priority = os.environ.get("IMG_MARKER_PRIORITY", "big").strip().lower()
         # FLOW_LOOM_WIN = causal linear-fit window (frames). Offline on a centered descent the
         # CAUSAL deque-fit vs GT loom: WIN=5 corr 0.69, WIN=9 corr 0.93, WIN=13 corr 0.97 (rmse
         # ~0.06; joint-lstsq was 0.16/0.88). 9 balances accuracy vs lag (~0.15s @ 60fps).
         self._mtrace_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))  # (t, ln M)
+        # d(lnM)/dt OUTLIER-HOLD on the loom (2026-07-04, user: parallel to the ds/dh checks). The
+        # big<->small handover drops the tracked apparent size M abnormally fast (~7%/frame vs ~1.5%
+        # for a real descent), corrupting the loom = -½·d(lnM)/dt into a spurious WRONG-SIGN spike
+        # (+2.06 vs GT -0.24, GT-FB-confirmed). If the per-frame |Δln M| exceeds a bound it's a
+        # handover/marker-leaving transient -> HOLD the loom at last-good + drop the M-history so the
+        # resumed slope never spans the size transition.
+        self._loom_lnM_prev = None
+        self._loom_hold = 0.0
+        self._loom_dlnM_max = float(os.environ.get("LOOM_DLNM_MAX", "0.04"))   # loom CHECKPOST: reject a per-frame |Δln M| spike for that instant only (0=off)
+        # BOTH-VISIBLE ratio-normalization (2026-07-04, user): when 2+ markers decode in the SAME
+        # frame they share Z, so sz_i/sz_j is the physical-size ratio (Z-independent) — learn it
+        # online (anchor the primary at 1.0, propagate via co-visibility, running-avg). Normalizing
+        # the loom size M by sz_ratio² makes M CONTINUOUS across the big<->small handover (both →
+        # (f/Z)²), so the loom stays LIVE and accurate through the switch (vs the d(lnM)/dt hold
+        # which only freezes it). Marker-agnostic — no layout/ID/size prior. Falls back to the hold
+        # when only one marker is visible (marker-leaving) or the ratio isn't learned yet.
+        self._sz_ratio = {}                                                   # mid -> physical-size ratio vs anchor
+        self._sz_ratio_a = float(os.environ.get("LOOM_SZ_RATIO_ALPHA", "0.1"))  # running-avg rate
+        self._loom_sz_ratio_on = os.environ.get("LOOM_SZ_RATIO", "1") == "1"   # BAKED default-on 2026-07-04 (user); LOOM_SZ_RATIO=0 to disable
 
         # GYRO-COMPENSATED CENTROID-RATE OBSERVER (PLASMC_CENTROID_RATE, default-off; single-marker).
         # At altitude the small single marker's LK fails (Nfc=0) → the lstsq lateral flow is
@@ -465,10 +530,40 @@ class IMG_PROCESSOR(Thread):
         # wrong: the baseline altitude flow is NOT starved (alt corr 0.39-0.59; KF + flow-by-3m bridge
         # the top Nfc=0). The IC2 fly-aways are STOCHASTIC/terminal (1-2/5 run-to-run), the same ceiling
         # as the multi-marker board — NOT altitude velocity starvation. Keep default-off.
-        self._centroid_rate = os.environ.get("PLASMC_CENTROID_RATE", "0") == "1"
+        # REVIVED default-ON 2026-07-03 for the 1m NESTED marker: the BIG marker's σ_min corner-flow
+        # sits at the LK noise floor (recal std-ratio betas came out NaN/unstable → 15-24m fly-aways).
+        # The centroid-rate observer recovers a derivable lateral signal; with the MATCHED observer cal
+        # (h_x/h_y = 1.43/1.03) IC1 fly-away 15-24m → 0.41m (n=1). The 2026-06-23 dead-end above was the
+        # OLD ~1m single marker where lateral was NOT starved — different regime. Set =0 to disable.
+        self._centroid_rate = os.environ.get("PLASMC_CENTROID_RATE", "1") == "1"
         self._centroid_hist = deque(maxlen=int(os.environ.get("CENTROID_RATE_WIN", "9")))  # (t, x0, y0, ln M)
         self._observer_flow = np.zeros(6)   # [h_x, h_y, h_z, 0, 0, w_z] from the observer
         self._observer_valid = False        # reset per-frame; True when the observer produced flow
+        # Constant-velocity KALMAN FILTER on the decoded centroid -> smoothed lateral velocity
+        # (2026-07-03). Replaces the raw polyfit differentiation, which amplified sub-pixel centroid
+        # jitter into flow noise ~30x the true lateral flow (corr with GT ~0 -> residual drift).
+        # Offline vs GT: tracks real motion (|corr| .13->.67) AND cuts noise 3x. q,r tuned offline.
+        self._obs_kf_x = None; self._obs_kf_y = None      # [pos, vel] states
+        self._obs_kf_Px = None; self._obs_kf_Py = None    # 2x2 covariances
+        self._obs_kf_t = None                             # last update stamp (for dt)
+        self._obs_kf_q = float(os.environ.get("CENTROID_RATE_KF_Q", "1e-3"))   # process noise. BAKED 1e-4->1e-3 (2026-07-04): the old 1e-4 over-smoothed the centroid-rate -> low-velocity attenuation (h_x ratio 0.66@mid). q=1e-3 lifts it to 0.90 (offline+live A/B) with no landing regression -- the low q was tuned for the PRE-FIX noisy observer; the corrected observer (frame/w_z fixes) affords more gain.
+        self._obs_kf_r = float(os.environ.get("CENTROID_RATE_KF_R", "1e-3"))   # measurement noise
+        # ds/dh OUTLIER GATE on the lateral flow (2026-07-04). The σ_min LK corner-flow (used when
+        # the marker isn't freshly decoded) intermittently ramps to physically-impossible values
+        # (|h|~1.6 = 6 m/s-equivalent at 3.8m) -> SMC divergence (the catastrophic fly-away tail).
+        # The median flow is fine; only the fat tail is garbage -> reject per-frame OUTLIERS whose
+        # frame-to-frame change exceeds a bound, HOLD last-good. RATE-based -> scale/depth-free
+        # (genuine v/Z growth near touchdown is slow, ~0.02/frame; spikes step ~0.2/frame).
+        self._flow_prev = None                                                 # detection reference = last RAW [h_x,h_y] (advances every frame)
+        self._flow_hold = None                                                 # substitution = last ACCEPTED [h_x,h_y] (updated only on accept; no spike leak)
+        self._flow_dh_max = float(os.environ.get("FLOW_DH_MAX", "0.15"))       # flow CHECKPOST: reject a per-frame |Δh| spike for that instant only (0=off)
+        # ds OUTLIER-HOLD on the RAW centroid s (2026-07-04, user plan): the centroid is the ACCURATE
+        # signal, so a frame whose centroid JUMPS beyond a physical rate (|Δs|>thresh) is a detection/
+        # LK glitch -> reject it, HOLD the previous value. Cleans s AT THE SOURCE, so both the position
+        # loop and the observer's centroid-rate get a clean input. Companion to the flow (dh) hold above.
+        self._s_prev = None                                                    # detection reference = last RAW centroid [xc,yc] (advances)
+        self._s_hold = None                                                    # substitution = last ACCEPTED centroid (updated only on accept)
+        self._s_ds_max = float(os.environ.get("FLOW_DS_MAX", "0.15"))        # centroid CHECKPOST: reject a per-frame |Δs| spike for that instant only (0=off)
 
         # Flags and counters
         self._STAY_OPEN = True
@@ -1015,9 +1110,26 @@ class IMG_PROCESSOR(Thread):
                     self._locked_marker_id = int(ids[primary_i])
                 else:
                     primary_i = int(np.where(ids == self._locked_marker_id)[0][0])
+            elif self._marker_priority == 'small':
+                primary_i = int(np.argmin(ids))      # legacy: smallest ID (innermost/smallest marker)
             else:
-                primary_i = int(np.argmin(ids))
-            self._primary_id = int(ids[primary_i])   # for the decoupled-loom marker-size normalization
+                # BIGGER-marker priority (default): pick the largest marker by layout size, so the
+                # big ID10 is used while detectable, then ID0 takes over when the big is gone.
+                if self._board_layout is not None:
+                    _sz = [float(self._board_layout.get(int(m), (0.0, 0.0, 0.0))[2]) for m in ids]
+                    primary_i = int(np.argmax(_sz))
+                else:
+                    primary_i = int(np.argmax(ids))  # nested convention: larger ID = bigger marker
+            _prev_primary = self._primary_id
+            self._primary_id = int(ids[primary_i])
+            if _prev_primary is not None and self._primary_id != _prev_primary:
+                self._mtrace_hist.clear()   # loom d(lnM)/dt must not span a marker switch (sz step)
+                # The observer must NOT differentiate the centroid JUMP at the big<->small handover:
+                # a fast switch (no >0.5s gap) slipped past the KF's gap-reset and produced a ~7x flow
+                # spike -> SMC divergence (the 0.9-19m catastrophic variance). Reset its history + KF.
+                self._centroid_hist.clear()
+                self._obs_kf_x = None; self._obs_kf_y = None
+                self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -1172,9 +1284,9 @@ class IMG_PROCESSOR(Thread):
         # h_z from the moment loom; w from the IMU gyro rotated into the V-frame (clean, not the
         # off-center-ill-conditioned lstsq). Stored for injection at the flow-output sites below.
         if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
-                and quats is not None and len(quats) > 1 and quats[1] is not None):
+                and quats is not None and len(quats) > 0 and quats[0] is not None):
             try:
-                _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[1])
+                _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
                 _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
                 _to = float(getattr(self, '_stamp', 0.0))
@@ -1184,18 +1296,25 @@ class IMG_PROCESSOR(Thread):
                     _ta = np.array([c[0] for c in self._centroid_hist])
                     if (_ta.max() - _ta.min()) > 1e-4:
                         _t0 = _ta - _ta[0]
-                        _sdx = float(np.polyfit(_t0, [c[1] for c in self._centroid_hist], 1)[0])
-                        _sdy = float(np.polyfit(_t0, [c[2] for c in self._centroid_hist], 1)[0])
+                        # CV-Kalman filter (not raw polyfit) — suppresses centroid-jitter noise
+                        # that drove the residual lateral drift (offline: corr .13->.67, noise -3x).
+                        _sdx, _sdy = self._obs_vel_kf(_x0, _y0, _to)
                         _loom_dec = float(-0.5 * np.polyfit(_t0, [c[3] for c in self._centroid_hist], 1)[0]
                                           * self._loom_gain)   # sz=1 single-marker (size-norm inert)
-                        _avo = angvels[1] if (angvels is not None and len(angvels) > 1
-                                              and angvels[1] is not None) else None
+                        _avo = angvels[0] if (angvels is not None and len(angvels) > 0
+                                              and angvels[0] is not None) else None
                         if _avo is not None:
-                            _wv = self._vframe_w([_avo.forward_rad_s, _avo.right_rad_s, _avo.down_rad_s], quats[1])
+                            _wv = self._vframe_w([_avo.forward_rad_s, _avo.right_rad_s, _avo.down_rad_s], quats[0])   # FRAME-PAIR FIX 2026-07-04: match the frame-0 centroid (was quats[1]/angvels[1])
                         else:
                             _wv = np.zeros(3)
                         _alpha_rate = 0.0   # TODO moving-target: w_target_z = d(alpha)/dt; 0 for stationary
                         _wv[2] -= _alpha_rate                  # relative yaw = camera (gyro) − target
+                        # W_Z SIGN FIX (2026-07-04): _fill_A's ω_z is the INTERACTION-matrix z-rate =
+                        # −body_yaw_rate (validated 2026-06-25: lstsq w_z corr −0.91 w/ body yaw). But
+                        # _vframe_w gives _wv[2] = +body_yaw_rate. So the interaction ω_z = −_wv[2].
+                        # The observer had used +_wv[2] → sign-flipped yaw coupling: harmless on h_x
+                        # (small y0·w_z when drifting in x) but ANTI-correlated h_y (large x0·w_z).
+                        _oz = -_wv[2]
                         _hz = _loom_dec
                         # FRAME FIX (2026-06-23): ṡ is the VIRTUAL (de-rotated) centroid rate, and
                         # _getVirtualPts ALREADY levels out roll/pitch (z→world-down) while preserving
@@ -1203,10 +1322,10 @@ class IMG_PROCESSOR(Thread):
                         # — subtracting L_w with the full gyro DOUBLE-COUNTS it (the tilt terms inflated
                         # h 6.2× off-center: meas|h_lat| 1.20 vs GT 0.19). Keep ONLY the yaw term (w_z,
                         # preserved) + the loom term. Signs from _fill_A (wz col = [−y, x]).
-                        _hx = _sdx + _x0 * _hz + _y0 * _wv[2]
-                        _hy = _sdy + _y0 * _hz - _x0 * _wv[2]
+                        _hx = _sdx + _x0 * _hz + _y0 * _oz
+                        _hy = _sdy + _y0 * _hz - _x0 * _oz
                         self._observer_flow = np.clip(
-                            np.array([_hx, _hy, _hz, 0.0, 0.0, _wv[2]]), -10.0, 10.0)
+                            np.array([_hx, _hy, _hz, 0.0, 0.0, _oz]), -10.0, 10.0)
                         self._observer_valid = True
             except Exception:
                 self._observer_valid = False
@@ -1226,6 +1345,37 @@ class IMG_PROCESSOR(Thread):
             )
 
             status = status.flatten()
+
+            if self._decode_flow and os.environ.get("DECODE_DBG") == "1":
+                self._dbg_f = getattr(self, '_dbg_f', 0) + 1
+                _lkd = float(np.mean(np.abs(all_pts_1[:n_aruco].reshape(-1, 2) - aruco_pts_0)))
+                print(f"[dd] t{float(getattr(self, '_stamp', 0.0)):.3f} lkd{_lkd:.2f} lost{int(np.sum(status[:n_aruco] == 0))}", flush=True)
+
+            # DECODE-CORRESPONDENCE fallback with LK-STUCK detection. LK re-detects the marker
+            # GLOBALLY in the next frame (canonical corner order → corner k(t)↔k(t+1), no basin).
+            # Use it per marker when LK is unreliable: either it dropped a corner (status==0) OR it
+            # reports materially LESS motion than decode sees (it silently converged to a wrong
+            # nearby min — the high-speed failure that status==0 misses). LK stays primary when it
+            # agrees with decode (low speed, sub-pixel accurate). Match on ID (nested-marker safe).
+            if self._decode_flow and marker_ids is not None:
+                _res1 = self._detector.detectMarkers(imgs[1])
+                if _res1[0]:
+                    _ids1 = np.asarray(_res1[1]).flatten()
+                    _c1 = {int(_ids1[q]): np.asarray(_res1[0][q]).reshape(-1, 2).astype(np.float32)
+                           for q in range(len(_ids1))}
+                    for k, mid in enumerate(marker_ids):
+                        mid = int(mid); sl = slice(4 * k, 4 * k + 4)
+                        if mid not in _c1:
+                            continue
+                        _d0 = all_pts_0[sl].reshape(-1, 2)                    # frame-0 corners
+                        _d1_dec = _c1[mid]                                    # decode frame-1 corners
+                        _disp_lk = float(np.mean(np.abs(all_pts_1[sl].reshape(-1, 2) - _d0)))
+                        _disp_dec = float(np.mean(np.abs(_d1_dec - _d0)))
+                        if np.any(status[sl] == 0) or _disp_dec > _disp_lk + self._decode_trig:
+                            all_pts_1[sl] = (_d0 + (_d1_dec - _d0) * self._decode_scale).reshape(-1, 1, 2)
+                            status[sl] = 1
+                            self._decode_fills += 1
+
             aruco_status = status[:n_aruco]
             extra_status = status[n_aruco:]
 
@@ -1247,12 +1397,14 @@ class IMG_PROCESSOR(Thread):
                 # Collect per-marker frame-1 corners (only markers whose all-4
                 # corners survived LK) + IDs, for the board homography. Marker k
                 # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
-                if marker_ids is not None and self._board_layout is not None:
+                if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
                     all_pts_1_2d = all_pts_1.reshape(-1, 2)
                     grp = []
                     for k, mid in enumerate(marker_ids):
                         sl = slice(4 * k, 4 * k + 4)
-                        if np.all(status[sl] == 1) and mid in self._board_layout:
+                        # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
+                        if np.all(status[sl] == 1) and (self._board_selfcal
+                                or (self._board_layout is not None and mid in self._board_layout)):
                             grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
                     if grp:
                         board_markers_px1 = grp
@@ -1273,6 +1425,7 @@ class IMG_PROCESSOR(Thread):
                 if board_markers_px1 is not None:
                     board_markers_V = [(mid, self._getVirtualPts(c, quats[1]))
                                        for mid, c in board_markers_px1]
+                    self._update_sz_ratio(board_markers_V)   # learn size ratios from co-visible markers
 
                 # (V_YAW_SOURCE=alpha marker-alignment removed 2026-06-04 — it zeroed
                 # the yaw feature s[3]; V stays gravity-leveled/body-relative. See the
@@ -1305,7 +1458,16 @@ class IMG_PROCESSOR(Thread):
 
                 # V_v: corner-flow V-frame 6-DOF velocity [h; w] (renamed from B_v — it is the
                 # VIRTUAL-frame velocity, not body-frame). V_v_ring is its texture-free ring twin.
-                if self._lat_reduced and self._target_level:
+                # CONSOLIDATION (2026-07-04, user): when the centroid-rate observer is active, its
+                # V-frame centroid-rate defines h_xy (overrides below), the moment loom defines h_z,
+                # and the gyro defines w_z — so the σ_min corner lstsq is fully redundant (only w_z
+                # ever survived it, and the observer's gyro w_z is cleaner). SKIP the second LK's
+                # degenerate 6-DOF solve. One KLT → V-frame centroid → position + rate drives the flow.
+                _obs_active = (self._single_marker and self._centroid_rate and self._observer_valid)
+                if _obs_active:
+                    V_v = np.zeros(6)
+                    V_v[5] = float(self._observer_flow[5])       # gyro yaw rate (replaces lstsq w_z)
+                elif self._lat_reduced and self._target_level:
                     # REDUCED 4-DOF lateral solve: drop the w_xy columns (3,4). h_xy is the σ_min
                     # mode of the full 8×6 (degenerate with tilt w_xy, 0.4°) → noise-amplified;
                     # dropping w_xy makes it the LARGEST-σ mode (cond 14→2). w_xy set 0 (V-frame
@@ -1324,16 +1486,17 @@ class IMG_PROCESSOR(Thread):
                 else:
                     V_v, residuals, rank, sv = np.linalg.lstsq(A, Y, rcond=self._flow_lstsq_rcond)
                     _min_rank = 6
-                cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
-                bad = (
-                    rank < _min_rank
-                    or cond > 1e4
-                    or not np.all(np.isfinite(V_v))
-                    or np.max(np.abs(V_v)) > 50.0
-                )
-                if bad:
-                    V_v = np.zeros(6)
-                V_v = np.clip(V_v, -10.0, 10.0)
+                if not _obs_active:
+                    cond = (sv[0] / sv[-1]) if (len(sv) > 0 and sv[-1] > 0) else np.inf
+                    bad = (
+                        rank < _min_rank
+                        or cond > 1e4
+                        or not np.all(np.isfinite(V_v))
+                        or np.max(np.abs(V_v)) > 50.0
+                    )
+                    if bad:
+                        V_v = np.zeros(6)
+                    V_v = np.clip(V_v, -10.0, 10.0)
 
                 # DECOUPLED LOOM override (default-off): replace the lstsq loom row V_v[2]
                 # with -½·d(ln M)/dt from the primary marker's V-frame scale M=μ20+μ02
@@ -1348,19 +1511,37 @@ class IMG_PROCESSOR(Thread):
                     # size; min-ID flickers as markers enter/leave decode → d(lnM)/dt jumps).
                     # M/sz² = (f/Z)², marker-independent. Without this the loom is GARBAGE
                     # (offline corr 0.41 vs 0.65 with norm). Fallback sz=1 (single-marker world).
-                    _sz = 1.0
-                    if self._board_layout is not None and self._primary_id in self._board_layout:
-                        _sz = float(self._board_layout[self._primary_id][2]) or 1.0
-                    _M = _M / (_sz * _sz)
+                    # No size normalization needed (2026-07-03): within one marker sz² cancels in
+                    # d(lnM)/dt (the absolute M level is never used downstream), and the primary-
+                    # SWITCH step is killed by _mtrace_hist.clear() on switch (see selection) and on
+                    # marker loss. So the loom is marker-agnostic — zero layout/ID/ratio dependence.
+                    # (Replaced the board_layout[primary_id][2] lookup, which cancelled anyway.)
+                    # BOTH-VISIBLE normalization: divide M by the primary's physical-size ratio² so
+                    # M ∝ (f/Z)² is CONTINUOUS across the big<->small handover (no size step to spike
+                    # the loom). Ratio learned online from co-visible frames; 1.0 until learned.
+                    _szr = self._sz_ratio.get(self._primary_id, 1.0) if self._loom_sz_ratio_on else 1.0
+                    _M = _M / (_szr * _szr)
                     _t = float(getattr(self, '_stamp', 0.0))
                     if _M > 1e-12 and np.isfinite(_M):
-                        self._mtrace_hist.append((_t, np.log(_M)))
-                        if len(self._mtrace_hist) >= 3:
-                            _ta = np.array([h[0] for h in self._mtrace_hist])
-                            _la = np.array([h[1] for h in self._mtrace_hist])
-                            if (_ta.max() - _ta.min()) > 1e-4:
-                                _slope = np.polyfit(_ta - _ta[0], _la, 1)[0]   # d(ln M)/dt
-                                V_v[2] = float(np.clip(-0.5 * _slope * self._loom_gain, -10.0, 10.0))
+                        _lnM = np.log(_M)
+                        # d(lnM)/dt outlier-hold (parallel to the ds/dh checks): a residual handover /
+                        # marker-leaving transient steps ln M -> HOLD the loom, don't span it.
+                        _dlnM = abs(_lnM - self._loom_lnM_prev) if self._loom_lnM_prev is not None else 0.0
+                        self._loom_lnM_prev = _lnM
+                        if self._loom_dlnM_max > 0 and _dlnM > self._loom_dlnM_max:
+                            self._mtrace_hist.clear()           # don't span the size transition
+                            V_v[2] = float(self._loom_hold)     # HOLD the loom through the handover
+                        else:
+                            self._mtrace_hist.append((_t, _lnM))
+                            if len(self._mtrace_hist) >= 3:
+                                _ta = np.array([h[0] for h in self._mtrace_hist])
+                                _la = np.array([h[1] for h in self._mtrace_hist])
+                                if (_ta.max() - _ta.min()) > 1e-4:
+                                    _slope = np.polyfit(_ta - _ta[0], _la, 1)[0]   # d(ln M)/dt
+                                    V_v[2] = float(np.clip(-0.5 * _slope * self._loom_gain, -10.0, 10.0))
+                                self._loom_hold = V_v[2]        # remember last-good loom
+                            else:
+                                V_v[2] = float(self._loom_hold) # during the 3-frame rebuild, hold last-good
 
                 # CENTROID-RATE OBSERVER injection (a): when the LK flow IS available, still prefer
                 # the gyro-compensated centroid-rate lateral (robust to the off-center spurious spikes
@@ -1368,6 +1549,21 @@ class IMG_PROCESSOR(Thread):
                 if self._single_marker and self._centroid_rate and self._observer_valid:
                     V_v[0] = float(self._observer_flow[0])
                     V_v[1] = float(self._observer_flow[1])
+
+                # ds/dh OUTLIER GATE (2026-07-04): reject a per-frame lateral-flow spike (|Δh| beyond
+                # a physical rate) and HOLD last-good — kills the σ_min LK garbage ramp (→ fly-away)
+                # while passing the good median + genuine slow v/Z growth. Applies to whichever source
+                # produced V_v[0:2] (corner-flow OR observer). Rate-based → scale/depth-free.
+                if self._flow_dh_max > 0:
+                    _v_raw = np.array([V_v[0], V_v[1]], dtype=float)   # RAW, BEFORE any reject
+                    if self._flow_hold is None:
+                        self._flow_hold = _v_raw.copy()
+                    for _i in (0, 1):
+                        if self._flow_prev is not None and abs(_v_raw[_i] - self._flow_prev[_i]) > self._flow_dh_max:
+                            V_v[_i] = float(self._flow_hold[_i])         # reject: emit last ACCEPTED (no spike leak)
+                        else:
+                            self._flow_hold[_i] = _v_raw[_i]             # accept: advance last-good
+                    self._flow_prev = _v_raw                            # detection ref = RAW (advances, no latch)
 
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
@@ -1431,6 +1627,22 @@ class IMG_PROCESSOR(Thread):
                 else:
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
 
+                # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
+                # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
+                if self._s_ds_max > 0 and self._img_feature_param:
+                    _s = self._img_feature_param[-1]
+                    _s_raw = np.array([_s[0], _s[1]], dtype=float)   # RAW value, BEFORE any reject
+                    if self._s_hold is None:
+                        self._s_hold = _s_raw.copy()
+                    for _j in (0, 1):
+                        if self._s_prev is not None and abs(_s_raw[_j] - self._s_prev[_j]) > self._s_ds_max:
+                            _s[_j] = float(self._s_hold[_j])         # reject: emit last ACCEPTED (no spike leak)
+                        else:
+                            self._s_hold[_j] = _s_raw[_j]            # accept: advance last-good
+                    # detection ref = RAW (advances) → per-instant check, no latch; substitution =
+                    # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
+                    self._s_prev = _s_raw
+
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
                     self.FEATURE_IS_VISIBLE  = True
@@ -1468,6 +1680,7 @@ class IMG_PROCESSOR(Thread):
                 self._prev_img = None
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()    # drop scale history so the decoupled-loom slope never spans a gap
+                self._flow_prev = None       # ds/dh gate: re-init after a marker-loss gap (don't hold stale)
 
         # Log the recorded data
         self._time_log.append(self._time.perf_counter())
@@ -1834,6 +2047,33 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_x = x_pred + K * y[:, None]
         self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
 
+    def _obs_vel_kf(self, x0, y0, t):
+        """Constant-velocity Kalman filter on the decoded centroid -> smoothed lateral velocity
+        (ṡx, ṡy). Replaces raw polyfit differentiation (jitter-amplifying). Resets on init or a
+        stale/large time gap (won't differentiate across a marker-loss gap)."""
+        if self._obs_kf_x is None or self._obs_kf_t is None:
+            self._obs_kf_x = np.array([x0, 0.0]); self._obs_kf_y = np.array([y0, 0.0])
+            self._obs_kf_Px = np.eye(2); self._obs_kf_Py = np.eye(2); self._obs_kf_t = t
+            return 0.0, 0.0
+        dt = t - self._obs_kf_t
+        if dt <= 1e-4 or dt > 0.5:                 # bad/large gap -> reset, don't diff across it
+            self._obs_kf_x = np.array([x0, 0.0]); self._obs_kf_y = np.array([y0, 0.0])
+            self._obs_kf_Px = np.eye(2); self._obs_kf_Py = np.eye(2); self._obs_kf_t = t
+            return 0.0, 0.0
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+        r = self._obs_kf_r
+        out = []
+        for st, P, z in ((self._obs_kf_x, self._obs_kf_Px, x0), (self._obs_kf_y, self._obs_kf_Py, y0)):
+            st[:] = F @ st
+            P[:] = F @ P @ F.T + Q
+            S = P[0, 0] + r; K = P[:, 0] / S
+            st[:] = st + K * (z - st[0])
+            P[:] = P - np.outer(K, P[0, :])
+            out.append(float(st[1]))
+        self._obs_kf_t = t
+        return out[0], out[1]
+
     def _marker_principal_angle(self, pts):
         """2pi-periodic marker orientation in the (level) V plane (raw, no offset).
 
@@ -1872,6 +2112,109 @@ class IMG_PROCESSOR(Thread):
                 a += np.pi
         return float(np.arctan2(np.sin(a), np.cos(a)))   # wrap to (-pi, pi]
 
+    @staticmethod
+    def _marker_center_size(cV):
+        """V-frame center (mean corner) + size (RMS corner distance from center) of a marker."""
+        c = np.asarray(cV, dtype=float).reshape(-1, 2)
+        ctr = c.mean(axis=0)
+        sz = float(np.sqrt(np.mean(np.sum((c - ctr) ** 2, axis=1))))
+        return ctr, sz
+
+    def _update_sz_ratio(self, markers_V):
+        """Learn each marker's physical-size RATIO online from co-visible frames. In one frame all
+        markers share Z, so sz_i/sz_j is Z-independent = the physical-size ratio. Anchor the current
+        PRIMARY at 1.0 (so its loom M is unchanged and nothing jumps when the ratio is first learned),
+        propagate to co-visible markers, running-average. Enables switch-continuous loom M/sz²
+        normalization with zero layout/ID/size prior."""
+        if not self._loom_sz_ratio_on or markers_V is None or len(markers_V) < 2:
+            return
+        sizes = {int(mid): self._marker_center_size(cV)[1] for mid, cV in markers_V}
+        sizes = {m: s for m, s in sizes.items() if s > 1e-6}
+        if len(sizes) < 2:
+            return
+        known = [m for m in sizes if m in self._sz_ratio]
+        if not known:                                   # anchor the primary (or smallest ID) at 1.0
+            anchor = self._primary_id if self._primary_id in sizes else min(sizes)
+            self._sz_ratio[anchor] = 1.0
+            known = [anchor]
+        ref = known[0]; ref_r = self._sz_ratio[ref]; ref_s = sizes[ref]
+        for m, s in sizes.items():
+            r_meas = ref_r * s / ref_s                   # this marker's ratio from the co-visible pair
+            if m in self._sz_ratio:
+                self._sz_ratio[m] = (1 - self._sz_ratio_a) * self._sz_ratio[m] + self._sz_ratio_a * r_meas
+            else:
+                self._sz_ratio[m] = r_meas
+
+    @staticmethod
+    def _fit_similarity(src, dst):
+        """Least-squares similarity (scale s, rotation R 2x2, translation t) mapping src->dst
+        (Umeyama). Returns (s, R, t, rms) or None. rms is the fit residual in dst units."""
+        src = np.asarray(src, float); dst = np.asarray(dst, float)
+        if len(src) < 2:
+            return None
+        mu_s, mu_d = src.mean(0), dst.mean(0)
+        S, D = src - mu_s, dst - mu_d
+        var_s = float(np.mean(np.sum(S ** 2, axis=1)))
+        if var_s < 1e-18:
+            return None
+        C = (D.T @ S) / len(src)
+        U, sig, Vt = np.linalg.svd(C)
+        R = U @ Vt
+        if np.linalg.det(R) < 0:
+            U = U.copy(); U[:, -1] *= -1; R = U @ Vt
+        s = float(np.sum(sig) / var_s)
+        t = mu_d - s * (R @ mu_s)
+        pred = (s * (R @ src.T)).T + t
+        rms = float(np.sqrt(np.mean(np.sum((pred - dst) ** 2, axis=1))))
+        return s, R, t, rms
+
+    def _selfcal_ready(self):
+        return self._board_selfcal and self._selfcal_frames >= self._selfcal_min_frames
+
+    def _update_board_selfcal(self, markers_V):
+        """Self-calibrate the board layout online from co-visible markers (no file/IDs/sizes).
+        The V-frame marker centers/sizes are the board layout up to a global similarity; the first
+        multi-marker frame bootstraps it (scale-free gauge), later frames are similarity-aligned to
+        the running layout on shared markers and running-averaged. Low-residual gate rejects
+        badly-leveled/occluded frames. IDs are correspondence keys only."""
+        if not self._board_selfcal or len(markers_V) < 2:
+            return
+        obs = {int(mid): self._marker_center_size(cV) for mid, cV in markers_V}
+        if not self._selfcal_layout:
+            sizes = np.array([s for _, s in obs.values()])
+            sref = float(np.median(sizes)) or 1.0
+            origin = np.array([c for c, _ in obs.values()]).mean(axis=0)
+            for mid, (c, s) in obs.items():
+                self._selfcal_layout[mid] = (float((c[0] - origin[0]) / sref),
+                                             float((c[1] - origin[1]) / sref), float(s / sref))
+                self._selfcal_counts[mid] = 1
+            self._selfcal_frames = 1
+            return
+        shared = [m for m in obs if m in self._selfcal_layout]
+        if len(shared) < 2:
+            return
+        sim = self._fit_similarity(np.array([obs[m][0] for m in shared]),
+                                   np.array([self._selfcal_layout[m][:2] for m in shared]))
+        if sim is None:
+            return
+        s, R, t, rms = sim
+        if rms > self._selfcal_res_max:          # poorly-leveled / occluded frame — skip
+            return
+        for mid, (c, sz) in obs.items():
+            lc = s * (R @ c) + t                 # center in the layout gauge
+            lsz = s * sz                         # size in layout units
+            if mid in self._selfcal_layout:
+                n = self._selfcal_counts[mid]
+                ox, oy, osz = self._selfcal_layout[mid]
+                self._selfcal_layout[mid] = ((ox * n + lc[0]) / (n + 1),
+                                             (oy * n + lc[1]) / (n + 1),
+                                             (osz * n + lsz) / (n + 1))
+                self._selfcal_counts[mid] = n + 1
+            else:
+                self._selfcal_layout[mid] = (float(lc[0]), float(lc[1]), float(lsz))
+                self._selfcal_counts[mid] = 1
+        self._selfcal_frames += 1
+
     def _board_corners(self, mid):
         """Board-plane coords (DIMENSIONLESS — normalised to marker-0's size,
         board centre = origin) of marker `mid`'s 4 corners, in cv2.aruco order
@@ -1881,7 +2224,10 @@ class IMG_PROCESSOR(Thread):
         is identical to any global unit; normalising to marker-0 = 1 makes the
         scale-freeness manifest (no marker physical size anywhere in the pipeline).
         """
-        cx, cy, sz = self._board_layout[mid]
+        if self._selfcal_ready() and mid in self._selfcal_layout:
+            cx, cy, sz = self._selfcal_layout[mid]     # online self-calibrated (no file/IDs/sizes)
+        else:
+            cx, cy, sz = self._board_layout[mid]       # file prior (fallback until self-cal ready)
         h = sz / 2.0
         return np.array([[cx - h, cy - h],   # TL
                          [cx + h, cy - h],   # TR
@@ -1915,10 +2261,22 @@ class IMG_PROCESSOR(Thread):
         single-marker _getImgFeatures). A single marker (4 pts) is the minimum
         for a homography (8 DOF); >=2 markers over-determine it.
         """
+        # Online board self-calibration: accumulate this frame's co-visible markers into the
+        # learned layout (no file/IDs/sizes). Once ready it supplies _board_corners; until then
+        # fall back to the file prior (if present), else return None -> single-marker fallback.
+        self._update_board_selfcal(markers_V)
+        use_selfcal = self._selfcal_ready()
         board_pts, img_pts = [], []
         for mid, cV in markers_V:
+            if use_selfcal:
+                if mid not in self._selfcal_layout:
+                    continue
+            elif self._board_layout is None or mid not in self._board_layout:
+                continue
             board_pts.append(self._board_corners(mid))
             img_pts.append(np.asarray(cV, dtype=np.float64) * size_factor)
+        if len(board_pts) < 1:
+            return None
         board_pts = np.vstack(board_pts)
         img_pts = np.vstack(img_pts)
         if len(board_pts) < 4:

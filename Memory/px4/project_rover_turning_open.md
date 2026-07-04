@@ -349,6 +349,77 @@ decomposition, recon resid 0.00%). 9 curve reps (yawhold_arm_n3 + dhd_nokr + hdk
   identical estimator across stages + 9/9 kinematic closure + 9/9 P_cyc-sign prediction.
   Cone duty + gain-0.43 are raw sample statistics (fit-independent).
 
+## ⭐⭐⭐ PLASMC_AU_LEAD WORKS on the curve (2026-07-03) — the corrected mechanism's PREDICTED fix; scale-free ratio clamp is load-bearing for the terminal
+Implemented `PLASMC_AU_LEAD` (default OFF): first-order phase-lead C(s)=(1+s/ω_z)/(1+s/ω_p)
+on the LATERAL inertial command `I_a[:2]`, applied right after `I_a_raw` (before cone+tau_ia
+so its HF gain lands on the cone). `I_a_raw` stays logged PRE-lead (the lead shows up as the
+`ACT(Iar→ad)` stage shift). Defaults ω_z=0.9, ω_p=3.5 → **+35° / gain×1.7 @1.4 rad/s**, HF
+gain ω_p/ω_z=3.9. Discrete impl verified vs analytic (+35.2° x1.70 @1.4). Depth-free + amplitude
+scale-free (linear, unity DC); fixed time-constants only (same class as tau_ia — plant-time-scale).
+- **RAW lead (no clamp) — mechanism CONFIRMED, but detonates terminally.** Mid-descent it
+  KILLS the cycle: lat@1m 0.6→**0.21–0.40 m**, delivered oscillation a_osc 1.0→0.31, **P_cyc≈0**
+  (−0.01/+0.07 vs baseline +0.1–0.2), cone duty 26–38→16–21%, actuation stage now LEADS. But
+  the ×3.9 HF gain multiplies the terminal 1/Z spike: termHFgain 0.8→1.5–1.9, **peak|Ia_xy|
+  65–1639 m/s²** (baseline 10–20) → detonation <0.5 m → 0/3 both doses (+35°: 2.2/2.2/5.4;
+  +48° HF×7.1: 1.4/1.9/5.8). So the lead is a MID-DESCENT tool wrongly left on into the 1/Z zone.
+- **⛔ AU_LEAD_MAX (fixed m/s² clamp) = a SCALE VIOLATION (user caught) + didn't work** (4.0:
+  1.58/2.11/7.30, 0/3). REMOVED.
+- **✅ AU_LEAD_RATIO (scale-free) — the fix.** Bound the lead's EXTRA term relative to the
+  command: `|Δ_lead| ≤ ratio·|I_a_raw_xy|` (dimensionless, no metric/altitude gate; rides the
+  signal's own scale — constraint-clean per [[feedback_scale_free_depth_free]]). Default 1.0.
+  Terminal spike CRUSHED: r0.5 **peak|Ia_xy|=7.3–7.7** (from 65–1639), termHFgain 1.23–1.28.
+- **RESULT (heading-hold Circular, GT-FB, ω_z=0.9/ω_p=3.5):**
+  - **r0.5 = 3/3 NEAR, TIGHT: 0.321 / 0.356 / 0.488 m, 0 fly-aways, osc_std 0.031–0.040**
+    (half the baseline 0.06–0.07), e_rot 0.81–0.89. FIRST robust Circular result of the campaign
+    (baseline 0/4 at 1.0–1.7 m; raw-lead 0/3 at 2–6 m). All 3 sit right at the 0.3 m platform edge.
+  - **r1.0 = BIMODAL/unstable: 1 ON-PLATFORM 0.151 + 1 fly-away 60 m + 1 NEAR 0.915** — looser
+    cap re-admits the terminal instability.
+  - **r0.3 = 1/3 NEAR (0.378) + 2 MISS (1.41/1.81), osc_std bimodal (0.037 clean vs 0.349 cycle-back)**
+    — TOO TIGHT: the clamp now bites the MID-BAND lead delta too, intermittently clipping the phase
+    correction that damps the cycle. ⇒ **NOT monotone — r0.5 is an INTERIOR SWEET SPOT** (pass the
+    mid-band lead to damp, block only the terminal 1/Z spike). r0.3 clips damping, r1.0 admits
+    terminal instability; r0.5 tight 3/3.
+- **⭐ TERMINAL_COMMIT is architecturally WRONG for the MOVING rover (user insight 2026-07-03,
+  data-confirmed).** `PLASMC_TERMINAL_COMMIT` (baked ON) fires via _terminalCommitStep when median
+  MARKER_EXTENT_PX > ~400; case(b) COMMIT ZEROES zeta_r → STOPS regulating s_e_n & HOLDS (open-loop,
+  stationary-designed — "lands where the target WAS"). Log audit of the AU_LEAD reps: in the GOOD
+  r0.5 reps commit NEVER fires (extent maxes 241–296 < 400 → regulates to touchdown → the 0.35 m
+  residual is the v·τ curved-translation lag, NOT a regulation stop). But the FAILURE reps drive the
+  drone close+tilted → extent 405–416 → commit/abort DOES fire: r1.0 fly-aways = case(a) ABORT
+  (diverging); raw-lead miss = case(b) COMMIT "zeta_r zeroed" — freezing tracking on a moving deck.
+  So commit isn't the good-residual cause but is plausibly implicated in the variance/fly-away reps.
+- **✅ BAKED OFF 2026-07-03 (user): `PLASMC_TERMINAL_COMMIT` default 1→0** (controller.py:482).
+  The open-loop hold is wrong for any moving target and neutral-to-better on the stationary
+  platform (rarely fires, extent<400 at platform min-alt ~0.5 m). All trajectory montages
+  (static/linear/circular/sinusoidal/eightshape/lissajous) now run commit-off by default; set
+  `PLASMC_TERMINAL_COMMIT=1` to restore the stationary s_e_n→0 ramp. ⚠ validate: the stationary
+  aruco-world (ground marker, no platform) descends to the deck where extent CAN reach 400 —
+  commit-off means it regulates to touchdown instead of the open-loop hold; expected fine
+  (regulating a static target to touchdown is correct) but not yet gate-checked at n≥5.
+- **✅ CONFIRMED (user hypothesis): TERMINAL_COMMIT=0 ELIMINATES the moving-target fly-away.**
+  r1.0 (loose clamp, the one that had a fly-away) commit-ON peaks 5.0/**9.2**/5.0 (1 detonation)
+  → commit-OFF peaks **5.0/5.0/5.0** (NONE); the 60 m fly became a bounded 1.5 m miss. MECHANISM
+  (user, code-confirmed controller.py:1605-1646): on COMMIT the surface drops zeta_r →
+  `sigma_xy = zeta_h + Omega*izeta` = FLOW/velocity regulation only, POSITION dropped. Velocity-
+  matching HOLDS center for a CONSTANT-velocity (linear) target but NOT a ROTATING-velocity
+  (curved) one → the open-loop hold is architecturally WRONG for a moving/curving deck. (Caveat:
+  in the GOOD reps commit never fires anyway — platform min-alt ~0.5 m keeps extent <400 — so this
+  fixes the FAILURE mode, not the good-rep residual; and the linear-vs-curve landing difference is
+  the v·τ lag, NOT commit, which fired in NEITHER good linear nor good curve reps.) The perception-ON
+  analog of "never stop regulating" = KLT-track corners to touchdown instead of open-loop commit.
+- **⭐ BEST CURVED CONFIG (first on-platform Circular of the campaign): AU_LEAD +35° (ω_z 0.9/ω_p 3.5)
+  + AU_LEAD_RATIO 0.5 + TERMINAL_COMMIT=0 → 2/3 ON-PLATFORM (0.122, 0.269) + 1 NEAR (0.450), n=3,
+  0 fly.** vs baseline 0/4 (1–1.7 m). Ratio 0.5 is an INTERIOR optimum (0.3 clips the mid-band lead
+  → cycle back 1/3; 1.0 admits terminal instability → fly). Residual = the v·τ curved-translation lag.
+  NOT baked — AU_LEAD default-OFF; needs the STATIONARY IC gate (+ IC1 regression) + higher n before
+  any rover-scenario default-on. Data test_data/Rover_Turning/aulead_{ratio,commitoff,commitoff_r1}/.
+- **STATUS: PROMISING, NOT baked.** Residual at r0.5 = a ~0.35 m standing offset (the curved-
+  translation v·τ lag, NOT a cycle — cycle is damped). NEXT: r0.3; then the MANDATORY STATIONARY
+  IC GATE (AU_LEAD default-OFF so stationary is unaffected unless enabled — but any bake/default-on
+  for the rover scenario needs the IC1-5 gate + IC1-regression check, same discipline as HD_KR).
+  Data test_data/Rover_Turning/aulead_{sweep,clamp,ratio}/; harnesses + cycle_*.py tools in
+  Rover_AB_harness/. Knobs: `PLASMC_AU_LEAD` (0/1), `_WZ` (0.9), `_WP` (3.5), `_RATIO` (1.0).
+
 ## ⭐⭐⭐ k_r RESOLVED (2026-07-02 late, user-led): HD_KR=0 REJECTED as a WRONG REFERENCE; the c3-noise hypothesis FALSIFIED surgically; defaults stand
 **User catch (algebra):** the funnel-ref back-map is the prescription `ζ̇_r,d = −k_r·ζ_r`.
 Setting k_r=0 prescribes `ζ̇_r,d = 0` ⇒ **ζ_r = const** (exactly: S_r held; with ṗ_r≈0 at

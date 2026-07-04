@@ -59,6 +59,13 @@ start_bg microxrce MicroXRCEAgent udp4 -p 8888
 sleep 1
 
 echo "[input-calib] starting PX4 SITL (headless Qt)..."
+# Force a clean default-param boot every time. A parameters.bson left truncated
+# by a kill -9 (SITL cleanup) loads corrupt -> EKF2/baro get no valid data ->
+# "ekf2 missing data" preflight fail -> is_armable never trues (systematic, and
+# survives reboots since it's a file on disk). The landing script clears these
+# for the same reason (run_aruco_landing.sh); the cal path was missing it.
+rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/0/parameters.bson"        2>/dev/null
+rm -f "$PX4_DIR/build/px4_sitl_default/rootfs/0/parameters_backup.bson" 2>/dev/null
 # Truncate log so the preflight-wait grep below only matches THIS run.
 : > "$LOG_DIR/px4_sitl.log"
 setsid env QT_QPA_PLATFORM=offscreen \
@@ -66,7 +73,7 @@ setsid env QT_QPA_PLATFORM=offscreen \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
   PX4_GZ_WORLD=aruco \
-  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
+  bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -d -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PIDS+=($!)
 

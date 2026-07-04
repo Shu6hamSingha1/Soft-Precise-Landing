@@ -24,6 +24,7 @@ atan2(v_E, v_N). Use `yaw_mode` to override.
 """
 
 import math
+import os
 from dataclasses import dataclass
 
 TRAJECTORY_TYPES = (
@@ -82,11 +83,15 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         spec_yaw, spec_yaw_rate = 0.0, 0.0   # MATLAB psi = 0
 
     elif traj_type == "Circular":
-        # r bumped 0.5 -> 0.8 for the rover: MATLAB uses r=0.5, but the
-        # Ackermann min turn radius is ~0.56 m (wheelbase 0.321, 30° max steer),
-        # so r=0.5 is un-trackable (drifts wide). 0.8 clears it.
-        r = 0.8
-        wz = 0.48 * speed_mult
+        # r=10 m (2026-07-03, user): the small-radius circle (0.8 m, ~Ackermann min
+        # turn radius) made the TARGET motion jerky (steering saturated) — not a fair
+        # moving-target test. A large radius gives smooth target motion. The tangential
+        # speed is PRESERVED (v = r*wz held at the old 0.384*speed_mult) by scaling wz
+        # down, so the speed envelope is unchanged; only the path curvature drops ~12x.
+        # Both r and tangential speed are env-tunable.
+        r = float(os.environ.get("ROVER_CIRCLE_R", "10.0"))
+        v_tan = float(os.environ.get("ROVER_CIRCLE_VTAN", "0.384")) * speed_mult
+        wz = v_tan / r
         x = -r * (math.cos(wz * t) - 1.0)
         y = r * math.sin(wz * t)
         vx = r * wz * math.sin(wz * t)
@@ -94,7 +99,15 @@ def eval_traj(t, traj_type="Circular", speed_mult=1.0, yaw_mode="spec",
         spec_yaw, spec_yaw_rate = wz * t, wz   # MATLAB psi = wz*t
 
     elif traj_type == "EightShape":
-        a, w0 = 1.0, 0.3
+        # LOOP RADIUS a=5 (2026-07-03, user): at the native a=1/w0=0.3 the figure-eight's
+        # velocity REVERSES mid-descent (~t=2.6 s y, 5.2 s x); the drone velocity-matches with
+        # lag, overshoots the reversal, and the lateral loop runs away (28-33 m miss). A LARGER
+        # loop radius makes the turns gentler AND (with the tangential speed preserved by
+        # w0=v_tan/a) pushes the reversals LATER — a>=~5 moves them past the ~9 s descent so it
+        # stays trackable. Same fix as the Circular r bump. Both env-tunable.
+        a = float(os.environ.get("ROVER_EIGHT_A", "5.0"))
+        v_tan = float(os.environ.get("ROVER_EIGHT_VTAN", "0.4")) * speed_mult
+        w0 = v_tan / a
         x = a * math.sin(w0 * t)
         y = a * math.sin(w0 * t) * math.cos(w0 * t)
         vx = a * w0 * math.cos(w0 * t)

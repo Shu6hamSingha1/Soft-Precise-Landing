@@ -37,6 +37,10 @@ RECORD_S = float(os.environ.get("RECORD_S", "75"))
 FPS = float(os.environ.get("CHASE_FPS", "30"))
 GATE_FILE = os.environ.get("CHASE_GATE_FILE", "")
 GATE_TIMEOUT = float(os.environ.get("CHASE_GATE_TIMEOUT", "120"))
+# CHASE_STOP_FILE: if set, stop recording the instant it appears (landing_test
+# touches it at touchdown). This makes the chase video end EXACTLY at touchdown,
+# same as the down-cam, so the montage syncs all sources over [start, touchdown].
+STOP_FILE = os.environ.get("CHASE_STOP_FILE", "")
 _ts = time.strftime("%Y-%m-%d_%H-%M-%S")
 OUT = os.environ.get(
     "CHASE_OUT",
@@ -106,6 +110,9 @@ def main():
                     print(f"[chase] gate {GATE_FILE} never opened in "
                           f"{GATE_TIMEOUT:.0f}s — exiting.", flush=True)
                     break
+            elif STOP_FILE and os.path.exists(STOP_FILE):
+                print("[chase] stop flag seen (touchdown) — ending recording.", flush=True)
+                break
             elif (time.time() - node._rec_t0) >= RECORD_S:
                 break
     except KeyboardInterrupt:

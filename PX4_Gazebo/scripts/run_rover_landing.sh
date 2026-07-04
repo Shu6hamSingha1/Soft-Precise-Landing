@@ -85,6 +85,10 @@ fi
 if [ "$ROVER_MOTION" = "1" ] || [ "${CHASE_CAM:-0}" = "1" ]; then
   export CHASE_GATE_FILE="${CHASE_GATE_FILE:-$LOG_DIR/chase_gate.flag}"
   rm -f "$CHASE_GATE_FILE" 2>/dev/null
+  # Touchdown stop flag: landing_test touches it at touchdown; record_chase stops
+  # then, so chase + down-cam both end at touchdown (montage sync). Cleared each run.
+  export CHASE_STOP_FILE="${CHASE_STOP_FILE:-$LOG_DIR/chase_stop.flag}"
+  rm -f "$CHASE_STOP_FILE" 2>/dev/null
 fi
 if [ "$ROVER_MOTION" = "1" ]; then
   # Rover holds its start position until descent-start, then drives the
