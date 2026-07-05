@@ -182,7 +182,7 @@ The image features are the de-rotated feature points $\hat{\boldsymbol{r}}_i$, w
 \begin{equation} \label{image position: equation}
     \boldsymbol{s} = \begin{bmatrix}\hat{\boldsymbol{r}}/f\\ 1\end{bmatrix} = \frac{\boldsymbol{r}_\text{t}}{z},
 \end{equation}
-where $\boldsymbol{r}_\text{t}$ is the target position relative to the camera and $z$ its depth along the optical axis. The \emph{image orientation} $\alpha\in(-\pi/2,\pi/2]$ is the principal angle of the feature pattern, extracted from the second-order centered image moments $\mu_{pq} = \sum_{i=1}^{N}(\hat{x}_i - \hat{x})^p(\hat{y}_i - \hat{y})^q$, where $\hat{x},\hat{y}$ are the components of the centroid $\hat{\boldsymbol{r}}$,
+where $\boldsymbol{r}_\text{t}$ is the target position and $z$ its depth along the optical axis. The \emph{image orientation} $\alpha\in(-\pi/2,\pi/2]$ is the principal angle of the feature pattern, extracted from the second-order centered image moments $\mu_{pq} = \sum_{i=1}^{N}(\hat{x}_i - \hat{x})^p(\hat{y}_i - \hat{y})^q$, where $\hat{x},\hat{y}$ are the components of the centroid $\hat{\boldsymbol{r}}$,
 \begin{equation} \label{image orientation: equation}
     \alpha = \tfrac12\,\mathrm{atan2}\big(2\mu_{11},\,\mu_{20}-\mu_{02}\big).
 \end{equation}
