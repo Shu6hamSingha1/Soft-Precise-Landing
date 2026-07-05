@@ -198,11 +198,11 @@ The optical flow is the velocity field $\dot{\hat{\boldsymbol{r}}}_i(t)$ of the 
 \begin{equation} \label{optic flow def: equation}
     \boldsymbol{h} = \boldsymbol{v}_{\text{t/b}}/z, \quad \boldsymbol{w} \triangleq \boldsymbol{\omega}_\text{t}-\dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3,
 \end{equation}
-where $\boldsymbol{v}_{\text{t/b}}$ is the velocity of the target relative to the UAV, $\boldsymbol{\omega}_\text{t}$ the target angular velocity, $\dot{\psi}_\text{b}$ the body yaw rate, and $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$. Thus $\boldsymbol{h}$ carries the translational dynamics of \eqref{quadrotor dynamics: equation} into the image, depth-normalized by $z$, and $\boldsymbol{w}$ removes the virtual frame's own yaw rate $\dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ from the target rotation $\boldsymbol{\omega}_\text{t}$. The lateral body rates $\boldsymbol{\omega}_{\text{b},xy}$ are absorbed by the de-rotation and do not appear in $\boldsymbol{w}$. Both components are recovered online from the measured optical flow by the least-squares pseudo-inverse of the standard image Jacobian $L_s$ (Appendix~\ref{virtual camera: section}),
+where $\boldsymbol{v}_{\text{t/b}}$ is the velocity of the target relative to the UAV, $\boldsymbol{\omega}_\text{t}$ the target angular velocity, $\dot{\psi}_\text{b}$ the body yaw rate, and $\hat{\boldsymbol{e}}_3=[0,0,1]^\top$. Thus $\boldsymbol{h}$ carries the translational dynamics of \eqref{quadrotor dynamics: equation} into the image, depth-normalized by $z$, and $\boldsymbol{w}$ removes the virtual frame's own yaw rate $\dot{\psi}_\text{b}\hat{\boldsymbol{e}}_3$ from the target rotation $\boldsymbol{\omega}_\text{t}$. The lateral body rates $\boldsymbol{\omega}_{\text{b},xy}$ are absorbed by the de-rotation and do not appear in $\boldsymbol{w}$. Invoking Assumption~\ref{asm:features}, both components are recovered online from the measured optical flow by the least-squares pseudo-inverse of the standard image Jacobian $L_s=[L_{s,1}^\top \cdots L_{s,N}^\top]^\top\in\mathbb{R}^{2N\times 6}$ (Appendix~\ref{virtual camera: section}),
 \begin{equation} \label{optic flow inverse: equation}
     [\boldsymbol{h}^\top~\boldsymbol{w}^\top]^\top = L_s^\dagger\big[\dot{\hat{\boldsymbol{r}}}_1^\top \cdots \dot{\hat{\boldsymbol{r}}}_N^\top\big]^\top,
 \end{equation}
-where the right-hand stack collects the measured optical flow. The pseudo-inverse exists by Assumption~\ref{asm:features}.
+where the right-hand stack collects the measured optical flow.
 
 \subsubsection{Image Kinematics and Dynamics} \label{image kinematics: section}
 Differentiating \eqref{image position: equation} with the transport theorem in $\mathcal{V}$ yields the image position kinematics
