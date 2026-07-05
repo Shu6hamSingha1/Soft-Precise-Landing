@@ -564,7 +564,7 @@ Cases~2 and~5 constitute a harsher ship-deck envelope than the heaving platform 
 
 \subsection{Robustness Across Initial Conditions and Target Velocities}
 \label{multi init: subsec}
-Sweeping the five ICs of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{experimentation: section}-\ref{test conditions: subsec} with deterministic noise realizations yields Table~\ref{multi init: table}. Case~5 (circular ship-deck), the most demanding in target rotation, is shown in Fig.~\ref{Circular_3D: figure}; the remaining cases are in Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss} of Appendix~\ref{extended results appendix: section}. The right panels show the camera-frame feature trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, which the virtual-camera abstraction of Section~\ref{background: section}-\ref{image parameters: section} reduces to the rotation-decoupled form used by the controller.
+Sweeping the five ICs of Table~\ref{initial conditions: table} against the five trajectories of Section~\ref{experimentation: section}-\ref{test conditions: subsec} with deterministic noise realizations yields Table~\ref{multi init: table}. Case~5 (circular ship-deck), the most demanding in target rotation, is shown in Fig.~\ref{Circular_3D: figure}; the remaining cases are in Fig.~\ref{fig:sup-multiinit} of Appendix~\ref{extended results appendix: section}. The right panels show the camera-frame feature trajectories $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, which the virtual-camera abstraction of Section~\ref{background: section}-\ref{image parameters: section} reduces to the rotation-decoupled form used by the controller.
 
 \begin{table}[!t]
 \centering
@@ -694,7 +694,7 @@ The comparison establishes the following observations.
     \item The proposed VDF-ASMC is the \emph{only} controller that reaches the target surface on every trajectory (Table~\ref{comparison: table}, Figs.~\ref{comparison combined: figure} and~\ref{comparison_traj3d_combined: figure}). Every VDF-ASMC cell simultaneously satisfies the altitude, horizontal-error, and time-limit thresholds, with the worst-case horizontal error ($0.021~\text{m}$ on Case~4) well inside the $0.08~\text{m}$ \emph{precise} threshold.
     \item Each baseline fails on a \emph{structural} ground that within-framework retuning cannot close. \cite{lin2022} saturates its single PPC barrier under mean wind and mean-target motion, forcing image features outside the camera FoV within $3.7$--$9.0~\text{s}$ on every trajectory, $1.1$--$2.6~\text{m}$ above the surface. \cite{zhang2026} reaches the target surface on Cases~1, 2, and~5 but produces terminal lateral errors of $0.19$--$0.26~\text{m}$, $2$--$3\times$ the $0.08~\text{m}$ precise bound, with terminal speeds of $0.81$--$0.90~\text{m/s}$ that breach the $0.20~\text{m/s}$ soft bound by $4\times$; on Cases~3 and~4 its fixed-timescale descent breaks feature visibility $0.29$--$0.43~\text{m}$ above the surface. \cite{lin2023} carries no disturbance-rejection integrator, so under wind it holds a steady lateral image offset that no within-framework gain choice removes, and the off-center target leaves the camera FoV on every trajectory, $0.9$--$7.9~\text{s}$ after launch and $1.6$--$4.9~\text{m}$ above the surface. \cite{cho2022} ties its pseudo-inverse lateral velocity command to a sigmoid altitude gate with no integral action, so the lateral error grows through the descent and the features leave the FoV $5.4$--$6.4~\text{s}$ after launch, $1.4$--$2.1~\text{m}$ above the surface, on every trajectory. The per-baseline mechanism contrast against VDF-ASMC is summarized in Table~\ref{mechanism contrast: table}, with the per-baseline failure analyses detailed in Appendix~\ref{baseline analyses appendix: section}.
 
-    \item These pathologies persist across the same $\lambda$-sweep from IC$_1$ (Appendix~\ref{baseline analyses appendix: section}, Figs.~\ref{comparison_multi_speed_linear: figure}--\ref{comparison_multi_speed_circular_sup: figure}). Across the $80$ baseline runs the soft-precise count is $0/80$. \cite{zhang2026} reaches the target surface on $11$ of $20$ $(\text{traj},\lambda)$ pairs but with terminal lateral errors of $0.12$--$0.39~\text{m}$ and terminal speeds up to $1.8~\text{m/s}$, soft-precise on $0/20$ runs; on the remaining pairs it breaks feature visibility $0.21$--$0.49~\text{m}$ above the surface. \cite{lin2022,lin2023,cho2022} break feature visibility on every run, $0.3$--$5.0$~m above the surface; for \cite{lin2022,lin2023} the break time shortens monotonically as $\lambda$ grows (faster targets break earlier), while \cite{cho2022} breaks within a narrow $5.8$--$9.4~\text{s}$ window at every $\lambda$. VDF-ASMC, by contrast, delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure}), confirming that the velocity-robustness gap is structural. The dual-funnel architecture supplies a unified visibility-and-depth-aware mechanism that no single baseline matches.
+    \item These pathologies persist across the same $\lambda$-sweep from IC$_1$ (Appendix~\ref{baseline analyses appendix: section}, Fig.~\ref{comparison_multi_speed: figure}). Across the $80$ baseline runs the soft-precise count is $0/80$. \cite{zhang2026} reaches the target surface on $11$ of $20$ $(\text{traj},\lambda)$ pairs but with terminal lateral errors of $0.12$--$0.39~\text{m}$ and terminal speeds up to $1.8~\text{m/s}$, soft-precise on $0/20$ runs; on the remaining pairs it breaks feature visibility $0.21$--$0.49~\text{m}$ above the surface. \cite{lin2022,lin2023,cho2022} break feature visibility on every run, $0.3$--$5.0$~m above the surface; for \cite{lin2022,lin2023} the break time shortens monotonically as $\lambda$ grows (faster targets break earlier), while \cite{cho2022} breaks within a narrow $5.8$--$9.4~\text{s}$ window at every $\lambda$. VDF-ASMC, by contrast, delivers $20/20$ soft-precise touchdowns over the same $\lambda$ range (Fig.~\ref{speed envelope: figure}), confirming that the velocity-robustness gap is structural. The dual-funnel architecture supplies a unified visibility-and-depth-aware mechanism that no single baseline matches.
 \end{enumerate}
 
 \section{CONCLUSION}
@@ -871,35 +871,17 @@ The locked numerical values of all VDF-ASMC parameters are tabulated in Table~\r
 
 
 \section{Extended Single-Run and Multi-Initial-Condition Results} \label{extended results appendix: section}
-This appendix collects the multi-initial-condition results for Cases~1--4 of Section~\ref{experimentation: section}-\ref{multi init: subsec} (Figs.~\ref{fig:sup-static}--\ref{fig:sup-liss}) and the internal closed-loop trajectories for the representative IC$_2$ Case~3 run (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}), referenced from Section~\ref{experimentation: section}.
+This appendix collects the multi-initial-condition results for Cases~1--4 of Section~\ref{experimentation: section}-\ref{multi init: subsec} (Fig.~\ref{fig:sup-multiinit}) and the internal closed-loop trajectories for the representative IC$_2$ Case~3 run (Figs.~\ref{adaptive gain: figure}--\ref{fig:sup-thrust}), referenced from Section~\ref{experimentation: section}.
 
-\begin{figure}[!t]
+\begin{figure*}[!t]
 \centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Static_combined.pdf}
-    \caption{VDF-ASMC on Case~1 (static target). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-static}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Linear_combined.pdf}
-    \caption{VDF-ASMC on Case~2 (linear target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-linear}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Sinusoidal_combined.pdf}
-    \caption{VDF-ASMC on Case~3 (sinusoidal target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-sin}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/multi_init/Lissajous_combined.pdf}
-    \caption{VDF-ASMC on Case~4 (Lissajous target trajectory). \emph{Left}: 3-D trajectories for the five ICs of Table~\ref{initial conditions: table}. The shaded box around the target trajectory is the soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. \emph{Right}: image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$.}
-    \label{fig:sup-liss}
-\end{figure}
+    \subcaptionbox{Case~1 (static target)\label{fig:sup-static}}{\includegraphics[width=0.48\textwidth]{Figures/generated/multi_init/Static_combined.pdf}}\hfill
+    \subcaptionbox{Case~2 (linear target trajectory)\label{fig:sup-linear}}{\includegraphics[width=0.48\textwidth]{Figures/generated/multi_init/Linear_combined.pdf}}\\[2pt]
+    \subcaptionbox{Case~3 (sinusoidal target trajectory)\label{fig:sup-sin}}{\includegraphics[width=0.48\textwidth]{Figures/generated/multi_init/Sinusoidal_combined.pdf}}\hfill
+    \subcaptionbox{Case~4 (Lissajous target trajectory)\label{fig:sup-liss}}{\includegraphics[width=0.48\textwidth]{Figures/generated/multi_init/Lissajous_combined.pdf}}
+    \caption{VDF-ASMC multi-initial-condition results for Cases~1--4. Each panel: \emph{left}, 3-D trajectories for the five ICs of Table~\ref{initial conditions: table} with the shaded soft-precise allowable landing region around the target trajectory; \emph{right}, image-plane evolution $\,^\mathcal{C}\hat{\boldsymbol{r}}_i(t)$, $i\in\{1,\ldots,4\}$. Touchdown markers as in Fig.~\ref{Circular_3D: figure}.}
+    \label{fig:sup-multiinit}
+\end{figure*}
 
 \begin{figure}[!t]
 \centering
@@ -930,7 +912,7 @@ The two panels of Fig.~\ref{fig:sup-thrust} show distinct command behaviors. (i)
 
 
 \section{Baseline Controller Analyses} \label{baseline analyses appendix: section}
-This appendix provides the full baseline gain comparison (Table~\ref{baseline gains: table}), the per-baseline structural failure analyses, the mechanism contrast (Table~\ref{mechanism contrast: table}), the four target-velocity sweep figures (Figs.~\ref{comparison_multi_speed_linear: figure}--\ref{comparison_multi_speed_circular_sup: figure}), and a summary of the numerical observations of Section~\ref{experimentation: section}.
+This appendix provides the full baseline gain comparison (Table~\ref{baseline gains: table}), the per-baseline structural failure analyses, the mechanism contrast (Table~\ref{mechanism contrast: table}), the target-velocity sweep (Fig.~\ref{comparison_multi_speed: figure}), and a summary of the numerical observations of Section~\ref{experimentation: section}.
 
 \begin{table*}[!t]
 \centering
@@ -987,33 +969,15 @@ The scheme of~\cite{cho2022} commands $\boldsymbol{v}_d=-\lambda\hat{L}_e^+\bold
     \label{comparison_traj3d_combined: figure}
 \end{figure}
 
-\begin{figure}[!t]
+\begin{figure*}[!t]
 \centering
-    \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_linear.pdf}
-    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on Case~2 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline. Each shaded box is the per-$\lambda$ soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{speed envelope: figure}. None of the four baselines lands soft-precise at any $\lambda$ on Case~2.}
-    \label{comparison_multi_speed_linear: figure}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_sinusoidal.pdf}
-    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on Case~3 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline. Each shaded box is the per-$\lambda$ soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{speed envelope: figure}. None of the four baselines lands soft-precise at any $\lambda$ on Case~3.}
-    \label{comparison_multi_speed_sinusoidal: figure}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_lissajous.pdf}
-    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on Case~4 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline. Each shaded box is the per-$\lambda$ soft-precise allowable landing region. Touchdown markers as in Fig.~\ref{speed envelope: figure}. None of the four baselines lands soft-precise at any $\lambda$ on Case~4.}
-    \label{comparison_multi_speed_lissajous: figure}
-\end{figure}
-
-\begin{figure}[!t]
-\centering
-    \includegraphics[width=\columnwidth]{Figures/generated/comparison_multi_speed_circular.pdf}
-    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on Case~5 (IC$_1=[0,0,-5]$~m). Each subplot is one baseline. Each shaded box is the per-$\lambda$ soft-precise allowable landing region around the corresponding target. Touchdown markers as in Fig.~\ref{speed envelope: figure}. None of the four baselines lands soft-precise at any $\lambda$ on Case~5.}
-    \label{comparison_multi_speed_circular_sup: figure}
-\end{figure}
+    \subcaptionbox{Case~2 (linear)\label{comparison_multi_speed_linear: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_linear.pdf}}\hfill
+    \subcaptionbox{Case~3 (sinusoidal)\label{comparison_multi_speed_sinusoidal: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_sinusoidal.pdf}}\\[2pt]
+    \subcaptionbox{Case~4 (Lissajous)\label{comparison_multi_speed_lissajous: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_lissajous.pdf}}\hfill
+    \subcaptionbox{Case~5 (circular)\label{comparison_multi_speed_circular_sup: figure}}{\includegraphics[width=0.48\textwidth]{Figures/generated/comparison_multi_speed_circular.pdf}}
+    \caption{Target-velocity sweep ($\lambda\in\{0.6,\ldots,1.4\}$, blue to red) of the four baseline controllers on the moving Cases~2--5 from IC$_1=[0,0,-5]$~m. Within each panel, each subplot is one baseline and each shaded box is the per-$\lambda$ soft-precise allowable landing region around the corresponding target. Touchdown markers as in Fig.~\ref{speed envelope: figure}. None of the four baselines lands soft-precise at any $\lambda$ on any case.}
+    \label{comparison_multi_speed: figure}
+\end{figure*}
 
 \subsection{Summary of Numerical Observations}
 \label{summary: subsec}
