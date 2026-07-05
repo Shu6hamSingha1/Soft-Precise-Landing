@@ -12,6 +12,7 @@
 \usepackage{multirow}
 \usepackage{mathtools}
 \usepackage{booktabs}
+\usepackage{threeparttable}
 \usepackage{array}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
@@ -126,10 +127,11 @@ The remainder of this paper is organized as follows. Section~\ref{background: se
 
 \begin{table}[!t]
 \centering
-\caption{Comparison of key features of related vision-based UAV landing strategies surveyed in this section. \checkmark/$\times$ reflect framework intent as claimed by the original authors; $\circ$ denotes a heuristic mechanism without a closed-loop guarantee. Structural limitations exposed under the shared disturbance model are detailed in Section~\ref{experimentation: section}-\ref{comparison: subsec}.}
+\caption{Comparison of key features of related vision-based UAV landing strategies surveyed in this section.}
 \label{tab:comparison}
 \scriptsize
 \setlength{\tabcolsep}{3pt}
+\begin{threeparttable}
 \begin{tabular}{lcccccc}
 \toprule
 \textbf{Reference} & \textbf{Scale} & \textbf{Own-State} & \textbf{Stability} & \textbf{Soft} & \textbf{Precise} & \textbf{Target} \\
@@ -147,6 +149,11 @@ The remainder of this paper is organized as follows. Section~\ref{background: se
 \textbf{Proposed}  & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
 \bottomrule
 \end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item \checkmark/$\times$ reflect framework intent as claimed by the original authors; $\circ$ denotes a heuristic mechanism without a closed-loop guarantee. Structural limitations exposed under the shared disturbance model are detailed in Section~\ref{experimentation: section}-\ref{comparison: subsec}.
+\end{tablenotes}
+\end{threeparttable}
 \end{table}
 
 \section{PRELIMINARIES \& PROBLEM FORMULATION} \label{background: section}
@@ -233,7 +240,7 @@ The objective is to land this low-SWaP-C quadrotor of \eqref{quadrotor dynamics:
 \begin{figure*}[hbt!]
 \centering
     \includegraphics[width=\textwidth]{Figures/block_diagram_v3.pdf}
-    \caption{VDF-ASMC pipeline. Image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ from the monocular camera feed the image feature funnel, which produces the desired image velocity $\boldsymbol{h}_\text{d}$. The optical-flow error $\boldsymbol{h}_\text{e}=\boldsymbol{h}-\boldsymbol{h}_\text{d}$ drives the ASMC and yields the inertial commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$. The visibility CBF conditions $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ into the visibility-safe $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$, which together with the desired yaw $\psi_\text{d}$ forms the desired attitude $R_\text{d}$ and thrust $\,^\mathcal{B}T_u$. The SO(3) inner loop (Section~\ref{control design: section}-\ref{inner loop: section}\ref{so3 inner loop: section}) closes the loop by tracking $R_\text{d}$ and producing the body-frame torque $\,^\mathcal{B}\boldsymbol{\tau}_u$.}
+    \caption{VDF-ASMC control pipeline. The image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ feed the dual-funnel outer loop and the visibility CBF, which produce the conditioned acceleration $\,^\mathcal{I}\tilde{\boldsymbol{a}}_\text{d}$ and desired heading $\psi_\text{d}$ for the geometric SO(3) inner loop.}
     \label{block diagram: figure}
 \end{figure*}
 
@@ -600,7 +607,7 @@ The closed-loop time-trajectories for the representative IC$_2=[2,2,-5]$~m run o
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/plasmc_funnel_combined.pdf}
-    \caption{Closed-loop funnel invariance for VDF-ASMC on the representative IC$_2$ Case~3 run. \emph{Left}: image feature funnel. The normalized image-position error $\bar{\boldsymbol{r}}_\text{e}(t)$ stays strictly inside $\pm\boldsymbol{p}_r(t)$ throughout the descent. \emph{Right three}: optical-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_h(t)$ on the $x$, $y$, $z$ axes. The error stays inside the envelope on every axis at every time instant. Empirical demonstration of Theorem~\ref{thm:precision}.}
+    \caption{Closed-loop funnel invariance for the representative IC$_2$ Case~3 run. \emph{Left}: image feature funnel, normalized image-position error $\bar{\boldsymbol{r}}_\text{e}(t)$ versus $\pm\boldsymbol{p}_r(t)$. \emph{Right three}: optical-flow error $\boldsymbol{h}_\text{e}(t)$ versus $\pm\boldsymbol{p}_h(t)$ on the $x$, $y$, $z$ axes.}
     \label{funnel internals: figure}
 \end{figure*}
 
@@ -624,10 +631,11 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
 
 \begin{table*}[!t]
 \centering
-\caption{Five-controller comparison under the shared disturbance model (Section~\ref{experimentation: section}-\ref{test conditions: subsec}), IC$_2=[2,2,-5]$~m, $40$~s cap. $\dagger$: terminated before reaching the target surface (feature-visibility break or time-out).}
+\caption{Five-controller comparison under the shared disturbance model (Section~\ref{experimentation: section}-\ref{test conditions: subsec}), IC$_2=[2,2,-5]$~m, $40$~s cap.}
 \label{comparison: table}
 \footnotesize
 \setlength{\tabcolsep}{3.5pt}
+\begin{threeparttable}
 \begin{tabular}{lccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc@{\hskip 6pt}ccc}
 \toprule
 \multirow{3}{*}{\textbf{Controller}}
@@ -680,12 +688,17 @@ VDF-ASMC is compared against four representative landing controllers: \cite{lin2
     & $\phantom{0}5.45^\dagger$  & $2.730$ & $2.039$ \\
 \bottomrule
 \end{tabular}
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item $\dagger$: terminated before reaching the target surface (feature-visibility break or time-out).
+\end{tablenotes}
+\end{threeparttable}
 \end{table*}
 
 \begin{figure*}[!t]
 \centering
     \includegraphics[width=\textwidth]{Figures/generated/comparison_combined_circular.pdf}
-    \caption{Comparison study (5 controllers). Left: 3-D trajectories on Case~5 (circular target, IC$_2=[2,2,-5]$~m). The shaded box is the soft-precise allowable landing region around the target trajectory. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. Right three: aggregate landing time, final horizontal $xy$ error, and UAV--target relative speed at touchdown across the five cases. VDF-ASMC alone lands within $40$~s under both precise and soft thresholds on every moving trajectory.}
+    \caption{Comparison study (5 controllers). Left: 3-D trajectories on Case~5 (circular target, IC$_2=[2,2,-5]$~m). The shaded box is the soft-precise allowable landing region around the target trajectory. Touchdown markers as in Fig.~\ref{Circular_3D: figure}. Right three: aggregate landing time, final horizontal $xy$ error, and UAV--target relative speed at touchdown across the five cases.}
     \label{comparison combined: figure}
 \end{figure*}
 
@@ -886,7 +899,7 @@ This appendix collects the multi-initial-condition results for Cases~1--4 of Sec
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_adaptive_gain.pdf}
-    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\alpha(t)$ for the representative IC$_2$ Case~3 run. The gains rise during the reaching phase and leak down once the surface is inside the boundary layer, exhibiting the leakage-adaptation behavior prescribed by the update laws of Theorem~\ref{thm:precision} and Theorem~\ref{thm:yaw}. Empirical confirmation of Remark~\ref{rem:leakage}: $\boldsymbol{\kappa}$ self-tunes to the actual disturbance magnitude online without any \emph{a priori} bound.}
+    \caption{Leakage-type adaptive gains $\boldsymbol{\kappa}(t)$ and yaw adaptive gain $\kappa_\alpha(t)$ for the representative IC$_2$ Case~3 run.}
     \label{adaptive gain: figure}
 \end{figure}
 
@@ -895,7 +908,7 @@ Fig.~\ref{adaptive gain: figure} shows the four adaptive gains. (i)~\emph{Latera
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_sliding.pdf}
-    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~3 run. After a short reaching phase, $\boldsymbol{\sigma}$ enters and stays inside the boundary layer $\mathcal{E}$ for the remainder of the descent. Confirms the boundary-layer attraction predicted by Theorem~\ref{thm:precision} with chattering suppressed.}
+    \caption{Sliding-surface evolution $\boldsymbol{\sigma}(t)$ on each translational axis for the representative IC$_2$ Case~3 run.}
     \label{fig:sup-sliding}
 \end{figure}
 
@@ -904,7 +917,7 @@ The three panels of Fig.~\ref{fig:sup-sliding} expose distinct sliding-surface b
 \begin{figure}[!t]
 \centering
     \includegraphics[width=\columnwidth]{Figures/generated/plasmc_thrust_accel.pdf}
-    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit for the representative IC$_2$ Case~3 run. The lateral command stays strictly below the cone-induced bound, so the deliverable-tilt saturation does not engage on this run. Confirms the cone-induced bound of Property~\ref{prop:deliverable} holds with positive margin.}
+    \caption{Total thrust command $\,^\mathcal{B}T_u(t)$ and lateral commanded acceleration $\|\,^\mathcal{I}\boldsymbol{a}_{\text{d},xy}\|$ versus the cone-induced limit for the representative IC$_2$ Case~3 run.}
     \label{fig:sup-thrust}
 \end{figure}
 
