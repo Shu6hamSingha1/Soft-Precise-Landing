@@ -228,7 +228,15 @@ The yaw-rate frame rotation and the depth-rate contraction of the image velocity
 \begin{assumption}[uncertainty bounds]\label{asm:uncertainty} The disturbances $\boldsymbol{d}_h$ and $d_{\alpha}$ are uniformly bounded componentwise with unknown upper bounds. Moreover, the depth scale $\beta$ satisfies $0<\beta_{\min}\le\beta\le\beta_{\max}$, where the constants $\beta_{\min},\beta_{\max}$ exist but are unknown.\end{assumption}
 
 \subsection{Problem Statement} \label{problem statement: section}
-The image-based dynamics \eqref{s dot: equation}--\eqref{h dot: equation} evolve under five practical sources of uncertainty (Appendix~\ref{uncertainty appendix: section}): the depth scale $\beta$ is unobservable from the monocular image and largest near touchdown; the target velocities $\boldsymbol{v}_\text{t},\boldsymbol{\omega}_\text{t}$ are only partially recovered, their residuals entering $\boldsymbol{d}_h$ and $d_\alpha$; wind gusts, the aerodynamic ground effect, and the attitude-tracking residual propagate to $\boldsymbol{d}_h$ with unknown bounds; the actuator chain perturbs the realized thrust and torque through a multiplicative effectiveness factor and additive terms; and pixel noise, finite camera frame rate, and actuator delay corrupt the measured parameters and the applied input $\boldsymbol{u}$. None of these bounds is known to the controller (Assumption~\ref{asm:uncertainty}), which rules out sliding-mode laws built on a known switching gain.
+The image-based dynamics \eqref{s dot: equation}--\eqref{h dot: equation} evolve under five practical sources of uncertainty (Appendix~\ref{uncertainty appendix: section}):
+\begin{enumerate}
+    \item the depth scale $\beta$ is unobservable from the monocular image and largest near touchdown;
+    \item the target velocities $\boldsymbol{v}_\text{t},\boldsymbol{\omega}_\text{t}$ are only partially recovered, their residuals entering $\boldsymbol{d}_h$ and $d_\alpha$;
+    \item wind gusts, the aerodynamic ground effect, and the attitude-tracking residual propagate to $\boldsymbol{d}_h$ with unknown bounds;
+    \item the actuator chain perturbs the realized thrust and torque through a multiplicative effectiveness factor and additive terms; and
+    \item pixel noise, finite camera frame rate, and actuator delay corrupt the measured parameters and the applied input $\boldsymbol{u}$.
+\end{enumerate}
+None of these bounds is known to the controller (Assumption~\ref{asm:uncertainty}), which rules out sliding-mode laws built on a known switching gain.
 
 The controller drives the loop from a single downward-facing monocular camera and the IMU alone, measuring the image feature points $\,^\mathcal{C}\hat{\boldsymbol{r}}_i$ together with the roll, pitch, and body rates. It has no metric depth, no absolute heading, and no inertial position or velocity of either the quadrotor or the target. Throughout the descent the $N$ feature points must remain within the camera field of view, expressed as the pixel-unit bound \eqref{visibility constraint: equation}, and the rotor thrust and body torque must respect thrust positivity ($\,^\mathcal{B}T_u\ge 0$) and their physical limits.
 
