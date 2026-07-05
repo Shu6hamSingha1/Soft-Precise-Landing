@@ -178,7 +178,7 @@ Being underactuated, the quadrotor produces lateral motion only by tilting the t
 The image parameters are defined on the virtual image plane. The virtual-camera abstraction de-rotates the observed feature points onto this plane as $\hat{\boldsymbol{r}}_i$, decoupling their translational motion from the quadrotor's roll and pitch rotations (Fig.~\ref{frames planes: figure}). Appendix~\ref{virtual camera: section} details the supporting camera geometry, comprising the pinhole projection, the FoV visibility constraint, and the closed-form camera-to-virtual map. Unless a leading superscript indicates otherwise, all image-based quantities are expressed in the virtual camera frame $\mathcal{V}$.
 
 \subsubsection{Image Features \& Optical Flow} \label{image features: section}
-The image features are the de-rotated feature points $\hat{\boldsymbol{r}}_i$, with the image point their centroid $\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\hat{\boldsymbol{r}}_i$.
+The image features are the de-rotated feature points $\hat{\boldsymbol{r}}_i$, and the image point is their centroid $\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\hat{\boldsymbol{r}}_i$.
 
 The focal-length normalization and homogeneous augmentation yield the \emph{image position}
 \begin{equation} \label{image position: equation}
