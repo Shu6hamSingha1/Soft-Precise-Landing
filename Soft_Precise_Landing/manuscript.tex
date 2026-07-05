@@ -184,9 +184,7 @@ The focal-length normalization and homogeneous augmentation yield the \emph{imag
 \begin{equation} \label{image position: equation}
     \boldsymbol{s} = \begin{bmatrix}\hat{\boldsymbol{r}}/f\\ 1\end{bmatrix} = \frac{\boldsymbol{r}_\text{t}}{z},
 \end{equation}
-where $\boldsymbol{r}_\text{t}$ is the target position relative to the camera and $z$ its depth along the optical axis.
-
-The \emph{image orientation} $\alpha\in(-\pi,\pi]$ is the principal angle of the feature pattern, extracted from the weighted centered image moments $\mu_{pq} = \sum_{i=1}^{N}w_i(\hat{x}_i - \hat{x}_\text{w})^p(\hat{y}_i - \hat{y}_\text{w})^q$, where the distinct positive weights $w_i$ are assigned per feature identity and $\hat{x}_\text{w},\hat{y}_\text{w}$ are the components of the weighted centroid $\hat{\boldsymbol{r}}_\text{w}=\sum_{i}w_i\hat{\boldsymbol{r}}_i/\sum_{i}w_i$. The second-moment principal angle
+where $\boldsymbol{r}_\text{t}$ is the target position relative to the camera and $z$ its depth along the optical axis. The \emph{image orientation} $\alpha\in(-\pi,\pi]$ is the principal angle of the feature pattern, extracted from the weighted centered image moments $\mu_{pq} = \sum_{i=1}^{N}w_i(\hat{x}_i - \hat{x}_\text{w})^p(\hat{y}_i - \hat{y}_\text{w})^q$, where the distinct positive weights $w_i$ are assigned per feature identity and $\hat{x}_\text{w},\hat{y}_\text{w}$ are the components of the weighted centroid $\hat{\boldsymbol{r}}_\text{w}=\sum_{i}w_i\hat{\boldsymbol{r}}_i/\sum_{i}w_i$. The second-moment principal angle
 \begin{equation} \label{image orientation: equation}
     \alpha = \tfrac12\,\mathrm{atan2}\big(2\mu_{11},\,\mu_{20}-\mu_{02}\big)
 \end{equation}
