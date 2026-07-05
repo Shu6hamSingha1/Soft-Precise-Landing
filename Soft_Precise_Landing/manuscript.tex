@@ -178,7 +178,7 @@ Being underactuated, the quadrotor produces lateral motion only by tilting the t
 The image parameters are defined on the virtual image plane. The virtual-camera abstraction de-rotates the observed feature points onto this plane as $\hat{\boldsymbol{r}}_i$, decoupling their translational motion from the quadrotor's roll and pitch rotations (Fig.~\ref{frames planes: figure}). Appendix~\ref{virtual camera: section} details the supporting camera geometry, comprising the pinhole projection, the FoV visibility constraint, and the closed-form camera-to-virtual map. Unless a leading superscript indicates otherwise, all image-based quantities are expressed in the virtual camera frame $\mathcal{V}$.
 
 \subsubsection{Image Features \& Optical Flow} \label{image features: section}
-The image features are the de-rotated feature points $\hat{\boldsymbol{r}}_i$, and the image point is their centroid $\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\hat{\boldsymbol{r}}_i$.
+The image features are the de-rotated feature points $\hat{\boldsymbol{r}}_i$, and the image centroid is $\hat{\boldsymbol{r}}=N^{-1}\sum_{i=1}^{N}\hat{\boldsymbol{r}}_i$.
 
 The focal-length normalization and homogeneous augmentation yield the \emph{image position}
 \begin{equation} \label{image position: equation}
@@ -258,7 +258,7 @@ The cascaded analysis throughout this section rests on the following standard ti
 The outer loop transforms image-parameter feedback into the commanded acceleration $\,^\mathcal{I}\boldsymbol{a}_\text{d}$ of \eqref{h dot: equation} through three sub-blocks: Sections~\ref{control design: section}-\ref{outer loop: section}\ref{image point control: section}, \ref{control design: section}-\ref{outer loop: section}\ref{optic flow control: section}, and \ref{control design: section}-\ref{outer loop: section}\ref{acceleration conditioning: section}.
 
 \subsubsection{Image Feature Control Design} \label{image point control: section}
-The landing drives the image point to the image center, so the \emph{image point error} is $\hat{\boldsymbol{r}}_\text{e}=\hat{\boldsymbol{r}}=\boldsymbol{s}_{xy}$, the lateral image centroid, normalized by the half-FoV $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)$ as
+The landing drives the image centroid to the image center, so the \emph{image centroid error} is $\hat{\boldsymbol{r}}_\text{e}=\hat{\boldsymbol{r}}=\boldsymbol{s}_{xy}$, normalized by the half-FoV $\boldsymbol{\varphi}_\text{max}=\mathcal{R}/(2f)$ as
 \begin{equation} \label{normalized error: equation}
     \bar{\boldsymbol{r}}_\text{e} = \hat{\boldsymbol{r}}_\text{e}\oslash\boldsymbol{\varphi}_{\text{max},xy},
 \end{equation}
