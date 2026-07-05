@@ -219,9 +219,9 @@ Of the two components in \eqref{optic flow def: equation}, only the image veloci
 \begin{equation} \label{h dot: equation}
     \dot{\boldsymbol{h}} = -\beta\boldsymbol{a}_\text{d} - \dot{\psi}_\text{b}\,\hat{\boldsymbol{e}}_3\times\boldsymbol{h} - (\boldsymbol{h}\cdot\hat{\boldsymbol{e}}_3)\,\boldsymbol{h} + \boldsymbol{d}_h,
 \end{equation}
-where $\beta = 1/z$ is the depth scale and
+where $\beta = 1/z$ is the unknown depth scale and
 \begin{equation} \label{d h: equation}
-\boldsymbol{d}_h = \frac{\boldsymbol{a}_\text{t}}{z} - \frac{\boldsymbol{F}_\text{g}+\boldsymbol{F}_\text{d}}{mz}.
+\boldsymbol{d}_h = \beta\boldsymbol{a}_\text{t} - \beta\,\frac{\boldsymbol{F}_\text{g}+\boldsymbol{F}_\text{d}}{m}.
 \end{equation}
 The yaw-rate frame rotation and the depth-rate contraction of the image velocity in \eqref{h dot: equation} are known from the IMU yaw rate $\dot{\psi}_\text{b}$ and the measured $\boldsymbol{h}$, and available for feedback linearization. The disturbance $\boldsymbol{d}_h$ aggregates the depth-scaled target inertial acceleration and the gravitational and disturbance forces (rotated into $\mathcal{V}$ and depth-scaled), bounded as formalized in Section~\ref{background: section}-\ref{problem statement: section}.
 
