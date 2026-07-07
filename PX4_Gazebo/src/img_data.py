@@ -269,6 +269,25 @@ class IMG_PROCESSOR(Thread):
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
             _ring_pts_V.append(np.c_[(_rr / fx) * np.cos(_ra), (_rr / fy) * np.sin(_ra)])
         self._ring_pts0_V = np.vstack(_ring_pts_V).astype(np.float32)
+        # ARM MASK (2026-07-07, user): the body-mounted down-camera sees the drone's OWN arms/props
+        # as fixed STATIC bands (top y<~155, bottom y>~445 in the 480x640 raw image; measured from
+        # video temporal-std). Ring stations landing there have ~0 optic flow -> they drag pure_div
+        # toward zero + inject noise. Drop them by a FIXED raw-y band (robust to the ring's tilt
+        # re-projection, since the arms are camera-fixed, not scene-fixed). BAKED default-ON 2026-07-07:
+        # validated ~3x terminal-band noise cut (pure_div std 2.27->0.67, moment 1.03->0.60) and
+        # sign-flip cut (51%->21% / 45%->11% positive), no observed downside (ring flow itself is only
+        # consumed when ring-commit/loom-ring are explicitly on, both default OFF — see
+        # [[feedback_ring_loom_hz_terminal_deadend]]). Y-limits tunable.
+        self._ring_arm_mask = os.environ.get("PLASMC_RING_ARM_MASK", "1") == "1"
+        self._arm_y_top = float(os.environ.get("RING_ARM_Y_TOP", "155"))
+        self._arm_y_bot = float(os.environ.get("RING_ARM_Y_BOT", "445"))
+        # PAIRED-STATION SYMMETRY (2026-07-07, user): global index of each station's 180deg-opposite
+        # partner (same radius block, angle i <-> i+npts/2). pure_div/moment cancel lateral translation
+        # ONLY across complete opposite pairs -> keep a station iff its partner also survives.
+        self._ring_paired = os.environ.get("PLASMC_RING_PAIRED", "1") == "1"
+        _opp = np.concatenate([_b * _ring_npts + (np.arange(_ring_npts) + _ring_npts // 2) % _ring_npts
+                               for _b in range(len(_ring_radii))]).astype(int)
+        self._ring_opp_idx = _opp
         # Ring LK params (separate from the corner LK): larger winSize + higher
         # minEigThreshold reject ill-textured ring stations (the board's white cells lack
         # texture). Tuned offline 2026-06-05 (win 21->41, eig 1e-3->1e-2): ring spread
@@ -378,6 +397,7 @@ class IMG_PROCESSOR(Thread):
         # mechanism (no separate visible-flag): the margin switches to rings a few frames BEFORE the
         # marker fully leaves, off cleaner (non-edge) corners. 0 = strict (switch only on full exit).
         self._marker_fov_margin = float(os.environ.get("PLASMC_MARKER_FOV_MARGIN", "40"))
+        self._last_drifted_off = False   # last-known: marker left the FoV OFF-CENTER (drift), vs SPANNING (overflow, still over target)
 
         # 2026-05-31 — KLT fallback for marker re-acquisition.
         # When ArUco detection fails on a frame (drone shadow, low contrast,
@@ -494,10 +514,24 @@ class IMG_PROCESSOR(Thread):
         # loom (calibrated pure_div * scale) the controller swaps h_z onto once its gate (handover +
         # centered + settled) fires. Both consumed by controller.py PLASMC_TERMINAL_RING_COMMIT.
         self.HANDOVER_LATCHED = False
+        self.OVER_TARGET = False                                             # nadir (V-frame origin) inside the primary marker quad = we are over the target
         self.RING_LOOM = 0.0
+        self.RING_N_STATIONS = 0; self.RING_DIV_RAW = float('nan'); self.RING_MOMENT_RAW = float('nan')
         self._ring_loom_scale = float(os.environ.get("RING_LOOM_SCALE", "1.0"))   # deck over-report correction (~0.75; re-pin on nested-marker GT-FB)
+        self._ring_loom_source = os.environ.get("RING_LOOM_SOURCE", "div")         # "div" (pure_div) or "moment" (arm-masked ring MOMENT — cleaner at the deck: std 0.60 vs 0.67, 11% vs 21% sign-flip)
         self._raw_lnM_prev = None
         self._handover_ln = float(os.environ.get("HANDOVER_DLOGM", "1.0"))   # |d(ln raw_M)| latch threshold (≫0.04 loom, ≪4.7 handover)
+        self._handover_cand = 0                                              # frames the small-primary has PERSISTED since a big->small drop
+        self._handover_persist = int(os.environ.get("HANDOVER_PERSIST_FRAMES", "5"))  # require the drop SUSTAINED (secondary filter)
+        # OVERFLOW SIGNATURE (2026-07-05, corrected): gate on the SMALL (post-drop) marker subtending a
+        # large-enough ANGLE = we are CLOSE (real terminal). At the terminal the surviving small marker
+        # fills a good fraction of the FoV (normalized-bearing scatter M~0.08); at altitude the big
+        # tilt-fails while the small is TINY (M~0.0001) -> ~800x separation, far cleaner than the big's
+        # pre-drop M (0.15 vs 0.4, which overlapped). Image-space, scale-free w.r.t. physical size (fires
+        # at a fixed angular subtense regardless of marker size/Z). Rejects the altitude tilt-failures.
+        self._handover_min_m = float(os.environ.get("HANDOVER_MIN_SMALL_M", "0.01"))
+        self._handover_min_ln = float(np.log(max(self._handover_min_m, 1e-9)))
+        self._handover_dbg = os.environ.get("HANDOVER_DBG", "0") == "1"
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -958,7 +992,9 @@ class IMG_PROCESSOR(Thread):
         docs/FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
         detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
         death; this is the safety net."""
-        zero = (np.zeros(6), 0.0, 0, np.nan)
+        zero = (np.zeros(6), np.nan, 0, np.nan)   # FIX 2026-07-07: pure_div was 0.0 (a FAKE "stationary" reading
+        # the controller's isfinite(pdiv) check then treated as real data) -> NaN so degenerate/too-few-station
+        # frames are correctly rejected downstream instead of injecting a fabricated zero-descent step.
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
@@ -968,19 +1004,27 @@ class IMG_PROCESSOR(Thread):
             # Re-project the leveled (V-frame) ring into the real image at the frame-0 tilt so LK
             # tracks the NADIR patch (uniform depth, tilt-invariant). The legacy fixed real-image ring
             # was removed 2026-06-24 — it sampled off-nadir under tilt (geometrically wrong).
-            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])
+            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # FULL ring (indices align with _ring_opp_idx)
             p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed, None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
-            if int(st.sum()) < 6:
-                return (np.zeros(6), 0.0, int(st.sum()), np.nan)
-            r0 = _seed[st]
-            r1 = p1.reshape(-1, 2)[st]
-            # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
-            fm = np.linalg.norm(r1 - r0, axis=1)
-            med = np.median(fm); mad = np.median(np.abs(fm - med)) + 1e-6
-            keep = fm < med + 3.0 * 1.4826 * mad
-            if int(keep.sum()) >= 6:
-                r0, r1 = r0[keep], r1[keep]
+            _sf = _seed.reshape(len(_seed), -1)          # (N,2) raw frame-0 station positions
+            _p1f = p1.reshape(-1, 2)                      # (N,2) tracked frame-1 positions
+            valid = st.copy()
+            if self._ring_arm_mask:                      # drop the drone's own arm/prop bands (static -> 0 flow)
+                valid &= (_sf[:, 1] > self._arm_y_top) & (_sf[:, 1] < self._arm_y_bot)
+            fm = np.linalg.norm(_p1f - _sf, axis=1)       # per-station flow magnitude (ALL stations)
+            if int(valid.sum()) >= 6:                     # MAD flow-magnitude outlier rejection (over valid)
+                _m = np.median(fm[valid]); _d = np.median(np.abs(fm[valid] - _m)) + 1e-6
+                valid &= fm < _m + 3.0 * 1.4826 * _d
+            # PAIRED-STATION SYMMETRY: keep a station iff its 180deg-opposite also survived, so the
+            # uniform-translation radial component cancels pairwise in pure_div/moment (else it leaks
+            # -> loom sign-flip noise, worst during lateral drift = the terminal).
+            if self._ring_paired:
+                valid &= valid[self._ring_opp_idx]
+            if int(valid.sum()) < 6:
+                return (np.zeros(6), np.nan, int(valid.sum()), np.nan)   # NaN, not 0.0 (see `zero` sentinel above)
+            r0 = _sf[valid].astype(np.float32)
+            r1 = _p1f[valid].astype(np.float32)
             # identical V-frame chain to the corner flow (gravity-leveled, same L+)
             V0 = self._getVirtualPts(r0, quats[0])
             V1 = self._getVirtualPts(r1, quats[1])
@@ -1286,6 +1330,13 @@ class IMG_PROCESSOR(Thread):
             _cc = np.asarray(aruco_pts_0, float)
             _marker_leaving = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
                                    or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
+            # OVERFLOW vs DRIFT-OFF (same corner-bounds logic): OVERFLOW SPANS the frame (corners past
+            # OPPOSITE edges = marker filling/centered = still over the target); DRIFT-OFF leaves ONE
+            # side (marker slid off-center). Only drift-off invalidates the ring (nadir no longer over
+            # the target). Latched last-known so it survives the Ncorn->0 frame (decode already gone).
+            _span = ((_cc[:, 0].min() < _m and _cc[:, 0].max() > _iw - _m) or
+                     (_cc[:, 1].min() < _m and _cc[:, 1].max() > _ih - _m))
+            self._last_drifted_off = bool(_marker_leaving and not _span)
 
         # GYRO-COMPENSATED CENTROID-RATE OBSERVER (default-off). Computed from the DECODED corners
         # (aruco_pts_0) — NOT the LK-tracked V_aruco_norm — so it runs even when LK fails (Nfc=0) at
@@ -1517,6 +1568,21 @@ class IMG_PROCESSOR(Thread):
                     _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
                     _ctr = _vp.mean(axis=0)
                     _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # OVER_TARGET (2026-07-05, user): is the NADIR (V-frame origin) inside the primary
+                    # marker's V-frame quad? Depth-free "over the target" (tilt-removed), replaces the
+                    # ambiguous s_e_n gate for the ring-commit. Self-scaling: at altitude the small marker
+                    # is tiny -> nadir rarely inside -> rejects premature fire; at the terminal it's large
+                    # -> easy when centered. Convex point-in-quad via CCW edge cross-products.
+                    _q = np.asarray(_vp[:4], float)
+                    if _q.shape[0] >= 4 and np.isfinite(_q).all():
+                        _qc = _q.mean(0)
+                        _ord = _q[np.argsort(np.arctan2(_q[:, 1] - _qc[1], _q[:, 0] - _qc[0]))]
+                        _ins = True
+                        for _e in range(4):
+                            _a = _ord[_e]; _b = _ord[(_e + 1) % 4]
+                            if (_b[0]-_a[0])*(0.0-_a[1]) - (_b[1]-_a[1])*(0.0-_a[0]) < 0.0:
+                                _ins = False; break
+                        self.OVER_TARGET = bool(_ins)
                     # HANDOVER LATCH (ID/size-FREE, image-space): the RAW apparent-size² M drops abruptly
                     # (~ratio², big->small switch) -> large NEGATIVE d(ln RAW_M), unmistakable vs the
                     # ~0.04 normal loom. Uses the RAW M here (BEFORE the LOOM_SZ_RATIO normalization below,
@@ -1524,9 +1590,27 @@ class IMG_PROCESSOR(Thread):
                     # (M drop, negative) latches — small->big flicker-back (positive) is ignored.
                     if _M > 1e-12 and np.isfinite(_M):
                         _rlnM = float(np.log(_M))
-                        if (self._raw_lnM_prev is not None
-                                and (_rlnM - self._raw_lnM_prev) < -self._handover_ln):
-                            self.HANDOVER_LATCHED = True
+                        if self._raw_lnM_prev is not None and not self.HANDOVER_LATCHED:
+                            _dlm = _rlnM - self._raw_lnM_prev
+                            # OVERFLOW SIGNATURE: big->small drop AND the SMALL (current) marker is large
+                            # enough (_rlnM = ln(small M) > min) = we are close = real terminal overflow.
+                            _drop = _dlm < -self._handover_ln
+                            if _drop and _rlnM > self._handover_min_ln:   # overflow: small marker is large (close)
+                                self._handover_cand = 1
+                            elif _drop:                          # drop but small is TINY = altitude tilt-failure -> REJECT
+                                self._handover_cand = 0
+                                if self._handover_dbg:
+                                    print(f"[HANDOVER] rejected t={float(getattr(self,'_stamp',0.0)):.2f} "
+                                          f"(small M={_M:.4f} < {self._handover_min_m} = far/tilt-fail, not overflow)")
+                            elif _dlm > self._handover_ln:       # small->big re-decode (flicker back): CANCEL
+                                self._handover_cand = 0
+                            elif self._handover_cand > 0:        # small primary persisting (big has NOT re-decoded)
+                                self._handover_cand += 1
+                                if self._handover_cand >= self._handover_persist:
+                                    self.HANDOVER_LATCHED = True
+                                    if self._handover_dbg:
+                                        print(f"[HANDOVER] latched t={float(getattr(self,'_stamp',0.0)):.2f} "
+                                              f"(overflow: small M={_M:.4f}>{self._handover_min_m}, sustained {self._handover_persist}f)")
                         self._raw_lnM_prev = _rlnM
                     # SIZE-NORMALIZE by the primary marker's physical size² so the scale is
                     # continuous across primary-ID SWITCHES (the board's markers span ~7× in
@@ -1732,10 +1816,16 @@ class IMG_PROCESSOR(Thread):
             self._ring_div_log.append(_pdiv)
             self._ring_moment_log.append(_rmom)
             self._n_ring_corners.append(_nr)
+            self.RING_N_STATIONS = int(_nr)   # debug: paired-station survivor count this frame
+            self.RING_DIV_RAW = float(_pdiv) if np.isfinite(_pdiv) else float('nan')
+            self.RING_MOMENT_RAW = float(_rmom) if np.isfinite(_rmom) else float('nan')
             # Expose the marker-less ring loom for the terminal ring-commit (calibrated pure_div; the
             # A/B-preferred, accurate-to-0.2m divergence). TODO: swap to the ring MOMENT near the deck
             # (milder over-report) on a DEPTH-FREE trigger (Nring drop), not altitude.
-            if np.isfinite(_pdiv):
+            if self._ring_loom_source == "moment" and np.isfinite(_rmom):
+                # ring MOMENT is already in loom units (-½ d(lnM)/dt), no div-cal needed
+                self.RING_LOOM = float(np.clip(_rmom * self._ring_loom_scale, -10.0, 10.0))
+            elif np.isfinite(_pdiv):
                 self.RING_LOOM = float(np.clip(_pdiv * self._ring_div_cal * self._ring_loom_scale, -10.0, 10.0))
             # run V_v_ring through the SAME KF the corner flow uses (separate state)
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
