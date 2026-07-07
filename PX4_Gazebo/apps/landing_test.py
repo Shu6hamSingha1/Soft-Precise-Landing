@@ -462,6 +462,7 @@ async def main(record = 'n'):
         # exists to bring the drone safely to ground, but the landing is
         # tagged as a failure regardless of touchdown xy/vel.
         target_lost = False
+        failure_cause = "N/A"   # DRIFT_OFF / OVERFLOW / UNKNOWN, set when target_lost triggers (2026-07-07)
 
         # ── Hover / descent-stall watchdog (added 2026-06-07) ──────────────────
         # The control loop below terminates ONLY on FC_node.LANDED or the controller
@@ -584,7 +585,12 @@ async def main(record = 'n'):
                     in_final_descent = True
                     target_lost = True
                     final_descent_t0 = time_node.perf_counter()
-                    print(f"[landing_test] Marker lost beyond grace — TARGET_LOST. "
+                    try:
+                        failure_cause = EC_node._img_node.getFailureCause()
+                    except Exception:
+                        failure_cause = "UNKNOWN"
+                    print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
+                          f"[cause={failure_cause}]. "
                           f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
                           f"to bring drone down safely; landing is tagged as failure.")
                 await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
@@ -651,7 +657,7 @@ async def main(record = 'n'):
             if target_lost:
                 precise = False
                 soft    = False
-                tag = "TARGET_LOST"
+                tag = f"TARGET_LOST [{failure_cause}]"
             else:
                 precise = xy_err  <= PRECISE_TOL
                 soft    = rel_vel <= 0.2
@@ -664,6 +670,7 @@ async def main(record = 'n'):
             SOFT_PRECISE = dict(xy_err=xy_err, rel_vel=rel_vel,
                                 precise=precise, soft=soft,
                                 target_lost=target_lost,
+                                failure_cause=failure_cause,
                                 terminal_perception_loss=terminal_perception_loss,
                                 # Honest precision at the lowest altitude reached
                                 # (before any terminal balloon) — see tracker above.

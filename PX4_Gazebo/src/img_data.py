@@ -269,6 +269,25 @@ class IMG_PROCESSOR(Thread):
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
             _ring_pts_V.append(np.c_[(_rr / fx) * np.cos(_ra), (_rr / fy) * np.sin(_ra)])
         self._ring_pts0_V = np.vstack(_ring_pts_V).astype(np.float32)
+        # ARM MASK (2026-07-07, user): the body-mounted down-camera sees the drone's OWN arms/props
+        # as fixed STATIC bands (top y<~155, bottom y>~445 in the 480x640 raw image; measured from
+        # video temporal-std). Ring stations landing there have ~0 optic flow -> they drag pure_div
+        # toward zero + inject noise. Drop them by a FIXED raw-y band (robust to the ring's tilt
+        # re-projection, since the arms are camera-fixed, not scene-fixed). BAKED default-ON 2026-07-07:
+        # validated ~3x terminal-band noise cut (pure_div std 2.27->0.67, moment 1.03->0.60) and
+        # sign-flip cut (51%->21% / 45%->11% positive), no observed downside (ring flow itself is only
+        # consumed when ring-commit/loom-ring are explicitly on, both default OFF — see
+        # [[feedback_ring_loom_hz_terminal_deadend]]). Y-limits tunable.
+        self._ring_arm_mask = os.environ.get("PLASMC_RING_ARM_MASK", "1") == "1"
+        self._arm_y_top = float(os.environ.get("RING_ARM_Y_TOP", "155"))
+        self._arm_y_bot = float(os.environ.get("RING_ARM_Y_BOT", "445"))
+        # PAIRED-STATION SYMMETRY (2026-07-07, user): global index of each station's 180deg-opposite
+        # partner (same radius block, angle i <-> i+npts/2). pure_div/moment cancel lateral translation
+        # ONLY across complete opposite pairs -> keep a station iff its partner also survives.
+        self._ring_paired = os.environ.get("PLASMC_RING_PAIRED", "1") == "1"
+        _opp = np.concatenate([_b * _ring_npts + (np.arange(_ring_npts) + _ring_npts // 2) % _ring_npts
+                               for _b in range(len(_ring_radii))]).astype(int)
+        self._ring_opp_idx = _opp
         # Ring LK params (separate from the corner LK): larger winSize + higher
         # minEigThreshold reject ill-textured ring stations (the board's white cells lack
         # texture). Tuned offline 2026-06-05 (win 21->41, eig 1e-3->1e-2): ring spread
@@ -378,6 +397,10 @@ class IMG_PROCESSOR(Thread):
         # mechanism (no separate visible-flag): the margin switches to rings a few frames BEFORE the
         # marker fully leaves, off cleaner (non-edge) corners. 0 = strict (switch only on full exit).
         self._marker_fov_margin = float(os.environ.get("PLASMC_MARKER_FOV_MARGIN", "40"))
+        self._last_drifted_off = False   # last-known: marker left the FoV OFF-CENTER (drift), vs SPANNING (overflow, still over target)
+        self._last_overflow = False      # companion: marker SPANNED (overflow) rather than drifted off one side
+        self._drift_off_hist = []        # per-frame log of _last_drifted_off (2026-07-07: failure-cause tagging)
+        self._overflow_hist = []         # per-frame log of _last_overflow
 
         # 2026-05-31 — KLT fallback for marker re-acquisition.
         # When ArUco detection fails on a frame (drone shadow, low contrast,
@@ -400,6 +423,40 @@ class IMG_PROCESSOR(Thread):
         self._prev_aruco_pts = None       # most recent good primary corners (ArUco or KLT)
         self._prev_extra_pts = None       # most recent good extra (on-marker) corners
         self._prev_img = None             # frame those corners were measured in
+        # DENSE-HOMOGRAPHY RECOVERY (2026-07-07, user): when the strict all-4-primary-corner gate
+        # fails (partial visibility/occlusion), recover the FULL quad via a RANSAC homography fit
+        # from the marker's dense CANONICAL point layout (scaled-quad, deterministic, ~180 pts) to
+        # their CURRENTLY LK-tracked positions, then map the canonical 4 corners through that
+        # homography. Unlike averaging surviving points (biased toward whatever fraction is visible),
+        # a homography recovers the FULL marker geometry from a partial view, because every dense
+        # point has a KNOWN canonical position relative to the whole quad (planarity is the only
+        # assumption -- true for a flat ArUco marker; needs no depth/scale -- a homography is a pure
+        # 2D pixel-to-pixel projective fit). Re-anchored on every clean 4-corner detection (never
+        # goes far stale); tracked independently of the strict gate so it survives partial dropouts
+        # the strict gate alone would kill. Falls through to the (self-reinforcing, buggy)
+        # deg-1 s-extrapolation only if even this dense set can't sustain enough survivors.
+        self._dense_recover = os.environ.get("PLASMC_DENSE_RECOVER", "0") == "1"
+        self._dense_recover_min_pts = int(os.environ.get("DENSE_RECOVER_MIN_PTS", "12"))
+        self._dense_recover_ransac_px = float(os.environ.get("DENSE_RECOVER_RANSAC_PX", "3.0"))
+        self._dense_canon_pts = None       # (M,2) canonical dense-point layout, re-anchored per clean detection
+        self._dense_canon_quad = None      # (4,2) canonical primary-corner layout (same anchor frame)
+        self._dense_track_pts = None       # (M,2) CURRENT LK-tracked positions of the canonical points
+        self._dense_ref_img = None         # frame the dense tracking was last stepped from
+        self._dense_recover_active = False # True when the last frame's aruco_pts_0 came from recovery (diagnostic)
+        # UNIFIED STALENESS GATE (2026-07-07, user): the corner-only KLT fallback (elif branch,
+        # MARKER_KLT_MAX_STEPS=20) and dense-recovery were two DISJOINT, uncoordinated LK-chain
+        # trackers with inconsistent trust bounds (20-frame hard cap vs unbounded) that never
+        # informed each other -- structurally wrong (same underlying drift-accumulation risk,
+        # arbitrarily different tolerances). Fix: (1) the corner-fallback's SHORT successes
+        # (still fresh, low accumulated drift) now ALSO soft-re-anchor the dense canonical state
+        # (not just a full fresh decode), so dense-recovery gets refreshed far more often; (2)
+        # dense-recovery itself gets a PRINCIPLED staleness cap -- frames-since-last-anchor AND a
+        # minimum RANSAC inlier ratio -- replacing its previous unbounded runtime (which let it
+        # chase a 30+ second drift in the densedbg batch).
+        self._dense_frames_since_anchor = 0
+        self._dense_recover_max_frames = int(os.environ.get("DENSE_RECOVER_MAX_FRAMES", "60"))
+        self._dense_recover_min_inlier_frac = float(os.environ.get("DENSE_RECOVER_MIN_INLIER_FRAC", "0.5"))
+        self._dense_soft_anchor_max_steps = int(os.environ.get("DENSE_SOFT_ANCHOR_MAX_STEPS", "2"))
         # KLT corner-track PERSISTENCE (2026-06-19, thread project_decode_availability_thread).
         # The availability dropout at close range is 100% ArUco decode-fail (corners still
         # track). DEFAULT-OFF env gate. When ON: the KLT fallback carries the extra on-marker
@@ -494,10 +551,24 @@ class IMG_PROCESSOR(Thread):
         # loom (calibrated pure_div * scale) the controller swaps h_z onto once its gate (handover +
         # centered + settled) fires. Both consumed by controller.py PLASMC_TERMINAL_RING_COMMIT.
         self.HANDOVER_LATCHED = False
+        self.OVER_TARGET = False                                             # nadir (V-frame origin) inside the primary marker quad = we are over the target
         self.RING_LOOM = 0.0
+        self.RING_N_STATIONS = 0; self.RING_DIV_RAW = float('nan'); self.RING_MOMENT_RAW = float('nan')
         self._ring_loom_scale = float(os.environ.get("RING_LOOM_SCALE", "1.0"))   # deck over-report correction (~0.75; re-pin on nested-marker GT-FB)
+        self._ring_loom_source = os.environ.get("RING_LOOM_SOURCE", "div")         # "div" (pure_div) or "moment" (arm-masked ring MOMENT — cleaner at the deck: std 0.60 vs 0.67, 11% vs 21% sign-flip)
         self._raw_lnM_prev = None
         self._handover_ln = float(os.environ.get("HANDOVER_DLOGM", "1.0"))   # |d(ln raw_M)| latch threshold (≫0.04 loom, ≪4.7 handover)
+        self._handover_cand = 0                                              # frames the small-primary has PERSISTED since a big->small drop
+        self._handover_persist = int(os.environ.get("HANDOVER_PERSIST_FRAMES", "5"))  # require the drop SUSTAINED (secondary filter)
+        # OVERFLOW SIGNATURE (2026-07-05, corrected): gate on the SMALL (post-drop) marker subtending a
+        # large-enough ANGLE = we are CLOSE (real terminal). At the terminal the surviving small marker
+        # fills a good fraction of the FoV (normalized-bearing scatter M~0.08); at altitude the big
+        # tilt-fails while the small is TINY (M~0.0001) -> ~800x separation, far cleaner than the big's
+        # pre-drop M (0.15 vs 0.4, which overlapped). Image-space, scale-free w.r.t. physical size (fires
+        # at a fixed angular subtense regardless of marker size/Z). Rejects the altitude tilt-failures.
+        self._handover_min_m = float(os.environ.get("HANDOVER_MIN_SMALL_M", "0.01"))
+        self._handover_min_ln = float(np.log(max(self._handover_min_m, 1e-9)))
+        self._handover_dbg = os.environ.get("HANDOVER_DBG", "0") == "1"
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -638,6 +709,25 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        # H-EXTRAPOLATION (2026-07-07, user; BAKED default-ON 2026-07-07): re-derived alternative to
+        # the 2026-05-13 hard-zero policy. That decision was correct GIVEN its implementation (deg-1
+        # fit self-referencing its own extrapolated output -> cascaded to 10^5+ outliers or pinned at
+        # the clip ceiling forever) but the FIX is to correct the implementation, not abandon
+        # extrapolation: (1) fit ONLY against REAL (non-extrapolated) samples via a separate history
+        # buffer -- never self-reference; (2) DECAY the extrapolated velocity toward zero over
+        # H_EXTRAP_DECAY_FRAMES consecutive misses, so a long gap converges to "no known motion"
+        # (matching hard-zero's safety) instead of committing to an indefinitely-continued trend; (3)
+        # exclude already-clipped real samples from the fit basis (a saturated sample's slope is
+        # untrustworthy); (4) bound the result at H_EXTRAP_MAX (tighter than the general lstsq ±10
+        # clamp). VALIDATED (A/B, IC2 x5 each, observer+DESCENT_GATE): baseline hard-zero had 1/5 bad
+        # misses (GT xy 2.703m); h-extrap had 0/3 valid reps miss (GT xy 0.075-0.097m all); zero
+        # fly-aways either leg. PLASMC_H_EXTRAP=0 to revert to hard-zero.
+        self._h_extrap = os.environ.get("PLASMC_H_EXTRAP", "1") == "1"
+        self._h_extrap_decay_frames = int(os.environ.get("H_EXTRAP_DECAY_FRAMES", "10"))
+        self._h_extrap_max = float(os.environ.get("H_EXTRAP_MAX", "5.0"))
+        self._h_extrap_clip_bound = float(os.environ.get("H_EXTRAP_CLIP_BOUND", "10.0"))  # matches the lstsq's own ±10 clamp -- samples AT this bound are excluded from the fit
+        self._h_real_t = []      # timestamps of REAL (non-extrapolated) h samples only
+        self._h_real_v = []      # the REAL h values themselves (never mixed with extrapolated output)
         self._imu_angvel_raw = []   # IMU body rate (FRD) [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
@@ -958,7 +1048,9 @@ class IMG_PROCESSOR(Thread):
         docs/FUNNEL_CBF_DESIGN.md. Runs every frame independent of ArUco
         detection, so it survives the marker death. The PRIMARY goal stays REDUCING perception
         death; this is the safety net."""
-        zero = (np.zeros(6), 0.0, 0, np.nan)
+        zero = (np.zeros(6), np.nan, 0, np.nan)   # FIX 2026-07-07: pure_div was 0.0 (a FAKE "stationary" reading
+        # the controller's isfinite(pdiv) check then treated as real data) -> NaN so degenerate/too-few-station
+        # frames are correctly rejected downstream instead of injecting a fabricated zero-descent step.
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
@@ -968,19 +1060,27 @@ class IMG_PROCESSOR(Thread):
             # Re-project the leveled (V-frame) ring into the real image at the frame-0 tilt so LK
             # tracks the NADIR patch (uniform depth, tilt-invariant). The legacy fixed real-image ring
             # was removed 2026-06-24 — it sampled off-nadir under tilt (geometrically wrong).
-            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])
+            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # FULL ring (indices align with _ring_opp_idx)
             p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed, None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
-            if int(st.sum()) < 6:
-                return (np.zeros(6), 0.0, int(st.sum()), np.nan)
-            r0 = _seed[st]
-            r1 = p1.reshape(-1, 2)[st]
-            # robustify: drop per-station flow-magnitude outliers (the raw mean is noisy)
-            fm = np.linalg.norm(r1 - r0, axis=1)
-            med = np.median(fm); mad = np.median(np.abs(fm - med)) + 1e-6
-            keep = fm < med + 3.0 * 1.4826 * mad
-            if int(keep.sum()) >= 6:
-                r0, r1 = r0[keep], r1[keep]
+            _sf = _seed.reshape(len(_seed), -1)          # (N,2) raw frame-0 station positions
+            _p1f = p1.reshape(-1, 2)                      # (N,2) tracked frame-1 positions
+            valid = st.copy()
+            if self._ring_arm_mask:                      # drop the drone's own arm/prop bands (static -> 0 flow)
+                valid &= (_sf[:, 1] > self._arm_y_top) & (_sf[:, 1] < self._arm_y_bot)
+            fm = np.linalg.norm(_p1f - _sf, axis=1)       # per-station flow magnitude (ALL stations)
+            if int(valid.sum()) >= 6:                     # MAD flow-magnitude outlier rejection (over valid)
+                _m = np.median(fm[valid]); _d = np.median(np.abs(fm[valid] - _m)) + 1e-6
+                valid &= fm < _m + 3.0 * 1.4826 * _d
+            # PAIRED-STATION SYMMETRY: keep a station iff its 180deg-opposite also survived, so the
+            # uniform-translation radial component cancels pairwise in pure_div/moment (else it leaks
+            # -> loom sign-flip noise, worst during lateral drift = the terminal).
+            if self._ring_paired:
+                valid &= valid[self._ring_opp_idx]
+            if int(valid.sum()) < 6:
+                return (np.zeros(6), np.nan, int(valid.sum()), np.nan)   # NaN, not 0.0 (see `zero` sentinel above)
+            r0 = _sf[valid].astype(np.float32)
+            r1 = _p1f[valid].astype(np.float32)
             # identical V-frame chain to the corner flow (gravity-leveled, same L+)
             V0 = self._getVirtualPts(r0, quats[0])
             V1 = self._getVirtualPts(r1, quats[1])
@@ -1012,6 +1112,75 @@ class IMG_PROCESSOR(Thread):
             return (np.clip(V_v_ring, -10.0, 10.0), pure_div, int(len(r0)), ring_moment)
         except Exception:
             return zero
+
+    def _dense_recover_anchor(self, corners, img0):
+        """Re-anchor the dense-homography-recovery canonical state on a CLEAN 4-corner
+        detection: canonical dense layout + canonical quad = THIS frame's geometry (so
+        canonical==tracked right now), ref image = img0. Called every clean detection so
+        the canonical anchor never goes far stale."""
+        if not self._dense_recover:
+            return
+        self._dense_canon_quad = np.asarray(corners, np.float32).reshape(-1, 2).copy()
+        self._dense_canon_pts = self._scaled_quad_points(self._dense_canon_quad,
+                                                           per_side=self._dense_pts_per_side)
+        self._dense_track_pts = self._dense_canon_pts.copy()
+        self._dense_ref_img = img0.copy()
+        self._dense_recover_active = False
+        self._dense_frames_since_anchor = 0
+
+    def _dense_recover_step(self, img0):
+        """Advance the dense-homography-recovery tracking one frame (_dense_ref_img -> img0),
+        independent of the strict corner gate -- called EVERY frame so it survives partial
+        dropouts the strict all-4-primary gate alone would fail. Drops out-of-bounds/lost
+        survivors; the canonical<->tracked correspondence stays index-aligned (both shrink together)."""
+        if not self._dense_recover or self._dense_track_pts is None or self._dense_ref_img is None:
+            return
+        try:
+            g0 = self._dense_ref_img if self._dense_ref_img.ndim == 2 else cv2.cvtColor(self._dense_ref_img, cv2.COLOR_BGR2GRAY)
+            g1 = img0 if img0.ndim == 2 else cv2.cvtColor(img0, cv2.COLOR_BGR2GRAY)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._dense_track_pts, None, **self._lk_params)
+            st = np.asarray(st).flatten().astype(bool)
+            _ih, _iw = img0.shape[:2]
+            _p1f = p1.reshape(-1, 2)
+            _in = ((_p1f[:, 0] >= 0) & (_p1f[:, 0] < _iw) & (_p1f[:, 1] >= 0) & (_p1f[:, 1] < _ih))
+            keep = st & _in
+            self._dense_canon_pts = self._dense_canon_pts[keep]
+            self._dense_track_pts = _p1f[keep].astype(np.float32)
+            self._dense_ref_img = img0.copy()
+            self._dense_frames_since_anchor += 1
+        except Exception:
+            self._dense_canon_pts = None
+            self._dense_track_pts = None
+            self._dense_ref_img = None
+
+    def _dense_recover_quad(self):
+        """Recover the FULL primary-corner quad via a RANSAC homography fit from the surviving
+        canonical dense points to their tracked positions, then map the canonical quad's 4
+        corners through it. Returns (4,2) float32 recovered corners, or None if too few
+        survivors / a degenerate fit. No depth/scale needed -- pure 2D pixel homography."""
+        if (not self._dense_recover or self._dense_track_pts is None
+                or len(self._dense_track_pts) < self._dense_recover_min_pts
+                or self._dense_canon_quad is None
+                or self._dense_frames_since_anchor > self._dense_recover_max_frames):
+            return None   # too stale since the last real anchor -- don't trust an ever-aging chain
+        try:
+            Hmat, mask = cv2.findHomography(self._dense_canon_pts, self._dense_track_pts,
+                                             cv2.RANSAC, self._dense_recover_ransac_px)
+            if Hmat is None or mask is None or int(mask.sum()) < self._dense_recover_min_pts:
+                return None
+            _inlier_frac = float(mask.sum()) / max(1, len(self._dense_track_pts))
+            if _inlier_frac < self._dense_recover_min_inlier_frac:
+                return None   # too many outliers vs the canonical fit -- the tracked cloud has drifted
+            recovered = cv2.perspectiveTransform(
+                self._dense_canon_quad.reshape(-1, 1, 2), Hmat).reshape(-1, 2).astype(np.float32)
+            _ih, _iw = self._dense_ref_img.shape[:2]
+            if not (np.all(recovered[:, 0] >= -_iw) and np.all(recovered[:, 0] < 2 * _iw)
+                    and np.all(recovered[:, 1] >= -_ih) and np.all(recovered[:, 1] < 2 * _ih)):
+                return None   # degenerate/runaway homography guard
+            self._dense_recover_active = True
+            return recovered
+        except Exception:
+            return None
 
     def _persist_extras(self, extra_pts_0, current_pts, img0):
         """Partial-decode persistence: 1-frame LK-carry of the previous frame's extra
@@ -1108,6 +1277,7 @@ class IMG_PROCESSOR(Thread):
         extra_pts_0 = np.zeros((0, 2), dtype=np.float32)   # other markers' corners
         marker_ids = None        # per-marker IDs in all_pts_0 order (None in KLT fallback)
         used_klt_fallback = False
+        self._dense_recover_step(imgs[0])   # advance dense-recovery tracking EVERY frame, independent of decode/gate status
         if results[0]:
             ids = np.asarray(results[1]).flatten()
             M = len(ids)
@@ -1148,6 +1318,7 @@ class IMG_PROCESSOR(Thread):
             marker_corners_0 = [results[0][i][0].reshape(-1, 2).astype(np.float32)
                                 for i in order]
             aruco_pts_0 = marker_corners_0[0]
+            self._dense_recover_anchor(aruco_pts_0, imgs[0])   # clean detection: re-anchor the dense-recovery canonical layout
             if self._single_marker:
                 # Single-marker flow: baseline scaled-quad dense points on the ONE locked marker
                 # (no other markers). 2026-06-22: GFT was tried here and REGRESSED (A/B: lat_noise
@@ -1225,6 +1396,13 @@ class IMG_PROCESSOR(Thread):
                             self._lk_step_count += 1
                             if self._lk_step_count == 1:
                                 print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                            # UNIFIED STALENESS GATE (2026-07-07): a SHORT corner-fallback success
+                            # (still barely diverged from the last real decode) is trustworthy enough
+                            # to ALSO soft-re-anchor the dense-recovery canonical state -- extends its
+                            # freshness far more often than requiring a full fresh decode every time,
+                            # without trusting a long-chained (>DENSE_SOFT_ANCHOR_MAX_STEPS) KLT drift.
+                            if self._lk_step_count <= self._dense_soft_anchor_max_steps:
+                                self._dense_recover_anchor(aruco_pts_0, imgs[0])
                             # SINGLE-MARKER: decode-fail but still IN FoV (KLT in-bounds). Keep the
                             # dense scaled-quad flow on the tracked corners (centroid uses them too).
                             if self._single_marker:
@@ -1261,6 +1439,22 @@ class IMG_PROCESSOR(Thread):
                 # through to the normal stale path rather than killing the thread.
                 aruco_pts_0 = None
 
+        # THIRD FALLBACK TIER (2026-07-07): fresh decode and KLT corner-fallback both failed (or
+        # KLT's strict all-4-in-bounds requirement wasn't met) -- try recovering the FULL quad via
+        # the dense-homography fit before giving up to the (self-reinforcing) s-extrapolation path.
+        # More robust than the KLT corner-fallback: many candidate points (RANSAC-filtered) instead
+        # of 4 fragile ones, and no MARKER_KLT_MAX_STEPS cap (the homography degrades gracefully as
+        # survivors thin out, rather than hard-stopping at a fixed frame count).
+        if aruco_pts_0 is None and self._dense_recover:
+            _recovered = self._dense_recover_quad()
+            if _recovered is not None:
+                aruco_pts_0 = _recovered
+                if self._single_marker:
+                    extra_pts_0 = self._scaled_quad_points(aruco_pts_0, per_side=self._dense_pts_per_side)
+                if os.environ.get("DENSE_RECOVER_DBG", "0") == "1":
+                    print("[dr] t%.3f RECOVERED quad from %d dense survivors" % (
+                        float(getattr(self, '_stamp', 0.0)), len(self._dense_track_pts)), flush=True)
+
         if aruco_pts_0 is not None:
             # Update KLT-fallback reference state for next call. ALWAYS copy
             # the image — imgs[0] is a reference into a rolling buffer that
@@ -1286,6 +1480,14 @@ class IMG_PROCESSOR(Thread):
             _cc = np.asarray(aruco_pts_0, float)
             _marker_leaving = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
                                    or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
+            # OVERFLOW vs DRIFT-OFF (same corner-bounds logic): OVERFLOW SPANS the frame (corners past
+            # OPPOSITE edges = marker filling/centered = still over the target); DRIFT-OFF leaves ONE
+            # side (marker slid off-center). Only drift-off invalidates the ring (nadir no longer over
+            # the target). Latched last-known so it survives the Ncorn->0 frame (decode already gone).
+            _span = ((_cc[:, 0].min() < _m and _cc[:, 0].max() > _iw - _m) or
+                     (_cc[:, 1].min() < _m and _cc[:, 1].max() > _ih - _m))
+            self._last_drifted_off = bool(_marker_leaving and not _span)
+            self._last_overflow = bool(_marker_leaving and _span)   # companion flag (2026-07-07): SPANNING case, latched the same way
 
         # GYRO-COMPENSATED CENTROID-RATE OBSERVER (default-off). Computed from the DECODED corners
         # (aruco_pts_0) — NOT the LK-tracked V_aruco_norm — so it runs even when LK fails (Nfc=0) at
@@ -1505,9 +1707,22 @@ class IMG_PROCESSOR(Thread):
                         or not np.all(np.isfinite(V_v))
                         or np.max(np.abs(V_v)) > 50.0
                     )
-                    if bad:
-                        V_v = np.zeros(6)
-                    V_v = np.clip(V_v, -10.0, 10.0)
+                    # DEBUG (2026-07-07, user): expose the RAW pre-clamp solve whenever it's borderline
+                    # (bad OR would-be-clipped) -- the clamp/zero-fallback can mask a real correspondence
+                    # break (e.g. marker re-lock mixing stale+fresh corners) as a plausible, HELD value.
+                    if os.environ.get("FLOW_CLAMP_DBG", "0") == "1" and (bad or np.max(np.abs(V_v)) > 10.0):
+                        print("[flowclamp] t%.3f RAW V_v=%s bad=%s rank=%d/%d cond=%.1f Ncorn=%d" % (
+                            float(getattr(self, '_stamp', 0.0)), np.round(V_v, 2), bad, rank, _min_rank,
+                            cond, int(len(A) // 2)), flush=True)
+                    if os.environ.get("FLOW_CLAMP_OFF", "0") == "1":
+                        # bypass the safety net entirely (diagnostic only): NaN/inf guard kept minimal
+                        # so downstream doesn't crash, but the magnitude/zero-fallback gates are OFF.
+                        if not np.all(np.isfinite(V_v)):
+                            V_v = np.zeros(6)
+                    else:
+                        if bad:
+                            V_v = np.zeros(6)
+                        V_v = np.clip(V_v, -10.0, 10.0)
 
                 # DECOUPLED LOOM override (default-off): replace the lstsq loom row V_v[2]
                 # with -½·d(ln M)/dt from the primary marker's V-frame scale M=μ20+μ02
@@ -1517,6 +1732,21 @@ class IMG_PROCESSOR(Thread):
                     _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
                     _ctr = _vp.mean(axis=0)
                     _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # OVER_TARGET (2026-07-05, user): is the NADIR (V-frame origin) inside the primary
+                    # marker's V-frame quad? Depth-free "over the target" (tilt-removed), replaces the
+                    # ambiguous s_e_n gate for the ring-commit. Self-scaling: at altitude the small marker
+                    # is tiny -> nadir rarely inside -> rejects premature fire; at the terminal it's large
+                    # -> easy when centered. Convex point-in-quad via CCW edge cross-products.
+                    _q = np.asarray(_vp[:4], float)
+                    if _q.shape[0] >= 4 and np.isfinite(_q).all():
+                        _qc = _q.mean(0)
+                        _ord = _q[np.argsort(np.arctan2(_q[:, 1] - _qc[1], _q[:, 0] - _qc[0]))]
+                        _ins = True
+                        for _e in range(4):
+                            _a = _ord[_e]; _b = _ord[(_e + 1) % 4]
+                            if (_b[0]-_a[0])*(0.0-_a[1]) - (_b[1]-_a[1])*(0.0-_a[0]) < 0.0:
+                                _ins = False; break
+                        self.OVER_TARGET = bool(_ins)
                     # HANDOVER LATCH (ID/size-FREE, image-space): the RAW apparent-size² M drops abruptly
                     # (~ratio², big->small switch) -> large NEGATIVE d(ln RAW_M), unmistakable vs the
                     # ~0.04 normal loom. Uses the RAW M here (BEFORE the LOOM_SZ_RATIO normalization below,
@@ -1524,9 +1754,27 @@ class IMG_PROCESSOR(Thread):
                     # (M drop, negative) latches — small->big flicker-back (positive) is ignored.
                     if _M > 1e-12 and np.isfinite(_M):
                         _rlnM = float(np.log(_M))
-                        if (self._raw_lnM_prev is not None
-                                and (_rlnM - self._raw_lnM_prev) < -self._handover_ln):
-                            self.HANDOVER_LATCHED = True
+                        if self._raw_lnM_prev is not None and not self.HANDOVER_LATCHED:
+                            _dlm = _rlnM - self._raw_lnM_prev
+                            # OVERFLOW SIGNATURE: big->small drop AND the SMALL (current) marker is large
+                            # enough (_rlnM = ln(small M) > min) = we are close = real terminal overflow.
+                            _drop = _dlm < -self._handover_ln
+                            if _drop and _rlnM > self._handover_min_ln:   # overflow: small marker is large (close)
+                                self._handover_cand = 1
+                            elif _drop:                          # drop but small is TINY = altitude tilt-failure -> REJECT
+                                self._handover_cand = 0
+                                if self._handover_dbg:
+                                    print(f"[HANDOVER] rejected t={float(getattr(self,'_stamp',0.0)):.2f} "
+                                          f"(small M={_M:.4f} < {self._handover_min_m} = far/tilt-fail, not overflow)")
+                            elif _dlm > self._handover_ln:       # small->big re-decode (flicker back): CANCEL
+                                self._handover_cand = 0
+                            elif self._handover_cand > 0:        # small primary persisting (big has NOT re-decoded)
+                                self._handover_cand += 1
+                                if self._handover_cand >= self._handover_persist:
+                                    self.HANDOVER_LATCHED = True
+                                    if self._handover_dbg:
+                                        print(f"[HANDOVER] latched t={float(getattr(self,'_stamp',0.0)):.2f} "
+                                              f"(overflow: small M={_M:.4f}>{self._handover_min_m}, sustained {self._handover_persist}f)")
                         self._raw_lnM_prev = _rlnM
                     # SIZE-NORMALIZE by the primary marker's physical size² so the scale is
                     # continuous across primary-ID SWITCHES (the board's markers span ~7× in
@@ -1589,6 +1837,14 @@ class IMG_PROCESSOR(Thread):
 
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
+                if self._h_extrap:
+                    # REAL-only history for the extrapolation fit -- never receives the extrapolated
+                    # output back (the self-reinforcement bug that broke deg-1 s-extrapolation).
+                    self._h_real_t.append(self._time.perf_counter())
+                    self._h_real_v.append(V_v_scaled.copy())
+                    if len(self._h_real_t) > 32:      # bounded history (only the last few are ever fit)
+                        self._h_real_t = self._h_real_t[-32:]
+                        self._h_real_v = self._h_real_v[-32:]
                 _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
                 self._imu_angvel_raw.append(
                     np.array([_av.forward_rad_s, _av.right_rad_s, _av.down_rad_s])
@@ -1597,6 +1853,8 @@ class IMG_PROCESSOR(Thread):
                 self._quat_log.append(
                     np.array([_q1.w, _q1.x, _q1.y, _q1.z]) if _q1 is not None else np.full(4, np.nan))
                 self._n_flow_corners.append(int(len(flow_pts_1)))
+                self._drift_off_hist.append(self._last_drifted_off)
+                self._overflow_hist.append(self._last_overflow)
                 # 2-state KF update — only on a fresh raw measurement.
                 self._kf_update(V_v_scaled, self._time.perf_counter())
                 # Calibrated corner measurement this frame, for the fused KF (the raw
@@ -1732,10 +1990,16 @@ class IMG_PROCESSOR(Thread):
             self._ring_div_log.append(_pdiv)
             self._ring_moment_log.append(_rmom)
             self._n_ring_corners.append(_nr)
+            self.RING_N_STATIONS = int(_nr)   # debug: paired-station survivor count this frame
+            self.RING_DIV_RAW = float(_pdiv) if np.isfinite(_pdiv) else float('nan')
+            self.RING_MOMENT_RAW = float(_rmom) if np.isfinite(_rmom) else float('nan')
             # Expose the marker-less ring loom for the terminal ring-commit (calibrated pure_div; the
             # A/B-preferred, accurate-to-0.2m divergence). TODO: swap to the ring MOMENT near the deck
             # (milder over-report) on a DEPTH-FREE trigger (Nring drop), not altitude.
-            if np.isfinite(_pdiv):
+            if self._ring_loom_source == "moment" and np.isfinite(_rmom):
+                # ring MOMENT is already in loom units (-½ d(lnM)/dt), no div-cal needed
+                self.RING_LOOM = float(np.clip(_rmom * self._ring_loom_scale, -10.0, 10.0))
+            elif np.isfinite(_pdiv):
                 self.RING_LOOM = float(np.clip(_pdiv * self._ring_div_cal * self._ring_loom_scale, -10.0, 10.0))
             # run V_v_ring through the SAME KF the corner flow uses (separate state)
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
@@ -1793,7 +2057,28 @@ class IMG_PROCESSOR(Thread):
             # the marker moves in image; extrapolation predicts the trend, hold-last
             # freezes at a stale position. Single-frame dropouts can then cause
             # catastrophic lateral excursions. Keep the polyfit-deg-1 extrapolate.
-            extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
+            if self._h_extrap and len(self._h_real_t) >= 5:
+                # DECAYED deg-1 fit against REAL-ONLY samples (never self-referencing). Reject
+                # samples already at the clip boundary (their slope is untrustworthy, not signal).
+                # extrapolate() needs len(t)>=n+1 for a genuine trend fit (else it falls back to a
+                # mean) -- window the last 8 real samples, n=4, so a fit is actually attempted.
+                _rt = np.asarray(self._h_real_t[-8:])
+                _rv = np.asarray(self._h_real_v[-8:])
+                _valid = np.all(np.abs(_rv) < self._h_extrap_clip_bound - 1e-3, axis=1)
+                if int(_valid.sum()) >= 5:
+                    _rt, _rv = _rt[_valid], _rv[_valid]
+                    _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=6)
+                    _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=self._h_extrap_max,
+                                          neginf=-self._h_extrap_max)
+                else:
+                    _fit = self._h_real_v[-1].copy() if self._h_real_v else np.zeros(6)
+                # DECAY toward zero over consecutive misses -- a long gap converges to "no known
+                # motion" (matching hard-zero's safety net) instead of an indefinitely-held trend.
+                _decay = max(0.0, 1.0 - self._consec_misses / max(1, self._h_extrap_decay_frames))
+                extrapolated_opt_flow_ang_vel_raw = np.clip(
+                    _fit * _decay, -self._h_extrap_max, self._h_extrap_max)
+            else:
+                extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
 
             extrapolated_img_feature_param = extrapolate(
                 self._time_log, self._img_feature_param, n=4, deg=1, default_shape=4)
@@ -1838,6 +2123,8 @@ class IMG_PROCESSOR(Thread):
             self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
+            self._drift_off_hist.append(self._last_drifted_off)   # latched value (2026-07-07 failure-cause tagging)
+            self._overflow_hist.append(self._last_overflow)
 
             # Log the previous data
             self._feature_pts.append(self._feature_pts[-1] if self._feature_pts else np.zeros((2,4,2)))
@@ -2512,6 +2799,8 @@ class IMG_PROCESSOR(Thread):
             "IMU AngVel": self._imu_angvel_raw,
             "Quat": self._quat_log,
             "N Flow Corners": self._n_flow_corners,
+            "Drift Off": self._drift_off_hist,      # per-frame: marker left FoV OFF-CENTER (2026-07-07 failure-cause tagging)
+            "Overflow": self._overflow_hist,        # per-frame: marker SPANNED the frame (overflow, still over target)
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
             "Ring Divergence": self._ring_div_log,              # pure depth-independent loom (safety-net vertical)
             "Ring Moment": self._ring_moment_log,               # ring area-rate loom (live A/B vs divergence)
@@ -2617,6 +2906,19 @@ class IMG_PROCESSOR(Thread):
         if self._loom_sign_guard:
             _out[2] = min(_out[2], 0.0)                      # positive-loom sign guard (non-fuse path)
         return _out
+
+    def getFailureCause(self):
+        """Live snapshot for failure-cause tagging (2026-07-07, user): distinguishes DRIFT_OFF
+        (marker left the FoV off-center -> the accumulated-position-error precursor, see
+        feedback_terminal_overflow_deck_flyaway and the a_u drift investigation) from OVERFLOW
+        (marker spanned the frame, still over target -> the close-range deck failure) at the
+        moment a caller (landing_test.py) checks it -- e.g. right when TARGET_LOST/terminal
+        perception loss triggers, to auto-tag root cause instead of requiring a manual trace."""
+        if self._last_drifted_off:
+            return "DRIFT_OFF"
+        if self._last_overflow:
+            return "OVERFLOW"
+        return "UNKNOWN"
 
     def getImgFeatureParam(self):
         """Calibrated, KF-smoothed image-feature vector (4-vec).

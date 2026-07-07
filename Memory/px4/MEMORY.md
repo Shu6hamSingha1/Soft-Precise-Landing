@@ -4,6 +4,19 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **🟢🟢 2026-07-04 (LATEST) — PERCEPTION-ON OBSERVER FIXED + DECK FLY-AWAY ROOT-CAUSED.**
+> Four validated centroid-rate observer fixes (frame-pair, lstsq consolidation, w_z sign,
+> KF q 1e-4→1e-3; off-center velocity now 0.85-0.94, was dead/anti/0.3-0.6) —
+> [[feedback_centroid_rate_observer_fixes]], committed 3cc7b0b+ede3058. Recovery + descent now
+> WORK (drone reaches deck near-centered ~0.05m). The remaining fly-away/TL is **entirely a
+> DECK event = terminal marker OVERFLOW as Z→0 (NOT drift-out)**: corners exceed the frame while
+> centered → loom held-stale under-reports descent 5× (blows through the 0.2m contact + bounce) +
+> lateral goes blind (ring has ~0 lateral) → armed+tilted+blind drone launches; loom-inversion
+> touchdown detector defeated by the overflow flicker → [[feedback_terminal_overflow_deck_flyaway]].
+> V_ds KF q re-baked 1.0→10.0 (severity band-aid, not root; ⚠ needs terminal-commit fix) —
+> [[feedback_vds_kf_q_severity_bandaid]]. NEXT: near-centered proximity/extent commit at ~0.2m
+> (reinstate the 06-30-removed extent-commit) + a_u decomposition across the bounce (AU_DECOMP_DBG=1).
+
 > **⛔ 2026-06-26 CONTROL-PARAM CORRECTION (GT-FB, user-led).** The lateral residual IS gain-tunable:
 > **`kappa_0_xy` 0.125->0.5 un-freezes the frozen kappa_xy** -> s_e_n converges -> IC4 2/2 SP + IC1 2/2 SP
 > (n=2). This OVERTURNS every "lateral wall NOT gain-tunable / perception / architecture / inner-loop-velocity /
@@ -182,3 +195,11 @@
 - [aggregate_calibration[_phased].py methodology](reference_aggregate_calibration.md) — phased default; signal-floor per-axis CIs; signed cal reveals ω_x/y negative
 - [⭐ Perception-ON baseline (2026-07-03): config transfers stably (0 fly/25) + sub-meter IC1-4, target_lost on ALL (mid-descent feature staleness) + IC5 never acquires (FoV-edge marker); binding gap = perception CONTINUITY not control](project_perception_on_baseline.md)
 - [⭐ Nested marker switch (2026-07-03): single 1m -> nested 0-small_10-big.png 2m (big ID10 7-10m, small ID0 regenerated smaller ratio 10.63 -> detected to 0.08m for touchdown margin); IMG_MARKER_PRIORITY=big NEW default (biggest marker for observability); NEEDS output re-cal; concentric=no corner spread (board would fix flow rank-deficiency)](project_nested_marker_switch.md)
+- [⭐ Centroid-rate observer: 4 validated fixes (2026-07-04)](feedback_centroid_rate_observer_fixes.md) — frame-pair (quats[1]→quats[0]) + lstsq consolidation + w_z sign (_oz=−_wv[2], fixes h_y anti-corr) + KF q 1e-4→1e-3; off-center velocity 0.85-0.94 (was dead/anti/0.3-0.6). Committed 3cc7b0b+ede3058
+- [⭐ Deck fly-away/TL ROOT = terminal marker OVERFLOW not drift-out (2026-07-04, ⚠ NOT universal, see project_dense_recovery_and_failure_tagging)](feedback_terminal_overflow_deck_flyaway.md) — corners exceed frame while centroid centered (0.95>0.89 edge); loom held-stale under-reports descent 5× → blow through 0.2m + bounce; lateral blind (ring=~0 lateral); loom-inversion touchdown defeated by flicker. Recovery+descent WORK; failure is all at the deck. ⚠ 07-07: at least one verified fly-away was DRIFT-OFF at alt~2.5m, not overflow — check altitude at Ncorn->0 case-by-case, don't assume; use getFailureCause() to auto-tag.
+- [V_ds KF q 1.0→10.0 re-bake (2026-07-04): q is a fly-away SEVERITY band-aid, not the root](feedback_vds_kf_q_severity_bandaid.md) — 06-30 terminal-osc rationale stale (PR0=10 handles 1/Z); q=10→7-31m deck fly-aways, q=1→~1m TL; restores off-center low-lag; ⚠ needs terminal-commit fix or env-revert to 1.0
+- [⛔ DEAD-END (RECONFIRMED 07-07 w/ CLEAN signal): ring loom for h_z at terminal](feedback_ring_loom_hz_terminal_deadend.md) — 3 ring bugs found+fixed (arm-mask, station-pairing, fake-zero sentinel; keep the fixes). Even with the loom now CLEAN+verified (ring_hz≈marker_hz≈GT), a fly-away STILL occurred, launching >1s AFTER the loom-ring went silent -> the terminal fly-away is an INDEPENDENT lateral/bounce mechanism, not a loom problem. Keep ring-commit/loom-ring OFF; don't chase h_z fixes here. WINNER: observer+DESCENT_GATE (5/5 deck, 0.055-0.095m, 0 fly). Also: ad-hoc GT scripts must feed GTFeedback continuously (stateful; gap-feeding inflates std ~2x).
+- [⭐ AGREED terminal velocity-handover design (2026-07-04, ⛔ ACTION superseded — see ring_loom deadend)](project_terminal_velocity_handover_design.md) — retarget PLASMC_TERMINAL_COMMIT: keep marker s (position, moving-target-OK), switch flow h_xy+h_z→RING, gated on d(logM) handover THEN centered; fixes the ACTUAL roots (corrupted velocity) vs TERMINAL_COMMIT's zeroing zeta_r (position, wrong signal); trigger=handover not extent (flicker-robust)
+- [⭐ h-extrapolation BAKED default-ON (2026-07-07)](feedback_h_extrapolation_baked.md) — PLASMC_H_EXTRAP=1 replaces 2026-05-13 hard-zero; the old failure was 3 fixable bugs (self-reference, no decay, fit-through-clipped-samples), not extrapolation itself being unsafe. Validated: 0/3 misses vs baseline 1/5 (GT xy 2.7m). ⚠ s/_img_feature_param has the SAME unfixed self-reference bug — next target, NOT yet fixed.
+- [Dense-recovery (RANSAC homography) + failure-cause auto-tagging (2026-07-07)](project_dense_recovery_and_failure_tagging.md) — PLASMC_DENSE_RECOVER unified-staleness-gate implementation, validation MIXED (do not bake); getFailureCause()->DRIFT_OFF/OVERFLOW/UNKNOWN now auto-tags TARGET_LOST. Also: recurring SIGSEGV rc=139 is a pre-existing SITL infra flake, not a code-change symptom.
+- [⚠ _savgol_predict suspected in a 23.93m fly-away, NOT confirmed (2026-07-07)](feedback_savgol_predict_suspect_flyaway.md) — default-ON model-based h spike-reconstruction is CONTROL-AFFECTING (feeds a_u directly, not just logging); false-triggers frequently on dt-floor-amplified noise (confirmed); the specific catastrophic jump (h 0.02->1.25 in one step, invisible in raw/KF perception) not yet reproduced live. SAVGOL_PREDICT_DBG=1 available.

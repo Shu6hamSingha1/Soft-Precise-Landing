@@ -460,6 +460,12 @@ class Controller(Thread):
         # Co-enable PLASMC_DESCENT_GATE=1 so the handover->centered window descends cautiously.
         self._terminal_ring_commit = os.environ.get("PLASMC_TERMINAL_RING_COMMIT", "0") == "1"
         self._ring_committed = False
+        # LOOM-RING-ON-LOSS (2026-07-05, user): the SIMPLE rule — when the terminal decode is lost
+        # (observer inactive = Ncorn->0) BUT the marker had NOT drifted off the FoV (it OVERFLOWED /
+        # was occluded while still over the target, per img _last_drifted_off), swap ONLY h_z onto the
+        # marker-less ring loom (vertical brake survives the deck occlusion). h_xy untouched. Reuses the
+        # existing PLASMC_MARKER_FOV_MARGIN overflow-vs-drift logic. Independent of the full ring-commit.
+        self._loom_ring_on_loss = os.environ.get("PLASMC_LOOM_RING_ON_LOSS", "0") == "1"
         # TERMINAL-COMMIT LATERAL TAPER (2026-06-22): the descent-gate centers the drone to the
         # deck (commit-ready 14/15 IC2) but the final ~0.3 m destabilizes — at Z<0.3 the 1/Z-
         # corrupted lateral flow spikes a_u -> launch. Once committed (marker fills FoV at the
@@ -746,21 +752,22 @@ class Controller(Thread):
     def _ringCommitStep(self, s_e_n, ds_e_n):
         """Terminal RING-commit gate (project_terminal_velocity_handover_design). Latches
         _ring_committed (one-way) on: img HANDOVER_LATCHED (big->small, depth-free entered-terminal)
-        AND centered (|s_e_n|<TC_SEN) AND settled (|ds_e_n|<TC_DSEN, velocity-matched -> valid for
-        moving targets). On commit the _updateOptFlow override swaps h_xy->0 + h_z->ring loom; zeta_r
-        (marker-s position) stays LIVE (centered gate => zeta_r already small, no kick to zero)."""
+        AND OVER_TARGET (2026-07-05 user: nadir inside the small marker's V-frame quad -> we are over the
+        target; RELAXED from the s_e_n bearing gate, which was ambiguous at altitude) AND settled
+        (|ds_e_n|<TC_DSEN, velocity-matched -> moving-target-valid). On commit the _updateOptFlow override
+        swaps h_xy->0 + h_z->ring loom; zeta_r (marker-s position) stays LIVE."""
         if self._ring_committed:
             return
         if not getattr(self._img_node, 'HANDOVER_LATCHED', False):   # gate 1: entered terminal
             self._tc_count = 0
             return
-        centered = float(np.linalg.norm(s_e_n)) < self._tc_sen
-        settled  = float(np.linalg.norm(ds_e_n)) < self._tc_dsen
-        if centered and settled:                                     # gates 2+3
+        over_target = bool(getattr(self._img_node, 'OVER_TARGET', False))    # gate 2: nadir inside small marker (replaces s_e_n)
+        settled     = float(np.linalg.norm(ds_e_n)) < self._tc_dsen          # gate 3: velocity-matched
+        if over_target and settled:
             self._tc_count += 1
             if self._tc_count >= self._tc_frames:
                 self._ring_committed = True
-                print(f"[controller] RING-COMMIT: handover+centered+settled -> h_xy=0, h_z=ring loom "
+                print(f"[controller] RING-COMMIT: handover+over_target+settled -> h_xy=0, h_z=ring loom "
                       f"(|s_e_n|={float(np.linalg.norm(s_e_n)):.3f} |ds_e_n|={float(np.linalg.norm(ds_e_n)):.3f})")
         else:
             self._tc_count = 0
@@ -1419,6 +1426,24 @@ class Controller(Thread):
             h = np.array(h, dtype=float)
             h[0] = 0.0; h[1] = 0.0
             h[2] = float(getattr(self._img_node, 'RING_LOOM', h[2]))
+        elif self._loom_ring_on_loss:
+            # SIMPLE loom-only rule: terminal decode lost (observer inactive) + marker NOT drifted off
+            # (overflow/occlusion, still over target) -> h_z <- ring loom; h_xy left as-is.
+            _lost = not bool(getattr(self._img_node, '_observer_valid', True))
+            _over = bool(getattr(self._img_node, 'OVER_TARGET', False))   # nadir inside small marker = terminal gate (rejects the altitude flicker)
+            if _lost and _over and not bool(getattr(self._img_node, '_last_drifted_off', False)):
+                _rl = float(getattr(self._img_node, 'RING_LOOM', h[2]))
+                if os.environ.get("LOOM_RING_DBG", "0") == "1":
+                    _nst = int(getattr(self._img_node, 'RING_N_STATIONS', -1))
+                    _rdv = float(getattr(self._img_node, 'RING_DIV_RAW', float('nan')))
+                    _rmm = float(getattr(self._img_node, 'RING_MOMENT_RAW', float('nan')))
+                    print("[lr] t%.3f LOOM->RING: marker_hz=%+.2f ring_hz=%+.2f (src=%s) "
+                          "div_raw=%+.2f mom_raw=%+.2f Nstations=%d over=%s drifted=%s" % (
+                        float(getattr(self._img_node, '_stamp', 0.0)), float(h[2]), _rl,
+                        self._img_node._ring_loom_source, _rdv, _rmm, _nst, _over,
+                        bool(getattr(self._img_node, '_last_drifted_off', False))), flush=True)
+                h = np.array(h, dtype=float)
+                h[2] = _rl
         self._h.append(h)
         if self._savgol_predict:
             self._h_raw.append(np.asarray(h, float).copy())      # IMMUTABLE raw measurement
@@ -1429,6 +1454,7 @@ class Controller(Thread):
                 self._h_good.append(not bool(np.any(spiked)))    # frame good iff no axis spiked
                 if np.any(spiked[:2]):                           # LATERAL spike -> reconstruct lateral only
                     hc = np.asarray(self._h[-1], float).copy()
+                    _hc_before = hc.copy()
                     pred = (self._predictForward(self._h_raw, self._h_good, self._predict_lead)
                             if self._predict_mode == "savgol" else None)
                     for k in range(2):                           # LATERAL ONLY. The loom (k=2) is LEFT as the
@@ -1436,6 +1462,12 @@ class Controller(Thread):
                             hc[k] = (pred[k] if self._predict_mode == "savgol"   # ḣ_z=-β·a_z-h_z² (manuscript
                                      else self._predictModel_h(k, self._predict_lead))  # eq h-dot) are β-coupled,
                     self._h[-1] = hc                             # not depth-free predictable; the z-funnel must see it
+                    if os.environ.get("SAVGOL_PREDICT_DBG", "0") == "1":
+                        print("[sgp] t%.3f SPIKE-RECONSTRUCT: dh=%s spiked=%s mode=%s h_raw_prev=%s h_raw_now=%s "
+                              "h_before=%s h_after=%s" % (
+                            float(getattr(self._img_node, '_stamp', 0.0)), np.round(dh, 3), spiked.tolist(),
+                            self._predict_mode, np.round(self._h_raw[-2], 3), np.round(self._h_raw[-1], 3),
+                            np.round(_hc_before, 3), np.round(hc, 3)), flush=True)
             else:
                 self._h_good.append(True)
 
