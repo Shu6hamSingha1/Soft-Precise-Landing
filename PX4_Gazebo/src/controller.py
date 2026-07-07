@@ -1454,6 +1454,7 @@ class Controller(Thread):
                 self._h_good.append(not bool(np.any(spiked)))    # frame good iff no axis spiked
                 if np.any(spiked[:2]):                           # LATERAL spike -> reconstruct lateral only
                     hc = np.asarray(self._h[-1], float).copy()
+                    _hc_before = hc.copy()
                     pred = (self._predictForward(self._h_raw, self._h_good, self._predict_lead)
                             if self._predict_mode == "savgol" else None)
                     for k in range(2):                           # LATERAL ONLY. The loom (k=2) is LEFT as the
@@ -1461,6 +1462,12 @@ class Controller(Thread):
                             hc[k] = (pred[k] if self._predict_mode == "savgol"   # ḣ_z=-β·a_z-h_z² (manuscript
                                      else self._predictModel_h(k, self._predict_lead))  # eq h-dot) are β-coupled,
                     self._h[-1] = hc                             # not depth-free predictable; the z-funnel must see it
+                    if os.environ.get("SAVGOL_PREDICT_DBG", "0") == "1":
+                        print("[sgp] t%.3f SPIKE-RECONSTRUCT: dh=%s spiked=%s mode=%s h_raw_prev=%s h_raw_now=%s "
+                              "h_before=%s h_after=%s" % (
+                            float(getattr(self._img_node, '_stamp', 0.0)), np.round(dh, 3), spiked.tolist(),
+                            self._predict_mode, np.round(self._h_raw[-2], 3), np.round(self._h_raw[-1], 3),
+                            np.round(_hc_before, 3), np.round(hc, 3)), flush=True)
             else:
                 self._h_good.append(True)
 

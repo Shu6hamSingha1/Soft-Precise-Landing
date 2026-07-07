@@ -56,6 +56,16 @@ Re-cal (output) -> re-run the perception-ON IC gate with the nested marker to ch
 decode continuity removes the target_lost/open-loop-fallback (and whether IC5's FoV-edge
 acquisition improves). Continues [[project_perception_on_baseline]].
 
+## ⛔ REVERTED to ORIGINAL image (2026-07-03, user directive "use original image")
+My regenerated smaller-inner PNG is DROPPED. Now using the ORIGINAL user-tested
+`0-small_10-big.png` (RGBA, inner ID0 167px). Re-measured actual nested ratio by
+progressive downscale (big ID10 only decodes downscaled): **ID10/ID0 = 6.06** (the
+`.bak_orig7ratio` filename's "7" was a rough earlier estimate; 6.06 is the direct
+detection). **Layout now `{0:[0,0,1], 10:[0,0,6.06]}`** (the 10.63 / 108px-inner numbers
+in "What changed" + "Sizing" above are the DEAD regenerated marker — superseded). The
+regeneration was both unnecessary (original was already tested-detectable) and the source
+of the grayscale bug below.
+
 ## ⛔ GOTCHA (2026-07-03, cost ~15 failed SITL attempts): gz marker PNG MUST be RGBA
 The regenerated `0-small_10-big.png` was saved 1-channel GRAYSCALE (cv2.IMREAD_GRAYSCALE +
 imwrite). gz's PBR `<albedo_map>` loader CANNOT handle a grayscale texture → gz HANGS loading
