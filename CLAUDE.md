@@ -114,21 +114,27 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
   calibration_data/output/<timestamp>/  — output_calibration recordings (gitignored)
   calibration_data/input/<timestamp>/   — input_calibration recordings  (gitignored)
   run_logs/                    — per-component logs (gitignored)
-  docs/                        — design/analysis notes (check these before re-deriving; status as of 2026-06-10):
+  docs/                        — design/analysis notes (check these before re-deriving; individual file currency varies, check each file's own dated header rather than trusting this list):
     PLASMC_TUNING_GUIDE.md     — ⭐ START HERE for any tuning/landing-diagnosis work: end-to-end guide (current state, data map, param inventory, dead-ends, methodology, gotchas; indexes the rest). Auto-injected each session by a SessionStart hook (.claude/settings.json, local).
-    SH_REFERENCE.md            — canonical .sh patterns; read before authoring new .sh (CURRENT)
-    FUNNEL_CBF_DESIGN.md       — target-visibility cbf2 design (CURRENT; Jun-9 two-phase-δ addendum at top)
-    CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math CURRENT; Jun-4–10 intentional divergences in top addendum)
-    PARAMETER_ANALYSIS.md      — comprehensive honest-cal parameter analysis + failure diagnosis (rewritten 2026-06-10; CURRENT)
-    PERCEPTION_FLOW_FINDINGS.md  — perception-layer findings (CURRENT): flow honest at altitude, LK dynamic range ~2 m/s is the binding limit (next lever = pyramidal LK)
-    CONTROL_FRAMEWORK_REVIEW.md  — per-component (lateral/yaw/descent) implementation + performance review + exhaustive clamp audit (2026-06-11): control law sound + gain-exhausted, binding limit is perception front-end; clamps healthy
+    SH_REFERENCE.md            — canonical .sh patterns; read before authoring new .sh
+    FUNNEL_CBF_DESIGN.md       — target-visibility cbf2 design
+    CONTROLLER_PARITY.md       — MATLAB↔Python diff (parity math + intentional divergences)
+    PARAMETER_ANALYSIS.md      — comprehensive honest-cal parameter analysis + failure diagnosis
+    PERCEPTION_FLOW_FINDINGS.md  — perception-layer findings (flow honest at altitude, LK dynamic range is a binding limit)
+    CONTROL_FRAMEWORK_REVIEW.md  — per-component (lateral/yaw/descent) implementation + performance review + clamp audit
+    CBF_SEN_MATLAB_PORT.md     — CBF cbf2 MATLAB↔Python port map
+    MOVING_TARGET_PREP.md      — moving-target (rover) phase handoff/prep notes
+    TERMINAL_KICK_COMMIT_DESIGN.md — terminal-kick approach+commit design spec
+    HANDOFF_combined_barrier.md / HANDOFF_velocity_damping.md — dated handoff notes for those specific threads
+    OBSOLETE_CLEANUP_HANDOFF.md — test-data cleanup plan/history
+    TEST_RECORD.md              — companion doc for tools/build_test_record.py's scan output
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 
 ## PX4/Gazebo Phase — Quick Reference
 
 **Stack:** PX4 SITL + Gazebo Harmonic + ROS 2 (`ros_gz_bridge`) + uXRCE-DDS (`MicroXRCEAgent`)
-**Drone:** `x500_mono_cam_down` (airframe 4014); downward camera 1280×960 @ f≈540 px, hfov=1.74 rad
+**Drone:** `x500_mono_cam_down` (airframe 4014); downward camera 640×480 @ fx=fy=270 px, hfov=1.74 rad (1280×960 was tested and rejected — see Camera section below)
 **Scenarios:** `aruco` world (stationary target), `rover` world (moving rover with marker, airframe 4022)
 **Interface:** MAVSDK over UDP (`udp://:14540`); body-rate + thrust setpoints
 
@@ -147,13 +153,7 @@ HEADLESS=1 bash scripts/run_aruco_landing.sh       # offscreen Qt, no visible wi
 - 1280×960 → Gazebo native renderer drops to 21 Hz with 92 ms ROS-bridge outliers.
 - Same hfov as MATLAB → PLASMC gain tuning is invariant.
 
-**Sensor-cal (applied 2026-05-12, from 5-run median):**
-```python
-# src/img_data.py — sensor_cal block
-_sensor_cal_hw = np.diag([0.1518, 0.1777, 0.0651, 0.2083, 0.2209, 0.2435])
-_sensor_cal_s  = np.diag([0.5814, 0.5809, 1.0000, 1.0000])
-```
-Legacy `diag(1,1,1,1/3,1/3,1)` / `diag(1/6,1/6,1,1)` were ~10× off on optical flow — likely cause of earlier PLASMC `a_u` blow-up.
+**Sensor-cal:** `_sensor_cal_hw` / `_sensor_cal_s` in `src/img_data.py` (~line 130) have been re-derived many times since the original 2026-05-12 fix (13-run board recal, single-marker recal, reduced-lat-solve recal, observer cal — most recently 2026-07-03, now a full 6×6 matrix, not a simple diagonal). **Don't rely on a value pasted here — it will be stale; read the live block in img_data.py, which carries inline provenance comments for every revision.** The original point stands as history: legacy `diag(1,1,1,1/3,1/3,1)` / `diag(1/6,1/6,1,1)` were ~10× off on optical flow — likely cause of the earliest PLASMC `a_u` blow-ups.
 
 **Runtime savgol filter (applied 2026-05-13):**
 ```python
@@ -196,8 +196,8 @@ Calibration data goes to timestamped folders under `calibration_data/`; gitignor
 - **PX4/Gazebo phase:**
   - The `~/ws/scripts/soft_precise_landing/` files are the **working baseline**; never edit in place.
   - `PX4_Gazebo/` in this repo holds the MATLAB-aligned, git-tracked Python.
-  - `img_data.py` keeps `_sensor_cal_s = diag(1/6, 1/6, 1, 1)` and `_sensor_cal_hw = diag(1, 1, 1, 1/3, 1/3, 1)` — Gazebo-tuned, do not remove.
-  - Camera intrinsics live in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (hfov=1.74, 1280×960 → fx=fy≈540).
+  - `img_data.py`'s `_sensor_cal_s` / `_sensor_cal_hw` are Gazebo-tuned (re-derived from real SITL calibration recordings) — always read the current values + inline provenance comments in the file itself, don't assume a value quoted elsewhere in docs/memory is current.
+  - Camera intrinsics live in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (hfov=1.74, 640×480 → fx=fy=270; verified live in the SDF 2026-07-09). Note: `_resolution` is stored as `(msg.height, msg.width)` = `(480, 640)` in `img_data.py` because ArUco detection runs on the image AFTER a `cv2.ROTATE_90_CW` — so the working detection frame is 480 wide × 640 tall, and `self.center = (240, 320)` is correct for THAT rotated frame, not the raw 640×480 sensor frame. Don't "fix" this pairing without re-deriving both together (img_data.py:69-85 has the full derivation).
 - **Don't run things for the user:**
   - MATLAB sims: user runs them; check `.mat` result files instead. Don't invoke `matlab -batch`.
   - Gazebo SITL: GUI-bound; user runs `bash scripts/run_aruco_landing.sh` themselves.
@@ -206,6 +206,6 @@ Calibration data goes to timestamped folders under `calibration_data/`; gitignor
 ## Token Optimization
 
 - Use `offset`/`limit` when reading large MATLAB files (`visualControl_IBVS_adaptive.m` ≈ 600 lines, `visualControl_comparison.m` ≈ 600 lines).
-- Use `PX4_Gazebo/src/controller.py` (~600 lines) and `src/img_data.py` (~430 lines) judiciously — read by section when iterating.
+- Use `PX4_Gazebo/src/controller.py` (~2,600 lines) and `src/img_data.py` (~3,000 lines) judiciously — read by section when iterating; both have grown substantially since the project started, always re-check with `wc -l` rather than trusting a cached line count.
 - Don't re-explore the codebase — the structure above is the map.
 - Batch git commits; don't commit after every line edit.
