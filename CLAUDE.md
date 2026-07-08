@@ -90,23 +90,66 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     record_output_calibration.py      — drives sinusoidal commands; saves cal recordings
     impulse_response.py        — body-rate impulse test for PX4 rate-loop lag
     validate_image.py          — ROS 2 subscriber; saves frames + ArUco overlay
-  tools/                       — analyzers/aggregators (post-recording)
-    aggregate_calibration_phased.py — canonical phased-excitation aggregator
-    aggregate_calibration.py   — legacy aggregator (mixed/untagged recordings)
-    analyze_calibration.py     — ports plotter_output cell-38 LSTSQ validation
-    validate_pose_transforms.py — 6 sanity checks on frame conventions
-    tune_savgol.py             — offline + runtime savgol picks
-    analyze_*.py / scan_all_landings.py / coord_descent_tune.py — diagnostics
-  scripts/                     — bash launchers (canonical patterns in docs/SH_REFERENCE.md)
-    run_aruco_landing.sh       — one-command landing-test launcher
-                                 (HEADLESS=1 for offscreen Qt; auto-cleans)
-    run_aruco_landing_retry.sh — retry-on-flake wrapper around run_aruco_landing
-    run_output_calibration.sh  — headless output-cal sweep launcher
-    run_input_calibration.sh   — headless input-cal sweep launcher
-    run_ic_validation.sh       — mandatory IC2-5 pre-merge gate
-    run_multi_ic_landing.sh    — multi-IC landing sweep
-    run_marker_grace.sh, run_virtual_compass.sh, run_impulse_response.sh
-    measure_image_fps.sh, validate_image_feed.sh, poll_phase1.sh
+  tools/                       — analyzers/aggregators (post-recording); ~60 scripts as of 2026-07-09,
+                                 grep tools/ for anything not below rather than assuming this list is exhaustive:
+    Calibration (derive/aggregate/validate):
+      aggregate_calibration_phased.py — canonical phased-excitation aggregator
+      aggregate_calibration.py   — legacy aggregator (mixed/untagged recordings)
+      aggregate_input_calibration.py, aggregate_sensitivity.py, aggregate_big_sensitivity.py
+      analyze_calibration.py     — ports plotter_output cell-38 LSTSQ validation
+      derive_board_cal.py, derive_reduced_lat_cal.py, derive_ring_cal.py — per-cal-regime derivation
+      validate_pose_transforms.py — 6 sanity checks on frame conventions
+      validate_output_flow.py, validate_gt_feedback.py, validate_cbf.py
+      tune_savgol.py             — offline + runtime savgol picks
+      tune_lk_dynamic_range.py, tune_lk_survival.py, tune_aruco_decode.py
+      find_camera_rotation.py
+    GT / diagnostics:
+      gt_optical_flow.py         — ⭐ canonical GT flow/loom/s/alpha (see reference_gt_optical_flow memory); use THIS not ad-hoc gradients
+      gt_per_axis.py, gt_yaw_analysis.py, gt_cycle_probe.py
+      analyze_gt_rate_lag.py, analyze_gt_tuning.py, analyze_impulse_response.py, analyze_loop_latency.py
+      analyze_saturation_audit.py, analyze_sensor_noise.py, analyze_sigma_compare.py, analyze_timeseries.py
+      analyze_marker_switch.py, analyze_explosion_chain.py, analyze_precision_by_gain.py
+      analyze_why_no_precise.py, analyze_yaw_align.py, analyze_baked_validation.py, analyze_cbf_visibility.py
+      analyze_matlab_phase1.py, perc_diag_aligned.py
+      diagnose_failure_cause.py, diagnose_intervention_reps.py
+      scan_all_landings.py, coord_descent_tune.py
+      calibrate_loom_commit.py, calibrate_loom_gain.py
+      sim_klt_persistence.py
+    Marker/board generation:
+      make_aruco_board.py, make_coarse_textured_marker.py, make_fineline_textured_board.py,
+      make_multiscale_marker.py, make_landing_montage.py
+    Test-record / cleanup (see reference_test_record_system memory):
+      build_test_record.py, build_landing_test_manifest.py, build_obsolete_manifest.py
+      execute_landing_test_cleanup.py, execute_obsolete_cleanup.py
+      refresh_scan_sheets.py, restructure_parameter_record.py, log_param_record.py
+  scripts/                     — bash launchers (canonical patterns in docs/SH_REFERENCE.md — READ before
+                                 authoring a new .sh); ~60 scripts as of 2026-07-09:
+    Core launchers:
+      run_aruco_landing.sh       — one-command landing-test launcher
+                                   (HEADLESS=1 for offscreen Qt; auto-cleans)
+      run_aruco_landing_retry.sh — retry-on-flake wrapper around run_aruco_landing
+      run_rover_landing.sh, run_rover_landing_retry.sh — moving-target (rover world) equivalents
+      run_output_calibration.sh  — headless output-cal sweep launcher
+      run_input_calibration.sh   — headless input-cal sweep launcher
+      run_ic_validation.sh       — mandatory IC2-5 pre-merge gate
+      run_multi_ic_landing.sh    — multi-IC landing sweep
+      run_marker_grace.sh, run_virtual_compass.sh, run_impulse_response.sh, run_terminal_approach.sh
+      measure_image_fps.sh, validate_image_feed.sh, poll_phase1.sh
+      run_singleworld_n5.sh, run_singlemarker_recal.sh
+      run_knob_sweep.sh          — generic parameter-sweep driver
+    A/B-test harnesses (one-off, tied to a specific past tuning thread — self-descriptive by name,
+    pattern documented in SH_REFERENCE.md; check test_data/ + memory for what each thread concluded
+    before reusing): run_aucap_tuned_ic2_ab.sh, run_aumax_ic2_sweep.sh, run_capsweep_ic1_ab.sh,
+    run_cap_icgate_ab.sh, run_cbf_ab.sh, run_cb_ic2_ab.sh, run_centroidrate_ic2_ab.sh,
+    run_combaucap_icgate_ab.sh, run_combinedcap_icgate_ab.sh, run_commitcap_ic1_ab.sh,
+    run_commitearly_ic1_ab.sh, run_commit_ic1_ab.sh, run_commit_ic2_ab.sh, run_commitsen_ic2_ab.sh,
+    run_commitzero_ic1_ab.sh, run_dgate_ic2_ab.sh, run_dwkf_icgate_ab.sh, run_ez_ic2_ab.sh,
+    run_ic2_singlemarker.sh, run_kltmargin_ic2_ab.sh, run_kltpersist_ic2_ab.sh, run_latvel_ic2_sweep.sh,
+    run_loomcal_ic1_ab.sh, run_loom_ic1_ab.sh, run_loomkf_icgate_ab.sh, run_momloom_ic2_ab.sh,
+    run_momloomsz_ic2_ab.sh, run_nz_ic2_ab.sh, run_p2inf_ic2_sweep.sh, run_rcond_ic1_ab.sh,
+    run_rotz_ic1_ab.sh, run_singlegft_ic2_ab.sh, run_singlemarker_ic2_ab.sh, run_singlemoment_ic2_ab.sh,
+    run_singlrcond_ic2_ab.sh, run_softz_ic2_ab.sh, run_vdfbake_icgate_ab.sh, run_vdfgains_ic2_ab.sh,
+    run_yawconv_ic2_sweep.sh, run_yawfilt_ic2_ab.sh
   notebooks/
     plotter_output_calibration.ipynb — GT vs calibrated h/w/s with run-picker
     plotter_input_calibration.ipynb  — GT vs commanded body-rate+thrust
