@@ -157,7 +157,8 @@ class IMG_PROCESSOR(Thread):
         # GT-DIRECT (RING_CAL_MODE=gt) was TRIED and is WORSE: it can only use the 5
         # co-sampled fused runs (noisy, stressed SITL session: R^2 Hx 0.34 Hz 0.57
         # Wz 0.56) — so transfer (13 recordings) wins.
-        # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
+        # Ring cal below is still used when FLOW_FUSE_RING=1 (default OFF as of 2026-07-09 --
+        # see the _fuse_ring assignment for why -- ring loom is unreliable near terminal/contact).
         # SINGLE-MARKER ring cal (2026-06-23, transfer mode keyed to the new corner cal).
         # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
         # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
@@ -413,14 +414,13 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
-        # RELAXED KLT-FALLBACK GATE (2026-07-09, default-OFF pending n>=5 validation): the
-        # strict all-4-corners-tracked requirement discards an otherwise-good 3/4-tracked frame
-        # outright. KLT Diag logging (added same day) showed a "momentary flicker" regime
-        # (single corner losing LK lock for 1-2 frames during otherwise-clean tracking) where
-        # 100% of gate4-rejections were exactly 3/4 tracked -- but that's n=1, and this changes
-        # CONTROL-AFFECTING behavior (which corners feed s/flow), so it stays env-gated until
-        # validated at n>=5 rather than baked on this single run. MARKER_KLT_RELAX_GATE=1 to test.
-        self._klt_relax_gate = os.environ.get("MARKER_KLT_RELAX_GATE", "0") == "1"
+        # RELAXED KLT-FALLBACK GATE (2026-07-09; BAKED default-ON 2026-07-09 for the n>=5
+        # IC1-5 controller-tuning validation pass): the strict all-4-corners-tracked requirement
+        # discarded an otherwise-good 3/4-tracked frame outright. KLT Diag logging (added same
+        # day) showed a "momentary flicker" regime (single corner losing LK lock for 1-2 frames
+        # during otherwise-clean tracking) where 100% of gate4-rejections were exactly 3/4
+        # tracked. Set MARKER_KLT_RELAX_GATE=0 to revert to the strict 4-corner requirement.
+        self._klt_relax_gate = os.environ.get("MARKER_KLT_RELAX_GATE", "1") == "1"
         self._klt_min_tracked = 3 if self._klt_relax_gate else 4
         # Guard #1 RESTORED (2026-06-11): clip the marker-LOST centroid EXTRAPOLATION to the FoV.
         # It was removed in the remove-all-guards cleanup, and the RingLoomFix n=5 fly-aways showed
@@ -822,15 +822,24 @@ class IMG_PROCESSOR(Thread):
         self._ekf_P = np.eye(9) * 1.0
         self._ekf_init = False
         self._ekf_prev_t = None
-        # DEFAULT ON (2026-06-07). The EKF fused [h_tr;w] is the best estimator by
-        # signal (R^2 vs GT across cal/multisine/landing, wins h_z/w_z) AND feeds
-        # the controller corner-EQUIVALENT h_z (fused h_z == corner-KF h_z, ratio
-        # 1.00) so the descent input is unchanged from corner-only. The earlier
-        # 1-rep no-descent was UNATTRIBUTED (loom stayed 0 despite commanded
-        # descent) and is NOT an EKF signal change; a fused-vs-corner descent
-        # comparison is the check (if corner also fails to descend at that IC it
-        # was a fluke). Set FLOW_FUSE_RING=0 to revert to corner-only.
-        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "1") == "1"
+        # ⛔ DEFAULT FLIPPED TO OFF (2026-07-09, BAKED for the n>=5 IC1-5 controller-tuning
+        # validation pass). Was DEFAULT ON since 2026-06-07 on the strength of R^2-vs-GT bench
+        # comparisons (cal/multisine/landing) -- but this session found the ring loom estimator
+        # produces spurious large values (|h_z| up to ~1.9, vs a GT-implied true value near zero)
+        # SPECIFICALLY in the terminal/close-range regime, independent of marker-decode status
+        # (confirmed: ring_div/ring_flow_z were already wrong ONE FRAME BEFORE a marker loss, while
+        # the corner-only signal was still small/correct) -- and since this is the DEFAULT fusion
+        # input the controller consumes, the bad ring value propagates into h(t) and, via the
+        # loom-flow cross term, into a_u_xy, producing a terminal lateral kick. Live A/B (n=1,
+        # same IC1 scenario): FLOW_FUSE_RING=1 -> h_z spiked to -0.86..-1.9 near touchdown, endpoint
+        # ballooned well past min-alt precision; FLOW_FUSE_RING=0 -> h_z stayed in a tight, GT-
+        # consistent band (-0.29..-0.285) through the same window, endpoint matched min-alt
+        # precision almost exactly (no balloon). Matches the ALREADY-DOCUMENTED terminal ring-loom
+        # dead-end (feedback_ring_loom_hz_terminal_deadend memory: "ring loom for h_z at terminal...
+        # RECONFIRMED dead-end... keep ring-commit/loom-ring OFF") -- this bake finally acts on that
+        # finding for the FUSION path specifically (the memory addressed ring-COMMIT/loom-RING
+        # switching, not this default-on EKF fusion input). Set FLOW_FUSE_RING=1 to revert to fusion.
+        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
         self._H_ring   = np.block([[_I3, _I3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr+h_tv; w]
