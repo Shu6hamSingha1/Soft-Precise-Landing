@@ -7,6 +7,13 @@ metadata:
   originSessionId: 3c2f4c67-05c1-4e6f-966b-0e62018fc8a7
 ---
 
+> **✅ 2026-07-09 addendum — the FUSION path is now ALSO closed.** This file covered ring-COMMIT /
+> loom-RING-on-loss switching, but the always-on `FLOW_FUSE_RING=1` EKF fusion (default ON since
+> 06-07) kept injecting ring loom into the controller's h(t) anyway — the contradiction went
+> unnoticed until a terminal-kick trace. Default flipped to 0 (BAKED, commit bb0a675) + the WHY
+> behind the ring's terminal wrongness root-caused (fixed radii overlap the grown marker):
+> [[feedback_ring_fusion_marker_overlap]].
+
 **DEAD-END, do not retry: driving `h_z` from the ring loom at the terminal is HARMFUL.** Two
 env-gated implementations, both default-OFF, both confirmed to CAUSE fly-aways when they engage:
 - `PLASMC_TERMINAL_RING_COMMIT=1` (h_xy->0 + h_z->ring loom, gated handover+over_target+settled)

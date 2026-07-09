@@ -4,6 +4,31 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **🟢🟡 2026-07-09 (LATEST) — PERCEPTION-BUG SESSION: 3 fixes BAKED + ring-fusion root-caused + NEW post-touchdown divergence mechanism.**
+> BAKED (commits 463ade7→bb0a675): (1) **FLOW_FUSE_RING default 1→0** — ring loom goes non-physical once
+> MARKER_EXTENT_PX (~176px terminal) overlaps the fixed outer ring radii (161/199px): station survival 30→8.9,
+> |ring_div|>0.5 in 41-53% of frames in that extent band; corrupted h_z (−0.86..−1.9 vs GT≈0) entered a_u_xy via
+> the loom×flow cross term → terminal kick. The 2026-06-07 default-ON rationale ("fused==corner ratio 1.00") never
+> validated the ego/ground separation (stationary target can't distinguish it) — [[feedback_ring_fusion_marker_overlap]].
+> (2) **MARKER_KLT_RELAX_GATE default ON** — 3/4-corner gate + parallelogram completion (2D-pixels-only, scale-free);
+> momentary-flicker regime was 100% 3/4-rejections — [[feedback_klt_relax_gate_parallelogram]]. (3) **s-extrap
+> self-reference fixed** (h-extrap pattern) + the real-buffer must be captured POST-outlier-guard (my first version
+> pre-guard-captured a spike → traced terminal kick, fixed) — [[feedback_s_extrap_realbuf_ordering]].
+> BAKED SWEEP (IC1-5 n=5, 20260709-074333): **IC3 12.25→0.248 mean xy (κ-ratchet fly-away class GONE), IC4 0.247** —
+> but **IC1 REGRESSED 0.620→2.344 via a NEW mechanism: POST-TOUCHDOWN attitude divergence** (2/2 reps: clean touchdown
+> 0.05-0.12m → roll/pitch escalates 1°→7.5°+ while sitting on deck armed → oblique view → single-frame yaw-decode
+> jumps (43°→117°) → permanent marker loss → 3.3-8m endpoints). IC5 = known short-runway canary. NEXT: landed-state
+> commit/disarm (why does the loop keep fighting after touchdown?), paired A/B on whether ring removal unmasked it.
+> Full taxonomy + methodology: [[project_baked_sweep_and_posttouchdown_divergence]]. z_v side-quest (obliqueness not
+> depth, clamp reverted, 480×640 rotated frame): [[feedback_zv_obliqueness_finding]].
+
+- [⭐⭐ Ring-fusion marker-overlap root cause + FLOW_FUSE_RING=0 BAKE (2026-07-09)](feedback_ring_fusion_marker_overlap.md) — fixed ring radii 41-199px vs terminal extent ~176px → outer tiers sample the marker (depth-mixing + aperture-adversarial ArUco texture), whole tiers fail simultaneously so MAD can't save it; ego/ground design comment NEVER validated (user-led history dig); acts on the ring_loom_hz_terminal_deadend finding for the fusion path.
+- [⭐⭐ KLT relaxed 3/4 gate + parallelogram completion BAKED (2026-07-09)](feedback_klt_relax_gate_parallelogram.md) — KLT Diag logging split flicker (100% rescuable) vs collapse (0%) regimes; completion needs only 2D pixels + corner order; weak-perspective caveat at terminal; silent-LK-failure caveat.
+- [⭐ s-extrapolation real-buffer ordering rule (2026-07-09)](feedback_s_extrap_realbuf_ordering.md) — self-ref fix mirrors h-extrap; GENERAL RULE: real-sample fit buffers must capture POST-outlier-guard values ("real"≠"clean"); pre-guard capture traced to a terminal kick.
+- [⭐⭐ Baked-sweep results + POST-TOUCHDOWN attitude-divergence mechanism (2026-07-09)](project_baked_sweep_and_posttouchdown_divergence.md) — full IC1-5 table, 5-mechanism failure taxonomy (ring-spike/κ-ratchet/post-touchdown-divergence/corner-correspondence-anomaly/1Hz-cycle), getFailureCause UNKNOWN gap (5.7s blind blackout), clock-alignment + a_u-decomposition methodology.
+- [z_v = ray obliqueness NOT depth; symptom of tilt divergence; clamp reverted (2026-07-09)](feedback_zv_obliqueness_finding.md) — scale-free-safe; detection frame is 480×640 post-ROTATE_90_CW (center 240,320).
+- [Next-step candidate: extend parallelogram completion to partial/occluded marker recovery (2026-07-09, NOT STARTED)](project_partial_marker_parallelogram_recovery.md) — current parallelogram-completion (KLT-fallback tier) only rescues a transient single-corner LK dropout on an ALREADY-locked marker (needs `_prev_aruco_pts` from a prior full decode); does not help a marker never fully decoded (enters frame already occluded/clipped). Extending to true partial-visibility needs a different corner-acquisition front-end (dense-recovery homography or dedicated edge detector) feeding the same math. ⚠ caveat: the parallelogram (weak-perspective) approximation is weakest exactly in the marker-OVERFLOW-near-touchdown regime — the case this would help most — so accuracy there needs separate validation, don't assume it transfers from the momentary-flicker validation.
+
 > **🟢🟢 2026-07-04 (LATEST) — PERCEPTION-ON OBSERVER FIXED + DECK FLY-AWAY ROOT-CAUSED.**
 > Four validated centroid-rate observer fixes (frame-pair, lstsq consolidation, w_z sign,
 > KF q 1e-4→1e-3; off-center velocity now 0.85-0.94, was dead/anti/0.3-0.6) —

@@ -800,10 +800,17 @@ class IMG_PROCESSOR(Thread):
         self._kf_ring_prev_t = None
         self._kf_ring_initialized = False
 
-        # FUSED corner+ring optical flow — augmented-state EKF. Env FLOW_FUSE_RING=1
-        # (default OFF — co-tuning + IC2-5 gate before defaulting). Works for BOTH
-        # stationary AND MOVING targets by separating the two sources' physical
-        # meaning instead of blending them:
+        # FUSED corner+ring optical flow — augmented-state EKF (FLOW_FUSE_RING, default OFF
+        # since 2026-07-09 — see the _fuse_ring assignment below).
+        # ⚠ 2026-07-09 (user-led history dig): the ego/ground-vs-target separation described
+        # below is the ORIGINAL DESIGN ASPIRATION (6e0b44f), NEVER empirically validated — all
+        # closed-loop evidence is stationary-target, where h_tv≡0 makes "ring measures ground"
+        # indistinguishable from "ring redundantly samples near/on the target" (the fused==corner
+        # ratio-1.00 finding that justified the old default-ON is consistent with BOTH). In
+        # practice the ring's fixed radii overlap the grown marker near touchdown (see
+        # _compute_ring_flow / memory feedback_ring_fusion_marker_overlap), so the separation
+        # premise fails exactly when it matters. Treat the model below as unverified design
+        # intent, not fact:
         #   corner = TARGET-relative  (corners are ON the target)        -> h_tr
         #   ring   = EGO/ground motion (rings sample the static ground)  -> h_ego = h_tr + h_tv
         #   ring - corner = TARGET velocity in flow units (h_tv); == 0 for a stationary target.

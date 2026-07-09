@@ -1,5 +1,14 @@
 # Perception layer — optic flow at landing: what's real & the binding limit
 
+> 🟢 **2026-07-09 addendum — FLOW_FUSE_RING default flipped OFF (baked).** This file's "the fusion
+> EKF is honest / not a suppressor" findings (§ below, 2026-06-08) were about the MID-DESCENT
+> under-report and still stand — but at the TERMINAL the ring input itself goes non-physical for a
+> newly root-caused geometric reason: the fixed ring radii (41–199 px) overlap the marker once
+> `MARKER_EXTENT_PX` >~160 px, so the outer station tiers sample the marker instead of ground
+> (station survival 30→9, |ring_div|>0.5 in 41–53% of those frames) and the fusion pulled that
+> corrupted loom into the controller's h(t) → terminal lateral kick. Corner-only is now the
+> default. Full trace: memory `px4/feedback_ring_fusion_marker_overlap` + tuning-guide STATUS.
+
 > 🟢🟢 **2026-07-04 — OBSERVER FIXED + TERMINAL FAILURE RE-ROOTED (perception-ON).** The
 > centroid-rate observer got **four validated fixes** (frame-pair `quats[1]→quats[0]`; lstsq
 > consolidation; **w_z sign** `_oz=−_wv[2]`, which fixed an off-center `h_y` ANTI-correlation
