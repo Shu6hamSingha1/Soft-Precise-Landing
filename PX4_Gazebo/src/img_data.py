@@ -905,8 +905,11 @@ class IMG_PROCESSOR(Thread):
         # frames are 86/93 at aruco=0 (ring takeover). The existing anti-stale decay only catches a FROZEN
         # loom, not an actively-updated wrong-signed one — so clamp the consumed loom ≤ 0 directly. This is
         # the physical-impossibility guard (NOT a control fix): the off-center CONTROL divergence the GT-FB
-        # gate exposed (IC3/IC4 fail on perfect loom) is a separate, control-side problem. FLOW_LOOM_SIGN_GUARD=0 reverts.
-        self._loom_sign_guard = os.environ.get("FLOW_LOOM_SIGN_GUARD", "1") == "1"
+        # gate exposed (IC3/IC4 fail on perfect loom) is a separate, control-side problem.
+        # REMOVED 2026-07-10 (user): sign-guard was a wrong approach; loom-inversion landing detector
+        # requires h_z to go positive at ground contact. Root-cause fix needed instead of clamping.
+        # FLOW_LOOM_SIGN_GUARD env var still supported for debugging but no longer applied by default.
+        self._loom_sign_guard = os.environ.get("FLOW_LOOM_SIGN_GUARD", "0") == "1"
         self._opt_flow_fused_log = []   # fused target-relative [h_tr; w] per frame (A/B)
         self._target_vel_log = []       # estimated target velocity h_tv (flow units)
 
