@@ -289,6 +289,10 @@ class IMG_PROCESSOR(Thread):
         _opp = np.concatenate([_b * _ring_npts + (np.arange(_ring_npts) + _ring_npts // 2) % _ring_npts
                                for _b in range(len(_ring_radii))]).astype(int)
         self._ring_opp_idx = _opp
+        # RING FILTER DEBUG (2026-07-10, investigating N_Ring->0 collapse): print survivor count after
+        # each filter stage (LK status -> arm-mask -> MAD outlier -> pairing) to isolate whether ring
+        # dropout is geometry-driven (bounds/arm-mask/marker-overlap) or LK-tracking-driven (texture).
+        self._ring_filter_dbg = os.environ.get("RING_FILTER_DBG", "0") == "1"
         # Ring LK params (separate from the corner LK): larger winSize + higher
         # minEigThreshold reject ill-textured ring stations (the board's white cells lack
         # texture). Tuned offline 2026-06-05 (win 21->41, eig 1e-3->1e-2): ring spread
@@ -1107,17 +1111,24 @@ class IMG_PROCESSOR(Thread):
             _sf = _seed.reshape(len(_seed), -1)          # (N,2) raw frame-0 station positions
             _p1f = p1.reshape(-1, 2)                      # (N,2) tracked frame-1 positions
             valid = st.copy()
+            _n_lk = int(valid.sum())                      # DEBUG (RING_FILTER_DBG): survivors after LK status
             if self._ring_arm_mask:                      # drop the drone's own arm/prop bands (static -> 0 flow)
                 valid &= (_sf[:, 1] > self._arm_y_top) & (_sf[:, 1] < self._arm_y_bot)
+            _n_arm = int(valid.sum())                      # DEBUG: survivors after arm-mask
             fm = np.linalg.norm(_p1f - _sf, axis=1)       # per-station flow magnitude (ALL stations)
             if int(valid.sum()) >= 6:                     # MAD flow-magnitude outlier rejection (over valid)
                 _m = np.median(fm[valid]); _d = np.median(np.abs(fm[valid] - _m)) + 1e-6
                 valid &= fm < _m + 3.0 * 1.4826 * _d
+            _n_mad = int(valid.sum())                      # DEBUG: survivors after MAD outlier rejection
             # PAIRED-STATION SYMMETRY: keep a station iff its 180deg-opposite also survived, so the
             # uniform-translation radial component cancels pairwise in pure_div/moment (else it leaks
             # -> loom sign-flip noise, worst during lateral drift = the terminal).
             if self._ring_paired:
                 valid &= valid[self._ring_opp_idx]
+            _n_paired = int(valid.sum())                    # DEBUG: survivors after pairing
+            if self._ring_filter_dbg:
+                print(f"[RING_FILTER_DBG] t={float(getattr(self,'_stamp',0.0)):.2f} "
+                      f"LK={_n_lk}/{len(st)} arm={_n_arm} MAD={_n_mad} paired={_n_paired}")
             if int(valid.sum()) < 6:
                 return (np.zeros(6), np.nan, int(valid.sum()), np.nan)   # NaN, not 0.0 (see `zero` sentinel above)
             r0 = _sf[valid].astype(np.float32)
