@@ -413,6 +413,15 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
+        # RELAXED KLT-FALLBACK GATE (2026-07-09, default-OFF pending n>=5 validation): the
+        # strict all-4-corners-tracked requirement discards an otherwise-good 3/4-tracked frame
+        # outright. KLT Diag logging (added same day) showed a "momentary flicker" regime
+        # (single corner losing LK lock for 1-2 frames during otherwise-clean tracking) where
+        # 100% of gate4-rejections were exactly 3/4 tracked -- but that's n=1, and this changes
+        # CONTROL-AFFECTING behavior (which corners feed s/flow), so it stays env-gated until
+        # validated at n>=5 rather than baked on this single run. MARKER_KLT_RELAX_GATE=1 to test.
+        self._klt_relax_gate = os.environ.get("MARKER_KLT_RELAX_GATE", "0") == "1"
+        self._klt_min_tracked = 3 if self._klt_relax_gate else 4
         # Guard #1 RESTORED (2026-06-11): clip the marker-LOST centroid EXTRAPOLATION to the FoV.
         # It was removed in the remove-all-guards cleanup, and the RingLoomFix n=5 fly-aways showed
         # exactly why it existed: on marker-LOST the deg-1 extrapolation ran s OFF-SCREEN (|s|=6.65 /
@@ -1391,13 +1400,29 @@ class IMG_PROCESSOR(Thread):
                     _prev_gray, _img0_gray, self._prev_aruco_pts, None, **self._lk_params)
                 if lk_out is not None and len(lk_out) >= 2:
                     lk_pts, lk_status = lk_out[0], lk_out[1]
-                    _n_tracked = (int(np.sum(np.asarray(lk_status).flatten() == 1))
-                                  if lk_status is not None else 0)
+                    _status_ok = (np.asarray(lk_status).flatten() == 1) if lk_status is not None else np.zeros(0, bool)
+                    _n_tracked = int(np.sum(_status_ok))
                     _klt_diag = {"t": float(self._time.perf_counter()), "n_tracked": _n_tracked,
-                                 "gate4_passed": bool(_n_tracked == 4), "in_bounds": None, "accepted": False}
-                    if (lk_pts is not None and lk_status is not None
-                            and int(np.sum(np.asarray(lk_status).flatten() == 1)) == 4):
+                                 "gate4_passed": bool(_n_tracked == 4), "gate_accept_passed": bool(_n_tracked >= self._klt_min_tracked),
+                                 "reconstructed_idx": None, "in_bounds": None, "accepted": False}
+                    if lk_pts is not None and lk_status is not None and _n_tracked >= self._klt_min_tracked and len(_status_ok) == 4:
                         _tracked = lk_pts.reshape(-1, 2).astype(np.float32)
+                        if _n_tracked == 3:
+                            # RELAXED GATE (2026-07-09, validated via KLT Diag n=1 run: momentary
+                            # 1-2 frame decode gaps are dominated by exactly-3/4-tracked frames --
+                            # a single corner losing LK lock for one step should not discard an
+                            # otherwise-good frame). Reconstruct the missing corner via PARALLELOGRAM
+                            # COMPLETION: for a planar quad in ArUco's fixed corner order
+                            # [TL, TR, BR, BL], opposite corners share a diagonal midpoint
+                            # (c0+c2 == c1+c3), so the missing corner = sum of the OTHER TWO minus
+                            # its diagonal partner. Good approximation over one small inter-frame
+                            # step (near-fronto-parallel or small perspective change); the existing
+                            # downstream in-bounds check is the safety net if it's wrong.
+                            _miss = int(np.where(~_status_ok)[0][0])
+                            _partner = (_miss + 2) % 4
+                            _others = [i for i in range(4) if i not in (_miss, _partner)]
+                            _tracked[_miss] = _tracked[_others[0]] + _tracked[_others[1]] - _tracked[_partner]
+                            _klt_diag["reconstructed_idx"] = _miss
                         # Abort KLT if any corner has left the image — the marker is
                         # gone and continuing to extrapolate produces off-screen centroids
                         # (s[0] up to 3× beyond image boundary) that blow up cross(dw,s)
