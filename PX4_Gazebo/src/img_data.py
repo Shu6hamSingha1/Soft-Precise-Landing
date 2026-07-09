@@ -1949,11 +1949,6 @@ class IMG_PROCESSOR(Thread):
                     board_s = self._board_feature(board_markers_V, size_factor)
                 if board_s is not None:
                     self._img_feature_param.append(board_s)
-                    self._img_feature_param_real_t.append(self._time.perf_counter())
-                    self._img_feature_param_real.append(board_s.copy())
-                    if len(self._img_feature_param_real_t) > 32:
-                        self._img_feature_param_real_t = self._img_feature_param_real_t[-32:]
-                        self._img_feature_param_real = self._img_feature_param_real[-32:]
                 else:
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
 
@@ -1972,6 +1967,24 @@ class IMG_PROCESSOR(Thread):
                     # detection ref = RAW (advances) → per-instant check, no latch; substitution =
                     # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
                     self._s_prev = _s_raw
+
+                # REAL-SAMPLE BUFFER for s-extrapolation (2026-07-09 fix): must be captured AFTER the
+                # ds outlier-hold above, not before. Bug found this session: an isolated single-frame
+                # detection spike (e.g. -0.44 sandwiched between ~0 values, n_corners>0 so genuinely
+                # "detected" but still a glitch) passes the ds_max>0.15 guard and gets corrected in
+                # self._img_feature_param[-1] IN PLACE -- but if this buffer were populated from the
+                # PRE-guard board_s/s value (as an earlier version of this fix did), the extrapolation
+                # fit's "real-only" history would still contain the un-rejected outlier, corrupting the
+                # deg-1 fit's slope. Confirmed via reconstruction: this exact sequence (a real-but-spiky
+                # sample at t-0.3s) produced a terminal centroid extrapolation jump (0.12->1.03 the
+                # instant the marker was lost) that fed s_e_n/zeta_r and traced directly into the
+                # terminal-kick breach. Read self._img_feature_param[-1] HERE (post-guard) instead.
+                if self._img_feature_param:
+                    self._img_feature_param_real_t.append(self._time.perf_counter())
+                    self._img_feature_param_real.append(np.asarray(self._img_feature_param[-1]).copy())
+                    if len(self._img_feature_param_real_t) > 32:
+                        self._img_feature_param_real_t = self._img_feature_param_real_t[-32:]
+                        self._img_feature_param_real = self._img_feature_param_real[-32:]
 
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
@@ -2752,11 +2765,10 @@ class IMG_PROCESSOR(Thread):
         s = np.array([xc, yc, 1.0, alpha])
 
         self._img_feature_param.append(s)
-        self._img_feature_param_real_t.append(self._time.perf_counter())
-        self._img_feature_param_real.append(s.copy())
-        if len(self._img_feature_param_real_t) > 32:
-            self._img_feature_param_real_t = self._img_feature_param_real_t[-32:]
-            self._img_feature_param_real = self._img_feature_param_real[-32:]
+        # NOTE: the REAL-sample buffer (_img_feature_param_real/_real_t, used by the s-extrapolation
+        # fit) is populated by the CALLER after this returns, once the ds outlier-hold guard has run
+        # on self._img_feature_param[-1] -- see the call site (single-marker branch). Populating it
+        # here would capture the PRE-guard (possibly outlier) value. Do not re-add here.
 
     def _getVirtualPts(self, pts, quat):
         """Reproject camera-frame pixels onto the virtual image plane V.
