@@ -1120,6 +1120,7 @@ class IMG_PROCESSOR(Thread):
                 _m = np.median(fm[valid]); _d = np.median(np.abs(fm[valid] - _m)) + 1e-6
                 valid &= fm < _m + 3.0 * 1.4826 * _d
             _n_mad = int(valid.sum())                      # DEBUG: survivors after MAD outlier rejection
+            _pre_pair_idx = np.where(valid)[0]              # DEBUG: which stations survive BEFORE pairing
             # PAIRED-STATION SYMMETRY: keep a station iff its 180deg-opposite also survived, so the
             # uniform-translation radial component cancels pairwise in pure_div/moment (else it leaks
             # -> loom sign-flip noise, worst during lateral drift = the terminal).
@@ -1127,8 +1128,16 @@ class IMG_PROCESSOR(Thread):
                 valid &= valid[self._ring_opp_idx]
             _n_paired = int(valid.sum())                    # DEBUG: survivors after pairing
             if self._ring_filter_dbg:
+                # angular bucket (0-7, 45deg wide) of each pre-pairing survivor, ignoring radius band,
+                # to see whether survivors cluster to one side of the ring (systematic tilt bias) vs
+                # scatter randomly (would still pair up reasonably often).
+                _npts = self._ring_pts0_V.shape[0] // 5 if hasattr(self, '_ring_pts0_V') else 60
+                _ang_idx = (_pre_pair_idx % _npts)
+                _buckets = (_ang_idx * 8 // _npts)
+                _hist = np.bincount(_buckets, minlength=8) if len(_buckets) else np.zeros(8, dtype=int)
                 print(f"[RING_FILTER_DBG] t={float(getattr(self,'_stamp',0.0)):.2f} "
-                      f"LK={_n_lk}/{len(st)} arm={_n_arm} MAD={_n_mad} paired={_n_paired}")
+                      f"LK={_n_lk}/{len(st)} arm={_n_arm} MAD={_n_mad} paired={_n_paired} "
+                      f"ang_hist={_hist.tolist()}")
             if int(valid.sum()) < 6:
                 return (np.zeros(6), np.nan, int(valid.sum()), np.nan)   # NaN, not 0.0 (see `zero` sentinel above)
             r0 = _sf[valid].astype(np.float32)
