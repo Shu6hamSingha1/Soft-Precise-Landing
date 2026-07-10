@@ -99,6 +99,7 @@ async def main(record = 'n'):
         # await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosNED().down_m, yaw_deg_0 + 15*0)
         
         # for val in cmd_profile: 
+        _last_metrics_print = 0.0
         while img_node.is_alive() and mocap_node.is_alive():
         # while img_node.is_alive() and mocap_node.is_alive() and not FC_node.LANDED:
             if CONTROLLER_READY:
@@ -122,7 +123,13 @@ async def main(record = 'n'):
             await asyncio.sleep(SLEEP_TIME)
 
             if img_node.FEATURE_IS_VISIBLE:
-                print(img_node.metrics())
+                _now = time.perf_counter()
+                if _now - _last_metrics_print >= 1.0:   # throttled to 1 Hz — this loop
+                    _last_metrics_print = _now          # runs at 30 Hz and shares the
+                    m = img_node.metrics()               # GIL with the flow thread; a
+                    print({k: round(v, 2) for k, v in m.items()})  # full-precision-float
+                                                          # dict print every tick was
+                                                          # unnecessary GIL/stdout cost
 
             # if time.perf_counter() - start_time > 600.0:
             #     # print(f"Commanded Profile | Position: {pos_cmd} | {UAV_pose[-1]}")

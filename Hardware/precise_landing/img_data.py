@@ -111,6 +111,21 @@ class IMG_PROCESSOR(Thread):
         self._sensor_cal_hw = np.diag([1/6, 1/6, 1/6, 1, 1, 1]) # Sensor calibration matrix
         self._sensor_cal_s = np.diag([1/12, 1/12, 1, 1]) # Sensor calibration matrix
 
+        # ArUco detection runs on the smaller, ISP-scaled "main" stream
+        # (genuinely fewer pixels than the raw stream, which is locked to the
+        # sensor's native modes - see imgstreamer.py module docstring). The
+        # detectMarkers adaptive-threshold/contour search is the dominant
+        # per-frame cost (Hardware/docs/*timing* breakdown); shrinking the
+        # search image directly cuts it. Corners are found in main-stream
+        # pixel space, then scaled back up to the calibrated raw-resolution
+        # pixel space (fx/fy/center above are calibrated at raw resolution)
+        # before any downstream geometry touches them.
+        self._main_resolution = self._image_node.getMainResolution()
+        self._aruco_scale = np.array([
+            self._resolution[0] / self._main_resolution[0],
+            self._resolution[1] / self._main_resolution[1],
+        ], dtype=np.float32)
+
         # ArUco marker detection setup
         self._arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         self._arucoParams = cv2.aruco.DetectorParameters()
@@ -121,6 +136,30 @@ class IMG_PROCESSOR(Thread):
         self.FEATURE_IS_VISIBLE = False
         self._count_check_img_feature = CHECK_NUM
         self._count_check_opt_flow = CHECK_NUM
+        self._no_common_marker_warned = False
+
+        # Per-stage timing instrumentation (diagnostic only, zero-cost unless
+        # IMG_TIMING_DBG=1): accumulates wall time per named stage inside
+        # _optFlowAngVel, prints a summary every _timing_report_every frames.
+        self._timing_dbg = os.environ.get("IMG_TIMING_DBG", "0") == "1"
+        self._timing_accum = {}
+        self._timing_n = 0
+        self._timing_report_every = int(os.environ.get("IMG_TIMING_EVERY", "30"))
+
+        # ArUco ROI-crop fast path: once locked, the marker barely moves
+        # frame-to-frame, so search a small crop around its last known
+        # location instead of blind-scanning the full frame every call —
+        # detectMarkers' adaptive-threshold/contour search (the dominant
+        # per-frame cost, see Hardware/docs/*timing* breakdown) scales with
+        # pixel area. Falls back to full-frame search when unlocked or after
+        # too many consecutive ROI misses (fast motion / occlusion).
+        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "80"))
+        self._roi_max_misses = int(os.environ.get("ARUCO_ROI_MAX_MISSES", "5"))
+        self._roi_miss_count = 0
+        self._last_locked_corners = None   # (4,2) full-image px, most recent lock
+        self._roi_hits = 0                 # diagnostic counters
+        self._roi_misses = 0
+        self._fullframe_searches = 0
 
         # Nested-marker single-marker LOCK (Gazebo-aligned): lock one concentric
         # marker, re-lock only when it leaves both frames -> no per-frame min/max
@@ -292,6 +331,7 @@ class IMG_PROCESSOR(Thread):
                 # tp = 10
                 timer_flag = self._time.perf_counter()
                 images = self._image_node.getImages()
+                main_images = self._image_node.getMainImages()
 
                 # Hardware: quaternions/angvels from flight controller
                 n_imgs = len(list(images))
@@ -307,7 +347,8 @@ class IMG_PROCESSOR(Thread):
                 # print(f"Image FPS: {self._fps}")                 
                 
                 # Check if at least 2 frames of images have been received
-                if images[0] is not None and images[1] is not None:
+                if (images[0] is not None and images[1] is not None
+                        and main_images[0] is not None and main_images[1] is not None):
                     if VIDEO:
                         # Resize display image
                         resized_img = cv2.resize(images[1], None, fx=1.0, fy=1.0, interpolation=cv2.INTER_AREA)
@@ -317,7 +358,7 @@ class IMG_PROCESSOR(Thread):
                             self.close()
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
-                    if self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO) is AVAILABLE:
+                    if self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, main_imgs = main_images) is AVAILABLE:
                         if not AVAILABLE:
                             time.sleep(1/100) # 100 Hz
                             continue                        
@@ -389,7 +430,8 @@ class IMG_PROCESSOR(Thread):
         """Wait until at least two frames are available."""
         print("Waiting for image streaming")
         start_time = self._time.perf_counter()
-        while any(image is None for image in self._image_node.getImages()):
+        while (any(image is None for image in self._image_node.getImages())
+               or any(image is None for image in self._image_node.getMainImages())):
             time.sleep(1/100)
             if (self._time.perf_counter() - start_time) > 20:
                 raise Exception("Unable to get image data.")
@@ -399,9 +441,93 @@ class IMG_PROCESSOR(Thread):
             'fps': self._fps, 'img_process_freq':1/self._calc_time
         }
 
-    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False):
+    def _tstage(self, t_prev, name):
+        """Diagnostic-only stage timer. Returns a fresh perf_counter() and
+        accumulates (now - t_prev) AND a per-stage call count under `name` —
+        each stage is averaged over ITS OWN call count, not a shared
+        success-only frame counter (stages before an early return, e.g.
+        ring_flow/aruco_detect which run on every call including failed
+        common-marker frames, must not be divided by the success-only n, or
+        their per-frame cost is wildly overstated). No-op when
+        _timing_dbg is False (single bool check)."""
+        if not self._timing_dbg:
+            return t_prev
+        _now = self._time.perf_counter()
+        _sum, _cnt = self._timing_accum.get(name, (0.0, 0))
+        self._timing_accum[name] = (_sum + (_now - t_prev), _cnt + 1)
+        return _now
+
+    def _tmark_frame_end(self):
+        """Call once per _optFlowAngVel invocation (success or fail) to drive
+        the report cadence — independent of which stages a given call reached."""
+        if not self._timing_dbg:
+            return
+        self._timing_n += 1
+        if self._timing_n >= self._timing_report_every:
+            _parts = ", ".join(
+                f"{k}={1000*_s/_c:.2f}ms(n={_c})" for k, (_s, _c) in self._timing_accum.items())
+            print(f"[TIMING] calls={self._timing_n} roi_hits={self._roi_hits} "
+                  f"roi_misses={self._roi_misses} fullframe={self._fullframe_searches} | {_parts}")
+            self._roi_hits = 0; self._roi_misses = 0; self._fullframe_searches = 0
+            self._timing_accum = {}
+            self._timing_n = 0
+
+    def _detect_markers(self, main_imgs):
+        """ArUco detection on the smaller 'main' stream (see __init__
+        comment: genuinely fewer pixels than the raw stream, cutting the
+        dominant per-frame cost), with an ROI-crop fast path around the
+        last locked marker location. Returns the same
+        [(corners, ids, rejected), ...] structure as a direct detectMarkers()
+        call, with corners scaled back up to the calibrated RAW-resolution
+        pixel space regardless of which path (ROI or full-frame) ran, so
+        every downstream consumer is unaffected by which stream this used."""
+        _mw, _mh = self._main_resolution
+        if self._last_locked_corners is not None:
+            # last_locked_corners is stored in RAW pixel space (what every
+            # other consumer expects) - convert to main-stream space for the
+            # crop. _roi_margin_px is specified in RAW pixels for an
+            # intuitive env-var meaning; convert to main-stream pixels too.
+            _c_main = self._last_locked_corners / self._aruco_scale
+            _margin_main = max(1, int(self._roi_margin_px / self._aruco_scale.mean()))
+            x0 = max(0, int(_c_main[:, 0].min()) - _margin_main)
+            y0 = max(0, int(_c_main[:, 1].min()) - _margin_main)
+            x1 = min(_mw, int(_c_main[:, 0].max()) + _margin_main)
+            y1 = min(_mh, int(_c_main[:, 1].max()) + _margin_main)
+            if x1 > x0 and y1 > y0:
+                crops = [img[y0:y1, x0:x1] for img in main_imgs]
+                if self._detector is not None:
+                    roi_results = [self._detector.detectMarkers(c) for c in crops]
+                else:
+                    roi_results = [cv2.aruco.detectMarkers(c, self._arucoDict, parameters=self._arucoParams)
+                                    for c in crops]
+                if all(r[0] for r in roi_results):
+                    _off = np.array([x0, y0], dtype=np.float32)
+                    scaled_results = [
+                        (tuple((corner + _off) * self._aruco_scale for corner in corners), ids, rejected)
+                        for corners, ids, rejected in roi_results
+                    ]
+                    self._roi_miss_count = 0
+                    self._roi_hits += 1
+                    return scaled_results
+                self._roi_miss_count += 1
+                self._roi_misses += 1
+                if self._roi_miss_count >= self._roi_max_misses:
+                    self._last_locked_corners = None   # force re-acquire via full-frame
+        # Full-frame search on the main stream: first lock, ROI miss this
+        # call, or too many consecutive ROI misses (cleared above).
+        self._fullframe_searches += 1
+        if self._detector is not None:
+            full_results = [self._detector.detectMarkers(img) for img in list(main_imgs)]
+        else:
+            full_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
+                             for img in main_imgs]
+        return [(tuple(corner * self._aruco_scale for corner in corners), ids, rejected)
+                for corners, ids, rejected in full_results]
+
+    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
+        _tt = self._time.perf_counter()
         # Texture-free RING flow (safety net) — runs EVERY frame, independent of
         # ArUco, so it survives marker death. Steps its own KF; latest raw stored.
         if self._ring_on:
@@ -413,12 +539,18 @@ class IMG_PROCESSOR(Thread):
              self._kf_ring_initialized) = self._kf_step(
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
                 self._kf_ring_initialized, _vvr, self._time.perf_counter())
+        _tt = self._tstage(_tt, "1_ring_flow")
 
-        # Detect markers for both images
-        if self._detector is not None:
-            results = [self._detector.detectMarkers(img) for img in list(imgs)]
-        else:
-            results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams) for img in imgs]
+        # Detect markers on the smaller 'main' stream (ROI-crop fast path
+        # when locked). main_imgs is required - _detect_markers always
+        # scales its output up from main-stream to raw-resolution pixel
+        # space, so silently falling back to `imgs` (already raw-space)
+        # here would double up the scale factor and corrupt every corner.
+        if main_imgs is None:
+            raise ValueError("_optFlowAngVel requires main_imgs (the ISP-scaled "
+                              "'main' stream) for ArUco detection - see imgstreamer.getMainImages().")
+        results = self._detect_markers(main_imgs)
+        _tt = self._tstage(_tt, "2_aruco_detect")
 
         # Check if both detections were successful
         if all(r[0] for r in results):# Ensure that a common marker ID is detected in both the frame
@@ -432,9 +564,13 @@ class IMG_PROCESSOR(Thread):
             ids1 = np.asarray(results[1][1]).flatten()
             common = np.intersect1d(ids0, ids1)
             if len(common) == 0:
-                print("No common marker in both frames. Skipping optical flow calculation.")
+                if not self._no_common_marker_warned:
+                    print("No common marker in both frames. Skipping optical flow calculation.")
+                    self._no_common_marker_warned = True
                 self._fuse_step(None, False, 0, self._time.perf_counter())   # ring-only
+                self._tmark_frame_end()
                 return False
+            self._no_common_marker_warned = False
             if self._locked_marker_id is None or self._locked_marker_id not in common:
                 spreads = [float(np.std(results[0][0][int(np.where(ids0 == m)[0][0])].reshape(-1, 2)))
                            for m in common]
@@ -448,13 +584,16 @@ class IMG_PROCESSOR(Thread):
 
             # Locked-marker corners (4,2) in each frame.
             C_nP = [results[0][0][i0].reshape(-1, 2), results[1][0][i1].reshape(-1, 2)]
-            
+            self._last_locked_corners = np.asarray(C_nP[1], dtype=np.float32)   # for next call's ROI
+            _tt = self._tstage(_tt, "3_lock_and_extract")
+
             V_nP_norm = [self._getVirtualPts(p, q) for p, q in zip(C_nP, quats)]
+            _tt = self._tstage(_tt, "4_getVirtualPts_corners")
 
             # Shows image with optical flow
             if showVideo:
                 self._showOptFlow(imgs[1], C_nP, V_nP_norm)
-            
+
             # Compute optical flow on DENSE scaled-quadrilateral points (~180/frame)
             # for a well-conditioned lstsq. The bare 4-corner solve is noise-
             # dominated (per-frame raw std ~1.4 vs true signal ~0.05); the dense
@@ -463,9 +602,11 @@ class IMG_PROCESSOR(Thread):
             # both sets to the gravity-leveled V-frame before the solve.
             dense_px = [self._scaled_quad_points(p) for p in C_nP]
             V_dense  = [self._getVirtualPts(dp, q) for dp, q in zip(dense_px, quats)]
+            _tt = self._tstage(_tt, "5_dense_pts_and_getVirtualPts")
 
             A = self._fill_A(V_dense[1])
             Y = np.reshape(V_dense[1] - V_dense[0], (-1,)) * self._fps
+            _tt = self._tstage(_tt, "6_fill_A")
 
             # GYRO COMPENSATION: subtract the yaw rotational flow (the only rotation
             # left after V-frame de-rotation) using the measured gyro, then solve
@@ -485,6 +626,7 @@ class IMG_PROCESSOR(Thread):
                 B_v = np.array([_h[0], _h[1], _h[2], 0.0, 0.0, _wz])
             else:
                 B_v = np.linalg.lstsq(A, Y, rcond=1e-3)[0]
+            _tt = self._tstage(_tt, "7_gyro_comp_and_lstsq")
 
             # DECOUPLED MOMENT loom: override the weak-mode lstsq h_z with
             # -0.5*d(ln M)/dt from the primary marker's V-frame scale
@@ -515,6 +657,7 @@ class IMG_PROCESSOR(Thread):
                                 self._loom_hold = B_v[2]         # remember last-good
                         else:
                             B_v[2] = float(self._loom_hold)      # during rebuild, hold last-good
+            _tt = self._tstage(_tt, "8_loom_decouple")
 
             # Lateral-flow checkpost: reject a per-frame |Δh| spike (σ_min LK garbage),
             # emit last-good. Rate-based -> scale/depth-free.
@@ -528,14 +671,17 @@ class IMG_PROCESSOR(Thread):
                     else:
                         self._flow_hold[_i] = _v_raw[_i]           # accept: advance
                 self._flow_prev = _v_raw                           # detection ref = RAW (no latch)
+            _tt = self._tstage(_tt, "9_flow_checkpost")
 
             self._opt_flow_ang_vel_raw.append(B_v)
             # 2-state constant-velocity KF on the raw [h;w] (low-lag; getOptFlowAngVel
             # reads _kf_x). Stepped once per fresh frame.
             self._kf_update(B_v, self._time.perf_counter())
+            _tt = self._tstage(_tt, "10_kf_update")
 
             # Feature params (centroid + yaw alpha) from the 4 primary corners.
             self._getImgFeatures(V_nP_norm[1])
+            _tt = self._tstage(_tt, "11_getImgFeatures")
 
             # Centroid checkpost: reject a per-frame |Δs| jump (detect/LK glitch), hold last-good.
             if self._s_ds_max > 0 and self._img_feature_param:
@@ -549,6 +695,7 @@ class IMG_PROCESSOR(Thread):
                     else:
                         self._s_hold[_j] = _s_raw[_j]              # accept: advance
                 self._s_prev = _s_raw                              # detection ref = RAW (no latch)
+            _tt = self._tstage(_tt, "12_centroid_checkpost")
 
             if not self.FEATURE_IS_VISIBLE:
                 print("LANDING PAD VISIBLE NOW...")
@@ -580,6 +727,8 @@ class IMG_PROCESSOR(Thread):
             self._fuse_step(_corner_cal, True, 4, self._time.perf_counter())
             self._target_vel_log.append(
                 self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
+            _tt = self._tstage(_tt, "13_logging_and_fuse_step")
+            self._tmark_frame_end()
 
             return True
 
@@ -594,12 +743,15 @@ class IMG_PROCESSOR(Thread):
                 # re-locks by spread and the loom slope never spans the gap. Reset the
                 # checkpost detection refs so the first re-acquired frame isn't rejected.
                 self._locked_marker_id = None
+                self._last_locked_corners = None   # drop ROI too, force full-frame re-acquire
                 self._mtrace_hist.clear()
                 self._flow_prev = None; self._s_prev = None; self._loom_lnM_prev = None
             self._fuse_step(None, False, 0, self._time.perf_counter())   # ring-only (dropout)
+            self._tmark_frame_end()
             return False
 
         self._fuse_step(None, False, 0, self._time.perf_counter())       # ring-only (no marker)
+        self._tmark_frame_end()
         return False
     
     def _fill_A(self, centered_pts):

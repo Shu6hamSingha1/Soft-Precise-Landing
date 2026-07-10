@@ -3,7 +3,14 @@ Picamera2 streaming for Raspberry Pi OS - RAW BAYER capture for 30+ FPS
 
 Dual-stream config: a small "main" YUV420 stream keeps the IPA's AEC/AGC
 control loop running (raw-only capture disables it, leaving frames
-severely underexposed); we only ever consume the "raw" stream.
+severely underexposed) AND is exposed to callers via getMainImages() as a
+genuinely smaller ISP-scaled grayscale image (its Y-plane) - unlike the
+"raw" stream, the ISP CAN scale to arbitrary sizes (the sensor's native
+raw-mode limits don't apply here), so this is the correct path for anyone
+wanting a smaller frame for cheaper CPU-bound processing (e.g. ArUco
+detectMarkers - see img_data.py._detect_markers). Both streams are pulled
+from the SAME captured request each loop iteration (capture_request(),
+not two separate capture_array() calls) so they stay frame-synced.
 
 The raw stream is SBGGR10_CSI2P: MIPI RAW10 packed format, 4 pixels packed
 into 5 bytes (captured shape is (H, W*10/8), NOT (H, W)). _unpack_raw10()
@@ -17,14 +24,21 @@ the nearest native mode WITHOUT raising an error - so the requested
 `resolution` passed to __init__ may not be what the sensor actually
 delivers. We query the real negotiated size from camera_configuration()
 after start() and use THAT everywhere (unpacking width, getResolution()),
-never the raw constructor argument.
+never the raw constructor argument. The "main" stream has no such
+limitation - it negotiates to the exact requested size via ISP scaling.
 """
 
 from picamera2 import Picamera2
 from threading import Thread
+import os
 import time
 from collections import deque
 import numpy as np
+
+# ArUco-detection "main" stream size - env-configurable for A/B testing
+# against the raw stream's native resolution without editing this file.
+MAIN_STREAM_SIZE = tuple(
+    int(x) for x in os.environ.get("MAIN_STREAM_SIZE", "320,240").split(","))
 
 
 def _unpack_raw10(packed, width):
@@ -42,7 +56,7 @@ class imgstream(Thread):
         
         self._camera = Picamera2()
         config = self._camera.create_video_configuration(
-            main={"format": "YUV420", "size": (320, 240)},
+            main={"format": "YUV420", "size": MAIN_STREAM_SIZE},
             raw={"size": resolution},
             display=None
         )
@@ -60,39 +74,65 @@ class imgstream(Thread):
 
         self._resolution = actual_size
         self._width = actual_size[0]
+        self._main_resolution = tuple(self._camera.camera_configuration()["main"]["size"])
+        self._main_width = self._main_resolution[0]
         self._capRate = capRate
         self._break_flag = False
         self._img_deque = deque([None, None], maxlen=2)
+        self._main_img_deque = deque([None, None], maxlen=2)
         self._meanTimePerImage = 1e-06
         self._count = 0
         self._start_time = time.perf_counter()
-        
+
         self.start()
-    
+
     def run(self):
         try:
             while not self._break_flag:
-                packed = self._camera.capture_array("raw")
+                # Pull raw + main from the SAME request so they're frame-synced
+                # (two separate capture_array() calls could each trigger a
+                # fresh capture, drifting the two streams apart in time).
+                request = self._camera.capture_request()
+                try:
+                    packed = request.make_array("raw")
+                    main_yuv = request.make_array("main")
+                finally:
+                    request.release()
                 if packed is not None:
                     frame = _unpack_raw10(packed, self._width)
                     self._img_deque.append(frame)
                     self._count += 1
                     self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
+                if main_yuv is not None:
+                    # YUV420 planar array: Y (luma) plane is the first
+                    # main_height rows - directly usable as grayscale, no
+                    # separate colour conversion needed for ArUco/detection.
+                    self._main_img_deque.append(main_yuv[:self._main_resolution[1], :self._main_width])
         except Exception as e:
             print(f"Error in imgstream: {e}")
         finally:
             self._camera.stop()
-    
+
     def close(self):
         self._break_flag = True
-    
+
     def getImages(self):
         return self._img_deque
+
+    def getMainImages(self):
+        """Grayscale (Y-plane) frames from the ISP-scaled 'main' stream -
+        genuinely smaller than the raw stream (see module docstring), for
+        cheap CPU-bound detection work. Frame-synced with getImages()."""
+        return self._main_img_deque
 
     def getResolution(self):
         """Actual negotiated (width, height) - use this, not the requested tuple."""
         return self._resolution
-    
+
+    def getMainResolution(self):
+        """Actual negotiated (width, height) of the 'main' ISP-scaled stream."""
+        return self._main_resolution
+
     def getFPS(self):
         if self._meanTimePerImage > 0:
             return 1.0 / self._meanTimePerImage

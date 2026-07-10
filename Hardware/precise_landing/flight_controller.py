@@ -49,6 +49,7 @@ class FC():
         self._OFFBOARD = False
         self.LANDED = True
         self._STAY_OPEN  = True
+        self._governor_boosted = False   # only close() reverts if arm_and_takeoff set it
 
         # Initialize variables       
         # States
@@ -168,7 +169,13 @@ class FC():
 
         # Revert CPU to power-saving ondemand scaling now that the flight is
         # done — 'performance' mode should only be pinned during arm/flight.
-        _set_cpu_governor("ondemand")
+        # Only if THIS session actually boosted it: scripts that never arm
+        # (e.g. output_calibration.py, hand-move takes) still call close()
+        # for cleanup, and must not clobber a governor setting they never
+        # touched (this reverted an externally-set performance mode once).
+        if self._governor_boosted:
+            _set_cpu_governor("ondemand")
+            self._governor_boosted = False
 
         self.CONNECTED = False
         self._STAY_OPEN  = False
@@ -205,6 +212,7 @@ class FC():
         # Pin CPU to max clock before arming — avoids ondemand's reactive
         # ramp-up lag right as FC+camera+compute load spikes together.
         _set_cpu_governor("performance")
+        self._governor_boosted = True
 
         #  Arm.
         if takeoff_hgt is None:
