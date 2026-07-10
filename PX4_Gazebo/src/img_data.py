@@ -2091,6 +2091,7 @@ class IMG_PROCESSOR(Thread):
         # Feed it as the corner measurement for the fusion EKF (default-on path the controller consumes)
         # AND update the corner KF (IMG_FILTER=kf path). n_corn=4 > RING_LOOM_NCORN(3) keeps the
         # observer's moment loom (else the ring would override h_z). size_factor=1.0 for the id-0 marker.
+        _kf_updated_this_frame = False
         if (self._single_marker and self._centroid_rate and self._observer_valid
                 and not FEATURE_DATA_IS_LOGGED):
             _obs_scaled = size_factor * self._observer_flow
@@ -2099,6 +2100,7 @@ class IMG_PROCESSOR(Thread):
             _corner_conf = 1.0
             _n_corn = 4
             self._kf_update(_obs_scaled, self._time.perf_counter())
+            _kf_updated_this_frame = True
         # Texture-free ring flow — computed EVERY frame (survives the marker death), logged
         # aligned with _time_log for the to-touchdown calibration. SAFETY NET only; control
         # still consumes the corner flow. PRIMARY goal remains reducing perception death.
@@ -2145,6 +2147,15 @@ class IMG_PROCESSOR(Thread):
                 self._target_vel_log.append(self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3))
 
         if not FEATURE_DATA_IS_LOGGED:
+            # PREDICT-ONLY KF COAST (2026-07-11, BAKED unvalidated): if nothing already stepped
+            # the corner-flow KF this frame (no real update, no observer-fed update above), let
+            # it coast on its own last estimated rate instead of freezing solid. This is the
+            # direct fix for TOUCHDOWN_LOOM never firing during a marker-loss blackout (h_z held
+            # its exact last value indefinitely -> h_z>0 structurally unreachable regardless of
+            # what the drone actually did). See _kf_predict_only / the predict-only branch in
+            # _kf_step for the full rationale.
+            if not _kf_updated_this_frame:
+                self._kf_predict_only(self._time.perf_counter())
             # Intervention 2: increment the stale streak and flip the flag
             # if we've been extrapolating for too many consecutive frames.
             self._consec_misses += 1
@@ -2355,6 +2366,8 @@ class IMG_PROCESSOR(Thread):
         (x, P, prev_t, initialized) so the SAME filter can run on multiple flow
         sources (corner flow + ring flow). z: (6,) measurement; t: timestamp."""
         if not initialized:
+            if z is None:      # can't initialize from a predict-only (no measurement) call
+                return x, P, prev_t, False
             x = np.zeros((6, 2)); x[:, 0] = z          # value=z, rate=0
             P = np.tile(np.eye(2) * 1.0, (6, 1, 1))    # moderate prior
             return x, P, t, True
@@ -2383,6 +2396,20 @@ class IMG_PROCESSOR(Thread):
         # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over the 6 channels)
         x_pred = x @ F.T                                   # (6, 2)
         P_pred = F @ P @ F.T + Q                           # (6, 2, 2)
+        # PREDICT-ONLY (2026-07-11, BAKED unvalidated): z=None -> no fresh measurement this
+        # tick -> skip the correction and return the PROPAGATED state. Without this, _kf_update
+        # was previously called ONLY on real-data frames, so during any marker-loss gap _kf_x/
+        # _kf_P were never touched at all -- h_z (the loom, the ONLY signal TOUCHDOWN_LOOM's
+        # h_z>0 check has to work with) held its exact last value indefinitely, structurally
+        # unable to invert to positive during a blackout no matter how long the drone actually
+        # descended (traced on IC1_rep1, 2026-07-10/11 n=5 batch: h_z frozen at -0.312 through
+        # the entire terminal approach -> TOUCHDOWN-DETECT never fires -> falls through to the
+        # hard accelerometer-impact fallback after off-center drift has already accumulated).
+        # Calling this every tick (even without a fresh sample) lets h_z COAST on its last
+        # estimated rate instead of freezing -- combined with the dt-decoupled Q growth above,
+        # the coast's confidence also correctly widens the longer the gap runs.
+        if z is None:
+            return x_pred, P_pred, t, True
         # Innovation y = z - Hx_pred (H = [1, 0]), scalar per channel
         y = z - x_pred[:, 0]                               # (6,)
         S = P_pred[:, 0, 0] + R                            # (6,)
@@ -2396,6 +2423,16 @@ class IMG_PROCESSOR(Thread):
         """Corner-flow KF — thin wrapper around _kf_step on the corner state."""
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
+
+    def _kf_predict_only(self, t):
+        """Advance the corner-flow KF's state/covariance with NO fresh measurement (z=None).
+        Call every tick a real update is skipped (marker-loss gap) so h_z COASTS on its last
+        estimated rate instead of freezing -- see the predict-only branch in _kf_step for the
+        full rationale. No-op before the filter is first initialized (nothing to coast from)."""
+        if not self._kf_initialized:
+            return
+        self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, None, t)
 
     def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999,
                        ring_loom=0.0, ring_loom_ok=False):
