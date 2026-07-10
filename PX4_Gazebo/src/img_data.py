@@ -127,17 +127,29 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER cal (2026-07-03): 1m NESTED marker + centroid-rate observer (PLASMC_CENTROID_RATE=1).
         # h_x/h_y = reduced-solve std-ratio on the OBSERVER lateral flow (median of 5 runs) — recovers
         # the lateral channel the σ_min corner-flow left at the noise floor (old NaN/unstable betas).
+        # KF-REFIT (2026-07-11, from a parallel session): the SAME 5 2026-07-03 recordings,
+        # re-derived with tools/aggregate_calibration_phased.py after fixing a filter mismatch —
+        # derive_board_cal.py/derive_ring_cal.py/aggregate_calibration_phased.py were
+        # Savgol(13,1)-filtering the raw signal to fit the cal, while runtime has
+        # defaulted to KF filtering (IMG_FILTER=kf) since 2026-06-06 (commit 6e0b44f).
+        # A static linear cal fit on a Savgol-shaped signal and applied to a
+        # differently-shaped KF signal is not guaranteed valid; on this dataset it
+        # moved every diagonal entry, most sharply the loom row (0.4973->1.1279,
+        # +127%) and w_z (0.8439->1.3879, +64%) — h_x/h_y/s_x/s_y moved ~4-10%.
+        # See feedback_kf_savgol_cal_mismatch. Off-diagonal loom cross-terms
+        # (row 2, cols 0-1) are an older board-fit and NOT re-derived by this
+        # tool (diagonal-only); kept as-is pending a future full-matrix KF refit.
         self._sensor_cal_hw = np.array([
-            [+1.4272, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x
-            [+0.0000, +1.0253, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y
-            [+0.0535, -0.0044, +0.4973, +0.0000, +0.0000, +0.0000],   # loom row (board-fit; control uses MOMENT loom, secondary)
+            [+1.2833, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x (KF-refit)
+            [+0.0000, +1.0630, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y (KF-refit)
+            [+0.0535, -0.0044, +1.1279, +0.0000, +0.0000, +0.0000],   # loom row (diag KF-refit; cross-terms board-fit, control uses MOMENT loom, secondary)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.8439]])   # w_z decoupled to w_z_raw only
-        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.3879]])   # w_z decoupled to w_z_raw only (KF-refit)
+        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.1279 (KF-refit, 2026-07-11); PLASMC_LOOM_CAL=0.4973 reverts to the pre-refit (Savgol-derived) value
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.1391, 1.1437, 1.0, 1.0])   # observer/1m-nested centroid (2026-07-03)
+        self._sensor_cal_s  = np.diag([1.0215, 1.0494, 1.0, 1.0])   # observer/1m-nested centroid (KF-refit, 2026-07-11; was 1.1391/1.1437 Savgol-derived)
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -163,10 +175,17 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
         # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
         # marker provides yaw. Re-derive Wz if a board/turning case needs ring yaw.
+        # KF-REFIT (2026-07-11, same parallel session): same 5 recordings, re-derived via
+        # derive_ring_cal.py (transfer mode, keyed to the KF-refit corner M above) after the
+        # same Savgol->KF filter-mismatch fix (see feedback_kf_savgol_cal_mismatch). h-block
+        # R^2 0.81/0.88/0.79 (up from 0.72/0.82/0.66); magnitudes moved substantially (Hx
+        # 0.65->1.23, Hy 0.80->1.54, loom 2.05->4.49). Wz row is STILL a runaway under the
+        # refit (inter-run STD up to ~8, entries to ±16) — zeroed again, same precedent as
+        # before; this channel is inert unless FLOW_FUSE_RING=1 regardless.
         self._sensor_cal_ring = np.array([
-            [+0.6523, +0.0317, +0.1372, -0.0371, +0.6014, -0.1252],
-            [-0.1414, +0.7969, -0.0414, -0.8080, -0.1262, +0.3377],
-            [+0.1154, +0.0131, +2.0499, -0.1148, +0.1176, +0.4799],
+            [+1.2283, -0.0165, +0.1649, +0.0111, +1.1254, -0.2802],
+            [-0.2799, +1.5367, -0.0634, -1.5646, -0.2271, +0.6139],
+            [+0.3906, -0.2532, +4.4900, +0.0764, +0.3203, +0.0865],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000]])
