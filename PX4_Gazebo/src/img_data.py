@@ -1378,6 +1378,16 @@ class IMG_PROCESSOR(Thread):
                 self._centroid_hist.clear()
                 self._obs_kf_x = None; self._obs_kf_y = None
                 self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
+                # FLOW-KF RESET (2026-07-10, BAKED unvalidated): same class of bug as the
+                # centroid/loom resets above, previously missing here. A primary-marker switch
+                # changes WHICH corner positions feed the flow lstsq (different spread/conditioning,
+                # e.g. small-marker near-center corners -> big-marker far corners), so blending a
+                # fresh measurement from the NEW marker into the OLD marker's filter state (P, rate)
+                # via a normal Kalman update lets a stale, differently-conditioned prior fight the
+                # new data -- traced on the 2026-07-10 IC1 terminal-kick investigation (extent
+                # 51.7->334.1px handover). Force a clean re-init instead of a blended update.
+                self._kf_initialized = False
+                self._kf_prev_t = None
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
