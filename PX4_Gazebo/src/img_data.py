@@ -794,6 +794,12 @@ class IMG_PROCESSOR(Thread):
         # only clips noise spikes) -> expected MARGINAL; defaults preserve current behavior.
         self._kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))   # process-noise PSD (rad/s² per √s)²
         self._kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))   # measurement noise variance
+        # DECOUPLED dt cap for uncertainty (Q) growth vs state propagation (F) -- see _kf_step.
+        # BAKED 2026-07-10 (unvalidated, low-risk): default 2.0s is generous vs the previous
+        # implicit 0.1s cap on BOTH; only matters when a real gap exceeds 0.1s (KLT-fallback/
+        # decode-loss blackout), where it lets P correctly reflect staleness so relock doesn't
+        # under-trust the first fresh measurement after a long miss streak.
+        self._kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
         self._kf_x = np.zeros((6, 2))       # [value, rate] per channel
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
@@ -2343,12 +2349,25 @@ class IMG_PROCESSOR(Thread):
             P = np.tile(np.eye(2) * 1.0, (6, 1, 1))    # moderate prior
             return x, P, t, True
 
-        dt = max(min(t - prev_t, 0.1), 1e-3)
+        # DECOUPLED dt (2026-07-10): dt_prop drives the STATE propagation (F) and stays
+        # capped for numerical stability of the value/rate extrapolation over a long gap.
+        # dt_unc drives the PROCESS-NOISE (Q) growth and is only lightly capped (KF_DT_UNC_MAX,
+        # default 2.0s) -- it must reflect the TRUE elapsed time since the last real update,
+        # or P stays artificially narrow across a marker-loss gap. Previously both used the
+        # SAME 0.1s-capped dt, so after e.g. a 0.5s blackout the filter's covariance never
+        # grew to reflect that staleness -- at relock, the Kalman gain under-trusted the
+        # fresh (correct) measurement, producing a multi-frame "catch-up" ramp instead of a
+        # single properly-weighted correction (traced on the 2026-07-10 IC1 terminal-kick
+        # investigation: MARKER_EXTENT_PX 51.7->334.1px handover after a ~0.5s KLT-fallback
+        # blackout). Guard against pathological Q on a very long gap via KF_DT_UNC_MAX.
+        _dt_raw = t - prev_t
+        dt = max(min(_dt_raw, 0.1), 1e-3)                              # capped: state propagation
+        dt_unc = max(min(_dt_raw, self._kf_dt_unc_max), 1e-3)          # lightly capped: uncertainty growth
         F = np.array([[1.0, dt], [0.0, 1.0]])
         # Discrete-white-noise-on-acceleration process model
         Q = self._kf_q * np.array([
-            [dt**4 / 4.0, dt**3 / 2.0],
-            [dt**3 / 2.0, dt**2],
+            [dt_unc**4 / 4.0, dt_unc**3 / 2.0],
+            [dt_unc**3 / 2.0, dt_unc**2],
         ])
         R = self._kf_r
         # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over the 6 channels)
