@@ -157,7 +157,8 @@ class IMG_PROCESSOR(Thread):
         # GT-DIRECT (RING_CAL_MODE=gt) was TRIED and is WORSE: it can only use the 5
         # co-sampled fused runs (noisy, stressed SITL session: R^2 Hx 0.34 Hz 0.57
         # Wz 0.56) — so transfer (13 recordings) wins.
-        # Ring is the FUSION input (control consumes EKF; FLOW_FUSE_RING default ON).
+        # Ring cal below is still used when FLOW_FUSE_RING=1 (default OFF as of 2026-07-09 --
+        # see the _fuse_ring assignment for why -- ring loom is unreliable near terminal/contact).
         # SINGLE-MARKER ring cal (2026-06-23, transfer mode keyed to the new corner cal).
         # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
         # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
@@ -413,6 +414,14 @@ class IMG_PROCESSOR(Thread):
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
         self._lk_step_count = 0
+        # RELAXED KLT-FALLBACK GATE (2026-07-09; BAKED default-ON 2026-07-09 for the n>=5
+        # IC1-5 controller-tuning validation pass): the strict all-4-corners-tracked requirement
+        # discarded an otherwise-good 3/4-tracked frame outright. KLT Diag logging (added same
+        # day) showed a "momentary flicker" regime (single corner losing LK lock for 1-2 frames
+        # during otherwise-clean tracking) where 100% of gate4-rejections were exactly 3/4
+        # tracked. Set MARKER_KLT_RELAX_GATE=0 to revert to the strict 4-corner requirement.
+        self._klt_relax_gate = os.environ.get("MARKER_KLT_RELAX_GATE", "1") == "1"
+        self._klt_min_tracked = 3 if self._klt_relax_gate else 4
         # Guard #1 RESTORED (2026-06-11): clip the marker-LOST centroid EXTRAPOLATION to the FoV.
         # It was removed in the remove-all-guards cleanup, and the RingLoomFix n=5 fly-aways showed
         # exactly why it existed: on marker-LOST the deg-1 extrapolation ran s OFF-SCREEN (|s|=6.65 /
@@ -709,6 +718,8 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        self._z_v_log = []          # virtual-plane z-coordinate per frame (diagnose z_v→0 phantom-s)
+        self._z_v_min_log = []      # min z_v per frame (track when reprojection risks singularity)
         # H-EXTRAPOLATION (2026-07-07, user; BAKED default-ON 2026-07-07): re-derived alternative to
         # the 2026-05-13 hard-zero policy. That decision was correct GIVEN its implementation (deg-1
         # fit self-referencing its own extrapolated output -> cascaded to 10^5+ outliers or pinned at
@@ -728,9 +739,20 @@ class IMG_PROCESSOR(Thread):
         self._h_extrap_clip_bound = float(os.environ.get("H_EXTRAP_CLIP_BOUND", "10.0"))  # matches the lstsq's own ±10 clamp -- samples AT this bound are excluded from the fit
         self._h_real_t = []      # timestamps of REAL (non-extrapolated) h samples only
         self._h_real_v = []      # the REAL h values themselves (never mixed with extrapolated output)
+        self._img_feature_param_real_t = []  # timestamps of REAL (non-extrapolated) s samples only
+        self._img_feature_param_real = []    # the REAL s values themselves (never mixed with extrapolated output)
         self._imu_angvel_raw = []   # IMU body rate (FRD) [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
+        # KLT-fallback diagnostic (2026-07-09): validates the hypothesis that the strict
+        # `n_tracked == 4` gate (img_data.py, KLT-fallback elif branch) is the dominant cause
+        # of momentary (1-2 frame) decode gaps -- a single corner losing LK lock for one step
+        # currently discards an otherwise-good 3/4-tracked frame entirely. One entry per frame
+        # where ArUco decode failed AND a KLT-fallback attempt was actually made (cv2.calcOpticalFlowPyrLK
+        # ran) -- (n_tracked, gate4_passed, in_bounds_if_gate_passed, accepted). Empty entries
+        # (no attempt this frame -- e.g. cap exhausted, no prior corners) are NOT logged here, only
+        # actual attempts, so len() != total frame count -- correlate by "t".
+        self._klt_diag_log = []
         self._ring_opt_flow_log = []   # texture-free ring V-frame flow [h;w] per frame (V_v_ring)
         self._ring_div_log = []        # pure depth-independent divergence (loom) — safety-net vertical
         self._ring_moment_log = []     # ring MOMENT loom (area-rate) — live A/B vs the divergence
@@ -778,10 +800,17 @@ class IMG_PROCESSOR(Thread):
         self._kf_ring_prev_t = None
         self._kf_ring_initialized = False
 
-        # FUSED corner+ring optical flow — augmented-state EKF. Env FLOW_FUSE_RING=1
-        # (default OFF — co-tuning + IC2-5 gate before defaulting). Works for BOTH
-        # stationary AND MOVING targets by separating the two sources' physical
-        # meaning instead of blending them:
+        # FUSED corner+ring optical flow — augmented-state EKF (FLOW_FUSE_RING, default OFF
+        # since 2026-07-09 — see the _fuse_ring assignment below).
+        # ⚠ 2026-07-09 (user-led history dig): the ego/ground-vs-target separation described
+        # below is the ORIGINAL DESIGN ASPIRATION (6e0b44f), NEVER empirically validated — all
+        # closed-loop evidence is stationary-target, where h_tv≡0 makes "ring measures ground"
+        # indistinguishable from "ring redundantly samples near/on the target" (the fused==corner
+        # ratio-1.00 finding that justified the old default-ON is consistent with BOTH). In
+        # practice the ring's fixed radii overlap the grown marker near touchdown (see
+        # _compute_ring_flow / memory feedback_ring_fusion_marker_overlap), so the separation
+        # premise fails exactly when it matters. Treat the model below as unverified design
+        # intent, not fact:
         #   corner = TARGET-relative  (corners are ON the target)        -> h_tr
         #   ring   = EGO/ground motion (rings sample the static ground)  -> h_ego = h_tr + h_tv
         #   ring - corner = TARGET velocity in flow units (h_tv); == 0 for a stationary target.
@@ -800,15 +829,24 @@ class IMG_PROCESSOR(Thread):
         self._ekf_P = np.eye(9) * 1.0
         self._ekf_init = False
         self._ekf_prev_t = None
-        # DEFAULT ON (2026-06-07). The EKF fused [h_tr;w] is the best estimator by
-        # signal (R^2 vs GT across cal/multisine/landing, wins h_z/w_z) AND feeds
-        # the controller corner-EQUIVALENT h_z (fused h_z == corner-KF h_z, ratio
-        # 1.00) so the descent input is unchanged from corner-only. The earlier
-        # 1-rep no-descent was UNATTRIBUTED (loom stayed 0 despite commanded
-        # descent) and is NOT an EKF signal change; a fused-vs-corner descent
-        # comparison is the check (if corner also fails to descend at that IC it
-        # was a fluke). Set FLOW_FUSE_RING=0 to revert to corner-only.
-        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "1") == "1"
+        # ⛔ DEFAULT FLIPPED TO OFF (2026-07-09, BAKED for the n>=5 IC1-5 controller-tuning
+        # validation pass). Was DEFAULT ON since 2026-06-07 on the strength of R^2-vs-GT bench
+        # comparisons (cal/multisine/landing) -- but this session found the ring loom estimator
+        # produces spurious large values (|h_z| up to ~1.9, vs a GT-implied true value near zero)
+        # SPECIFICALLY in the terminal/close-range regime, independent of marker-decode status
+        # (confirmed: ring_div/ring_flow_z were already wrong ONE FRAME BEFORE a marker loss, while
+        # the corner-only signal was still small/correct) -- and since this is the DEFAULT fusion
+        # input the controller consumes, the bad ring value propagates into h(t) and, via the
+        # loom-flow cross term, into a_u_xy, producing a terminal lateral kick. Live A/B (n=1,
+        # same IC1 scenario): FLOW_FUSE_RING=1 -> h_z spiked to -0.86..-1.9 near touchdown, endpoint
+        # ballooned well past min-alt precision; FLOW_FUSE_RING=0 -> h_z stayed in a tight, GT-
+        # consistent band (-0.29..-0.285) through the same window, endpoint matched min-alt
+        # precision almost exactly (no balloon). Matches the ALREADY-DOCUMENTED terminal ring-loom
+        # dead-end (feedback_ring_loom_hz_terminal_deadend memory: "ring loom for h_z at terminal...
+        # RECONFIRMED dead-end... keep ring-commit/loom-ring OFF") -- this bake finally acts on that
+        # finding for the FUSION path specifically (the memory addressed ring-COMMIT/loom-RING
+        # switching, not this default-on EKF fusion input). Set FLOW_FUSE_RING=1 to revert to fusion.
+        self._fuse_ring = os.environ.get("FLOW_FUSE_RING", "0") == "1"
         _I3 = np.eye(3); _Z3 = np.zeros((3, 3))
         self._H_corner = np.block([[_I3, _Z3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr; w]
         self._H_ring   = np.block([[_I3, _I3, _Z3], [_Z3, _Z3, _I3]])        # measures [h_tr+h_tv; w]
@@ -1378,9 +1416,29 @@ class IMG_PROCESSOR(Thread):
                     _prev_gray, _img0_gray, self._prev_aruco_pts, None, **self._lk_params)
                 if lk_out is not None and len(lk_out) >= 2:
                     lk_pts, lk_status = lk_out[0], lk_out[1]
-                    if (lk_pts is not None and lk_status is not None
-                            and int(np.sum(np.asarray(lk_status).flatten() == 1)) == 4):
+                    _status_ok = (np.asarray(lk_status).flatten() == 1) if lk_status is not None else np.zeros(0, bool)
+                    _n_tracked = int(np.sum(_status_ok))
+                    _klt_diag = {"t": float(self._time.perf_counter()), "n_tracked": _n_tracked,
+                                 "gate4_passed": bool(_n_tracked == 4), "gate_accept_passed": bool(_n_tracked >= self._klt_min_tracked),
+                                 "reconstructed_idx": None, "in_bounds": None, "accepted": False}
+                    if lk_pts is not None and lk_status is not None and _n_tracked >= self._klt_min_tracked and len(_status_ok) == 4:
                         _tracked = lk_pts.reshape(-1, 2).astype(np.float32)
+                        if _n_tracked == 3:
+                            # RELAXED GATE (2026-07-09, validated via KLT Diag n=1 run: momentary
+                            # 1-2 frame decode gaps are dominated by exactly-3/4-tracked frames --
+                            # a single corner losing LK lock for one step should not discard an
+                            # otherwise-good frame). Reconstruct the missing corner via PARALLELOGRAM
+                            # COMPLETION: for a planar quad in ArUco's fixed corner order
+                            # [TL, TR, BR, BL], opposite corners share a diagonal midpoint
+                            # (c0+c2 == c1+c3), so the missing corner = sum of the OTHER TWO minus
+                            # its diagonal partner. Good approximation over one small inter-frame
+                            # step (near-fronto-parallel or small perspective change); the existing
+                            # downstream in-bounds check is the safety net if it's wrong.
+                            _miss = int(np.where(~_status_ok)[0][0])
+                            _partner = (_miss + 2) % 4
+                            _others = [i for i in range(4) if i not in (_miss, _partner)]
+                            _tracked[_miss] = _tracked[_others[0]] + _tracked[_others[1]] - _tracked[_partner]
+                            _klt_diag["reconstructed_idx"] = _miss
                         # Abort KLT if any corner has left the image — the marker is
                         # gone and continuing to extrapolate produces off-screen centroids
                         # (s[0] up to 3× beyond image boundary) that blow up cross(dw,s)
@@ -1390,7 +1448,9 @@ class IMG_PROCESSOR(Thread):
                                       np.all(_tracked[:, 0] < _img_w) and
                                       np.all(_tracked[:, 1] >= 0) and
                                       np.all(_tracked[:, 1] < _img_h))
+                        _klt_diag["in_bounds"] = bool(_in_bounds)
                         if _in_bounds:
+                            _klt_diag["accepted"] = True
                             aruco_pts_0 = _tracked
                             used_klt_fallback = True
                             self._lk_step_count += 1
@@ -1434,6 +1494,7 @@ class IMG_PROCESSOR(Thread):
                             # corner_ok stays False -> ring carries the flow; centroid extrapolates.
                             if self._single_marker:
                                 self._locked_marker_id = None
+                    self._klt_diag_log.append(_klt_diag)
             except Exception as _e:
                 # Defensive: if anything in the KLT fallback path errors, fall
                 # through to the normal stale path rather than killing the thread.
@@ -1923,6 +1984,24 @@ class IMG_PROCESSOR(Thread):
                     # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
                     self._s_prev = _s_raw
 
+                # REAL-SAMPLE BUFFER for s-extrapolation (2026-07-09 fix): must be captured AFTER the
+                # ds outlier-hold above, not before. Bug found this session: an isolated single-frame
+                # detection spike (e.g. -0.44 sandwiched between ~0 values, n_corners>0 so genuinely
+                # "detected" but still a glitch) passes the ds_max>0.15 guard and gets corrected in
+                # self._img_feature_param[-1] IN PLACE -- but if this buffer were populated from the
+                # PRE-guard board_s/s value (as an earlier version of this fix did), the extrapolation
+                # fit's "real-only" history would still contain the un-rejected outlier, corrupting the
+                # deg-1 fit's slope. Confirmed via reconstruction: this exact sequence (a real-but-spiky
+                # sample at t-0.3s) produced a terminal centroid extrapolation jump (0.12->1.03 the
+                # instant the marker was lost) that fed s_e_n/zeta_r and traced directly into the
+                # terminal-kick breach. Read self._img_feature_param[-1] HERE (post-guard) instead.
+                if self._img_feature_param:
+                    self._img_feature_param_real_t.append(self._time.perf_counter())
+                    self._img_feature_param_real.append(np.asarray(self._img_feature_param[-1]).copy())
+                    if len(self._img_feature_param_real_t) > 32:
+                        self._img_feature_param_real_t = self._img_feature_param_real_t[-32:]
+                        self._img_feature_param_real = self._img_feature_param_real[-32:]
+
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
                     self.FEATURE_IS_VISIBLE  = True
@@ -2080,10 +2159,29 @@ class IMG_PROCESSOR(Thread):
             else:
                 extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
 
-            extrapolated_img_feature_param = extrapolate(
-                self._time_log, self._img_feature_param, n=4, deg=1, default_shape=4)
-            extrapolated_img_feature_param = np.nan_to_num(
-                np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
+            # Centroid s: DECAYED deg-1 fit against REAL-ONLY samples (never self-referencing).
+            # Similar to h-extrapolation: avoid cascading extrapolated values back into future
+            # extrapolations. Use bounded history (max 32 samples) and clipped-sample rejection.
+            if len(self._img_feature_param_real_t) >= 5:
+                _rt = np.asarray(self._img_feature_param_real_t[-8:])
+                _rv = np.asarray(self._img_feature_param_real[-8:])
+                # Reject s[0:2] samples near FoV boundary (extrapolation unreliable at edge)
+                _valid = np.all(np.abs(_rv[:, 0:2]) < 5.0 - 1e-3, axis=1)  # ±5 rad ~ FoV clip bound
+                if int(_valid.sum()) >= 5:
+                    _rt, _rv = _rt[_valid], _rv[_valid]
+                    _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=4)
+                    _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=5.0, neginf=-5.0)
+                else:
+                    _fit = self._img_feature_param_real[-1].copy() if self._img_feature_param_real else np.zeros(4)
+                # DECAY toward zero over consecutive misses (long gaps -> no known position)
+                _decay = max(0.0, 1.0 - self._consec_misses / max(1, self._h_extrap_decay_frames))
+                extrapolated_img_feature_param = np.clip(_fit * _decay, -5.0, 5.0)
+                extrapolated_img_feature_param = np.nan_to_num(
+                    np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
+            else:
+                # Not enough real data yet; hold last value or zero
+                extrapolated_img_feature_param = (self._img_feature_param_real[-1].copy()
+                                                  if self._img_feature_param_real else np.zeros(4))
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
             if self._feat_fov_clip:
                 # Guard #1: clip the CENTROID [0:2] to ±(p_10 + δ) — FoV edge + last-good marker
@@ -2683,6 +2781,10 @@ class IMG_PROCESSOR(Thread):
         s = np.array([xc, yc, 1.0, alpha])
 
         self._img_feature_param.append(s)
+        # NOTE: the REAL-sample buffer (_img_feature_param_real/_real_t, used by the s-extrapolation
+        # fit) is populated by the CALLER after this returns, once the ds outlier-hold guard has run
+        # on self._img_feature_param[-1] -- see the call site (single-marker branch). Populating it
+        # here would capture the PRE-guard (possibly outlier) value. Do not re-add here.
 
     def _getVirtualPts(self, pts, quat):
         """Reproject camera-frame pixels onto the virtual image plane V.
@@ -2736,6 +2838,20 @@ class IMG_PROCESSOR(Thread):
 
         # Reproject onto V's image plane (perspective divide by depth-in-V).
         z_v = V_rays[:, 2]
+        # Diagnostic only (2026-07-09): track z_v for phantom-s analysis. z_v->0 or negative means
+        # this corner's ray, at the current tilt, is not representable in the gravity-leveled V-frame
+        # (grazing/behind-camera obliqueness -- see feedback_lateral_kappa_runaway). NOT clamped here:
+        # an earlier clamp-to-0.01 was tried and removed -- it only bounded the magnitude of an
+        # already-fabricated point rather than addressing it, matching the project's documented
+        # anti-pattern (feedback_clamps_during_tuning: clamps mask symptoms, don't fix causes).
+        # Post-hoc reconstruction (2026-07-09) found z_v only goes low/negative during frames that
+        # are ALREADY part of a diverging tilt event (correlates with the terminal 1/Z tilt-command
+        # amplification, not an independent trigger) -- so treating a bad z_v frame as informative
+        # (log it) rather than silently patching it is the right call until a dedicated reject-as-lost
+        # gate is built and validated.
+        self._z_v_min_log.append(float(np.min(z_v)) if len(z_v) > 0 else np.nan)
+        if len(self._z_v_min_log) > 5000:
+            self._z_v_min_log = self._z_v_min_log[-5000:]
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
 
     def _vframe_w(self, w_body, quat):
@@ -2799,6 +2915,7 @@ class IMG_PROCESSOR(Thread):
             "IMU AngVel": self._imu_angvel_raw,
             "Quat": self._quat_log,
             "N Flow Corners": self._n_flow_corners,
+            "KLT Diag": self._klt_diag_log,   # (2026-07-09) per-attempt KLT-fallback status: validates the ==4 gate hypothesis for momentary decode gaps
             "Drift Off": self._drift_off_hist,      # per-frame: marker left FoV OFF-CENTER (2026-07-07 failure-cause tagging)
             "Overflow": self._overflow_hist,        # per-frame: marker SPANNED the frame (overflow, still over target)
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_log,   # texture-free ring V-frame flow (V_v_ring), per frame
