@@ -1,0 +1,78 @@
+"""
+Picamera2 streaming for Raspberry Pi OS - RAW BAYER capture for 30+ FPS
+
+Dual-stream config: a small "main" YUV420 stream keeps the IPA's AEC/AGC
+control loop running (raw-only capture disables it, leaving frames
+severely underexposed); we only ever consume the "raw" stream.
+
+The raw stream is SBGGR10_CSI2P: MIPI RAW10 packed format, 4 pixels packed
+into 5 bytes (captured shape is (H, W*10/8), NOT (H, W)). _unpack_raw10()
+unpacks this into a true (H, W) 8-bit Bayer image (taking the 8 MSBs of
+each 10-bit sample; the 2 packed LSBs are discarded - not needed for
+ArUco/optical-flow use).
+"""
+
+from picamera2 import Picamera2
+from threading import Thread
+import time
+from collections import deque
+import numpy as np
+
+
+def _unpack_raw10(packed, width):
+    """MIPI RAW10 packed -> 8-bit Bayer, shape (H, W*10/8) -> (H, W)."""
+    h = packed.shape[0]
+    groups = width // 4
+    reshaped = packed[:, :groups * 5].reshape(h, groups, 5)
+    return reshaped[:, :, :4].reshape(h, groups * 4)
+
+
+class imgstream(Thread):
+    def __init__(self, resolution=(640, 480), capRate=30):
+        Thread.__init__(self)
+        self.daemon = True
+        
+        self._camera = Picamera2()
+        config = self._camera.create_video_configuration(
+            main={"format": "YUV420", "size": (320, 240)},
+            raw={"size": resolution},
+            display=None
+        )
+        self._camera.configure(config)
+        self._camera.start()
+        
+        self._resolution = resolution
+        self._width = resolution[0]
+        self._capRate = capRate
+        self._break_flag = False
+        self._img_deque = deque([None, None], maxlen=2)
+        self._meanTimePerImage = 1e-06
+        self._count = 0
+        self._start_time = time.perf_counter()
+        
+        self.start()
+    
+    def run(self):
+        try:
+            while not self._break_flag:
+                packed = self._camera.capture_array("raw")
+                if packed is not None:
+                    frame = _unpack_raw10(packed, self._width)
+                    self._img_deque.append(frame)
+                    self._count += 1
+                    self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
+        except Exception as e:
+            print(f"Error in imgstream: {e}")
+        finally:
+            self._camera.stop()
+    
+    def close(self):
+        self._break_flag = True
+    
+    def getImages(self):
+        return self._img_deque
+    
+    def getFPS(self):
+        if self._meanTimePerImage > 0:
+            return 1.0 / self._meanTimePerImage
+        return 0

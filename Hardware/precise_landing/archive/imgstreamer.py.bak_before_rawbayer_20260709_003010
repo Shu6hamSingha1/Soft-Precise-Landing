@@ -1,0 +1,60 @@
+"""
+Picamera2 streaming for Raspberry Pi OS
+"""
+
+from picamera2 import Picamera2
+from picamera2.encoders import H264Encoder
+from picamera2.outputs import FileOutput
+from threading import Thread
+import time
+from collections import deque
+import numpy as np
+
+class imgstream(Thread):
+    def __init__(self, resolution=(640, 480), capRate=30):
+        Thread.__init__(self)
+        self.daemon = True
+        
+        self._camera = Picamera2()
+        config = self._camera.create_preview_configuration(
+            main={"format": "BGR888", "size": resolution}
+        )
+        self._camera.configure(config)
+        self._camera.start()
+        
+        self._resolution = resolution
+        self._capRate = capRate
+        self._break_flag = False
+        self._img_deque = deque([None, None], maxlen=2)
+        self._meanTimePerImage = 1e-06
+        self._count = 0
+        self._start_time = time.perf_counter()
+        
+        # Start capture thread
+        self.start()
+    
+    def run(self):
+        try:
+            while not self._break_flag:
+                frame = self._camera.capture_array()
+                if frame is not None:
+                    self._img_deque.append(frame)
+                    self._count += 1
+                    self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
+                
+                time.sleep(1.0 / self._capRate)
+        except Exception as e:
+            print(f"Error in imgstream: {e}")
+        finally:
+            self._camera.stop()
+    
+    def close(self):
+        self._break_flag = True
+    
+    def getImages(self):
+        return self._img_deque
+    
+    def getFPS(self):
+        if self._meanTimePerImage > 0:
+            return 1.0 / self._meanTimePerImage
+        return 0

@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""
+Manual hover-throttle finder. Takes off to a safe height, then holds a
+sequence of fixed throttle values (zero body rate, level attitude) for a few
+seconds each, logging the altitude climb/descent rate at each value. The
+throttle where climb rate is closest to zero is the real hover throttle for
+THIS airframe - use that as HW_HOVER_THROTTLE_NORM for input calibration /
+hardware_landing.py.
+
+Does NOT rely on HOVER_THROTTLE_NORM at all - that's exactly the unverified
+placeholder this script exists to replace. Takeoff/landing use PX4's own
+position-hold (arm_and_takeoff, then vehicle.action.land()), not the
+placeholder throttle.
+
+Usage:
+  /home/doctor/denv/bin/python3 find_hover_throttle.py
+  THROTTLE_LIST="0.5,0.55,0.6,0.65,0.7" python3 find_hover_throttle.py
+"""
+import os
+import sys
+import asyncio
+import time
+import numpy as np
+
+sys.path.insert(0, ".")
+
+try:
+    from flight_controller import FC
+    print("Modules imported successfully")
+except ImportError as e:
+    print(f"Import failed: {e}")
+    sys.exit(1)
+
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
+HOLD_S = float(os.environ.get("THROTTLE_HOLD_S", "3.0"))
+THROTTLE_LIST = [float(v) for v in
+                  os.environ.get("THROTTLE_LIST", "0.48,0.49,0.50,0.51,0.52").split(",")]
+
+# Safety bounds - abort the sweep and land immediately if altitude leaves
+# this band around the takeoff height (climbing away or dropping too fast).
+ALT_MARGIN_M = float(os.environ.get("THROTTLE_ALT_MARGIN_M", "1.0"))
+MAX_CLIMB_RATE_ABORT = float(os.environ.get("THROTTLE_MAX_CLIMB_RATE", "1.0"))  # m/s
+
+
+async def main():
+    fc = None
+    results = []
+    try:
+        print("=" * 60)
+        print("Hover-Throttle Finder")
+        print("=" * 60)
+        print(f"Throttle values to test: {THROTTLE_LIST}")
+        print(f"Hold per value: {HOLD_S}s, takeoff height: {TAKEOFF_HEIGHT}m")
+        print(f"Safety: abort if altitude drifts >{ALT_MARGIN_M}m from takeoff "
+              f"height, or climb rate exceeds {MAX_CLIMB_RATE_ABORT} m/s\n")
+
+        fc = FC()
+        await fc.start()
+        t0 = time.perf_counter()
+        while not fc.has_quat():
+            if (time.perf_counter() - t0) > 20:
+                raise RuntimeError("Unable to get data from Flight Controller.")
+            await asyncio.sleep(0.05)
+
+        await fc.arm_and_takeoff(takeoff_hgt=TAKEOFF_HEIGHT)
+        await asyncio.sleep(1.0)  # settle
+
+        p0 = fc.getPosBody()
+        takeoff_alt = -p0.z_m
+        print(f"Takeoff settled at alt={takeoff_alt:.2f}m\n")
+
+        for throttle in THROTTLE_LIST:
+            print(f"--- Testing throttle={throttle:.3f} ---")
+            samples = []  # (t, alt)
+            step_t0 = time.perf_counter()
+            aborted = False
+            while (time.perf_counter() - step_t0) < HOLD_S:
+                await fc.send_attitude_rate(0.0, 0.0, 0.0, throttle)
+                pos = fc.getPosBody()
+                alt = -pos.z_m if pos else takeoff_alt
+                now = time.perf_counter() - step_t0
+                samples.append((now, alt))
+
+                if abs(alt - takeoff_alt) > ALT_MARGIN_M:
+                    print(f"  [ABORT] altitude {alt:.2f}m drifted >{ALT_MARGIN_M}m "
+                          f"from takeoff height {takeoff_alt:.2f}m")
+                    aborted = True
+                    break
+
+                await asyncio.sleep(0.05)
+
+            if len(samples) >= 2:
+                t_arr = np.array([s[0] for s in samples])
+                a_arr = np.array([s[1] for s in samples])
+                climb_rate = float(np.polyfit(t_arr, a_arr, 1)[0])  # m/s, linear fit slope
+                print(f"  throttle={throttle:.3f} -> climb_rate={climb_rate:+.3f} m/s "
+                      f"(alt {a_arr[0]:.2f} -> {a_arr[-1]:.2f}m)")
+                results.append((throttle, climb_rate))
+
+                if abs(climb_rate) > MAX_CLIMB_RATE_ABORT:
+                    print(f"  [ABORT] climb rate {climb_rate:+.2f} m/s exceeds safety "
+                          f"limit {MAX_CLIMB_RATE_ABORT} m/s")
+                    aborted = True
+
+            # Return to a neutral hold between test points using position-hold,
+            # not the tested throttle (which may not be near hover).
+            p_now = fc.getPosBody()
+            q_now = fc.getQuat()
+            yaw_now = float(np.degrees(np.arctan2(
+                2.0 * (q_now.w * q_now.z + q_now.x * q_now.y),
+                1.0 - 2.0 * (q_now.y * q_now.y + q_now.z * q_now.z))))
+            for _ in range(20):
+                await fc.send_position_ned(p_now.x_m, p_now.y_m, p0.z_m, yaw_now)
+                await asyncio.sleep(0.05)
+
+            if aborted:
+                print("Aborting sweep, landing now.")
+                break
+
+        print("\n" + "=" * 60)
+        print("RESULTS (throttle -> climb rate)")
+        print("=" * 60)
+        for throttle, rate in results:
+            marker = "  <-- closest to hover" if results and \
+                throttle == min(results, key=lambda r: abs(r[1]))[0] else ""
+            print(f"  {throttle:.3f}  ->  {rate:+.3f} m/s{marker}")
+        if results:
+            best = min(results, key=lambda r: abs(r[1]))
+            print(f"\nBest estimate: throttle={best[0]:.3f} (climb rate {best[1]:+.3f} m/s)")
+            print("Refine by narrowing THROTTLE_LIST around this value and re-running, "
+                  "e.g. THROTTLE_LIST=\"{:.3f},{:.3f},{:.3f}\"".format(
+                  best[0]-0.02, best[0], best[0]+0.02))
+        print("=" * 60)
+
+        print("\nLanding...")
+        await fc.vehicle.action.land()
+
+    except KeyboardInterrupt:
+        print("\nInterrupted - landing")
+        if fc:
+            try:
+                await fc.vehicle.action.land()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
+        if fc:
+            try:
+                await fc.vehicle.action.land()
+            except Exception:
+                pass
+    finally:
+        if fc:
+            await fc.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

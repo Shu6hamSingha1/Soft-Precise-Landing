@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""
+Real-hardware INPUT (body-rate/thrust) calibration recorder. Sends a small
+step-profile of body-rate + thrust commands via send_attitude_rate and
+records COMMANDED vs ACHIEVED (from the flight controller's own onboard
+telemetry - no ground truth needed, unlike output calibration) so
+tools/aggregate_input_calibration.py-style analysis can derive per-axis
+gain/lag and the thrust slope.
+
+Modeled on the Gazebo SITL apps/record_input_calibration.py, with the
+Gazebo-only pieces removed (rclpy/gz_subscriber/Pose_Node/Clock_Node ground
+truth) - achieved rates come from FC_node.getLogData() (real IMU/EKF
+telemetry), which is exactly what input calibration is meant to characterize
+against the COMMAND, not against ground truth.
+
+*** SAFETY: HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT are PLACEHOLDERS
+(see hardware_landing.py) - the profile amplitudes below are deliberately
+much smaller than the SITL reference (which assumed a verified hover
+throttle) specifically because these constants are not yet verified. Do
+NOT increase CMD_RATE_AMP / CMD_THRUST_AMP_N until you have a real hover
+throttle confirmed by manual/RC flight observation. ***
+"""
+
+import os
+import sys
+import asyncio
+import time
+import numpy as np
+from datetime import datetime
+
+sys.path.insert(0, ".")
+
+try:
+    from ahrs import RAD2DEG
+    from flight_controller import FC
+    from controller import Controller
+    print("All modules imported successfully")
+except ImportError as e:
+    print(f"Import failed: {e}")
+    sys.exit(1)
+
+REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.30"))
+DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
+                                   np.deg2rad(float(os.environ.get("DES_ALPHA_DEG", "0.0")))])
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
+SLEEP_TIME = 1 / 100
+
+# *** PLACEHOLDER - same as hardware_landing.py, replace with this airframe's
+# own calibration once available (input cal itself derives the thrust slope,
+# but a REASONABLE hover-throttle guess is still needed to not overshoot
+# while executing the profile - confirm via manual/RC hover first). ***
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.738"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "42.3"))
+
+# Deliberately SMALL relative to the SITL reference (val=0.05 rad/s,
+# thrust delta 5N) - that profile assumed a verified hover throttle. Ours is
+# a placeholder, so start conservative; increase only after confirming a
+# real hover throttle and a few clean low-amplitude runs.
+CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.03"))     # rad/s
+CMD_THRUST_AMP_N = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", "1.0"))  # Newtons excess-over-hover
+N_REPEATS = int(os.environ.get("INPUT_CAL_N_REPEATS", "5"))
+STEP_HOLD_S = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "1.0"))
+
+CONTROL_TIMEOUT_S = float(os.environ.get("INPUT_CAL_TIMEOUT_S", "60.0"))
+
+
+def convert_2_sys_cmd(cmd):
+    """[roll_rate, pitch_rate, yaw_rate] rad/s + B_T (N excess-over-hover) ->
+    [rates deg/s] + normalized throttle [0,1]. Same mapping as
+    hardware_landing.py - keep both in sync if the thrust constants change."""
+    thrust_norm = float(np.clip(
+        HOVER_THROTTLE_NORM - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
+    rates = np.array(cmd[:3], dtype=float)
+    return np.append(RAD2DEG * rates, thrust_norm)
+
+
+def yaw_from_quaternion(q):
+    yaw = np.arctan2(2.0 * (q.w * q.z + q.x * q.y),
+                      1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+    return float(np.degrees(yaw))
+
+
+async def main():
+    FC_node = None
+    controller = None
+    t_c = []
+    ac_cmd = []
+    CONTROLLER_READY = False
+    start_time = None
+
+    val = CMD_RATE_AMP
+    thr = CMD_THRUST_AMP_N
+    # Step profile: hover, roll+pitch+yaw+thrust down together, hover, then up
+    # together - matches the SITL reference's shape, scaled to our amplitudes.
+    cmd_profile = np.array(
+        [[0.0, 0.0, 0.0, 0.0], [-val, -val, -val, -thr],
+         [0.0, 0.0, 0.0, 0.0], [val, val, val, thr]] * N_REPEATS)
+
+    print("=" * 60)
+    print("Hardware INPUT Calibration")
+    print("=" * 60)
+    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if HOVER_THROTTLE_NORM == 0.738 and "HW_HOVER_THROTTLE_NORM" not in os.environ:
+        print("\n*** WARNING: HOVER_THROTTLE_NORM is the SITL placeholder (0.738), "
+              "NOT calibrated for this airframe. Confirm a real hover throttle by "
+              "manual/RC observation before increasing amplitudes. ***\n")
+    print(f"rate amp={val} rad/s, thrust amp={thr} N, repeats={N_REPEATS}, "
+          f"takeoff height={TAKEOFF_HEIGHT} m")
+
+    try:
+        FC_node = FC()
+        await FC_node.start()
+        start_time = time.perf_counter()
+        while not FC_node.has_quat():
+            if (time.perf_counter() - start_time) > 20:
+                raise RuntimeError("Unable to get data from Flight Controller.")
+            await asyncio.sleep(0.05)
+
+        controller = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM, time, FC_node, 'n')
+
+        await FC_node.arm_and_takeoff(takeoff_hgt=TAKEOFF_HEIGHT)
+
+        yaw = yaw_from_quaternion(FC_node.getQuat())
+        p0 = FC_node.getPosBody()
+        await FC_node.send_position_ned(p0.x_m, p0.y_m, p0.z_m, yaw)
+        await asyncio.sleep(1.0)  # settle at takeoff height before the profile starts
+
+        cal_t0 = time.perf_counter()
+        for cmd in cmd_profile:
+            step_t0 = time.perf_counter()
+            while (time.perf_counter() - step_t0) < STEP_HOLD_S:
+                if not CONTROLLER_READY:
+                    start_time = time.perf_counter()
+                    CONTROLLER_READY = True
+                    t_c = [0.0]
+                else:
+                    t_c.append(time.perf_counter() - start_time)
+
+                sys_cmd = convert_2_sys_cmd(cmd)
+                try:
+                    await asyncio.wait_for(
+                        FC_node.send_attitude_rate(*sys_cmd), timeout=0.5)
+                except asyncio.TimeoutError:
+                    print("  [bail] send_attitude_rate timed out - PX4 likely dropped offboard.")
+                    break
+                ac_cmd.append(cmd)
+
+                if (time.perf_counter() - cal_t0) > CONTROL_TIMEOUT_S:
+                    print(f"  [bail] calibration timeout ({CONTROL_TIMEOUT_S:.0f}s) - stopping profile.")
+                    break
+
+                await asyncio.sleep(SLEEP_TIME)
+
+            print(f"  step done: cmd={cmd}")
+            if (time.perf_counter() - cal_t0) > CONTROL_TIMEOUT_S:
+                break
+
+        # Return to hover setpoint before landing.
+        yaw = yaw_from_quaternion(FC_node.getQuat())
+        p_now = FC_node.getPosBody()
+        await FC_node.send_position_ned(p_now.x_m, p_now.y_m, p_now.z_m, yaw)
+        await asyncio.sleep(1.0)
+
+        print("Landing...")
+        await FC_node.vehicle.action.land()
+
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+        if FC_node:
+            try:
+                await FC_node.vehicle.action.land()
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
+        if FC_node:
+            try:
+                print("Aborting - commanding PX4 land.")
+                await FC_node.vehicle.action.land()
+            except Exception as le:
+                print(f"Land command failed: {le}")
+    finally:
+        telemetry_data = FC_node.getLogData() if FC_node else None
+        controller_data = controller.getLogData() if controller else None
+        controller_params = controller.getParams() if controller else None
+        img_params = controller.getImgParams() if controller else None
+
+        if controller and controller.is_alive():
+            controller.close()
+            controller.join(timeout=3)
+        if FC_node:
+            await FC_node.close()
+
+        if CONTROLLER_READY and telemetry_data is not None:
+            # Matches the established Pi convention (output_calibration.py saves to
+            # Test_Data/Calibration/<timestamp>) - a separate Input/ subfolder keeps
+            # input-cal runs distinguishable from output-cal runs at a glance, while
+            # staying under the same Test_Data/ root any future aggregation expects.
+            base = os.environ.get(
+                "INPUT_CALIB_OUT_BASE", "Test_Data/Calibration/Input")
+            dir_name = os.environ.get(
+                "INPUT_CALIB_OUT_DIR", f"{base}/{time.ctime().replace(':', '-')}")
+            os.makedirs(dir_name, exist_ok=True)
+
+            gt_data = {"Start Time": start_time, "Time": t_c, "Command": ac_cmd}
+            np.save(f"{dir_name}/Telemetry_Data", telemetry_data)
+            np.save(f"{dir_name}/Control_Data", controller_data)
+            np.save(f"{dir_name}/Control_Params", controller_params)
+            np.save(f"{dir_name}/Ground_Truth", gt_data)
+            with open(f"{dir_name}/Img_Params.txt", "w") as f:
+                f.write(str(img_params))
+            print(f"\nInput-calibration data saved -> {dir_name}")
+        else:
+            print("\nNo data collected - not saving.")
+
+    print("\n" + "=" * 60)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
