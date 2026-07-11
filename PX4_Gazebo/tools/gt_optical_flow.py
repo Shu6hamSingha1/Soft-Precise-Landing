@@ -95,12 +95,16 @@ def compute_gt_flow(rep_dir):
         zB = W_x_tu[i, 2]                                             # depth (= rel altitude)
         B_x = Ru[i].T @ W_x_tu[i]                                     # NED -> body-FRD (target rel pos)
         V_x = _v_frame(Ru[i]) @ B_x                                   # body -> V (leveled)
-        V_s_g[i] = [V_x[0] / (V_x[2] + 0.01), V_x[1] / (V_x[2] + 0.01)]  # bearing; 1/(z+0.01) regularized (gear-bounded depth)
+        # Z_REG=0.2 (2026-07-11, was 0.01): match the gear-height floor precedent from
+        # feedback_zreg_gear_floor_artifact (gt_feedback.py) -- 0.01 let z fall BELOW the
+        # ~0.2m physical gear floor near touchdown, producing a fake unbounded 1/z blowup /
+        # NaN (loom -> -6+ / non-finite) that was a GT-computation artifact, not a real signal.
+        V_s_g[i] = [V_x[0] / (V_x[2] + 0.2), V_x[1] / (V_x[2] + 0.2)]  # bearing; 1/(z+0.2) regularized (gear-bounded depth)
         B_v = Ru[i].T @ W_v_tu[i]                                     # NED -> body-FRD
         V_v = _v_frame(Ru[i]) @ B_v                                   # body -> V (leveled)
         if abs(zB) >= 0.1:
-            B_h_g[i] = B_v / (zB + 0.01)
-            V_h_g[i] = V_v / (zB + 0.01)
+            B_h_g[i] = B_v / (zB + 0.2)
+            V_h_g[i] = V_v / (zB + 0.2)
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2], W_x_tu=W_x_tu,
                B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
 
