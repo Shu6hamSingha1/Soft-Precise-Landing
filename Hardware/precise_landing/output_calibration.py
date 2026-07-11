@@ -6,7 +6,30 @@
 import os
 import asyncio
 import time
+import traceback
 import numpy as np
+
+# A sensor calibration MUST be derived from the true raw sensor output, not
+# a control-oriented, spike-rejected version of it. img_data.py's checkposts
+# (FLOW_DH_MAX hold-on-spike on h_x/h_y, FLOW_DS_MAX hold-on-spike on
+# xc/yc) and the loom override (FLOW_LOOM_DECOUPLE, which REPLACES h_z with
+# a moment-based estimator AND has its own nested LOOM_DLNM_MAX checkpost)
+# are all live during ANY normal run - including calibration recording,
+# since this script runs the full img_data.py pipeline, not a stripped
+# capture-only mode. Left enabled, they silently corrupt the logged "raw"
+# flow with frozen/held values (confirmed 2026-07-10: 33-47% of consecutive
+# h_x/h_y/h_z samples were exact duplicates - stale holds, not fresh
+# measurements - which is why an earlier derive_pi_cal.py attempt against
+# that data got ~zero correlation with ground truth; alpha and ring flow,
+# which pass through neither checkpost, DID show real correlation,
+# confirming this was checkpost corruption specifically, not a broken
+# frame transform). Setting FLOW_LOOM_DECOUPLE=0 also implicitly disables
+# LOOM_DLNM_MAX, since that checkpost lives entirely inside the
+# `if self._loom_decouple:` block. This script's only purpose is
+# calibration recording, so all of these should ALWAYS be off here.
+os.environ.setdefault("FLOW_DH_MAX", "0")
+os.environ.setdefault("FLOW_DS_MAX", "0")
+os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 
 from flight_controller import FC
 import img_data as ID
@@ -14,6 +37,11 @@ import img_data as ID
 # from controller import Controller
 from mavsdk.telemetry import LandedState
 from mocaptools import QTMWrapper
+
+print(f"[output_calibration] recording TRUE raw flow: "
+      f"FLOW_DH_MAX={os.environ['FLOW_DH_MAX']} FLOW_DS_MAX={os.environ['FLOW_DS_MAX']} "
+      f"FLOW_LOOM_DECOUPLE={os.environ['FLOW_LOOM_DECOUPLE']} "
+      f"(checkpost/loom-override disabled for calibration - see comment above)")
 
 # # Setup variables
 QTM_IP = '192.168.0.111'
@@ -143,7 +171,15 @@ async def main(record = 'n'):
 
     except asyncio.CancelledError:
         # await FC_node.vehicle.action.land()
-        print("Unexpected error: Main Thread\n")        
+        # Usually a normal Ctrl+C shutdown: asyncio.run() cancels the running
+        # task, which raises CancelledError here (not KeyboardInterrupt
+        # directly - that only reaches the outer except KeyboardInterrupt
+        # around asyncio.run() if the interrupt lands OUTSIDE the running
+        # loop). BUT CancelledError can also come from a timeout or an
+        # explicit task.cancel() elsewhere - print the traceback so a
+        # non-Ctrl+C cancellation is diagnosable, not silently mislabeled.
+        print("CancelledError: Main Thread (Ctrl+C, or a task was cancelled - see traceback below)\n")
+        traceback.print_exc()
 
     except RuntimeError as e:
         print(f"RuntimeError: Main Thread: {e}\n")
@@ -198,7 +234,11 @@ def _print_run_validity(image_data, gt_data):
         tp = [p for p in gt_data.get("Target Pose", []) if p is not None]
         xs = np.array([p.x for p in up]); ys = np.array([p.y for p in up]); zs = np.array([p.z for p in up])
         if len(up):
-            yaws = np.unwrap(np.deg2rad(np.array([p.yaw for p in up])))
+            # Drop NaN (QTM dropouts) BEFORE unwrap - see analyze_output_calibration.py
+            # for why: np.unwrap's cumulative correction is corrupted by a
+            # single NaN, silently collapsing the reported span to near-zero.
+            _raw_yaws = np.array([p.yaw for p in up])
+            yaws = np.unwrap(np.deg2rad(_raw_yaws[~np.isnan(_raw_yaws)]))
         if len(tp):
             tz = np.array([p.z for p in tp])
         _t = gt_data.get("Time", [0.0])

@@ -50,7 +50,14 @@ def analyze_run(run_dir):
     yaws = np.array([])
     if up:
         try:
-            yaws = np.unwrap(np.deg2rad(np.array([p.yaw for p in up])))
+            # Drop NaN (QTM tracking dropouts) BEFORE unwrap: np.unwrap is a
+            # cumulative running correction over consecutive-sample deltas -
+            # a single NaN corrupts everything after it, silently collapsing
+            # the reported span to near-zero from a handful of leftover
+            # finite values (confirmed 2026-07-10: 157.7deg true span
+            # reported as 1.2deg with NaN left in).
+            _raw_yaws = np.array([p.yaw for p in up])
+            yaws = np.unwrap(np.deg2rad(_raw_yaws[~np.isnan(_raw_yaws)]))
         except AttributeError:
             pass
 

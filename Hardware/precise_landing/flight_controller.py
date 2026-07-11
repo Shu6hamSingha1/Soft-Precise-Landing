@@ -12,6 +12,7 @@ import asyncio
 import os
 import subprocess
 import time
+import numpy as np
 from mavsdk import System
 from mavsdk.offboard import (OffboardError, PositionNedYaw, VelocityBodyYawspeed, AccelerationNed, Attitude, AttitudeRate, ActuatorControl, ActuatorControlGroup)
 from mavsdk.telemetry import LandedState
@@ -209,6 +210,22 @@ class FC():
         """
         Arms vehicle.
         """
+        # 2026-07-11: refuse to arm while a MAVSDK log download is in
+        # progress (download_flight_logs.py writes/removes this lock file) --
+        # a stuck/running log download is documented to interfere with a new
+        # flight starting. If a download crashed hard enough to leave this
+        # behind, remove it manually after confirming no download is running:
+        # rm Test_Data/.log_download_active
+        LOG_DOWNLOAD_LOCK_FILE = os.environ.get(
+            "LOG_DOWNLOAD_LOCK_FILE", "Test_Data/.log_download_active")
+        if os.path.exists(LOG_DOWNLOAD_LOCK_FILE):
+            raise RuntimeError(
+                f"Refusing to arm: {LOG_DOWNLOAD_LOCK_FILE} exists, meaning a "
+                f"MAVSDK log download is (or was) in progress -- this can "
+                f"interfere with a new flight. If no download is actually "
+                f"running, remove the stale lock file first."
+            )
+
         # Pin CPU to max clock before arming — avoids ondemand's reactive
         # ramp-up lag right as FC+camera+compute load spikes together.
         _set_cpu_governor("performance")
@@ -273,12 +290,36 @@ class FC():
             print("-- Taking off")
             await self.vehicle.action.set_takeoff_altitude(1.2*takeoff_hgt)
             await self.vehicle.action.takeoff()
-        #-- wait to reach the target altitude
+        #-- wait to reach the target altitude via PX4's own AUTO_TAKEOFF
+            # 2026-07-11: root-caused via .ulg analysis (see
+            # project_flight_anomaly_investigation_2026_07_10 memory) -- PX4's
+            # AUTO_TAKEOFF does NOT reliably climb all the way to the commanded
+            # altitude before exiting to Hold/LOITER. Across multiple flights it
+            # consistently exited TAKEOFF mode after ~6-9s regardless of altitude
+            # actually reached (0.3m, 1.0m, 3.2m all exited around the same
+            # elapsed time) -- actuator output during the climb was essentially
+            # IDENTICAL in every case (~1500 of ~2000 max), ruling out a
+            # thrust/battery-authority limit. This is a fixed-duration
+            # open-loop-ish climb profile, not a closed-loop "climb until
+            # target reached" controller. So: give AUTO_TAKEOFF a SHORT window
+            # to do its thing, but don't treat falling short as fatal here --
+            # fall through to our own closed-loop OFFBOARD position climb
+            # below, which is a much more reliable way to actually reach the
+            # requested altitude.
+            AUTO_TAKEOFF_WINDOW_S = 12.0
+            t0_takeoff = time.monotonic()
             while self._STAY_OPEN :
                 await asyncio.sleep(0.5)
-                if -self._pos_body[-1].z_m >= 0.9*takeoff_hgt:
-                    print("Altitude reached")
-                    print(self._pos_body[-1].z_m, takeoff_hgt)
+                alt_now = -self._pos_body[-1].z_m
+                if alt_now >= 0.9*takeoff_hgt:
+                    print("Altitude reached via AUTO_TAKEOFF")
+                    print(alt_now, takeoff_hgt)
+                    break
+                if (time.monotonic() - t0_takeoff) > AUTO_TAKEOFF_WINDOW_S:
+                    print(f"AUTO_TAKEOFF plateaued at alt={alt_now:.2f}m (target "
+                          f"{0.9*takeoff_hgt:.2f}m) after {AUTO_TAKEOFF_WINDOW_S:.0f}s -- "
+                          f"this is expected PX4 behavior, not an error. Will finish "
+                          f"the climb via our own OFFBOARD position setpoint next.")
                     break
             self.LANDED = False
         else:
@@ -326,6 +367,39 @@ class FC():
             print(f"  PX4 reported flight_mode = {mode}")
         except Exception as e:
             print(f"  (couldn't read flight_mode: {e})")
+
+        # 2026-07-11: if AUTO_TAKEOFF plateaued short of the requested altitude
+        # (see note above the AUTO_TAKEOFF_WINDOW_S loop), finish the climb
+        # ourselves now that OFFBOARD is confirmed active -- a closed-loop
+        # position setpoint is a far more reliable way to actually reach
+        # takeoff_hgt than trusting PX4's own AUTO_TAKEOFF completion logic.
+        alt_now = -self._pos_body[-1].z_m
+        if alt_now < 0.9 * takeoff_hgt:
+            print(f"-- Finishing climb via OFFBOARD position setpoint "
+                  f"(currently {alt_now:.2f}m, target {takeoff_hgt:.2f}m)")
+            p_now = self.getPosBody()
+            q_now = self.getQuat()
+            yaw_now = float(np.degrees(np.arctan2(
+                2.0 * (q_now.w * q_now.z + q_now.x * q_now.y),
+                1.0 - 2.0 * (q_now.y * q_now.y + q_now.z * q_now.z))))
+            OFFBOARD_CLIMB_TIMEOUT_S = 15.0
+            t0_climb = time.monotonic()
+            while self._STAY_OPEN:
+                await self.send_position_ned(p_now.x_m, p_now.y_m, -takeoff_hgt, yaw_now)
+                await asyncio.sleep(0.1)
+                alt_now = -self._pos_body[-1].z_m
+                if alt_now >= 0.9 * takeoff_hgt:
+                    print(f"Altitude reached via OFFBOARD climb: {alt_now:.2f}m")
+                    break
+                if (time.monotonic() - t0_climb) > OFFBOARD_CLIMB_TIMEOUT_S:
+                    raise RuntimeError(
+                        f"OFFBOARD climb did not reach {0.9*takeoff_hgt:.2f}m within "
+                        f"{OFFBOARD_CLIMB_TIMEOUT_S:.0f}s (current alt={alt_now:.2f}m) -- "
+                        f"this is a closed-loop position command, so falling short here "
+                        f"is a genuine problem (thrust authority, EKF, or battery), not "
+                        f"just AUTO_TAKEOFF's known fixed-duration quirk. Investigate "
+                        f"before retrying."
+                    )
 
         print(self.getPosBody())
     

@@ -127,8 +127,15 @@ def main():
         if m is None:
             print(f"    {d:30s}  SKIPPED (insufficient samples)")
             continue
+        batt_v = None
+        try:
+            gt = np.load(os.path.join(cal_dir, d, "Ground_Truth.npy"), allow_pickle=True).item()
+            batt_v = gt.get("Battery Voltage")
+        except Exception:
+            pass
+        batt_str = f"{batt_v:.2f}V" if batt_v else "n/a"
         for ax in AXES:
-            print(f'    {d:32s}  {ax:4s}  {m[ax]["r"]:6.3f}  {m[ax]["lag_ms"]:7.1f}  {m[ax]["gain"]:7.3f}')
+            print(f'    {d:32s}  {ax:4s}  {m[ax]["r"]:6.3f}  {m[ax]["lag_ms"]:7.1f}  {m[ax]["gain"]:7.3f}  batt={batt_str}')
             for key in ("r", "lag_ms", "gain"):
                 all_metrics[ax][key].append(m[ax][key])
 

@@ -13,12 +13,33 @@ truth) - achieved rates come from FC_node.getLogData() (real IMU/EKF
 telemetry), which is exactly what input calibration is meant to characterize
 against the COMMAND, not against ground truth.
 
-*** SAFETY: HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT are PLACEHOLDERS
-(see hardware_landing.py) - the profile amplitudes below are deliberately
-much smaller than the SITL reference (which assumed a verified hover
-throttle) specifically because these constants are not yet verified. Do
-NOT increase CMD_RATE_AMP / CMD_THRUST_AMP_N until you have a real hover
-throttle confirmed by manual/RC flight observation. ***
+*** SAFETY UPDATE 2026-07-10: HOVER_THROTTLE_NORM is now a CONFIRMED value
+(0.388) from find_hover_throttle.py bisection -- converged across many sweeps,
+22.4-24.0V battery range (see memory project_hover_throttle_search_2026_07_09
+/ project_hover_voltage_curve). THRUST_SLOPE_N_PER_UNIT was refined 2026-07-10
+to 34.8 N/unit (was 42.3 SITL placeholder) from the accelerometer-based
+commanded-B_T-vs-achieved-a_down regression on valid-battery runs. The
+profile amplitudes below are still deliberately conservative relative to the
+SITL reference. ***
+
+2026-07-10: repeated aborts traced mostly to LOW BATTERY (outside the
+22.4-24.0V plateau where HOVER_THROTTLE_NORM=0.388 is valid) -- a mismatched
+hover assumption adds a systematic climb/sink bias that swamps the small
+intentional excitation and drives the vehicle into the altitude margin fast.
+Always confirm battery voltage (printed at takeoff-settle, also saved in
+Ground_Truth["Battery Voltage"]) is in-range before trusting a run.
+
+2026-07-10: added structural abort-avoidance fixes (independent of battery):
+  1. Two-tier altitude margin, same split as find_hover_throttle.py:
+     ALT_MARGIN_M is now a SOFT cutoff (ends just the current profile STEP
+     early, profile continues) instead of a hard abort -- previously any
+     step that drifted past 1.5m killed the whole run, even ones near the
+     very end. ALT_HARD_MARGIN_M is the real sweep-ending abort.
+  2. A brief position-hold recenter BETWEEN REPEATS (not between the 4
+     sub-steps within a repeat, to preserve the intended
+     hover/down/hover/up transition shape) -- previously the entire
+     N_REPEATS profile ran fully open-loop end-to-end with nothing
+     resetting accumulated drift, so drift compounded across all reps.
 """
 
 import os
@@ -42,26 +63,36 @@ except ImportError as e:
 REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.30"))
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
                                    np.deg2rad(float(os.environ.get("DES_ALPHA_DEG", "0.0")))])
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 100
 
-# *** PLACEHOLDER - same as hardware_landing.py, replace with this airframe's
-# own calibration once available (input cal itself derives the thrust slope,
-# but a REASONABLE hover-throttle guess is still needed to not overshoot
-# while executing the profile - confirm via manual/RC hover first). ***
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.738"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "42.3"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.388"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "34.8"))
 
-# Deliberately SMALL relative to the SITL reference (val=0.05 rad/s,
-# thrust delta 5N) - that profile assumed a verified hover throttle. Ours is
-# a placeholder, so start conservative; increase only after confirming a
-# real hover throttle and a few clean low-amplitude runs.
-CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.03"))     # rad/s
+CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.05"))     # rad/s
 CMD_THRUST_AMP_N = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", "1.0"))  # Newtons excess-over-hover
-N_REPEATS = int(os.environ.get("INPUT_CAL_N_REPEATS", "5"))
-STEP_HOLD_S = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "1.0"))
+N_REPEATS = int(os.environ.get("INPUT_CAL_N_REPEATS", "3"))
+STEP_HOLD_S = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "0.5"))
 
 CONTROL_TIMEOUT_S = float(os.environ.get("INPUT_CAL_TIMEOUT_S", "60.0"))
+
+# Safety, two-tier (2026-07-10 split, same pattern as find_hover_throttle.py):
+#   ALT_MARGIN_M      - SOFT cutoff. Ends the current profile STEP early
+#                        (partial samples for that step only), then continues
+#                        to the next step/repeat. A real commanded thrust/rate
+#                        disturbance can drift past this within one 0.5s hold
+#                        on real hardware, so this must NOT end the whole
+#                        profile or a single noisy step sacrifices the rest.
+#   ALT_HARD_MARGIN_M - HARD abort. Genuinely aborts the whole profile and
+#                        lands immediately, skipping the return-to-hover step.
+ALT_MARGIN_M = float(os.environ.get("INPUT_CAL_ALT_MARGIN_M", "1.5"))
+ALT_HARD_MARGIN_M = float(os.environ.get("INPUT_CAL_ALT_HARD_MARGIN_M", "2.5"))
+
+# Recenter between repeats: how long to position-hold before starting the
+# next repeat, resetting accumulated drift/velocity. Not applied between the
+# 4 sub-steps WITHIN a repeat -- that would destroy the intended
+# hover/down/hover/up transition shape each repeat characterizes.
+RECENTER_HOLD_S = float(os.environ.get("INPUT_CAL_RECENTER_HOLD_S", "1.0"))
 
 
 def convert_2_sys_cmd(cmd):
@@ -87,14 +118,17 @@ async def main():
     ac_cmd = []
     CONTROLLER_READY = False
     start_time = None
+    battery_voltage = None
 
     val = CMD_RATE_AMP
     thr = CMD_THRUST_AMP_N
-    # Step profile: hover, roll+pitch+yaw+thrust down together, hover, then up
-    # together - matches the SITL reference's shape, scaled to our amplitudes.
-    cmd_profile = np.array(
+    # One repeat's 4-step shape: hover, roll+pitch+yaw+thrust down together,
+    # hover, then up together - matches the SITL reference's shape, scaled to
+    # our amplitudes. Iterated per-repeat (not flattened) so a recenter can
+    # run between repeats without disturbing the shape within one.
+    rep_profile = np.array(
         [[0.0, 0.0, 0.0, 0.0], [-val, -val, -val, -thr],
-         [0.0, 0.0, 0.0, 0.0], [val, val, val, thr]] * N_REPEATS)
+         [0.0, 0.0, 0.0, 0.0], [val, val, val, thr]])
 
     print("=" * 60)
     print("Hardware INPUT Calibration")
@@ -120,51 +154,116 @@ async def main():
 
         await FC_node.arm_and_takeoff(takeoff_hgt=TAKEOFF_HEIGHT)
 
+        # Read battery voltage at takeoff-settle -- HOVER_THROTTLE_NORM is only
+        # valid for the battery range it was derived on (see
+        # project_hover_voltage_curve memory); logging this lets a bad-battery
+        # run be flagged after the fact instead of silently corrupting the
+        # rate-tracking metrics with a systematic climb/sink bias.
+        try:
+            battery = await FC_node.vehicle.telemetry.battery().__aiter__().__anext__()
+            battery_voltage = float(battery.voltage_v)
+            print(f"Battery voltage: {battery_voltage:.2f}V")
+            if not (22.4 <= battery_voltage <= 24.0):
+                print("*** WARNING: battery voltage outside the confirmed 22.4-24.0V "
+                      "HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic "
+                      "climb/sink bias. Consider aborting and re-checking hover first. ***")
+        except Exception as e:
+            print(f"[WARN] Could not read battery voltage: {e}")
+
         yaw = yaw_from_quaternion(FC_node.getQuat())
         p0 = FC_node.getPosBody()
         await FC_node.send_position_ned(p0.x_m, p0.y_m, p0.z_m, yaw)
         await asyncio.sleep(1.0)  # settle at takeoff height before the profile starts
+        takeoff_alt = -p0.z_m
+        print(f"Takeoff settled at alt={takeoff_alt:.2f}m "
+              f"(soft cutoff >{ALT_MARGIN_M}m, hard abort >{ALT_HARD_MARGIN_M}m)")
 
         cal_t0 = time.perf_counter()
-        for cmd in cmd_profile:
-            step_t0 = time.perf_counter()
-            while (time.perf_counter() - step_t0) < STEP_HOLD_S:
-                if not CONTROLLER_READY:
-                    start_time = time.perf_counter()
-                    CONTROLLER_READY = True
-                    t_c = [0.0]
-                else:
-                    t_c.append(time.perf_counter() - start_time)
+        hard_abort = False
+        for rep_idx in range(N_REPEATS):
+            print(f"--- Repeat {rep_idx + 1}/{N_REPEATS} ---")
+            for cmd in rep_profile:
+                step_t0 = time.perf_counter()
+                step_cutoff = False
+                while (time.perf_counter() - step_t0) < STEP_HOLD_S:
+                    if not CONTROLLER_READY:
+                        start_time = time.perf_counter()
+                        CONTROLLER_READY = True
+                        t_c = [0.0]
+                    else:
+                        t_c.append(time.perf_counter() - start_time)
 
-                sys_cmd = convert_2_sys_cmd(cmd)
-                try:
-                    await asyncio.wait_for(
-                        FC_node.send_attitude_rate(*sys_cmd), timeout=0.5)
-                except asyncio.TimeoutError:
-                    print("  [bail] send_attitude_rate timed out - PX4 likely dropped offboard.")
+                    sys_cmd = convert_2_sys_cmd(cmd)
+                    try:
+                        await asyncio.wait_for(
+                            FC_node.send_attitude_rate(*sys_cmd), timeout=0.5)
+                    except asyncio.TimeoutError:
+                        print("  [bail] send_attitude_rate timed out - PX4 likely dropped offboard.")
+                        break
+                    ac_cmd.append(cmd)
+
+                    pos = FC_node.getPosBody()
+                    alt = -pos.z_m if pos else takeoff_alt
+                    drift = abs(alt - takeoff_alt)
+                    if drift > ALT_HARD_MARGIN_M:
+                        print(f"  [HARD ABORT] altitude {alt:.2f}m drifted >{ALT_HARD_MARGIN_M}m "
+                              f"from takeoff height {takeoff_alt:.2f}m")
+                        hard_abort = True
+                        break
+                    if drift > ALT_MARGIN_M:
+                        print(f"  [cutoff] altitude {alt:.2f}m drifted >{ALT_MARGIN_M}m - "
+                              f"ending this step early, profile continues")
+                        step_cutoff = True
+                        break
+
+                    if (time.perf_counter() - cal_t0) > CONTROL_TIMEOUT_S:
+                        print(f"  [bail] calibration timeout ({CONTROL_TIMEOUT_S:.0f}s) - stopping profile.")
+                        hard_abort = True
+                        break
+
+                    await asyncio.sleep(SLEEP_TIME)
+
+                print(f"  step done: cmd={cmd}" + (" [cutoff]" if step_cutoff else ""))
+                if hard_abort:
                     break
-                ac_cmd.append(cmd)
 
-                if (time.perf_counter() - cal_t0) > CONTROL_TIMEOUT_S:
-                    print(f"  [bail] calibration timeout ({CONTROL_TIMEOUT_S:.0f}s) - stopping profile.")
-                    break
-
-                await asyncio.sleep(SLEEP_TIME)
-
-            print(f"  step done: cmd={cmd}")
-            if (time.perf_counter() - cal_t0) > CONTROL_TIMEOUT_S:
+            if hard_abort:
                 break
 
-        # Return to hover setpoint before landing.
-        yaw = yaw_from_quaternion(FC_node.getQuat())
-        p_now = FC_node.getPosBody()
-        await FC_node.send_position_ned(p_now.x_m, p_now.y_m, p_now.z_m, yaw)
-        await asyncio.sleep(1.0)
+            # Recenter between repeats (not between the 4 sub-steps within
+            # one) -- resets accumulated drift/velocity before the next
+            # repeat starts, without disturbing the transition shape a single
+            # repeat is meant to characterize.
+            if rep_idx < N_REPEATS - 1:
+                p_now = FC_node.getPosBody()
+                q_now = FC_node.getQuat()
+                yaw_now = yaw_from_quaternion(q_now)
+                t_recenter0 = time.perf_counter()
+                while (time.perf_counter() - t_recenter0) < RECENTER_HOLD_S:
+                    await FC_node.send_position_ned(p_now.x_m, p_now.y_m, p0.z_m, yaw_now)
+                    await asyncio.sleep(0.05)
+
+        if hard_abort:
+            # Do NOT run the neutral-hold recenter step here - that's what kept
+            # the vehicle drifting after abort in find_hover_throttle.py's
+            # pre-fix version. Land immediately.
+            print("Hard-aborting profile, landing immediately.")
+        else:
+            # Return to hover setpoint before landing.
+            yaw = yaw_from_quaternion(FC_node.getQuat())
+            p_now = FC_node.getPosBody()
+            await FC_node.send_position_ned(p_now.x_m, p_now.y_m, p_now.z_m, yaw)
+            await asyncio.sleep(1.0)
 
         print("Landing...")
         await FC_node.vehicle.action.land()
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # asyncio.CancelledError is a BaseException (not Exception) since
+        # Python 3.8, so it falls through `except Exception` uncaught -- catch
+        # it here too so a Ctrl-C during an `await` still sends a land command
+        # before the finally block's cleanup (data-saving itself was already
+        # safe since it lives in `finally`, which always runs regardless).
         print("\nInterrupted by user")
         if FC_node:
             try:
@@ -204,7 +303,7 @@ async def main():
                 "INPUT_CALIB_OUT_DIR", f"{base}/{time.ctime().replace(':', '-')}")
             os.makedirs(dir_name, exist_ok=True)
 
-            gt_data = {"Start Time": start_time, "Time": t_c, "Command": ac_cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Command": ac_cmd, "Battery Voltage": battery_voltage}
             np.save(f"{dir_name}/Telemetry_Data", telemetry_data)
             np.save(f"{dir_name}/Control_Data", controller_data)
             np.save(f"{dir_name}/Control_Params", controller_params)

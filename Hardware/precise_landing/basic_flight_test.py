@@ -23,7 +23,7 @@ except ImportError as e:
     print(f"Import failed: {e}")
     sys.exit(1)
 
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 HOVER_HOLD_S = float(os.environ.get("HOVER_HOLD_S", "8.0"))
 
 # Abort hover-hold and land immediately if altitude drifts beyond this

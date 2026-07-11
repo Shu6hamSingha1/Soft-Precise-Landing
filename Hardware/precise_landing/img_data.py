@@ -226,7 +226,12 @@ class IMG_PROCESSOR(Thread):
         _fracs = [float(x) for x in
                   os.environ.get("FLOW_RING_FRACS", "0.17,0.33,0.50,0.67,0.83").split(",")]
         _ring_radii = [fr * _Rmax for fr in _fracs]
-        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "60"))
+        # 30/radius (was 60): halves the LK-tracked point count (5 radii x
+        # 30 = 150, was 300), directly cutting calcOpticalFlowPyrLK cost -
+        # the dominant CPU-bound stage once ArUco was fixed (see
+        # img_process_freq_optimization.md). Azimuthal sampling density is
+        # still well above what a 6-DOF lstsq divergence/flow fit needs.
+        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "30"))
         _ring_pts_V = []
         for _rr in _ring_radii:
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts

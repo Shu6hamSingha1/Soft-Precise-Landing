@@ -41,12 +41,12 @@ except ImportError as e:
 REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.30"))
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
                                    np.deg2rad(float(os.environ.get("DES_ALPHA_DEG", "0.0")))])
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 200
 
 # *** PLACEHOLDER - replace with this airframe's own calibration ***
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.738"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "42.3"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.388"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "34.8"))
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
 FINAL_DESCENT_THROTTLE = float(os.environ.get("LANDING_FINAL_DESCENT_THROTTLE",

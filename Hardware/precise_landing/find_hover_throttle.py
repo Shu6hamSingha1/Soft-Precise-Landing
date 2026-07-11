@@ -33,9 +33,44 @@ modeling across battery states. Reads battery voltage at takeoff-settle and
 stores it with the results for each throttle test, so single-point checks
 per-session can build a calibration curve over time.
 
+2026-07-10: default THROTTLE_LIST re-narrowed to 0.38-0.41. The only
+FULL-BATTERY data point so far is 0.418 (climbs, +0.458 m/s) -- everything
+below that (0.400-0.415, all sinking) was measured on a DEPLETED battery and
+does not transfer (same 0.418 command sank at -0.488 m/s on depleted vs
+climbed at +0.458 m/s on full charge). This range probes below 0.418 on a
+confirmed full charge without assuming the old depleted-battery bracket.
+
+2026-07-10 (later same day): first clean full-sweep completion (all 4 points,
+no abort) at battery ~23.0V: 0.380 sinks -0.185, 0.390 climbs +0.033, 0.400
+climbs +0.095, 0.410 climbs +0.023. Crossover (hover) sits between 0.380 and
+0.390. THROTTLE_LIST re-narrowed to bisect that crossover.
+
+2026-07-10 (two more sweeps, battery draining 22.66V then 22.40V): every value
+0.386-0.392 landed within +/-0.2 m/s of zero across all three sweeps (23.0V,
+22.66V, 22.40V), with the sign flipping inconsistently between runs at the
+same throttle -- this is measurement noise (short 1s hold + wind), not a real
+non-monotonic thrust curve. Converged estimate: hover throttle ~0.387-0.389
+across this battery range, further bisection not worthwhile below the noise
+floor. Default THROTTLE_LIST narrowed to a single confirmation point.
+
+2026-07-10: added THROTTLE_MODE=sine, a continuous sinusoidal throttle sweep
+(zero body rate throughout) as an alternative to the discrete THROTTLE_LIST
+steps. Motivation: discrete step spacing narrow enough to bisect hover finely
+is too narrow to also derive a good thrust slope (see
+project_hover_throttle_search_2026_07_09 memory -- the hover-bisection data
+gave a wildly inconsistent 6-45 N/unit slope estimate), and each discrete
+point only gets one ~1-3s noisy segment. A continuous sine sweep instead
+samples the whole throttle range across multiple cycles in one flight,
+giving both the hover crossing AND the thrust slope from a single linear fit
+of accelerometer specific-force (a_down) vs commanded throttle -- the same
+accelerometer-based method already validated for the input-cal thrust-slope
+derivation, just applied here directly instead of the position-based
+climb_rate proxy. List mode (THROTTLE_MODE=list, default) is unchanged.
+
 Usage:
   /home/doctor/denv/bin/python3 find_hover_throttle.py
   THROTTLE_LIST="0.46,0.48,0.50,0.52,0.54" python3 find_hover_throttle.py
+  THROTTLE_MODE=sine SINE_CENTER=0.388 SINE_AMP=0.03 SINE_PERIOD_S=4.0 SINE_CYCLES=3 python3 find_hover_throttle.py
 """
 import os
 import sys
@@ -52,23 +87,48 @@ except ImportError as e:
     print(f"Import failed: {e}")
     sys.exit(1)
 
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "1.5"))
-HOLD_S = float(os.environ.get("THROTTLE_HOLD_S", "3.0"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
+HOLD_S = float(os.environ.get("THROTTLE_HOLD_S", "1.0"))
 THROTTLE_LIST = [float(v) for v in
-                  os.environ.get("THROTTLE_LIST", "0.46,0.48,0.50,0.52,0.54").split(",")]
+                  os.environ.get("THROTTLE_LIST", "0.388").split(",")]
 
-# Safety bounds - abort the sweep and land immediately if altitude leaves
-# this band around the takeoff height (climbing away or dropping too fast).
+# THROTTLE_MODE: 'list' (default, discrete bisection above) | 'sine'
+# (continuous sweep, see module docstring).
+THROTTLE_MODE = os.environ.get("THROTTLE_MODE", "list")
+SINE_CENTER = float(os.environ.get("SINE_CENTER", "0.388"))
+SINE_AMP = float(os.environ.get("SINE_AMP", "0.03"))
+SINE_PERIOD_S = float(os.environ.get("SINE_PERIOD_S", "4.0"))
+SINE_CYCLES = float(os.environ.get("SINE_CYCLES", "3.0"))
+G_STD = 9.81  # standard gravity, m/s^2 -- target a_down at true level hover
+
+# Safety bounds, two-tier (2026-07-10 split -- see below):
+#   ALT_MARGIN_M      - SOFT cutoff. Ends the current throttle's hold early
+#                        (partial samples still used for its climb-rate
+#                        estimate) then continues the sweep to the next
+#                        throttle. A real nonzero climb/sink rate over the
+#                        full HOLD_S will drift past this within the hold on
+#                        real hardware (unlike SITL), so this must NOT end
+#                        the whole sweep or every run only ever tests its
+#                        first throttle value (the exact gap seen 2026-07-09/10:
+#                        both 0.380 runs sank -0.2ish m/s and hit this margin
+#                        before HOLD_S elapsed, aborting the sweep outright).
+#   ALT_HARD_MARGIN_M - HARD abort. Genuinely aborts the sweep and lands
+#                        immediately, skipping the neutral-hold recenter.
+#   MAX_CLIMB_RATE_ABORT - also a HARD abort (dangerous velocity regardless
+#                        of displacement so far).
 ALT_MARGIN_M = float(os.environ.get("THROTTLE_ALT_MARGIN_M", "0.5"))
+ALT_HARD_MARGIN_M = float(os.environ.get("THROTTLE_ALT_HARD_MARGIN_M", "1.0"))
 MAX_CLIMB_RATE_ABORT = float(os.environ.get("THROTTLE_MAX_CLIMB_RATE", "1.0"))  # m/s
 
 LOG_DIR = os.environ.get("THROTTLE_LOG_DIR", "Test_Data/HoverThrottle")
 
 
-def _save_log(fc, results, tag):
+def _save_log(fc, results, tag, extra=None):
     """Dump fc's full internal telemetry buffers to disk. Safe to call from
     any exit path (including exceptions) - fc buffers continuously in the
-    background regardless of what this script does with it."""
+    background regardless of what this script does with it. `extra` (dict)
+    adds additional arrays to the npz -- used by sine mode to save the
+    commanded (time, throttle) timeline alongside the usual telemetry."""
     if fc is None:
         return
     try:
@@ -87,6 +147,7 @@ def _save_log(fc, results, tag):
             path,
             results=np.array(results, dtype=float) if results else np.zeros((0, 3)),
             **{k: _arr(v) for k, v in log.items()},
+            **({k: _arr(v) for k, v in extra.items()} if extra else {}),
         )
         print(f"[LOG] Saved full telemetry to {path}")
     except Exception as e:
@@ -104,6 +165,86 @@ async def _wait_landed(fc, timeout=15.0):
         await asyncio.sleep(0.1)
 
 
+async def _run_sine_sweep(fc, takeoff_alt):
+    """Continuous sinusoidal throttle sweep (zero body rate throughout).
+    Returns (sine_time, sine_throttle, hard_abort) -- the commanded timeline,
+    saved alongside the usual telemetry for later alignment against
+    fc.getLogData()'s Acceleration / IMU Timestamp."""
+    duration = SINE_PERIOD_S * SINE_CYCLES
+    print(f"Sine sweep: center={SINE_CENTER}, amp={SINE_AMP}, period={SINE_PERIOD_S}s, "
+          f"cycles={SINE_CYCLES} (duration={duration:.1f}s)")
+    sine_time = []
+    sine_throttle = []
+    hard_abort = False
+    t0 = time.perf_counter()
+    last_notice = -1.0
+    while (time.perf_counter() - t0) < duration:
+        t = time.perf_counter() - t0
+        throttle = SINE_CENTER + SINE_AMP * np.sin(2 * np.pi * t / SINE_PERIOD_S)
+        await fc.send_attitude_rate(0.0, 0.0, 0.0, throttle)
+        sine_time.append(t)
+        sine_throttle.append(throttle)
+
+        pos = fc.getPosBody()
+        alt = -pos.z_m if pos else takeoff_alt
+        drift = abs(alt - takeoff_alt)
+        if drift > ALT_HARD_MARGIN_M:
+            print(f"  [HARD ABORT] altitude {alt:.2f}m drifted >{ALT_HARD_MARGIN_M}m "
+                  f"from takeoff height {takeoff_alt:.2f}m")
+            hard_abort = True
+            break
+        # No soft-cutoff tier for sine mode -- there's no discrete "step" to
+        # end early; a brief mid-sweep excursion past ALT_MARGIN_M doesn't
+        # invalidate the regression the way a full step-abort would in list
+        # mode, so just notice it (throttled to ~1/s) and keep sweeping.
+        if drift > ALT_MARGIN_M and (t - last_notice) > 1.0:
+            print(f"  [notice] altitude {alt:.2f}m drifted >{ALT_MARGIN_M}m (sweep continues)")
+            last_notice = t
+
+        await asyncio.sleep(0.02)
+
+    return np.array(sine_time), np.array(sine_throttle), hard_abort
+
+
+def _fit_sine_sweep(fc, sine_time, sine_throttle):
+    """Align commanded throttle onto the IMU timeline and linear-fit IMU
+    accelerometer specific force (a_down) vs commanded throttle. Reports the
+    throttle at which the fit crosses a_down = -G_STD (the expected specific
+    force at true level hover, thrust exactly supporting weight) as the
+    hover-throttle estimate, and the raw slope (m/s^2 per throttle unit,
+    convertible to N/unit via SLOPE_true = mass * slope) for cross-checking
+    against THRUST_SLOPE_N_PER_UNIT."""
+    log = fc.getLogData()
+    imu_ts = np.array(log.get("IMU Timestamp", []))
+    accel = log.get("Acceleration", [])
+    if len(imu_ts) == 0 or len(accel) == 0 or len(sine_time) < 2:
+        print("[sine fit] insufficient data to fit.")
+        return None
+    a_down = np.array([a.down_m_s2 for a in accel])
+    # sine_time is relative to the sweep's own start; align IMU timestamps
+    # (relative to FC start) onto that same relative timeline via the
+    # sweep's own first/last bounds.
+    imu_rel = imu_ts - imu_ts[0]
+    mask = (imu_rel >= sine_time[0]) & (imu_rel <= sine_time[-1])
+    imu_rel, a_down = imu_rel[mask], a_down[mask]
+    if len(imu_rel) < 2:
+        print("[sine fit] insufficient IMU samples within sweep window.")
+        return None
+
+    throttle_on_imu = np.interp(imu_rel, sine_time, sine_throttle)
+    A = np.polyfit(throttle_on_imu, a_down, 1)
+    slope_a_per_throttle, intercept = float(A[0]), float(A[1])
+    hover_throttle_est = float((-G_STD - intercept) / slope_a_per_throttle) if slope_a_per_throttle != 0 else float('nan')
+
+    print(f"\n[sine fit] a_down = {slope_a_per_throttle:.2f}*throttle + {intercept:.2f}  (n={len(imu_rel)})")
+    print(f"[sine fit] estimated hover throttle (a_down=-{G_STD}) = {hover_throttle_est:.4f}")
+    print("[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to "
+          "N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking "
+          "against THRUST_SLOPE_N_PER_UNIT.")
+    return dict(slope_a_per_throttle=slope_a_per_throttle, intercept=intercept,
+                hover_throttle_est=hover_throttle_est)
+
+
 async def main():
     fc = None
     results = []
@@ -112,10 +253,17 @@ async def main():
         print("=" * 60)
         print("Hover-Throttle Finder")
         print("=" * 60)
-        print(f"Throttle values to test: {THROTTLE_LIST}")
-        print(f"Hold per value: {HOLD_S}s, takeoff height: {TAKEOFF_HEIGHT}m")
-        print(f"Safety: abort if altitude drifts >{ALT_MARGIN_M}m from takeoff "
-              f"height, or climb rate exceeds {MAX_CLIMB_RATE_ABORT} m/s\n")
+        print(f"Mode: {THROTTLE_MODE}")
+        if THROTTLE_MODE == "sine":
+            print(f"Sine sweep: center={SINE_CENTER}, amp={SINE_AMP}, "
+                  f"period={SINE_PERIOD_S}s, cycles={SINE_CYCLES}, "
+                  f"takeoff height: {TAKEOFF_HEIGHT}m")
+        else:
+            print(f"Throttle values to test: {THROTTLE_LIST}")
+            print(f"Hold per value: {HOLD_S}s, takeoff height: {TAKEOFF_HEIGHT}m")
+        print(f"Safety: cut this hold short if altitude drifts >{ALT_MARGIN_M}m "
+              f"(sweep continues); hard-abort + land if drift >{ALT_HARD_MARGIN_M}m "
+              f"or climb rate exceeds {MAX_CLIMB_RATE_ABORT} m/s\n")
 
         fc = FC()
         await fc.start()
@@ -142,11 +290,28 @@ async def main():
             battery_voltage = None
 
         sweep_aborted = False
+        sine_time = sine_throttle = None
+        sine_fit = None
+
+        if THROTTLE_MODE == "sine":
+            sine_time, sine_throttle, sine_hard_abort = await _run_sine_sweep(fc, takeoff_alt)
+            sweep_aborted = sine_hard_abort
+            if not sine_hard_abort:
+                sine_fit = _fit_sine_sweep(fc, sine_time, sine_throttle)
+
+            print("\nLanding...")
+            await fc.vehicle.action.land()
+            await _wait_landed(fc)
+            _save_log(fc, results, "aborted" if sweep_aborted else "complete",
+                      extra={"sine_time": sine_time, "sine_throttle": sine_throttle})
+            return
+
         for throttle in THROTTLE_LIST:
             print(f"--- Testing throttle={throttle:.3f} ---")
             samples = []  # (t, alt)
             step_t0 = time.perf_counter()
-            aborted = False
+            step_cutoff = False   # soft: end this hold early, sweep continues
+            hard_abort = False    # hard: end the whole sweep, land now
             while (time.perf_counter() - step_t0) < HOLD_S:
                 await fc.send_attitude_rate(0.0, 0.0, 0.0, throttle)
                 pos = fc.getPosBody()
@@ -154,10 +319,16 @@ async def main():
                 now = time.perf_counter() - step_t0
                 samples.append((now, alt))
 
-                if abs(alt - takeoff_alt) > ALT_MARGIN_M:
-                    print(f"  [ABORT] altitude {alt:.2f}m drifted >{ALT_MARGIN_M}m "
+                drift = abs(alt - takeoff_alt)
+                if drift > ALT_HARD_MARGIN_M:
+                    print(f"  [HARD ABORT] altitude {alt:.2f}m drifted >{ALT_HARD_MARGIN_M}m "
                           f"from takeoff height {takeoff_alt:.2f}m")
-                    aborted = True
+                    hard_abort = True
+                    break
+                if drift > ALT_MARGIN_M:
+                    print(f"  [cutoff] altitude {alt:.2f}m drifted >{ALT_MARGIN_M}m - "
+                          f"ending this hold early, continuing sweep")
+                    step_cutoff = True
                     break
 
                 await asyncio.sleep(0.05)
@@ -167,16 +338,17 @@ async def main():
                 a_arr = np.array([s[1] for s in samples])
                 climb_rate = float(np.polyfit(t_arr, a_arr, 1)[0])  # m/s, linear fit slope
                 print(f"  throttle={throttle:.3f} -> climb_rate={climb_rate:+.3f} m/s "
-                      f"(alt {a_arr[0]:.2f} -> {a_arr[-1]:.2f}m)")
+                      f"(alt {a_arr[0]:.2f} -> {a_arr[-1]:.2f}m)"
+                      + (" [early-cutoff estimate]" if step_cutoff else ""))
                 # Store (throttle, climb_rate, battery_voltage)
                 results.append((throttle, climb_rate, battery_voltage if battery_voltage else 0.0))
 
                 if abs(climb_rate) > MAX_CLIMB_RATE_ABORT:
-                    print(f"  [ABORT] climb rate {climb_rate:+.2f} m/s exceeds safety "
+                    print(f"  [HARD ABORT] climb rate {climb_rate:+.2f} m/s exceeds safety "
                           f"limit {MAX_CLIMB_RATE_ABORT} m/s")
-                    aborted = True
+                    hard_abort = True
 
-            if aborted:
+            if hard_abort:
                 # Do NOT run the neutral-hold recenter step here - that's what
                 # kept the vehicle climbing for ~1s after abort in the
                 # previous version. Land immediately.
@@ -217,7 +389,13 @@ async def main():
         await _wait_landed(fc)
         _save_log(fc, results, "aborted" if sweep_aborted else "complete")
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # 2026-07-10: asyncio.CancelledError is a BaseException (not Exception)
+        # since Python 3.8, so it was previously falling through both this
+        # handler and `except Exception` uncaught -- a Ctrl-C during an `await`
+        # (e.g. the hung takeoff-altitude wait) surfaces as CancelledError
+        # first, and _save_log() never ran, silently losing whatever telemetry
+        # had already been captured. Catching both here fixes that.
         print("\nInterrupted - landing")
         if fc:
             try:
