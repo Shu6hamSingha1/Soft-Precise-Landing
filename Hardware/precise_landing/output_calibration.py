@@ -176,10 +176,13 @@ async def main(record = 'n'):
         # directly - that only reaches the outer except KeyboardInterrupt
         # around asyncio.run() if the interrupt lands OUTSIDE the running
         # loop). BUT CancelledError can also come from a timeout or an
-        # explicit task.cancel() elsewhere - print the traceback so a
-        # non-Ctrl+C cancellation is diagnosable, not silently mislabeled.
-        print("CancelledError: Main Thread (Ctrl+C, or a task was cancelled - see traceback below)\n")
-        traceback.print_exc()
+        # explicit task.cancel() elsewhere - so still log the full traceback
+        # (to a file, not the console - it's noise on every normal Ctrl+C)
+        # so a non-Ctrl+C cancellation is diagnosable after the fact.
+        print("Stopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details\n")
+        with open("cancelled_error.log", "a") as _f:
+            _f.write(f"\n=== {time.ctime()} ===\n")
+            _f.write(traceback.format_exc())
 
     except RuntimeError as e:
         print(f"RuntimeError: Main Thread: {e}\n")

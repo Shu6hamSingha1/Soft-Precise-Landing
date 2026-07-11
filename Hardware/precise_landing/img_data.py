@@ -161,6 +161,34 @@ class IMG_PROCESSOR(Thread):
         self._roi_misses = 0
         self._fullframe_searches = 0
 
+        # KLT corner-tracking fallback (ported from PX4_Gazebo/src/img_data.py
+        # 2026-07-09, MARKER_KLT_RELAX_GATE): when detectMarkers can't decode
+        # the locked marker for a frame (motion blur, partial occlusion, brief
+        # ID-decode glitch), track its last-known 4 corners via LK optical
+        # flow instead of dropping the frame outright. SITL A/B-tested the
+        # alternative (hold-last-value / drop) and it regressed badly (mean
+        # xy error 0.49->1.52m, max 0.77->4.83m across 5 reps) - this is a
+        # validated approach, not a guess. Gated on >= _klt_min_tracked
+        # corners actually tracked (default 3/4, "relaxed gate"); a 3/4
+        # result is completed via parallelogram reconstruction (ArUco's
+        # fixed corner order [TL,TR,BR,BL]: opposite corners share a
+        # diagonal midpoint, so missing = other-two-sum minus diagonal
+        # partner). Capped at _max_lk_steps consecutive fallback frames
+        # before forcing a fresh full-frame re-acquisition.
+        self._klt_relax_gate = os.environ.get("MARKER_KLT_RELAX_GATE", "1") == "1"
+        self._klt_min_tracked = 3 if self._klt_relax_gate else 4
+        self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "10"))
+        self._lk_step_count = 0
+        self._last_good_main_img = None        # main-stream gray image, last successful decode
+        self._last_locked_corners_main = None  # (4,2) main-stream px, same frame as above
+        self._klt_lk_params = dict(
+            winSize=(int(os.environ.get("MARKER_KLT_LK_WIN", "21")),) * 2,
+            maxLevel=int(os.environ.get("MARKER_KLT_LK_LVL", "3")),
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
+        )
+        self._klt_hits = 0   # diagnostic counters
+        self._klt_misses = 0
+
         # Nested-marker single-marker LOCK (Gazebo-aligned): lock one concentric
         # marker, re-lock only when it leaves both frames -> no per-frame min/max
         # ID flicker (the loom-spike root). On re-lock pick the LARGEST-corner-
@@ -223,15 +251,18 @@ class IMG_PROCESSOR(Thread):
         # chain as the corner flow. Control consumes the CORNER flow; the ring is
         # the safety net for the terminal descent when the marker overflows the FoV.
         _Rmax = float(min(self._resolution)) / 2.0
+        # 3 rings (was 5): dropped the two closely-spaced inner/outer fracs
+        # (0.17, 0.67) - the remaining 3 still span near/mid/far radius
+        # coverage for a well-conditioned divergence fit, at 60% of the
+        # ring count. Combined with 20/radius (was 30) below: 3*20=60 total
+        # LK-tracked points, down from 150 (60% cut) - directly reduces
+        # calcOpticalFlowPyrLK cost, the now-dominant stage once ArUco was
+        # fixed (see img_process_freq_optimization.md), targeting >=30Hz
+        # even under degraded conditions (undervoltage-throttled CPU).
         _fracs = [float(x) for x in
-                  os.environ.get("FLOW_RING_FRACS", "0.17,0.33,0.50,0.67,0.83").split(",")]
+                  os.environ.get("FLOW_RING_FRACS", "0.25,0.50,0.75").split(",")]
         _ring_radii = [fr * _Rmax for fr in _fracs]
-        # 30/radius (was 60): halves the LK-tracked point count (5 radii x
-        # 30 = 150, was 300), directly cutting calcOpticalFlowPyrLK cost -
-        # the dominant CPU-bound stage once ArUco was fixed (see
-        # img_process_freq_optimization.md). Azimuthal sampling density is
-        # still well above what a 6-DOF lstsq divergence/flow fit needs.
-        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "30"))
+        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "20"))
         _ring_pts_V = []
         for _rr in _ring_radii:
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
@@ -472,10 +503,100 @@ class IMG_PROCESSOR(Thread):
             _parts = ", ".join(
                 f"{k}={1000*_s/_c:.2f}ms(n={_c})" for k, (_s, _c) in self._timing_accum.items())
             print(f"[TIMING] calls={self._timing_n} roi_hits={self._roi_hits} "
-                  f"roi_misses={self._roi_misses} fullframe={self._fullframe_searches} | {_parts}")
+                  f"roi_misses={self._roi_misses} fullframe={self._fullframe_searches} "
+                  f"klt_hits={self._klt_hits} klt_misses={self._klt_misses} | {_parts}")
             self._roi_hits = 0; self._roi_misses = 0; self._fullframe_searches = 0
+            self._klt_hits = 0; self._klt_misses = 0
             self._timing_accum = {}
             self._timing_n = 0
+
+    def _klt_track_corners(self, main_img_now):
+        """Track self._last_locked_corners_main forward into main_img_now via
+        LK optical flow (see __init__ comment for the ported-from-SITL
+        rationale). Returns (4,2) main-stream px corners on success, None
+        otherwise. Does NOT reset/increment _lk_step_count on its own for
+        the "no attempt possible" early-outs — only on an actual tracked
+        attempt — so the cap only counts real fallback usage."""
+        if self._lk_step_count >= self._max_lk_steps:
+            return None
+        try:
+            seed = self._last_locked_corners_main.reshape(-1, 1, 2).astype(np.float32)
+            lk_out = cv2.calcOpticalFlowPyrLK(
+                self._last_good_main_img, main_img_now, seed, None, **self._klt_lk_params)
+            if lk_out is None or lk_out[0] is None or lk_out[1] is None:
+                self._klt_misses += 1
+                return None
+            lk_pts, lk_status = lk_out[0], lk_out[1]
+            status_ok = np.asarray(lk_status).flatten() == 1
+            n_tracked = int(np.sum(status_ok))
+            if n_tracked < self._klt_min_tracked or len(status_ok) != 4:
+                self._klt_misses += 1
+                return None
+            tracked = lk_pts.reshape(-1, 2).astype(np.float32)
+            if n_tracked == 3:
+                # PARALLELOGRAM COMPLETION: ArUco's fixed corner order is
+                # [TL,TR,BR,BL] - opposite corners share a diagonal midpoint
+                # (c0+c2 == c1+c3), so the missing corner = sum of the other
+                # two minus its diagonal partner. Good approximation over one
+                # small inter-frame step; the in-bounds check below is the
+                # safety net if it's wrong.
+                miss = int(np.where(~status_ok)[0][0])
+                partner = (miss + 2) % 4
+                others = [k for k in range(4) if k not in (miss, partner)]
+                tracked[miss] = tracked[others[0]] + tracked[others[1]] - tracked[partner]
+            mh, mw = main_img_now.shape[:2]
+            in_bounds = (np.all(tracked[:, 0] >= 0) and np.all(tracked[:, 0] < mw)
+                         and np.all(tracked[:, 1] >= 0) and np.all(tracked[:, 1] < mh))
+            if not in_bounds:
+                # Marker has fully left the frame - stop chaining, force a
+                # fresh full-frame re-acquisition next time it reappears.
+                self._klt_misses += 1
+                self._lk_step_count = 0
+                self._last_good_main_img = None
+                self._last_locked_corners_main = None
+                return None
+            self._lk_step_count += 1
+            self._klt_hits += 1
+            return tracked
+        except Exception:
+            self._klt_misses += 1
+            return None
+
+    def _klt_fallback_fill(self, main_imgs, results):
+        """For each image where the currently-locked marker wasn't decoded
+        by ArUco, try to recover its corners via _klt_track_corners and
+        splice a synthetic detection entry into that image's results (same
+        shape a real cv2.aruco.detectMarkers hit would produce), so the
+        existing common-marker/lock logic downstream picks it up with no
+        other changes needed. Resets _lk_step_count once neither image
+        needed the fallback (a clean direct-decode frame)."""
+        if self._locked_marker_id is None:
+            return results
+        used_klt = False
+        new_results = list(results)
+        for i, img in enumerate(main_imgs):
+            corners, ids, rejected = new_results[i]
+            ids_flat = np.asarray(ids).flatten() if ids is not None and len(ids) else np.array([])
+            if self._locked_marker_id in ids_flat:
+                continue
+            if self._last_good_main_img is None or self._last_locked_corners_main is None:
+                continue
+            tracked = self._klt_track_corners(img)
+            if tracked is None:
+                continue
+            used_klt = True
+            new_corner = tracked.reshape(1, 4, 2).astype(np.float32)
+            new_id = np.array([[self._locked_marker_id]], dtype=np.int32)
+            if ids is not None and len(ids_flat):
+                merged_corners = tuple(corners) + (new_corner,)
+                merged_ids = np.vstack([np.asarray(ids), new_id])
+            else:
+                merged_corners = (new_corner,)
+                merged_ids = new_id
+            new_results[i] = (merged_corners, merged_ids, rejected)
+        if not used_klt:
+            self._lk_step_count = 0
+        return new_results
 
     def _detect_markers(self, main_imgs):
         """ArUco detection on the smaller 'main' stream (see __init__
@@ -487,6 +608,7 @@ class IMG_PROCESSOR(Thread):
         pixel space regardless of which path (ROI or full-frame) ran, so
         every downstream consumer is unaffected by which stream this used."""
         _mw, _mh = self._main_resolution
+        main_results = None   # (corners, ids, rejected) x2, in MAIN-stream px space
         if self._last_locked_corners is not None:
             # last_locked_corners is stored in RAW pixel space (what every
             # other consumer expects) - convert to main-stream space for the
@@ -507,27 +629,30 @@ class IMG_PROCESSOR(Thread):
                                     for c in crops]
                 if all(r[0] for r in roi_results):
                     _off = np.array([x0, y0], dtype=np.float32)
-                    scaled_results = [
-                        (tuple((corner + _off) * self._aruco_scale for corner in corners), ids, rejected)
-                        for corners, ids, rejected in roi_results
-                    ]
+                    main_results = [(tuple(corner + _off for corner in corners), ids, rejected)
+                                     for corners, ids, rejected in roi_results]
                     self._roi_miss_count = 0
                     self._roi_hits += 1
-                    return scaled_results
-                self._roi_miss_count += 1
-                self._roi_misses += 1
-                if self._roi_miss_count >= self._roi_max_misses:
-                    self._last_locked_corners = None   # force re-acquire via full-frame
-        # Full-frame search on the main stream: first lock, ROI miss this
-        # call, or too many consecutive ROI misses (cleared above).
-        self._fullframe_searches += 1
-        if self._detector is not None:
-            full_results = [self._detector.detectMarkers(img) for img in list(main_imgs)]
-        else:
-            full_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
-                             for img in main_imgs]
+                else:
+                    self._roi_miss_count += 1
+                    self._roi_misses += 1
+                    if self._roi_miss_count >= self._roi_max_misses:
+                        self._last_locked_corners = None   # force re-acquire via full-frame
+        if main_results is None:
+            # Full-frame search on the main stream: first lock, ROI miss this
+            # call, or too many consecutive ROI misses (cleared above).
+            self._fullframe_searches += 1
+            if self._detector is not None:
+                main_results = [self._detector.detectMarkers(img) for img in list(main_imgs)]
+            else:
+                main_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
+                                 for img in main_imgs]
+        # KLT corner-tracking fallback (main-stream space, matching where
+        # _last_locked_corners_main lives) - fills in the locked marker for
+        # any image ArUco couldn't decode it in, before the final scale-up.
+        main_results = self._klt_fallback_fill(main_imgs, main_results)
         return [(tuple(corner * self._aruco_scale for corner in corners), ids, rejected)
-                for corners, ids, rejected in full_results]
+                for corners, ids, rejected in main_results]
 
     def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
@@ -590,6 +715,8 @@ class IMG_PROCESSOR(Thread):
             # Locked-marker corners (4,2) in each frame.
             C_nP = [results[0][0][i0].reshape(-1, 2), results[1][0][i1].reshape(-1, 2)]
             self._last_locked_corners = np.asarray(C_nP[1], dtype=np.float32)   # for next call's ROI
+            self._last_good_main_img = main_imgs[1].copy()   # for next call's KLT fallback
+            self._last_locked_corners_main = self._last_locked_corners / self._aruco_scale
             _tt = self._tstage(_tt, "3_lock_and_extract")
 
             V_nP_norm = [self._getVirtualPts(p, q) for p, q in zip(C_nP, quats)]
@@ -749,6 +876,9 @@ class IMG_PROCESSOR(Thread):
                 # checkpost detection refs so the first re-acquired frame isn't rejected.
                 self._locked_marker_id = None
                 self._last_locked_corners = None   # drop ROI too, force full-frame re-acquire
+                self._last_good_main_img = None    # drop KLT anchor too
+                self._last_locked_corners_main = None
+                self._lk_step_count = 0
                 self._mtrace_hist.clear()
                 self._flow_prev = None; self._s_prev = None; self._loom_lnM_prev = None
             self._fuse_step(None, False, 0, self._time.perf_counter())   # ring-only (dropout)
