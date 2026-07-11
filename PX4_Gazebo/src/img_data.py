@@ -127,17 +127,29 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER cal (2026-07-03): 1m NESTED marker + centroid-rate observer (PLASMC_CENTROID_RATE=1).
         # h_x/h_y = reduced-solve std-ratio on the OBSERVER lateral flow (median of 5 runs) — recovers
         # the lateral channel the σ_min corner-flow left at the noise floor (old NaN/unstable betas).
+        # KF-REFIT (2026-07-11): the SAME 5 2026-07-03 recordings, re-derived with
+        # tools/aggregate_calibration_phased.py after fixing a filter mismatch —
+        # derive_board_cal.py/derive_ring_cal.py/aggregate_calibration_phased.py were
+        # Savgol(13,1)-filtering the raw signal to fit the cal, while runtime has
+        # defaulted to KF filtering (IMG_FILTER=kf) since 2026-06-06 (commit 6e0b44f).
+        # A static linear cal fit on a Savgol-shaped signal and applied to a
+        # differently-shaped KF signal is not guaranteed valid; on this dataset it
+        # moved every diagonal entry, most sharply the loom row (0.4973->1.1279,
+        # +127%) and w_z (0.8439->1.3879, +64%) — h_x/h_y/s_x/s_y moved ~4-10%.
+        # See feedback_kf_savgol_cal_mismatch. Off-diagonal loom cross-terms
+        # (row 2, cols 0-1) are an older board-fit and NOT re-derived by this
+        # tool (diagonal-only); kept as-is pending a future full-matrix KF refit.
         self._sensor_cal_hw = np.array([
-            [+1.4272, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x
-            [+0.0000, +1.0253, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y
-            [+0.0535, -0.0044, +0.4973, +0.0000, +0.0000, +0.0000],   # loom row (board-fit; control uses MOMENT loom, secondary)
+            [+1.2833, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x (KF-refit)
+            [+0.0000, +1.0630, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y (KF-refit)
+            [+0.0535, -0.0044, +1.1279, +0.0000, +0.0000, +0.0000],   # loom row (diag KF-refit; cross-terms board-fit, control uses MOMENT loom, secondary)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.8439]])   # w_z decoupled to w_z_raw only
-        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.3879]])   # w_z decoupled to w_z_raw only (KF-refit)
+        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.1279 (KF-refit, 2026-07-11); PLASMC_LOOM_CAL=0.4973 reverts to the pre-refit (Savgol-derived) value
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.1391, 1.1437, 1.0, 1.0])   # observer/1m-nested centroid (2026-07-03)
+        self._sensor_cal_s  = np.diag([1.0215, 1.0494, 1.0, 1.0])   # observer/1m-nested centroid (KF-refit, 2026-07-11; was 1.1391/1.1437 Savgol-derived)
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -163,10 +175,18 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
         # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
         # marker provides yaw. Re-derive Wz if a board/turning case needs ring yaw.
+        # KF-REFIT (2026-07-11): same 5 recordings, re-derived via derive_ring_cal.py
+        # (transfer mode, keyed to the KF-refit corner M above) after the same
+        # Savgol->KF filter-mismatch fix (see feedback_kf_savgol_cal_mismatch).
+        # h-block R^2 0.81/0.88/0.79 (up from 0.72/0.82/0.66); magnitudes moved
+        # substantially (Hx 0.65->1.23, Hy 0.80->1.54, loom 2.05->4.49). Wz row
+        # is STILL a runaway under the refit (inter-run STD up to ~8, entries to
+        # ±16) — zeroed again, same precedent as before; this channel is inert
+        # unless FLOW_FUSE_RING=1 regardless.
         self._sensor_cal_ring = np.array([
-            [+0.6523, +0.0317, +0.1372, -0.0371, +0.6014, -0.1252],
-            [-0.1414, +0.7969, -0.0414, -0.8080, -0.1262, +0.3377],
-            [+0.1154, +0.0131, +2.0499, -0.1148, +0.1176, +0.4799],
+            [+1.2283, -0.0165, +0.1649, +0.0111, +1.1254, -0.2802],
+            [-0.2799, +1.5367, -0.0634, -1.5646, -0.2271, +0.6139],
+            [+0.3906, -0.2532, +4.4900, +0.0764, +0.3203, +0.0865],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000]])
@@ -323,18 +343,23 @@ class IMG_PROCESSOR(Thread):
         # If the layout file is absent (single-marker pad, old recordings) the
         # pipeline falls back to the single-marker _getImgFeatures path.
         self._board_layout = None
-        _layout_path = os.environ.get(
-            "ARUCO_BOARD_LAYOUT",
-            os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         '..', 'Images', 'aruco_board_layout.npy'))
-        try:
-            if os.path.exists(_layout_path):
+        # NOT auto-loaded from a hardcoded default path (was: Images/aruco_board_layout.npy,
+        # always loaded if present). That file hardcodes THIS deployment's marker IDs (currently
+        # [0, 10]) -- a future deployment with different IDs would silently load a WRONG,
+        # non-corresponding prior during the ~5-frame self-cal warm-up window (BOARD_SELFCAL is
+        # ID/size-free and default-ON; the single-marker fallback bridges that window harmlessly
+        # with no prior at all). Require an EXPLICIT ARUCO_BOARD_LAYOUT path if a known-correct
+        # prior for the CURRENT deployment's IDs is actually wanted; default is pure self-cal.
+        # 2026-07-11, see feedback_board_layout_file_deployment_risk.
+        _layout_path = os.environ.get("ARUCO_BOARD_LAYOUT", "")
+        if _layout_path:
+            try:
                 self._board_layout = np.load(_layout_path, allow_pickle=True).item()
                 print(f"[img_data] board layout loaded: {len(self._board_layout)} "
                       f"markers from {_layout_path}")
-        except Exception as _e:
-            print(f"[img_data] board layout load failed ({_e}); single-marker mode")
-            self._board_layout = None
+            except Exception as _e:
+                print(f"[img_data] board layout load failed ({_e}); single-marker mode")
+                self._board_layout = None
 
         # ONLINE BOARD SELF-CALIBRATION (2026-07-03, user directive: no hardcoded layout/IDs/sizes).
         # Learn each marker's relative (cx,cy,sz) from co-visible frames instead of the
@@ -718,6 +743,21 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        # Per-frame ESTIMATOR TAG, lockstep-appended with the arrays above. Multiple distinct
+        # computations feed the same raw h/s arrays (primary ArUco-decode lstsq, KLT-fallback
+        # lstsq, the centroid-rate observer, board homography, single-marker moment, and the
+        # predict-only "coast" during a marker-loss gap) -- getRawOptFlowAngVel/
+        # getRawImgFeatureParam previously returned whichever fired with NO record of which, so
+        # a calibration recording couldn't tell you which estimator(s) it actually exercised, or
+        # exclude synthetic coast samples from the fit. See feedback_estimator_blind_calibration.
+        # Tags — h: 'lstsq' (primary decode + KLT-fallback merged: same _fill_A/lstsq geometry
+        # regardless of corner source, see feedback_klt_fallback_merge_no_separate_cal) |
+        # 'lstsq+observer_xy' (h_z/w lstsq, h_x/h_y observer-overridden) | 'observer_full' (all
+        # channels from the centroid-rate observer, no lstsq data this frame) | 'coast'
+        # (predict-only extrapolation, NOT real data — exclude from any cal fit).
+        # Tags — s: 'board_homography' | 'single_marker_moment' | 'coast' (exclude from fit).
+        self._h_estimator_tag = []
+        self._s_estimator_tag = []
         self._z_v_log = []          # virtual-plane z-coordinate per frame (diagnose z_v→0 phantom-s)
         self._z_v_min_log = []      # min z_v per frame (track when reprojection risks singularity)
         # H-EXTRAPOLATION (2026-07-07, user; BAKED default-ON 2026-07-07): re-derived alternative to
@@ -790,6 +830,11 @@ class IMG_PROCESSOR(Thread):
         # only clips noise spikes) -> expected MARGINAL; defaults preserve current behavior.
         self._kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))   # process-noise PSD (rad/s² per √s)²
         self._kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))   # measurement noise variance
+        # Predict-only coast during a marker-loss gap (see _kf_step docstring): Q's dt uses the
+        # TRUE elapsed gap (capped here), decoupled from the 0.1s state-transition dt cap, so P
+        # correctly reflects staleness and a relock gets one correct Bayesian update instead of a
+        # multi-frame catch-up ramp. Shared by the corner-flow and centroid-feature KFs.
+        self._kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
         self._kf_x = np.zeros((6, 2))       # [value, rate] per channel
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
@@ -895,18 +940,15 @@ class IMG_PROCESSOR(Thread):
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
         self._ekf_Q = np.diag([_qtr] * 3 + [_qtv] * 3 + [_qw] * 3)
-        # POSITIVE-LOOM SIGN GUARD (2026-06-24, default-on). A descending landing can never have a
-        # positive ego-loom: h_z = vz/Z < 0 the whole approach (vz<0 toward the deck, Z>0). When ArUco
-        # decode is lost near the deck (single ~1m marker OVERFLOWS the FoV at Z≈0.4m → corners off-frame
-        # → N flow corners→0), the fusion EKF falls back to the RING loom, which is noisy at that geometry
-        # and swings WRONG-SIGNED (+); the z-SMC reads that as "marker receding" → commands UP thrust →
-        # balloon → s_e_n breach → fly-away. Traced on IC3_rep1 (bundle 20260624-132414): loom −0.8→+1.8
-        # right as N flow corners 89→0; GT-grounded audit (bundle 20260624-150335) confirmed the wrong-sign
-        # frames are 86/93 at aruco=0 (ring takeover). The existing anti-stale decay only catches a FROZEN
-        # loom, not an actively-updated wrong-signed one — so clamp the consumed loom ≤ 0 directly. This is
-        # the physical-impossibility guard (NOT a control fix): the off-center CONTROL divergence the GT-FB
-        # gate exposed (IC3/IC4 fail on perfect loom) is a separate, control-side problem. FLOW_LOOM_SIGN_GUARD=0 reverts.
-        self._loom_sign_guard = os.environ.get("FLOW_LOOM_SIGN_GUARD", "1") == "1"
+        # POSITIVE-LOOM SIGN GUARD -- REMOVED 2026-07-11 (was: clamp consumed h_z<=0, added
+        # 2026-06-24 to band-aid a wrong-signed RING-loom fallback near the deck; see
+        # feedback_loom_sign_guard_blocks_touchdown_detect). Removed rather than left default-off
+        # because it clamped h_z UNCONDITIONALLY, including the genuine positive inversion at real
+        # ground-contact that PLASMC_TOUCHDOWN_LOOM needs to ever fire -- structurally incompatible
+        # with that detector. The ORIGINAL ring-loom wrong-sign problem this guarded against is
+        # UNFIXED and now re-exposed -- see that memory's "ROOT CAUSE is still unfinished" section
+        # for the two unconfirmed hypotheses (ring LK texture-starvation vs. marker-handover
+        # attitude disturbance) if a real fix is needed.
         self._opt_flow_fused_log = []   # fused target-relative [h_tr; w] per frame (A/B)
         self._target_vel_log = []       # estimated target velocity h_tv (flow units)
 
@@ -922,7 +964,6 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
         self._kf_feat_prev_t = None
         self._kf_feat_initialized = False
-        self._kf_feat_last_n = 0
         # Centroid-KF (q, r) are DECOUPLED from the flow KF: the flow's q=5.0/r=0.1
         # are sized for optic-flow ang-vel (rad/s); the centroid (xc, yc, scale,
         # alpha) is order-1 with measured per-frame noise std ~0.04 (variance
@@ -1349,6 +1390,16 @@ class IMG_PROCESSOR(Thread):
                 self._centroid_hist.clear()
                 self._obs_kf_x = None; self._obs_kf_y = None
                 self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
+                # 2026-07-11: the corner-flow and centroid-feature KFs (_kf_x, _kf_feat_x) had NO
+                # reset here -- a marker handover (small<->big) is a discontinuous geometry step
+                # (size/frame jump) that a constant-velocity KF has no way to distinguish from
+                # genuine fast motion, so it would blend a spurious "velocity" across the switch
+                # instead of accepting the new geometry as a fresh sample. _kf_step's own
+                # `if not initialized:` branch re-seeds state=z, rate=0 on the NEXT real sample, so
+                # just clearing the flag is enough (same lazy-reinit pattern as _obs_kf_x above).
+                # See feedback_kf_frozen_during_marker_loss ("Related, same-class bug — STILL OPEN").
+                self._kf_initialized = False
+                self._kf_feat_initialized = False
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -1877,7 +1928,8 @@ class IMG_PROCESSOR(Thread):
                 # CENTROID-RATE OBSERVER injection (a): when the LK flow IS available, still prefer
                 # the gyro-compensated centroid-rate lateral (robust to the off-center spurious spikes
                 # the lstsq produces). h_z stays the moment loom (V_v[2]). Default-off.
-                if self._single_marker and self._centroid_rate and self._observer_valid:
+                _hxy_observer = self._single_marker and self._centroid_rate and self._observer_valid
+                if _hxy_observer:
                     V_v[0] = float(self._observer_flow[0])
                     V_v[1] = float(self._observer_flow[1])
 
@@ -1898,6 +1950,11 @@ class IMG_PROCESSOR(Thread):
 
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
+                # 'lstsq'/'lstsq_klt' share ONE calibration category (same _fill_A/lstsq geometry
+                # regardless of corner source — see feedback_klt_fallback_merge_no_separate_cal);
+                # the _klt suffix is coverage/diagnostic ONLY, not a separate fit bucket.
+                _tag = 'lstsq_klt' if used_klt_fallback else 'lstsq'
+                self._h_estimator_tag.append(_tag + '+observer_xy' if _hxy_observer else _tag)
                 if self._h_extrap:
                     # REAL-only history for the extrapolation fit -- never receives the extrapolated
                     # output back (the self-reinforcement bug that broke deg-1 s-extrapolation).
@@ -1965,8 +2022,12 @@ class IMG_PROCESSOR(Thread):
                     board_s = self._board_feature(board_markers_V, size_factor)
                 if board_s is not None:
                     self._img_feature_param.append(board_s)
+                    self._s_estimator_tag.append('board_homography')
+                    self._kf_feat_update(board_s, self._time.perf_counter())
                 else:
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
+                    self._s_estimator_tag.append('single_marker_moment')
+                    self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -2084,7 +2145,8 @@ class IMG_PROCESSOR(Thread):
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
              self._kf_ring_initialized) = self._kf_step(
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
-                self._kf_ring_initialized, _vvr, self._time.perf_counter())
+                self._kf_ring_initialized, _vvr, self._time.perf_counter(),
+                self._kf_q, self._kf_r)
             self._ring_opt_flow_kf_log.append(self._kf_x_ring[:, 0].copy())
 
             # FUSION EKF: corner (this frame, if detected) + ring, decomposed into
@@ -2210,16 +2272,26 @@ class IMG_PROCESSOR(Thread):
 
             # CENTROID-RATE OBSERVER injection: log the observer flow (decoded-corner centroid rate)
             # instead of the zero "no information" default when it produced a value this frame.
-            _of = (size_factor * self._observer_flow
-                   if (self._single_marker and self._centroid_rate and self._observer_valid)
+            _observer_fresh = (self._single_marker and self._centroid_rate and self._observer_valid)
+            _of = (size_factor * self._observer_flow if _observer_fresh
                    else extrapolated_opt_flow_ang_vel_raw)
             self._opt_flow_ang_vel_raw.append(_of)
+            self._h_estimator_tag.append('observer_full' if _observer_fresh else 'coast')
+            # Corner-flow KF: the observer branch is genuine fresh data (real correct-step);
+            # otherwise this frame has nothing but a synthetic decayed extrapolation — coast the
+            # KF (predict-only, no correction) rather than freezing it (no step at all) or
+            # correcting it against a fabricated value. See feedback_kf_frozen_during_marker_loss.
+            self._kf_update(_of if _observer_fresh else None, self._time.perf_counter())
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
             # Guard #1 companion: keep the quat VALID through marker-LOST — the FC attitude is
             # genuine (use-genuine-data directive). Only nan if the FC quat itself is missing.
             _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
             self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
+            self._s_estimator_tag.append('coast')
+            # Centroid KF: always synthetic here (deg-1 extrapolation, no observer-equivalent for
+            # s) -- predict-only coast, never correct against the fabricated value.
+            self._kf_feat_update(None, self._time.perf_counter())
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
             self._drift_off_hist.append(self._last_drifted_off)   # latched value (2026-07-07 failure-cause tagging)
             self._overflow_hist.append(self._last_overflow)
@@ -2310,40 +2382,58 @@ class IMG_PROCESSOR(Thread):
 
         return A
 
-    def _kf_step(self, x, P, prev_t, initialized, z, t):
+    def _kf_step(self, x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
         """Generic per-channel 2-state (value, rate) constant-velocity KF step.
         Operates on the passed state (no self.* writes) and returns the updated
-        (x, P, prev_t, initialized) so the SAME filter can run on multiple flow
-        sources (corner flow + ring flow). z: (6,) measurement; t: timestamp."""
+        (x, P, prev_t, initialized) so the SAME filter can run on any channel
+        count / noise params (corner flow, ring flow, centroid feature all share
+        this). z: (C,) measurement, or None for a PREDICT-ONLY step (coast on the
+        last estimated rate, skip the correction — used during a marker-loss gap
+        so the state neither freezes (no step at all) nor gets corrected against
+        a synthetic/extrapolated value as if it were real data). t: timestamp.
+        q, r: this channel's process/measurement noise. dt_unc_max: if set, Q's
+        dt uses the TRUE elapsed gap (capped at dt_unc_max) instead of the
+        state-transition dt (capped at 0.1s for numerical stability) — so P
+        correctly reflects staleness across a multi-frame gap, and a fresh
+        measurement at relock gets full Bayesian trust instead of a multi-frame
+        catch-up ramp (see feedback_kf_frozen_during_marker_loss)."""
         if not initialized:
-            x = np.zeros((6, 2)); x[:, 0] = z          # value=z, rate=0
-            P = np.tile(np.eye(2) * 1.0, (6, 1, 1))    # moderate prior
+            if z is None:
+                return x, P, prev_t, initialized   # nothing to coast from yet
+            z = np.asarray(z, dtype=float)
+            x = np.zeros((len(z), 2)); x[:, 0] = z     # value=z, rate=0
+            P = np.tile(np.eye(2) * 1.0, (len(z), 1, 1))   # moderate prior
             return x, P, t, True
 
         dt = max(min(t - prev_t, 0.1), 1e-3)
+        dt_q = max(min(t - prev_t, dt_unc_max), 1e-3) if dt_unc_max is not None else dt
         F = np.array([[1.0, dt], [0.0, 1.0]])
         # Discrete-white-noise-on-acceleration process model
-        Q = self._kf_q * np.array([
-            [dt**4 / 4.0, dt**3 / 2.0],
-            [dt**3 / 2.0, dt**2],
+        Q = q * np.array([
+            [dt_q**4 / 4.0, dt_q**3 / 2.0],
+            [dt_q**3 / 2.0, dt_q**2],
         ])
-        R = self._kf_r
-        # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over the 6 channels)
-        x_pred = x @ F.T                                   # (6, 2)
-        P_pred = F @ P @ F.T + Q                           # (6, 2, 2)
+        # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over channels)
+        x_pred = x @ F.T
+        P_pred = F @ P @ F.T + Q
+        if z is None:
+            return x_pred, P_pred, t, True         # PREDICT-ONLY: coast, no correction
+        z = np.asarray(z, dtype=float)
         # Innovation y = z - Hx_pred (H = [1, 0]), scalar per channel
-        y = z - x_pred[:, 0]                               # (6,)
-        S = P_pred[:, 0, 0] + R                            # (6,)
-        K = P_pred[:, :, 0] / S[:, None]                   # (6, 2)
+        y = z - x_pred[:, 0]
+        S = P_pred[:, 0, 0] + r
+        K = P_pred[:, :, 0] / S[:, None]
         # Update: x ← x_pred + K·y, P ← (I - K H) P_pred
         x = x_pred + K * y[:, None]
         P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
         return x, P, t, True
 
     def _kf_update(self, z, t):
-        """Corner-flow KF — thin wrapper around _kf_step on the corner state."""
+        """Corner-flow KF — thin wrapper around _kf_step on the corner state.
+        z=None -> predict-only coast (marker-loss gap, no correction)."""
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
-            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
+            self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
 
     def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999,
                        ring_loom=0.0, ring_loom_ok=False):
@@ -2417,11 +2507,6 @@ class IMG_PROCESSOR(Thread):
             if self._loom_stale >= self._loom_stale_max:
                 x[2] *= self._loom_decay                     # h_tr loom -> 0
                 x[5] *= self._loom_decay                     # h_tv loom -> 0
-        # Positive-loom sign guard (see __init__): the consumed ego-loom h_tr[2] is clamped <= 0 so a
-        # wrong-signed ring-takeover loom (ArUco lost near the deck) can never command an ascent. Catches
-        # the actively-updated wrong sign the anti-stale decay above misses (it only handles a frozen loom).
-        if self._loom_sign_guard:
-            x[2] = min(x[2], 0.0)
         self._ekf_x, self._ekf_P = x, P
 
     def getTargetVel(self):
@@ -2430,34 +2515,17 @@ class IMG_PROCESSOR(Thread):
         return self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3)
 
     def _kf_feat_update(self, z, t):
-        """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
-
-        Same constant-velocity model as _kf_update but with its OWN (q, r)
+        """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha) —
+        thin wrapper around the shared _kf_step, with its OWN (q, r)
         (self._kf_feat_q/_r) — the flow KF's q=5/r=0.1 are mis-scaled for the
         order-1 centroid (see __init__). Low-lag alternative to savgol(13) for the
-        OUTER-loop centroid input. z : (4,) raw feature; t : perf_counter.
-        """
-        z = np.asarray(z, dtype=float)
-        if not self._kf_feat_initialized:
-            self._kf_feat_x[:, 0] = z
-            self._kf_feat_x[:, 1] = 0.0
-            self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
-            self._kf_feat_prev_t = t
-            self._kf_feat_initialized = True
-            return
-        dt = max(min(t - self._kf_feat_prev_t, 0.1), 1e-3)
-        self._kf_feat_prev_t = t
-        F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = self._kf_feat_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
-                                        [dt**3 / 2.0, dt**2]])
-        R = self._kf_feat_r
-        x_pred = self._kf_feat_x @ F.T                       # (4, 2)
-        P_pred = F @ self._kf_feat_P @ F.T + Q               # (4, 2, 2)
-        y = z - x_pred[:, 0]                                 # (4,)
-        S = P_pred[:, 0, 0] + R                              # (4,)
-        K = P_pred[:, :, 0] / S[:, None]                     # (4, 2)
-        self._kf_feat_x = x_pred + K * y[:, None]
-        self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        OUTER-loop centroid input. z : (4,) raw feature, or None for a
+        PREDICT-ONLY coast (marker-loss gap, no correction — mirrors _kf_update;
+        see feedback_kf_frozen_during_marker_loss). t : perf_counter."""
+        self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t, self._kf_feat_initialized = \
+            self._kf_step(self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t,
+                          self._kf_feat_initialized, z, t,
+                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
 
     def _obs_vel_kf(self, x0, y0, t):
         """Constant-velocity Kalman filter on the decoded centroid -> smoothed lateral velocity
@@ -2759,21 +2827,27 @@ class IMG_PROCESSOR(Thread):
         N = len(x)
 
         if N == 4:
-            w = np.array([4.0, 3.0, 2.0, 1.0])
             # Board equilibrium offset (shared with the board path _board_feature so
             # the board<->single-marker fallback never jumps).
             alpha_0 = self._moment_alpha_0
         else:
-            w = np.ones(N)
             alpha_0 = 0.0
-        W = w.sum()
-
-        # Weighted centroid (TL-biased) — the established SITL lateral feature.
-        xc = float(np.sum(w * x) / W)
-        yc = float(np.sum(w * y) / W)
+        # Unweighted (geometric) centroid — the actual marker position. The [4,3,2,1]
+        # corner weights (applied only inside _marker_principal_angle below) exist
+        # ONLY to make yaw observable (see docstring); using them for position too
+        # silently biased xc,yc toward the TL corner by an amount that ROTATES WITH
+        # THE MARKER's yaw (the weights are corner-label-tied), corrupting the
+        # position signal the outer loop and calibration both consume. Corrected
+        # 2026-07-11 (was a real train/run mismatch vs PLASMC_GT_FEEDBACK, which
+        # substitutes the true unbiased GT centroid).
+        xc = float(np.mean(x))
+        yc = float(np.mean(y))
 
         # Yaw: 2pi-disambiguated moment orientation (same convention/offset as the
-        # board path _board_feature, so a board<->fallback switch never jumps).
+        # board path _board_feature, so a board<->fallback switch never jumps). Uses
+        # its OWN internal weighted centroid (_marker_principal_angle) purely for
+        # direction disambiguation -- never returned as position, so this is unaffected
+        # by the xc,yc fix above.
         raw = self._marker_principal_angle(pts)
         alpha = float(np.arctan2(np.sin(raw - alpha_0), np.cos(raw - alpha_0)))
 
@@ -2941,6 +3015,27 @@ class IMG_PROCESSOR(Thread):
             return np.zeros(4)
         return np.array(self._img_feature_param[-1])
 
+    def getRawImgFeatureEstimatorTag(self):
+        """Which estimator produced the latest getRawImgFeatureParam() sample:
+        'board_homography' | 'single_marker_moment' | 'coast' (synthetic
+        extrapolation — exclude from any calibration fit). '' if no sample yet
+        (back-compat: older recordings predate this field entirely)."""
+        if len(self._s_estimator_tag) == 0:
+            return ''
+        return self._s_estimator_tag[-1]
+
+    def getRawOptFlowEstimatorTag(self):
+        """Which estimator produced the latest getRawOptFlowAngVel() sample:
+        'lstsq'/'lstsq_klt' (merged calibration category — see
+        feedback_klt_fallback_merge_no_separate_cal) | '+observer_xy' suffix
+        (h_x/h_y observer-overridden, h_z/w still lstsq) | 'observer_full' (all
+        channels from the centroid-rate observer) | 'coast' (synthetic
+        predict-only extrapolation — exclude from any calibration fit). '' if no
+        sample yet."""
+        if len(self._h_estimator_tag) == 0:
+            return ''
+        return self._h_estimator_tag[-1]
+
     def getRawOptFlowAngVel(self):
         """Raw 6-vector LSTSQ output `[h; w]` BEFORE `_sensor_cal_hw`.
 
@@ -3014,14 +3109,10 @@ class IMG_PROCESSOR(Thread):
             _out = self._sensor_cal_hw @ self._compute_savgol_output()
             if self._loom_decouple:
                 _out[2] = self._compute_savgol_output()[2]   # loom = raw vz/Z, bypass cal
-            if self._loom_sign_guard:
-                _out[2] = min(_out[2], 0.0)                  # positive-loom sign guard (non-fuse path)
             return _out
         _out = self._sensor_cal_hw @ self._kf_x[:, 0]
         if self._loom_decouple:
             _out[2] = self._kf_x[2, 0]                       # loom already vz/Z, bypass cal row 2
-        if self._loom_sign_guard:
-            _out[2] = min(_out[2], 0.0)                      # positive-loom sign guard (non-fuse path)
         return _out
 
     def getFailureCause(self):
@@ -3050,14 +3141,14 @@ class IMG_PROCESSOR(Thread):
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
         # KF path (default; IMG_FEATURE_FILTER=savgol selects the legacy filter).
-        # Step the centroid KF once per fresh raw sample (the controller calls
-        # this getter every control iteration, possibly faster than the camera).
+        # Pure read — the KF is STEPPED in the capture loop itself (real correct-step
+        # on a fresh sample, predict-only coast on a marker-loss gap; see the
+        # _kf_feat_update call sites), exactly once per camera frame regardless of how
+        # often the controller polls this getter. Do not step it here (2026-07-11: the
+        # old lazy step-on-array-growth here couldn't distinguish real from
+        # extrapolated samples, so a gap always got a full correct-step against a
+        # synthetic value instead of a coast — see feedback_kf_frozen_during_marker_loss).
         if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
-            n = len(self._img_feature_param)
-            if n != self._kf_feat_last_n:
-                self._kf_feat_last_n = n
-                self._kf_feat_update(self._img_feature_param[-1],
-                                     self._time.perf_counter())
             if self._kf_feat_initialized:
                 return self._sensor_cal_s @ self._kf_feat_x[:, 0]
         if len(self._img_feature_param) >= FILTER_WIN:

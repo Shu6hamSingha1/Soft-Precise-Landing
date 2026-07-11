@@ -36,6 +36,55 @@ POLYORDER  = 1
 AXIS_PHASE_HW = {0: 'x', 1: 'y', 2: 'z', 3: 'y', 4: 'x', 5: 'yaw'}
 AXIS_PHASE_S  = {0: 'x', 1: 'y'}
 
+# KF params MUST match src/img_data.py runtime (FLOW_KF_Q/R, IMG_FEAT_KF_Q/R).
+# Runtime default filter switched Savgol(13,1) -> KF on 2026-06-06 (commit 6e0b44f,
+# "Switched to KF by default": Savgol's ~110ms group delay was hurting the outer
+# loop). These derive tools kept filtering with Savgol for the cal fit while every
+# runtime getter (getOptFlowAngVel/getRingFlowAngVel/getImgFeatureParam) applies the
+# baked cal matrix to the KF-filtered state instead — the cal was derived against a
+# signal shape the runtime never actually consumes. kf_filter_causal() replicates
+# img_data.py::_kf_step exactly so the derived cal matches what's really applied to.
+FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))
+FLOW_KF_R = float(os.environ.get("FLOW_KF_R", "0.1"))
+FEAT_KF_Q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
+FEAT_KF_R = float(os.environ.get("IMG_FEAT_KF_R", "0.004"))
+
+
+def kf_filter_causal(raw, t, q, r):
+    """Causal constant-velocity 2-state KF per channel, run over a full (N, C) raw
+    array + matching timestamps t (N,). Same process/measurement model as
+    src/img_data.py::_kf_step (kept in lockstep with it — if that function changes,
+    mirror the change here). Returns the (N, C) filtered value trace."""
+    raw = np.asarray(raw, dtype=float)
+    t = np.asarray(t, dtype=float)
+    n, c = raw.shape
+    out = np.zeros_like(raw)
+    x = np.zeros((c, 2)); P = np.tile(np.eye(2), (c, 1, 1))
+    initialized = False
+    prev_t = 0.0
+    for i in range(n):
+        z = raw[i]; ti = t[i]
+        if not initialized:
+            x[:, 0] = z; x[:, 1] = 0.0
+            P = np.tile(np.eye(2) * 1.0, (c, 1, 1))
+            prev_t = ti; initialized = True
+            out[i] = z
+            continue
+        dt = max(min(ti - prev_t, 0.1), 1e-3)
+        prev_t = ti
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
+                           [dt**3 / 2.0, dt**2]])
+        x_pred = x @ F.T
+        P_pred = F @ P @ F.T + Q
+        y = z - x_pred[:, 0]
+        S = P_pred[:, 0, 0] + r
+        K = P_pred[:, :, 0] / S[:, None]
+        x = x_pred + K * y[:, None]
+        P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        out[i] = x[:, 0]
+    return out
+
 
 def _body_omega_from_quats(quats, t):
     """Body-frame angular velocity from quaternions via central difference
@@ -233,34 +282,57 @@ def main():
             continue
 
         try:
-            t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid_mask = compute_gt_signals(gt)
+            t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid_mask, _ = compute_gt_signals(gt)
         except Exception as e:
             print(f"  [SKIP] {os.path.basename(d)}: gt compute error {e}")
             continue
 
         raw_hw = np.asarray(gt['Opt Flow Ang Vel'])  # (N, 6)
         raw_s  = np.asarray(gt['Img Feature Params'])  # (N, 4)
+        # Per-sample ESTIMATOR TAG (which computation produced each raw sample — primary/KLT-fallback
+        # lstsq, observer, board homography, single-marker moment, or synthetic 'coast'). Older
+        # recordings predate this field; back-compat defaults to '' (unknown -- can't filter/split).
+        hw_tag = np.asarray(gt.get('Opt Flow Estimator Tag', [''] * len(raw_hw)))
+        s_tag  = np.asarray(gt.get('Img Feature Estimator Tag', [''] * len(raw_s)))
         # truncate to common length, then apply same valid mask
-        n_min = min(len(raw_hw), len(raw_s), len(valid_mask))
+        n_min = min(len(raw_hw), len(raw_s), len(valid_mask), len(hw_tag), len(s_tag))
         raw_hw = raw_hw[:n_min][valid_mask[:n_min]]
         raw_s  = raw_s[:n_min][valid_mask[:n_min]]
+        hw_tag = hw_tag[:n_min][valid_mask[:n_min]]
+        s_tag  = s_tag[:n_min][valid_mask[:n_min]]
         phase = np.array(gt['Phase'])[:n_min][valid_mask[:n_min]]
 
-        # savgol-filter raw inputs
-        if len(raw_hw) >= FILTER_WIN:
-            raw_hw_f = sgf(raw_hw, FILTER_WIN, POLYORDER, axis=0)
-            raw_s_f  = sgf(raw_s,  FILTER_WIN, POLYORDER, axis=0)
+        # KF-filter raw inputs (matches runtime IMG_FILTER=kf default — see
+        # kf_filter_causal docstring). t_g is post-valid-filter (same mask just
+        # applied above), so it's index-aligned with raw_hw/raw_s here.
+        n_kf = min(len(raw_hw), len(t_g))
+        raw_hw = raw_hw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]
+        hw_tag = hw_tag[:n_kf]; s_tag = s_tag[:n_kf]
+        if n_kf > 1:
+            raw_hw_f = kf_filter_causal(raw_hw, t_g[:n_kf], FLOW_KF_Q, FLOW_KF_R)
+            raw_s_f  = kf_filter_causal(raw_s,  t_g[:n_kf], FEAT_KF_Q, FEAT_KF_R)
         else:
             raw_hw_f = raw_hw.copy(); raw_s_f = raw_s.copy()
 
         # Align lengths between phase array and GT signals (gt may be a bit longer if dt dedup removed some samples)
         ngt = min(len(V_h_g), len(phase))
-        phase = phase[:ngt]
+        phase = phase[:ngt]; hw_tag = hw_tag[:ngt]; s_tag = s_tag[:ngt]
+
+        # Coverage report + exclude synthetic 'coast' samples (extrapolation, not real data) from
+        # the fit -- see feedback_estimator_blind_calibration.
+        if np.any(hw_tag != ''):
+            _u, _c = np.unique(hw_tag, return_counts=True)
+            print(f"        h estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
+        if np.any(s_tag != ''):
+            _u, _c = np.unique(s_tag, return_counts=True)
+            print(f"        s estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
+        hw_real = (hw_tag != 'coast')
+        s_real  = (s_tag != 'coast')
 
         # Per-axis derivation using only that axis's phase samples
         hw_diag = np.full(6, np.nan)
         for k, want_phase in AXIS_PHASE_HW.items():
-            mask = (phase == want_phase)
+            mask = (phase == want_phase) & hw_real
             if mask.sum() < 30: continue
             if k < 3:   # virtual image VELOCITY h (= target rel camera vel / depth)
                 gt_sig = V_h_g[:ngt, k]
@@ -274,7 +346,7 @@ def main():
 
         s_diag = np.full(4, np.nan)
         for k, want_phase in AXIS_PHASE_S.items():
-            mask = (phase == want_phase)
+            mask = (phase == want_phase) & s_real
             if mask.sum() < 30: continue
             gt_sig = V_xc_g[:ngt] if k == 0 else V_yc_g[:ngt]
             s_diag[k] = std_ratio(gt_sig, raw_s_f[:ngt, k], mask)

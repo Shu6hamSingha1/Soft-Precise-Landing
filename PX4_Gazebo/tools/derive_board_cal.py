@@ -16,8 +16,9 @@ each entry is.
 """
 import numpy as np, os, glob, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scipy.signal import savgol_filter as sgf
-from aggregate_calibration_phased import compute_gt_signals, std_ratio, FILTER_WIN, POLYORDER
+from aggregate_calibration_phased import (compute_gt_signals, std_ratio,
+                                           kf_filter_causal, FLOW_KF_Q, FLOW_KF_R,
+                                           FEAT_KF_Q, FEAT_KF_R)
 
 CAL_DIR = '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output'
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
@@ -53,18 +54,35 @@ def main():
 
         raw = np.asarray(gt['Opt Flow Ang Vel'])
         raw_s = np.asarray(gt['Img Feature Params'])
-        nm = min(len(raw), len(raw_s), len(valid))
+        hw_tag = np.asarray(gt.get('Opt Flow Estimator Tag', [''] * len(raw)))
+        s_tag  = np.asarray(gt.get('Img Feature Estimator Tag', [''] * len(raw_s)))
+        nm = min(len(raw), len(raw_s), len(valid), len(hw_tag), len(s_tag))
         raw = raw[:nm][valid[:nm]]
         raw_s = raw_s[:nm][valid[:nm]]
+        hw_tag = hw_tag[:nm][valid[:nm]]
+        s_tag  = s_tag[:nm][valid[:nm]]
         phase = np.array(gt['Phase'])[:nm][valid[:nm]]
-        if len(raw) >= FILTER_WIN:
-            raw = sgf(raw, FILTER_WIN, POLYORDER, axis=0)
-            raw_s = sgf(raw_s, FILTER_WIN, POLYORDER, axis=0)
+        # KF-filter (matches runtime IMG_FILTER=kf default) instead of Savgol —
+        # see kf_filter_causal in aggregate_calibration_phased.py. t is post-valid,
+        # index-aligned with raw/raw_s here (same mask just applied above).
+        n_kf = min(len(raw), len(t))
+        raw = raw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]
+        hw_tag = hw_tag[:n_kf]; s_tag = s_tag[:n_kf]
+        if n_kf > 1:
+            raw = kf_filter_causal(raw, t[:n_kf], FLOW_KF_Q, FLOW_KF_R)
+            raw_s = kf_filter_causal(raw_s, t[:n_kf], FEAT_KF_Q, FEAT_KF_R)
 
         n = min(len(raw), len(V_h_g))
+        hw_tag = hw_tag[:n]
+        if np.any(hw_tag != ''):
+            _u, _c = np.unique(hw_tag, return_counts=True)
+            print(f"        h estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
         G = np.hstack([V_h_g[:n], -V_w_ug[:n]])      # manuscript w = -V_w_ug
         R = raw[:n]
-        m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
+        # Exclude synthetic 'coast' samples (predict-only extrapolation, not real data) from the
+        # fit -- see feedback_estimator_blind_calibration. Back-compat: '' (untagged, older
+        # recordings) is NOT excluded -- we can't tell, so don't silently drop half the data.
+        m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1) & (hw_tag != 'coast')
         G, R = G[m], R[m]
         if len(R) < 200:
             continue
@@ -75,10 +93,14 @@ def main():
         Ms.append(cal); R2s.append(ss)
 
         # centroid scale: GT xc/yc vs board-homography xc/yc (raw_s[:,0:2]),
-        # using x/y phases (signed std-ratio, same convention as aggregator).
+        # using x/y phases (signed std-ratio, same convention as aggregator), excluding coast.
         ng = min(len(V_xc_g), len(phase), len(raw_s))
-        sx = std_ratio(V_xc_g[:ng], raw_s[:ng, 0], (phase[:ng] == 'x'))
-        sy = std_ratio(V_yc_g[:ng], raw_s[:ng, 1], (phase[:ng] == 'y'))
+        s_real = (s_tag[:ng] != 'coast')
+        if np.any(s_tag[:ng] != ''):
+            _u, _c = np.unique(s_tag[:ng], return_counts=True)
+            print(f"        s estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
+        sx = std_ratio(V_xc_g[:ng], raw_s[:ng, 0], (phase[:ng] == 'x') & s_real)
+        sy = std_ratio(V_yc_g[:ng], raw_s[:ng, 1], (phase[:ng] == 'y') & s_real)
         calS.append([sx, sy])
         used += 1
 

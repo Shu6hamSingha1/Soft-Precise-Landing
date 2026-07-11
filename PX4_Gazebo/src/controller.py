@@ -546,12 +546,26 @@ class Controller(Thread):
         self._td_frames = int(os.environ.get("PLASMC_TD_FRAMES", "3"))    # persistence (reject noise spikes)
         self._td_sen    = float(os.environ.get("PLASMC_TD_SEN", "0.6"))   # near-centered gate (first contacts 0.34-0.53)
         self._td_arm_loom = float(os.environ.get("PLASMC_TD_ARM_LOOM", "-0.1"))  # arm once a descent is established
+        # SPIKE MAGNITUDE gate (2026-07-11, replaces the removed FLOW_LOOM_SIGN_GUARD band-aid —
+        # see feedback_loom_sign_guard_blocks_touchdown_detect). A bare h_z>0.0 sign check can't
+        # distinguish a genuine ground-contact spike from noise-floor jitter or a marker-handover
+        # decode glitch: n=5 IC1 with the sign-guard removed showed TWO distinct false-trigger
+        # mechanisms, both firing 1-1.3m above the ground — (1) tiny noise (+0.005..+0.02, no
+        # signal at all) and (2) a large-but-spurious plateau (+0.55..+0.59) coincident with a
+        # corner-count drop (184->81, a decode disruption). A verified GENUINE touchdown bounce
+        # (stable ncorn=184 throughout, real ground contact) spiked to +0.81/+0.68/+0.63 then
+        # DECAYED within a few frames -- a spike, not a sustained plateau. Same physical idea as
+        # the accelerometer impact detector (|a|>50 m/s^2, a MAGNITUDE threshold, not just a>0):
+        # require the loom to actually SPIKE, not merely flip sign. h_z=vz/Z is already the
+        # scale-free ratio (no metric/depth added) -- this is a magnitude threshold on the SAME
+        # signal already used for the sign check, not a new depth-dependent gate.
+        self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.5"))  # min |h_z| to count (PROVISIONAL, n=2 evidence -- validate at n>=5)
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>0 for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"(h_z>{self._td_spike} for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -832,9 +846,11 @@ class Controller(Thread):
         return sdot + self._s_raw[i1][k] * self._h_raw[ih][2]
 
     def _touchdownDetect(self, s_e_n):
-        """Loom-inversion soft-touchdown detector. Arms once a descent is established (h_z < arm),
-        then latches LANDED when the loom holds POSITIVE for _td_frames frames (= the vertical
-        reversal at first contact) while near-centered. Depth-free (loom only), one-way latch."""
+        """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
+        then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
+        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames (= the vertical
+        reversal at first contact) while near-centered. Depth-free (loom ratio only), one-way
+        latch."""
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -842,10 +858,10 @@ class Controller(Thread):
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
             return
-        self._td_streak = self._td_streak + 1 if h_z > 0.0 else 0
+        self._td_streak = self._td_streak + 1 if h_z > self._td_spike else 0
         if self._td_streak >= self._td_frames and float(np.max(np.abs(s_e_n))) < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x{self._td_frames}) "
+            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames}) "
                   f"|s_e_n|={float(np.max(np.abs(s_e_n))):.2f} -> LANDED (disarm before bounce)")
 
     @property

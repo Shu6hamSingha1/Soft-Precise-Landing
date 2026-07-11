@@ -135,6 +135,8 @@ async def main(record = 'n'):
     opt_flow_ang_vel = []
     ring_opt_flow_ang_vel = []   # RAW texture-free ring [h;w], co-sampled for M_ring
     img_feature_param = []
+    opt_flow_estimator_tag = []   # which estimator produced each Opt Flow Ang Vel sample
+    img_feature_estimator_tag = []   # which estimator produced each Img Feature Params sample
     phase_log = []           # per-sample tag: 'x', 'y', 'z', 'yaw', or 'settle'
     start_pose = None
     t_c = []
@@ -356,6 +358,10 @@ async def main(record = 'n'):
                 opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
                 ring_opt_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
                 img_feature_param.append(img_node.getRawImgFeatureParam())
+                # Which estimator produced each sample -- lets the derive tools exclude synthetic
+                # 'coast' samples from the fit and report per-estimator coverage/separate fits.
+                opt_flow_estimator_tag.append(img_node.getRawOptFlowEstimatorTag())
+                img_feature_estimator_tag.append(img_node.getRawImgFeatureEstimatorTag())
                 cmd.append(pos_cmd)
                 phase_log.append(ph_name)
 
@@ -395,7 +401,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd, "Phase": phase_log}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Opt Flow Estimator Tag": opt_flow_estimator_tag, "Img Feature Estimator Tag": img_feature_estimator_tag, "Command": cmd, "Phase": phase_log}
             img_params = img_node.getParams()
 
         # Close img_node thread
