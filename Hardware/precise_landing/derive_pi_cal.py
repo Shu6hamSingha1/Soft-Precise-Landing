@@ -95,6 +95,65 @@ def kf_filter_causal(raw, t, q, r):
     return out
 
 
+def reject_outliers(raw, window=7, k=5.0, label=""):
+    """Hampel-filter sanity guard for the offline derivation, separate from
+    the runtime checkposts (which are intentionally disabled during
+    calibration recording, per the recording-must-be-truly-raw fix - so
+    nothing filters a genuine numerical spike either, e.g. an
+    ill-conditioned lstsq solve right at a marker reacquisition).
+
+    Per-channel: for each sample, compute the median and MAD (median
+    absolute deviation) over a `window`-sample local neighborhood centered
+    on it, and flag the sample an outlier if it deviates from that LOCAL
+    median by more than k * 1.4826 * MAD (1.4826 scales MAD to be
+    consistent with a Gaussian std, the standard Hampel-filter constant).
+    This is more robust than a fixed absolute threshold: it adapts to each
+    channel's own local noise level and signal trend, rather than assuming
+    one global cutoff is meaningful across every channel and every
+    recording's excitation level - and median/MAD are themselves outlier-
+    resistant (unlike mean/std, which the outlier being detected would
+    itself skew). Flagged samples are replaced by linear interpolation from
+    the nearest valid (non-outlier) neighbors, so a single bad frame can't
+    bleed into the causal KF's subsequent samples via a garbage
+    measurement. Confirmed need 2026-07-11: one row (h_z=-21.7, everything
+    else in a sane ~[-2,2] range) found via a data-integrity check on a
+    real recording."""
+    raw = np.array(raw, dtype=float, copy=True)
+    n, c = raw.shape
+    idx = np.arange(n)
+    half = window // 2
+    total_rejected = 0
+    for ch in range(c):
+        x = raw[:, ch]
+        med = np.empty(n)
+        mad = np.empty(n)
+        for i in range(n):
+            lo, hi = max(0, i - half), min(n, i + half + 1)
+            w = x[lo:hi]
+            med[i] = np.median(w)
+            mad[i] = np.median(np.abs(w - med[i]))
+        scale = 1.4826 * mad
+        # A locally-flat/quiet window gives scale~0, which would flag any
+        # tiny wobble as an outlier - fall back to this channel's overall
+        # typical scale rather than an arbitrarily tight zero-tolerance band.
+        _valid_scale = scale[scale > 1e-6]
+        _fallback = float(np.median(_valid_scale)) if len(_valid_scale) else 1e-3
+        scale = np.where(scale < 1e-6, _fallback, scale)
+        bad = np.abs(x - med) > k * scale
+        nbad = int(bad.sum())
+        if nbad == 0:
+            continue
+        total_rejected += nbad
+        good = ~bad
+        if good.sum() == 0:
+            continue   # entire channel is garbage - nothing to interpolate from
+        raw[bad, ch] = np.interp(idx[bad], idx[good], raw[good, ch])
+    if total_rejected:
+        print(f"  outlier guard{(' ('+label+')') if label else ''}: "
+              f"{total_rejected} sample(s) rejected (Hampel filter, window={window}, k={k})")
+    return raw
+
+
 def _euler_to_dcm_flu(roll_deg, pitch_deg, yaw_deg):
     """Standard aerospace ZYX Euler -> body->world DCM, in QTM's own FLU
     convention (roll about X-forward, pitch about Y-left, yaw about Z-up)."""
@@ -193,12 +252,12 @@ def compute_gt_flow(run_dir):
         zB = W_x_tu[i, 2]
         B_x = Ru[i].T @ W_x_tu[i]
         V_x = _v_frame(Ru[i]) @ B_x
-        V_s_g[i] = [V_x[0] / (V_x[2] + 0.01), V_x[1] / (V_x[2] + 0.01)]
+        V_s_g[i] = [V_x[0] / (V_x[2] + 0.2), V_x[1] / (V_x[2] + 0.2)]
         B_v = Ru[i].T @ W_v_tu[i]
         V_v = _v_frame(Ru[i]) @ B_v
         if abs(zB) >= 0.1:
-            B_h_g[i] = B_v / (zB + 0.01)
-            V_h_g[i] = V_v / (zB + 0.01)
+            B_h_g[i] = B_v / (zB + 0.2)
+            V_h_g[i] = V_v / (zB + 0.2)
 
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2],
                B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
@@ -239,6 +298,8 @@ def derive_one(run_dir):
     # filter is not guaranteed valid, and moved every diagonal entry on
     # SITL's dataset (loom +127%, w_z +64%).
     if n > 1:
+        raw_flow = reject_outliers(raw_flow, label="flow")
+        raw_feat = reject_outliers(raw_feat, label="feature")
         raw_flow = kf_filter_causal(raw_flow, t_img_abs, FLOW_KF_Q, FLOW_KF_R)
         raw_feat = kf_filter_causal(raw_feat, t_img_abs, FEAT_KF_Q, FEAT_KF_R)
 

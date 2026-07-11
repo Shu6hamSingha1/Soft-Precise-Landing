@@ -80,6 +80,24 @@ class imgstream(Thread):
         self._break_flag = False
         self._img_deque = deque([None, None], maxlen=2)
         self._main_img_deque = deque([None, None], maxlen=2)
+        # Hardware capture timestamps, parallel to the image deques above -
+        # ported from a PX4_Gazebo fix (bba5c33) for the SAME symptom we hit
+        # on the Pi (inconsistent GT-vs-raw time-lag scan, no stable peak):
+        # SITL found it was a CLOCK-SOURCE mismatch, not fundamentally noisy
+        # data - the flow signal's timestamp and GT's timestamp were on
+        # different clocks, so ANY fixed-lag alignment was chasing a
+        # jittery, not-actually-constant offset. Our current "Time" log
+        # (self._time.perf_counter() in img_data.py) is stamped when the
+        # flow-processing thread gets around to it, not when the frame was
+        # actually captured by the camera hardware - picamera2's raw-stream
+        # capture happens on this background thread with its own
+        # buffering/scheduling latency, so that gap is likely real and
+        # possibly variable frame-to-frame. Logging BOTH the hardware
+        # SensorTimestamp/FrameWallClock (this request's metadata) and our
+        # existing perf_counter() processing-time log lets a fresh
+        # recording show which clock GT actually aligns to - log-only for
+        # now, no control-path change, mirroring SITL's own first step.
+        self._cap_stamp_deque = deque([None, None], maxlen=2)
         self._meanTimePerImage = 1e-06
         self._count = 0
         self._start_time = time.perf_counter()
@@ -96,11 +114,18 @@ class imgstream(Thread):
                 try:
                     packed = request.make_array("raw")
                     main_yuv = request.make_array("main")
+                    md = request.get_metadata()
+                    cap_stamp = {
+                        "sensor_timestamp_ns": md.get("SensorTimestamp"),
+                        "frame_wall_clock": md.get("FrameWallClock"),
+                        "pulled_at_perf_counter": time.perf_counter(),
+                    }
                 finally:
                     request.release()
                 if packed is not None:
                     frame = _unpack_raw10(packed, self._width)
                     self._img_deque.append(frame)
+                    self._cap_stamp_deque.append(cap_stamp)
                     self._count += 1
                     self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
                 if main_yuv is not None:
@@ -124,6 +149,15 @@ class imgstream(Thread):
         genuinely smaller than the raw stream (see module docstring), for
         cheap CPU-bound detection work. Frame-synced with getImages()."""
         return self._main_img_deque
+
+    def getCaptureStamps(self):
+        """Hardware capture timestamps (see __init__ comment) parallel to
+        getImages()/getMainImages() - dicts with sensor_timestamp_ns,
+        frame_wall_clock, and pulled_at_perf_counter (when the capture
+        thread actually received this request, distinct from when
+        img_data.py's processing thread later logs its own perf_counter()
+        for the SAME frame)."""
+        return self._cap_stamp_deque
 
     def getResolution(self):
         """Actual negotiated (width, height) - use this, not the requested tuple."""

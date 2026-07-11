@@ -261,25 +261,29 @@ class IMG_PROCESSOR(Thread):
         # chain as the corner flow. Control consumes the CORNER flow; the ring is
         # the safety net for the terminal descent when the marker overflows the FoV.
         _Rmax = float(min(self._resolution)) / 2.0
-        # 3 rings (was 5): dropped the two closely-spaced inner/outer fracs
-        # (0.17, 0.67) - the remaining 3 still span near/mid/far radius
-        # coverage for a well-conditioned divergence fit, at 60% of the
-        # ring count. Combined with 20/radius (was 30) below: 3*20=60 total
-        # LK-tracked points, down from 150 (60% cut) - directly reduces
-        # calcOpticalFlowPyrLK cost, the now-dominant stage once ArUco was
-        # fixed (see img_process_freq_optimization.md), targeting >=30Hz
-        # even under degraded conditions (undervoltage-throttled CPU).
+        # 5 rings x 10 pts = 50 total LK-tracked points (was 4x25=100,
+        # briefly; 3x20=60 before that; 5x30=150 originally). 2026-07-11:
+        # tuned down further from the 100-point config after confirming
+        # >=30Hz headroom at that setting (median 33.5Hz) - 50 gives more
+        # margin below 30Hz while keeping the original 5-radius coverage
+        # (0.17-0.83) for a well-conditioned divergence fit.
         _fracs = [float(x) for x in
-                  os.environ.get("FLOW_RING_FRACS", "0.25,0.50,0.75").split(",")]
+                  os.environ.get("FLOW_RING_FRACS", "0.17,0.33,0.50,0.67,0.83").split(",")]
         _ring_radii = [fr * _Rmax for fr in _fracs]
-        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "20"))
+        _ring_npts = int(os.environ.get("FLOW_RING_NPTS", "10"))
         _ring_pts_V = []
         for _rr in _ring_radii:
             _ra = 2.0 * np.pi * np.arange(_ring_npts) / _ring_npts
             _ring_pts_V.append(np.c_[(_rr / f) * np.cos(_ra), (_rr / f) * np.sin(_ra)])
         self._ring_pts0_V = np.vstack(_ring_pts_V).astype(np.float32)
+        # 20 (was 25, then 41 originally): LK per-point cost scales with
+        # window AREA, so this cuts further off the ring-flow tracking
+        # cost, at reduced tolerance for large inter-frame ring-point
+        # motion - now below SITL's own marker-corner KLT fallback window
+        # (MARKER_KLT_LK_WIN=21), so faster motion is more likely to lose
+        # ring points than marker corners at this setting.
         self._ring_lk_params = dict(
-            winSize=(int(os.environ.get("FLOW_RING_LK_WIN", "41")),) * 2,
+            winSize=(int(os.environ.get("FLOW_RING_LK_WIN", "20")),) * 2,
             maxLevel=int(os.environ.get("FLOW_RING_LK_LVL", "3")),
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01),
             minEigThreshold=float(os.environ.get("FLOW_RING_LK_EIG", "1e-2")),
@@ -341,6 +345,10 @@ class IMG_PROCESSOR(Thread):
 
         # Data storage
         self._time_log = []
+        # Hardware capture timestamp, index-aligned with self._time_log -
+        # see imgstreamer.py's getCaptureStamps() comment for why (clock-
+        # source mismatch investigation, ported from PX4_Gazebo bba5c33).
+        self._cap_stamp_log = []
         self._fps_log = []
         self._feature_pts = []
         self._virtual_feature_pts = []
@@ -388,6 +396,7 @@ class IMG_PROCESSOR(Thread):
                 timer_flag = self._time.perf_counter()
                 images = self._image_node.getImages()
                 main_images = self._image_node.getMainImages()
+                cap_stamps = self._image_node.getCaptureStamps()
 
                 # Hardware: quaternions/angvels from flight controller
                 n_imgs = len(list(images))
@@ -414,7 +423,7 @@ class IMG_PROCESSOR(Thread):
                             self.close()
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
-                    if self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, main_imgs = main_images) is AVAILABLE:
+                    if self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, main_imgs = main_images, cap_stamps = cap_stamps) is AVAILABLE:
                         if not AVAILABLE:
                             time.sleep(1/100) # 100 Hz
                             continue                        
@@ -676,7 +685,7 @@ class IMG_PROCESSOR(Thread):
         return [(tuple(corner * self._aruco_scale for corner in corners), ids, rejected)
                 for corners, ids, rejected in main_results]
 
-    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None):
+    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None, cap_stamps = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
         # imgs/main_imgs are the imgstreamer's live deques (maxlen=2), still
@@ -880,6 +889,8 @@ class IMG_PROCESSOR(Thread):
 
             # Store the feature points
             self._time_log.append(self._time.perf_counter())
+            self._cap_stamp_log.append(
+                cap_stamps[1] if cap_stamps is not None and len(cap_stamps) > 1 else None)
             self._feature_pts.append(C_nP)
             self._virtual_feature_pts.append(V_nP_norm)
             self._quats.append(quats)
@@ -1348,6 +1359,7 @@ class IMG_PROCESSOR(Thread):
     def getLogData(self):
         return {
             "Time": self._time_log,
+            "Capture Stamp": self._cap_stamp_log,   # hardware capture time, index-aligned with Time
             "Image Feature Pts": self._feature_pts,
             "Virtual Feature Pts": self._virtual_feature_pts,
             "Feature Params": self._img_feature_param,
