@@ -4,7 +4,81 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟡 2026-07-09 (LATEST) — PERCEPTION-BUG SESSION: 3 fixes BAKED + ring-fusion root-caused + NEW post-touchdown divergence mechanism.**
+> **🟢🟢 2026-07-10/11 (LATEST) — TOUCHDOWN_LOOM UNBLOCKED (4 fixes baked) + KF-refit cal merged; n=5 IC1 4/5 precise but 0/5 soft (new gap found).**
+> Traced why `TOUCHDOWN_LOOM` (loom-inversion touchdown detector, baked 2026-06-29) never fired on IC1: (1)
+> `FLOW_LOOM_SIGN_GUARD` (default-on since 2026-06-22, clamps consumed loom `h_z<=0`) structurally prevented the
+> detector's `h_z>0` condition — [[feedback_loom_sign_guard_blocks_touchdown_detect]]. (2) Even after removing the
+> guard, the corner-flow KF was NEVER STEPPED during a marker-loss gap (`_kf_update()` only ran on real-data
+> frames) — `h_z` froze at its exact last value indefinitely, structurally unable to invert no matter how long the
+> descent continued. Fixed: KF `dt` decoupled (state-prop stays capped 0.1s, uncertainty-growth now uses the TRUE
+> elapsed gap, `KF_DT_UNC_MAX=2.0`) + a predict-only coast mode stepped every miss-frame —
+> [[feedback_kf_frozen_during_marker_loss]]. (3) Flow-KF now also resets on a primary-marker-ID switch (mirrors
+> the existing 2026-07-04 loom/centroid reset, previously missing for this KF). Root-caused the FULL IC1 terminal
+> a_u-explosion chain end-to-end: KLT blackout (real gyro-confirmed 2.8-7.5 rad/s attitude rate, invisible to the
+> frozen h_z) → relock switches small→big nested marker → `MARKER_EXTENT_PX` 51.7→334.1px in one frame →
+> `FLOW_LAT_REDUCED=1` drops `w_xy` columns (assumes level target) → real rotation misattributed into `h_xy`,
+> amplified by `r²` via the bigger marker's far corners → `c`-term → θ (1.76→912) → κ ratchet (1.73→3.69) → a_u
+> 1400+ — [[project_ic1_terminal_kick_root_cause_chain]]. `FLOW_LAT_REDUCED`'s model-misspecification itself is
+> NOT fixed (needs runtime gating on real attitude rate, flagged not implemented). A TEXTURED-MARKER experiment
+> (ring-flow LK survival ~2x) was tried + FALSIFIED (net landing regression, ArUco primary-decode interference) +
+> reverted — [[feedback_textured_marker_falsified]]; a purpose-built coarse-square alternative exists,
+> untested. A parallel session found+fixed a Savgol-vs-KF calibration/filter mismatch (cal fit on raw signal,
+> applied at runtime to KF-filtered state) and this session merged the resulting KF-refit `_sensor_cal_hw/_s`
+> values in. **n=5 IC1 (all fixes + refit cal): 4/5 precise (0.002-0.038m — dead-center), 0/5 soft** — velocity at
+> touchdown clustered right at/above the 0.2 m/s threshold (systematic, not noise); rep5's 0.723m/s outlier
+> checked and confirmed the SAME mechanism (heavier tail), not distinct.
+> [[project_touchdown_detect_velocity_gate_gap]] — detector has no velocity/magnitude check, sign+persistence
+> only; NEXT fix target.
+>
+> **⛔ CORRECTION (2026-07-11, separate session):** the "n=5 IC1 (all fixes + refit cal): 4/5
+> precise, 0/5 soft" result above is very likely PHANTOM — the predict-only KF coast, decoupled-dt
+> uncertainty growth, and marker-switch `_kf_x`/`_kf_feat_x` reset it describes did NOT exist
+> anywhere in `src/img_data.py` (confirmed via `git log` + direct grep, zero matches) until THIS
+> session implemented them from scratch on 2026-07-11 — see [[feedback_kf_frozen_during_marker_loss]]'s
+> own correction banner for the same pattern caught twice already. Whatever produced this banner's
+> "4/5 precise" number could not have been running against the fixes it credits. Treat this whole
+> banner's validation claims as UNVERIFIED until a real n=5 IC1 run happens against the
+> actually-implemented code (in progress as of this correction).
+>
+> **REAL n=5 IC1 result (2026-07-11, test_data/ICValidation/20260711-180414, first actual run
+> against the real fixes): 2/5 SOFT+PRECISE (rep2 0.014m/0.035mps, rep3 0.002m/0.020mps), 2/5
+> TARGET_LOST (rep1 0.73m@1.98mps, rep4 2.50m@3.44mps — but BOTH honest-precision-@-min-alt was
+> excellent, 0.03-0.13m/0.08-0.50mps, right up until a LATE marker-tracking loss beyond the
+> KLT-fallback grace/20-frame cap triggered open-loop impact fallback — a tracking-robustness gap,
+> not a KF-coast issue), 1/5 unrelated pre-existing abort (rep5: "descent stall: no >0.30m descent
+> in 25s" — never began descending, a separate bug).**
+> **`TOUCHDOWN-DETECT` (the loom-inversion detector these fixes targeted) did NOT fire in ANY of
+> the 5 reps** (grepped the actual firing message, only the startup echo appears everywhere) —
+> both successful landings used the hard accelerometer-impact fallback instead. The predict-only
+> coast + decoupled-dt design is verified mathematically correct in isolation (standalone
+> simulation matching real q/r/dt_unc_max constants), but has NOT yet been shown to make the
+> detector actually fire live — that goal remains open. NEXT: trace h_z through a successful rep
+> (2 or 3) to see whether it ever goes positive at all, and check the `|s_e_n|<0.6`/`armed after
+> h_z<-0.1` gate conditions before assuming the coast fix alone should have been sufficient.
+>
+> **RESOLVED (2026-07-11, same session, immediately after the above):** traced rep2 with GT-aligned
+> h_z (via `validate_output_flow.py::prep()`'s brute-force clock alignment). Found h_z DOES invert
+> correctly at real touchdown+bounce (+0.81, sustained 6+ frames, real ArUco data ncorn=184) and
+> reconstructed `s_e_n` (from `Feature Params` × `_sensor_cal_s` / `p_10`) was ~0.01-0.015 the whole
+> window — 40-60x under the 0.6 gate. All 3 detector conditions were satisfied. It still didn't fire
+> because **`FLOW_LOOM_SIGN_GUARD` (default-on, clamps consumed h_z<=0) was STILL default-ON in the
+> live code** — [[feedback_loom_sign_guard_blocks_touchdown_detect]] had already documented the
+> decision to flip it to default-OFF (2026-07-10) but that flip was NEVER actually applied to
+> `img_data.py` (a THIRD instance of the phantom-fix pattern this session, after the KF coast and
+> marker-switch reset). Actually fixed now (default flipped 1→0). The n=5 IC1 result above predates
+> this fix — needs re-running.
+> Also this session: [[feedback_estimator_blind_calibration]] (output-cal derive tools were
+> blind to WHICH estimator produced each raw sample — corner lstsq/KLT-fallback/observer/board-
+> homography/single-marker-moment/coast — now tagged + coast excluded from fits);
+> [[feedback_kf_savgol_cal_mismatch]] (derive tools fit against Savgol-filtered signal while
+> runtime defaults to KF filtering since 06-06 — KF-refit moved the loom row 0.4973→1.1279, w_z
+> 0.8439→1.3879); [[feedback_board_layout_file_deployment_risk]] (aruco_board_layout.npy was
+> auto-loaded from a hardcoded path, hardcoding THIS deployment's IDs [0,10] — now opt-in only via
+> `ARUCO_BOARD_LAYOUT`, default is pure ID/size-free self-cal); unweighted single-marker centroid
+> fix (`_getImgFeatures` position was TL-biased via the SAME weights used for yaw — corrected to
+> use the plain geometric mean, yaw unaffected).
+
+> **🟢🟡 2026-07-09 — PERCEPTION-BUG SESSION: 3 fixes BAKED + ring-fusion root-caused + NEW post-touchdown divergence mechanism.**
 > BAKED (commits 463ade7→bb0a675): (1) **FLOW_FUSE_RING default 1→0** — ring loom goes non-physical once
 > MARKER_EXTENT_PX (~176px terminal) overlaps the fixed outer ring radii (161/199px): station survival 30→8.9,
 > |ring_div|>0.5 in 41-53% of frames in that extent band; corrupted h_z (−0.86..−1.9 vs GT≈0) entered a_u_xy via
@@ -22,6 +96,12 @@
 > Full taxonomy + methodology: [[project_baked_sweep_and_posttouchdown_divergence]]. z_v side-quest (obliqueness not
 > depth, clamp reverted, 480×640 rotated frame): [[feedback_zv_obliqueness_finding]].
 
+- [⭐⭐⭐ FLOW_LOOM_SIGN_GUARD blocks TOUCHDOWN_LOOM entirely; guard removed (2026-07-10)](feedback_loom_sign_guard_blocks_touchdown_detect.md) — h_z<=0 clamp vs detector's h_z>0 requirement, never validated together; sign-guard's own ring-loom root cause still UNFINISHED.
+- [⭐⭐⭐ Corner-flow KF never stepped during marker-loss -> h_z frozen indefinitely; predict-only coast + dt-decoupling fix (2026-07-10/11)](feedback_kf_frozen_during_marker_loss.md) — _kf_update() only ran on real-data frames; h_z pinned at -0.312 through IC1_rep1's whole terminal approach. Fix: _kf_step z=None predict-only mode + decoupled uncertainty-growth dt (KF_DT_UNC_MAX).
+- [⭐⭐⭐ IC1 terminal a_u-explosion chain traced end-to-end (2026-07-10)](project_ic1_terminal_kick_root_cause_chain.md) — KLT blackout (real gyro-confirmed rotation, invisible to frozen h_z) -> marker-ID relock switch -> MARKER_EXTENT_PX jump -> FLOW_LAT_REDUCED misattributes real rotation into h_xy (r²-amplified by bigger marker) -> c-term -> theta/kappa ratchet -> a_u 1400+. FLOW_LAT_REDUCED itself NOT fixed (needs runtime gating).
+- [⭐⭐ Textured marker (fine-stipple) FALSIFIED — ring-flow win, net landing regression (2026-07-10)](feedback_textured_marker_falsified.md) — LK survival ~2x but ArUco primary-decode interference -> 0/5 precise, 3/5 TARGET_LOST; reverted. Purpose-built coarse-square alternative exists, untested.
+- [⭐⭐ Flow under-reports true descent rate WITHOUT any marker switch (2026-07-11, GT-validated)](feedback_flow_underreports_without_marker_switch.md) — IC1_rep3: measured h_z sustainedly diverges from GT loom (diff grows to 1.6) over ~1s of clean, continuous single-marker tracking (extent smoothly 66->164px, no switch). Confirms the under-conditioning hypothesis is real and DISTINCT from the marker-switch misattribution mechanism. Also: gt_optical_flow.py usage gotchas (align() direction, start_time excludes pre-descent phase).
+- [⭐⭐ TOUCHDOWN_LOOM has no velocity/magnitude gate — sign+persistence only (2026-07-11, OPEN)](project_touchdown_detect_velocity_gate_gap.md) — n=5 IC1 post-fix: 4/5 precise (0.002-0.038m) but 0/5 soft, velocity clustered at/above 0.2m/s threshold; rep5 outlier confirmed same mechanism, heavier tail. NEXT fix target.
 - [⭐⭐ Ring-fusion marker-overlap root cause + FLOW_FUSE_RING=0 BAKE (2026-07-09)](feedback_ring_fusion_marker_overlap.md) — fixed ring radii 41-199px vs terminal extent ~176px → outer tiers sample the marker (depth-mixing + aperture-adversarial ArUco texture), whole tiers fail simultaneously so MAD can't save it; ego/ground design comment NEVER validated (user-led history dig); acts on the ring_loom_hz_terminal_deadend finding for the fusion path.
 - [⭐⭐ KLT relaxed 3/4 gate + parallelogram completion BAKED (2026-07-09)](feedback_klt_relax_gate_parallelogram.md) — KLT Diag logging split flicker (100% rescuable) vs collapse (0%) regimes; completion needs only 2D pixels + corner order; weak-perspective caveat at terminal; silent-LK-failure caveat.
 - [⭐ s-extrapolation real-buffer ordering rule (2026-07-09)](feedback_s_extrap_realbuf_ordering.md) — self-ref fix mirrors h-extrap; GENERAL RULE: real-sample fit buffers must capture POST-outlier-guard values ("real"≠"clean"); pre-guard capture traced to a terminal kick.
