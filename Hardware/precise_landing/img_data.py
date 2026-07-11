@@ -188,6 +188,7 @@ class IMG_PROCESSOR(Thread):
         )
         self._klt_hits = 0   # diagnostic counters
         self._klt_misses = 0
+        self._frame_used_klt = False   # set by _klt_fallback_fill, read/reset per _optFlowAngVel call
 
         # Nested-marker single-marker LOCK (Gazebo-aligned): lock one concentric
         # marker, re-lock only when it leaves both frames -> no per-frame min/max
@@ -229,6 +230,15 @@ class IMG_PROCESSOR(Thread):
         # IMG_FILTER / IMG_FEATURE_FILTER = 'savgol' restore the legacy filter.
         self._kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))   # process-noise PSD
         self._kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))   # measurement noise variance
+        # Ported from PX4_Gazebo 2026-07-11 (feedback_kf_frozen_during_marker_loss):
+        # during a marker-loss gap, _kf_update(None,...)/_kf_feat_update(None,...)
+        # now coast (predict-only, no correction) instead of not being called at
+        # all (the Pi's prior behavior - the KF state simply froze until the next
+        # detection). dt_unc_max uses the TRUE elapsed gap (capped here) instead
+        # of the state-transition dt (capped at 0.1s), so P correctly reflects
+        # staleness across a multi-frame gap and a fresh relock measurement gets
+        # full Bayesian trust instead of a multi-frame catch-up ramp.
+        self._kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
         self._kf_x = np.zeros((6, 2))                            # [value, rate] per channel
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
@@ -338,6 +348,16 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        # Per-frame ESTIMATOR TAG (ported from PX4_Gazebo, 2026-07-11,
+        # feedback_estimator_blind_calibration): the Pi has TWO real ways to
+        # produce a corner-flow sample - direct ArUco decode, or the
+        # KLT-fallback-tracked corners (2026-07-11 port) - both feeding the
+        # SAME _fill_A/lstsq geometry regardless of corner source (matches
+        # SITL's own design choice not to need a separate cal for KLT).
+        # Without this tag a calibration recording can't verify it actually
+        # exercised both paths, or (in the future, if a coast/extrapolation
+        # mechanism is ever added) exclude synthetic samples from the fit.
+        self._opt_flow_estimator_tag = []   # 'lstsq' | 'lstsq+klt', index-aligned with the above
         self._imu_angvel_raw = []   # IMU FRD body rate [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quaternion [w,x,y,z], synced to the flow log
 
@@ -466,8 +486,8 @@ class IMG_PROCESSOR(Thread):
         """Wait until at least two frames are available."""
         print("Waiting for image streaming")
         start_time = self._time.perf_counter()
-        while (any(image is None for image in self._image_node.getImages())
-               or any(image is None for image in self._image_node.getMainImages())):
+        while (any(image is None for image in list(self._image_node.getImages()))
+               or any(image is None for image in list(self._image_node.getMainImages()))):
             time.sleep(1/100)
             if (self._time.perf_counter() - start_time) > 20:
                 raise Exception("Unable to get image data.")
@@ -594,7 +614,9 @@ class IMG_PROCESSOR(Thread):
                 merged_corners = (new_corner,)
                 merged_ids = new_id
             new_results[i] = (merged_corners, merged_ids, rejected)
-        if not used_klt:
+        if used_klt:
+            self._frame_used_klt = True
+        else:
             self._lk_step_count = 0
         return new_results
 
@@ -657,7 +679,16 @@ class IMG_PROCESSOR(Thread):
     def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
+        # imgs/main_imgs are the imgstreamer's live deques (maxlen=2), still
+        # being appended to by the background capture thread - snapshot to
+        # stable lists ONCE here so nothing downstream (multiple iteration
+        # sites in _detect_markers/_klt_fallback_fill) races the capture
+        # thread (confirmed 2026-07-11: "RuntimeError: deque mutated during
+        # iteration" from iterating main_imgs directly mid-capture).
+        imgs = list(imgs)
+        main_imgs = list(main_imgs) if main_imgs is not None else None
         _tt = self._time.perf_counter()
+        self._frame_used_klt = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
         # Texture-free RING flow (safety net) — runs EVERY frame, independent of
         # ArUco, so it survives marker death. Steps its own KF; latest raw stored.
         if self._ring_on:
@@ -668,7 +699,8 @@ class IMG_PROCESSOR(Thread):
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
              self._kf_ring_initialized) = self._kf_step(
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
-                self._kf_ring_initialized, _vvr, self._time.perf_counter())
+                self._kf_ring_initialized, _vvr, self._time.perf_counter(),
+                self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
         _tt = self._tstage(_tt, "1_ring_flow")
 
         # Detect markers on the smaller 'main' stream (ROI-crop fast path
@@ -707,6 +739,16 @@ class IMG_PROCESSOR(Thread):
                 new_lock = int(common[int(np.argmax(spreads))])
                 if new_lock != self._locked_marker_id:
                     self._mtrace_hist.clear()   # size step at a switch -> don't fit across it
+                    # Corner-flow + centroid-feature KF reset on a primary-
+                    # marker-ID switch (ported from PX4_Gazebo, 2026-07-11):
+                    # without this, a nested big<->small marker handover hands
+                    # both KFs a discontinuous geometry step (the state/rate
+                    # estimate from the OLD marker's corner scale/position is
+                    # not valid for the NEW one) that they'd otherwise try to
+                    # smoothly track through instead of re-bootstrapping.
+                    # Directly relevant on the Pi given the nested-marker setup.
+                    self._kf_initialized = False
+                    self._kf_feat_initialized = False
                 self._locked_marker_id = new_lock
             mid = self._locked_marker_id
             i0 = int(np.where(ids0 == mid)[0][0])
@@ -806,6 +848,7 @@ class IMG_PROCESSOR(Thread):
             _tt = self._tstage(_tt, "9_flow_checkpost")
 
             self._opt_flow_ang_vel_raw.append(B_v)
+            self._opt_flow_estimator_tag.append('lstsq+klt' if self._frame_used_klt else 'lstsq')
             # 2-state constant-velocity KF on the raw [h;w] (low-lag; getOptFlowAngVel
             # reads _kf_x). Stepped once per fresh frame.
             self._kf_update(B_v, self._time.perf_counter())
@@ -881,10 +924,21 @@ class IMG_PROCESSOR(Thread):
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()
                 self._flow_prev = None; self._s_prev = None; self._loom_lnM_prev = None
+            # KF coast (predict-only, no correction) rather than not calling the
+            # KF at all — the prior behavior left the state frozen until the
+            # next real detection. See __init__ comment / feedback_kf_frozen_
+            # during_marker_loss (ported from PX4_Gazebo, 2026-07-11).
+            self._kf_update(None, self._time.perf_counter())
+            self._kf_feat_update(None, self._time.perf_counter())
             self._fuse_step(None, False, 0, self._time.perf_counter())   # ring-only (dropout)
             self._tmark_frame_end()
             return False
 
+        # No marker ever locked, or lock fully dropped after the CHECK_NUM
+        # debounce above - keep coasting the KFs too (harmless/no-op if they
+        # were never initialized; _kf_step's z=None early-out handles that).
+        self._kf_update(None, self._time.perf_counter())
+        self._kf_feat_update(None, self._time.perf_counter())
         self._fuse_step(None, False, 0, self._time.perf_counter())       # ring-only (no marker)
         self._tmark_frame_end()
         return False
@@ -1063,59 +1117,65 @@ class IMG_PROCESSOR(Thread):
         if cv2.waitKey(1) == 27:
             self.close()
 
-    def _kf_step(self, x, P, prev_t, initialized, z, t):
-        """Generic per-channel 2-state (value, rate) constant-velocity KF step.
-        img = debayer_bayer_to_bgr(img)
-        Operates on the passed state (no self.* writes) and returns the updated
-        (x, P, prev_t, initialized). z: (6,) measurement; t: timestamp."""
+    def _kf_step(self, x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
+        """Generic per-channel 2-state (value, rate) constant-velocity KF step
+        (ported from PX4_Gazebo/src/img_data.py, 2026-07-11 generalization).
+        Operates on the passed state (no self.* writes) and returns the
+        updated (x, P, prev_t, initialized) so the SAME filter can run on any
+        channel count / noise params (corner flow, ring flow, centroid
+        feature all share this). z: (C,) measurement, or None for a
+        PREDICT-ONLY step (coast on the last estimated rate, skip the
+        correction — used during a marker-loss gap so the state neither
+        freezes (no step at all, the Pi's prior behavior) nor gets corrected
+        against a synthetic/extrapolated value as if it were real data).
+        t: timestamp. q, r: this channel's process/measurement noise.
+        dt_unc_max: if set, Q's dt uses the TRUE elapsed gap (capped at
+        dt_unc_max) instead of the state-transition dt (capped at 0.1s for
+        numerical stability) — so P correctly reflects staleness across a
+        multi-frame gap, and a fresh measurement at relock gets full
+        Bayesian trust instead of a multi-frame catch-up ramp."""
         if not initialized:
-            x = np.zeros((6, 2)); x[:, 0] = z          # value=z, rate=0
-            P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
+            if z is None:
+                return x, P, prev_t, initialized   # nothing to coast from yet
+            z = np.asarray(z, dtype=float)
+            x = np.zeros((len(z), 2)); x[:, 0] = z     # value=z, rate=0
+            P = np.tile(np.eye(2) * 1.0, (len(z), 1, 1))   # moderate prior
             return x, P, t, True
+
         dt = max(min(t - prev_t, 0.1), 1e-3)
+        dt_q = max(min(t - prev_t, dt_unc_max), 1e-3) if dt_unc_max is not None else dt
         F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = self._kf_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
-                                   [dt**3 / 2.0, dt**2]])
-        R = self._kf_r
-        x_pred = x @ F.T                                # (6, 2)
-        P_pred = F @ P @ F.T + Q                        # (6, 2, 2)
-        y = z - x_pred[:, 0]                            # (6,)
-        S = P_pred[:, 0, 0] + R                         # (6,)
-        K = P_pred[:, :, 0] / S[:, None]                # (6, 2)
+        Q = q * np.array([[dt_q**4 / 4.0, dt_q**3 / 2.0],
+                          [dt_q**3 / 2.0, dt_q**2]])
+        x_pred = x @ F.T
+        P_pred = F @ P @ F.T + Q
+        if z is None:
+            return x_pred, P_pred, t, True         # PREDICT-ONLY: coast, no correction
+        z = np.asarray(z, dtype=float)
+        y = z - x_pred[:, 0]
+        S = P_pred[:, 0, 0] + r
+        K = P_pred[:, :, 0] / S[:, None]
         x = x_pred + K * y[:, None]
         P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
         return x, P, t, True
 
     def _kf_update(self, z, t):
-        """Step the corner-flow KF on a fresh raw [h;w] measurement."""
+        """Corner-flow KF — thin wrapper around _kf_step.
+        z=None -> predict-only coast (marker-loss gap, no correction)."""
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
-            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized,
-            np.asarray(z, float), t)
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
+            self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
 
     def _kf_feat_update(self, z, t):
-        """4-channel 2-state KF for the feature (xc, yc, 1, alpha) with its OWN
-        (q, r). Low-lag alternative to savgol on the OUTER-loop centroid input."""
-        z = np.asarray(z, dtype=float)
-        if not self._kf_feat_initialized:
-            self._kf_feat_x[:, 0] = z
-            self._kf_feat_x[:, 1] = 0.0
-            self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
-            self._kf_feat_prev_t = t
-            self._kf_feat_initialized = True
-            return
-        dt = max(min(t - self._kf_feat_prev_t, 0.1), 1e-3)
-        self._kf_feat_prev_t = t
-        F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = self._kf_feat_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
-                                        [dt**3 / 2.0, dt**2]])
-        R = self._kf_feat_r
-        x_pred = self._kf_feat_x @ F.T                  # (4, 2)
-        P_pred = F @ self._kf_feat_P @ F.T + Q          # (4, 2, 2)
-        y = z - x_pred[:, 0]                            # (4,)
-        S = P_pred[:, 0, 0] + R                         # (4,)
-        K = P_pred[:, :, 0] / S[:, None]                # (4, 2)
-        self._kf_feat_x = x_pred + K * y[:, None]
-        self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        """4-channel 2-state KF for the centroid feature (xc, yc, 1, alpha) —
+        thin wrapper around the shared _kf_step, with its OWN (q, r)
+        (self._kf_feat_q/_r — the flow KF's q/r are mis-scaled for the
+        order-1 centroid). z: (4,) raw feature, or None for a PREDICT-ONLY
+        coast (marker-loss gap, no correction — mirrors _kf_update)."""
+        self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t, self._kf_feat_initialized = \
+            self._kf_step(self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t,
+                          self._kf_feat_initialized, z, t,
+                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
 
     def _compute_savgol_output(self):
         """Latest savgol(FILTER_WIN, FILTER_POLYORDER) sample of the raw [h;w]
@@ -1292,6 +1352,7 @@ class IMG_PROCESSOR(Thread):
             "Virtual Feature Pts": self._virtual_feature_pts,
             "Feature Params": self._img_feature_param,
             "Opt Flow Ang Vel": self._opt_flow_ang_vel_raw,
+            "Opt Flow Estimator Tag": self._opt_flow_estimator_tag,   # 'lstsq' | 'lstsq+klt', index-aligned above
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_raw,
             "Target Velocity": self._target_vel_log,
             "Angular Velocity": self._imu_angvel_raw,

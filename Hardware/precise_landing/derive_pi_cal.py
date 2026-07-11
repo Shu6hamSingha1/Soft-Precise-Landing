@@ -26,6 +26,16 @@ against a second independent recording, R^2 has not been reviewed, and it
 must not be pasted into img_data.py without that review (see PX4_Gazebo's
 own workflow: derive -> inspect R^2/inter-run stability -> THEN apply). ***
 
+FILTER: KF, not Savgol (fixed 2026-07-11, mirroring a bug PX4_Gazebo found
+and fixed the same day, feedback_kf_savgol_cal_mismatch). img_data.py's
+runtime getOptFlowAngVel() defaults to IMG_FILTER='kf' - fitting a
+calibration against a Savgol-filtered raw signal and applying it to a
+differently-shaped KF-filtered signal at runtime is not guaranteed valid.
+kf_filter_causal() below is a direct port of aggregate_calibration_phased.py's
+version, which is itself kept in lockstep with img_data.py::_kf_step - same
+process/measurement model, using the Pi's own FLOW_KF_Q/R and
+IMG_FEAT_KF_Q/R defaults (5.0/0.1 and 5.0/0.004).
+
 Usage:
     python3 derive_pi_cal.py [<run_dir> ...]     # defaults to all GOOD runs
                                                    # under Test_Data/Calibration
@@ -34,7 +44,7 @@ import os
 import sys
 import glob
 import numpy as np
-from scipy.signal import savgol_filter as sgf
+from scipy.signal import savgol_filter as sgf   # GT position->velocity smoothing only
 
 CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "Test_Data", "Calibration")
@@ -42,12 +52,47 @@ CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
-FILTER_WIN = 101   # OFFLINE derivation window, matching PX4_Gazebo's
-                    # plotter_output_calibration.ipynb cell 22 (tuned via
-                    # tune_savgol.py for max correlation; NOTE the runtime
-                    # img_data.py window is much shorter (13) for low lag -
-                    # this longer window is only valid for offline derivation)
-POLYORDER = 3
+FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))       # matches img_data.py default
+FLOW_KF_R = float(os.environ.get("FLOW_KF_R", "0.1"))
+FEAT_KF_Q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
+FEAT_KF_R = float(os.environ.get("IMG_FEAT_KF_R", "0.004"))
+
+
+def kf_filter_causal(raw, t, q, r):
+    """Causal constant-velocity 2-state KF per channel, run over a full
+    (N, C) raw array + matching timestamps t (N,). Ported verbatim from
+    PX4_Gazebo/tools/aggregate_calibration_phased.py::kf_filter_causal,
+    which itself mirrors img_data.py::_kf_step exactly - if that function's
+    model ever changes, mirror the change here too. Returns (N, C) filtered."""
+    raw = np.asarray(raw, dtype=float)
+    t = np.asarray(t, dtype=float)
+    n, c = raw.shape
+    out = np.zeros_like(raw)
+    x = np.zeros((c, 2)); P = np.tile(np.eye(2), (c, 1, 1))
+    initialized = False
+    prev_t = 0.0
+    for i in range(n):
+        z = raw[i]; ti = t[i]
+        if not initialized:
+            x[:, 0] = z; x[:, 1] = 0.0
+            P = np.tile(np.eye(2) * 1.0, (c, 1, 1))
+            prev_t = ti; initialized = True
+            out[i] = z
+            continue
+        dt = max(min(ti - prev_t, 0.1), 1e-3)
+        prev_t = ti
+        F = np.array([[1.0, dt], [0.0, 1.0]])
+        Q = q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
+                           [dt**3 / 2.0, dt**2]])
+        x_pred = x @ F.T
+        P_pred = F @ P @ F.T + Q
+        y = z - x_pred[:, 0]
+        S = P_pred[:, 0, 0] + r
+        K = P_pred[:, :, 0] / S[:, None]
+        x = x_pred + K * y[:, None]
+        P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        out[i] = x[:, 0]
+    return out
 
 
 def _euler_to_dcm_flu(roll_deg, pitch_deg, yaw_deg):
@@ -175,18 +220,27 @@ def derive_one(run_dir):
     t_img_abs = np.asarray(img["Time"], float)
     raw_flow = np.asarray(img["Opt Flow Ang Vel"], float)     # pre-cal, [h;w]
     raw_feat = np.asarray(img["Feature Params"], float)       # [xc, yc, 1, alpha]
-    n = min(len(t_img_abs), len(raw_flow), len(raw_feat))
-    t_img_abs, raw_flow, raw_feat = t_img_abs[:n], raw_flow[:n], raw_feat[:n]
+    tag = np.asarray(img.get("Opt Flow Estimator Tag", [''] * len(raw_flow)))
+    n = min(len(t_img_abs), len(raw_flow), len(raw_feat), len(tag))
+    t_img_abs, raw_flow, raw_feat, tag = t_img_abs[:n], raw_flow[:n], raw_feat[:n], tag[:n]
+
+    if np.any(tag != ''):
+        _u, _c = np.unique(tag, return_counts=True)
+        print("  h estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
 
     # Per-frame raw flow is noise-dominated (raw std ~1.4 vs true signal
-    # ~0.05, per project convention) - MUST savgol-smooth on its own native
-    # time axis BEFORE resampling/fitting, exactly like derive_board_cal.py
-    # does. Missing this step was the first cause of near-zero correlation
-    # (confirmed 2026-07-10: diagnostic corrcoef was ~0.01-0.07 everywhere
-    # without it).
-    if len(raw_flow) >= FILTER_WIN:
-        raw_flow = sgf(raw_flow, FILTER_WIN, POLYORDER, axis=0)
-        raw_feat = sgf(raw_feat, FILTER_WIN, POLYORDER, axis=0)
+    # ~0.05, per project convention) - MUST filter on its own native time
+    # axis BEFORE resampling/fitting. Uses the SAME KF the runtime
+    # getOptFlowAngVel() actually applies (IMG_FILTER='kf' default) - NOT
+    # Savgol, which was the original (2026-07-10) approach and matched a
+    # filter-mismatch bug PX4_Gazebo independently found and fixed
+    # 2026-07-11 (feedback_kf_savgol_cal_mismatch): fitting against one
+    # filter shape and applying at runtime through a differently-shaped
+    # filter is not guaranteed valid, and moved every diagonal entry on
+    # SITL's dataset (loom +127%, w_z +64%).
+    if n > 1:
+        raw_flow = kf_filter_causal(raw_flow, t_img_abs, FLOW_KF_Q, FLOW_KF_R)
+        raw_feat = kf_filter_causal(raw_feat, t_img_abs, FEAT_KF_Q, FEAT_KF_R)
 
     raw_flow_g = g["align"](t_img_abs, raw_flow)     # raw flow resampled onto GT clock
     raw_feat_g = g["align"](t_img_abs, raw_feat)
