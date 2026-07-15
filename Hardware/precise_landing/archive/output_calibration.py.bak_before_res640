@@ -1,0 +1,248 @@
+# **************************************************************************
+# Changed class and node name used in gz_subscriber
+# Added time node for clock synchronization with simulator world
+# Used simulator time instead of system time
+# **************************************************************************
+import os
+import asyncio
+import time
+import numpy as np
+
+from flight_controller import FC
+import img_data as ID
+# from numerical_methods import RK5
+# from controller import Controller
+from mavsdk.telemetry import LandedState
+from mocaptools import QTMWrapper
+
+# # Setup variables
+QTM_IP = '192.168.0.111'
+
+SLEEP_TIME = 1/30
+
+# Companion Computer Details:
+CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
+# RESOLUTION = (1280, 960)
+# RESOLUTION = (640, 480)
+RESOLUTION = (320, 240)
+REF_RAD_OPT_FLOW = -0.30
+DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0, 0.0])
+
+# Flags
+CONTROLLER_READY = False
+
+# Global Logging variable
+image_data = None
+telemetry_data = None
+controller_data = None
+controller_params = None
+gt_data = None
+img_params = None
+
+async def main(record = 'n'):
+    # Global Logging variable
+    global image_data, telemetry_data, controller_data, controller_params, gt_data, img_params, CONTROLLER_READY
+
+    # Initialize variables to None to avoid NameError in the `finally` block
+    img_node = None
+    # EC_node = None
+    mocap_node = None
+    FC_node = None
+
+    UAV_pose = []
+    target_pose = []
+    opt_flow_ang_vel = []
+    img_feature_param = []
+    start_pose = None
+    t_c = []
+    cmd = []
+
+    try:
+        FC_node = FC()
+        await FC_node.start()
+
+        mocap_node = QTMWrapper(QTM_IP)
+
+        start_time = time.perf_counter()
+        while not FC_node.has_quat():
+            if (time.perf_counter() - start_time) > 20:
+                raise Exception("Unable to get data from Flight Controller.")
+            await asyncio.sleep(0.05)
+       
+        while start_pose is None:
+            start_pose = mocap_node.getPose()["UAV"]
+        
+        img_node = ID.IMG_PROCESSOR(capRate=CAPTURE_RATE, resolution=RESOLUTION, controller=FC_node) # start the thread for onboard camera flow streaming
+
+        if record != 'n':
+            img_node.RECORD = True
+            print("Starting with recording...")
+
+        else:
+            print("Starting without recording...!")
+
+        # await FC_node.arm_and_takeoff()
+
+        # await FC_node.send_position_ned(0.0, 0.0, FC_node.getPosNED().down_m, yaw_deg_0 + 15*0)
+        
+        # for val in cmd_profile: 
+        while img_node.is_alive() and mocap_node.is_alive():
+        # while img_node.is_alive() and mocap_node.is_alive() and not FC_node.LANDED:
+            if CONTROLLER_READY:
+                t_c.append(time.perf_counter() - start_time)
+
+            else:
+                start_time = time.perf_counter()
+                CONTROLLER_READY = True
+                t_c = [0.0]
+
+            # pos_cmd = np.array([val, 0.0, FC_node.getPosNED().down_m, yaw_deg_0 + 15*0])
+
+            UAV_pose.append(mocap_node.getPose()["UAV"])
+            target_pose.append(mocap_node.getPose()["target"])
+            opt_flow_ang_vel.append(img_node.getOptFlowAngVel())
+            img_feature_param.append(img_node.getImgFeatureParam())
+            # cmd.append(pos_cmd)
+            # print(f"MoCap | Int_Ctrl = {UAV_pose[-1]} | {FC_node.getPosNED()}")
+            # print(f"UAV | Target = {UAV_pose[-1]} | {target_pose[-1]}")
+
+            await asyncio.sleep(SLEEP_TIME)
+
+            if img_node.FEATURE_IS_VISIBLE:
+                print(img_node.metrics())
+
+            # if time.perf_counter() - start_time > 600.0:
+            #     # print(f"Commanded Profile | Position: {pos_cmd} | {UAV_pose[-1]}")
+            #     # restart_time = time.perf_counter()
+            #     break
+        
+        # await FC_node.vehicle.action.land()
+
+        img_node.close()
+        await FC_node.close()
+
+    except asyncio.CancelledError:
+        # await FC_node.vehicle.action.land()
+        print("Unexpected error: Main Thread\n")        
+
+    except RuntimeError as e:
+        print(f"RuntimeError: Main Thread: {e}\n")
+
+    except SyntaxError:
+        print("SyntaxError: Main Thread\n")
+
+    except Exception as e:
+        print(f"Unexpected error: Main Thread: {e}\n")
+
+    finally:
+        # Save data
+        if img_node is not None and mocap_node is not None and FC_node is not None:
+            image_data = img_node.getLogData()
+            telemetry_data = FC_node.getLogData()
+            # controller_data = EC_node.getLogData()
+            # controller_params = EC_node.getParams()
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd}
+            img_params = img_node.getParams()
+
+        # Close img_node thread
+        if img_node is not None and img_node.is_alive():
+            img_node.close()
+            img_node.join()
+
+        # Close mocap_node thread
+        if mocap_node is not None and mocap_node.is_alive():
+            mocap_node.close()
+            mocap_node.join()
+
+        # Close flight controller
+        if FC_node:
+            await FC_node.close()
+
+def _print_run_validity(image_data, gt_data):
+    """Quick quality gauge for a hand-move output-cal take, printed before the
+    save prompt so a low-excitation dud can be discarded before moving on.
+    Thresholds mirror the output-cal analysis: near-hover / single-axis takes are
+    noise-dominated (raw flow SNR is poor), so each axis must actually be swept."""
+    print("\n" + "=" * 52)
+    print(" RUN VALIDITY (hand-move output-cal take)")
+    print("=" * 52)
+    try:
+        flowN = len(image_data.get("Opt Flow Ang Vel", [])) if image_data else 0
+        featN = len(image_data.get("Feature Params", [])) if image_data else 0
+    except Exception:
+        flowN = featN = 0
+    xs = ys = zs = yaws = np.array([])
+    tz = np.array([0.0]); dur = 0.0
+    try:
+        up = [p for p in gt_data.get("UAV Pose", []) if p is not None]
+        tp = [p for p in gt_data.get("Target Pose", []) if p is not None]
+        xs = np.array([p.x for p in up]); ys = np.array([p.y for p in up]); zs = np.array([p.z for p in up])
+        if len(up):
+            yaws = np.unwrap(np.deg2rad(np.array([p.yaw for p in up])))
+        if len(tp):
+            tz = np.array([p.z for p in tp])
+        _t = gt_data.get("Time", [0.0])
+        dur = float(_t[-1]) if len(_t) else 0.0
+    except Exception:
+        pass
+    def span(a):
+        return float(np.nanmax(a) - np.nanmin(a)) if len(a) else 0.0
+    xsp, ysp, zsp = span(xs), span(ys), span(zs)
+    yawsp = np.rad2deg(span(yaws)) if len(yaws) else 0.0
+    Zlo = float(np.nanmin(zs - np.nanmedian(tz))) if len(zs) else 0.0
+    Zhi = float(np.nanmax(zs - np.nanmedian(tz))) if len(zs) else 0.0
+    def tag(v, lo):
+        return "OK " if v >= lo else "LOW"
+    print(" duration      : %6.1f s" % dur)
+    print(" flow samples  : %6d   %s (need >=300)" % (flowN, tag(flowN, 300)))
+    print(" feature samp  : %6d" % featN)
+    print(" X span        : %6.2f m %s (need >=0.40)" % (xsp, tag(xsp, 0.40)))
+    print(" Y span        : %6.2f m %s (need >=0.40)" % (ysp, tag(ysp, 0.40)))
+    print(" Z span        : %6.2f m %s (need >=0.40)" % (zsp, tag(zsp, 0.40)))
+    print(" yaw span      : %6.1f d %s (need >=20)" % (yawsp, tag(yawsp, 20.0)))
+    print(" height range  : %5.2f .. %5.2f m" % (Zlo, Zhi))
+    weak = [n for n, v, lo in [("flow", flowN, 300), ("X", xsp, 0.40), ("Y", ysp, 0.40),
+                               ("Z", zsp, 0.40), ("yaw", yawsp, 20.0)] if v < lo]
+    if weak:
+        print(" VERDICT: WEAK - low excitation in: %s" % ", ".join(weak))
+        print("          near-hover/single-axis takes are noise-dominated; consider re-recording")
+    else:
+        print(" VERDICT: GOOD excitation on all axes")
+    print("=" * 52 + "\n")
+
+
+if __name__ == "__main__":
+    res = 'n'
+    # res = input("Do you want to record? (y/n)")
+
+    try:
+        asyncio.run(main(res))
+    except KeyboardInterrupt:
+        print("Clean exit on Ctrl+C")
+
+    # Save data# Save data
+    if CONTROLLER_READY:
+        _print_run_validity(image_data, gt_data)
+        x = input('Do you want to save the dataset? (y/n)')
+        if x != 'n':
+            # record timestamp
+            timestamp = time.ctime().replace(':', '-')
+
+            # Create a directory named based on timestamp
+            dir_name = f"Test_Data/Calibration/{timestamp}"
+            os.makedirs(dir_name)
+
+            # Save files inside the folder 
+            np.save(f'{dir_name}/Img_Data', image_data)
+            np.save(f'{dir_name}/Telemetry_Data', telemetry_data)
+            # np.save(f'{dir_name}/Control_Data', controller_data)
+            # np.save(f'{dir_name}/Control_Params', controller_params)
+            np.save(f'{dir_name}/Ground_Truth', gt_data)
+            f = open(f'{dir_name}/Img_Params.txt', 'w')
+            f.write(img_params)
+            f.close()
+
+            print("Saved to CSV!")
+
+        else:
+            print("Closed without saving!")
