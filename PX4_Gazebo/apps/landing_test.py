@@ -392,6 +392,13 @@ async def main(record = 'n'):
         start_time = time_node.perf_counter()
         EC_node.startController()
         CONTROLLER_READY = True
+        # 2026-07-11: EC_node._img_node has been running continuously since Controller()
+        # construction (line ~149), through the whole hover/IC-convergence settle -- unlike
+        # the *_validation.py apps, this app never propagated CONTROLLER_READY to the img_node,
+        # so its stateful trackers (KF init, marker lock, EKF fusion, stale/miss counters) could
+        # carry pre-engage bias into the descent undetected. img_data.py resets everything
+        # relevant on this transition (see the CONTROLLER_READY block in its capture loop).
+        EC_node._img_node.CONTROLLER_READY = True
         t_c = [0.0]
         # Short warmup — just enough to fill the 4-deep smoothing deques.
         # Hold the last marker-aligned NED setpoint so drone stays put.

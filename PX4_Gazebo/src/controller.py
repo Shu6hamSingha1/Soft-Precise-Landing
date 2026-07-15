@@ -560,6 +560,10 @@ class Controller(Thread):
         # scale-free ratio (no metric/depth added) -- this is a magnitude threshold on the SAME
         # signal already used for the sign check, not a new depth-dependent gate.
         self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.5"))  # min |h_z| to count (PROVISIONAL, n=2 evidence -- validate at n>=5)
+        self._td_debug = os.environ.get("TD_DEBUG", "0") == "1"  # per-call h_z/streak/s_e_n trace, for
+                                                                    # tracing the exact trigger sequence
+                                                                    # instead of reconstructing it offline
+                                                                    # (see feedback_h_z_prevengage_misalign)
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
@@ -854,15 +858,21 @@ class Controller(Thread):
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
+        _sen_mag = float(np.max(np.abs(s_e_n)))
         if not self._td_armed:
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
+                if self._td_debug:
+                    print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
         self._td_streak = self._td_streak + 1 if h_z > self._td_spike else 0
-        if self._td_streak >= self._td_frames and float(np.max(np.abs(s_e_n))) < self._td_sen:
+        if self._td_debug:
+            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} streak={self._td_streak} "
+                  f"|s_e_n|={_sen_mag:.4f}")
+        if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
             print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames}) "
-                  f"|s_e_n|={float(np.max(np.abs(s_e_n))):.2f} -> LANDED (disarm before bounce)")
+                  f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):
@@ -1854,6 +1864,16 @@ class Controller(Thread):
                 float(np.linalg.norm(_reach[:2])), float(np.linalg.norm(_switch[:2])),
                 float(np.linalg.norm(_equiv[:2])), float(np.linalg.norm(_drift[:2])),
                 float(np.linalg.norm(self._kappa[-1][:2])), float(np.linalg.norm(self._sigma[-1][:2])), _res))
+            # Z-AXIS decomposition (2026-07-11, descent-stall investigation): the xy-only print
+            # above can't show whether a_u_z (the descent-authority component) is being cancelled
+            # by a perception-corrupted equiv/drift term rather than a genuine controller/thrust
+            # issue. equiv_z explicitly carries "loom, h_d_rate, cross" per the comment above --
+            # a bad perception h_z feeds directly into it.
+            _resz = float((_reach + _switch + _equiv + _drift - a_u)[2])
+            print("[au_z] hz=%+.4f hdz=%+.4f auz=%+7.3f | reachz=%+7.3f switchz=%+7.3f equivz=%+7.3f driftz=%+7.3f | kz=%+.3f sigz=%+.3f resz=%.3f" % (
+                float(self._h[-1][2]), float(self._h_d[-1][2]) if len(self._h_d) else float('nan'),
+                float(a_u[2]), float(_reach[2]), float(_switch[2]), float(_equiv[2]), float(_drift[2]),
+                float(self._kappa[-1][2]), float(self._sigma[-1][2]), _resz))
         # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
         # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
         # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker
