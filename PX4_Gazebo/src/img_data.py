@@ -22,6 +22,7 @@ from ahrs import Quaternion
 from numerical_methods import extrapolate
 
 from gz_subscriber import GZ_Subscriber, Image_Node
+from planar_map import PlanarFeatureMap
 
 CHECK_NUM = 80
 # Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
@@ -54,6 +55,7 @@ class IMG_PROCESSOR(Thread):
         self.RECORD_RAW = os.environ.get("IMG_RECORD_RAW", "0") == "1"
         self._raw_dir = None; self._raw_i = 0; self._raw_stamps = []
         self.CONTROLLER_READY = False
+        self._controller_was_ready = False   # edge-detects the False->True transition (see run())
 
         # Image streaming setup
         self._image_node = Image_Node(time_keeper=time_keeper, controller=controller)
@@ -417,6 +419,32 @@ class IMG_PROCESSOR(Thread):
         # KLT _in_bounds check. A/B before baking.
         self._single_marker = os.environ.get("PLASMC_SINGLE_MARKER", "1") == "1"   # default-on 2026-06-23 (single ~1m-ArUco world + matched cal). PROVISIONAL — escapes the nested-board rank-deficiency (R²0.62) but FAILED the IC2-5 gate (2/12 sub, 6/12 fly): off-center ICs trigger the off-center spurious corner-flow spike (position-term confounding). NOT git-committed; needs the off-center fix (ring-carries-lateral when s_e_n breaches). Set =0 for the board (also restore board cal+SDF).
         self._locked_marker_id = None   # the locked single marker (None = unacquired)
+        # PlanarFeatureMap SHADOW mode (2026-07-15, default-on, PLANAR_MAP_SHADOW env-gated).
+        # Runs the online KLT+homography scene map ALONGSIDE the existing ArUco/KLT-fallback/
+        # dense-recovery tiers with ZERO effect on aruco_pts_0/extra_pts_0/marker_ids or any
+        # downstream control decision -- pure side-by-side logging, per the user's explicit
+        # build-order choice (validate on LIVE SITL data before any switch-over, offline
+        # tools/validate_planar_map.py isn't enough on its own). See src/planar_map.py.
+        #
+        # NOT constructed here. A 2026-07-15 SITL run found 65-110px held-out prediction
+        # errors confined entirely to the PRE-ENGAGE phase (hover/takeoff climb, well before
+        # CONTROLLER_READY) -- fast/large camera motion during climb stresses the RANSAC
+        # homography fit into an occasionally-bad-but-locally-self-consistent solution
+        # (rigid_ok/confidence didn't catch it). The controlled descent itself was clean
+        # (max 3.61px). Since deployment has no way to know when the target first becomes
+        # visible except "somewhere during the descent" anyway, there's no reason to run
+        # (or accumulate potentially-corrupted state from) the pre-engage phase at all --
+        # the map is (re)constructed fresh in _reset_stateful_trackers(), exactly on the
+        # CONTROLLER_READY False->True transition, same as every other control-decision
+        # stateful tracker there.
+        self._planar_map_shadow = os.environ.get("PLANAR_MAP_SHADOW", "1") == "1"
+        self._planar_map = None
+        self._planar_map_log = []   # per-frame dicts: t, err_px (vs whatever tier won this frame), decode_calls, confidence
+        self._planar_map_decode_calls = 0
+        # Default 0 (pre-engage): the savgol paths' post-engage clip is a no-op until the
+        # first CONTROLLER_READY transition actually sets these in _reset_stateful_trackers.
+        self._engage_idx_flow = 0
+        self._engage_idx_feat = 0
         # Visibility-by-MARGIN: when ANY marker corner comes within this many px of the FoV edge
         # (the marker is LEAVING/overflowing the frame), the corner is DROPPED (aruco_pts_0=None) ->
         # corner_ok stays False -> the fusion EKF lets the RING carry ALL flow components. One
@@ -986,6 +1014,67 @@ class IMG_PROCESSOR(Thread):
     def close(self):
         self._STAY_OPEN = False
 
+    def _reset_stateful_trackers(self):
+        """Reset every CONTROL-DECISION-relevant stateful tracker. Called once, exactly on the
+        CONTROLLER_READY False->True transition (see run()) -- NOT every frame, and NOT a full
+        re-init. This node runs continuously from Controller() construction (well before
+        CONTROLLER_READY, through the whole hover/IC-convergence settle -- ~15-20s observed),
+        so by engage time these trackers may already hold state accumulated during a completely
+        different flight regime (takeoff climb, hover settle) that has nothing to do with the
+        controlled descent about to begin. 2026-07-11: found via a real investigation where an
+        offline-reconstructed "positive loom" event turned out to be ~15s BEFORE the descent even
+        started -- harmless in isolation, but exactly the kind of pre-engage state that COULD
+        carry forward into a KF/lock/arm decision post-engage undetected. Mirrors (and extends)
+        the existing marker-switch reset block (~line 1391-1402) -- same lesson, applied at the
+        other place a discontinuous regime change happens without an explicit code trigger.
+        Board self-cal / layout learning is deliberately NOT reset here -- it's geometry/scale
+        learning, not a control-decision state, and losing it costs a few frames of re-warmup for
+        no correctness benefit."""
+        self._locked_marker_id = None
+        self._primary_id = None
+        self._mtrace_hist.clear()
+        self._centroid_hist.clear()
+        self._obs_kf_x = None; self._obs_kf_y = None
+        self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
+        self._flow_prev = None; self._flow_hold = None
+        self._s_prev = None; self._s_hold = None
+        self._consec_misses = 0
+        self._consec_hits = 0
+        self.FEATURE_IS_STALE = False
+        self._hit_hist.clear()
+        self._h_real_t = []; self._h_real_v = []
+        self._img_feature_param_real_t = []; self._img_feature_param_real = []
+        self._kf_initialized = False
+        self._kf_ring_initialized = False
+        self._kf_feat_initialized = False
+        self._ekf_init = False
+        self._loom_stale = 0
+        # Savgol pre-engage guard (2026-07-15, user directive: audit ALL pre-engage state
+        # leaks, not just planar_map). _opt_flow_ang_vel_raw / _img_feature_param are
+        # append-only FULL-RUN logs (also used by getLogData() for post-hoc analysis of
+        # the whole flight incl. pre-engage, so they must NOT be cleared/truncated here).
+        # But the legacy IMG_FILTER=savgol / IMG_FEATURE_FILTER=savgol path slices the last
+        # FILTER_WIN samples directly off these logs -- for the first ~FILTER_WIN/2 frames
+        # after engage, that window would silently span the CONTROLLER_READY boundary and
+        # blend pre-engage samples into the "post-engage" filtered output. (The DEFAULT
+        # 'kf' path does NOT have this bug: _kf_initialized/_kf_feat_initialized are reset
+        # below, and _kf_step's own re-seed-on-next-sample logic means the KF value itself
+        # starts clean post-engage -- verified, no fix needed there.) These indices mark
+        # "first sample index that's valid to feed the savgol window" -- _compute_savgol_
+        # output / getImgFeatureParam's savgol branch must never read before them.
+        self._engage_idx_flow = len(self._opt_flow_ang_vel_raw)
+        self._engage_idx_feat = len(self._img_feature_param)
+        # PlanarFeatureMap: (re)constructed fresh here, NOT at node construction -- see
+        # __init__ comment. Deployment has no way to know when the target first becomes
+        # visible except "sometime during the descent", and pre-engage hover/climb motion
+        # was found to occasionally corrupt the homography fit (65-110px, see __init__
+        # comment) with nothing useful gained from tracking that phase at all.
+        self._planar_map = PlanarFeatureMap() if self._planar_map_shadow else None
+        self._planar_map_decode_calls = 0
+        print("[img_data] CONTROLLER_READY -> True: reset all control-decision stateful trackers "
+              "(KF/lock/EKF/stale/hold-guard state) so pre-engage hover/climb history can't carry "
+              "into the descent.")
+
     def run(self):
         # The run() replaces the run() from the Thread class 
         # Since this is an inherited instance of the 
@@ -1042,6 +1131,10 @@ class IMG_PROCESSOR(Thread):
                                     [cv2.IMWRITE_PNG_COMPRESSION, 1])   # lossless, fast
                         self._raw_stamps.append(self._stamp)
                         self._raw_i += 1
+
+                    if self.CONTROLLER_READY and not self._controller_was_ready:
+                        self._reset_stateful_trackers()
+                        self._controller_was_ready = True
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
                     if self._imgProcess(images, quaternions, angvels, showVideo = VIDEO) is AVAILABLE:
@@ -1580,6 +1673,70 @@ class IMG_PROCESSOR(Thread):
                 # KLT-fallback frame (empty array if none this frame).
                 self._prev_extra_pts = (extra_pts_0.copy() if extra_pts_0 is not None
                                         and len(extra_pts_0) > 0 else None)
+
+        # --- PlanarFeatureMap SHADOW (see __init__ comment) ---------------------------
+        # Pure side-effect-free logging: track every frame, loop-closure-correct on a
+        # fresh ArUco decode, compare its prediction against whatever tier actually won
+        # this frame (aruco_pts_0, from ANY of ArUco/KLT/dense-recovery). Never touches
+        # aruco_pts_0/extra_pts_0/marker_ids or any control-path variable.
+        # self._planar_map is None until the CONTROLLER_READY transition (see
+        # _reset_stateful_trackers) -- pre-engage hover/climb is deliberately never fed in.
+        if self._planar_map_shadow and self._planar_map is not None:
+            try:
+                _gray0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+                if not self._planar_map.initialized:
+                    self._planar_map.bootstrap(
+                        _gray0,
+                        marker_px_corners=(aruco_pts_0 if results[0] else None),
+                        marker_id=(self._primary_id if results[0] else None))
+                    self._planar_map_decode_calls += 1
+                else:
+                    self._planar_map.update(_gray0)
+                    # HELD-OUT PREDICTION FIRST, before loop_closure_correct touches the
+                    # map -- comparing AFTER correction would be circular on a fresh-decode
+                    # frame (map_pts gets set FROM aruco_pts_0 this same frame via
+                    # frame_to_map, then get_marker_frame_pts() reads it back through the
+                    # SAME frame_to_map -> an exact round-trip, err~0 by construction, not a
+                    # real accuracy check). This mirrors tools/validate_planar_map.py's
+                    # held-out methodology exactly.
+                    #
+                    # SLOT MATTERS (2026-07-15 bug fix): get_marker_frame_pts(slot=None)
+                    # returns the map's own "primary" (largest) slot, which is independent
+                    # of -- and can disagree with -- whichever physical marker img_data.py's
+                    # OWN separate _locked_marker_id/_primary_id logic actually decoded this
+                    # frame (aruco_pts_0). Comparing against the wrong slot produced spurious
+                    # ~100px "errors" during n=6 IC1 validation that were a bug in THIS
+                    # comparison, not in PlanarFeatureMap. identify_slot() finds which slot
+                    # aruco_pts_0 itself geometrically belongs to (None if it doesn't match
+                    # any yet -- correctly excluded, not compared against the wrong one).
+                    _pred = None
+                    if aruco_pts_0 is not None:
+                        _slot_guess = self._planar_map.identify_slot(aruco_pts_0)
+                        if _slot_guess is not None:
+                            _pred = self._planar_map.get_marker_frame_pts(slot=_slot_guess)
+                    if results[0]:
+                        self._planar_map.loop_closure_correct(
+                            aruco_pts_0, marker_id=self._primary_id)
+                        self._planar_map_decode_calls += 1
+                    if aruco_pts_0 is not None:
+                        if _pred is not None and len(_pred) == len(aruco_pts_0):
+                            _err = float(np.mean(np.linalg.norm(
+                                _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
+                            self._planar_map_log.append({
+                                "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
+                                "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
+                                "confidence": self._planar_map.confidence,
+                                "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                                "decode_calls": self._planar_map_decode_calls})
+                            if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                                print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
+                                      f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
+                                      f"n_tracked={self._planar_map.n_tracked} "
+                                      f"rigid_ok={self._planar_map.marker_rigid_ok}")
+            except Exception as _e:
+                # Shadow-mode only -- never let it take down the real acquisition path.
+                if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                    print(f"[planar_map shadow] exception (non-fatal): {_e}")
 
         # SINGLE-MARKER visibility-by-MARGIN: the marker is LEAVING when any corner comes within
         # _marker_fov_margin px of the FoV edge (near-edge/overflowing). When leaving, route the
@@ -3002,7 +3159,8 @@ class IMG_PROCESSOR(Thread):
             "Opt Flow Fused": self._opt_flow_fused_log,   # corner+ring EKF target-rel [h_tr;w] (FLOW_FUSE_RING=1)
             "Target Vel": self._target_vel_log,           # EKF target/rover velocity h_tv (flow units)
             "FPS": self._fps_log,
-            "Image Stamp": self._stamp_log
+            "Image Stamp": self._stamp_log,
+            "Planar Map Shadow": self._planar_map_log,   # (2026-07-15) shadow-mode PlanarFeatureMap vs live-winning tier, see src/planar_map.py
         }
     
     def getParams(self):
@@ -3086,11 +3244,18 @@ class IMG_PROCESSOR(Thread):
         """
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
-        if len(self._opt_flow_ang_vel_raw) >= FILTER_WIN:
-            sgf_buf = sgf(self._opt_flow_ang_vel_raw[-FILTER_WIN:],
+        # Never let the window read before the CONTROLLER_READY engage point (see
+        # _engage_idx_flow comment in _reset_stateful_trackers) -- clip the available
+        # history to post-engage samples only, so the first few post-engage frames don't
+        # silently blend in pre-engage measurements.
+        _post_engage = self._opt_flow_ang_vel_raw[self._engage_idx_flow:]
+        if len(_post_engage) == 0:
+            return np.zeros(6)
+        if len(_post_engage) >= FILTER_WIN:
+            sgf_buf = sgf(_post_engage[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
             return sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return np.mean(self._opt_flow_ang_vel_raw, axis=0)
+        return np.mean(_post_engage, axis=0)
 
     def getOptFlowAngVel(self):
         """Calibrated, smoothed optical flow + angular velocity (6-vec).
@@ -3151,8 +3316,13 @@ class IMG_PROCESSOR(Thread):
         if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
             if self._kf_feat_initialized:
                 return self._sensor_cal_s @ self._kf_feat_x[:, 0]
-        if len(self._img_feature_param) >= FILTER_WIN:
-            sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:],
+        # Same post-engage clipping as _compute_savgol_output -- see _engage_idx_feat
+        # comment in _reset_stateful_trackers.
+        _post_engage = self._img_feature_param[self._engage_idx_feat:]
+        if len(_post_engage) == 0:
+            return np.zeros(4)
+        if len(_post_engage) >= FILTER_WIN:
+            sgf_buf = sgf(_post_engage[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
             return self._sensor_cal_s @ sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return self._sensor_cal_s @ np.mean(self._img_feature_param, axis=0)
+        return self._sensor_cal_s @ np.mean(_post_engage, axis=0)
