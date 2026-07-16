@@ -15,7 +15,7 @@ The target-visibility guarantee was redesigned (2026-06-06, committed `4e885f9`)
 - **Two-phase delta:** 0 while the central (target) marker decodes (centroid-only barrier; lets it overflow as you close in); ramps in from the visible markers on its overflow. Forward-invariant look-ahead (target drift `d` + loom `delta_dot`); `theta_cap` input-awareness.
 
 **Decisions reached along the way (don't re-derive):**
-- The optic-flow-dynamics CBF was **abandoned** — calibration vs GT showed the flow (esp. divergence `h_z`) is poorly observed and carries `beta`/`d_h`. See [[feedback-wxy-unobservable-imu-fusion]].
+- The optic-flow-dynamics CBF was **abandoned** — calibration vs GT showed the flow (esp. divergence `h_z`) is poorly observed and carries `beta`/`d_h`. See [[feedback_wxy_unobservable_imu_fusion]].
 - A V-frame barrier (`|^V r_hat|`) does NOT ensure visibility (a tilt with `^V r_hat=0` gives `^C r_hat = tan theta` off-sensor). Barrier must be on the camera plane.
 - `^C r_hat = ^V r_hat + tan theta` is WRONG (de-rotation is a homography, not additive) → deleted; use `L_omega`.
 - Optic flow stays on the **3D soft-landing velocity loop** (`h = v/z → 0`, all axes), NOT the visibility barrier.

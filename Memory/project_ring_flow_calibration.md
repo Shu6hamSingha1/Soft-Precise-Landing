@@ -45,5 +45,5 @@ np.array literal) instead of hard-coding — so iterating the cal in img_data.py
 needs a manual re-sync. validate_output_flow's earlier ring bug (applied the CORNER
 CAL to the ring, which the runtime never does) is fixed: ring now uses `_sensor_cal_ring`.
 
-See [[cal-data-provenance-cleanup]], [[reference-aggregate-calibration]],
+See [[cal-data-provenance-cleanup]], [[reference_aggregate_calibration]],
 [[feedback_vframe_rhs_yaw_only]].

@@ -62,7 +62,7 @@ The real ceiling is PERCEPTION (LK robustness under body-rate transients), not l
 n=10: PRECISE=1 SOFT=1 SP=0 TL=2, median xy 4.06m (vs c1 ×0.35 1.93m), median vel 1.97, body-rate peak
 median 8.24 rad/s / max 18.7. The n=5 staircase had claimed c4 was the GENTLEST cell (2.35 rad/s, median
 1.90m) — at n=10 that collapsed: body rates 8.24 (worse than c1's 5.2) and median 4.06m. Classic
-n=5-winner-fails-at-n=10 ([[sensitivity-sweep-methodology]]).
+n=5-winner-fails-at-n=10 ([[feedback_sensitivity_sweep_methodology]]).
 Mechanism: dropping KI 1.0→0.1 removed the integral term that corrects SITL lateral drift → steady lateral
 offset → 4m median; it did NOT reduce body-rate aggression as n=5 suggested. So the KI=1.0 boost is doing real
 work (drift correction); it can't simply be removed. The ×0.35 config (KP=1.4, KI=0.35) balances enough KI for

@@ -45,10 +45,10 @@ metadata:
 zero git impact):
 - `input_yawgain/`, `input_KMfix/` (one-off input sweeps)
 - `rollpitch_cal_20260604-205113/` (wx/wy excitation — deferred; wx/wy now zeroed via
-  `CTRL_ZERO_WXY=1`, IMU-wxy rejected, see [[wxy-unobservable-imu-fusion]])
+  `CTRL_ZERO_WXY=1`, IMU-wxy rejected, see [[feedback_wxy_unobservable_imu_fusion]])
 - 5 older `yawagg_cal_*` (kept newest `20260604-203806`)
 KEPT in `calibration_data/`: `output/` (cal source), `output_postreboot_20260603-222903/`
 (phased, for the planned `IMG_FEATURE_FILTER=kf` recal), `input/`, `yawagg_cal_20260604-203806/`.
 
 See [[feedback_vframe_rhs_yaw_only]] (cal now derives V-frame GT on all channels),
-[[reference-aggregate-calibration]].
+[[reference_aggregate_calibration]].

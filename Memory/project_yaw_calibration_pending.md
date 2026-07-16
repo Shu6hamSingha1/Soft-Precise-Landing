@@ -55,7 +55,7 @@ V-frame, then measures board +x angle in V — correct). It is the V-FRAME YAW R
 from the EKF attitude quaternion, and EKF yaw DRIFTS 30-46deg during yaw maneuvers ([[compass-yaw-drift]]). So
 alpha is measured in a mis-yawed V -> decouples from true heading. The calibration is confounded by the SAME
 compass drift that corrupts the controller's V-frame.
-**This explains the IC2-5 yaw runaway** ([[ic-validation]]): the yaw SMC drives psi_d from e_a derived off alpha,
+**This explains the IC2-5 yaw runaway** ([[feedback_ic_validation]]): the yaw SMC drives psi_d from e_a derived off alpha,
 but alpha doesn't represent the true heading error -> the yaw chases a non-signal -> psi_d runs to 60-120deg.
 TWO PATHS: (a) fix the alpha computation (why board principal-axis doesn't track V yaw) — needed for moving/
 rotating targets; (b) PRAGMATIC for the STATIONARY board: the heading is fixed+known, so HOLD the initial aligned

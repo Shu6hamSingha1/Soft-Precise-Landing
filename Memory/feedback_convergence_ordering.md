@@ -22,7 +22,7 @@ metadata:
 | Channel | Demand | Achievable | Consequence |
 |---|---|---|---|
 | lateral | 7.6 /s | ~2–3 /s (roll/pitch rate-loop 52–61 ms + image ~100 ms) | 2.5–4× over-driven → limit cycle |
-| yaw | ~1.0 /s | ~1.7 /s (yaw rate-loop **287 ms**, 5× roll/pitch — [[feedback-input-cal-yaw-lag]]) | zero margin → wrap divergence |
+| yaw | ~1.0 /s | ~1.7 /s (yaw rate-loop **287 ms**, 5× roll/pitch — [[feedback_input_cal_yaw_lag]]) | zero margin → wrap divergence |
 | vertical | 0.42 /s | ~5–10 /s (direct thrust) | 12–24× under-driven → clean |
 
 The gains assume MATLAB's uniform ~10 ms lag; PX4's lag is per-channel asymmetric (thrust fast, roll/pitch slow, yaw very slow) — the fastest-demand loop sits on the slowest chain.

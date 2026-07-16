@@ -15,4 +15,4 @@ The plotter notebook's cell 22 used to "infer recording-time cal and re-apply th
 
 **How to apply:** KF/Savgol comparison plots (cells 22–28) show the runtime's actual output in whatever cal was recorded. To evaluate a candidate cal against GT, use cell 8 / cells 12–16, which apply the cal to the RAW (pre-cal) logs — the well-posed path. Never reintroduce post-cal un-baking.
 
-Also note: GT vs image-side in these recordings is genuinely time-aligned — GT leads by the physical ~250 ms image-pipeline lag (corr 0.83–0.99). Apparent "misalignment" is almost always an amplitude/scaling artifact, not a time-base bug. Related: [[aggregate-calibration-methodology]], [[landing-target-design]].
+Also note: GT vs image-side in these recordings is genuinely time-aligned — GT leads by the physical ~250 ms image-pipeline lag (corr 0.83–0.99). Apparent "misalignment" is almost always an amplitude/scaling artifact, not a time-base bug. Related: [[aggregate-calibration-methodology]], [[project_landing_target_design]].

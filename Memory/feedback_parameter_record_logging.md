@@ -17,7 +17,7 @@ metadata:
 - Write with odfpy (installed in `~/ws/scripts/env2025`); ALWAYS back up the .ods to `Obsolete/` before editing.
 - The .ods is git-tracked via a gitignore carve-out (`!PX4_Gazebo/test_data/Landing_Test/parameter_record.ods`) — commit after updating.
 
-Related: [[dsd-touchdown-spike]] (the session logged there), [[feedback-sensitivity-sweep-methodology]].
+Related: [[dsd-touchdown-spike]] (the session logged there), [[feedback_sensitivity_sweep_methodology]].
 
 
 **Sheet structure (current, 2026-06-03):**

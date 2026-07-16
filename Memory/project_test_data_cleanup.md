@@ -19,7 +19,7 @@ Before the move, 17.8 GB of closed-campaign data was deleted (May 18–28 sweeps
 
 **Gitignored (in project dir but not in git):** Landing_Test/ (active landing output, May 29+ runs), ICValidation/, HybridFlow_AB/, KLT_AB/, NewCal/, Test_Videos/ (must exist — img_data.py writes into it).
 
-**Lost beyond plan (cleanup script bug):** per-rep summary.tsv for ~45 closed sweeps and the strict 3-pass CoordDescent log.jsonl. Key stats survive in memory/git but raw per-rep numbers are gone. Related: [[coord-descent-sp-lucky-ic]], [[precision-softness-frontier]].
+**Lost beyond plan (cleanup script bug):** per-rep summary.tsv for ~45 closed sweeps and the strict 3-pass CoordDescent log.jsonl. Key stats survive in memory/git but raw per-rep numbers are gone. Related: [[feedback_coord_descent_sp_lucky_ic]], [[precision-softness-frontier]].
 
 
 ---

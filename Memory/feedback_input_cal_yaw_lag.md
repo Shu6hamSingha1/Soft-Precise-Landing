@@ -69,10 +69,10 @@ MC_YAWRATE_P=0.2 is HIGHER than roll/pitch 0.15, and PX4 rate control feeds back
 
 ## Cross-references
 
-- [[impulse-response]] — pitch rate-loop 38 ms (single-impulse); sinusoidal xcorr finds 52 ms
+- [[feedback_impulse_response]] — pitch rate-loop 38 ms (single-impulse); sinusoidal xcorr finds 52 ms
 - [[convergence-ordering]] — yaw detuned to 0.2 because of this lag
 - [[compass-yaw-drift]] — EKF yaw drift affects OUR outer-loop yaw, not PX4's rate loop
-- [[mc-rate-p-dead]] — MAVSDK runtime tuning of MC_*RATE_P breaks SITL preflight
+- [[feedback_mc_rate_p_dead]] — MAVSDK runtime tuning of MC_*RATE_P breaks SITL preflight
 
 ## Aggregator location
 

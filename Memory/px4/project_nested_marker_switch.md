@@ -48,7 +48,7 @@ Switch to the NESTED marker for decode continuity + touchdown visibility.**
 2. **OUTPUT (optical-flow/centroid) cal MUST be re-derived** — marker geometry + size both
    changed (was 1m single). INPUT (rate/thrust) cal unaffected (drone dynamics, marker-independent).
    Terminal-commit-off is control-side, cal-irrelevant. GT-FB bypasses the cal entirely.
-   Workflow: [[io-calibration skill]] — >=5 phased output-cal runs WITH FLOW_LAT_REDUCED=1 ->
+   Workflow: the `io-calibration` skill — >=5 phased output-cal runs WITH FLOW_LAT_REDUCED=1 ->
    derive_board_cal.py -> derive_ring_cal.py.
 
 ## NEXT
