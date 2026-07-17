@@ -787,6 +787,35 @@ class IMG_PROCESSOR(Thread):
         # HANDOVER_LATCHED flag that _ringCommitStep gates on.
         self._handover_cbf_cand = 0
         self._cbf_small_conf_min = float(os.environ.get("CBF_SMALL_SLOT_CONF_MIN", "0.5"))   # SAME env/default as controller.py -- keep the two decisions consistent
+        # HANDOVER via SMALL-SLOT CONFIDENCE ALONE (2026-07-17, user directive). The two
+        # existing latch paths both require a DECODE event that didn't happen in the textured
+        # IC1-5 gate (ICValidation/20260717-185746, handover=0 in every rep): (1) the loom-M-drop
+        # path needs the small marker to stay primary 5 frames without the big RE-DECODING, but
+        # the nested marker FLICKERS big<->small (3 down + 3 up d(lnM) crossings), so each
+        # candidate is cancelled before persisting; (2) the CBF path ANDs small-slot-confident
+        # with CBF_OVERFLOW, which fired 0 times. The map, unlike raw decode, tracks the small
+        # slot CONTINUOUSLY through the flicker (KLT+homography) -- so its per-slot confidence is
+        # the flicker-immune "we can rely on the small marker now" signal. When
+        # HANDOVER_REQUIRE_OVERFLOW=0, latch on SMALL_SLOT_CONFIDENT sustained alone (no
+        # CBF_OVERFLOW gate). Still one-way + HANDOVER_PERSIST-frame hysteresis (the skill's
+        # IC4 DRIFT_OFF regression came from a RAW per-frame slot-confidence read -- keep the
+        # persistence). Self-gating vs firing at altitude: get_slot_confidence folds in
+        # track_conf (n_tracked corners), and the tiny inner marker isn't well-tracked until
+        # close, so confidence naturally stays low until the terminal. Downstream, ring-commit
+        # STILL requires OVER_TARGET + settled, so an early latch cannot itself commit.
+        self._handover_require_overflow = os.environ.get("HANDOVER_REQUIRE_OVERFLOW", "1") == "1"
+        # MAP-DRIVEN LOOM M (2026-07-18, user directive: "replace all decode-driven measurements
+        # with map-driven"). STAGE 1: the loom scale M=μ20+μ02 is computed from the PlanarFeatureMap's
+        # continuously-tracked slot corners (get_marker_frame_pts) instead of the raw-decode corners.
+        # WHY: the decode primary flickers big<->small, and the raw M then jumps (~ratio²) -> spurious
+        # positive h_z mid-descent (the touchdown-detection root: h_z isn't cleanly negative through
+        # the descent, so a descent-arrest detector can't work). The map tracks each slot through the
+        # flicker, so its M is continuous. SLOT = big (primary) before HANDOVER_LATCHED, small
+        # (secondary) after -- the user's big-before/small-after selection; the two slots share one
+        # map with the online-learned relative size, so the scale is continuous across the single
+        # latched switch. Isolated to the LOOM's M only (centroid _x0/_y0, flow, alpha stay on decode)
+        # so this stage validates alone. Default off; LOOM_M_FROM_MAP=1 to enable.
+        self._loom_m_from_map = os.environ.get("LOOM_M_FROM_MAP", "0") == "1"
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -2041,7 +2070,13 @@ class IMG_PROCESSOR(Thread):
             try:
                 _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
-                _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
+                # Loom M: map-driven (stage 1) when enabled + available, else decode. Centroid
+                # (_x0/_y0) stays on DECODE -- this stage migrates the loom scale ONLY.
+                _Mo = None
+                if self._loom_m_from_map:
+                    _Mo = self._loomMapM(quats[0])
+                if _Mo is None:
+                    _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
                 _to = float(getattr(self, '_stamp', 0.0))
                 if _Mo > 1e-12 and np.isfinite(_Mo):
                     self._centroid_hist.append((_to, _x0, _y0, np.log(_Mo)))
@@ -2332,9 +2367,14 @@ class IMG_PROCESSOR(Thread):
                     # confident this frame (single override point, above) -- automatically
                     # continuous across a small<->big decode flicker, no loom-specific
                     # branch needed here anymore (see PLASMC_PLANAR_MAP_PRIMARY comment).
-                    _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
+                    _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2); kept for OVER_TARGET quad below
                     _ctr = _vp.mean(axis=0)
-                    _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # Loom M: map-driven (stage 1) when enabled + available, else decode scatter.
+                    # _vp itself stays decode-sourced (OVER_TARGET point-in-quad needs the live
+                    # primary-marker quad, a separate concern from the loom scale).
+                    _M = self._loomMapM(quats[0]) if self._loom_m_from_map else None
+                    if _M is None:
+                        _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
                     # OVER_TARGET (2026-07-05, user): is the NADIR (V-frame origin) inside the primary
                     # marker's V-frame quad? Depth-free "over the target" (tilt-removed), replaces the
                     # ambiguous s_e_n gate for the ring-commit. Self-scaling: at altitude the small marker
@@ -3831,6 +3871,34 @@ class IMG_PROCESSOR(Thread):
             return False
         return self._planar_map.get_slot_confidence(sec) >= self._cbf_small_conf_min
 
+    def _loomMapM(self, quat):
+        """Map-driven loom scale M = μ20+μ02 (de-rotated corner scatter ∝ (sz·f/Z)²), STAGE 1
+        of the decode->map measurement migration (2026-07-18). Returns the map's slot corners'
+        V-frame scatter, or None if unavailable (caller falls back to the decode M). SLOT is
+        handover-gated: the PRIMARY (big) slot before HANDOVER_LATCHED, the SECONDARY (small)
+        slot after -- the user's big-before/small-after selection. The map tracks each slot
+        continuously (KLT+homography), so this M does NOT flicker across a big<->small decode
+        blink the way the raw-decode M does; and because both slots live in one map with the
+        online-learned relative size, the scale is continuous across the single latched switch.
+        Uses the SAME _getVirtualPts de-rotation the decode path uses, so it is directly
+        substitutable for _Mo/_M with no frame-convention change."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None  # None -> primary (big)
+        try:
+            px = pm.get_marker_frame_pts(slot=slot)   # continuous per-slot corners (pixel frame)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp.mean(axis=0)
+            M = float(np.mean(np.sum((Vp[:, :2] - ctr[:2]) ** 2, axis=1)))
+            return M if (M > 1e-12 and np.isfinite(M)) else None
+        except Exception:
+            return None
+
     def update_cbf_handover_signal(self, cbf_overflow):
         """CBF-driven alternative path to HANDOVER_LATCHED (2026-07-17, user design),
         called once per step from apps/landing_test.py (which owns both the controller and
@@ -3843,12 +3911,19 @@ class IMG_PROCESSOR(Thread):
         evaluated against the SAME live map state."""
         if self.HANDOVER_LATCHED:
             return
-        if bool(cbf_overflow) and self.SMALL_SLOT_CONFIDENT:
+        # HANDOVER_REQUIRE_OVERFLOW=1 (default): legacy AND -- CBF_OVERFLOW *and* small-slot.
+        # =0 (user directive 2026-07-17): small-slot confidence ALONE, flicker-immune (the map
+        # tracks the small slot through the decode flicker that starves both legacy paths).
+        _cond = (self.SMALL_SLOT_CONFIDENT if not self._handover_require_overflow
+                 else (bool(cbf_overflow) and self.SMALL_SLOT_CONFIDENT))
+        if _cond:
             self._handover_cbf_cand += 1
             if self._handover_cbf_cand >= self._handover_persist:
                 self.HANDOVER_LATCHED = True
                 if self._handover_dbg:
-                    print(f"[HANDOVER] latched via CBF overflow+small-slot-confident "
+                    _via = ("small-slot-confident alone" if not self._handover_require_overflow
+                            else "CBF overflow+small-slot-confident")
+                    print(f"[HANDOVER] latched via {_via} "
                           f"t={float(getattr(self, '_stamp', 0.0)):.2f}", flush=True)
         else:
             self._handover_cbf_cand = 0
