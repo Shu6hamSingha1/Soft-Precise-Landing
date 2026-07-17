@@ -141,17 +141,43 @@ class IMG_PROCESSOR(Thread):
         # See feedback_kf_savgol_cal_mismatch. Off-diagonal loom cross-terms
         # (row 2, cols 0-1) are an older board-fit and NOT re-derived by this
         # tool (diagonal-only); kept as-is pending a future full-matrix KF refit.
+        # ⭐ OBSERVER-REBUILD RECAL (2026-07-17) — the rows below are re-derived from a FRESH
+        # 5-recording set (calibration_data/output_obskf_q1e3, all 5 runs valid) taken with the
+        # CURRENT binary, superseding the 2026-07-03 set. WHY: the 07-03 recordings predate
+        # commit f790245 (2026-07-04), which rebuilt the observer path in THREE ways at once --
+        # (a) the CV-Kalman filter replaced the polyfit centroid-rate (attenuates -> needs MORE
+        # gain), (b) W_Z SIGN FIX (_oz = -_wv[2]), (c) FRAME-PAIR FIX (quats[0] not quats[1]).
+        # The observer's rate estimator runs INSIDE img_data UPSTREAM of the logged "raw"
+        # (_obs_vel_kf ~:2027 -> _observer_flow ~:2054), so its smoothing is BAKED INTO the
+        # recording and the aggregator CANNOT re-filter it offline -- hence new recordings were
+        # required (unlike the outer KF, which tools/aggregate_calibration_phased.py re-applies).
+        # The 07-11 KF-refit did NOT catch this: it only fixed the OUTER Savgol-vs-KF mismatch.
+        # Old (Jul-3) -> new (Jul-17), per-run n=5, broken Jul-3 run excluded (loom -0.009 /
+        # w_z -0.027 = failed z/yaw phases; MAD-rejected by the tool too):
+        #   h_y  1.063+-0.198 -> 1.617+-0.283  (+52%, Welch t=+3.59, ranges DISJOINT)  [established]
+        #   w_z  1.388+-0.123 -> 1.098+-0.025  (-21%, t=-4.65, DISJOINT)               [established]
+        #   h_x  1.091+-0.266 -> 1.572+-0.331  (+44%, t=+2.54, ranges OVERLAP)         [direction
+        #        consistent w/ h_y + mechanistically expected, but MAGNITUDE not nailed at n=5]
+        #   loom 1.128+-0.036 -> 1.127+-0.018  (-0.1%, t=-0.06)  <- CONTROL: the moment loom is
+        #        polyfit-based and was NOT touched by f790245; it reproduces to 0.1% across two
+        #        independent sets 2 weeks apart => the two campaigns agree where the code didn't
+        #        change and diverge ONLY on the 3 observer channels => the shift is the observer
+        #        rebuild, not drift/noise//a global recording difference. Loom kept at 1.1279.
+        # Consequence of the stale rows: lateral flow h=v_lat/Z was UNDER-read ~1/3 and yaw rate
+        # OVER-read ~21% from 07-04 to 07-17 -- h_x/h_y feed the terminal sigma-breach signal.
+        # Derived at the BAKED CENTROID_RATE_KF_Q=1e-3; a q sweep needs its OWN recording set per
+        # q (not offline-refittable, same reason as above). See feedback_observer_rebuild_recal.
         self._sensor_cal_hw = np.array([
-            [+1.2833, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x (KF-refit)
-            [+0.0000, +1.0630, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y (KF-refit)
-            [+0.0535, -0.0044, +1.1279, +0.0000, +0.0000, +0.0000],   # loom row (diag KF-refit; cross-terms board-fit, control uses MOMENT loom, secondary)
+            [+1.5724, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x (obs-rebuild recal 2026-07-17; was 1.2833 = pre-CV-KF polyfit-era fit)
+            [+0.0000, +1.5889, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y (obs-rebuild recal 2026-07-17; was 1.0630)
+            [+0.0535, -0.0044, +1.1279, +0.0000, +0.0000, +0.0000],   # loom row (UNCHANGED — new fit 1.1266 confirms the baked 1.1279 to 0.1%; cross-terms board-fit; control uses the MOMENT loom via the row-2 cal BYPASS, see the _loom_decouple sites)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.3879]])   # w_z decoupled to w_z_raw only (KF-refit)
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.0879]])   # w_z decoupled to w_z_raw only (obs-rebuild recal 2026-07-17; was 1.3879 = pre-sign/frame-fix fit)
         self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.1279 (KF-refit, 2026-07-11); PLASMC_LOOM_CAL=0.4973 reverts to the pre-refit (Savgol-derived) value
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.0215, 1.0494, 1.0, 1.0])   # observer/1m-nested centroid (KF-refit, 2026-07-11; was 1.1391/1.1437 Savgol-derived)
+        self._sensor_cal_s  = np.diag([1.0491, 1.0108, 1.0, 1.0])   # single-marker-moment centroid (obs-rebuild recal 2026-07-17, same 5-run set as _sensor_cal_hw above; was 1.0215/1.0494 from the 07-11 KF-refit of the 07-03 set). s moved only +2.7%/-3.7% (it is NOT observer-sourced — raw moments -> outer feature KF, which the aggregator re-applies offline; re-derived here only to keep one coherent per-set fit). s[2]=homogeneous const, s[3]=alpha: BOTH identity BY DESIGN, not placeholders — the yaw chain is built on RAW moment-alpha (offset MOMENT_ALPHA0 upstream + gain BODY_YAW_ALPHA_K=-0.949 downstream at controller.py:2219); setting s[3]!=1 double-counts there, silently retunes the yaw SMC loop gain, rescales YAW_ALPHA_MAX_RATE/YAW_HOLD_ALPHA_RATE/YAW_KF_R, and breaks the GT-FB ablation (GT substitutes POST-cal). See project_yaw_calibration_pending (RESOLVED).
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
