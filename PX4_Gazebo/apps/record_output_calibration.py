@@ -319,6 +319,20 @@ async def main(record = 'n'):
                     phase_t0 = start_time
                     CONTROLLER_READY = True
                     t_c = [0.0]
+                    # PROPAGATE to the img node (2026-07-17). This app set only its OWN
+                    # module-level CONTROLLER_READY (phase timing) and never told img_data --
+                    # the same gap 0e21c4d fixed for landing_test.py, and which
+                    # record_output_validation.py:138 already does. Consequence: img_data's
+                    # _reset_stateful_trackers() fires on the CONTROLLER_READY False->True EDGE
+                    # (img_data.py ~:1354) and that is where self._planar_map is CONSTRUCTED
+                    # (~:1285) -- so with no propagation the map stayed None for the whole
+                    # recording and NEVER RAN during output calibration (confirmed: 'Planar Map
+                    # Shadow' logged 0 entries on the 2026-07-17 textured run). That is a
+                    # TRAIN/RUN MISMATCH of the same class as the observer-CV-KF one this
+                    # session fixed: PLASMC_PLANAR_MAP_PRIMARY defaults ON, so at RUNTIME the map
+                    # can source V_aruco_norm[1] (-> centroid + moment loom), while the cal was
+                    # being fit against a map-dead signal the runtime never produces.
+                    img_node.CONTROLLER_READY = True
 
                 tau = time_node.perf_counter() - phase_t0   # phase-relative time
                 # Multisine commands ABSOLUTE altitude (NED z = fn_z - H), so the

@@ -49,6 +49,41 @@ FLOW_KF_R = float(os.environ.get("FLOW_KF_R", "0.1"))
 FEAT_KF_Q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
 FEAT_KF_R = float(os.environ.get("IMG_FEAT_KF_R", "0.004"))
 
+# TIME-SYNC (2026-07-17, user directive: "the correct way of time-sync rather than
+# index-sync"). The GT dict and the img node are TWO ASYNCHRONOUS STREAMS at DIFFERENT
+# RATES: record_output_calibration.py's loop appends GT at ~126 Hz (dt 8 ms) while the
+# img thread only produces a new sample at ~41 Hz (dt 24 ms), so `gt['Opt Flow Ang Vel']`
+# is a HELD/RESAMPLED copy -- the recorder grabs whatever the img thread last produced,
+# and it does so AFTER a variable-latency `await send_position_ned(...)` while `t_c` was
+# stamped BEFORE it. Joining those by ARRAY POSITION is only ever correct by coincidence.
+# Both streams carry the SAME perf_counter clock, so an exact join is available:
+#   absolute GT time = gt['Start Time'] + gt['Time']   (t_c is RELATIVE)
+#   img sample time  = Img_Data['Time']                (_time_log, stamped per processed frame)
+# -> interpolate the GT-derived signals onto the img node's OWN stamps and fit there, at
+# the img cadence (never invent img samples between real frames). Img_Data's arrays are
+# RAW (pre-cal): "Opt Flow Ang Vel" = _opt_flow_ang_vel_raw, "Feature Params" =
+# _img_feature_param -- same rawness the GT-held copies had, so the fit is unchanged in
+# kind. Set CAL_TIME_SYNC=0 to fall back to the legacy index-join (A/B only).
+# NOTE: on the 2026-07-17 sets this moved correlations by only +0.005..+0.024 -- it is NOT
+# the fix for the weak/nan/sign-flipped fits (that is FILTER LAG, see LAG_ALIGN below).
+# It is here because index-joining asynchronous streams is simply wrong, independent of
+# how much error it happens to cause on any given day.
+TIME_SYNC = os.environ.get("CAL_TIME_SYNC", "1") == "1"
+
+# LAG-ALIGN (2026-07-17). Separate, and this IS what rescues the broken fits. The signals
+# are genuinely phase-shifted by FILTER LAG: the runtime/aggregator flow KF (Q=5, R=0.1)
+# adds ~200 ms, on top of the observer's own CV-KF. Measured on the Jul-17 sets, the
+# lag-correlation curve is smooth and unimodal with a peak at ~-480 ms (r 0.295 -> 0.924)
+# -- NOT a sinusoid alias (excitation period 2132 ms, so the peak sits well inside the
+# first half-period). beta = sigma_GT/sigma_raw is a STD RATIO and is nearly lag-INSENSITIVE
+# for a stationary signal, so the lag does not bias the gain much -- but it DESTROYS the
+# correlation, and std_ratio uses correlation for (a) its |corr|<0.05 reject -> `nan` and
+# (b) its SIGN. That is exactly how runs 18-04-39/18-09-05 produced h_x=nan and a
+# sign-flipped h_y=-1.7 off perfectly good data (raw r=+0.82/+0.70 once aligned).
+# So: cross-correlate per run/axis, shift to the peak, THEN fit. Search is capped at
+# +-HALF the dominant excitation period to make an anti-phase alias unrepresentable.
+LAG_ALIGN = os.environ.get("CAL_LAG_ALIGN", "1") == "1"
+
 
 def kf_filter_causal(raw, t, q, r):
     """Causal constant-velocity 2-state KF per channel, run over a full (N, C) raw
@@ -263,6 +298,140 @@ def std_ratio(gt, raw, mask, k_mad_sample=3.0):
     return sign * sg / sr
 
 
+def time_sync_to_img_clock(gt, im, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid_mask):
+    """Join the GT stream and the img stream on their SHARED perf_counter clock.
+
+    Returns (t, V_h, V_w, raw_hw, raw_s, phase, hw_tag, s_tag) all sampled at the IMG
+    node's own timestamps -- see the TIME_SYNC comment at the top for why array-position
+    joining is wrong. GT-derived continuous signals are linearly interpolated onto the img
+    stamps; per-sample DISCRETE labels (phase, estimator tags) are nearest-neighbour'd
+    (interpolating a label is meaningless). Returns None if the recording predates the
+    needed fields, so the caller can fall back to the legacy index-join.
+    """
+    if 'Start Time' not in gt or 'Time' not in im:
+        return None
+    t_gt = float(gt['Start Time']) + np.asarray(gt['Time'], dtype=float)   # t_c is RELATIVE
+    t_im = np.asarray(im['Time'], dtype=float)
+    raw_hw_im = np.asarray(im['Opt Flow Ang Vel'], dtype=float)   # _opt_flow_ang_vel_raw (pre-cal)
+    raw_s_im  = np.asarray(im['Feature Params'], dtype=float)     # _img_feature_param   (pre-cal)
+    n_im = min(len(t_im), len(raw_hw_im), len(raw_s_im))
+    t_im, raw_hw_im, raw_s_im = t_im[:n_im], raw_hw_im[:n_im], raw_s_im[:n_im]
+
+    phase_gt = np.asarray(gt['Phase'])
+    hw_tag_gt = np.asarray(gt.get('Opt Flow Estimator Tag', [''] * len(t_gt)))
+    s_tag_gt  = np.asarray(gt.get('Img Feature Estimator Tag', [''] * len(t_gt)))
+    n_gt = min(len(t_gt), len(V_h_g), len(V_w_ug), len(phase_gt), len(valid_mask),
+               len(hw_tag_gt), len(s_tag_gt))
+    if n_gt < 50:
+        return None
+    t_gt = t_gt[:n_gt]; vm = valid_mask[:n_gt]
+    t_gt_v = t_gt[vm]
+    if len(t_gt_v) < 50:
+        return None
+
+    # Only fit where the two streams actually OVERLAP (the img thread starts before the
+    # sweep does -- img span began ~15s earlier on the Jul-17 sets).
+    sel = (t_im >= t_gt_v.min()) & (t_im <= t_gt_v.max())
+    if sel.sum() < 50:
+        return None
+    t = t_im[sel]
+
+    def interp_cols(A):
+        A = np.asarray(A, dtype=float)[:n_gt][vm]
+        out = np.full((len(t), A.shape[1]), np.nan)
+        for k in range(A.shape[1]):
+            col = A[:, k]
+            good = np.isfinite(col)
+            if good.sum() >= 2:
+                out[:, k] = np.interp(t, t_gt_v[good], col[good])
+        return out
+
+    def nearest(lbls):
+        lbls = np.asarray(lbls)[:n_gt][vm]
+        idx = np.clip(np.searchsorted(t_gt_v, t), 1, len(t_gt_v) - 1)
+        prev_closer = np.abs(t - t_gt_v[idx - 1]) <= np.abs(t_gt_v[idx] - t)
+        return lbls[np.where(prev_closer, idx - 1, idx)]
+
+    def interp_1d(v):
+        v = np.asarray(v, dtype=float)[:n_gt][vm]
+        good = np.isfinite(v)
+        if good.sum() < 2:
+            return np.full(len(t), np.nan)
+        return np.interp(t, t_gt_v[good], v[good])
+
+    # V_xc_g/V_yc_g MUST be interpolated too -- the s rows fit against these. Omitting them
+    # (first cut of this function) left raw_s on the IMG clock while its GT counterpart was
+    # still on the GT clock, sliced by position -> the s fit collapsed to nonsense
+    # (per-run -5.02..+4.93, cal_s -> diag([-0.043, -0.077])). Every GT signal the fit
+    # consumes has to cross to the img clock together, or the join is worse than no join.
+    return (t, interp_cols(V_h_g), interp_cols(V_w_ug),
+            interp_1d(V_xc_g), interp_1d(V_yc_g),
+            raw_hw_im[sel], raw_s_im[sel], nearest(phase_gt),
+            nearest(hw_tag_gt), nearest(s_tag_gt))
+
+
+def lag_align(gt_sig, raw_sig, mask, dt):
+    """Shift raw vs GT to the cross-correlation peak, restricted to +-half the dominant
+    excitation period so an anti-phase alias cannot win. Returns (gt, raw, lag_samples)
+    for the masked window. See the LAG_ALIGN comment at the top: this fixes std_ratio's
+    SIGN and its |corr|<0.05 reject, NOT the std-ratio gain itself.
+    """
+    g = np.asarray(gt_sig, dtype=float)[mask]
+    r = np.asarray(raw_sig, dtype=float)[mask]
+    ok = np.isfinite(g) & np.isfinite(r)
+    g, r = g[ok], r[ok]
+    if len(g) < 50 or not LAG_ALIGN:
+        return g, r, 0
+    # PHYSICAL search window, not a spectral one. The ONLY thing that can shift these
+    # signals is FILTER lag (flow KF ~200ms + the observer CV-KF); the streams are already
+    # joined on a shared clock by time_sync_to_img_clock(). So the lag must be modest and
+    # NEGATIVE (measured LAGS ground truth -- a causal filter cannot predict the future).
+    # A half-period cap was tried first and was FAR too permissive: it let the search wander
+    # to +1824/+3424 ms on the s channel and +3664 ms on one loom row, locking onto spurious
+    # multi-modal peaks and fitting noise-against-noise (s -> 4.78, loom -> 0.13). Bound it
+    # to what a filter can physically do, and additionally cap by half-period so an
+    # anti-phase alias still cannot win on a slow excitation.
+    lo = -int(float(os.environ.get("CAL_LAG_MAX_MS", "800")) / 1000.0 / dt)
+    hi =  int(float(os.environ.get("CAL_LAG_LEAD_MS", "80")) / 1000.0 / dt)   # small +window: dt jitter only
+    gz = g - g.mean()
+    sp = np.abs(np.fft.rfft(gz)); fr = np.fft.rfftfreq(len(gz), dt)
+    if len(sp) > 2 and sp[1:].max() > 0:
+        f0 = fr[np.argmax(sp[1:]) + 1]
+        if f0 > 1e-6:
+            half = int(0.5 / f0 / dt)
+            lo = max(lo, -half); hi = min(hi, half)
+    lo = max(lo, -(len(g) // 3)); hi = min(hi, len(g) // 3)
+    # NOTE: best_r starts at 0.0, NOT -2.0. With |r| maximization a -2.0 seed makes the
+    # accept test `abs(c) > abs(best_r)` = `abs(c) > 2` -- never true -- silently pinning
+    # best_lag=0 and rendering this whole function INERT (cost me a false attribution:
+    # sign inversions blamed on an aligner that was never running).
+    best_lag, best_r = 0, 0.0
+    for L in range(lo, hi + 1):
+        if L > 0:    a, b = g[L:], r[:-L]
+        elif L < 0:  a, b = g[:L], r[-L:]
+        else:        a, b = g, r
+        if len(a) < 50:
+            continue
+        sa, sb = a.std(), b.std()
+        if sa < 1e-12 or sb < 1e-12:
+            continue
+        c = float(np.corrcoef(a, b)[0, 1])
+        # Maximize |r|, NOT +r. Maximizing +r was a real bug: the flow rows are positively
+        # correlated with GT by convention, but the centroid s rows can be genuinely
+        # ANTI-correlated -- forcing a positive peak there dragged the search to a bogus lag
+        # where noise happened to correlate positively, MANUFACTURING a sign flip
+        # (s -> -0.82 / +6.46 / -4.93 across runs). std_ratio already carries the true sign
+        # from the correlation, so the aligner must preserve it, not choose it. The
+        # anti-phase alias this guarded against cannot occur now that the search window is
+        # bounded physically (+-800ms) below the half-period (1066ms on this excitation).
+        if np.isfinite(c) and abs(c) > abs(best_r):
+            best_r, best_lag = c, L
+    L = best_lag
+    if L > 0:    return g[L:], r[:-L], L
+    if L < 0:    return g[:L], r[-L:], L
+    return g, r, 0
+
+
 def main():
     # Optional dir arg so the same aggregator can be pointed at alternate
     # recording sets (e.g. post-reboot recalibration vs the pre-reboot set).
@@ -287,32 +456,57 @@ def main():
             print(f"  [SKIP] {os.path.basename(d)}: gt compute error {e}")
             continue
 
-        raw_hw = np.asarray(gt['Opt Flow Ang Vel'])  # (N, 6)
-        raw_s  = np.asarray(gt['Img Feature Params'])  # (N, 4)
-        # Per-sample ESTIMATOR TAG (which computation produced each raw sample — primary/KLT-fallback
-        # lstsq, observer, board homography, single-marker moment, or synthetic 'coast'). Older
-        # recordings predate this field; back-compat defaults to '' (unknown -- can't filter/split).
-        hw_tag = np.asarray(gt.get('Opt Flow Estimator Tag', [''] * len(raw_hw)))
-        s_tag  = np.asarray(gt.get('Img Feature Estimator Tag', [''] * len(raw_s)))
-        # truncate to common length, then apply same valid mask
-        n_min = min(len(raw_hw), len(raw_s), len(valid_mask), len(hw_tag), len(s_tag))
-        raw_hw = raw_hw[:n_min][valid_mask[:n_min]]
-        raw_s  = raw_s[:n_min][valid_mask[:n_min]]
-        hw_tag = hw_tag[:n_min][valid_mask[:n_min]]
-        s_tag  = s_tag[:n_min][valid_mask[:n_min]]
-        phase = np.array(gt['Phase'])[:n_min][valid_mask[:n_min]]
-
-        # KF-filter raw inputs (matches runtime IMG_FILTER=kf default — see
-        # kf_filter_causal docstring). t_g is post-valid-filter (same mask just
-        # applied above), so it's index-aligned with raw_hw/raw_s here.
-        n_kf = min(len(raw_hw), len(t_g))
-        raw_hw = raw_hw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]
-        hw_tag = hw_tag[:n_kf]; s_tag = s_tag[:n_kf]
-        if n_kf > 1:
-            raw_hw_f = kf_filter_causal(raw_hw, t_g[:n_kf], FLOW_KF_Q, FLOW_KF_R)
-            raw_s_f  = kf_filter_causal(raw_s,  t_g[:n_kf], FEAT_KF_Q, FEAT_KF_R)
+        # ---- TIME-SYNC join (default; see TIME_SYNC comment at top) ----------------
+        # Join the two asynchronous streams on their shared perf_counter clock
+        # (absolute GT time = Start Time + t_c) instead of by array position.
+        synced = None
+        if TIME_SYNC:
+            try:
+                im = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
+                synced = time_sync_to_img_clock(gt, im, V_h_g, V_w_ug,
+                                                V_xc_g, V_yc_g, valid_mask)
+            except Exception as e:
+                print(f"        [time-sync] unavailable ({type(e).__name__}) -> index-join fallback")
+        if synced is not None:
+            (t_g, V_h_g, V_w_ug, V_xc_g, V_yc_g,
+             raw_hw, raw_s, phase, hw_tag, s_tag) = synced
+            n_kf = len(t_g)
+            if n_kf > 1:
+                raw_hw_f = kf_filter_causal(raw_hw, t_g, FLOW_KF_Q, FLOW_KF_R)
+                raw_s_f  = kf_filter_causal(raw_s,  t_g, FEAT_KF_Q, FEAT_KF_R)
+            else:
+                raw_hw_f = raw_hw.copy(); raw_s_f = raw_s.copy()
+            print(f"        [time-sync] joined on img clock: {n_kf} samples @ "
+                  f"{np.median(np.diff(t_g))*1000:.1f} ms (GT interpolated onto _time_log)")
         else:
-            raw_hw_f = raw_hw.copy(); raw_s_f = raw_s.copy()
+            # ---- LEGACY index-join fallback (CAL_TIME_SYNC=0, or pre-Img_Data recordings) ----
+            raw_hw = np.asarray(gt['Opt Flow Ang Vel'])  # (N, 6)
+            raw_s  = np.asarray(gt['Img Feature Params'])  # (N, 4)
+            # Per-sample ESTIMATOR TAG (which computation produced each raw sample — primary/KLT-fallback
+            # lstsq, observer, board homography, single-marker moment, or synthetic 'coast'). Older
+            # recordings predate this field; back-compat defaults to '' (unknown -- can't filter/split).
+            hw_tag = np.asarray(gt.get('Opt Flow Estimator Tag', [''] * len(raw_hw)))
+            s_tag  = np.asarray(gt.get('Img Feature Estimator Tag', [''] * len(raw_s)))
+            # truncate to common length, then apply same valid mask
+            n_min = min(len(raw_hw), len(raw_s), len(valid_mask), len(hw_tag), len(s_tag))
+            raw_hw = raw_hw[:n_min][valid_mask[:n_min]]
+            raw_s  = raw_s[:n_min][valid_mask[:n_min]]
+            hw_tag = hw_tag[:n_min][valid_mask[:n_min]]
+            s_tag  = s_tag[:n_min][valid_mask[:n_min]]
+            phase = np.array(gt['Phase'])[:n_min][valid_mask[:n_min]]
+
+            # KF-filter raw inputs (matches runtime IMG_FILTER=kf default — see
+            # kf_filter_causal docstring). t_g is post-valid-filter (same mask just
+            # applied above), so it's index-aligned with raw_hw/raw_s here.
+            n_kf = min(len(raw_hw), len(t_g))
+            raw_hw = raw_hw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]
+            hw_tag = hw_tag[:n_kf]; s_tag = s_tag[:n_kf]
+            if n_kf > 1:
+                raw_hw_f = kf_filter_causal(raw_hw, t_g[:n_kf], FLOW_KF_Q, FLOW_KF_R)
+                raw_s_f  = kf_filter_causal(raw_s,  t_g[:n_kf], FEAT_KF_Q, FEAT_KF_R)
+            else:
+                raw_hw_f = raw_hw.copy(); raw_s_f = raw_s.copy()
+            t_g = t_g[:n_kf]
 
         # Align lengths between phase array and GT signals (gt may be a bit longer if dt dedup removed some samples)
         ngt = min(len(V_h_g), len(phase))
@@ -330,6 +524,8 @@ def main():
         s_real  = (s_tag != 'coast')
 
         # Per-axis derivation using only that axis's phase samples
+        _dt = float(np.median(np.diff(t_g[:ngt]))) if ngt > 1 else 0.008
+        _lags = []
         hw_diag = np.full(6, np.nan)
         for k, want_phase in AXIS_PHASE_HW.items():
             mask = (phase == want_phase) & hw_real
@@ -342,19 +538,29 @@ def main():
                         # Plotter compares V_w_cal to V_w_tug = -V_w_ug; the aggregator
                         # must match this convention or the derived cal sign is wrong.
                 gt_sig = -V_w_ug[:ngt, k - 3]
-            hw_diag[k] = std_ratio(gt_sig, raw_hw_f[:ngt, k], mask)
+            # LAG-ALIGN before fitting (see LAG_ALIGN comment at top): filter lag (~200ms
+            # from the Q=5/R=0.1 flow KF, plus the observer CV-KF) decorrelates GT vs raw,
+            # which does NOT bias the std-ratio gain but DOES break std_ratio's sign and
+            # its |corr|<0.05 reject -> spurious nan / sign-flipped rows.
+            _g, _r, _L = lag_align(gt_sig, raw_hw_f[:ngt, k], mask, _dt)
+            hw_diag[k] = std_ratio(_g, _r, np.ones(len(_g), dtype=bool))
+            if _L: _lags.append((f"hw{k}", _L * _dt * 1000))
 
         s_diag = np.full(4, np.nan)
         for k, want_phase in AXIS_PHASE_S.items():
             mask = (phase == want_phase) & s_real
             if mask.sum() < 30: continue
             gt_sig = V_xc_g[:ngt] if k == 0 else V_yc_g[:ngt]
-            s_diag[k] = std_ratio(gt_sig, raw_s_f[:ngt, k], mask)
+            _g, _r, _L = lag_align(gt_sig, raw_s_f[:ngt, k], mask, _dt)
+            s_diag[k] = std_ratio(_g, _r, np.ones(len(_g), dtype=bool))
+            if _L: _lags.append((f"s{k}", _L * _dt * 1000))
         # axes 2,3 of s (h, alpha) — keep at 1.0 (current convention)
         s_diag[2] = 1.0
         s_diag[3] = 1.0
 
         print(f"  [OK] {os.path.basename(d)}")
+        if _lags:
+            print(f"        [lag-align] " + ", ".join(f"{k}={ms:+.0f}ms" for k, ms in _lags))
         print(f"        hw = [{', '.join(f'{v:.4f}' for v in hw_diag)}]")
         print(f"        s  = [{', '.join(f'{v:.4f}' for v in s_diag)}]")
         per_run_hw.append(hw_diag); per_run_s.append(s_diag)
