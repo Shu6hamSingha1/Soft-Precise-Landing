@@ -3429,20 +3429,47 @@ class IMG_PROCESSOR(Thread):
         is kept synced to atan2(sin_state, cos_state) purely so every existing consumer
         (extrapolation, sensor-cal readout) keeps reading a plain alpha scalar from the
         same slot; self._kf_feat_x[3, 1] (rate) is unused externally and is not meaningful
-        in this representation, left at 0."""
+        in this representation, left at 0.
+
+        CONFIDENCE-SCALED r (2026-07-20, see feedback_confidence_scaled_kf_r): "map is
+        authoritative" (2026-07-20) means an accepted map sample's VALUE is used fully
+        regardless of where its confidence sits between the reject and full-trust floors
+        -- but self._kf_feat_r=0.004 tells this KF EVERY correction is near-ground-truth
+        (K~=1, confirmed empirically: post-correction state tracks raw*gain almost
+        exactly), so a frame accepted near the reject floor -- e.g. a slot whose geometry
+        is actively degrading toward rejection, which was exactly the diagnosed IC3
+        158m fly-away mechanism -- gets treated as fully trustworthy and can dominate the
+        RATE state in one step. The value taper this design replaced (trust*map +
+        (1-trust)*decode) accidentally solved this by shrinking the numeric step size for
+        a low-confidence sample before it ever reached the KF; scaling r here is the
+        textbook equivalent for a Kalman filter (tell it a sample is noisier, so it barely
+        moves K) WITHOUT touching the reported value at all -- map stays authoritative,
+        but the state a future coast extrapolates from stays protected. Only applies when
+        THIS frame's sample was map-sourced (trust>0); decode-only frames keep the
+        unmodified, already-validated self._kf_feat_r."""
         z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        r_pos = self._kf_feat_r
+        if z is not None and self._cmap_trust_log and self._cmap_trust_log[-1] > 0.0:
+            _tr = float(self._cmap_trust_log[-1])
+            r_pos = np.array([self._kf_feat_r / max(_tr, 0.05),
+                               self._kf_feat_r / max(_tr, 0.05),
+                               self._kf_feat_r])
         x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
             self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
                           self._kf_feat_initialized, z_pos, t,
-                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+                          self._kf_feat_q, r_pos, dt_unc_max=self._kf_dt_unc_max)
         self._kf_feat_x[:3] = x_pos
         self._kf_feat_P[:3] = P_pos
 
         z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
+        r_sc = self._kf_feat_r
+        if z is not None and self._amap_trust_log and self._amap_trust_log[-1] > 0.0:
+            _tra = float(self._amap_trust_log[-1])
+            r_sc = self._kf_feat_r / max(_tra, 0.05)
         self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
             self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
                           self._kf_feat_sc_initialized, z_sc, t,
-                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+                          self._kf_feat_q, r_sc, dt_unc_max=self._kf_dt_unc_max)
         if self._kf_feat_sc_initialized:
             self._kf_feat_x[3, 0] = np.arctan2(self._kf_feat_sc_x[0, 0], self._kf_feat_sc_x[1, 0])
             self._kf_feat_x[3, 1] = 0.0
