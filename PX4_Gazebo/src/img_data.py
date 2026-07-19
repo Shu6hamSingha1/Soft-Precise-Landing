@@ -4003,6 +4003,32 @@ class IMG_PROCESSOR(Thread):
             return ''
         return self._s_estimator_tag[-1]
 
+    def getRawCentroidMapFeature(self):
+        """Latest raw (2,) V-frame centroid from _centroidMap, BEFORE _sensor_cal_s and BEFORE
+        the soft-gate blend — (nan, nan) if it didn't fire this frame (map unavailable, gate
+        rejected, or CENTROID_FROM_MAP=0). Co-sampled by record_output_calibration.py, same
+        clock as getRawImgFeatureParam(), so this needs NO separate GT/img alignment — see
+        feedback_map_cal_validation_gap."""
+        if len(self._cmap_raw_log) == 0:
+            return np.array([np.nan, np.nan])
+        return np.array(self._cmap_raw_log[-1], dtype=float)
+
+    def getRawAlphaMapFeature(self):
+        """Latest raw alpha (rad) from _alphaMap, BEFORE _sensor_cal_s and BEFORE the soft-gate
+        blend — nan if it didn't fire this frame. Same co-sampling convention as
+        getRawCentroidMapFeature()."""
+        if len(self._amap_raw_log) == 0:
+            return np.nan
+        return float(self._amap_raw_log[-1])
+
+    def getRawFlowMapFeature(self):
+        """Latest raw (3,) [hx, hy, hz] from _flowMap, BEFORE _sensor_cal_hw — (nan, nan, nan) if
+        it didn't fire this frame (no secondary/small marker slot, size band not met, or
+        FLOW_FROM_MAP=0). Same co-sampling convention as getRawCentroidMapFeature()."""
+        if len(self._fmap_raw_log) == 0:
+            return np.array([np.nan, np.nan, np.nan])
+        return np.array(self._fmap_raw_log[-1], dtype=float)
+
     def getRawOptFlowEstimatorTag(self):
         """Which estimator produced the latest getRawOptFlowAngVel() sample:
         'lstsq'/'lstsq_klt' (merged calibration category — see

@@ -137,6 +137,13 @@ async def main(record = 'n'):
     img_feature_param = []
     opt_flow_estimator_tag = []   # which estimator produced each Opt Flow Ang Vel sample
     img_feature_estimator_tag = []   # which estimator produced each Img Feature Params sample
+    # RAW map-sourced fields (2026-07-20, see feedback_map_cal_validation_gap) -- co-sampled
+    # the SAME way as opt_flow_ang_vel/img_feature_param above, so derive_board_cal.py can fit
+    # them against GT with no separate alignment. nan when that sample's map function didn't
+    # fire (see getRawCentroidMapFeature/getRawAlphaMapFeature/getRawFlowMapFeature docstrings).
+    centroid_map_raw = []
+    alpha_map_raw = []
+    flow_map_raw = []
     phase_log = []           # per-sample tag: 'x', 'y', 'z', 'yaw', or 'settle'
     start_pose = None
     t_c = []
@@ -376,6 +383,9 @@ async def main(record = 'n'):
                 # 'coast' samples from the fit and report per-estimator coverage/separate fits.
                 opt_flow_estimator_tag.append(img_node.getRawOptFlowEstimatorTag())
                 img_feature_estimator_tag.append(img_node.getRawImgFeatureEstimatorTag())
+                centroid_map_raw.append(img_node.getRawCentroidMapFeature())
+                alpha_map_raw.append(img_node.getRawAlphaMapFeature())
+                flow_map_raw.append(img_node.getRawFlowMapFeature())
                 cmd.append(pos_cmd)
                 phase_log.append(ph_name)
 
@@ -415,7 +425,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Opt Flow Estimator Tag": opt_flow_estimator_tag, "Img Feature Estimator Tag": img_feature_estimator_tag, "Command": cmd, "Phase": phase_log}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Opt Flow Estimator Tag": opt_flow_estimator_tag, "Img Feature Estimator Tag": img_feature_estimator_tag, "Centroid Map Raw": centroid_map_raw, "Alpha Map Raw": alpha_map_raw, "Flow Map Raw": flow_map_raw, "Command": cmd, "Phase": phase_log}
             img_params = img_node.getParams()
 
         # Close img_node thread
