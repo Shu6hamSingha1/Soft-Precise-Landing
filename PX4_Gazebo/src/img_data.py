@@ -2715,11 +2715,18 @@ class IMG_PROCESSOR(Thread):
                 if board_s is not None:
                     self._img_feature_param.append(board_s)
                     self._s_estimator_tag.append('board_homography')
-                    self._kf_feat_update(board_s, self._time.perf_counter())
                 else:
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
                     self._s_estimator_tag.append('single_marker_moment')
-                    self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
+                # ORDERING FIX (2026-07-20, see feedback_map_override_kf_ordering_bug): the KF
+                # correct-step used to run HERE, against the pre-override decode value -- but
+                # getImgFeatureParam() (default IMG_FEATURE_FILTER=kf) returns
+                # self._sensor_cal_s @ self._kf_feat_x[:, 0], NOT self._img_feature_param[-1]
+                # directly. Since nothing re-ran the KF update after the centroid/alpha map
+                # override below, CENTROID_FROM_MAP/ALPHA_FROM_MAP's blend never reached the
+                # controller under the default filter -- it only mutated a value the default
+                # read path doesn't consume. Moved to AFTER both override blocks (below) so the
+                # KF is corrected against the FINAL (post-blend) feature vector.
 
                 # MAP-DRIVEN CENTROID (stage 2): override s[0:2] with the map's continuously-tracked
                 # slot centre (handover-gated slot), keeping alpha (s[3]) on decode for stage isolation.
@@ -2766,6 +2773,12 @@ class IMG_PROCESSOR(Thread):
                         self._img_feature_param[-1][3] = float(np.arctan2(_bs, _bc))
                 self._amap_raw_log.append(_ma_raw)
                 self._amap_trust_log.append(_ma_trust)
+
+                # KF correct-step (moved here 2026-07-20, see the ORDERING FIX comment above) --
+                # corrects against the FINAL feature vector, after any centroid/alpha map
+                # blend, so CENTROID_FROM_MAP/ALPHA_FROM_MAP actually reach the controller under
+                # the default IMG_FEATURE_FILTER=kf path instead of being silently inert.
+                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
