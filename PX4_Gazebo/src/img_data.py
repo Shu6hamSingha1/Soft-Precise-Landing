@@ -1055,6 +1055,24 @@ class IMG_PROCESSOR(Thread):
         # Tags — s: 'board_homography' | 'single_marker_moment' | 'coast' (exclude from fit).
         self._h_estimator_tag = []
         self._s_estimator_tag = []
+        # RAW (PRE-CAL) map-sourced logs (2026-07-20 -- see feedback_map_cal_validation_gap):
+        # _centroidMap/_alphaMap/_flowMap's OWN return value, logged every frame regardless of
+        # whether the soft gate ultimately blended it in, BEFORE _sensor_cal_s/_sensor_cal_hw are
+        # applied -- neither existed before this. _s_estimator_tag/_h_estimator_tag are set
+        # BEFORE the map override/blend runs and never updated after, so they can't tell you
+        # whether/how much a logged s/h was map-influenced; the *_map_dbg fields are whole-flight
+        # tallies, not per-frame. Needed to validate whether _sensor_cal_s/_sensor_cal_hw (fit
+        # against the DECODE path only) are still correct for these structurally different
+        # computations (map diagonal-intersection center vs decode corner-mean; map's
+        # corner+dense-interior-weighted angle vs decode's 4-corner-weighted angle; map's
+        # single-point-velocity KF flow vs decode's corner-spread LSTSQ flow). NaN/0 when that
+        # frame's map function didn't fire (gate rejected, unavailable, or the *_FROM_MAP flag
+        # is off) -- lockstep length with self._s_estimator_tag/_h_estimator_tag.
+        self._cmap_raw_log = []     # (2,) raw V-frame centroid from _centroidMap, or (nan, nan)
+        self._cmap_trust_log = []   # soft-gate trust in [0, 1] used for this frame's blend, or 0.0
+        self._amap_raw_log = []     # raw alpha (rad) from _alphaMap, or nan
+        self._amap_trust_log = []   # soft-gate trust in [0, 1], or 0.0
+        self._fmap_raw_log = []     # (3,) raw [hx, hy, hz] from _flowMap, or (nan, nan, nan)
         self._z_v_log = []          # virtual-plane z-coordinate per frame (diagnose z_v→0 phantom-s)
         self._z_v_min_log = []      # min z_v per frame (track when reprojection risks singularity)
         # H-EXTRAPOLATION (2026-07-07, user; BAKED default-ON 2026-07-07): re-derived alternative to
@@ -2586,12 +2604,14 @@ class IMG_PROCESSOR(Thread):
                 # the observer once the small marker is confidently mapped AND in its reliable
                 # size band (see _smallSlotFlowReady docstring) -- independent of/typically
                 # earlier than HANDOVER_LATCHED. Falls through untouched if not ready/unavailable.
+                _fm_raw = (np.nan, np.nan, np.nan)   # logged regardless of fire (see __init__)
                 if self._flow_from_map:
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
                     _fm_dbg = os.environ.get("FLOW_MAP_DBG", "0") == "1"
                     if self._smallSlotFlowReady(_q1):
                         _fm = self._flowMap(_q1, float(getattr(self, '_stamp', 0.0)))
                         if _fm is not None:
+                            _fm_raw = (float(_fm[0]), float(_fm[1]), float(_fm[2]))
                             V_v[0], V_v[1], V_v[2] = float(_fm[0]), float(_fm[1]), float(_fm[2])
                             if _fm_dbg:
                                 self._fmap_dbg = getattr(self, '_fmap_dbg', {})
@@ -2602,6 +2622,7 @@ class IMG_PROCESSOR(Thread):
                     elif _fm_dbg:
                         self._fmap_dbg = getattr(self, '_fmap_dbg', {})
                         self._fmap_dbg['not_ready'] = self._fmap_dbg.get('not_ready', 0) + 1
+                self._fmap_raw_log.append(_fm_raw)
 
                 # ds/dh OUTLIER GATE (2026-07-04): reject a per-frame lateral-flow spike (|Δh| beyond
                 # a physical rate) and HOLD last-good — kills the σ_min LK garbage ramp (→ fly-away)
@@ -2705,10 +2726,13 @@ class IMG_PROCESSOR(Thread):
                 # quats[0] matches the map's frame-0 tracking (same convention the loom uses). Falls
                 # through to the decode centroid untouched if the map is unavailable. Placed BEFORE the
                 # ds-outlier-hold so the map centroid still gets the per-frame-jump guard.
+                _mc_raw, _mc_trust = (np.nan, np.nan), 0.0   # logged regardless of fire (see __init__)
                 if self._centroid_from_map and self._img_feature_param:
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
                     _mc = self._centroidMap(_q1, size_factor)
                     if _mc is not None:
+                        _mc_raw = (float(_mc[0]), float(_mc[1]))
+                        _mc_trust = self._cmap_last_trust
                         # SOFT blend toward decode when confidence sits between the reject
                         # and full-trust floors (see _centroidMap docstring); trust==1.0
                         # reduces this to the original wholesale swap.
@@ -2717,15 +2741,20 @@ class IMG_PROCESSOR(Thread):
                             _tr * _mc[0] + (1.0 - _tr) * self._img_feature_param[-1][0])
                         self._img_feature_param[-1][1] = float(
                             _tr * _mc[1] + (1.0 - _tr) * self._img_feature_param[-1][1])
+                self._cmap_raw_log.append(_mc_raw)
+                self._cmap_trust_log.append(_mc_trust)
 
                 # MAP-DRIVEN ALPHA (stage 3): override s[3] with the map's handover-gated slot
                 # orientation (corner+dense moment, lower variance than 4 decode corners alone).
                 # Same quats[1] convention as the centroid. Falls through to decode alpha untouched
                 # if the map/plausibility gate rejects this frame.
+                _ma_raw, _ma_trust = np.nan, 0.0   # logged regardless of fire (see __init__)
                 if self._alpha_from_map and self._img_feature_param:
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
                     _ma = self._alphaMap(_q1)
                     if _ma is not None:
+                        _ma_raw = float(_ma)
+                        _ma_trust = self._amap_last_trust
                         # SOFT circular blend toward decode (see _centroidMap/_alphaMap
                         # docstrings) -- a linear blend of two angles is only valid via the
                         # sin/cos vector average; trust==1.0 reduces this to the atan2 of
@@ -2735,6 +2764,8 @@ class IMG_PROCESSOR(Thread):
                         _bs = _tr * np.sin(_ma) + (1.0 - _tr) * np.sin(_da)
                         _bc = _tr * np.cos(_ma) + (1.0 - _tr) * np.cos(_da)
                         self._img_feature_param[-1][3] = float(np.arctan2(_bs, _bc))
+                self._amap_raw_log.append(_ma_raw)
+                self._amap_trust_log.append(_ma_trust)
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -3079,6 +3110,12 @@ class IMG_PROCESSOR(Thread):
             self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._s_estimator_tag.append('planar_map_rescue' if _pm_rescue else 'coast')
+            # _centroidMap/_alphaMap/_flowMap (the OVERRIDE consumers) never run in this branch
+            # (raw decode failed this frame) -- keep the raw-log arrays lockstep-aligned with
+            # _s_estimator_tag/_h_estimator_tag regardless (see __init__).
+            self._cmap_raw_log.append((np.nan, np.nan)); self._cmap_trust_log.append(0.0)
+            self._amap_raw_log.append(np.nan); self._amap_trust_log.append(0.0)
+            self._fmap_raw_log.append((np.nan, np.nan, np.nan))
             # Centroid KF: the map-rescue branch is a genuine current-frame geometric estimate
             # (grounded in this frame's OTHER tracked scene features, not a blind trend fit) --
             # real correct-step, same treatment as the observer's h-rescue above. The
@@ -3935,6 +3972,16 @@ class IMG_PROCESSOR(Thread):
             "Centroid Map Dbg": getattr(self, '_cmap_dbg', {}),   # (2026-07-18) _centroidMap fire/none breakdown (CENTROID_MAP_DBG=1)
             "Flow Map Dbg": getattr(self, '_fmap_dbg', {}),   # (2026-07-19) stage-4 small-marker-flow fire/ready breakdown (FLOW_MAP_DBG=1)
             "Planar Map Shadow": self._planar_map_log,   # (2026-07-15) shadow-mode PlanarFeatureMap vs live-winning tier, see src/planar_map.py
+            # RAW (PRE-CAL) map-sourced logs (2026-07-20, see __init__ + feedback_map_cal_validation_gap):
+            # per-frame, lockstep with Feature Params/Opt Flow Ang Vel -- (nan/0) when that frame's
+            # map function didn't fire. Needed to check whether _sensor_cal_s/_sensor_cal_hw (fit
+            # against the decode path only) are still correct for CENTROID_FROM_MAP/ALPHA_FROM_MAP/
+            # FLOW_FROM_MAP's structurally different raw computations.
+            "Centroid Map Raw": self._cmap_raw_log,     # (2,) raw V-frame centroid, pre-_sensor_cal_s
+            "Centroid Map Trust": self._cmap_trust_log, # soft-gate blend weight used this frame [0,1]
+            "Alpha Map Raw": self._amap_raw_log,        # raw alpha (rad), pre-_sensor_cal_s
+            "Alpha Map Trust": self._amap_trust_log,    # soft-gate blend weight used this frame [0,1]
+            "Flow Map Raw": self._fmap_raw_log,         # (3,) raw [hx,hy,hz], pre-_sensor_cal_hw
         }
     
     def getParams(self):
