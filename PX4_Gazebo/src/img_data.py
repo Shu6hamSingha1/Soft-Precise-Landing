@@ -2746,6 +2746,22 @@ class IMG_PROCESSOR(Thread):
                 # quats[0] matches the map's frame-0 tracking (same convention the loom uses). Falls
                 # through to the decode centroid untouched if the map is unavailable. Placed BEFORE the
                 # ds-outlier-hold so the map centroid still gets the per-frame-jump guard.
+                # MAP IS AUTHORITATIVE (2026-07-20, user directive: "decode is just for
+                # cross-correction of map", corrected from an earlier "decode is a fallback"
+                # framing -- decode is NOT a peer/backup value source; its role is the
+                # cross-check reference the map's OWN validity gates are judged against
+                # (_planarMapPredictionPlausible's position/size sanity, the rigidity/
+                # confidence floor inside _centroidMap). Whenever _centroidMap ACCEPTS this
+                # frame (returns non-None -- a genuinely-garbage frame is still rejected by
+                # those gates), use its value FULLY, not blended down toward decode by
+                # degree of confidence -- confidence already decided ACCEPT/REJECT; it
+                # doesn't get a second, weaker vote via a value taper. When the map has
+                # nothing this frame (_mc is None), s[0:2] mechanically remains whatever
+                # decode's own _getImgFeatures/_board_feature already computed above (there
+                # is no third value to substitute) -- decode isn't "supplying" that value
+                # as a designed fallback, it's what cross-checking requires having anyway.
+                # _cmap_last_trust is still computed (for logging / _effectiveCalSxy's gain
+                # selection below) but no longer tapers the VALUE.
                 _mc_raw, _mc_trust = (np.nan, np.nan), 0.0   # logged regardless of fire (see __init__)
                 if self._centroid_from_map and self._img_feature_param:
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
@@ -2753,14 +2769,8 @@ class IMG_PROCESSOR(Thread):
                     if _mc is not None:
                         _mc_raw = (float(_mc[0]), float(_mc[1]))
                         _mc_trust = self._cmap_last_trust
-                        # SOFT blend toward decode when confidence sits between the reject
-                        # and full-trust floors (see _centroidMap docstring); trust==1.0
-                        # reduces this to the original wholesale swap.
-                        _tr = self._cmap_last_trust
-                        self._img_feature_param[-1][0] = float(
-                            _tr * _mc[0] + (1.0 - _tr) * self._img_feature_param[-1][0])
-                        self._img_feature_param[-1][1] = float(
-                            _tr * _mc[1] + (1.0 - _tr) * self._img_feature_param[-1][1])
+                        self._img_feature_param[-1][0] = float(_mc[0])
+                        self._img_feature_param[-1][1] = float(_mc[1])
                 self._cmap_raw_log.append(_mc_raw)
                 self._cmap_trust_log.append(_mc_trust)
 
@@ -2768,6 +2778,8 @@ class IMG_PROCESSOR(Thread):
                 # orientation (corner+dense moment, lower variance than 4 decode corners alone).
                 # Same quats[1] convention as the centroid. Falls through to decode alpha untouched
                 # if the map/plausibility gate rejects this frame.
+                # MAP IS AUTHORITATIVE (same directive as centroid above): _alphaMap's value
+                # is used FULLY whenever accepted, not tapered toward decode by confidence.
                 _ma_raw, _ma_trust = np.nan, 0.0   # logged regardless of fire (see __init__)
                 if self._alpha_from_map and self._img_feature_param:
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
@@ -2775,15 +2787,7 @@ class IMG_PROCESSOR(Thread):
                     if _ma is not None:
                         _ma_raw = float(_ma)
                         _ma_trust = self._amap_last_trust
-                        # SOFT circular blend toward decode (see _centroidMap/_alphaMap
-                        # docstrings) -- a linear blend of two angles is only valid via the
-                        # sin/cos vector average; trust==1.0 reduces this to the atan2 of
-                        # (sin(_ma), cos(_ma)) == _ma, i.e. the original wholesale swap.
-                        _tr = self._amap_last_trust
-                        _da = float(self._img_feature_param[-1][3])
-                        _bs = _tr * np.sin(_ma) + (1.0 - _tr) * np.sin(_da)
-                        _bc = _tr * np.cos(_ma) + (1.0 - _tr) * np.cos(_da)
-                        self._img_feature_param[-1][3] = float(np.arctan2(_bs, _bc))
+                        self._img_feature_param[-1][3] = float(_ma)
                 self._amap_raw_log.append(_ma_raw)
                 self._amap_trust_log.append(_ma_trust)
 
@@ -4015,14 +4019,22 @@ class IMG_PROCESSOR(Thread):
         return parameter
     
     def _effectiveCalSxy(self):
-        """(gx, gy) centroid gain for THIS readout, blending decode's cal_s[0:2] with the
-        map-sourced gain by the current centroid-map trust (see self._sensor_cal_s_map_xy
-        provenance comment in __init__). trust==0 (CENTROID_FROM_MAP off, or the gate never
-        fired) reduces to decode's cal_s exactly."""
-        tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0
-        gx = tr * self._sensor_cal_s_map_xy[0] + (1.0 - tr) * self._sensor_cal_s[0, 0]
-        gy = tr * self._sensor_cal_s_map_xy[1] + (1.0 - tr) * self._sensor_cal_s[1, 1]
-        return gx, gy
+        """(gx, gy) centroid gain for THIS readout. MAP IS AUTHORITATIVE (2026-07-20, user
+        directive: "decode is just for cross-correction") -- whenever _centroidMap accepted
+        this frame (self._cmap_trust_log[-1] > 0; the override already used the map value
+        FULLY, not blended, see the call site), use the map-sourced gain FULLY too, not
+        blended by degree of confidence -- a partial gain blend against a FULL value swap
+        was internally inconsistent, and produced a real step artifact at every
+        decode<->map transition (gain jumped even though it wasn't tapering anything).
+        Uses decode's cal_s[0:2] exactly when the map didn't fire this frame (CENTROID_FROM_MAP
+        off, or the gate rejected/never fired) -- not because decode is a backup value source,
+        but because that's what s[0:2] mechanically holds then (decode's cross-check
+        computation, always run first -- see the override call site). Decode's cal_s is never
+        blended with the map's gain; the map, once accepted, is authoritative."""
+        fired = bool(self._cmap_trust_log) and self._cmap_trust_log[-1] > 0.0
+        if fired:
+            return float(self._sensor_cal_s_map_xy[0]), float(self._sensor_cal_s_map_xy[1])
+        return float(self._sensor_cal_s[0, 0]), float(self._sensor_cal_s[1, 1])
 
     def getRawImgFeatureParam(self):
         """Image feature vector BEFORE _sensor_cal_s. Used by output_calibration."""
