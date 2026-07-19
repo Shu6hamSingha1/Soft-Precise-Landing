@@ -178,6 +178,19 @@ class IMG_PROCESSOR(Thread):
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
         self._sensor_cal_s  = np.diag([1.0491, 1.0108, 1.0, 1.0])   # single-marker-moment centroid (obs-rebuild recal 2026-07-17, same 5-run set as _sensor_cal_hw above; was 1.0215/1.0494 from the 07-11 KF-refit of the 07-03 set). s moved only +2.7%/-3.7% (it is NOT observer-sourced — raw moments -> outer feature KF, which the aggregator re-applies offline; re-derived here only to keep one coherent per-set fit). s[2]=homogeneous const, s[3]=alpha: BOTH identity BY DESIGN, not placeholders — the yaw chain is built on RAW moment-alpha (offset MOMENT_ALPHA0 upstream + gain BODY_YAW_ALPHA_K=-0.949 downstream at controller.py:2219); setting s[3]!=1 double-counts there, silently retunes the yaw SMC loop gain, rescales YAW_ALPHA_MAX_RATE/YAW_HOLD_ALPHA_RATE/YAW_KF_R, and breaks the GT-FB ablation (GT substitutes POST-cal). See project_yaw_calibration_pending (RESOLVED).
+        # MAP-SOURCED centroid gain (2026-07-20, see feedback_map_cal_validation_gap /
+        # feedback_map_override_kf_ordering_bug): derive_board_cal.py's new 'Centroid Map Raw'
+        # fit (5 runs, 47025 fired samples, POST the ordering-bug fix so the override is
+        # actually live) measured mx=1.1235/my=1.0946 -- DIVERGES from decode's sx=1.0491/
+        # sy=1.0108 above by ~7-8%. The map's diagonal-intersection center is a structurally
+        # different computation from decode's corner-mean (see _centroidMap docstring), so
+        # reusing decode's gain under-corrected it. cal_s is applied ONCE at readout to the
+        # KF's already-time-blended state (see getImgFeatureParam), so an exact per-sample
+        # source split isn't possible there -- _effectiveCalSxy() below blends decode's/map's
+        # gain by THIS FRAME's centroid-map trust (self._cmap_trust_log[-1]) as the best
+        # available approximation, consistent with the same "cal assumes a slowly-varying
+        # signal" approximation the KF-vs-raw cal fit already makes elsewhere.
+        self._sensor_cal_s_map_xy = np.array([1.1235, 1.0946])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -4001,6 +4014,16 @@ class IMG_PROCESSOR(Thread):
         parameter = f"{{'Capture Rate':{self._capRate}, 'resolution':{self._resolution}}}"
         return parameter
     
+    def _effectiveCalSxy(self):
+        """(gx, gy) centroid gain for THIS readout, blending decode's cal_s[0:2] with the
+        map-sourced gain by the current centroid-map trust (see self._sensor_cal_s_map_xy
+        provenance comment in __init__). trust==0 (CENTROID_FROM_MAP off, or the gate never
+        fired) reduces to decode's cal_s exactly."""
+        tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0
+        gx = tr * self._sensor_cal_s_map_xy[0] + (1.0 - tr) * self._sensor_cal_s[0, 0]
+        gy = tr * self._sensor_cal_s_map_xy[1] + (1.0 - tr) * self._sensor_cal_s[1, 1]
+        return gx, gy
+
     def getRawImgFeatureParam(self):
         """Image feature vector BEFORE _sensor_cal_s. Used by output_calibration."""
         if len(self._img_feature_param) == 0:
@@ -4572,14 +4595,24 @@ class IMG_PROCESSOR(Thread):
             # switch, producing a value fully disconnected from the KF's still-valid last
             # state; _kf_feat_x itself is never cleared by that reset, only the flag).
             if self._kf_feat_ever_initialized:
-                return self._sensor_cal_s @ self._kf_feat_x[:, 0]
+                gx, gy = self._effectiveCalSxy()   # source-aware centroid gain, see __init__
+                out = self._sensor_cal_s @ self._kf_feat_x[:, 0]
+                out[0] = gx * self._kf_feat_x[0, 0]
+                out[1] = gy * self._kf_feat_x[1, 0]
+                return out
         # Same post-engage clipping as _compute_savgol_output -- see _engage_idx_feat
         # comment in _reset_stateful_trackers.
         _post_engage = self._img_feature_param[self._engage_idx_feat:]
         if len(_post_engage) == 0:
             return np.zeros(4)
+        gx, gy = self._effectiveCalSxy()   # source-aware centroid gain, see __init__
         if len(_post_engage) >= FILTER_WIN:
             sgf_buf = sgf(_post_engage[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
-            return self._sensor_cal_s @ sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return self._sensor_cal_s @ np.mean(_post_engage, axis=0)
+            _feat = sgf_buf[int(FILTER_WIN / 2 + 1)]
+        else:
+            _feat = np.mean(_post_engage, axis=0)
+        out = self._sensor_cal_s @ _feat
+        out[0] = gx * _feat[0]
+        out[1] = gy * _feat[1]
+        return out
