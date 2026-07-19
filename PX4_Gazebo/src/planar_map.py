@@ -141,7 +141,7 @@ class PlanarFeatureMap:
         # map_confidence DROPS (the map SELF-DIAGNOSES the degenerate view instead of reporting a
         # confident-wrong pose -- the fix for the 0.575-confidence-at-overflow blind spot).
         # Default 0 = OFF; MAP_HOMOG_MIN_SPREAD~0.05 enables.
-        self._homog_min_spread = float(os.environ.get("MAP_HOMOG_MIN_SPREAD", "0"))
+        self._homog_min_spread = float(os.environ.get("MAP_HOMOG_MIN_SPREAD", "0.05"))
         self.initialized = False
         self.frames_since_decode = 0
 

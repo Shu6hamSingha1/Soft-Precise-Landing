@@ -603,7 +603,7 @@ class IMG_PROCESSOR(Thread):
         # corners are at/over the FoV edge (overflow), SKIP the correction -- keep the map's geometry
         # uncorrupted so it can bridge the terminal. Decode stays the cross-check ONLY on
         # well-conditioned frames. Default off; MAP_REJECT_OVERFLOW_CORRECT=1 to enable.
-        self._map_reject_overflow_correct = os.environ.get("MAP_REJECT_OVERFLOW_CORRECT", "0") == "1"
+        self._map_reject_overflow_correct = os.environ.get("MAP_REJECT_OVERFLOW_CORRECT", "1") == "1"
         self._last_drifted_off = False   # last-known: marker left the FoV OFF-CENTER (drift), vs SPANNING (overflow, still over target)
         self._last_overflow = False      # companion: marker SPANNED (overflow) rather than drifted off one side
         self._drift_off_hist = []        # per-frame log of _last_drifted_off (2026-07-07: failure-cause tagging)
@@ -814,7 +814,7 @@ class IMG_PROCESSOR(Thread):
         # track_conf (n_tracked corners), and the tiny inner marker isn't well-tracked until
         # close, so confidence naturally stays low until the terminal. Downstream, ring-commit
         # STILL requires OVER_TARGET + settled, so an early latch cannot itself commit.
-        self._handover_require_overflow = os.environ.get("HANDOVER_REQUIRE_OVERFLOW", "1") == "1"
+        self._handover_require_overflow = os.environ.get("HANDOVER_REQUIRE_OVERFLOW", "0") == "1"
         # MAP-DRIVEN LOOM M (2026-07-18, user directive: "replace all decode-driven measurements
         # with map-driven"). STAGE 1: the loom scale M=μ20+μ02 is computed from the PlanarFeatureMap's
         # continuously-tracked slot corners (get_marker_frame_pts) instead of the raw-decode corners.
@@ -826,7 +826,7 @@ class IMG_PROCESSOR(Thread):
         # map with the online-learned relative size, so the scale is continuous across the single
         # latched switch. Isolated to the LOOM's M only (centroid _x0/_y0, flow, alpha stay on decode)
         # so this stage validates alone. Default off; LOOM_M_FROM_MAP=1 to enable.
-        self._loom_m_from_map = os.environ.get("LOOM_M_FROM_MAP", "0") == "1"
+        self._loom_m_from_map = os.environ.get("LOOM_M_FROM_MAP", "1") == "1"
         # MAP-DRIVEN CENTROID s[0:2] (2026-07-18, decode->map migration STAGE 2). The position
         # feature's centroid is taken from the map's continuously-tracked slot (get_marker_center)
         # instead of the raw-decode corner mean. The nested markers are CONCENTRIC (big/small share
