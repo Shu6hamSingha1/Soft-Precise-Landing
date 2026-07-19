@@ -593,6 +593,17 @@ class IMG_PROCESSOR(Thread):
         # mechanism (no separate visible-flag): the margin switches to rings a few frames BEFORE the
         # marker fully leaves, off cleaner (non-edge) corners. 0 = strict (switch only on full exit).
         self._marker_fov_margin = float(os.environ.get("PLASMC_MARKER_FOV_MARGIN", "40"))
+        # REJECT-OVERFLOW-FOR-MAP-CORRECTION (2026-07-19, user). As the drone tilts, the marker
+        # slides to the FoV edge and partially overflows -> its de-rotated quad degenerates to a
+        # near-collinear sliver (diag angle 1.3deg, elongation up to 70x -- verified) whose
+        # geometry no longer localizes the centre. Feeding such a degenerate DECODE frame into the
+        # map's loop_closure_correct POISONS the map's learned geometry (frame_to_map/gauge) with a
+        # near-singular observation. The map is PRIMARY: it should PREDICT through the overflow on
+        # its CLEAN last-good state, not CORRECT from the degenerate view. So when the decoded
+        # corners are at/over the FoV edge (overflow), SKIP the correction -- keep the map's geometry
+        # uncorrupted so it can bridge the terminal. Decode stays the cross-check ONLY on
+        # well-conditioned frames. Default off; MAP_REJECT_OVERFLOW_CORRECT=1 to enable.
+        self._map_reject_overflow_correct = os.environ.get("MAP_REJECT_OVERFLOW_CORRECT", "0") == "1"
         self._last_drifted_off = False   # last-known: marker left the FoV OFF-CENTER (drift), vs SPANNING (overflow, still over target)
         self._last_overflow = False      # companion: marker SPANNED (overflow) rather than drifted off one side
         self._drift_off_hist = []        # per-frame log of _last_drifted_off (2026-07-07: failure-cause tagging)
@@ -816,6 +827,14 @@ class IMG_PROCESSOR(Thread):
         # latched switch. Isolated to the LOOM's M only (centroid _x0/_y0, flow, alpha stay on decode)
         # so this stage validates alone. Default off; LOOM_M_FROM_MAP=1 to enable.
         self._loom_m_from_map = os.environ.get("LOOM_M_FROM_MAP", "0") == "1"
+        # MAP-DRIVEN CENTROID s[0:2] (2026-07-18, decode->map migration STAGE 2). The position
+        # feature's centroid is taken from the map's continuously-tracked slot (get_marker_center)
+        # instead of the raw-decode corner mean. The nested markers are CONCENTRIC (big/small share
+        # a centre), so this is not a position shift -- it is CONTINUITY: the map tracks through the
+        # decode dropouts/flicker that make the raw centroid jump/stale. Handover-gated slot (big
+        # before HANDOVER_LATCHED, small after), same as the loom. Isolated to s[0:2]; alpha (s[3])
+        # stays on decode until stage 3. Default off; CENTROID_FROM_MAP=1 to enable.
+        self._centroid_from_map = os.environ.get("CENTROID_FROM_MAP", "0") == "1"
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -1968,7 +1987,23 @@ class IMG_PROCESSOR(Thread):
                     # marker's position from the GLOBAL homography fit (built from whatever
                     # OTHER scene features are currently tracked) even when the marker itself
                     # is partially visible or has vanished entirely.
-                    _good = self._planar_map.map_confidence >= self._planar_map_conf_floor
+                    # MARKER-AWARE RESCUE GATE (2026-07-19, user). Was map_confidence
+                    # (marker-INDEPENDENT = track_conf*resid_conf only), chosen so a fully-occluded
+                    # marker wouldn't block the rescue. But that makes the gate STRUCTURALLY BLIND to
+                    # the marker DEFORMING: at the tilt-grazing terminal the quad foreshortens to a
+                    # sliver, map_confidence stayed ~0.575 (verified) and the rescue happily fired on
+                    # geometry that can no longer localize a centre -> confident-wrong extrapolation.
+                    # self.confidence DOES see it (marker_conf collapses via shape_change) -- verified:
+                    # 39/39 zero-confidence frames were rigid_ok=False at exactly those frames.
+                    # The original occlusion rationale still holds with the marker-aware gate, because
+                    # rigidity is OCCLUSION-SAFE by construction (planar_map.update): 0-of-4 corners
+                    # HOLDS shape_change (only sets the rigid_ok bool), and 1-3 holds everything -- so
+                    # marker_conf survives a genuine occlusion and only collapses when the marker IS
+                    # tracked and its shape is distorting. RESCUE_GATE_MARKER_AWARE=0 reverts.
+                    _rescue_conf = (self._planar_map.confidence
+                                    if os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                                    else self._planar_map.map_confidence)
+                    _good = _rescue_conf >= self._planar_map_conf_floor
                     if _good:
                         self._planar_map_gate_streak += 1
                     else:
@@ -2012,10 +2047,32 @@ class IMG_PROCESSOR(Thread):
                         _slot_guess = self._planar_map.identify_slot(aruco_pts_0)
                         if _slot_guess is not None:
                             _pred = self._planar_map.get_marker_frame_pts(slot=_slot_guess)
-                    if results[0]:
+                    # REJECT MAP CROSS-CORRECTION ON ILL-CONDITIONED QUAD (2026-07-19, user): don't
+                    # loop-close from a decode whose quad is a degenerate SLIVER (tilt-grazing /
+                    # overflow) -- that near-singular observation poisons the map's gauge/homography.
+                    # The map is PRIMARY: predict through it on clean state; decode cross-checks ONLY
+                    # on WELL-CONDITIONED frames. Detected on the raw decode quad's own geometry
+                    # (diagonals near-parallel / quad elongated), NOT edge-proximity -- a quad can be
+                    # degenerate from grazing foreshortening before it reaches the edge.
+                    # (a) DECODE correction gate: reject NEAR-EDGE decodes (corner precision degrades
+                    # at the frame boundary -> noisy correction poisons the map; verified: edge-reject
+                    # dropped map err_px p90 3.8->1.4/6.6->2.0). OR-in the ill-cond check as a harmless
+                    # backstop -- verified INERT on the decode path (ArUco self-gates conditioning:
+                    # decode-success quads have min diag angle 27deg, never a sliver), but future-proof.
+                    _reject_correct = False
+                    if self._map_reject_overflow_correct and aruco_pts_0 is not None:
+                        _cc = np.asarray(aruco_pts_0, float); _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
+                        _near_edge = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
+                                          or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
+                        _reject_correct = _near_edge or self._quadIllConditioned(aruco_pts_0)
+                    _illcond_correct = _reject_correct
+                    if results[0] and not _illcond_correct:
                         self._planar_map.loop_closure_correct(
                             aruco_pts_0, marker_id=self._primary_id)
                         self._planar_map_decode_calls += 1
+                    elif results[0] and _illcond_correct and os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                        print(f"[planar_map] ill-conditioned quad -> SKIP loop_closure_correct "
+                              f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
                     if aruco_pts_0 is not None:
                         if _pred is not None and len(_pred) == len(aruco_pts_0):
                             _err = float(np.mean(np.linalg.norm(
@@ -2560,6 +2617,18 @@ class IMG_PROCESSOR(Thread):
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
                     self._s_estimator_tag.append('single_marker_moment')
                     self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
+
+                # MAP-DRIVEN CENTROID (stage 2): override s[0:2] with the map's continuously-tracked
+                # slot centre (handover-gated slot), keeping alpha (s[3]) on decode for stage isolation.
+                # quats[0] matches the map's frame-0 tracking (same convention the loom uses). Falls
+                # through to the decode centroid untouched if the map is unavailable. Placed BEFORE the
+                # ds-outlier-hold so the map centroid still gets the per-frame-jump guard.
+                if self._centroid_from_map and self._img_feature_param:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _mc = self._centroidMap(_q1, size_factor)
+                    if _mc is not None:
+                        self._img_feature_param[-1][0] = float(_mc[0])
+                        self._img_feature_param[-1][1] = float(_mc[1])
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -3715,6 +3784,7 @@ class IMG_PROCESSOR(Thread):
             "Target Vel": self._target_vel_log,           # EKF target/rover velocity h_tv (flow units)
             "FPS": self._fps_log,
             "Image Stamp": self._stamp_log,
+            "Centroid Map Dbg": getattr(self, '_cmap_dbg', {}),   # (2026-07-18) _centroidMap fire/none breakdown (CENTROID_MAP_DBG=1)
             "Planar Map Shadow": self._planar_map_log,   # (2026-07-15) shadow-mode PlanarFeatureMap vs live-winning tier, see src/planar_map.py
         }
     
@@ -3871,17 +3941,14 @@ class IMG_PROCESSOR(Thread):
             return False
         return self._planar_map.get_slot_confidence(sec) >= self._cbf_small_conf_min
 
-    def _loomMapM(self, quat):
-        """Map-driven loom scale M = μ20+μ02 (de-rotated corner scatter ∝ (sz·f/Z)²), STAGE 1
-        of the decode->map measurement migration (2026-07-18). Returns the map's slot corners'
-        V-frame scatter, or None if unavailable (caller falls back to the decode M). SLOT is
-        handover-gated: the PRIMARY (big) slot before HANDOVER_LATCHED, the SECONDARY (small)
-        slot after -- the user's big-before/small-after selection. The map tracks each slot
-        continuously (KLT+homography), so this M does NOT flicker across a big<->small decode
-        blink the way the raw-decode M does; and because both slots live in one map with the
-        online-learned relative size, the scale is continuous across the single latched switch.
-        Uses the SAME _getVirtualPts de-rotation the decode path uses, so it is directly
-        substitutable for _Mo/_M with no frame-convention change."""
+    def _mapSlotVpts(self, quat):
+        """De-rotated (V-frame) corners of the map's HANDOVER-GATED slot -- PRIMARY (big) before
+        HANDOVER_LATCHED, SECONDARY (small) after (the user's big-before/small-after selection).
+        Shared source for the decode->map migration (loom M stage 1, centroid stage 2): the map
+        tracks each slot continuously (KLT+homography), so these corners don't flicker across a
+        big<->small decode blink, and both slots share one map with the online-learned relative
+        size (continuous scale across the single latched switch). Uses the SAME _getVirtualPts
+        de-rotation as the decode path -> directly substitutable. None if unavailable."""
         pm = self._planar_map
         if pm is None or not getattr(pm, 'initialized', False) or quat is None:
             return None
@@ -3893,11 +3960,96 @@ class IMG_PROCESSOR(Thread):
             Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
             if Vp is None or len(Vp) != 4:
                 return None
-            ctr = Vp.mean(axis=0)
-            M = float(np.mean(np.sum((Vp[:, :2] - ctr[:2]) ** 2, axis=1)))
-            return M if (M > 1e-12 and np.isfinite(M)) else None
+            return Vp
         except Exception:
             return None
+
+    def _loomMapM(self, quat):
+        """Map-driven loom scale M = μ20+μ02 (de-rotated corner scatter ∝ (sz·f/Z)²), STAGE 1
+        of the decode->map migration. Returns None if unavailable (caller falls back to decode M)."""
+        Vp = self._mapSlotVpts(quat)
+        if Vp is None:
+            return None
+        ctr = Vp.mean(axis=0)
+        M = float(np.mean(np.sum((Vp[:, :2] - ctr[:2]) ** 2, axis=1)))
+        return M if (M > 1e-12 and np.isfinite(M)) else None
+
+    def _quadIllConditioned(self, pts):
+        """True iff a 4-corner marker quad is geometrically DEGENERATE -- a foreshortened sliver
+        that cannot localize a centre or well-condition a homography (2026-07-19, user). Verified
+        signature at the tilt-grazing terminal: the two diagonals go near-PARALLEL (angle ~1.3deg
+        vs ~90 when square) and/or the quad ELONGATES (max/min side up to 70x vs ~1 square). Either
+        makes the diagonal-intersection centre swing wildly (~1/sin(angle) amplification) and the
+        homography under-determined. Ordered ArUco corners (TL,TR,BR,BL): diagonals are 0-2 & 1-3.
+        Thresholds env-tunable. Corner-order-agnostic elongation via all 4 side lengths."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+                return True   # malformed = not usable for correction
+            d1 = c[2] - c[0]; d2 = c[3] - c[1]
+            n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+            if n1 < 1e-6 or n2 < 1e-6:
+                return True
+            ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+            sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+            elong = max(sides) / max(min(sides), 1e-6)
+            _min_ang = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+            _max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+            return bool(ang < _min_ang or elong > _max_elong)
+        except Exception:
+            return True
+
+    def _centroidMap(self, quat, size_factor=1.0):
+        """Map-driven V-frame centroid [xc, yc], STAGE 2. Uses the map's NATIVE (projective-
+        invariant diagonal-intersection) center reprojected to the frame, NOT the corner mean:
+        the true center is robust to a partially-visible/overflowing marker (fixed gauge center
+        + all-feature homography), and the corner-mean was shown to shift off-center under
+        perspective (user, 2026-07-18). de-rotate that single pixel via the SAME _getVirtualPts
+        the decode path uses. quat = frame-1 (quats[1]), matching the validated map override/
+        rescue convention (controller.py-consumed V_aruco_norm[1] is frame-1). size_factor
+        matches the decode feature (1.0 for the single id-0 marker). None -> caller keeps decode."""
+        _dbg = os.environ.get("CENTROID_MAP_DBG", "0") == "1"
+        def _tally(k):
+            if _dbg:
+                self._cmap_dbg = getattr(self, '_cmap_dbg', {})
+                self._cmap_dbg[k] = self._cmap_dbg.get(k, 0) + 1
+        pm = self._planar_map
+        if pm is None:
+            _tally('none_pm_is_None'); return None
+        if not getattr(pm, 'initialized', False):
+            _tally('none_not_initialized'); return None
+        if quat is None:
+            _tally('none_quat_None'); return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None   # big before handover, small after
+        try:
+            # PLAUSIBILITY GATE (2026-07-18) -- the OVERFLOW FIX. This override shipped WITHOUT the
+            # check the rescue/override paths use (_planarMapPredictionPlausible), which is exactly
+            # the bug that method's docstring warns about ("the override path shipped with NO check
+            # at all and let a drifted map projection replace a perfectly good raw ArUco decode").
+            # Diagnosed source of the map centroid's terminal spikes: when the marker LEAVES the FoV
+            # (IC5: |s| up to 3.4, 18% of frames past the 1.2 FoV bound), the homography reprojects
+            # an OFF-SCREEN EXTRAPOLATED center that decode would flag as garbage but the map emits
+            # as a plausible-looking 1-3.4 value. Run the SAME position+size plausibility check on
+            # the slot's corner prediction; if it fails, REJECT (fall back to decode) rather than
+            # feed an off-FoV extrapolation the controller amplifies by 1/p_10 (~3-7x).
+            corners_px = pm.get_marker_frame_pts(slot=slot)
+            if corners_px is None or len(corners_px) != 4:
+                _tally('none_native'); return None
+            _ok, _v, _why = self._planarMapPredictionPlausible(corners_px, quat)
+            if not _ok:
+                _tally('none_implausible'); return None
+            px = pm.get_marker_center_native(slot=slot)      # single true-center pixel
+            if px is None:
+                _tally('none_native'); return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)      # de-rotate the one point
+            if Vp is None or len(Vp) != 1:
+                _tally('none_vpts'); return None
+            c = size_factor * Vp[0, :2]
+            if np.all(np.isfinite(c)):
+                _tally('fired'); return c
+            _tally('none_nonfinite'); return None
+        except Exception:
+            _tally('none_exc'); return None
 
     def update_cbf_handover_signal(self, cbf_overflow):
         """CBF-driven alternative path to HANDOVER_LATCHED (2026-07-17, user design),
