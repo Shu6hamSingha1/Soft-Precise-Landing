@@ -834,7 +834,7 @@ class IMG_PROCESSOR(Thread):
         # decode dropouts/flicker that make the raw centroid jump/stale. Handover-gated slot (big
         # before HANDOVER_LATCHED, small after), same as the loom. Isolated to s[0:2]; alpha (s[3])
         # stays on decode until stage 3. Default off; CENTROID_FROM_MAP=1 to enable.
-        self._centroid_from_map = os.environ.get("CENTROID_FROM_MAP", "0") == "1"
+        self._centroid_from_map = os.environ.get("CENTROID_FROM_MAP", "1") == "1"
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
