@@ -509,6 +509,19 @@ class IMG_PROCESSOR(Thread):
         self._planar_map_primary = (os.environ.get("PLASMC_PLANAR_MAP_PRIMARY",
                                      os.environ.get("PLASMC_PLANAR_MAP_LOOM", "1")) == "1")
         self._planar_map_conf_floor = float(os.environ.get("PLANAR_MAP_CONF_FLOOR", "0.5"))
+        # SOFT rigidity/confidence gate for the OVERRIDE consumers (_centroidMap/_alphaMap,
+        # 2026-07-19 — see feedback_soft_rigidity_gate). A hard reject at _planar_map_conf_floor
+        # (0.5) fixed the corrupted-geometry blowup class (IC4: err_px=1281/confidence=0.0
+        # frame feeding a bad value through) but a validation rerun then showed the opposite
+        # failure: IC3 lost the marker for an extended real stretch where map confidence sat
+        # in the 0.0-0.5 band the whole time, and hard-rejecting ALL of it left the override
+        # contributing nothing for 4+ seconds -- pure KF coast, 13m miss. Below
+        # PLANAR_MAP_REJECT_FLOOR (default near-zero -- exactly where the diagnosed garbage
+        # frames sat, confidence=0.0) still hard-rejects (genuinely nothing to trust). Between
+        # the two floors, BLEND the map value with decode proportional to confidence instead
+        # of an all-or-nothing swap -- a partially-degraded slot still carries some signal,
+        # just not full trust.
+        self._planar_map_reject_floor = float(os.environ.get("PLANAR_MAP_REJECT_FLOOR", "0.05"))
         # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
         # site comment): a rescue-projected centroid is only trusted if it falls within
         # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
@@ -841,8 +854,10 @@ class IMG_PROCESSOR(Thread):
         # duplicated logic) and the SAME _moment_alpha_0 offset, so a decode<->map fallback never
         # jumps convention. cal_s[3]=1.0 stays load-bearing (see project_yaw_calibration_pending)
         # regardless of source -- this changes WHERE alpha is measured FROM, not its calibration.
-        # Default off pending validation; ALPHA_FROM_MAP=1 to enable.
-        self._alpha_from_map = os.environ.get("ALPHA_FROM_MAP", "0") == "1"
+        # BAKED 2026-07-20 (n=1 IC1-5, post soft-gate fix -- see feedback_soft_rigidity_gate;
+        # NOTE: below this project's usual n>=5 bar, baked on explicit user direction).
+        # ALPHA_FROM_MAP=0 to disable.
+        self._alpha_from_map = os.environ.get("ALPHA_FROM_MAP", "1") == "1"
         # MAP-DRIVEN SMALL-MARKER FLOW (2026-07-19, decode->map migration STAGE 4, user
         # directive). Flow (h_xy) is a VELOCITY DERIVATIVE -- needs corner-spread observability,
         # so it works best on a LARGE marker, but we can't just wait for the big marker to fill
@@ -853,8 +868,10 @@ class IMG_PROCESSOR(Thread):
         # V-framed GT flow, time-synced): median error ~0.49 at ~8px extent, 0.06-0.07 in
         # 15-35px, back up to 0.17-0.18 past ~40px (edge/overflow degradation, same mechanism as
         # the loom/centroid). Defaults are THAT characterization; re-derive if camera/marker
-        # geometry changes. Default off pending a landing-gate validation; FLOW_FROM_MAP=1.
-        self._flow_from_map = os.environ.get("FLOW_FROM_MAP", "0") == "1"
+        # geometry changes. BAKED 2026-07-20 (n=1 IC1-5 -- see feedback_soft_rigidity_gate;
+        # NOTE: below this project's usual n>=5 bar, baked on explicit user direction).
+        # FLOW_FROM_MAP=0 to disable.
+        self._flow_from_map = os.environ.get("FLOW_FROM_MAP", "1") == "1"
         self._flow_map_min_ext = float(os.environ.get("MAP_FLOW_MIN_EXT_PX", "15"))
         self._flow_map_max_ext = float(os.environ.get("MAP_FLOW_MAX_EXT_PX", "40"))
         self._flowmap_kf_x = None; self._flowmap_kf_y = None   # own KF state, isolated from the observer's
@@ -1242,6 +1259,24 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
         self._kf_feat_prev_t = None
         self._kf_feat_initialized = False
+        # ALPHA SIN/COS-PAIR SUB-FILTER (2026-07-19, replaces an earlier wrap-patch — see
+        # feedback_alpha_kf_wrap_bug). Channel 3 of self._kf_feat_x (alpha) is a WRAPPED
+        # ANGLE, not a plain linear quantity — a linear KF's innovation (z - x_pred) is
+        # wrong across the +-pi branch cut, and just re-wrapping the innovation/state
+        # (the earlier patch) still leaves the RATE state free to be corrupted by a
+        # near-cut measurement. Proper fix: filter [sin(alpha), cos(alpha)] as two
+        # ordinary LINEAR channels through the SAME generic _kf_step (no periodicity, no
+        # branch cut, no asymptote — unlike tan(alpha), which is pi-periodic and would
+        # silently reintroduce the 2pi/2-fold ambiguity _marker_principal_angle's corner
+        # weighting was built to remove, see project docstring). self._kf_feat_x[3, :] is
+        # kept in sync (channel 3 = atan2(sin_state, cos_state)) purely so every existing
+        # consumer (getImgFeatureParam extrapolation, the sensor-cal readout, etc.) keeps
+        # reading a plain alpha scalar from the same slot — the sin/cos state itself is
+        # private to _kf_feat_update, below.
+        self._kf_feat_sc_x = np.zeros((2, 2))            # rows: [sin(alpha), cos(alpha)]
+        self._kf_feat_sc_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
+        self._kf_feat_sc_prev_t = None
+        self._kf_feat_sc_initialized = False
         # BUGFIX (2026-07-15, found via IC1-5 SITL validation): _kf_feat_initialized gets
         # cleared on every primary-marker-ID switch (small<->big decode flicker, below) so
         # the NEXT correct-step re-seeds state=z instead of blending a spurious velocity
@@ -1331,6 +1366,7 @@ class IMG_PROCESSOR(Thread):
         self._kf_initialized = False
         self._kf_ring_initialized = False
         self._kf_feat_initialized = False
+        self._kf_feat_sc_initialized = False
         self._kf_feat_ever_initialized = False   # genuine full reset -- unlike the marker-switch reset below
         self._ekf_init = False
         self._loom_stale = 0
@@ -1784,6 +1820,7 @@ class IMG_PROCESSOR(Thread):
                 # See feedback_kf_frozen_during_marker_loss ("Related, same-class bug — STILL OPEN").
                 self._kf_initialized = False
                 self._kf_feat_initialized = False
+                self._kf_feat_sc_initialized = False
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -2672,8 +2709,14 @@ class IMG_PROCESSOR(Thread):
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
                     _mc = self._centroidMap(_q1, size_factor)
                     if _mc is not None:
-                        self._img_feature_param[-1][0] = float(_mc[0])
-                        self._img_feature_param[-1][1] = float(_mc[1])
+                        # SOFT blend toward decode when confidence sits between the reject
+                        # and full-trust floors (see _centroidMap docstring); trust==1.0
+                        # reduces this to the original wholesale swap.
+                        _tr = self._cmap_last_trust
+                        self._img_feature_param[-1][0] = float(
+                            _tr * _mc[0] + (1.0 - _tr) * self._img_feature_param[-1][0])
+                        self._img_feature_param[-1][1] = float(
+                            _tr * _mc[1] + (1.0 - _tr) * self._img_feature_param[-1][1])
 
                 # MAP-DRIVEN ALPHA (stage 3): override s[3] with the map's handover-gated slot
                 # orientation (corner+dense moment, lower variance than 4 decode corners alone).
@@ -2683,7 +2726,15 @@ class IMG_PROCESSOR(Thread):
                     _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
                     _ma = self._alphaMap(_q1)
                     if _ma is not None:
-                        self._img_feature_param[-1][3] = float(_ma)
+                        # SOFT circular blend toward decode (see _centroidMap/_alphaMap
+                        # docstrings) -- a linear blend of two angles is only valid via the
+                        # sin/cos vector average; trust==1.0 reduces this to the atan2 of
+                        # (sin(_ma), cos(_ma)) == _ma, i.e. the original wholesale swap.
+                        _tr = self._amap_last_trust
+                        _da = float(self._img_feature_param[-1][3])
+                        _bs = _tr * np.sin(_ma) + (1.0 - _tr) * np.sin(_da)
+                        _bc = _tr * np.cos(_ma) + (1.0 - _tr) * np.cos(_da)
+                        self._img_feature_param[-1][3] = float(np.arctan2(_bs, _bc))
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -3166,7 +3217,16 @@ class IMG_PROCESSOR(Thread):
         state-transition dt (capped at 0.1s for numerical stability) — so P
         correctly reflects staleness across a multi-frame gap, and a fresh
         measurement at relock gets full Bayesian trust instead of a multi-frame
-        catch-up ramp (see feedback_kf_frozen_during_marker_loss)."""
+        catch-up ramp (see feedback_kf_frozen_during_marker_loss).
+
+        PURELY LINEAR — every channel here must be a plain unwrapped scalar. A
+        WRAPPED ANGLE (e.g. alpha) must NEVER be passed to this directly: the
+        innovation y=z-x_pred is a raw subtraction, so a measurement landing
+        near/across the +-pi branch cut produces a spurious ~2*pi innovation
+        that corrupts the rate state and then runs away unbounded during a
+        predict-only coast (see feedback_alpha_kf_wrap_bug — this is why
+        _kf_feat_update filters [sin(alpha), cos(alpha)] as two ordinary linear
+        channels through this same function, rather than alpha itself)."""
         if not initialized:
             if z is None:
                 return x, P, prev_t, initialized   # nothing to coast from yet
@@ -3285,17 +3345,41 @@ class IMG_PROCESSOR(Thread):
         return self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3)
 
     def _kf_feat_update(self, z, t):
-        """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha) —
-        thin wrapper around the shared _kf_step, with its OWN (q, r)
-        (self._kf_feat_q/_r) — the flow KF's q=5/r=0.1 are mis-scaled for the
-        order-1 centroid (see __init__). Low-lag alternative to savgol(13) for the
-        OUTER-loop centroid input. z : (4,) raw feature, or None for a
-        PREDICT-ONLY coast (marker-loss gap, no correction — mirrors _kf_update;
-        see feedback_kf_frozen_during_marker_loss). t : perf_counter."""
-        self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t, self._kf_feat_initialized = \
-            self._kf_step(self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t,
-                          self._kf_feat_initialized, z, t,
+        """4-channel feature KF for the centroid+alpha (xc, yc, scale, alpha) — thin wrapper
+        around the shared _kf_step, with its OWN (q, r) (self._kf_feat_q/_r) — the flow KF's
+        q=5/r=0.1 are mis-scaled for the order-1 centroid (see __init__). Low-lag alternative
+        to savgol(13) for the OUTER-loop centroid input. z : (4,) raw feature, or None for a
+        PREDICT-ONLY coast (marker-loss gap, no correction — mirrors _kf_update; see
+        feedback_kf_frozen_during_marker_loss). t : perf_counter.
+
+        CHANNELS 0-2 (xc, yc, scale) run through _kf_step directly — plain linear
+        quantities. CHANNEL 3 (alpha) is a WRAPPED ANGLE and is instead tracked via a
+        separate sin/cos-pair sub-filter (self._kf_feat_sc_x, 2026-07-19 — see
+        feedback_alpha_kf_wrap_bug): [sin(alpha), cos(alpha)] run through the SAME
+        _kf_step as two ordinary linear channels (no branch cut, no asymptote — unlike
+        tan(alpha), which is pi-periodic and would reintroduce the 2-fold ambiguity
+        _marker_principal_angle's corner weighting exists to remove). self._kf_feat_x[3, 0]
+        is kept synced to atan2(sin_state, cos_state) purely so every existing consumer
+        (extrapolation, sensor-cal readout) keeps reading a plain alpha scalar from the
+        same slot; self._kf_feat_x[3, 1] (rate) is unused externally and is not meaningful
+        in this representation, left at 0."""
+        z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
+            self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
+                          self._kf_feat_initialized, z_pos, t,
                           self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+        self._kf_feat_x[:3] = x_pos
+        self._kf_feat_P[:3] = P_pos
+
+        z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
+        self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
+            self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
+                          self._kf_feat_sc_initialized, z_sc, t,
+                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+        if self._kf_feat_sc_initialized:
+            self._kf_feat_x[3, 0] = np.arctan2(self._kf_feat_sc_x[0, 0], self._kf_feat_sc_x[1, 0])
+            self._kf_feat_x[3, 1] = 0.0
+
         if self._kf_feat_initialized:
             self._kf_feat_ever_initialized = True   # sticky -- see __init__ comment
 
@@ -4072,12 +4156,32 @@ class IMG_PROCESSOR(Thread):
         perspective (user, 2026-07-18). de-rotate that single pixel via the SAME _getVirtualPts
         the decode path uses. quat = frame-1 (quats[1]), matching the validated map override/
         rescue convention (controller.py-consumed V_aruco_norm[1] is frame-1). size_factor
-        matches the decode feature (1.0 for the single id-0 marker). None -> caller keeps decode."""
+        matches the decode feature (1.0 for the single id-0 marker). None -> caller keeps decode.
+
+        RIGIDITY/CONFIDENCE gate (2026-07-19, SOFT as of the same day — see
+        feedback_soft_rigidity_gate): the position+size plausibility gate below catches an
+        off-FoV/off-scale reprojection, but NOT a slot whose tracked geometry is
+        in-place-but-corrupted (marker_rigid_ok=False, confidence collapsed) — that geometry
+        can still look plausible on POSITION+SIZE while its internal corner agreement is
+        garbage. Diagnosed IC4 case: a single frame with err_px=1281 and confidence=0.0/
+        marker_rigid_ok=False fed a bad centroid through, contributing to a 4.5m miss. A
+        first pass hard-rejected anything below _planar_map_conf_floor (0.5) — this then
+        regressed IC3 (13m miss), which spent 4+ real seconds with confidence genuinely
+        stuck in the 0.0-0.5 band, so hard-rejecting all of it left the override
+        contributing nothing for the whole stretch (pure, uncorrected KF coast). Fixed:
+        confidence below _planar_map_reject_floor (~0.05, matching where the diagnosed
+        garbage frames actually sat) still hard-rejects; between the two floors, this
+        method still computes and returns the map value, but self._cmap_last_trust (read
+        by the caller) is a confidence-proportional blend weight instead of the implicit
+        1.0 a return always used to carry — the caller blends toward decode rather than
+        swapping wholesale, so a partially-degraded slot contributes SOME signal instead
+        of none."""
         _dbg = os.environ.get("CENTROID_MAP_DBG", "0") == "1"
         def _tally(k):
             if _dbg:
                 self._cmap_dbg = getattr(self, '_cmap_dbg', {})
                 self._cmap_dbg[k] = self._cmap_dbg.get(k, 0) + 1
+        self._cmap_last_trust = 1.0
         pm = self._planar_map
         if pm is None:
             _tally('none_pm_is_None'); return None
@@ -4086,6 +4190,13 @@ class IMG_PROCESSOR(Thread):
         if quat is None:
             _tally('none_quat_None'); return None
         slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None   # big before handover, small after
+        _conf = pm.get_slot_confidence(slot) if slot is not None else pm.confidence
+        if _conf < self._planar_map_reject_floor:
+            _tally('none_low_confidence'); return None
+        self._cmap_last_trust = float(np.clip(
+            (_conf - self._planar_map_reject_floor)
+            / max(self._planar_map_conf_floor - self._planar_map_reject_floor, 1e-6),
+            0.0, 1.0))
         try:
             # PLAUSIBILITY GATE (2026-07-18) -- the OVERFLOW FIX. This override shipped WITHOUT the
             # check the rescue/override paths use (_planarMapPredictionPlausible), which is exactly
@@ -4123,12 +4234,35 @@ class IMG_PROCESSOR(Thread):
         corners, the richer/lower-variance input the map's own class docstring names this for.
         Same PLAUSIBILITY gate as the centroid (corner prediction position+size sanity) before
         trusting the slot at all -- a degenerate/off-FoV slot has no reliable orientation either.
-        Applies the SAME _moment_alpha_0 offset as the decode path so a decode<->map fallback
-        never jumps convention. None -> caller keeps decode alpha untouched."""
+        RIGIDITY/CONFIDENCE gate (2026-07-19, SOFT as of the same day -- see
+        feedback_soft_rigidity_gate, same rationale/shape as _centroidMap): unlike the
+        centroid override, orientation is far more sensitive to a slot whose KLT corner
+        tracking has degraded but not yet failed the (coarser) position/size plausibility
+        check -- a non-rigid/low-confidence point set can still sit "in the right place"
+        while its INTERNAL geometry (and therefore the principal angle) drifts smoothly and
+        unboundedly. Diagnosed: both observed IC1/IC5 blowups occurred with
+        marker_rigid_ok=False, confidence=0.0 in the shadow log immediately prior -- a hard
+        reject at _planar_map_conf_floor (0.5) fixed those, but (per _centroidMap's
+        docstring) a hard floor also starves the override during an extended
+        genuinely-degraded-but-not-garbage stretch. Below _planar_map_reject_floor (~0.05,
+        where the diagnosed blowup frames actually sat): still hard reject. Between the two
+        floors: self._amap_last_trust (read by the caller) is a confidence-proportional
+        blend weight, and the caller circular-blends toward decode instead of swapping
+        wholesale. Applies the SAME _moment_alpha_0 offset as the decode path so a
+        decode<->map fallback never jumps convention. None -> caller keeps decode alpha
+        untouched."""
+        self._amap_last_trust = 1.0
         pm = self._planar_map
         if pm is None or not getattr(pm, 'initialized', False) or quat is None:
             return None
         slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None
+        _conf = pm.get_slot_confidence(slot) if slot is not None else pm.confidence
+        if _conf < self._planar_map_reject_floor:
+            return None
+        self._amap_last_trust = float(np.clip(
+            (_conf - self._planar_map_reject_floor)
+            / max(self._planar_map_conf_floor - self._planar_map_reject_floor, 1e-6),
+            0.0, 1.0))
         try:
             corners_px = pm.get_marker_frame_pts(slot=slot)
             if corners_px is None or len(corners_px) != 4:
