@@ -835,6 +835,30 @@ class IMG_PROCESSOR(Thread):
         # before HANDOVER_LATCHED, small after), same as the loom. Isolated to s[0:2]; alpha (s[3])
         # stays on decode until stage 3. Default off; CENTROID_FROM_MAP=1 to enable.
         self._centroid_from_map = os.environ.get("CENTROID_FROM_MAP", "1") == "1"
+        # MAP-DRIVEN ALPHA s[3] (2026-07-19, decode->map migration STAGE 3). Yaw feature from
+        # get_marker_points()'s handover-gated corner+dense-interior (position, weight) set via
+        # the SAME _marker_principal_angle moment math (weights param added for this, no
+        # duplicated logic) and the SAME _moment_alpha_0 offset, so a decode<->map fallback never
+        # jumps convention. cal_s[3]=1.0 stays load-bearing (see project_yaw_calibration_pending)
+        # regardless of source -- this changes WHERE alpha is measured FROM, not its calibration.
+        # Default off pending validation; ALPHA_FROM_MAP=1 to enable.
+        self._alpha_from_map = os.environ.get("ALPHA_FROM_MAP", "0") == "1"
+        # MAP-DRIVEN SMALL-MARKER FLOW (2026-07-19, decode->map migration STAGE 4, user
+        # directive). Flow (h_xy) is a VELOCITY DERIVATIVE -- needs corner-spread observability,
+        # so it works best on a LARGE marker, but we can't just wait for the big marker to fill
+        # the FoV (it degrades/overflows before that). So: switch to the SMALL marker once it is
+        # confidently mapped AND its apparent size falls in the empirically-characterized
+        # reliable BAND -- SEPARATE from and typically EARLIER than HANDOVER_LATCHED (which
+        # gates loom/centroid/alpha). Characterized this session (textured IC1-5, decode flow vs
+        # V-framed GT flow, time-synced): median error ~0.49 at ~8px extent, 0.06-0.07 in
+        # 15-35px, back up to 0.17-0.18 past ~40px (edge/overflow degradation, same mechanism as
+        # the loom/centroid). Defaults are THAT characterization; re-derive if camera/marker
+        # geometry changes. Default off pending a landing-gate validation; FLOW_FROM_MAP=1.
+        self._flow_from_map = os.environ.get("FLOW_FROM_MAP", "0") == "1"
+        self._flow_map_min_ext = float(os.environ.get("MAP_FLOW_MIN_EXT_PX", "15"))
+        self._flow_map_max_ext = float(os.environ.get("MAP_FLOW_MAX_EXT_PX", "40"))
+        self._flowmap_kf_x = None; self._flowmap_kf_y = None   # own KF state, isolated from the observer's
+        self._flowmap_kf_Px = None; self._flowmap_kf_Py = None; self._flowmap_kf_t = None
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -2521,6 +2545,27 @@ class IMG_PROCESSOR(Thread):
                     V_v[0] = float(self._observer_flow[0])
                     V_v[1] = float(self._observer_flow[1])
 
+                # MAP-DRIVEN SMALL-MARKER FLOW (stage 4): takes PRIORITY over both the lstsq and
+                # the observer once the small marker is confidently mapped AND in its reliable
+                # size band (see _smallSlotFlowReady docstring) -- independent of/typically
+                # earlier than HANDOVER_LATCHED. Falls through untouched if not ready/unavailable.
+                if self._flow_from_map:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _fm_dbg = os.environ.get("FLOW_MAP_DBG", "0") == "1"
+                    if self._smallSlotFlowReady(_q1):
+                        _fm = self._flowMap(_q1, float(getattr(self, '_stamp', 0.0)))
+                        if _fm is not None:
+                            V_v[0], V_v[1], V_v[2] = float(_fm[0]), float(_fm[1]), float(_fm[2])
+                            if _fm_dbg:
+                                self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                                self._fmap_dbg['fired'] = self._fmap_dbg.get('fired', 0) + 1
+                        elif _fm_dbg:
+                            self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                            self._fmap_dbg['ready_but_none'] = self._fmap_dbg.get('ready_but_none', 0) + 1
+                    elif _fm_dbg:
+                        self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                        self._fmap_dbg['not_ready'] = self._fmap_dbg.get('not_ready', 0) + 1
+
                 # ds/dh OUTLIER GATE (2026-07-04): reject a per-frame lateral-flow spike (|Δh| beyond
                 # a physical rate) and HOLD last-good — kills the σ_min LK garbage ramp (→ fly-away)
                 # while passing the good median + genuine slow v/Z growth. Applies to whichever source
@@ -2629,6 +2674,16 @@ class IMG_PROCESSOR(Thread):
                     if _mc is not None:
                         self._img_feature_param[-1][0] = float(_mc[0])
                         self._img_feature_param[-1][1] = float(_mc[1])
+
+                # MAP-DRIVEN ALPHA (stage 3): override s[3] with the map's handover-gated slot
+                # orientation (corner+dense moment, lower variance than 4 decode corners alone).
+                # Same quats[1] convention as the centroid. Falls through to decode alpha untouched
+                # if the map/plausibility gate rejects this frame.
+                if self._alpha_from_map and self._img_feature_param:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _ma = self._alphaMap(_q1)
+                    if _ma is not None:
+                        self._img_feature_param[-1][3] = float(_ma)
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -3271,8 +3326,15 @@ class IMG_PROCESSOR(Thread):
         self._obs_kf_t = t
         return out[0], out[1]
 
-    def _marker_principal_angle(self, pts):
+    def _marker_principal_angle(self, pts, weights=None):
         """2pi-periodic marker orientation in the (level) V plane (raw, no offset).
+
+        weights (2026-07-19, stage 3): optional explicit per-point weight array, same
+        length as pts. None (default) preserves the original behavior EXACTLY -- [4,3,2,1]
+        for a 4-corner quad, uniform otherwise. Lets the MAP-DRIVEN path (get_marker_points'
+        corner+dense set, richer than 4 corners alone) reuse this SAME moment+disambiguation
+        math instead of duplicating it -- never re-derive this logic, see _computeFeatureVec's
+        docstring for why (a board<->map<->fallback switch must never jump conventions).
 
         The weighted 2nd-moment principal axis 0.5*arctan2(2 mu11, mu20-mu02)
         gives only an AXIS (pi-period) — invariant under 180deg. We disambiguate
@@ -3287,7 +3349,9 @@ class IMG_PROCESSOR(Thread):
         _getImgFeatures fallback.
         """
         x, y = pts[:, 0], pts[:, 1]
-        if len(x) == 4:
+        if weights is not None:
+            w = np.asarray(weights, dtype=float)
+        elif len(x) == 4:
             w = np.array([4.0, 3.0, 2.0, 1.0])
         else:
             w = np.ones(len(x))
@@ -3785,6 +3849,7 @@ class IMG_PROCESSOR(Thread):
             "FPS": self._fps_log,
             "Image Stamp": self._stamp_log,
             "Centroid Map Dbg": getattr(self, '_cmap_dbg', {}),   # (2026-07-18) _centroidMap fire/none breakdown (CENTROID_MAP_DBG=1)
+            "Flow Map Dbg": getattr(self, '_fmap_dbg', {}),   # (2026-07-19) stage-4 small-marker-flow fire/ready breakdown (FLOW_MAP_DBG=1)
             "Planar Map Shadow": self._planar_map_log,   # (2026-07-15) shadow-mode PlanarFeatureMap vs live-winning tier, see src/planar_map.py
         }
     
@@ -4050,6 +4115,172 @@ class IMG_PROCESSOR(Thread):
             _tally('none_nonfinite'); return None
         except Exception:
             _tally('none_exc'); return None
+
+    def _alphaMap(self, quat):
+        """Map-driven yaw feature alpha, STAGE 3 (2026-07-19). Reuses _marker_principal_angle
+        UNCHANGED -- only the point SOURCE differs: get_marker_points() (handover-gated slot)
+        supplies the corner+dense-interior (position, weight) set instead of just the 4 decode
+        corners, the richer/lower-variance input the map's own class docstring names this for.
+        Same PLAUSIBILITY gate as the centroid (corner prediction position+size sanity) before
+        trusting the slot at all -- a degenerate/off-FoV slot has no reliable orientation either.
+        Applies the SAME _moment_alpha_0 offset as the decode path so a decode<->map fallback
+        never jumps convention. None -> caller keeps decode alpha untouched."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None
+        try:
+            corners_px = pm.get_marker_frame_pts(slot=slot)
+            if corners_px is None or len(corners_px) != 4:
+                return None
+            _ok, _v, _why = self._planarMapPredictionPlausible(corners_px, quat)
+            if not _ok:
+                return None
+            pts_px, wts = pm.get_marker_points(slot=slot)
+            if pts_px is None or wts is None or len(pts_px) < 3:
+                return None
+            Vp = self._getVirtualPts(np.asarray(pts_px, np.float32), quat)
+            if Vp is None or len(Vp) != len(pts_px):
+                return None
+            raw = self._marker_principal_angle(Vp, weights=wts)
+            a = float(np.arctan2(np.sin(raw - self._moment_alpha_0), np.cos(raw - self._moment_alpha_0)))
+            return a if np.isfinite(a) else None
+        except Exception:
+            return None
+
+    def _smallSlotExtentPx(self, quat):
+        """Current apparent size (px, V-frame RMS corner-to-centre distance * focal) of the
+        map's SECONDARY (smaller) slot -- STAGE 4 (2026-07-19, user). None if unavailable."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        sec = pm.secondary_slot_name()
+        if sec is None:
+            return None
+        try:
+            px = pm.get_marker_frame_pts(slot=sec)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            ext_v = float(np.sqrt(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1))))
+            fx = self.focal[0] if self.focal is not None else 270.0
+            return ext_v * fx
+        except Exception:
+            return None
+
+    def _smallSlotFlowReady(self, quat):
+        """Is the small (secondary) marker BOTH confidently mapped AND in the SIZE BAND where
+        flow (a velocity DERIVATIVE, needs corner-spread observability) is reliable -- STAGE 4
+        (2026-07-19, user directive + characterization). Two-sided gate, NOT just "big enough":
+        - too SMALL (< MAP_FLOW_MIN_EXT_PX): corner spread too tight, flow noise dominates
+          (measured: median error 0.49 vs GT V-frame flow at ~8px extent, vs 0.06-0.07 in the
+          15-35px band -- a ~7x jump).
+        - too LARGE (> MAP_FLOW_MAX_EXT_PX): approaching overflow/edge-foreshortening, flow
+          degrades AGAIN (measured: median error back up to 0.17-0.18 past ~40px, matching the
+          same tilt-grazing/overflow degradation traced for the loom/centroid). This is the
+          "can't wait for the big marker to fill the FoV" half of the directive -- the reliable
+          window is a BAND, not a threshold, and it closes again well before overflow.
+        Defaults (15, 40 px) are this session's IC1-5 characterization; MAY need re-deriving if
+        camera intrinsics/marker size change. Independent of HANDOVER_LATCHED (loom/centroid/
+        alpha's gate) -- this is a SEPARATE, typically EARLIER, size-gated readiness."""
+        if not self.SMALL_SLOT_CONFIDENT:
+            return False
+        ext = self._smallSlotExtentPx(quat)
+        if ext is None:
+            return False
+        return self._flow_map_min_ext <= ext <= self._flow_map_max_ext
+
+    def _flowMap(self, quat, t):
+        """Map-driven small-marker flow [h_x, h_y, h_z], STAGE 4. h_x/h_y: the SAME validated
+        2-state CV-Kalman rate estimator the observer uses (_obs_vel_kf), fed the small slot's
+        map-derived V-frame centre instead of a decoded centroid -- own KF state so this never
+        interferes with the observer's. h_z: _loomMapM on the secondary slot explicitly
+        (independent of HANDOVER_LATCHED, matching this stage's own earlier size gate).
+        None -> caller keeps whichever source (lstsq/observer) was already active this frame."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        sec = pm.secondary_slot_name()
+        if sec is None:
+            return None
+        try:
+            px = pm.get_marker_center_native(slot=sec)
+            if px is None:
+                return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)
+            if Vp is None or len(Vp) != 1:
+                return None
+            x0, y0 = float(Vp[0, 0]), float(Vp[0, 1])
+            if self._flowmap_kf_x is None or self._flowmap_kf_t is None:
+                self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                hx, hy = 0.0, 0.0
+            else:
+                dt = t - self._flowmap_kf_t
+                if dt <= 1e-4 or dt > 0.5:
+                    self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                    self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                    hx, hy = 0.0, 0.0
+                else:
+                    F = np.array([[1.0, dt], [0.0, 1.0]])
+                    Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+                    r = self._obs_kf_r
+                    out = []
+                    for st, P, z in ((self._flowmap_kf_x, self._flowmap_kf_Px, x0),
+                                     (self._flowmap_kf_y, self._flowmap_kf_Py, y0)):
+                        st[:] = F @ st
+                        P[:] = F @ P @ F.T + Q
+                        S = P[0, 0] + r; K = P[:, 0] / S
+                        st[:] = st + K * (z - st[0])
+                        P[:] = P - np.outer(K, P[0, :])
+                        out.append(float(st[1]))
+                    hx, hy = out[0], out[1]
+                    self._flowmap_kf_t = t
+            hz = self._loomMapM_slot(sec, quat)
+            if hz is None:
+                return None
+            if not all(np.isfinite(v) for v in (hx, hy, hz)):
+                return None
+            return np.array([hx, hy, hz], dtype=float)
+        except Exception:
+            return None
+
+    def _loomMapM_slot(self, slot, quat):
+        """Loom scale->rate for an EXPLICIT slot (STAGE 4 helper): same μ20+μ02 + causal
+        linear-fit d(lnM)/dt as _loomMapM, but bypassing its HANDOVER_LATCHED slot selection --
+        this stage gates on SIZE, independently and typically earlier than the handover latch."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        try:
+            px = pm.get_marker_frame_pts(slot=slot)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            M = float(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1)))
+            if not (M > 1e-12 and np.isfinite(M)):
+                return None
+            t = float(getattr(self, '_stamp', 0.0))
+            lnM = float(np.log(M))
+            self._flowmap_lnM_hist = getattr(self, '_flowmap_lnM_hist',
+                                             deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9"))))
+            self._flowmap_lnM_hist.append((t, lnM))
+            if len(self._flowmap_lnM_hist) < 3:
+                return 0.0
+            ts = np.array([c[0] for c in self._flowmap_lnM_hist])
+            if ts.max() - ts.min() < 1e-4:
+                return 0.0
+            t0 = ts - ts[0]
+            slope = np.polyfit(t0, [c[1] for c in self._flowmap_lnM_hist], 1)[0]
+            return float(np.clip(-0.5 * slope * self._loom_gain, -10.0, 10.0))
+        except Exception:
+            return None
 
     def update_cbf_handover_signal(self, cbf_overflow):
         """CBF-driven alternative path to HANDOVER_LATCHED (2026-07-17, user design),

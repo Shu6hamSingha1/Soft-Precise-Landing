@@ -546,9 +546,28 @@ async def main(record = 'n'):
             # GT-FEEDBACK: the controller runs on the always-available GT target
             # pose, so the perception freshness gate must not stop command flow
             # (otherwise the terminal marker-loss routes to open-loop = confound).
+            #
+            # RESCUE_ACTIVE (2026-07-16): FEATURE_IS_STALE counts consecutive RAW-tier
+            # (ArUco/KLT/dense-recovery) misses only -- it has no visibility into whether
+            # img_data's PlanarFeatureMap rescue is providing a trustworthy substitute
+            # this frame (grounded in the map's OTHER currently-tracked scene features,
+            # not blind extrapolation). Without this, a rescue-covered dropout was treated
+            # identically to genuinely-no-information: FEATURE_IS_STALE flags after just
+            # ~0.1s (STALE_THRESH=3 frames), and this loop would fall into the grace-hold/
+            # TARGET_LOST path below long before the rescue's estimate could ever reach
+            # getControlInput() -- confirmed live (IC5): the rescue kept producing a
+            # smooth, plausible position through a 1.5s corner-loss window, but control
+            # had already been abandoned. RESCUE_ACTIVE lets a rescue-covered frame keep
+            # calling getControlInput() (which already consumes the rescued
+            # getImgFeatureParam()/getOptFlowAngVel() output) instead of freezing or
+            # giving up. The MARKER_LOSS_GRACE/TARGET_LOST backstop below still applies
+            # once the rescue itself runs out of usable structure (map_confidence drops,
+            # RESCUE_ACTIVE goes False) -- this does not remove that safety net, only
+            # extends how long genuinely-useful perception keeps driving the loop.
             feature_fresh = (os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
                              or (EC_node.TARGET_IS_VISIBLE
-                                 and not EC_node.FEATURE_IS_STALE))
+                                 and not EC_node.FEATURE_IS_STALE)
+                             or EC_node._img_node.RESCUE_ACTIVE)
             # ── Stale-streak commitment (see env knobs above; inert when EXTENT=0) ──
             if STALE_COMMIT_EXTENT > 0.0 and not in_final_descent:
                 if feature_fresh:
@@ -612,6 +631,16 @@ async def main(record = 'n'):
             if EC_node.TOUCHDOWN_DETECTED and not FC_node.LANDED:
                 print("[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming")
                 FC_node.LANDED = True
+
+            # CBF-driven handover signal (2026-07-17, user design): bridges controller.py's
+            # CBF_OVERFLOW (per-corner FoV-margin classification, big marker spanning/still
+            # over target) into img_data.py's HANDOVER_LATCHED terminal-phase flag, alongside
+            # its existing independent loom-M-drop detector. landing_test.py is the natural
+            # bridge — it owns both EC_node (controller) and EC_node._img_node, which stay
+            # one-directionally decoupled from each other otherwise. Deliberately does NOT
+            # touch which marker feeds s/alpha/h (stays big-priority for flow observability)
+            # — this only affects the terminal-commit gate _ringCommitStep already reads.
+            EC_node._img_node.update_cbf_handover_signal(EC_node.CBF_OVERFLOW)
 
             await asyncio.sleep(SLEEP_TIME)
 
