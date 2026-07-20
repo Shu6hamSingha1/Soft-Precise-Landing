@@ -535,6 +535,28 @@ class IMG_PROCESSOR(Thread):
         # of an all-or-nothing swap -- a partially-degraded slot still carries some signal,
         # just not full trust.
         self._planar_map_reject_floor = float(os.environ.get("PLANAR_MAP_REJECT_FLOOR", "0.05"))
+        # WINDOWED-RATE plausibility gate for _centroidMap/_alphaMap (2026-07-21, see
+        # feedback_map_rate_plausibility_gate): confidence measures internal RIGIDITY of the
+        # tracked point cluster, not whether it's still anchored to the real target -- a
+        # coherently-drifting-but-rigid cluster can hold confidence=1.0 while genuinely
+        # diverging (diagnosed: IC3's 158m fly-away and a 13m IC1 miss both showed the map's
+        # OWN raw centroid accelerating to ~0.8-1.1/s in its final accepted frames while trust
+        # stayed pegged at 1.0 throughout). This is a SEPARATE axis from confidence, checked
+        # via a short rolling-window slope fit (same pattern as the loom's d(lnM)/dt gate,
+        # _mtrace_hist) on the map's own accepted history -- independent of what the map
+        # itself reports about its confidence. Two tiers, mirroring the reject/full-trust
+        # confidence floors: below MAP_RATE_SOFT, full trust; between SOFT and REJECT,
+        # tapered trust (folded into the SAME _cmap_last_trust/_amap_last_trust the
+        # confidence-scaled KF r already uses -- the value itself is NOT touched, map stays
+        # authoritative for what's reported); above MAP_RATE_REJECT, hard reject (None), same
+        # tier as a position/size plausibility failure. Defaults are PROVISIONAL -- derived
+        # from tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s;
+        # both failures: ~0.8-1.1/s in their final frames -- a 20-50x gap), not a proper
+        # n>=5 derivation; validate before trusting these numbers long-term.
+        self._map_rate_soft = float(os.environ.get("MAP_RATE_SOFT", "0.3"))
+        self._map_rate_reject = float(os.environ.get("MAP_RATE_REJECT", "0.8"))
+        self._cmap_rate_hist = []   # [(t, x, y), ...] last few ACCEPTED centroid-map samples
+        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe
         # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
         # site comment): a rescue-projected centroid is only trusted if it falls within
         # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
@@ -3837,6 +3859,51 @@ class IMG_PROCESSOR(Thread):
         # ---- 4. Feature vector (unnormalized) ----
         return np.array([xc, yc, 1.0, alpha])
 
+    def _mapRatePlausible(self, hist, t, vals, max_hist=5):
+        """WINDOWED-RATE plausibility check shared by _centroidMap/_alphaMap (2026-07-21 --
+        see the MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment for full rationale). This is
+        a THIRD, INDEPENDENT axis alongside _planarMapPredictionPlausible's position/size
+        checks -- confidence (and position/size plausibility) can't see a cluster that's
+        coherently drifting while staying internally rigid and in-frame; this catches that
+        by looking at the ACCEPTED value's own recent trend, the same pattern the loom's
+        d(lnM)/dt gate (_mtrace_hist) already uses for an analogous "smooth drift, not a
+        discontinuous glitch" problem in a different channel.
+
+        hist: the caller's rolling list (self._cmap_rate_hist or self._amap_rate_hist),
+        mutated in place (append + trim to max_hist) -- caller owns the list identity.
+        t: timestamp for this sample. vals: tuple of linear-safe values to rate-check
+        (x, y for centroid; sin(alpha), cos(alpha) for alpha -- NEVER alpha itself, which
+        is a wrapped angle and would spuriously spike at the +-pi branch cut exactly like
+        the linear-KF bug this session already fixed once).
+
+        Returns (ok: bool, rate_trust: float in [0,1]). ok=False -> caller should REJECT
+        this sample entirely (same weight as a position/size plausibility failure).
+        rate_trust (when ok) is meant to be combined (via min()) with confidence-derived
+        trust -- it tapers how much the KF trusts this sample (via the confidence-scaled r
+        mechanism), NOT the reported value itself; map stays authoritative for what's
+        shown this frame regardless."""
+        hist.append((t,) + tuple(vals))
+        if len(hist) > max_hist:
+            del hist[0]
+        if len(hist) < 3:
+            return True, 1.0   # not enough history to judge yet -- don't block early samples
+        tt = np.array([h[0] for h in hist])
+        if tt.max() - tt.min() < 1e-3:
+            return True, 1.0   # degenerate window (near-duplicate timestamps)
+        rate_sq = 0.0
+        for k in range(1, len(vals) + 1):
+            vv = np.array([h[k] for h in hist])
+            slope = np.polyfit(tt - tt[0], vv, 1)[0]
+            rate_sq += slope ** 2
+        rate = float(np.sqrt(rate_sq))
+        if rate > self._map_rate_reject:
+            return False, 0.0
+        if rate > self._map_rate_soft:
+            return True, float(np.clip(
+                1.0 - (rate - self._map_rate_soft) / max(self._map_rate_reject - self._map_rate_soft, 1e-6),
+                0.0, 1.0))
+        return True, 1.0
+
     def _planarMapPredictionPlausible(self, pm_px, quat):
         """PHYSICAL-PLAUSIBILITY check for a PlanarFeatureMap camera-pixel corner
         prediction (2026-07-16, extracted so the RESCUE and OVERRIDE consumers share
@@ -4379,9 +4446,18 @@ class IMG_PROCESSOR(Thread):
             if Vp is None or len(Vp) != 1:
                 _tally('none_vpts'); return None
             c = size_factor * Vp[0, :2]
-            if np.all(np.isfinite(c)):
-                _tally('fired'); return c
-            _tally('none_nonfinite'); return None
+            if not np.all(np.isfinite(c)):
+                _tally('none_nonfinite'); return None
+            # WINDOWED-RATE plausibility (2026-07-21, see _mapRatePlausible docstring +
+            # MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment) -- a THIRD axis alongside
+            # position/size, catching a coherently-drifting-but-rigid cluster the
+            # confidence gate above can't see.
+            _rate_ok, _rate_trust = self._mapRatePlausible(
+                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])))
+            if not _rate_ok:
+                _tally('none_rate_implausible'); return None
+            self._cmap_last_trust = min(self._cmap_last_trust, _rate_trust)
+            _tally('fired'); return c
         except Exception:
             _tally('none_exc'); return None
 
@@ -4436,7 +4512,18 @@ class IMG_PROCESSOR(Thread):
                 return None
             raw = self._marker_principal_angle(Vp, weights=wts)
             a = float(np.arctan2(np.sin(raw - self._moment_alpha_0), np.cos(raw - self._moment_alpha_0)))
-            return a if np.isfinite(a) else None
+            if not np.isfinite(a):
+                return None
+            # WINDOWED-RATE plausibility (2026-07-21, see _mapRatePlausible docstring) --
+            # rate-checked on [sin(a), cos(a)], NEVER on the wrapped angle `a` itself (a
+            # linear slope fit across the +-pi branch cut would spuriously spike, exactly
+            # the class of bug the sin/cos-pair KF fix already addressed once this session).
+            _rate_ok, _rate_trust = self._mapRatePlausible(
+                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)))
+            if not _rate_ok:
+                return None
+            self._amap_last_trust = min(self._amap_last_trust, _rate_trust)
+            return a
         except Exception:
             return None
 
