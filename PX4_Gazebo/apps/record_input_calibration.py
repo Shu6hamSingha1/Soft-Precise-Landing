@@ -81,8 +81,22 @@ async def main(record = 'n'):
 
     val = 0.05
 
+    # 2026-07-20: env-var overrides for replicating the hardware pipeline's
+    # WEAK calibration settings inside Gazebo (defaults below are UNCHANGED
+    # from the canonical values, so a normal run is unaffected). Purpose:
+    # hardware's input-cal got much worse cmd<->tel correlation than this
+    # SITL script (e.g. roll r=0.33 hw vs 0.95 sim) using a 5x smaller thrust
+    # excitation (1N vs val*100=5N) and originally a 2x shorter step hold
+    # (0.5s vs this loop's 1.0s break threshold, see below). Running THIS
+    # script with INPUT_CAL_THRUST_AMP_N=1.0 INPUT_CAL_STEP_HOLD_S=0.5
+    # degrades sim to match hardware's original settings, to test whether
+    # the hardware r-gap is explained by amplitude/hold-time alone (SNR) or
+    # whether real-world noise is also a major factor.
+    thrust_amp = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", str(val * 100)))
+    step_hold_s = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "1.0"))
+
     # Use the following cmd_profile for cmd to FC
-    cmd_profile = np.array([[0.0,0.0,0.0,0.0],[-val,-val,-val,-val*100],[0.0,0.0,0.0,0.0],[val,val,val,val*100]]*5)
+    cmd_profile = np.array([[0.0,0.0,0.0,0.0],[-val,-val,-val,-thrust_amp],[0.0,0.0,0.0,0.0],[val,val,val,thrust_amp]]*5)
 
     try:
         rclpy.init()
@@ -148,7 +162,7 @@ async def main(record = 'n'):
                 target_pose.append(pose_node.getPose().target)
                 ac_cmd.append(cmd)
 
-                if time_node.perf_counter() - restart_time > 1.0:
+                if time_node.perf_counter() - restart_time > step_hold_s:
                     print(f"Command | UAV Pose: {cmd} | {UAV_pose[-1].position}")
                     restart_time = time_node.perf_counter()
                     break
