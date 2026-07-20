@@ -135,6 +135,15 @@ async def main(record = 'n'):
     opt_flow_ang_vel = []
     ring_opt_flow_ang_vel = []   # RAW texture-free ring [h;w], co-sampled for M_ring
     img_feature_param = []
+    opt_flow_estimator_tag = []   # which estimator produced each Opt Flow Ang Vel sample
+    img_feature_estimator_tag = []   # which estimator produced each Img Feature Params sample
+    # RAW map-sourced fields (2026-07-20, see feedback_map_cal_validation_gap) -- co-sampled
+    # the SAME way as opt_flow_ang_vel/img_feature_param above, so derive_board_cal.py can fit
+    # them against GT with no separate alignment. nan when that sample's map function didn't
+    # fire (see getRawCentroidMapFeature/getRawAlphaMapFeature/getRawFlowMapFeature docstrings).
+    centroid_map_raw = []
+    alpha_map_raw = []
+    flow_map_raw = []
     phase_log = []           # per-sample tag: 'x', 'y', 'z', 'yaw', or 'settle'
     start_pose = None
     t_c = []
@@ -317,6 +326,20 @@ async def main(record = 'n'):
                     phase_t0 = start_time
                     CONTROLLER_READY = True
                     t_c = [0.0]
+                    # PROPAGATE to the img node (2026-07-17). This app set only its OWN
+                    # module-level CONTROLLER_READY (phase timing) and never told img_data --
+                    # the same gap 0e21c4d fixed for landing_test.py, and which
+                    # record_output_validation.py:138 already does. Consequence: img_data's
+                    # _reset_stateful_trackers() fires on the CONTROLLER_READY False->True EDGE
+                    # (img_data.py ~:1354) and that is where self._planar_map is CONSTRUCTED
+                    # (~:1285) -- so with no propagation the map stayed None for the whole
+                    # recording and NEVER RAN during output calibration (confirmed: 'Planar Map
+                    # Shadow' logged 0 entries on the 2026-07-17 textured run). That is a
+                    # TRAIN/RUN MISMATCH of the same class as the observer-CV-KF one this
+                    # session fixed: PLASMC_PLANAR_MAP_PRIMARY defaults ON, so at RUNTIME the map
+                    # can source V_aruco_norm[1] (-> centroid + moment loom), while the cal was
+                    # being fit against a map-dead signal the runtime never produces.
+                    img_node.CONTROLLER_READY = True
 
                 tau = time_node.perf_counter() - phase_t0   # phase-relative time
                 # Multisine commands ABSOLUTE altitude (NED z = fn_z - H), so the
@@ -356,6 +379,13 @@ async def main(record = 'n'):
                 opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
                 ring_opt_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
                 img_feature_param.append(img_node.getRawImgFeatureParam())
+                # Which estimator produced each sample -- lets the derive tools exclude synthetic
+                # 'coast' samples from the fit and report per-estimator coverage/separate fits.
+                opt_flow_estimator_tag.append(img_node.getRawOptFlowEstimatorTag())
+                img_feature_estimator_tag.append(img_node.getRawImgFeatureEstimatorTag())
+                centroid_map_raw.append(img_node.getRawCentroidMapFeature())
+                alpha_map_raw.append(img_node.getRawAlphaMapFeature())
+                flow_map_raw.append(img_node.getRawFlowMapFeature())
                 cmd.append(pos_cmd)
                 phase_log.append(ph_name)
 
@@ -395,7 +425,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd, "Phase": phase_log}
+            gt_data = {"Start Time": start_time, "Time": t_c, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Ring Opt Flow Ang Vel": ring_opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Opt Flow Estimator Tag": opt_flow_estimator_tag, "Img Feature Estimator Tag": img_feature_estimator_tag, "Centroid Map Raw": centroid_map_raw, "Alpha Map Raw": alpha_map_raw, "Flow Map Raw": flow_map_raw, "Command": cmd, "Phase": phase_log}
             img_params = img_node.getParams()
 
         # Close img_node thread

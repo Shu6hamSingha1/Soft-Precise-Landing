@@ -17,7 +17,19 @@ metadata:
 | 120–161 | 26.7 | **53%** |
 | 161–199 | **8.9** | **41%** |
 
-Station survival collapses ~70% and the loom goes non-physical exactly when extent crosses the outer radii. Whole radius-tiers (~60 stations each) go bad SIMULTANEOUSLY (threshold event, not isolated outliers) → the MAD median rejection can't save it (bad cohort drags the median). Two mechanisms: (1) depth/surface mixing (stations on marker/platform vs ground violate the uniform-Z coplanarity assumption); (2) ArUco cell texture is aperture-problem-adversarial for LK (locks onto wrong identical-looking cell edges → large discontinuous flow errors).
+Station survival collapses ~70% and the loom goes non-physical exactly when extent crosses the outer radii. Whole radius-tiers (~60 stations each) go bad SIMULTANEOUSLY (threshold event, not isolated outliers) → the MAD median rejection can't save it (bad cohort drags the median). Mechanism is TEXTURE-ONLY, not depth: ArUco cell texture is aperture-problem-adversarial for LK (locks onto wrong identical-looking cell edges → large discontinuous flow errors).
+
+> **⛔ CORRECTION (2026-07-11, user-flagged):** the original write-up here also listed "(1) depth/surface
+> mixing — stations on marker/platform vs ground violate the uniform-Z coplanarity assumption" as a
+> co-mechanism. That's WRONG and contradicts [[feedback_ring_depth_mixing_falsified]] (2026-06-06,
+> established first): the ring runs in the gravity-leveled V-frame and the ArUco marker/board is
+> COPLANAR with the flat ground (not raised), so every pixel — on the marker or the ground — shares the
+> SAME perpendicular depth Z=altitude; no depth spread exists to mix. Confirmed empirically there too
+> (ring h_z vs corner h_z r=0.92-0.97 at ALL altitudes; depth-mixing would force divergence with
+> altitude, and it doesn't). A ring station landing on the marker is not at a different depth than one
+> on the ground. The texture/aperture-problem mechanism (LK on repetitive ArUco cell edges) is sufficient
+> on its own and is what the geometric quantification below actually measures — don't re-add a depth
+> co-mechanism in future sessions.
 
 **Fix BAKED (commit bb0a675): `FLOW_FUSE_RING` default 1→0.** A/B (n=1, same IC1): fused → h_z spike −0.86..−1.9 + endpoint balloon; corner-only → h_z tight −0.29..−0.285, endpoint ≈ min_alt_xy (no balloon). Full baked sweep: IC3 mean xy 12.25→0.248 (the 59m fly-away class gone). Propagation path into lateral: the corrupted h_z entered `a_u_xy` via the loom×flow cross term `−(h·e3)·h` (quadratic in h) in the equivalent/feedforward branch — NOT via zeta_r/reach/switch (those stayed tiny; verified by exact G-diagonal reach/switch/resid decomposition from logged sigma/G/theta/kappa/a_v).
 

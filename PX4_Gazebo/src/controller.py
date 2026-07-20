@@ -546,12 +546,30 @@ class Controller(Thread):
         self._td_frames = int(os.environ.get("PLASMC_TD_FRAMES", "3"))    # persistence (reject noise spikes)
         self._td_sen    = float(os.environ.get("PLASMC_TD_SEN", "0.6"))   # near-centered gate (first contacts 0.34-0.53)
         self._td_arm_loom = float(os.environ.get("PLASMC_TD_ARM_LOOM", "-0.1"))  # arm once a descent is established
+        # SPIKE MAGNITUDE gate (2026-07-11, replaces the removed FLOW_LOOM_SIGN_GUARD band-aid —
+        # see feedback_loom_sign_guard_blocks_touchdown_detect). A bare h_z>0.0 sign check can't
+        # distinguish a genuine ground-contact spike from noise-floor jitter or a marker-handover
+        # decode glitch: n=5 IC1 with the sign-guard removed showed TWO distinct false-trigger
+        # mechanisms, both firing 1-1.3m above the ground — (1) tiny noise (+0.005..+0.02, no
+        # signal at all) and (2) a large-but-spurious plateau (+0.55..+0.59) coincident with a
+        # corner-count drop (184->81, a decode disruption). A verified GENUINE touchdown bounce
+        # (stable ncorn=184 throughout, real ground contact) spiked to +0.81/+0.68/+0.63 then
+        # DECAYED within a few frames -- a spike, not a sustained plateau. Same physical idea as
+        # the accelerometer impact detector (|a|>50 m/s^2, a MAGNITUDE threshold, not just a>0):
+        # require the loom to actually SPIKE, not merely flip sign. h_z=vz/Z is already the
+        # scale-free ratio (no metric/depth added) -- this is a magnitude threshold on the SAME
+        # signal already used for the sign check, not a new depth-dependent gate.
+        self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.5"))  # min |h_z| to count (PROVISIONAL, n=2 evidence -- validate at n>=5)
+        self._td_debug = os.environ.get("TD_DEBUG", "0") == "1"  # per-call h_z/streak/s_e_n trace, for
+                                                                    # tracing the exact trigger sequence
+                                                                    # instead of reconstructing it offline
+                                                                    # (see feedback_h_z_prevengage_misalign)
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>0 for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"(h_z>{self._td_spike} for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -679,6 +697,24 @@ class Controller(Thread):
         2026-05-22).  Lets landing_test refuse to act on extrapolated
         feature data after STALE_THRESH consecutive detection misses."""
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
+
+    @property
+    def CBF_OVERFLOW(self):
+        """True iff the CBF's own per-corner FoV-margin classification found the current
+        CBF corner source (small-marker-preferred, see cone-angle computation) breaching
+        the margin on OPPOSITE sides (spanning -- still over target, benign). Signals
+        handover-readiness on the BIG marker; img_data.py decides whether to actually
+        switch primary (combining this with small-slot map confidence -- see user design
+        2026-07-17). The CBF only SIGNALS here; it does not force the switch itself."""
+        return bool(self._cbf_overflow)
+
+    @property
+    def CBF_DRIFT_OFF(self):
+        """True iff the CBF's own per-corner FoV-margin classification found a ONE-SIDED
+        breach (target visibility genuinely failing) -- the CBF's own job to prevent, not
+        just observe. See _cbf_drift_pullback_frac for the corrective response (tightens
+        the cbf2_filter barrier margin on the breaching axis)."""
+        return bool(self._cbf_drift_off)
 
     @property
     def MARKER_EXTENT_PX(self):
@@ -832,21 +868,29 @@ class Controller(Thread):
         return sdot + self._s_raw[i1][k] * self._h_raw[ih][2]
 
     def _touchdownDetect(self, s_e_n):
-        """Loom-inversion soft-touchdown detector. Arms once a descent is established (h_z < arm),
-        then latches LANDED when the loom holds POSITIVE for _td_frames frames (= the vertical
-        reversal at first contact) while near-centered. Depth-free (loom only), one-way latch."""
+        """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
+        then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
+        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames (= the vertical
+        reversal at first contact) while near-centered. Depth-free (loom ratio only), one-way
+        latch."""
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
+        _sen_mag = float(np.max(np.abs(s_e_n)))
         if not self._td_armed:
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
+                if self._td_debug:
+                    print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
-        self._td_streak = self._td_streak + 1 if h_z > 0.0 else 0
-        if self._td_streak >= self._td_frames and float(np.max(np.abs(s_e_n))) < self._td_sen:
+        self._td_streak = self._td_streak + 1 if h_z > self._td_spike else 0
+        if self._td_debug:
+            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} streak={self._td_streak} "
+                  f"|s_e_n|={_sen_mag:.4f}")
+        if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x{self._td_frames}) "
-                  f"|s_e_n|={float(np.max(np.abs(s_e_n))):.2f} -> LANDED (disarm before bounce)")
+            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames}) "
+                  f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):
@@ -1040,6 +1084,39 @@ class Controller(Thread):
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
+        # CBF SMALL-MARKER PREFERENCE + OVERFLOW/DRIFT-OFF (2026-07-17, user design): the CBF
+        # needs more tilt headroom than the flow pipeline does -- the flow (h_x/h_y) needs the
+        # BIG marker's wider corner spread to avoid a rank-deficient lstsq (stays big-priority,
+        # unaffected by this), but the CBF's own FoV margin gets eaten by the big marker's own
+        # overflow near touchdown, giving it LESS headroom right when it needs more. Read the
+        # SMALL slot from PlanarFeatureMap (independent of which marker is "primary" for
+        # flow/s) once it's confidently mapped; fall back to whatever's live otherwise.
+        self._cbf_small_conf_min = float(os.environ.get("CBF_SMALL_SLOT_CONF_MIN", "0.5"))
+        # HYSTERESIS (2026-07-17, found via IC4 regression on first validation pass): the raw
+        # per-frame threshold check above has ZERO persistence -- every other confidence gate
+        # in this codebase (rescue gate, STALE_THRESH, HANDOVER_PERSIST_FRAMES,
+        # _rigid_fail_streak) uses immediate-off/N-frame-persistence-on hysteresis specifically
+        # to prevent flicker near the boundary. Without it, whenever get_slot_confidence
+        # hovers near CBF_SMALL_SLOT_CONF_MIN, the CBF's corner source (and therefore
+        # d_min_fov/theta_cone) can jump discontinuously frame-to-frame between the big
+        # marker's real geometry and the small marker's mapped geometry. Confirmed live:
+        # IC4's first post-change validation run had theta_cone collapse near-zero for a
+        # continuous 5.6s stretch (406/905 frames <0.05 rad) immediately preceding a NEW
+        # target_lost=DRIFT_OFF that wasn't present before this change. Same pattern class as
+        # feedback_planar_map_plausibility_gate's rescue/override gate split.
+        self._cbf_small_slot_on = False
+        self._cbf_small_slot_streak = 0
+        self._cbf_small_slot_on_frames = int(os.environ.get("CBF_SMALL_SLOT_ON_FRAMES", "5"))
+        # OVERFLOW (corners breach the margin on OPPOSITE sides -- spanning, still over
+        # target, benign, marks handover-ready) vs DRIFT-OFF (breach on ONE side only --
+        # target visibility genuinely failing, the CBF's own job to prevent) -- classified
+        # from the SAME per-corner margin the CBF already computes, not img_data.py's
+        # separately-heuristic _last_overflow/_last_drifted_off (different margin, different
+        # purpose -- ring-flow routing, not visibility enforcement).
+        self._cbf_overflow = False
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None   # (axis 0/1, sign) of the worst breach, for the pull-back
+        self._cbf_drift_pullback_frac = float(os.environ.get("CBF_DRIFT_PULLBACK_FRAC", "0.4"))
         self._w_u = []
         self._B_T = []
         self._u = []
@@ -1838,6 +1915,16 @@ class Controller(Thread):
                 float(np.linalg.norm(_reach[:2])), float(np.linalg.norm(_switch[:2])),
                 float(np.linalg.norm(_equiv[:2])), float(np.linalg.norm(_drift[:2])),
                 float(np.linalg.norm(self._kappa[-1][:2])), float(np.linalg.norm(self._sigma[-1][:2])), _res))
+            # Z-AXIS decomposition (2026-07-11, descent-stall investigation): the xy-only print
+            # above can't show whether a_u_z (the descent-authority component) is being cancelled
+            # by a perception-corrupted equiv/drift term rather than a genuine controller/thrust
+            # issue. equiv_z explicitly carries "loom, h_d_rate, cross" per the comment above --
+            # a bad perception h_z feeds directly into it.
+            _resz = float((_reach + _switch + _equiv + _drift - a_u)[2])
+            print("[au_z] hz=%+.4f hdz=%+.4f auz=%+7.3f | reachz=%+7.3f switchz=%+7.3f equivz=%+7.3f driftz=%+7.3f | kz=%+.3f sigz=%+.3f resz=%.3f" % (
+                float(self._h[-1][2]), float(self._h_d[-1][2]) if len(self._h_d) else float('nan'),
+                float(a_u[2]), float(_reach[2]), float(_switch[2]), float(_equiv[2]), float(_drift[2]),
+                float(self._kappa[-1][2]), float(self._sigma[-1][2]), _resz))
         # TERMINAL a_u-cap (combined-barrier analog of the V_ds_d commit-cap). In combined mode
         # the lateral demand flows zeta_r->sigma->a_u (NOT V_ds_d), so PLASMC_COMMIT_DSD_MAX is
         # inert — the terminal zeta_r/G^-1 blow-up spikes a_u_xy to ~130 m/s² -> max-tilt -> marker
@@ -2196,22 +2283,110 @@ class Controller(Thread):
                         * np.exp(-self._l_fov * t_elapsed)
                         + self._rho_fov_inf)   # (2,)  == rho_fov_0 when l_fov=0
 
-        # 3) Per-corner pixel margins — get latest 4 corners from img_node
-        # _feature_pts[-1] is a [prev, curr] frame pair; [-1][1] is current 4 corners.
-        # Raw corners are in OpenCV top-left coords; convert to image-centered.
-        d_min_fov = 0.0
+        # 3) Per-corner pixel margins. SMALL-MARKER PREFERENCE (2026-07-17, user design): the
+        # CBF wants the SMALL marker specifically -- more headroom, since it isn't the one
+        # overflowing near touchdown -- independent of which marker _feature_pts currently
+        # holds (that stays big-priority, for h_x/h_y flow observability). Read
+        # PlanarFeatureMap's secondary (= smaller, by construction) slot when it's confidently
+        # mapped; fall back to _feature_pts (whatever's live -- normally the big marker until
+        # it's gone) otherwise. Both sources still go through the SAME freshness discipline:
+        # _feature_pts is only trusted via FEATURE_PTS_FRESH (see that fix's comment below);
+        # the small-slot read is only trusted via get_slot_confidence.
+        cbf_corners = None
+        cbf_corners_src = 'none'
         try:
-            fp_list = self._img_node._feature_pts
-            if len(fp_list) > 0:
-                raw_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+            _pm = getattr(self._img_node, '_planar_map', None)
+            _sec = None
+            _sec_conf = 0.0
+            if _pm is not None and getattr(_pm, 'initialized', False):
+                _sec = _pm.secondary_slot_name()
+                _sec_conf = _pm.get_slot_confidence(_sec) if _sec is not None else 0.0
+            # HYSTERESIS (2026-07-17): immediate-off (any sub-threshold frame drops the streak
+            # and the switch instantly), N-frame persistence before switching ON -- see __init__
+            # comment. Prevents the corner-source (and therefore d_min_fov/theta_cone) from
+            # flickering between big-marker-real and small-marker-mapped geometry whenever
+            # confidence hovers near the threshold.
+            if _sec is not None and _sec_conf >= self._cbf_small_conf_min:
+                self._cbf_small_slot_streak += 1
+            else:
+                self._cbf_small_slot_streak = 0
+                self._cbf_small_slot_on = False
+            if not self._cbf_small_slot_on and self._cbf_small_slot_streak >= self._cbf_small_slot_on_frames:
+                self._cbf_small_slot_on = True
+            if self._cbf_small_slot_on and _sec is not None:
+                _sp = _pm.get_marker_frame_pts(slot=_sec)
+                if _sp is not None and len(_sp) == 4:
+                    cbf_corners = np.asarray(_sp, dtype=float)
+                    cbf_corners_src = 'small_slot'
+                else:
+                    self._cbf_small_slot_on = False   # prediction unavailable this frame -- fall back, don't hold a stale "on"
+        except (AttributeError, TypeError, ValueError):
+            cbf_corners = None
+        if cbf_corners is None:
+            # FRESHNESS GATE (2026-07-17, found via IC2 SITL trace; corrected same day per user
+            # pushback on the first version of this fix). _feature_pts HOLDS the last real
+            # corners indefinitely during a genuine total coast (img_data.py's "not
+            # FEATURE_DATA_IS_LOGGED" branch) -- reading it unconditionally fed the cone-clamp
+            # a frozen, arbitrarily-stale marker position as if it were live (IC2's terminal
+            # ~4s corner collapse, MARKER_EXTENT_PX frozen at 245.0px).
+            #
+            # FIRST FIX gated on FEATURE_IS_STALE -- WRONG: that's a legacy RAW-decode-miss
+            # counter that predates PlanarFeatureMap and has zero rescue awareness; it flips
+            # True after just STALE_THRESH=3 consecutive raw misses even while the map is
+            # successfully, plausibility-checked rescuing every one of them -- blinding the
+            # cone-clamp during exactly the scenario the map exists to cover. Root cause fixed
+            # instead: img_data.py's _feature_pts now gets updated with the rescue's plausible
+            # geometry (not held stale) whenever a rescue succeeds, and FEATURE_PTS_FRESH
+            # reflects "raw OR rescue succeeded this frame" (see img_data.py property doc) --
+            # ONLY a genuine total coast (neither raw nor rescue) is unfresh here.
+            try:
+                if getattr(self._img_node, 'FEATURE_PTS_FRESH', True):
+                    fp_list = self._img_node._feature_pts
+                    if len(fp_list) > 0:
+                        cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+                        cbf_corners_src = 'feature_pts'
+            except (IndexError, AttributeError, TypeError):
+                cbf_corners = None
+
+        d_min_fov = 0.0
+        self._cbf_overflow = False
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None
+        if cbf_corners is not None:
+            try:
                 cx, cy = self._img_node.center
-                u_centered = raw_corners[:, 0] - cx
-                v_centered = raw_corners[:, 1] - cy
+                u_centered = cbf_corners[:, 0] - cx
+                v_centered = cbf_corners[:, 1] - cy
                 d_corner_x = rho_fov_curr[0] - np.abs(u_centered)   # (4,)
                 d_corner_y = rho_fov_curr[1] - np.abs(v_centered)   # (4,)
                 d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
-        except (IndexError, AttributeError, ValueError, TypeError):
-            d_min_fov = 0.0   # fall back to "no extra tilt allowed"
+
+                # OVERFLOW vs DRIFT-OFF (2026-07-17, user design): classify off the SAME
+                # per-corner margin d_min_fov is built from, not img_data.py's separate
+                # _last_overflow/_last_drifted_off heuristic (different margin, different
+                # purpose). OVERFLOW = corners breach on OPPOSITE sides of an axis (spanning
+                # -- still over target, benign, marks the BIG marker ready for handover).
+                # DRIFT-OFF = breach on ONE side only (target visibility genuinely failing --
+                # the CBF's own job to prevent, not just observe).
+                bx_neg = bool(np.any(u_centered < -rho_fov_curr[0]))
+                bx_pos = bool(np.any(u_centered >  rho_fov_curr[0]))
+                by_neg = bool(np.any(v_centered < -rho_fov_curr[1]))
+                by_pos = bool(np.any(v_centered >  rho_fov_curr[1]))
+                span = (bx_neg and bx_pos) or (by_neg and by_pos)
+                leaving = bx_neg or bx_pos or by_neg or by_pos
+                self._cbf_overflow = bool(leaving and span)
+                self._cbf_drift_off = bool(leaving and not span)
+                if self._cbf_drift_off:
+                    # worst (most negative) per-axis margin picks the pull-back axis/sign
+                    _cands = []
+                    if bx_neg and not bx_pos: _cands.append((0, -1, float(d_corner_x.min())))
+                    if bx_pos and not bx_neg: _cands.append((0, +1, float(d_corner_x.min())))
+                    if by_neg and not by_pos: _cands.append((1, -1, float(d_corner_y.min())))
+                    if by_pos and not by_neg: _cands.append((1, +1, float(d_corner_y.min())))
+                    if _cands:
+                        self._cbf_drift_axis = min(_cands, key=lambda c: c[2])[:2]
+            except (IndexError, ValueError, TypeError):
+                d_min_fov = 0.0
 
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
@@ -2262,16 +2437,31 @@ class Controller(Thread):
         # live code path. The barrier, two-phase δ, and Phase-2 fallback all live there;
         # this site only marshals the controller state into pure args.
         self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path
-        try:
-            corners = self._img_node._feature_pts[-1][1]
-        except (IndexError, AttributeError, TypeError):
-            corners = None
+        # Reuse the SAME corner source (small-marker-preferred, freshness-gated) computed
+        # above for d_min_fov/overflow/drift-off classification -- one source of truth for
+        # what the CBF is looking at, not a second independent read of _feature_pts.
+        corners = cbf_corners
+        # DRIFT-OFF PULL-BACK (2026-07-17, user design): rather than inventing a new
+        # corrective force with an unverified sign, TIGHTEN the barrier margin cbf2_filter
+        # already enforces (p_10 = phi_max, the camera half-FoV) on the breaching axis --
+        # this forces the SAME validated QP (docs/CBF_visibility.pdf, tools/validate_cbf.py)
+        # to compute a MORE conservative/corrective tilt on that axis using its own
+        # already-correct math, instead of adding an independent term whose sign I cannot
+        # verify against the image Jacobian without risking exactly the kind of
+        # wrong-direction position correction this project has repeatedly traced to
+        # catastrophic fly-aways (see feedback_planar_map_plausibility_gate). Only the
+        # breaching axis is tightened; the other stays at full p_10.
+        p_10_eff = self._p_10
+        if self._cbf_drift_off and self._cbf_drift_axis is not None:
+            _axis, _sign = self._cbf_drift_axis
+            p_10_eff = self._p_10.copy()
+            p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
         I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
-            self._p_10, theta_cone,
+            p_10_eff, theta_cone,
             dt_last, w_rp, self._cbf_state)
         # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
         # it is a thrust-deliverability bound, not a visibility constraint. The CBF

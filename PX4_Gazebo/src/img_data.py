@@ -22,6 +22,7 @@ from ahrs import Quaternion
 from numerical_methods import extrapolate
 
 from gz_subscriber import GZ_Subscriber, Image_Node
+from planar_map import PlanarFeatureMap
 
 CHECK_NUM = 80
 # Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
@@ -54,6 +55,7 @@ class IMG_PROCESSOR(Thread):
         self.RECORD_RAW = os.environ.get("IMG_RECORD_RAW", "0") == "1"
         self._raw_dir = None; self._raw_i = 0; self._raw_stamps = []
         self.CONTROLLER_READY = False
+        self._controller_was_ready = False   # edge-detects the False->True transition (see run())
 
         # Image streaming setup
         self._image_node = Image_Node(time_keeper=time_keeper, controller=controller)
@@ -127,17 +129,68 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER cal (2026-07-03): 1m NESTED marker + centroid-rate observer (PLASMC_CENTROID_RATE=1).
         # h_x/h_y = reduced-solve std-ratio on the OBSERVER lateral flow (median of 5 runs) — recovers
         # the lateral channel the σ_min corner-flow left at the noise floor (old NaN/unstable betas).
+        # KF-REFIT (2026-07-11): the SAME 5 2026-07-03 recordings, re-derived with
+        # tools/aggregate_calibration_phased.py after fixing a filter mismatch —
+        # derive_board_cal.py/derive_ring_cal.py/aggregate_calibration_phased.py were
+        # Savgol(13,1)-filtering the raw signal to fit the cal, while runtime has
+        # defaulted to KF filtering (IMG_FILTER=kf) since 2026-06-06 (commit 6e0b44f).
+        # A static linear cal fit on a Savgol-shaped signal and applied to a
+        # differently-shaped KF signal is not guaranteed valid; on this dataset it
+        # moved every diagonal entry, most sharply the loom row (0.4973->1.1279,
+        # +127%) and w_z (0.8439->1.3879, +64%) — h_x/h_y/s_x/s_y moved ~4-10%.
+        # See feedback_kf_savgol_cal_mismatch. Off-diagonal loom cross-terms
+        # (row 2, cols 0-1) are an older board-fit and NOT re-derived by this
+        # tool (diagonal-only); kept as-is pending a future full-matrix KF refit.
+        # ⭐ OBSERVER-REBUILD RECAL (2026-07-17) — the rows below are re-derived from a FRESH
+        # 5-recording set (calibration_data/output_obskf_q1e3, all 5 runs valid) taken with the
+        # CURRENT binary, superseding the 2026-07-03 set. WHY: the 07-03 recordings predate
+        # commit f790245 (2026-07-04), which rebuilt the observer path in THREE ways at once --
+        # (a) the CV-Kalman filter replaced the polyfit centroid-rate (attenuates -> needs MORE
+        # gain), (b) W_Z SIGN FIX (_oz = -_wv[2]), (c) FRAME-PAIR FIX (quats[0] not quats[1]).
+        # The observer's rate estimator runs INSIDE img_data UPSTREAM of the logged "raw"
+        # (_obs_vel_kf ~:2027 -> _observer_flow ~:2054), so its smoothing is BAKED INTO the
+        # recording and the aggregator CANNOT re-filter it offline -- hence new recordings were
+        # required (unlike the outer KF, which tools/aggregate_calibration_phased.py re-applies).
+        # The 07-11 KF-refit did NOT catch this: it only fixed the OUTER Savgol-vs-KF mismatch.
+        # Old (Jul-3) -> new (Jul-17), per-run n=5, broken Jul-3 run excluded (loom -0.009 /
+        # w_z -0.027 = failed z/yaw phases; MAD-rejected by the tool too):
+        #   h_y  1.063+-0.198 -> 1.617+-0.283  (+52%, Welch t=+3.59, ranges DISJOINT)  [established]
+        #   w_z  1.388+-0.123 -> 1.098+-0.025  (-21%, t=-4.65, DISJOINT)               [established]
+        #   h_x  1.091+-0.266 -> 1.572+-0.331  (+44%, t=+2.54, ranges OVERLAP)         [direction
+        #        consistent w/ h_y + mechanistically expected, but MAGNITUDE not nailed at n=5]
+        #   loom 1.128+-0.036 -> 1.127+-0.018  (-0.1%, t=-0.06)  <- CONTROL: the moment loom is
+        #        polyfit-based and was NOT touched by f790245; it reproduces to 0.1% across two
+        #        independent sets 2 weeks apart => the two campaigns agree where the code didn't
+        #        change and diverge ONLY on the 3 observer channels => the shift is the observer
+        #        rebuild, not drift/noise//a global recording difference. Loom kept at 1.1279.
+        # Consequence of the stale rows: lateral flow h=v_lat/Z was UNDER-read ~1/3 and yaw rate
+        # OVER-read ~21% from 07-04 to 07-17 -- h_x/h_y feed the terminal sigma-breach signal.
+        # Derived at the BAKED CENTROID_RATE_KF_Q=1e-3; a q sweep needs its OWN recording set per
+        # q (not offline-refittable, same reason as above). See feedback_observer_rebuild_recal.
         self._sensor_cal_hw = np.array([
-            [+1.4272, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x
-            [+0.0000, +1.0253, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y
-            [+0.0535, -0.0044, +0.4973, +0.0000, +0.0000, +0.0000],   # loom row (board-fit; control uses MOMENT loom, secondary)
+            [+1.5724, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],   # h_x = observer beta_x (obs-rebuild recal 2026-07-17; was 1.2833 = pre-CV-KF polyfit-era fit)
+            [+0.0000, +1.5889, +0.0000, +0.0000, +0.0000, +0.0000],   # h_y = observer beta_y (obs-rebuild recal 2026-07-17; was 1.0630)
+            [+0.0535, -0.0044, +1.1279, +0.0000, +0.0000, +0.0000],   # loom row (UNCHANGED — new fit 1.1266 confirms the baked 1.1279 to 0.1%; cross-terms board-fit; control uses the MOMENT loom via the row-2 cal BYPASS, see the _loom_decouple sites)
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.8439]])   # w_z decoupled to w_z_raw only
-        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.0744; PLASMC_LOOM_CAL=1.2988 re-applies the recal
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +1.0879]])   # w_z decoupled to w_z_raw only (obs-rebuild recal 2026-07-17; was 1.3879 = pre-sign/frame-fix fit)
+        self._sensor_cal_hw[2, 2] = float(os.environ.get("PLASMC_LOOM_CAL", str(self._sensor_cal_hw[2, 2])))  # A/B knob: default = baked 1.1279 (KF-refit, 2026-07-11); PLASMC_LOOM_CAL=0.4973 reverts to the pre-refit (Savgol-derived) value
         if os.environ.get("PLASMC_WZ_CROSS", "0") == "1":   # restore the full old w_z cross-coupling (A/B)
             self._sensor_cal_hw[5, 0:5] = [+0.0526, +1.0862, -0.0096, -0.7395, +0.0161]
-        self._sensor_cal_s  = np.diag([1.1391, 1.1437, 1.0, 1.0])   # observer/1m-nested centroid (2026-07-03)
+        self._sensor_cal_s  = np.diag([1.0491, 1.0108, 1.0, 1.0])   # single-marker-moment centroid (obs-rebuild recal 2026-07-17, same 5-run set as _sensor_cal_hw above; was 1.0215/1.0494 from the 07-11 KF-refit of the 07-03 set). s moved only +2.7%/-3.7% (it is NOT observer-sourced — raw moments -> outer feature KF, which the aggregator re-applies offline; re-derived here only to keep one coherent per-set fit). s[2]=homogeneous const, s[3]=alpha: BOTH identity BY DESIGN, not placeholders — the yaw chain is built on RAW moment-alpha (offset MOMENT_ALPHA0 upstream + gain BODY_YAW_ALPHA_K=-0.949 downstream at controller.py:2219); setting s[3]!=1 double-counts there, silently retunes the yaw SMC loop gain, rescales YAW_ALPHA_MAX_RATE/YAW_HOLD_ALPHA_RATE/YAW_KF_R, and breaks the GT-FB ablation (GT substitutes POST-cal). See project_yaw_calibration_pending (RESOLVED).
+        # MAP-SOURCED centroid gain (2026-07-20, see feedback_map_cal_validation_gap /
+        # feedback_map_override_kf_ordering_bug): derive_board_cal.py's new 'Centroid Map Raw'
+        # fit (5 runs, 47025 fired samples, POST the ordering-bug fix so the override is
+        # actually live) measured mx=1.1235/my=1.0946 -- DIVERGES from decode's sx=1.0491/
+        # sy=1.0108 above by ~7-8%. The map's diagonal-intersection center is a structurally
+        # different computation from decode's corner-mean (see _centroidMap docstring), so
+        # reusing decode's gain under-corrected it. cal_s is applied ONCE at readout to the
+        # KF's already-time-blended state (see getImgFeatureParam), so an exact per-sample
+        # source split isn't possible there -- _effectiveCalSxy() below blends decode's/map's
+        # gain by THIS FRAME's centroid-map trust (self._cmap_trust_log[-1]) as the best
+        # available approximation, consistent with the same "cal assumes a slowly-varying
+        # signal" approximation the KF-vs-raw cal fit already makes elsewhere.
+        self._sensor_cal_s_map_xy = np.array([1.1235, 1.0946])
 
         # Texture-free RING flow calibration M_ring (calibrated [h;w]=M_ring@ring_raw).
         # The ring lstsq is NOT depth-mixed (board coplanar + V-frame leveling ->
@@ -163,10 +216,18 @@ class IMG_PROCESSOR(Thread):
         # OBSERVER ring cal (2026-07-03, 5 runs): h-block R² 0.72/0.82/0.66 (up from 0.34). The ring-yaw
         # (Wz) row is ZEROED — its derived gain was a 9.6 runaway (ring sees yaw weakly); the corner
         # marker provides yaw. Re-derive Wz if a board/turning case needs ring yaw.
+        # KF-REFIT (2026-07-11): same 5 recordings, re-derived via derive_ring_cal.py
+        # (transfer mode, keyed to the KF-refit corner M above) after the same
+        # Savgol->KF filter-mismatch fix (see feedback_kf_savgol_cal_mismatch).
+        # h-block R^2 0.81/0.88/0.79 (up from 0.72/0.82/0.66); magnitudes moved
+        # substantially (Hx 0.65->1.23, Hy 0.80->1.54, loom 2.05->4.49). Wz row
+        # is STILL a runaway under the refit (inter-run STD up to ~8, entries to
+        # ±16) — zeroed again, same precedent as before; this channel is inert
+        # unless FLOW_FUSE_RING=1 regardless.
         self._sensor_cal_ring = np.array([
-            [+0.6523, +0.0317, +0.1372, -0.0371, +0.6014, -0.1252],
-            [-0.1414, +0.7969, -0.0414, -0.8080, -0.1262, +0.3377],
-            [+0.1154, +0.0131, +2.0499, -0.1148, +0.1176, +0.4799],
+            [+1.2283, -0.0165, +0.1649, +0.0111, +1.1254, -0.2802],
+            [-0.2799, +1.5367, -0.0634, -1.5646, -0.2271, +0.6139],
+            [+0.3906, -0.2532, +4.4900, +0.0764, +0.3203, +0.0865],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000]])
@@ -323,18 +384,23 @@ class IMG_PROCESSOR(Thread):
         # If the layout file is absent (single-marker pad, old recordings) the
         # pipeline falls back to the single-marker _getImgFeatures path.
         self._board_layout = None
-        _layout_path = os.environ.get(
-            "ARUCO_BOARD_LAYOUT",
-            os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         '..', 'Images', 'aruco_board_layout.npy'))
-        try:
-            if os.path.exists(_layout_path):
+        # NOT auto-loaded from a hardcoded default path (was: Images/aruco_board_layout.npy,
+        # always loaded if present). That file hardcodes THIS deployment's marker IDs (currently
+        # [0, 10]) -- a future deployment with different IDs would silently load a WRONG,
+        # non-corresponding prior during the ~5-frame self-cal warm-up window (BOARD_SELFCAL is
+        # ID/size-free and default-ON; the single-marker fallback bridges that window harmlessly
+        # with no prior at all). Require an EXPLICIT ARUCO_BOARD_LAYOUT path if a known-correct
+        # prior for the CURRENT deployment's IDs is actually wanted; default is pure self-cal.
+        # 2026-07-11, see feedback_board_layout_file_deployment_risk.
+        _layout_path = os.environ.get("ARUCO_BOARD_LAYOUT", "")
+        if _layout_path:
+            try:
                 self._board_layout = np.load(_layout_path, allow_pickle=True).item()
                 print(f"[img_data] board layout loaded: {len(self._board_layout)} "
                       f"markers from {_layout_path}")
-        except Exception as _e:
-            print(f"[img_data] board layout load failed ({_e}); single-marker mode")
-            self._board_layout = None
+            except Exception as _e:
+                print(f"[img_data] board layout load failed ({_e}); single-marker mode")
+                self._board_layout = None
 
         # ONLINE BOARD SELF-CALIBRATION (2026-07-03, user directive: no hardcoded layout/IDs/sizes).
         # Learn each marker's relative (cx,cy,sz) from co-visible frames instead of the
@@ -392,12 +458,178 @@ class IMG_PROCESSOR(Thread):
         # KLT _in_bounds check. A/B before baking.
         self._single_marker = os.environ.get("PLASMC_SINGLE_MARKER", "1") == "1"   # default-on 2026-06-23 (single ~1m-ArUco world + matched cal). PROVISIONAL — escapes the nested-board rank-deficiency (R²0.62) but FAILED the IC2-5 gate (2/12 sub, 6/12 fly): off-center ICs trigger the off-center spurious corner-flow spike (position-term confounding). NOT git-committed; needs the off-center fix (ring-carries-lateral when s_e_n breaches). Set =0 for the board (also restore board cal+SDF).
         self._locked_marker_id = None   # the locked single marker (None = unacquired)
+        # PlanarFeatureMap SHADOW mode (2026-07-15, default-on, PLANAR_MAP_SHADOW env-gated).
+        # Runs the online KLT+homography scene map ALONGSIDE the existing ArUco/KLT-fallback/
+        # dense-recovery tiers with ZERO effect on aruco_pts_0/extra_pts_0/marker_ids or any
+        # downstream control decision -- pure side-by-side logging, per the user's explicit
+        # build-order choice (validate on LIVE SITL data before any switch-over, offline
+        # tools/validate_planar_map.py isn't enough on its own). See src/planar_map.py.
+        #
+        # NOT constructed here. A 2026-07-15 SITL run found 65-110px held-out prediction
+        # errors confined entirely to the PRE-ENGAGE phase (hover/takeoff climb, well before
+        # CONTROLLER_READY) -- fast/large camera motion during climb stresses the RANSAC
+        # homography fit into an occasionally-bad-but-locally-self-consistent solution
+        # (rigid_ok/confidence didn't catch it). The controlled descent itself was clean
+        # (max 3.61px). Since deployment has no way to know when the target first becomes
+        # visible except "somewhere during the descent" anyway, there's no reason to run
+        # (or accumulate potentially-corrupted state from) the pre-engage phase at all --
+        # the map is (re)constructed fresh in _reset_stateful_trackers(), exactly on the
+        # CONTROLLER_READY False->True transition, same as every other control-decision
+        # stateful tracker there.
+        self._planar_map_shadow = os.environ.get("PLANAR_MAP_SHADOW", "1") == "1"
+        # PlanarFeatureMap PRIMARY BAKE (2026-07-15, widened from the initial loom-only bake
+        # same day): promotes the map from pure shadow logging to the actual SINGLE-FRAME
+        # corner-position source for BOTH consumers that only need one frame's position --
+        # the centroid (s/alpha, via V_aruco_norm[1] -> _getImgFeatures) AND the moment-loom
+        # (_loom_decouple's `_vp`/`_M`) -- overridden together at ONE point (V_aruco_norm[1]
+        # itself, right after it's computed) so the two consumers can never disagree about
+        # which corner source produced this frame's estimate.
+        #
+        # Root bug this fixes: a 2026-07-15 SITL trace showed the raw per-frame ArUco decode
+        # jumping ~50-80px instantaneously whenever the small<->big nested-marker decode
+        # flickers (the two markers are marginally co-decodable near their handover altitude
+        # band). Specifically for the loom, this fed the Δln(M) outlier-hold guard
+        # (LOOM_DLNM_MAX) -- a one-shot-transient design that gets stuck holding a stale/
+        # spurious value under a SUSTAINED flicker (every frame looks like a fresh "outlier"
+        # vs the last) -- producing a sustained, bit-frozen, sign-wrong h_z through ordinary
+        # mid-descent (independently confirmed against ring loom, which stayed smoothly
+        # negative throughout). PlanarFeatureMap's primary-slot corner prediction is
+        # CONTINUOUS across a flicker (both physical markers are tracked every frame via
+        # KLT+homography regardless of which one decodes; a fresh ArUco decode only LOOP-
+        # CLOSURE-corrects its own slot, in place, never resetting the other) -- so sourcing
+        # V_aruco_norm[1] from it instead of the raw per-frame decode removes the jump at the
+        # root, for the centroid too (which read the exact same flicker-prone array).
+        #
+        # Held-out validation (tools/validate_planar_map.py, offline): 1.3-1.7px mean / <4px
+        # max error even across 70+-frame decode gaps and a live flicker window. A 2026-07-15
+        # SITL shadow run found large (65-110px) errors, but CONFINED to pre-engage hover/climb
+        # (fast camera motion breaks the RANSAC homography fit) -- the controlled descent itself
+        # was clean (max 3.61px). Gated to start only post-CONTROLLER_READY (map is (re)built in
+        # _reset_stateful_trackers, same as every other control-decision stateful tracker) and
+        # requires self._planar_map.map_confidence (marker-independent, see planar_map.py)
+        # before trusting the prediction -- falls back to the untouched raw ArUco decode
+        # otherwise (identical to pre-bake).
+        #
+        # NOT (yet) touched: aruco_pts_0/extra_pts_0/flow_pts_0/1/V_flow_norm -- the frame-PAIR
+        # flow lstsq (lateral h_xy + rotational w) stays on the raw multi-tier corner
+        # correspondence. PlanarFeatureMap's public API predicts a single frame's position
+        # (get_marker_frame_pts()), not a frame-pair; extending the override to the flow lstsq
+        # would need new map-side machinery (a two-frame query) not yet built -- attempting it
+        # by reusing the single-frame API would desync the lstsq's corner correspondence, a
+        # correctness risk with no held-out validation behind it. Also NOT touched: marker
+        # locking (_locked_marker_id selection stays on raw decode identity+spread; the map's
+        # slot routing is independent and geometric, so it doesn't need the lock to agree).
+        self._planar_map_primary = (os.environ.get("PLASMC_PLANAR_MAP_PRIMARY",
+                                     os.environ.get("PLASMC_PLANAR_MAP_LOOM", "1")) == "1")
+        self._planar_map_conf_floor = float(os.environ.get("PLANAR_MAP_CONF_FLOOR", "0.5"))
+        # SOFT rigidity/confidence gate for the OVERRIDE consumers (_centroidMap/_alphaMap,
+        # 2026-07-19 — see feedback_soft_rigidity_gate). A hard reject at _planar_map_conf_floor
+        # (0.5) fixed the corrupted-geometry blowup class (IC4: err_px=1281/confidence=0.0
+        # frame feeding a bad value through) but a validation rerun then showed the opposite
+        # failure: IC3 lost the marker for an extended real stretch where map confidence sat
+        # in the 0.0-0.5 band the whole time, and hard-rejecting ALL of it left the override
+        # contributing nothing for 4+ seconds -- pure KF coast, 13m miss. Below
+        # PLANAR_MAP_REJECT_FLOOR (default near-zero -- exactly where the diagnosed garbage
+        # frames sat, confidence=0.0) still hard-rejects (genuinely nothing to trust). Between
+        # the two floors, BLEND the map value with decode proportional to confidence instead
+        # of an all-or-nothing swap -- a partially-degraded slot still carries some signal,
+        # just not full trust.
+        self._planar_map_reject_floor = float(os.environ.get("PLANAR_MAP_REJECT_FLOOR", "0.05"))
+        # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
+        # site comment): a rescue-projected centroid is only trusted if it falls within
+        # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
+        # half-extent) -- 1.5x allows some legitimate near-edge slack without accepting a
+        # position that's geometrically nonsensical for this camera.
+        self._planar_map_rescue_fov_margin = float(os.environ.get("PLANAR_MAP_RESCUE_FOV_MARGIN", "1.5"))
+        # SIZE-plausibility check (2026-07-16, user correction): the position-only rejection
+        # gate above missed a genuinely distinct failure mode -- the map's homography can
+        # drift in SCALE while still projecting a position that lands within the FoV bound
+        # (nothing in map_confidence validates scale, only tracking density + residual).
+        # Traced live (IC5): during a corner-loss window the rescue implied a marker extent
+        # of ~96.6px, frozen for ~300ms with h_z drifting smoothly upward (0.37->0.44) the
+        # whole time -- then the INSTANT raw tracking recovered, the true extent was only
+        # ~15px, a 6x mismatch. That phantom size feeds the SAME loom (_loom_decouple)
+        # moment-size trend the earlier flicker fix was built to protect, just corrupted by
+        # a wrong scale instead of a wrong marker identity. self._last_real_extent_px (set
+        # only on genuine raw decode, below) is the reference; a rescue whose implied
+        # extent deviates beyond this ratio (either direction) is rejected, same as an
+        # implausible position.
+        self._planar_map_rescue_size_ratio = float(os.environ.get("PLANAR_MAP_RESCUE_SIZE_RATIO", "2.0"))
+        self._last_real_extent_px = None
+        # HYSTERESIS (2026-07-15, found via IC1-5 n=5 SITL validation of the primary bake):
+        # a raw confidence>=floor check has NO persistence, so ordinary per-frame confidence
+        # noise (marker_rigid_ok toggling True/False on small KLT shape-signature jitter,
+        # NOT a real tracking event -- confirmed in Planar Map Shadow logs oscillating
+        # 0.78-0.91 <-> 0.0 every few frames on an otherwise-healthy, fully-corner-tracked
+        # rep) makes the gate flip the V_aruco_norm[1] SOURCE between map-predicted and
+        # raw-ArUco every few frames -- each flip is a small discontinuity, exactly the SAME
+        # CLASS of bug (repeated source-switch flicker) as the small<->big marker-decode
+        # flicker this whole effort was built to fix, this time self-inflicted by the
+        # gate's own threshold noise.
+        # CORRECTION (2026-07-15, later same session): the s_e_n=[0,0]-then-jump event
+        # originally cited here as live confirmation (IC3_rep4, ICValidation/20260715-192025)
+        # was RE-TRACED and found to occur 0.028s after ctrl_time[0] -- i.e. the very first
+        # logged control-loop frame right after CONTROLLER_READY engagement (logging starts
+        # there, not at motor-arm), not a genuine mid-flight event. s_e_n=[0,0] before the
+        # first real measurement lands is an EXPECTED engagement transient, not this gate
+        # firing -- that specific trace does NOT constitute confirmed live evidence of the
+        # bug. The confidence-oscillation mechanism itself (marker_rigid_ok jitter -> gate
+        # flip -> source-switch discontinuity) is still a real, demonstrable code property
+        # independent of when in a flight it triggers, so the fix below is kept as a sound,
+        # low-risk improvement on code-reasoning grounds -- but treat it as UNVALIDATED by a
+        # confirmed live reproduction until re-traced away from an engagement window.
+        # Fix: distrust the map IMMEDIATELY on any bad frame (safe default, falls back to
+        # the proven raw path), but require PLANAR_MAP_GATE_ON_FRAMES consecutive good
+        # frames before trusting it again (mirrors the existing FEATURE_IS_STALE clear
+        # hysteresis pattern elsewhere in this file) -- damps rapid oscillation around the
+        # confidence floor into a single, non-repeating transition.
+        self._planar_map_gate_on = False
+        self._planar_map_gate_streak = 0
+        self._planar_map_gate_on_frames = int(os.environ.get("PLANAR_MAP_GATE_ON_FRAMES", "5"))
+        # TWO SEPARATE GATES (2026-07-16, found via IC1/IC4 SITL regression after the
+        # map_confidence split above): _planar_map_gate_on (map_confidence, marker-
+        # INDEPENDENT) is correct for the RESCUE path (not FEATURE_DATA_IS_LOGGED -- no
+        # raw reading exists to protect, any grounded estimate beats blind extrapolation).
+        # But the SAME flag was ALSO gating the V_aruco_norm[1] OVERRIDE inside
+        # `if FEATURE_DATA_IS_LOGGED:` -- i.e. REPLACING an already-successful, fresh raw
+        # ArUco decode with the map's prediction. That's a fundamentally different
+        # decision: only worth doing if the map's MARKER-SPECIFIC tracking is ALSO
+        # verified trustworthy (self.confidence, marker-aware), not just the general
+        # scene's global tracking health. Using the permissive map_confidence there meant
+        # the override could now fire on frames where the raw decode was perfectly fine,
+        # replacing accurate fresh corners with a possibly slightly-drifted map estimate --
+        # confirmed live: IC1/IC4 both showed a smooth, GROWING divergence (0.64->1.5m /
+        # 0.30->3.7m) while n_corners stayed nonzero throughout (no corner-loss event at
+        # all), consistent with a subtly-wrong position being fed in on otherwise-healthy
+        # frames, not a perception dropout. _planar_map_override_gate_on is the separate,
+        # STRICTER gate for that use case -- back to the marker-aware self.confidence.
+        self._planar_map_override_gate_on = False
+        self._planar_map_override_gate_streak = 0
+        self._planar_map = None
+        self._planar_map_primary_pred_px = None   # current-frame camera-pixel primary-slot prediction, refreshed each frame the map runs
+        self._planar_map_log = []   # per-frame dicts: t, err_px (vs whatever tier won this frame), decode_calls, confidence
+        self._planar_map_decode_calls = 0
+        # Default 0 (pre-engage): the savgol paths' post-engage clip is a no-op until the
+        # first CONTROLLER_READY transition actually sets these in _reset_stateful_trackers.
+        self._engage_idx_flow = 0
+        self._engage_idx_feat = 0
         # Visibility-by-MARGIN: when ANY marker corner comes within this many px of the FoV edge
         # (the marker is LEAVING/overflowing the frame), the corner is DROPPED (aruco_pts_0=None) ->
         # corner_ok stays False -> the fusion EKF lets the RING carry ALL flow components. One
         # mechanism (no separate visible-flag): the margin switches to rings a few frames BEFORE the
         # marker fully leaves, off cleaner (non-edge) corners. 0 = strict (switch only on full exit).
         self._marker_fov_margin = float(os.environ.get("PLASMC_MARKER_FOV_MARGIN", "40"))
+        # REJECT-OVERFLOW-FOR-MAP-CORRECTION (2026-07-19, user). As the drone tilts, the marker
+        # slides to the FoV edge and partially overflows -> its de-rotated quad degenerates to a
+        # near-collinear sliver (diag angle 1.3deg, elongation up to 70x -- verified) whose
+        # geometry no longer localizes the centre. Feeding such a degenerate DECODE frame into the
+        # map's loop_closure_correct POISONS the map's learned geometry (frame_to_map/gauge) with a
+        # near-singular observation. The map is PRIMARY: it should PREDICT through the overflow on
+        # its CLEAN last-good state, not CORRECT from the degenerate view. So when the decoded
+        # corners are at/over the FoV edge (overflow), SKIP the correction -- keep the map's geometry
+        # uncorrupted so it can bridge the terminal. Decode stays the cross-check ONLY on
+        # well-conditioned frames. Default off; MAP_REJECT_OVERFLOW_CORRECT=1 to enable.
+        self._map_reject_overflow_correct = os.environ.get("MAP_REJECT_OVERFLOW_CORRECT", "1") == "1"
         self._last_drifted_off = False   # last-known: marker left the FoV OFF-CENTER (drift), vs SPANNING (overflow, still over target)
         self._last_overflow = False      # companion: marker SPANNED (overflow) rather than drifted off one side
         self._drift_off_hist = []        # per-frame log of _last_drifted_off (2026-07-07: failure-cause tagging)
@@ -578,6 +810,85 @@ class IMG_PROCESSOR(Thread):
         self._handover_min_m = float(os.environ.get("HANDOVER_MIN_SMALL_M", "0.01"))
         self._handover_min_ln = float(np.log(max(self._handover_min_m, 1e-9)))
         self._handover_dbg = os.environ.get("HANDOVER_DBG", "0") == "1"
+        # CBF-DRIVEN HANDOVER PATH (2026-07-17, user design): a SECOND, independent way to
+        # latch HANDOVER_LATCHED, alongside the loom-M-drop detector above. The CBF's own
+        # per-corner FoV-margin overflow classification (CBF_OVERFLOW, controller.py) +
+        # PlanarFeatureMap's small-slot confidence is a geometrically-direct "big has
+        # overflowed AND small is trustworthy" signal -- driven from landing_test.py each
+        # step via update_cbf_handover_signal() (apps/landing_test.py owns both the
+        # controller and this img_node, so it's the natural place to bridge the two
+        # modules; img_data.py and controller.py stay one-directionally decoupled).
+        # Deliberately does NOT touch _primary_id/primary_i (the raw-decode marker
+        # selection) -- that must stay big-priority for h_x/h_y flow observability (see
+        # IMG_MARKER_PRIORITY doc above); this only affects the terminal-phase
+        # HANDOVER_LATCHED flag that _ringCommitStep gates on.
+        self._handover_cbf_cand = 0
+        self._cbf_small_conf_min = float(os.environ.get("CBF_SMALL_SLOT_CONF_MIN", "0.5"))   # SAME env/default as controller.py -- keep the two decisions consistent
+        # HANDOVER via SMALL-SLOT CONFIDENCE ALONE (2026-07-17, user directive). The two
+        # existing latch paths both require a DECODE event that didn't happen in the textured
+        # IC1-5 gate (ICValidation/20260717-185746, handover=0 in every rep): (1) the loom-M-drop
+        # path needs the small marker to stay primary 5 frames without the big RE-DECODING, but
+        # the nested marker FLICKERS big<->small (3 down + 3 up d(lnM) crossings), so each
+        # candidate is cancelled before persisting; (2) the CBF path ANDs small-slot-confident
+        # with CBF_OVERFLOW, which fired 0 times. The map, unlike raw decode, tracks the small
+        # slot CONTINUOUSLY through the flicker (KLT+homography) -- so its per-slot confidence is
+        # the flicker-immune "we can rely on the small marker now" signal. When
+        # HANDOVER_REQUIRE_OVERFLOW=0, latch on SMALL_SLOT_CONFIDENT sustained alone (no
+        # CBF_OVERFLOW gate). Still one-way + HANDOVER_PERSIST-frame hysteresis (the skill's
+        # IC4 DRIFT_OFF regression came from a RAW per-frame slot-confidence read -- keep the
+        # persistence). Self-gating vs firing at altitude: get_slot_confidence folds in
+        # track_conf (n_tracked corners), and the tiny inner marker isn't well-tracked until
+        # close, so confidence naturally stays low until the terminal. Downstream, ring-commit
+        # STILL requires OVER_TARGET + settled, so an early latch cannot itself commit.
+        self._handover_require_overflow = os.environ.get("HANDOVER_REQUIRE_OVERFLOW", "0") == "1"
+        # MAP-DRIVEN LOOM M (2026-07-18, user directive: "replace all decode-driven measurements
+        # with map-driven"). STAGE 1: the loom scale M=μ20+μ02 is computed from the PlanarFeatureMap's
+        # continuously-tracked slot corners (get_marker_frame_pts) instead of the raw-decode corners.
+        # WHY: the decode primary flickers big<->small, and the raw M then jumps (~ratio²) -> spurious
+        # positive h_z mid-descent (the touchdown-detection root: h_z isn't cleanly negative through
+        # the descent, so a descent-arrest detector can't work). The map tracks each slot through the
+        # flicker, so its M is continuous. SLOT = big (primary) before HANDOVER_LATCHED, small
+        # (secondary) after -- the user's big-before/small-after selection; the two slots share one
+        # map with the online-learned relative size, so the scale is continuous across the single
+        # latched switch. Isolated to the LOOM's M only (centroid _x0/_y0, flow, alpha stay on decode)
+        # so this stage validates alone. Default off; LOOM_M_FROM_MAP=1 to enable.
+        self._loom_m_from_map = os.environ.get("LOOM_M_FROM_MAP", "1") == "1"
+        # MAP-DRIVEN CENTROID s[0:2] (2026-07-18, decode->map migration STAGE 2). The position
+        # feature's centroid is taken from the map's continuously-tracked slot (get_marker_center)
+        # instead of the raw-decode corner mean. The nested markers are CONCENTRIC (big/small share
+        # a centre), so this is not a position shift -- it is CONTINUITY: the map tracks through the
+        # decode dropouts/flicker that make the raw centroid jump/stale. Handover-gated slot (big
+        # before HANDOVER_LATCHED, small after), same as the loom. Isolated to s[0:2]; alpha (s[3])
+        # stays on decode until stage 3. Default off; CENTROID_FROM_MAP=1 to enable.
+        self._centroid_from_map = os.environ.get("CENTROID_FROM_MAP", "1") == "1"
+        # MAP-DRIVEN ALPHA s[3] (2026-07-19, decode->map migration STAGE 3). Yaw feature from
+        # get_marker_points()'s handover-gated corner+dense-interior (position, weight) set via
+        # the SAME _marker_principal_angle moment math (weights param added for this, no
+        # duplicated logic) and the SAME _moment_alpha_0 offset, so a decode<->map fallback never
+        # jumps convention. cal_s[3]=1.0 stays load-bearing (see project_yaw_calibration_pending)
+        # regardless of source -- this changes WHERE alpha is measured FROM, not its calibration.
+        # BAKED 2026-07-20 (n=1 IC1-5, post soft-gate fix -- see feedback_soft_rigidity_gate;
+        # NOTE: below this project's usual n>=5 bar, baked on explicit user direction).
+        # ALPHA_FROM_MAP=0 to disable.
+        self._alpha_from_map = os.environ.get("ALPHA_FROM_MAP", "1") == "1"
+        # MAP-DRIVEN SMALL-MARKER FLOW (2026-07-19, decode->map migration STAGE 4, user
+        # directive). Flow (h_xy) is a VELOCITY DERIVATIVE -- needs corner-spread observability,
+        # so it works best on a LARGE marker, but we can't just wait for the big marker to fill
+        # the FoV (it degrades/overflows before that). So: switch to the SMALL marker once it is
+        # confidently mapped AND its apparent size falls in the empirically-characterized
+        # reliable BAND -- SEPARATE from and typically EARLIER than HANDOVER_LATCHED (which
+        # gates loom/centroid/alpha). Characterized this session (textured IC1-5, decode flow vs
+        # V-framed GT flow, time-synced): median error ~0.49 at ~8px extent, 0.06-0.07 in
+        # 15-35px, back up to 0.17-0.18 past ~40px (edge/overflow degradation, same mechanism as
+        # the loom/centroid). Defaults are THAT characterization; re-derive if camera/marker
+        # geometry changes. BAKED 2026-07-20 (n=1 IC1-5 -- see feedback_soft_rigidity_gate;
+        # NOTE: below this project's usual n>=5 bar, baked on explicit user direction).
+        # FLOW_FROM_MAP=0 to disable.
+        self._flow_from_map = os.environ.get("FLOW_FROM_MAP", "1") == "1"
+        self._flow_map_min_ext = float(os.environ.get("MAP_FLOW_MIN_EXT_PX", "15"))
+        self._flow_map_max_ext = float(os.environ.get("MAP_FLOW_MAX_EXT_PX", "40"))
+        self._flowmap_kf_x = None; self._flowmap_kf_y = None   # own KF state, isolated from the observer's
+        self._flowmap_kf_Px = None; self._flowmap_kf_Py = None; self._flowmap_kf_t = None
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -677,6 +988,30 @@ class IMG_PROCESSOR(Thread):
         self._consec_misses = 0
         self.FEATURE_IS_STALE = False
         self.STALE_THRESH = int(os.environ.get("IMG_STALE_THRESH", "3"))
+        # RESCUE_ACTIVE (2026-07-16): whether THIS frame's s/alpha (and, transitively, the
+        # loom h_z) came from the PlanarFeatureMap rescue rather than a raw ArUco/KLT/
+        # dense-recovery decode. FEATURE_IS_STALE (above) counts consecutive RAW-tier
+        # misses only -- it has zero visibility into whether the rescue is providing a
+        # trustworthy substitute, so apps/landing_test.py's feature_fresh check (which
+        # gates whether closed-loop control even runs) was treating "raw tiers failed but
+        # the map rescue has a grounded estimate" identically to "genuinely no information
+        # at all" -- confirmed live (IC5): the rescue kept producing a smooth, plausible
+        # s(t) through a 1.5s corner-loss window, but FEATURE_IS_STALE flagged stale after
+        # just 3 frames (~0.1s) and landing_test.py abandoned closed-loop control (grace-
+        # hold, then TARGET_LOST) long before the rescue's estimate could ever be used.
+        # This flag is the thread-through: apps/landing_test.py's feature_fresh now also
+        # accepts RESCUE_ACTIVE, so a rescue-covered dropout keeps running getControlInput()
+        # (which already consumes the rescued getImgFeatureParam()/getOptFlowAngVel()
+        # output) instead of freezing on the last command or giving up entirely.
+        self._planar_map_rescue_active = False
+        # FEATURE_PTS_FRESH (2026-07-17): was _feature_pts (what MARKER_EXTENT_PX / the CBF's
+        # d_min_fov read) updated with LIVE geometry this frame (raw decode/KLT OR a
+        # plausibility-checked map rescue), vs held at its last value (genuine total coast,
+        # neither raw nor rescue available)? Distinct from FEATURE_IS_STALE, which is a
+        # RAW-miss-only counter with no rescue awareness -- gating on FEATURE_IS_STALE alone
+        # blinds consumers during a run of frames the map IS successfully rescuing. See
+        # feedback_cbf_staleness_and_rigidity_confidence memory.
+        self._feature_pts_fresh = True
         # Duty-cycle staleness (2026-06-11): consecutive-miss-only staleness was DEFEATED by
         # intermittent 1-frame re-detections during the terminal slide — a 76%-phantom stream
         # stayed "fresh" (each glimpse reset the counter AND cleared stale) → landing_test
@@ -718,6 +1053,39 @@ class IMG_PROCESSOR(Thread):
         self._quats = []
         self._img_feature_param = []
         self._opt_flow_ang_vel_raw = []
+        # Per-frame ESTIMATOR TAG, lockstep-appended with the arrays above. Multiple distinct
+        # computations feed the same raw h/s arrays (primary ArUco-decode lstsq, KLT-fallback
+        # lstsq, the centroid-rate observer, board homography, single-marker moment, and the
+        # predict-only "coast" during a marker-loss gap) -- getRawOptFlowAngVel/
+        # getRawImgFeatureParam previously returned whichever fired with NO record of which, so
+        # a calibration recording couldn't tell you which estimator(s) it actually exercised, or
+        # exclude synthetic coast samples from the fit. See feedback_estimator_blind_calibration.
+        # Tags — h: 'lstsq' (primary decode + KLT-fallback merged: same _fill_A/lstsq geometry
+        # regardless of corner source, see feedback_klt_fallback_merge_no_separate_cal) |
+        # 'lstsq+observer_xy' (h_z/w lstsq, h_x/h_y observer-overridden) | 'observer_full' (all
+        # channels from the centroid-rate observer, no lstsq data this frame) | 'coast'
+        # (predict-only extrapolation, NOT real data — exclude from any cal fit).
+        # Tags — s: 'board_homography' | 'single_marker_moment' | 'coast' (exclude from fit).
+        self._h_estimator_tag = []
+        self._s_estimator_tag = []
+        # RAW (PRE-CAL) map-sourced logs (2026-07-20 -- see feedback_map_cal_validation_gap):
+        # _centroidMap/_alphaMap/_flowMap's OWN return value, logged every frame regardless of
+        # whether the soft gate ultimately blended it in, BEFORE _sensor_cal_s/_sensor_cal_hw are
+        # applied -- neither existed before this. _s_estimator_tag/_h_estimator_tag are set
+        # BEFORE the map override/blend runs and never updated after, so they can't tell you
+        # whether/how much a logged s/h was map-influenced; the *_map_dbg fields are whole-flight
+        # tallies, not per-frame. Needed to validate whether _sensor_cal_s/_sensor_cal_hw (fit
+        # against the DECODE path only) are still correct for these structurally different
+        # computations (map diagonal-intersection center vs decode corner-mean; map's
+        # corner+dense-interior-weighted angle vs decode's 4-corner-weighted angle; map's
+        # single-point-velocity KF flow vs decode's corner-spread LSTSQ flow). NaN/0 when that
+        # frame's map function didn't fire (gate rejected, unavailable, or the *_FROM_MAP flag
+        # is off) -- lockstep length with self._s_estimator_tag/_h_estimator_tag.
+        self._cmap_raw_log = []     # (2,) raw V-frame centroid from _centroidMap, or (nan, nan)
+        self._cmap_trust_log = []   # soft-gate trust in [0, 1] used for this frame's blend, or 0.0
+        self._amap_raw_log = []     # raw alpha (rad) from _alphaMap, or nan
+        self._amap_trust_log = []   # soft-gate trust in [0, 1], or 0.0
+        self._fmap_raw_log = []     # (3,) raw [hx, hy, hz] from _flowMap, or (nan, nan, nan)
         self._z_v_log = []          # virtual-plane z-coordinate per frame (diagnose z_v→0 phantom-s)
         self._z_v_min_log = []      # min z_v per frame (track when reprojection risks singularity)
         # H-EXTRAPOLATION (2026-07-07, user; BAKED default-ON 2026-07-07): re-derived alternative to
@@ -739,8 +1107,6 @@ class IMG_PROCESSOR(Thread):
         self._h_extrap_clip_bound = float(os.environ.get("H_EXTRAP_CLIP_BOUND", "10.0"))  # matches the lstsq's own ±10 clamp -- samples AT this bound are excluded from the fit
         self._h_real_t = []      # timestamps of REAL (non-extrapolated) h samples only
         self._h_real_v = []      # the REAL h values themselves (never mixed with extrapolated output)
-        self._img_feature_param_real_t = []  # timestamps of REAL (non-extrapolated) s samples only
-        self._img_feature_param_real = []    # the REAL s values themselves (never mixed with extrapolated output)
         self._imu_angvel_raw = []   # IMU body rate (FRD) [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quat [w,x,y,z], synced to the flow log (for IMU->V transform)
         self._n_flow_corners = []   # # corners fed to the lstsq per frame (board diag)
@@ -790,6 +1156,11 @@ class IMG_PROCESSOR(Thread):
         # only clips noise spikes) -> expected MARGINAL; defaults preserve current behavior.
         self._kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))   # process-noise PSD (rad/s² per √s)²
         self._kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))   # measurement noise variance
+        # Predict-only coast during a marker-loss gap (see _kf_step docstring): Q's dt uses the
+        # TRUE elapsed gap (capped here), decoupled from the 0.1s state-transition dt cap, so P
+        # correctly reflects staleness and a relock gets one correct Bayesian update instead of a
+        # multi-frame catch-up ramp. Shared by the corner-flow and centroid-feature KFs.
+        self._kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
         self._kf_x = np.zeros((6, 2))       # [value, rate] per channel
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
@@ -895,18 +1266,15 @@ class IMG_PROCESSOR(Thread):
         _qtv = float(os.environ.get("FLOW_Q_HTV", "0.2"))                    # rover vel ~constant (persists)
         _qw  = float(os.environ.get("FLOW_Q_W",  "5.0"))
         self._ekf_Q = np.diag([_qtr] * 3 + [_qtv] * 3 + [_qw] * 3)
-        # POSITIVE-LOOM SIGN GUARD (2026-06-24, default-on). A descending landing can never have a
-        # positive ego-loom: h_z = vz/Z < 0 the whole approach (vz<0 toward the deck, Z>0). When ArUco
-        # decode is lost near the deck (single ~1m marker OVERFLOWS the FoV at Z≈0.4m → corners off-frame
-        # → N flow corners→0), the fusion EKF falls back to the RING loom, which is noisy at that geometry
-        # and swings WRONG-SIGNED (+); the z-SMC reads that as "marker receding" → commands UP thrust →
-        # balloon → s_e_n breach → fly-away. Traced on IC3_rep1 (bundle 20260624-132414): loom −0.8→+1.8
-        # right as N flow corners 89→0; GT-grounded audit (bundle 20260624-150335) confirmed the wrong-sign
-        # frames are 86/93 at aruco=0 (ring takeover). The existing anti-stale decay only catches a FROZEN
-        # loom, not an actively-updated wrong-signed one — so clamp the consumed loom ≤ 0 directly. This is
-        # the physical-impossibility guard (NOT a control fix): the off-center CONTROL divergence the GT-FB
-        # gate exposed (IC3/IC4 fail on perfect loom) is a separate, control-side problem. FLOW_LOOM_SIGN_GUARD=0 reverts.
-        self._loom_sign_guard = os.environ.get("FLOW_LOOM_SIGN_GUARD", "1") == "1"
+        # POSITIVE-LOOM SIGN GUARD -- REMOVED 2026-07-11 (was: clamp consumed h_z<=0, added
+        # 2026-06-24 to band-aid a wrong-signed RING-loom fallback near the deck; see
+        # feedback_loom_sign_guard_blocks_touchdown_detect). Removed rather than left default-off
+        # because it clamped h_z UNCONDITIONALLY, including the genuine positive inversion at real
+        # ground-contact that PLASMC_TOUCHDOWN_LOOM needs to ever fire -- structurally incompatible
+        # with that detector. The ORIGINAL ring-loom wrong-sign problem this guarded against is
+        # UNFIXED and now re-exposed -- see that memory's "ROOT CAUSE is still unfinished" section
+        # for the two unconfirmed hypotheses (ring LK texture-starvation vs. marker-handover
+        # attitude disturbance) if a real fix is needed.
         self._opt_flow_fused_log = []   # fused target-relative [h_tr; w] per frame (A/B)
         self._target_vel_log = []       # estimated target velocity h_tv (flow units)
 
@@ -922,7 +1290,57 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
         self._kf_feat_prev_t = None
         self._kf_feat_initialized = False
-        self._kf_feat_last_n = 0
+        # ALPHA SIN/COS-PAIR SUB-FILTER (2026-07-19, replaces an earlier wrap-patch — see
+        # feedback_alpha_kf_wrap_bug). Channel 3 of self._kf_feat_x (alpha) is a WRAPPED
+        # ANGLE, not a plain linear quantity — a linear KF's innovation (z - x_pred) is
+        # wrong across the +-pi branch cut, and just re-wrapping the innovation/state
+        # (the earlier patch) still leaves the RATE state free to be corrupted by a
+        # near-cut measurement. Proper fix: filter [sin(alpha), cos(alpha)] as two
+        # ordinary LINEAR channels through the SAME generic _kf_step (no periodicity, no
+        # branch cut, no asymptote — unlike tan(alpha), which is pi-periodic and would
+        # silently reintroduce the 2pi/2-fold ambiguity _marker_principal_angle's corner
+        # weighting was built to remove, see project docstring). self._kf_feat_x[3, :] is
+        # kept in sync (channel 3 = atan2(sin_state, cos_state)) purely so every existing
+        # consumer (getImgFeatureParam extrapolation, the sensor-cal readout, etc.) keeps
+        # reading a plain alpha scalar from the same slot — the sin/cos state itself is
+        # private to _kf_feat_update, below.
+        self._kf_feat_sc_x = np.zeros((2, 2))            # rows: [sin(alpha), cos(alpha)]
+        self._kf_feat_sc_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
+        self._kf_feat_sc_prev_t = None
+        self._kf_feat_sc_initialized = False
+        # BUGFIX (2026-07-15, found via IC1-5 SITL validation): _kf_feat_initialized gets
+        # cleared on every primary-marker-ID switch (small<->big decode flicker, below) so
+        # the NEXT correct-step re-seeds state=z instead of blending a spurious velocity
+        # across the discontinuous size/frame jump (matches _kf_x's identical pattern,
+        # 2026-07-11). But getImgFeatureParam() previously GATED its entire return on this
+        # SAME flag -- so any call between the reset and that next real correct-step fell
+        # through to a DIFFERENT signal path (savgol/mean-of-recent-history), producing a
+        # one-to-two-frame value fully disconnected from the KF's perfectly good (merely
+        # un-"initialized"-flagged) last state.
+        # CORRECTION (2026-07-15, later same session): the trace originally cited here as
+        # live confirmation (IC3_rep4, s(t) hitting exactly [0,0,0,0] at t=34.144,
+        # ICValidation/20260715-202110) was RE-TRACED and found to occur 0.028s after
+        # ctrl_time[0] -- the very first logged control-loop frame after CONTROLLER_READY
+        # engagement (logging starts there, not at motor-arm), not a genuine mid-flight
+        # marker-switch event. s(t)=[0,0,0,0] before the first real sample lands is an
+        # EXPECTED engagement transient, not this bug firing -- that trace does NOT
+        # constitute confirmed live evidence. The code-level vulnerability itself (the
+        # gate falling through to a different signal path on ANY _kf_feat_initialized=False
+        # reset, including a genuine marker-switch one) is still real and demonstrable by
+        # reading the code, independent of this mistraced example, so the fix is kept on
+        # code-reasoning grounds -- but treat it as UNVALIDATED by a confirmed live
+        # reproduction until re-traced against an actual mid-flight marker-ID switch.
+        # getOptFlowAngVel() (the analogous corner-flow getter) does NOT have this bug --
+        # it reads self._kf_x[:,0] unconditionally, so a marker-switch reset there just
+        # naturally holds the last value (the array itself is never cleared, only the
+        # flag) until the next correct-step updates it. This flag replicates that: TRUE
+        # once ever (first real sample of the flight), never cleared by a marker-switch
+        # reset (only by a genuine full _reset_stateful_trackers), so
+        # getImgFeatureParam() can gate on "has this flight ever had a real sample" instead
+        # of "was there a real sample since the LAST marker switch" -- same hold-last-good
+        # principle used pervasively elsewhere in this file (ds/dh outlier-hold, s-extrap
+        # real-buffer), not a new one.
+        self._kf_feat_ever_initialized = False
         # Centroid-KF (q, r) are DECOUPLED from the flow KF: the flow's q=5.0/r=0.1
         # are sized for optic-flow ang-vel (rad/s); the centroid (xc, yc, scale,
         # alpha) is order-1 with measured per-frame noise std ~0.04 (variance
@@ -944,6 +1362,76 @@ class IMG_PROCESSOR(Thread):
     
     def close(self):
         self._STAY_OPEN = False
+
+    def _reset_stateful_trackers(self):
+        """Reset every CONTROL-DECISION-relevant stateful tracker. Called once, exactly on the
+        CONTROLLER_READY False->True transition (see run()) -- NOT every frame, and NOT a full
+        re-init. This node runs continuously from Controller() construction (well before
+        CONTROLLER_READY, through the whole hover/IC-convergence settle -- ~15-20s observed),
+        so by engage time these trackers may already hold state accumulated during a completely
+        different flight regime (takeoff climb, hover settle) that has nothing to do with the
+        controlled descent about to begin. 2026-07-11: found via a real investigation where an
+        offline-reconstructed "positive loom" event turned out to be ~15s BEFORE the descent even
+        started -- harmless in isolation, but exactly the kind of pre-engage state that COULD
+        carry forward into a KF/lock/arm decision post-engage undetected. Mirrors (and extends)
+        the existing marker-switch reset block (~line 1391-1402) -- same lesson, applied at the
+        other place a discontinuous regime change happens without an explicit code trigger.
+        Board self-cal / layout learning is deliberately NOT reset here -- it's geometry/scale
+        learning, not a control-decision state, and losing it costs a few frames of re-warmup for
+        no correctness benefit."""
+        self._locked_marker_id = None
+        self._primary_id = None
+        self._mtrace_hist.clear()
+        self._centroid_hist.clear()
+        self._obs_kf_x = None; self._obs_kf_y = None
+        self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
+        self._flow_prev = None; self._flow_hold = None
+        self._s_prev = None; self._s_hold = None
+        self._consec_misses = 0
+        self._consec_hits = 0
+        self.FEATURE_IS_STALE = False
+        self._planar_map_rescue_active = False
+        self._last_real_extent_px = None
+        self._hit_hist.clear()
+        self._h_real_t = []; self._h_real_v = []
+        self._kf_initialized = False
+        self._kf_ring_initialized = False
+        self._kf_feat_initialized = False
+        self._kf_feat_sc_initialized = False
+        self._kf_feat_ever_initialized = False   # genuine full reset -- unlike the marker-switch reset below
+        self._ekf_init = False
+        self._loom_stale = 0
+        # Savgol pre-engage guard (2026-07-15, user directive: audit ALL pre-engage state
+        # leaks, not just planar_map). _opt_flow_ang_vel_raw / _img_feature_param are
+        # append-only FULL-RUN logs (also used by getLogData() for post-hoc analysis of
+        # the whole flight incl. pre-engage, so they must NOT be cleared/truncated here).
+        # But the legacy IMG_FILTER=savgol / IMG_FEATURE_FILTER=savgol path slices the last
+        # FILTER_WIN samples directly off these logs -- for the first ~FILTER_WIN/2 frames
+        # after engage, that window would silently span the CONTROLLER_READY boundary and
+        # blend pre-engage samples into the "post-engage" filtered output. (The DEFAULT
+        # 'kf' path does NOT have this bug: _kf_initialized/_kf_feat_initialized are reset
+        # below, and _kf_step's own re-seed-on-next-sample logic means the KF value itself
+        # starts clean post-engage -- verified, no fix needed there.) These indices mark
+        # "first sample index that's valid to feed the savgol window" -- _compute_savgol_
+        # output / getImgFeatureParam's savgol branch must never read before them.
+        self._engage_idx_flow = len(self._opt_flow_ang_vel_raw)
+        self._engage_idx_feat = len(self._img_feature_param)
+        # PlanarFeatureMap: (re)constructed fresh here, NOT at node construction -- see
+        # __init__ comment. Deployment has no way to know when the target first becomes
+        # visible except "sometime during the descent", and pre-engage hover/climb motion
+        # was found to occasionally corrupt the homography fit (65-110px, see __init__
+        # comment) with nothing useful gained from tracking that phase at all.
+        self._planar_map = (PlanarFeatureMap(center=self.center, focal=self.focal)
+                            if (self._planar_map_shadow or self._planar_map_primary) else None)   # center/focal enable gyro-seeded KLT, see planar_map.py __init__ comment
+        self._planar_map_primary_pred_px = None
+        self._planar_map_gate_on = False
+        self._planar_map_gate_streak = 0
+        self._planar_map_override_gate_on = False
+        self._planar_map_override_gate_streak = 0
+        self._planar_map_decode_calls = 0
+        print("[img_data] CONTROLLER_READY -> True: reset all control-decision stateful trackers "
+              "(KF/lock/EKF/stale/hold-guard state) so pre-engage hover/climb history can't carry "
+              "into the descent.")
 
     def run(self):
         # The run() replaces the run() from the Thread class 
@@ -1001,6 +1489,10 @@ class IMG_PROCESSOR(Thread):
                                     [cv2.IMWRITE_PNG_COMPRESSION, 1])   # lossless, fast
                         self._raw_stamps.append(self._stamp)
                         self._raw_i += 1
+
+                    if self.CONTROLLER_READY and not self._controller_was_ready:
+                        self._reset_stateful_trackers()
+                        self._controller_was_ready = True
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
                     if self._imgProcess(images, quaternions, angvels, showVideo = VIDEO) is AVAILABLE:
@@ -1349,6 +1841,17 @@ class IMG_PROCESSOR(Thread):
                 self._centroid_hist.clear()
                 self._obs_kf_x = None; self._obs_kf_y = None
                 self._obs_kf_Px = None; self._obs_kf_Py = None; self._obs_kf_t = None
+                # 2026-07-11: the corner-flow and centroid-feature KFs (_kf_x, _kf_feat_x) had NO
+                # reset here -- a marker handover (small<->big) is a discontinuous geometry step
+                # (size/frame jump) that a constant-velocity KF has no way to distinguish from
+                # genuine fast motion, so it would blend a spurious "velocity" across the switch
+                # instead of accepting the new geometry as a fresh sample. _kf_step's own
+                # `if not initialized:` branch re-seeds state=z, rate=0 on the NEXT real sample, so
+                # just clearing the flag is enough (same lazy-reinit pattern as _obs_kf_x above).
+                # See feedback_kf_frozen_during_marker_loss ("Related, same-class bug — STILL OPEN").
+                self._kf_initialized = False
+                self._kf_feat_initialized = False
+                self._kf_feat_sc_initialized = False
             # Primary first, then the rest — so marker k occupies corners
             # [4k:4k+4] of all_pts_0 and marker_ids[k] is its ID. Primary stays
             # first for KLT-fallback continuity + display + the strict gate.
@@ -1530,6 +2033,160 @@ class IMG_PROCESSOR(Thread):
                 self._prev_extra_pts = (extra_pts_0.copy() if extra_pts_0 is not None
                                         and len(extra_pts_0) > 0 else None)
 
+        # --- PlanarFeatureMap: shadow logging + PRIMARY prediction capture -------------
+        # Tracks every frame, loop-closure-corrects on a fresh ArUco decode, and (unlike
+        # the original pure-shadow design) now ALSO caches the primary-slot prediction in
+        # self._planar_map_primary_pred_px for the single-frame V_aruco_norm[1] override
+        # below (centroid + loom both consume it -- see the PLASMC_PLANAR_MAP_PRIMARY
+        # __init__ comment) -- still never touches aruco_pts_0/extra_pts_0/marker_ids or
+        # the frame-pair flow-lstsq path. self._planar_map is None until the
+        # CONTROLLER_READY transition (see _reset_stateful_trackers) -- pre-engage
+        # hover/climb is deliberately never fed in.
+        self._planar_map_primary_pred_px = None
+        if (self._planar_map_shadow or self._planar_map_primary) and self._planar_map is not None:
+            try:
+                _gray0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+                # GYRO-SEEDED KLT (2026-07-17, user design): the FC quaternion is available
+                # every frame REGARDLESS of whether ArUco decodes anything this frame -- so
+                # this runs unconditionally, including through marker-loss stretches (where
+                # it matters most, see planar_map.py's update() docstring). quats[0] pairs
+                # with imgs[0]/_gray0 (frame-0 convention, matches _getVirtualPts elsewhere
+                # in this method); same Quaternion(...).to_DCM() call, no new conversion.
+                _q0 = quats[0] if (quats is not None and len(quats) > 0 and quats[0] is not None) else None
+                _R0 = (Quaternion([_q0.w, _q0.x, _q0.y, _q0.z]).to_DCM() if _q0 is not None else None)
+                if not self._planar_map.initialized:
+                    self._planar_map.bootstrap(
+                        _gray0,
+                        marker_px_corners=(aruco_pts_0 if results[0] else None),
+                        marker_id=(self._primary_id if results[0] else None),
+                        quat_R=_R0)
+                    self._planar_map_decode_calls += 1
+                else:
+                    self._planar_map.update(_gray0, quat_R=_R0)
+                    # Cache the primary (largest) slot's current-frame prediction for the
+                    # shared V_aruco_norm[1] override downstream (centroid + loom + the
+                    # PARTIAL/TOTAL-occlusion RESCUE below). Gated on map_confidence WITH
+                    # HYSTERESIS (see __init__ comment).
+                    #
+                    # 2026-07-16 (user correction): gate on map_confidence (track_conf *
+                    # resid_conf, marker-INDEPENDENT -- see its definition in planar_map.py),
+                    # NOT the combined self.confidence / marker_rigid_ok. The combined metric
+                    # requires the marker's OWN corners to currently survive KLT to stay
+                    # nonzero -- exactly the condition the rescue exists to survive THROUGH.
+                    # Gating on it meant the rescue could bridge at most a frame or two into
+                    # any marker occlusion (partial or total) before reverting to blind
+                    # extrapolation, defeating the module's actual purpose: infer the
+                    # marker's position from the GLOBAL homography fit (built from whatever
+                    # OTHER scene features are currently tracked) even when the marker itself
+                    # is partially visible or has vanished entirely.
+                    # MARKER-AWARE RESCUE GATE (2026-07-19, user). Was map_confidence
+                    # (marker-INDEPENDENT = track_conf*resid_conf only), chosen so a fully-occluded
+                    # marker wouldn't block the rescue. But that makes the gate STRUCTURALLY BLIND to
+                    # the marker DEFORMING: at the tilt-grazing terminal the quad foreshortens to a
+                    # sliver, map_confidence stayed ~0.575 (verified) and the rescue happily fired on
+                    # geometry that can no longer localize a centre -> confident-wrong extrapolation.
+                    # self.confidence DOES see it (marker_conf collapses via shape_change) -- verified:
+                    # 39/39 zero-confidence frames were rigid_ok=False at exactly those frames.
+                    # The original occlusion rationale still holds with the marker-aware gate, because
+                    # rigidity is OCCLUSION-SAFE by construction (planar_map.update): 0-of-4 corners
+                    # HOLDS shape_change (only sets the rigid_ok bool), and 1-3 holds everything -- so
+                    # marker_conf survives a genuine occlusion and only collapses when the marker IS
+                    # tracked and its shape is distorting. RESCUE_GATE_MARKER_AWARE=0 reverts.
+                    _rescue_conf = (self._planar_map.confidence
+                                    if os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                                    else self._planar_map.map_confidence)
+                    _good = _rescue_conf >= self._planar_map_conf_floor
+                    if _good:
+                        self._planar_map_gate_streak += 1
+                    else:
+                        self._planar_map_gate_streak = 0
+                        self._planar_map_gate_on = False
+                    if not self._planar_map_gate_on and self._planar_map_gate_streak >= self._planar_map_gate_on_frames:
+                        self._planar_map_gate_on = True
+                    # OVERRIDE gate (2026-07-16, see __init__ comment): separate, STRICTER
+                    # gate for replacing an already-successful raw decode -- marker-aware
+                    # self.confidence (still includes marker_conf), not map_confidence.
+                    _good_override = self._planar_map.confidence >= self._planar_map_conf_floor
+                    if _good_override:
+                        self._planar_map_override_gate_streak += 1
+                    else:
+                        self._planar_map_override_gate_streak = 0
+                        self._planar_map_override_gate_on = False
+                    if (not self._planar_map_override_gate_on
+                            and self._planar_map_override_gate_streak >= self._planar_map_gate_on_frames):
+                        self._planar_map_override_gate_on = True
+                    if self._planar_map_primary and self._planar_map_gate_on:
+                        self._planar_map_primary_pred_px = self._planar_map.get_marker_frame_pts()
+                    # HELD-OUT PREDICTION FIRST, before loop_closure_correct touches the
+                    # map -- comparing AFTER correction would be circular on a fresh-decode
+                    # frame (map_pts gets set FROM aruco_pts_0 this same frame via
+                    # frame_to_map, then get_marker_frame_pts() reads it back through the
+                    # SAME frame_to_map -> an exact round-trip, err~0 by construction, not a
+                    # real accuracy check). This mirrors tools/validate_planar_map.py's
+                    # held-out methodology exactly.
+                    #
+                    # SLOT MATTERS (2026-07-15 bug fix): get_marker_frame_pts(slot=None)
+                    # returns the map's own "primary" (largest) slot, which is independent
+                    # of -- and can disagree with -- whichever physical marker img_data.py's
+                    # OWN separate _locked_marker_id/_primary_id logic actually decoded this
+                    # frame (aruco_pts_0). Comparing against the wrong slot produced spurious
+                    # ~100px "errors" during n=6 IC1 validation that were a bug in THIS
+                    # comparison, not in PlanarFeatureMap. identify_slot() finds which slot
+                    # aruco_pts_0 itself geometrically belongs to (None if it doesn't match
+                    # any yet -- correctly excluded, not compared against the wrong one).
+                    _pred = None
+                    if aruco_pts_0 is not None:
+                        _slot_guess = self._planar_map.identify_slot(aruco_pts_0)
+                        if _slot_guess is not None:
+                            _pred = self._planar_map.get_marker_frame_pts(slot=_slot_guess)
+                    # REJECT MAP CROSS-CORRECTION ON ILL-CONDITIONED QUAD (2026-07-19, user): don't
+                    # loop-close from a decode whose quad is a degenerate SLIVER (tilt-grazing /
+                    # overflow) -- that near-singular observation poisons the map's gauge/homography.
+                    # The map is PRIMARY: predict through it on clean state; decode cross-checks ONLY
+                    # on WELL-CONDITIONED frames. Detected on the raw decode quad's own geometry
+                    # (diagonals near-parallel / quad elongated), NOT edge-proximity -- a quad can be
+                    # degenerate from grazing foreshortening before it reaches the edge.
+                    # (a) DECODE correction gate: reject NEAR-EDGE decodes (corner precision degrades
+                    # at the frame boundary -> noisy correction poisons the map; verified: edge-reject
+                    # dropped map err_px p90 3.8->1.4/6.6->2.0). OR-in the ill-cond check as a harmless
+                    # backstop -- verified INERT on the decode path (ArUco self-gates conditioning:
+                    # decode-success quads have min diag angle 27deg, never a sliver), but future-proof.
+                    _reject_correct = False
+                    if self._map_reject_overflow_correct and aruco_pts_0 is not None:
+                        _cc = np.asarray(aruco_pts_0, float); _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
+                        _near_edge = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
+                                          or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
+                        _reject_correct = _near_edge or self._quadIllConditioned(aruco_pts_0)
+                    _illcond_correct = _reject_correct
+                    if results[0] and not _illcond_correct:
+                        self._planar_map.loop_closure_correct(
+                            aruco_pts_0, marker_id=self._primary_id)
+                        self._planar_map_decode_calls += 1
+                    elif results[0] and _illcond_correct and os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                        print(f"[planar_map] ill-conditioned quad -> SKIP loop_closure_correct "
+                              f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
+                    if aruco_pts_0 is not None:
+                        if _pred is not None and len(_pred) == len(aruco_pts_0):
+                            _err = float(np.mean(np.linalg.norm(
+                                _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
+                            self._planar_map_log.append({
+                                "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
+                                "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
+                                "confidence": self._planar_map.confidence,
+                                "map_confidence": self._planar_map.map_confidence,
+                                "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                                "decode_calls": self._planar_map_decode_calls})
+                            if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                                print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
+                                      f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
+                                      f"n_tracked={self._planar_map.n_tracked} "
+                                      f"rigid_ok={self._planar_map.marker_rigid_ok}")
+            except Exception as _e:
+                # Never let a map-internal failure take down the real acquisition path or
+                # poison the loom source -- pred already defaulted to None above this try.
+                if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                    print(f"[planar_map shadow] exception (non-fatal): {_e}")
+
         # SINGLE-MARKER visibility-by-MARGIN: the marker is LEAVING when any corner comes within
         # _marker_fov_margin px of the FoV edge (near-edge/overflowing). When leaving, route the
         # FLOW to the ring (corner_ok forced False below) but KEEP the corners so the CENTROID still
@@ -1562,7 +2219,13 @@ class IMG_PROCESSOR(Thread):
             try:
                 _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
-                _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
+                # Loom M: map-driven (stage 1) when enabled + available, else decode. Centroid
+                # (_x0/_y0) stays on DECODE -- this stage migrates the loom scale ONLY.
+                _Mo = None
+                if self._loom_m_from_map:
+                    _Mo = self._loomMapM(quats[0])
+                if _Mo is None:
+                    _Mo = float(np.mean(np.sum((_Vdec - np.array([_x0, _y0])) ** 2, axis=1)))
                 _to = float(getattr(self, '_stamp', 0.0))
                 if _Mo > 1e-12 and np.isfinite(_Mo):
                     self._centroid_hist.append((_to, _x0, _y0, np.log(_Mo)))
@@ -1667,6 +2330,13 @@ class IMG_PROCESSOR(Thread):
                 flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
                 # Primary-only pair preserved for centroid / alpha / display.
                 C_nP = [aruco_pts_0, aruco_pts_1]
+                # Last-known REAL marker span (px, camera-pixel space) -- for the rescue's
+                # size-plausibility check below. Updated ONLY on genuine raw decode (never
+                # from a rescue/extrapolated frame), same "real-only" discipline as
+                # _h_real_v elsewhere in this file.
+                self._last_real_extent_px = float(
+                    max(aruco_pts_0[:, 0].max() - aruco_pts_0[:, 0].min(),
+                        aruco_pts_0[:, 1].max() - aruco_pts_0[:, 1].min()))
 
                 # Collect per-marker frame-1 corners (only markers whose all-4
                 # corners survived LK) + IDs, for the board homography. Marker k
@@ -1690,7 +2360,59 @@ class IMG_PROCESSOR(Thread):
 
             if FEATURE_DATA_IS_LOGGED:
                 # Primary-marker virtual points → fallback centroid s and alpha.
+                # NOTE (2026-07-16, clarified per user correction): V_aruco_norm[0] is built
+                # from aruco_pts_0 -- the actual cv2 ArucoDetector.detectMarkers() output on
+                # imgs[0] (line ~1584), i.e. the genuine fresh decode. V_aruco_norm[1] is built
+                # from aruco_pts_1 -- calcOpticalFlowPyrLK-TRACKED corners propagated from
+                # aruco_pts_0 into imgs[1], NOT a re-decode. Both are real image-derived data,
+                # but only [0] is "raw decode"; [1] (the one PlanarFeatureMap's override/rescue
+                # conditionally replace below) is one KLT hop removed from it.
                 V_aruco_norm = [self._getVirtualPts(p, a) for p, a in zip(C_nP, quats)]
+                # PLANAR-MAP PRIMARY (2026-07-15, PLASMC_PLANAR_MAP_PRIMARY, default-on):
+                # override V_aruco_norm[1] -- the SINGLE shared source both the centroid
+                # (s/alpha, below) and the moment-loom (_loom_decouple's `_vp`, below) read
+                # from -- with PlanarFeatureMap's primary-slot prediction, whenever the map
+                # is confident+rigid this frame. Overriding HERE (once) rather than at each
+                # consumer keeps centroid and loom internally consistent (both always agree
+                # on which corner source produced this frame's estimate) and is what
+                # actually fixes the small<->big decode-flicker bug at its root: the raw
+                # per-frame ArUco decode this array would otherwise carry jumps ~50-80px
+                # instantaneously on a flicker (see feedback_loom_flicker_hold_stall /
+                # __init__ comment); the map's KLT+homography-tracked slot does not, since
+                # it only gets LOOP-CLOSURE corrected (not overwritten) by whichever marker
+                # happens to decode this frame. Does NOT touch aruco_pts_0/extra_pts_0/
+                # flow_pts_0/1 or V_flow_norm -- the frame-PAIR flow lstsq (h_xy/w, below)
+                # stays on the raw multi-tier corner correspondence; PlanarFeatureMap's
+                # public API predicts a single frame's position, not a frame-pair, so
+                # extending the override there would need new map-side machinery, not yet
+                # built. Falls back to the untouched raw V_aruco_norm[1] whenever the map
+                # isn't ready/confident (identical behavior to before this bake).
+                # STRICTER gate here (2026-07-16): this REPLACES an already-successful raw
+                # decode, so requires _planar_map_override_gate_on (marker-aware
+                # self.confidence), not just _planar_map_gate_on (map_confidence, which
+                # only gates whether _planar_map_primary_pred_px was computed at all this
+                # frame). See __init__ comment -- using the permissive rescue gate here let
+                # the override fire on perfectly healthy raw-decode frames too, replacing
+                # accurate fresh corners with a possibly-drifted map estimate (confirmed
+                # live: IC1/IC4 smooth growing divergence with corners never lost).
+                #
+                # PLAUSIBILITY CHECK (2026-07-16, user correction): this override had NO
+                # sanity check at all until now -- confirmed live (IC2/IC3 terminal
+                # phase) it let a drifted map projection silently replace a genuinely
+                # good raw ArUco decode, producing physically-impossible V-frame
+                # centroids like [-23,24] fed straight into centroid/alpha/loom, even
+                # though the raw decode itself (reconstructed independently) was fine.
+                # Reuses the SAME _planarMapPredictionPlausible check the rescue path
+                # uses -- position AND size, not just "the map claims confidence".
+                if (self._planar_map_primary and self._planar_map_override_gate_on
+                        and self._planar_map_primary_pred_px is not None):
+                    _ov_ok, _pm_v1, _ov_why = self._planarMapPredictionPlausible(
+                        self._planar_map_primary_pred_px, quats[1])
+                    if _ov_ok and len(_pm_v1) == len(V_aruco_norm[1]):
+                        V_aruco_norm[1] = _pm_v1
+                    elif os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                        print(f"[planar_map override] REJECTED implausible {_ov_why} "
+                              f"-- keeping raw ArUco V_aruco_norm[1]", flush=True)
                 # Full (all-marker) virtual points → 6-DOF lstsq spread.
                 V_flow_norm = [self._getVirtualPts(flow_pts_0, quats[0]),
                                self._getVirtualPts(flow_pts_1, quats[1])]
@@ -1790,9 +2512,18 @@ class IMG_PROCESSOR(Thread):
                 # (trace of the de-rotated corner scatter ∝ 1/Z²). A short-window linear-fit
                 # derivative (causal); lateral/rotational rows of V_v are untouched.
                 if self._loom_decouple:
-                    _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2)
+                    # V_aruco_norm[1] is already PlanarFeatureMap-sourced when the map is
+                    # confident this frame (single override point, above) -- automatically
+                    # continuous across a small<->big decode flicker, no loom-specific
+                    # branch needed here anymore (see PLASMC_PLANAR_MAP_PRIMARY comment).
+                    _vp = V_aruco_norm[1]                          # de-rotated primary corners (4×2); kept for OVER_TARGET quad below
                     _ctr = _vp.mean(axis=0)
-                    _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
+                    # Loom M: map-driven (stage 1) when enabled + available, else decode scatter.
+                    # _vp itself stays decode-sourced (OVER_TARGET point-in-quad needs the live
+                    # primary-marker quad, a separate concern from the loom scale).
+                    _M = self._loomMapM(quats[0]) if self._loom_m_from_map else None
+                    if _M is None:
+                        _M = float(np.mean(np.sum((_vp - _ctr) ** 2, axis=1)))   # μ20+μ02 ∝ (sz·f/Z)²
                     # OVER_TARGET (2026-07-05, user): is the NADIR (V-frame origin) inside the primary
                     # marker's V-frame quad? Depth-free "over the target" (tilt-removed), replaces the
                     # ambiguous s_e_n gate for the ring-commit. Self-scaling: at altitude the small marker
@@ -1877,9 +2608,34 @@ class IMG_PROCESSOR(Thread):
                 # CENTROID-RATE OBSERVER injection (a): when the LK flow IS available, still prefer
                 # the gyro-compensated centroid-rate lateral (robust to the off-center spurious spikes
                 # the lstsq produces). h_z stays the moment loom (V_v[2]). Default-off.
-                if self._single_marker and self._centroid_rate and self._observer_valid:
+                _hxy_observer = self._single_marker and self._centroid_rate and self._observer_valid
+                if _hxy_observer:
                     V_v[0] = float(self._observer_flow[0])
                     V_v[1] = float(self._observer_flow[1])
+
+                # MAP-DRIVEN SMALL-MARKER FLOW (stage 4): takes PRIORITY over both the lstsq and
+                # the observer once the small marker is confidently mapped AND in its reliable
+                # size band (see _smallSlotFlowReady docstring) -- independent of/typically
+                # earlier than HANDOVER_LATCHED. Falls through untouched if not ready/unavailable.
+                _fm_raw = (np.nan, np.nan, np.nan)   # logged regardless of fire (see __init__)
+                if self._flow_from_map:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _fm_dbg = os.environ.get("FLOW_MAP_DBG", "0") == "1"
+                    if self._smallSlotFlowReady(_q1):
+                        _fm = self._flowMap(_q1, float(getattr(self, '_stamp', 0.0)))
+                        if _fm is not None:
+                            _fm_raw = (float(_fm[0]), float(_fm[1]), float(_fm[2]))
+                            V_v[0], V_v[1], V_v[2] = float(_fm[0]), float(_fm[1]), float(_fm[2])
+                            if _fm_dbg:
+                                self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                                self._fmap_dbg['fired'] = self._fmap_dbg.get('fired', 0) + 1
+                        elif _fm_dbg:
+                            self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                            self._fmap_dbg['ready_but_none'] = self._fmap_dbg.get('ready_but_none', 0) + 1
+                    elif _fm_dbg:
+                        self._fmap_dbg = getattr(self, '_fmap_dbg', {})
+                        self._fmap_dbg['not_ready'] = self._fmap_dbg.get('not_ready', 0) + 1
+                self._fmap_raw_log.append(_fm_raw)
 
                 # ds/dh OUTLIER GATE (2026-07-04): reject a per-frame lateral-flow spike (|Δh| beyond
                 # a physical rate) and HOLD last-good — kills the σ_min LK garbage ramp (→ fly-away)
@@ -1898,6 +2654,11 @@ class IMG_PROCESSOR(Thread):
 
                 V_v_scaled = size_factor * V_v
                 self._opt_flow_ang_vel_raw.append(V_v_scaled)
+                # 'lstsq'/'lstsq_klt' share ONE calibration category (same _fill_A/lstsq geometry
+                # regardless of corner source — see feedback_klt_fallback_merge_no_separate_cal);
+                # the _klt suffix is coverage/diagnostic ONLY, not a separate fit bucket.
+                _tag = 'lstsq_klt' if used_klt_fallback else 'lstsq'
+                self._h_estimator_tag.append(_tag + '+observer_xy' if _hxy_observer else _tag)
                 if self._h_extrap:
                     # REAL-only history for the extrapolation fit -- never receives the extrapolated
                     # output back (the self-reinforcement bug that broke deg-1 s-extrapolation).
@@ -1961,12 +2722,80 @@ class IMG_PROCESSOR(Thread):
                 # occlusion-robust). Fallback: single-marker weighted moments
                 # on the primary marker (no layout, or homography degenerate).
                 board_s = None
+                self._planar_map_rescue_active = False   # raw tier succeeded this frame, not a rescue
                 if board_markers_V is not None:
                     board_s = self._board_feature(board_markers_V, size_factor)
                 if board_s is not None:
                     self._img_feature_param.append(board_s)
+                    self._s_estimator_tag.append('board_homography')
                 else:
                     self._getImgFeatures(size_factor * V_aruco_norm[1])
+                    self._s_estimator_tag.append('single_marker_moment')
+                # ORDERING FIX (2026-07-20, see feedback_map_override_kf_ordering_bug): the KF
+                # correct-step used to run HERE, against the pre-override decode value -- but
+                # getImgFeatureParam() (default IMG_FEATURE_FILTER=kf) returns
+                # self._sensor_cal_s @ self._kf_feat_x[:, 0], NOT self._img_feature_param[-1]
+                # directly. Since nothing re-ran the KF update after the centroid/alpha map
+                # override below, CENTROID_FROM_MAP/ALPHA_FROM_MAP's blend never reached the
+                # controller under the default filter -- it only mutated a value the default
+                # read path doesn't consume. Moved to AFTER both override blocks (below) so the
+                # KF is corrected against the FINAL (post-blend) feature vector.
+
+                # MAP-DRIVEN CENTROID (stage 2): override s[0:2] with the map's continuously-tracked
+                # slot centre (handover-gated slot), keeping alpha (s[3]) on decode for stage isolation.
+                # quats[0] matches the map's frame-0 tracking (same convention the loom uses). Falls
+                # through to the decode centroid untouched if the map is unavailable. Placed BEFORE the
+                # ds-outlier-hold so the map centroid still gets the per-frame-jump guard.
+                # MAP IS AUTHORITATIVE (2026-07-20, user directive: "decode is just for
+                # cross-correction of map", corrected from an earlier "decode is a fallback"
+                # framing -- decode is NOT a peer/backup value source; its role is the
+                # cross-check reference the map's OWN validity gates are judged against
+                # (_planarMapPredictionPlausible's position/size sanity, the rigidity/
+                # confidence floor inside _centroidMap). Whenever _centroidMap ACCEPTS this
+                # frame (returns non-None -- a genuinely-garbage frame is still rejected by
+                # those gates), use its value FULLY, not blended down toward decode by
+                # degree of confidence -- confidence already decided ACCEPT/REJECT; it
+                # doesn't get a second, weaker vote via a value taper. When the map has
+                # nothing this frame (_mc is None), s[0:2] mechanically remains whatever
+                # decode's own _getImgFeatures/_board_feature already computed above (there
+                # is no third value to substitute) -- decode isn't "supplying" that value
+                # as a designed fallback, it's what cross-checking requires having anyway.
+                # _cmap_last_trust is still computed (for logging / _effectiveCalSxy's gain
+                # selection below) but no longer tapers the VALUE.
+                _mc_raw, _mc_trust = (np.nan, np.nan), 0.0   # logged regardless of fire (see __init__)
+                if self._centroid_from_map and self._img_feature_param:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _mc = self._centroidMap(_q1, size_factor)
+                    if _mc is not None:
+                        _mc_raw = (float(_mc[0]), float(_mc[1]))
+                        _mc_trust = self._cmap_last_trust
+                        self._img_feature_param[-1][0] = float(_mc[0])
+                        self._img_feature_param[-1][1] = float(_mc[1])
+                self._cmap_raw_log.append(_mc_raw)
+                self._cmap_trust_log.append(_mc_trust)
+
+                # MAP-DRIVEN ALPHA (stage 3): override s[3] with the map's handover-gated slot
+                # orientation (corner+dense moment, lower variance than 4 decode corners alone).
+                # Same quats[1] convention as the centroid. Falls through to decode alpha untouched
+                # if the map/plausibility gate rejects this frame.
+                # MAP IS AUTHORITATIVE (same directive as centroid above): _alphaMap's value
+                # is used FULLY whenever accepted, not tapered toward decode by confidence.
+                _ma_raw, _ma_trust = np.nan, 0.0   # logged regardless of fire (see __init__)
+                if self._alpha_from_map and self._img_feature_param:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+                    _ma = self._alphaMap(_q1)
+                    if _ma is not None:
+                        _ma_raw = float(_ma)
+                        _ma_trust = self._amap_last_trust
+                        self._img_feature_param[-1][3] = float(_ma)
+                self._amap_raw_log.append(_ma_raw)
+                self._amap_trust_log.append(_ma_trust)
+
+                # KF correct-step (moved here 2026-07-20, see the ORDERING FIX comment above) --
+                # corrects against the FINAL feature vector, after any centroid/alpha map
+                # blend, so CENTROID_FROM_MAP/ALPHA_FROM_MAP actually reach the controller under
+                # the default IMG_FEATURE_FILTER=kf path instead of being silently inert.
+                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
 
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
@@ -1984,23 +2813,16 @@ class IMG_PROCESSOR(Thread):
                     # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
                     self._s_prev = _s_raw
 
-                # REAL-SAMPLE BUFFER for s-extrapolation (2026-07-09 fix): must be captured AFTER the
-                # ds outlier-hold above, not before. Bug found this session: an isolated single-frame
-                # detection spike (e.g. -0.44 sandwiched between ~0 values, n_corners>0 so genuinely
-                # "detected" but still a glitch) passes the ds_max>0.15 guard and gets corrected in
-                # self._img_feature_param[-1] IN PLACE -- but if this buffer were populated from the
-                # PRE-guard board_s/s value (as an earlier version of this fix did), the extrapolation
-                # fit's "real-only" history would still contain the un-rejected outlier, corrupting the
-                # deg-1 fit's slope. Confirmed via reconstruction: this exact sequence (a real-but-spiky
-                # sample at t-0.3s) produced a terminal centroid extrapolation jump (0.12->1.03 the
-                # instant the marker was lost) that fed s_e_n/zeta_r and traced directly into the
-                # terminal-kick breach. Read self._img_feature_param[-1] HERE (post-guard) instead.
-                if self._img_feature_param:
-                    self._img_feature_param_real_t.append(self._time.perf_counter())
-                    self._img_feature_param_real.append(np.asarray(self._img_feature_param[-1]).copy())
-                    if len(self._img_feature_param_real_t) > 32:
-                        self._img_feature_param_real_t = self._img_feature_param_real_t[-32:]
-                        self._img_feature_param_real = self._img_feature_param_real[-32:]
+                # (2026-07-09 fix, historical: a REAL-sample s buffer used to be captured here,
+                # post-ds-outlier-hold, feeding a polyfit-based s-extrapolation during marker-loss
+                # coasts. That extrapolation was REPLACED 2026-07-17 by the feature KF's own
+                # predict-only step (self._kf_feat_x, stepped every real frame via
+                # self._kf_feat_update(self._img_feature_param[-1], ...) a few lines above) -- the KF already
+                # tracks a live, correctly-scaled position+velocity estimate, making a separate
+                # bounded-history trend-fit buffer redundant. Removed; if a future need for raw
+                # real-only s history resurfaces, re-add it capturing self._img_feature_param[-1]
+                # HERE (post-guard), not the pre-guard raw value -- see feedback_s2_homogeneous_decay_bug
+                # memory for why the guard-vs-pre-guard distinction matters.)
 
                 if not self.FEATURE_IS_VISIBLE:
                     print("LANDING PAD VISIBLE NOW...")
@@ -2022,6 +2844,7 @@ class IMG_PROCESSOR(Thread):
                 # Log the ArUco-only feature pts (shape (2,4,2)) — consumers
                 # (offline plotters, _getImgFeatures replay) expect 4 corners.
                 self._feature_pts.append(C_nP)
+                self._feature_pts_fresh = True   # genuine raw decode/KLT this frame
                 self._virtual_feature_pts.append(V_aruco_norm)
 
         elif self.FEATURE_IS_VISIBLE:
@@ -2056,6 +2879,19 @@ class IMG_PROCESSOR(Thread):
                 and not FEATURE_DATA_IS_LOGGED):
             _obs_scaled = size_factor * self._observer_flow
             _corner_cal = self._sensor_cal_hw @ _obs_scaled
+            if self._loom_decouple:
+                # CAL BYPASS for the moment loom -- MIRRORS the identical bypass on the
+                # LK-succeeded branch (~:2450); added 2026-07-17 to fix an ASYMMETRY. The
+                # observer assembles its row 2 as `_hz = _loom_dec` (~:2044), i.e. the SAME
+                # scale-free moment loom (−½·d(lnM)/dt) that the other branch protects, NOT a
+                # raw pinv loom. So _sensor_cal_hw row 2 (the raw-pinv→cal map) over-scales it
+                # ~7% AND re-injects the lateral/rotational coupling the decoupling removed --
+                # exactly the reasoning already documented at the other site. Without this, the
+                # loom's scale+coupling silently CHANGED depending on whether LK survived this
+                # frame, and this branch is the default-on path the controller consumes (it
+                # feeds the fusion EKF), so the discontinuity reached control on every
+                # LK-dropout-at-altitude. Same quantity -> same treatment.
+                _corner_cal[2] = _obs_scaled[2]
             _corner_ok = not _marker_leaving
             _corner_conf = 1.0
             _n_corn = 4
@@ -2084,7 +2920,8 @@ class IMG_PROCESSOR(Thread):
             (self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
              self._kf_ring_initialized) = self._kf_step(
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
-                self._kf_ring_initialized, _vvr, self._time.perf_counter())
+                self._kf_ring_initialized, _vvr, self._time.perf_counter(),
+                self._kf_q, self._kf_r)
             self._ring_opt_flow_kf_log.append(self._kf_x_ring[:, 0].copy())
 
             # FUSION EKF: corner (this frame, if detected) + ring, decomposed into
@@ -2128,14 +2965,18 @@ class IMG_PROCESSOR(Thread):
             # is the safer "no information" default; the controller already does its
             # own smoothing/freezing if it sees zeros.
             #
-            # For the image-feature centroid we DO extrapolate (clipped) because
-            # holding the last marker position is a reasonable assumption while LK
-            # briefly loses tracking — the marker hasn't moved much in a frame or two.
-            # 2026-05-20: tried hold-last-value as a "safer" alternative — REGRESSED
-            # badly (mean xy 0.49→1.52, max 0.77→4.83 across 5 reps). During descent
-            # the marker moves in image; extrapolation predicts the trend, hold-last
-            # freezes at a stale position. Single-frame dropouts can then cause
-            # catastrophic lateral excursions. Keep the polyfit-deg-1 extrapolate.
+            # For the image-feature centroid, holding the last marker position outright
+            # is NOT a safe default either — a genuinely-moving marker (descent) needs
+            # some form of forward propagation, not a freeze. 2026-05-20: tried
+            # hold-last-value as a "safer" alternative — REGRESSED badly (mean xy
+            # 0.49→1.52, max 0.77→4.83 across 5 reps); a frozen position under real
+            # motion causes catastrophic lateral excursions on the next single-frame
+            # dropout. Originally solved with a polyfit-deg-1 extrapolate (below is that
+            # SAME rationale applied to h/optical-flow, which still uses it) — the
+            # CENTROID path itself was changed 2026-07-17 to the feature KF's own
+            # predict-only step (self._kf_feat_x) instead of a hand-rolled polyfit; see
+            # that block further down (past the h-extrapolation code immediately below)
+            # for why (feedback_s2_homogeneous_decay_bug memory).
             if self._h_extrap and len(self._h_real_t) >= 5:
                 # DECAYED deg-1 fit against REAL-ONLY samples (never self-referencing). Reject
                 # samples already at the clip boundary (their slope is untrustworthy, not signal).
@@ -2159,30 +3000,41 @@ class IMG_PROCESSOR(Thread):
             else:
                 extrapolated_opt_flow_ang_vel_raw = np.zeros(6)
 
-            # Centroid s: DECAYED deg-1 fit against REAL-ONLY samples (never self-referencing).
-            # Similar to h-extrapolation: avoid cascading extrapolated values back into future
-            # extrapolations. Use bounded history (max 32 samples) and clipped-sample rejection.
-            if len(self._img_feature_param_real_t) >= 5:
-                _rt = np.asarray(self._img_feature_param_real_t[-8:])
-                _rv = np.asarray(self._img_feature_param_real[-8:])
-                # Reject s[0:2] samples near FoV boundary (extrapolation unreliable at edge)
-                _valid = np.all(np.abs(_rv[:, 0:2]) < 5.0 - 1e-3, axis=1)  # ±5 rad ~ FoV clip bound
-                if int(_valid.sum()) >= 5:
-                    _rt, _rv = _rt[_valid], _rv[_valid]
-                    _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=4)
-                    _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=5.0, neginf=-5.0)
-                else:
-                    _fit = self._img_feature_param_real[-1].copy() if self._img_feature_param_real else np.zeros(4)
-                # DECAY toward zero over consecutive misses (long gaps -> no known position)
-                _decay = max(0.0, 1.0 - self._consec_misses / max(1, self._h_extrap_decay_frames))
-                extrapolated_img_feature_param = np.clip(_fit * _decay, -5.0, 5.0)
-                extrapolated_img_feature_param = np.nan_to_num(
-                    np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
-            else:
-                # Not enough real data yet; hold last value or zero
-                extrapolated_img_feature_param = (self._img_feature_param_real[-1].copy()
-                                                  if self._img_feature_param_real else np.zeros(4))
+            # Centroid s (2026-07-17, user correction: "the decay-to-zero behavior for
+            # position is intentional design, but I never approved it. We have kf_predict.")
+            # REPLACED the polyfit-then-decay-to-zero extrapolation with the ALREADY-EXISTING
+            # feature KF's own predict-only step. The decay-to-zero design (position ->
+            # exactly [0,0] after H_EXTRAP_DECAY_FRAMES=10 consecutive misses) was found to
+            # cause a REAL problem, not just a stylistic one: it fabricates a "we are
+            # centered, zero error" reading regardless of the drone's actual (unmeasured)
+            # position, discarding the KF's own velocity/momentum state -- when real tracking
+            # resumes, s snaps from the fabricated zero back to a genuine nonzero value, and
+            # if the adaptive gain (kappa) had frozen/ratcheted during the fabricated-zero
+            # window (reading "converged"), the resulting mismatch between an already-elevated
+            # frozen gain and a suddenly-real error produces an amplified corrective a_u spike
+            # -- confirmed live (IC1 SITL trace, 2026-07-17): kappa ratcheted 3.57->4.18 then
+            # FROZE exactly as a coast began, and a_u spiked to 2976 right as the coast likely
+            # ended. Fix: step the feature KF's PREDICT-ONLY branch (self._kf_feat_update(None,
+            # t) -- already exists, already runs every coast frame at the later call site
+            # below, just moved earlier so THIS frame's s can read its result) and use
+            # self._kf_feat_x[:, 0] (constant-velocity-propagated estimate, uncertainty-
+            # growing via the KF's own P matrix, NOT a hand-rolled decay) as the position.
+            # The later call site is now SKIPPED when not rescuing (this predict already ran)
+            # to avoid double-stepping the KF's dt accounting in one frame.
+            self._kf_feat_update(None, self._time.perf_counter())
+            extrapolated_img_feature_param = self._kf_feat_x[:, 0].copy()
+            extrapolated_img_feature_param = np.nan_to_num(
+                np.asarray(extrapolated_img_feature_param), nan=0.0, posinf=5.0, neginf=-5.0)
             extrapolated_img_feature_param = np.clip(extrapolated_img_feature_param, -5.0, 5.0)
+            # HOMOGENEOUS-CONSTANT FIX (2026-07-17, found via IC5 SITL trace, still applied as
+            # a hard safety redundant clamp after the 2026-07-17 KF-predict switch above): s[2]
+            # is the fixed homogeneous "1.0" component of s=[xc,yc,1.0,alpha] -- a structural
+            # constant, never a tracked/decaying KF channel. The KF's own scale-channel state
+            # should already track ~1.0 (every real correction feeds it z[2]=1.0), but this
+            # stays as a hard floor regardless -- originally found when the OLD polyfit+decay
+            # extrapolation (now removed) collapsed s[2] to 0.0 after a long coast, producing
+            # s=[0,0,0,-3.068] and a single-frame a_u spike to 610,997.
+            extrapolated_img_feature_param[2] = 1.0
             if self._feat_fov_clip:
                 # Guard #1: clip the CENTROID [0:2] to ±(p_10 + δ) — FoV edge + last-good marker
                 # half-extent. Keeps the short-dropout trend (within the FoV) but bounds the
@@ -2208,25 +3060,133 @@ class IMG_PROCESSOR(Thread):
                 extrapolated_img_feature_param[3] = float(
                     np.arctan2(np.sin(_hold_a), np.cos(_hold_a)))
 
+            # PLANARFEATUREMAP RESCUE (2026-07-16): this is the map's ACTUAL intended use --
+            # user correction, same day. The earlier V_aruco_norm[1] override (single-frame
+            # bake, 2026-07-15) only ever fired INSIDE `if FEATURE_DATA_IS_LOGGED:`, i.e. only
+            # on frames where the raw ArUco/KLT-fallback/dense-recovery tiers had ALREADY
+            # succeeded -- it could polish an already-good frame but could NEVER rescue one
+            # where the marker is partially visible or not visible at all, which is exactly
+            # the scenario the module's own docstring describes ("the marker's position
+            # becomes one entry in this map, inferable even when the marker itself is briefly
+            # untrackable, as long as enough other mapped features remain visible"). THIS is
+            # that path: self._planar_map_primary_pred_px is computed unconditionally each
+            # frame (in the shadow/prediction-capture block above, gated by the hysteresis
+            # gate, independent of whether ArUco/KLT/dense-recovery decoded anything this
+            # frame) -- so when it's available, it grounds this frame's s/alpha in the map's
+            # OTHER currently-tracked scene features, a strictly better-informed estimate
+            # than a pure polynomial extrapolation of past trend with zero current-frame
+            # visual grounding at all. Overrides the extrapolation wholesale (not blended)
+            # when available; falls through to the extrapolation above untouched otherwise.
+            _pm_rescue = (self._planar_map_primary and self._planar_map_gate_on
+                          and self._planar_map_primary_pred_px is not None)
+            if _pm_rescue:
+                _pm_v1 = self._getVirtualPts(
+                    np.asarray(self._planar_map_primary_pred_px, np.float32), quats[1])
+                if _pm_v1 is not None and len(_pm_v1) == 4:
+                    # PHYSICAL-PLAUSIBILITY REJECTION (2026-07-16, user correction): a
+                    # blanket np.clip(..., -5, 5) here was WRONG, not just loose -- s[0:2]
+                    # are normalized image coordinates ((u-cx)/fx), so a point at the true
+                    # edge of THIS camera's visible frame is ~1.2, not 5. That +-5.0 bound
+                    # was inherited unexamined from the OLD polynomial-extrapolation guard
+                    # (a genuinely different failure mode: an unbounded FITTED TREND, where
+                    # 5.0 was a reasonable runaway cap) -- never reconsidered for a
+                    # GEOMETRIC map projection, which should almost always land at or near
+                    # the real visible frame. map_confidence says nothing about whether
+                    # THIS SPECIFIC projected position is geometrically sane -- a confident
+                    # map can still project a point far outside the camera's FoV if its
+                    # homography has drifted (e.g. from accumulated error during the same
+                    # extended dropout the rescue exists to bridge). Clamping such a value
+                    # to a bound (any bound) still hands the controller a fabricated
+                    # position -- s_e_n = s_e/p_10 amplifies it by 1/p_10 (~3-7x for this
+                    # camera), so even a moderately-wrong clamped s can read as a
+                    # double-digit normalized error, triggering the same kappa-ratchet/a_u
+                    # explosion this project has repeatedly traced to a bad position
+                    # signal. Confirmed live: exactly this chain produced IC1's 75m/138m
+                    # fly-away (ICValidation/20260716-211434). Fix: REJECT (not clip) a
+                    # rescue whose projected centroid/size falls outside the same bounds
+                    # used to guard the override path (shared helper, see
+                    # _planarMapPredictionPlausible) -- fall through to hold/decay instead
+                    # of feeding a physically-impossible position to the controller.
+                    _ok, _pm_v1_checked, _why = self._planarMapPredictionPlausible(
+                        self._planar_map_primary_pred_px, quats[1])
+                    if _ok:
+                        _pm_s = self._computeFeatureVec(size_factor * _pm_v1_checked)
+                        extrapolated_img_feature_param = _pm_s
+                    else:
+                        _pm_rescue = False
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                            print(f"[planar_map rescue] REJECTED implausible {_why} "
+                                  f"-- falling back to hold/decay", flush=True)
+                else:
+                    _pm_rescue = False
+            self._planar_map_rescue_active = _pm_rescue   # exposed via RESCUE_ACTIVE, see __init__ comment
+
             # CENTROID-RATE OBSERVER injection: log the observer flow (decoded-corner centroid rate)
             # instead of the zero "no information" default when it produced a value this frame.
-            _of = (size_factor * self._observer_flow
-                   if (self._single_marker and self._centroid_rate and self._observer_valid)
+            _observer_fresh = (self._single_marker and self._centroid_rate and self._observer_valid)
+            _of = (size_factor * self._observer_flow if _observer_fresh
                    else extrapolated_opt_flow_ang_vel_raw)
             self._opt_flow_ang_vel_raw.append(_of)
+            self._h_estimator_tag.append('observer_full' if _observer_fresh else 'coast')
+            # Corner-flow KF: the observer branch is genuine fresh data (real correct-step);
+            # otherwise this frame has nothing but a synthetic decayed extrapolation — coast the
+            # KF (predict-only, no correction) rather than freezing it (no step at all) or
+            # correcting it against a fabricated value. See feedback_kf_frozen_during_marker_loss.
+            self._kf_update(_of if _observer_fresh else None, self._time.perf_counter())
             self._imu_angvel_raw.append(np.full(3, np.nan))   # marker lost: no synced IMU pairing
             # Guard #1 companion: keep the quat VALID through marker-LOST — the FC attitude is
             # genuine (use-genuine-data directive). Only nan if the FC quat itself is missing.
             _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
             self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
             self._img_feature_param.append(extrapolated_img_feature_param)
+            self._s_estimator_tag.append('planar_map_rescue' if _pm_rescue else 'coast')
+            # _centroidMap/_alphaMap/_flowMap (the OVERRIDE consumers) never run in this branch
+            # (raw decode failed this frame) -- keep the raw-log arrays lockstep-aligned with
+            # _s_estimator_tag/_h_estimator_tag regardless (see __init__).
+            self._cmap_raw_log.append((np.nan, np.nan)); self._cmap_trust_log.append(0.0)
+            self._amap_raw_log.append(np.nan); self._amap_trust_log.append(0.0)
+            self._fmap_raw_log.append((np.nan, np.nan, np.nan))
+            # Centroid KF: the map-rescue branch is a genuine current-frame geometric estimate
+            # (grounded in this frame's OTHER tracked scene features, not a blind trend fit) --
+            # real correct-step, same treatment as the observer's h-rescue above. The
+            # predict-only coast step (the `else None` case) was MOVED EARLIER (2026-07-17,
+            # see the "Centroid s" comment above) so this frame's logged s could read its
+            # result -- calling it again here with None would double-step the KF's dt
+            # accounting within one frame, so only call when rescuing (a genuine correct-step
+            # against the rescue's fresh geometric estimate, which wasn't available yet at the
+            # earlier predict call). See feedback_kf_frozen_during_marker_loss.
+            if _pm_rescue:
+                self._kf_feat_update(extrapolated_img_feature_param, self._time.perf_counter())
             self._n_flow_corners.append(0)   # extrapolated frame: no fresh corners
             self._drift_off_hist.append(self._last_drifted_off)   # latched value (2026-07-07 failure-cause tagging)
             self._overflow_hist.append(self._last_overflow)
 
-            # Log the previous data
-            self._feature_pts.append(self._feature_pts[-1] if self._feature_pts else np.zeros((2,4,2)))
-            self._virtual_feature_pts.append(self._virtual_feature_pts[-1] if self._virtual_feature_pts else np.zeros((2,4,2)))
+            # RESCUED CORNER GEOMETRY (2026-07-17, user correction — the FEATURE_IS_STALE gate
+            # I'd put on the CBF was a band-aid: that flag is a legacy RAW-decode-miss counter
+            # that predates PlanarFeatureMap and has zero awareness of a successful rescue, so
+            # it fires after just STALE_THRESH=3 raw misses even while the map is rescuing
+            # EVERY one of those frames with a plausibility-checked estimate. The actual root
+            # cause: _feature_pts (what MARKER_EXTENT_PX / the CBF's d_min_fov read) was NEVER
+            # updated with the rescue's geometry -- only _img_feature_param (the s vector) got
+            # it; this line unconditionally re-appended the stale previous corners regardless
+            # of whether a fresh rescue succeeded. Fix: when _pm_rescue succeeded this frame,
+            # carry the plausibility-checked rescued pixel corners into _feature_pts (paired
+            # with the previous frame's current-corners as [0], matching the raw C_nP=[prev,
+            # curr] convention) so MARKER_EXTENT_PX/CBF see LIVE (map-grounded) geometry
+            # instead of frozen raw corners. Only a genuine TOTAL coast (no raw, no rescue)
+            # still holds the last value -- see FEATURE_PTS_FRESH below for consumers.
+            self._feature_pts_fresh = bool(_pm_rescue)
+            if _pm_rescue:
+                _prev_curr = (self._feature_pts[-1][1] if self._feature_pts
+                              else np.asarray(self._planar_map_primary_pred_px, np.float32))
+                self._feature_pts.append(np.array(
+                    [_prev_curr, np.asarray(self._planar_map_primary_pred_px, np.float32)]))
+                self._virtual_feature_pts.append(np.array(
+                    [self._virtual_feature_pts[-1][1] if self._virtual_feature_pts
+                     else _pm_v1_checked, _pm_v1_checked]))
+            else:
+                self._feature_pts.append(self._feature_pts[-1] if self._feature_pts else np.zeros((2,4,2)))
+                self._virtual_feature_pts.append(self._virtual_feature_pts[-1] if self._virtual_feature_pts else np.zeros((2,4,2)))
 
         return FEATURE_DATA_IS_LOGGED
 
@@ -2310,40 +3270,67 @@ class IMG_PROCESSOR(Thread):
 
         return A
 
-    def _kf_step(self, x, P, prev_t, initialized, z, t):
+    def _kf_step(self, x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
         """Generic per-channel 2-state (value, rate) constant-velocity KF step.
         Operates on the passed state (no self.* writes) and returns the updated
-        (x, P, prev_t, initialized) so the SAME filter can run on multiple flow
-        sources (corner flow + ring flow). z: (6,) measurement; t: timestamp."""
+        (x, P, prev_t, initialized) so the SAME filter can run on any channel
+        count / noise params (corner flow, ring flow, centroid feature all share
+        this). z: (C,) measurement, or None for a PREDICT-ONLY step (coast on the
+        last estimated rate, skip the correction — used during a marker-loss gap
+        so the state neither freezes (no step at all) nor gets corrected against
+        a synthetic/extrapolated value as if it were real data). t: timestamp.
+        q, r: this channel's process/measurement noise. dt_unc_max: if set, Q's
+        dt uses the TRUE elapsed gap (capped at dt_unc_max) instead of the
+        state-transition dt (capped at 0.1s for numerical stability) — so P
+        correctly reflects staleness across a multi-frame gap, and a fresh
+        measurement at relock gets full Bayesian trust instead of a multi-frame
+        catch-up ramp (see feedback_kf_frozen_during_marker_loss).
+
+        PURELY LINEAR — every channel here must be a plain unwrapped scalar. A
+        WRAPPED ANGLE (e.g. alpha) must NEVER be passed to this directly: the
+        innovation y=z-x_pred is a raw subtraction, so a measurement landing
+        near/across the +-pi branch cut produces a spurious ~2*pi innovation
+        that corrupts the rate state and then runs away unbounded during a
+        predict-only coast (see feedback_alpha_kf_wrap_bug — this is why
+        _kf_feat_update filters [sin(alpha), cos(alpha)] as two ordinary linear
+        channels through this same function, rather than alpha itself)."""
         if not initialized:
-            x = np.zeros((6, 2)); x[:, 0] = z          # value=z, rate=0
-            P = np.tile(np.eye(2) * 1.0, (6, 1, 1))    # moderate prior
+            if z is None:
+                return x, P, prev_t, initialized   # nothing to coast from yet
+            z = np.asarray(z, dtype=float)
+            x = np.zeros((len(z), 2)); x[:, 0] = z     # value=z, rate=0
+            P = np.tile(np.eye(2) * 1.0, (len(z), 1, 1))   # moderate prior
             return x, P, t, True
 
         dt = max(min(t - prev_t, 0.1), 1e-3)
+        dt_q = max(min(t - prev_t, dt_unc_max), 1e-3) if dt_unc_max is not None else dt
         F = np.array([[1.0, dt], [0.0, 1.0]])
         # Discrete-white-noise-on-acceleration process model
-        Q = self._kf_q * np.array([
-            [dt**4 / 4.0, dt**3 / 2.0],
-            [dt**3 / 2.0, dt**2],
+        Q = q * np.array([
+            [dt_q**4 / 4.0, dt_q**3 / 2.0],
+            [dt_q**3 / 2.0, dt_q**2],
         ])
-        R = self._kf_r
-        # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over the 6 channels)
-        x_pred = x @ F.T                                   # (6, 2)
-        P_pred = F @ P @ F.T + Q                           # (6, 2, 2)
+        # Predict: x ← Fx, P ← FPF^T + Q  (vectorized over channels)
+        x_pred = x @ F.T
+        P_pred = F @ P @ F.T + Q
+        if z is None:
+            return x_pred, P_pred, t, True         # PREDICT-ONLY: coast, no correction
+        z = np.asarray(z, dtype=float)
         # Innovation y = z - Hx_pred (H = [1, 0]), scalar per channel
-        y = z - x_pred[:, 0]                               # (6,)
-        S = P_pred[:, 0, 0] + R                            # (6,)
-        K = P_pred[:, :, 0] / S[:, None]                   # (6, 2)
+        y = z - x_pred[:, 0]
+        S = P_pred[:, 0, 0] + r
+        K = P_pred[:, :, 0] / S[:, None]
         # Update: x ← x_pred + K·y, P ← (I - K H) P_pred
         x = x_pred + K * y[:, None]
         P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
         return x, P, t, True
 
     def _kf_update(self, z, t):
-        """Corner-flow KF — thin wrapper around _kf_step on the corner state."""
+        """Corner-flow KF — thin wrapper around _kf_step on the corner state.
+        z=None -> predict-only coast (marker-loss gap, no correction)."""
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
-            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t)
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
+            self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
 
     def _ekf_fuse_step(self, corner_cal, corner_ok, corner_conf, ring_cal, ring_ok, t, n_corn=999,
                        ring_loom=0.0, ring_loom_ok=False):
@@ -2417,11 +3404,6 @@ class IMG_PROCESSOR(Thread):
             if self._loom_stale >= self._loom_stale_max:
                 x[2] *= self._loom_decay                     # h_tr loom -> 0
                 x[5] *= self._loom_decay                     # h_tv loom -> 0
-        # Positive-loom sign guard (see __init__): the consumed ego-loom h_tr[2] is clamped <= 0 so a
-        # wrong-signed ring-takeover loom (ArUco lost near the deck) can never command an ascent. Catches
-        # the actively-updated wrong sign the anti-stale decay above misses (it only handles a frozen loom).
-        if self._loom_sign_guard:
-            x[2] = min(x[2], 0.0)
         self._ekf_x, self._ekf_P = x, P
 
     def getTargetVel(self):
@@ -2430,34 +3412,70 @@ class IMG_PROCESSOR(Thread):
         return self._ekf_x[3:6].copy() if self._ekf_init else np.zeros(3)
 
     def _kf_feat_update(self, z, t):
-        """4-channel 2-state KF for the centroid feature (xc, yc, scale, alpha).
+        """4-channel feature KF for the centroid+alpha (xc, yc, scale, alpha) — thin wrapper
+        around the shared _kf_step, with its OWN (q, r) (self._kf_feat_q/_r) — the flow KF's
+        q=5/r=0.1 are mis-scaled for the order-1 centroid (see __init__). Low-lag alternative
+        to savgol(13) for the OUTER-loop centroid input. z : (4,) raw feature, or None for a
+        PREDICT-ONLY coast (marker-loss gap, no correction — mirrors _kf_update; see
+        feedback_kf_frozen_during_marker_loss). t : perf_counter.
 
-        Same constant-velocity model as _kf_update but with its OWN (q, r)
-        (self._kf_feat_q/_r) — the flow KF's q=5/r=0.1 are mis-scaled for the
-        order-1 centroid (see __init__). Low-lag alternative to savgol(13) for the
-        OUTER-loop centroid input. z : (4,) raw feature; t : perf_counter.
-        """
-        z = np.asarray(z, dtype=float)
-        if not self._kf_feat_initialized:
-            self._kf_feat_x[:, 0] = z
-            self._kf_feat_x[:, 1] = 0.0
-            self._kf_feat_P = np.tile(np.eye(2) * 1.0, (4, 1, 1))
-            self._kf_feat_prev_t = t
-            self._kf_feat_initialized = True
-            return
-        dt = max(min(t - self._kf_feat_prev_t, 0.1), 1e-3)
-        self._kf_feat_prev_t = t
-        F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = self._kf_feat_q * np.array([[dt**4 / 4.0, dt**3 / 2.0],
-                                        [dt**3 / 2.0, dt**2]])
-        R = self._kf_feat_r
-        x_pred = self._kf_feat_x @ F.T                       # (4, 2)
-        P_pred = F @ self._kf_feat_P @ F.T + Q               # (4, 2, 2)
-        y = z - x_pred[:, 0]                                 # (4,)
-        S = P_pred[:, 0, 0] + R                              # (4,)
-        K = P_pred[:, :, 0] / S[:, None]                     # (4, 2)
-        self._kf_feat_x = x_pred + K * y[:, None]
-        self._kf_feat_P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+        CHANNELS 0-2 (xc, yc, scale) run through _kf_step directly — plain linear
+        quantities. CHANNEL 3 (alpha) is a WRAPPED ANGLE and is instead tracked via a
+        separate sin/cos-pair sub-filter (self._kf_feat_sc_x, 2026-07-19 — see
+        feedback_alpha_kf_wrap_bug): [sin(alpha), cos(alpha)] run through the SAME
+        _kf_step as two ordinary linear channels (no branch cut, no asymptote — unlike
+        tan(alpha), which is pi-periodic and would reintroduce the 2-fold ambiguity
+        _marker_principal_angle's corner weighting exists to remove). self._kf_feat_x[3, 0]
+        is kept synced to atan2(sin_state, cos_state) purely so every existing consumer
+        (extrapolation, sensor-cal readout) keeps reading a plain alpha scalar from the
+        same slot; self._kf_feat_x[3, 1] (rate) is unused externally and is not meaningful
+        in this representation, left at 0.
+
+        CONFIDENCE-SCALED r (2026-07-20, see feedback_confidence_scaled_kf_r): "map is
+        authoritative" (2026-07-20) means an accepted map sample's VALUE is used fully
+        regardless of where its confidence sits between the reject and full-trust floors
+        -- but self._kf_feat_r=0.004 tells this KF EVERY correction is near-ground-truth
+        (K~=1, confirmed empirically: post-correction state tracks raw*gain almost
+        exactly), so a frame accepted near the reject floor -- e.g. a slot whose geometry
+        is actively degrading toward rejection, which was exactly the diagnosed IC3
+        158m fly-away mechanism -- gets treated as fully trustworthy and can dominate the
+        RATE state in one step. The value taper this design replaced (trust*map +
+        (1-trust)*decode) accidentally solved this by shrinking the numeric step size for
+        a low-confidence sample before it ever reached the KF; scaling r here is the
+        textbook equivalent for a Kalman filter (tell it a sample is noisier, so it barely
+        moves K) WITHOUT touching the reported value at all -- map stays authoritative,
+        but the state a future coast extrapolates from stays protected. Only applies when
+        THIS frame's sample was map-sourced (trust>0); decode-only frames keep the
+        unmodified, already-validated self._kf_feat_r."""
+        z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        r_pos = self._kf_feat_r
+        if z is not None and self._cmap_trust_log and self._cmap_trust_log[-1] > 0.0:
+            _tr = float(self._cmap_trust_log[-1])
+            r_pos = np.array([self._kf_feat_r / max(_tr, 0.05),
+                               self._kf_feat_r / max(_tr, 0.05),
+                               self._kf_feat_r])
+        x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
+            self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
+                          self._kf_feat_initialized, z_pos, t,
+                          self._kf_feat_q, r_pos, dt_unc_max=self._kf_dt_unc_max)
+        self._kf_feat_x[:3] = x_pos
+        self._kf_feat_P[:3] = P_pos
+
+        z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
+        r_sc = self._kf_feat_r
+        if z is not None and self._amap_trust_log and self._amap_trust_log[-1] > 0.0:
+            _tra = float(self._amap_trust_log[-1])
+            r_sc = self._kf_feat_r / max(_tra, 0.05)
+        self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
+            self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
+                          self._kf_feat_sc_initialized, z_sc, t,
+                          self._kf_feat_q, r_sc, dt_unc_max=self._kf_dt_unc_max)
+        if self._kf_feat_sc_initialized:
+            self._kf_feat_x[3, 0] = np.arctan2(self._kf_feat_sc_x[0, 0], self._kf_feat_sc_x[1, 0])
+            self._kf_feat_x[3, 1] = 0.0
+
+        if self._kf_feat_initialized:
+            self._kf_feat_ever_initialized = True   # sticky -- see __init__ comment
 
     def _obs_vel_kf(self, x0, y0, t):
         """Constant-velocity Kalman filter on the decoded centroid -> smoothed lateral velocity
@@ -2486,8 +3504,15 @@ class IMG_PROCESSOR(Thread):
         self._obs_kf_t = t
         return out[0], out[1]
 
-    def _marker_principal_angle(self, pts):
+    def _marker_principal_angle(self, pts, weights=None):
         """2pi-periodic marker orientation in the (level) V plane (raw, no offset).
+
+        weights (2026-07-19, stage 3): optional explicit per-point weight array, same
+        length as pts. None (default) preserves the original behavior EXACTLY -- [4,3,2,1]
+        for a 4-corner quad, uniform otherwise. Lets the MAP-DRIVEN path (get_marker_points'
+        corner+dense set, richer than 4 corners alone) reuse this SAME moment+disambiguation
+        math instead of duplicating it -- never re-derive this logic, see _computeFeatureVec's
+        docstring for why (a board<->map<->fallback switch must never jump conventions).
 
         The weighted 2nd-moment principal axis 0.5*arctan2(2 mu11, mu20-mu02)
         gives only an AXIS (pi-period) — invariant under 180deg. We disambiguate
@@ -2502,7 +3527,9 @@ class IMG_PROCESSOR(Thread):
         _getImgFeatures fallback.
         """
         x, y = pts[:, 0], pts[:, 1]
-        if len(x) == 4:
+        if weights is not None:
+            w = np.asarray(weights, dtype=float)
+        elif len(x) == 4:
             w = np.array([4.0, 3.0, 2.0, 1.0])
         else:
             w = np.ones(len(x))
@@ -2754,37 +3781,107 @@ class IMG_PROCESSOR(Thread):
 
           Falls back to uniform weighting (MATLAB-equivalent) when N != 4.
         """
+        s = self._computeFeatureVec(pts)
+        self._img_feature_param.append(s)
+        # NOTE: the CALLER runs the feature KF's correct-step (_kf_feat_update) AFTER this
+        # returns, once the ds outlier-hold guard has run on self._img_feature_param[-1] --
+        # see the call site (single-marker branch). Correcting the KF here would feed it the
+        # PRE-guard (possibly outlier) value; do not add a KF update here.
+
+    def _computeFeatureVec(self, pts):
+        """Pure computation of the feature vector [xc, yc, 1.0, alpha] from a set of V-frame
+        points (4 ArUco corners normally; also used directly by the PlanarFeatureMap RESCUE
+        path below, on the map's reprojected corners, since it's the same geometric
+        computation regardless of source). Extracted from _getImgFeatures (2026-07-16) so
+        both the raw-decode path and the map-rescue path share ONE implementation -- never
+        duplicate this math."""
         x = pts[:, 0]
         y = pts[:, 1]
         N = len(x)
 
         if N == 4:
-            w = np.array([4.0, 3.0, 2.0, 1.0])
             # Board equilibrium offset (shared with the board path _board_feature so
             # the board<->single-marker fallback never jumps).
             alpha_0 = self._moment_alpha_0
         else:
-            w = np.ones(N)
             alpha_0 = 0.0
-        W = w.sum()
-
-        # Weighted centroid (TL-biased) — the established SITL lateral feature.
-        xc = float(np.sum(w * x) / W)
-        yc = float(np.sum(w * y) / W)
+        # Unweighted (geometric) centroid — the actual marker position. The [4,3,2,1]
+        # corner weights (applied only inside _marker_principal_angle below) exist
+        # ONLY to make yaw observable (see docstring); using them for position too
+        # silently biased xc,yc toward the TL corner by an amount that ROTATES WITH
+        # THE MARKER's yaw (the weights are corner-label-tied), corrupting the
+        # position signal the outer loop and calibration both consume. Corrected
+        # 2026-07-11 (was a real train/run mismatch vs PLASMC_GT_FEEDBACK, which
+        # substitutes the true unbiased GT centroid).
+        xc = float(np.mean(x))
+        yc = float(np.mean(y))
 
         # Yaw: 2pi-disambiguated moment orientation (same convention/offset as the
-        # board path _board_feature, so a board<->fallback switch never jumps).
+        # board path _board_feature, so a board<->fallback switch never jumps). Uses
+        # its OWN internal weighted centroid (_marker_principal_angle) purely for
+        # direction disambiguation -- never returned as position, so this is unaffected
+        # by the xc,yc fix above.
         raw = self._marker_principal_angle(pts)
         alpha = float(np.arctan2(np.sin(raw - alpha_0), np.cos(raw - alpha_0)))
 
         # ---- 4. Feature vector (unnormalized) ----
-        s = np.array([xc, yc, 1.0, alpha])
+        return np.array([xc, yc, 1.0, alpha])
 
-        self._img_feature_param.append(s)
-        # NOTE: the REAL-sample buffer (_img_feature_param_real/_real_t, used by the s-extrapolation
-        # fit) is populated by the CALLER after this returns, once the ds outlier-hold guard has run
-        # on self._img_feature_param[-1] -- see the call site (single-marker branch). Populating it
-        # here would capture the PRE-guard (possibly outlier) value. Do not re-add here.
+    def _planarMapPredictionPlausible(self, pm_px, quat):
+        """PHYSICAL-PLAUSIBILITY check for a PlanarFeatureMap camera-pixel corner
+        prediction (2026-07-16, extracted so the RESCUE and OVERRIDE consumers share
+        ONE check -- never duplicate this logic, which is exactly how the override
+        path shipped with NO check at all and let a drifted map projection replace a
+        perfectly good raw ArUco decode undetected, confirmed live on IC2/IC3's
+        terminal phase: wild V-frame centroids like [-23,24] fed straight through).
+
+        Two INDEPENDENT failure modes, both checked:
+        (1) POSITION: map_confidence (or the marker-aware confidence gating the
+            override) says nothing about whether THIS SPECIFIC projected position is
+            geometrically sane -- the map's homography can drift arbitrarily far while
+            still reporting high internal confidence (confidence is about tracking
+            density + residual, not about ground truth it has no access to). A
+            confident-but-drifted map can project a point far outside the camera's
+            actual visible frame.
+        (2) SIZE: a position that happens to land within the FoV bound is NOT
+            sufficient -- the homography can ALSO drift in SCALE while the position
+            still looks plausible (confirmed live, IC5: implied extent 96.6px held for
+            300ms vs true 15px on recovery -- a 6x mismatch with a perfectly
+            in-frame centroid throughout).
+
+        Returns (ok: bool, V-frame corners or None, reason: str). Callers fall back to
+        their pre-existing behavior (raw decode for the override, hold/decay for the
+        rescue) on ok=False -- NEVER clip/clamp an implausible value, since s_e_n =
+        s_e/p_10 amplifies any residual error by ~3-7x for this camera, turning even a
+        moderately-wrong clamped value into a double-digit normalized error and the
+        same kappa-ratchet/a_u explosion this project has repeatedly traced to a bad
+        position signal (confirmed live: IC1's 75m/138m fly-away,
+        ICValidation/20260716-211434)."""
+        pm_v1 = self._getVirtualPts(np.asarray(pm_px, np.float32), quat)
+        if pm_v1 is None or len(pm_v1) != 4:
+            return False, None, "shape"
+
+        p10 = self.center / self.focal
+        try:
+            _held = np.asarray(self._feature_pts[-1])
+            _held = _held[1] if _held.ndim == 3 else _held
+            delta = 0.5 * (_held.max(0) - _held.min(0)) / self.focal
+        except Exception:
+            delta = np.zeros(2)
+        bound = self._planar_map_rescue_fov_margin * (p10 + delta)
+        ctr = pm_v1.mean(axis=0)
+        if not np.all(np.abs(ctr) <= bound):
+            return False, pm_v1, "position"
+
+        if self._last_real_extent_px is not None and self._last_real_extent_px > 1e-6:
+            pm_px_arr = np.asarray(pm_px, dtype=float)
+            pm_extent = float(max(pm_px_arr[:, 0].max() - pm_px_arr[:, 0].min(),
+                                   pm_px_arr[:, 1].max() - pm_px_arr[:, 1].min()))
+            ratio = pm_extent / self._last_real_extent_px
+            if not ((1.0 / self._planar_map_rescue_size_ratio) <= ratio <= self._planar_map_rescue_size_ratio):
+                return False, pm_v1, "size"
+
+        return True, pm_v1, "ok"
 
     def _getVirtualPts(self, pts, quat):
         """Reproject camera-frame pixels onto the virtual image plane V.
@@ -2928,18 +4025,96 @@ class IMG_PROCESSOR(Thread):
             "Opt Flow Fused": self._opt_flow_fused_log,   # corner+ring EKF target-rel [h_tr;w] (FLOW_FUSE_RING=1)
             "Target Vel": self._target_vel_log,           # EKF target/rover velocity h_tv (flow units)
             "FPS": self._fps_log,
-            "Image Stamp": self._stamp_log
+            "Image Stamp": self._stamp_log,
+            "Centroid Map Dbg": getattr(self, '_cmap_dbg', {}),   # (2026-07-18) _centroidMap fire/none breakdown (CENTROID_MAP_DBG=1)
+            "Flow Map Dbg": getattr(self, '_fmap_dbg', {}),   # (2026-07-19) stage-4 small-marker-flow fire/ready breakdown (FLOW_MAP_DBG=1)
+            "Planar Map Shadow": self._planar_map_log,   # (2026-07-15) shadow-mode PlanarFeatureMap vs live-winning tier, see src/planar_map.py
+            # RAW (PRE-CAL) map-sourced logs (2026-07-20, see __init__ + feedback_map_cal_validation_gap):
+            # per-frame, lockstep with Feature Params/Opt Flow Ang Vel -- (nan/0) when that frame's
+            # map function didn't fire. Needed to check whether _sensor_cal_s/_sensor_cal_hw (fit
+            # against the decode path only) are still correct for CENTROID_FROM_MAP/ALPHA_FROM_MAP/
+            # FLOW_FROM_MAP's structurally different raw computations.
+            "Centroid Map Raw": self._cmap_raw_log,     # (2,) raw V-frame centroid, pre-_sensor_cal_s
+            "Centroid Map Trust": self._cmap_trust_log, # soft-gate blend weight used this frame [0,1]
+            "Alpha Map Raw": self._amap_raw_log,        # raw alpha (rad), pre-_sensor_cal_s
+            "Alpha Map Trust": self._amap_trust_log,    # soft-gate blend weight used this frame [0,1]
+            "Flow Map Raw": self._fmap_raw_log,         # (3,) raw [hx,hy,hz], pre-_sensor_cal_hw
         }
     
     def getParams(self):
         parameter = f"{{'Capture Rate':{self._capRate}, 'resolution':{self._resolution}}}"
         return parameter
     
+    def _effectiveCalSxy(self):
+        """(gx, gy) centroid gain for THIS readout. MAP IS AUTHORITATIVE (2026-07-20, user
+        directive: "decode is just for cross-correction") -- whenever _centroidMap accepted
+        this frame (self._cmap_trust_log[-1] > 0; the override already used the map value
+        FULLY, not blended, see the call site), use the map-sourced gain FULLY too, not
+        blended by degree of confidence -- a partial gain blend against a FULL value swap
+        was internally inconsistent, and produced a real step artifact at every
+        decode<->map transition (gain jumped even though it wasn't tapering anything).
+        Uses decode's cal_s[0:2] exactly when the map didn't fire this frame (CENTROID_FROM_MAP
+        off, or the gate rejected/never fired) -- not because decode is a backup value source,
+        but because that's what s[0:2] mechanically holds then (decode's cross-check
+        computation, always run first -- see the override call site). Decode's cal_s is never
+        blended with the map's gain; the map, once accepted, is authoritative."""
+        fired = bool(self._cmap_trust_log) and self._cmap_trust_log[-1] > 0.0
+        if fired:
+            return float(self._sensor_cal_s_map_xy[0]), float(self._sensor_cal_s_map_xy[1])
+        return float(self._sensor_cal_s[0, 0]), float(self._sensor_cal_s[1, 1])
+
     def getRawImgFeatureParam(self):
         """Image feature vector BEFORE _sensor_cal_s. Used by output_calibration."""
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
         return np.array(self._img_feature_param[-1])
+
+    def getRawImgFeatureEstimatorTag(self):
+        """Which estimator produced the latest getRawImgFeatureParam() sample:
+        'board_homography' | 'single_marker_moment' | 'coast' (synthetic
+        extrapolation — exclude from any calibration fit). '' if no sample yet
+        (back-compat: older recordings predate this field entirely)."""
+        if len(self._s_estimator_tag) == 0:
+            return ''
+        return self._s_estimator_tag[-1]
+
+    def getRawCentroidMapFeature(self):
+        """Latest raw (2,) V-frame centroid from _centroidMap, BEFORE _sensor_cal_s and BEFORE
+        the soft-gate blend — (nan, nan) if it didn't fire this frame (map unavailable, gate
+        rejected, or CENTROID_FROM_MAP=0). Co-sampled by record_output_calibration.py, same
+        clock as getRawImgFeatureParam(), so this needs NO separate GT/img alignment — see
+        feedback_map_cal_validation_gap."""
+        if len(self._cmap_raw_log) == 0:
+            return np.array([np.nan, np.nan])
+        return np.array(self._cmap_raw_log[-1], dtype=float)
+
+    def getRawAlphaMapFeature(self):
+        """Latest raw alpha (rad) from _alphaMap, BEFORE _sensor_cal_s and BEFORE the soft-gate
+        blend — nan if it didn't fire this frame. Same co-sampling convention as
+        getRawCentroidMapFeature()."""
+        if len(self._amap_raw_log) == 0:
+            return np.nan
+        return float(self._amap_raw_log[-1])
+
+    def getRawFlowMapFeature(self):
+        """Latest raw (3,) [hx, hy, hz] from _flowMap, BEFORE _sensor_cal_hw — (nan, nan, nan) if
+        it didn't fire this frame (no secondary/small marker slot, size band not met, or
+        FLOW_FROM_MAP=0). Same co-sampling convention as getRawCentroidMapFeature()."""
+        if len(self._fmap_raw_log) == 0:
+            return np.array([np.nan, np.nan, np.nan])
+        return np.array(self._fmap_raw_log[-1], dtype=float)
+
+    def getRawOptFlowEstimatorTag(self):
+        """Which estimator produced the latest getRawOptFlowAngVel() sample:
+        'lstsq'/'lstsq_klt' (merged calibration category — see
+        feedback_klt_fallback_merge_no_separate_cal) | '+observer_xy' suffix
+        (h_x/h_y observer-overridden, h_z/w still lstsq) | 'observer_full' (all
+        channels from the centroid-rate observer) | 'coast' (synthetic
+        predict-only extrapolation — exclude from any calibration fit). '' if no
+        sample yet."""
+        if len(self._h_estimator_tag) == 0:
+            return ''
+        return self._h_estimator_tag[-1]
 
     def getRawOptFlowAngVel(self):
         """Raw 6-vector LSTSQ output `[h; w]` BEFORE `_sensor_cal_hw`.
@@ -2991,11 +4166,18 @@ class IMG_PROCESSOR(Thread):
         """
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
-        if len(self._opt_flow_ang_vel_raw) >= FILTER_WIN:
-            sgf_buf = sgf(self._opt_flow_ang_vel_raw[-FILTER_WIN:],
+        # Never let the window read before the CONTROLLER_READY engage point (see
+        # _engage_idx_flow comment in _reset_stateful_trackers) -- clip the available
+        # history to post-engage samples only, so the first few post-engage frames don't
+        # silently blend in pre-engage measurements.
+        _post_engage = self._opt_flow_ang_vel_raw[self._engage_idx_flow:]
+        if len(_post_engage) == 0:
+            return np.zeros(6)
+        if len(_post_engage) >= FILTER_WIN:
+            sgf_buf = sgf(_post_engage[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
             return sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return np.mean(self._opt_flow_ang_vel_raw, axis=0)
+        return np.mean(_post_engage, axis=0)
 
     def getOptFlowAngVel(self):
         """Calibrated, smoothed optical flow + angular velocity (6-vec).
@@ -3014,15 +4196,402 @@ class IMG_PROCESSOR(Thread):
             _out = self._sensor_cal_hw @ self._compute_savgol_output()
             if self._loom_decouple:
                 _out[2] = self._compute_savgol_output()[2]   # loom = raw vz/Z, bypass cal
-            if self._loom_sign_guard:
-                _out[2] = min(_out[2], 0.0)                  # positive-loom sign guard (non-fuse path)
             return _out
         _out = self._sensor_cal_hw @ self._kf_x[:, 0]
         if self._loom_decouple:
             _out[2] = self._kf_x[2, 0]                       # loom already vz/Z, bypass cal row 2
-        if self._loom_sign_guard:
-            _out[2] = min(_out[2], 0.0)                      # positive-loom sign guard (non-fuse path)
         return _out
+
+    @property
+    def RESCUE_ACTIVE(self):
+        """True iff THIS frame's s/alpha/h_z came from the PlanarFeatureMap rescue rather
+        than a raw ArUco/KLT/dense-recovery decode -- see __init__ comment. apps/
+        landing_test.py's feature_fresh check reads this alongside FEATURE_IS_STALE so a
+        rescue-covered dropout can keep running closed-loop control instead of falling
+        into the grace-hold/TARGET_LOST path meant for genuinely-no-information frames."""
+        return self._planar_map_rescue_active
+
+    @property
+    def FEATURE_PTS_FRESH(self):
+        """True iff _feature_pts (raw pixel corners -- what MARKER_EXTENT_PX and the CBF's
+        d_min_fov consume) was updated with LIVE geometry this frame (raw decode/KLT OR a
+        plausibility-checked PlanarFeatureMap rescue), vs held at its last value (a genuine
+        total coast -- neither raw nor rescue available this frame). Distinct from
+        FEATURE_IS_STALE (a legacy RAW-miss-only counter with STALE_THRESH persistence and
+        no rescue awareness -- it flips True after 3 consecutive raw misses even while the
+        map is successfully rescuing every one of them). Consumers that read _feature_pts
+        directly (not the s/alpha/h pipeline, which RESCUE_ACTIVE already covers) should
+        gate on this, not FEATURE_IS_STALE."""
+        return self._feature_pts_fresh
+
+    @property
+    def SMALL_SLOT_CONFIDENT(self):
+        """True iff PlanarFeatureMap's secondary (smaller, by construction) slot is
+        confidently mapped right now -- same threshold + source the CBF itself uses for
+        its own small-marker preference (CBF_SMALL_SLOT_CONF_MIN), read here too so the
+        CBF's corner choice and the CBF-driven HANDOVER_LATCHED path (see
+        update_cbf_handover_signal) stay consistent with each other."""
+        if self._planar_map is None or not getattr(self._planar_map, 'initialized', False):
+            return False
+        sec = self._planar_map.secondary_slot_name()
+        if sec is None:
+            return False
+        return self._planar_map.get_slot_confidence(sec) >= self._cbf_small_conf_min
+
+    def _mapSlotVpts(self, quat):
+        """De-rotated (V-frame) corners of the map's HANDOVER-GATED slot -- PRIMARY (big) before
+        HANDOVER_LATCHED, SECONDARY (small) after (the user's big-before/small-after selection).
+        Shared source for the decode->map migration (loom M stage 1, centroid stage 2): the map
+        tracks each slot continuously (KLT+homography), so these corners don't flicker across a
+        big<->small decode blink, and both slots share one map with the online-learned relative
+        size (continuous scale across the single latched switch). Uses the SAME _getVirtualPts
+        de-rotation as the decode path -> directly substitutable. None if unavailable."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None  # None -> primary (big)
+        try:
+            px = pm.get_marker_frame_pts(slot=slot)   # continuous per-slot corners (pixel frame)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            return Vp
+        except Exception:
+            return None
+
+    def _loomMapM(self, quat):
+        """Map-driven loom scale M = μ20+μ02 (de-rotated corner scatter ∝ (sz·f/Z)²), STAGE 1
+        of the decode->map migration. Returns None if unavailable (caller falls back to decode M)."""
+        Vp = self._mapSlotVpts(quat)
+        if Vp is None:
+            return None
+        ctr = Vp.mean(axis=0)
+        M = float(np.mean(np.sum((Vp[:, :2] - ctr[:2]) ** 2, axis=1)))
+        return M if (M > 1e-12 and np.isfinite(M)) else None
+
+    def _quadIllConditioned(self, pts):
+        """True iff a 4-corner marker quad is geometrically DEGENERATE -- a foreshortened sliver
+        that cannot localize a centre or well-condition a homography (2026-07-19, user). Verified
+        signature at the tilt-grazing terminal: the two diagonals go near-PARALLEL (angle ~1.3deg
+        vs ~90 when square) and/or the quad ELONGATES (max/min side up to 70x vs ~1 square). Either
+        makes the diagonal-intersection centre swing wildly (~1/sin(angle) amplification) and the
+        homography under-determined. Ordered ArUco corners (TL,TR,BR,BL): diagonals are 0-2 & 1-3.
+        Thresholds env-tunable. Corner-order-agnostic elongation via all 4 side lengths."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+                return True   # malformed = not usable for correction
+            d1 = c[2] - c[0]; d2 = c[3] - c[1]
+            n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+            if n1 < 1e-6 or n2 < 1e-6:
+                return True
+            ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+            sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+            elong = max(sides) / max(min(sides), 1e-6)
+            _min_ang = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+            _max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+            return bool(ang < _min_ang or elong > _max_elong)
+        except Exception:
+            return True
+
+    def _centroidMap(self, quat, size_factor=1.0):
+        """Map-driven V-frame centroid [xc, yc], STAGE 2. Uses the map's NATIVE (projective-
+        invariant diagonal-intersection) center reprojected to the frame, NOT the corner mean:
+        the true center is robust to a partially-visible/overflowing marker (fixed gauge center
+        + all-feature homography), and the corner-mean was shown to shift off-center under
+        perspective (user, 2026-07-18). de-rotate that single pixel via the SAME _getVirtualPts
+        the decode path uses. quat = frame-1 (quats[1]), matching the validated map override/
+        rescue convention (controller.py-consumed V_aruco_norm[1] is frame-1). size_factor
+        matches the decode feature (1.0 for the single id-0 marker). None -> caller keeps decode.
+
+        RIGIDITY/CONFIDENCE gate (2026-07-19, SOFT as of the same day — see
+        feedback_soft_rigidity_gate): the position+size plausibility gate below catches an
+        off-FoV/off-scale reprojection, but NOT a slot whose tracked geometry is
+        in-place-but-corrupted (marker_rigid_ok=False, confidence collapsed) — that geometry
+        can still look plausible on POSITION+SIZE while its internal corner agreement is
+        garbage. Diagnosed IC4 case: a single frame with err_px=1281 and confidence=0.0/
+        marker_rigid_ok=False fed a bad centroid through, contributing to a 4.5m miss. A
+        first pass hard-rejected anything below _planar_map_conf_floor (0.5) — this then
+        regressed IC3 (13m miss), which spent 4+ real seconds with confidence genuinely
+        stuck in the 0.0-0.5 band, so hard-rejecting all of it left the override
+        contributing nothing for the whole stretch (pure, uncorrected KF coast). Fixed:
+        confidence below _planar_map_reject_floor (~0.05, matching where the diagnosed
+        garbage frames actually sat) still hard-rejects; between the two floors, this
+        method still computes and returns the map value, but self._cmap_last_trust (read
+        by the caller) is a confidence-proportional blend weight instead of the implicit
+        1.0 a return always used to carry — the caller blends toward decode rather than
+        swapping wholesale, so a partially-degraded slot contributes SOME signal instead
+        of none."""
+        _dbg = os.environ.get("CENTROID_MAP_DBG", "0") == "1"
+        def _tally(k):
+            if _dbg:
+                self._cmap_dbg = getattr(self, '_cmap_dbg', {})
+                self._cmap_dbg[k] = self._cmap_dbg.get(k, 0) + 1
+        self._cmap_last_trust = 1.0
+        pm = self._planar_map
+        if pm is None:
+            _tally('none_pm_is_None'); return None
+        if not getattr(pm, 'initialized', False):
+            _tally('none_not_initialized'); return None
+        if quat is None:
+            _tally('none_quat_None'); return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None   # big before handover, small after
+        _conf = pm.get_slot_confidence(slot) if slot is not None else pm.confidence
+        if _conf < self._planar_map_reject_floor:
+            _tally('none_low_confidence'); return None
+        self._cmap_last_trust = float(np.clip(
+            (_conf - self._planar_map_reject_floor)
+            / max(self._planar_map_conf_floor - self._planar_map_reject_floor, 1e-6),
+            0.0, 1.0))
+        try:
+            # PLAUSIBILITY GATE (2026-07-18) -- the OVERFLOW FIX. This override shipped WITHOUT the
+            # check the rescue/override paths use (_planarMapPredictionPlausible), which is exactly
+            # the bug that method's docstring warns about ("the override path shipped with NO check
+            # at all and let a drifted map projection replace a perfectly good raw ArUco decode").
+            # Diagnosed source of the map centroid's terminal spikes: when the marker LEAVES the FoV
+            # (IC5: |s| up to 3.4, 18% of frames past the 1.2 FoV bound), the homography reprojects
+            # an OFF-SCREEN EXTRAPOLATED center that decode would flag as garbage but the map emits
+            # as a plausible-looking 1-3.4 value. Run the SAME position+size plausibility check on
+            # the slot's corner prediction; if it fails, REJECT (fall back to decode) rather than
+            # feed an off-FoV extrapolation the controller amplifies by 1/p_10 (~3-7x).
+            corners_px = pm.get_marker_frame_pts(slot=slot)
+            if corners_px is None or len(corners_px) != 4:
+                _tally('none_native'); return None
+            _ok, _v, _why = self._planarMapPredictionPlausible(corners_px, quat)
+            if not _ok:
+                _tally('none_implausible'); return None
+            px = pm.get_marker_center_native(slot=slot)      # single true-center pixel
+            if px is None:
+                _tally('none_native'); return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)      # de-rotate the one point
+            if Vp is None or len(Vp) != 1:
+                _tally('none_vpts'); return None
+            c = size_factor * Vp[0, :2]
+            if np.all(np.isfinite(c)):
+                _tally('fired'); return c
+            _tally('none_nonfinite'); return None
+        except Exception:
+            _tally('none_exc'); return None
+
+    def _alphaMap(self, quat):
+        """Map-driven yaw feature alpha, STAGE 3 (2026-07-19). Reuses _marker_principal_angle
+        UNCHANGED -- only the point SOURCE differs: get_marker_points() (handover-gated slot)
+        supplies the corner+dense-interior (position, weight) set instead of just the 4 decode
+        corners, the richer/lower-variance input the map's own class docstring names this for.
+        Same PLAUSIBILITY gate as the centroid (corner prediction position+size sanity) before
+        trusting the slot at all -- a degenerate/off-FoV slot has no reliable orientation either.
+        RIGIDITY/CONFIDENCE gate (2026-07-19, SOFT as of the same day -- see
+        feedback_soft_rigidity_gate, same rationale/shape as _centroidMap): unlike the
+        centroid override, orientation is far more sensitive to a slot whose KLT corner
+        tracking has degraded but not yet failed the (coarser) position/size plausibility
+        check -- a non-rigid/low-confidence point set can still sit "in the right place"
+        while its INTERNAL geometry (and therefore the principal angle) drifts smoothly and
+        unboundedly. Diagnosed: both observed IC1/IC5 blowups occurred with
+        marker_rigid_ok=False, confidence=0.0 in the shadow log immediately prior -- a hard
+        reject at _planar_map_conf_floor (0.5) fixed those, but (per _centroidMap's
+        docstring) a hard floor also starves the override during an extended
+        genuinely-degraded-but-not-garbage stretch. Below _planar_map_reject_floor (~0.05,
+        where the diagnosed blowup frames actually sat): still hard reject. Between the two
+        floors: self._amap_last_trust (read by the caller) is a confidence-proportional
+        blend weight, and the caller circular-blends toward decode instead of swapping
+        wholesale. Applies the SAME _moment_alpha_0 offset as the decode path so a
+        decode<->map fallback never jumps convention. None -> caller keeps decode alpha
+        untouched."""
+        self._amap_last_trust = 1.0
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        slot = pm.secondary_slot_name() if self.HANDOVER_LATCHED else None
+        _conf = pm.get_slot_confidence(slot) if slot is not None else pm.confidence
+        if _conf < self._planar_map_reject_floor:
+            return None
+        self._amap_last_trust = float(np.clip(
+            (_conf - self._planar_map_reject_floor)
+            / max(self._planar_map_conf_floor - self._planar_map_reject_floor, 1e-6),
+            0.0, 1.0))
+        try:
+            corners_px = pm.get_marker_frame_pts(slot=slot)
+            if corners_px is None or len(corners_px) != 4:
+                return None
+            _ok, _v, _why = self._planarMapPredictionPlausible(corners_px, quat)
+            if not _ok:
+                return None
+            pts_px, wts = pm.get_marker_points(slot=slot)
+            if pts_px is None or wts is None or len(pts_px) < 3:
+                return None
+            Vp = self._getVirtualPts(np.asarray(pts_px, np.float32), quat)
+            if Vp is None or len(Vp) != len(pts_px):
+                return None
+            raw = self._marker_principal_angle(Vp, weights=wts)
+            a = float(np.arctan2(np.sin(raw - self._moment_alpha_0), np.cos(raw - self._moment_alpha_0)))
+            return a if np.isfinite(a) else None
+        except Exception:
+            return None
+
+    def _smallSlotExtentPx(self, quat):
+        """Current apparent size (px, V-frame RMS corner-to-centre distance * focal) of the
+        map's SECONDARY (smaller) slot -- STAGE 4 (2026-07-19, user). None if unavailable."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        sec = pm.secondary_slot_name()
+        if sec is None:
+            return None
+        try:
+            px = pm.get_marker_frame_pts(slot=sec)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            ext_v = float(np.sqrt(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1))))
+            fx = self.focal[0] if self.focal is not None else 270.0
+            return ext_v * fx
+        except Exception:
+            return None
+
+    def _smallSlotFlowReady(self, quat):
+        """Is the small (secondary) marker BOTH confidently mapped AND in the SIZE BAND where
+        flow (a velocity DERIVATIVE, needs corner-spread observability) is reliable -- STAGE 4
+        (2026-07-19, user directive + characterization). Two-sided gate, NOT just "big enough":
+        - too SMALL (< MAP_FLOW_MIN_EXT_PX): corner spread too tight, flow noise dominates
+          (measured: median error 0.49 vs GT V-frame flow at ~8px extent, vs 0.06-0.07 in the
+          15-35px band -- a ~7x jump).
+        - too LARGE (> MAP_FLOW_MAX_EXT_PX): approaching overflow/edge-foreshortening, flow
+          degrades AGAIN (measured: median error back up to 0.17-0.18 past ~40px, matching the
+          same tilt-grazing/overflow degradation traced for the loom/centroid). This is the
+          "can't wait for the big marker to fill the FoV" half of the directive -- the reliable
+          window is a BAND, not a threshold, and it closes again well before overflow.
+        Defaults (15, 40 px) are this session's IC1-5 characterization; MAY need re-deriving if
+        camera intrinsics/marker size change. Independent of HANDOVER_LATCHED (loom/centroid/
+        alpha's gate) -- this is a SEPARATE, typically EARLIER, size-gated readiness."""
+        if not self.SMALL_SLOT_CONFIDENT:
+            return False
+        ext = self._smallSlotExtentPx(quat)
+        if ext is None:
+            return False
+        return self._flow_map_min_ext <= ext <= self._flow_map_max_ext
+
+    def _flowMap(self, quat, t):
+        """Map-driven small-marker flow [h_x, h_y, h_z], STAGE 4. h_x/h_y: the SAME validated
+        2-state CV-Kalman rate estimator the observer uses (_obs_vel_kf), fed the small slot's
+        map-derived V-frame centre instead of a decoded centroid -- own KF state so this never
+        interferes with the observer's. h_z: _loomMapM on the secondary slot explicitly
+        (independent of HANDOVER_LATCHED, matching this stage's own earlier size gate).
+        None -> caller keeps whichever source (lstsq/observer) was already active this frame."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        sec = pm.secondary_slot_name()
+        if sec is None:
+            return None
+        try:
+            px = pm.get_marker_center_native(slot=sec)
+            if px is None:
+                return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)
+            if Vp is None or len(Vp) != 1:
+                return None
+            x0, y0 = float(Vp[0, 0]), float(Vp[0, 1])
+            if self._flowmap_kf_x is None or self._flowmap_kf_t is None:
+                self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                hx, hy = 0.0, 0.0
+            else:
+                dt = t - self._flowmap_kf_t
+                if dt <= 1e-4 or dt > 0.5:
+                    self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                    self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                    hx, hy = 0.0, 0.0
+                else:
+                    F = np.array([[1.0, dt], [0.0, 1.0]])
+                    Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+                    r = self._obs_kf_r
+                    out = []
+                    for st, P, z in ((self._flowmap_kf_x, self._flowmap_kf_Px, x0),
+                                     (self._flowmap_kf_y, self._flowmap_kf_Py, y0)):
+                        st[:] = F @ st
+                        P[:] = F @ P @ F.T + Q
+                        S = P[0, 0] + r; K = P[:, 0] / S
+                        st[:] = st + K * (z - st[0])
+                        P[:] = P - np.outer(K, P[0, :])
+                        out.append(float(st[1]))
+                    hx, hy = out[0], out[1]
+                    self._flowmap_kf_t = t
+            hz = self._loomMapM_slot(sec, quat)
+            if hz is None:
+                return None
+            if not all(np.isfinite(v) for v in (hx, hy, hz)):
+                return None
+            return np.array([hx, hy, hz], dtype=float)
+        except Exception:
+            return None
+
+    def _loomMapM_slot(self, slot, quat):
+        """Loom scale->rate for an EXPLICIT slot (STAGE 4 helper): same μ20+μ02 + causal
+        linear-fit d(lnM)/dt as _loomMapM, but bypassing its HANDOVER_LATCHED slot selection --
+        this stage gates on SIZE, independently and typically earlier than the handover latch."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        try:
+            px = pm.get_marker_frame_pts(slot=slot)
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            M = float(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1)))
+            if not (M > 1e-12 and np.isfinite(M)):
+                return None
+            t = float(getattr(self, '_stamp', 0.0))
+            lnM = float(np.log(M))
+            self._flowmap_lnM_hist = getattr(self, '_flowmap_lnM_hist',
+                                             deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9"))))
+            self._flowmap_lnM_hist.append((t, lnM))
+            if len(self._flowmap_lnM_hist) < 3:
+                return 0.0
+            ts = np.array([c[0] for c in self._flowmap_lnM_hist])
+            if ts.max() - ts.min() < 1e-4:
+                return 0.0
+            t0 = ts - ts[0]
+            slope = np.polyfit(t0, [c[1] for c in self._flowmap_lnM_hist], 1)[0]
+            return float(np.clip(-0.5 * slope * self._loom_gain, -10.0, 10.0))
+        except Exception:
+            return None
+
+    def update_cbf_handover_signal(self, cbf_overflow):
+        """CBF-driven alternative path to HANDOVER_LATCHED (2026-07-17, user design),
+        called once per step from apps/landing_test.py (which owns both the controller and
+        this img_node). Complements — does NOT replace — the existing loom-M-drop detector
+        above: two independent signals for "big marker has overflowed AND small is
+        trustworthy", either can latch. Same one-way latch, same persistence discipline
+        (HANDOVER_PERSIST_FRAMES) rejecting a single-frame blip. cbf_overflow is the
+        controller's CBF_OVERFLOW (span-classified, per-corner FoV margin); small-slot
+        confidence is checked here via SMALL_SLOT_CONFIDENT so both conditions are
+        evaluated against the SAME live map state."""
+        if self.HANDOVER_LATCHED:
+            return
+        # HANDOVER_REQUIRE_OVERFLOW=1 (default): legacy AND -- CBF_OVERFLOW *and* small-slot.
+        # =0 (user directive 2026-07-17): small-slot confidence ALONE, flicker-immune (the map
+        # tracks the small slot through the decode flicker that starves both legacy paths).
+        _cond = (self.SMALL_SLOT_CONFIDENT if not self._handover_require_overflow
+                 else (bool(cbf_overflow) and self.SMALL_SLOT_CONFIDENT))
+        if _cond:
+            self._handover_cbf_cand += 1
+            if self._handover_cbf_cand >= self._handover_persist:
+                self.HANDOVER_LATCHED = True
+                if self._handover_dbg:
+                    _via = ("small-slot-confident alone" if not self._handover_require_overflow
+                            else "CBF overflow+small-slot-confident")
+                    print(f"[HANDOVER] latched via {_via} "
+                          f"t={float(getattr(self, '_stamp', 0.0)):.2f}", flush=True)
+        else:
+            self._handover_cbf_cand = 0
 
     def getFailureCause(self):
         """Live snapshot for failure-cause tagging (2026-07-07, user): distinguishes DRIFT_OFF
@@ -3050,18 +4619,39 @@ class IMG_PROCESSOR(Thread):
         if len(self._img_feature_param) == 0:
             return np.zeros(4)
         # KF path (default; IMG_FEATURE_FILTER=savgol selects the legacy filter).
-        # Step the centroid KF once per fresh raw sample (the controller calls
-        # this getter every control iteration, possibly faster than the camera).
+        # Pure read — the KF is STEPPED in the capture loop itself (real correct-step
+        # on a fresh sample, predict-only coast on a marker-loss gap; see the
+        # _kf_feat_update call sites), exactly once per camera frame regardless of how
+        # often the controller polls this getter. Do not step it here (2026-07-11: the
+        # old lazy step-on-array-growth here couldn't distinguish real from
+        # extrapolated samples, so a gap always got a full correct-step against a
+        # synthetic value instead of a coast — see feedback_kf_frozen_during_marker_loss).
         if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
-            n = len(self._img_feature_param)
-            if n != self._kf_feat_last_n:
-                self._kf_feat_last_n = n
-                self._kf_feat_update(self._img_feature_param[-1],
-                                     self._time.perf_counter())
-            if self._kf_feat_initialized:
-                return self._sensor_cal_s @ self._kf_feat_x[:, 0]
-        if len(self._img_feature_param) >= FILTER_WIN:
-            sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:],
+            # Gate on EVER-initialized (sticky across a marker-switch reset of the plain
+            # _kf_feat_initialized flag), not the plain flag itself -- see __init__
+            # comment (2026-07-15 bugfix: the plain-flag gate fell through to the
+            # unrelated savgol/mean path below for one-two frames on every marker-ID
+            # switch, producing a value fully disconnected from the KF's still-valid last
+            # state; _kf_feat_x itself is never cleared by that reset, only the flag).
+            if self._kf_feat_ever_initialized:
+                gx, gy = self._effectiveCalSxy()   # source-aware centroid gain, see __init__
+                out = self._sensor_cal_s @ self._kf_feat_x[:, 0]
+                out[0] = gx * self._kf_feat_x[0, 0]
+                out[1] = gy * self._kf_feat_x[1, 0]
+                return out
+        # Same post-engage clipping as _compute_savgol_output -- see _engage_idx_feat
+        # comment in _reset_stateful_trackers.
+        _post_engage = self._img_feature_param[self._engage_idx_feat:]
+        if len(_post_engage) == 0:
+            return np.zeros(4)
+        gx, gy = self._effectiveCalSxy()   # source-aware centroid gain, see __init__
+        if len(_post_engage) >= FILTER_WIN:
+            sgf_buf = sgf(_post_engage[-FILTER_WIN:],
                           FILTER_WIN, FILTER_POLYORDER, axis=0)
-            return self._sensor_cal_s @ sgf_buf[int(FILTER_WIN / 2 + 1)]
-        return self._sensor_cal_s @ np.mean(self._img_feature_param, axis=0)
+            _feat = sgf_buf[int(FILTER_WIN / 2 + 1)]
+        else:
+            _feat = np.mean(_post_engage, axis=0)
+        out = self._sensor_cal_s @ _feat
+        out[0] = gx * _feat[0]
+        out[1] = gy * _feat[1]
+        return out

@@ -9,7 +9,7 @@ metadata:
 
 When ArUco detection fails on a frame (drone shadow, marginal contrast, partial occlusion, brief fast motion), `img_data.py:_imgProcess` falls back to LK-tracking the last good ArUco corner positions forward through up to `MARKER_KLT_MAX_STEPS` frames before declaring the marker stale. Bridges short outages without losing the marker. Default `MARKER_KLT_MAX_STEPS=20` (~0.33 s at 60 Hz); set to `0` to disable for A/B testing.
 
-**Why:** [[feedback-marker-detection-stale]] documented that drone-body shadow at low altitude was causing 100-150 ms of `FEATURE_IS_STALE` and frozen optical flow during the final descent. ArUco's threshold rejects marginal frames where the corners are still geometrically visible — LK can keep tracking those corners by their pixel appearance even when the ArUco classifier balks. Validated A/B: KLT-on cuts mean zero-row rate from 2.68% → 0.59% (4.5×) and mean longest-gap from 89 → 22 frames (4×) on calibration sweeps.
+**Why:** [[feedback_marker_detection_stale]] documented that drone-body shadow at low altitude was causing 100-150 ms of `FEATURE_IS_STALE` and frozen optical flow during the final descent. ArUco's threshold rejects marginal frames where the corners are still geometrically visible — LK can keep tracking those corners by their pixel appearance even when the ArUco classifier balks. Validated A/B: KLT-on cuts mean zero-row rate from 2.68% → 0.59% (4.5×) and mean longest-gap from 89 → 22 frames (4×) on calibration sweeps.
 
 **How to apply:**
 - Default = on. Disable via `MARKER_KLT_MAX_STEPS=0` for any baseline A/B (e.g. when re-tuning sensor_cal — keep one variable at a time).
@@ -17,4 +17,4 @@ When ArUco detection fails on a frame (drone shadow, marginal contrast, partial 
 - When ArUco re-acquires, log line prints `"ArUco re-acquired after N KLT-fallback frame(s)"`. Frequent N>10 events suggest the drone is barely keeping the marker in view — that's a controller/altitude problem, not a KLT setting to chase.
 - On TRUE marker loss (CHECK_NUM=80 consecutive failures), `_imgProcess` clears the KLT reference (`_prev_aruco_pts = None`, `_prev_img = None`) so we don't try to LK-track from a stale image after a long gap. This is correct behavior — don't remove.
 
-Pairs with [[feedback-v-yaw-source-alpha]] for compass-free + marker-loss-robust pipeline.
+Pairs with [[feedback_v_yaw_source_alpha]] for compass-free + marker-loss-robust pipeline.

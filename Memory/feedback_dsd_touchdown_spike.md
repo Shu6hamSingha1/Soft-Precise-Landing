@@ -20,7 +20,7 @@ metadata:
 
 **Two conclusions:**
 1. **Precision–softness frontier (reconfirms [[feedback-precision-softness-frontier]]):** every relaxation that tames the touchdown `ds_d` spike trades hard-impact for lateral drift, because the 1/Z amplifies the *legitimate* late correction too — you cannot cap the kick without capping the real correction. Tight→soft/drift, loose→precise/hard, monotonic. Gains slide ALONG the frontier; its best-balance point (~0.6 m / ~0.3 m/s) ≈ the unclamped controller. No per-axis gain reaches both corners (0.08 m AND 0.2 m/s).
-2. **Variance dominates (reconfirms [[feedback-sensitivity-sweep-methodology]], [[feedback-strict-coord-descent-dry]]):** identical funnel×2 config gave 0.634 AND 2.870 m; clamp configs spanned 0.597→7.637 m. Single-run gain comparisons are statistically meaningless here; need n≥5 to rank.
+2. **Variance dominates (reconfirms [[feedback_sensitivity_sweep_methodology]], [[feedback-strict-coord-descent-dry]]):** identical funnel×2 config gave 0.634 AND 2.870 m; clamp configs spanned 0.597→7.637 m. Single-run gain comparisons are statistically meaningless here; need n≥5 to rank.
 
 **Bottom line:** the user's "it's a gain issue" hypothesis was tested exhaustively per-axis. The mechanism is real and now precisely located (`ds_d` touchdown spike), but it is intrinsic to the lagged loop in the short 1/Z window — gains cannot break through the frontier, only slide along it. The genuine lever remains the lag fix ([[dds-lag-fix-blocker]]) so the late lateral correction arrives early enough to both correct AND settle. `PLASMC_DSD_CLAMP` left as a documented env knob (default off, behaviour unchanged).
 

@@ -24,8 +24,8 @@ Outputs a paste-ready _sensor_cal_ring 6x6 for src/img_data.py.
 """
 import numpy as np, os, glob, sys, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from scipy.signal import savgol_filter as sgf
-from aggregate_calibration_phased import compute_gt_signals, FILTER_WIN, POLYORDER
+from aggregate_calibration_phased import (compute_gt_signals, kf_filter_causal,
+                                           FLOW_KF_Q, FLOW_KF_R)
 
 OUT_DIR  = '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/calibration_data/output'
 LAND_DIR = '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/RingFlow'
@@ -58,14 +58,16 @@ def transfer_mode():
         ring = np.asarray(img['Ring Opt Flow Ang Vel'], float)
         corn = np.asarray(img['Opt Flow Ang Vel'], float)
         ncr = np.asarray(img['N Ring Corners'], float); ncc = np.asarray(img['N Flow Corners'], float)
-        n = min(len(ring), len(corn), len(ncr), len(ncc))
-        ring, corn, ncr, ncc = ring[:n], corn[:n], ncr[:n], ncc[:n]
+        it = np.asarray(img['Time'], float)
+        n = min(len(ring), len(corn), len(ncr), len(ncc), len(it))
+        ring, corn, ncr, ncc, it = ring[:n], corn[:n], ncr[:n], ncc[:n], it[:n]
         msk = (ncr > 0) & (ncc > 0) & np.all(np.isfinite(ring), 1) & np.all(np.isfinite(corn), 1)
-        ring, corn = ring[msk], corn[msk]
+        ring, corn, it = ring[msk], corn[msk], it[msk]
         if len(ring) < 300:
             continue
-        ring = sgf(ring, FILTER_WIN, POLYORDER, axis=0)
-        corn = sgf(corn, FILTER_WIN, POLYORDER, axis=0)
+        # KF-filter (matches runtime IMG_FILTER=kf default) instead of Savgol.
+        ring = kf_filter_causal(ring, it, FLOW_KF_Q, FLOW_KF_R)
+        corn = kf_filter_causal(corn, it, FLOW_KF_Q, FLOW_KF_R)
         corn_cal = (Mc @ corn.T).T                                   # transfer standard ~ GT
         Mr_t, _, _, _ = np.linalg.lstsq(ring, corn_cal, rcond=None)  # ring @ Mr_t = corn_cal
         ss = 1 - np.sum((corn_cal - ring @ Mr_t) ** 2, 0) / (np.sum((corn_cal - corn_cal.mean(0)) ** 2, 0) + 1e-12)
@@ -139,12 +141,14 @@ def gt_mode():
                 continue
         nm = min(len(ring), len(valid))
         ring = ring[:nm][valid[:nm]]
+        t_al = t[:len(ring)]
         m_fin = np.all(np.isfinite(ring), 1)
-        if m_fin.sum() < FILTER_WIN + 50:
+        if m_fin.sum() < 50:
             continue
-        ring = ring[m_fin]
-        if len(ring) >= FILTER_WIN:
-            ring = sgf(ring, FILTER_WIN, POLYORDER, axis=0)
+        ring = ring[m_fin]; t_al = t_al[:len(m_fin)][m_fin]
+        # KF-filter (matches runtime IMG_FILTER=kf default) instead of Savgol.
+        if len(ring) > 1:
+            ring = kf_filter_causal(ring, t_al, FLOW_KF_Q, FLOW_KF_R)
         n = min(len(ring), len(V_h_g))
         Vw = np.asarray(-V_w_ug[:n], float)
         if os.environ.get('RING_CAL_FULL_W', '0') != '1':

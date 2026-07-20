@@ -243,7 +243,11 @@ Calibration data goes to timestamped folders under `calibration_data/`; gitignor
   - Camera intrinsics live in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (hfov=1.74, 640×480 → fx=fy=270; verified live in the SDF 2026-07-09). Note: `_resolution` is stored as `(msg.height, msg.width)` = `(480, 640)` in `img_data.py` because ArUco detection runs on the image AFTER a `cv2.ROTATE_90_CW` — so the working detection frame is 480 wide × 640 tall, and `self.center = (240, 320)` is correct for THAT rotated frame, not the raw 640×480 sensor frame. Don't "fix" this pairing without re-deriving both together (img_data.py:69-85 has the full derivation).
 - **Don't run things for the user:**
   - MATLAB sims: user runs them; check `.mat` result files instead. Don't invoke `matlab -batch`.
-  - Gazebo SITL: GUI-bound; user runs `bash scripts/run_aruco_landing.sh` themselves.
+  - Gazebo SITL: GUI-bound. Default is still that the user runs `bash scripts/run_aruco_landing.sh`
+    (and other `scripts/run_*.sh` launchers) themselves. Exception, added 2026-07-15 at explicit
+    user request: with `HEADLESS=1` (offscreen, no GUI), Claude MAY run these launchers directly
+    when the user explicitly asks in the current conversation — this does not make headless runs
+    default-autonomous; keep confirming per request rather than launching proactively.
 - **PDF reading:** prefer `pymupdf` (`fitz`); pdftotext drops math diacritics.
 
 ## Token Optimization

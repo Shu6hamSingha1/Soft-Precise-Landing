@@ -42,4 +42,4 @@ been about to drive "rings can't be a fixed cal / can only be a safety net" conc
 **How to apply:** treat ring flow as a calibratable, generalizable scale-free flow signal
 (divergence + FoE lateral). Don't re-derive the depth-mixing story. The `_compute_ring_flow`
 docstring + inline comment were corrected 2026-06-06. See [[feedback_vframe_rhs_yaw_only]]
-(V-frame leveling), [[wxy-unobservable-imu-fusion]] (corner-clustering degeneracy broken by the spread board; "genuine rank deficiency" OVERTURNED 2026-06-07, unrelated to ring depth).
+(V-frame leveling), [[feedback_wxy_unobservable_imu_fusion]] (corner-clustering degeneracy broken by the spread board; "genuine rank deficiency" OVERTURNED 2026-06-07, unrelated to ring depth).

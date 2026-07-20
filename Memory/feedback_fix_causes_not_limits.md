@@ -36,7 +36,7 @@ metadata:
 | 𝒫 ×10 (leakage) | ❌ saturated numerator ≈1500 is 1000× normal; would need 𝒫≈9000 = no adaptation |
 | K_rp/K_rd reductions (many forms) | ❌ frontier slide |
 
-**The chain's true root is the loop lag** (h cannot track h_d transients; mid-flight tracking error → terminal 1/Z spike). No manuscript control parameter owns the lag — it violates the design assumption that the inner loop tracks commanded accel with negligible delay. Remaining fixes are architectural: [[dds-lag-fix-blocker]] (uXRCE-DDS rate path, built but blocked on rclpy) or MC_*RATE_P airframe-init edit. This completes — at the saturation-mechanism level — the historical conclusion in [[feedback-phase1-matlab-baseline]] / [[feedback-phase2-loop-latency]] that lag is the architectural ceiling.
+**The chain's true root is the loop lag** (h cannot track h_d transients; mid-flight tracking error → terminal 1/Z spike). No manuscript control parameter owns the lag — it violates the design assumption that the inner loop tracks commanded accel with negligible delay. Remaining fixes are architectural: [[dds-lag-fix-blocker]] (uXRCE-DDS rate path, built but blocked on rclpy) or MC_*RATE_P airframe-init edit. This completes — at the saturation-mechanism level — the historical conclusion in [[feedback_phase1_matlab_baseline]] / [[feedback-phase2-loop-latency]] that lag is the architectural ceiling.
 
 ---
 

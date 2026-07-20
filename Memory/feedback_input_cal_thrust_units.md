@@ -56,7 +56,7 @@ If 0.738 were the *true* hover and physics applied directly: 1 N of B_T should r
 ## Cross-references
 
 - [[input-cal-yaw-lag-anomaly]] — ωz tracking lag 287 ms vs ωx/ωy 52-61 ms
-- [[impulse-response]] — pitch rate-loop = 38 ms (single-impulse method)
+- [[feedback_impulse_response]] — pitch rate-loop = 38 ms (single-impulse method)
 - `apps/record_input_calibration.py:48` — the convert function (input cal)
 - `apps/landing_test.py:72` — same convert function (landing path)
 - `src/controller.py:850` — `B_T` formula (Newtons, with +g correction)
