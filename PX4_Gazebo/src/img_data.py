@@ -2791,14 +2791,17 @@ class IMG_PROCESSOR(Thread):
                 self._amap_raw_log.append(_ma_raw)
                 self._amap_trust_log.append(_ma_trust)
 
-                # KF correct-step (moved here 2026-07-20, see the ORDERING FIX comment above) --
-                # corrects against the FINAL feature vector, after any centroid/alpha map
-                # blend, so CENTROID_FROM_MAP/ALPHA_FROM_MAP actually reach the controller under
-                # the default IMG_FEATURE_FILTER=kf path instead of being silently inert.
-                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
-
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
+                # MOVED BEFORE the KF correct-step (2026-07-20, see feedback_ds_guard_kf_ordering_bug):
+                # this guard used to run AFTER _kf_feat_update, so it only ever corrected
+                # self._img_feature_param[-1] -- a value the KF had ALREADY consumed that frame. The
+                # KF's actual state (self._kf_feat_x, what getImgFeatureParam() reads by default) was
+                # never protected by this guard, before OR after the 2026-07-20 override-ordering fix
+                # (c654557) -- that fix moved the KF update to run after the centroid/alpha map
+                # override so CENTROID_FROM_MAP/ALPHA_FROM_MAP would reach the controller, but left
+                # this guard downstream of it, so a spike this guard SHOULD catch still fed the KF at
+                # full strength. Now runs first, so the KF is corrected against the GUARDED value.
                 if self._s_ds_max > 0 and self._img_feature_param:
                     _s = self._img_feature_param[-1]
                     _s_raw = np.array([_s[0], _s[1]], dtype=float)   # RAW value, BEFORE any reject
@@ -2812,6 +2815,13 @@ class IMG_PROCESSOR(Thread):
                     # detection ref = RAW (advances) → per-instant check, no latch; substitution =
                     # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
                     self._s_prev = _s_raw
+
+                # KF correct-step -- corrects against the FINAL feature vector, after any
+                # centroid/alpha map blend AND the ds outlier-hold above, so
+                # CENTROID_FROM_MAP/ALPHA_FROM_MAP reach the controller under the default
+                # IMG_FEATURE_FILTER=kf path (the original 2026-07-20 fix, c654557) AND a
+                # single-frame spike the ds guard catches never reaches the KF either.
+                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
 
                 # (2026-07-09 fix, historical: a REAL-sample s buffer used to be captured here,
                 # post-ds-outlier-hold, feeding a polyfit-based s-extrapolation during marker-loss
