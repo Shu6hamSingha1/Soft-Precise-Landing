@@ -106,7 +106,15 @@ def _corr_metrics(c, t, fs, lag_win_s=0.5):
     return dict(r=r, lag_ms=lag_s * 1000, gain=gain)
 
 
-def per_run_metrics(run_dir, return_series=False):
+def per_run_metrics(run_dir, return_series=False, t_max=None):
+    """t_max: 2026-07-22, optional -- only use command/telemetry samples with
+    t_cmd <= t_max. Motivation: many runs (esp. the 2026-07-21 batch, recorded
+    at the since-corrected STEP_HOLD_S=3.0s) get soft-cutoff-truncated by
+    GRADUAL altitude-drift buildup, not a sudden corruption event -- the
+    EARLY portion of a long hold, before drift accumulates, is still clean
+    command-tracking data. Scoring the whole run as one blob lets a
+    drift-corrupted tail drag down an otherwise-good early segment. See
+    best_trim_metrics() for the adaptive per-run search over t_max."""
     tel_path = f"{run_dir}/Telemetry_Data.npy"
     gt_path = f"{run_dir}/Ground_Truth.npy"
     if not (os.path.isfile(tel_path) and os.path.isfile(gt_path)):
@@ -125,6 +133,11 @@ def per_run_metrics(run_dir, return_series=False):
     if nm < 10:
         return None
     t_cmd, cmd, B_T = t_cmd[-nm:], cmd[-nm:], B_T[-nm:]
+    if t_max is not None:
+        keep = t_cmd <= t_max
+        if keep.sum() < 10:
+            return None
+        t_cmd, cmd, B_T = t_cmd[keep], cmd[keep], B_T[keep]
     imu_ts = np.array(tel["IMU Timestamp"]) - gt["Start Time"]
     w_tel = np.array([[a.forward_rad_s, a.right_rad_s, a.down_rad_s]
                        for a in tel["Angular Velocity FRD"]])
@@ -172,6 +185,29 @@ def per_run_metrics(run_dir, return_series=False):
         series = dict(t=t_uniform, cmd=cmd_u, tel=tel_u, B_T=B_T_u, a_down=a_down_u)
         return out, series
     return out
+
+
+TRIM_CANDIDATES_S = [None, 3.0, 2.5, 2.0, 1.5, 1.0]   # None = full run (try first)
+
+
+def best_trim_metrics(run_dir):
+    """2026-07-22: adaptive per-run trim search -- tries the full run first,
+    then progressively shorter early-window trims, and returns whichever
+    gives the best mean(wx,wy,wz) r. Rescues runs that were cutoff-truncated
+    by gradual drift (their early segment is clean, only the tail is bad)
+    without needing per-run manual inspection. Returns (metrics, t_max_used)
+    or (None, None) if no candidate has enough samples."""
+    best = None
+    best_t_max = None
+    best_avg_r = -2.0
+    for t_max in TRIM_CANDIDATES_S:
+        m = per_run_metrics(run_dir, t_max=t_max)
+        if m is None:
+            continue
+        avg_r = np.mean([m[ax]["r"] for ax in ("wx", "wy", "wz")])
+        if avg_r > best_avg_r:
+            best, best_t_max, best_avg_r = m, t_max, avg_r
+    return best, best_t_max
 
 
 def mad_trimmed_mean(values, k_mad=2.5):

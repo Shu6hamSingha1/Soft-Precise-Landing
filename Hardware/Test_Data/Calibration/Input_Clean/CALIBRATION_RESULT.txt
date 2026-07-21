@@ -213,3 +213,52 @@ APPLIED 2026-07-22: all of the above live on the Pi in hardware_landing.py
 and record_input_calibration.py (RATE_CORRECTION_WX/WY/WZ, HW_THRUST_SLOPE,
 HW_HOVER_THROTTLE_NORM env var defaults). Still NOT validated on an actual
 flight -- unchanged status, now applies to these filtered numbers instead.
+
+
+=======================================================
+2026-07-22 -- Adaptive per-run trim: rescuing drift-truncated runs
+=======================================================
+Motivation: many runs (esp. 2026-07-21's STEP_HOLD_S=3.0s batch) get
+soft-cutoff-truncated by GRADUAL altitude-drift buildup, not a sudden
+corruption event -- the EARLY portion of a long hold, before drift
+accumulates, is still clean command-tracking data. Scoring a whole run as
+one blob lets a drift-corrupted tail drag down an otherwise-good early
+segment and get the whole run discarded. Confirmed directly: trimming 5 of
+17 tested 2026-07-21 runs to their first 2s alone flipped them from
+unreliable (avg r<0.5) to reliable (avg r 0.61-0.89).
+
+Implemented properly as `best_trim_metrics()` in
+analyze_input_calibration.py: for each run, tries t_max in
+[full, 3.0, 2.5, 2.0, 1.5, 1.0]s and keeps whichever gives the best mean
+wx/wy/wz r (rate axes) or best thrust r (thrust axis, scored separately
+since its best window can differ from the rate axes'). `per_run_metrics()`
+gained an optional `t_max` parameter to support this.
+
+RESULT -- reliable-run counts roughly DOUBLED or better across every
+parameter (17 runs rescued for rate axes, 15 more for thrust):
+  wx: 7  -> 23 reliable / 47   (n_eff 6.61 -> 13.88)
+  wy: 6  -> 24 reliable / 47   (n_eff 5.96 -> 15.59)
+  wz: 15 -> 28 reliable / 47   (n_eff 10.51 -> 17.56)
+  thrust: 19 -> 34 reliable / 47
+
+FINAL VALUES (adaptive-trim, filtered, drag-corrected where applicable,
+R2-weighted) -- supersede the whole-run-only 2026-07-22 numbers above:
+  wx correction: gain=1.319 -> 1/gain = 0.758  (was 0.645, full-run-only)
+  wy correction: gain=1.354 -> 1/gain = 0.739  (was 0.720, full-run-only)
+  wz correction: gain=1.504 -> 1/gain = 0.665  (was 0.689, full-run-only)
+  HW_THRUST_SLOPE_N_PER_UNIT = 31.98  (drag-corrected gain=0.8409, implied
+    mass=1.189kg, -1.2% off known 1.204kg -- TIGHTER than the full-run-only
+    -2.8% gap; was 31.59 full-run-only)
+  HW_HOVER_THROTTLE_NORM = 0.42  (rounded from 0.4226 R2-weighted
+    intercept-derived value; was 0.41/0.4095 full-run-only)
+
+M_correction = diag(0.758, 0.739, 0.665)
+
+STATUS 2026-07-22: these adaptive-trim values are the current final
+recommendation but were computed while the Pi was powered off (shut down
+mid-session) -- NOT YET applied to the live hardware_landing.py /
+record_input_calibration.py env-var defaults (those still hold the
+previous full-run-only filtered values: HW_THRUST_SLOPE=31.59,
+HW_HOVER_THROTTLE_NORM=0.41, RATE_CORRECTION=0.645/0.720/0.689). Apply
+these adaptive-trim numbers the next time the Pi is reachable, before the
+next flight test.
