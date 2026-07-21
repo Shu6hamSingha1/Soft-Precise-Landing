@@ -3476,16 +3476,41 @@ class IMG_PROCESSOR(Thread):
         a low-confidence sample before it ever reached the KF; scaling r here is the
         textbook equivalent for a Kalman filter (tell it a sample is noisier, so it barely
         moves K) WITHOUT touching the reported value at all -- map stays authoritative,
-        but the state a future coast extrapolates from stays protected. Only applies when
-        THIS frame's sample was map-sourced (trust>0); decode-only frames keep the
-        unmodified, already-validated self._kf_feat_r."""
+        but the state a future coast extrapolates from stays protected. Applies to
+        map-sourced frames (trust>0) via confidence; DECODE-sourced frames (trust==0, map
+        didn't fire) are ALSO scaled now (2026-07-21, see feedback_decode_klt_confidence_
+        scaled_r below) by a KLT-fallback-streak confidence, so decode isn't the
+        unconditionally-trusted assumption every other fix this session was protecting
+        against."""
         z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
         r_pos = self._kf_feat_r
-        if z is not None and self._cmap_trust_log and self._cmap_trust_log[-1] > 0.0:
-            _tr = float(self._cmap_trust_log[-1])
-            r_pos = np.array([self._kf_feat_r / max(_tr, 0.05),
-                               self._kf_feat_r / max(_tr, 0.05),
-                               self._kf_feat_r])
+        if z is not None:
+            _map_tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0
+            if _map_tr > 0.0:
+                r_pos = np.array([self._kf_feat_r / max(_map_tr, 0.05),
+                                   self._kf_feat_r / max(_map_tr, 0.05),
+                                   self._kf_feat_r])
+            else:
+                # DECODE-SOURCED this frame (map didn't fire) -- confidence-scale r by the
+                # SAME KLT-fallback-streak-based confidence the flow channel's _corner_conf
+                # already uses (2026-07-21, see feedback_decode_klt_confidence_scaled_r):
+                # every fix this session treated decode as unconditionally trustworthy, the
+                # thing the map's confidence/rate gates protect AGAINST -- but decode's OWN
+                # KLT-fallback corners degrade too, the deeper into a fallback streak with no
+                # fresh ArUco re-anchor. Diagnosed IC4_rep5's terminal excursion: the map
+                # correctly abstained (tapered trust to 0, then stopped firing) during a
+                # genuine drift-off event, while decode's KLT-fallback corners -- left as the
+                # sole source once the map abstained -- kept feeding the KF at full strength
+                # through the SAME degrading stretch, producing the actual blowup. Same
+                # formula as _corner_conf (max(0.05, 1 - lk_step_count/max_lk_steps)) so a
+                # fresh decode (lk_step_count==0) is unaffected; only a deep fallback streak
+                # softens the KF's trust here, exactly mirroring the map-side fix.
+                _decode_conf = (1.0 if self._lk_step_count <= 0 else
+                                 max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1)))
+                if _decode_conf < 1.0:
+                    r_pos = np.array([self._kf_feat_r / max(_decode_conf, 0.05),
+                                       self._kf_feat_r / max(_decode_conf, 0.05),
+                                       self._kf_feat_r])
         x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
             self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
                           self._kf_feat_initialized, z_pos, t,
@@ -3495,9 +3520,18 @@ class IMG_PROCESSOR(Thread):
 
         z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
         r_sc = self._kf_feat_r
-        if z is not None and self._amap_trust_log and self._amap_trust_log[-1] > 0.0:
-            _tra = float(self._amap_trust_log[-1])
-            r_sc = self._kf_feat_r / max(_tra, 0.05)
+        if z is not None:
+            _amap_tr = float(self._amap_trust_log[-1]) if self._amap_trust_log else 0.0
+            if _amap_tr > 0.0:
+                r_sc = self._kf_feat_r / max(_amap_tr, 0.05)
+            else:
+                # DECODE-sourced alpha this frame -- same KLT-fallback-streak confidence
+                # as the position channels above (see that comment for the full
+                # rationale); decode's alpha comes from the same degrading corners.
+                _decode_conf_a = (1.0 if self._lk_step_count <= 0 else
+                                   max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1)))
+                if _decode_conf_a < 1.0:
+                    r_sc = self._kf_feat_r / max(_decode_conf_a, 0.05)
         self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
             self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
                           self._kf_feat_sc_initialized, z_sc, t,
