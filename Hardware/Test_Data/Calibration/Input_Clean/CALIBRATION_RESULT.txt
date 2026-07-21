@@ -82,14 +82,33 @@ to reproduce/update rather than trusting a stale hand-copy of these numbers.
     wz:  gain=1.438  -> scale factor 1/1.438 = 0.696   (n_eff=10.02, best-supported)
 
   Thrust:
-    HW_HOVER_THROTTLE_NORM = 0.388   (well-supported, tight 0.385-0.399 spread across 7 sine-fits, unchanged)
+    HW_HOVER_THROTTLE_NORM = 0.4   (rounded from 0.3984, 2026-07-22: superseded the sine-sweep-derived 0.388.
+                                        Methodology note: the hover sine-sweep was always an
+                                        INITIAL/bootstrap test; input-calibration is the
+                                        authoritative FINAL source for every calibration
+                                        parameter, hover throttle included. Derived by
+                                        back-solving the drag-corrected thrust regression's
+                                        intercept per run -- at commanded B_T=0 (the assumed
+                                        hover point baked into the recorded commands), if
+                                        a_down != -9.81 exactly, that residual directly gives
+                                        the throttle correction needed. R2-weighted over the
+                                        19 reliable thrust runs: 0.3984, rounded to 0.4 (n=19; unweighted
+                                        mean=0.3989, median=0.3979, std=0.0147). Three
+                                        independent methods now form a consistent upward trend
+                                        from the original 0.388 -> sine-sweep 0.391-0.392 ->
+                                        input-cal 0.398-0.399, with the largest/most-direct
+                                        sample landing highest -- not noise scattered around
+                                        0.388.)
     HW_THRUST_SLOPE_N_PER_UNIT = 30.38   (drag-corrected, reliability-filtered, R2-weighted;
                                            see the resolved sanity-check note above. Supersedes an
                                            earlier same-day 28.04 candidate that used the naive
                                            (non-drag) model -- the drag-corrected number is barely
                                            different from the pre-existing live 30.7, i.e. the
                                            original value turns out to have been close to correct
-                                           once drag is properly accounted for.)
+                                           once drag is properly accounted for. Note: this slope
+                                           derivation is independent of HOVER_THROTTLE_NORM --
+                                           gain = d(a_down)/d(B_T) doesn't depend on the baseline
+                                           -- so it needed no recomputation after the hover update.)
 
   As a matrix (rate correction only, thrust handled separately via the slope constant):
     M_correction = diag(0.664, 0.699, 0.696)
@@ -107,3 +126,41 @@ record_input_calibration.py on the Pi. INPUT_CAL_STEP_HOLD_S=1.0 and
 INPUT_CAL_RECENTER_HOLD_S=2.0 also applied (see project session notes / memory).
 NONE of these changes have been validated on an actual flight yet -- that is
 the next step before trusting them further.
+
+
+=======================================================
+Hover-throttle sine-sweep thrust-slope -- CLOSED (insufficient data)
+=======================================================
+Separate tool (find_hover_throttle.py THROTTLE_MODE=sine), separate from the
+input-cal HW_THRUST_SLOPE derivation above. Full investigation history in
+project_hover_throttle_search_2026_07_09 memory; summary:
+
+Timing-alignment bug (2026-07-20) confirmed fixed live on the Pi. Post-fix,
+7 sine-fits on 2026-07-21 still showed 8.5-41 N/unit scatter. Three fixes
+tested against the 2 raw .npz datasets available locally (only 2 of the 7
+printed fits have saved raw telemetry):
+  1. Excitation amplitude (SINE_AMP) -- ruled out; list-mode's much larger
+     throttle steps historically gave the same scatter (6-45 N/unit).
+  2. Detrending (climb-trend confound, a=slope*throttle+trend*time+c) --
+     real but small effect; R2 improved marginally (0.302->0.359,
+     0.742->0.747), slopes barely moved.
+  3. Linear drag correction (the SAME fix that resolved the input-cal
+     thrust mass-gap, a=gain*B_T+k*v_z+c) -- tested identically here, did
+     NOT help (slopes moved <2%, the two runs' drag coefficients had
+     OPPOSITE signs, no real drag signal). Makes sense: this sweep has zero
+     commanded body rate and only a small throttle oscillation, unlike
+     input-cal's combined roll+pitch+yaw+thrust steps that produce much
+     larger velocity excursions for drag to act on.
+
+After all three: the 2 available runs still disagree by ~37% (27.82-28.13
+vs 40.56-40.67 N/unit). n=2 is fundamentally too thin to resolve via better
+regression on the same data -- this needs new recordings to make further
+progress, not more analysis.
+
+RESOLUTION: downgraded to "insufficient data, not currently authoritative"
+rather than treated as an unresolved conflict with the input-cal-derived
+value. HW_THRUST_SLOPE is set from the input-cal cross-check (30.38 N/unit,
+above), not from this tool. Sine-sweep remains available as an independent
+validation method in principle, but would need a handful of fresh flights to
+serve that role -- not pursued this session (extended the existing
+"no more input-cal data collection" decision to cover this thread too).
