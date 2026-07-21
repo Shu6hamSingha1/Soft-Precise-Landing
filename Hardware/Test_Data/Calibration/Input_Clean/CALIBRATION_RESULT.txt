@@ -1,0 +1,109 @@
+Hardware INPUT calibration -- FINAL (2026-07-21, revised)
+=======================================================
+Dataset: Test_Data/Calibration/Input_Clean/ (47 scored runs total)
+Computed via Hardware/scripts/analyze_input_calibration.py (canonical tool,
+Gazebo-ported methodology, single source of truth -- run it directly to
+reproduce/update this table rather than hand-copying numbers).
+
+Reliability filter: PER-AXIS r >= 0.5 (fixed 2026-07-21 -- previously filtered
+by mean-r-across-3-axes per run, which discards a genuinely good measurement
+on one axis just because another axis was noisy in the same run; per-axis
+filtering is more correct and changes wy/wz noticeably from the earlier
+version of this file, see git/backup history if the old numbers are needed).
+Also fixed the same day: the underlying MAD-trim previously filtered by
+gain-VALUE outlier status only (no r awareness at all), which silently kept
+near-zero/negative-r noise runs and dropped genuinely good ones -- see the
+thrust-axis note below for the magnitude of that error.
+
+Per-axis calibration (MAD-trimmed mean, k_MAD=2.5, r>=0.5 filter applied first):
+  axis         r        lag_ms      gain      n_reliable/total
+  wx     0.720(n=5)     46.4(n=7)   1.280(n=5)      7/47
+  wy     0.559(n=4)     40.0(n=6)   1.746(n=6)      6/47
+  wz     0.628(n=12)    23.8(n=13)  1.031(n=10)    15/47
+
+As a diagonal calibration matrix (achieved = M @ commanded, per axis):
+  M = diag(1.280, 1.746, 1.031)
+
+Caveats:
+  - Small reliable-run counts per axis (6-15 of 47); wy in particular is thin
+    (n=4-6 after MAD trim). Treat gain/lag as a first-order working
+    calibration, not a tightly-bounded final number.
+  - Data-quality trimming (NaN/corruption) is separate and already applied upstream
+    in Input_Clean/ -- this filter is about SIGNAL RELIABILITY, not corruption.
+
+Thrust axis (commanded thrust N vs achieved vertical accel, down_m_s2)
+-------------------------------------------------------------------
+Scored by analyze_input_calibration.py's "thrust" pseudo-axis (cmd[:,3]/B_T
+vs Acceleration.down_m_s2, same cross-corr r/lag/gain machinery as wx/wy/wz).
+19/47 runs reliable (r>=0.5) -- notably better-conditioned than the rate axes;
+accelerometer response to thrust is cleaner to measure than body rate tracking.
+
+  r = 0.771 (n=18)   lag = 36.8 ms (n=14)   gain = 0.745 m/s^2 per N (n=15)
+
+Sanity check: gain ~= 1/mass (F=ma). Naive (no drag) model, R2-weighted over the 19
+reliable runs: gain=0.7830, implied mass=1.277kg vs known 1.204kg (+6.1%).
+
+RESOLVED 2026-07-21: root-caused as aerodynamic drag missing from the naive point-mass
+model. Adding a Velocity Body.z_m_s term (a = gain*B_T + k*v_z + c) and refitting:
+  gain=0.8217, implied mass=1.217kg (+1.1% -- closes the gap almost entirely)
+A quadratic drag term (k*v_z*|v_z|) was also tested and is WORSE (gain=0.8022, +3.5%),
+so linear drag is the right functional form, not a refinement target. Ground effect
+(altitude term) and battery-voltage/thermal effects were also tested and ruled out
+(altitude coefficient sign-flips inconsistently across runs -- overfitting, not signal;
+restricting to the confirmed-valid 22.4-24.0V battery plateau made no difference once
+the reliability filter was applied correctly). See project_hardware_drone_mass memory
+for the full investigation, including a self-corrected methodology bug along the way
+(an early pass accidentally dropped the r>=0.5 filter, producing a misleadingly large
++15-19% gap that did not survive re-checking).
+
+
+=======================================================
+FINALIZED CALIBRATION FACTORS -- for use in the next landing test
+=======================================================
+Consolidated 2026-07-21, REVISED to r^2-weighted method (see below). These
+are CORRECTION factors: since gain = achieved/commanded, dividing a commanded
+value by its axis's gain (equivalently multiplying by 1/gain) before sending
+it should make the ACHIEVED response match the ORIGINALLY INTENDED value.
+Not yet wired into any script -- this is the reference to apply.
+
+Methodology change from the first version of this table: the r>=0.5-then-
+MAD-trim method has a hard boundary discontinuity (r=0.49 fully excluded,
+r=0.51 fully included), which is unstable exactly where it matters most --
+confirmed on wy, whose aggregate r sat right at the 0.5 cutoff. Switched to
+an r^2-weighted mean across ALL 47 runs (every run contributes, weighted by
+variance explained, no arbitrary threshold) -- see
+Hardware/scripts/analyze_input_calibration.py::r2_weighted_mean(). This
+changed wx and wz meaningfully too, not just wy -- run the script directly
+to reproduce/update rather than trusting a stale hand-copy of these numbers.
+
+  Rate axes (command_corrected = command_intended / gain), r^2-weighted:
+    wx:  gain=1.506  -> scale factor 1/1.506 = 0.664   (n_eff=6.06)
+    wy:  gain=1.430  -> scale factor 1/1.430 = 0.699   (n_eff=4.69, still the thinnest of the three)
+    wz:  gain=1.438  -> scale factor 1/1.438 = 0.696   (n_eff=10.02, best-supported)
+
+  Thrust:
+    HW_HOVER_THROTTLE_NORM = 0.388   (well-supported, tight 0.385-0.399 spread across 7 sine-fits, unchanged)
+    HW_THRUST_SLOPE_N_PER_UNIT = 30.38   (drag-corrected, reliability-filtered, R2-weighted;
+                                           see the resolved sanity-check note above. Supersedes an
+                                           earlier same-day 28.04 candidate that used the naive
+                                           (non-drag) model -- the drag-corrected number is barely
+                                           different from the pre-existing live 30.7, i.e. the
+                                           original value turns out to have been close to correct
+                                           once drag is properly accounted for.)
+
+  As a matrix (rate correction only, thrust handled separately via the slope constant):
+    M_correction = diag(0.664, 0.699, 0.696)
+
+Note the three rate-axis corrections converged to a much tighter, more
+plausible band (0.664-0.699) than the earlier hard-cutoff table's
+(0.781/0.573/0.970, a much wider spread including one near-1.0 outlier on
+wz) -- this internal consistency is itself evidence the r^2-weighted method
+is the more trustworthy one, though wy's n_eff=4.69 is still the weakest of
+the three and worth treating with some caution on a first flight.
+
+APPLIED 2026-07-21: HW_HOVER_THROTTLE_NORM, HW_THRUST_SLOPE (=30.38), and the
+rate-axis RATE_CORRECTION matrix are all live in hardware_landing.py /
+record_input_calibration.py on the Pi. INPUT_CAL_STEP_HOLD_S=1.0 and
+INPUT_CAL_RECENTER_HOLD_S=2.0 also applied (see project session notes / memory).
+NONE of these changes have been validated on an actual flight yet -- that is
+the next step before trusting them further.
