@@ -38,7 +38,7 @@ import sys
 
 import numpy as np
 from scipy.interpolate import interp1d
-from scipy.signal import correlate
+from scipy.signal import correlate, butter, filtfilt
 
 CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "Test_Data", "Calibration", "Input")
@@ -52,6 +52,29 @@ DRONE_MASS_KG = 1.204   # corrected 2026-07-21 (supersedes the 1.230 kg parts-su
                         # consistently in the same direction across two datasets.
                         # See project_hardware_drone_mass memory. Use the known mass
                         # for the slope correction, not either derived value.
+
+
+LOWPASS_CUTOFF_HZ = 8.0   # 2026-07-22: genuine sensor/vibration noise floor filter.
+                          # PSD of a_down on a representative run (Mon Jul 20
+                          # 18-42-02) shows a clean bimodal split: ~51% of power
+                          # below 2Hz (real maneuver/thrust-response signal),
+                          # a quiet gap 2-20Hz (~5%), then ~44% of total power
+                          # above 20Hz (propeller/motor vibration). 8Hz sits in
+                          # the middle of that quiet gap -- removes the
+                          # vibration floor without touching the real signal
+                          # band. Applied to ALL telemetry signals (gyro for
+                          # wx/wy/wz, accelerometer for thrust, velocity for
+                          # the drag-correction term) before any correlation/
+                          # regression, i.e. for every input-cal parameter.
+
+
+def _lowpass(sig, fs, cutoff_hz=LOWPASS_CUTOFF_HZ, order=4):
+    """Zero-phase (filtfilt) Butterworth low-pass -- removes the vibration
+    noise floor without introducing lag, which would otherwise bias the
+    cross-correlation lag/gain estimates computed downstream."""
+    nyq = fs / 2.0
+    b, a = butter(order, cutoff_hz / nyq, btype="low")
+    return filtfilt(b, a, sig)
 
 
 def _corr_metrics(c, t, fs, lag_win_s=0.5):
@@ -116,16 +139,28 @@ def per_run_metrics(run_dir, return_series=False):
 
     fs = 200.0  # Hz
     t_uniform = np.arange(t_cmd[0], t_cmd[-1], 1.0 / fs)
+    if len(t_uniform) < 20:   # filtfilt needs a minimum sample count (padlen)
+        return None
     cmd_u = np.column_stack([
         interp1d(t_cmd, cmd[:, k], bounds_error=False, fill_value=0.0)(t_uniform)
         for k in range(3)
     ])
-    tel_u = np.column_stack([
+    tel_u_raw = np.column_stack([
         interp1d(imu_ts, w_tel[:, k], bounds_error=False, fill_value=0.0)(t_uniform)
         for k in range(3)
     ])
     B_T_u = interp1d(t_cmd, B_T, bounds_error=False, fill_value=0.0)(t_uniform)
-    a_down_u = interp1d(imu_ts, a_down, bounds_error=False, fill_value=float(a_down.mean()))(t_uniform)
+    a_down_u_raw = interp1d(imu_ts, a_down, bounds_error=False, fill_value=float(a_down.mean()))(t_uniform)
+
+    # Low-pass BOTH sides of each cmd<->tel pair (uniform grid, same fs) --
+    # removes the genuine sensor/vibration noise floor from the telemetry,
+    # and matches the command side's own effective bandwidth (a step profile
+    # has no content above ~a few Hz anyway) so filtering doesn't introduce
+    # an artificial phase/gain mismatch between cmd and tel.
+    tel_u = np.column_stack([_lowpass(tel_u_raw[:, k], fs) for k in range(3)])
+    a_down_u = _lowpass(a_down_u_raw, fs)
+    cmd_u = np.column_stack([_lowpass(cmd_u[:, k], fs) for k in range(3)])
+    B_T_u = _lowpass(B_T_u, fs)
 
     out = {}
     for k, ax in enumerate(["wx", "wy", "wz"]):

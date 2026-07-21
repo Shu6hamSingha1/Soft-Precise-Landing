@@ -164,3 +164,52 @@ above), not from this tool. Sine-sweep remains available as an independent
 validation method in principle, but would need a handful of fresh flights to
 serve that role -- not pursued this session (extended the existing
 "no more input-cal data collection" decision to cover this thread too).
+
+
+=======================================================
+2026-07-22 -- Genuine sensor/vibration noise floor: FILTERED, calibration re-run
+=======================================================
+Root cause of the noisy a_down plots (see §3 in the notebook): PSD of a
+representative run's a_down showed a clean bimodal split -- ~51% of power
+below 2Hz (real maneuver/thrust-response signal), a quiet gap 2-20Hz (~5%),
+then ~44% of power above 20Hz (propeller/motor vibration). Cross-checked
+against the PURE-THRUST hover sine-sweep data (zero commanded body rate, so
+any rotation-coupling confound is absent by construction): the two pure-
+thrust runs showed 30.5% and 13.9% power in the 20-92Hz band respectively --
+disagreeing with EACH OTHER by more than either disagrees from the
+combined-rate input-cal run's 43.7%. Conclusion: genuine vibration is
+present and flight-to-flight variable regardless of whether body rates are
+commanded; rotation-coupling (gravity-projection change from a rotating
+body-frame accelerometer) is a real but NOT dominant contributor -- broadband
+vibration is the primary noise source, consistent everywhere checked.
+
+Filter applied: 4th-order zero-phase (filtfilt) Butterworth low-pass,
+cutoff=8Hz, sitting in the middle of the empirically-identified quiet gap.
+Applied to ALL telemetry signals used in ANY input-cal parameter (gyro for
+wx/wy/wz, accelerometer for thrust, velocity for the drag-correction term)
+in analyze_input_calibration.py::per_run_metrics -- i.e. for every
+parameter, not just thrust. Implemented as a shared _lowpass() helper;
+filtfilt (zero-phase) specifically chosen so the filter doesn't introduce
+lag that would bias the cross-correlation lag/gain estimates downstream.
+
+Effect on reliability counts (r>=0.5, per-axis): wx 7->8, wy 6->8, wz
+15->17, thrust stayed 19 but its aggregate r improved 0.771->0.867.
+Filtering measurably helped across every parameter, not just thrust.
+
+FINAL VALUES (filtered, drag-corrected where applicable, R2-weighted) --
+supersede the 2026-07-21 unfiltered numbers above:
+  wx correction: gain=1.550 -> 1/gain = 0.645  (was 0.664 unfiltered)
+  wy correction: gain=1.389 -> 1/gain = 0.720  (was 0.699 unfiltered)
+  wz correction: gain=1.451 -> 1/gain = 0.689  (was 0.696 unfiltered)
+  HW_THRUST_SLOPE_N_PER_UNIT = 31.59  (drag-corrected + filtered gain=0.8546,
+    implied mass=1.170kg, -2.8% off known 1.204kg -- gap flipped sign from
+    unfiltered's +1.1% but stayed similarly small; was 30.38 unfiltered)
+  HW_HOVER_THROTTLE_NORM = 0.41  (rounded from 0.4095 filtered R2-weighted
+    intercept-derived value; was 0.4/0.3984 unfiltered)
+
+M_correction = diag(0.645, 0.720, 0.689)
+
+APPLIED 2026-07-22: all of the above live on the Pi in hardware_landing.py
+and record_input_calibration.py (RATE_CORRECTION_WX/WY/WZ, HW_THRUST_SLOPE,
+HW_HOVER_THROTTLE_NORM env var defaults). Still NOT validated on an actual
+flight -- unchanged status, now applies to these filtered numbers instead.
