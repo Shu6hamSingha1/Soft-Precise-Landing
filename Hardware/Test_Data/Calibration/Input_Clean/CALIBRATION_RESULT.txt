@@ -262,3 +262,86 @@ previous full-run-only filtered values: HW_THRUST_SLOPE=31.59,
 HW_HOVER_THROTTLE_NORM=0.41, RATE_CORRECTION=0.645/0.720/0.689). Apply
 these adaptive-trim numbers the next time the Pi is reachable, before the
 next flight test.
+
+
+=======================================================
+2026-07-22 -- Grid-widening investigated and REVERTED
+=======================================================
+Tried widening TRIM_CANDIDATES_S from [None,3.0,2.5,2.0,1.5,1.0] to
+[None,10,8,6,5,4,3.5,3.0,2.5,2.0,1.5,1.0] after finding the narrow grid
+missed a genuinely clean window for "Tue Jul 21 17-29-07" (t_max=4.0s
+lifts its thrust r from 0.264 to 0.958 -- not present in the narrow grid).
+
+RESULT: widening correctly rescued individual runs like 17-29-07, but made
+the AGGREGATE thrust mass-sanity-check WORSE in every selection-rule
+variant tried (no guard, guard+max-r-window, guard+longest-window-first):
+implied-mass gap went from -1.2% (narrow grid) to -9.3% (widened).
+
+ROOT CAUSE (not overfitting): traced to 3 specific runs -- "Mon Jul 20
+18-42-02" (known battery-surge, already handled by manual trim),
+"Tue Jul 21 17-21-26", and "Tue Jul 21 17-23-13" -- showing gain inflation
+that PERSISTS across every window tried for them, i.e. real corruption
+events large enough that the wider grid keeps finding a "clean-looking"
+but actually-biased sub-window for these 3, dragging the aggregate down
+even as it rescues genuinely clean runs like 17-29-07.
+
+Added `MIN_DISTINCT_STEPS=2` guard (`_n_distinct_steps()`, rejects windows
+with <2 contiguous constant-command blocks -- underconstrained for the
+3-parameter drag-corrected thrust model) as a general overfitting
+safeguard. Verified it is an exact no-op on the narrow-grid baseline
+(same 0.758/0.739/0.665, same n_eff) -- MIN_DISTINCT_STEPS=3 was tried
+first but changed narrow-grid rate-axis results as an unwanted side
+effect, so backed off to 2.
+
+DECISION: REVERTED TRIM_CANDIDATES_S back to the narrow grid
+[None,3.0,2.5,2.0,1.5,1.0]. The guard stays (harmless, verified no-op).
+The narrow grid's -1.2% mass gap is the current final number; do not
+re-widen without first excluding or fixing the 3 corrupted runs below.
+
+=======================================================
+2026-07-22 -- Root-causing 17-21-26 and 17-23-13 via flight logs
+=======================================================
+Followed up on the 3 problem runs above using PX4 .ulg flight logs
+(Test_Data/FlightLogs/), matched to companion recordings via the session
+transcript's explicit `[logger]` print lines (timing-heuristic mapping
+was tried first and got 17-23-13's log WRONG -- always use the transcript
+print, not proximity-in-time).
+
+"Tue Jul 21 17-21-26" -> flight log 17_21_02.ulg: confirms a real battery
+brownout, 22.01V -> 16.54V with a 94A current spike, same signature class
+as 18-42-02.
+  Resync attempt (altitude cross-correlation, companion synced_t vs flight
+  log time, search constrained to [Takeoff-detected, Landing-commanded]):
+  best offset=4.550s but corr=0.451 (weak) and a poor point sanity check
+  (comp_alt=7.67m at synced_t=0 vs flight_alt=0.62m at the aligned
+  flight_t=4.55s -- ~7m mismatch). An earlier UNCONSTRAINED attempt found
+  a higher correlation (0.995) but a physically impossible offset
+  (synced_t=0 mapping to flight_t=-10.8s, before the log even opened) --
+  almost certainly correlation aliasing on the smooth climb/descend
+  altitude shape. NEITHER resync is trustworthy enough to derive a safe
+  trim cutoff for this run. Not trimmed. Needs a sharper alignment signal
+  (e.g. vertical velocity or a discrete event marker) before revisiting.
+
+"Tue Jul 21 17-23-13" -> flight log 17_25_48.ulg (corrected mapping; a
+naive timing-heuristic guess had this log as nonexistent for this run):
+confirms the PX4 AUTO_TAKEOFF "invalid setpoints" firmware bug (diagnosed
+earlier this session) fired during this flight.
+  Resync attempt: constrained search gives offset=11.630s, corr=0.999,
+  with an excellent point-by-point sanity check (e.g. comp_alt=7.51 <->
+  flight_alt=7.51, comp_alt=7.74 <-> flight_alt=7.74, matching to 2 decimal
+  places across every checkpoint). This resync IS trustworthy.
+  Event (invalid-setpoints failsafe) at flight_t=10.82s maps to
+  synced_t=-0.810s -- i.e. BEFORE the companion recording's own t=0. The
+  entire recorded window for this run is already under failsafe/corrupted
+  conditions from the first sample; there is no clean portion to "trim
+  before the event" -- trimming doesn't apply here. This run should be
+  treated as fully unreliable, not partially rescuable. (It already fails
+  the reliability filter at essentially every window tested, so this
+  requires no further code change -- it's already correctly excluded from
+  the current final numbers.)
+
+NET EFFECT: no data files were trimmed for either run this round (neither
+edit was safe/meaningful to make). The narrow-grid final numbers above
+(wx/wy/wz=0.758/0.739/0.665, thrust slope=31.98, hover=0.42) stand
+unchanged. 17-23-13 is confirmed structurally unrescuable; 17-21-26
+remains an open resync problem, not a data problem.
