@@ -106,6 +106,20 @@ def _corr_metrics(c, t, fs, lag_win_s=0.5):
     return dict(r=r, lag_ms=lag_s * 1000, gain=gain)
 
 
+MIN_DISTINCT_STEPS = 2   # 2026-07-22: overfitting guard, see below
+
+
+def _n_distinct_steps(cmd_full):
+    """Count contiguous constant-command blocks (i.e. profile steps) in
+    cmd_full. All axes + thrust change together in this profile's step
+    design ([0,0,0,0] -> [-a,-a,-a,-b] -> [0,0,0,0] -> [a,a,a,b] -> ...), so
+    the full 4-vector is a single unambiguous step identity."""
+    if len(cmd_full) < 2:
+        return len(cmd_full)
+    changes = np.any(np.diff(cmd_full, axis=0) != 0, axis=1)
+    return int(changes.sum()) + 1
+
+
 def per_run_metrics(run_dir, return_series=False, t_max=None):
     """t_max: 2026-07-22, optional -- only use command/telemetry samples with
     t_cmd <= t_max. Motivation: many runs (esp. the 2026-07-21 batch, recorded
@@ -132,12 +146,21 @@ def per_run_metrics(run_dir, return_series=False, t_max=None):
     nm = min(len(t_cmd), len(cmd))
     if nm < 10:
         return None
-    t_cmd, cmd, B_T = t_cmd[-nm:], cmd[-nm:], B_T[-nm:]
+    t_cmd, cmd, B_T, cmd_full = t_cmd[-nm:], cmd[-nm:], B_T[-nm:], cmd_full[-nm:]
     if t_max is not None:
         keep = t_cmd <= t_max
         if keep.sum() < 10:
             return None
-        t_cmd, cmd, B_T = t_cmd[keep], cmd[keep], B_T[keep]
+        t_cmd, cmd, B_T, cmd_full = t_cmd[keep], cmd[keep], B_T[keep], cmd_full[keep]
+    # 2026-07-22: overfitting guard -- a window with too few distinct command
+    # steps under-constrains the thrust axis's 3-parameter drag-corrected fit
+    # (gain, drag_k, intercept), letting a short/few-transition segment fit
+    # almost perfectly (high r) with a wildly wrong gain (seen directly:
+    # widening the adaptive-trim grid pulled some runs' gain from ~0.6-1.3
+    # to as high as 2.05, far from the physically-expected ~0.83). Reject
+    # candidates below MIN_DISTINCT_STEPS regardless of sample count/r.
+    if _n_distinct_steps(cmd_full) < MIN_DISTINCT_STEPS:
+        return None
     imu_ts = np.array(tel["IMU Timestamp"]) - gt["Start Time"]
     w_tel = np.array([[a.forward_rad_s, a.right_rad_s, a.down_rad_s]
                        for a in tel["Angular Velocity FRD"]])
@@ -187,7 +210,25 @@ def per_run_metrics(run_dir, return_series=False, t_max=None):
     return out
 
 
-TRIM_CANDIDATES_S = [None, 3.0, 2.5, 2.0, 1.5, 1.0]   # None = full run (try first)
+TRIM_CANDIDATES_S = [None, 3.0, 2.5, 2.0, 1.5, 1.0]   # None = full run (tried first)
+# 2026-07-22: tried widening this to [None,10,8,6,5,4,3.5,3.0,2.5,2.0,1.5,1.0]
+# after finding it was too coarse for STEP_HOLD_S=3.0s-era runs (their first
+# command step is [0,0,0,0] held for the full 3.0s, so t_max<=3.0 captures
+# only a zero-variance segment). The wider grid DID correctly rescue some
+# runs (e.g. Tue Jul 21 17-29-07: thrust r 0.264->0.958 at t_max=4.0), but
+# in AGGREGATE it made the thrust axis's mass-implied sanity check worse in
+# every variant tried (no guard: -7.1%; +MIN_DISTINCT_STEPS guard, max-r
+# selection: -9.3%; longest-window-first selection: -5.2% -- all worse than
+# this narrower grid's -1.2%). Root cause: a few runs (Mon Jul 20 18-42-02,
+# Tue Jul 21 17-21-26/17-23-13) have a persistent gain inflation that
+# survives every window-selection rule tried, not just an overfitting
+# artifact of short windows -- likely a real thrust-response anomaly (e.g.
+# 18-42-02's known battery-surge history, see project_hardware_drone_mass
+# memory) rather than something a smarter trim search can fix. REVERTED to
+# this narrower grid, which empirically has the healthiest aggregate. The
+# MIN_DISTINCT_STEPS guard below is kept regardless -- it's a real safety
+# property (protects against under-constrained fits) even though the wider
+# candidate list it was motivated by was reverted.
 
 
 def best_trim_metrics(run_dir):
