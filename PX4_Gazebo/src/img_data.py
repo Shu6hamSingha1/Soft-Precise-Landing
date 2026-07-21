@@ -535,6 +535,28 @@ class IMG_PROCESSOR(Thread):
         # of an all-or-nothing swap -- a partially-degraded slot still carries some signal,
         # just not full trust.
         self._planar_map_reject_floor = float(os.environ.get("PLANAR_MAP_REJECT_FLOOR", "0.05"))
+        # WINDOWED-RATE plausibility gate for _centroidMap/_alphaMap (2026-07-21, see
+        # feedback_map_rate_plausibility_gate): confidence measures internal RIGIDITY of the
+        # tracked point cluster, not whether it's still anchored to the real target -- a
+        # coherently-drifting-but-rigid cluster can hold confidence=1.0 while genuinely
+        # diverging (diagnosed: IC3's 158m fly-away and a 13m IC1 miss both showed the map's
+        # OWN raw centroid accelerating to ~0.8-1.1/s in its final accepted frames while trust
+        # stayed pegged at 1.0 throughout). This is a SEPARATE axis from confidence, checked
+        # via a short rolling-window slope fit (same pattern as the loom's d(lnM)/dt gate,
+        # _mtrace_hist) on the map's own accepted history -- independent of what the map
+        # itself reports about its confidence. Two tiers, mirroring the reject/full-trust
+        # confidence floors: below MAP_RATE_SOFT, full trust; between SOFT and REJECT,
+        # tapered trust (folded into the SAME _cmap_last_trust/_amap_last_trust the
+        # confidence-scaled KF r already uses -- the value itself is NOT touched, map stays
+        # authoritative for what's reported); above MAP_RATE_REJECT, hard reject (None), same
+        # tier as a position/size plausibility failure. Defaults are PROVISIONAL -- derived
+        # from tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s;
+        # both failures: ~0.8-1.1/s in their final frames -- a 20-50x gap), not a proper
+        # n>=5 derivation; validate before trusting these numbers long-term.
+        self._map_rate_soft = float(os.environ.get("MAP_RATE_SOFT", "0.3"))
+        self._map_rate_reject = float(os.environ.get("MAP_RATE_REJECT", "0.8"))
+        self._cmap_rate_hist = []   # [(t, x, y), ...] last few ACCEPTED centroid-map samples
+        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe
         # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
         # site comment): a rescue-projected centroid is only trusted if it falls within
         # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
@@ -2791,14 +2813,17 @@ class IMG_PROCESSOR(Thread):
                 self._amap_raw_log.append(_ma_raw)
                 self._amap_trust_log.append(_ma_trust)
 
-                # KF correct-step (moved here 2026-07-20, see the ORDERING FIX comment above) --
-                # corrects against the FINAL feature vector, after any centroid/alpha map
-                # blend, so CENTROID_FROM_MAP/ALPHA_FROM_MAP actually reach the controller under
-                # the default IMG_FEATURE_FILTER=kf path instead of being silently inert.
-                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
-
                 # ds OUTLIER-HOLD on the raw centroid: reject a per-frame centroid JUMP (detection/LK
                 # glitch) and hold last-good — keeps s clean for the position loop AND the observer.
+                # MOVED BEFORE the KF correct-step (2026-07-20, see feedback_ds_guard_kf_ordering_bug):
+                # this guard used to run AFTER _kf_feat_update, so it only ever corrected
+                # self._img_feature_param[-1] -- a value the KF had ALREADY consumed that frame. The
+                # KF's actual state (self._kf_feat_x, what getImgFeatureParam() reads by default) was
+                # never protected by this guard, before OR after the 2026-07-20 override-ordering fix
+                # (c654557) -- that fix moved the KF update to run after the centroid/alpha map
+                # override so CENTROID_FROM_MAP/ALPHA_FROM_MAP would reach the controller, but left
+                # this guard downstream of it, so a spike this guard SHOULD catch still fed the KF at
+                # full strength. Now runs first, so the KF is corrected against the GUARDED value.
                 if self._s_ds_max > 0 and self._img_feature_param:
                     _s = self._img_feature_param[-1]
                     _s_raw = np.array([_s[0], _s[1]], dtype=float)   # RAW value, BEFORE any reject
@@ -2812,6 +2837,13 @@ class IMG_PROCESSOR(Thread):
                     # detection ref = RAW (advances) → per-instant check, no latch; substitution =
                     # last-accepted (_s_hold) → spike fully dropped. (Matches the loom d(lnM)/dt gate.)
                     self._s_prev = _s_raw
+
+                # KF correct-step -- corrects against the FINAL feature vector, after any
+                # centroid/alpha map blend AND the ds outlier-hold above, so
+                # CENTROID_FROM_MAP/ALPHA_FROM_MAP reach the controller under the default
+                # IMG_FEATURE_FILTER=kf path (the original 2026-07-20 fix, c654557) AND a
+                # single-frame spike the ds guard catches never reaches the KF either.
+                self._kf_feat_update(self._img_feature_param[-1], self._time.perf_counter())
 
                 # (2026-07-09 fix, historical: a REAL-sample s buffer used to be captured here,
                 # post-ds-outlier-hold, feeding a polyfit-based s-extrapolation during marker-loss
@@ -3444,16 +3476,41 @@ class IMG_PROCESSOR(Thread):
         a low-confidence sample before it ever reached the KF; scaling r here is the
         textbook equivalent for a Kalman filter (tell it a sample is noisier, so it barely
         moves K) WITHOUT touching the reported value at all -- map stays authoritative,
-        but the state a future coast extrapolates from stays protected. Only applies when
-        THIS frame's sample was map-sourced (trust>0); decode-only frames keep the
-        unmodified, already-validated self._kf_feat_r."""
+        but the state a future coast extrapolates from stays protected. Applies to
+        map-sourced frames (trust>0) via confidence; DECODE-sourced frames (trust==0, map
+        didn't fire) are ALSO scaled now (2026-07-21, see feedback_decode_klt_confidence_
+        scaled_r below) by a KLT-fallback-streak confidence, so decode isn't the
+        unconditionally-trusted assumption every other fix this session was protecting
+        against."""
         z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
         r_pos = self._kf_feat_r
-        if z is not None and self._cmap_trust_log and self._cmap_trust_log[-1] > 0.0:
-            _tr = float(self._cmap_trust_log[-1])
-            r_pos = np.array([self._kf_feat_r / max(_tr, 0.05),
-                               self._kf_feat_r / max(_tr, 0.05),
-                               self._kf_feat_r])
+        if z is not None:
+            _map_tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0
+            if _map_tr > 0.0:
+                r_pos = np.array([self._kf_feat_r / max(_map_tr, 0.05),
+                                   self._kf_feat_r / max(_map_tr, 0.05),
+                                   self._kf_feat_r])
+            else:
+                # DECODE-SOURCED this frame (map didn't fire) -- confidence-scale r by the
+                # SAME KLT-fallback-streak-based confidence the flow channel's _corner_conf
+                # already uses (2026-07-21, see feedback_decode_klt_confidence_scaled_r):
+                # every fix this session treated decode as unconditionally trustworthy, the
+                # thing the map's confidence/rate gates protect AGAINST -- but decode's OWN
+                # KLT-fallback corners degrade too, the deeper into a fallback streak with no
+                # fresh ArUco re-anchor. Diagnosed IC4_rep5's terminal excursion: the map
+                # correctly abstained (tapered trust to 0, then stopped firing) during a
+                # genuine drift-off event, while decode's KLT-fallback corners -- left as the
+                # sole source once the map abstained -- kept feeding the KF at full strength
+                # through the SAME degrading stretch, producing the actual blowup. Same
+                # formula as _corner_conf (max(0.05, 1 - lk_step_count/max_lk_steps)) so a
+                # fresh decode (lk_step_count==0) is unaffected; only a deep fallback streak
+                # softens the KF's trust here, exactly mirroring the map-side fix.
+                _decode_conf = (1.0 if self._lk_step_count <= 0 else
+                                 max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1)))
+                if _decode_conf < 1.0:
+                    r_pos = np.array([self._kf_feat_r / max(_decode_conf, 0.05),
+                                       self._kf_feat_r / max(_decode_conf, 0.05),
+                                       self._kf_feat_r])
         x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
             self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
                           self._kf_feat_initialized, z_pos, t,
@@ -3463,9 +3520,18 @@ class IMG_PROCESSOR(Thread):
 
         z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
         r_sc = self._kf_feat_r
-        if z is not None and self._amap_trust_log and self._amap_trust_log[-1] > 0.0:
-            _tra = float(self._amap_trust_log[-1])
-            r_sc = self._kf_feat_r / max(_tra, 0.05)
+        if z is not None:
+            _amap_tr = float(self._amap_trust_log[-1]) if self._amap_trust_log else 0.0
+            if _amap_tr > 0.0:
+                r_sc = self._kf_feat_r / max(_amap_tr, 0.05)
+            else:
+                # DECODE-sourced alpha this frame -- same KLT-fallback-streak confidence
+                # as the position channels above (see that comment for the full
+                # rationale); decode's alpha comes from the same degrading corners.
+                _decode_conf_a = (1.0 if self._lk_step_count <= 0 else
+                                   max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1)))
+                if _decode_conf_a < 1.0:
+                    r_sc = self._kf_feat_r / max(_decode_conf_a, 0.05)
         self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
             self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
                           self._kf_feat_sc_initialized, z_sc, t,
@@ -3826,6 +3892,51 @@ class IMG_PROCESSOR(Thread):
 
         # ---- 4. Feature vector (unnormalized) ----
         return np.array([xc, yc, 1.0, alpha])
+
+    def _mapRatePlausible(self, hist, t, vals, max_hist=5):
+        """WINDOWED-RATE plausibility check shared by _centroidMap/_alphaMap (2026-07-21 --
+        see the MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment for full rationale). This is
+        a THIRD, INDEPENDENT axis alongside _planarMapPredictionPlausible's position/size
+        checks -- confidence (and position/size plausibility) can't see a cluster that's
+        coherently drifting while staying internally rigid and in-frame; this catches that
+        by looking at the ACCEPTED value's own recent trend, the same pattern the loom's
+        d(lnM)/dt gate (_mtrace_hist) already uses for an analogous "smooth drift, not a
+        discontinuous glitch" problem in a different channel.
+
+        hist: the caller's rolling list (self._cmap_rate_hist or self._amap_rate_hist),
+        mutated in place (append + trim to max_hist) -- caller owns the list identity.
+        t: timestamp for this sample. vals: tuple of linear-safe values to rate-check
+        (x, y for centroid; sin(alpha), cos(alpha) for alpha -- NEVER alpha itself, which
+        is a wrapped angle and would spuriously spike at the +-pi branch cut exactly like
+        the linear-KF bug this session already fixed once).
+
+        Returns (ok: bool, rate_trust: float in [0,1]). ok=False -> caller should REJECT
+        this sample entirely (same weight as a position/size plausibility failure).
+        rate_trust (when ok) is meant to be combined (via min()) with confidence-derived
+        trust -- it tapers how much the KF trusts this sample (via the confidence-scaled r
+        mechanism), NOT the reported value itself; map stays authoritative for what's
+        shown this frame regardless."""
+        hist.append((t,) + tuple(vals))
+        if len(hist) > max_hist:
+            del hist[0]
+        if len(hist) < 3:
+            return True, 1.0   # not enough history to judge yet -- don't block early samples
+        tt = np.array([h[0] for h in hist])
+        if tt.max() - tt.min() < 1e-3:
+            return True, 1.0   # degenerate window (near-duplicate timestamps)
+        rate_sq = 0.0
+        for k in range(1, len(vals) + 1):
+            vv = np.array([h[k] for h in hist])
+            slope = np.polyfit(tt - tt[0], vv, 1)[0]
+            rate_sq += slope ** 2
+        rate = float(np.sqrt(rate_sq))
+        if rate > self._map_rate_reject:
+            return False, 0.0
+        if rate > self._map_rate_soft:
+            return True, float(np.clip(
+                1.0 - (rate - self._map_rate_soft) / max(self._map_rate_reject - self._map_rate_soft, 1e-6),
+                0.0, 1.0))
+        return True, 1.0
 
     def _planarMapPredictionPlausible(self, pm_px, quat):
         """PHYSICAL-PLAUSIBILITY check for a PlanarFeatureMap camera-pixel corner
@@ -4369,9 +4480,18 @@ class IMG_PROCESSOR(Thread):
             if Vp is None or len(Vp) != 1:
                 _tally('none_vpts'); return None
             c = size_factor * Vp[0, :2]
-            if np.all(np.isfinite(c)):
-                _tally('fired'); return c
-            _tally('none_nonfinite'); return None
+            if not np.all(np.isfinite(c)):
+                _tally('none_nonfinite'); return None
+            # WINDOWED-RATE plausibility (2026-07-21, see _mapRatePlausible docstring +
+            # MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment) -- a THIRD axis alongside
+            # position/size, catching a coherently-drifting-but-rigid cluster the
+            # confidence gate above can't see.
+            _rate_ok, _rate_trust = self._mapRatePlausible(
+                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])))
+            if not _rate_ok:
+                _tally('none_rate_implausible'); return None
+            self._cmap_last_trust = min(self._cmap_last_trust, _rate_trust)
+            _tally('fired'); return c
         except Exception:
             _tally('none_exc'); return None
 
@@ -4426,7 +4546,18 @@ class IMG_PROCESSOR(Thread):
                 return None
             raw = self._marker_principal_angle(Vp, weights=wts)
             a = float(np.arctan2(np.sin(raw - self._moment_alpha_0), np.cos(raw - self._moment_alpha_0)))
-            return a if np.isfinite(a) else None
+            if not np.isfinite(a):
+                return None
+            # WINDOWED-RATE plausibility (2026-07-21, see _mapRatePlausible docstring) --
+            # rate-checked on [sin(a), cos(a)], NEVER on the wrapped angle `a` itself (a
+            # linear slope fit across the +-pi branch cut would spuriously spike, exactly
+            # the class of bug the sin/cos-pair KF fix already addressed once this session).
+            _rate_ok, _rate_trust = self._mapRatePlausible(
+                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)))
+            if not _rate_ok:
+                return None
+            self._amap_last_trust = min(self._amap_last_trust, _rate_trust)
+            return a
         except Exception:
             return None
 
