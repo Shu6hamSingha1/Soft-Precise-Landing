@@ -1,0 +1,347 @@
+Hardware INPUT calibration -- FINAL (2026-07-21, revised)
+=======================================================
+Dataset: Test_Data/Calibration/Input_Clean/ (47 scored runs total)
+Computed via Hardware/scripts/analyze_input_calibration.py (canonical tool,
+Gazebo-ported methodology, single source of truth -- run it directly to
+reproduce/update this table rather than hand-copying numbers).
+
+Reliability filter: PER-AXIS r >= 0.5 (fixed 2026-07-21 -- previously filtered
+by mean-r-across-3-axes per run, which discards a genuinely good measurement
+on one axis just because another axis was noisy in the same run; per-axis
+filtering is more correct and changes wy/wz noticeably from the earlier
+version of this file, see git/backup history if the old numbers are needed).
+Also fixed the same day: the underlying MAD-trim previously filtered by
+gain-VALUE outlier status only (no r awareness at all), which silently kept
+near-zero/negative-r noise runs and dropped genuinely good ones -- see the
+thrust-axis note below for the magnitude of that error.
+
+Per-axis calibration (MAD-trimmed mean, k_MAD=2.5, r>=0.5 filter applied first):
+  axis         r        lag_ms      gain      n_reliable/total
+  wx     0.720(n=5)     46.4(n=7)   1.280(n=5)      7/47
+  wy     0.559(n=4)     40.0(n=6)   1.746(n=6)      6/47
+  wz     0.628(n=12)    23.8(n=13)  1.031(n=10)    15/47
+
+As a diagonal calibration matrix (achieved = M @ commanded, per axis):
+  M = diag(1.280, 1.746, 1.031)
+
+Caveats:
+  - Small reliable-run counts per axis (6-15 of 47); wy in particular is thin
+    (n=4-6 after MAD trim). Treat gain/lag as a first-order working
+    calibration, not a tightly-bounded final number.
+  - Data-quality trimming (NaN/corruption) is separate and already applied upstream
+    in Input_Clean/ -- this filter is about SIGNAL RELIABILITY, not corruption.
+
+Thrust axis (commanded thrust N vs achieved vertical accel, down_m_s2)
+-------------------------------------------------------------------
+Scored by analyze_input_calibration.py's "thrust" pseudo-axis (cmd[:,3]/B_T
+vs Acceleration.down_m_s2, same cross-corr r/lag/gain machinery as wx/wy/wz).
+19/47 runs reliable (r>=0.5) -- notably better-conditioned than the rate axes;
+accelerometer response to thrust is cleaner to measure than body rate tracking.
+
+  r = 0.771 (n=18)   lag = 36.8 ms (n=14)   gain = 0.745 m/s^2 per N (n=15)
+
+Sanity check: gain ~= 1/mass (F=ma). Naive (no drag) model, R2-weighted over the 19
+reliable runs: gain=0.7830, implied mass=1.277kg vs known 1.204kg (+6.1%).
+
+RESOLVED 2026-07-21: root-caused as aerodynamic drag missing from the naive point-mass
+model. Adding a Velocity Body.z_m_s term (a = gain*B_T + k*v_z + c) and refitting:
+  gain=0.8217, implied mass=1.217kg (+1.1% -- closes the gap almost entirely)
+A quadratic drag term (k*v_z*|v_z|) was also tested and is WORSE (gain=0.8022, +3.5%),
+so linear drag is the right functional form, not a refinement target. Ground effect
+(altitude term) and battery-voltage/thermal effects were also tested and ruled out
+(altitude coefficient sign-flips inconsistently across runs -- overfitting, not signal;
+restricting to the confirmed-valid 22.4-24.0V battery plateau made no difference once
+the reliability filter was applied correctly). See project_hardware_drone_mass memory
+for the full investigation, including a self-corrected methodology bug along the way
+(an early pass accidentally dropped the r>=0.5 filter, producing a misleadingly large
++15-19% gap that did not survive re-checking).
+
+
+=======================================================
+FINALIZED CALIBRATION FACTORS -- for use in the next landing test
+=======================================================
+Consolidated 2026-07-21, REVISED to r^2-weighted method (see below). These
+are CORRECTION factors: since gain = achieved/commanded, dividing a commanded
+value by its axis's gain (equivalently multiplying by 1/gain) before sending
+it should make the ACHIEVED response match the ORIGINALLY INTENDED value.
+Not yet wired into any script -- this is the reference to apply.
+
+Methodology change from the first version of this table: the r>=0.5-then-
+MAD-trim method has a hard boundary discontinuity (r=0.49 fully excluded,
+r=0.51 fully included), which is unstable exactly where it matters most --
+confirmed on wy, whose aggregate r sat right at the 0.5 cutoff. Switched to
+an r^2-weighted mean across ALL 47 runs (every run contributes, weighted by
+variance explained, no arbitrary threshold) -- see
+Hardware/scripts/analyze_input_calibration.py::r2_weighted_mean(). This
+changed wx and wz meaningfully too, not just wy -- run the script directly
+to reproduce/update rather than trusting a stale hand-copy of these numbers.
+
+  Rate axes (command_corrected = command_intended / gain), r^2-weighted:
+    wx:  gain=1.506  -> scale factor 1/1.506 = 0.664   (n_eff=6.06)
+    wy:  gain=1.430  -> scale factor 1/1.430 = 0.699   (n_eff=4.69, still the thinnest of the three)
+    wz:  gain=1.438  -> scale factor 1/1.438 = 0.696   (n_eff=10.02, best-supported)
+
+  Thrust:
+    HW_HOVER_THROTTLE_NORM = 0.4   (rounded from 0.3984, 2026-07-22: superseded the sine-sweep-derived 0.388.
+                                        Methodology note: the hover sine-sweep was always an
+                                        INITIAL/bootstrap test; input-calibration is the
+                                        authoritative FINAL source for every calibration
+                                        parameter, hover throttle included. Derived by
+                                        back-solving the drag-corrected thrust regression's
+                                        intercept per run -- at commanded B_T=0 (the assumed
+                                        hover point baked into the recorded commands), if
+                                        a_down != -9.81 exactly, that residual directly gives
+                                        the throttle correction needed. R2-weighted over the
+                                        19 reliable thrust runs: 0.3984, rounded to 0.4 (n=19; unweighted
+                                        mean=0.3989, median=0.3979, std=0.0147). Three
+                                        independent methods now form a consistent upward trend
+                                        from the original 0.388 -> sine-sweep 0.391-0.392 ->
+                                        input-cal 0.398-0.399, with the largest/most-direct
+                                        sample landing highest -- not noise scattered around
+                                        0.388.)
+    HW_THRUST_SLOPE_N_PER_UNIT = 30.38   (drag-corrected, reliability-filtered, R2-weighted;
+                                           see the resolved sanity-check note above. Supersedes an
+                                           earlier same-day 28.04 candidate that used the naive
+                                           (non-drag) model -- the drag-corrected number is barely
+                                           different from the pre-existing live 30.7, i.e. the
+                                           original value turns out to have been close to correct
+                                           once drag is properly accounted for. Note: this slope
+                                           derivation is independent of HOVER_THROTTLE_NORM --
+                                           gain = d(a_down)/d(B_T) doesn't depend on the baseline
+                                           -- so it needed no recomputation after the hover update.)
+
+  As a matrix (rate correction only, thrust handled separately via the slope constant):
+    M_correction = diag(0.664, 0.699, 0.696)
+
+Note the three rate-axis corrections converged to a much tighter, more
+plausible band (0.664-0.699) than the earlier hard-cutoff table's
+(0.781/0.573/0.970, a much wider spread including one near-1.0 outlier on
+wz) -- this internal consistency is itself evidence the r^2-weighted method
+is the more trustworthy one, though wy's n_eff=4.69 is still the weakest of
+the three and worth treating with some caution on a first flight.
+
+APPLIED 2026-07-21: HW_HOVER_THROTTLE_NORM, HW_THRUST_SLOPE (=30.38), and the
+rate-axis RATE_CORRECTION matrix are all live in hardware_landing.py /
+record_input_calibration.py on the Pi. INPUT_CAL_STEP_HOLD_S=1.0 and
+INPUT_CAL_RECENTER_HOLD_S=2.0 also applied (see project session notes / memory).
+NONE of these changes have been validated on an actual flight yet -- that is
+the next step before trusting them further.
+
+
+=======================================================
+Hover-throttle sine-sweep thrust-slope -- CLOSED (insufficient data)
+=======================================================
+Separate tool (find_hover_throttle.py THROTTLE_MODE=sine), separate from the
+input-cal HW_THRUST_SLOPE derivation above. Full investigation history in
+project_hover_throttle_search_2026_07_09 memory; summary:
+
+Timing-alignment bug (2026-07-20) confirmed fixed live on the Pi. Post-fix,
+7 sine-fits on 2026-07-21 still showed 8.5-41 N/unit scatter. Three fixes
+tested against the 2 raw .npz datasets available locally (only 2 of the 7
+printed fits have saved raw telemetry):
+  1. Excitation amplitude (SINE_AMP) -- ruled out; list-mode's much larger
+     throttle steps historically gave the same scatter (6-45 N/unit).
+  2. Detrending (climb-trend confound, a=slope*throttle+trend*time+c) --
+     real but small effect; R2 improved marginally (0.302->0.359,
+     0.742->0.747), slopes barely moved.
+  3. Linear drag correction (the SAME fix that resolved the input-cal
+     thrust mass-gap, a=gain*B_T+k*v_z+c) -- tested identically here, did
+     NOT help (slopes moved <2%, the two runs' drag coefficients had
+     OPPOSITE signs, no real drag signal). Makes sense: this sweep has zero
+     commanded body rate and only a small throttle oscillation, unlike
+     input-cal's combined roll+pitch+yaw+thrust steps that produce much
+     larger velocity excursions for drag to act on.
+
+After all three: the 2 available runs still disagree by ~37% (27.82-28.13
+vs 40.56-40.67 N/unit). n=2 is fundamentally too thin to resolve via better
+regression on the same data -- this needs new recordings to make further
+progress, not more analysis.
+
+RESOLUTION: downgraded to "insufficient data, not currently authoritative"
+rather than treated as an unresolved conflict with the input-cal-derived
+value. HW_THRUST_SLOPE is set from the input-cal cross-check (30.38 N/unit,
+above), not from this tool. Sine-sweep remains available as an independent
+validation method in principle, but would need a handful of fresh flights to
+serve that role -- not pursued this session (extended the existing
+"no more input-cal data collection" decision to cover this thread too).
+
+
+=======================================================
+2026-07-22 -- Genuine sensor/vibration noise floor: FILTERED, calibration re-run
+=======================================================
+Root cause of the noisy a_down plots (see §3 in the notebook): PSD of a
+representative run's a_down showed a clean bimodal split -- ~51% of power
+below 2Hz (real maneuver/thrust-response signal), a quiet gap 2-20Hz (~5%),
+then ~44% of power above 20Hz (propeller/motor vibration). Cross-checked
+against the PURE-THRUST hover sine-sweep data (zero commanded body rate, so
+any rotation-coupling confound is absent by construction): the two pure-
+thrust runs showed 30.5% and 13.9% power in the 20-92Hz band respectively --
+disagreeing with EACH OTHER by more than either disagrees from the
+combined-rate input-cal run's 43.7%. Conclusion: genuine vibration is
+present and flight-to-flight variable regardless of whether body rates are
+commanded; rotation-coupling (gravity-projection change from a rotating
+body-frame accelerometer) is a real but NOT dominant contributor -- broadband
+vibration is the primary noise source, consistent everywhere checked.
+
+Filter applied: 4th-order zero-phase (filtfilt) Butterworth low-pass,
+cutoff=8Hz, sitting in the middle of the empirically-identified quiet gap.
+Applied to ALL telemetry signals used in ANY input-cal parameter (gyro for
+wx/wy/wz, accelerometer for thrust, velocity for the drag-correction term)
+in analyze_input_calibration.py::per_run_metrics -- i.e. for every
+parameter, not just thrust. Implemented as a shared _lowpass() helper;
+filtfilt (zero-phase) specifically chosen so the filter doesn't introduce
+lag that would bias the cross-correlation lag/gain estimates downstream.
+
+Effect on reliability counts (r>=0.5, per-axis): wx 7->8, wy 6->8, wz
+15->17, thrust stayed 19 but its aggregate r improved 0.771->0.867.
+Filtering measurably helped across every parameter, not just thrust.
+
+FINAL VALUES (filtered, drag-corrected where applicable, R2-weighted) --
+supersede the 2026-07-21 unfiltered numbers above:
+  wx correction: gain=1.550 -> 1/gain = 0.645  (was 0.664 unfiltered)
+  wy correction: gain=1.389 -> 1/gain = 0.720  (was 0.699 unfiltered)
+  wz correction: gain=1.451 -> 1/gain = 0.689  (was 0.696 unfiltered)
+  HW_THRUST_SLOPE_N_PER_UNIT = 31.59  (drag-corrected + filtered gain=0.8546,
+    implied mass=1.170kg, -2.8% off known 1.204kg -- gap flipped sign from
+    unfiltered's +1.1% but stayed similarly small; was 30.38 unfiltered)
+  HW_HOVER_THROTTLE_NORM = 0.41  (rounded from 0.4095 filtered R2-weighted
+    intercept-derived value; was 0.4/0.3984 unfiltered)
+
+M_correction = diag(0.645, 0.720, 0.689)
+
+APPLIED 2026-07-22: all of the above live on the Pi in hardware_landing.py
+and record_input_calibration.py (RATE_CORRECTION_WX/WY/WZ, HW_THRUST_SLOPE,
+HW_HOVER_THROTTLE_NORM env var defaults). Still NOT validated on an actual
+flight -- unchanged status, now applies to these filtered numbers instead.
+
+
+=======================================================
+2026-07-22 -- Adaptive per-run trim: rescuing drift-truncated runs
+=======================================================
+Motivation: many runs (esp. 2026-07-21's STEP_HOLD_S=3.0s batch) get
+soft-cutoff-truncated by GRADUAL altitude-drift buildup, not a sudden
+corruption event -- the EARLY portion of a long hold, before drift
+accumulates, is still clean command-tracking data. Scoring a whole run as
+one blob lets a drift-corrupted tail drag down an otherwise-good early
+segment and get the whole run discarded. Confirmed directly: trimming 5 of
+17 tested 2026-07-21 runs to their first 2s alone flipped them from
+unreliable (avg r<0.5) to reliable (avg r 0.61-0.89).
+
+Implemented properly as `best_trim_metrics()` in
+analyze_input_calibration.py: for each run, tries t_max in
+[full, 3.0, 2.5, 2.0, 1.5, 1.0]s and keeps whichever gives the best mean
+wx/wy/wz r (rate axes) or best thrust r (thrust axis, scored separately
+since its best window can differ from the rate axes'). `per_run_metrics()`
+gained an optional `t_max` parameter to support this.
+
+RESULT -- reliable-run counts roughly DOUBLED or better across every
+parameter (17 runs rescued for rate axes, 15 more for thrust):
+  wx: 7  -> 23 reliable / 47   (n_eff 6.61 -> 13.88)
+  wy: 6  -> 24 reliable / 47   (n_eff 5.96 -> 15.59)
+  wz: 15 -> 28 reliable / 47   (n_eff 10.51 -> 17.56)
+  thrust: 19 -> 34 reliable / 47
+
+FINAL VALUES (adaptive-trim, filtered, drag-corrected where applicable,
+R2-weighted) -- supersede the whole-run-only 2026-07-22 numbers above:
+  wx correction: gain=1.319 -> 1/gain = 0.758  (was 0.645, full-run-only)
+  wy correction: gain=1.354 -> 1/gain = 0.739  (was 0.720, full-run-only)
+  wz correction: gain=1.504 -> 1/gain = 0.665  (was 0.689, full-run-only)
+  HW_THRUST_SLOPE_N_PER_UNIT = 31.98  (drag-corrected gain=0.8409, implied
+    mass=1.189kg, -1.2% off known 1.204kg -- TIGHTER than the full-run-only
+    -2.8% gap; was 31.59 full-run-only)
+  HW_HOVER_THROTTLE_NORM = 0.42  (rounded from 0.4226 R2-weighted
+    intercept-derived value; was 0.41/0.4095 full-run-only)
+
+M_correction = diag(0.758, 0.739, 0.665)
+
+STATUS 2026-07-22: these adaptive-trim values are the current final
+recommendation but were computed while the Pi was powered off (shut down
+mid-session) -- NOT YET applied to the live hardware_landing.py /
+record_input_calibration.py env-var defaults (those still hold the
+previous full-run-only filtered values: HW_THRUST_SLOPE=31.59,
+HW_HOVER_THROTTLE_NORM=0.41, RATE_CORRECTION=0.645/0.720/0.689). Apply
+these adaptive-trim numbers the next time the Pi is reachable, before the
+next flight test.
+
+
+=======================================================
+2026-07-22 -- Grid-widening investigated and REVERTED
+=======================================================
+Tried widening TRIM_CANDIDATES_S from [None,3.0,2.5,2.0,1.5,1.0] to
+[None,10,8,6,5,4,3.5,3.0,2.5,2.0,1.5,1.0] after finding the narrow grid
+missed a genuinely clean window for "Tue Jul 21 17-29-07" (t_max=4.0s
+lifts its thrust r from 0.264 to 0.958 -- not present in the narrow grid).
+
+RESULT: widening correctly rescued individual runs like 17-29-07, but made
+the AGGREGATE thrust mass-sanity-check WORSE in every selection-rule
+variant tried (no guard, guard+max-r-window, guard+longest-window-first):
+implied-mass gap went from -1.2% (narrow grid) to -9.3% (widened).
+
+ROOT CAUSE (not overfitting): traced to 3 specific runs -- "Mon Jul 20
+18-42-02" (known battery-surge, already handled by manual trim),
+"Tue Jul 21 17-21-26", and "Tue Jul 21 17-23-13" -- showing gain inflation
+that PERSISTS across every window tried for them, i.e. real corruption
+events large enough that the wider grid keeps finding a "clean-looking"
+but actually-biased sub-window for these 3, dragging the aggregate down
+even as it rescues genuinely clean runs like 17-29-07.
+
+Added `MIN_DISTINCT_STEPS=2` guard (`_n_distinct_steps()`, rejects windows
+with <2 contiguous constant-command blocks -- underconstrained for the
+3-parameter drag-corrected thrust model) as a general overfitting
+safeguard. Verified it is an exact no-op on the narrow-grid baseline
+(same 0.758/0.739/0.665, same n_eff) -- MIN_DISTINCT_STEPS=3 was tried
+first but changed narrow-grid rate-axis results as an unwanted side
+effect, so backed off to 2.
+
+DECISION: REVERTED TRIM_CANDIDATES_S back to the narrow grid
+[None,3.0,2.5,2.0,1.5,1.0]. The guard stays (harmless, verified no-op).
+The narrow grid's -1.2% mass gap is the current final number; do not
+re-widen without first excluding or fixing the 3 corrupted runs below.
+
+=======================================================
+2026-07-22 -- Root-causing 17-21-26 and 17-23-13 via flight logs
+=======================================================
+Followed up on the 3 problem runs above using PX4 .ulg flight logs
+(Test_Data/FlightLogs/), matched to companion recordings via the session
+transcript's explicit `[logger]` print lines (timing-heuristic mapping
+was tried first and got 17-23-13's log WRONG -- always use the transcript
+print, not proximity-in-time).
+
+"Tue Jul 21 17-21-26" -> flight log 17_21_02.ulg: confirms a real battery
+brownout, 22.01V -> 16.54V with a 94A current spike, same signature class
+as 18-42-02.
+  Resync attempt (altitude cross-correlation, companion synced_t vs flight
+  log time, search constrained to [Takeoff-detected, Landing-commanded]):
+  best offset=4.550s but corr=0.451 (weak) and a poor point sanity check
+  (comp_alt=7.67m at synced_t=0 vs flight_alt=0.62m at the aligned
+  flight_t=4.55s -- ~7m mismatch). An earlier UNCONSTRAINED attempt found
+  a higher correlation (0.995) but a physically impossible offset
+  (synced_t=0 mapping to flight_t=-10.8s, before the log even opened) --
+  almost certainly correlation aliasing on the smooth climb/descend
+  altitude shape. NEITHER resync is trustworthy enough to derive a safe
+  trim cutoff for this run. Not trimmed. Needs a sharper alignment signal
+  (e.g. vertical velocity or a discrete event marker) before revisiting.
+
+"Tue Jul 21 17-23-13" -> flight log 17_25_48.ulg (corrected mapping; a
+naive timing-heuristic guess had this log as nonexistent for this run):
+confirms the PX4 AUTO_TAKEOFF "invalid setpoints" firmware bug (diagnosed
+earlier this session) fired during this flight.
+  Resync attempt: constrained search gives offset=11.630s, corr=0.999,
+  with an excellent point-by-point sanity check (e.g. comp_alt=7.51 <->
+  flight_alt=7.51, comp_alt=7.74 <-> flight_alt=7.74, matching to 2 decimal
+  places across every checkpoint). This resync IS trustworthy.
+  Event (invalid-setpoints failsafe) at flight_t=10.82s maps to
+  synced_t=-0.810s -- i.e. BEFORE the companion recording's own t=0. The
+  entire recorded window for this run is already under failsafe/corrupted
+  conditions from the first sample; there is no clean portion to "trim
+  before the event" -- trimming doesn't apply here. This run should be
+  treated as fully unreliable, not partially rescuable. (It already fails
+  the reliability filter at essentially every window tested, so this
+  requires no further code change -- it's already correctly excluded from
+  the current final numbers.)
+
+NET EFFECT: no data files were trimmed for either run this round (neither
+edit was safe/meaningful to make). The narrow-grid final numbers above
+(wx/wy/wz=0.758/0.739/0.665, thrust slope=31.98, hover=0.42) stand
+unchanged. 17-23-13 is confirmed structurally unrescuable; 17-21-26
+remains an open resync problem, not a data problem.

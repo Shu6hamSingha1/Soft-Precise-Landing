@@ -339,7 +339,17 @@ class IMG_PROCESSOR(Thread):
         self._ring_moment = np.nan
         self._ring_ok = False
         self._ring_n = 0
-        self._ring_opt_flow_raw = []   # logged (aligned with corner flow) for ring cal
+        # Independent per-frame ring log, own timestamp - NOT aligned with the
+        # corner flow/feature arrays below. Ported from PX4_Gazebo's img_data.py
+        # (~line 2931, "computed EVERY frame (survives the marker death), logged"):
+        # ring flow is a texture-free method independent of ArUco corner decode,
+        # so it must be logged on its OWN per-frame cadence to be individually
+        # calibratable during a corner dropout - gating it behind corner success
+        # (the old Pi behavior) discarded it exactly when it's most needed.
+        # Time/quats/fps/flow/feature stay corner-gated as before (several tools
+        # positionally index them assuming equal length - do not add ring here).
+        self._ring_opt_flow_raw = []   # ring V-frame [h;w], one entry per _optFlowAngVel call
+        self._ring_time_log = []       # perf_counter() paired 1:1 with the row above
 
         # ---- Corner+ring FUSION EKF (Gazebo-aligned; moving-target capable) ----
         # State [h_tr(3), h_tv(3), w(3)] = target-relative flow, target velocity,
@@ -748,6 +758,12 @@ class IMG_PROCESSOR(Thread):
                 self._kf_x_ring, self._kf_P_ring, self._kf_ring_prev_t,
                 self._kf_ring_initialized, _vvr, self._time.perf_counter(),
                 self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
+            # Log EVERY frame here (own timestamp), independent of whether the
+            # corner marker decodes below - see __init__ comment on
+            # _ring_opt_flow_raw/_ring_time_log for why this moved out of the
+            # old corner-success-gated append.
+            self._ring_opt_flow_raw.append(_vvr.copy())
+            self._ring_time_log.append(self._time.perf_counter())
         _tt = self._tstage(_tt, "1_ring_flow")
 
         # Detect markers on the smaller 'main' stream (ROI-crop fast path
@@ -933,7 +949,9 @@ class IMG_PROCESSOR(Thread):
             self._virtual_feature_pts.append(V_nP_norm)
             self._quats.append(quats)
             self._fps_log.append(self._fps)
-            self._ring_opt_flow_raw.append(self._ring_v_raw.copy())   # aligned with corner flow
+            # Ring flow is now logged unconditionally where it's computed
+            # (own _ring_time_log, see __init__ comment) - no longer appended
+            # here to avoid double-logging every corner-success frame.
 
             # Synced attitude + gyro (aligned with the flow) for gyro compensation.
             _av = angvels[1] if (angvels is not None and len(angvels) > 1 and angvels[1] is not None) else None
@@ -1271,7 +1289,12 @@ class IMG_PROCESSOR(Thread):
             "Feature Params": self._img_feature_param,
             "Opt Flow Ang Vel": self._opt_flow_ang_vel_raw,
             "Opt Flow Estimator Tag": self._opt_flow_estimator_tag,   # 'lstsq' | 'lstsq+klt', index-aligned above
+            # Ring flow now logs every frame independent of corner-marker
+            # success (ported from PX4_Gazebo, see __init__ comment) - it is
+            # NOT index-aligned with "Time" above; use "Ring Time" instead,
+            # which is 1:1 with this array specifically.
             "Ring Opt Flow Ang Vel": self._ring_opt_flow_raw,
+            "Ring Time": self._ring_time_log,
             "Target Velocity": self._target_vel_log,
             "Angular Velocity": self._imu_angvel_raw,
             "Quaternion": self._quat_log,
