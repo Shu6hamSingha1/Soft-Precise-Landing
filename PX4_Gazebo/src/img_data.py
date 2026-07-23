@@ -2382,37 +2382,59 @@ class IMG_PROCESSOR(Thread):
             # individually — any that pass LK add spread to the lstsq.
             board_markers_px1 = None     # [(id, frame1 corners 4x2)] for homography
             if int(np.sum(aruco_status == 1)) == n_aruco:
-                FEATURE_DATA_IS_LOGGED = True
                 aruco_pts_1 = all_pts_1[:n_aruco].reshape(-1, 2)
-                extra_good = (extra_status == 1)
-                extra_pts_0_kept = extra_pts_0[extra_good]
-                extra_pts_1_kept = all_pts_1[n_aruco:].reshape(-1, 2)[extra_good]
-                flow_pts_0 = np.vstack([aruco_pts_0, extra_pts_0_kept])
-                flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
-                # Primary-only pair preserved for centroid / alpha / display.
-                C_nP = [aruco_pts_0, aruco_pts_1]
-                # Last-known REAL marker span (px, camera-pixel space) -- for the rescue's
-                # size-plausibility check below. Updated ONLY on genuine raw decode (never
-                # from a rescue/extrapolated frame), same "real-only" discipline as
-                # _h_real_v elsewhere in this file.
-                self._last_real_extent_px = float(
-                    max(aruco_pts_0[:, 0].max() - aruco_pts_0[:, 0].min(),
-                        aruco_pts_0[:, 1].max() - aruco_pts_0[:, 1].min()))
+                # PLAUSIBILITY GATE ON RAW DECODE (2026-07-23, see
+                # project_ic2_wrong_marker_decode memory): a raw ArUco decode that tracks
+                # cleanly (all 4 corners, LK status==1) was previously trusted
+                # UNCONDITIONALLY -- no sanity check at all, unlike the map override/rescue
+                # paths (_planarMapPredictionPlausible). Traced live (IC2_rep2,
+                # ICValidation/20260723-191943): a single-frame marker-loss gap (nfc=0) was
+                # immediately followed by a DIFFERENT, spurious 4-corner detection (~9px
+                # marker in a corner of the frame vs the true ~150px marker) that decoded
+                # and LK-tracked CLEANLY for several subsequent frames (self-consistent
+                # frame-to-frame, so the ds outlier-hold's single-frame delta check couldn't
+                # catch it past the first frame) -- fed straight into s/sigma/kappa and
+                # detonated a_u. Reuses the SAME position+size sanity check the map path
+                # already trusts, against the OLD _last_real_extent_px/_feature_pts (checked
+                # BEFORE either is overwritten below). An implausible raw decode is treated
+                # like a decode miss this frame (falls through to the existing rescue/hold
+                # path via FEATURE_DATA_IS_LOGGED staying False), not clipped/clamped.
+                _raw_ok, _, _raw_why = self._planarMapPredictionPlausible(aruco_pts_1, quats[1])
+                if not _raw_ok:
+                    if os.environ.get("DECODE_PLAUS_DBG", "0") == "1":
+                        print(f"[decode plausibility] REJECTED raw decode ({_raw_why}) "
+                              f"-- treating as a miss this frame", flush=True)
+                else:
+                    FEATURE_DATA_IS_LOGGED = True
+                    extra_good = (extra_status == 1)
+                    extra_pts_0_kept = extra_pts_0[extra_good]
+                    extra_pts_1_kept = all_pts_1[n_aruco:].reshape(-1, 2)[extra_good]
+                    flow_pts_0 = np.vstack([aruco_pts_0, extra_pts_0_kept])
+                    flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
+                    # Primary-only pair preserved for centroid / alpha / display.
+                    C_nP = [aruco_pts_0, aruco_pts_1]
+                    # Last-known REAL marker span (px, camera-pixel space) -- for the rescue's
+                    # size-plausibility check below. Updated ONLY on genuine raw decode (never
+                    # from a rescue/extrapolated frame), same "real-only" discipline as
+                    # _h_real_v elsewhere in this file.
+                    self._last_real_extent_px = float(
+                        max(aruco_pts_0[:, 0].max() - aruco_pts_0[:, 0].min(),
+                            aruco_pts_0[:, 1].max() - aruco_pts_0[:, 1].min()))
 
-                # Collect per-marker frame-1 corners (only markers whose all-4
-                # corners survived LK) + IDs, for the board homography. Marker k
-                # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
-                if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
-                    all_pts_1_2d = all_pts_1.reshape(-1, 2)
-                    grp = []
-                    for k, mid in enumerate(marker_ids):
-                        sl = slice(4 * k, 4 * k + 4)
-                        # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
-                        if np.all(status[sl] == 1) and (self._board_selfcal
-                                or (self._board_layout is not None and mid in self._board_layout)):
-                            grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
-                    if grp:
-                        board_markers_px1 = grp
+                    # Collect per-marker frame-1 corners (only markers whose all-4
+                    # corners survived LK) + IDs, for the board homography. Marker k
+                    # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
+                    if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
+                        all_pts_1_2d = all_pts_1.reshape(-1, 2)
+                        grp = []
+                        for k, mid in enumerate(marker_ids):
+                            sl = slice(4 * k, 4 * k + 4)
+                            # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
+                            if np.all(status[sl] == 1) and (self._board_selfcal
+                                    or (self._board_layout is not None and mid in self._board_layout)):
+                                grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
+                        if grp:
+                            board_markers_px1 = grp
 
             # NOTE: size_factor adjustment based on min(results[1]) == 0 lives
             # only in the ArUco-detection branch up top. On the KLT-fallback
