@@ -667,6 +667,21 @@ class IMG_PROCESSOR(Thread):
         #
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
+        # HARD safety ceiling for the KLT-fallback ATTEMPT itself (2026-07-23, see
+        # feedback_klt_soft_cap): _max_lk_steps above stays the CONFIDENCE-DECAY reference
+        # (_decode_conf in _kf_feat_update floors at 0.05 once lk_step_count reaches it, never
+        # zero) -- previously it ALSO hard-stopped the KLT attempt entirely at that same count,
+        # which produced a total, sustained blackout (confirmed live: 700ms with zero corners,
+        # frozen _prev_aruco_pts/_prev_img, because KLT was NEVER RE-ATTEMPTED past step 20 even
+        # though it was still tracking cleanly, in-bounds, 4/4, right up to the cutoff -- verified
+        # in KLT Diag: exactly 20 consecutive accepted entries, then none at all). User directive:
+        # "instead of stopping it completely, keep computing... with low confidence... when the
+        # confidence increases, increase the reliability." This decouples the two: KLT keeps being
+        # ATTEMPTED (and its own in-bounds/reconstruction checks still apply as the real safety net)
+        # up to this much larger ceiling, while its reported reliability keeps decaying via
+        # _decode_conf the whole time -- a fresh ArUco re-decode (which resets lk_step_count to 0)
+        # is what actually restores full confidence, not an arbitrary attempt-count cutoff.
+        self._lk_hard_max_steps = int(os.environ.get("MARKER_KLT_HARD_MAX_STEPS", "200"))
         self._lk_step_count = 0
         # RELAXED KLT-FALLBACK GATE (2026-07-09; BAKED default-ON 2026-07-09 for the n>=5
         # IC1-5 controller-tuning validation pass): the strict all-4-corners-tracked requirement
@@ -1932,7 +1947,7 @@ class IMG_PROCESSOR(Thread):
         elif (self._max_lk_steps > 0
               and self._prev_aruco_pts is not None
               and self._prev_img is not None
-              and self._lk_step_count < self._max_lk_steps):
+              and self._lk_step_count < self._lk_hard_max_steps):
             try:
                 _img0_gray = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
                 _prev_gray = (self._prev_img if self._prev_img.ndim == 2
@@ -1980,7 +1995,7 @@ class IMG_PROCESSOR(Thread):
                             used_klt_fallback = True
                             self._lk_step_count += 1
                             if self._lk_step_count == 1:
-                                print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                                print(f"ArUco lost — KLT fallback active (confidence decays past {self._max_lk_steps} frames, hard cap {self._lk_hard_max_steps})")
                             # UNIFIED STALENESS GATE (2026-07-07): a SHORT corner-fallback success
                             # (still barely diverged from the last real decode) is trustworthy enough
                             # to ALSO soft-re-anchor the dense-recovery canonical state -- extends its
