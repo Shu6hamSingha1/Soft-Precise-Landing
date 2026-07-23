@@ -2934,6 +2934,19 @@ class IMG_PROCESSOR(Thread):
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()    # drop scale history so the decoupled-loom slope never spans a gap
                 self._flow_prev = None       # ds/dh gate: re-init after a marker-loss gap (don't hold stale)
+                # BUGFIX (2026-07-23, see project_ic1_ds_guard_gap_reset memory): the comment above
+                # says "ds/dh gate" but only _flow_prev was ever reset here -- _s_prev (the ds
+                # outlier-hold's detection reference, ~line 2872) was NOT, so after a marker-loss
+                # gap the centroid guard compared the just-reacquired raw position against a
+                # STALE pre-gap reference. Real motion during the gap (plus continued motion while
+                # reacquiring) routinely exceeds FLOW_DS_MAX=0.15 every frame -> the guard rejected
+                # for MULTIPLE consecutive control cycles (s frozen while the real error kept
+                # growing unseen by sigma/kappa) -> then the missed motion landed as one compounded
+                # jump the instant a delta finally cleared. Traced live in IC1_rep1
+                # (ICValidation/20260723-185307): s_e_n frozen at [0.033,-0.732] for 3 ctrl cycles
+                # (t=47.864-47.94) despite healthy 184-corner decode throughout, then jumped to
+                # [-0.878,-2.334] in one step -- immediately followed by kappa/a_u detonation.
+                self._s_prev = None          # (fix) re-init the centroid guard on the same gap
 
         # Log the recorded data
         self._time_log.append(self._time.perf_counter())
