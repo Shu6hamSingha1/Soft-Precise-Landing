@@ -4,6 +4,30 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **🟢🟢 2026-07-23 (LATEST) — Two marker-loss-adjacent guard bugs found+fixed via IC1/IC2 fly-away
+> traces: (1) centroid `ds` outlier-hold's `_s_prev` never reset on a marker-loss gap (only its
+> flow sibling was, despite the comment naming both) -- froze `s` post-reacquisition then dumped a
+> compounded jump, detonating kappa/a_u (IC1 9.28m fly-away, commit 9075a97); (2) raw ArUco decode
+> had ZERO plausibility check (unlike the map override/rescue paths) -- a spurious-but-cleanly-
+> tracked wrong marker decode after a 1-frame gap fed straight into s/kappa (IC2 41.7m fly-away,
+> commit 9f0c490, fixed by reusing `_planarMapPredictionPlausible` on the raw decode too). Both
+> validated n=5 clean on their triggering IC, no regression on IC1/3/4. IC5's short flights are
+> its own initial-condition geometry (short-runway canary), left untouched.**
+> [[project_ic1_ds_guard_gap_reset]] [[project_ic2_ic5_20260723_investigation]]
+
+> **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
+> decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that
+> previously flew away; traced (NOT fixed) a residual 55.78m IC1 fly-away to kappa LEAKAGE
+> draining the adaptive gain under a real, growing error — see
+> [[project_ic1_kappa_leakage_drift_20260721]]** (full mechanism, same family as
+> [[feedback_dont_conclude_lag_floor]]/[[feedback_kappa_clamp_bandaid]]). Perception-side fix
+> chain (all committed, see commit messages for detail, not restated here): alpha KF sin/cos-pair
+> sub-filter (wrap bug), CENTROID_FROM_MAP/ALPHA_FROM_MAP override-vs-KF ordering bug, source-aware
+> `cal_s`, map-authoritative-once-accepted (decode is cross-check only), confidence-scaled KF `r`
+> for map-sourced AND decode-KLT-fallback samples, ds-outlier-hold/KF ordering bug, windowed-rate
+> plausibility gate. Next session: check `P` (leakage)/funnel decay-rate (`_gamma`) tuning against
+> `IC1_rep5` (test_data/ICValidation/20260721-141516, t=50-54s).
+
 > **🔴🟢 2026-07-17 (LATEST) — CBF small-marker preference/overflow-driftoff/handover wiring session: found+fixed a live s[2]-homogeneous-decay bug (610,997 a_u spike) THEN found+fixed its deeper root cause (decay-to-zero position desyncing from kappa, replaced with kf_predict), a map_confidence RANSAC-outlier blind spot, a CBF corner-source flicker regression, plus gyro-seeded KLT (unvalidated). Skill `/planar-map-perception` rewritten to cover all of this; dead `_img_feature_param_real` buffer + several stale comments cleaned up.**
 > Full arc: (1) CBF cone-clamp had no staleness gate ([[feedback_cbf_staleness_and_rigidity_confidence]], `FEATURE_IS_STALE`→corrected to `FEATURE_PTS_FRESH` after user pushback — that flag has zero rescue-awareness). (2) CBF now prefers the SMALL marker slot (more tilt headroom) independent of the big-priority flow pipeline, classifies OVERFLOW(span)/DRIFT-OFF(one-sided) off its own FoV margin, pulls back via tightening cbf2_filter's OWN p_10 (not a new-signed force), and signals (not forces) a HANDOVER_LATCHED path via `apps/landing_test.py` bridging `CBF_OVERFLOW`+`SMALL_SLOT_CONFIDENT`. (3) **REGRESSION FOUND+FIXED**: the small-slot preference had zero hysteresis → IC4 target_lost=DRIFT_OFF (theta_cone<0.05 for 45% of frames) that wasn't there before; fixed with 5-frame-persistence-on hysteresis (`CBF_SMALL_SLOT_ON_FRAMES`), confirmed IC4 recovered. (4) **`map_confidence` RANSAC-outlier blind spot found+fixed**: IC5's marker had held-out reprojection error swinging 0.3-199px (chaotic — a KLT drift/decode-triggered-correction cycle, not smooth) while `map_confidence` stayed 0.72-0.99, because `resid_px`/`track_conf` are computed ONLY over RANSAC inliers. Fixed with a per-slot `inlier_fail_streak` (tracked-but-rejected persistence, occlusion-safe) folded into both `map_confidence` and `get_slot_confidence`. (5) **CRITICAL: `s[2]`-homogeneous-decay bug found+fixed, THEN SUPERSEDED by its root cause** — [[feedback_s2_homogeneous_decay_bug]] — a live regression check surfaced `a_u=610,997` (single-frame spike); part 1 forced `s[2]=1.0` (fixed the symptom). A SECOND live regression check then found the deeper problem: decaying position to exactly `[0,0]` during a coast (the design `s[2]` was patched on top of) fabricates a "centered, zero error" reading that can desync from `kappa` (ratcheted then froze reading "converged", producing a 2,976 `a_u` spike on the real-error snap-back). User: *"the decay-to-zero behavior... I never approved it. We have kf_predict."* Fixed: the ENTIRE polyfit+decay extrapolation for `s` was REMOVED, replaced with the feature KF's own predict-only step (`self._kf_feat_x[:,0]`) — validated, `a_u` 2,976→12.3. (6) **Gyro-seeded KLT added** ([[feedback_gyro_seeded_klt]]) — `PlanarFeatureMap.update(gray, quat_R=...)` now seeds KLT's search with a rotation-compensated prediction instead of the zero-motion prior, running every frame (even through marker-loss, since the FC quat doesn't need a decode) — targets the IC5 drift mechanism directly. **NOT YET SITL-validated.** (7) Post-session consistency pass: deleted the now-dead `_img_feature_param_real`/`_real_t` buffer (only consumer was the removed polyfit) and fixed several comments left stale by the above (wrong call-site direction, references to removed code) — see `/planar-map-perception` skill, fully rewritten same day.
 >
