@@ -549,14 +549,31 @@ class IMG_PROCESSOR(Thread):
         # tapered trust (folded into the SAME _cmap_last_trust/_amap_last_trust the
         # confidence-scaled KF r already uses -- the value itself is NOT touched, map stays
         # authoritative for what's reported); above MAP_RATE_REJECT, hard reject (None), same
-        # tier as a position/size plausibility failure. Defaults are PROVISIONAL -- derived
-        # from tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s;
-        # both failures: ~0.8-1.1/s in their final frames -- a 20-50x gap), not a proper
-        # n>=5 derivation; validate before trusting these numbers long-term.
+        # tier as a position/size plausibility failure. Centroid defaults derived from
+        # tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s; both
+        # centroid failures: ~0.8-1.1/s in their final frames -- a 20-50x gap).
         self._map_rate_soft = float(os.environ.get("MAP_RATE_SOFT", "0.3"))
         self._map_rate_reject = float(os.environ.get("MAP_RATE_REJECT", "0.8"))
+        # ALPHA gets its OWN thresholds + a LONGER averaging window (2026-07-23, see
+        # feedback_alpha_rate_gate_separate_thresholds) -- reusing the centroid numbers/window
+        # length here was a mistake, found live: an IC3 rep's alpha drifted at a sustained
+        # ~0.26 rad/s for ~26 deg of uncorrected yaw error (root cause of a real miss), well
+        # UNDER MAP_RATE_SOFT=0.3 (never tapered) using the short 3-5 sample window shared
+        # with centroid. Checked why: decode alpha's own INSTANTANEOUS per-sample jitter
+        # (median|rate| 0.24/s, p95 0.83/s on a normal, non-drifting stretch of the SAME
+        # flight) already spans/exceeds the centroid-derived thresholds -- a short window is
+        # too noise-sensitive for alpha to separate real drift from ordinary jitter. Over a
+        # LONGER window (~0.35s, MAP_ALPHA_RATE_HIST=15 samples vs centroid's 5) the net
+        # (not instantaneous) drift rate DOES separate cleanly: normal stretch net-drift-rate
+        # median 0.10/s, max 0.22/s (bounded -- genuine jitter cancels out over the longer
+        # window); the diagnosed failure's sustained net rate was 0.61/s -- ~3x the normal
+        # ceiling. Soft/reject set to bracket that gap (worse separation margin than
+        # centroid's 20-50x, still provisional -- validate at n>=5 before trusting further).
+        self._map_alpha_rate_soft = float(os.environ.get("MAP_ALPHA_RATE_SOFT", "0.25"))
+        self._map_alpha_rate_reject = float(os.environ.get("MAP_ALPHA_RATE_REJECT", "0.5"))
+        self._map_alpha_rate_hist_len = int(os.environ.get("MAP_ALPHA_RATE_HIST", "15"))
         self._cmap_rate_hist = []   # [(t, x, y), ...] last few ACCEPTED centroid-map samples
-        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe
+        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe, LONGER window (see above)
         # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
         # site comment): a rescue-projected centroid is only trusted if it falls within
         # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
@@ -3915,7 +3932,7 @@ class IMG_PROCESSOR(Thread):
         # ---- 4. Feature vector (unnormalized) ----
         return np.array([xc, yc, 1.0, alpha])
 
-    def _mapRatePlausible(self, hist, t, vals, max_hist=5):
+    def _mapRatePlausible(self, hist, t, vals, soft_bound, reject_bound, max_hist=5):
         """WINDOWED-RATE plausibility check shared by _centroidMap/_alphaMap (2026-07-21 --
         see the MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment for full rationale). This is
         a THIRD, INDEPENDENT axis alongside _planarMapPredictionPlausible's position/size
@@ -3931,6 +3948,15 @@ class IMG_PROCESSOR(Thread):
         (x, y for centroid; sin(alpha), cos(alpha) for alpha -- NEVER alpha itself, which
         is a wrapped angle and would spuriously spike at the +-pi branch cut exactly like
         the linear-KF bug this session already fixed once).
+
+        soft_bound/reject_bound/max_hist: CALLER-SUPPLIED, not shared constants (2026-07-23
+        -- see feedback_alpha_rate_gate_separate_thresholds). Centroid and alpha have
+        different noise characteristics (alpha's raw per-sample jitter alone can exceed
+        centroid's thresholds) and need their own bounds/window length -- reusing one set
+        for both let a real, diagnosed alpha drift (~0.26 rad/s sustained, ~26 deg of
+        uncorrected yaw error) pass through un-tapered because it sat under the
+        centroid-derived MAP_RATE_SOFT=0.3 despite being ~2.5x the alpha channel's own
+        normal-noise ceiling (~0.1-0.22 rad/s over a comparably long window).
 
         Returns (ok: bool, rate_trust: float in [0,1]). ok=False -> caller should REJECT
         this sample entirely (same weight as a position/size plausibility failure).
@@ -3952,11 +3978,11 @@ class IMG_PROCESSOR(Thread):
             slope = np.polyfit(tt - tt[0], vv, 1)[0]
             rate_sq += slope ** 2
         rate = float(np.sqrt(rate_sq))
-        if rate > self._map_rate_reject:
+        if rate > reject_bound:
             return False, 0.0
-        if rate > self._map_rate_soft:
+        if rate > soft_bound:
             return True, float(np.clip(
-                1.0 - (rate - self._map_rate_soft) / max(self._map_rate_reject - self._map_rate_soft, 1e-6),
+                1.0 - (rate - soft_bound) / max(reject_bound - soft_bound, 1e-6),
                 0.0, 1.0))
         return True, 1.0
 
@@ -4509,7 +4535,8 @@ class IMG_PROCESSOR(Thread):
             # position/size, catching a coherently-drifting-but-rigid cluster the
             # confidence gate above can't see.
             _rate_ok, _rate_trust = self._mapRatePlausible(
-                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])))
+                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])),
+                self._map_rate_soft, self._map_rate_reject)
             if not _rate_ok:
                 _tally('none_rate_implausible'); return None
             self._cmap_last_trust = min(self._cmap_last_trust, _rate_trust)
@@ -4574,8 +4601,12 @@ class IMG_PROCESSOR(Thread):
             # rate-checked on [sin(a), cos(a)], NEVER on the wrapped angle `a` itself (a
             # linear slope fit across the +-pi branch cut would spuriously spike, exactly
             # the class of bug the sin/cos-pair KF fix already addressed once this session).
+            # ALPHA-SPECIFIC bounds + longer window (2026-07-23, see __init__ comment /
+            # feedback_alpha_rate_gate_separate_thresholds) -- NOT the centroid constants.
             _rate_ok, _rate_trust = self._mapRatePlausible(
-                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)))
+                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)),
+                self._map_alpha_rate_soft, self._map_alpha_rate_reject,
+                max_hist=self._map_alpha_rate_hist_len)
             if not _rate_ok:
                 return None
             self._amap_last_trust = min(self._amap_last_trust, _rate_trust)
