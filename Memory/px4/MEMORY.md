@@ -4,16 +4,24 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢 2026-07-23 (LATEST) — Two marker-loss-adjacent guard bugs found+fixed via IC1/IC2 fly-away
-> traces: (1) centroid `ds` outlier-hold's `_s_prev` never reset on a marker-loss gap (only its
-> flow sibling was, despite the comment naming both) -- froze `s` post-reacquisition then dumped a
-> compounded jump, detonating kappa/a_u (IC1 9.28m fly-away, commit 9075a97); (2) raw ArUco decode
-> had ZERO plausibility check (unlike the map override/rescue paths) -- a spurious-but-cleanly-
-> tracked wrong marker decode after a 1-frame gap fed straight into s/kappa (IC2 41.7m fly-away,
-> commit 9f0c490, fixed by reusing `_planarMapPredictionPlausible` on the raw decode too). Both
-> validated n=5 clean on their triggering IC, no regression on IC1/3/4. IC5's short flights are
-> its own initial-condition geometry (short-runway canary), left untouched.**
-> [[project_ic1_ds_guard_gap_reset]] [[project_ic2_ic5_20260723_investigation]]
+> **🟢🟢🟢 2026-07-23/24 (LATEST) — THREE independent raw-decode plausibility gaps found+fixed via
+> IC1/IC2 fly-away traces, same family, three different consumers: (1) centroid `ds` outlier-hold's
+> `_s_prev` never reset on a marker-loss gap (only its flow sibling was) -- froze `s` post-
+> reacquisition then dumped a compounded jump, detonating kappa/a_u (IC1 9.28m fly-away, commit
+> 9075a97); (2) the LK-correspondence path's raw decode (`aruco_pts_1`) had ZERO plausibility
+> check -- a spurious-but-cleanly-tracked wrong marker fed straight into s/kappa (IC2 41.7m fly-
+> away, commit 9f0c490); (3) the centroid-rate observer's raw decode (`aruco_pts_0`, DEFAULT-ON,
+> independent of LK) ALSO had zero check -- spurious decodes during a real attitude tumble fed
+> theta to 3080 + alternating h_x (IC2_rep3, commit c97202d). All three fixed by reusing/extending
+> `_planarMapPredictionPlausible`; all validated n=5 clean on their triggering IC + n=3 regression
+> on IC1/3/4 (no fly-aways either round; IC3/IC4 each landed SOFT+PRECISE post-fix-3). The h_x/h_y
+> observer formula itself was independently re-derived from first principles and confirmed CORRECT
+> (matches `_fill_A`'s convention exactly, incl. its w_z sign flip) -- purely a garbage-in bug.
+> IC5's short flights are its own IC geometry (short-runway canary), left untouched. IC2's
+> remaining non-SP rate is TWO SEPARATE PRE-EXISTING issues (terminal close-range marker-loss
+> forcing a blind touchdown; baseline lateral kappa-ratchet imprecision on non-loss attempts) --
+> NOT caused by or fixed by any of the three gates above; out of scope, already catalogued.**
+> [[project_ic1_ds_guard_gap_reset]] [[project_ic2_ic5_20260723_investigation]] [[project_ic2_observer_plausibility]]
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that
