@@ -2268,15 +2268,39 @@ class IMG_PROCESSOR(Thread):
             self._last_drifted_off = bool(_marker_leaving and not _span)
             self._last_overflow = bool(_marker_leaving and _span)   # companion flag (2026-07-07): SPANNING case, latched the same way
 
-        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (default-off). Computed from the DECODED corners
+        # PLAUSIBILITY GATE (2026-07-24, see project_ic2_observer_plausibility memory): this
+        # observer reads `aruco_pts_0` -- a raw per-frame ArUco decode with NO LK correspondence
+        # requirement at all (that's the whole point, per the docstring below -- it must survive
+        # nfc=0) -- and therefore had NONE of the sanity checks the LK-correspondence path got
+        # (neither the original _planarMapPredictionPlausible map-path check nor the 2026-07-23
+        # raw-decode extension added for aruco_pts_1, see the "PLAUSIBILITY GATE ON RAW DECODE"
+        # comment ~line 2384). Traced live (IC2_rep3, ICValidation/20260723-191943, t~45-46.3s):
+        # a single-frame decode anomaly (MARKER_EXTENT_PX 70->315px in one frame -- a marker-size-
+        # switch/handover) triggered a real, escalating attitude tumble (confirmed via Quat); during
+        # the ensuing ~1.3s TOTAL raw-decode blackout (nfc=0 throughout, the LK-gated path correctly
+        # froze `_feature_pts`/MARKER_EXTENT_PX) this OBSERVER kept running every frame (only needs
+        # `aruco_pts_0 is not None`, not LK success) on spurious/false decodes as the tumbling camera
+        # swept across background clutter, feeding wildly different `_x0,_y0` positions into
+        # `_obs_vel_kf` each frame -- theta exploded 2->3080 and `h_x` alternated roughly -161/+130
+        # frame-to-frame, feeding the SAME flow KF getOptFlowAngVel() returns. Reuse the same
+        # position+size sanity check (against the pre-blackout known-good state) rather than trusting
+        # any `aruco_pts_0` decode unconditionally.
+        _obs_gate_ok = False
+        if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
+                and quats is not None and len(quats) > 0 and quats[0] is not None):
+            _obs_gate_ok, _, _obs_why = self._planarMapPredictionPlausible(aruco_pts_0, quats[0])
+            if not _obs_gate_ok and os.environ.get("DECODE_PLAUS_DBG", "0") == "1":
+                print(f"[decode plausibility] REJECTED observer aruco_pts_0 ({_obs_why}) "
+                      f"-- skipping centroid-rate observer this frame", flush=True)
+        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (PLASMC_CENTROID_RATE, default-ON since 2026-07-03
+        # -- see the fuller history at its __init__ comment ~line 985). Computed from the DECODED corners
         # (aruco_pts_0) — NOT the LK-tracked V_aruco_norm — so it runs even when LK fails (Nfc=0) at
         # altitude. Provides the lateral flow h_x,h_y from ṡ + loom + gyro-rotation compensation:
         #   h_x = ṡ_x + x0·h_z + y0·wz   (V-frame: roll/pitch leveled out, yaw preserved -> wz only)
         #   h_y = ṡ_y + y0·h_z − x0·wz
         # h_z from the moment loom; w from the IMU gyro rotated into the V-frame (clean, not the
         # off-center-ill-conditioned lstsq). Stored for injection at the flow-output sites below.
-        if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
-                and quats is not None and len(quats) > 0 and quats[0] is not None):
+        if _obs_gate_ok:
             try:
                 _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
