@@ -37,6 +37,21 @@
 > precise=False) -- IC5 has NOT achieved SP this session or, apparently, ever; its 2.83m offset at
 > only 3m altitude (half the runway of every other IC) is a structural geometry/bandwidth
 > constraint, not a bug -- see [[feedback_rescue_gate_zero_corner]]'s correction note.**
+>
+> **🟢🟢🟢 2026-07-25 (LATEST) — SAME-DAY, INDEPENDENT confirmation on Pi hardware of a related but
+> DISTINCT PlanarFeatureMap bug: confidence-lockup (commit b420d3a, ported from Pi, Pi copy itself
+> left untouched). Once a homography fit fails (resid_px=inf), frame_to_map freezes and refill
+> poisons new points through it forever -- confidence/map_confidence can pin at exactly 0.0
+> PERMANENTLY, even long after the marker is cleanly re-tracked (no existing recovery path).
+> Found live on Pi (confidence pinned 14+s while roi_hits=30/30) AND independently in a Gazebo
+> historical scan (16/1788 past reps, 8 coinciding with TARGET_LOST incl. 2 catastrophic
+> fly-aways -- one of which is the previously-UNRESOLVED 55.78m IC1_rep5 from
+> [[project_ic1_kappa_leakage_drift_20260721]]). Self-heals via a TIME-based (not frame-count --
+> cross-platform rate mismatch) degenerate-streak watchdog + full reset/re-bootstrap. Also ported
+> a Pi RANSAC-bounds tuning fix (ransac_max_iters=200/confidence=0.98, measured better AND faster).
+> Reconciled with this session's earlier primary_zero_corners fix. Validated n=18 across all 5 ICs
+> in Gazebo -- ZERO fly-aways anywhere, cleanest full sweep of the session (IC1 2/3 SP, IC4 2/3 SP).
+> [[feedback_planar_map_confidence_lockup]]**
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that
