@@ -49,9 +49,12 @@
 > [[project_ic1_kappa_leakage_drift_20260721]]). Self-heals via a TIME-based (not frame-count --
 > cross-platform rate mismatch) degenerate-streak watchdog + full reset/re-bootstrap. Also ported
 > a Pi RANSAC-bounds tuning fix (ransac_max_iters=200/confidence=0.98, measured better AND faster).
-> Reconciled with this session's earlier primary_zero_corners fix. Validated n=18 across all 5 ICs
-> in Gazebo -- ZERO fly-aways anywhere, cleanest full sweep of the session (IC1 2/3 SP, IC4 2/3 SP).
-> [[feedback_planar_map_confidence_lockup]]**
+> Reconciled with this session's earlier primary_zero_corners fix. **CORRECTED same session (user
+> caught it): validated n=18 across all 5 ICs -- 9/18 clean, 2 real fly-aways + 1 SITL flake (NOT
+> "zero fly-aways" as first claimed here). Both fly-aways traced CONTROL-led/TARGET_LOST (not
+> perception-spurious-decode) -- normal SITL variance surfacing the already-catalogued lateral-
+> control family, not a regression from this merge. Fix correctness itself unaffected -- see the
+> full correction in [[feedback_planar_map_confidence_lockup]].**
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that

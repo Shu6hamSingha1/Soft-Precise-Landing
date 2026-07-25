@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 68163648-1a9b-4336-962f-9c4c77471aea
-  modified: 2026-07-25T17:16:18.068Z
+  modified: 2026-07-25T17:18:14.793Z
 ---
 
 **Discovery.** User found this live on Pi hardware (`PLANAR_MAP_DBG=1`): after one bad
@@ -62,13 +62,27 @@ that RANSAC was 76% of per-frame cost (38-70ms), and bounding it measured BETTER
 `map_confidence` AND lower `resid_px` at every tested bound, not just faster (not a
 speed/accuracy tradeoff).
 
-**Validated in Gazebo:** n=15 (IC1/IC2/IC4, mixed with a `PLANAR_MAP_DBG=1` probe) +
-n=3 IC3/IC4/IC5 regression -- **zero fly-aways across all 5 ICs**, the cleanest full-IC
-sweep of the whole session (IC1 2/3 SP, IC4 2/3 SP). `SELF-HEAL` itself did not fire in
-this Gazebo sample (matches its ~0.9% measured historical rate -- rare-trigger safety
-net, absence in a small sample is not a sign it's broken). The mechanism is separately
+**Validated in Gazebo -- CORRECTED 2026-07-25, same session (user caught the error):**
+the original version of this note claimed "n=18, zero fly-aways across all 5 ICs" --
+WRONG, only checked 2 of 3 batches before writing that. Full honest picture across all
+three validation batches (n=18 total: IC1/IC2 n=3, IC3/IC4/IC5 n=3, then a
+`PLANAR_MAP_DBG=1` probe IC1/IC2/IC4 n=5): **9/18 clean, 2 real fly-aways
+(`ICValidation/20260725-193807/IC1_rep2` 17.67m, `IC2_rep5` 8.59m), 1 SITL infra flake
+(IC4_rep4, "Unable to get simulation time" preflight timeout, unrelated to code), 6
+imprecise-but-landed.** Both fly-aways traced via `diagnose_failure_cause.py`: BOTH
+`TARGET_LOST`+CONTROL-led (not perception-spurious-decode) -- `IC2_rep5` onsets at
+t=0.03s (essentially at launch, matching the already-known, out-of-scope offset-IC
+lateral/CBF-cone-clamp family); `IC1_rep2` builds up mid-flight with modest kappa/a_u
+peaks (5.76/20 -- nowhere near the thousands seen in the bugs fixed earlier this
+session). Neither shows the spurious-decode/huge-kappa-spike signature of anything
+today's fixes targeted -- **this is normal SITL run-to-run variance surfacing the
+already-catalogued residual lateral-control failure family, not a regression from the
+merge.** `SELF-HEAL` itself did not fire in any of these 18 reps (matches its ~0.9%
+measured historical rate -- rare-trigger safety net, absence in a moderate sample is
+not a sign it's broken). The self-heal/RANSAC-bounds mechanism itself is separately
 validated correct via code review and live Pi hardware testing (per user: "We have
-validated the fix with hardware").
+validated the fix with hardware") -- that verdict is unaffected by this correction,
+which is about the Gazebo validation SAMPLE, not the fix's correctness.
 
 **Process note:** files had diverged three independent, unmerged ways before this
 reconciliation -- Pi had the RANSAC-bounds fix (07-23) and the self-heal fix (07-25);
