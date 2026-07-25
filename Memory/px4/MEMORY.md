@@ -33,7 +33,10 @@
 > specifically when there's genuinely no shape data to distrust, while a deforming-but-present
 > marker (the 2026-07-19 fix's actual target) still gates on the marker-aware confidence.
 > Validated n=5 IC1/2/3/4/5, no new failures attributable; IC2 in particular now zero fly-aways +
-> 1 SP (mean xy 0.29m). [[feedback_rescue_gate_zero_corner]]**
+> 1 SP (mean xy 0.29m). IC5 landed with zero fly-aways too but only SOFT-only (xy_err=2.80m,
+> precise=False) -- IC5 has NOT achieved SP this session or, apparently, ever; its 2.83m offset at
+> only 3m altitude (half the runway of every other IC) is a structural geometry/bandwidth
+> constraint, not a bug -- see [[feedback_rescue_gate_zero_corner]]'s correction note.**
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that

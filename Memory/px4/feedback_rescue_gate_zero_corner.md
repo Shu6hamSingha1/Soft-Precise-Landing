@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 68163648-1a9b-4336-962f-9c4c77471aea
-  modified: 2026-07-25T10:05:18.999Z
+  modified: 2026-07-25T12:33:10.783Z
 ---
 
 **The tension (three iterations on the same gate, now resolved):**
@@ -34,6 +34,21 @@ metadata:
    deforming) still gates on the marker-aware `self.confidence`, preserving the 07-19 fix for its
    actual target. The OVERRIDE gate (replacing an already-successful decode) is untouched — stays
    strictly marker-aware always, as before (a different, correctly-conservative consumer).
+
+**CORRECTION (2026-07-25, same session, user caught it):** the validation summary below says
+"IC5 landed" and one IC5 rep was reported as achieving "soft" — do NOT read that as IC5 achieving
+SP. Checked directly against that rep's `Ground_Truth.npy` `SoftPrecise` dict:
+`{'precise': False, 'soft': True, 'xy_err': 2.80, 'rel_vel': 0.123}` — a SOFT-ONLY landing
+(rel_vel comfortably under the 0.2 threshold) but `xy_err` nearly 30x outside the 0.10m precise
+tolerance. **No SP (soft+precise simultaneously) has been achieved for IC5 in this session, or
+apparently ever in this project's history.** IC5's own initial condition (ENU 2,2,3 -> 2.83m
+lateral offset at only 3m altitude, roughly HALF the runway of every other IC) is a structural
+geometry-vs-control-bandwidth constraint, not a bug this session's perception fixes (or any
+single bug fix) can close -- closing it would need more runway, faster lateral convergence (an
+extensively-documented precision/stability tradeoff, see `feedback_lateral_kappa_runaway`/
+`feedback_terminal_smc_actuator_wall`), or accepting IC5 as a stress-test IC that's expected to
+be soft-or-precise but rarely both. Zero fly-aways for IC5 this session IS real progress; a
+"guaranteed IC5 SP" is a separate, larger tuning/design effort out of scope here.
 
 **Validated:** n=5 IC1/IC3/IC4 + n=5 IC2/IC5 (same session), no new TARGET_LOST/fly-away pattern
 attributable to the fix. IC2: zero fly-aways, mean xy 0.29m (vs the session's earlier 16.6m/2
