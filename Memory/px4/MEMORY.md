@@ -22,6 +22,18 @@
 > forcing a blind touchdown; baseline lateral kappa-ratchet imprecision on non-loss attempts) --
 > NOT caused by or fixed by any of the three gates above; out of scope, already catalogued.**
 > [[project_ic1_ds_guard_gap_reset]] [[project_ic2_ic5_20260723_investigation]] [[project_ic2_observer_plausibility]]
+>
+> **🟢 2026-07-25 FOLLOW-UP — the `UNKNOWN` marker-loss cause (traced above) root-caused + fixed
+> (commit 2a5c21f): PlanarFeatureMap's rescue gate was structurally blocked during a genuine total
+> zero-corner dropout, NOT because the map lost track (`map_confidence` stayed healthy 0.54-0.58
+> the whole outage) but because `RESCUE_GATE_MARKER_AWARE=1`'s `self.confidence` collapses to a
+> hard, PERMANENT 0.0 after just 3 zero-corner frames via `_rigid_fail_streak` decay, and can't
+> recover until corners return (by which point `MARKER_LOSS_GRACE` has already expired). Added
+> `PlanarFeatureMap.primary_zero_corners` so the rescue gate falls back to `map_confidence`
+> specifically when there's genuinely no shape data to distrust, while a deforming-but-present
+> marker (the 2026-07-19 fix's actual target) still gates on the marker-aware confidence.
+> Validated n=5 IC1/2/3/4/5, no new failures attributable; IC2 in particular now zero fly-aways +
+> 1 SP (mean xy 0.29m). [[feedback_rescue_gate_zero_corner]]**
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that
