@@ -163,6 +163,15 @@ class PlanarFeatureMap:
         self.marker_shape_change = 0.0
         self._rigid_fail_streak = 0    # consecutive frames marker_rigid_ok has been False (see update())
         self.rigid_fail_streak_max = int(os.environ.get("PLANAR_MAP_RIGID_FAIL_STREAK_MAX", "3"))
+        # True iff the PRIMARY slot had ZERO corners survive KLT this frame (genuinely no
+        # shape information at all -- occlusion/decode-failure), as opposed to 1-4 corners
+        # present (where a distorting shape is real information worth distrusting). See
+        # update()'s per-slot loop and img_data.py's RESCUE_GATE_MARKER_AWARE consumer --
+        # this flag lets the rescue gate fall back to the marker-INDEPENDENT map_confidence
+        # specifically in the zero-corner case, instead of self.confidence (which the
+        # zero-corner case forces toward 0 via _rigid_fail_streak regardless of how healthy
+        # the rest of the scene/homography track is) -- see feedback_rescue_gate_zero_corner.
+        self.primary_zero_corners = False
 
     def _new_ids(self, n):
         ids = list(range(self.next_id, self.next_id + n))
@@ -488,13 +497,17 @@ class PlanarFeatureMap:
         # information at all) forces rigid_ok=False; even then shape_change is held (not
         # inf) so a single all-corners-lost frame doesn't permanently poison the value if
         # corners return next frame with a benign gap.
-        for slot in self.marker_slots.values():
+        _primary_name = self._primary_slot_name()
+        self.primary_zero_corners = False
+        for name, slot in self.marker_slots.items():
             pts = [survivors[i] for i in slot['corner_ids'] if i in survivors]
             if len(pts) == 4:
                 self._check_slot_rigidity(slot, np.array(pts))
             elif len(pts) == 0:
                 slot['rigid_ok'] = False   # genuinely zero information this frame
                 # shape_change deliberately NOT touched -- held at its last value
+                if name == _primary_name:
+                    self.primary_zero_corners = True
             # else (1-3 survived): hold rigid_ok/shape_change entirely, no update at all
         self._update_primary_scalars()
 

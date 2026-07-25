@@ -2148,13 +2148,31 @@ class IMG_PROCESSOR(Thread):
                     # geometry that can no longer localize a centre -> confident-wrong extrapolation.
                     # self.confidence DOES see it (marker_conf collapses via shape_change) -- verified:
                     # 39/39 zero-confidence frames were rigid_ok=False at exactly those frames.
-                    # The original occlusion rationale still holds with the marker-aware gate, because
-                    # rigidity is OCCLUSION-SAFE by construction (planar_map.update): 0-of-4 corners
-                    # HOLDS shape_change (only sets the rigid_ok bool), and 1-3 holds everything -- so
-                    # marker_conf survives a genuine occlusion and only collapses when the marker IS
-                    # tracked and its shape is distorting. RESCUE_GATE_MARKER_AWARE=0 reverts.
-                    _rescue_conf = (self._planar_map.confidence
-                                    if os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                    #
+                    # CORRECTION (2026-07-25, see feedback_rescue_gate_zero_corner): the claim below
+                    # ("marker_conf survives a genuine occlusion") is only true for a SHORT occlusion.
+                    # _rigid_fail_streak's persistence decay (planar_map.py, added 2026-07-17 to catch
+                    # a SUSTAINED rigid_ok=False run the held shape_change alone couldn't see) also
+                    # fires on a sustained ZERO-corner run, collapsing self.confidence to a hard 0 after
+                    # rigid_fail_streak_max (default 3) consecutive zero-corner frames -- and it STAYS
+                    # there for the rest of the outage, since marker_rigid_ok can't recover with no
+                    # corners at all. Traced live (IC1_rep3/IC3_rep2/IC4_rep2, ICValidation/20260724-
+                    # 172603): a >1s total zero-corner window (attitude flat, no tumble -- a genuine
+                    # decode/tracking dropout, not a deforming marker) pinned self.confidence at exactly
+                    # 0.0 the entire time while map_confidence stayed healthy (0.54-0.58, well above the
+                    # 0.5 floor) -- the rescue gate's streak requirement never got a chance to
+                    # accumulate, RESCUE_ACTIVE never fired, and the outage outlasted MARKER_LOSS_GRACE
+                    # -> TARGET_LOST despite the map's underlying track being fine. Use
+                    # planar_map.primary_zero_corners (set precisely on this frame's own zero-corner
+                    # case, not the sustained streak) to fall back to map_confidence ONLY when there is
+                    # LITERALLY NO shape information to distrust this frame -- a deforming-but-present
+                    # marker (1-4 corners) still gates on the marker-aware self.confidence, preserving
+                    # the 2026-07-19 fix for its actual target. RESCUE_GATE_MARKER_AWARE=0 still fully
+                    # reverts (ignores this carve-out too).
+                    _mkr_aware = os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                    _rescue_conf = (self._planar_map.map_confidence
+                                    if (_mkr_aware and self._planar_map.primary_zero_corners)
+                                    else self._planar_map.confidence if _mkr_aware
                                     else self._planar_map.map_confidence)
                     _good = _rescue_conf >= self._planar_map_conf_floor
                     if _good:
@@ -2236,6 +2254,7 @@ class IMG_PROCESSOR(Thread):
                                 "confidence": self._planar_map.confidence,
                                 "map_confidence": self._planar_map.map_confidence,
                                 "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                                "primary_zero_corners": self._planar_map.primary_zero_corners,
                                 "decode_calls": self._planar_map_decode_calls})
                             if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
                                 print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
