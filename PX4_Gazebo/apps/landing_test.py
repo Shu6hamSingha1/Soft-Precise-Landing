@@ -12,6 +12,7 @@ import time
 import numpy as np
 import rclpy # Python library for ROS 2
 from ahrs import RAD2DEG
+from ahrs import Quaternion
 
 
 from flight_controller import FC
@@ -422,6 +423,28 @@ async def main(record = 'n'):
         # close in with vision, last 20 cm with constant descent.
         FINAL_DESCENT_THRUST = 0.65          # below 0.738 hover → mild descent
         FINAL_DESCENT_TIMEOUT = 5.0          # seconds
+        # TARGET_LOST LEVELING (2026-07-26, see feedback_target_lost_frozen_tilt memory):
+        # zero body RATE (the original send_attitude_rate(0,0,0,thrust) call this replaces)
+        # freezes whatever roll/pitch the vehicle had at the instant TARGET_LOST fires --
+        # it does NOT level the vehicle. That's a reasonable simplification for the OTHER
+        # trigger of this same fallback pattern (the loom-commit/terminal_perception_loss
+        # path below, which only fires once IBVS has already converged the vehicle to
+        # near-zero lateral error and near-level attitude) but TARGET_LOST is a genuine
+        # tracking FAILURE that can strike at any point in the descent, including mid-
+        # aggressive-correction while significantly banked (confirmed live, IC5_rep3,
+        # ICValidation/20260726-165649: roll=-23deg/pitch=-12deg at the exact TARGET_LOST
+        # instant) -- freezing that tilt with a fixed sub-hover thrust produces an
+        # uncontrolled, ACCELERATING ballistic ejection (62m/15.7m/s in that rep), not the
+        # safe near-vertical descent this fallback is supposed to provide. Fix: actively
+        # command roll/pitch RATE proportional to the CURRENT measured tilt (from the FC's
+        # own attitude estimate, always available regardless of marker visibility) so the
+        # vehicle actively levels while descending, instead of assuming it's already level.
+        # Deliberately stays on send_attitude_rate (not the MAVSDK-only send_attitude) --
+        # this project's body-rate stream may be running over the low-latency DDS
+        # transport (CMD_TRANSPORT=dds); switching APIs mid-descent would also switch
+        # transport, an unnecessary and untested discontinuity risk this avoids entirely.
+        FINAL_DESCENT_LEVEL_GAIN = float(os.environ.get("FINAL_DESCENT_LEVEL_GAIN", "2.0"))     # 1/s
+        FINAL_DESCENT_LEVEL_RATE_MAX_DEG = float(os.environ.get("FINAL_DESCENT_LEVEL_RATE_MAX_DEG", "90.0"))
         # Marker-loss grace: brief dropouts (1-2 frames) are common when the
         # marker briefly leaves FoV due to tilt or motion blur. Without a
         # grace period, a single dropped frame commits us to open-loop final
@@ -470,6 +493,46 @@ async def main(record = 'n'):
         # tagged as a failure regardless of touchdown xy/vel.
         target_lost = False
         failure_cause = "N/A"   # DRIFT_OFF / OVERFLOW / UNKNOWN, set when target_lost triggers (2026-07-07)
+        # GO-AROUND ON TARGET_LOST (2026-07-26, user directive): a genuine marker-loss-
+        # beyond-grace event now attempts RECOVERY first -- climb to a safe altitude
+        # (where the target is far more likely back in the FoV, since most losses this
+        # session traced to close-range/aggressive-correction events, not the target
+        # actually leaving the area) and resume closed-loop control, rather than
+        # committing straight to an open-loop descent-to-ground. This replaces relying
+        # on the leveling fallback (FINAL_DESCENT_LEVEL_GAIN above) as the FIRST
+        # response -- that fallback still exists as the final safety net once go-around
+        # attempts are exhausted (a real drone must still land eventually; this does not
+        # retry forever).
+        GO_AROUND_ALTITUDE_M = float(os.environ.get("LANDING_GO_AROUND_ALT_M", "5.0"))
+        GO_AROUND_MAX_ATTEMPTS = int(os.environ.get("LANDING_GO_AROUND_MAX_ATTEMPTS", "2"))
+        GO_AROUND_CLIMB_TIMEOUT_S = float(os.environ.get("LANDING_GO_AROUND_CLIMB_TIMEOUT_S", "8.0"))
+        GO_AROUND_ALT_TOL_M = float(os.environ.get("LANDING_GO_AROUND_ALT_TOL_M", "0.3"))
+        go_around_attempts_used = 0
+
+        async def _go_around_climb():
+            """Climb in place (hold current lateral NED position + yaw) to
+            GO_AROUND_ALTITUDE_M, then return. Bounded by GO_AROUND_CLIMB_TIMEOUT_S --
+            always returns (never raises) so a stuck climb falls through to the normal
+            TARGET_LOST handling rather than hanging the flight indefinitely."""
+            ned_pos = FC_node.getPosBody()
+            hold_n, hold_e = ned_pos.x_m, ned_pos.y_m
+            target_d_climb = -GO_AROUND_ALTITUDE_M
+            _gtq = pose_node.getPose().UAV.orientation
+            hold_yaw_deg = float(np.rad2deg(np.arctan2(
+                2.0*(_gtq.w*_gtq.z + _gtq.x*_gtq.y), 1.0 - 2.0*(_gtq.y*_gtq.y + _gtq.z*_gtq.z))))
+            t0 = time_node.perf_counter()
+            print(f"[landing_test] GO-AROUND: climbing to {GO_AROUND_ALTITUDE_M:.1f}m "
+                  f"(holding N={hold_n:.2f} E={hold_e:.2f})")
+            while (time_node.perf_counter() - t0) < GO_AROUND_CLIMB_TIMEOUT_S:
+                await FC_node.send_position_ned(hold_n, hold_e, target_d_climb, hold_yaw_deg)
+                await asyncio.sleep(0.02)
+                cur = FC_node.getPosBody()
+                if abs(cur.z_m - target_d_climb) <= GO_AROUND_ALT_TOL_M:
+                    print(f"[landing_test] GO-AROUND: reached {GO_AROUND_ALTITUDE_M:.1f}m "
+                          f"in {time_node.perf_counter() - t0:.1f}s")
+                    return
+            print(f"[landing_test] GO-AROUND: climb timeout ({GO_AROUND_CLIMB_TIMEOUT_S:.0f}s) "
+                  f"-- proceeding with whatever altitude was reached")
 
         # ── Hover / descent-stall watchdog (added 2026-06-07) ──────────────────
         # The control loop below terminates ONLY on FC_node.LANDED or the controller
@@ -607,19 +670,66 @@ async def main(record = 'n'):
                 # Marker lost beyond grace (or never seen) → final descent.
                 # Hold zero body rate, push constant sub-hover thrust until
                 # PX4 reports ON_GROUND.
-                if not in_final_descent:
-                    in_final_descent = True
+                if not target_lost:
+                    # STICKY, set on the FIRST genuine loss regardless of what happens next
+                    # (2026-07-26, user directive: "the go-around approach is still a
+                    # failure, I am just doing this so we have additional data" -- go-around
+                    # is a recovery ATTEMPT/data-collection aid, not a reclassification. A
+                    # flight that loses the target and later recovers via go-around is still
+                    # tagged target_lost=True; only in_final_descent (whether we're
+                    # currently committed to the terminal open-loop descent) is gated by the
+                    # go-around attempt budget below.
                     target_lost = True
-                    final_descent_t0 = time_node.perf_counter()
                     try:
                         failure_cause = EC_node._img_node.getFailureCause()
                     except Exception:
                         failure_cause = "UNKNOWN"
+                if not in_final_descent:
+                    if go_around_attempts_used < GO_AROUND_MAX_ATTEMPTS:
+                        go_around_attempts_used += 1
+                        print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
+                              f"[cause={failure_cause}] (landing already tagged failed). "
+                              f"GO-AROUND attempt {go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}.")
+                        await _go_around_climb()
+                        # Fresh start for the perception/control stateful trackers (SAME
+                        # reset the initial engagement uses -- _reset_stateful_trackers,
+                        # img_data.py, triggered on the CONTROLLER_READY False->True
+                        # rising edge) so nothing from the failed approach (locked marker
+                        # ID, KF state, stale confidence streaks, etc.) carries into the
+                        # retry. The capture loop runs on its own thread; the brief sleep
+                        # gives it at least one iteration to observe CONTROLLER_READY=False
+                        # before the rising edge, so the reset actually fires.
+                        EC_node._img_node.CONTROLLER_READY = False
+                        await asyncio.sleep(0.1)
+                        EC_node._img_node.CONTROLLER_READY = True
+                        marker_lost_t0 = None
+                        last_good_sys_cmd = None
+                        continue
+                    in_final_descent = True
+                    final_descent_t0 = time_node.perf_counter()
                     print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
-                          f"[cause={failure_cause}]. "
+                          f"[cause={failure_cause}]. GO-AROUND attempts exhausted "
+                          f"({go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}). "
                           f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
                           f"to bring drone down safely; landing is tagged as failure.")
-                await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
+                if target_lost:
+                    # ACTIVE LEVELING (see FINAL_DESCENT_LEVEL_GAIN comment above) --
+                    # scoped to the genuine TARGET_LOST failure only. The separate
+                    # terminal_perception_loss (loom-commit) case that also lands in this
+                    # branch is a DELIBERATE, already-validated stationary-target commit
+                    # (fires only once IBVS has converged the vehicle to near-level,
+                    # near-zero-error -- see feedback_terminal_kick_commit_vs_live memory,
+                    # "8/25 comes from converge-then-commit") and keeps the original
+                    # zero-rate freeze-and-fall unchanged, not touched here.
+                    q = FC_node.getQuat()
+                    roll, pitch, _yaw = Quaternion([q.w, q.x, q.y, q.z]).to_angles()
+                    roll_rate_cmd = float(np.clip(-FINAL_DESCENT_LEVEL_GAIN * roll * RAD2DEG,
+                                                   -FINAL_DESCENT_LEVEL_RATE_MAX_DEG, FINAL_DESCENT_LEVEL_RATE_MAX_DEG))
+                    pitch_rate_cmd = float(np.clip(-FINAL_DESCENT_LEVEL_GAIN * pitch * RAD2DEG,
+                                                    -FINAL_DESCENT_LEVEL_RATE_MAX_DEG, FINAL_DESCENT_LEVEL_RATE_MAX_DEG))
+                    await FC_node.send_attitude_rate(roll_rate_cmd, pitch_rate_cmd, 0.0, FINAL_DESCENT_THRUST)
+                else:
+                    await FC_node.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THRUST)
                 if (time_node.perf_counter() - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
                     print(f"[landing_test] Final-descent timeout "
                           f"({FINAL_DESCENT_TIMEOUT}s) — PX4 never reported LANDED.")

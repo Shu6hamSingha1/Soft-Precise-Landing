@@ -4,6 +4,23 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **🟢🟢🟢 2026-07-26 (LATEST) — Three more fixes committed, closing out the day's perception/
+> failsafe work: (1) decode-staleness confidence decay on map_confidence (5341e14, reconciled
+> with Pi's independent same-day fix); (2) FLOW_LAT_REDUCED runtime attitude-rate gate
+> (dcec397), closing the "needs runtime gating on real attitude rate" gap flagged since
+> 2026-07-10/11 -- validated n=20 no fly-aways, IC5 A/B shows no causal link to IC5's own
+> variance; (3) TARGET_LOST leveling + bounded go-around (ce513dc) -- the marker-lost fallback
+> used to freeze whatever tilt the vehicle had (not level it), producing ballistic ejections
+> (62m/15.7m/s, confirmed via live roll/pitch trace); now actively levels AND attempts a
+> bounded climb-to-5m recovery before committing to open-loop descent, with target_lost STICKY
+> from the first genuine loss regardless of recovery outcome (per explicit user correction --
+> go-around is a data-collection aid, not a failure-reclassification). None of these fully
+> solve IC5 (still open, pre-existing large-offset/short-runway/velocity-momentum tension) but
+> each closes a distinct, previously-open mechanism. Also produced a full perception-pipeline
+> migration handover doc for the Pi/hardware port (architecture, platform-agnostic vs.
+> platform-specific classification, full Gazebo/Pi divergence history).
+> [[project_flowlatreduced_targetlost_gate_20260726]]
+
 > **🟢🟢🟢 2026-07-23/24 (LATEST) — THREE independent raw-decode plausibility gaps found+fixed via
 > IC1/IC2 fly-away traces, same family, three different consumers: (1) centroid `ds` outlier-hold's
 > `_s_prev` never reset on a marker-loss gap (only its flow sibling was) -- froze `s` post-

@@ -841,6 +841,17 @@ class IMG_PROCESSOR(Thread):
         # the old full solve. (feedback_lateral_flow_reduced_solve + the cal-coupling note.)
         self._lat_reduced  = os.environ.get("FLOW_LAT_REDUCED", "1") == "1"
         self._target_level = os.environ.get("FLOW_TARGET_LEVEL", "1") == "1"
+        # RUNTIME ATTITUDE-RATE GATE (2026-07-26, see the flow-solve site's comment for the
+        # full derivation): threshold on the real V-frame roll/pitch RATE (from the FC gyro,
+        # rad/s) above which the reduced solve's w_xy≈0 premise is considered violated for
+        # THIS frame, falling through to the full 6-DOF solve regardless of FLOW_TARGET_LEVEL.
+        # 0.3 rad/s ≈ 17 deg/s -- comfortably above ordinary descent attitude noise/settling
+        # (per this project's own KLT/LK breakage threshold references, ~1-2 rad/s is already
+        # "aggressive maneuvering"; a real ignited tumble measured this session climbed well
+        # past 1 rad/s within under a second) but well below that, so it should catch the
+        # ignition EARLY rather than only once already deep into a tumble. Provisional --
+        # validate at n>=5 before treating this value as settled.
+        self._lat_reduced_wmax = float(os.environ.get("FLOW_LAT_REDUCED_WMAX_RADS", "0.3"))
         # FLOW_LOOM_GAIN=1.0 (2026-06-19): offline RMSE-fit gave 1.15, but the MATLAB
         # CLOSED-LOOP suite ([[project_moment_loom]]) shows gain>1.0 HURTS (1.0→95, 1.1→91,
         # 1.2→88) — the ~0.82 under-read is BENIGN (controller gains are tuned around the
@@ -2585,11 +2596,49 @@ class IMG_PROCESSOR(Thread):
                 # and the gyro defines w_z — so the σ_min corner lstsq is fully redundant (only w_z
                 # ever survived it, and the observer's gyro w_z is cleaner). SKIP the second LK's
                 # degenerate 6-DOF solve. One KLT → V-frame centroid → position + rate drives the flow.
+                # RUNTIME ATTITUDE-RATE GATE for FLOW_LAT_REDUCED (2026-07-26, see
+                # project_ic1rep2_ic2rep5_flyaway_traces_20260725 / project_ic1_terminal_kick_root_cause_chain):
+                # the reduced 4-DOF solve's w_xy≈0 premise is about the CAMERA's own V-frame
+                # tilt-RATE being negligible (roll/pitch RATE, not static tilt -- de-rotating
+                # POSITIONS into the level V-frame does not itself zero out a genuinely nonzero
+                # rotational-flow contribution when the camera is actively rolling/pitching).
+                # FLOW_TARGET_LEVEL only guards the OTHER half of the premise (is the TARGET's
+                # geometry level, e.g. ship-deck tilt) -- it says nothing about the CAMERA's
+                # instantaneous motion, so a real, fast roll/pitch rate (e.g. during a marker-
+                # switch/handover-triggered erroneous command igniting a genuine tumble --
+                # traced live twice this session, IC1_rep2 and IC2_rep3) still gets silently
+                # misattributed into h_xy by the reduced solve, amplified by r^2 via far
+                # corners, feeding a spurious velocity command straight into the controller --
+                # exactly the "needs runtime gating on real attitude rate" fix flagged (not
+                # implemented) back in the 2026-07-10/11 session. Use the FC gyro (angvels),
+                # available every frame independent of decode/tracking health, rotated into
+                # the SAME V-frame the flow-Jacobian columns are defined in (_vframe_w, the
+                # identical transform the centroid-rate observer already uses) -- if the real
+                # |w_x|,|w_y| exceeds FLOW_LAT_REDUCED_WMAX_RADS, the premise is violated THIS
+                # FRAME regardless of FLOW_TARGET_LEVEL, so fall through to the full 6-DOF
+                # solve (which can properly attribute the rotation to w_xy instead of h_xy).
+                _lat_reduced_safe = self._target_level
+                if self._lat_reduced and _lat_reduced_safe:
+                    _avo1 = angvels[1] if (angvels is not None and len(angvels) > 1
+                                           and angvels[1] is not None) else None
+                    if _avo1 is not None and quats is not None and len(quats) > 1 and quats[1] is not None:
+                        try:
+                            _wv1 = self._vframe_w(
+                                [_avo1.forward_rad_s, _avo1.right_rad_s, _avo1.down_rad_s], quats[1])
+                            if max(abs(_wv1[0]), abs(_wv1[1])) > self._lat_reduced_wmax:
+                                _lat_reduced_safe = False
+                                if os.environ.get("FLOW_LAT_REDUCED_DBG", "0") == "1":
+                                    print(f"[flow_lat_reduced] t{float(getattr(self, '_stamp', 0.0)):.3f} "
+                                          f"GATE FIRED: |w_xy|=({abs(_wv1[0]):.2f},{abs(_wv1[1]):.2f}) "
+                                          f"rad/s > {self._lat_reduced_wmax} -- falling through to full "
+                                          f"6-DOF solve this frame", flush=True)
+                        except Exception:
+                            pass   # never let a gyro-read hiccup take down the flow solve
                 _obs_active = (self._single_marker and self._centroid_rate and self._observer_valid)
                 if _obs_active:
                     V_v = np.zeros(6)
                     V_v[5] = float(self._observer_flow[5])       # gyro yaw rate (replaces lstsq w_z)
-                elif self._lat_reduced and self._target_level:
+                elif self._lat_reduced and _lat_reduced_safe:
                     # REDUCED 4-DOF lateral solve: drop the w_xy columns (3,4). h_xy is the σ_min
                     # mode of the full 8×6 (degenerate with tilt w_xy, 0.4°) → noise-amplified;
                     # dropping w_xy makes it the LARGEST-σ mode (cond 14→2). w_xy set 0 (V-frame

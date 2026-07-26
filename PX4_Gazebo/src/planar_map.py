@@ -222,6 +222,45 @@ class PlanarFeatureMap:
         self._degenerate_streak = 0
         self._degenerate_since_t = None
         self.degenerate_reset_seconds = float(os.environ.get("PLANAR_MAP_DEGENERATE_RESET_SECONDS", "0.4"))
+        # DECODE-STALENESS CONFIDENCE DECAY (2026-07-26, user design; independently
+        # reinvented on Pi hardware same day, RECONCILED here -- see
+        # feedback_planar_map_decode_staleness memory for the full history). Neither
+        # confidence nor map_confidence was ever touched by loop_closure_correct() itself
+        # -- both are purely a function of THIS frame's KLT-tracking/homography-residual
+        # health, with no notion of "how long has it been since a genuine ArUco decode
+        # last confirmed this geometry" at all. A map running purely on KLT prediction (no
+        # fresh decode landing) for a long stretch can look just as healthy by every
+        # existing term as one being actively re-confirmed every frame, even though pure
+        # prediction accumulates drift risk (smooth, confidently-wrong drift, not just
+        # noisy drift) a real decode doesn't. Track wall-clock time since the last genuine
+        # loop_closure_correct() (TIME-based, not frame-count -- same cross-platform-rate
+        # reasoning as the self-heal fix above; this was also the one place the Pi's
+        # independent version of this fix hadn't yet applied that lesson, corrected here
+        # and ported back).
+        #
+        # FIELD CHOICE (corrected from this fix's first draft): applies to map_confidence,
+        # NOT confidence. First draft here decayed confidence, reasoning that
+        # map_confidence's marker-independence (2026-07-16 fix, made specifically to
+        # survive genuine marker occlusion) would break the same way under a staleness
+        # decay. That reasoning under-weighted who actually CONSUMES map_confidence:
+        # RESCUE -- and RESCUE is exactly the consumer most exposed to a long, smoothly-
+        # self-consistent-but-ungrounded KLT coast (a real, well-known pure-visual-
+        # odometry problem -- confidently wrong, not obviously noisy, which is why loop
+        # closure exists in SLAM at all). The original 07-16 occlusion concern was about a
+        # BRIEF partial corner drop (1-3 of 4 missing for a few frames) being punished
+        # instantly; a multi-second-scale staleness threshold doesn't reintroduce that --
+        # it catches a genuinely different, longer-timescale risk the 07-16 fix never
+        # addressed. confidence keeps decaying via its own existing rigid_persist term
+        # (marker-shape-based, not decode-recency-based) -- a materially different
+        # question ("is the CURRENTLY-TRACKED shape internally consistent" vs "has this
+        # map been grounded against reality recently"), so no double-counting.
+        #
+        # Regaining confidence is automatic: any loop_closure_correct() call resets
+        # _last_decode_t, so staleness_conf snaps back to 1.0 the instant a real decode
+        # lands -- no separate "regain" logic needed.
+        self._last_decode_t = None
+        self.decode_staleness_max_seconds = float(
+            os.environ.get("PLANAR_MAP_DECODE_STALENESS_SECONDS", "2.0"))
 
     def _new_ids(self, n):
         ids = list(range(self.next_id, self.next_id + n))
@@ -270,6 +309,9 @@ class PlanarFeatureMap:
         if marker_px_corners is not None:
             self._seed_new_slot(marker_px_corners)
             self._update_primary_scalars()
+            self._last_decode_t = time.perf_counter()   # decode-seeded bootstrap counts as a real decode
+        else:
+            self._last_decode_t = None
 
     def _full_reset(self):
         """Full reset to pristine just-constructed state (2026-07-25, self-heal for a
@@ -297,6 +339,7 @@ class PlanarFeatureMap:
         self._degenerate_streak = 0
         self._degenerate_since_t = None
         self.primary_zero_corners = False
+        self._last_decode_t = None
 
     @staticmethod
     def _apply_h(H, pts):
@@ -687,7 +730,20 @@ class PlanarFeatureMap:
         _pslot = self.marker_slots.get(_primary) if _primary is not None else None
         _streak = _pslot.get('inlier_fail_streak', 0) if _pslot is not None else 0
         slot_survival_conf = max(0.0, 1.0 - _streak / max(self.slot_inlier_fail_streak_max, 1))
-        self.map_confidence = float(track_conf * resid_conf * slot_survival_conf)
+        # DECODE-STALENESS term (2026-07-26, see __init__'s decode_staleness_max_seconds
+        # comment): decays as elapsed time since the last genuine loop_closure_correct()
+        # grows, so a long, smoothly-self-consistent KLT-only coast can't keep reporting
+        # high map_confidence just because local tracking still looks internally healthy
+        # -- catches confidently-wrong drift, not just noisy drift. Recovers to 1.0 the
+        # instant a real decode lands (_last_decode_t reset). A BRIEF occlusion (the
+        # 2026-07-16 fix's concern) doesn't trip this -- decode_staleness_max_seconds is a
+        # multi-second-scale threshold, not a per-frame one.
+        if self._last_decode_t is None:
+            decode_staleness_conf = 0.0
+        else:
+            _since_decode = time.perf_counter() - self._last_decode_t
+            decode_staleness_conf = max(0.0, 1.0 - _since_decode / max(self.decode_staleness_max_seconds, 1e-6))
+        self.map_confidence = float(track_conf * resid_conf * slot_survival_conf * decode_staleness_conf)
 
     def _slot_frame_pts(self, slot_name):
         """Current-frame pixel estimate of one slot's marker corners, via map->frame
@@ -1057,6 +1113,7 @@ class PlanarFeatureMap:
         map entries to be exactly consistent with this decode. marker_id is accepted for
         caller-side logging only; it plays NO role in the routing decision.
         reproj_thresh_px defaults to 4x ransac_thresh_px if not given."""
+        self._last_decode_t = time.perf_counter()   # THIS call is by definition a genuine decode -- see __init__'s decode-staleness comment
         if reproj_thresh_px is None:
             reproj_thresh_px = 4.0 * self.ransac_thresh_px
         name = self._classify_slot(decoded_marker_px_corners, reproj_thresh_px)
