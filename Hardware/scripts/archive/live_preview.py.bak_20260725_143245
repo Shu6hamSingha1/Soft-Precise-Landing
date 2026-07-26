@@ -1,0 +1,68 @@
+"""Minimal live camera preview for AIMING the camera at the marker - separate
+from record_rotation_check.py, which does the actual data recording.
+
+Deliberately skips the full IMG_PROCESSOR pipeline (ArUco detection, optical
+flow, gyro comp, KF/EKF) entirely - just raw camera frames -> cv2.imshow.
+The earlier ~1.8Hz collapse (down from ~56Hz headless) when VIDEO=True ran
+INSIDE the full pipeline points at cv2.imshow/Qt rendering itself as the
+dominant cost, not the detection/flow math (a headless run of that SAME
+pipeline hit ~56Hz fine) - so this throttles the DISPLAY refresh rate
+(~4 Hz, plenty for human aiming) while the plain imgstream capture thread
+underneath still runs at its own full rate, decoupling "how fast can we
+capture" from "how often do we bother rendering a frame for a human".
+
+Shows the ArUco-decode overlay too (cheap single-frame detectMarkers call at
+display rate only, not every captured frame) so you can see live whether
+it's actually decoding, not just whether the marker LOOKS visible.
+
+Press Ctrl+C to stop. Throwaway diagnostic - not wired into anything.
+"""
+import os
+os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+
+import time
+import cv2
+from imgstreamer import imgstream
+
+DISPLAY_INTERVAL_S = 0.25   # ~4 Hz refresh - cheap enough to stay responsive
+
+_arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+_arucoParams = cv2.aruco.DetectorParameters()
+_arucoParams.adaptiveThreshWinSizeMin = 15
+_arucoParams.adaptiveThreshWinSizeMax = 15
+_arucoParams.adaptiveThreshWinSizeStep = 10
+_arucoParams.minMarkerPerimeterRate = 0.02
+_arucoParams.maxMarkerPerimeterRate = 0.5
+_arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_NONE
+_detector = cv2.aruco.ArucoDetector(_arucoDict, _arucoParams)
+
+
+def main():
+    strm = imgstream(resolution=(640, 480), capRate=60)
+    print("Live preview running at ~4Hz refresh (full capture continues faster "
+          "underneath) - press ESC in the window or Ctrl+C here to stop.")
+    try:
+        while True:
+            m = list(strm.getMainImages())[-1]
+            if m is not None:
+                corners, ids, _ = _detector.detectMarkers(m)
+                decoded = ids is not None and len(ids) > 0
+                vis = cv2.cvtColor(m, cv2.COLOR_GRAY2BGR)
+                if decoded:
+                    cv2.aruco.drawDetectedMarkers(vis, corners, ids)
+                label = f"DECODED (id={ids.flatten().tolist()})" if decoded else "not decoded"
+                cv2.putText(vis, label, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                            (0, 255, 0) if decoded else (0, 0, 255), 1)
+                cv2.imshow("Live Preview (~4Hz)", vis)
+                if cv2.waitKey(1) == 27:   # ESC
+                    break
+            time.sleep(DISPLAY_INTERVAL_S)
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        strm.close()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()

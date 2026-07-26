@@ -45,6 +45,8 @@ import sys
 import glob
 import numpy as np
 from scipy.signal import savgol_filter as sgf   # GT position->velocity smoothing only
+from img_geometry import EGO_MOTION_ROT_SLOPE   # -1.0, validated 2026-07-23 - see its own comment
+from img_geometry import vframe_w   # body-FRD gyro -> V-frame, for check_mount_rotation's fixed comparison
 
 CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "Test_Data", "Calibration")
@@ -341,6 +343,29 @@ def derive_one(run_dir):
         _u, _c = np.unique(tag, return_counts=True)
         print("  h estimator coverage: " + ", ".join(f"{u}={c}" for u, c in zip(_u, _c)))
 
+    # COAST-FRAME GUARD (2026-07-26, root-caused a session-long "why is R^2 always
+    # weak" question): 'coast' means NO common marker decoded in both frames of the
+    # pair this call - img_data.py APPENDS A LITERAL np.zeros(6) for that sample
+    # (img_data.py:1520-1526), not a hold/extrapolation. On real runs this is 60-90%
+    # of ALL samples (see the coverage print above). g["align"]'s np.interp() uses
+    # EVERY row of t_img_abs/raw_flow as an interpolation knot - a zero at a coast
+    # timestamp drags the interpolated GT-grid curve toward 0 not just AT that
+    # instant but across its neighboring gap too, contaminating nearby genuine
+    # 'lstsq' samples' interpolated neighborhood as well. This is a strictly worse
+    # corruption than the existing >=1s gap_mask catches (that only guards
+    # SUSTAINED marker-loss; most coast runs here are brief, frame-to-frame
+    # flicker). Fix: drop coast rows from the FLOW's own (t, value) pair entirely
+    # before any interpolation/filtering, so align() only ever bridges two REAL
+    # measurements across whatever true gap exists between them. Feature Params is
+    # NOT corrupted the same way (rescued/held during coast, never zeroed - see
+    # img_data.py:1499-1516), so raw_feat keeps its own unfiltered t_img_abs.
+    _flow_real = (tag == 'lstsq') | (tag == 'lstsq+klt') if np.any(tag != '') else np.ones(len(tag), dtype=bool)
+    t_flow_abs = t_img_abs[_flow_real]
+    raw_flow = raw_flow[_flow_real]
+    if np.any(~_flow_real):
+        print(f"  coast-frame guard (flow): {int((~_flow_real).sum())}/{len(_flow_real)} "
+              f"zero-flow 'coast' sample(s) dropped before KF/interp")
+
     # Per-frame raw flow is noise-dominated (raw std ~1.4 vs true signal
     # ~0.05, per project convention) - MUST filter on its own native time
     # axis BEFORE resampling/fitting. Uses the SAME KF the runtime
@@ -351,13 +376,14 @@ def derive_one(run_dir):
     # filter shape and applying at runtime through a differently-shaped
     # filter is not guaranteed valid, and moved every diagonal entry on
     # SITL's dataset (loom +127%, w_z +64%).
-    if n > 1:
+    if len(raw_flow) > 1:
         raw_flow = reject_outliers(raw_flow, label="flow")
+        raw_flow = kf_filter_causal(raw_flow, t_flow_abs, FLOW_KF_Q, FLOW_KF_R)
+    if n > 1:
         raw_feat = reject_outliers(raw_feat, label="feature")
-        raw_flow = kf_filter_causal(raw_flow, t_img_abs, FLOW_KF_Q, FLOW_KF_R)
         raw_feat = kf_filter_causal(raw_feat, t_img_abs, FEAT_KF_Q, FEAT_KF_R)
 
-    raw_flow_g = g["align"](t_img_abs, raw_flow)     # raw flow resampled onto GT clock
+    raw_flow_g = g["align"](t_flow_abs, raw_flow)     # raw flow resampled onto GT clock (coast-free)
     raw_feat_g = g["align"](t_img_abs, raw_feat)
 
     # Marker-loss gap guard (see GAP_EXCLUDE_S / g["gap_mask"]): align()
@@ -367,7 +393,9 @@ def derive_one(run_dir):
     # Excluded here, on the ALIGNED (GT-grid) index space, not on
     # t_img_abs's own sparse index - a mask built on the flow's native
     # samples would not line up with raw_flow_g/raw_feat_g's indexing.
-    gok = g["gap_mask"](t_img_abs, GAP_EXCLUDE_S)
+    # Uses t_flow_abs (post coast-guard) for the FLOW gap check, since that is
+    # the array raw_flow_g was actually interpolated from.
+    gok = g["gap_mask"](t_flow_abs, GAP_EXCLUDE_S)
     n_excluded = int((~gok).sum())
     if n_excluded:
         print(f"  gap guard: {n_excluded}/{len(gok)} GT-grid sample(s) excluded from fit "
@@ -479,6 +507,146 @@ def derive_ring_one(run_dir):
     return cal, r2, len(Rm)
 
 
+def check_mount_rotation(run_dir):
+    """FC<->camera mount-rotation diagnostic (2026-07-23) - identifies/validates
+    img_geometry.R_CAM_TO_BODY from EGO-MOTION, NOT mocap and NOT FC yaw/heading.
+    FC yaw is magnetometer-derived and confirmed unreliable indoors this session
+    (mag_test_ratio/heading-innovation crossed PX4's fail threshold repeatedly in
+    real flight logs on this rig - see project memory). Gyro RATES and body
+    VELOCITY are pure IMU/INS, magnetometer-independent, so this compares:
+
+    ROTATION axis: d(alpha)/dt (marker's own image-plane angular rate, straight
+    from raw pixel corners via Feature Params - no assumed mount rotation
+    applied) vs the FC's OWN gyro yaw rate (Telemetry_Data's "Angular Velocity
+    FRD" down_rad_s) - the same physical quantity two different ways. A static
+    marker viewed by a rotating camera must show |slope|~1 REGARDLESS of the
+    mount's fixed offset angle (a constant relative rotation between two rigid
+    bodies never changes their shared angular RATE - only a genuine axis-flip
+    in the mount would break the +-1 relationship) - so this is a structural
+    check (pure-yaw mount? axis flipped?), not a numeric calibration.
+
+    TRANSLATION axes: d(centroid)/dt (image xc,yc velocity) vs FC body velocity
+    (Telemetry_Data's "Velocity Body" x_m_s/y_m_s) - full 2x2 cross-correlation
+    to identify which image axis maps to which body axis and with what sign.
+    NOTE (found 2026-07-23 on all 7 existing runs): this part needs a sweep
+    with an ISOLATED translation phase to get a clean read - these runs are
+    yaw-dominated (130-300 deg/s yaw-rate spans) and/or FC's GPS-denied INS
+    velocity may be too drifty; expect weak/inconsistent correlations until a
+    better-excited recording exists. Report it anyway (harmless when weak) so
+    a future well-excited run's improvement is visible without code changes.
+
+    Runs entirely on already-recorded Img_Data.npy + Telemetry_Data.npy - no
+    mocap Ground_Truth.npy needed, so this works even on non-mocap hardware
+    recordings (e.g. any hardware_landing.py flight log pair).
+
+    FIXED 2026-07-25: dalpha/dt is computed from get_img_features() output,
+    which runs on V_nP_norm - ALREADY roll/pitch-leveled (gravity-leveled)
+    virtual-frame points (see img_data.py _optFlowAngVel: `self._getImgFeatures
+    (V_nP_norm[1])`). Comparing that directly against the RAW BODY-FRD gyro
+    z-component (Angular Velocity FRD's down_rad_s) is a frame mismatch - body
+    w_z and V-frame w_z only coincide when roll/pitch are exactly zero
+    (standard Euler-rate cross-coupling); during real hand-held or flight
+    motion they diverge. img_geometry.vframe_w() exists for exactly this -
+    it's what the RUNTIME gyro-compensation path already uses to convert body
+    gyro into the V-frame before comparing against anything V-framed. This
+    fix rotates the full 3-axis body gyro through vframe_w() (using the
+    nearest-in-time attitude quaternion, from Odometry Timestamp/Quaternion -
+    NOT IMU Timestamp, which has no attitude of its own) before taking its
+    z-component, so the comparison is now V-frame-to-V-frame throughout.
+    Empirically (2026-07-25, 6-run GOOD dataset) this correction changed
+    correlations by <0.02 in every run - roll/pitch tilt during these
+    recordings was small enough that the frame mismatch wasn't the dominant
+    noise source (see [[project_pi_output_cal_2026_07_25_session]] - the
+    actual dominant cause was traced to marker_principal_angle's 2pi-
+    disambiguation flickering on corner-detection jitter) - but the fix is
+    still correct in principle and matters more on a more aggressively-
+    tilted recording.
+
+    FIXED 2026-07-26: this used to differentiate the RAW per-sample
+    Feature Params directly (np.gradient on unfiltered alpha/xc/yc) - a
+    self-inflicted unfair test, not a real geometry check. Raw image
+    signals are inherently noisy (that's WHY the runtime pipeline runs them
+    through reject_outliers + a causal KF before ANY consumer - including
+    derive_one()'s own flow/centroid fit above - ever differentiates or
+    fits them); comparing an unsmoothed raw derivative against gyro will
+    look uncorrelated even when the underlying geometry is exactly right,
+    for the same reason two people timing the same stopwatch with shaky
+    hands will disagree - the disagreement is about hand-shake, not the
+    stopwatch. "Raw, no assumed mount rotation applied" in this function's
+    original intent meant not baking in the mount-offset GEOMETRY being
+    tested - it was never meant to also skip ordinary noise filtering,
+    those are orthogonal. Now runs alpha/xc/yc through the SAME
+    reject_outliers + kf_filter_causal treatment (same FEAT_KF_Q/R
+    constants) derive_one() already applies to the centroid/flow fit,
+    before differentiating - alpha is unwrapped first so the periodic
+    wrap doesn't look like a spurious Hampel/KF outlier."""
+    img = np.load(os.path.join(run_dir, "Img_Data.npy"), allow_pickle=True).item()
+    tel_path = os.path.join(run_dir, "Telemetry_Data.npy")
+    if not os.path.exists(tel_path):
+        raise ValueError("no Telemetry_Data.npy in this run")
+    tel = np.load(tel_path, allow_pickle=True).item()
+
+    t_img = np.asarray(img["Time"], float)
+    feat = np.asarray(img["Feature Params"], float)   # [xc, yc, 1, alpha]
+    n = min(len(t_img), len(feat))
+    t_img, feat = t_img[:n], feat[:n]
+
+    t_imu = np.asarray(tel["IMU Timestamp"], float)
+    av = tel["Angular Velocity FRD"]
+    w_body_full = np.array([[a.forward_rad_s, a.right_rad_s, a.down_rad_s] if a is not None
+                             else [np.nan, np.nan, np.nan] for a in av])
+    t_odo = np.asarray(tel["Odometry Timestamp"], float)
+    quats = tel["Quaternion"]
+    vb = tel["Velocity Body"]
+    vx_full = np.array([v.x_m_s if v is not None else np.nan for v in vb])
+    vy_full = np.array([v.y_m_s if v is not None else np.nan for v in vb])
+    if len(t_imu) < 2 or len(t_odo) < 2:
+        raise ValueError("insufficient telemetry (IMU/odometry) samples")
+
+    w_body = np.column_stack([np.interp(t_img, t_imu, w_body_full[:, k]) for k in range(3)])
+    # Nearest-in-time attitude for each image sample - IMU Timestamp has no
+    # attitude of its own; Odometry Timestamp is the quaternion's own clock.
+    qi = np.clip(np.searchsorted(t_odo, t_img), 0, len(quats) - 1)
+    gyro_yaw = np.array([vframe_w(w_body[i], quats[qi[i]])[2] for i in range(len(t_img))])
+    vx = np.interp(t_img, t_odo, vx_full)
+    vy = np.interp(t_img, t_odo, vy_full)
+
+    # Filter BEFORE differentiating - same treatment derive_one() already
+    # gives the centroid/flow signal, applied here to the [xc, yc, alpha]
+    # this function itself differentiates. Unwrap alpha first so the
+    # periodic wrap isn't mistaken for an outlier by the Hampel/KF pass.
+    feat_for_filt = np.column_stack([feat[:, 0], feat[:, 1], np.unwrap(feat[:, 3])])
+    feat_for_filt = reject_outliers(feat_for_filt, label="feature (mount-rotation check)")
+    feat_filt = kf_filter_causal(feat_for_filt, t_img, FEAT_KF_Q, FEAT_KF_R)
+    alpha = feat_filt[:, 2]
+    dt = np.gradient(t_img)
+    dalpha_dt = np.gradient(alpha, t_img)
+    dcx_dt = np.gradient(feat_filt[:, 0], t_img)
+    dcy_dt = np.gradient(feat_filt[:, 1], t_img)
+
+    m = (np.isfinite(gyro_yaw) & np.isfinite(vx) & np.isfinite(vy)
+         & np.isfinite(dalpha_dt) & (dt > 1e-4) & (dt < 0.5))
+    if m.sum() < 15:
+        raise ValueError(f"too few aligned samples: {m.sum()}")
+
+    A = np.column_stack([gyro_yaw[m], np.ones(m.sum())])
+    (slope, intercept), *_ = np.linalg.lstsq(A, dalpha_dt[m], rcond=None)
+    rot_corr = (float(np.corrcoef(dalpha_dt[m], gyro_yaw[m])[0, 1])
+                if np.std(gyro_yaw[m]) > 1e-9 else np.nan)
+    yaw_rate_span = float(np.ptp(gyro_yaw[m]))
+
+    Gt = np.column_stack([dcx_dt[m], dcy_dt[m]])
+    Gb = np.column_stack([vx[m], vy[m]])
+    if all(np.std(x) > 1e-9 for x in (Gt[:, 0], Gt[:, 1], Gb[:, 0], Gb[:, 1])):
+        trans_corr = np.corrcoef(np.hstack([Gt, Gb]).T)[:2, 2:]
+    else:
+        trans_corr = np.full((2, 2), np.nan)
+
+    return dict(n=int(m.sum()), yaw_rate_span_deg=float(np.degrees(yaw_rate_span)),
+                rot_slope=float(slope), rot_intercept=float(intercept), rot_corr=rot_corr,
+                trans_corr=trans_corr)
+
+
 def main():
     if len(sys.argv) > 1:
         runs = sys.argv[1:]
@@ -540,6 +708,42 @@ def main():
         print("per-axis R^2: " + "  ".join(f"{LAB[k]}={r2[k]:.2f}" for k in range(6)))
         print(cal)
         ring_cals.append(cal); ring_r2s.append(r2)
+
+    # Mount-rotation diagnostic (see check_mount_rotation docstring) - runs off
+    # Img_Data.npy + Telemetry_Data.npy only, no mocap Ground_Truth.npy needed,
+    # so it's independent of whether the corner/ring fits above found usable
+    # data this run - placed BEFORE ring's own early-return below so it still
+    # runs even when every run lacks "Ring Time" (all 7 pre-2026-07-22 runs do).
+    print("\n\n=== MOUNT-ROTATION CHECK (ego-motion based, magnetometer-free) ===")
+    rot_slopes, rot_corrs = [], []
+    for run_dir in runs:
+        name = os.path.basename(run_dir)
+        try:
+            r = check_mount_rotation(run_dir)
+        except Exception as e:
+            print(f"  skip {name}: {e}")
+            continue
+        tc = r["trans_corr"]
+        print(f"  {name}: n={r['n']}  yaw_rate_span={r['yaw_rate_span_deg']:.1f}deg/s")
+        print(f"    ROTATION: dalpha/dt = {r['rot_slope']:+.3f}*gyro_yaw {r['rot_intercept']:+.3f}   "
+              f"corr={r['rot_corr']:.3f}")
+        print(f"    TRANSLATION corr [rows=dcx,dcy cols=vx,vy]: "
+              f"[[{tc[0,0]:+.3f} {tc[0,1]:+.3f}] [{tc[1,0]:+.3f} {tc[1,1]:+.3f}]]")
+        if r["yaw_rate_span_deg"] > 10 and np.isfinite(r["rot_corr"]):
+            rot_slopes.append(r["rot_slope"]); rot_corrs.append(r["rot_corr"])
+    if rot_slopes:
+        best = int(np.argmax(np.abs(rot_corrs)))
+        best_slope = rot_slopes[best]
+        dev = abs(best_slope - EGO_MOTION_ROT_SLOPE)
+        verdict = "PASS" if dev < 0.15 else ("MARGINAL" if dev < 0.35 else "FAIL")
+        print(f"\n  best-excited run: slope={best_slope:+.3f} corr={rot_corrs[best]:.3f} "
+              f"(median slope across {len(rot_slopes)} run(s): {np.median(rot_slopes):+.3f})")
+        print(f"  vs EGO_MOTION_ROT_SLOPE={EGO_MOTION_ROT_SLOPE:+.1f} (img_geometry.py, validated "
+              f"2026-07-23): deviation={dev:.3f}  [{verdict}]")
+        print("  a mismatch here would mean the mount's pure-yaw/non-mirrored assumption "
+              "(R_CAM_TO_BODY's structure) needs revisiting, independent of its fixed offset angle.")
+    else:
+        print("  no run had enough yaw-rate excitation for a reliable rotation-axis read.")
 
     if not ring_cals:
         print("\nNo usable ring runs.")

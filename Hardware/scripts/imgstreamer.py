@@ -80,14 +80,31 @@ class imgstream(Thread):
         )
         self._camera.configure(config)
         self._camera.start()
+
+        # WIRED 2026-07-23: `capRate` used to be accepted, stored in
+        # self._capRate, and reported by getParams()/getFPS() metadata -
+        # but never actually applied to the camera, so a caller requesting
+        # capRate=60 (e.g. output_calibration.py's CAPTURE_RATE) silently
+        # got whatever frame duration the sensor mode defaulted to. Set it
+        # explicitly via FrameDurationLimits (microseconds, fixed min=max so
+        # it's a target rather than just a ceiling). Still bounded by the
+        # sensor's real per-mode minimum frame duration - the project's
+        # raw-Bayer 640x480 mode has an empirical ~30fps ceiling regardless
+        # of what's requested here (CLAUDE.md), so this makes the request
+        # honest rather than guaranteeing a specific achieved rate; check
+        # getFPS() / this class's actual measured rate, not the argument.
+        controls = {}
+        if capRate and capRate > 0:
+            frame_us = int(round(1e6 / capRate))
+            controls["FrameDurationLimits"] = (frame_us, frame_us)
         if CAM_MANUAL_EXPOSURE:
-            self._camera.set_controls({
-                "AeEnable": False,
-                "ExposureTime": CAM_EXPOSURE_US,
-                "AnalogueGain": CAM_ANALOGUE_GAIN,
-            })
-            print(f"imgstream: manual exposure ON - ExposureTime={CAM_EXPOSURE_US}us "
-                  f"AnalogueGain={CAM_ANALOGUE_GAIN} (auto AEC/AGC disabled)")
+            controls["AeEnable"] = False
+            controls["ExposureTime"] = CAM_EXPOSURE_US
+            controls["AnalogueGain"] = CAM_ANALOGUE_GAIN
+        if controls:
+            self._camera.set_controls(controls)
+            print(f"imgstream: controls set -> {controls}"
+                  + (f" (manual exposure ON, AEC/AGC disabled)" if CAM_MANUAL_EXPOSURE else ""))
 
         # Actual negotiated raw stream size - may differ from the requested
         # `resolution` if the sensor has no matching native mode.

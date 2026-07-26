@@ -1,0 +1,3356 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:05:41 2026 from 192.168.0.119
+(denv) doctor@doctor:~ $ sudo shutdown -h now
+(denv) doctor@doctor:~ $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:14:02 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:15:39 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 pyt
+hon3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_39_34.ulg
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.8145174980163574 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 2.3332574367523193, y_m: 1.6949453353881836, z_m: -3.179534912109375]
+Takeoff settled at alt=3.18m
+Battery voltage: 24.13V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 2.68m drifted >0.5m (sweep continues)
+  [notice] altitude 1.96m drifted >0.5m (sweep continues)
+  [notice] altitude 2.11m drifted >0.5m (sweep continues)
+  [notice] altitude 3.71m drifted >0.5m (sweep continues)
+  [notice] altitude 3.78m drifted >0.5m (sweep continues)
+  [notice] altitude 3.75m drifted >0.5m (sweep continues)
+  [notice] altitude 3.68m drifted >0.5m (sweep continues)
+  [notice] altitude 3.72m drifted >0.5m (sweep continues)
+  [notice] altitude 2.66m drifted >0.5m (sweep continues)
+  [notice] altitude 1.68m drifted >0.5m (sweep continues)
+  [notice] altitude 1.03m drifted >0.5m (sweep continues)
+  [notice] altitude 0.45m drifted >0.5m (sweep continues)
+  [notice] altitude 0.15m drifted >0.5m (sweep continues)
+  [notice] altitude 0.06m drifted >0.5m (sweep continues)
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+  [notice] altitude -0.04m drifted >0.5m (sweep continues)
+Status: INFO: Landing detected
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+[FC] PX4 reports ON_GROUND — LANDED=True
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+Status: INFO: Disarmed by landing
+
+[sine fit] a_down = -14.74*throttle + -3.93  (n=3425)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3987
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260720_231933.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.0s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_40_08.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.737985134124756 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.6895939707756042, y_m: -0.7268219590187073, z_m: -3.095808982849121]
+Takeoff settled at alt=3.11m
+Battery voltage: 23.73V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 3.62m drifted >0.5m (sweep continues)
+  [notice] altitude 5.36m drifted >0.5m (sweep continues)
+  [notice] altitude 7.00m drifted >0.5m (sweep continues)
+  [notice] altitude 7.79m drifted >0.5m (sweep continues)
+  [notice] altitude 8.52m drifted >0.5m (sweep continues)
+  [notice] altitude 9.96m drifted >0.5m (sweep continues)
+  [HARD ABORT] altitude 10.14m drifted >7.0m from takeoff height 3.11m
+
+Landing...
+Status: INFO: Landing at current position
+[LAND] Timed out waiting for LANDED state (logging stops here).
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_aborted_20260720_232010.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.388 THROTTLE_ALT_HARD_MARGIN_M=7 py
+thon3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_41_01.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.7249398231506348 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.22959810495376587, y_m: -1.0668076276779175, z_m: -3.085782766342163]
+Takeoff settled at alt=3.08m
+Status: CRITICAL: Failsafe activated
+Battery voltage: 23.14V
+
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 2.57m drifted >0.5m (sweep continues)
+  [notice] altitude 1.15m drifted >0.5m (sweep continues)
+  [notice] altitude 0.12m drifted >0.5m (sweep continues)
+  [notice] altitude 0.88m drifted >0.5m (sweep continues)
+  [notice] altitude 0.91m drifted >0.5m (sweep continues)
+  [notice] altitude 0.79m drifted >0.5m (sweep continues)
+  [notice] altitude 2.48m drifted >0.5m (sweep continues)
+  [notice] altitude 2.57m drifted >0.5m (sweep continues)
+  [notice] altitude 1.61m drifted >0.5m (sweep continues)
+  [notice] altitude 0.97m drifted >0.5m (sweep continues)
+  [notice] altitude 0.43m drifted >0.5m (sweep continues)
+  [notice] altitude 0.02m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+Status: INFO: Landing detected
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+[FC] PX4 reports ON_GROUND — LANDED=True
+Status: INFO: Disarmed by RC
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+
+[sine fit] a_down = -11.36*throttle + -5.43  (n=3394)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3853
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260720_232100.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.388 THROTTLE_ALT_HARD_MARGIN_M=7 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_41_56.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.9422643184661865 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.468112587928772, y_m: -0.5756913423538208, z_m: -3.2142350673675537]
+Takeoff settled at alt=3.23m
+Battery voltage: 23.02V
+
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 2.72m drifted >0.5m (sweep continues)
+  [notice] altitude 1.17m drifted >0.5m (sweep continues)
+  [notice] altitude 0.21m drifted >0.5m (sweep continues)
+  [notice] altitude 0.92m drifted >0.5m (sweep continues)
+  [notice] altitude 0.97m drifted >0.5m (sweep continues)
+  [notice] altitude 0.98m drifted >0.5m (sweep continues)
+  [notice] altitude 0.94m drifted >0.5m (sweep continues)
+  [notice] altitude 0.54m drifted >0.5m (sweep continues)
+  [notice] altitude 0.22m drifted >0.5m (sweep continues)
+  [notice] altitude 0.06m drifted >0.5m (sweep continues)
+  [notice] altitude 0.07m drifted >0.5m (sweep continues)
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+  [notice] altitude 0.02m drifted >0.5m (sweep continues)
+Status: INFO: Disarmed by RC
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+  [notice] altitude 0.00m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+Status: CRITICAL: Preflight: GPS PDOP too high
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+
+[sine fit] a_down = -12.25*throttle + -5.07  (n=3420)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3873
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260720_232154.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 pyt
+hon3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+^C
+Interrupted - landing
+gRPC error during landed_state retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during acceleration retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during odometry retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during status text retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_interrupted_20260720_232216.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.0s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_42_54.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.965850830078125 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.1282392740249634, y_m: -1.705262541770935, z_m: -3.2363030910491943]
+Takeoff settled at alt=3.23m
+Battery voltage: 22.82V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 2.73m drifted >0.5m (sweep continues)
+  [notice] altitude 1.75m drifted >0.5m (sweep continues)
+  [notice] altitude 1.34m drifted >0.5m (sweep continues)
+  [notice] altitude 1.48m drifted >0.5m (sweep continues)
+  [notice] altitude 1.14m drifted >0.5m (sweep continues)
+  [notice] altitude 0.40m drifted >0.5m (sweep continues)
+  [notice] altitude 0.42m drifted >0.5m (sweep continues)
+  [notice] altitude 0.78m drifted >0.5m (sweep continues)
+  [notice] altitude 0.58m drifted >0.5m (sweep continues)
+  [notice] altitude 0.65m drifted >0.5m (sweep continues)
+  [notice] altitude 0.63m drifted >0.5m (sweep continues)
+  [notice] altitude 0.65m drifted >0.5m (sweep continues)
+  [notice] altitude 0.65m drifted >0.5m (sweep continues)
+  [notice] altitude 0.67m drifted >0.5m (sweep continues)
+  [notice] altitude 0.59m drifted >0.5m (sweep continues)
+  [notice] altitude 0.05m drifted >0.5m (sweep continues)
+  [notice] altitude 0.03m drifted >0.5m (sweep continues)
+Status: INFO: Landing detected
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+[FC] PX4 reports ON_GROUND — LANDED=True
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+Status: INFO: Disarmed by RC
+
+[sine fit] a_down = -10.24*throttle + -5.73  (n=3428)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3989
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260720_232255.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:18:25 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ nanq find_hover_throttle.py
+-bash: nanq: command not found
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ nano find_hover_throttle.py
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ ls
+basic_flight_test.py
+cancelled_error.log
+capture_calib_images.py
+cbf_visibility.py
+controller.py
+display_camera.py
+download_flight_logs.py
+find_hover_throttle.py
+find_hover_throttle.py.bak_before_sine_timing_fix_20260720_220148
+flight_controller.py
+hardware_landing.py
+img_data.py
+img_data.py.bak_before_perf_tuning_20260714
+imgstreamer.py
+mocaptools.py
+numerical_methods.py
+output_calibration.py
+__pycache__
+record_input_calibration.py
+record_input_calibration.py.bak_before_nrepeats10_20260720_184010
+record_input_calibration.py.bak_before_nrepeats3_20260720_184929
+record_input_calibration.py.bak_before_rateamp03_hold1s_20260720_183234
+record_input_calibration.py.bak_before_stephold3s_20260720_180638
+record_input_calibration.py.bak_before_timeout90_20260720_184053
+record_test_feed.py
+Test_Data
+
+
+
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 pyt
+hon3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_45_31.ulg
+Status: INFO: Using default takeoff altitude: 12.0 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+9.647905349731445 10.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.7725698947906494, y_m: -1.412538766860962, z_m: -10.734123229980469]
+Takeoff settled at alt=10.74m
+Battery voltage: 22.57V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 10.23m drifted >0.5m (sweep continues)
+  [notice] altitude 9.37m drifted >0.5m (sweep continues)
+  [notice] altitude 9.37m drifted >0.5m (sweep continues)
+  [notice] altitude 9.45m drifted >0.5m (sweep continues)
+  [notice] altitude 8.28m drifted >0.5m (sweep continues)
+  [notice] altitude 6.46m drifted >0.5m (sweep continues)
+  [notice] altitude 6.97m drifted >0.5m (sweep continues)
+  [notice] altitude 5.83m drifted >0.5m (sweep continues)
+  [notice] altitude 4.08m drifted >0.5m (sweep continues)
+  [HARD ABORT] altitude 3.73m drifted >7.0m from takeoff height 10.74m
+
+Landing...
+Status: INFO: Landing at current position
+[LAND] Timed out waiting for LANDED state (logging stops here).
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_aborted_20260720_232538.npz
+-- CPU governor set to ondemand
+
+
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.40 THROTTLE_ALT_HARD_MARGIN_M=7 TAKEOFF_HEIGHT=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 3.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >7.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_47_58.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.880403518676758 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.9592466354370117, y_m: -2.071842908859253, z_m: -3.1971824169158936]
+Takeoff settled at alt=3.19m
+Battery voltage: 22.29V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 2.69m drifted >0.5m (sweep continues)
+  [notice] altitude 1.40m drifted >0.5m (sweep continues)
+  [notice] altitude 0.33m drifted >0.5m (sweep continues)
+  [notice] altitude 0.02m drifted >0.5m (sweep continues)
+  [notice] altitude 0.02m drifted >0.5m (sweep continues)
+  [notice] altitude -0.00m drifted >0.5m (sweep continues)
+  [notice] altitude -0.02m drifted >0.5m (sweep continues)
+  [notice] altitude -0.02m drifted >0.5m (sweep continues)
+  [notice] altitude -0.02m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude -0.35m drifted >0.5m (sweep continues)
+  [notice] altitude -0.45m drifted >0.5m (sweep continues)
+  [notice] altitude -0.48m drifted >0.5m (sweep continues)
+  [notice] altitude -0.46m drifted >0.5m (sweep continues)
+Status: INFO: Disarmed by RC
+[FC] PX4 reports ON_GROUND — LANDED=True
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+  [notice] altitude 0.01m drifted >0.5m (sweep continues)
+
+[sine fit] a_down = -6.88*throttle + -7.08  (n=3385)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3975
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260720_232758.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@10.196.6.17
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:23:19 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ python3 record_input_calibration.py
+python3: can't open file '/home/doctor/record_input_calibration.py': [Errno 2] No such file or directory
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.4 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+  is_armable after 2.0s
+-- Arming
+Status: CRITICAL: Arming denied: high throttle
+
+Error: arm() failed even after is_armable: COMMAND_DENIED: 'Command Denied'; origin: arm(); params: ()
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 271, in arm_and_takeoff
+    await self.vehicle.action.arm()
+  File "/home/doctor/denv/lib/python3.13/site-packages/mavsdk/action.py", line 359, in arm
+    raise ActionError(result, "arm()")
+mavsdk.action.ActionError: COMMAND_DENIED: 'Command Denied'; origin: arm(); params: ()
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/find_hover_throttle.py", line 288, in main
+    await fc.arm_and_takeoff(takeoff_hgt=TAKEOFF_HEIGHT)
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 275, in arm_and_takeoff
+    raise RuntimeError(f"arm() failed even after is_armable: {e}")
+RuntimeError: arm() failed even after is_armable: COMMAND_DENIED: 'Command Denied'; origin: arm(); params: ()
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_error_20260721_165804.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.4 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_58_24.ulg
+Status: INFO: Using default takeoff altitude: 12.0 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+9.430482864379883 10.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.7860463857650757, y_m: -4.28563928604126, z_m: -10.44857406616211]
+Takeoff settled at alt=10.41m
+Battery voltage: 21.90V
+
+Sine sweep: center=0.4, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 9.90m drifted >0.5m (sweep continues)
+  [notice] altitude 8.83m drifted >0.5m (sweep continues)
+  [notice] altitude 6.55m drifted >0.5m (sweep continues)
+  [notice] altitude 4.31m drifted >0.5m (sweep continues)
+  [notice] altitude 5.56m drifted >0.5m (sweep continues)
+  [notice] altitude 3.37m drifted >0.5m (sweep continues)
+  [notice] altitude 2.93m drifted >0.5m (sweep continues)
+  [notice] altitude 2.95m drifted >0.5m (sweep continues)
+  [notice] altitude 2.91m drifted >0.5m (sweep continues)
+  [notice] altitude 2.83m drifted >0.5m (sweep continues)
+  [notice] altitude 1.88m drifted >0.5m (sweep continues)
+  [notice] altitude 0.84m drifted >0.5m (sweep continues)
+  [HARD ABORT] altitude 0.41m drifted >10.0m from takeoff height 10.41m
+
+Landing...
+Status: INFO: Landing at current position
+Status: INFO: Pilot took over using sticks
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_aborted_20260721_165854.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.41 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.41, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/16_59_41.ulg
+Status: INFO: Using default takeoff altitude: 12.0 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+9.448408126831055 10.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.6562141180038452, y_m: -0.5014054775238037, z_m: -10.472444534301758]
+Takeoff settled at alt=10.46m
+Battery voltage: 21.75V
+
+Sine sweep: center=0.41, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 9.95m drifted >0.5m (sweep continues)
+  [notice] altitude 8.23m drifted >0.5m (sweep continues)
+  [notice] altitude 5.95m drifted >0.5m (sweep continues)
+  [notice] altitude 5.41m drifted >0.5m (sweep continues)
+  [notice] altitude 3.36m drifted >0.5m (sweep continues)
+Status: INFO: Pilot took over using sticks
+  [HARD ABORT] altitude 0.45m drifted >10.0m from takeoff height 10.46m
+
+Landing...
+Status: INFO: Landing at current position
+Status: INFO: Pilot took over using sticks
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_aborted_20260721_170007.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:01:00
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=3.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:26:18.709750044] [3943]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:26:18.735324068] [3986]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:26:18.761207045] [3986]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:26:18.767597750] [3986]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:26:18.767668641] [3986]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media0
+[0:26:18.774632863] [3943]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:26:18.777652488] [3986]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+  is_armable after 8.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_01_10.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.8154237270355225 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.4012562036514282, y_m: -1.7816681861877441, z_m: -3.1600916385650635]
+Battery voltage: 21.59V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=3.17m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/3 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 1.67m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/3 ---
+  [HARD ABORT] altitude 0.55m drifted >2.5m from takeoff height 3.17m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-01-24 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ sudo shutdown -h now
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Mon Jul 20 23:29:52 2026 from 10.196.6.116
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.388 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: position estimate error
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+^C
+Interrupted - landing
+gRPC error during status text retrieval: Stream removed (sendmsg: Connection reset by peer (104))
+gRPC error during odometry retrieval: Stream removed (sendmsg: Connection reset by peer (104))
+gRPC error during acceleration retrieval: Stream removed (sendmsg: Connection reset by peer (104))
+gRPC error during landed_state retrieval: Stream removed (sendmsg: Connection reset by peer (104))
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_interrupted_20260721_170348.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.388 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_05_48.ulg
+Status: INFO: Using default takeoff altitude: 12.0 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+9.21488094329834 10.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.2102223634719849, y_m: -2.575681686401367, z_m: -10.256720542907715]
+Takeoff settled at alt=10.32m
+Battery voltage: 24.44V
+
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 9.82m drifted >0.5m (sweep continues)
+  [notice] altitude 10.83m drifted >0.5m (sweep continues)
+  [notice] altitude 12.47m drifted >0.5m (sweep continues)
+  [notice] altitude 13.27m drifted >0.5m (sweep continues)
+  [notice] altitude 13.68m drifted >0.5m (sweep continues)
+  [notice] altitude 14.75m drifted >0.5m (sweep continues)
+  [notice] altitude 15.91m drifted >0.5m (sweep continues)
+  [notice] altitude 16.13m drifted >0.5m (sweep continues)
+  [notice] altitude 16.03m drifted >0.5m (sweep continues)
+  [notice] altitude 16.86m drifted >0.5m (sweep continues)
+  [notice] altitude 18.20m drifted >0.5m (sweep continues)
+  [notice] altitude 18.13m drifted >0.5m (sweep continues)
+  [notice] altitude 17.90m drifted >0.5m (sweep continues)
+  [notice] altitude 17.41m drifted >0.5m (sweep continues)
+  [notice] altitude 16.06m drifted >0.5m (sweep continues)
+  [notice] altitude 14.82m drifted >0.5m (sweep continues)
+  [notice] altitude 13.54m drifted >0.5m (sweep continues)
+  [notice] altitude 12.29m drifted >0.5m (sweep continues)
+
+[sine fit] a_down = -22.10*throttle + -1.18  (n=3452)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3906
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+Status: INFO: Pilot took over using sticks
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260721_170444.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ THROTTLE_MODE=sine SINE_CENTER=0.388 THROTTLE_ALT_HARD_MARGIN_M=10 python3 find_hover_throttle.py
+Modules imported successfully
+============================================================
+Hover-Throttle Finder
+============================================================
+Mode: sine
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0, takeoff height: 10.0m
+Safety: cut this hold short if altitude drifts >0.5m (sweep continues); hard-abort + land if drift >10.0m or climb rate exceeds 1.0 m/s
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+  is_armable after 31.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_07_14.ulg
+Status: INFO: Using default takeoff altitude: 12.0 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+9.198957443237305 10.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -2.490185022354126, y_m: -2.2083544731140137, z_m: -10.32466983795166]
+Takeoff settled at alt=10.40m
+Battery voltage: 23.89V
+
+Sine sweep: center=0.388, amp=0.03, period=4.0s, cycles=5.0 (duration=20.0s)
+  [notice] altitude 9.89m drifted >0.5m (sweep continues)
+  [notice] altitude 9.32m drifted >0.5m (sweep continues)
+  [notice] altitude 9.69m drifted >0.5m (sweep continues)
+  [notice] altitude 9.90m drifted >0.5m (sweep continues)
+  [notice] altitude 9.67m drifted >0.5m (sweep continues)
+  [notice] altitude 10.91m drifted >0.5m (sweep continues)
+  [notice] altitude 10.96m drifted >0.5m (sweep continues)
+  [notice] altitude 10.90m drifted >0.5m (sweep continues)
+  [notice] altitude 11.77m drifted >0.5m (sweep continues)
+  [notice] altitude 12.75m drifted >0.5m (sweep continues)
+  [notice] altitude 12.84m drifted >0.5m (sweep continues)
+  [notice] altitude 12.93m drifted >0.5m (sweep continues)
+  [notice] altitude 13.89m drifted >0.5m (sweep continues)
+
+[sine fit] a_down = -33.31*throttle + 3.08  (n=3713)
+[sine fit] estimated hover throttle (a_down=-9.81) = 0.3868
+[sine fit] NOTE: slope here is in (m/s^2)/throttle -- convert to N/unit via SLOPE_true = mass * slope_a_per_throttle if cross-checking against THRUST_SLOPE_N_PER_UNIT.
+
+Landing...
+Status: INFO: Landing at current position
+[LAND] Timed out waiting for LANDED state (logging stops here).
+[LOG] Saved full telemetry to Test_Data/HoverThrottle/hover_throttle_complete_20260721_170610.npz
+-- CPU governor set to ondemand
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:06:50
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=3.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:05:06.970852372] [2006]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:05:06.994264816] [2048]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:05:07.020166039] [2048]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:05:07.026421835] [2048]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:05:07.026494224] [2048]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:05:07.033387965] [2006]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:05:07.035259798] [2048]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: [cal] calibration started: 2 level
+Status: INFO: [cal] progress <0>
+Status: INFO: [cal] progress <20>
+Status: INFO: [cal] progress <40>
+Status: INFO: [cal] progress <60>
+Status: INFO: [cal] progress <80>
+Status: INFO: [cal] progress <100>
+Status: INFO: [cal] progress <100>
+Status: INFO: [cal] calibration done: level
+^C
+Interrupted by user
+gRPC error during landed_state retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during odometry retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during acceleration retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+gRPC error during status text retrieval: Stream removed (recvmsg:Connection reset by peer (104))
+Video recording stopped...
+-- CPU governor set to ondemand
+
+No data collected - not saving.
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:07:39
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=3.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:05:55.347902676] [2078]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:05:55.373207547] [2120]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:05:55.397868917] [2120]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:05:55.404532732] [2120]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:05:55.404595010] [2120]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:05:55.411414380] [2078]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:05:55.413923528] [2120]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_09_30.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.7744576930999756 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.8928146362304688, y_m: -3.1946916580200195, z_m: -3.1645052433013916]
+Battery voltage: 23.26V
+Takeoff settled at alt=3.18m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/3 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/3 ---
+  [cutoff] altitude 5.27m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.27m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.25m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.25m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/3 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 4.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.76m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-07-57 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+
+
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:09:50
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=3.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:08:07.350074968] [2174]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:08:07.375276042] [2216]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:08:07.400558709] [2216]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:08:07.406857783] [2216]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:08:07.406926190] [2216]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:08:07.414552764] [2174]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:08:07.415023987] [2216]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable after 19.7s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_12_01.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+2.7669410705566406 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -2.8160321712493896, y_m: -1.672318458557129, z_m: -3.1410086154937744]
+Battery voltage: 22.94V
+Takeoff settled at alt=3.17m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 5.46m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.44m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.44m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.44m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 4.67m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.68m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 1.64m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 0.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 0.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  [cutoff] altitude 0.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 0.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  [cutoff] altitude 0.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 0.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 9/10 ---
+  [cutoff] altitude 0.83m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.83m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 0.83m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 0.83m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 10/10 ---
+  [HARD ABORT] altitude 0.60m drifted >2.5m from takeoff height 3.17m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-10-43 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ nano record_input_calibration.py
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:11:27
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:09:43.579905189] [2244]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:09:43.605144966] [2286]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:09:43.630357911] [2286]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:09:43.636664485] [2286]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:09:43.636731114] [2286]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:09:43.643663040] [2244]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:09:43.646933096] [2286]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_13_18.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.399197578430176 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -2.4085099697113037, y_m: -2.641160249710083, z_m: -7.382809162139893]
+Battery voltage: 22.59V
+Takeoff settled at alt=7.52m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.06m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 9.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[0.1 0.1 0.1 3. ]
+--- Repeat 5/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [HARD ABORT] altitude 4.63m drifted >2.5m from takeoff height 7.52m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-11-59 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:13:04
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:11:21.014793816] [2317]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:11:21.041346093] [2359]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:11:21.066005093] [2359]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:11:21.072391834] [2359]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:11:21.072459112] [2359]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:11:21.079480075] [2317]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:11:21.079939371] [2359]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_14_56.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.3992486000061035 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 3.193002939224243, y_m: -0.4539817273616791, z_m: -7.321966171264648]
+Battery voltage: 22.34V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.43m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[0.1 0.1 0.1 3. ]
+--- Repeat 7/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 5.91m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.91m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  [HARD ABORT] altitude 4.91m drifted >2.5m from takeoff height 7.43m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-13-45 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:14:17
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:12:34.148493217] [2390]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:12:34.175112309] [2432]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:12:34.200398383] [2432]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:12:34.206730031] [2432]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:12:34.206799124] [2432]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:12:34.214454198] [2390]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:12:34.214947457] [2432]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_16_09.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.393347263336182 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.018004298210144, y_m: -0.21553656458854675, z_m: -7.201565742492676]
+Battery voltage: 21.99V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.21m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[0.1 0.1 0.1 3. ]
+--- Repeat 2/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[0.1 0.1 0.1 3. ]
+--- Repeat 3/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  [cutoff] altitude 8.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+  step done: cmd=[0. 0. 0. 0.]
+  step done: cmd=[0.1 0.1 0.1 3. ]
+--- Repeat 5/10 ---
+  [HARD ABORT] altitude 4.63m drifted >2.5m from takeoff height 7.21m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-14-50 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+
+
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:18:25
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:16:41.400089606] [2480]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:16:41.426183402] [2522]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:16:41.450655773] [2522]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:16:41.457044680] [2522]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:16:41.457112977] [2522]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:16:41.464276014] [2480]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:16:41.464724310] [2522]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_20_16.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.330405235290527 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.8185524344444275, y_m: 0.3860228955745697, z_m: -7.215573787689209]
+Battery voltage: 21.80V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.23m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/3 ---
+  [cutoff] altitude 5.70m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.70m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.70m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.70m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/3 ---
+  [cutoff] altitude 4.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/3 ---
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-18-45 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:19:11
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:17:27.569846023] [2550]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:17:27.597283486] [2592]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:17:27.621998375] [2592]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:17:27.628327968] [2592]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:17:27.628394356] [2592]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media2 and ISP device /dev/media1
+[0:17:27.635765356] [2550]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:17:27.636507079] [2592]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_21_02.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.813385963439941 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.1161084175109863, y_m: 3.369436025619507, z_m: -7.4449028968811035]
+Battery voltage: 21.53V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.50m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/3 ---
+  [cutoff] altitude 6.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.98m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.98m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.98m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/3 ---
+  [cutoff] altitude 5.54m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.54m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.56m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.58m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/3 ---
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.96m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-19-31 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ sudo shutdown -h now
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Tue Jul 21 17:08:49 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:20:52
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=3, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:01:01.608212000] [1863]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:01:01.627487611] [1905]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:01:01.652613388] [1905]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:01:01.658896574] [1905]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:01:01.658968425] [1905]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:01:01.666062444] [1863]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:01:01.666558555] [1905]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+  is_armable after 8.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_24_19.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.751990795135498 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.8286659717559814, y_m: -1.9036638736724854, z_m: -7.54641056060791]
+Battery voltage: 24.43V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.66m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/3 ---
+  [cutoff] altitude 9.17m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.17m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/3 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/3 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.18m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.20m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.20m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-21-26 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+
+
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ nano record_input_calibration.py
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:22:11
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:02:20.701417360] [1934]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:02:20.726397175] [1976]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:02:20.751625082] [1976]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:02:20.757961564] [1976]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:02:20.758033582] [1976]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:02:20.764976471] [1934]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:02:20.767119415] [1976]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+  is_armable after 19.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_25_48.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.511887073516846 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.6688357591629028, y_m: 1.4066883325576782, z_m: -7.386897087097168]
+Battery voltage: 23.94V
+Status: CRITICAL: Failsafe activated
+Takeoff settled at alt=7.52m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  [cutoff] altitude 9.08m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.06m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.06m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.06m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 9.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.09m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Status: INFO: Pilot took over using sticks
+--- Repeat 9/10 ---
+  [HARD ABORT] altitude 10.58m drifted >2.5m from takeoff height 7.52m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-23-13 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh doctor@192.168.0.86
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Tue Jul 21 17:20:33 2026 from 192.168.0.90
+(denv) doctor@doctor:~ $ cd ~/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:24:17
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:04:26.333519618] [2025]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:04:26.358466581] [2067]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:04:26.383106340] [2067]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:04:26.389479229] [2067]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:04:26.389550229] [2067]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:04:26.396870692] [2025]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:04:26.398713989] [2067]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_27_36.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.4525861740112305 7.0
+Switching to OFFBOARD mode!
+Status: CRITICAL: Failsafe activated
+-- Starting offboard (attempt 1/5)
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+Status: CRITICAL: Switching to Offboard is currently not available
+-- Starting offboard (attempt 2/5)
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+-- Starting offboard (attempt 3/5)
+Status: CRITICAL: Switching to Offboard is currently not available
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+-- Starting offboard (attempt 4/5)
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+Status: INFO: Using default takeoff altitude: 8.4 m
+-- Starting offboard (attempt 5/5)
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 5.75m, target 7.00m)
+Altitude reached via OFFBOARD climb: 6.33m
+PositionBody: [x_m: 0.7567615509033203, y_m: -0.34475934505462646, z_m: -6.331603050231934]
+Battery voltage: 23.25V
+Takeoff settled at alt=6.58m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.09m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.12m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.12m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 8.10m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.10m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.10m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.10m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  [cutoff] altitude 5.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  [cutoff] altitude 4.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.94m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.10m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.12m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.12m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Status: INFO: Pilot took over using sticks
+--- Repeat 6/10 ---
+  [HARD ABORT] altitude 9.44m drifted >2.5m from takeoff height 6.58m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-24-47 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:28:24
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:08:33.761554119] [2103]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:08:33.787296712] [2145]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:08:33.812379008] [2145]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:08:33.818881137] [2145]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:08:33.818950378] [2145]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:08:33.826484582] [2103]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:08:33.827016823] [2145]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_31_43.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.369616985321045 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.15278147161006927, y_m: 1.733893871307373, z_m: -7.2800068855285645]
+Battery voltage: 22.82V
+Takeoff settled at alt=7.38m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.90m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 9.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.88m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.95m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  [cutoff] altitude 9.47m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.47m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.45m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.45m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.85m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.86m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.86m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 8.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 8.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 8.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.87m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.85m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 9/10 ---
+  [HARD ABORT] altitude 4.80m drifted >2.5m from takeoff height 7.38m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-29-07 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:29:29
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:09:38.421988173] [2174]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:09:38.447821932] [2216]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:09:38.472793303] [2216]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:09:38.479093580] [2216]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:09:38.479165414] [2216]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:09:38.486472303] [2174]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:09:38.487106691] [2216]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: horizontal velocity unstable
+Status: CRITICAL: Preflight Fail: position estimate error
+  is_armable after 14.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_33_02.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Status: CRITICAL: Failsafe activated
+Status: INFO: Landing detected
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Disarmed by landing
+AUTO_TAKEOFF plateaued at alt=0.01m (target 6.30m) after 12s -- this is expected PX4 behavior, not an error. Will finish the climb via our own OFFBOARD position setpoint next.
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+[FC] PX4 reports ON_GROUND — LANDED=True
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 0.01m, target 7.00m)
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+
+Error: OFFBOARD climb did not reach 6.30m within 15s (current alt=0.01m) -- this is a closed-loop position command, so falling short here is a genuine problem (thrust authority, EKF, or battery), not just AUTO_TAKEOFF's known fixed-duration quirk. Investigate before retrying.
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/record_input_calibration.py", line 155, in main
+    await FC_node.arm_and_takeoff(takeoff_hgt=TAKEOFF_HEIGHT)
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 395, in arm_and_takeoff
+    raise RuntimeError(
+    ...<6 lines>...
+    )
+RuntimeError: OFFBOARD climb did not reach 6.30m within 15s (current alt=0.01m) -- this is a closed-loop position command, so falling short here is a genuine problem (thrust authority, EKF, or battery), not just AUTO_TAKEOFF's known fixed-duration quirk. Investigate before retrying.
+Aborting - commanding PX4 land.
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+No data collected - not saving.
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:30:59
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:11:08.878518656] [2248]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:11:08.902659526] [2290]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:11:08.927288749] [2290]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:11:08.933661156] [2290]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:11:08.933724952] [2290]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:11:08.940453915] [2248]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:11:08.951020489] [2290]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_34_18.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.491653919219971 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.3308603763580322, y_m: 2.1398003101348877, z_m: -7.385647296905518]
+Battery voltage: 22.32V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.52m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 9.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.07m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 9.35m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.33m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 9.33m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 9.31m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Status: INFO: Pilot took over using sticks
+--- Repeat 4/10 ---
+  [cutoff] altitude 5.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.69m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  [cutoff] altitude 5.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [HARD ABORT] altitude 5.01m drifted >2.5m from takeoff height 7.52m
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-31-27 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:31:39
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:11:48.765588762] [2317]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:11:48.790658947] [2359]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:11:48.816116743] [2359]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:11:48.822471132] [2359]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:11:48.822541632] [2359]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:11:48.829867466] [2317]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:11:48.830440077] [2359]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 1.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_34_59.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.810986042022705 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.26775047183036804, y_m: 2.252072334289551, z_m: -7.518989562988281]
+Status: CRITICAL: Failsafe activated
+Battery voltage: 22.16V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.31m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 5.45m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.45m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.45m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.47m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.77m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.77m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 5.27m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.30m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.32m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.34m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  step done: cmd=[0. 0. 0. 0.]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.81m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 9/10 ---
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.79m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.77m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 10/10 ---
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.80m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.78m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-32-24 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:32:50
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:12:59.445003331] [2387]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:12:59.471551609] [2429]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:12:59.496579664] [2429]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:12:59.502907701] [2429]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:12:59.502973979] [2429]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:12:59.509933053] [2387]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:12:59.511004035] [2429]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+  is_armable after 0.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_36_09.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Status: CRITICAL: Failsafe activated
+Status: INFO: Landing detected
+Status: INFO: Disarmed by landing
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+^C
+Interrupted by user
+gRPC error during odometry retrieval: Stream removed (Socket closed)
+gRPC error during acceleration retrieval: Stream removed (Socket closed)
+gRPC error during status text retrieval: Stream removed (Socket closed)
+gRPC error during landed_state retrieval: Stream removed (Socket closed)
+Video recording stopped...
+-- CPU governor set to ondemand
+
+No data collected - not saving.
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:33:08
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:13:17.576581265] [2455]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:13:17.603104728] [2497]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:13:17.627656431] [2497]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:13:17.634028709] [2497]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:13:17.634097598] [2497]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:13:17.641119931] [2455]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:13:17.643789283] [2497]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 4.0s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_36_30.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.399657249450684 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.5599687695503235, y_m: 2.8993568420410156, z_m: -7.301677703857422]
+Battery voltage: 21.90V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.38m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  [cutoff] altitude 5.86m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.86m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.86m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.84m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [HARD ABORT] altitude 4.58m drifted >2.5m from takeoff height 7.38m
+  step done: cmd=[0. 0. 0. 0.]
+Hard-aborting profile, landing immediately.
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-33-27 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:33:48
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:13:57.841316518] [2524]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:13:57.869007537] [2567]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:13:57.892861796] [2567]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:13:57.899122129] [2567]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:13:57.899192352] [2567]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:13:57.906163852] [2524]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:13:57.906602092] [2567]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_37_07.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.360292434692383 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.7073445320129395, y_m: 2.5104668140411377, z_m: -7.2365217208862305]
+Battery voltage: 21.76V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.24m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 3/10 ---
+  [cutoff] altitude 5.64m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.64m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.64m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.66m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  [cutoff] altitude 5.74m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.74m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 5.74m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.72m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.73m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 9/10 ---
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.71m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.70m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 10/10 ---
+  [cutoff] altitude 4.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 4.89m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 4.92m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-34-27 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 record_input_calibration.py
+All modules imported successfully
+============================================================
+Hardware INPUT Calibration
+============================================================
+Started: 2026-07-21 17:34:59
+rate amp=0.1 rad/s, thrust amp=3.0 N, repeats=10, takeoff height=7.0 m
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[0:15:09.110630180] [2598]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:15:09.136346291] [2640]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:15:09.161125291] [2640]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:15:09.167469161] [2640]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:15:09.167538309] [2640]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media3 and ISP device /dev/media1
+[0:15:09.175054902] [2598]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:15:09.175494457] [2640]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+Waiting for image streaming
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-21/17_38_18.ulg
+Status: INFO: Using default takeoff altitude: 8.4 m
+Status: INFO: Takeoff detected
+Altitude reached via AUTO_TAKEOFF
+6.796884536743164 7.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.9972605109214783, y_m: 3.398872137069702, z_m: -7.4716081619262695]
+Status: CRITICAL: Failsafe activated
+Battery voltage: 21.33V
+*** WARNING: battery voltage outside the confirmed 22.4-24.0V HOVER_THROTTLE_NORM=0.388 plateau -- this run risks a systematic climb/sink bias. Consider aborting and re-checking hover first. ***
+Takeoff settled at alt=7.56m (soft cutoff >1.5m, hard abort >2.5m)
+--- Repeat 1/10 ---
+  [cutoff] altitude 6.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.99m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.99m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 2/10 ---
+  [cutoff] altitude 5.95m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.98m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.98m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Status: EMERGENCY: Low battery level
+Status: CRITICAL: Failsafe activated
+--- Repeat 3/10 ---
+  [cutoff] altitude 6.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 4/10 ---
+  [cutoff] altitude 6.05m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.03m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 5/10 ---
+  [cutoff] altitude 5.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.93m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.95m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.95m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 6/10 ---
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.00m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 7/10 ---
+  [cutoff] altitude 5.11m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.11m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 5.14m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.16m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 8/10 ---
+  [cutoff] altitude 6.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 9/10 ---
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 5.97m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.01m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.04m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+--- Repeat 10/10 ---
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[-0.1 -0.1 -0.1 -3. ] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0. 0. 0. 0.] [cutoff]
+  [cutoff] altitude 6.02m drifted >1.5m - ending this step early, profile continues
+  step done: cmd=[0.1 0.1 0.1 3. ] [cutoff]
+Landing...
+Status: INFO: Landing at current position
+Video recording stopped...
+-- CPU governor set to ondemand
+
+Input-calibration data saved -> Test_Data/Calibration/Input/Tue Jul 21 17-35-34 2026
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ sudo shutdown -h now
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32>
