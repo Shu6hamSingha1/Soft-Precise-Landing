@@ -87,7 +87,7 @@ except ImportError as e:
     print(f"Import failed: {e}")
     sys.exit(1)
 
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "10.0"))
 HOLD_S = float(os.environ.get("THROTTLE_HOLD_S", "1.0"))
 THROTTLE_LIST = [float(v) for v in
                   os.environ.get("THROTTLE_LIST", "0.388").split(",")]
@@ -117,7 +117,7 @@ G_STD = 9.81  # standard gravity, m/s^2 -- target a_down at true level hover
 #   MAX_CLIMB_RATE_ABORT - also a HARD abort (dangerous velocity regardless
 #                        of displacement so far).
 ALT_MARGIN_M = float(os.environ.get("THROTTLE_ALT_MARGIN_M", "0.5"))
-ALT_HARD_MARGIN_M = float(os.environ.get("THROTTLE_ALT_HARD_MARGIN_M", "1.0"))
+ALT_HARD_MARGIN_M = float(os.environ.get("THROTTLE_ALT_HARD_MARGIN_M", "1.5"))
 MAX_CLIMB_RATE_ABORT = float(os.environ.get("THROTTLE_MAX_CLIMB_RATE", "1.0"))  # m/s
 
 LOG_DIR = os.environ.get("THROTTLE_LOG_DIR", "Test_Data/HoverThrottle")
@@ -167,9 +167,14 @@ async def _wait_landed(fc, timeout=15.0):
 
 async def _run_sine_sweep(fc, takeoff_alt):
     """Continuous sinusoidal throttle sweep (zero body rate throughout).
-    Returns (sine_time, sine_throttle, hard_abort) -- the commanded timeline,
-    saved alongside the usual telemetry for later alignment against
-    fc.getLogData()'s Acceleration / IMU Timestamp."""
+    Returns (sine_time, sine_throttle, hard_abort, imu_ts_ref) -- the commanded
+    timeline plus an IMU-clock reference timestamp captured at the SAME instant
+    as sine_time's own t=0, so _fit_sine_sweep can align the two clocks
+    correctly. (2026-07-20 fix: previously used imu_ts[0], the FIRST IMU
+    sample since FC connection -- tens of seconds before arm/takeoff/settle
+    finished -- which silently fit accelerometer data from BEFORE the sweep
+    even started against the sine throttle profile, producing wildly
+    inconsistent/sign-flipping slope estimates.)"""
     duration = SINE_PERIOD_S * SINE_CYCLES
     print(f"Sine sweep: center={SINE_CENTER}, amp={SINE_AMP}, period={SINE_PERIOD_S}s, "
           f"cycles={SINE_CYCLES} (duration={duration:.1f}s)")
@@ -178,9 +183,12 @@ async def _run_sine_sweep(fc, takeoff_alt):
     hard_abort = False
     t0 = time.perf_counter()
     last_notice = -1.0
+    log0 = fc.getLogData()
+    imu_ts_list = log0.get("IMU Timestamp", [])
+    imu_ts_ref = imu_ts_list[-1] if len(imu_ts_list) else None
     while (time.perf_counter() - t0) < duration:
         t = time.perf_counter() - t0
-        throttle = SINE_CENTER + SINE_AMP * np.sin(2 * np.pi * t / SINE_PERIOD_S)
+        throttle = SINE_CENTER - SINE_AMP * np.sin(2 * np.pi * t / SINE_PERIOD_S)
         await fc.send_attitude_rate(0.0, 0.0, 0.0, throttle)
         sine_time.append(t)
         sine_throttle.append(throttle)
@@ -203,10 +211,10 @@ async def _run_sine_sweep(fc, takeoff_alt):
 
         await asyncio.sleep(0.02)
 
-    return np.array(sine_time), np.array(sine_throttle), hard_abort
+    return np.array(sine_time), np.array(sine_throttle), hard_abort, imu_ts_ref
 
 
-def _fit_sine_sweep(fc, sine_time, sine_throttle):
+def _fit_sine_sweep(fc, sine_time, sine_throttle, imu_ts_ref):
     """Align commanded throttle onto the IMU timeline and linear-fit IMU
     accelerometer specific force (a_down) vs commanded throttle. Reports the
     throttle at which the fit crosses a_down = -G_STD (the expected specific
@@ -221,10 +229,14 @@ def _fit_sine_sweep(fc, sine_time, sine_throttle):
         print("[sine fit] insufficient data to fit.")
         return None
     a_down = np.array([a.down_m_s2 for a in accel])
-    # sine_time is relative to the sweep's own start; align IMU timestamps
-    # (relative to FC start) onto that same relative timeline via the
-    # sweep's own first/last bounds.
-    imu_rel = imu_ts - imu_ts[0]
+    if imu_ts_ref is None:
+        print("[sine fit] no IMU reference timestamp captured at sweep start -- cannot align.")
+        return None
+    # sine_time is relative to the sweep's own t=0 (a time.perf_counter()
+    # origin); imu_ts_ref is the IMU-clock timestamp captured at that exact
+    # same instant, so subtracting it (not imu_ts[0], which is from FC
+    # connection time, well before takeoff) correctly aligns the two clocks.
+    imu_rel = imu_ts - imu_ts_ref
     mask = (imu_rel >= sine_time[0]) & (imu_rel <= sine_time[-1])
     imu_rel, a_down = imu_rel[mask], a_down[mask]
     if len(imu_rel) < 2:
@@ -294,10 +306,10 @@ async def main():
         sine_fit = None
 
         if THROTTLE_MODE == "sine":
-            sine_time, sine_throttle, sine_hard_abort = await _run_sine_sweep(fc, takeoff_alt)
+            sine_time, sine_throttle, sine_hard_abort, imu_ts_ref = await _run_sine_sweep(fc, takeoff_alt)
             sweep_aborted = sine_hard_abort
             if not sine_hard_abort:
-                sine_fit = _fit_sine_sweep(fc, sine_time, sine_throttle)
+                sine_fit = _fit_sine_sweep(fc, sine_time, sine_throttle, imu_ts_ref)
 
             print("\nLanding...")
             await fc.vehicle.action.land()

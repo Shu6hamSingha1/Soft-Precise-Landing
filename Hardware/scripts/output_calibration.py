@@ -40,6 +40,41 @@ os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 # CAM_ANALOGUE_GAIN per lighting if the default under/over-exposes.
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 
+# Diagnosed 2026-07-26: PlanarFeatureMap SHADOW mode costs ~9-13ms/frame
+# (img_data.py's own [TIMING] stage "1b_planar_map_shadow") but on the Pi it
+# is PURELY diagnostic - self._planar_map's output only feeds its own
+# logging (Planar Map Center/Confidence) and its own loop_closure_correct
+# self-update, never getOptFlowAngVel/getImgFeatureParam/the fusion EKF (see
+# reference_project_skills-style note: Pi's port never got Gazebo's
+# _planar_map_primary ACTIVE rescue/override consumer, only the shadow
+# logger). Confirmed this by reading img_data.py directly - no downstream
+# consumer of the corner/flow pipeline reads it. Disabling it here changes
+# NOTHING about the calibration-relevant Feature Params/Opt Flow Ang Vel
+# signals, and reclaims a real chunk of the ~19Hz-on-battery loop budget
+# found investigating the mount-rotation check's low sample counts. Only
+# disabled for CALIBRATION RECORDING specifically (this script) - left ON
+# by default elsewhere (e.g. hardware_landing.py) where the shadow log may
+# still be worth collecting during real flight tests.
+os.environ.setdefault("PLANAR_MAP_SHADOW", "0")
+
+# CORRECTED 2026-07-26: disabling PLANAR_MAP_SHADOW alone does NOT stop the
+# planar-map computation - img_data.py's guard is
+# `if (self._planar_map_shadow or self._planar_map_primary) and ...`, and
+# self._planar_map_primary (env PLASMC_PLANAR_MAP_PRIMARY) defaults ON
+# (added 2026-07-25, mirrors Gazebo's PLASMC_PLANAR_MAP_PRIMARY). This one
+# is NOT purely diagnostic like shadow mode - it's an ACTIVE RESCUE/OVERRIDE
+# consumer that can substitute a map-PREDICTED corner position for the real
+# ArUco decode when detection struggles (see "S Estimator Tag" ==
+# 'planar_map_rescue'/'lstsq+klt+override' in recorded Img_Data.npy - already
+# confirmed firing on real GOOD-verdict calibration takes, e.g. 19 rescue
+# samples in one run). Same violation-of-intent as leaving FLOW_DH_MAX/
+# FLOW_DS_MAX/FLOW_LOOM_DECOUPLE on would be: this script's whole purpose is
+# recording TRUE RAW flow (see the module's own top-of-file print/comment),
+# and a map-predicted substitute is not raw data regardless of how well the
+# map itself performs. Force off here for BOTH reasons (frame-rate AND data
+# integrity) - do not treat this as merely a performance knob.
+os.environ.setdefault("PLASMC_PLANAR_MAP_PRIMARY", "0")
+
 from flight_controller import FC
 import img_data as ID
 # from numerical_methods import RK5
@@ -55,7 +90,10 @@ print(f"[output_calibration] recording TRUE raw flow: "
 # # Setup variables
 QTM_IP = '192.168.0.111'
 
-SLEEP_TIME = 1/30
+SLEEP_TIME = 1/200   # match hardware_landing.py:45 (was 1/30 - 6.7x slower than the
+                      # operational regime this script is calibrating for; same
+                      # mismatch PX4_Gazebo's record_output_calibration.py already
+                      # fixed for the same reason - see its own SLEEP_TIME comment)
 
 # Companion Computer Details:
 CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
@@ -317,7 +355,12 @@ if __name__ == "__main__":
             timestamp = time.ctime().replace(':', '-')
 
             # Create a directory named based on timestamp
-            dir_name = f"Test_Data/Calibration/{timestamp}"
+            # Saves under Output/ (2026-07-26) - matches the repo's own
+            # Hardware/Test_Data/Calibration/Output/ convention; previously
+            # saved one level up (bare Test_Data/Calibration/<timestamp>),
+            # which put every output-cal run alongside Input/Camera and
+            # needed a manual sort-and-move into Output/ after the fact.
+            dir_name = f"Test_Data/Calibration/Output/{timestamp}"
             os.makedirs(dir_name)
 
             # Save files inside the folder 

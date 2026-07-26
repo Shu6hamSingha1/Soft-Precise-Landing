@@ -3,10 +3,25 @@
 # This thread is created in ardupilot thread.
 
 import asyncio
+import os
 from threading import Thread
 import qtm
 import time
 import xml.etree.ElementTree as ET
+
+# Found 2026-07-23 (GIL-contention diagnosis, output_calibration.py dry run):
+# stream_frames() was called with its default frames='allframes' - QTM's own
+# NATIVE capture rate (often 100-300+Hz), uncapped. Every packet fires
+# _on_packet on QTMWrapper's own thread, competing for the single Python GIL
+# with IMG_PROCESSOR's thread - confirmed live: ring_flow/aruco_detect (pure
+# CPU-bound cv2 calls, unrelated to QTM) cost 3-4x MORE wall-clock time with
+# QTM connected than without (7-8ms->19-28ms, 5ms->13-24ms), same computation,
+# just starved of GIL time between calls. Nothing else consumes GT poses
+# faster than the main poll loop's own rate (200Hz, output_calibration.py),
+# so streaming faster than that is pure wasted GIL-contention with no benefit.
+# qtm's own stream_frames() supports 'frequency:n' for exactly this - see its
+# docstring. Env-overridable in case a future need wants a different cap.
+QTM_STREAM_FREQUENCY = int(os.environ.get("QTM_STREAM_FREQUENCY_HZ", "100"))
 
 # body_keys = ["UAV"]
 body_keys = ["UAV", "target"]
@@ -93,8 +108,18 @@ class  QTMWrapper(Thread):
     
     async def _life_cycle(self):
         await self._connect()
+        # Found 2026-07-23 (GIL-contention pinpointing): this idle loop's only
+        # job is noticing self._stay_open flip to False for shutdown - it was
+        # waking 100x/sec UNCONDITIONALLY, for the entire connection lifetime,
+        # completely independent of QTM_STREAM_FREQUENCY_HZ (that only caps
+        # _on_packet's own call rate, not this). Every wake requires the
+        # asyncio loop to run its own scheduling bookkeeping (GIL-acquiring
+        # Python bytecode), competing with IMG_PROCESSOR's thread 100x/sec
+        # regardless of actual packet traffic - capping the packet rate alone
+        # never touched this. A recording session runs for many seconds; a
+        # ~200ms shutdown-check latency here is imperceptible in practice.
         while self._stay_open:
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0.2)
         if self.connected:
             await self._close()
 
@@ -113,7 +138,11 @@ class  QTMWrapper(Thread):
         self._body_index = create_body_index(xml_string)
 
         # await self._connection.stream_frames(components=['6d'], on_packet=self._on_packet)
-        await self._connection.stream_frames(components=['6deuler'], on_packet=self._on_packet)
+        # frames=f'frequency:{...}' caps QTM's stream rate - see QTM_STREAM_FREQUENCY
+        # comment above (was the default 'allframes' = QTM's uncapped native rate).
+        await self._connection.stream_frames(
+            frames=f'frequency:{QTM_STREAM_FREQUENCY}',
+            components=['6deuler'], on_packet=self._on_packet)
     
     def _on_packet(self, packet):
         if self._start_time is None:
@@ -137,7 +166,16 @@ class  QTMWrapper(Thread):
             else:
                 print(f"{key} not found in MoCap...")
         self._pose_stamp = time.perf_counter()
-        time.sleep(0.01)
+        # REMOVED 2026-07-23: a synchronous time.sleep(0.01) used to sit here.
+        # _on_packet is invoked from the asyncio event loop (via qtm's
+        # stream_frames callback) - a blocking sleep here doesn't rate-limit
+        # QTM cleanly, it stalls the ENTIRE event loop for 10ms on every
+        # single mocap packet, including output_calibration.py's main poll
+        # loop (now 200 Hz, see its SLEEP_TIME comment) and anything else
+        # running concurrently (FC telemetry, image processing callbacks).
+        # No comment ever justified it as intentional, unlike every other
+        # deliberate sleep in this codebase - looks like an accidental
+        # throttle, not a design choice.
 
     def getPose(self):
         return self._pose

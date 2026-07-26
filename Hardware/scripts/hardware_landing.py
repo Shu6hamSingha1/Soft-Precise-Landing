@@ -45,8 +45,25 @@ TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 200
 
 # *** PLACEHOLDER - replace with this airframe's own calibration ***
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.388"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "34.8"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.41"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
+
+# *** Rate-axis command correction, r^2-weighted input-cal cross-check
+# (2026-07-21, Hardware/scripts/analyze_input_calibration.py) ***
+# gain = achieved/commanded from input-cal regression; dividing the intended
+# command by gain (== multiplying by these factors) should make the ACHIEVED
+# rate match what was originally intended. wy is the least-supported of the
+# three (n_eff=4.69 vs wx 6.06 / wz 10.02 after r^2-weighting) -- treat with
+# more caution than wx/wz on a first flight. See
+# Hardware/Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt for the
+# full derivation. Set RATE_CORRECTION_ENABLED=0 to disable and fall back to
+# uncorrected commands.
+RATE_CORRECTION_ENABLED = os.environ.get("RATE_CORRECTION_ENABLED", "1") != "0"
+RATE_CORRECTION = np.array([
+    float(os.environ.get("RATE_CORRECTION_WX", "0.645")),
+    float(os.environ.get("RATE_CORRECTION_WY", "0.720")),
+    float(os.environ.get("RATE_CORRECTION_WZ", "0.689")),
+]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
 FINAL_DESCENT_THROTTLE = float(os.environ.get("LANDING_FINAL_DESCENT_THROTTLE",
@@ -64,7 +81,7 @@ def convert_2_sys_cmd(cmd):
     constants above must be calibrated for this airframe before flight."""
     thrust_norm = float(np.clip(
         HOVER_THROTTLE_NORM - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
-    rates = np.array(cmd[:3], dtype=float)
+    rates = np.array(cmd[:3], dtype=float) * RATE_CORRECTION
     return np.append(RAD2DEG * rates, thrust_norm)
 
 

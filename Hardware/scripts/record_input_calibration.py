@@ -63,18 +63,18 @@ except ImportError as e:
 REF_RAD_OPT_FLOW = float(os.environ.get("LANDING_REF_RAD_OPT_FLOW", "-0.30"))
 DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
                                    np.deg2rad(float(os.environ.get("DES_ALPHA_DEG", "0.0")))])
-TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
+TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "7.0"))
 SLEEP_TIME = 1 / 100
 
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.388"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "34.8"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.41"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
 
-CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.05"))     # rad/s
-CMD_THRUST_AMP_N = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", "1.0"))  # Newtons excess-over-hover
-N_REPEATS = int(os.environ.get("INPUT_CAL_N_REPEATS", "3"))
-STEP_HOLD_S = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "0.5"))
+CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.1"))     # rad/s
+CMD_THRUST_AMP_N = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", "3.0"))  # Newtons excess-over-hover
+N_REPEATS = int(os.environ.get("INPUT_CAL_N_REPEATS", "10"))
+STEP_HOLD_S = float(os.environ.get("INPUT_CAL_STEP_HOLD_S", "1.0"))
 
-CONTROL_TIMEOUT_S = float(os.environ.get("INPUT_CAL_TIMEOUT_S", "60.0"))
+CONTROL_TIMEOUT_S = float(os.environ.get("INPUT_CAL_TIMEOUT_S", "90.0"))
 
 # Safety, two-tier (2026-07-10 split, same pattern as find_hover_throttle.py):
 #   ALT_MARGIN_M      - SOFT cutoff. Ends the current profile STEP early
@@ -92,7 +92,7 @@ ALT_HARD_MARGIN_M = float(os.environ.get("INPUT_CAL_ALT_HARD_MARGIN_M", "2.5"))
 # next repeat, resetting accumulated drift/velocity. Not applied between the
 # 4 sub-steps WITHIN a repeat -- that would destroy the intended
 # hover/down/hover/up transition shape each repeat characterizes.
-RECENTER_HOLD_S = float(os.environ.get("INPUT_CAL_RECENTER_HOLD_S", "1.0"))
+RECENTER_HOLD_S = float(os.environ.get("INPUT_CAL_RECENTER_HOLD_S", "2.0"))
 
 
 def convert_2_sys_cmd(cmd):

@@ -681,6 +681,23 @@ class Controller(Thread):
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
     @property
+    def CBF_OVERFLOW(self):
+        """True iff the CBF's own per-corner FoV-margin classification found the current
+        CBF corner source (small-marker-preferred, see cone-angle computation) breaching
+        the margin on OPPOSITE sides (spanning -- still over target, benign). Signals
+        handover-readiness on the BIG marker; a future consumer could combine this with
+        small-slot map confidence to decide whether to actually switch primary. The CBF
+        only SIGNALS here; it does not force any switch itself."""
+        return bool(self._cbf_overflow)
+
+    @property
+    def CBF_DRIFT_OFF(self):
+        """True iff the CBF's own per-corner FoV-margin classification found a ONE-SIDED
+        breach (target visibility genuinely failing) -- the CBF's own job to prevent, not
+        just observe."""
+        return bool(self._cbf_drift_off)
+
+    @property
     def MARKER_EXTENT_PX(self):
         """Marker SPAN (px) — corner-to-corner size of the latest detection.
         SCALE-FREE proximity indicator: a large span means the marker is BIG
@@ -1040,6 +1057,33 @@ class Controller(Thread):
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
+        # CBF SMALL-MARKER PREFERENCE + OVERFLOW/DRIFT-OFF (2026-07-25 port from
+        # PX4_Gazebo/src/controller.py, 2026-07-17 user design): the CBF needs more tilt
+        # headroom than the flow pipeline does -- flow (h_x/h_y) needs the BIG marker's
+        # wider corner spread to avoid a rank-deficient lstsq (stays big-priority,
+        # unaffected by this), but the CBF's own FoV margin gets eaten by the big
+        # marker's own overflow near touchdown, giving it LESS headroom right when it
+        # needs more. Read the SMALL slot from PlanarFeatureMap (independent of which
+        # marker is "primary" for flow/s) once it's confidently mapped; fall back to
+        # whatever's live otherwise.
+        self._cbf_small_conf_min = float(os.environ.get("CBF_SMALL_SLOT_CONF_MIN", "0.5"))
+        # HYSTERESIS (found via Gazebo's IC4 regression on first validation pass): a raw
+        # per-frame threshold check has ZERO persistence -- every other confidence gate in
+        # this codebase (rescue gate, STALE_THRESH, _rigid_fail_streak) uses immediate-
+        # off/N-frame-persistence-on hysteresis specifically to prevent flicker near the
+        # boundary. Without it, whenever get_slot_confidence hovers near
+        # CBF_SMALL_SLOT_CONF_MIN, the CBF's corner source (and therefore
+        # d_min_fov/theta_cone) can jump discontinuously frame-to-frame between the big
+        # marker's real geometry and the small marker's mapped geometry -- confirmed live
+        # in Gazebo: theta_cone collapsed near-zero for a continuous 5.6s stretch
+        # immediately preceding a NEW target_lost=DRIFT_OFF that wasn't present before
+        # this change.
+        self._cbf_small_slot_on = False
+        self._cbf_small_slot_streak = 0
+        self._cbf_small_slot_on_frames = int(os.environ.get("CBF_SMALL_SLOT_ON_FRAMES", "5"))
+        self._cbf_overflow = False
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None
         self._w_u = []
         self._B_T = []
         self._u = []
@@ -2199,19 +2243,94 @@ class Controller(Thread):
         # 3) Per-corner pixel margins — get latest 4 corners from img_node
         # _feature_pts[-1] is a [prev, curr] frame pair; [-1][1] is current 4 corners.
         # Raw corners are in OpenCV top-left coords; convert to image-centered.
-        d_min_fov = 0.0
+        # CBF small-marker preference (2026-07-25 port, see __init__ comment): prefer
+        # PlanarFeatureMap's secondary (= smaller, by construction) slot when it's
+        # confidently mapped; fall back to _feature_pts (whatever's live -- normally the
+        # big marker until it's gone) otherwise. Both sources go through the SAME
+        # freshness discipline: _feature_pts is only trusted via FEATURE_PTS_FRESH; the
+        # small-slot read is only trusted via get_slot_confidence.
+        cbf_corners = None
+        cbf_corners_src = 'none'
         try:
-            fp_list = self._img_node._feature_pts
-            if len(fp_list) > 0:
-                raw_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+            _pm = getattr(self._img_node, '_planar_map', None)
+            _sec = None
+            _sec_conf = 0.0
+            if _pm is not None and getattr(_pm, 'initialized', False):
+                _sec = _pm.secondary_slot_name()
+                _sec_conf = _pm.get_slot_confidence(_sec) if _sec is not None else 0.0
+            # HYSTERESIS: immediate-off (any sub-threshold frame drops the streak and the
+            # switch instantly), N-frame persistence before switching ON -- see __init__
+            # comment. Prevents the corner-source (and therefore d_min_fov/theta_cone)
+            # from flickering between big-marker-real and small-marker-mapped geometry
+            # whenever confidence hovers near the threshold.
+            if _sec is not None and _sec_conf >= self._cbf_small_conf_min:
+                self._cbf_small_slot_streak += 1
+            else:
+                self._cbf_small_slot_streak = 0
+                self._cbf_small_slot_on = False
+            if not self._cbf_small_slot_on and self._cbf_small_slot_streak >= self._cbf_small_slot_on_frames:
+                self._cbf_small_slot_on = True
+            if self._cbf_small_slot_on and _sec is not None:
+                _sp = _pm.get_marker_frame_pts(slot=_sec)
+                if _sp is not None and len(_sp) == 4:
+                    cbf_corners = np.asarray(_sp, dtype=float)
+                    cbf_corners_src = 'small_slot'
+                else:
+                    self._cbf_small_slot_on = False   # prediction unavailable this frame -- fall back, don't hold a stale "on"
+        except (AttributeError, TypeError, ValueError):
+            cbf_corners = None
+        if cbf_corners is None:
+            # FRESHNESS GATE: _feature_pts HOLDS the last real corners indefinitely during
+            # a genuine total coast -- reading it unconditionally would feed the cone-clamp
+            # a frozen, arbitrarily-stale marker position as if it were live.
+            # FEATURE_PTS_FRESH reflects "raw OR rescue succeeded this frame" -- ONLY a
+            # genuine total coast (neither raw nor rescue) is unfresh here.
+            try:
+                if getattr(self._img_node, 'FEATURE_PTS_FRESH', True):
+                    fp_list = self._img_node._feature_pts
+                    if len(fp_list) > 0:
+                        cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+                        cbf_corners_src = 'feature_pts'
+            except (IndexError, AttributeError, TypeError):
+                cbf_corners = None
+
+        d_min_fov = 0.0
+        self._cbf_overflow = False
+        self._cbf_drift_off = False
+        self._cbf_drift_axis = None
+        if cbf_corners is not None:
+            try:
                 cx, cy = self._img_node.center
-                u_centered = raw_corners[:, 0] - cx
-                v_centered = raw_corners[:, 1] - cy
+                u_centered = cbf_corners[:, 0] - cx
+                v_centered = cbf_corners[:, 1] - cy
                 d_corner_x = rho_fov_curr[0] - np.abs(u_centered)   # (4,)
                 d_corner_y = rho_fov_curr[1] - np.abs(v_centered)   # (4,)
                 d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
-        except (IndexError, AttributeError, ValueError, TypeError):
-            d_min_fov = 0.0   # fall back to "no extra tilt allowed"
+
+                # OVERFLOW vs DRIFT-OFF: classify off the SAME per-corner margin
+                # d_min_fov is built from. OVERFLOW = corners breach on OPPOSITE sides of
+                # an axis (spanning -- still over target, benign, marks the BIG marker
+                # ready for handover). DRIFT-OFF = breach on ONE side only (target
+                # visibility genuinely failing -- the CBF's own job to prevent).
+                bx_neg = bool(np.any(u_centered < -rho_fov_curr[0]))
+                bx_pos = bool(np.any(u_centered >  rho_fov_curr[0]))
+                by_neg = bool(np.any(v_centered < -rho_fov_curr[1]))
+                by_pos = bool(np.any(v_centered >  rho_fov_curr[1]))
+                span = (bx_neg and bx_pos) or (by_neg and by_pos)
+                leaving = bx_neg or bx_pos or by_neg or by_pos
+                self._cbf_overflow = bool(leaving and span)
+                self._cbf_drift_off = bool(leaving and not span)
+                if self._cbf_drift_off:
+                    # worst (most negative) per-axis margin picks the pull-back axis/sign
+                    _cands = []
+                    if bx_neg and not bx_pos: _cands.append((0, -1, float(d_corner_x.min())))
+                    if bx_pos and not bx_neg: _cands.append((0, +1, float(d_corner_x.min())))
+                    if by_neg and not by_pos: _cands.append((1, -1, float(d_corner_y.min())))
+                    if by_pos and not by_neg: _cands.append((1, +1, float(d_corner_y.min())))
+                    if _cands:
+                        self._cbf_drift_axis = min(_cands, key=lambda c: c[2])[:2]
+            except (IndexError, ValueError, TypeError):
+                d_min_fov = 0.0
 
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
@@ -2262,10 +2381,10 @@ class Controller(Thread):
         # live code path. The barrier, two-phase δ, and Phase-2 fallback all live there;
         # this site only marshals the controller state into pure args.
         self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path
-        try:
-            corners = self._img_node._feature_pts[-1][1]
-        except (IndexError, AttributeError, TypeError):
-            corners = None
+        # Reuse the SAME cbf_corners computed above for d_min_fov (small-slot-preferred,
+        # freshness-gated) rather than re-reading raw _feature_pts here -- keeps the exact
+        # QP and the Phase-2 fallback cone consistent on which corner source they see.
+        corners = cbf_corners
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
         I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
