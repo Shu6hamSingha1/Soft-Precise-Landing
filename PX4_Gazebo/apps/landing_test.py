@@ -507,7 +507,19 @@ async def main(record = 'n'):
         GO_AROUND_MAX_ATTEMPTS = int(os.environ.get("LANDING_GO_AROUND_MAX_ATTEMPTS", "2"))
         GO_AROUND_CLIMB_TIMEOUT_S = float(os.environ.get("LANDING_GO_AROUND_CLIMB_TIMEOUT_S", "8.0"))
         GO_AROUND_ALT_TOL_M = float(os.environ.get("LANDING_GO_AROUND_ALT_TOL_M", "0.3"))
+        # PROGRESS GATE (2026-07-26, added after go-around regression found in IC5):
+        # go-around holds the CURRENT lateral position while climbing, so a retry resumes
+        # from the SAME (already-drifted) geometry that caused the loss. For a large-
+        # initial-offset/short-runway case (IC5) this just re-triggers the same DRIFT_OFF
+        # almost immediately, burning both attempts before any real descent happens --
+        # confirmed empirically: pre-fix IC5 "stuck near start altitude" rate 3/321 (0.9%),
+        # with go-around active 7/10 (70%). Gate: only spend another attempt if the vehicle
+        # genuinely descended (by GO_AROUND_MIN_PROGRESS_M) since the PREVIOUS loss -- if
+        # not, the retry can't be expected to do better, so go straight to the open-loop
+        # fallback instead of exhausting the budget on a repeat of the same failure.
+        GO_AROUND_MIN_PROGRESS_M = float(os.environ.get("LANDING_GO_AROUND_MIN_PROGRESS_M", "0.75"))
         go_around_attempts_used = 0
+        go_around_last_loss_alt = None   # ENU altitude at the previous loss, for the progress gate
 
         async def _go_around_climb():
             """Climb in place (hold current lateral NED position + yaw) to
@@ -685,8 +697,11 @@ async def main(record = 'n'):
                     except Exception:
                         failure_cause = "UNKNOWN"
                 if not in_final_descent:
-                    if go_around_attempts_used < GO_AROUND_MAX_ATTEMPTS:
+                    _made_progress = (go_around_last_loss_alt is None
+                                       or _alt_w < go_around_last_loss_alt - GO_AROUND_MIN_PROGRESS_M)
+                    if go_around_attempts_used < GO_AROUND_MAX_ATTEMPTS and _made_progress:
                         go_around_attempts_used += 1
+                        go_around_last_loss_alt = _alt_w
                         print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
                               f"[cause={failure_cause}] (landing already tagged failed). "
                               f"GO-AROUND attempt {go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}.")
@@ -707,11 +722,20 @@ async def main(record = 'n'):
                         continue
                     in_final_descent = True
                     final_descent_t0 = time_node.perf_counter()
-                    print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
-                          f"[cause={failure_cause}]. GO-AROUND attempts exhausted "
-                          f"({go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}). "
-                          f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
-                          f"to bring drone down safely; landing is tagged as failure.")
+                    if not _made_progress and go_around_attempts_used < GO_AROUND_MAX_ATTEMPTS:
+                        print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
+                              f"[cause={failure_cause}]. No descent progress since the last "
+                              f"loss (alt={_alt_w:.2f}m vs prior {go_around_last_loss_alt:.2f}m, "
+                              f"need >{GO_AROUND_MIN_PROGRESS_M:.2f}m) — skipping further "
+                              f"go-around retries ({go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS} "
+                              f"used). Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
+                              f"to bring drone down safely; landing is tagged as failure.")
+                    else:
+                        print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
+                              f"[cause={failure_cause}]. GO-AROUND attempts exhausted "
+                              f"({go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}). "
+                              f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
+                              f"to bring drone down safely; landing is tagged as failure.")
                 if target_lost:
                     # ACTIVE LEVELING (see FINAL_DESCENT_LEVEL_GAIN comment above) --
                     # scoped to the genuine TARGET_LOST failure only. The separate
