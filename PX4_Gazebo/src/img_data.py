@@ -549,14 +549,31 @@ class IMG_PROCESSOR(Thread):
         # tapered trust (folded into the SAME _cmap_last_trust/_amap_last_trust the
         # confidence-scaled KF r already uses -- the value itself is NOT touched, map stays
         # authoritative for what's reported); above MAP_RATE_REJECT, hard reject (None), same
-        # tier as a position/size plausibility failure. Defaults are PROVISIONAL -- derived
-        # from tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s;
-        # both failures: ~0.8-1.1/s in their final frames -- a 20-50x gap), not a proper
-        # n>=5 derivation; validate before trusting these numbers long-term.
+        # tier as a position/size plausibility failure. Centroid defaults derived from
+        # tonight's normal-vs-failure separation (normal fired stretches: ~0.02-0.04/s; both
+        # centroid failures: ~0.8-1.1/s in their final frames -- a 20-50x gap).
         self._map_rate_soft = float(os.environ.get("MAP_RATE_SOFT", "0.3"))
         self._map_rate_reject = float(os.environ.get("MAP_RATE_REJECT", "0.8"))
+        # ALPHA gets its OWN thresholds + a LONGER averaging window (2026-07-23, see
+        # feedback_alpha_rate_gate_separate_thresholds) -- reusing the centroid numbers/window
+        # length here was a mistake, found live: an IC3 rep's alpha drifted at a sustained
+        # ~0.26 rad/s for ~26 deg of uncorrected yaw error (root cause of a real miss), well
+        # UNDER MAP_RATE_SOFT=0.3 (never tapered) using the short 3-5 sample window shared
+        # with centroid. Checked why: decode alpha's own INSTANTANEOUS per-sample jitter
+        # (median|rate| 0.24/s, p95 0.83/s on a normal, non-drifting stretch of the SAME
+        # flight) already spans/exceeds the centroid-derived thresholds -- a short window is
+        # too noise-sensitive for alpha to separate real drift from ordinary jitter. Over a
+        # LONGER window (~0.35s, MAP_ALPHA_RATE_HIST=15 samples vs centroid's 5) the net
+        # (not instantaneous) drift rate DOES separate cleanly: normal stretch net-drift-rate
+        # median 0.10/s, max 0.22/s (bounded -- genuine jitter cancels out over the longer
+        # window); the diagnosed failure's sustained net rate was 0.61/s -- ~3x the normal
+        # ceiling. Soft/reject set to bracket that gap (worse separation margin than
+        # centroid's 20-50x, still provisional -- validate at n>=5 before trusting further).
+        self._map_alpha_rate_soft = float(os.environ.get("MAP_ALPHA_RATE_SOFT", "0.25"))
+        self._map_alpha_rate_reject = float(os.environ.get("MAP_ALPHA_RATE_REJECT", "0.5"))
+        self._map_alpha_rate_hist_len = int(os.environ.get("MAP_ALPHA_RATE_HIST", "15"))
         self._cmap_rate_hist = []   # [(t, x, y), ...] last few ACCEPTED centroid-map samples
-        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe
+        self._amap_rate_hist = []   # [(t, sin(alpha), cos(alpha)), ...] -- circular-safe, LONGER window (see above)
         # Physical-plausibility rejection margin for the rescue (2026-07-16, see rescue
         # site comment): a rescue-projected centroid is only trusted if it falls within
         # this multiple of the true FoV-edge bound (self.center/focal + last-held marker
@@ -667,6 +684,29 @@ class IMG_PROCESSOR(Thread):
         #
         # Set MARKER_KLT_MAX_STEPS=0 to disable the fallback (legacy behaviour).
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "20"))
+        # NO hard step-count ceiling on the KLT-fallback ATTEMPT itself (2026-07-23, see
+        # feedback_klt_soft_cap -- REMOVED the ceiling after a deliberate analysis, not an
+        # oversight). _max_lk_steps above is now PURELY the confidence-decay reference
+        # (_decode_conf in _kf_feat_update floors at 0.05 once lk_step_count reaches it, never
+        # zero). It used to ALSO hard-stop the KLT attempt entirely at that same count, which
+        # produced a total, sustained blackout (confirmed live: 700ms with zero corners, frozen
+        # _prev_aruco_pts/_prev_img, because KLT was NEVER RE-ATTEMPTED past step 20 even though
+        # it was still tracking cleanly, in-bounds, 4/4, right up to the cutoff). A first fix
+        # added a separate, much larger hard ceiling (MARKER_KLT_HARD_MAX_STEPS=200) -- but that
+        # number was arbitrary, and the analysis that justified it doesn't hold up: the thing a
+        # step-count ceiling used to guard against (a FULLY-TRUSTED KLT chain drifting
+        # indefinitely with no fresh anchor) can no longer happen once confidence decays with
+        # streak length -- by the time drift could matter, trust is already at its 0.05 floor.
+        # The REMAINING risk (an unboundedly long, floor-trust chain still contributing a small
+        # nonzero correction every frame, forever) is real but much smaller/slower than what the
+        # original cap guarded against, and there is already a SEPARATE, principled backstop for
+        # genuine total marker loss: apps/landing_test.py's LANDING_MARKER_LOSS_GRACE=1.0s
+        # (TARGET_LOST abort). That mechanism handles "nothing to track"; this one is specifically
+        # for "still tracking something, just decreasingly trusted" -- the two are not redundant,
+        # but stacking an arbitrary second ceiling on top of a working confidence decay added risk
+        # (an early, unjustified blackout) without a clearly justified benefit. User directive
+        # (2026-07-23): remove it. KLT's own in-bounds/reconstruction-quality checks remain the
+        # real per-frame safety net (see the elif's in_bounds abort just below).
         self._lk_step_count = 0
         # RELAXED KLT-FALLBACK GATE (2026-07-09; BAKED default-ON 2026-07-09 for the n>=5
         # IC1-5 controller-tuning validation pass): the strict all-4-corners-tracked requirement
@@ -1931,8 +1971,7 @@ class IMG_PROCESSOR(Thread):
                 size_factor = 1/1.0
         elif (self._max_lk_steps > 0
               and self._prev_aruco_pts is not None
-              and self._prev_img is not None
-              and self._lk_step_count < self._max_lk_steps):
+              and self._prev_img is not None):
             try:
                 _img0_gray = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
                 _prev_gray = (self._prev_img if self._prev_img.ndim == 2
@@ -1980,7 +2019,7 @@ class IMG_PROCESSOR(Thread):
                             used_klt_fallback = True
                             self._lk_step_count += 1
                             if self._lk_step_count == 1:
-                                print(f"ArUco lost — KLT fallback active (cap {self._max_lk_steps} frames)")
+                                print(f"ArUco lost — KLT fallback active (confidence decays past {self._max_lk_steps} frames, no attempt ceiling -- see TARGET_LOST/MARKER_LOSS_GRACE for the real backstop)")
                             # UNIFIED STALENESS GATE (2026-07-07): a SHORT corner-fallback success
                             # (still barely diverged from the last real decode) is trustworthy enough
                             # to ALSO soft-re-anchor the dense-recovery canonical state -- extends its
@@ -2109,13 +2148,31 @@ class IMG_PROCESSOR(Thread):
                     # geometry that can no longer localize a centre -> confident-wrong extrapolation.
                     # self.confidence DOES see it (marker_conf collapses via shape_change) -- verified:
                     # 39/39 zero-confidence frames were rigid_ok=False at exactly those frames.
-                    # The original occlusion rationale still holds with the marker-aware gate, because
-                    # rigidity is OCCLUSION-SAFE by construction (planar_map.update): 0-of-4 corners
-                    # HOLDS shape_change (only sets the rigid_ok bool), and 1-3 holds everything -- so
-                    # marker_conf survives a genuine occlusion and only collapses when the marker IS
-                    # tracked and its shape is distorting. RESCUE_GATE_MARKER_AWARE=0 reverts.
-                    _rescue_conf = (self._planar_map.confidence
-                                    if os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                    #
+                    # CORRECTION (2026-07-25, see feedback_rescue_gate_zero_corner): the claim below
+                    # ("marker_conf survives a genuine occlusion") is only true for a SHORT occlusion.
+                    # _rigid_fail_streak's persistence decay (planar_map.py, added 2026-07-17 to catch
+                    # a SUSTAINED rigid_ok=False run the held shape_change alone couldn't see) also
+                    # fires on a sustained ZERO-corner run, collapsing self.confidence to a hard 0 after
+                    # rigid_fail_streak_max (default 3) consecutive zero-corner frames -- and it STAYS
+                    # there for the rest of the outage, since marker_rigid_ok can't recover with no
+                    # corners at all. Traced live (IC1_rep3/IC3_rep2/IC4_rep2, ICValidation/20260724-
+                    # 172603): a >1s total zero-corner window (attitude flat, no tumble -- a genuine
+                    # decode/tracking dropout, not a deforming marker) pinned self.confidence at exactly
+                    # 0.0 the entire time while map_confidence stayed healthy (0.54-0.58, well above the
+                    # 0.5 floor) -- the rescue gate's streak requirement never got a chance to
+                    # accumulate, RESCUE_ACTIVE never fired, and the outage outlasted MARKER_LOSS_GRACE
+                    # -> TARGET_LOST despite the map's underlying track being fine. Use
+                    # planar_map.primary_zero_corners (set precisely on this frame's own zero-corner
+                    # case, not the sustained streak) to fall back to map_confidence ONLY when there is
+                    # LITERALLY NO shape information to distrust this frame -- a deforming-but-present
+                    # marker (1-4 corners) still gates on the marker-aware self.confidence, preserving
+                    # the 2026-07-19 fix for its actual target. RESCUE_GATE_MARKER_AWARE=0 still fully
+                    # reverts (ignores this carve-out too).
+                    _mkr_aware = os.environ.get("RESCUE_GATE_MARKER_AWARE", "1") == "1"
+                    _rescue_conf = (self._planar_map.map_confidence
+                                    if (_mkr_aware and self._planar_map.primary_zero_corners)
+                                    else self._planar_map.confidence if _mkr_aware
                                     else self._planar_map.map_confidence)
                     _good = _rescue_conf >= self._planar_map_conf_floor
                     if _good:
@@ -2197,6 +2254,7 @@ class IMG_PROCESSOR(Thread):
                                 "confidence": self._planar_map.confidence,
                                 "map_confidence": self._planar_map.map_confidence,
                                 "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                                "primary_zero_corners": self._planar_map.primary_zero_corners,
                                 "decode_calls": self._planar_map_decode_calls})
                             if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
                                 print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
@@ -2229,15 +2287,39 @@ class IMG_PROCESSOR(Thread):
             self._last_drifted_off = bool(_marker_leaving and not _span)
             self._last_overflow = bool(_marker_leaving and _span)   # companion flag (2026-07-07): SPANNING case, latched the same way
 
-        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (default-off). Computed from the DECODED corners
+        # PLAUSIBILITY GATE (2026-07-24, see project_ic2_observer_plausibility memory): this
+        # observer reads `aruco_pts_0` -- a raw per-frame ArUco decode with NO LK correspondence
+        # requirement at all (that's the whole point, per the docstring below -- it must survive
+        # nfc=0) -- and therefore had NONE of the sanity checks the LK-correspondence path got
+        # (neither the original _planarMapPredictionPlausible map-path check nor the 2026-07-23
+        # raw-decode extension added for aruco_pts_1, see the "PLAUSIBILITY GATE ON RAW DECODE"
+        # comment ~line 2384). Traced live (IC2_rep3, ICValidation/20260723-191943, t~45-46.3s):
+        # a single-frame decode anomaly (MARKER_EXTENT_PX 70->315px in one frame -- a marker-size-
+        # switch/handover) triggered a real, escalating attitude tumble (confirmed via Quat); during
+        # the ensuing ~1.3s TOTAL raw-decode blackout (nfc=0 throughout, the LK-gated path correctly
+        # froze `_feature_pts`/MARKER_EXTENT_PX) this OBSERVER kept running every frame (only needs
+        # `aruco_pts_0 is not None`, not LK success) on spurious/false decodes as the tumbling camera
+        # swept across background clutter, feeding wildly different `_x0,_y0` positions into
+        # `_obs_vel_kf` each frame -- theta exploded 2->3080 and `h_x` alternated roughly -161/+130
+        # frame-to-frame, feeding the SAME flow KF getOptFlowAngVel() returns. Reuse the same
+        # position+size sanity check (against the pre-blackout known-good state) rather than trusting
+        # any `aruco_pts_0` decode unconditionally.
+        _obs_gate_ok = False
+        if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
+                and quats is not None and len(quats) > 0 and quats[0] is not None):
+            _obs_gate_ok, _, _obs_why = self._planarMapPredictionPlausible(aruco_pts_0, quats[0])
+            if not _obs_gate_ok and os.environ.get("DECODE_PLAUS_DBG", "0") == "1":
+                print(f"[decode plausibility] REJECTED observer aruco_pts_0 ({_obs_why}) "
+                      f"-- skipping centroid-rate observer this frame", flush=True)
+        # GYRO-COMPENSATED CENTROID-RATE OBSERVER (PLASMC_CENTROID_RATE, default-ON since 2026-07-03
+        # -- see the fuller history at its __init__ comment ~line 985). Computed from the DECODED corners
         # (aruco_pts_0) — NOT the LK-tracked V_aruco_norm — so it runs even when LK fails (Nfc=0) at
         # altitude. Provides the lateral flow h_x,h_y from ṡ + loom + gyro-rotation compensation:
         #   h_x = ṡ_x + x0·h_z + y0·wz   (V-frame: roll/pitch leveled out, yaw preserved -> wz only)
         #   h_y = ṡ_y + y0·h_z − x0·wz
         # h_z from the moment loom; w from the IMU gyro rotated into the V-frame (clean, not the
         # off-center-ill-conditioned lstsq). Stored for injection at the flow-output sites below.
-        if (self._single_marker and self._centroid_rate and aruco_pts_0 is not None
-                and quats is not None and len(quats) > 0 and quats[0] is not None):
+        if _obs_gate_ok:
             try:
                 _Vdec = self._getVirtualPts(np.asarray(aruco_pts_0, np.float32), quats[0])   # FRAME-PAIR FIX 2026-07-04: aruco_pts_0 belongs to frame-0 -> level with quats[0], not quats[1] (matches V_aruco_norm/V_flow_norm convention; the quats[1] mismatch left a residual tilt ∝ angular rate = a source of the off-center yaw leak)
                 _x0 = float(_Vdec[:, 0].mean()); _y0 = float(_Vdec[:, 1].mean())
@@ -2343,37 +2425,59 @@ class IMG_PROCESSOR(Thread):
             # individually — any that pass LK add spread to the lstsq.
             board_markers_px1 = None     # [(id, frame1 corners 4x2)] for homography
             if int(np.sum(aruco_status == 1)) == n_aruco:
-                FEATURE_DATA_IS_LOGGED = True
                 aruco_pts_1 = all_pts_1[:n_aruco].reshape(-1, 2)
-                extra_good = (extra_status == 1)
-                extra_pts_0_kept = extra_pts_0[extra_good]
-                extra_pts_1_kept = all_pts_1[n_aruco:].reshape(-1, 2)[extra_good]
-                flow_pts_0 = np.vstack([aruco_pts_0, extra_pts_0_kept])
-                flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
-                # Primary-only pair preserved for centroid / alpha / display.
-                C_nP = [aruco_pts_0, aruco_pts_1]
-                # Last-known REAL marker span (px, camera-pixel space) -- for the rescue's
-                # size-plausibility check below. Updated ONLY on genuine raw decode (never
-                # from a rescue/extrapolated frame), same "real-only" discipline as
-                # _h_real_v elsewhere in this file.
-                self._last_real_extent_px = float(
-                    max(aruco_pts_0[:, 0].max() - aruco_pts_0[:, 0].min(),
-                        aruco_pts_0[:, 1].max() - aruco_pts_0[:, 1].min()))
+                # PLAUSIBILITY GATE ON RAW DECODE (2026-07-23, see
+                # project_ic2_wrong_marker_decode memory): a raw ArUco decode that tracks
+                # cleanly (all 4 corners, LK status==1) was previously trusted
+                # UNCONDITIONALLY -- no sanity check at all, unlike the map override/rescue
+                # paths (_planarMapPredictionPlausible). Traced live (IC2_rep2,
+                # ICValidation/20260723-191943): a single-frame marker-loss gap (nfc=0) was
+                # immediately followed by a DIFFERENT, spurious 4-corner detection (~9px
+                # marker in a corner of the frame vs the true ~150px marker) that decoded
+                # and LK-tracked CLEANLY for several subsequent frames (self-consistent
+                # frame-to-frame, so the ds outlier-hold's single-frame delta check couldn't
+                # catch it past the first frame) -- fed straight into s/sigma/kappa and
+                # detonated a_u. Reuses the SAME position+size sanity check the map path
+                # already trusts, against the OLD _last_real_extent_px/_feature_pts (checked
+                # BEFORE either is overwritten below). An implausible raw decode is treated
+                # like a decode miss this frame (falls through to the existing rescue/hold
+                # path via FEATURE_DATA_IS_LOGGED staying False), not clipped/clamped.
+                _raw_ok, _, _raw_why = self._planarMapPredictionPlausible(aruco_pts_1, quats[1])
+                if not _raw_ok:
+                    if os.environ.get("DECODE_PLAUS_DBG", "0") == "1":
+                        print(f"[decode plausibility] REJECTED raw decode ({_raw_why}) "
+                              f"-- treating as a miss this frame", flush=True)
+                else:
+                    FEATURE_DATA_IS_LOGGED = True
+                    extra_good = (extra_status == 1)
+                    extra_pts_0_kept = extra_pts_0[extra_good]
+                    extra_pts_1_kept = all_pts_1[n_aruco:].reshape(-1, 2)[extra_good]
+                    flow_pts_0 = np.vstack([aruco_pts_0, extra_pts_0_kept])
+                    flow_pts_1 = np.vstack([aruco_pts_1, extra_pts_1_kept])
+                    # Primary-only pair preserved for centroid / alpha / display.
+                    C_nP = [aruco_pts_0, aruco_pts_1]
+                    # Last-known REAL marker span (px, camera-pixel space) -- for the rescue's
+                    # size-plausibility check below. Updated ONLY on genuine raw decode (never
+                    # from a rescue/extrapolated frame), same "real-only" discipline as
+                    # _h_real_v elsewhere in this file.
+                    self._last_real_extent_px = float(
+                        max(aruco_pts_0[:, 0].max() - aruco_pts_0[:, 0].min(),
+                            aruco_pts_0[:, 1].max() - aruco_pts_0[:, 1].min()))
 
-                # Collect per-marker frame-1 corners (only markers whose all-4
-                # corners survived LK) + IDs, for the board homography. Marker k
-                # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
-                if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
-                    all_pts_1_2d = all_pts_1.reshape(-1, 2)
-                    grp = []
-                    for k, mid in enumerate(marker_ids):
-                        sl = slice(4 * k, 4 * k + 4)
-                        # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
-                        if np.all(status[sl] == 1) and (self._board_selfcal
-                                or (self._board_layout is not None and mid in self._board_layout)):
-                            grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
-                    if grp:
-                        board_markers_px1 = grp
+                    # Collect per-marker frame-1 corners (only markers whose all-4
+                    # corners survived LK) + IDs, for the board homography. Marker k
+                    # occupies corners [4k:4k+4] of all_pts_0/all_pts_1.
+                    if marker_ids is not None and (self._board_layout is not None or self._board_selfcal):
+                        all_pts_1_2d = all_pts_1.reshape(-1, 2)
+                        grp = []
+                        for k, mid in enumerate(marker_ids):
+                            sl = slice(4 * k, 4 * k + 4)
+                            # self-cal: track ALL decoded markers (to learn them); file mode: only layout markers
+                            if np.all(status[sl] == 1) and (self._board_selfcal
+                                    or (self._board_layout is not None and mid in self._board_layout)):
+                                grp.append((mid, all_pts_1_2d[sl].astype(np.float32)))
+                        if grp:
+                            board_markers_px1 = grp
 
             # NOTE: size_factor adjustment based on min(results[1]) == 0 lives
             # only in the ArUco-detection branch up top. On the KLT-fallback
@@ -2895,6 +2999,19 @@ class IMG_PROCESSOR(Thread):
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()    # drop scale history so the decoupled-loom slope never spans a gap
                 self._flow_prev = None       # ds/dh gate: re-init after a marker-loss gap (don't hold stale)
+                # BUGFIX (2026-07-23, see project_ic1_ds_guard_gap_reset memory): the comment above
+                # says "ds/dh gate" but only _flow_prev was ever reset here -- _s_prev (the ds
+                # outlier-hold's detection reference, ~line 2872) was NOT, so after a marker-loss
+                # gap the centroid guard compared the just-reacquired raw position against a
+                # STALE pre-gap reference. Real motion during the gap (plus continued motion while
+                # reacquiring) routinely exceeds FLOW_DS_MAX=0.15 every frame -> the guard rejected
+                # for MULTIPLE consecutive control cycles (s frozen while the real error kept
+                # growing unseen by sigma/kappa) -> then the missed motion landed as one compounded
+                # jump the instant a delta finally cleared. Traced live in IC1_rep1
+                # (ICValidation/20260723-185307): s_e_n frozen at [0.033,-0.732] for 3 ctrl cycles
+                # (t=47.864-47.94) despite healthy 184-corner decode throughout, then jumped to
+                # [-0.878,-2.334] in one step -- immediately followed by kappa/a_u detonation.
+                self._s_prev = None          # (fix) re-init the centroid guard on the same gap
 
         # Log the recorded data
         self._time_log.append(self._time.perf_counter())
@@ -3893,7 +4010,7 @@ class IMG_PROCESSOR(Thread):
         # ---- 4. Feature vector (unnormalized) ----
         return np.array([xc, yc, 1.0, alpha])
 
-    def _mapRatePlausible(self, hist, t, vals, max_hist=5):
+    def _mapRatePlausible(self, hist, t, vals, soft_bound, reject_bound, max_hist=5):
         """WINDOWED-RATE plausibility check shared by _centroidMap/_alphaMap (2026-07-21 --
         see the MAP_RATE_SOFT/MAP_RATE_REJECT __init__ comment for full rationale). This is
         a THIRD, INDEPENDENT axis alongside _planarMapPredictionPlausible's position/size
@@ -3909,6 +4026,15 @@ class IMG_PROCESSOR(Thread):
         (x, y for centroid; sin(alpha), cos(alpha) for alpha -- NEVER alpha itself, which
         is a wrapped angle and would spuriously spike at the +-pi branch cut exactly like
         the linear-KF bug this session already fixed once).
+
+        soft_bound/reject_bound/max_hist: CALLER-SUPPLIED, not shared constants (2026-07-23
+        -- see feedback_alpha_rate_gate_separate_thresholds). Centroid and alpha have
+        different noise characteristics (alpha's raw per-sample jitter alone can exceed
+        centroid's thresholds) and need their own bounds/window length -- reusing one set
+        for both let a real, diagnosed alpha drift (~0.26 rad/s sustained, ~26 deg of
+        uncorrected yaw error) pass through un-tapered because it sat under the
+        centroid-derived MAP_RATE_SOFT=0.3 despite being ~2.5x the alpha channel's own
+        normal-noise ceiling (~0.1-0.22 rad/s over a comparably long window).
 
         Returns (ok: bool, rate_trust: float in [0,1]). ok=False -> caller should REJECT
         this sample entirely (same weight as a position/size plausibility failure).
@@ -3930,11 +4056,11 @@ class IMG_PROCESSOR(Thread):
             slope = np.polyfit(tt - tt[0], vv, 1)[0]
             rate_sq += slope ** 2
         rate = float(np.sqrt(rate_sq))
-        if rate > self._map_rate_reject:
+        if rate > reject_bound:
             return False, 0.0
-        if rate > self._map_rate_soft:
+        if rate > soft_bound:
             return True, float(np.clip(
-                1.0 - (rate - self._map_rate_soft) / max(self._map_rate_reject - self._map_rate_soft, 1e-6),
+                1.0 - (rate - soft_bound) / max(reject_bound - soft_bound, 1e-6),
                 0.0, 1.0))
         return True, 1.0
 
@@ -4487,7 +4613,8 @@ class IMG_PROCESSOR(Thread):
             # position/size, catching a coherently-drifting-but-rigid cluster the
             # confidence gate above can't see.
             _rate_ok, _rate_trust = self._mapRatePlausible(
-                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])))
+                self._cmap_rate_hist, self._time.perf_counter(), (float(c[0]), float(c[1])),
+                self._map_rate_soft, self._map_rate_reject)
             if not _rate_ok:
                 _tally('none_rate_implausible'); return None
             self._cmap_last_trust = min(self._cmap_last_trust, _rate_trust)
@@ -4552,8 +4679,12 @@ class IMG_PROCESSOR(Thread):
             # rate-checked on [sin(a), cos(a)], NEVER on the wrapped angle `a` itself (a
             # linear slope fit across the +-pi branch cut would spuriously spike, exactly
             # the class of bug the sin/cos-pair KF fix already addressed once this session).
+            # ALPHA-SPECIFIC bounds + longer window (2026-07-23, see __init__ comment /
+            # feedback_alpha_rate_gate_separate_thresholds) -- NOT the centroid constants.
             _rate_ok, _rate_trust = self._mapRatePlausible(
-                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)))
+                self._amap_rate_hist, self._time.perf_counter(), (np.sin(a), np.cos(a)),
+                self._map_alpha_rate_soft, self._map_alpha_rate_reject,
+                max_hist=self._map_alpha_rate_hist_len)
             if not _rate_ok:
                 return None
             self._amap_last_trust = min(self._amap_last_trust, _rate_trust)

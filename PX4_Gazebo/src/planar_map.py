@@ -42,6 +42,7 @@ so it can be validated offline against recorded frames before being wired into t
 capture loop -- see tools/validate_planar_map.py.
 """
 import os
+import time
 import numpy as np
 import cv2
 
@@ -93,7 +94,7 @@ class PlanarFeatureMap:
                  lk_win=(21, 21), lk_max_level=3, gft_quality=0.01, gft_min_dist=7,
                  ransac_thresh_px=3.0, conf_track_floor=15, conf_resid_ceiling=4.0,
                  marker_rigid_thresh=0.35, max_marker_slots=2, slot_size_margin=0.4,
-                 center=None, focal=None):
+                 center=None, focal=None, ransac_max_iters=200, ransac_confidence=0.98):
         self.max_features = max_features
         self.min_tracked = min_tracked
         self.refill_below = refill_below
@@ -102,6 +103,23 @@ class PlanarFeatureMap:
         self.gft_quality = gft_quality
         self.gft_min_dist = gft_min_dist
         self.ransac_thresh_px = ransac_thresh_px
+        # Found via live Pi profiling (2026-07-23): cv2.findHomography's RANSAC
+        # fit was the dominant per-frame cost (76% of update(), 38-70ms/frame
+        # on real marker+environment footage -- far worse than the Phase-0
+        # benchmark's ~13-18ms estimate, which had an easier/less noisy
+        # correspondence set). OpenCV's defaults (maxIters=2000, confidence
+        # =0.995) chase a very high confidence target against genuinely noisy
+        # real correspondences, which can overfit to marginal/noisy inlier
+        # candidates rather than converging cleanly. Bounding both params is
+        # NOT a speed/accuracy tradeoff here -- measured BETTER map_confidence
+        # AND lower residual_px at every tested bound (200/0.98: conf 0.578->
+        # 0.596, resid 1.69->1.62px, 67% faster; 100/0.95 further improved
+        # both again, 75% faster) -- kept at the more conservative 200/0.98
+        # rather than the fastest setting tested, since a still-wider margin
+        # against an even noisier real scene than this test session's hasn't
+        # been validated. Ported from Pi hardware (identical fix, 2026-07-25).
+        self.ransac_max_iters = ransac_max_iters
+        self.ransac_confidence = ransac_confidence
         self.conf_track_floor = conf_track_floor
         self.conf_resid_ceiling = conf_resid_ceiling
         self.marker_rigid_thresh = marker_rigid_thresh
@@ -163,6 +181,47 @@ class PlanarFeatureMap:
         self.marker_shape_change = 0.0
         self._rigid_fail_streak = 0    # consecutive frames marker_rigid_ok has been False (see update())
         self.rigid_fail_streak_max = int(os.environ.get("PLANAR_MAP_RIGID_FAIL_STREAK_MAX", "3"))
+        # True iff the PRIMARY slot had ZERO corners survive KLT this frame (genuinely no
+        # shape information at all -- occlusion/decode-failure), as opposed to 1-4 corners
+        # present (where a distorting shape is real information worth distrusting). See
+        # update()'s per-slot loop and img_data.py's RESCUE_GATE_MARKER_AWARE consumer --
+        # this flag lets the rescue gate fall back to the marker-INDEPENDENT map_confidence
+        # specifically in the zero-corner case, instead of self.confidence (which the
+        # zero-corner case forces toward 0 via _rigid_fail_streak regardless of how healthy
+        # the rest of the scene/homography track is) -- see feedback_rescue_gate_zero_corner.
+        self.primary_zero_corners = False
+        # CONFIDENCE-LOCKUP SELF-HEAL (2026-07-25, found via live Pi hardware testing,
+        # PLANAR_MAP_DBG=1): once a homography fit fails (resid_px=inf), frame_to_map
+        # freezes at its last value (only updated `if H is not None` below), but refill
+        # keeps mapping NEW GFT points through that same frozen, possibly-already-bad
+        # reference every subsequent frame -- a self-reinforcing poisoning loop that can
+        # make confidence/map_confidence (both multiply resid_conf, which is EXACTLY 0.0
+        # whenever resid_px is inf) get stuck at 0.0 permanently, even long after the
+        # marker itself is being cleanly re-tracked by the separate raw ArUco/KLT path
+        # (confirmed live on Pi: confidence pinned at 0.000 for 14+s straight while
+        # roi_hits stayed 30/30; confirmed independently in Gazebo SITL,
+        # ICValidation/20260722-152133/IC1_rep5: conf/mapconf pinned exactly 0.000 for
+        # ~7s/113 log entries while fresh_decode stayed True with err_px 0.1-3px for
+        # nearly 4 straight seconds -- directly coincided with a 32.4m DRIFT_OFF
+        # fly-away). No existing mechanism recovers from this -- img_data.py's
+        # _reset_stateful_trackers only constructs a fresh map ONCE per flight, at the
+        # first CONTROLLER_READY transition, then never again. Track consecutive
+        # degenerate (resid_px=inf) frames; past a threshold, self-heal via a genuine
+        # full reset (_full_reset, NOT bootstrap() alone, which does not clear
+        # marker_slots/next_id and would leave stale references dangling) + fresh
+        # bootstrap from the CURRENT frame.
+        # TIME-BASED, not frame-count (2026-07-25 correction, ported from Pi): this
+        # module's caller runs at very different effective rates on Pi hardware (measured
+        # ~15-35Hz, swinging with scene/tracking health) vs Gazebo SITL, so a fixed
+        # frame-count threshold is a poor proxy for elapsed wall-clock time and risks not
+        # firing before some OTHER caller-side mechanism (e.g. landing_test.py's
+        # MARKER_LOSS_GRACE, default 1.0s) already gives up. degenerate_reset_seconds is
+        # kept comfortably under that grace window. _degenerate_streak (frame count) is
+        # kept ONLY as an informational log field alongside the elapsed-seconds value
+        # actually gating the reset.
+        self._degenerate_streak = 0
+        self._degenerate_since_t = None
+        self.degenerate_reset_seconds = float(os.environ.get("PLANAR_MAP_DEGENERATE_RESET_SECONDS", "0.4"))
 
     def _new_ids(self, n):
         ids = list(range(self.next_id, self.next_id + n))
@@ -206,9 +265,38 @@ class PlanarFeatureMap:
         self.n_tracked = len(self.tracked_px)
         self.resid_px = 0.0
         self._rigid_fail_streak = 0
+        self._degenerate_streak = 0
+        self._degenerate_since_t = None
         if marker_px_corners is not None:
             self._seed_new_slot(marker_px_corners)
             self._update_primary_scalars()
+
+    def _full_reset(self):
+        """Full reset to pristine just-constructed state (2026-07-25, self-heal for a
+        poisoned map after sustained homography-fit failure -- see __init__'s
+        degenerate-streak comment). Unlike calling bootstrap() alone on an already-live
+        object (which does NOT clear marker_slots or next_id), this clears EVERYTHING
+        mutable so a subsequent bootstrap() call starts genuinely fresh, with no stale
+        slot/feature-id references left over from the corrupted state. Config params
+        (max_features, thresholds, center/focal, lk_params, etc.) are left untouched.
+        Ported from Pi hardware (identical fix); primary_zero_corners reset added here
+        since that field postdates the Pi's base file it was authored against."""
+        self.map_pts = {}
+        self.next_id = 0
+        self.tracked_px = {}
+        self.prev_gray = None
+        self.frame_to_map = None
+        self.confidence = 0.0
+        self.map_confidence = 0.0
+        self.n_tracked = 0
+        self.resid_px = np.inf
+        self.initialized = False
+        self.frames_since_decode = 0
+        self.marker_slots = {}
+        self._next_slot_id = 0
+        self._degenerate_streak = 0
+        self._degenerate_since_t = None
+        self.primary_zero_corners = False
 
     @staticmethod
     def _apply_h(H, pts):
@@ -229,7 +317,8 @@ class PlanarFeatureMap:
             return None, None
         H, inliers = cv2.findHomography(
             src.astype(np.float32), dst.astype(np.float32),
-            method=cv2.RANSAC, ransacReprojThreshold=self.ransac_thresh_px)
+            method=cv2.RANSAC, ransacReprojThreshold=self.ransac_thresh_px,
+            maxIters=self.ransac_max_iters, confidence=self.ransac_confidence)
         if H is None:
             return None, None
         return H, inliers.flatten().astype(bool) if inliers is not None else np.ones(len(src), bool)
@@ -462,6 +551,32 @@ class PlanarFeatureMap:
         self.tracked_px = survivors
         self.n_tracked = len(survivors)
 
+        # CONFIDENCE-LOCKUP SELF-HEAL (2026-07-25, see __init__ comment): resid_px is
+        # inf iff this frame's homography fit failed (too few correspondences, or the
+        # ill-conditioning rejection above). Track CONSECUTIVE failures; past the
+        # threshold, discard the (likely poisoned) map state and re-bootstrap fresh from
+        # THIS frame rather than staying permanently stuck at confidence=0. A single bad
+        # frame does nothing (matches this codebase's persistence-not-single-blip-
+        # sensitive convention elsewhere, e.g. rigid_fail_streak/inlier_fail_streak).
+        if not np.isfinite(self.resid_px):
+            if self._degenerate_since_t is None:
+                self._degenerate_since_t = time.perf_counter()
+            self._degenerate_streak += 1
+        else:
+            self._degenerate_since_t = None
+            self._degenerate_streak = 0
+        if self._degenerate_since_t is not None:
+            _elapsed = time.perf_counter() - self._degenerate_since_t
+            if _elapsed >= self.degenerate_reset_seconds:
+                if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                    print(f"[planar_map] SELF-HEAL: {_elapsed:.2f}s "
+                          f"({self._degenerate_streak} consecutive frames) of degenerate "
+                          f"homography fits -- discarding poisoned map state and "
+                          f"re-bootstrapping fresh", flush=True)
+                self._full_reset()
+                self.bootstrap(gray, quat_R=quat_R)
+                return
+
         # Per-slot marker-local rigidity check (independent of the map/homography fit --
         # see _check_slot_rigidity docstring). Only meaningful if all 4 of a slot's
         # corners survived KLT this frame.
@@ -488,13 +603,17 @@ class PlanarFeatureMap:
         # information at all) forces rigid_ok=False; even then shape_change is held (not
         # inf) so a single all-corners-lost frame doesn't permanently poison the value if
         # corners return next frame with a benign gap.
-        for slot in self.marker_slots.values():
+        _primary_name = self._primary_slot_name()
+        self.primary_zero_corners = False
+        for name, slot in self.marker_slots.items():
             pts = [survivors[i] for i in slot['corner_ids'] if i in survivors]
             if len(pts) == 4:
                 self._check_slot_rigidity(slot, np.array(pts))
             elif len(pts) == 0:
                 slot['rigid_ok'] = False   # genuinely zero information this frame
                 # shape_change deliberately NOT touched -- held at its last value
+                if name == _primary_name:
+                    self.primary_zero_corners = True
             # else (1-3 survived): hold rigid_ok/shape_change entirely, no update at all
         self._update_primary_scalars()
 
