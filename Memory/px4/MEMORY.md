@@ -54,7 +54,10 @@
 > "zero fly-aways" as first claimed here). Both fly-aways traced CONTROL-led/TARGET_LOST (not
 > perception-spurious-decode) -- normal SITL variance surfacing the already-catalogued lateral-
 > control family, not a regression from this merge. Fix correctness itself unaffected -- see the
-> full correction in [[feedback_planar_map_confidence_lockup]].**
+> full correction in [[feedback_planar_map_confidence_lockup]]. Deep traces of both fly-aways
+> (IC1_rep2 = same marker-switch-triggers-real-tumble mechanism as IC2_rep3, via the still-open
+> FLOW_LAT_REDUCED gap; IC2_rep5 = terminal marker-loss under real residual velocity from IC2's
+> fast offset-closing) in [[project_ic1rep2_ic2rep5_flyaway_traces_20260725]].**
 
 > **🟢🟡 2026-07-21/22 — Long perception-pipeline session (img_data.py): baked 8 fixes to the
 > decode<->map override/KF chain (fda359f..ce881f4), n>=5-validated clean on the ICs that
