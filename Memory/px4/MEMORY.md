@@ -4,7 +4,18 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢🟢 2026-07-26 (LATEST) — Three more fixes committed, closing out the day's perception/
+> **🟢🟢 2026-07-27 (LATEST) — go-around regression found+fixed; IC5 marker-loss confirmed
+> structural, not a bug.** The unconditional go-around retry (07-26, below) held the vehicle's
+> drifted lateral position while climbing then retried from the SAME geometry that caused the
+> loss — for IC5 this burned both attempts on an immediate repeat, stuck-near-start-altitude
+> rate went 0.9%→70% (3/321 vs 7/10). Fixed: retry now gated on genuine altitude progress since
+> the last loss (`LANDING_GO_AROUND_MIN_PROGRESS_M`, default 0.75m); commit 7b01231, validated
+> live. IC5 still loses the marker almost immediately on every closed-loop attempt (centroid at
+> the FoV edge from frame one — large offset/short runway forces the correction itself to push
+> the marker out before any descent) — confirmed pre-existing/structural, not fixable by
+> go-around/leveling/the progress gate. [[project_go_around_progress_gate_20260727]]
+
+> **🟢🟢🟢 2026-07-26 — Three more fixes committed, closing out the day's perception/
 > failsafe work: (1) decode-staleness confidence decay on map_confidence (5341e14, reconciled
 > with Pi's independent same-day fix); (2) FLOW_LAT_REDUCED runtime attitude-rate gate
 > (dcec397), closing the "needs runtime gating on real attitude rate" gap flagged since
