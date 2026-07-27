@@ -57,7 +57,10 @@ T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
 # LEVER ARMS (user-measured 2026-07-27, given in MOCAP FLU: X=fwd, Y=left, Z=up)
 #
 #   camera optical centre -> UAV mocap origin : X +0.08, Z +0.16  m
-#   ArUco centre          -> target mocap origin: X -0.04, Y -0.01 m
+#   ArUco centre          -> target mocap origin: X -0.012, Y -0.034 m (RE-MEASURED
+#     2026-07-28, superseding the original -0.04/-0.01 - prompted by 3 independent
+#     lever-arm-certification checks all preferring mrk_y more negative than -0.01
+#     and mrk_x closer to zero than +0.04; see project_pi_gt_lever_arm_2026_07_27)
 #
 # Those are stated as "A -> B" = the vector FROM A TO B. What the geometry
 # needs is the opposite: origin -> feature, so each is NEGATED below before
@@ -68,8 +71,8 @@ T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
 #            i.e. the camera sits 16 cm BELOW (+z is down in FRD) and 8 cm AFT
 #            of the UAV mocap origin - physically consistent with a
 #            downward-facing camera slung under the airframe.
-#   marker:  origin -> aruco  = -(-0.04, -0.01, 0) FLU = (+0.04, +0.01, 0) FLU
-#                             -> T @ ... = (+0.04, -0.01, 0) FRD
+#   marker:  origin -> aruco  = -(-0.012, -0.034, 0) FLU = (+0.012, +0.034, 0) FLU
+#                             -> T @ ... = (+0.012, -0.034, 0) FRD
 #
 # Sign convention verified empirically, not just asserted: applying these
 # collapses the GT-vs-logged-corner residual (see the CHECK in __main__ /
@@ -98,7 +101,7 @@ def _lever(env, default_frd):
     return np.array([float(x) for x in v.split(",")], float) if v else np.array(default_frd, float)
 
 R_CAM_FRD    = _lever("CAL_CAM_LEVER_FRD",    [-0.08, 0.0, 0.0])     # UAV origin -> camera (z omitted, see above)
-R_MARKER_FRD = _lever("CAL_MARKER_LEVER_FRD", [+0.04, -0.01, 0.0])   # target origin -> ArUco centre
+R_MARKER_FRD = _lever("CAL_MARKER_LEVER_FRD", [+0.012, -0.034, 0.0])   # target origin -> ArUco centre (re-measured 2026-07-28)
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
 FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))       # matches img_data.py default
