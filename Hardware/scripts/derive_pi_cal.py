@@ -393,16 +393,33 @@ def compute_gt_flow(run_dir):
     W_v_tu = _robust_vel(W_x_tu, tg)
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)
     V_s_g = np.full((n, 2), np.nan)
+    # DEPTH DENOMINATOR: pure 1/Vz (2026-07-28), matching Gazebo's
+    # aggregate_calibration_phased.compute_gt_signals (Vx/Vz, Vy/Vz, no
+    # epsilon). The prior "+0.2" epsilon was tested and did NOT explain the
+    # GT-vs-image mismatch this whole thread chased (removing it made the
+    # match worse under the flawed raw-pixel comparand, see
+    # project_pi_gt_lever_arm_2026_07_27) - it was pure softening, not a
+    # physically-motivated term, so there is no reason to keep diverging from
+    # the validated Gazebo formula. V_x[2] and zB are numerically identical
+    # (confirmed |zB - Vz| = 0.0000 even at 13.5 deg tilt, since _v_frame is
+    # gravity-levelled) so one guard covers both s and h.
+    #
+    # A hard guard is now REQUIRED where the epsilon used to only soften: s
+    # previously had NO guard at all (only the +0.2 kept it finite), which was
+    # a latent bug independent of this change - a near-zero/negative Vz could
+    # already blow up silently. abs(zB) >= 0.1 matches the guard h already
+    # had; s now gets the same one instead of none.
     for i in range(n):
         zB = W_x_tu[i, 2]
+        if abs(zB) < 0.1:
+            continue
         B_x = Ru[i].T @ W_x_tu[i]
         V_x = _v_frame(Ru[i]) @ B_x
-        V_s_g[i] = [V_x[0] / (V_x[2] + 0.2), V_x[1] / (V_x[2] + 0.2)]
+        V_s_g[i] = [V_x[0] / zB, V_x[1] / zB]
         B_v = Ru[i].T @ W_v_tu[i]
         V_v = _v_frame(Ru[i]) @ B_v
-        if abs(zB) >= 0.1:
-            B_h_g[i] = B_v / (zB + 0.2)
-            V_h_g[i] = V_v / (zB + 0.2)
+        B_h_g[i] = B_v / zB
+        V_h_g[i] = V_v / zB
 
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2],
                B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
