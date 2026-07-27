@@ -31,6 +31,7 @@ from img_geometry import (CALIB_CX, CALIB_CY, fx, fy, f, R_CAM_TO_BODY,
                            get_img_features, _quat_to_dcm,
                            quad_ill_conditioned, marker_near_fov_edge)
 from planar_map import PlanarFeatureMap
+from numerical_methods import extrapolate
 FILTER_WIN = int(os.environ.get("IMG_FILTER_WIN", "13"))       # savgol FALLBACK window (Gazebo-aligned 13,1;
 FILTER_POLYORDER = int(os.environ.get("IMG_FILTER_POLY", "1"))  # the KF is the default runtime filter)
 
@@ -298,6 +299,31 @@ class IMG_PROCESSOR(Thread):
         self._klt_hits = 0   # diagnostic counters
         self._klt_misses = 0
         self._frame_used_klt = False   # set by _klt_fallback_fill, read/reset per _optFlowAngVel call
+
+        # DENSE-HOMOGRAPHY RECOVERY (2026-07-28 port from PX4_Gazebo, closes the
+        # "third fallback tier" gap identified comparing the two pipelines' fallback
+        # order: ArUco decode -> KLT corner-fallback -> dense-homography recovery ->
+        # planar-map rescue / h_extrap. KLT tracks only the 4 primary corners and
+        # aborts outright the moment any one of them leaves the image; dense-recovery
+        # tracks MANY candidate points (RANSAC-filtered) across the same on-marker
+        # region, so it survives partial/near-edge occlusion that would kill KLT's
+        # strict all-4-in-bounds gate, and degrades gracefully as survivors thin out
+        # instead of hard-stopping. Default-off in Gazebo too (PLASMC_DENSE_RECOVER=0,
+        # unused in any Gazebo launcher/A-B script as of the port date) - ported
+        # as an available, A/B-testable option, not baked-on behavior.
+        self._dense_recover = os.environ.get("PLASMC_DENSE_RECOVER", "0") == "1"
+        self._dense_recover_min_pts = int(os.environ.get("DENSE_RECOVER_MIN_PTS", "12"))
+        self._dense_recover_ransac_px = float(os.environ.get("DENSE_RECOVER_RANSAC_PX", "3.0"))
+        self._dense_recover_max_frames = int(os.environ.get("DENSE_RECOVER_MAX_FRAMES", "60"))
+        self._dense_recover_min_inlier_frac = float(os.environ.get("DENSE_RECOVER_MIN_INLIER_FRAC", "0.5"))
+        self._dense_pts_per_side = int(os.environ.get("IMG_DENSE_PER_SIDE", "15"))
+        self._dense_soft_anchor_max_steps = int(os.environ.get("DENSE_SOFT_ANCHOR_MAX_STEPS", "2"))
+        self._dense_canon_quad = None      # (4,2) main-stream px, the anchor's raw corner quad
+        self._dense_canon_pts = None       # (M,2) canonical dense point layout, index-aligned with _dense_track_pts
+        self._dense_track_pts = None       # (M,2) CURRENT LK-tracked positions of the canonical points
+        self._dense_ref_img = None         # main-stream gray image the tracked points are relative to
+        self._dense_recover_active = False # True when the last frame's recovered quad came from this path (diagnostic)
+        self._dense_frames_since_anchor = 0
 
         # Nested-marker single-marker LOCK (Gazebo-aligned): lock one concentric
         # marker, re-lock only when it leaves both frames -> no per-frame min/max
@@ -577,11 +603,28 @@ class IMG_PROCESSOR(Thread):
         # the same C_nP/getImgFeatures call), 'planar_map_rescue' (RESCUE path fired
         # and passed plausibility), 'coast' (no raw, no rescue - feature KF predict-
         # only). Extended _opt_flow_estimator_tag itself to also fire every loss frame
-        # ('coast' - Pi has no h_extrap/observer port, ring flow already logs
-        # separately/unconditionally in its own _ring_time_log) so BOTH tag arrays
-        # stay dense/index-aligned across every frame, not just successful ones.
+        # ('coast' tag even though the VALUE is now h_extrap-filled when enabled, see
+        # __init__'s _h_extrap block below; ring flow already logs separately/
+        # unconditionally in its own _ring_time_log) so BOTH tag arrays stay dense/
+        # index-aligned across every frame, not just successful ones.
         self._s_estimator_tag = []
         self._feature_pts_fresh = False   # this frame's _feature_pts is LIVE geometry (raw or plausibility-checked rescue), not a held-over value
+
+        # h_extrap (2026-07-28 port from PX4_Gazebo, closes project_map_flow_rescue_port_pending):
+        # during marker loss the Pi zeroed h/w outright ("no h_extrap/observer port" above).
+        # That's a real gap, not just an intentional-parity note - the centroid/alpha DOES get
+        # rescued by the planar map (or held via kf_feat predict-only), but h/w had no equivalent,
+        # so every marker-loss frame fed zero flow to the corner+ring fusion EKF and to any
+        # calibration fit against those frames. Port the SAME decayed deg-1 real-only-history
+        # extrapolation Gazebo already runs in production (img_data.py ~line 3178), gated by
+        # PLASMC_H_EXTRAP so it can be disabled and fall back to the old hard-zero behavior.
+        self._h_extrap = os.environ.get("PLASMC_H_EXTRAP", "1") == "1"
+        self._h_extrap_decay_frames = int(os.environ.get("H_EXTRAP_DECAY_FRAMES", "10"))
+        self._h_extrap_max = float(os.environ.get("H_EXTRAP_MAX", "5.0"))
+        self._h_extrap_clip_bound = float(os.environ.get("H_EXTRAP_CLIP_BOUND", "10.0"))
+        self._h_real_t = []   # REAL-only history (raw decode frames), never receives extrapolated output back
+        self._h_real_v = []
+        self._h_consec_misses = 0   # frames since the last raw h decode (Pi has no shared _consec_misses like Gazebo's stale-tracker)
         self._imu_angvel_raw = []   # IMU FRD body rate [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quaternion [w,x,y,z], synced to the flow log
 
@@ -858,6 +901,84 @@ class IMG_PROCESSOR(Thread):
             self._klt_misses += 1
             return None
 
+    def _dense_recover_anchor(self, corners_main, img_main):
+        """Re-anchor the dense-homography-recovery canonical state on a CLEAN
+        decode of the locked marker (main-stream px, same space as
+        _last_locked_corners_main/_last_good_main_img): canonical dense layout +
+        canonical quad = THIS frame's geometry (so canonical==tracked right now),
+        ref image = img_main. Ported from PX4_Gazebo's _dense_recover_anchor,
+        adapted to the Pi's main-stream/locked-marker convention (Gazebo anchors
+        once per call on frame0; the Pi anchors wherever it updates its own KLT
+        seed, i.e. every clean raw decode of the locked marker)."""
+        if not self._dense_recover:
+            return
+        self._dense_canon_quad = np.asarray(corners_main, np.float32).reshape(-1, 2).copy()
+        self._dense_canon_pts = self._scaled_quad_points(self._dense_canon_quad,
+                                                           per_side=self._dense_pts_per_side)
+        self._dense_track_pts = self._dense_canon_pts.copy()
+        self._dense_ref_img = img_main.copy()
+        self._dense_recover_active = False
+        self._dense_frames_since_anchor = 0
+
+    def _dense_recover_step(self, img_main):
+        """Advance the dense-homography-recovery tracking one step (_dense_ref_img
+        -> img_main), independent of decode/KLT status - called every frame so it
+        survives partial dropouts the strict corner gate alone would fail. Drops
+        out-of-bounds/lost survivors; canonical<->tracked correspondence stays
+        index-aligned (both shrink together). Ported from PX4_Gazebo's
+        _dense_recover_step."""
+        if not self._dense_recover or self._dense_track_pts is None or self._dense_ref_img is None:
+            return
+        try:
+            g0 = self._dense_ref_img if self._dense_ref_img.ndim == 2 else cv2.cvtColor(self._dense_ref_img, cv2.COLOR_BGR2GRAY)
+            g1 = img_main if img_main.ndim == 2 else cv2.cvtColor(img_main, cv2.COLOR_BGR2GRAY)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._dense_track_pts, None, **self._klt_lk_params)
+            st = np.asarray(st).flatten().astype(bool)
+            _ih, _iw = img_main.shape[:2]
+            _p1f = p1.reshape(-1, 2)
+            _in = ((_p1f[:, 0] >= 0) & (_p1f[:, 0] < _iw) & (_p1f[:, 1] >= 0) & (_p1f[:, 1] < _ih))
+            keep = st & _in
+            self._dense_canon_pts = self._dense_canon_pts[keep]
+            self._dense_track_pts = _p1f[keep].astype(np.float32)
+            self._dense_ref_img = img_main.copy()
+            self._dense_frames_since_anchor += 1
+        except Exception:
+            self._dense_canon_pts = None
+            self._dense_track_pts = None
+            self._dense_ref_img = None
+
+    def _dense_recover_quad(self):
+        """Recover the FULL primary-corner quad (main-stream px) via a RANSAC
+        homography fit from the surviving canonical dense points to their tracked
+        positions, then map the canonical quad's 4 corners through it. Returns
+        (4,2) float32 recovered corners, or None if too few survivors / a
+        degenerate fit / too stale since the last real anchor. No depth/scale
+        needed - pure 2D pixel homography. Ported from PX4_Gazebo's
+        _dense_recover_quad."""
+        if (not self._dense_recover or self._dense_track_pts is None
+                or len(self._dense_track_pts) < self._dense_recover_min_pts
+                or self._dense_canon_quad is None
+                or self._dense_frames_since_anchor > self._dense_recover_max_frames):
+            return None
+        try:
+            Hmat, mask = cv2.findHomography(self._dense_canon_pts, self._dense_track_pts,
+                                             cv2.RANSAC, self._dense_recover_ransac_px)
+            if Hmat is None or mask is None or int(mask.sum()) < self._dense_recover_min_pts:
+                return None
+            _inlier_frac = float(mask.sum()) / max(1, len(self._dense_track_pts))
+            if _inlier_frac < self._dense_recover_min_inlier_frac:
+                return None
+            recovered = cv2.perspectiveTransform(
+                self._dense_canon_quad.reshape(-1, 1, 2), Hmat).reshape(-1, 2).astype(np.float32)
+            _ih, _iw = self._dense_ref_img.shape[:2]
+            if not (np.all(recovered[:, 0] >= -_iw) and np.all(recovered[:, 0] < 2 * _iw)
+                    and np.all(recovered[:, 1] >= -_ih) and np.all(recovered[:, 1] < 2 * _ih)):
+                return None
+            self._dense_recover_active = True
+            return recovered
+        except Exception:
+            return None
+
     def _klt_fallback_fill(self, main_imgs, results):
         """For each image where the currently-locked marker wasn't decoded
         by ArUco, try to recover its corners via _klt_track_corners and
@@ -865,22 +986,40 @@ class IMG_PROCESSOR(Thread):
         shape a real cv2.aruco.detectMarkers hit would produce), so the
         existing common-marker/lock logic downstream picks it up with no
         other changes needed. Resets _lk_step_count once neither image
-        needed the fallback (a clean direct-decode frame)."""
+        needed the fallback (a clean direct-decode frame).
+
+        DENSE-HOMOGRAPHY RECOVERY (2026-07-28 port from PX4_Gazebo) runs as a
+        THIRD tier inside this same per-image loop, after KLT: it advances every
+        call regardless of outcome (_dense_recover_step) and is only asked for a
+        recovered quad when KLT itself couldn't fill this image. Default-off
+        (self._dense_recover)."""
+        if self._dense_recover:
+            for img in main_imgs:
+                self._dense_recover_step(img)
         if self._locked_marker_id is None:
             return results
         used_klt = False
+        used_dense = False
         new_results = list(results)
         for i, img in enumerate(main_imgs):
             corners, ids, rejected = new_results[i]
             ids_flat = np.asarray(ids).flatten() if ids is not None and len(ids) else np.array([])
             if self._locked_marker_id in ids_flat:
                 continue
-            if self._last_good_main_img is None or self._last_locked_corners_main is None:
-                continue
-            tracked = self._klt_track_corners(img)
+            tracked = None
+            if self._last_good_main_img is not None and self._last_locked_corners_main is not None:
+                tracked = self._klt_track_corners(img)
+            if tracked is not None:
+                used_klt = True
+            else:
+                tracked = self._dense_recover_quad()
+                if tracked is not None:
+                    used_dense = True
+                    if os.environ.get("DENSE_RECOVER_DBG", "0") == "1":
+                        print("[dr] t%.3f RECOVERED quad from %d dense survivors" % (
+                            self._time.perf_counter(), len(self._dense_track_pts)), flush=True)
             if tracked is None:
                 continue
-            used_klt = True
             new_corner = tracked.reshape(1, 4, 2).astype(np.float32)
             new_id = np.array([[self._locked_marker_id]], dtype=np.int32)
             if ids is not None and len(ids_flat):
@@ -894,6 +1033,7 @@ class IMG_PROCESSOR(Thread):
             self._frame_used_klt = True
         else:
             self._lk_step_count = 0
+        self._dense_recover_active = used_dense
         return new_results
 
     def _detect_markers(self, main_imgs):
@@ -1204,6 +1344,16 @@ class IMG_PROCESSOR(Thread):
             self._last_locked_corners = np.asarray(C_nP[1], dtype=np.float32)   # for next call's ROI
             self._last_good_main_img = main_imgs[1].copy()   # for next call's KLT fallback
             self._last_locked_corners_main = self._last_locked_corners / self._aruco_scale
+            if self._dense_recover:
+                # Re-anchor on a genuine fresh decode of the locked marker (never on a
+                # KLT-filled or dense-recovered synthetic corner - that would compound
+                # drift into the canonical layout). Also SOFT-anchor after a short KLT
+                # chain (still close enough to trustworthy) - ported from Gazebo's
+                # _dense_soft_anchor_max_steps logic.
+                if not self._frame_used_klt and not self._dense_recover_active:
+                    self._dense_recover_anchor(self._last_locked_corners_main, main_imgs[1])
+                elif self._frame_used_klt and self._lk_step_count <= self._dense_soft_anchor_max_steps:
+                    self._dense_recover_anchor(self._last_locked_corners_main, main_imgs[1])
             # FIXED 2026-07-26 (user-identified bug): loop-closure correction used
             # to be gated on self._planar_map_shadow alone - meaning disabling
             # shadow mode while self._planar_map_primary stayed on (its default)
@@ -1418,6 +1568,13 @@ class IMG_PROCESSOR(Thread):
 
             self._opt_flow_ang_vel_raw.append(B_v)
             self._opt_flow_estimator_tag.append('lstsq+klt' if self._frame_used_klt else 'lstsq')
+            if self._h_extrap:
+                self._h_real_t.append(self._time.perf_counter())
+                self._h_real_v.append(B_v.copy())
+                if len(self._h_real_t) > 32:
+                    self._h_real_t = self._h_real_t[-32:]
+                    self._h_real_v = self._h_real_v[-32:]
+            self._h_consec_misses = 0
             # 2-state constant-velocity KF on the raw [h;w] (low-lag; getOptFlowAngVel
             # reads _kf_x). Stepped once per fresh frame.
             self._kf_update(B_v, self._time.perf_counter())
@@ -1565,10 +1722,27 @@ class IMG_PROCESSOR(Thread):
         if _pm_rescue:
             self._kf_feat_update(_s_final, _t)   # genuine correct-step against the rescue's fresh geometric estimate
 
-        # h: Pi has no h_extrap/observer port (ring flow already runs unconditionally,
-        # own _ring_time_log) - zeros here matches Gazebo's OWN fallback when its h_extrap
-        # feature is unavailable/off, not a Pi-specific weakening.
-        self._opt_flow_ang_vel_raw.append(np.zeros(6))
+        # h: decayed deg-1 extrapolation against REAL-ONLY history (2026-07-28 port from
+        # PX4_Gazebo, closes project_map_flow_rescue_port_pending) - never self-referencing
+        # (the extrapolated output is never appended to _h_real_v). Ring flow still runs
+        # unconditionally (own _ring_time_log) and is unaffected either way.
+        self._h_consec_misses += 1
+        if self._h_extrap and len(self._h_real_t) >= 5:
+            _rt = np.asarray(self._h_real_t[-8:])
+            _rv = np.asarray(self._h_real_v[-8:])
+            _valid = np.all(np.abs(_rv) < self._h_extrap_clip_bound - 1e-3, axis=1)
+            if int(_valid.sum()) >= 5:
+                _rt, _rv = _rt[_valid], _rv[_valid]
+                _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=6)
+                _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=self._h_extrap_max,
+                                      neginf=-self._h_extrap_max)
+            else:
+                _fit = self._h_real_v[-1].copy() if self._h_real_v else np.zeros(6)
+            _decay = max(0.0, 1.0 - self._h_consec_misses / max(1, self._h_extrap_decay_frames))
+            _h_out = np.clip(_fit * _decay, -self._h_extrap_max, self._h_extrap_max)
+        else:
+            _h_out = np.zeros(6)
+        self._opt_flow_ang_vel_raw.append(_h_out)
         self._opt_flow_estimator_tag.append('coast')
 
         # _feature_pts/_virtual_feature_pts: rescued geometry when available (so
@@ -2037,6 +2211,8 @@ class IMG_PROCESSOR(Thread):
             'FLOW_LOOM_DECOUPLE': int(bool(getattr(self, '_loom_decouple', False))),
             'FLOW_FUSE_RING': int(bool(getattr(self, '_fuse_ring', False))),
             'FLOW_DH_MAX': getattr(self, '_flow_dh_max', None),
+            'PLASMC_H_EXTRAP': int(bool(getattr(self, '_h_extrap', False))),
+            'PLASMC_DENSE_RECOVER': int(bool(getattr(self, '_dense_recover', False))),
             'GYRO_COMP_WXY_MAX': getattr(self, '_gyro_comp_wxy_max', None),
             # --- perception path ---
             'PLANAR_MAP_SHADOW': int(bool(getattr(self, '_planar_map_shadow', False))),
