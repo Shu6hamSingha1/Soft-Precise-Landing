@@ -76,6 +76,7 @@ os.environ.setdefault("PLANAR_MAP_SHADOW", "0")
 os.environ.setdefault("PLASMC_PLANAR_MAP_PRIMARY", "0")
 
 from flight_controller import FC
+from img_geometry import CALIB_CX, CALIB_CY   # principal point, for the run-validity framing check
 import img_data as ID
 # from numerical_methods import RK5
 # from controller import Controller
@@ -318,6 +319,7 @@ def _print_run_validity(image_data, gt_data):
     realN = coastN = 0
     coast_pct = 0.0
     blackout_s = 0.0
+    onset_r = float('nan')     # marker framing at the moment tracking died
     try:
         tags = [str(t) for t in image_data.get("Opt Flow Estimator Tag", [])]
         if tags:
@@ -338,6 +340,23 @@ def _print_run_validity(image_data, gt_data):
             _ti = np.asarray(image_data.get("Time", []), dtype=float)
             dt = float(np.median(np.diff(_ti))) if len(_ti) > 2 else 1.0 / 30.0
             blackout_s = longest * dt
+
+            # WHERE was the marker when tracking died? This decides which of two
+            # very different problems you have, and they have opposite fixes:
+            #   r ~ 1.0 -> marker walked out of frame: a framing/technique issue
+            #   r well below 1 -> marker vanished mid-frame while plainly
+            #                     visible: a DETECTION-path fault, and no change
+            #                     in how you fly or hand-move it will help.
+            # r is normalised: 0 at the principal point, 1.0 at the nearest edge.
+            _P = np.asarray(image_data.get("Image Feature Pts", []), dtype=float)
+            if _P.ndim == 4 and len(_P) == len(tags):
+                _cen = _P[:, 0].mean(1)
+                _r = np.maximum(np.abs(_cen[:, 0] - CALIB_CX) / CALIB_CX,
+                                np.abs(_cen[:, 1] - CALIB_CY) / CALIB_CY)
+                _c = np.array([t == "coast" for t in tags])
+                _on = np.where(_c[1:] & ~_c[:-1])[0]
+                if len(_on):
+                    onset_r = float(np.median(_r[_on]))
     except Exception:
         pass
     xs = ys = zs = yaws = np.array([])
@@ -401,9 +420,20 @@ def _print_run_validity(image_data, gt_data):
     # 0.7 -> 0.35 m for exactly this reason.
     if lost:
         print(" VERDICT: UNUSABLE - poor decode yield: %s" % ", ".join(lost))
-        print("          The marker was not reliably visible. Do NOT fix this by")
-        print("          moving more: move SLOWER and SMALLER, keep the marker")
-        print("          centred and in frame, and re-record.")
+        if np.isfinite(onset_r) and onset_r > 0.85:
+            print("          Marker was at the frame EDGE (r=%.2f) when tracking died"
+                  % onset_r)
+            print("          -> framing problem. Keep the marker centred; move")
+            print("             slower and in smaller excursions, and re-record.")
+        elif np.isfinite(onset_r):
+            print("          Marker was WELL INSIDE the frame (r=%.2f) when tracking"
+                  % onset_r)
+            print("          died -> this is a DETECTION-path fault, not technique.")
+            print("          Re-recording the same way will reproduce it. Investigate")
+            print("          ArUco re-acquisition / ROI recovery before collecting more.")
+        else:
+            print("          The marker was not reliably decoded; check framing first,")
+            print("          then the detection path.")
     elif weak:
         print(" VERDICT: WEAK - low excitation in: %s" % ", ".join(weak))
         print("          Each axis still needs a real sweep during its own phase")
