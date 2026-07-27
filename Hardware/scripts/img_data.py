@@ -2096,11 +2096,25 @@ class IMG_PROCESSOR(Thread):
         Gazebo avoids this by co-sampling its RAW getters
         (getRawOptFlowAngVel/getRawRingFlowAngVel) into the GT dict
         specifically "so the derive tools can fit" - this is the missing Pi
-        counterpart. Mirrors getOptFlowAngVel() exactly (same filter branch,
-        same loom-decouple bypass) MINUS the _sensor_cal_hw multiply.
+        counterpart.
+
+        DELIBERATELY does NOT mirror getOptFlowAngVel()'s fusion branch
+        (BUG FIX 2026-07-27, same day it was introduced). getOptFlowAngVel()
+        returns the fusion-EKF state when FLOW_FUSE_RING=1 and the EKF has
+        initialised - but that state is POST-cal and ring-fused: the EKF's
+        corner measurement is `_corner_cal = _sensor_cal_hw @ B_v` (see the
+        _fuse_step call site), so its output already has _sensor_cal_hw baked
+        in and is blended with the ring. Emitting it from a getter named "Raw"
+        would co-sample calibrated, fused data into "Raw Opt Flow Ang Vel",
+        and any cal fitted against it would be circular - fitting a cal
+        against a signal that already contains that cal.
+
+        This is not a corner case: on the Pi FLOW_FUSE_RING defaults to 1, and
+        _ekf_init flips True on the first frame with EITHER corner or ring
+        valid (ring logs unconditionally every frame), so the fusion branch is
+        taken essentially from the start of every recording. Always return the
+        PRE-cal filtered corner state instead.
         """
-        if self._fuse_ring and self._ekf_init:
-            return np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]])
         if len(self._opt_flow_ang_vel_raw) == 0:
             return np.zeros(6)
         if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
