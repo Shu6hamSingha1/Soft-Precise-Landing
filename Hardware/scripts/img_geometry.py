@@ -30,21 +30,44 @@ from ahrs import Quaternion
 # sensor with 62.2 deg hfov): 640x480 is a documented distinct "640x480p90"
 # sensor mode, not a simple downscale of the full-FOV binned modes, so a
 # narrower FOV / higher fx-in-pixels than the full-sensor spec is physically
-# expected, not a bug. FINAL FIT: principal point fixed at the geometric
-# center (CALIB_FIX_PRINCIPAL_POINT) on the full combined 123-image set (all
-# sessions: original 25 flat-pose + 20 fresh + 33 with deliberate vertical
-# coverage) - reprojection err 0.36px, small well-behaved distortion (vs
-# wild +/-10-30 coefficients in the unstable free-principal-point runs).
-# Cross-validated: independent fixed-center fits on the 45-image and
-# 33-image subsets gave fx=1011/1074 respectively - all three within ~6% of
-# this final value, good convergence. Measured hfov ~34 deg (vs the IMX219's
-# full-sensor 62 deg). The original fx=512/fy=384 was a linear scale-down of
-# an UNVERIFIED spec-sheet guess (768/576 @ 960x720, itself never
-# calibrated) and assumed a full-FOV bin - wrong assumption for this crop mode.
+# expected, not a bug.
+#
+# RE-DERIVED 2026-07-28, supersedes the fx=1020.37 fit below. The prior
+# "123-image set" this comment described was actually only 78 UNIQUE captures
+# (25 flat-pose + 20 fresh + 33 vertical-coverage, 25+20+33=78) - the on-disk
+# folder had 123 FILES because the 45-image midway "combined" checkpoint
+# (itself just the 25+20 union) got copied into the final folder a second
+# time under new names, so those 45 of 78 images carried double weight in the
+# least-squares fit. Also hit a real cv2 5.x compat bug while re-deriving:
+# findChessboardCorners' legacy fallback returns (N,2) on this opencv-python
+# build, not the (N,1,2) the script assumed - crashed outright rather than
+# silently miscalibrating, see compute_camera_calib.py's find_board() fix.
+# Re-ran compute_camera_calib.py on the 78 DEDUPLICATED images only (still
+# principal-point-fixed, still fx=fy constrained): reprojection err 0.36px
+# (same as before - the duplication didn't corrupt the ANSWER, just its
+# uncertainty), 78/78 images used, ZERO outliers rejected. Auto-detected
+# board size 8x5 inner corners, independently confirmed against the actual
+# board (user, 2026-07-28): a calib.io 6x9-square board has 5x8 inner
+# corners - same count, transposed - strong evidence the fit used the real
+# board geometry rather than a spurious sub-pattern match. New value is
+# within 0.6% of the prior fx=1020.37 (1020.37 -> 1026.95) - the duplication
+# bug was a methodology flaw, not a source of significant error; DID NOT
+# turn out to explain the separately-suspected GT-vs-image scale mismatch
+# (see project_pi_gt_lever_arm_2026_07_27) - that remains open.
+# Full audit trail: Test_Data/Calibration/Camera/calib_images_dedup78/
+# (images + cameraMatrix.txt/cameraDistortion.txt/calib_log.txt).
+#
+# Cross-validated (prior fit): independent fixed-center fits on the
+# 45-image and 33-image subsets gave fx=1011/1074 respectively - all within
+# ~6% of the final value, good convergence. Measured hfov ~34 deg (vs the
+# IMX219's full-sensor 62 deg). The original fx=512/fy=384 was a linear
+# scale-down of an UNVERIFIED spec-sheet guess (768/576 @ 960x720, itself
+# never calibrated) and assumed a full-FOV bin - wrong assumption for this
+# crop mode.
 CALIB_CX = 319.50  # measured principal point (~= geometric center 320.0)
 CALIB_CY = 239.50  # measured principal point (~= geometric center 240.0)
-fx = 1020.37
-fy = 1020.37
+fx = 1026.95
+fy = 1026.95
 f = fx  # focal length in pixels
 # NOTE: this hfov (~35 deg) is NOT the same as the Gazebo sim camera (1.74 rad
 # / ~99.7 deg @640x480) - matching resolution alone never reproduced the sim's

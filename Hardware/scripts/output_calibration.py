@@ -81,7 +81,7 @@ os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 # data integrity - argue it on its own, not by appeal to (b) above.
 
 from flight_controller import FC
-from img_geometry import CALIB_CX, CALIB_CY   # principal point, for the run-validity framing check
+from img_geometry import CALIB_CX, CALIB_CY, fx   # for the run-validity framing/marker-size check
 import img_data as ID
 # from numerical_methods import RK5
 # from controller import Controller
@@ -379,7 +379,7 @@ def _print_run_validity(image_data, gt_data):
             # CORRECTED 2026-07-27: an earlier version measured the CENTROID's
             # distance from the principal point and concluded the marker was
             # "well inside the frame". That was the wrong quantity. This marker
-            # is ~0.28 m and the camera is narrow (fx=1020, HFOV 34.8 deg), so
+            # is ~0.28 m and the camera is narrow (fx=1027, HFOV 34.7 deg), so
             # it spans 30-60% of the frame height at 0.8-2.0 m: the centroid can
             # sit comfortably inside while the marker's own CORNERS are already
             # against the boundary. ArUco needs the whole quad PLUS a quiet
@@ -444,6 +444,35 @@ def _print_run_validity(image_data, gt_data):
     print(" yaw span      : %6.1f d %s (need >=20)" % (yawsp, tag(yawsp, 20.0)))
     print(" height range  : %5.2f .. %5.2f m" % (Zlo, Zhi))
 
+    # Marker physical size, measured from THIS run's own tracked frames
+    # (side_px = fx * L / z), not assumed. The 2026-07-27 advisory text hardcoded
+    # "0.28 m" from one specific marker; that stops being true the moment the
+    # marker is swapped (e.g. to fix decode yield) or the nested small marker is
+    # what's tracked, and would silently give wrong altitude/margin advice.
+    # Only uses the BIG-marker mode (side > 80 px raw), matching the threshold
+    # used throughout this session's marker-size/decode-yield analysis - the
+    # nested small marker's own apparent size is a different, much smaller L.
+    marker_L_m = float('nan')
+    try:
+        _P2 = np.asarray(image_data.get("Image Feature Pts", []), dtype=float)
+        if _P2.ndim == 4 and len(_P2) == len(tags):
+            _q2 = _P2[:, 0]
+            _side = np.linalg.norm(_q2 - np.roll(_q2, -1, axis=1), axis=2).mean(1)
+            _tr = np.array([t != "coast" for t in tags]) & (_side > 80)
+            if _tr.sum() > 20 and len(zs):
+                # altitude at tracked samples: reuse the same height-range
+                # convention as Zlo/Zhi (UAV z minus target z), nearest-index
+                # matched onto the flow array's own length.
+                _hgt = (zs - np.nanmedian(tz))
+                _idx = np.clip(np.linspace(0, len(_hgt) - 1, len(tags)).astype(int),
+                               0, len(_hgt) - 1)
+                _L = _side[_tr] * np.abs(_hgt[_idx][_tr]) / fx
+                _L = _L[np.isfinite(_L) & (_L > 0.02) & (_L < 1.0)]
+                if len(_L) > 10:
+                    marker_L_m = float(np.median(_L))
+    except Exception:
+        pass
+
     weak = [n for n, v, lo in [("X", xsp, 0.40), ("Y", ysp, 0.40),
                                ("Z", zsp, 0.40), ("yaw", yawsp, 20.0)] if v < lo]
     lost = [n for n, v, hi in [("coast", coast_pct, COAST_MAX_PCT),
@@ -464,11 +493,22 @@ def _print_run_validity(image_data, gt_data):
             print("          Marker bbox was only %.0f px from the frame edge when"
                   % onset_r)
             print("          tracking died -> it ran out of FRAME, not of focus.")
-            print("          This camera is narrow (HFOV ~35 deg): at 1.0/1.5/2.0 m a")
-            print("          0.28 m marker leaves only +/-0.10/0.21/0.33 m of lateral")
-            print("          room. Raise the altitude, use a smaller marker, or reduce")
-            print("          the lateral excursion -- the >=0.40 m span asked for above")
-            print("          is NOT geometrically achievable at low altitude here.")
+            if np.isfinite(marker_L_m):
+                print("          This camera is narrow (HFOV ~35 deg). This run's own"
+                      " tracked")
+                print("          marker measures ~%.2f m; at 1.0/1.5/2.0 m that leaves"
+                      % marker_L_m)
+                for _z in (1.0, 1.5, 2.0):
+                    _room = max(0.0, (2.0 * CALIB_CY - fx * marker_L_m / _z) * _z / fx / 2.0)
+                    print("            z=%.1fm: +/-%.2f m of lateral room" % (_z, _room))
+            else:
+                print("          This camera is narrow (HFOV ~35 deg): at 1.0/1.5/2.0 m a")
+                print("          0.28 m marker leaves only +/-0.10/0.21/0.33 m of lateral")
+                print("          room (reference figure - this run's own marker size")
+                print("          could not be measured).")
+            print("          Raise the altitude, use a smaller marker, or reduce the")
+            print("          lateral excursion -- the >=0.40 m span asked for above is")
+            print("          NOT geometrically achievable at low altitude with this marker.")
         elif np.isfinite(onset_r):
             print("          Marker still had %.0f px of frame margin when tracking"
                   % onset_r)
