@@ -2014,6 +2014,52 @@ class IMG_PROCESSOR(Thread):
         time. None if no successful iteration has completed yet."""
         return self._time_log[-1] if self._time_log else None
 
+    def getRawOptFlowAngVel(self):
+        """Latest KF-smoothed corner [h;w] BEFORE _sensor_cal_hw (6-vec).
+
+        ADDED 2026-07-27. The Pi already co-samples getOptFlowAngVel() /
+        getImgFeatureParam() into Ground_Truth.npy alongside each mocap pose,
+        but those are CALIBRATED, so derive_pi_cal.py could not use them to
+        FIT a calibration and was forced to re-load Img_Data.npy and
+        np.interp() it onto the GT clock instead. That interpolation is a real
+        error source: validating GT s against the image gave corr 0.0-0.52 via
+        the interpolated path vs 0.29-0.83 using the exactly-paired co-sampled
+        rows on the same recordings.
+
+        Gazebo avoids this by co-sampling its RAW getters
+        (getRawOptFlowAngVel/getRawRingFlowAngVel) into the GT dict
+        specifically "so the derive tools can fit" - this is the missing Pi
+        counterpart. Mirrors getOptFlowAngVel() exactly (same filter branch,
+        same loom-decouple bypass) MINUS the _sensor_cal_hw multiply.
+        """
+        if self._fuse_ring and self._ekf_init:
+            return np.concatenate([self._ekf_x[0:3], self._ekf_x[6:9]])
+        if len(self._opt_flow_ang_vel_raw) == 0:
+            return np.zeros(6)
+        if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
+            return self._compute_savgol_output()
+        return self._kf_x[:, 0].copy()
+
+    def getRawImgFeatureParam(self):
+        """Latest KF-smoothed [xc, yc, 1, alpha] BEFORE _sensor_cal_s.
+        Raw counterpart of getImgFeatureParam() - see getRawOptFlowAngVel()
+        for why the co-sampled log needs the PRE-cal value."""
+        if len(self._img_feature_param) == 0:
+            return np.zeros(4)
+        if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
+            n = len(self._img_feature_param)
+            if n != self._kf_feat_last_n:
+                self._kf_feat_last_n = n
+                self._kf_feat_update(self._img_feature_param[-1],
+                                     self._time.perf_counter())
+            if self._kf_feat_initialized:
+                return self._kf_feat_x[:, 0].copy()
+        if len(self._img_feature_param) >= FILTER_WIN:
+            sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:], FILTER_WIN,
+                          FILTER_POLYORDER, axis=0)
+            return sgf_buf[int(FILTER_WIN / 2 + 1)]
+        return np.mean(self._img_feature_param, axis=0)
+
     def getRawRingFlowAngVel(self):
         """Latest raw ring [h;w] BEFORE _sensor_cal_ring (for ring-cal derivation)."""
         return self._ring_v_raw

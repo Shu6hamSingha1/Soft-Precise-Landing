@@ -143,6 +143,9 @@ async def main(record = 'n'):
     target_pose = []
     opt_flow_ang_vel = []
     img_feature_param = []
+    raw_opt_flow_ang_vel = []      # pre-_sensor_cal_hw, for derive_pi_cal (2026-07-27)
+    raw_img_feature_param = []     # pre-_sensor_cal_s
+    raw_ring_flow_ang_vel = []     # pre-_sensor_cal_ring
     start_pose = None
     t_c = []
     gt_pose_stamp = []
@@ -205,6 +208,20 @@ async def main(record = 'n'):
             target_pose.append(mocap_node.getPose()["target"])
             opt_flow_ang_vel.append(img_node.getOptFlowAngVel())
             img_feature_param.append(img_node.getImgFeatureParam())
+            # RAW (pre-_sensor_cal) counterparts, co-sampled on the SAME loop
+            # tick as the mocap pose above (2026-07-27). The calibrated arrays
+            # cannot be used to FIT a calibration, so derive_pi_cal.py was
+            # re-loading Img_Data.npy and np.interp()-ing it onto the GT clock
+            # instead. That interpolation measurably hurts: validating GT s
+            # against the image gives corr 0.0-0.52 through the interpolated
+            # path vs 0.29-0.83 using exactly-paired co-sampled rows on the
+            # same recordings. Mirrors what Gazebo already co-samples
+            # (getRawOptFlowAngVel/getRawRingFlowAngVel) "so the derive tools
+            # can fit". Ring raw is included so ring-cal gets the same
+            # zero-interpolation treatment.
+            raw_opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
+            raw_img_feature_param.append(img_node.getRawImgFeatureParam())
+            raw_ring_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
             # Real per-iteration capture stamps for the two subsystems this
             # loop is polling, DISTINCT from t_c (this loop's own tick time).
             # t_c only tells you when THIS loop ran - it does not tell you
@@ -275,7 +292,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Raw Opt Flow Ang Vel": raw_opt_flow_ang_vel, "Raw Img Feature Params": raw_img_feature_param, "Raw Ring Flow Ang Vel": raw_ring_flow_ang_vel, "Command": cmd}
             img_params = img_node.getParams()
 
         # Close img_node thread
