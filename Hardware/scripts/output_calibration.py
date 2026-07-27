@@ -341,22 +341,29 @@ def _print_run_validity(image_data, gt_data):
             dt = float(np.median(np.diff(_ti))) if len(_ti) > 2 else 1.0 / 30.0
             blackout_s = longest * dt
 
-            # WHERE was the marker when tracking died? This decides which of two
-            # very different problems you have, and they have opposite fixes:
-            #   r ~ 1.0 -> marker walked out of frame: a framing/technique issue
-            #   r well below 1 -> marker vanished mid-frame while plainly
-            #                     visible: a DETECTION-path fault, and no change
-            #                     in how you fly or hand-move it will help.
-            # r is normalised: 0 at the principal point, 1.0 at the nearest edge.
+            # How much room did the marker have when tracking died?
+            #
+            # CORRECTED 2026-07-27: an earlier version measured the CENTROID's
+            # distance from the principal point and concluded the marker was
+            # "well inside the frame". That was the wrong quantity. This marker
+            # is ~0.28 m and the camera is narrow (fx=1020, HFOV 34.8 deg), so
+            # it spans 30-60% of the frame height at 0.8-2.0 m: the centroid can
+            # sit comfortably inside while the marker's own CORNERS are already
+            # against the boundary. ArUco needs the whole quad PLUS a quiet
+            # zone, so it dies at that point. Measured at blackout onset: bbox
+            # margin median 6-10 px (vs 25-88 px while tracking), with 77-92% of
+            # onsets under 20 px. Measure the EXTENT, not the centre.
             _P = np.asarray(image_data.get("Image Feature Pts", []), dtype=float)
             if _P.ndim == 4 and len(_P) == len(tags):
-                _cen = _P[:, 0].mean(1)
-                _r = np.maximum(np.abs(_cen[:, 0] - CALIB_CX) / CALIB_CX,
-                                np.abs(_cen[:, 1] - CALIB_CY) / CALIB_CY)
+                _q = _P[:, 0]
+                _W, _H = 2.0 * CALIB_CX, 2.0 * CALIB_CY
+                _margin = np.minimum.reduce([
+                    _q[:, :, 0].min(1), _W - _q[:, :, 0].max(1),
+                    _q[:, :, 1].min(1), _H - _q[:, :, 1].max(1)])
                 _c = np.array([t == "coast" for t in tags])
                 _on = np.where(_c[1:] & ~_c[:-1])[0]
                 if len(_on):
-                    onset_r = float(np.median(_r[_on]))
+                    onset_r = float(np.median(_margin[_on]))   # px to frame edge
     except Exception:
         pass
     xs = ys = zs = yaws = np.array([])
@@ -420,17 +427,20 @@ def _print_run_validity(image_data, gt_data):
     # 0.7 -> 0.35 m for exactly this reason.
     if lost:
         print(" VERDICT: UNUSABLE - poor decode yield: %s" % ", ".join(lost))
-        if np.isfinite(onset_r) and onset_r > 0.85:
-            print("          Marker was at the frame EDGE (r=%.2f) when tracking died"
+        if np.isfinite(onset_r) and onset_r < 25.0:
+            print("          Marker bbox was only %.0f px from the frame edge when"
                   % onset_r)
-            print("          -> framing problem. Keep the marker centred; move")
-            print("             slower and in smaller excursions, and re-record.")
+            print("          tracking died -> it ran out of FRAME, not of focus.")
+            print("          This camera is narrow (HFOV ~35 deg): at 1.0/1.5/2.0 m a")
+            print("          0.28 m marker leaves only +/-0.10/0.21/0.33 m of lateral")
+            print("          room. Raise the altitude, use a smaller marker, or reduce")
+            print("          the lateral excursion -- the >=0.40 m span asked for above")
+            print("          is NOT geometrically achievable at low altitude here.")
         elif np.isfinite(onset_r):
-            print("          Marker was WELL INSIDE the frame (r=%.2f) when tracking"
+            print("          Marker still had %.0f px of frame margin when tracking"
                   % onset_r)
-            print("          died -> this is a DETECTION-path fault, not technique.")
-            print("          Re-recording the same way will reproduce it. Investigate")
-            print("          ArUco re-acquisition / ROI recovery before collecting more.")
+            print("          died -> not a framing limit; check the detection path")
+            print("          (re-acquisition / ROI recovery / marker scale switching).")
         else:
             print("          The marker was not reliably decoded; check framing first,")
             print("          then the detection path.")
