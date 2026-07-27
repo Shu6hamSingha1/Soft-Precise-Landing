@@ -45,8 +45,8 @@ TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 200
 
 # *** PLACEHOLDER - replace with this airframe's own calibration ***
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.41"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
 # *** Rate-axis command correction, r^2-weighted input-cal cross-check
 # (2026-07-21, Hardware/scripts/analyze_input_calibration.py) ***
@@ -60,9 +60,9 @@ THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
 # uncorrected commands.
 RATE_CORRECTION_ENABLED = os.environ.get("RATE_CORRECTION_ENABLED", "1") != "0"
 RATE_CORRECTION = np.array([
-    float(os.environ.get("RATE_CORRECTION_WX", "0.645")),
-    float(os.environ.get("RATE_CORRECTION_WY", "0.720")),
-    float(os.environ.get("RATE_CORRECTION_WZ", "0.689")),
+    float(os.environ.get("RATE_CORRECTION_WX", "0.758")),
+    float(os.environ.get("RATE_CORRECTION_WY", "0.739")),
+    float(os.environ.get("RATE_CORRECTION_WZ", "0.665")),
 ]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))

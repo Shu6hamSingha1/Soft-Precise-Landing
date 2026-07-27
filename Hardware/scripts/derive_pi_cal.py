@@ -228,6 +228,72 @@ def _robust_vel(x, t):
     return np.column_stack([np.interp(t, tu, vu[:, k]) for k in range(x.shape[1])])
 
 
+# Phase labels: 0=X, 1=Y, 2=Z, 3=yaw, -1=ambiguous/settle.
+PHASE_LAB = ['X', 'Y', 'Z', 'yaw']
+PHASE_WIN_S = float(os.environ.get("CAL_PHASE_WIN_S", "0.5"))
+PHASE_DOM_MIN = float(os.environ.get("CAL_PHASE_DOM_MIN", "0.45"))
+# 1 rad/s of yaw is treated as comparable "excitation effort" to this many m/s
+# of translation, so the dominance comparison is not unit-biased toward yaw.
+PHASE_YAW_SCALE = float(os.environ.get("CAL_PHASE_YAW_SCALE", "0.30"))
+
+
+def phase_labels(g, win_s=PHASE_WIN_S, dom_min=PHASE_DOM_MIN):
+    """Recover per-sample excitation-phase labels from mocap GT alone.
+
+    ADDED 2026-07-27. These recordings ARE phased (operator sweeps one axis at
+    a time -- verified from mocap: 0.21 axis-switches/window, 3-4s contiguous
+    single-axis blocks, 0.73-0.80 dominance across the 2026-07-26 set), but
+    output_calibration.py logs NO phase tag, unlike Gazebo's
+    record_output_calibration.py which writes gt['Phase'] per sample and whose
+    derive_board_cal.py then fits the centroid scale from the CLEAN
+    single-axis segment (`std_ratio(..., phase=='x')`).
+
+    Without tags derive_one() had to fit the centroid scale with one global
+    polyfit over all phases mixed. Measured cost of that on the 7-run
+    2026-07-26 set: 2/7 runs returned a PHYSICALLY IMPOSSIBLE negative scale
+    (-0.0097, -0.0320 -- moving right cannot swing the GT bearing left), and
+    the aggregate produced a spurious 3.1x sx/sy asymmetry (0.061 vs 0.189)
+    on what is a near-symmetric camera. Phase-selecting removes every negative
+    and brings sx/sy to within 7% (0.270 vs 0.288), halving sx inter-run CV
+    (0.88 -> 0.42).
+
+    Method: window the run, normalise each axis by its OWN rms (so dominance
+    is relative to that axis's excitation scale, not absolute m/s), and label
+    a window only when one axis carries > dom_min of the normalised energy.
+    Windows below that threshold stay -1 (settle/transition) and are excluded,
+    which is the tagged-'settle' equivalent of Gazebo's phase script.
+
+    Returns an int array on g['t_g'], same length as the GT grid.
+    """
+    t = np.asarray(g["t_g"], float)
+    alt = np.asarray(g["alt"], float)
+    # translational velocity (m/s): h = v/z  ->  v = h*z
+    v = np.asarray(g["B_h_g"], float)[:, :3] * alt[:, None]
+    yaw_rate = _robust_vel(np.unwrap(g["alpha"])[:, None], t)[:, 0]
+    A = np.column_stack([v, yaw_rate * PHASE_YAW_SCALE])
+
+    rms = np.sqrt(np.nanmean(A ** 2, 0)) + 1e-9
+    An = np.abs(A) / rms
+
+    lab = np.full(len(t), -1, dtype=int)
+    if len(t) < 4 or not np.isfinite(t).all():
+        return lab
+    edges = np.arange(t[0], t[-1], win_s)
+    for a, b in zip(edges[:-1], edges[1:]):
+        w = (t >= a) & (t < b)
+        if w.sum() < 3:
+            continue
+        e = np.nanmean(An[w] ** 2, 0)
+        tot = np.nansum(e)
+        if not np.isfinite(tot) or tot <= 0:
+            continue
+        f = e / tot
+        k = int(np.nanargmax(f))
+        if f[k] > dom_min:
+            lab[w] = k
+    return lab
+
+
 def compute_gt_flow(run_dir):
     """Pi-adapted port of gt_optical_flow.compute_gt_flow. Returns a dict
     with GT reference signals on the GT's own time axis (0-based, seconds
@@ -441,13 +507,69 @@ def derive_one(run_dir):
     pred = Rm @ Msol
     r2 = 1 - np.sum((Gm - pred) ** 2, 0) / np.sum((Gm - Gm.mean(0)) ** 2, 0)
 
-    # centroid scale: GT bearing vs raw feature xc/yc, plain regression
-    # slope (no phase tags on this continuous hand-move data, unlike
-    # Gazebo's phased std_ratio - a simple lstsq slope per axis instead).
+    # centroid scale: GT bearing vs raw feature xc/yc, per-axis regression
+    # slope, fitted on that axis's OWN excitation phase.
+    #
+    # FIXED 2026-07-27 (see phase_labels docstring): this used to be one global
+    # polyfit over ALL phases mixed, because output_calibration.py logs no
+    # phase tag. Cross-axis motion during the x-phase then leaks into the sy
+    # fit and vice versa, which on the 2026-07-26 set produced 2/7 physically
+    # impossible NEGATIVE scales and a spurious 3.1x sx/sy asymmetry. Phases
+    # are now recovered from mocap (no re-recording needed) and each axis is
+    # fitted from its own clean segment, matching what Gazebo's
+    # derive_board_cal.py does with its logged gt['Phase'] tags.
+    # Held-during-coast centroids are excluded too. The 2026-07-26 coast fix
+    # deliberately left "Feature Params" alone because it is rescued/held (not
+    # zeroed) during coast -- but a HELD centroid is still a stale constant
+    # sitting against a GT that keeps moving, which biases the slope just as
+    # surely as a zero does. Measured on the 7-run set: excluding them takes
+    # the sy inter-run CV from 0.74 to 0.10.
     gs = g["V_s_g"]
-    ms = np.all(np.isfinite(gs), 1) & np.all(np.isfinite(raw_feat_g[:, :2]), 1) & gok
-    sx = float(np.polyfit(raw_feat_g[ms, 0], gs[ms, 0], 1)[0]) if ms.sum() > 10 else np.nan
-    sy = float(np.polyfit(raw_feat_g[ms, 1], gs[ms, 1], 1)[0]) if ms.sum() > 10 else np.nan
+    s_tag = np.array([str(x) for x in img.get("S Estimator Tag", [])])
+    if len(s_tag) == len(t_img_abs):
+        s_real_g = g["align"](t_img_abs,
+                              (s_tag != "coast").astype(float)[:, None])[:, 0] > 0.99
+    else:                                          # older recording, no tag
+        s_real_g = np.ones(len(gs), dtype=bool)
+        print("  [warn] no usable 'S Estimator Tag' - centroid fit cannot "
+              "exclude held-during-coast samples; treat cal_s as provisional")
+
+    ms = (np.all(np.isfinite(gs), 1) & np.all(np.isfinite(raw_feat_g[:, :2]), 1)
+          & gok & s_real_g)
+    lab = phase_labels(g)
+    if len(lab) != len(ms):                       # defensive: keep masks aligned
+        lab = np.resize(lab, len(ms))
+
+    cov = ", ".join(f"{PHASE_LAB[k]}={int(((lab == k) & s_real_g).sum())}"
+                    for k in range(4))
+    print(f"  phase coverage (REAL, non-coast GT-grid samples): {cov}, "
+          f"settle/ambiguous={int((lab < 0).sum())}")
+
+    def _phase_slope(col, axis_k, name):
+        """Slope from axis_k's own phase, real samples only.
+
+        Deliberately NO fallback to the phase-mixed / coast-included fit: that
+        fallback is what manufactured the impossible negative scales this
+        function exists to eliminate. A starved phase means the marker was not
+        actually seen while that axis was driven, which is a RECORDING gap --
+        report NaN and say so, rather than emit a confident wrong number.
+        """
+        sel = ms & (lab == axis_k)
+        if sel.sum() > 50:
+            return float(np.polyfit(raw_feat_g[sel, col], gs[sel, col], 1)[0]), int(sel.sum())
+        print(f"  [warn] {name}: only {int(sel.sum())} REAL sample(s) in the "
+              f"{PHASE_LAB[axis_k]} phase (need >50) -> NaN. The marker was "
+              f"lost through most of this run's {PHASE_LAB[axis_k]} phase; "
+              f"re-record that phase rather than trusting a substitute fit")
+        return np.nan, int(sel.sum())
+
+    sx, nx = _phase_slope(0, 0, "sx")
+    sy, ny = _phase_slope(1, 1, "sy")
+    for nm, val in (("sx", sx), ("sy", sy)):
+        if np.isfinite(val) and val <= 0:
+            print(f"  [warn] {nm}={val:+.4f} is NON-POSITIVE -- physically "
+                  f"impossible for a centroid scale; this run's centroid fit "
+                  f"is contaminated, exclude it rather than averaging it in")
 
     return cal, r2, (sx, sy), len(Rm)
 
@@ -674,7 +796,22 @@ def main():
 
     cals = np.array(cals); r2s = np.array(r2s); calS = np.array(calS)
     M = cals.mean(0); Mstd = cals.std(0) if len(cals) > 1 else np.zeros_like(M)
-    sx = float(np.nanmedian(calS[:, 0])); sy = float(np.nanmedian(calS[:, 1]))
+
+    # Centroid scale must be POSITIVE (a bigger raw pixel offset means a bigger
+    # GT bearing, never a smaller one). A non-positive per-run slope is a
+    # contaminated fit, not a datum -- median-ing it in would drag the applied
+    # cal toward a value no camera can have. Dropped explicitly here rather
+    # than trusted to the median's outlier tolerance (2026-07-27).
+    def _pos_median(col, name):
+        v = calS[:, col]
+        good = v[np.isfinite(v) & (v > 0)]
+        n_bad = int((np.isfinite(v) & (v <= 0)).sum())
+        if n_bad:
+            print(f"  [warn] {name}: dropped {n_bad} non-positive per-run "
+                  f"slope(s) from the aggregate (physically impossible)")
+        return float(np.median(good)) if len(good) else np.nan
+
+    sx = _pos_median(0, "sx"); sy = _pos_median(1, "sy")
 
     print(f"\n\n=== AGGREGATE across {len(cals)} run(s) — PROVISIONAL, review before use ===")
     print("per-axis R^2 (mean):  " + "  ".join(f"{LAB[k]}={r2s[:,k].mean():.2f}" for k in range(6)))
