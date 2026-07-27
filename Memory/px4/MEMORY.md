@@ -4,7 +4,16 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢 2026-07-27 (LATEST) — go-around regression found+fixed; IC5 marker-loss confirmed
+> **🟢🟢🟢 2026-07-27 (LATEST) — go-around REMOVED (reverted per user); new DESCENT_ANOMALY
+> failure classification added.** TARGET_LOST goes straight to open-loop leveling again, no
+> retry -- post-loss data is diagnostic-only per user directive. New: oscillating (>=4 vertical
+> sign-reversals/3s) or net-ascending (>0.5m above running best altitude) during closed-loop
+> approach is now its own sticky failure tag (`DESCENT_ANOMALY`), independent of touchdown
+> xy/vel -- catches fly-aways the old endpoint-only classification mislabeled as plain FAIL.
+> Live-validated on IC1_rep2's known marker-switch fly-away. Commit fca2c86.
+> [[project_goaround_removed_descent_anomaly_20260727]]
+
+> **🟢🟢 2026-07-27 — go-around regression found+fixed (SUPERSEDED, go-around since removed); IC5 marker-loss confirmed
 > structural, not a bug.** The unconditional go-around retry (07-26, below) held the vehicle's
 > drifted lateral position while climbing then retried from the SAME geometry that caused the
 > loss — for IC5 this burned both attempts on an immediate repeat, stuck-near-start-altitude
