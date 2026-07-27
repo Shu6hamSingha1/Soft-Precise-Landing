@@ -52,6 +52,36 @@ CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "Test_Data", "Calibration")
 
 T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
+
+# ---------------------------------------------------------------------------
+# LEVER ARMS (user-measured 2026-07-27, given in MOCAP FLU: X=fwd, Y=left, Z=up)
+#
+#   camera optical centre -> UAV mocap origin : X +0.08, Z +0.16  m
+#   ArUco centre          -> target mocap origin: X -0.04, Y -0.01 m
+#
+# Those are stated as "A -> B" = the vector FROM A TO B. What the geometry
+# needs is the opposite: origin -> feature, so each is NEGATED below before
+# the FLU->FRD flip.
+#
+#   camera:  origin -> cam    = -(+0.08, 0, +0.16) FLU = (-0.08, 0, -0.16) FLU
+#                             -> T @ ... = (-0.08, 0, +0.16) FRD
+#            i.e. the camera sits 16 cm BELOW (+z is down in FRD) and 8 cm AFT
+#            of the UAV mocap origin - physically consistent with a
+#            downward-facing camera slung under the airframe.
+#   marker:  origin -> aruco  = -(-0.04, -0.01, 0) FLU = (+0.04, +0.01, 0) FLU
+#                             -> T @ ... = (+0.04, -0.01, 0) FRD
+#
+# Sign convention verified empirically, not just asserted: applying these
+# collapses the GT-vs-logged-corner residual (see the CHECK in __main__ /
+# project_pi_gt_lever_arm_2026_07_27). If a future re-measure flips a sign the
+# residual will BLOW UP rather than fail quietly, so re-run that check.
+# Env-overridable in metres, FRD, as "x,y,z".
+def _lever(env, default_frd):
+    v = os.environ.get(env)
+    return np.array([float(x) for x in v.split(",")], float) if v else np.array(default_frd, float)
+
+R_CAM_FRD    = _lever("CAL_CAM_LEVER_FRD",    [-0.08, 0.0, +0.16])   # UAV origin -> camera
+R_MARKER_FRD = _lever("CAL_MARKER_LEVER_FRD", [+0.04, -0.01, 0.0])   # target origin -> ArUco centre
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
 FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))       # matches img_data.py default
@@ -346,8 +376,18 @@ def compute_gt_flow(run_dir):
     for i in range(n):
         p, t = u[i], tp[i]
         up, Ru[i] = _pose_to_frd(p)
-        tpp, _ = _pose_to_frd(t)
-        W_x_tu[i] = tpp - up
+        tpp, Rt = _pose_to_frd(t)
+        # LEVER ARMS (2026-07-27, user-measured). The mocap rigid-body origins
+        # are NOT the optical centre / marker centre, and the difference is a
+        # real ~0.19-0.23 m systematic error in the GT bearing s (see
+        # project_pi_gt_lever_arm_2026_07_27: GT-predicted marker pixel missed
+        # the logged corners by 156px in x, 70px in y before this).
+        # The camera arm is BODY-FIXED so it rotates with the UAV (Ru @ ...);
+        # the marker arm is fixed in the TARGET body (Rt @ ...), which for this
+        # static, ~0-yaw target is effectively world-fixed.
+        # Flow is unaffected either way - a constant offset differentiates
+        # away - so this corrects the bearing/centroid chain only.
+        W_x_tu[i] = (tpp + Rt @ R_MARKER_FRD) - (up + Ru[i] @ R_CAM_FRD)
         yaw[i] = -np.deg2rad(p.yaw)   # QTM -> FRD yaw sign flip
 
     W_v_tu = _robust_vel(W_x_tu, tg)
