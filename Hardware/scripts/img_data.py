@@ -1942,8 +1942,75 @@ class IMG_PROCESSOR(Thread):
         }
     
     def getParams(self):
-        parameter = f"{{'Capture Rate':{self._capRate}, 'resolution':{self._resolution}}}"
-        return parameter
+        """Config snapshot written to Img_Params.txt at save time.
+
+        EXTENDED 2026-07-27. Was `{'Capture Rate':.., 'resolution':..}` only,
+        which meant a recording carried NO record of the signal-chain
+        configuration it was made under. That matters because
+        derive_pi_cal.py's default (no-argument) invocation aggregates EVERY
+        run under Test_Data/Calibration/ -- and the 2026-07-26 session alone
+        produced runs with PLASMC_CENTROID_RATE alternating 1/0, with and
+        without FLOW_LAT_REDUCED, and with the planar map on and off. Pooling
+        those fits signals from different chains into one cal, and nothing in
+        the recording let you detect it: you had to consult the shell history.
+        Same class of error as the savgol/KF train-run mismatch Gazebo fixed,
+        just across runs instead of across stages.
+
+        Emitted as a literal dict so a tool can ast.literal_eval() it and
+        group/reject runs by configuration. Values are the RESOLVED runtime
+        attributes wherever they exist (not os.environ lookups), so an unset
+        env var reports the default actually in force rather than absent.
+        The live sensor cal matrices are included too -- a recording is only
+        interpretable against the cal that was applied while it was made.
+        """
+        def _f(x):
+            try:
+                return np.asarray(x).tolist()
+            except Exception:
+                return None
+        cfg = {
+            # --- identity / geometry ---
+            'Capture Rate': self._capRate,
+            'resolution': self._resolution,
+            'main_resolution': getattr(self, '_main_resolution', None),
+            'aruco_scale': _f(getattr(self, '_aruco_scale', None)),
+            # --- filters (MUST match what derive_pi_cal.py replicates) ---
+            'IMG_FILTER': os.environ.get('IMG_FILTER', 'kf'),
+            'IMG_FEATURE_FILTER': os.environ.get('IMG_FEATURE_FILTER', 'kf'),
+            'FILTER_WIN': FILTER_WIN,
+            'FILTER_POLYORDER': FILTER_POLYORDER,
+            'FLOW_KF_Q': self._kf_q, 'FLOW_KF_R': self._kf_r,
+            'IMG_FEAT_KF_Q': self._kf_feat_q, 'IMG_FEAT_KF_R': self._kf_feat_r,
+            'CENTROID_RATE_KF_Q': getattr(self, '_obs_kf_q', None),
+            'CENTROID_RATE_KF_R': getattr(self, '_obs_kf_r', None),
+            # --- signal-chain switches (change the SHAPE of the logged signal) ---
+            'PLASMC_CENTROID_RATE': int(bool(getattr(self, '_centroid_rate', False))),
+            'FLOW_LAT_REDUCED': int(bool(getattr(self, '_lat_reduced', False))),
+            'FLOW_LOOM_DECOUPLE': int(bool(getattr(self, '_loom_decouple', False))),
+            'FLOW_FUSE_RING': int(bool(getattr(self, '_fuse_ring', False))),
+            'FLOW_DH_MAX': getattr(self, '_flow_dh_max', None),
+            'GYRO_COMP_WXY_MAX': getattr(self, '_gyro_comp_wxy_max', None),
+            # --- perception path ---
+            'PLANAR_MAP_SHADOW': int(bool(getattr(self, '_planar_map_shadow', False))),
+            'PLASMC_PLANAR_MAP_PRIMARY': int(bool(getattr(self, '_planar_map_primary', False))),
+            'MARKER_KLT_MAX_STEPS': getattr(self, '_max_lk_steps', None),
+            'ARUCO_ROI_MARGIN_PX': getattr(self, '_roi_margin_px', None),
+            'ARUCO_ROI_MAX_MISSES': getattr(self, '_roi_max_misses', None),
+            'ARUCO_CORNER_REFINE': os.environ.get('ARUCO_CORNER_REFINE', 'subpix'),
+            'ARUCO_MIN_PERIMETER_RATE': os.environ.get('ARUCO_MIN_PERIMETER_RATE', '0.02'),
+            'ARUCO_MAX_PERIMETER_RATE': os.environ.get('ARUCO_MAX_PERIMETER_RATE', '4.0'),
+            # --- camera ---
+            'CAM_MANUAL_EXPOSURE': os.environ.get('CAM_MANUAL_EXPOSURE', '0'),
+            'CAM_EXPOSURE_US': os.environ.get('CAM_EXPOSURE_US', None),
+            'CAM_ANALOGUE_GAIN': os.environ.get('CAM_ANALOGUE_GAIN', None),
+            'MAIN_STREAM_SIZE': os.environ.get('MAIN_STREAM_SIZE', '320,240'),
+            # --- cal APPLIED while recording (a recording is only
+            #     interpretable against the cal that was live) ---
+            'sensor_cal_hw': _f(self._sensor_cal_hw),
+            'sensor_cal_s': _f(self._sensor_cal_s),
+            'sensor_cal_ring': _f(getattr(self, '_sensor_cal_ring', None)),
+        }
+        return repr(cfg)
     
     def getImgFeatureParam(self):
         """Calibrated, KF-smoothed feature vector [xc, yc, 1, alpha] (Gazebo-aligned).
