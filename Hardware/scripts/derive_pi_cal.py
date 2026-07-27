@@ -75,12 +75,29 @@ T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
 # collapses the GT-vs-logged-corner residual (see the CHECK in __main__ /
 # project_pi_gt_lever_arm_2026_07_27). If a future re-measure flips a sign the
 # residual will BLOW UP rather than fail quietly, so re-run that check.
+#
+# cam_z DROPPED (2026-07-28), despite being user-measured at +0.16 m. It is
+# STRUCTURALLY DEGENERATE with the bearing's own scale: it enters
+# W = (target + ...) - (up + Ru@cam), and its z-component shifts the
+# effective depth Vz the SAME way an additive epsilon in 1/(Vz+eps) would -
+# which is exactly the arbitrary "+0.2" term just removed on principle
+# elsewhere in this file (see the 1/Vz commit). Keeping a value here that the
+# fit can neither confirm nor refute (a profile scan over it rails to
+# whatever bound is given, never converging - see
+# project_pi_gt_lever_arm_2026_07_27) would be inconsistent with having just
+# thrown out the epsilon for the same reason. Measured directly: dropping it
+# is not just "unconfirmable", it is marginally BETTER (mean residual against
+# Virtual Feature Pts, 6 runs: 0.109 with cam_z=0.16 -> 0.104 with cam_z=0).
+# cam_x is KEPT - its SIGN is independently confirmed (robust across both the
+# flawed and corrected comparand, see project_pi_gt_lever_arm_2026_07_27) and
+# unlike z it is not scale-degenerate, so it is a real (if imprecisely
+# measured) correction rather than a disguised epsilon.
 # Env-overridable in metres, FRD, as "x,y,z".
 def _lever(env, default_frd):
     v = os.environ.get(env)
     return np.array([float(x) for x in v.split(",")], float) if v else np.array(default_frd, float)
 
-R_CAM_FRD    = _lever("CAL_CAM_LEVER_FRD",    [-0.08, 0.0, +0.16])   # UAV origin -> camera
+R_CAM_FRD    = _lever("CAL_CAM_LEVER_FRD",    [-0.08, 0.0, 0.0])     # UAV origin -> camera (z omitted, see above)
 R_MARKER_FRD = _lever("CAL_MARKER_LEVER_FRD", [+0.04, -0.01, 0.0])   # target origin -> ArUco centre
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
