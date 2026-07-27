@@ -209,6 +209,8 @@ class IMG_PROCESSOR(Thread):
         self._planar_map_center_log = []    # get_marker_center() each frame, or None
         self._planar_map_conf_log = []      # map_confidence each frame (marker-independent, see planar_map.py)
         self._planar_map_time_log = []      # own timestamp - unconditional every frame, like ring flow
+        self._cmap_raw_log = []             # (2,) map centroid in V-frame, pre-_sensor_cal_s, or (nan,nan)
+        self._amap_raw_log = []             # map alpha (rad) in V-frame, pre-cal, or nan
 
         # ArUco marker detection setup. detectMarkers() was measured as 76% of
         # per-frame cost (Hardware/docs/power_undervoltage_investigation.md,
@@ -1087,6 +1089,50 @@ class IMG_PROCESSOR(Thread):
                 self._planar_map_center_log.append(_pm_center.copy() if _pm_center is not None else None)
                 self._planar_map_conf_log.append(self._planar_map.map_confidence)
                 self._planar_map_time_log.append(self._time.perf_counter())
+
+                # MAP-SOURCED centroid/alpha in V-FRAME, pre-_sensor_cal_s
+                # (2026-07-27, Pi counterpart of Gazebo's 'Centroid Map Raw' /
+                # 'Alpha Map Raw', see feedback_map_cal_validation_gap).
+                #
+                # ARCHITECTURE NOTE: this is NOT a line-by-line port. Gazebo has
+                # dedicated _centroidMap()/_alphaMap() consumers that OVERRIDE
+                # _img_feature_param[0..1]/[3] and whose raw values it logs. The Pi
+                # has no such consumer -- its map feeds the pipeline by substituting
+                # CORNERS (_planar_map_primary_pred_px), and centroid/alpha are then
+                # computed downstream by the normal path. So the equivalent
+                # INDEPENDENT map observable has to be built here from the map's own
+                # geometry rather than read off an override.
+                #
+                # Space chain matches the rescue path exactly: the map works in
+                # MAIN-STREAM pixels, so scale by _aruco_scale to RAW pixels before
+                # _getVirtualPts (the same SPACE FIX as the prediction above -- getting
+                # this wrong silently rescales everything by _aruco_scale).
+                # get_marker_center_native() is preferred over get_marker_center():
+                # per its docstring it is the projective diagonal-intersection (a true
+                # projective invariant) rather than the corner mean, which perspective
+                # shifts off the real centre -- and it survives marker overflow, which
+                # is exactly when the map is worth having.
+                _cm_raw, _am_raw = (np.nan, np.nan), np.nan
+                try:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1
+                                       and quats[1] is not None) else None
+                    if _q1 is not None:
+                        _c_main = self._planar_map.get_marker_center_native()
+                        if _c_main is None:
+                            _c_main = _pm_center
+                        if _c_main is not None:
+                            _c_v = self._getVirtualPts(
+                                np.asarray([_c_main], np.float32) * self._aruco_scale, _q1)
+                            _cm_raw = (float(_c_v[0][0]), float(_c_v[0][1]))
+                        _p_main = self._planar_map.get_marker_frame_pts()
+                        if _p_main is not None and len(_p_main) >= 4:
+                            _p_v = self._getVirtualPts(
+                                np.asarray(_p_main, np.float32) * self._aruco_scale, _q1)
+                            _am_raw = float(marker_principal_angle(_p_v))
+                except Exception:
+                    pass       # never let the map cross-check touch the real pipeline
+                self._cmap_raw_log.append(_cm_raw)
+                self._amap_raw_log.append(_am_raw)
             except Exception:
                 pass   # shadow mode: never let an internal error touch the real pipeline
         _tt = self._tstage(_tt, "1b_planar_map_shadow")
@@ -1939,6 +1985,8 @@ class IMG_PROCESSOR(Thread):
             "Planar Map Center": self._planar_map_center_log,
             "Planar Map Confidence": self._planar_map_conf_log,
             "Planar Map Time": self._planar_map_time_log,
+            "Centroid Map Raw": self._cmap_raw_log,   # (2,) V-frame, pre-_sensor_cal_s, nan when the map didn't fire
+            "Alpha Map Raw": self._amap_raw_log,      # rad, V-frame, pre-cal, nan when the map didn't fire
         }
     
     def getParams(self):
@@ -2140,6 +2188,38 @@ class IMG_PROCESSOR(Thread):
                           FILTER_POLYORDER, axis=0)
             return sgf_buf[int(FILTER_WIN / 2 + 1)]
         return np.mean(self._img_feature_param, axis=0)
+
+    def getRawCentroidMapFeature(self):
+        """Latest raw (2,) V-frame centroid from the PlanarFeatureMap, BEFORE
+        _sensor_cal_s -- (nan, nan) if the map didn't produce one this frame
+        (map off, not yet bootstrapped, or no primary slot).
+
+        Co-sampled by output_calibration.py on the same tick as
+        getRawImgFeatureParam(), so deriving a MAP cal against it needs no
+        separate GT/img alignment. Pi counterpart of Gazebo's
+        getRawCentroidMapFeature (see feedback_map_cal_validation_gap); the
+        underlying value is built from the map's own geometry rather than read
+        off a _centroidMap override, because the Pi's map feeds CORNERS rather
+        than a dedicated centroid consumer -- see the logging site for the
+        space-chain and get_marker_center_native rationale.
+
+        Why it is worth having: the map path currently reaches the cal only
+        indirectly, as 'planar_map_rescue'/'*override*'-tagged rows inside the
+        ordinary feature stream. Logging the map's INDEPENDENT estimate lets
+        the map path be calibrated and cross-checked on its own, instead of
+        being either excluded wholesale or blindly trusted.
+        """
+        if len(self._cmap_raw_log) == 0:
+            return np.array([np.nan, np.nan])
+        return np.array(self._cmap_raw_log[-1], dtype=float)
+
+    def getRawAlphaMapFeature(self):
+        """Latest raw map alpha (rad, V-frame) BEFORE _sensor_cal_s -- nan if the
+        map didn't produce one this frame. Same co-sampling convention as
+        getRawCentroidMapFeature()."""
+        if len(self._amap_raw_log) == 0:
+            return np.nan
+        return float(self._amap_raw_log[-1])
 
     def getRawRingFlowAngVel(self):
         """Latest raw ring [h;w] BEFORE _sensor_cal_ring (for ring-cal derivation)."""

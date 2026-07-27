@@ -151,6 +151,8 @@ async def main(record = 'n'):
     raw_opt_flow_ang_vel = []      # pre-_sensor_cal_hw, for derive_pi_cal (2026-07-27)
     raw_img_feature_param = []     # pre-_sensor_cal_s
     raw_ring_flow_ang_vel = []     # pre-_sensor_cal_ring
+    centroid_map_raw = []          # map centroid, V-frame pre-cal (nan when not fired)
+    alpha_map_raw = []             # map alpha, V-frame pre-cal (nan when not fired)
     start_pose = None
     t_c = []
     gt_pose_stamp = []
@@ -227,6 +229,15 @@ async def main(record = 'n'):
             raw_opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
             raw_img_feature_param.append(img_node.getRawImgFeatureParam())
             raw_ring_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
+            # Map's INDEPENDENT centroid/alpha (V-frame, pre-cal), nan when the
+            # map didn't fire. Co-sampled on this same tick so a map cal can be
+            # fitted with zero alignment, exactly as Gazebo does with its own
+            # 'Centroid Map Raw'/'Alpha Map Raw'. Lets the map path be
+            # calibrated and cross-checked on its own terms instead of only
+            # reaching the fit as rescue/override-tagged rows in the ordinary
+            # feature stream.
+            centroid_map_raw.append(img_node.getRawCentroidMapFeature())
+            alpha_map_raw.append(img_node.getRawAlphaMapFeature())
             # Real per-iteration capture stamps for the two subsystems this
             # loop is polling, DISTINCT from t_c (this loop's own tick time).
             # t_c only tells you when THIS loop ran - it does not tell you
@@ -297,7 +308,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Raw Opt Flow Ang Vel": raw_opt_flow_ang_vel, "Raw Img Feature Params": raw_img_feature_param, "Raw Ring Flow Ang Vel": raw_ring_flow_ang_vel, "Command": cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Raw Opt Flow Ang Vel": raw_opt_flow_ang_vel, "Raw Img Feature Params": raw_img_feature_param, "Raw Ring Flow Ang Vel": raw_ring_flow_ang_vel, "Centroid Map Raw": centroid_map_raw, "Alpha Map Raw": alpha_map_raw, "Command": cmd}
             img_params = img_node.getParams()
 
         # Close img_node thread
