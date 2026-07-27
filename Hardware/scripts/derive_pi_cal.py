@@ -263,6 +263,22 @@ def phase_labels(g, win_s=PHASE_WIN_S, dom_min=PHASE_DOM_MIN):
     Windows below that threshold stay -1 (settle/transition) and are excluded,
     which is the tagged-'settle' equivalent of Gazebo's phase script.
 
+    FRAME NOTE (checked 2026-07-27 - do NOT "fix" this by swapping axes).
+    There IS a non-identity 90deg rotation between camera and body
+    (img_geometry.R_CAM_TO_BODY = [[0,1,0],[-1,0,0],[0,0,1]]) and another
+    between mocap and body (T_QTM_TO_FRD = diag(1,-1,-1), FLU->FRD). Neither
+    needs applying here, because both are already consumed UPSTREAM of the
+    arrays this function and derive_one() consume:
+      - "Feature Params" is built from get_virtual_pts(), which applies
+        R_CAM_TO_BODY and then the gravity-levelling R_inv (img_geometry.py
+        ~line 122) -> it is already V-frame / body-aligned, not raw camera.
+      - g["B_h_g"] comes from compute_gt_flow(), which applies T_QTM_TO_FRD.
+    So the labels below (0=X,1=Y in body-FRD) pair DIRECTLY with
+    Feature Params columns 0/1. Verified empirically on 4 runs: the body-Y
+    phase drives centroid column 1 (std 0.101/0.152/0.133) far more than
+    column 0 (0.026/0.045/0.029). Applying R_CAM_TO_BODY again here would
+    introduce the very 90deg error it looks like it is preventing.
+
     Returns an int array on g['t_g'], same length as the GT grid.
     """
     t = np.asarray(g["t_g"], float)
