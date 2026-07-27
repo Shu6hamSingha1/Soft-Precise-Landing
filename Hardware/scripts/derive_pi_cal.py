@@ -673,6 +673,19 @@ def check_mount_rotation(run_dir):
     better-excited recording exists. Report it anyway (harmless when weak) so
     a future well-excited run's improvement is visible without code changes.
 
+    AXIS MAPPING IS NOW VALIDATED (2026-07-27) - but by a DIFFERENT route than
+    this function's translation block, which stays weak for the reason above.
+    Rather than FC INS velocity (drifty, GPS-denied), the check used mocap:
+    phase_labels() recovers the excitation phase, then the V-frame centroid
+    response is measured per phase. body-Y excitation drives centroid column 1
+    by 3-5x over column 0 (std 0.101/0.152/0.133 vs 0.026/0.045/0.029) on the
+    2026-07-26 runs; a wrong or missing 90 deg in R_CAM_TO_BODY would have
+    shown the opposite. See the AXIS MAPPING VALIDATED block in img_geometry.py.
+    So do NOT read this function's weak translation correlations as evidence
+    against the mount - they reflect the INS velocity reference, not the mount.
+    What remains genuinely unvalidated is the mount TRANSLATION (lever arm),
+    which is a different quantity - see project_pi_gt_lever_arm_2026_07_27.
+
     Runs entirely on already-recorded Img_Data.npy + Telemetry_Data.npy - no
     mocap Ground_Truth.npy needed, so this works even on non-mocap hardware
     recordings (e.g. any hardware_landing.py flight log pair).

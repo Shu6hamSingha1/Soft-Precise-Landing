@@ -74,9 +74,37 @@ f = fx  # focal length in pixels
 # genuine axis flip would break the +-1 relationship), which is what a
 # correctly-signed, non-mirrored, pure-yaw mount predicts. Does not
 # independently pin down the mount's fixed OFFSET angle (the -90 deg above) -
-# only that the rotation-rate coupling is right; the translation/axis-mapping
-# half of the matrix remains unvalidated (see check_mount_rotation docstring
-# - existing recordings are yaw-dominated, need an isolated-translation sweep).
+# only that the rotation-rate coupling is right. A fixed relative rotation
+# between two rigid bodies never changes their SHARED angular rate, so that
+# check is structurally BLIND to the offset angle; it cannot be fixed by more
+# yaw data, and needs a different observable entirely.
+#
+# AXIS MAPPING VALIDATED 2026-07-27 (supersedes this comment's former claim
+# that "the translation/axis-mapping half of the matrix remains unvalidated").
+# Supplied by exactly that different observable - TRANSLATION, phase-resolved.
+# Phase labels were recovered from mocap (derive_pi_cal.phase_labels) and the
+# V-frame centroid response measured per phase on the 2026-07-26 recordings:
+#
+#     body-X phase -> centroid col 0 std 0.088 / 0.063 / 0.042
+#     body-Y phase -> centroid col 1 std 0.101 / 0.152 / 0.133
+#                     (vs col 0 only 0.026 / 0.045 / 0.029 in the same phase)
+#
+# i.e. body-Y excitation drives V-frame column 1 by 3-5x over column 0. Since
+# "Feature Params" is built by get_virtual_pts() BELOW - which applies this
+# very matrix and then the gravity-levelling R_inv - a wrong or missing 90 deg
+# here would have shown up as body-Y driving column 0 instead. It does not.
+# The Y separation is clean; the X separation is real but weaker (1.1-1.7x),
+# limited by that phase's much lower usable-sample count, not by ambiguity in
+# the mapping.
+#
+# STILL UNVALIDATED: the mount TRANSLATION (lever arm) between the camera's
+# optical centre and both the FC/mocap body origin and the target origin. That
+# is a separate quantity from this rotation, is known non-zero (user-confirmed
+# 2026-07-27), and shows up as a ~0.19-0.23 m systematic error in GT bearing s
+# - see project_pi_gt_lever_arm_2026_07_27. It needs a physical measurement;
+# least-squares on existing data absorbs it into nonsense (a -1.53 m camera
+# z-offset). It does NOT affect optical FLOW, which differentiates a constant
+# offset away - only the bearing/centroid chain.
 R_CAM_TO_BODY = np.array([
     [0.0, 1.0, 0.0],
     [-1.0, 0.0, 0.0],
