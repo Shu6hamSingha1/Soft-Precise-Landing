@@ -299,6 +299,7 @@ class IMG_PROCESSOR(Thread):
         self._klt_hits = 0   # diagnostic counters
         self._klt_misses = 0
         self._frame_used_klt = False   # set by _klt_fallback_fill, read/reset per _optFlowAngVel call
+        self._frame_used_dense = False   # set by _klt_fallback_fill when dense-homography recovery filled a corner (2026-07-28)
 
         # DENSE-HOMOGRAPHY RECOVERY (2026-07-28 port from PX4_Gazebo, closes the
         # "third fallback tier" gap identified comparing the two pipelines' fallback
@@ -1033,6 +1034,7 @@ class IMG_PROCESSOR(Thread):
             self._frame_used_klt = True
         else:
             self._lk_step_count = 0
+        self._frame_used_dense = used_dense
         self._dense_recover_active = used_dense
         return new_results
 
@@ -1126,6 +1128,7 @@ class IMG_PROCESSOR(Thread):
         main_imgs = list(main_imgs) if main_imgs is not None else None
         _tt = self._time.perf_counter()
         self._frame_used_klt = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
+        self._frame_used_dense = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
         # Texture-free RING flow (safety net) — runs EVERY frame, independent of
         # ArUco, so it survives marker death. Steps its own KF; latest raw stored.
         if self._ring_on:
@@ -1503,6 +1506,11 @@ class IMG_PROCESSOR(Thread):
             _corner_conf = 1.0
             if self._frame_used_klt:
                 _corner_conf = max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1))
+            elif self._frame_used_dense:
+                # Dense-homography recovery has no per-attempt step counter (RANSAC
+                # inlier fraction is its own within-frame quality gate) - decay on
+                # frames-since-anchor instead, same floor as the KLT case.
+                _corner_conf = max(0.05, 1.0 - self._dense_frames_since_anchor / max(self._dense_recover_max_frames, 1))
             if self._flow_cond_reject > 0:
                 try:
                     _cond = float(np.linalg.cond(_Asolve))
@@ -1567,7 +1575,9 @@ class IMG_PROCESSOR(Thread):
             _tt = self._tstage(_tt, "9_flow_checkpost")
 
             self._opt_flow_ang_vel_raw.append(B_v)
-            self._opt_flow_estimator_tag.append('lstsq+klt' if self._frame_used_klt else 'lstsq')
+            _decode_tag = ('lstsq+klt' if self._frame_used_klt
+                           else 'lstsq+dense' if self._frame_used_dense else 'lstsq')
+            self._opt_flow_estimator_tag.append(_decode_tag)
             if self._h_extrap:
                 self._h_real_t.append(self._time.perf_counter())
                 self._h_real_v.append(B_v.copy())
@@ -1583,7 +1593,7 @@ class IMG_PROCESSOR(Thread):
             # Feature params (centroid + yaw alpha) from the 4 primary corners.
             self._getImgFeatures(V_nP_norm[1])
             self._s_estimator_tag.append(
-                ('lstsq+klt' if self._frame_used_klt else 'lstsq') + ('+override' if _ov_fired else ''))
+                _decode_tag + ('+override' if _ov_fired else ''))
             self._feature_pts_fresh = True
             self._planar_map_rescue_active = False   # raw tier succeeded this frame, not a rescue
             _tt = self._tstage(_tt, "11_getImgFeatures")
