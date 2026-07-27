@@ -40,40 +40,45 @@ os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 # CAM_ANALOGUE_GAIN per lighting if the default under/over-exposes.
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 
-# Diagnosed 2026-07-26: PlanarFeatureMap SHADOW mode costs ~9-13ms/frame
-# (img_data.py's own [TIMING] stage "1b_planar_map_shadow") but on the Pi it
-# is PURELY diagnostic - self._planar_map's output only feeds its own
-# logging (Planar Map Center/Confidence) and its own loop_closure_correct
-# self-update, never getOptFlowAngVel/getImgFeatureParam/the fusion EKF (see
-# reference_project_skills-style note: Pi's port never got Gazebo's
-# _planar_map_primary ACTIVE rescue/override consumer, only the shadow
-# logger). Confirmed this by reading img_data.py directly - no downstream
-# consumer of the corner/flow pipeline reads it. Disabling it here changes
-# NOTHING about the calibration-relevant Feature Params/Opt Flow Ang Vel
-# signals, and reclaims a real chunk of the ~19Hz-on-battery loop budget
-# found investigating the mount-rotation check's low sample counts. Only
-# disabled for CALIBRATION RECORDING specifically (this script) - left ON
-# by default elsewhere (e.g. hardware_landing.py) where the shadow log may
-# still be worth collecting during real flight tests.
-os.environ.setdefault("PLANAR_MAP_SHADOW", "0")
-
-# CORRECTED 2026-07-26: disabling PLANAR_MAP_SHADOW alone does NOT stop the
-# planar-map computation - img_data.py's guard is
-# `if (self._planar_map_shadow or self._planar_map_primary) and ...`, and
-# self._planar_map_primary (env PLASMC_PLANAR_MAP_PRIMARY) defaults ON
-# (added 2026-07-25, mirrors Gazebo's PLASMC_PLANAR_MAP_PRIMARY). This one
-# is NOT purely diagnostic like shadow mode - it's an ACTIVE RESCUE/OVERRIDE
-# consumer that can substitute a map-PREDICTED corner position for the real
-# ArUco decode when detection struggles (see "S Estimator Tag" ==
-# 'planar_map_rescue'/'lstsq+klt+override' in recorded Img_Data.npy - already
-# confirmed firing on real GOOD-verdict calibration takes, e.g. 19 rescue
-# samples in one run). Same violation-of-intent as leaving FLOW_DH_MAX/
-# FLOW_DS_MAX/FLOW_LOOM_DECOUPLE on would be: this script's whole purpose is
-# recording TRUE RAW flow (see the module's own top-of-file print/comment),
-# and a map-predicted substitute is not raw data regardless of how well the
-# map itself performs. Force off here for BOTH reasons (frame-rate AND data
-# integrity) - do not treat this as merely a performance knob.
-os.environ.setdefault("PLASMC_PLANAR_MAP_PRIMARY", "0")
+# PlanarFeatureMap: LEFT ON during calibration (2026-07-27). This REVERSES the
+# 2026-07-26 decision to force PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0
+# here. Keeping the history because both the original reasoning and why it was
+# wrong are load-bearing:
+#
+# The 2026-07-26 rationale was (a) frame rate - shadow costs ~9-13ms/frame
+# ([TIMING] stage "1b_planar_map_shadow") against a ~19Hz-on-battery loop, and
+# (b) data integrity - _planar_map_primary is an ACTIVE RESCUE/OVERRIDE that can
+# substitute a map-PREDICTED corner for a real ArUco decode ("S Estimator Tag"
+# == 'planar_map_rescue'/'lstsq+klt+override'), and "a map-predicted substitute
+# is not raw data". (b) sounds right but does not survive the measurements:
+#
+#   1. The override NEVER touches the flow path. 'rescue'/'override' is 0.0% of
+#      the "Opt Flow Estimator Tag" in EVERY recording, including map-ON ones -
+#      it only ever fires on the centroid (S) path. So _sensor_cal_hw, the
+#      primary cal target, was never at contamination risk.
+#   2. The loss is BIASED, not uniform. On the map-ON (Jul 25) runs, map-sourced
+#      samples sit at a bbox-to-frame-edge margin of -10..51px (negative = the
+#      marker is already clipping) vs 38-92px for pure-ArUco samples, at
+#      comparable per-frame motion. The map fires exactly at the FoV limit -
+#      i.e. at the FAR ENDS of each excitation sweep, where the calibration
+#      signal is LARGEST. Disabling it truncates the excitation tails and leaves
+#      the low-excitation middle: the worst possible loss for a regression, and
+#      it manufactures the "near-hover takes are noise-dominated" failure as a
+#      configuration artifact. Measured: S-path coast 25% (map ON, best run) vs
+#      62-95% (map OFF).
+#   3. Gazebo already settled this. Its record_output_calibration.py hit the
+#      IDENTICAL problem on 2026-07-17 (CONTROLLER_READY not propagated -> the
+#      map was never constructed -> "NEVER RAN during output calibration") and
+#      named it "a TRAIN/RUN MISMATCH ... the cal was being fit against a
+#      map-dead signal the runtime never produces". Gazebo's fix was to make the
+#      map RUN during calibration; its recorder never disables it.
+#
+# The circularity concern is handled at DERIVE time, not RECORD time - which is
+# also what Gazebo does (derive_board_cal.py filters only != 'coast', and
+# separately derives a map-sourced cal from co-sampled 'Centroid Map Raw').
+# Set PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0 in the environment to
+# A/B the frame-rate cost, which remains real and is a SEPARATE tradeoff from
+# data integrity - argue it on its own, not by appeal to (b) above.
 
 from flight_controller import FC
 from img_geometry import CALIB_CX, CALIB_CY   # principal point, for the run-validity framing check
