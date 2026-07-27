@@ -90,6 +90,17 @@ print(f"[output_calibration] recording TRUE raw flow: "
 # # Setup variables
 QTM_IP = '192.168.0.111'
 
+# Run-validity decode-yield thresholds (2026-07-27). A calibration recording is
+# only as good as the fraction of frames where the marker was actually decoded;
+# see _print_run_validity for the full rationale and the Gazebo comparison.
+# 25%: the 2026-07-26 set ran 62.6-94.8% coast and produced a cal whose
+# per-run coefficients varied by ~their own magnitude. Gazebo's runs sit at
+# 3.3% (8 of 10 at 0.0%), so 25% is already a generous hardware allowance.
+COAST_MAX_PCT = float(os.environ.get("CAL_COAST_MAX_PCT", "25.0"))
+# 2.0s: derive_pi_cal.py excludes GT-grid samples interpolated across a >=1.0s
+# marker-loss gap, so a blackout past that threshold costs more than itself.
+BLACKOUT_MAX_S = float(os.environ.get("CAL_BLACKOUT_MAX_S", "2.0"))
+
 SLEEP_TIME = 1/200   # match hardware_landing.py:45 (was 1/30 - 6.7x slower than the
                       # operational regime this script is calibrating for; same
                       # mismatch PX4_Gazebo's record_output_calibration.py already
@@ -293,6 +304,42 @@ def _print_run_validity(image_data, gt_data):
         featN = len(image_data.get("Feature Params", [])) if image_data else 0
     except Exception:
         flowN = featN = 0
+
+    # DECODE YIELD (added 2026-07-27). flowN above is a raw ROW count, and
+    # img_data.py logs a row on EVERY call - including 'coast' frames, where no
+    # common marker was decoded in both frames of the pair and a literal
+    # np.zeros(6) is appended. So flowN says nothing about whether the camera
+    # actually SAW anything, and the old gate happily certified a run that was
+    # 94.8% coast (67 real samples of 1290) as "GOOD excitation on all axes".
+    # Audit vs the Gazebo pipeline: Pi 75.7% coast / 2,128 usable samples across
+    # a whole 7-run set, vs Gazebo 3.3% / 94,333 (8 of 10 Gazebo runs are 0.0%).
+    # A cal fitted on the remnant cannot be repeatable no matter how the fit is
+    # written - see project_pi_output_cal_methodology_audit_2026_07_27.
+    realN = coastN = 0
+    coast_pct = 0.0
+    blackout_s = 0.0
+    try:
+        tags = [str(t) for t in image_data.get("Opt Flow Estimator Tag", [])]
+        if tags:
+            coastN = sum(1 for t in tags if "coast" in t)
+            realN = len(tags) - coastN
+            coast_pct = 100.0 * coastN / len(tags)
+            # longest CONTIGUOUS blackout, converted to seconds - a single long
+            # dropout is far worse than the same count scattered thinly, because
+            # derive_pi_cal's >=1s gap guard then discards the interpolated
+            # neighbourhood around it too.
+            longest = cur = 0
+            for t in tags:
+                if "coast" in t:
+                    cur += 1
+                    longest = max(longest, cur)
+                else:
+                    cur = 0
+            _ti = np.asarray(image_data.get("Time", []), dtype=float)
+            dt = float(np.median(np.diff(_ti))) if len(_ti) > 2 else 1.0 / 30.0
+            blackout_s = longest * dt
+    except Exception:
+        pass
     xs = ys = zs = yaws = np.array([])
     tz = np.array([0.0]); dur = 0.0
     try:
@@ -319,21 +366,51 @@ def _print_run_validity(image_data, gt_data):
     Zhi = float(np.nanmax(zs - np.nanmedian(tz))) if len(zs) else 0.0
     def tag(v, lo):
         return "OK " if v >= lo else "LOW"
+    def tag_hi(v, hi):                     # pass when v is at or BELOW hi
+        return "OK " if v <= hi else "BAD"
     print(" duration      : %6.1f s" % dur)
-    print(" flow samples  : %6d   %s (need >=300)" % (flowN, tag(flowN, 300)))
-    print(" feature samp  : %6d" % featN)
+    print(" -- decode yield (did the camera actually SEE the marker?) --")
+    print(" decoded flow  : %6d   %s (need >=300 REAL, not row count)"
+          % (realN, tag(realN, 300)))
+    print(" coast (lost)  : %5.1f%%   %s (need <=%.0f%%)"
+          % (coast_pct, tag_hi(coast_pct, COAST_MAX_PCT), COAST_MAX_PCT))
+    print(" max blackout  : %6.1f s %s (need <=%.1f)"
+          % (blackout_s, tag_hi(blackout_s, BLACKOUT_MAX_S), BLACKOUT_MAX_S))
+    print(" logged rows   : %6d   (flow) / %6d (feature)  [incl. coast]"
+          % (flowN, featN))
+    print(" -- excitation (did the vehicle actually MOVE?) --")
     print(" X span        : %6.2f m %s (need >=0.40)" % (xsp, tag(xsp, 0.40)))
     print(" Y span        : %6.2f m %s (need >=0.40)" % (ysp, tag(ysp, 0.40)))
     print(" Z span        : %6.2f m %s (need >=0.40)" % (zsp, tag(zsp, 0.40)))
     print(" yaw span      : %6.1f d %s (need >=20)" % (yawsp, tag(yawsp, 20.0)))
     print(" height range  : %5.2f .. %5.2f m" % (Zlo, Zhi))
-    weak = [n for n, v, lo in [("flow", flowN, 300), ("X", xsp, 0.40), ("Y", ysp, 0.40),
+
+    weak = [n for n, v, lo in [("X", xsp, 0.40), ("Y", ysp, 0.40),
                                ("Z", zsp, 0.40), ("yaw", yawsp, 20.0)] if v < lo]
-    if weak:
+    lost = [n for n, v, hi in [("coast", coast_pct, COAST_MAX_PCT),
+                               ("blackout", blackout_s, BLACKOUT_MAX_S)] if v > hi]
+    if realN < 300:
+        lost.append("decoded<300")
+
+    # Reported SEPARATELY and never merged, because the two failures have
+    # OPPOSITE fixes. Low excitation -> move more. Low decode yield -> move
+    # LESS (slower, smaller, keep the marker framed). The old single "WEAK -
+    # low excitation" verdict pushed the operator to sweep harder, which threw
+    # the marker out of FoV and made the yield worse; measured corr(hand-speed,
+    # coast%) = +0.55. Gazebo hit the same wall and cut its sweep amplitude
+    # 0.7 -> 0.35 m for exactly this reason.
+    if lost:
+        print(" VERDICT: UNUSABLE - poor decode yield: %s" % ", ".join(lost))
+        print("          The marker was not reliably visible. Do NOT fix this by")
+        print("          moving more: move SLOWER and SMALLER, keep the marker")
+        print("          centred and in frame, and re-record.")
+    elif weak:
         print(" VERDICT: WEAK - low excitation in: %s" % ", ".join(weak))
-        print("          near-hover/single-axis takes are noise-dominated; consider re-recording")
+        print("          Each axis still needs a real sweep during its own phase")
+        print("          (phased single-axis takes are correct - it is a whole-run")
+        print("          near-hover that is noise-dominated).")
     else:
-        print(" VERDICT: GOOD excitation on all axes")
+        print(" VERDICT: GOOD - excitation and decode yield both pass")
     print("=" * 52 + "\n")
 
 
