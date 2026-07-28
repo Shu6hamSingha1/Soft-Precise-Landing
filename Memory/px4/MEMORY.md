@@ -4,7 +4,15 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢🟢 2026-07-27 (LATEST) — go-around REMOVED (reverted per user); new DESCENT_ANOMALY
+> **🟢🟢 2026-07-28 (LATEST) — dense-homography recovery BAKED default-on.** Isolated A/B
+> (n=25 off / n=24 on, IC1-5) closes out the 2026-07-07 "mixed, don't bake" status:
+> TARGET_LOST 60%->46%, mean xy 1.11->0.92m, DESCENT_ANOMALY 1->0, UNKNOWN causes 11->6.
+> Improved IC1-4; IC5 alone slightly worse on TARGET_LOST rate (still improved on mean xy) --
+> consistent with IC5's structural full-FoV-exit issue being outside what a partial-view
+> recovery can fix. `PLASMC_DENSE_RECOVER` default "0"->"1", commit 381f669.
+> [[project_dense_recover_ab_20260728]]
+
+> **🟢🟢🟢 2026-07-27 — go-around REMOVED (reverted per user); new DESCENT_ANOMALY
 > failure classification added.** TARGET_LOST goes straight to open-loop leveling again, no
 > retry -- post-loss data is diagnostic-only per user directive. New: oscillating (>=4 vertical
 > sign-reversals/3s) or net-ascending (>0.5m above running best altitude) during closed-loop
