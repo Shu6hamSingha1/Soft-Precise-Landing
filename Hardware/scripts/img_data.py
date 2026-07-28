@@ -402,6 +402,25 @@ class IMG_PROCESSOR(Thread):
         self._obs_kf_r = float(os.environ.get("CENTROID_RATE_KF_R", "1e-3"))   # measurement noise
         self._observer_valid = False   # reset every frame; True when the observer produced flow this frame
 
+        # MAP-DERIVED FLOW (2026-07-28 port from PX4_Gazebo's _flowMap/_loomMapM_slot,
+        # closes project_map_flow_rescue_port_pending): during a marker-loss rescue frame,
+        # h previously only ever came from h_extrap (temporal extrapolation of the last
+        # REAL h values) - the map's own rich tracked-point history was never turned into
+        # a flow estimate, even though it already drives s/alpha rescue via the same
+        # primary-slot geometry. h_x/h_y: the SAME validated 2-state CV-Kalman rate
+        # estimator _obs_vel_kf uses, but with ITS OWN state (never touches
+        # _obs_kf_x/_obs_kf_y) - fed the map's primary-slot V-frame centre instead of a
+        # decoded centroid. h_z: the same causal d(ln M)/dt loom fit used for a real
+        # decode, but on the map's primary-slot corners and ITS OWN history (never
+        # touches _mtrace_hist). Gated by self._map_flow (env, default ON alongside the
+        # map itself) - a rescue frame still falls back to h_extrap if this is
+        # unavailable (map not ready / too few tracked corners / non-finite result).
+        self._map_flow = os.environ.get("PLASMC_MAP_FLOW", "1") == "1"
+        self._flowmap_kf_x = None; self._flowmap_kf_y = None
+        self._flowmap_kf_Px = None; self._flowmap_kf_Py = None
+        self._flowmap_kf_t = None
+        self._flowmap_lnM_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))
+
         # Perception CHECKPOSTS (Gazebo 97bd801): per-instant outlier rejection on
         # the lateral flow, centroid, and loom. Detection reference = last RAW
         # (advances every frame -> per-instant check, NEVER latches); substitution =
@@ -600,7 +619,7 @@ class IMG_PROCESSOR(Thread):
         # Without this tag a calibration recording can't verify it actually
         # exercised both paths, or (in the future, if a coast/extrapolation
         # mechanism is ever added) exclude synthetic samples from the fit.
-        self._opt_flow_estimator_tag = []   # 'lstsq' | 'lstsq+klt', index-aligned with the above
+        self._opt_flow_estimator_tag = []   # 'lstsq'|'lstsq+klt'|'lstsq+dense'|'map_flow'|'coast', index-aligned with the above
         # Per-frame estimator tags for s/alpha (2026-07-25, user requirement: every
         # computational path feeding s/alpha/h must be individually identifiable so
         # calibration can be derived/validated per-path, not blindly mixed). Mirrors
@@ -609,10 +628,11 @@ class IMG_PROCESSOR(Thread):
         # the same C_nP/getImgFeatures call), 'planar_map_rescue' (RESCUE path fired
         # and passed plausibility), 'coast' (no raw, no rescue - feature KF predict-
         # only). Extended _opt_flow_estimator_tag itself to also fire every loss frame
-        # ('coast' tag even though the VALUE is now h_extrap-filled when enabled, see
-        # __init__'s _h_extrap block below; ring flow already logs separately/
-        # unconditionally in its own _ring_time_log) so BOTH tag arrays stay dense/
-        # index-aligned across every frame, not just successful ones.
+        # ('map_flow' when the map-derived flow fired this loss frame, else 'coast'
+        # even though the VALUE may still be h_extrap-filled when enabled - see
+        # __init__'s _h_extrap/_map_flow blocks below; ring flow already logs
+        # separately/unconditionally in its own _ring_time_log) so BOTH tag arrays
+        # stay dense/index-aligned across every frame, not just successful ones.
         self._s_estimator_tag = []
         self._feature_pts_fresh = False   # this frame's _feature_pts is LIVE geometry (raw or plausibility-checked rescue), not a held-over value
 
@@ -1737,28 +1757,37 @@ class IMG_PROCESSOR(Thread):
         if _pm_rescue:
             self._kf_feat_update(_s_final, _t)   # genuine correct-step against the rescue's fresh geometric estimate
 
-        # h: decayed deg-1 extrapolation against REAL-ONLY history (2026-07-28 port from
-        # PX4_Gazebo, closes project_map_flow_rescue_port_pending) - never self-referencing
-        # (the extrapolated output is never appended to _h_real_v). Ring flow still runs
-        # unconditionally (own _ring_time_log) and is unaffected either way.
+        # h: MAP-DERIVED flow preferred (2026-07-28 port from PX4_Gazebo's _flowMap,
+        # closes project_map_flow_rescue_port_pending) - a fresh geometric estimate from
+        # the map's own tracked points, rather than a temporal extrapolation of stale
+        # real values. Falls back to the h_extrap decayed deg-1 extrapolation (against
+        # REAL-ONLY history, never self-referencing) when the map isn't available/ready,
+        # then to hard zero. Ring flow still runs unconditionally (own _ring_time_log)
+        # and is unaffected either way.
         self._h_consec_misses += 1
-        if self._h_extrap and len(self._h_real_t) >= 5:
-            _rt = np.asarray(self._h_real_t[-8:])
-            _rv = np.asarray(self._h_real_v[-8:])
-            _valid = np.all(np.abs(_rv) < self._h_extrap_clip_bound - 1e-3, axis=1)
-            if int(_valid.sum()) >= 5:
-                _rt, _rv = _rt[_valid], _rv[_valid]
-                _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=6)
-                _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=self._h_extrap_max,
-                                      neginf=-self._h_extrap_max)
-            else:
-                _fit = self._h_real_v[-1].copy() if self._h_real_v else np.zeros(6)
-            _decay = max(0.0, 1.0 - self._h_consec_misses / max(1, self._h_extrap_decay_frames))
-            _h_out = np.clip(_fit * _decay, -self._h_extrap_max, self._h_extrap_max)
+        _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+        _map_h = self._flowMap(_q1, self._time.perf_counter()) if self._map_flow else None
+        if _map_h is not None:
+            _h_out = _map_h
+            self._opt_flow_estimator_tag.append('map_flow')
         else:
-            _h_out = np.zeros(6)
+            if self._h_extrap and len(self._h_real_t) >= 5:
+                _rt = np.asarray(self._h_real_t[-8:])
+                _rv = np.asarray(self._h_real_v[-8:])
+                _valid = np.all(np.abs(_rv) < self._h_extrap_clip_bound - 1e-3, axis=1)
+                if int(_valid.sum()) >= 5:
+                    _rt, _rv = _rt[_valid], _rv[_valid]
+                    _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=6)
+                    _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=self._h_extrap_max,
+                                          neginf=-self._h_extrap_max)
+                else:
+                    _fit = self._h_real_v[-1].copy() if self._h_real_v else np.zeros(6)
+                _decay = max(0.0, 1.0 - self._h_consec_misses / max(1, self._h_extrap_decay_frames))
+                _h_out = np.clip(_fit * _decay, -self._h_extrap_max, self._h_extrap_max)
+            else:
+                _h_out = np.zeros(6)
+            self._opt_flow_estimator_tag.append('coast')
         self._opt_flow_ang_vel_raw.append(_h_out)
-        self._opt_flow_estimator_tag.append('coast')
 
         # _feature_pts/_virtual_feature_pts: rescued geometry when available (so
         # MARKER_EXTENT_PX/CBF see LIVE map-grounded geometry, not frozen corners),
@@ -1818,6 +1847,93 @@ class IMG_PROCESSOR(Thread):
             out.append(float(st[1]))
         self._obs_kf_t = t
         return out[0], out[1]
+
+    def _loomMapM_primary(self, quat):
+        """Map-driven h_z helper (2026-07-28 port from PX4_Gazebo's _loomMapM_slot,
+        adapted to the Pi's single-primary-rescue design - no small/big HANDOVER_LATCHED
+        slot selection here, always the primary slot, matching how s/alpha rescue already
+        reads it). Same causal d(ln M)/dt fit as the real-decode loom (_mtrace_hist), on
+        its OWN separate history (self._flowmap_lnM_hist) so it never interferes with
+        the primary loom's own state."""
+        if self._planar_map is None or not getattr(self._planar_map, 'initialized', False) or quat is None:
+            return None
+        try:
+            px = self._planar_map.get_marker_frame_pts()   # slot=None -> primary
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32) * self._aruco_scale, quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            M = float(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1)))
+            if not (M > 1e-12 and np.isfinite(M)):
+                return None
+            t = self._time.perf_counter()
+            lnM = float(np.log(M))
+            self._flowmap_lnM_hist.append((t, lnM))
+            if len(self._flowmap_lnM_hist) < 3:
+                return 0.0
+            ts = np.array([c[0] for c in self._flowmap_lnM_hist])
+            if ts.max() - ts.min() < 1e-4:
+                return 0.0
+            t0 = ts - ts[0]
+            slope = np.polyfit(t0, [c[1] for c in self._flowmap_lnM_hist], 1)[0]
+            return float(np.clip(-0.5 * slope * self._loom_gain, -10.0, 10.0))
+        except Exception:
+            return None
+
+    def _flowMap(self, quat, t):
+        """Map-driven flow [h_x, h_y, h_z] (2026-07-28 port from PX4_Gazebo's _flowMap),
+        for use during a marker-loss RESCUE frame - preferred over h_extrap when
+        available, since it's a fresh geometric estimate from the map's own tracked
+        points rather than a temporal extrapolation of stale real values. h_x/h_y: the
+        SAME 2-state CV-Kalman rate estimator _obs_vel_kf uses, own state
+        (_flowmap_kf_*), fed the map's primary-slot V-frame centre. h_z: _loomMapM_primary.
+        None -> caller falls back to h_extrap (or zero) as before."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        try:
+            px = pm.get_marker_center_native()   # slot=None -> primary
+            if px is None:
+                return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32) * self._aruco_scale, quat)
+            if Vp is None or len(Vp) != 1:
+                return None
+            x0, y0 = float(Vp[0, 0]), float(Vp[0, 1])
+            if self._flowmap_kf_x is None or self._flowmap_kf_t is None:
+                self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                hx, hy = 0.0, 0.0
+            else:
+                dt = t - self._flowmap_kf_t
+                if dt <= 1e-4 or dt > 0.5:
+                    self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                    self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                    hx, hy = 0.0, 0.0
+                else:
+                    F = np.array([[1.0, dt], [0.0, 1.0]])
+                    Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+                    r = self._obs_kf_r
+                    out = []
+                    for st, P, z in ((self._flowmap_kf_x, self._flowmap_kf_Px, x0),
+                                     (self._flowmap_kf_y, self._flowmap_kf_Py, y0)):
+                        st[:] = F @ st
+                        P[:] = F @ P @ F.T + Q
+                        S = P[0, 0] + r; K = P[:, 0] / S
+                        st[:] = st + K * (z - st[0])
+                        P[:] = P - np.outer(K, P[0, :])
+                        out.append(float(st[1]))
+                    hx, hy = out[0], out[1]
+                    self._flowmap_kf_t = t
+            hz = self._loomMapM_primary(quat)
+            if hz is None:
+                return None
+            if not all(np.isfinite(v) for v in (hx, hy, hz)):
+                return None
+            return np.array([hx, hy, hz, 0.0, 0.0, 0.0], dtype=float)   # w_x/w_y/w_z: not map-derived, zero (matches CTRL_ZERO_WXY level-target convention)
+        except Exception:
+            return None
 
     def _scaled_quad_points(self, corners, scales=(1.0, 2.0/3.0, 1.0/3.0), per_side=15):
         """See img_geometry.scaled_quad_points (single source of truth)."""
@@ -2228,6 +2344,7 @@ class IMG_PROCESSOR(Thread):
             'FLOW_DH_MAX': getattr(self, '_flow_dh_max', None),
             'PLASMC_H_EXTRAP': int(bool(getattr(self, '_h_extrap', False))),
             'PLASMC_DENSE_RECOVER': int(bool(getattr(self, '_dense_recover', False))),
+            'PLASMC_MAP_FLOW': int(bool(getattr(self, '_map_flow', False))),
             'GYRO_COMP_WXY_MAX': getattr(self, '_gyro_comp_wxy_max', None),
             # --- perception path ---
             'PLANAR_MAP_SHADOW': int(bool(getattr(self, '_planar_map_shadow', False))),
