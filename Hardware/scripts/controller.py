@@ -2333,7 +2333,7 @@ class Controller(Thread):
                 d_min_fov = 0.0
 
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
-        focal_px = float(self._img_node.focal[0])
+        focal_px = float(np.atleast_1d(self._img_node.focal)[0])
         # Visibility tilt-cone headroom = current tilt + how far we can still tilt
         # before the nearest marker corner exits the FoV envelope, capped at theta_cap.
         # This is the cbf2 Phase-2 fallback cone (the exact camera-frame theta-QP below
