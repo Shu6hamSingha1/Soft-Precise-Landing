@@ -249,19 +249,24 @@ class IMG_PROCESSOR(Thread):
         # per-frame cost, see Hardware/docs/*timing* breakdown) scales with
         # pixel area. Falls back to full-frame search when unlocked or after
         # too many consecutive ROI misses (fast motion / occlusion).
-        # BUMPED 2026-07-24: default was 80 (raw px, ~40 main-stream px),
-        # sized 2026-07-10 when this loop ran camera-fps-bound at ~30-46Hz
-        # (~22-33ms between calls). Confirmed live on battery power (this
-        # session): loop now runs 12.7-20.3Hz (50-79ms between calls, 2-3x
-        # longer), and roi_hits stayed 0 across two full recording sessions
-        # (always roi_misses -> fullframe fallback) even while the marker was
-        # being actively, successfully decoded via full-frame search moments
-        # later - the ROI crop was chronically too tight for how far the
-        # marker can now move between the (slower) processed frames, not a
-        # detection failure. Widened as a first-pass fix; if roi_hits stays
-        # 0 even at this margin, the fix needs to scale with measured
-        # inter-call dt instead of a fixed constant (see chat/memory).
-        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "200"))
+        # REVERTED 2026-07-28 back to the 2026-07-10-validated default of 80
+        # (raw px, ~40 main-stream px). The 2026-07-24 bump to 200 (see git
+        # history) was a first-pass reaction to a loop slowdown (30-46Hz ->
+        # 12.7-20.3Hz) that its OWN comment predicted might not work ("if
+        # roi_hits stays 0 even at this margin, the fix needs to scale with
+        # measured inter-call dt instead of a fixed constant") - and indeed,
+        # a fresh IMG_TIMING_DBG+ARUCO_ROI_DEBUG session at margin=200 still
+        # showed roi_hits near-zero in most windows. Per the ORIGINAL
+        # 2026-07-10 finding (img_process_freq_optimization.md, "Fix 2"),
+        # widening the ROI margin costs more per search attempt (bigger crop)
+        # without cutting the miss rate enough to compensate - so the 200px
+        # bump was very likely making the underlying slowdown WORSE, not
+        # better, by adding search cost on top of whatever caused the
+        # original regression. That original regression (something between
+        # 07-10 and 07-24 that dropped the camera-fps-bound baseline) is
+        # still unexplained and worth chasing separately - this revert only
+        # undoes a band-aid that never worked by its own stated criterion.
+        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "80"))
         self._roi_max_misses = int(os.environ.get("ARUCO_ROI_MAX_MISSES", "5"))
         self._roi_miss_count = 0
         self._last_locked_corners = None   # (4,2) full-image px, most recent lock
