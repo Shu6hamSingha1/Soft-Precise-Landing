@@ -738,7 +738,15 @@ class IMG_PROCESSOR(Thread):
         # goes far stale); tracked independently of the strict gate so it survives partial dropouts
         # the strict gate alone would kill. Falls through to the (self-reinforcing, buggy)
         # deg-1 s-extrapolation only if even this dense set can't sustain enough survivors.
-        self._dense_recover = os.environ.get("PLASMC_DENSE_RECOVER", "0") == "1"
+        # BAKED default-ON (2026-07-28): isolated n=25/24 A/B (dense-recover OFF vs ON, IC1-5)
+        # showed a consistent net improvement -- TARGET_LOST rate 60%->46%, mean xy 1.11->0.92m,
+        # 0 DESCENT_ANOMALY vs 1, fewer UNKNOWN failure causes (11->6). Per-IC: improved on
+        # IC1-4; IC5 alone got a slightly worse TARGET_LOST rate (4/5->5/5, but mean xy still
+        # improved 2.94->2.13) -- consistent with IC5's already-catalogued structural issue
+        # (marker leaves the FoV entirely, not partial occlusion) being outside what a
+        # partial-view homography recovery can fix. See project_dense_recover_ab_20260728
+        # memory; closes out the previously "mixed, don't bake" status from 2026-07-07.
+        self._dense_recover = os.environ.get("PLASMC_DENSE_RECOVER", "1") == "1"
         self._dense_recover_min_pts = int(os.environ.get("DENSE_RECOVER_MIN_PTS", "12"))
         self._dense_recover_ransac_px = float(os.environ.get("DENSE_RECOVER_RANSAC_PX", "3.0"))
         self._dense_canon_pts = None       # (M,2) canonical dense-point layout, re-anchored per clean detection
