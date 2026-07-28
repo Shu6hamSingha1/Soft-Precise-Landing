@@ -456,7 +456,19 @@ class IMG_PROCESSOR(Thread):
         # = left FoV, ~Z<0.42m for a 1m marker), hand the loom to the RING (visibility-triggered,
         # not the n_corn<=3 threshold). The detection-vs-visibility classifier IS the existing
         # KLT _in_bounds check. A/B before baking.
-        self._single_marker = os.environ.get("PLASMC_SINGLE_MARKER", "1") == "1"   # default-on 2026-06-23 (single ~1m-ArUco world + matched cal). PROVISIONAL — escapes the nested-board rank-deficiency (R²0.62) but FAILED the IC2-5 gate (2/12 sub, 6/12 fly): off-center ICs trigger the off-center spurious corner-flow spike (position-term confounding). NOT git-committed; needs the off-center fix (ring-carries-lateral when s_e_n breaches). Set =0 for the board (also restore board cal+SDF).
+        # REVERTED to default-off (2026-07-28): the 2026-06-23 default-on flip was for a
+        # DIFFERENT, uncommitted single-marker world+cal experiment that itself FAILED the
+        # IC2-5 gate (2/12 sub, 6/12 fly) -- see the git-committed comment history on this
+        # line. Nothing in the standard launch path (run_aruco_landing.sh/run_ic_validation.sh)
+        # ever set PLASMC_SINGLE_MARKER=0, so this default has been SILENTLY ACTIVE against the
+        # nested board for over a month: every standard IC1-5 gate/A-B since 2026-06-24 ran
+        # reactive single-marker LOCK (switch only once the current marker fully vanishes)
+        # instead of the board's intended PROACTIVE bigger-marker-priority handoff (the branch
+        # below, itself labeled "(default)" -- was unreachable dead code this whole time). The
+        # CBF small-marker preference, HANDOVER_LATCHED terminal commit, and marker-switch
+        # KF-reset machinery are all designed around the proactive handoff, not lock mode.
+        # See project_single_marker_default_mismatch_20260728 memory for the A/B.
+        self._single_marker = os.environ.get("PLASMC_SINGLE_MARKER", "0") == "1"
         self._locked_marker_id = None   # the locked single marker (None = unacquired)
         # PlanarFeatureMap SHADOW mode (2026-07-15, default-on, PLANAR_MAP_SHADOW env-gated).
         # Runs the online KLT+homography scene map ALONGSIDE the existing ArUco/KLT-fallback/
@@ -2432,7 +2444,14 @@ class IMG_PROCESSOR(Thread):
                         _disp_lk = float(np.mean(np.abs(all_pts_1[sl].reshape(-1, 2) - _d0)))
                         _disp_dec = float(np.mean(np.abs(_d1_dec - _d0)))
                         if np.any(status[sl] == 0) or _disp_dec > _disp_lk + self._decode_trig:
-                            all_pts_1[sl] = (_d0 + (_d1_dec - _d0) * self._decode_scale).reshape(-1, 1, 2)
+                            # all_pts_1 is (N,2) here (all_pts_0 was vstacked as (N,2), not
+                            # reshaped to (N,1,2) before the LK call) -- a stale (-1,1,2)
+                            # reshape here throws "could not broadcast (4,1,2) into (4,2)".
+                            # Found 2026-07-28: this line is only reachable when marker_ids is
+                            # not None (board/multi-marker mode), which was dead code for over
+                            # a month while PLASMC_SINGLE_MARKER defaulted on by accident -- see
+                            # project_single_marker_default_mismatch_20260728 memory.
+                            all_pts_1[sl] = (_d0 + (_d1_dec - _d0) * self._decode_scale).reshape(-1, 2)
                             status[sl] = 1
                             self._decode_fills += 1
 
