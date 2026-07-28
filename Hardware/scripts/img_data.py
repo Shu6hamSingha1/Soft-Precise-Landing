@@ -1766,7 +1766,18 @@ class IMG_PROCESSOR(Thread):
         # and is unaffected either way.
         self._h_consec_misses += 1
         _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
-        _map_h = self._flowMap(_q1, self._time.perf_counter()) if self._map_flow else None
+        # GATE (2026-07-28 fix): Gazebo never calls _flowMap without _smallSlotFlowReady
+        # first - a two-sided confidence+size-band gate (measured ~7x flow-error jump
+        # outside the reliable band). This port initially skipped that precondition
+        # entirely (map merely 'initialized' is a much weaker bar), confirmed live: a
+        # 15:47 recording showed map_flow firing on 168/395 frames vs only 17
+        # planar_map_rescue (the s/alpha equivalent, gated on _planar_map_gate_on) -
+        # h was trusting the map far more liberally than s/alpha for the same frames.
+        # Reuse the SAME confidence-streak gate s/alpha rescue already requires (the
+        # Pi's single-primary-slot design has no small/big extent-band concept to port
+        # a matching size gate from yet).
+        _map_h = (self._flowMap(_q1, self._time.perf_counter())
+                  if (self._map_flow and self._planar_map_gate_on) else None)
         if _map_h is not None:
             _h_out = _map_h
             self._opt_flow_estimator_tag.append('map_flow')
