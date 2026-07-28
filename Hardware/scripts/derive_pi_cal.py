@@ -408,7 +408,21 @@ def compute_gt_flow(run_dir):
         # Flow is unaffected either way - a constant offset differentiates
         # away - so this corrects the bearing/centroid chain only.
         W_x_tu[i] = (tpp + Rt @ R_MARKER_FRD) - (up + Ru[i] @ R_CAM_FRD)
-        yaw[i] = -np.deg2rad(p.yaw)   # QTM -> FRD yaw sign flip
+        # FIXED 2026-07-28: was -deg2rad(p.yaw) - the UAV's own ABSOLUTE yaw,
+        # completely dropping the target's yaw (t.yaw, only used above for the
+        # marker lever-arm rotation, never for orientation). That mirrors the
+        # position bug this exact lever-arm fix already corrected: s/h are
+        # built from a RELATIVE vector (target - UAV, both lever-arm-corrected)
+        # while alpha was left absolute. It only looked fine because the
+        # current rig's target is static ("effectively world-fixed", see
+        # comment above) - a constant target yaw offset silently absorbs into
+        # the fit rather than showing up as error. It breaks the moment the
+        # target has ANY nonzero or time-varying yaw (the moving-target/rover
+        # phase). Relative yaw = UAV yaw - target yaw (target rotating the
+        # marker contributes DIRECTLY to how it looks rotated in-frame; UAV
+        # rotating the camera contributes OPPOSITELY - hence the differing
+        # sign before negation), then the same QTM->FRD sign flip as before.
+        yaw[i] = -np.deg2rad(p.yaw - t.yaw)
 
     W_v_tu = _robust_vel(W_x_tu, tg)
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)
