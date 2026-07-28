@@ -18,10 +18,16 @@ os.environ.setdefault("FLOW_DH_MAX", "0")
 os.environ.setdefault("FLOW_DS_MAX", "0")
 os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")   # matches output_calibration.py's default
-os.environ.setdefault("PLANAR_MAP_SHADOW", "0")     # matches output_calibration.py's default (2026-07-26)
-os.environ.setdefault("PLASMC_PLANAR_MAP_PRIMARY", "0")   # ALSO required (2026-07-26 correction) - shadow
-                                                            # alone doesn't disable this block, see
-                                                            # output_calibration.py's comment for why
+# UPDATED 2026-07-28: the 2026-07-26 rationale for forcing these to 0 was ITSELF
+# reversed the next day (output_calibration.py's 2026-07-27 comment) - the map's
+# override never touches the flow-calibration path (only centroid), and disabling
+# it truncates the excitation tails right where the calibration signal is largest.
+# output_calibration.py now leaves both at img_data.py's own default ("1", on), so
+# this script matches that by NOT overriding them (img_data.py defaults apply).
+# Override PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0 in the environment if
+# you specifically want to A/B the map's frame-rate cost (~9-13ms/frame, stage
+# "1b_planar_map_shadow") in isolation - that tradeoff is real, just not the
+# default anymore.
 
 import asyncio
 import time
