@@ -132,8 +132,23 @@ class IMG_PROCESSOR(Thread):
                   f"calibrated (640,480) - fx/fy/center are UNCALIBRATED guesses "
                   f"at this resolution.")
             self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
-        self._sensor_cal_hw = np.diag([1/6, 1/6, 1/6, 1, 1, 1]) # Sensor calibration matrix
-        self._sensor_cal_s = np.diag([1/12, 1/12, 1, 1]) # Sensor calibration matrix
+        # APPLIED 2026-07-28 (was placeholder diag([1/6,1/6,1/6,1,1,1]) - never a real
+        # calibration, see project_pi_cal_never_applied): derive_pi_cal.py aggregate
+        # across all 44 available phased recordings (2026-07-23 through today, post
+        # marker-lever-arm fix). per-axis R^2: Hx=0.28 Hy=0.33 Hz=0.44 Wz=0.38 -
+        # PROVISIONAL (moderate, not high) per the tool's own flag; the dominant
+        # limiter is the marker/HFOV FoV ceiling characterized this session (small
+        # marker + narrow ~35deg HFOV bounds how much of each phased sweep survives
+        # marker-loss gap filtering), not a residual derivation bug. Re-run
+        # derive_pi_cal.py and re-paste if/when more/better phased data is collected.
+        self._sensor_cal_hw = np.array([
+            [+0.1433, +0.0353, -0.0398, -0.0210, +0.0110, -0.0034],
+            [-0.0121, +0.1615, +0.0503, -0.0323, -0.0027, -0.0489],
+            [-0.0133, +0.0489, +0.3262, -0.0362, -0.0090, -0.0398],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0340, +0.0464, -0.1956, +0.2504, +0.0552, +0.3364]])
+        self._sensor_cal_s = np.diag([0.1701, 0.4168, 1.0, 1.0])
 
         # ArUco detection runs on the smaller, ISP-scaled "main" stream
         # (genuinely fewer pixels than the raw stream, which is locked to the
@@ -533,8 +548,19 @@ class IMG_PROCESSOR(Thread):
         # sub-pixel corner shift there is a smaller sub-pixel shift in
         # absolute terms) can be reverted without a code change.
         self._ring_main_stream = os.environ.get("FLOW_RING_MAIN_STREAM", "1") == "1"
-        # Ring cal: placeholder identity — derive like the corner cal once recorded.
-        self._sensor_cal_ring = np.eye(6)
+        # APPLIED 2026-07-28 (was placeholder identity): derive_pi_cal.py ring
+        # aggregate across all 48 available phased recordings, transfer-derived
+        # against the corner cal above. per-axis R^2: Hx=0.35 Hy=0.31 Hz=0.38
+        # Wz=0.59 - PROVISIONAL, same caveats as the corner cal's comment above
+        # (FoV-ceiling-limited, not a derivation bug). Re-derive if _sensor_cal_hw
+        # above ever changes (ring cal is keyed to it).
+        self._sensor_cal_ring = np.array([
+            [+0.1876, +0.0027, -0.0189, +0.0089, +0.1814, -0.0640],
+            [+0.0130, +0.2110, +0.0582, -0.2078, +0.0160, +0.0234],
+            [-0.0016, -0.0226, +0.5761, +0.0176, +0.0017, -0.0242],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0199, +0.0505, +0.0320, -0.0416, +0.0389, -0.8331]])
         # Ring KF (same _kf_step model, separate state) + latest per-frame products.
         self._kf_x_ring = np.zeros((6, 2))
         self._kf_P_ring = np.tile(np.eye(2) * 1.0, (6, 1, 1))
