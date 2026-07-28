@@ -4,7 +4,24 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢 2026-07-28 (LATEST) — dense-homography recovery BAKED default-on.** Isolated A/B
+> **🔴🟢 2026-07-28 (LATEST) — accidental month-long PLASMC_SINGLE_MARKER=1 default found
+> +reverted; exposed+fixed a dead-code shape bug; new residual gap found.** Chasing an
+> elevated TARGET_LOST/UNKNOWN rate traced to `_single_marker` defaulting ON since commit
+> `758dcb2a` (2026-06-24) -- meant for a different, uncommitted experiment, never reverted,
+> silently active against the nested board in EVERY standard gate/A-B since (incl. all of
+> 2026-07-26/27/28's go-around/DESCENT_ANOMALY/dense-recovery work). Reverting to default-off
+> exposed a real, previously-dead-code bug (board-mode LK correspondence fallback assigned a
+> (4,1,2)-shaped RHS into an actually-(4,2) `all_pts_1[sl]`) that crashed every rep -- both
+> fixed together, commit bf64c08. Post-fix n=25 gate: zero crashes, TARGET_LOST 60%->44%,
+> IC2-4 precision markedly better. **New gap found (not fixed):** `getFailureCause()`
+> (DRIFT_OFF/OVERFLOW) is itself single-marker-only logic, gated on `_single_marker` -- now
+> ALWAYS returns UNKNOWN in board mode (confirmed: 11/11 post-fix TARGET_LOST reps all
+> UNKNOWN). Needs a board-mode-native rewrite, not just un-gating. Recent bakes (go-around
+> removal, DESCENT_ANOMALY, dense-recovery) were validated under the WRONG default -- mechanisms
+> likely still sound but don't cite their absolute numbers as current-baseline without a
+> re-check. [[project_single_marker_default_mismatch_20260728]]
+
+> **🟢🟢 2026-07-28 — dense-homography recovery BAKED default-on.** Isolated A/B
 > (n=25 off / n=24 on, IC1-5) closes out the 2026-07-07 "mixed, don't bake" status:
 > TARGET_LOST 60%->46%, mean xy 1.11->0.92m, DESCENT_ANOMALY 1->0, UNKNOWN causes 11->6.
 > Improved IC1-4; IC5 alone slightly worse on TARGET_LOST rate (still improved on mean xy) --
