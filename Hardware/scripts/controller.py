@@ -852,6 +852,14 @@ class Controller(Thread):
         """Loom-inversion soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds POSITIVE for _td_frames frames (= the vertical
         reversal at first contact) while near-centered. Depth-free (loom only), one-way latch."""
+        # DISABLED 2026-07-29 (user decision): armed on a single spiked h_z frame
+        # (-0.57, held constant 10 ticks -- a stale/corrupted frame, not real loom)
+        # while the drone was still climbing at 3-4m, then latched LANDED off
+        # ordinary positive h_z noise a few frames later -- false touchdown,
+        # mid-air. No persistence/spike-rejection gate on the arm condition (see
+        # controller.py:851 history). Re-enable once the arm condition is gated
+        # on _h_good and/or requires multi-frame persistence, not a single frame.
+        return
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -1092,6 +1100,13 @@ class Controller(Thread):
         self._t = []
         self._dt = []
         self._t0 = self._time.perf_counter()
+        # Savgol-predictor raw/good buffers MUST reset in lockstep with _t/_dt --
+        # _lastGood() returns indices into these buffers that _predictModel_s/_h
+        # then use directly to index self._t. Carrying stale (longer) s_raw/h_raw
+        # across a marker-loss -> reacquisition transition desyncs the lengths and
+        # crashes with IndexError on the first predict call after reacquisition.
+        self._h_raw = []; self._s_raw = []
+        self._h_good = []; self._s_good = []
 
     def run(self):
         while self._img_node.is_alive() and self._STAY_OPEN:

@@ -214,13 +214,18 @@ class HardwareLandingSystem:
 
         if self.fc.LANDED:
             print("Landed (PX4 LandedState or controller touchdown detect)")
+            # Command a safe PX4 LAND here, not an immediate disarm: the
+            # loom-inversion touchdown detector (TOUCHDOWN_DETECTED) can latch
+            # LANDED on a false positive well above the ground (observed
+            # mid-air at ~0.96m) -- an unconditional disarm() at that point
+            # cuts motors in flight. PX4 land() is safe either way: it is a
+            # controlled descent-and-disarm if genuinely still airborne, and
+            # a fast no-op-ish disarm if already on the ground.
             try:
-                await self.fc.send_attitude_rate(0.0, 0.0, 0.0, 0.0)
-                await asyncio.sleep(0.05)
-                await self.fc.vehicle.action.disarm()
-                print("Disarmed post-touchdown.")
+                await self.fc.vehicle.action.land()
+                print("Land command issued post-touchdown.")
             except Exception as e:
-                print(f"Disarm failed (probably already disarmed by PX4): {e}")
+                print(f"Land command failed (probably already landed/disarmed by PX4): {e}")
 
     def save_data(self):
         """Persist telemetry/controller logs to disk. Called BEFORE cleanup()
