@@ -35,19 +35,26 @@ DISPLAY_SCALE = 3.0         # upscale factor for the preview window - getImages(
                             # returns the "main" stream at MAIN_STREAM_SIZE
                             # (320x240, project-wide single-resolution
                             # convention), which renders tiny on high-DPI
-                            # displays without this. 2026-07-31: an earlier
-                            # attempt (DISPLAY_SCALE + cv2.resize + namedWindow
-                            # (..., WINDOW_NORMAL)) visibly had NO effect, on
-                            # BOTH the Pi's own local GUI and X410-forwarded X11
-                            # -- ruling out an X11-forwarding/client-side cause.
-                            # Root cause: WINDOW_NORMAL only makes a window
-                            # user-resizable; it does NOT guarantee cv2.imshow()
-                            # auto-grows the window's actual on-screen size to
-                            # match a new (larger) frame -- a known OpenCV/Qt
-                            # HighGUI quirk. The window was silently staying at
-                            # whatever default/previous size Qt gave it and just
-                            # rescaling the bigger image DOWN to fit. Fixed by
-                            # explicitly calling cv2.resizeWindow() below.
+                            # displays without this. 2026-07-31: TWO earlier
+                            # attempts failed -- (1) cv2.resize alone, (2)
+                            # cv2.resize + explicit cv2.namedWindow(...,
+                            # WINDOW_NORMAL) + cv2.resizeWindow() -- both had NO
+                            # visible effect, on BOTH the Pi's own local GUI and
+                            # X410-forwarded X11 (ruling out an X11-forwarding
+                            # cause). Root cause, found by checking the PROVEN-
+                            # WORKING equivalent in PX4_Gazebo/src/img_data.py
+                            # (its VIDEO=True cv2.imshow preview, confirmed by
+                            # user to actually scale correctly there): that code
+                            # NEVER calls cv2.namedWindow() at all -- it just
+                            # calls cv2.resize + cv2.imshow directly and lets
+                            # OpenCV implicitly create the window. Explicitly
+                            # pre-creating the window via namedWindow(...,
+                            # WINDOW_NORMAL) turns OFF the auto-fit-to-image
+                            # behavior an implicitly-created (WINDOW_AUTOSIZE)
+                            # window has by default -- exactly backwards from
+                            # what was needed. Fixed by removing namedWindow/
+                            # resizeWindow entirely, matching the Gazebo
+                            # pattern exactly (resize then imshow, nothing else).
 
 # Shared with IMG_PROCESSOR (img_data.py) instead of a separate hardcoded
 # copy - this file used to duplicate the params and silently drifted out of
@@ -60,12 +67,6 @@ def main():
     strm = imgstream(resolution=(640, 480), capRate=60)
     print("Live preview running at ~4Hz refresh (full capture continues faster "
           "underneath) - press ESC in the window or Ctrl+C here to stop.")
-    cv2.namedWindow("Live Preview (~4Hz)", cv2.WINDOW_NORMAL)
-    # Explicit resize -- see DISPLAY_SCALE comment above. namedWindow(WINDOW_NORMAL)
-    # alone does NOT reliably grow the on-screen window to match a larger image;
-    # this call sets the actual OS-level window size directly. MAIN_STREAM_SIZE is
-    # 320x240 (project-wide convention); resizeWindow takes (width, height).
-    cv2.resizeWindow("Live Preview (~4Hz)", int(320 * DISPLAY_SCALE), int(240 * DISPLAY_SCALE))
     try:
         while True:
             m = list(strm.getImages())[-1]
@@ -79,7 +80,7 @@ def main():
                 cv2.putText(vis, label, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                             (0, 255, 0) if decoded else (0, 0, 255), 1)
                 vis = cv2.resize(vis, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE,
-                                  interpolation=cv2.INTER_NEAREST)
+                                  interpolation=cv2.INTER_AREA)
                 cv2.imshow("Live Preview (~4Hz)", vis)
                 if cv2.waitKey(1) == 27:   # ESC
                     break
