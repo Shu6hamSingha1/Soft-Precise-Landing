@@ -1429,9 +1429,25 @@ class Controller(Thread):
             V_ds_d_xy = np.linalg.inv(G_s) @ dzeta_sd + S_s @ self._dp_s[-1]
         else:
             # === legacy outer PID on s_e_n (default) ===
-            # Trapezoidal integration of normalized error + anti-windup
+            # Trapezoidal integration of normalized error + anti-windup, with
+            # CONDITIONAL INTEGRATION (freeze, mirrors _yawCtrl's ie_a anti-windup,
+            # 2026-06-08): a hard magnitude clamp bounds izeta's VALUE but does not stop
+            # it accumulating a fictitious error during a genuine feature coast (real
+            # 2026-07-30 hardware flights: s_e_n dead-reckoned via h_extrap/map_flow
+            # ramps linearly for ~400 frames while cbf_corners/FEATURE_PTS_FRESH are
+            # unfresh -> is_e_n/izeta wind up to their clamp on a signal that isn't real
+            # tracking error). Gate on FEATURE_PTS_FRESH (raw decode OR a validated
+            # rescue succeeded THIS frame), NOT FEATURE_IS_STALE -- Gazebo's own
+            # 2026-07-17 cbf_corners fix (see CBF_CORNERS_STALE docstring) found
+            # FEATURE_IS_STALE is a legacy raw-decode-miss counter with no rescue
+            # awareness that trips after just 3 misses even while a rescue is
+            # successfully covering every one -- gating on it would blind this
+            # integral during exactly the window a working rescue is active.
+            _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
             if len(self._is_e_n) == 0:
                 self._is_e_n.append(np.zeros(2))
+            elif not _feat_fresh:
+                self._is_e_n.append(self._is_e_n[-1].copy())   # hold -- do not integrate while unfresh
             else:
                 new_int = (self._is_e_n[-1]
                            + self._dt[-1] * 0.5 * (self._s_e_n[-1] + self._s_e_n[-2]))
@@ -1740,9 +1756,15 @@ class Controller(Thread):
         if self._touchdown_loom and len(self._s_e_n) > 0 and len(self._h) > 0:
             self._touchdownDetect(self._s_e_n[-1])
 
-        # Integral of zeta (trapezoidal) with anti-windup
+        # Integral of zeta (trapezoidal) with anti-windup, CONDITIONAL INTEGRATION
+        # (freeze while the feature measurement feeding zeta is unfresh -- see the
+        # matching is_e_n comment above; same 2026-07-30 hardware finding, same
+        # FEATURE_PTS_FRESH gate, same reason FEATURE_IS_STALE is the wrong flag).
+        _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
         if len(self._izeta) == 0:
             self._izeta.append(np.zeros(N_DIM))
+        elif not _feat_fresh:
+            self._izeta.append(self._izeta[-1].copy())   # hold -- do not integrate while unfresh
         else:
             new_int = (self._izeta[-1]
                        + self._dt[-1] * 0.5 * (self._zeta[-1] + self._zeta[-2]))
@@ -1875,7 +1897,22 @@ class Controller(Thread):
         # the freeze OFF) via large G·|σ| at close range — NOT the brief high-θ spikes the trigger
         # chased (θ>50 on only ~19% of frames). No θ threshold (50 or 200) catches it. The lever for
         # the E_Z=0.5 κ-bound is P_z (κ_eq ∝ 1/P leakage). See memory feedback_theta_norm_klt_drift.
-        if len(self._dt) > 0:
+        # KAPPA-RATCHET FIX (2026-07-30): freeze kappa (hold last value, skip the ODE
+        # integration) while CBF_CORNERS_STALE is True. Root cause found via real hardware
+        # flight telemetry the same session: 2 of 4 flights with real closed-loop feedback
+        # showed kappa growing 20-24x (0.75->16-18) and a_u peaking at 59-180 (vs single
+        # digits in the other 2) during sustained feature loss (cbf_corners none_streak
+        # reaching ~400). The kappa-ODE integrates dkappa/dt = Theta*N*G*|sigma| - N*P*kappa
+        # -- it has no way to tell "sigma is elevated because of real tracking error" apart
+        # from "sigma is elevated because there's no valid measurement to track against, so
+        # the feature signal is frozen/stale/extrapolated". On real hardware the latter is
+        # common (small marker, narrow FOV -> frequent multi-second coasts) and previously
+        # kept ratcheting kappa upward for the ENTIRE coast, so a rare reacquisition then
+        # applied an enormous, over-inflated corrective effort. CBF_CORNERS_STALE (added
+        # earlier this session, validated both by unit test and live on the Pi) is exactly
+        # the "no valid feature data" signal this needs -- gating on it directly parallels
+        # the existing FEATURE_IS_STALE-gated behavior elsewhere in this class.
+        if len(self._dt) > 0 and not self.CBF_CORNERS_STALE:
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
                             [self._sigma[-1], theta_ctrl], self._dt[-1])
             if hasattr(self, '_contained'):

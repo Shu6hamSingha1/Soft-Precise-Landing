@@ -123,6 +123,17 @@ async def main(record = 'n'):
     t_c = []
     u_cmd = []
     SOFT_PRECISE = {}
+    # RETRY-WRAPPER FALSE-SUCCESS BUG FIX (2026-07-30): the except blocks below catch
+    # EVERY exception (including a genuine SITL crash -- gRPC "Socket closed", the X11
+    # "XIO: fatal IO error" cascade seen live 2026-07-30) and just print it -- main()
+    # then falls through to the finally block and returns normally, so the process exit
+    # code was always 0 regardless of whether the flight actually crashed mid-air.
+    # run_aruco_landing.sh exits with main()'s own exit code, and run_aruco_landing_retry.sh
+    # only retries on exit 42 / treats any other 0 as SUCCESS -- so a real crash was
+    # reported as "[retry] SUCCESS after attempt N" three times in one session before this
+    # was caught. Track whether a real exception occurred; the caller (this file's
+    # __main__ block) now exits 1 in that case instead of always 0.
+    error_occurred = False
 
     try:
         rclpy.init()
@@ -866,12 +877,15 @@ async def main(record = 'n'):
 
     except RuntimeError as e:
         print(f"RuntimeError: Main Thread: {e}\n")
+        error_occurred = True
 
     except SyntaxError:
         print("SyntaxError: Main Thread\n")
+        error_occurred = True
 
     except Exception as e:
         print(f"Unexpected error: Main Thread: {e}\n")
+        error_occurred = True
 
     finally:
         # Save data
@@ -906,11 +920,14 @@ async def main(record = 'n'):
         if rclpy.ok():  # Check if the context is still active
             rclpy.shutdown()
 
+    return error_occurred
+
 if __name__ == "__main__":
     # res = input("Do you want to record? (y/n)")
 
+    _had_error = False
     try:
-        asyncio.run(main())
+        _had_error = asyncio.run(main())
     except KeyboardInterrupt:
         print("Clean exit on Ctrl+C")
 
@@ -944,6 +961,13 @@ if __name__ == "__main__":
             f.close()
 
             print("Saved to CSV!")
-
         else:
             print("Closed without saving!")
+
+    # RETRY-WRAPPER FALSE-SUCCESS BUG FIX (2026-07-30) -- see error_occurred comment in
+    # main(). Data is saved above regardless (still useful for post-hoc analysis even on
+    # a crashed run); only the process exit code changes here.
+    if _had_error:
+        print("[landing_test] Exiting with code 1: an exception occurred during the run "
+              "(see 'Unexpected error'/'RuntimeError' output above).")
+    sys.exit(1 if _had_error else 0)
