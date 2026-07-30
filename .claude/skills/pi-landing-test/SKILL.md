@@ -14,6 +14,10 @@ fallback descent, `TOUCHDOWN_DETECTED` handling, a hover/descent-stall watchdog,
 
 **Before invoking anything here, read** `project_pi_final_landing_prep_2026_07_28` (memory) —
 it's the full day-1 session summary this skill is built on top of. Don't re-derive it; use it.
+**Also read `project_pi_izeta_kappa_ratchet_fix_2026_07_31`** — first real closed-loop flights
+after 07-28 (4 flown, 2 blew up: a_u to 59-180, kappa up 20-24x). Root cause + two code fixes
+(izeta/is_e_n conditional integration, `_flowMap`/`_loomMapM` duration cap) are summarized in the
+new checklist item 5 below; both fixes are UNTESTED LIVE.
 
 ## Pre-flight checklist (read this before the user flies)
 
@@ -44,7 +48,27 @@ it's the full day-1 session summary this skill is built on top of. Don't re-deri
      Expect some coast/marker-loss during flight; the marker-loss grace + watchdog are the backstop.
    - Marker/HFOV geometric ceiling (small marker, ~35° HFOV) bounds how far the drone can drift
      laterally before the marker leaves frame — don't expect large lateral excursions to track
-     cleanly at low altitude.
+     cleanly at low altitude. **2026-07-31: video-confirmed this is a REAL failure mode, not
+     theoretical** — pulled frames from two real flights' recordings during a marker-loss coast and
+     the camera was genuinely looking at bare pavement, marker nowhere in frame, for ~400 control
+     loop ticks straight.
+5. **`izeta`/`_flowMap` kappa-ratchet fix — 2026-07-31, UNTESTED LIVE.** First 4 real closed-loop
+   flights after item 1's cal landed: 2/4 blew up (`a_u` to 59-180, `kappa` up 20-24x, `sigma` up
+   ~80x) during exactly this marker-loss coast. Root cause: `_flowMap` (map-derived flow fallback)
+   had no staleness/duration cap (unlike `h_extrap`, which decays to 0 within 10 frames) and kept
+   asserting a confident nonzero dead-reckoned velocity for the entire ~400-frame coast in ALL 4
+   flights (blowup or not) — this ramped `s_e_n` into the barrier (`zeta_r` hits exactly 3.6636, the
+   `S_MARGIN=0.95` ceiling) and wound `izeta` up to its hard clamp. Two fixes landed in both
+   `Hardware/scripts/` and `PX4_Gazebo/src/` (`controller.py` conditional-integration freeze on
+   `izeta`/`is_e_n` when `FEATURE_PTS_FRESH` is false, mirroring the existing yaw `ie_a` anti-windup
+   pattern; `img_data.py` confidence-floor gate on `_flowMap`/`_loomMapM_*`, new env
+   `PLANAR_MAP_FLOW_MIN_CONFIDENCE` default 0.1). Full detail + replay validation in
+   `project_pi_izeta_kappa_ratchet_fix_2026_07_31`. **Also found, separately: `h` (optical-flow
+   velocity) under-reports the controller's own `s_dot_meas` by ~4-7x consistently in ALL 4 flights
+   — likely calibration attenuation bias (moderate R² 0.28-0.44 per `derive_pi_cal.py`'s own flag),
+   not yet fixed, `derive_pi_cal.py`'s regression method (OLS vs errors-in-variables) not yet
+   checked.** This is why real lateral drift wasn't arrested before marker loss in the first place —
+   separate from and upstream of the izeta/kappa fix.
 
 ## Key env knobs (`hardware_landing.py`)
 - `LANDING_TAKEOFF_HEIGHT_M` (default 3.0), `LANDING_REF_RAD_OPT_FLOW` (default -0.30),
