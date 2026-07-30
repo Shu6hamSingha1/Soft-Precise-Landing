@@ -1075,14 +1075,28 @@ class PlanarFeatureMap:
 
         return None   # no existing slot matches -- caller should seed a new one
 
-    def loop_closure_correct(self, decoded_marker_px_corners, marker_id=None, reproj_thresh_px=None):
+    def loop_closure_correct(self, decoded_marker_px_corners, marker_id=None, reproj_thresh_px=None,
+                              confidence=1.0):
         """Fresh ArUco decode succeeded this frame: use it to correct the map. The
         decoded corners are ABSOLUTE truth for this frame (no drift); route them to the
         correct physical-marker SLOT via _classify_slot (pixel geometry only, never the
         decoded id -- see module + _classify_slot docstrings), then re-anchor that slot's
         map entries to be exactly consistent with this decode. marker_id is accepted for
         caller-side logging only; it plays NO role in the routing decision.
-        reproj_thresh_px defaults to 4x ransac_thresh_px if not given."""
+        reproj_thresh_px defaults to 4x ransac_thresh_px if not given.
+
+        confidence (2026-07-30, CONFIDENCE-WEIGHTED CORRECTION): in [0, 1], how much to
+        trust THIS decode's own geometry (e.g. edge-proximity/quad-conditioning quality --
+        see img_geometry.py's quad_condition_score/marker_edge_margin_score). Previously
+        callers made a binary choice: call this method (full snap) or skip it entirely
+        (discard the frame's data completely) whenever a decode was near the frame edge or
+        geometrically marginal. That threw away a marginal-but-genuine decode's information
+        entirely, even though it still carries SOME signal. Default 1.0 preserves the exact
+        original behavior (full snap, used at bootstrap/reseed and by any caller not yet
+        passing a confidence). Only the per-corner MAP-SPACE position (map_pts) is blended
+        -- tracked_px is a direct pixel observation ("the corner is here this frame"), not
+        genuinely in question even near the edge, so it always gets the full, unblended
+        decode position."""
         self._last_decode_t = time.perf_counter()   # this call is by definition a genuine decode
         if reproj_thresh_px is None:
             reproj_thresh_px = 4.0 * self.ransac_thresh_px
@@ -1110,11 +1124,19 @@ class PlanarFeatureMap:
             slot['corner_ids'] = list(new_ids)
         else:
             # Re-anchor: recompute what map position each corner id SHOULD have (via the
-            # current frame_to_map), and snap it to be exactly decode-consistent.
+            # current frame_to_map), and snap it to be exactly decode-consistent -- or, if
+            # confidence < 1.0, blend toward it instead of a hard overwrite (see
+            # confidence param docstring above).
             mapped_pts = self._apply_h(self.frame_to_map, decoded_marker_px_corners)
+            _conf = float(np.clip(confidence, 0.0, 1.0))
             for fid, p, mp in zip(corner_ids, decoded_marker_px_corners, mapped_pts):
                 self.tracked_px[fid] = tuple(p)
-                self.map_pts[fid] = tuple(mp)
+                if _conf >= 1.0:
+                    self.map_pts[fid] = tuple(mp)
+                else:
+                    _old = np.asarray(self.map_pts[fid], dtype=float)
+                    _blended = _conf * np.asarray(mp, dtype=float) + (1.0 - _conf) * _old
+                    self.map_pts[fid] = tuple(_blended)
 
         # EMA-smooth the slot's size estimate (used by _classify_slot's size fallback).
         new_size = self._quad_size(decoded_marker_px_corners)

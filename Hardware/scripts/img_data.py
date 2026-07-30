@@ -29,7 +29,8 @@ from img_geometry import (CALIB_CX, CALIB_CY, fx, fy, f, R_CAM_TO_BODY,
                            get_virtual_pts, get_real_pts_from_v, vframe_w,
                            fill_A, scaled_quad_points, marker_principal_angle,
                            get_img_features, _quat_to_dcm,
-                           quad_ill_conditioned, marker_near_fov_edge)
+                           quad_ill_conditioned, marker_near_fov_edge,
+                           quad_condition_score, marker_edge_margin_score)
 from planar_map import PlanarFeatureMap
 from numerical_methods import extrapolate
 FILTER_WIN = int(os.environ.get("IMG_FILTER_WIN", "13"))       # savgol FALLBACK window (Gazebo-aligned 13,1;
@@ -1450,12 +1451,27 @@ class IMG_PROCESSOR(Thread):
             # edge-degraded observation would poison the map's gauge/homography
             # rather than improve it, even though ArUco itself reported success.
             if self._planar_map is not None:
-                _reject_correct = False
+                # CONFIDENCE-WEIGHTED LOOP-CLOSURE CORRECTION (2026-07-30): previously a
+                # binary gate -- _reject_correct=True skipped loop_closure_correct entirely,
+                # throwing away a near-edge/marginal decode's information completely even
+                # though it still carries SOME real signal. Replaced with a continuous
+                # confidence in [0,1] (quad_condition_score * marker_edge_margin_score,
+                # img_geometry.py -- same underlying thresholds the old boolean gate used,
+                # just not thresholded away) passed into loop_closure_correct, which now
+                # BLENDS the map's per-corner position toward the decode by this amount
+                # instead of a hard snap-or-skip (see planar_map.py's confidence param
+                # docstring). A clean decode still re-anchors close to fully; a marginal one
+                # nudges gently instead of being discarded.
+                _corr_confidence = 1.0
                 if self._map_reject_overflow_correct:
                     _mh, _mw = imgs[1].shape[:2]
-                    _near_edge = marker_near_fov_edge(self._last_locked_corners,
-                                                       (_mh, _mw), self._marker_fov_margin)
-                    _reject_correct = _near_edge or quad_ill_conditioned(self._last_locked_corners)
+                    _corr_confidence = (
+                        marker_edge_margin_score(self._last_locked_corners, (_mh, _mw), self._marker_fov_margin)
+                        * quad_condition_score(self._last_locked_corners))
+                    if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and _corr_confidence < 0.999:
+                        print(f"[planar_map] loop_closure_correct confidence={_corr_confidence:.3f} "
+                              f"(near-edge/marginal decode) t={float(getattr(self,'_stamp',0.0)):.2f}",
+                              flush=True)
                 # VALIDATION-TRIGGERED RESET (2026-07-30, ported from PX4_Gazebo/src/
                 # img_data.py -- see HANDOFF_cbf_lockout_planarmap_2026-07-30.md).
                 # HELD-OUT ground-truth cross-check: compare the map's own prediction
@@ -1494,9 +1510,10 @@ class IMG_PROCESSOR(Thread):
                                                     marker_id=mid, quat_R=_pm_quat_R)
                     except Exception:
                         pass
-                elif not _reject_correct:
+                else:
                     try:
-                        self._planar_map.loop_closure_correct(self._last_locked_corners, marker_id=mid)
+                        self._planar_map.loop_closure_correct(self._last_locked_corners, marker_id=mid,
+                                                                confidence=_corr_confidence)
                     except Exception:
                         pass
             _tt = self._tstage(_tt, "3_lock_and_extract")

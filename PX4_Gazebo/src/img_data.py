@@ -2261,13 +2261,24 @@ class IMG_PROCESSOR(Thread):
                     # dropped map err_px p90 3.8->1.4/6.6->2.0). OR-in the ill-cond check as a harmless
                     # backstop -- verified INERT on the decode path (ArUco self-gates conditioning:
                     # decode-success quads have min diag angle 27deg, never a sliver), but future-proof.
-                    _reject_correct = False
+                    # CONFIDENCE-WEIGHTED LOOP-CLOSURE CORRECTION (2026-07-30, ported from
+                    # Hardware/scripts/img_data.py): previously a binary gate --
+                    # _reject_correct=True skipped loop_closure_correct entirely, throwing
+                    # away a near-edge/marginal decode's information completely even though
+                    # it still carries SOME real signal. Replaced with a continuous
+                    # confidence in [0,1] (_markerEdgeMarginScore * _quadConditionScore,
+                    # same underlying thresholds the old boolean gate used) passed into
+                    # loop_closure_correct, which now BLENDS the map's per-corner position
+                    # toward the decode by this amount instead of a hard snap-or-skip.
+                    _corr_confidence = 1.0
                     if self._map_reject_overflow_correct and aruco_pts_0 is not None:
-                        _cc = np.asarray(aruco_pts_0, float); _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
-                        _near_edge = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
-                                          or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
-                        _reject_correct = _near_edge or self._quadIllConditioned(aruco_pts_0)
-                    _illcond_correct = _reject_correct
+                        _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
+                        _corr_confidence = (self._markerEdgeMarginScore(aruco_pts_0, (_ih, _iw), _m)
+                                             * self._quadConditionScore(aruco_pts_0))
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and _corr_confidence < 0.999:
+                            print(f"[planar_map] loop_closure_correct confidence="
+                                  f"{_corr_confidence:.3f} (near-edge/marginal decode) "
+                                  f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
 
                     # VALIDATION-TRIGGERED RESET (2026-07-30, see HANDOFF_cbf_lockout_
                     # planarmap_2026-07-30.md): _err below is a HELD-OUT ground-truth
@@ -2308,13 +2319,10 @@ class IMG_PROCESSOR(Thread):
                         self._planar_map.bootstrap(_gray0, marker_px_corners=aruco_pts_0,
                                                     marker_id=self._primary_id, quat_R=_R0)
                         self._planar_map_decode_calls += 1
-                    elif results[0] and not _illcond_correct:
+                    elif results[0]:
                         self._planar_map.loop_closure_correct(
-                            aruco_pts_0, marker_id=self._primary_id)
+                            aruco_pts_0, marker_id=self._primary_id, confidence=_corr_confidence)
                         self._planar_map_decode_calls += 1
-                    elif results[0] and _illcond_correct and os.environ.get("PLANAR_MAP_DBG", "0") == "1":
-                        print(f"[planar_map] ill-conditioned quad -> SKIP loop_closure_correct "
-                              f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
 
                     if _err is not None:
                         self._planar_map_log.append({
@@ -4647,6 +4655,45 @@ class IMG_PROCESSOR(Thread):
             return bool(ang < _min_ang or elong > _max_elong)
         except Exception:
             return True
+
+    def _quadConditionScore(self, pts):
+        """CONTINUOUS companion to _quadIllConditioned (2026-07-30, for confidence-weighted
+        loop_closure_correct, ported from Hardware/scripts/img_geometry.py's
+        quad_condition_score): 1.0 = well-conditioned (near-square), 0.0 = at or beyond the
+        same ill-conditioned thresholds _quadIllConditioned rejects on. Same geometry, just
+        returned as a smooth [0,1] score so a marginal decode can be BLENDED instead of
+        binary accept/reject."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+                return 0.0
+            d1 = c[2] - c[0]; d2 = c[3] - c[1]
+            n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+            if n1 < 1e-6 or n2 < 1e-6:
+                return 0.0
+            ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+            sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+            elong = max(sides) / max(min(sides), 1e-6)
+            _min_ang = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+            _max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+            w_ang = np.clip((ang - _min_ang) / max(90.0 - _min_ang, 1e-6), 0.0, 1.0)
+            w_elong = np.clip((_max_elong - elong) / max(_max_elong - 1.0, 1e-6), 0.0, 1.0)
+            return float(w_ang * w_elong)
+        except Exception:
+            return 0.0
+
+    def _markerEdgeMarginScore(self, pts, resolution_hw, margin_px):
+        """CONTINUOUS companion to the inline near-edge check at the loop_closure_correct
+        call site (2026-07-30, ported from Hardware/scripts/img_geometry.py's
+        marker_edge_margin_score): 1.0 = every corner well clear of the frame boundary,
+        0.0 = at or inside margin_px of the edge. Ramps linearly in between."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            h, w = resolution_hw
+            min_dist = min(c[:, 0].min(), w - c[:, 0].max(), c[:, 1].min(), h - c[:, 1].max())
+            return float(np.clip(min_dist / max(margin_px, 1e-6), 0.0, 1.0))
+        except Exception:
+            return 0.0
 
     def _centroidMap(self, quat, size_factor=1.0):
         """Map-driven V-frame centroid [xc, yc], STAGE 2. Uses the map's NATIVE (projective-

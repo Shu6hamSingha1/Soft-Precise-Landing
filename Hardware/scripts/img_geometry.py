@@ -386,6 +386,51 @@ def quad_ill_conditioned(pts, min_angle_deg=None, max_elong=None):
         return True
 
 
+def quad_condition_score(pts, min_angle_deg=None, max_elong=None):
+    """CONTINUOUS companion to quad_ill_conditioned (2026-07-30, for confidence-weighted
+    loop_closure_correct): 1.0 = well-conditioned (near-square, diagonals near-perpendicular),
+    0.0 = at or beyond the same ill-conditioned thresholds quad_ill_conditioned rejects on.
+    Same underlying angle/elongation geometry, just returned as a smooth [0,1] score instead
+    of thresholded to a bool, so a caller can BLEND a marginal decode instead of a binary
+    accept/reject. See quad_ill_conditioned's docstring for the geometric rationale."""
+    if min_angle_deg is None:
+        min_angle_deg = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+    if max_elong is None:
+        max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+    try:
+        c = np.asarray(pts, dtype=float).reshape(-1, 2)
+        if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+            return 0.0
+        d1 = c[2] - c[0]; d2 = c[3] - c[1]
+        n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+        if n1 < 1e-6 or n2 < 1e-6:
+            return 0.0
+        ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+        sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+        elong = max(sides) / max(min(sides), 1e-6)
+        w_ang = np.clip((ang - min_angle_deg) / max(90.0 - min_angle_deg, 1e-6), 0.0, 1.0)
+        w_elong = np.clip((max_elong - elong) / max(max_elong - 1.0, 1e-6), 0.0, 1.0)
+        return float(w_ang * w_elong)
+    except Exception:
+        return 0.0
+
+
+def marker_edge_margin_score(pts, resolution_hw, margin_px):
+    """CONTINUOUS companion to marker_near_fov_edge (2026-07-30, for confidence-weighted
+    loop_closure_correct): 1.0 = every corner well clear of the frame boundary, 0.0 = at or
+    inside margin_px of the edge (the same threshold marker_near_fov_edge rejects on).
+    Ramps linearly between those two -- so a decode that's a little close to the edge (but
+    not touching it) gets a partial-trust blend instead of being either fully accepted or
+    fully discarded."""
+    try:
+        c = np.asarray(pts, dtype=float).reshape(-1, 2)
+        h, w = resolution_hw
+        min_dist = min(c[:, 0].min(), w - c[:, 0].max(), c[:, 1].min(), h - c[:, 1].max())
+        return float(np.clip(min_dist / max(margin_px, 1e-6), 0.0, 1.0))
+    except Exception:
+        return 0.0
+
+
 def marker_near_fov_edge(pts, resolution_hw, margin_px):
     """Ported 2026-07-26 from PX4_Gazebo/src/img_data.py's inline near-edge
     check (same call site as _quadIllConditioned, MAP_REJECT_OVERFLOW_CORRECT
