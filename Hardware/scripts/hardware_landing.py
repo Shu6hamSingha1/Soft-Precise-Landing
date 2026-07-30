@@ -37,7 +37,6 @@ sys.path.insert(0, ".")
 
 try:
     from ahrs import RAD2DEG
-    from ahrs import Quaternion
     from flight_controller import FC
     from controller import Controller
     print("All modules imported successfully")
@@ -75,27 +74,23 @@ RATE_CORRECTION = np.array([
 ]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
-# FALLBACK REDESIGN (2026-07-31): the old FINAL_DESCENT_THROTTLE path sent zero body rates +
-# a fixed throttle -- open-loop, freezing whatever tilt the vehicle had at the instant the
-# marker was lost, with no correction of any kind. Root-caused this session (video analysis
-# of the 7 real 3m flights on 2026-07-30): the marker only ever transits BRIEFLY through the
-# narrow FOV (~0.8-4s) before drifting out, and once lost, the old fallback did nothing about
-# it. An EARLIER version of this fix held the last-known XY position via PX4's GPS-derived
-# local-position EKF (send_position_ned) -- REVERTED: this project's controller must not
-# depend on GPS at all (GPS-denied vision-only landing is the whole point; GPS here exists
-# only for post-hoc logging/performance tracing, per user, never as a controller input). This
-# version instead ports PX4_Gazebo/apps/landing_test.py's already-validated TARGET_LOST-
-# leveling fix (2026-07-26): actively command roll/pitch rate proportional to the CURRENT
-# measured tilt (FC's own IMU+mag attitude estimate, no GPS/position dependency at all) so
-# the vehicle levels itself instead of assuming it's already level -- preventing an
-# accelerating ballistic ejection if the marker is lost while banked. Narrower than a true
-# drift-correction fix (doesn't touch lateral position at all), but GPS-independent, matching
-# this project's hard constraint, and already validated in the sibling Gazebo codebase.
-FALLBACK_LEVEL_GAIN = float(os.environ.get("LANDING_FALLBACK_LEVEL_GAIN", "2.0"))          # 1/s
-FALLBACK_LEVEL_RATE_MAX_DEG = float(os.environ.get("LANDING_FALLBACK_LEVEL_RATE_MAX_DEG", "90.0"))
-FINAL_DESCENT_THROTTLE = float(os.environ.get("LANDING_FINAL_DESCENT_THROTTLE",
-                                               str(HOVER_THROTTLE_NORM - 0.07)))
-FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "5.0"))
+# FALLBACK REDESIGN (2026-07-31): the old path sent zero body rates + a fixed throttle --
+# open-loop, freezing whatever tilt the vehicle had at the instant the marker was lost, with
+# no correction of any kind. Root-caused this session (video analysis of the 7 real 3m
+# flights on 2026-07-30): the marker only ever transits BRIEFLY through the narrow FOV
+# (~0.8-4s) before drifting out, and once lost, the old fallback did nothing about it. Went
+# through several iterations before landing here: (1) hold last-known XY via PX4's GPS-
+# derived position EKF -- REJECTED, this project's controller must never depend on GPS
+# (GPS-denied vision-only landing is the whole point; GPS on this airframe is logging-only,
+# per user); (2) GPS-free IMU-only active leveling + closed-loop throttle, ported from
+# PX4_Gazebo's TARGET_LOST-leveling fix -- worked but was still custom-reinvented flight
+# logic; (3) FINAL, per user direction: since this state is a DECLARED FAILURE and no
+# attempt is made to regain the marker, stop trying to fly/descend ourselves at all and hand
+# off entirely to PX4's own mature RETURN-TO-LAUNCH mode (climb to a safe altitude, fly back
+# to the launch point, land there) -- simpler, more robust, and the standard failsafe
+# response for a genuine failure, instead of reinventing descent/leveling logic.
+RTL_SAFE_ALTITUDE_M = float(os.environ.get("LANDING_RTL_SAFE_ALTITUDE_M", "3.0"))
+FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "60.0"))
 CONTROL_TIMEOUT_S = float(os.environ.get("LANDING_CONTROL_TIMEOUT_S", "90.0"))
 HOVER_STALL_S = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
 HOVER_STALL_DZ = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
@@ -230,35 +225,32 @@ class HardwareLandingSystem:
                     marker_lost_t0 = now
                 await self.fc.send_attitude_rate(*last_good_sys_cmd)
             else:
-                # ACTIVE LEVELING FALLBACK (2026-07-31, revised -- see FALLBACK_LEVEL_GAIN
-                # comment above). REVERTED an earlier version of this fix that held the
-                # last-known XY position via PX4's GPS-derived local-position EKF
-                # (send_position_ned) -- correctly rejected: this project's controller must
-                # not depend on GPS at all (GPS-denied vision-only landing is the whole
-                # point), even as a fallback. This version instead uses ONLY the FC's
-                # attitude estimate (IMU+mag fusion, no GPS) to actively level roll/pitch
-                # during the blind descent, ported from PX4_Gazebo/apps/landing_test.py's
-                # already-validated TARGET_LOST-leveling fix (2026-07-26): zero body RATE
-                # freezes whatever tilt the vehicle had at the instant the marker was lost,
-                # which can produce an accelerating ballistic ejection if lost while banked
-                # -- actively leveling instead keeps the descent a safe, near-vertical fall.
-                # This does NOT correct lateral drift (that would need a GPS-free velocity
-                # estimate this codebase doesn't have available at the fallback layer) --
-                # it only prevents a level-instability failure mode, a narrower but
-                # GPS-independent improvement consistent with the project's constraints.
+                # PX4 RTL HANDOFF (2026-07-31, simplified per user direction): earlier
+                # versions of this fallback tried increasingly elaborate custom logic (GPS
+                # position-hold -- rejected, no GPS dependency allowed; then IMU-only active
+                # leveling + closed-loop throttle) to keep flying/descending ourselves once
+                # the marker is lost beyond grace. But we're not attempting to REGAIN the
+                # marker at all in this state -- it's already a declared failed landing. The
+                # simplest, most robust choice is to stop trying to fly it ourselves and hand
+                # off to PX4's own mature RETURN-TO-LAUNCH mode: climbs to a safe altitude,
+                # returns to the recorded launch point, then lands there -- safer than landing
+                # in place (LAND) if the vehicle has drifted somewhere unexpected while the
+                # marker was lost, and the standard failsafe response for a declared failure.
+                # We stop sending OFFBOARD setpoints entirely once RTL is commanded --
+                # fighting it with our own attitude-rate commands would work against PX4's
+                # own mode.
                 if not in_final_descent:
                     in_final_descent = True
                     final_descent_t0 = now
                     print("[hardware_landing] Marker lost beyond grace - "
-                          f"active-leveling fallback (throttle={FINAL_DESCENT_THROTTLE}, "
-                          "IMU-only, no GPS/position dependency).")
-                q = self.fc.getQuat()
-                roll, pitch, _yaw = Quaternion([q.w, q.x, q.y, q.z]).to_angles()
-                roll_rate_cmd = float(np.clip(-FALLBACK_LEVEL_GAIN * roll * RAD2DEG,
-                                               -FALLBACK_LEVEL_RATE_MAX_DEG, FALLBACK_LEVEL_RATE_MAX_DEG))
-                pitch_rate_cmd = float(np.clip(-FALLBACK_LEVEL_GAIN * pitch * RAD2DEG,
-                                                -FALLBACK_LEVEL_RATE_MAX_DEG, FALLBACK_LEVEL_RATE_MAX_DEG))
-                await self.fc.send_attitude_rate(roll_rate_cmd, pitch_rate_cmd, 0.0, FINAL_DESCENT_THROTTLE)
+                          f"declaring failed landing, handing off to PX4 RTL mode "
+                          f"(safe altitude={RTL_SAFE_ALTITUDE_M} m).")
+                    try:
+                        await self.fc.vehicle.action.set_return_to_launch_altitude(RTL_SAFE_ALTITUDE_M)
+                        await self.fc.vehicle.action.return_to_launch()
+                    except Exception as e:
+                        print(f"[hardware_landing] RTL handoff failed: {e}")
+                await asyncio.sleep(SLEEP_TIME)
                 if (now - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
                     print("[hardware_landing] Final-descent timeout - PX4 never reported LANDED.")
                     break
