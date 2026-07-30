@@ -4,7 +4,52 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟢🟢 2026-07-26 (LATEST) — Three more fixes committed, closing out the day's perception/
+> **🔴🟢 2026-07-28 (LATEST) — accidental month-long PLASMC_SINGLE_MARKER=1 default found
+> +reverted; exposed+fixed a dead-code shape bug; new residual gap found.** Chasing an
+> elevated TARGET_LOST/UNKNOWN rate traced to `_single_marker` defaulting ON since commit
+> `758dcb2a` (2026-06-24) -- meant for a different, uncommitted experiment, never reverted,
+> silently active against the nested board in EVERY standard gate/A-B since (incl. all of
+> 2026-07-26/27/28's go-around/DESCENT_ANOMALY/dense-recovery work). Reverting to default-off
+> exposed a real, previously-dead-code bug (board-mode LK correspondence fallback assigned a
+> (4,1,2)-shaped RHS into an actually-(4,2) `all_pts_1[sl]`) that crashed every rep -- both
+> fixed together, commit bf64c08. Post-fix n=25 gate: zero crashes, TARGET_LOST 60%->44%,
+> IC2-4 precision markedly better. **New gap found (not fixed):** `getFailureCause()`
+> (DRIFT_OFF/OVERFLOW) is itself single-marker-only logic, gated on `_single_marker` -- now
+> ALWAYS returns UNKNOWN in board mode (confirmed: 11/11 post-fix TARGET_LOST reps all
+> UNKNOWN). Needs a board-mode-native rewrite, not just un-gating. Recent bakes (go-around
+> removal, DESCENT_ANOMALY, dense-recovery) were validated under the WRONG default -- mechanisms
+> likely still sound but don't cite their absolute numbers as current-baseline without a
+> re-check. [[project_single_marker_default_mismatch_20260728]]
+
+> **🟢🟢 2026-07-28 — dense-homography recovery BAKED default-on.** Isolated A/B
+> (n=25 off / n=24 on, IC1-5) closes out the 2026-07-07 "mixed, don't bake" status:
+> TARGET_LOST 60%->46%, mean xy 1.11->0.92m, DESCENT_ANOMALY 1->0, UNKNOWN causes 11->6.
+> Improved IC1-4; IC5 alone slightly worse on TARGET_LOST rate (still improved on mean xy) --
+> consistent with IC5's structural full-FoV-exit issue being outside what a partial-view
+> recovery can fix. `PLASMC_DENSE_RECOVER` default "0"->"1", commit 381f669.
+> [[project_dense_recover_ab_20260728]]
+
+> **🟢🟢🟢 2026-07-27 — go-around REMOVED (reverted per user); new DESCENT_ANOMALY
+> failure classification added.** TARGET_LOST goes straight to open-loop leveling again, no
+> retry -- post-loss data is diagnostic-only per user directive. New: oscillating (>=4 vertical
+> sign-reversals/3s) or net-ascending (>0.5m above running best altitude) during closed-loop
+> approach is now its own sticky failure tag (`DESCENT_ANOMALY`), independent of touchdown
+> xy/vel -- catches fly-aways the old endpoint-only classification mislabeled as plain FAIL.
+> Live-validated on IC1_rep2's known marker-switch fly-away. Commit fca2c86.
+> [[project_goaround_removed_descent_anomaly_20260727]]
+
+> **🟢🟢 2026-07-27 — go-around regression found+fixed (SUPERSEDED, go-around since removed); IC5 marker-loss confirmed
+> structural, not a bug.** The unconditional go-around retry (07-26, below) held the vehicle's
+> drifted lateral position while climbing then retried from the SAME geometry that caused the
+> loss — for IC5 this burned both attempts on an immediate repeat, stuck-near-start-altitude
+> rate went 0.9%→70% (3/321 vs 7/10). Fixed: retry now gated on genuine altitude progress since
+> the last loss (`LANDING_GO_AROUND_MIN_PROGRESS_M`, default 0.75m); commit 7b01231, validated
+> live. IC5 still loses the marker almost immediately on every closed-loop attempt (centroid at
+> the FoV edge from frame one — large offset/short runway forces the correction itself to push
+> the marker out before any descent) — confirmed pre-existing/structural, not fixable by
+> go-around/leveling/the progress gate. [[project_go_around_progress_gate_20260727]]
+
+> **🟢🟢🟢 2026-07-26 — Three more fixes committed, closing out the day's perception/
 > failsafe work: (1) decode-staleness confidence decay on map_confidence (5341e14, reconciled
 > with Pi's independent same-day fix); (2) FLOW_LAT_REDUCED runtime attitude-rate gate
 > (dcec397), closing the "needs runtime gating on real attitude rate" gap flagged since
