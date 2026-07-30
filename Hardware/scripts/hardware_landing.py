@@ -12,11 +12,18 @@ engaging the controller, marker-loss grace + open-loop fallback descent,
 TOUCHDOWN_DETECTED handling, a hover/descent-stall watchdog (using onboard
 FC_node.getPosBody() instead of Gazebo truth), and clean shutdown/disarm.
 
-*** THRUST CALIBRATION IS A PLACEHOLDER - DO NOT FLY UNTIL SET ***
-HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT below are NOT calibrated for
-this airframe. landing_test.py's 0.738 / 42.3 values are SITL X500-specific
-(different mass/ESC/prop). Real values must come from this vehicle's own
-tools/output_calibration.py or an input-calibration run BEFORE any flight.
+*** THRUST/RATE CALIBRATION: CALIBRATED, see Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt ***
+HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT / RATE_CORRECTION defaults below
+are the FINAL adaptive-trim, drag-corrected, filtered, r^2-weighted result
+from Hardware/scripts/analyze_input_calibration.py (dataset: 47 runs,
+Input_Clean/, last updated 2026-07-22 — unchanged since, no new input-cal
+recordings). landing_test.py's 0.738 / 42.3 values are SITL X500-specific
+(different mass/ESC/prop) and are NOT used here. If new input-cal data is
+recorded, rerun analyze_input_calibration.py with best_trim_metrics() (the
+adaptive per-run trim search — main() alone does full-run-only and will NOT
+reproduce this file's numbers) and update CALIBRATION_RESULT.txt + the
+defaults below together; don't hand-derive a "candidate" value against a
+different (non-adaptive-trim) run of the script or a stale memory note.
 """
 
 import os
@@ -44,20 +51,21 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
 TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 200
 
-# *** PLACEHOLDER - replace with this airframe's own calibration ***
+# Final calibrated values (adaptive-trim, drag-corrected, filtered,
+# r^2-weighted; see CALIBRATION_RESULT.txt "2026-07-22 -- Adaptive per-run
+# trim" section). Implied mass -1.2% off known 1.204 kg.
 HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
 THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
-# *** Rate-axis command correction, r^2-weighted input-cal cross-check
-# (2026-07-21, Hardware/scripts/analyze_input_calibration.py) ***
+# *** Rate-axis command correction, r^2-weighted input-cal cross-check ***
 # gain = achieved/commanded from input-cal regression; dividing the intended
 # command by gain (== multiplying by these factors) should make the ACHIEVED
-# rate match what was originally intended. wy is the least-supported of the
-# three (n_eff=4.69 vs wx 6.06 / wz 10.02 after r^2-weighting) -- treat with
-# more caution than wx/wz on a first flight. See
-# Hardware/Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt for the
-# full derivation. Set RATE_CORRECTION_ENABLED=0 to disable and fall back to
-# uncorrected commands.
+# rate match what was originally intended. Adaptive-trim final values
+# (n_eff: wx 13.88, wy 15.59, wz 17.56) -- wy remains the least-supported of
+# the three but the gap narrowed a lot vs the earlier full-run-only pass.
+# See Hardware/Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt for
+# the full derivation. Set RATE_CORRECTION_ENABLED=0 to disable and fall
+# back to uncorrected commands.
 RATE_CORRECTION_ENABLED = os.environ.get("RATE_CORRECTION_ENABLED", "1") != "0"
 RATE_CORRECTION = np.array([
     float(os.environ.get("RATE_CORRECTION_WX", "0.758")),
@@ -66,6 +74,26 @@ RATE_CORRECTION = np.array([
 ]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
+# FALLBACK REDESIGN (2026-07-31, root-cause fix): the old FINAL_DESCENT_THROTTLE path sent
+# zero body rates + a fixed throttle -- open-loop, no lateral correction of any kind. Root-
+# caused this session (video analysis of the 7 real 3m flights on 2026-07-30): the marker
+# only ever transits BRIEFLY through the narrow FOV (~0.8-4s) before drifting out, and once
+# lost, the old fallback did nothing to counter that drift -- so the marker essentially never
+# came back, every real flight required pilot takeover. PX4 has its own independent position
+# estimate (no camera needed) already used for the pre-engage warmup hold (see p0/yaw0_deg
+# above) -- reuse it here: hold the last-known XY position via PX4's own EKF-driven position
+# controller (send_position_ned) while descending at a fixed rate in Z, instead of ignoring
+# drift entirely. This directly counters the residual drift that was sweeping the marker out
+# of frame, using a signal (PX4's local position) that doesn't depend on the marker at all.
+FALLBACK_DESCENT_RATE_MPS = float(os.environ.get("LANDING_FALLBACK_DESCENT_RATE_MPS", "0.3"))
+# send_position_ned is MAVSDK-only (no DDS path) -- see flight_controller.py's
+# send_attitude_rate docstring. Per PX4_Gazebo/apps/landing_test.py's 2026-07-26
+# TARGET_LOST-leveling comment, switching setpoint TYPE mid-descent would also switch
+# TRANSPORT if CMD_TRANSPORT=dds is active (an explicitly untested discontinuity risk that
+# fix deliberately avoided). Default CMD_TRANSPORT is "mavsdk" (confirmed: none of today's
+# real flights set it to "dds"), so the position-hold fallback below is transport-safe in
+# the actually-used configuration -- but stay on the old zero-rate/fixed-throttle fallback
+# if dds is ever active, to preserve that same safety property.
 FINAL_DESCENT_THROTTLE = float(os.environ.get("LANDING_FINAL_DESCENT_THROTTLE",
                                                str(HOVER_THROTTLE_NORM - 0.07)))
 FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "5.0"))
@@ -203,12 +231,26 @@ class HardwareLandingSystem:
                     marker_lost_t0 = now
                 await self.fc.send_attitude_rate(*last_good_sys_cmd)
             else:
+                _transport_safe_for_switch = getattr(self.fc, "_cmd_transport", "mavsdk") != "dds"
                 if not in_final_descent:
                     in_final_descent = True
                     final_descent_t0 = now
-                    print("[hardware_landing] Marker lost beyond grace - "
-                          f"open-loop fallback (throttle={FINAL_DESCENT_THROTTLE}).")
-                await self.fc.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THROTTLE)
+                    _fallback_anchor_xy = (pos.x_m, pos.y_m) if pos else (0.0, 0.0)
+                    _fallback_anchor_d0 = pos.z_m if pos else 0.0
+                    if _transport_safe_for_switch:
+                        print("[hardware_landing] Marker lost beyond grace - "
+                              f"position-hold fallback descent (rate={FALLBACK_DESCENT_RATE_MPS} "
+                              "m/s at last-known XY, PX4 EKF-driven, actively corrects drift).")
+                    else:
+                        print("[hardware_landing] Marker lost beyond grace - "
+                              f"open-loop fallback (throttle={FINAL_DESCENT_THROTTLE}) "
+                              "[CMD_TRANSPORT=dds: staying on attitude-rate, no setpoint-type switch].")
+                if _transport_safe_for_switch:
+                    _fallback_d = _fallback_anchor_d0 + FALLBACK_DESCENT_RATE_MPS * (now - final_descent_t0)
+                    await self.fc.send_position_ned(_fallback_anchor_xy[0], _fallback_anchor_xy[1],
+                                                     _fallback_d, yaw0_deg)
+                else:
+                    await self.fc.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THROTTLE)
                 if (now - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
                     print("[hardware_landing] Final-descent timeout - PX4 never reported LANDED.")
                     break
