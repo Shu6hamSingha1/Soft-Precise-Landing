@@ -2268,30 +2268,69 @@ class IMG_PROCESSOR(Thread):
                                           or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
                         _reject_correct = _near_edge or self._quadIllConditioned(aruco_pts_0)
                     _illcond_correct = _reject_correct
-                    if results[0] and not _illcond_correct:
+
+                    # VALIDATION-TRIGGERED RESET (2026-07-30, see HANDOFF_cbf_lockout_
+                    # planarmap_2026-07-30.md): _err below is a HELD-OUT ground-truth
+                    # cross-check (map's own prediction, from BEFORE this frame's
+                    # correction, vs the actual fresh decode) -- previously computed
+                    # AFTER loop_closure_correct already ran and only ever logged
+                    # ("[planar_map shadow]"), never acted on. Confirmed live (2026-07-30
+                    # Gazebo crash, t~64.0s): map_confidence stayed 0.27-0.9 (healthy-
+                    # looking) for the ENTIRE window the held-out err spiked to
+                    # 645-1483px, because map_confidence is track_conf*resid_conf*...
+                    # computed from the SAME (already-broken) homography the error is
+                    # measuring against -- it can't see its own failure. This ground-
+                    # truth check is the one signal that CAN see it: it's compared
+                    # against an actual fresh decode, not the map's own internal state.
+                    # MUST be computed BEFORE loop_closure_correct touches the map (see
+                    # "HELD-OUT PREDICTION FIRST" comment above) -- computing it after
+                    # would be circular. On a large disagreement, a per-corner snap
+                    # (loop_closure_correct) isn't enough -- the underlying homography
+                    # itself is wrong -- so discard all map state and re-bootstrap fresh
+                    # from this decode instead, exactly like the existing
+                    # resid_px-non-finite SELF-HEAL path in planar_map.py:update(), just
+                    # triggered by a different (ground-truth, not internal) signal.
+                    _err = None
+                    if aruco_pts_0 is not None and _pred is not None and len(_pred) == len(aruco_pts_0):
+                        _err = float(np.mean(np.linalg.norm(
+                            _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
+                    _validation_reset_px = float(os.environ.get("PLANAR_MAP_VALIDATION_RESET_PX", "30.0"))
+                    _validation_failed = (_err is not None and _err > _validation_reset_px)
+
+                    if _validation_failed:
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                            print(f"[planar_map] VALIDATION-TRIGGERED RESET: held-out err="
+                                  f"{_err:.1f}px exceeds {_validation_reset_px:.1f}px -- "
+                                  f"discarding poisoned map state and re-bootstrapping "
+                                  f"fresh from this decode t={float(getattr(self,'_stamp',0.0)):.2f}",
+                                  flush=True)
+                        self._planar_map._full_reset()
+                        self._planar_map.bootstrap(_gray0, marker_px_corners=aruco_pts_0,
+                                                    marker_id=self._primary_id, quat_R=_R0)
+                        self._planar_map_decode_calls += 1
+                    elif results[0] and not _illcond_correct:
                         self._planar_map.loop_closure_correct(
                             aruco_pts_0, marker_id=self._primary_id)
                         self._planar_map_decode_calls += 1
                     elif results[0] and _illcond_correct and os.environ.get("PLANAR_MAP_DBG", "0") == "1":
                         print(f"[planar_map] ill-conditioned quad -> SKIP loop_closure_correct "
                               f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
-                    if aruco_pts_0 is not None:
-                        if _pred is not None and len(_pred) == len(aruco_pts_0):
-                            _err = float(np.mean(np.linalg.norm(
-                                _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
-                            self._planar_map_log.append({
-                                "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
-                                "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
-                                "confidence": self._planar_map.confidence,
-                                "map_confidence": self._planar_map.map_confidence,
-                                "marker_rigid_ok": self._planar_map.marker_rigid_ok,
-                                "primary_zero_corners": self._planar_map.primary_zero_corners,
-                                "decode_calls": self._planar_map_decode_calls})
-                            if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
-                                print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
-                                      f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
-                                      f"n_tracked={self._planar_map.n_tracked} "
-                                      f"rigid_ok={self._planar_map.marker_rigid_ok}")
+
+                    if _err is not None:
+                        self._planar_map_log.append({
+                            "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
+                            "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
+                            "confidence": self._planar_map.confidence,
+                            "map_confidence": self._planar_map.map_confidence,
+                            "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                            "primary_zero_corners": self._planar_map.primary_zero_corners,
+                            "decode_calls": self._planar_map_decode_calls,
+                            "validation_reset": _validation_failed})
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                            print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
+                                  f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
+                                  f"n_tracked={self._planar_map.n_tracked} "
+                                  f"rigid_ok={self._planar_map.marker_rigid_ok}")
             except Exception as _e:
                 # Never let a map-internal failure take down the real acquisition path or
                 # poison the loom source -- pred already defaulted to None above this try.

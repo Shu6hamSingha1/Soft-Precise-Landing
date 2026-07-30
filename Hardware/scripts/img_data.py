@@ -1456,7 +1456,45 @@ class IMG_PROCESSOR(Thread):
                     _near_edge = marker_near_fov_edge(self._last_locked_corners,
                                                        (_mh, _mw), self._marker_fov_margin)
                     _reject_correct = _near_edge or quad_ill_conditioned(self._last_locked_corners)
-                if not _reject_correct:
+                # VALIDATION-TRIGGERED RESET (2026-07-30, ported from PX4_Gazebo/src/
+                # img_data.py -- see HANDOFF_cbf_lockout_planarmap_2026-07-30.md).
+                # HELD-OUT ground-truth cross-check: compare the map's own prediction
+                # for this marker (from BEFORE this frame's correction touches it) against
+                # the ACTUAL fresh decode (_last_locked_corners). This is a genuinely
+                # different signal from map_confidence/marker_rigid_ok -- those are
+                # computed FROM the map's own (possibly already-broken) internal state and
+                # were confirmed (2026-07-30 Gazebo crash) to stay healthy-looking
+                # (0.27-0.9) for the ENTIRE window a held-out err spiked 645-1483px, because
+                # they can't see their own failure. This check can, because it's compared
+                # against real ground truth. MUST be captured before loop_closure_correct
+                # runs below (comparing after would be circular -- map_pts gets set FROM
+                # this exact decode this frame, an exact round-trip by construction).
+                try:
+                    _val_slot = self._planar_map.identify_slot(self._last_locked_corners)
+                    _val_pred = (self._planar_map.get_marker_frame_pts(slot=_val_slot)
+                                 if _val_slot is not None else None)
+                except Exception:
+                    _val_pred = None
+                _val_err = None
+                if _val_pred is not None and len(_val_pred) == len(self._last_locked_corners):
+                    _val_err = float(np.mean(np.linalg.norm(
+                        np.asarray(_val_pred, dtype=np.float64)
+                        - np.asarray(self._last_locked_corners, dtype=np.float64), axis=1)))
+                _validation_reset_px = float(os.environ.get("PLANAR_MAP_VALIDATION_RESET_PX", "30.0"))
+                _validation_failed = (_val_err is not None and _val_err > _validation_reset_px)
+                if _validation_failed:
+                    if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                        print(f"[planar_map] VALIDATION-TRIGGERED RESET: held-out err="
+                              f"{_val_err:.1f}px exceeds {_validation_reset_px:.1f}px -- "
+                              f"discarding poisoned map state and re-bootstrapping fresh "
+                              f"from this decode", flush=True)
+                    try:
+                        self._planar_map._full_reset()
+                        self._planar_map.bootstrap(_pm_img, marker_px_corners=self._last_locked_corners,
+                                                    marker_id=mid, quat_R=_pm_quat_R)
+                    except Exception:
+                        pass
+                elif not _reject_correct:
                     try:
                         self._planar_map.loop_closure_correct(self._last_locked_corners, marker_id=mid)
                     except Exception:
@@ -2581,5 +2619,7 @@ class IMG_PROCESSOR(Thread):
 
     def getRingFlowAngVel(self):
         """Calibrated, KF-smoothed ring flow (safety net; control consumes the
-        corner flow). _sensor_cal_ring is identity until derived like the corner cal."""
+        corner flow). _sensor_cal_ring is the derive_pi_cal.py transfer-derived
+        aggregate set above (R^2 0.35/0.31/0.38/0.59, PROVISIONAL, FoV-ceiling-
+        limited per that block's comment) -- not identity."""
         return self._sensor_cal_ring @ self._kf_x_ring[:, 0]
