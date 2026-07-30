@@ -982,6 +982,15 @@ class IMG_PROCESSOR(Thread):
         self._flow_map_max_ext = float(os.environ.get("MAP_FLOW_MAX_EXT_PX", "40"))
         self._flowmap_kf_x = None; self._flowmap_kf_y = None   # own KF state, isolated from the observer's
         self._flowmap_kf_Px = None; self._flowmap_kf_Py = None; self._flowmap_kf_t = None
+        # DURATION CAP (2026-07-30, ported from the Hardware/ fix for the same gap): _flowMap/
+        # _loomMapM_slot only ever checked `pm.initialized` (true indefinitely) -- a map whose own
+        # tracking has gone stale still lets a pure KF-prediction assert a confident nonzero
+        # velocity forever. Real Pi hardware flights showed this dead-reckon a linearly-growing
+        # s_e_n for ~400 frames, blowing up zeta/sigma/kappa even with the PID integral's
+        # anti-windup clamp (a magnitude clamp, not a source fix). Reuse PlanarFeatureMap's own
+        # staleness clock (map_confidence, decays to 0 over decode_staleness_max_seconds) instead
+        # of adding a new counter -- below this floor, _flowMap/_loomMapM_slot refuse to answer.
+        self._flowmap_min_confidence = float(os.environ.get("PLANAR_MAP_FLOW_MIN_CONFIDENCE", "0.1"))
         # Marker priority (2026-07-03, user): which marker is the PRIMARY when >1 nested marker
         # decodes. 'big' = the LARGEST (max layout size) — keep using the big marker (ID10) as long
         # as it's detectable, fall to the small (ID0) only when the big is gone. The big marker has
@@ -4908,6 +4917,9 @@ class IMG_PROCESSOR(Thread):
         None -> caller keeps whichever source (lstsq/observer) was already active this frame."""
         pm = self._planar_map
         if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        # DURATION CAP: see _flowmap_min_confidence comment at __init__ (2026-07-30).
+        if float(getattr(pm, 'map_confidence', 1.0)) < self._flowmap_min_confidence:
             return None
         sec = pm.secondary_slot_name()
         if sec is None:

@@ -31,6 +31,11 @@ from imgstreamer import imgstream
 from img_data import build_aruco_detector
 
 DISPLAY_INTERVAL_S = 0.25   # ~4 Hz refresh - cheap enough to stay responsive
+DISPLAY_SCALE = 5.0         # upscale factor for the preview window - getImages()
+                            # returns the "main" stream at MAIN_STREAM_SIZE
+                            # (320x240, project-wide single-resolution
+                            # convention), which renders tiny on high-DPI
+                            # displays without this
 
 # Shared with IMG_PROCESSOR (img_data.py) instead of a separate hardcoded
 # copy - this file used to duplicate the params and silently drifted out of
@@ -43,6 +48,7 @@ def main():
     strm = imgstream(resolution=(640, 480), capRate=60)
     print("Live preview running at ~4Hz refresh (full capture continues faster "
           "underneath) - press ESC in the window or Ctrl+C here to stop.")
+    cv2.namedWindow("Live Preview (~4Hz)", cv2.WINDOW_NORMAL)
     try:
         while True:
             m = list(strm.getImages())[-1]
@@ -55,6 +61,8 @@ def main():
                 label = f"DECODED (id={ids.flatten().tolist()})" if decoded else "not decoded"
                 cv2.putText(vis, label, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                             (0, 255, 0) if decoded else (0, 0, 255), 1)
+                vis = cv2.resize(vis, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE,
+                                  interpolation=cv2.INTER_NEAREST)
                 cv2.imshow("Live Preview (~4Hz)", vis)
                 if cv2.waitKey(1) == 27:   # ESC
                     break

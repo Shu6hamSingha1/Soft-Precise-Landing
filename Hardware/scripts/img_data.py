@@ -448,6 +448,23 @@ class IMG_PROCESSOR(Thread):
         self._flowmap_kf_Px = None; self._flowmap_kf_Py = None
         self._flowmap_kf_t = None
         self._flowmap_lnM_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))
+        # DURATION CAP (2026-07-30, real hardware finding): unlike h_extrap (which decays
+        # its own output to 0 over H_EXTRAP_DECAY_FRAMES via _h_consec_misses), _flowMap/
+        # _loomMapM_primary previously only checked `pm.initialized` -- true indefinitely --
+        # so a KF that's been PREDICTING with no fresh correction for hundreds of frames kept
+        # asserting a confident nonzero velocity forever. Four real landing flights the same
+        # day showed h[:,1] pinned at a nonzero constant for a ~400-frame marker-loss window,
+        # dead-reckoning s_e_n into an unbounded linear ramp -> zeta/sigma blew up (sigma up to
+        # ~80x, kappa up 20-24x, a_u to 59-180) even with an anti-windup CLAMP on the PID
+        # integral (a value clamp bounds magnitude, not source; see izeta/is_e_n CONDITIONAL
+        # INTEGRATION fix above, which addresses the integral half but not this proportional-
+        # side source). PlanarFeatureMap already tracks exactly this staleness via
+        # map_confidence (decays linearly to 0 over decode_staleness_max_seconds as
+        # frames_since_decode grows, planar_map.py) -- reuse it instead of a new counter:
+        # below this confidence floor, _flowMap/_loomMapM_primary return None so the caller
+        # falls through to h_extrap's own (already-tested) decay-to-zero, rather than
+        # stacking a second untested decay on top.
+        self._flowmap_min_confidence = float(os.environ.get("PLANAR_MAP_FLOW_MIN_CONFIDENCE", "0.1"))
 
         # Perception CHECKPOSTS (Gazebo 97bd801): per-instant outlier rejection on
         # the lateral flow, centroid, and loom. Detection reference = last RAW
@@ -1973,6 +1990,11 @@ class IMG_PROCESSOR(Thread):
         the primary loom's own state."""
         if self._planar_map is None or not getattr(self._planar_map, 'initialized', False) or quat is None:
             return None
+        # DURATION CAP: same reasoning as _flowMap's gate above -- refuse once the map's own
+        # staleness clock (map_confidence) has decayed past the floor, rather than trusting an
+        # `initialized`-forever flag while the underlying tracking is stale.
+        if float(getattr(self._planar_map, 'map_confidence', 1.0)) < self._flowmap_min_confidence:
+            return None
         try:
             px = self._planar_map.get_marker_frame_pts()   # slot=None -> primary
             if px is None or len(px) != 4:
@@ -2008,6 +2030,12 @@ class IMG_PROCESSOR(Thread):
         None -> caller falls back to h_extrap (or zero) as before."""
         pm = self._planar_map
         if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        # DURATION CAP: see _flowmap_min_confidence comment at __init__ (2026-07-30). Without
+        # this, a map whose own tracking has gone stale (no fresh decode/correction for a long
+        # stretch) still reports `initialized=True` and this kept returning a KF-predicted
+        # velocity forever -- refuse once map_confidence has decayed past the floor.
+        if float(getattr(pm, 'map_confidence', 1.0)) < self._flowmap_min_confidence:
             return None
         try:
             px = pm.get_marker_center_native()   # slot=None -> primary
