@@ -31,11 +31,23 @@ from imgstreamer import imgstream
 from img_data import build_aruco_detector
 
 DISPLAY_INTERVAL_S = 0.25   # ~4 Hz refresh - cheap enough to stay responsive
-DISPLAY_SCALE = 1.0         # upscale factor for the preview window - getImages()
+DISPLAY_SCALE = 3.0         # upscale factor for the preview window - getImages()
                             # returns the "main" stream at MAIN_STREAM_SIZE
                             # (320x240, project-wide single-resolution
                             # convention), which renders tiny on high-DPI
-                            # displays without this
+                            # displays without this. 2026-07-31: an earlier
+                            # attempt (DISPLAY_SCALE + cv2.resize + namedWindow
+                            # (..., WINDOW_NORMAL)) visibly had NO effect, on
+                            # BOTH the Pi's own local GUI and X410-forwarded X11
+                            # -- ruling out an X11-forwarding/client-side cause.
+                            # Root cause: WINDOW_NORMAL only makes a window
+                            # user-resizable; it does NOT guarantee cv2.imshow()
+                            # auto-grows the window's actual on-screen size to
+                            # match a new (larger) frame -- a known OpenCV/Qt
+                            # HighGUI quirk. The window was silently staying at
+                            # whatever default/previous size Qt gave it and just
+                            # rescaling the bigger image DOWN to fit. Fixed by
+                            # explicitly calling cv2.resizeWindow() below.
 
 # Shared with IMG_PROCESSOR (img_data.py) instead of a separate hardcoded
 # copy - this file used to duplicate the params and silently drifted out of
@@ -49,6 +61,11 @@ def main():
     print("Live preview running at ~4Hz refresh (full capture continues faster "
           "underneath) - press ESC in the window or Ctrl+C here to stop.")
     cv2.namedWindow("Live Preview (~4Hz)", cv2.WINDOW_NORMAL)
+    # Explicit resize -- see DISPLAY_SCALE comment above. namedWindow(WINDOW_NORMAL)
+    # alone does NOT reliably grow the on-screen window to match a larger image;
+    # this call sets the actual OS-level window size directly. MAIN_STREAM_SIZE is
+    # 320x240 (project-wide convention); resizeWindow takes (width, height).
+    cv2.resizeWindow("Live Preview (~4Hz)", int(320 * DISPLAY_SCALE), int(240 * DISPLAY_SCALE))
     try:
         while True:
             m = list(strm.getImages())[-1]
