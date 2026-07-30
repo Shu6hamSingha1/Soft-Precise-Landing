@@ -31,7 +31,7 @@ from imgstreamer import imgstream
 from img_data import build_aruco_detector
 
 DISPLAY_INTERVAL_S = 0.25   # ~4 Hz refresh - cheap enough to stay responsive
-DISPLAY_SCALE = 5.0         # upscale factor for the preview window - getImages()
+DISPLAY_SCALE = 1.0         # upscale factor for the preview window - getImages()
                             # returns the "main" stream at MAIN_STREAM_SIZE
                             # (320x240, project-wide single-resolution
                             # convention), which renders tiny on high-DPI
