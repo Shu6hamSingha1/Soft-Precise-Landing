@@ -699,6 +699,19 @@ class Controller(Thread):
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
     @property
+    def CBF_CORNERS_STALE(self):
+        """True once cbf_corners has been None (neither the PlanarFeatureMap
+        small-slot nor raw _feature_pts source available) for
+        CBF_CORNERS_STALE_FRAMES consecutive control-loop calls -- see the
+        staleness-tracking comment at the cbf_corners selection site and
+        docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md. Frame count default
+        (30) matches roughly the same ~1s window MARKER_LOSS_GRACE's default
+        uses at this loop's typical rate; override via
+        CBF_CORNERS_STALE_FRAMES if the live rate differs meaningfully."""
+        _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
+        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+
+    @property
     def CBF_OVERFLOW(self):
         """True iff the CBF's own per-corner FoV-margin classification found the current
         CBF corner source (small-marker-preferred, see cone-angle computation) breaching
@@ -1117,6 +1130,22 @@ class Controller(Thread):
         self._cbf_drift_off = False
         self._cbf_drift_axis = None   # (axis 0/1, sign) of the worst breach, for the pull-back
         self._cbf_drift_pullback_frac = float(os.environ.get("CBF_DRIFT_PULLBACK_FRAC", "0.4"))
+        # CBF COAST-HOLD GRACE (2026-07-30, moving-target starvation investigation, default OFF
+        # pending validation): the 2026-07-17 freshness gate (see FEATURE_PTS_FRESH block below)
+        # made d_min_fov snap to 0.0 -- "no tilt allowed" -- the INSTANT _feature_pts goes stale,
+        # to fix a genuine bug (an IC2 run held a 4s-frozen corner as if live). But this is also
+        # the documented cause of the IC4 5.6s theta_cone collapse (see the CBF_SMALL_SLOT_ON_FRAMES
+        # comment above) AND, traced 2026-07-30, of a rover moving-target divergence: a target
+        # under active pursuit has short (3-17 frame) ArUco-lost/KLT-fallback/reacquire cycles
+        # that are NOT a genuine total coast, but the freshness gate treats every one of them as
+        # "assume worst case" and zeros tilt authority regardless -- exactly when a moving target
+        # needs continuous lateral correction. FIX: hold the LAST fresh corner position through a
+        # BOUNDED number of consecutive coast frames (short enough to not reintroduce the original
+        # multi-second frozen-corner bug) before falling back to d_min_fov=0. 0 = OFF (today's
+        # behavior, snap-to-zero every coast frame).
+        self._cbf_coast_grace_frames = int(os.environ.get("PLASMC_CBF_COAST_GRACE", "0"))
+        self._cbf_coast_last_good = None
+        self._cbf_coast_ctr = 0
         self._w_u = []
         self._B_T = []
         self._u = []
@@ -2345,8 +2374,45 @@ class Controller(Thread):
                     if len(fp_list) > 0:
                         cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
                         cbf_corners_src = 'feature_pts'
+                        self._cbf_coast_last_good = cbf_corners
+                        self._cbf_coast_ctr = 0
+                elif (self._cbf_coast_grace_frames > 0
+                      and self._cbf_coast_last_good is not None
+                      and self._cbf_coast_ctr < self._cbf_coast_grace_frames):
+                    # BOUNDED coast-hold (see __init__ comment): still within the grace budget
+                    # since the last fresh frame -- hold that last-good corner geometry rather
+                    # than snapping straight to "no tilt allowed".
+                    self._cbf_coast_ctr += 1
+                    cbf_corners = self._cbf_coast_last_good
+                    cbf_corners_src = 'coast_hold'
             except (IndexError, AttributeError, TypeError):
                 cbf_corners = None
+
+        # CBF-CORNERS STALENESS TRACKING (2026-07-30): investigation this session
+        # (see docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md) found real
+        # flights where cbf_corners went to None (neither the PlanarFeatureMap
+        # small-slot nor the raw _feature_pts source available) for a sustained
+        # stretch, silently freezing cbf2_filter's internal state (Phase 2,
+        # frozen delta_ref/Lw2_ref/cr_prev/d) for 30+ seconds -- while
+        # TARGET_IS_VISIBLE/FEATURE_IS_STALE (the signals landing_test.py's
+        # feature_fresh actually watches) kept reporting fine, because they
+        # reflect a DIFFERENT signal than what gates cbf_corners. The CBF
+        # degraded into a near-zero-authority state with NOTHING in the app
+        # loop noticing or falling back to the (already-validated)
+        # MARKER_LOSS_GRACE open-loop fallback. This counter + property
+        # exposes that staleness so landing_test.py can watch it directly,
+        # the same way it already watches FEATURE_IS_STALE/RESCUE_ACTIVE.
+        if cbf_corners is None:
+            self._cbf_corners_none_streak = getattr(self, "_cbf_corners_none_streak", 0) + 1
+        else:
+            self._cbf_corners_none_streak = 0
+        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+            self._cbf_corners_dbg_ctr = getattr(self, "_cbf_corners_dbg_ctr", 0) + 1
+            if self._cbf_corners_dbg_ctr % 15 == 0:
+                _fresh = getattr(self._img_node, "FEATURE_PTS_FRESH", None)
+                print(f"[cbf_corners] src={cbf_corners_src} FEATURE_PTS_FRESH={_fresh} "
+                      f"corners_is_none={cbf_corners is None} "
+                      f"none_streak={self._cbf_corners_none_streak}", flush=True)
 
         d_min_fov = 0.0
         self._cbf_overflow = False
@@ -2433,7 +2499,7 @@ class Controller(Thread):
             I_a = _a * self._I_a[-1] + (1.0 - _a) * I_a
         # Visibility constraint = exact camera-frame theta-QP (docs/CBF_visibility.pdf —
         # the literal QP). Extracted verbatim into cbf_visibility.cbf2_filter so the
-        # offline validators (tools/validate_cbf.py, tools/replay_cbf.py) run the EXACT
+        # offline validator (tools/validate_cbf.py) runs the EXACT
         # live code path. The barrier, two-phase δ, and Phase-2 fallback all live there;
         # this site only marshals the controller state into pure args.
         self._theta_safe = None        # Fix B: cbf2 Phase-1 safe lean vector for direct->rd3; None => accel path

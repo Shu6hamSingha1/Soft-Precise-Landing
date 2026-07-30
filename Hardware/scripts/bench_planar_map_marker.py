@@ -134,7 +134,7 @@ async def main():
     t0 = time.perf_counter()
     last_print = 0.0
     while (time.perf_counter() - t0) < HOLD_TIMEOUT_S:
-        m = list(strm.getMainImages())[-1]
+        m = list(strm.getImages())[-1]
         if m is not None and decode(m) is not None:
             print(f"marker detected after {time.perf_counter()-t0:.1f}s - starting capture now")
             break
@@ -150,7 +150,7 @@ async def main():
     frames, quats, last = [], [], None
     t0 = time.perf_counter()
     while len(frames) < N_FRAMES and (time.perf_counter() - t0) < CAPTURE_SECONDS:
-        m = list(strm.getMainImages())[-1]
+        m = list(strm.getImages())[-1]
         if m is not None and (last is None or not np.array_equal(m, last)):
             frames.append(m.copy())
             quats.append(fc.getQuat() if fc.has_quat() else None)

@@ -53,7 +53,13 @@ def main():
         packed = camera.capture_array("raw")
         bayer = unpack_raw10(packed, width)
         bgr = cv2.cvtColor(bayer, cv2.COLOR_BAYER_BG2BGR)
-        bgr = cv2.convertScaleAbs(bgr, alpha=4.0, beta=0)  # display-only gain
+        # Adaptive display gain (matches img_data.py's debayer_bayer_to_bgr,
+        # fixed 2026-07-30) - a fixed 4.0x was tuned for indoor lighting and
+        # saturates outdoor captures; target a fixed mean brightness instead,
+        # clamped so it can't blow up a near-black frame or crush a bright one.
+        _mean = float(bgr.mean())
+        _gain = max(0.15, min(8.0, 128.0 / max(_mean, 1.0)))
+        bgr = cv2.convertScaleAbs(bgr, alpha=_gain, beta=0)  # display-only gain
 
         disp = bgr.copy()
         cv2.putText(disp, f"saved: {saved}", (8, 20), cv2.FONT_HERSHEY_SIMPLEX,

@@ -681,6 +681,20 @@ class Controller(Thread):
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
     @property
+    def CBF_CORNERS_STALE(self):
+        """True once cbf_corners has been None (neither the PlanarFeatureMap
+        small-slot nor raw _feature_pts source available) for
+        CBF_CORNERS_STALE_FRAMES consecutive control-loop calls -- see the
+        staleness-tracking comment at the cbf_corners selection site and
+        PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md. Frame
+        count default (30) matches roughly the same ~1s window
+        MARKER_LOSS_GRACE's default uses at this loop's typical rate;
+        override via CBF_CORNERS_STALE_FRAMES if the live rate differs
+        meaningfully."""
+        _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
+        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+
+    @property
     def CBF_OVERFLOW(self):
         """True iff the CBF's own per-corner FoV-margin classification found the current
         CBF corner source (small-marker-preferred, see cone-angle computation) breaching
@@ -2308,6 +2322,32 @@ class Controller(Thread):
                         cbf_corners_src = 'feature_pts'
             except (IndexError, AttributeError, TypeError):
                 cbf_corners = None
+
+        # CBF-CORNERS STALENESS TRACKING (2026-07-30): investigation this session
+        # (see PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md, ported
+        # here for parity) found real flights where cbf_corners went to None
+        # (neither the PlanarFeatureMap small-slot nor the raw _feature_pts
+        # source available) for a sustained stretch, silently freezing
+        # cbf2_filter's internal state (Phase 2, frozen delta_ref/Lw2_ref/
+        # cr_prev/d) for 30+ seconds -- while TARGET_IS_VISIBLE/FEATURE_IS_STALE
+        # (the signals hardware_landing.py's feature_fresh actually watches)
+        # kept reporting fine, because they reflect a DIFFERENT signal than
+        # what gates cbf_corners. The CBF degraded into a near-zero-authority
+        # state with NOTHING in the app loop noticing or falling back to the
+        # (already-validated) MARKER_LOSS_GRACE open-loop fallback. This
+        # counter + property exposes that staleness so hardware_landing.py can
+        # watch it directly, the same way it already watches FEATURE_IS_STALE.
+        if cbf_corners is None:
+            self._cbf_corners_none_streak = getattr(self, "_cbf_corners_none_streak", 0) + 1
+        else:
+            self._cbf_corners_none_streak = 0
+        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+            self._cbf_corners_dbg_ctr = getattr(self, "_cbf_corners_dbg_ctr", 0) + 1
+            if self._cbf_corners_dbg_ctr % 15 == 0:
+                _fresh = getattr(self._img_node, "FEATURE_PTS_FRESH", None)
+                print(f"[cbf_corners] src={cbf_corners_src} FEATURE_PTS_FRESH={_fresh} "
+                      f"corners_is_none={cbf_corners is None} "
+                      f"none_streak={self._cbf_corners_none_streak}", flush=True)
 
         d_min_fov = 0.0
         self._cbf_overflow = False

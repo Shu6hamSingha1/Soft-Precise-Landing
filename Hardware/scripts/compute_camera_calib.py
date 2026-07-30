@@ -64,6 +64,10 @@ def find_board(gray, board_size):
     flags = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FILTER_QUADS
     found, corners = cv2.findChessboardCorners(gray, board_size, flags)
     if found:
+        # opencv-python 5.x returns (N,2) here (older builds returned (N,1,2),
+        # which cornerSubPix/canonicalize/calibrateCamera all assume) -
+        # normalize to (N,1,2) same as the SB branch already does above.
+        corners = corners.reshape(-1, 1, 2).astype('float32')
         corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
         corners = _canonicalize_order(corners)
     return found, corners
@@ -187,3 +191,22 @@ print(f"cy = {cy:.2f}  (image height/2 = {gray_shape[1]/2:.1f})")
 np.savetxt(f"{IMAGE_DIR}/cameraMatrix.txt", mtx, delimiter=",")
 np.savetxt(f"{IMAGE_DIR}/cameraDistortion.txt", dist, delimiter=",")
 print(f"\nSaved {IMAGE_DIR}/cameraMatrix.txt and cameraDistortion.txt")
+
+# Audit log (2026-07-27) - a prior calibration run (calib_images_all) could not
+# be checked after the fact for which board size was auto-detected or which
+# images were kept/dropped, because none of that was persisted (only printed).
+# That made it impossible to later confirm the fit used the right board
+# geometry, or to notice that the input set was silently duplicate-heavy.
+# Save it every run so any future calibration is auditable without rerunning.
+with open(f"{IMAGE_DIR}/calib_log.txt", "w") as f:
+    f.write(f"input_dir: {IMAGE_DIR}\n")
+    f.write(f"images_found: {len(images)}\n")
+    f.write(f"board_size_used: {BOARD_SIZE[0]}x{BOARD_SIZE[1]}\n")
+    f.write(f"images_used_final: {len(objpoints)}\n")
+    f.write(f"reprojection_error_px: {mean_error:.4f}\n")
+    f.write(f"fx: {fx:.4f}\nfy: {fy:.4f}\ncx: {cx:.4f}\ncy: {cy:.4f}\n")
+    f.write(f"image_size_wh: {gray_shape}\n")
+    f.write("kept_files:\n")
+    for kf in kept_files:
+        f.write(f"  {kf}\n")
+print(f"Saved {IMAGE_DIR}/calib_log.txt (board size, kept/dropped images, final numbers)")

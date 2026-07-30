@@ -175,7 +175,19 @@ class HardwareLandingSystem:
                 raise RuntimeError(f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
                                     f"{HOVER_STALL_S:.0f}s (alt={alt:.2f} m) - aborting")
 
-            feature_fresh = self.controller.TARGET_IS_VISIBLE and not self.controller.FEATURE_IS_STALE
+            # CBF_CORNERS_STALE (2026-07-30): a real degraded state was found this
+            # session where cbf_corners (what the visibility CBF actually reads)
+            # went unavailable for 30+ seconds while TARGET_IS_VISIBLE/
+            # FEATURE_IS_STALE (the signals feature_fresh already watched) kept
+            # reporting fine -- those reflect a DIFFERENT signal than what gates
+            # cbf_corners, so the CBF silently ran in a frozen, near-zero-
+            # authority Phase-2 fallback with nothing here noticing or falling
+            # back to the grace/open-loop path below. ANDed in (not OR'd) so it
+            # can force feature_fresh=False even when every other signal says
+            # fine. See PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md.
+            feature_fresh = (self.controller.TARGET_IS_VISIBLE
+                             and not self.controller.FEATURE_IS_STALE
+                             and not self.controller.CBF_CORNERS_STALE)
 
             if feature_fresh and not in_final_descent:
                 cmd = self.controller.getControlInput()

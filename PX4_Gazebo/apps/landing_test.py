@@ -5,6 +5,7 @@
 # Added target tracking functionality
 # **************************************************************************
 import os, sys
+from collections import deque
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src'))
 import os
 import asyncio
@@ -493,46 +494,33 @@ async def main(record = 'n'):
         # tagged as a failure regardless of touchdown xy/vel.
         target_lost = False
         failure_cause = "N/A"   # DRIFT_OFF / OVERFLOW / UNKNOWN, set when target_lost triggers (2026-07-07)
-        # GO-AROUND ON TARGET_LOST (2026-07-26, user directive): a genuine marker-loss-
-        # beyond-grace event now attempts RECOVERY first -- climb to a safe altitude
-        # (where the target is far more likely back in the FoV, since most losses this
-        # session traced to close-range/aggressive-correction events, not the target
-        # actually leaving the area) and resume closed-loop control, rather than
-        # committing straight to an open-loop descent-to-ground. This replaces relying
-        # on the leveling fallback (FINAL_DESCENT_LEVEL_GAIN above) as the FIRST
-        # response -- that fallback still exists as the final safety net once go-around
-        # attempts are exhausted (a real drone must still land eventually; this does not
-        # retry forever).
-        GO_AROUND_ALTITUDE_M = float(os.environ.get("LANDING_GO_AROUND_ALT_M", "5.0"))
-        GO_AROUND_MAX_ATTEMPTS = int(os.environ.get("LANDING_GO_AROUND_MAX_ATTEMPTS", "2"))
-        GO_AROUND_CLIMB_TIMEOUT_S = float(os.environ.get("LANDING_GO_AROUND_CLIMB_TIMEOUT_S", "8.0"))
-        GO_AROUND_ALT_TOL_M = float(os.environ.get("LANDING_GO_AROUND_ALT_TOL_M", "0.3"))
-        go_around_attempts_used = 0
+        # GO-AROUND REMOVED (2026-07-27, user directive): the 2026-07-26 climb-and-retry
+        # recovery was tried and reverted -- TARGET_LOST now goes straight to the open-loop
+        # leveling fallback (below) on the FIRST beyond-grace loss, same as pre-07-26. Per
+        # user: any data recorded after target_lost fires is not useful for anything except
+        # diagnosing the failure cause -- there is no value in attempting recovery, only in
+        # bringing the drone down safely and logging why it failed.
 
-        async def _go_around_climb():
-            """Climb in place (hold current lateral NED position + yaw) to
-            GO_AROUND_ALTITUDE_M, then return. Bounded by GO_AROUND_CLIMB_TIMEOUT_S --
-            always returns (never raises) so a stuck climb falls through to the normal
-            TARGET_LOST handling rather than hanging the flight indefinitely."""
-            ned_pos = FC_node.getPosBody()
-            hold_n, hold_e = ned_pos.x_m, ned_pos.y_m
-            target_d_climb = -GO_AROUND_ALTITUDE_M
-            _gtq = pose_node.getPose().UAV.orientation
-            hold_yaw_deg = float(np.rad2deg(np.arctan2(
-                2.0*(_gtq.w*_gtq.z + _gtq.x*_gtq.y), 1.0 - 2.0*(_gtq.y*_gtq.y + _gtq.z*_gtq.z))))
-            t0 = time_node.perf_counter()
-            print(f"[landing_test] GO-AROUND: climbing to {GO_AROUND_ALTITUDE_M:.1f}m "
-                  f"(holding N={hold_n:.2f} E={hold_e:.2f})")
-            while (time_node.perf_counter() - t0) < GO_AROUND_CLIMB_TIMEOUT_S:
-                await FC_node.send_position_ned(hold_n, hold_e, target_d_climb, hold_yaw_deg)
-                await asyncio.sleep(0.02)
-                cur = FC_node.getPosBody()
-                if abs(cur.z_m - target_d_climb) <= GO_AROUND_ALT_TOL_M:
-                    print(f"[landing_test] GO-AROUND: reached {GO_AROUND_ALTITUDE_M:.1f}m "
-                          f"in {time_node.perf_counter() - t0:.1f}s")
-                    return
-            print(f"[landing_test] GO-AROUND: climb timeout ({GO_AROUND_CLIMB_TIMEOUT_S:.0f}s) "
-                  f"-- proceeding with whatever altitude was reached")
+        # ── Smooth-descent failure detector (2026-07-27, user directive) ───────
+        # A landing must be a smooth, net-descending approach ending in a soft touchdown --
+        # the drone OSCILLATING (repeated climb/descend reversals) or ASCENDING (net
+        # climbing instead of descending) during the closed-loop approach is a FAILED
+        # landing on its own, independent of TARGET_LOST or the final touchdown xy/vel.
+        # Sticky flags, computed only over the closed-loop phase (not once in_final_descent
+        # -- the fixed-thrust open-loop fallback is EXPECTED to force a real descent
+        # regardless of what preceded it, and shouldn't be judged against this bar).
+        # Pure classification: does not alter control, only the final SOFT_PRECISE tag.
+        DESCENT_ASCENT_TOL_M  = float(os.environ.get("LANDING_DESCENT_ASCENT_TOL_M", "0.5"))
+        DESCENT_OSC_WINDOW_S  = float(os.environ.get("LANDING_DESCENT_OSC_WINDOW_S", "3.0"))
+        DESCENT_OSC_MAX_REV   = int(os.environ.get("LANDING_DESCENT_OSC_MAX_REV", "4"))
+        DESCENT_RATE_SPAN_S   = float(os.environ.get("LANDING_DESCENT_RATE_SPAN_S", "0.5"))
+        DESCENT_RATE_DEADBAND = float(os.environ.get("LANDING_DESCENT_RATE_DEADBAND_MPS", "0.05"))
+        ascending_detected    = False
+        oscillation_detected  = False
+        descent_anomaly_cause = "N/A"
+        _desc_alt_hist  = deque()   # (t, alt) samples spanning DESCENT_RATE_SPAN_S, for a smoothed rate
+        _desc_rate_sign_hist = deque()   # timestamps of sign REVERSALS within DESCENT_OSC_WINDOW_S
+        _desc_prev_sign = 0
 
         # ── Hover / descent-stall watchdog (added 2026-06-07) ──────────────────
         # The control loop below terminates ONLY on FC_node.LANDED or the controller
@@ -602,6 +590,36 @@ async def main(record = 'n'):
                     f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
                     f"{HOVER_STALL_S:.0f}s (alt={_alt_w:.2f} m) — hovering, aborting")
 
+            # ── smooth-descent check (state declared above the loop) ──
+            if not in_final_descent and not (ascending_detected or oscillation_detected):
+                _desc_alt_hist.append((_now_w, _alt_w))
+                while _desc_alt_hist and _now_w - _desc_alt_hist[0][0] > DESCENT_RATE_SPAN_S:
+                    _desc_alt_hist.popleft()
+                if len(_desc_alt_hist) >= 2:
+                    _t0d, _a0d = _desc_alt_hist[0]
+                    _t1d, _a1d = _desc_alt_hist[-1]
+                    if _t1d > _t0d:
+                        _rate = (_a1d - _a0d) / (_t1d - _t0d)   # m/s, ENU up positive
+                        _sign = 1 if _rate > DESCENT_RATE_DEADBAND else (-1 if _rate < -DESCENT_RATE_DEADBAND else 0)
+                        if _sign != 0:
+                            if _desc_prev_sign != 0 and _sign != _desc_prev_sign:
+                                _desc_rate_sign_hist.append(_now_w)
+                            _desc_prev_sign = _sign
+                        while _desc_rate_sign_hist and _now_w - _desc_rate_sign_hist[0] > DESCENT_OSC_WINDOW_S:
+                            _desc_rate_sign_hist.popleft()
+                        if len(_desc_rate_sign_hist) >= DESCENT_OSC_MAX_REV:
+                            oscillation_detected = True
+                            descent_anomaly_cause = "OSCILLATION"
+                            print(f"[landing_test] Smooth-descent check: OSCILLATION "
+                                  f"({len(_desc_rate_sign_hist)} direction reversals in "
+                                  f"{DESCENT_OSC_WINDOW_S:.1f}s) — landing tagged as failure.")
+                if _best_alt is not None and _alt_w > _best_alt + DESCENT_ASCENT_TOL_M:
+                    ascending_detected = True
+                    descent_anomaly_cause = "ASCENDING"
+                    print(f"[landing_test] Smooth-descent check: ASCENDING "
+                          f"(alt={_alt_w:.2f}m > best {_best_alt:.2f}m + "
+                          f"{DESCENT_ASCENT_TOL_M:.2f}m) — landing tagged as failure.")
+
             # Intervention 3 (2026-05-22): treat FEATURE_IS_STALE the same as
             # marker-loss — if img_data has been extrapolating for STALE_THRESH+
             # consecutive frames, route to the grace-hold path instead of
@@ -627,10 +645,22 @@ async def main(record = 'n'):
             # once the rescue itself runs out of usable structure (map_confidence drops,
             # RESCUE_ACTIVE goes False) -- this does not remove that safety net, only
             # extends how long genuinely-useful perception keeps driving the loop.
-            feature_fresh = (os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
+            # CBF_CORNERS_STALE (2026-07-30): a real degraded state was found this
+            # session where cbf_corners (what the visibility CBF actually reads)
+            # went unavailable for 30+ seconds while TARGET_IS_VISIBLE/
+            # FEATURE_IS_STALE/RESCUE_ACTIVE (the signals feature_fresh already
+            # watched) kept reporting fine -- those reflect a DIFFERENT signal
+            # than what gates cbf_corners, so the CBF silently ran in a frozen,
+            # near-zero-authority Phase-2 fallback with nothing here noticing or
+            # falling back to the grace/open-loop path below. ANDed in
+            # (not OR'd) so it can force feature_fresh=False even when every
+            # other signal says fine. See
+            # docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md.
+            feature_fresh = ((os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
                              or (EC_node.TARGET_IS_VISIBLE
                                  and not EC_node.FEATURE_IS_STALE)
                              or EC_node._img_node.RESCUE_ACTIVE)
+                             and not EC_node.CBF_CORNERS_STALE)
             # ── Stale-streak commitment (see env knobs above; inert when EXTENT=0) ──
             if STALE_COMMIT_EXTENT > 0.0 and not in_final_descent:
                 if feature_fresh:
@@ -671,47 +701,18 @@ async def main(record = 'n'):
                 # Hold zero body rate, push constant sub-hover thrust until
                 # PX4 reports ON_GROUND.
                 if not target_lost:
-                    # STICKY, set on the FIRST genuine loss regardless of what happens next
-                    # (2026-07-26, user directive: "the go-around approach is still a
-                    # failure, I am just doing this so we have additional data" -- go-around
-                    # is a recovery ATTEMPT/data-collection aid, not a reclassification. A
-                    # flight that loses the target and later recovers via go-around is still
-                    # tagged target_lost=True; only in_final_descent (whether we're
-                    # currently committed to the terminal open-loop descent) is gated by the
-                    # go-around attempt budget below.
                     target_lost = True
                     try:
                         failure_cause = EC_node._img_node.getFailureCause()
                     except Exception:
                         failure_cause = "UNKNOWN"
                 if not in_final_descent:
-                    if go_around_attempts_used < GO_AROUND_MAX_ATTEMPTS:
-                        go_around_attempts_used += 1
-                        print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
-                              f"[cause={failure_cause}] (landing already tagged failed). "
-                              f"GO-AROUND attempt {go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}.")
-                        await _go_around_climb()
-                        # Fresh start for the perception/control stateful trackers (SAME
-                        # reset the initial engagement uses -- _reset_stateful_trackers,
-                        # img_data.py, triggered on the CONTROLLER_READY False->True
-                        # rising edge) so nothing from the failed approach (locked marker
-                        # ID, KF state, stale confidence streaks, etc.) carries into the
-                        # retry. The capture loop runs on its own thread; the brief sleep
-                        # gives it at least one iteration to observe CONTROLLER_READY=False
-                        # before the rising edge, so the reset actually fires.
-                        EC_node._img_node.CONTROLLER_READY = False
-                        await asyncio.sleep(0.1)
-                        EC_node._img_node.CONTROLLER_READY = True
-                        marker_lost_t0 = None
-                        last_good_sys_cmd = None
-                        continue
                     in_final_descent = True
                     final_descent_t0 = time_node.perf_counter()
                     print(f"[landing_test] Marker lost beyond grace — TARGET_LOST "
-                          f"[cause={failure_cause}]. GO-AROUND attempts exhausted "
-                          f"({go_around_attempts_used}/{GO_AROUND_MAX_ATTEMPTS}). "
-                          f"Open-loop fallback (thrust={FINAL_DESCENT_THRUST}) "
-                          f"to bring drone down safely; landing is tagged as failure.")
+                          f"[cause={failure_cause}]. Open-loop fallback "
+                          f"(thrust={FINAL_DESCENT_THRUST}) to bring drone down safely; "
+                          f"landing is tagged as failure.")
                 if target_lost:
                     # ACTIVE LEVELING (see FINAL_DESCENT_LEVEL_GAIN comment above) --
                     # scoped to the genuine TARGET_LOST failure only. The separate
@@ -800,10 +801,17 @@ async def main(record = 'n'):
             # numbers are still recorded for diagnostics.
             # Precision tolerance raised 0.08 -> 0.10 m per user (2026-06-03).
             PRECISE_TOL = float(os.environ.get("LANDING_PRECISE_TOL", "0.10"))
+            # Descent anomaly (oscillation/ascending instead of smooth descent) is a
+            # failure on its own, same standing as target_lost -- see the detector above.
+            descent_anomaly = ascending_detected or oscillation_detected
             if target_lost:
                 precise = False
                 soft    = False
                 tag = f"TARGET_LOST [{failure_cause}]"
+            elif descent_anomaly:
+                precise = False
+                soft    = False
+                tag = f"DESCENT_ANOMALY [{descent_anomaly_cause}]"
             else:
                 precise = xy_err  <= PRECISE_TOL
                 soft    = rel_vel <= 0.2
@@ -818,6 +826,8 @@ async def main(record = 'n'):
                                 target_lost=target_lost,
                                 failure_cause=failure_cause,
                                 terminal_perception_loss=terminal_perception_loss,
+                                descent_anomaly=descent_anomaly,
+                                descent_anomaly_cause=descent_anomaly_cause,
                                 # Honest precision at the lowest altitude reached
                                 # (before any terminal balloon) — see tracker above.
                                 min_alt=_min_alt,
@@ -829,7 +839,8 @@ async def main(record = 'n'):
             print(f"[landing_test] Landing classification: {tag}  "
                   f"(xy_err={xy_err:.3f} m [≤{PRECISE_TOL}], "
                   f"rel_vel={rel_vel:.3f} m/s [≤0.2]"
-                  f"{', target lost mid-flight' if target_lost else ''})")
+                  f"{', target lost mid-flight' if target_lost else ''}"
+                  f"{', descent anomaly: ' + descent_anomaly_cause if descent_anomaly else ''})")
             print(f"[landing_test] Honest precision @ min-alt: "
                   f"xy={_ma_xy} m, rel_vel={_ma_v} m/s, min_alt={_ma_z} m "
                   f"(endpoint xy={xy_err:.3f} m is post-kick if it ballooned)")

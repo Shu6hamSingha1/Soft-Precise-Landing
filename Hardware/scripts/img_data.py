@@ -38,16 +38,38 @@ FILTER_POLYORDER = int(os.environ.get("IMG_FILTER_POLY", "1"))  # the KF is the 
 VIDEO = False
 
 
-def debayer_bayer_to_bgr(frame, display_gain=4.0):
+def debayer_bayer_to_bgr(frame, target_mean=128.0, gain_min=0.15, gain_max=8.0):
     """Convert raw Bayer to BGR for DISPLAY only. Input: uint8 2D. Output: uint8 3-channel BGR.
-    Raw-stream capture bypasses the ISP digital gain/tone-mapping stage, so the
-    debayered image is genuinely dark (~20/255 mean indoors); display_gain
-    brightens it for human viewing. Detection/flow code uses the un-boosted
-    raw frame directly - do not apply this gain outside of display paths."""
+
+    FIXED 2026-07-30: display_gain used to be a FIXED 4.0x multiplier, tuned
+    against "~20/255 mean indoors" (see git history). Every recorded video
+    from the 2026-07-29 outdoor session was confirmed near-fully clipped
+    (mean brightness 199-251/255, 44-100% of frames saturated, across ALL 10
+    videos) because raw-stream capture bypasses the ISP's tone-mapping, so
+    outdoor daylight was already much brighter than the indoor-dark baseline
+    this constant assumed - a flat 4x on top of that guaranteed saturation.
+    Now computes the gain PER FRAME from that frame's own current
+    brightness, targeting target_mean instead of applying a fixed factor -
+    self-correcting across indoor/outdoor and time-of-day, including
+    ATTENUATING (gain < 1.0) an already-bright frame instead of only ever
+    brightening. Clamped to [gain_min, gain_max] so a near-black frame
+    doesn't get amplified into pure noise, and so an all-white frame
+    doesn't get divided into a near-black one from a division-by-small-
+    number blowup.
+
+    NOTE: this can only fix DISPLAY-PATH gain. If the raw sensor capture
+    itself is already clipping at the hardware level (before this function
+    ever runs), no software gain choice here can recover that lost detail -
+    that would need CAM_EXPOSURE_US/CAM_ANALOGUE_GAIN or AEC tuning instead.
+    Detection/flow code uses the un-boosted raw frame directly - do not
+    apply this gain outside of display paths."""
     if frame is None or frame.ndim != 2:
         return frame
     bgr = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
-    return cv2.convertScaleAbs(bgr, alpha=display_gain, beta=0)
+    current_mean = float(bgr.mean())
+    gain = target_mean / max(current_mean, 1.0)
+    gain = float(np.clip(gain, gain_min, gain_max))
+    return cv2.convertScaleAbs(bgr, alpha=gain, beta=0)
 
 def build_aruco_detector():
     """Builds the (dict, params, detector) tuple shared by IMG_PROCESSOR and
@@ -100,6 +122,7 @@ class IMG_PROCESSOR(Thread):
         Thread.__init__(self)
         self.daemon = True  # never block process exit if run() hangs
         self.RECORD = False
+        self._preview_scale = None   # lazily computed on first VIDEO=True frame
 
         # Image streaming setup
         self._image_node = imgstream(resolution = resolution, capRate = capRate)
@@ -115,22 +138,20 @@ class IMG_PROCESSOR(Thread):
         self._calc_time = 1e-06
         self._fps = 0.0
         self._capRate = capRate
-        # imgstream may have silently negotiated a different sensor mode than
-        # requested (IMX219 only has fixed native raw modes) - use the ACTUAL
-        # resolution it reports, not the constructor argument, so self.center
-        # matches the real frame content.
+        # self._resolution is the ONE working resolution img_data.py sees or
+        # does geometry in (the ISP-scaled stream, default 320x240 via
+        # MAIN_STREAM_SIZE) - imgstreamer.py hides the underlying dual-stream
+        # capture entirely; see its module docstring. img_geometry.py's
+        # fx/fy/CALIB_CX/CALIB_CY were rescaled 2026-07-30 to match.
         self._resolution = self._image_node.getResolution()
         self.focal = f
-        # fx/fy/CALIB_CX/CALIB_CY were measured at 640x480 specifically - only
-        # valid at that resolution. Fall back to the geometric-center
-        # assumption (uncalibrated) at any other resolution and warn loudly,
-        # rather than silently applying a wrong-resolution principal point.
-        if tuple(self._resolution) == (640, 480):
+        if tuple(self._resolution) == (320, 240):
             self.center = np.array([CALIB_CX, CALIB_CY])
         else:
             print(f"WARNING: IMG_PROCESSOR resolution={self._resolution} != the "
-                  f"calibrated (640,480) - fx/fy/center are UNCALIBRATED guesses "
-                  f"at this resolution.")
+                  f"calibrated (320,240) - fx/fy/center are UNCALIBRATED guesses "
+                  f"at this resolution. Set MAIN_STREAM_SIZE=320,240 or "
+                  f"re-derive img_geometry.py's constants at the new size.")
             self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
         # APPLIED 2026-07-28 (was placeholder diag([1/6,1/6,1/6,1,1,1]) - never a real
         # calibration, see project_pi_cal_never_applied): derive_pi_cal.py aggregate
@@ -150,21 +171,6 @@ class IMG_PROCESSOR(Thread):
             [+0.0340, +0.0464, -0.1956, +0.2504, +0.0552, +0.3364]])
         self._sensor_cal_s = np.diag([0.1701, 0.4168, 1.0, 1.0])
 
-        # ArUco detection runs on the smaller, ISP-scaled "main" stream
-        # (genuinely fewer pixels than the raw stream, which is locked to the
-        # sensor's native modes - see imgstreamer.py module docstring). The
-        # detectMarkers adaptive-threshold/contour search is the dominant
-        # per-frame cost (Hardware/docs/*timing* breakdown); shrinking the
-        # search image directly cuts it. Corners are found in main-stream
-        # pixel space, then scaled back up to the calibrated raw-resolution
-        # pixel space (fx/fy/center above are calibrated at raw resolution)
-        # before any downstream geometry touches them.
-        self._main_resolution = self._image_node.getMainResolution()
-        self._aruco_scale = np.array([
-            self._resolution[0] / self._main_resolution[0],
-            self._resolution[1] / self._main_resolution[1],
-        ], dtype=np.float32)
-
         # PlanarFeatureMap SHADOW mode (2026-07-23, Phase 2 of the port scoped
         # earlier this session - Phase 0 feasibility benchmark + Phase 1 verbatim
         # file port both already done, see planar_map.py). Mirrors PX4_Gazebo's
@@ -172,14 +178,13 @@ class IMG_PROCESSOR(Thread):
         # pipeline, logs its own predictions to SEPARATE arrays, and touches
         # NOTHING getOptFlowAngVel()/getImgFeatureParam() actually return -
         # strictly observational until validated against real Pi data, same as
-        # Gazebo's own staged rollout. Tracks on the 320x240 main stream (NOT
-        # raw) - the Phase-0 benchmark measured ~13.6-18.4ms/frame there vs
-        # ~94.6ms/frame at 640x480, and 320x240 is now the validated final
-        # detection resolution (see this session's ARUCO_USE_ARUCO3 fix).
-        # center/focal must be in MAIN-STREAM pixel space (CALIB_CX/CY/fx/fy
-        # are calibrated at RAW resolution) - divide by _aruco_scale, the same
-        # conversion already used everywhere else corner geometry crosses
-        # between the two streams.
+        # Gazebo's own staged rollout. Tracks on img_data.py's one working
+        # stream (320x240 default) - the Phase-0 benchmark measured
+        # ~13.6-18.4ms/frame there vs ~94.6ms/frame at 640x480, and 320x240
+        # is the validated detection resolution (see this session's
+        # ARUCO_USE_ARUCO3 fix). center/focal are already in this same
+        # resolution's pixel space (img_geometry.py's constants), no
+        # conversion needed.
         self._planar_map_shadow = os.environ.get("PLANAR_MAP_SHADOW", "1") == "1"
         # Ported 2026-07-26 from PX4_Gazebo's MAP_REJECT_OVERFLOW_CORRECT/
         # PLASMC_MARKER_FOV_MARGIN (see img_geometry.quad_ill_conditioned /
@@ -220,8 +225,8 @@ class IMG_PROCESSOR(Thread):
         self._planar_map_primary_pred_px = None
         self._planar_map_rescue_active = False   # True iff THIS frame's s/alpha came from RESCUE, not raw decode - see RESCUE_ACTIVE property
         self._planar_map = None
-        self._planar_map_center = (CALIB_CX / self._aruco_scale[0], CALIB_CY / self._aruco_scale[1])
-        self._planar_map_focal = (fx / self._aruco_scale[0], fy / self._aruco_scale[1])
+        self._planar_map_center = (CALIB_CX, CALIB_CY)
+        self._planar_map_focal = (fx, fy)
         self._planar_map_center_log = []    # get_marker_center() each frame, or None
         self._planar_map_conf_log = []      # map_confidence each frame (marker-independent, see planar_map.py)
         self._planar_map_time_log = []      # own timestamp - unconditional every frame, like ring flow
@@ -281,7 +286,15 @@ class IMG_PROCESSOR(Thread):
         # 07-10 and 07-24 that dropped the camera-fps-bound baseline) is
         # still unexplained and worth chasing separately - this revert only
         # undoes a band-aid that never worked by its own stated criterion.
-        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "80"))
+        # Default halved 80->40 on 2026-07-30: ARUCO_ROI_MARGIN_PX used to be
+        # specified in RAW (640x480) pixels and converted via /_aruco_scale
+        # to main-stream (320x240) pixels for the actual crop - now that
+        # img_data.py works in ONE resolution (320x240) throughout, this is
+        # applied directly with no conversion. 40 preserves the exact same
+        # PHYSICAL crop size the validated 80-raw-px default already gave
+        # (80/aruco_scale(2.0)=40) - not a behavior change, just removing the
+        # now-redundant runtime division.
+        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "40"))
         self._roi_max_misses = int(os.environ.get("ARUCO_ROI_MAX_MISSES", "5"))
         self._roi_miss_count = 0
         self._last_locked_corners = None   # (4,2) full-image px, most recent lock
@@ -309,8 +322,7 @@ class IMG_PROCESSOR(Thread):
         self._klt_min_tracked = 3 if self._klt_relax_gate else 4
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "10"))
         self._lk_step_count = 0
-        self._last_good_main_img = None        # main-stream gray image, last successful decode
-        self._last_locked_corners_main = None  # (4,2) main-stream px, same frame as above
+        self._last_good_img = None  # gray image, last successful decode (for KLT fallback)
         self._klt_lk_params = dict(
             winSize=(int(os.environ.get("MARKER_KLT_LK_WIN", "21")),) * 2,
             maxLevel=int(os.environ.get("MARKER_KLT_LK_LVL", "3")),
@@ -533,21 +545,12 @@ class IMG_PROCESSOR(Thread):
         self._ring_on = os.environ.get("FLOW_RINGS", "1") == "1"
         # calcOpticalFlowPyrLK builds its image pyramid over the WHOLE input
         # frame every call, regardless of point count - point count has
-        # already been cut 300->50 and window 41->20px (see comments above),
-        # but the pyramid-build cost is image-AREA bound, not point-count
-        # bound, and was never moved off the full 640x480 raw frame the way
-        # ArUco detection was moved to the smaller 320x240 'main' stream
-        # (self._aruco_scale). Tracking on 'main' instead is a 4x smaller
-        # pyramid for the same reason that helped ArUco. Seed points are
-        # generated in raw-pixel space (calibrated fx/fy/center are raw-
-        # resolution only - img_geometry.py), so they're scaled DOWN by
-        # self._aruco_scale before tracking and the tracked delta scaled
-        # BACK UP before any _getVirtualPts/_fill_A call, mirroring
-        # _detect_markers' own main->raw scale-up pattern. Env-gated so a
-        # tracking-quality regression (main stream is coarser, so a real
-        # sub-pixel corner shift there is a smaller sub-pixel shift in
-        # absolute terms) can be reverted without a code change.
-        self._ring_main_stream = os.environ.get("FLOW_RING_MAIN_STREAM", "1") == "1"
+        # already been cut 300->50 and window 41->20px (see comments above).
+        # Pyramid-build cost is image-AREA bound, so tracking on img_data.py's
+        # single (320x240 default) working resolution is already the cheapest
+        # option available - there's no separate raw/main choice to make here
+        # anymore (was self._ring_main_stream / self._aruco_scale, removed
+        # 2026-07-30 along with the rest of the dual-stream concept).
         # APPLIED 2026-07-28 (was placeholder identity): derive_pi_cal.py ring
         # aggregate across all 48 available phased recordings, transfer-derived
         # against the corner cal above. per-axis R^2: Hx=0.35 Hy=0.31 Hz=0.38
@@ -706,7 +709,6 @@ class IMG_PROCESSOR(Thread):
                 # tp = 10
                 timer_flag = self._time.perf_counter()
                 images = self._image_node.getImages()
-                main_images = self._image_node.getMainImages()
                 cap_stamps = self._image_node.getCaptureStamps()
 
                 # Hardware: quaternions/angvels from flight controller
@@ -724,12 +726,32 @@ class IMG_PROCESSOR(Thread):
                 
                 # Check if at least 2 frames of images have been received
                 if (images[0] is not None and images[1] is not None
-                        and main_images[0] is not None and main_images[1] is not None):
+                        and images[0] is not None and images[1] is not None):
                     if VIDEO:
-                        # Resize display image
-                        resized_img = cv2.resize(images[1], None, fx=1.0, fy=1.0, interpolation=cv2.INTER_AREA)
-                        resized_img = debayer_bayer_to_bgr(resized_img)
-                        cv2.imshow('Image Streamer', resized_img)
+                        # Show the 320x240 ISP-processed 'main' stream, not the raw
+                        # 640x480 Bayer stream - CHANGED 2026-07-30. detectMarkers
+                        # runs on imgs, not the raw stream (see _detect_markers),
+                        # and the main stream is ISP-denoised/sharpened while the raw
+                        # stream is not (Picamera2 manual: ISP output vs unprocessed
+                        # sensor write). A display/recording of the raw stream showed
+                        # a DIFFERENT image than what the detector actually saw - not
+                        # just a different size - making it useless for diagnosing why
+                        # ArUco decode fails under normal (not raw-quality) conditions.
+                        _disp_img = images[1]
+                        _disp_bgr = _disp_img if _disp_img.ndim == 3 else cv2.cvtColor(_disp_img, cv2.COLOR_GRAY2BGR)
+                        # Upscale for visibility - the main stream (320x240 default)
+                        # is too small to work with otherwise, same problem
+                        # PX4_Gazebo's img_data.py solves with a fixed fx=4/fy=4.
+                        # Here the scale is computed once from the real screen size
+                        # so the window covers >=60% of it, with a fixed-4x fallback
+                        # if the screen size can't be queried (e.g. headless/no
+                        # DISPLAY) - see _computePreviewScale().
+                        if self._preview_scale is None:
+                            self._preview_scale = self._computePreviewScale()
+                        if self._preview_scale != 1.0:
+                            _disp_bgr = cv2.resize(_disp_bgr, None, fx=self._preview_scale,
+                                    fy=self._preview_scale, interpolation=cv2.INTER_LINEAR)
+                        cv2.imshow('Image Streamer', _disp_bgr)
                         if cv2.waitKey(1) == 27:
                             self.close()
 
@@ -752,16 +774,25 @@ class IMG_PROCESSOR(Thread):
                             # Fixed path mismatch: this pointed at Test_Data/Test_Videos
                             # (never existed - cv2.VideoWriter does not auto-create dirs,
                             # so RECORD=True silently produced no video). The real videos
-                            # dir is Test_Data/Calibration/Test_Videos.
+                            # dir is Test_Data/Landing/Test_Videos (moved from
+                            # Test_Data/Calibration/Test_Videos 2026-07-29 so landing-
+                            # run video does not mix with calibration recordings).
                             self.timestamp = time.ctime().replace(':', '-')
-                            os.makedirs('Test_Data/Calibration/Test_Videos', exist_ok=True)
-                            self._video = cv2.VideoWriter(f'Test_Data/Calibration/Test_Videos/{self.timestamp}.mp4',
+                            os.makedirs('Test_Data/Landing/Test_Videos', exist_ok=True)
+                            # Records img_data.py's one working stream - the same
+                            # frame detectMarkers actually sees, so this is useful
+                            # for diagnosing why ArUco decode fails under normal
+                            # conditions (see _computePreviewScale for the same
+                            # reasoning applied to the live preview above).
+                            self._video = cv2.VideoWriter(f'Test_Data/Landing/Test_Videos/{self.timestamp}.mp4',
                                     cv2.VideoWriter_fourcc(*'mp4v'),
-                                    self._capRate, self._resolution)
-                        self._video.write(debayer_bayer_to_bgr(images[1]))
+                                    self._capRate, tuple(self._resolution))
+                        _rec_img = images[1]
+                        _rec_bgr = _rec_img if _rec_img.ndim == 3 else cv2.cvtColor(_rec_img, cv2.COLOR_GRAY2BGR)
+                        self._video.write(_rec_bgr)
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
-                    _opt_flow_result = self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, main_imgs = main_images, cap_stamps = cap_stamps)
+                    _opt_flow_result = self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, cap_stamps = cap_stamps)
 
                     # TRUE per-call loop time, captured unconditionally right after
                     # _optFlowAngVel returns - BEFORE any of the branch-specific
@@ -855,8 +886,7 @@ class IMG_PROCESSOR(Thread):
         """Wait until at least two frames are available."""
         print("Waiting for image streaming")
         start_time = self._time.perf_counter()
-        while (any(image is None for image in list(self._image_node.getImages()))
-               or any(image is None for image in list(self._image_node.getMainImages()))):
+        while any(image is None for image in list(self._image_node.getImages())):
             time.sleep(1/100)
             if (self._time.perf_counter() - start_time) > 20:
                 raise Exception("Unable to get image data.")
@@ -900,7 +930,7 @@ class IMG_PROCESSOR(Thread):
             self._timing_n = 0
 
     def _klt_track_corners(self, main_img_now):
-        """Track self._last_locked_corners_main forward into main_img_now via
+        """Track self._last_locked_corners forward into main_img_now via
         LK optical flow (see __init__ comment for the ported-from-SITL
         rationale). Returns (4,2) main-stream px corners on success, None
         otherwise. Does NOT reset/increment _lk_step_count on its own for
@@ -911,9 +941,9 @@ class IMG_PROCESSOR(Thread):
         MARKER_LOSS_GRACE upstream is the real backstop (matches Gazebo
         d3dc8b0/3e96a78)."""
         try:
-            seed = self._last_locked_corners_main.reshape(-1, 1, 2).astype(np.float32)
+            seed = self._last_locked_corners.reshape(-1, 1, 2).astype(np.float32)
             lk_out = cv2.calcOpticalFlowPyrLK(
-                self._last_good_main_img, main_img_now, seed, None, **self._klt_lk_params)
+                self._last_good_img, main_img_now, seed, None, **self._klt_lk_params)
             if lk_out is None or lk_out[0] is None or lk_out[1] is None:
                 self._klt_misses += 1
                 return None
@@ -943,8 +973,8 @@ class IMG_PROCESSOR(Thread):
                 # fresh full-frame re-acquisition next time it reappears.
                 self._klt_misses += 1
                 self._lk_step_count = 0
-                self._last_good_main_img = None
-                self._last_locked_corners_main = None
+                self._last_good_img = None
+                self._last_locked_corners = None
                 return None
             self._lk_step_count += 1
             self._klt_hits += 1
@@ -1031,7 +1061,36 @@ class IMG_PROCESSOR(Thread):
         except Exception:
             return None
 
-    def _klt_fallback_fill(self, main_imgs, results):
+    def _computePreviewScale(self):
+        """Scale factor for the VIDEO=True cv2.imshow preview so the window
+        covers >=60% of BOTH screen dimensions (not just area - taking the
+        max of the two per-axis required scales guarantees each axis meets
+        the 60% floor while preserving aspect ratio). Tries tkinter for the
+        real screen size - this is just an X query, so it works fine over
+        `ssh -X`/`-Y` forwarding, the way this project already runs the
+        preview remotely. Falls back to a fixed 4x (matches PX4_Gazebo's
+        img_data.py convention) if tkinter/DISPLAY is unavailable (e.g. a
+        genuinely headless run) so a missing screen-size query never crashes
+        or silently disables the preview scaling."""
+        _fallback = 4.0
+        try:
+            import tkinter as tk
+            _root = tk.Tk()
+            _root.withdraw()
+            screen_w = _root.winfo_screenwidth()
+            screen_h = _root.winfo_screenheight()
+            _root.destroy()
+            mw, mh = self._resolution
+            scale = max(0.6 * screen_w / mw, 0.6 * screen_h / mh)
+            scale = max(1.0, scale)   # never downscale below native size
+            print(f"[preview] screen={screen_w}x{screen_h}, main={mw}x{mh} -> "
+                  f"scale={scale:.2f}x ({int(mw*scale)}x{int(mh*scale)})")
+            return scale
+        except Exception as e:
+            print(f"[preview] Could not query screen size ({e}) - using fixed {_fallback}x scale.")
+            return _fallback
+
+    def _klt_fallback_fill(self, imgs, results):
         """For each image where the currently-locked marker wasn't decoded
         by ArUco, try to recover its corners via _klt_track_corners and
         splice a synthetic detection entry into that image's results (same
@@ -1046,20 +1105,20 @@ class IMG_PROCESSOR(Thread):
         recovered quad when KLT itself couldn't fill this image. Default-off
         (self._dense_recover)."""
         if self._dense_recover:
-            for img in main_imgs:
+            for img in imgs:
                 self._dense_recover_step(img)
         if self._locked_marker_id is None:
             return results
         used_klt = False
         used_dense = False
         new_results = list(results)
-        for i, img in enumerate(main_imgs):
+        for i, img in enumerate(imgs):
             corners, ids, rejected = new_results[i]
             ids_flat = np.asarray(ids).flatten() if ids is not None and len(ids) else np.array([])
             if self._locked_marker_id in ids_flat:
                 continue
             tracked = None
-            if self._last_good_main_img is not None and self._last_locked_corners_main is not None:
+            if self._last_good_img is not None and self._last_locked_corners is not None:
                 tracked = self._klt_track_corners(img)
             if tracked is not None:
                 used_klt = True
@@ -1089,30 +1148,21 @@ class IMG_PROCESSOR(Thread):
         self._dense_recover_active = used_dense
         return new_results
 
-    def _detect_markers(self, main_imgs):
-        """ArUco detection on the smaller 'main' stream (see __init__
-        comment: genuinely fewer pixels than the raw stream, cutting the
-        dominant per-frame cost), with an ROI-crop fast path around the
-        last locked marker location. Returns the same
-        [(corners, ids, rejected), ...] structure as a direct detectMarkers()
-        call, with corners scaled back up to the calibrated RAW-resolution
-        pixel space regardless of which path (ROI or full-frame) ran, so
-        every downstream consumer is unaffected by which stream this used."""
-        _mw, _mh = self._main_resolution
-        main_results = None   # (corners, ids, rejected) x2, in MAIN-stream px space
+    def _detect_markers(self, imgs):
+        """ArUco detection with an ROI-crop fast path around the last locked
+        marker location. Returns the same [(corners, ids, rejected), ...]
+        structure as a direct detectMarkers() call."""
+        _mw, _mh = self._resolution
+        main_results = None   # (corners, ids, rejected) x2
         if self._last_locked_corners is not None:
-            # last_locked_corners is stored in RAW pixel space (what every
-            # other consumer expects) - convert to main-stream space for the
-            # crop. _roi_margin_px is specified in RAW pixels for an
-            # intuitive env-var meaning; convert to main-stream pixels too.
-            _c_main = self._last_locked_corners / self._aruco_scale
-            _margin_main = max(1, int(self._roi_margin_px / self._aruco_scale.mean()))
+            _c_main = self._last_locked_corners
+            _margin_main = max(1, self._roi_margin_px)
             x0 = max(0, int(_c_main[:, 0].min()) - _margin_main)
             y0 = max(0, int(_c_main[:, 1].min()) - _margin_main)
             x1 = min(_mw, int(_c_main[:, 0].max()) + _margin_main)
             y1 = min(_mh, int(_c_main[:, 1].max()) + _margin_main)
             if x1 > x0 and y1 > y0:
-                crops = [img[y0:y1, x0:x1] for img in main_imgs]
+                crops = [img[y0:y1, x0:x1] for img in imgs]
                 if self._detector is not None:
                     roi_results = [self._detector.detectMarkers(c) for c in crops]
                 else:
@@ -1155,35 +1205,31 @@ class IMG_PROCESSOR(Thread):
             # call, or too many consecutive ROI misses (cleared above).
             self._fullframe_searches += 1
             if self._detector is not None:
-                main_results = [self._detector.detectMarkers(img) for img in list(main_imgs)]
+                main_results = [self._detector.detectMarkers(img) for img in list(imgs)]
             else:
                 main_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
-                                 for img in main_imgs]
-        # KLT corner-tracking fallback (main-stream space, matching where
-        # _last_locked_corners_main lives) - fills in the locked marker for
-        # any image ArUco couldn't decode it in, before the final scale-up.
-        main_results = self._klt_fallback_fill(main_imgs, main_results)
-        return [(tuple(corner * self._aruco_scale for corner in corners), ids, rejected)
-                for corners, ids, rejected in main_results]
+                                 for img in imgs]
+        # KLT corner-tracking fallback - fills in the locked marker for any
+        # image ArUco couldn't decode it in.
+        return self._klt_fallback_fill(imgs, main_results)
 
-    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None, cap_stamps = None):
+    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, cap_stamps = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
-        # imgs/main_imgs are the imgstreamer's live deques (maxlen=2), still
-        # being appended to by the background capture thread - snapshot to
-        # stable lists ONCE here so nothing downstream (multiple iteration
+        # imgs is the imgstreamer's live deque (maxlen=2), still being
+        # appended to by the background capture thread - snapshot to a
+        # stable list ONCE here so nothing downstream (multiple iteration
         # sites in _detect_markers/_klt_fallback_fill) races the capture
         # thread (confirmed 2026-07-11: "RuntimeError: deque mutated during
-        # iteration" from iterating main_imgs directly mid-capture).
+        # iteration" from iterating imgs directly mid-capture).
         imgs = list(imgs)
-        main_imgs = list(main_imgs) if main_imgs is not None else None
         _tt = self._time.perf_counter()
         self._frame_used_klt = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
         self._frame_used_dense = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
         # Texture-free RING flow (safety net) — runs EVERY frame, independent of
         # ArUco, so it survives marker death. Steps its own KF; latest raw stored.
         if self._ring_on:
-            _vvr, _pdiv, _nr, _rmom = self._compute_ring_flow(imgs, quats, main_imgs)
+            _vvr, _pdiv, _nr, _rmom = self._compute_ring_flow(imgs, quats)
             self._ring_v_raw = _vvr; self._ring_pure_div = _pdiv; self._ring_moment = _rmom
             self._ring_ok = bool(_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
             self._ring_n = int(_nr)
@@ -1204,9 +1250,9 @@ class IMG_PROCESSOR(Thread):
         # corner decode below (see __init__ comment). Wrapped defensively:
         # this is strictly observational, so any internal exception here must
         # never propagate and disturb the real corner/ring pipeline above.
-        if (self._planar_map_shadow or self._planar_map_primary) and main_imgs is not None and main_imgs[1] is not None:
+        if (self._planar_map_shadow or self._planar_map_primary) and imgs[1] is not None:
             try:
-                _pm_img = main_imgs[1] if main_imgs[1].ndim == 2 else cv2.cvtColor(main_imgs[1], cv2.COLOR_BGR2GRAY)
+                _pm_img = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
                 _pm_quat = quats[1] if (quats is not None and len(quats) > 1) else None
                 _pm_quat_R = _quat_to_dcm(_pm_quat) if _pm_quat is not None else None
                 if self._planar_map is None:
@@ -1264,21 +1310,13 @@ class IMG_PROCESSOR(Thread):
                               f"pred_cached={self._planar_map_primary_pred_px is not None}", flush=True)
                     self._pm_dbg_ctr = int(getattr(self, "_pm_dbg_ctr", 0)) + 1
                     if self._planar_map_primary and self._planar_map_gate_on:
-                        # SPACE FIX (2026-07-25): PlanarFeatureMap operates in MAIN-STREAM
-                        # pixel space (_planar_map_center/_focal = raw/_aruco_scale, per the
-                        # __init__ comment), but _planarMapPredictionPlausible/_getVirtualPts
-                        # both expect RAW-resolution space (self.center/self.focal) - same
-                        # convention _detect_markers uses when scaling corners back up
-                        # ("corners scaled back up to the calibrated RAW-resolution pixel
-                        # space"). Without this, every rescue attempt was silently comparing
-                        # a main-stream-scaled prediction against a raw-space extent - a
-                        # systematic ~_aruco_scale-factor size mismatch that rejected nearly
-                        # every rescue as "implausible size" regardless of the map's actual
-                        # estimate quality (caught live via PLANAR_MAP_DBG=1 -- every single
-                        # attempt in a test session was rejected on size until this fix).
-                        _pm_pred_main = self._planar_map.get_marker_frame_pts()
-                        self._planar_map_primary_pred_px = (
-                            _pm_pred_main * self._aruco_scale if _pm_pred_main is not None else None)
+                        # _planar_map_center/_focal == self.center/self.focal (both are
+                        # img_data.py's one working resolution now) - no space conversion
+                        # needed between the map's predictions and _planarMapPredictionPlausible/
+                        # _getVirtualPts (was a real bug here pre-2026-07-30: the map's
+                        # 320x240-space prediction vs a stale 640x480-space extent
+                        # comparison rejected nearly every rescue as "implausible size").
+                        self._planar_map_primary_pred_px = self._planar_map.get_marker_frame_pts()
                 _pm_center = self._planar_map.get_marker_center()
                 self._planar_map_center_log.append(_pm_center.copy() if _pm_center is not None else None)
                 self._planar_map_conf_log.append(self._planar_map.map_confidence)
@@ -1297,10 +1335,6 @@ class IMG_PROCESSOR(Thread):
                 # INDEPENDENT map observable has to be built here from the map's own
                 # geometry rather than read off an override.
                 #
-                # Space chain matches the rescue path exactly: the map works in
-                # MAIN-STREAM pixels, so scale by _aruco_scale to RAW pixels before
-                # _getVirtualPts (the same SPACE FIX as the prediction above -- getting
-                # this wrong silently rescales everything by _aruco_scale).
                 # get_marker_center_native() is preferred over get_marker_center():
                 # per its docstring it is the projective diagonal-intersection (a true
                 # projective invariant) rather than the corner mean, which perspective
@@ -1315,13 +1349,11 @@ class IMG_PROCESSOR(Thread):
                         if _c_main is None:
                             _c_main = _pm_center
                         if _c_main is not None:
-                            _c_v = self._getVirtualPts(
-                                np.asarray([_c_main], np.float32) * self._aruco_scale, _q1)
+                            _c_v = self._getVirtualPts(np.asarray([_c_main], np.float32), _q1)
                             _cm_raw = (float(_c_v[0][0]), float(_c_v[0][1]))
                         _p_main = self._planar_map.get_marker_frame_pts()
                         if _p_main is not None and len(_p_main) >= 4:
-                            _p_v = self._getVirtualPts(
-                                np.asarray(_p_main, np.float32) * self._aruco_scale, _q1)
+                            _p_v = self._getVirtualPts(np.asarray(_p_main, np.float32), _q1)
                             _am_raw = float(marker_principal_angle(_p_v))
                 except Exception:
                     pass       # never let the map cross-check touch the real pipeline
@@ -1331,15 +1363,8 @@ class IMG_PROCESSOR(Thread):
                 pass   # shadow mode: never let an internal error touch the real pipeline
         _tt = self._tstage(_tt, "1b_planar_map_shadow")
 
-        # Detect markers on the smaller 'main' stream (ROI-crop fast path
-        # when locked). main_imgs is required - _detect_markers always
-        # scales its output up from main-stream to raw-resolution pixel
-        # space, so silently falling back to `imgs` (already raw-space)
-        # here would double up the scale factor and corrupt every corner.
-        if main_imgs is None:
-            raise ValueError("_optFlowAngVel requires main_imgs (the ISP-scaled "
-                              "'main' stream) for ArUco detection - see imgstreamer.getMainImages().")
-        results = self._detect_markers(main_imgs)
+        # Detect markers (ROI-crop fast path when locked).
+        results = self._detect_markers(imgs)
         _tt = self._tstage(_tt, "2_aruco_detect")
 
         # Check if both detections were successful
@@ -1396,8 +1421,7 @@ class IMG_PROCESSOR(Thread):
                 max(C_nP[0][:, 0].max() - C_nP[0][:, 0].min(),
                     C_nP[0][:, 1].max() - C_nP[0][:, 1].min()))
             self._last_locked_corners = np.asarray(C_nP[1], dtype=np.float32)   # for next call's ROI
-            self._last_good_main_img = main_imgs[1].copy()   # for next call's KLT fallback
-            self._last_locked_corners_main = self._last_locked_corners / self._aruco_scale
+            self._last_good_img = imgs[1].copy()   # for next call's KLT fallback
             if self._dense_recover:
                 # Re-anchor on a genuine fresh decode of the locked marker (never on a
                 # KLT-filled or dense-recovered synthetic corner - that would compound
@@ -1405,9 +1429,9 @@ class IMG_PROCESSOR(Thread):
                 # chain (still close enough to trustworthy) - ported from Gazebo's
                 # _dense_soft_anchor_max_steps logic.
                 if not self._frame_used_klt and not self._dense_recover_active:
-                    self._dense_recover_anchor(self._last_locked_corners_main, main_imgs[1])
+                    self._dense_recover_anchor(self._last_locked_corners, imgs[1])
                 elif self._frame_used_klt and self._lk_step_count <= self._dense_soft_anchor_max_steps:
-                    self._dense_recover_anchor(self._last_locked_corners_main, main_imgs[1])
+                    self._dense_recover_anchor(self._last_locked_corners, imgs[1])
             # FIXED 2026-07-26 (user-identified bug): loop-closure correction used
             # to be gated on self._planar_map_shadow alone - meaning disabling
             # shadow mode while self._planar_map_primary stayed on (its default)
@@ -1428,13 +1452,13 @@ class IMG_PROCESSOR(Thread):
             if self._planar_map is not None:
                 _reject_correct = False
                 if self._map_reject_overflow_correct:
-                    _mh, _mw = main_imgs[1].shape[:2]
-                    _near_edge = marker_near_fov_edge(self._last_locked_corners_main,
+                    _mh, _mw = imgs[1].shape[:2]
+                    _near_edge = marker_near_fov_edge(self._last_locked_corners,
                                                        (_mh, _mw), self._marker_fov_margin)
-                    _reject_correct = _near_edge or quad_ill_conditioned(self._last_locked_corners_main)
+                    _reject_correct = _near_edge or quad_ill_conditioned(self._last_locked_corners)
                 if not _reject_correct:
                     try:
-                        self._planar_map.loop_closure_correct(self._last_locked_corners_main, marker_id=mid)
+                        self._planar_map.loop_closure_correct(self._last_locked_corners, marker_id=mid)
                     except Exception:
                         pass
             _tt = self._tstage(_tt, "3_lock_and_extract")
@@ -1714,8 +1738,8 @@ class IMG_PROCESSOR(Thread):
                 # checkpost detection refs so the first re-acquired frame isn't rejected.
                 self._locked_marker_id = None
                 self._last_locked_corners = None   # drop ROI too, force full-frame re-acquire
-                self._last_good_main_img = None    # drop KLT anchor too
-                self._last_locked_corners_main = None
+                self._last_good_img = None    # drop KLT anchor too
+                self._last_locked_corners = None
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()
                 self._flow_prev = None; self._s_prev = None; self._loom_lnM_prev = None
@@ -1898,7 +1922,7 @@ class IMG_PROCESSOR(Thread):
             px = self._planar_map.get_marker_frame_pts()   # slot=None -> primary
             if px is None or len(px) != 4:
                 return None
-            Vp = self._getVirtualPts(np.asarray(px, np.float32) * self._aruco_scale, quat)
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
             if Vp is None or len(Vp) != 4:
                 return None
             ctr = Vp[:, :2].mean(axis=0)
@@ -1934,7 +1958,7 @@ class IMG_PROCESSOR(Thread):
             px = pm.get_marker_center_native()   # slot=None -> primary
             if px is None:
                 return None
-            Vp = self._getVirtualPts(np.asarray([px], np.float32) * self._aruco_scale, quat)
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)
             if Vp is None or len(Vp) != 1:
                 return None
             x0, y0 = float(Vp[0, 0]), float(Vp[0, 1])
@@ -2154,7 +2178,7 @@ class IMG_PROCESSOR(Thread):
         """See img_geometry.vframe_w (single source of truth)."""
         return vframe_w(w_body, quat)
 
-    def _compute_ring_flow(self, imgs, quats, main_imgs=None):
+    def _compute_ring_flow(self, imgs, quats):
         """Texture-free V-frame flow from the fixed ring stations: LK-track the
         nadir-seeded ring on the real image, de-rotate to V, then the SAME
         _fill_A+lstsq as the corner flow. Returns (V_v_ring[6], pure_div,
@@ -2163,28 +2187,15 @@ class IMG_PROCESSOR(Thread):
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
-        # Track on the smaller 'main' stream when available (see
-        # self._ring_main_stream comment in __init__) - smaller pyramid,
-        # same tracking math, just scaled. Falls back to the full raw frame
-        # if main_imgs wasn't passed (e.g. a caller that predates this) or
-        # is itself unavailable this frame, or the env toggle is off.
-        _use_main = (self._ring_main_stream and main_imgs is not None
-                     and main_imgs[0] is not None and main_imgs[1] is not None)
         try:
-            if _use_main:
-                g0 = main_imgs[0] if main_imgs[0].ndim == 2 else cv2.cvtColor(main_imgs[0], cv2.COLOR_BGR2GRAY)
-                g1 = main_imgs[1] if main_imgs[1].ndim == 2 else cv2.cvtColor(main_imgs[1], cv2.COLOR_BGR2GRAY)
-            else:
-                g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
-                g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
-            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # raw-pixel space (fx/fy/center are raw-only)
-            _seed_track = (_seed / self._aruco_scale) if _use_main else _seed
-            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed_track.astype(np.float32), None, **self._ring_lk_params)
+            g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+            g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
+            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # pixel space (fx/fy/center)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed.astype(np.float32), None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
             if int(st.sum()) < 6:
                 return (np.zeros(6), 0.0, int(st.sum()), np.nan)
-            p1_raw = (p1 * self._aruco_scale) if _use_main else p1
-            r0 = _seed[st]; r1 = p1_raw.reshape(-1, 2)[st]
+            r0 = _seed[st]; r1 = p1.reshape(-1, 2)[st]
             # robustify: drop per-station flow-magnitude outliers (MAD)
             fm = np.linalg.norm(r1 - r0, axis=1)
             med = np.median(fm); mad = np.median(np.abs(fm - med)) + 1e-6
@@ -2362,8 +2373,6 @@ class IMG_PROCESSOR(Thread):
             # --- identity / geometry ---
             'Capture Rate': self._capRate,
             'resolution': self._resolution,
-            'main_resolution': getattr(self, '_main_resolution', None),
-            'aruco_scale': _f(getattr(self, '_aruco_scale', None)),
             # --- filters (MUST match what derive_pi_cal.py replicates) ---
             'IMG_FILTER': os.environ.get('IMG_FILTER', 'kf'),
             'IMG_FEATURE_FILTER': os.environ.get('IMG_FEATURE_FILTER', 'kf'),

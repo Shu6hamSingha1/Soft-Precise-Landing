@@ -45,7 +45,7 @@ def main():
           "underneath) - press ESC in the window or Ctrl+C here to stop.")
     try:
         while True:
-            m = list(strm.getMainImages())[-1]
+            m = list(strm.getImages())[-1]
             if m is not None:
                 corners, ids, _ = _detector.detectMarkers(m)
                 decoded = ids is not None and len(ids) > 0

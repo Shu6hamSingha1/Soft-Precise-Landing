@@ -64,10 +64,18 @@ from ahrs import Quaternion
 # scale-down of an UNVERIFIED spec-sheet guess (768/576 @ 960x720, itself
 # never calibrated) and assumed a full-FOV bin - wrong assumption for this
 # crop mode.
-CALIB_CX = 319.50  # measured principal point (~= geometric center 320.0)
-CALIB_CY = 239.50  # measured principal point (~= geometric center 240.0)
-fx = 1026.95
-fy = 1026.95
+# RESCALED 2026-07-30: img_data.py now works in a SINGLE resolution (the
+# 320x240 ISP-scaled "main" stream, was previously main_resolution/
+# main_images - that dual-stream concept has been removed entirely). These
+# constants were measured at 640x480 (see history above) and are halved here
+# to match. Halving center+focal together leaves every ratio built from them
+# (p_10 = center/focal, the CBF's focal_px terms, etc.) numerically
+# unchanged - this rescale does not alter controller behavior, only removes
+# the now-redundant self._aruco_scale conversion throughout img_data.py.
+CALIB_CX = 319.50 / 2  # = 159.75 (measured principal point, halved to main-stream units)
+CALIB_CY = 239.50 / 2  # = 119.75
+fx = 1026.95 / 2  # = 513.475
+fy = 1026.95 / 2  # = 513.475
 f = fx  # focal length in pixels
 # NOTE: this hfov (~35 deg) is NOT the same as the Gazebo sim camera (1.74 rad
 # / ~99.7 deg @640x480) - matching resolution alone never reproduced the sim's

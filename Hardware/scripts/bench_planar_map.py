@@ -44,7 +44,7 @@ if __name__ == "__main__":
     last_main = None
     t0 = time.perf_counter()
     while len(main_frames) < N_FRAMES + WARMUP and (time.perf_counter() - t0) < 40:
-        m = list(strm.getMainImages())[-1]
+        m = list(strm.getImages())[-1]
         r = list(strm.getImages())[-1]
         if m is not None and r is not None and (last_main is None or not np.array_equal(m, last_main)):
             main_frames.append(m.copy())
