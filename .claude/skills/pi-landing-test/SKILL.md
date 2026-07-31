@@ -26,14 +26,16 @@ new checklist item 5 below; both fixes are UNTESTED LIVE.
    not the old never-applied placeholder. **R² is moderate (~0.3-0.6), not high** — user made an
    informed decision to proceed anyway (dominant limiter is a marker/HFOV FoV geometric ceiling,
    not a bug). Don't re-litigate this call; know the number if asked.
-2. **Input (thrust/rate) calibration — VERIFY, NOT YET RE-CHECKED THIS SESSION.**
-   `hardware_landing.py`'s own docstring flags: *"THRUST CALIBRATION IS A PLACEHOLDER - DO NOT FLY
-   UNTIL SET"*. Current defaults: `HOVER_THROTTLE_NORM=0.42` (env `HW_HOVER_THROTTLE_NORM`),
-   `THRUST_SLOPE_N_PER_UNIT=31.98` (env `HW_THRUST_SLOPE`) — the code only self-warns if this
-   equals the literal SITL placeholder `0.738`, so it looks like SOMEONE set it, but these values
-   don't exactly match the `project_hover_throttle_search_2026_07_09` memory's derived
-   `HOVER=0.388, THRUST_SLOPE=34.8` either. **Ask the user to confirm these are current/correct
-   for this airframe before flying** — don't assume silently.
+2. **Input (thrust/rate) calibration — CONFIRMED CALIBRATED, 2026-07-31.** The old "placeholder"
+   language above was stale — `hardware_landing.py` lines 14-18 now state the defaults ARE the
+   final calibration, and `HOVER_THROTTLE_NORM=0.42` / `THRUST_SLOPE_N_PER_UNIT=31.98` exactly
+   match `Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt`'s final adaptive-trim,
+   filtered, drag-corrected, R²-weighted values (2026-07-22 derivation, 47-run dataset via
+   `analyze_input_calibration.py`; implied mass -1.2% off known 1.204 kg). `RATE_CORRECTION_WX/WY/WZ
+   = 0.758/0.739/0.665` also matches. The `project_hover_throttle_search_2026_07_09` memory's
+   `HOVER=0.388, THRUST_SLOPE=34.8` was a superseded preliminary sine-sweep bootstrap, not a
+   conflicting number. **No action needed** unless the airframe (motors/props/battery/payload) has
+   changed since 2026-07-22, in which case this cal is stale and should be redone.
 3. **Perception pipeline fixes (all deployed + hash-verified, all default-on except
    `PLASMC_DENSE_RECOVER`):** `h_extrap`, map-derived flow (`_flowMap`, gated on
    `_planar_map_gate_on`), `ARUCO_ROI_MARGIN_PX=80` (reverted from an unvalidated 200 bump),
