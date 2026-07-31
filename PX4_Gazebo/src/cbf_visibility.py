@@ -3,7 +3,7 @@
 This module lifts the ``FUNNEL_MODE == "cbf2"`` block out of
 ``controller.py`` (formerly inlined at controller.py:1074-1167) so the
 camera-plane visibility CBF can be exercised in isolation by the offline
-validators (``tools/validate_cbf.py``, ``tools/replay_cbf.py``) using the
+validator (``tools/validate_cbf.py``) using the
 EXACT code path the live controller runs — the test can never drift from prod.
 
 Design reference: ``docs/FUNNEL_CBF_DESIGN.md`` §0 and ``docs/CBF_visibility.pdf``.

@@ -2261,37 +2261,84 @@ class IMG_PROCESSOR(Thread):
                     # dropped map err_px p90 3.8->1.4/6.6->2.0). OR-in the ill-cond check as a harmless
                     # backstop -- verified INERT on the decode path (ArUco self-gates conditioning:
                     # decode-success quads have min diag angle 27deg, never a sliver), but future-proof.
-                    _reject_correct = False
+                    # CONFIDENCE-WEIGHTED LOOP-CLOSURE CORRECTION (2026-07-30, ported from
+                    # Hardware/scripts/img_data.py): previously a binary gate --
+                    # _reject_correct=True skipped loop_closure_correct entirely, throwing
+                    # away a near-edge/marginal decode's information completely even though
+                    # it still carries SOME real signal. Replaced with a continuous
+                    # confidence in [0,1] (_markerEdgeMarginScore * _quadConditionScore,
+                    # same underlying thresholds the old boolean gate used) passed into
+                    # loop_closure_correct, which now BLENDS the map's per-corner position
+                    # toward the decode by this amount instead of a hard snap-or-skip.
+                    _corr_confidence = 1.0
                     if self._map_reject_overflow_correct and aruco_pts_0 is not None:
-                        _cc = np.asarray(aruco_pts_0, float); _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
-                        _near_edge = bool(_cc[:, 0].min() < _m or _cc[:, 0].max() > _iw - _m
-                                          or _cc[:, 1].min() < _m or _cc[:, 1].max() > _ih - _m)
-                        _reject_correct = _near_edge or self._quadIllConditioned(aruco_pts_0)
-                    _illcond_correct = _reject_correct
-                    if results[0] and not _illcond_correct:
-                        self._planar_map.loop_closure_correct(
-                            aruco_pts_0, marker_id=self._primary_id)
+                        _ih, _iw = imgs[0].shape[:2]; _m = self._marker_fov_margin
+                        _corr_confidence = (self._markerEdgeMarginScore(aruco_pts_0, (_ih, _iw), _m)
+                                             * self._quadConditionScore(aruco_pts_0))
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and _corr_confidence < 0.999:
+                            print(f"[planar_map] loop_closure_correct confidence="
+                                  f"{_corr_confidence:.3f} (near-edge/marginal decode) "
+                                  f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
+
+                    # VALIDATION-TRIGGERED RESET (2026-07-30, see HANDOFF_cbf_lockout_
+                    # planarmap_2026-07-30.md): _err below is a HELD-OUT ground-truth
+                    # cross-check (map's own prediction, from BEFORE this frame's
+                    # correction, vs the actual fresh decode) -- previously computed
+                    # AFTER loop_closure_correct already ran and only ever logged
+                    # ("[planar_map shadow]"), never acted on. Confirmed live (2026-07-30
+                    # Gazebo crash, t~64.0s): map_confidence stayed 0.27-0.9 (healthy-
+                    # looking) for the ENTIRE window the held-out err spiked to
+                    # 645-1483px, because map_confidence is track_conf*resid_conf*...
+                    # computed from the SAME (already-broken) homography the error is
+                    # measuring against -- it can't see its own failure. This ground-
+                    # truth check is the one signal that CAN see it: it's compared
+                    # against an actual fresh decode, not the map's own internal state.
+                    # MUST be computed BEFORE loop_closure_correct touches the map (see
+                    # "HELD-OUT PREDICTION FIRST" comment above) -- computing it after
+                    # would be circular. On a large disagreement, a per-corner snap
+                    # (loop_closure_correct) isn't enough -- the underlying homography
+                    # itself is wrong -- so discard all map state and re-bootstrap fresh
+                    # from this decode instead, exactly like the existing
+                    # resid_px-non-finite SELF-HEAL path in planar_map.py:update(), just
+                    # triggered by a different (ground-truth, not internal) signal.
+                    _err = None
+                    if aruco_pts_0 is not None and _pred is not None and len(_pred) == len(aruco_pts_0):
+                        _err = float(np.mean(np.linalg.norm(
+                            _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
+                    _validation_reset_px = float(os.environ.get("PLANAR_MAP_VALIDATION_RESET_PX", "30.0"))
+                    _validation_failed = (_err is not None and _err > _validation_reset_px)
+
+                    if _validation_failed:
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                            print(f"[planar_map] VALIDATION-TRIGGERED RESET: held-out err="
+                                  f"{_err:.1f}px exceeds {_validation_reset_px:.1f}px -- "
+                                  f"discarding poisoned map state and re-bootstrapping "
+                                  f"fresh from this decode t={float(getattr(self,'_stamp',0.0)):.2f}",
+                                  flush=True)
+                        self._planar_map._full_reset()
+                        self._planar_map.bootstrap(_gray0, marker_px_corners=aruco_pts_0,
+                                                    marker_id=self._primary_id, quat_R=_R0)
                         self._planar_map_decode_calls += 1
-                    elif results[0] and _illcond_correct and os.environ.get("PLANAR_MAP_DBG", "0") == "1":
-                        print(f"[planar_map] ill-conditioned quad -> SKIP loop_closure_correct "
-                              f"t={float(getattr(self,'_stamp',0.0)):.2f}", flush=True)
-                    if aruco_pts_0 is not None:
-                        if _pred is not None and len(_pred) == len(aruco_pts_0):
-                            _err = float(np.mean(np.linalg.norm(
-                                _pred - np.asarray(aruco_pts_0, dtype=np.float64), axis=1)))
-                            self._planar_map_log.append({
-                                "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
-                                "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
-                                "confidence": self._planar_map.confidence,
-                                "map_confidence": self._planar_map.map_confidence,
-                                "marker_rigid_ok": self._planar_map.marker_rigid_ok,
-                                "primary_zero_corners": self._planar_map.primary_zero_corners,
-                                "decode_calls": self._planar_map_decode_calls})
-                            if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
-                                print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
-                                      f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
-                                      f"n_tracked={self._planar_map.n_tracked} "
-                                      f"rigid_ok={self._planar_map.marker_rigid_ok}")
+                    elif results[0]:
+                        self._planar_map.loop_closure_correct(
+                            aruco_pts_0, marker_id=self._primary_id, confidence=_corr_confidence)
+                        self._planar_map_decode_calls += 1
+
+                    if _err is not None:
+                        self._planar_map_log.append({
+                            "t": float(getattr(self, '_stamp', 0.0)), "err_px": _err,
+                            "fresh_decode": bool(results[0]), "used_klt_fallback": used_klt_fallback,
+                            "confidence": self._planar_map.confidence,
+                            "map_confidence": self._planar_map.map_confidence,
+                            "marker_rigid_ok": self._planar_map.marker_rigid_ok,
+                            "primary_zero_corners": self._planar_map.primary_zero_corners,
+                            "decode_calls": self._planar_map_decode_calls,
+                            "validation_reset": _validation_failed})
+                        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                            print(f"[planar_map shadow] t={self._planar_map_log[-1]['t']:.3f} "
+                                  f"err={_err:.2f}px conf={self._planar_map.confidence:.2f} "
+                                  f"n_tracked={self._planar_map.n_tracked} "
+                                  f"rigid_ok={self._planar_map.marker_rigid_ok}")
             except Exception as _e:
                 # Never let a map-internal failure take down the real acquisition path or
                 # poison the loom source -- pred already defaulted to None above this try.
@@ -3674,8 +3721,33 @@ class IMG_PROCESSOR(Thread):
         didn't fire) are ALSO scaled now (2026-07-21, see feedback_decode_klt_confidence_
         scaled_r below) by a KLT-fallback-streak confidence, so decode isn't the
         unconditionally-trusted assumption every other fix this session was protecting
-        against."""
+        against.
+
+        FLOW-COUPLED COAST (2026-07-31, see feedback_s_coast_uses_h): during a predict-only
+        coast (z=None), _kf_step's own extrapolation for the xc/yc channels uses THEIR OWN
+        rate state -- a smoothed derivative of PAST xc/yc measurements, entirely decoupled
+        from h (optical flow), which is estimated by a separate KF/EKF (_kf_x / _ekf_x).
+        Traced live on a moving-target (rover) rep: during a ~1.8s total corner-loss window,
+        h stayed large and correctly tracked the true relative motion (it degrades gracefully
+        -- coasting a velocity-like quantity forward is far more physically valid than coasting
+        a position channel's own weak self-derived rate), while xc/yc's own rate state had
+        already decayed near-zero from a well-tracked pre-loss approach, so the position coast
+        barely moved even as the true bearing diverged by O(1) over the same window. FIX:
+        during a coast, overwrite the xc/yc rate slots with the CURRENT calibrated h_x/h_y
+        (via getOptFlowAngVel) before extrapolating -- first-order (ds/dt ~= h), ignoring the
+        s*h_z cross-term the full IBVS interaction matrix carries; a refinement, not a
+        ground-truth substitute (h itself may be coasting too over a long-enough gap -- see
+        that memory for the FLOW_FUSE_RING/centroid-rate-observer follow-up this doesn't
+        replace)."""
         z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        if z is None and self._kf_feat_initialized:
+            try:
+                _h_now = self.getOptFlowAngVel()[:2]
+                if np.all(np.isfinite(_h_now)):
+                    self._kf_feat_x[0, 1] = float(_h_now[0])
+                    self._kf_feat_x[1, 1] = float(_h_now[1])
+            except Exception:
+                pass   # never let the flow-coupling hint break the coast itself
         r_pos = self._kf_feat_r
         if z is not None:
             _map_tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0
@@ -4608,6 +4680,45 @@ class IMG_PROCESSOR(Thread):
             return bool(ang < _min_ang or elong > _max_elong)
         except Exception:
             return True
+
+    def _quadConditionScore(self, pts):
+        """CONTINUOUS companion to _quadIllConditioned (2026-07-30, for confidence-weighted
+        loop_closure_correct, ported from Hardware/scripts/img_geometry.py's
+        quad_condition_score): 1.0 = well-conditioned (near-square), 0.0 = at or beyond the
+        same ill-conditioned thresholds _quadIllConditioned rejects on. Same geometry, just
+        returned as a smooth [0,1] score so a marginal decode can be BLENDED instead of
+        binary accept/reject."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+                return 0.0
+            d1 = c[2] - c[0]; d2 = c[3] - c[1]
+            n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+            if n1 < 1e-6 or n2 < 1e-6:
+                return 0.0
+            ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+            sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+            elong = max(sides) / max(min(sides), 1e-6)
+            _min_ang = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+            _max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+            w_ang = np.clip((ang - _min_ang) / max(90.0 - _min_ang, 1e-6), 0.0, 1.0)
+            w_elong = np.clip((_max_elong - elong) / max(_max_elong - 1.0, 1e-6), 0.0, 1.0)
+            return float(w_ang * w_elong)
+        except Exception:
+            return 0.0
+
+    def _markerEdgeMarginScore(self, pts, resolution_hw, margin_px):
+        """CONTINUOUS companion to the inline near-edge check at the loop_closure_correct
+        call site (2026-07-30, ported from Hardware/scripts/img_geometry.py's
+        marker_edge_margin_score): 1.0 = every corner well clear of the frame boundary,
+        0.0 = at or inside margin_px of the edge. Ramps linearly in between."""
+        try:
+            c = np.asarray(pts, dtype=float).reshape(-1, 2)
+            h, w = resolution_hw
+            min_dist = min(c[:, 0].min(), w - c[:, 0].max(), c[:, 1].min(), h - c[:, 1].max())
+            return float(np.clip(min_dist / max(margin_px, 1e-6), 0.0, 1.0))
+        except Exception:
+            return 0.0
 
     def _centroidMap(self, quat, size_factor=1.0):
         """Map-driven V-frame centroid [xc, yc], STAGE 2. Uses the map's NATIVE (projective-
