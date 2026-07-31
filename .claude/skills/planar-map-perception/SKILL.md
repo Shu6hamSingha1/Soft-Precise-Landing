@@ -113,6 +113,58 @@ zero. Looks chaotic only because raw decode itself is flickering rapidly. Check 
 coincides with a real attitude-rate spike (quaternion tilt climbing fast) — that's KLT's
 zero-motion-prior assumption breaking under real rotation, which gyro-seeded KLT targets.
 
+## Moving-target additions (2026-07-30/31 — five fixes + one open gap)
+
+Everything above was built/validated against a STATIONARY target. Testing against a moving
+rover surfaced a class of bug none of it covered: the CBF's corner source
+(`_feature_pts`/`PlanarFeatureMap` small-slot) is driven by REAL perception even under
+`PLASMC_GT_FEEDBACK=1` (GT-FB only substitutes the SMC's `s`/`h` inputs, never the CBF path or
+the map itself) — so a moving target's marker-overflow-near-deck struggles reach the CBF and
+the adaptive-gain law even when the primary tracking law is perfect.
+
+**Five fixes landed 2026-07-30** (ported from a parallel Pi-hardware session, ported into
+Gazebo same day, validated IC1-5 n=3-8 with no regression — see
+`project_20260730_five_fixes_ic_validation` memory):
+1. RANSAC-bounds + confidence-lockup self-heal (`planar_map.py`, `_degenerate_streak` →
+   `_full_reset()` after `PLANAR_MAP_DEGENERATE_RESET_SECONDS` (0.4s) of `resid_px=inf`).
+2. `CBF_CORNERS_STALE` (controller.py property, 30-frame `_cbf_corners_none_streak`) ANDed
+   into `landing_test.py`'s `feature_fresh` — exposes CBF-corner staleness the existing
+   `TARGET_IS_VISIBLE`/`FEATURE_IS_STALE`/`RESCUE_ACTIVE` signals can't see (different gate).
+3. Held-out validation-triggered reset (`img_data.py`): cross-checks the map's own
+   pre-correction prediction against a fresh decode — a signal `map_confidence` itself can't
+   see (computed from the same possibly-broken homography). Forces `_full_reset()` +
+   re-bootstrap past `PLANAR_MAP_VALIDATION_RESET_PX` (30px) disagreement.
+4. Confidence-weighted `loop_closure_correct` (`planar_map.py`/`img_data.py`): near-edge/
+   ill-conditioned decodes now BLEND into the map (`_markerEdgeMarginScore * _quadConditionScore`)
+   instead of being discarded outright — was throwing away real correction info exactly when
+   the marker overflows the FOV near touchdown.
+5. **Kappa/integral freeze on staleness** (`controller.py`): `kappa`'s RK5 integration freezes
+   while `CBF_CORNERS_STALE`; `is_e_n`/`izeta` freeze on any `FEATURE_PTS_FRESH=False` frame.
+   Direct fix for the a_u-explosion mechanism: `dkappa/dt = theta*N*G*|sigma| - N*P*kappa` runs
+   away when `sigma` stays saturated because there's NO valid measurement, not real tracking
+   error — confirmed on real hardware (kappa 0.75→16-18, a_u 59-180) and reproduced in Gazebo.
+
+All five together fully solved the rover case UNDER `PLASMC_GT_FEEDBACK=1` (n=3 Linear:
+min_alt_xy 0.034-0.167m, matching the historical 07-02 baseline).
+
+**Still open: real perception (GT-feedback OFF) fails badly on a moving target** — n=3, all
+`TARGET_LOST`, impacts 57-311 m/s², xy_err ~1-1.4m. Root cause (see
+`project_20260731_moving_target_real_perception_chain` memory): a genuine ~1.4-1.8s total
+corner-loss window near the deck (all 3 reps) during which the position-feature KF's
+predict-only coast (`img_data.py::_kf_step`, called from `_kf_feat_update`) extrapolates using
+its OWN weak, self-referential position-derived rate state — fully DECOUPLED from `h`
+(optical flow), estimated by a separate KF/EKF, which stayed accurate the whole window. Fixed
+2026-07-31 (`_kf_feat_update`): during a coast, inject the current calibrated `h_x`/`h_y`
+(`getOptFlowAngVel()[:2]`) into the xc/yc rate slots before `_kf_step` extrapolates — scale-free
+(h is image+IMU-derived, not a forbidden target-pose/velocity substitute), first-order
+`ds/dt ~= h` (ignores the `s*h_z` cross-term as a first cut). **Not yet SITL-validated** — an
+n=3 real-perception re-test was launched same session; check its result (and the
+`MARKER_LOSS_GRACE`/1.0s-too-long-for-a-moving-target angle, still unaddressed) before trusting
+this closes the gap. If it doesn't fully close it, `h` itself was ALSO coasting during this
+window (no independent corner-free source in the default config) — `FLOW_FUSE_RING=1` or
+`PLASMC_CENTROID_RATE=1` (both baked OFF for stationary-target reasons that may not transfer)
+are the next lever, not yet re-examined for the moving-target case.
+
 ## Workflow for a new failure report ("centroid/alpha look wrong", or an a_u/kappa spike)
 1. Pull `Img_Data.npy`/`Control_Data.npy` for the failing rep; check `map_confidence`/
    `confidence`, `RESCUE_ACTIVE`, `N Flow Corners`, and `a_u`/`kappa` norms around the
