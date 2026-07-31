@@ -1,7 +1,12 @@
-"""Save a handful of real camera frames to disk (both the raw stream,
-debayered+brightened for human/visual inspection, and the main/ISP-scaled
-stream actually used for ArUco detection) so they can be pulled off the Pi
-and looked at directly - instead of guessing blind from CPU-only diagnostics.
+"""Save a handful of real camera frames to disk (img_data.py's one working
+ISP-scaled stream, the same one actually used for ArUco detection) so they
+can be pulled off the Pi and looked at directly - instead of guessing blind
+from CPU-only diagnostics.
+
+UPDATED 2026-07-30: used to also save a separate "raw" debayered+brightened
+frame for comparison, but imgstreamer.py no longer exposes the raw stream
+at all (see its module docstring) - img_data.py works in ONE resolution
+everywhere now, so there is nothing left to compare against.
 
 Captures TWO short bursts back to back: one with CAM_MANUAL_EXPOSURE=1 (this
 session's fix, current calibration default) and one with auto-exposure
@@ -37,16 +42,6 @@ _arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_NONE
 _detector = cv2.aruco.ArucoDetector(_arucoDict, _arucoParams)
 
 
-def debayer_bayer_to_bgr(frame, display_gain=4.0):
-    """Ported from img_data.py - raw-stream capture bypasses the ISP's own
-    gain/tone-mapping, so the debayered image is genuinely dark without
-    this boost. Display/visual-inspection only."""
-    if frame is None or frame.ndim != 2:
-        return frame
-    bgr = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
-    return cv2.convertScaleAbs(bgr, alpha=display_gain, beta=0)
-
-
 def capture_burst(label, manual_exposure, out_subdir):
     os.environ["CAM_MANUAL_EXPOSURE"] = "1" if manual_exposure else "0"
     # imgstreamer reads its env-derived constants at IMPORT time, not per-call -
@@ -66,19 +61,16 @@ def capture_burst(label, manual_exposure, out_subdir):
     t0 = time.perf_counter()
     results = []
     while saved < N_FRAMES and (time.perf_counter() - t0) < CAPTURE_WINDOW_S:
-        m = list(strm.getMainImages())[-1]
-        r = list(strm.getImages())[-1]
-        if m is not None and r is not None and (last_main is None or not np.array_equal(m, last_main)):
+        m = list(strm.getImages())[-1]
+        if m is not None and (last_main is None or not np.array_equal(m, last_main)):
             last_main = m
             corners, ids, _ = _detector.detectMarkers(m)
             decoded = ids is not None and len(ids) > 0
-            main_path = os.path.join(out_subdir, f"frame{saved:02d}_main320x240.png")
-            raw_path = os.path.join(out_subdir, f"frame{saved:02d}_raw640x480_debayered.png")
+            main_path = os.path.join(out_subdir, f"frame{saved:02d}.png")
             main_annotated = cv2.cvtColor(m, cv2.COLOR_GRAY2BGR)
             if decoded:
                 cv2.aruco.drawDetectedMarkers(main_annotated, corners, ids)
             cv2.imwrite(main_path, main_annotated)
-            cv2.imwrite(raw_path, debayer_bayer_to_bgr(r))
             mean_brightness = float(np.mean(m))
             results.append((saved, decoded, mean_brightness))
             print(f"  frame{saved:02d}: decoded={decoded}  main_stream_mean_brightness={mean_brightness:.1f}/255")

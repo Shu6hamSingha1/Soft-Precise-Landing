@@ -65,16 +65,20 @@ def record_camera_feed(duration=60, output_dir="Test_Data/Calibration/Test_Video
         if imgs and len(imgs) > 0:
             frame = imgs[-1]
             if frame is not None:
-                # BUGFIX 2026-07-23: getImages() returns the RAW single-channel
-                # Bayer frame (imgstreamer.py's _unpack_raw10 output) - writing
-                # that straight to a VideoWriter opened with the default
-                # isColor=True (3-channel) silently rejects EVERY frame
-                # ("expected 3 channels but got 1"), so the file was never
-                # actually getting any frames despite frame_count climbing.
-                # Debayer first (display_gain=1.0 - a real recording shouldn't
-                # be artificially brightened like the live cv2.imshow preview
-                # is; use the genuine raw-stream brightness).
-                bgr = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
+                # BUGFIX 2026-07-23: getImages() returns a single-channel
+                # frame - writing that straight to a VideoWriter opened with
+                # the default isColor=True (3-channel) silently rejects EVERY
+                # frame ("expected 3 channels but got 1"), so the file was
+                # never actually getting any frames despite frame_count
+                # climbing.
+                # UPDATED 2026-07-30: getImages() now returns the ISP-scaled
+                # working stream (grayscale Y-plane), not raw Bayer data -
+                # imgstreamer.py no longer exposes the raw stream at all (see
+                # its module docstring). Bayer-demosaicing this would produce
+                # garbage (there's no real Bayer mosaic in ISP luma output) -
+                # a plain grayscale->BGR conversion is the correct match now,
+                # same as every other display/recording path in this codebase.
+                bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
                 out.write(bgr)
                 frame_count += 1
 

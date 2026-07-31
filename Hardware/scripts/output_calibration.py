@@ -40,42 +40,48 @@ os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 # CAM_ANALOGUE_GAIN per lighting if the default under/over-exposes.
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 
-# Diagnosed 2026-07-26: PlanarFeatureMap SHADOW mode costs ~9-13ms/frame
-# (img_data.py's own [TIMING] stage "1b_planar_map_shadow") but on the Pi it
-# is PURELY diagnostic - self._planar_map's output only feeds its own
-# logging (Planar Map Center/Confidence) and its own loop_closure_correct
-# self-update, never getOptFlowAngVel/getImgFeatureParam/the fusion EKF (see
-# reference_project_skills-style note: Pi's port never got Gazebo's
-# _planar_map_primary ACTIVE rescue/override consumer, only the shadow
-# logger). Confirmed this by reading img_data.py directly - no downstream
-# consumer of the corner/flow pipeline reads it. Disabling it here changes
-# NOTHING about the calibration-relevant Feature Params/Opt Flow Ang Vel
-# signals, and reclaims a real chunk of the ~19Hz-on-battery loop budget
-# found investigating the mount-rotation check's low sample counts. Only
-# disabled for CALIBRATION RECORDING specifically (this script) - left ON
-# by default elsewhere (e.g. hardware_landing.py) where the shadow log may
-# still be worth collecting during real flight tests.
-os.environ.setdefault("PLANAR_MAP_SHADOW", "0")
-
-# CORRECTED 2026-07-26: disabling PLANAR_MAP_SHADOW alone does NOT stop the
-# planar-map computation - img_data.py's guard is
-# `if (self._planar_map_shadow or self._planar_map_primary) and ...`, and
-# self._planar_map_primary (env PLASMC_PLANAR_MAP_PRIMARY) defaults ON
-# (added 2026-07-25, mirrors Gazebo's PLASMC_PLANAR_MAP_PRIMARY). This one
-# is NOT purely diagnostic like shadow mode - it's an ACTIVE RESCUE/OVERRIDE
-# consumer that can substitute a map-PREDICTED corner position for the real
-# ArUco decode when detection struggles (see "S Estimator Tag" ==
-# 'planar_map_rescue'/'lstsq+klt+override' in recorded Img_Data.npy - already
-# confirmed firing on real GOOD-verdict calibration takes, e.g. 19 rescue
-# samples in one run). Same violation-of-intent as leaving FLOW_DH_MAX/
-# FLOW_DS_MAX/FLOW_LOOM_DECOUPLE on would be: this script's whole purpose is
-# recording TRUE RAW flow (see the module's own top-of-file print/comment),
-# and a map-predicted substitute is not raw data regardless of how well the
-# map itself performs. Force off here for BOTH reasons (frame-rate AND data
-# integrity) - do not treat this as merely a performance knob.
-os.environ.setdefault("PLASMC_PLANAR_MAP_PRIMARY", "0")
+# PlanarFeatureMap: LEFT ON during calibration (2026-07-27). This REVERSES the
+# 2026-07-26 decision to force PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0
+# here. Keeping the history because both the original reasoning and why it was
+# wrong are load-bearing:
+#
+# The 2026-07-26 rationale was (a) frame rate - shadow costs ~9-13ms/frame
+# ([TIMING] stage "1b_planar_map_shadow") against a ~19Hz-on-battery loop, and
+# (b) data integrity - _planar_map_primary is an ACTIVE RESCUE/OVERRIDE that can
+# substitute a map-PREDICTED corner for a real ArUco decode ("S Estimator Tag"
+# == 'planar_map_rescue'/'lstsq+klt+override'), and "a map-predicted substitute
+# is not raw data". (b) sounds right but does not survive the measurements:
+#
+#   1. The override NEVER touches the flow path. 'rescue'/'override' is 0.0% of
+#      the "Opt Flow Estimator Tag" in EVERY recording, including map-ON ones -
+#      it only ever fires on the centroid (S) path. So _sensor_cal_hw, the
+#      primary cal target, was never at contamination risk.
+#   2. The loss is BIASED, not uniform. On the map-ON (Jul 25) runs, map-sourced
+#      samples sit at a bbox-to-frame-edge margin of -10..51px (negative = the
+#      marker is already clipping) vs 38-92px for pure-ArUco samples, at
+#      comparable per-frame motion. The map fires exactly at the FoV limit -
+#      i.e. at the FAR ENDS of each excitation sweep, where the calibration
+#      signal is LARGEST. Disabling it truncates the excitation tails and leaves
+#      the low-excitation middle: the worst possible loss for a regression, and
+#      it manufactures the "near-hover takes are noise-dominated" failure as a
+#      configuration artifact. Measured: S-path coast 25% (map ON, best run) vs
+#      62-95% (map OFF).
+#   3. Gazebo already settled this. Its record_output_calibration.py hit the
+#      IDENTICAL problem on 2026-07-17 (CONTROLLER_READY not propagated -> the
+#      map was never constructed -> "NEVER RAN during output calibration") and
+#      named it "a TRAIN/RUN MISMATCH ... the cal was being fit against a
+#      map-dead signal the runtime never produces". Gazebo's fix was to make the
+#      map RUN during calibration; its recorder never disables it.
+#
+# The circularity concern is handled at DERIVE time, not RECORD time - which is
+# also what Gazebo does (derive_board_cal.py filters only != 'coast', and
+# separately derives a map-sourced cal from co-sampled 'Centroid Map Raw').
+# Set PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0 in the environment to
+# A/B the frame-rate cost, which remains real and is a SEPARATE tradeoff from
+# data integrity - argue it on its own, not by appeal to (b) above.
 
 from flight_controller import FC
+from img_geometry import CALIB_CX, CALIB_CY, fx   # for the run-validity framing/marker-size check
 import img_data as ID
 # from numerical_methods import RK5
 # from controller import Controller
@@ -89,6 +95,17 @@ print(f"[output_calibration] recording TRUE raw flow: "
 
 # # Setup variables
 QTM_IP = '192.168.0.111'
+
+# Run-validity decode-yield thresholds (2026-07-27). A calibration recording is
+# only as good as the fraction of frames where the marker was actually decoded;
+# see _print_run_validity for the full rationale and the Gazebo comparison.
+# 25%: the 2026-07-26 set ran 62.6-94.8% coast and produced a cal whose
+# per-run coefficients varied by ~their own magnitude. Gazebo's runs sit at
+# 3.3% (8 of 10 at 0.0%), so 25% is already a generous hardware allowance.
+COAST_MAX_PCT = float(os.environ.get("CAL_COAST_MAX_PCT", "25.0"))
+# 2.0s: derive_pi_cal.py excludes GT-grid samples interpolated across a >=1.0s
+# marker-loss gap, so a blackout past that threshold costs more than itself.
+BLACKOUT_MAX_S = float(os.environ.get("CAL_BLACKOUT_MAX_S", "2.0"))
 
 SLEEP_TIME = 1/200   # match hardware_landing.py:45 (was 1/30 - 6.7x slower than the
                       # operational regime this script is calibrating for; same
@@ -131,6 +148,11 @@ async def main(record = 'n'):
     target_pose = []
     opt_flow_ang_vel = []
     img_feature_param = []
+    raw_opt_flow_ang_vel = []      # pre-_sensor_cal_hw, for derive_pi_cal (2026-07-27)
+    raw_img_feature_param = []     # pre-_sensor_cal_s
+    raw_ring_flow_ang_vel = []     # pre-_sensor_cal_ring
+    centroid_map_raw = []          # map centroid, V-frame pre-cal (nan when not fired)
+    alpha_map_raw = []             # map alpha, V-frame pre-cal (nan when not fired)
     start_pose = None
     t_c = []
     gt_pose_stamp = []
@@ -193,6 +215,29 @@ async def main(record = 'n'):
             target_pose.append(mocap_node.getPose()["target"])
             opt_flow_ang_vel.append(img_node.getOptFlowAngVel())
             img_feature_param.append(img_node.getImgFeatureParam())
+            # RAW (pre-_sensor_cal) counterparts, co-sampled on the SAME loop
+            # tick as the mocap pose above (2026-07-27). The calibrated arrays
+            # cannot be used to FIT a calibration, so derive_pi_cal.py was
+            # re-loading Img_Data.npy and np.interp()-ing it onto the GT clock
+            # instead. That interpolation measurably hurts: validating GT s
+            # against the image gives corr 0.0-0.52 through the interpolated
+            # path vs 0.29-0.83 using exactly-paired co-sampled rows on the
+            # same recordings. Mirrors what Gazebo already co-samples
+            # (getRawOptFlowAngVel/getRawRingFlowAngVel) "so the derive tools
+            # can fit". Ring raw is included so ring-cal gets the same
+            # zero-interpolation treatment.
+            raw_opt_flow_ang_vel.append(img_node.getRawOptFlowAngVel())
+            raw_img_feature_param.append(img_node.getRawImgFeatureParam())
+            raw_ring_flow_ang_vel.append(img_node.getRawRingFlowAngVel())
+            # Map's INDEPENDENT centroid/alpha (V-frame, pre-cal), nan when the
+            # map didn't fire. Co-sampled on this same tick so a map cal can be
+            # fitted with zero alignment, exactly as Gazebo does with its own
+            # 'Centroid Map Raw'/'Alpha Map Raw'. Lets the map path be
+            # calibrated and cross-checked on its own terms instead of only
+            # reaching the fit as rescue/override-tagged rows in the ordinary
+            # feature stream.
+            centroid_map_raw.append(img_node.getRawCentroidMapFeature())
+            alpha_map_raw.append(img_node.getRawAlphaMapFeature())
             # Real per-iteration capture stamps for the two subsystems this
             # loop is polling, DISTINCT from t_c (this loop's own tick time).
             # t_c only tells you when THIS loop ran - it does not tell you
@@ -263,7 +308,7 @@ async def main(record = 'n'):
             telemetry_data = FC_node.getLogData()
             # controller_data = EC_node.getLogData()
             # controller_params = EC_node.getParams()
-            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Command": cmd}
+            gt_data = {"Start Time": start_time, "Time": t_c, "GT Pose Stamp": gt_pose_stamp, "Img Time Stamp": img_time_stamp, "Start Pose": start_pose, "UAV Pose": UAV_pose, "Target Pose": target_pose, "Opt Flow Ang Vel": opt_flow_ang_vel, "Img Feature Params": img_feature_param, "Raw Opt Flow Ang Vel": raw_opt_flow_ang_vel, "Raw Img Feature Params": raw_img_feature_param, "Raw Ring Flow Ang Vel": raw_ring_flow_ang_vel, "Centroid Map Raw": centroid_map_raw, "Alpha Map Raw": alpha_map_raw, "Command": cmd}
             img_params = img_node.getParams()
 
         # Close img_node thread
@@ -293,6 +338,67 @@ def _print_run_validity(image_data, gt_data):
         featN = len(image_data.get("Feature Params", [])) if image_data else 0
     except Exception:
         flowN = featN = 0
+
+    # DECODE YIELD (added 2026-07-27). flowN above is a raw ROW count, and
+    # img_data.py logs a row on EVERY call - including 'coast' frames, where no
+    # common marker was decoded in both frames of the pair and a literal
+    # np.zeros(6) is appended. So flowN says nothing about whether the camera
+    # actually SAW anything, and the old gate happily certified a run that was
+    # 94.8% coast (67 real samples of 1290) as "GOOD excitation on all axes".
+    # Audit vs the Gazebo pipeline: Pi 75.7% coast / 2,128 usable samples across
+    # a whole 7-run set, vs Gazebo 3.3% / 94,333 (8 of 10 Gazebo runs are 0.0%).
+    # A cal fitted on the remnant cannot be repeatable no matter how the fit is
+    # written - see project_pi_output_cal_methodology_audit_2026_07_27.
+    realN = coastN = 0
+    coast_pct = 0.0
+    blackout_s = 0.0
+    onset_r = float('nan')     # marker framing at the moment tracking died
+    try:
+        tags = [str(t) for t in image_data.get("Opt Flow Estimator Tag", [])]
+        if tags:
+            coastN = sum(1 for t in tags if "coast" in t)
+            realN = len(tags) - coastN
+            coast_pct = 100.0 * coastN / len(tags)
+            # longest CONTIGUOUS blackout, converted to seconds - a single long
+            # dropout is far worse than the same count scattered thinly, because
+            # derive_pi_cal's >=1s gap guard then discards the interpolated
+            # neighbourhood around it too.
+            longest = cur = 0
+            for t in tags:
+                if "coast" in t:
+                    cur += 1
+                    longest = max(longest, cur)
+                else:
+                    cur = 0
+            _ti = np.asarray(image_data.get("Time", []), dtype=float)
+            dt = float(np.median(np.diff(_ti))) if len(_ti) > 2 else 1.0 / 30.0
+            blackout_s = longest * dt
+
+            # How much room did the marker have when tracking died?
+            #
+            # CORRECTED 2026-07-27: an earlier version measured the CENTROID's
+            # distance from the principal point and concluded the marker was
+            # "well inside the frame". That was the wrong quantity. This marker
+            # is ~0.28 m and the camera is narrow (fx=1027, HFOV 34.7 deg), so
+            # it spans 30-60% of the frame height at 0.8-2.0 m: the centroid can
+            # sit comfortably inside while the marker's own CORNERS are already
+            # against the boundary. ArUco needs the whole quad PLUS a quiet
+            # zone, so it dies at that point. Measured at blackout onset: bbox
+            # margin median 6-10 px (vs 25-88 px while tracking), with 77-92% of
+            # onsets under 20 px. Measure the EXTENT, not the centre.
+            _P = np.asarray(image_data.get("Image Feature Pts", []), dtype=float)
+            if _P.ndim == 4 and len(_P) == len(tags):
+                _q = _P[:, 0]
+                _W, _H = 2.0 * CALIB_CX, 2.0 * CALIB_CY
+                _margin = np.minimum.reduce([
+                    _q[:, :, 0].min(1), _W - _q[:, :, 0].max(1),
+                    _q[:, :, 1].min(1), _H - _q[:, :, 1].max(1)])
+                _c = np.array([t == "coast" for t in tags])
+                _on = np.where(_c[1:] & ~_c[:-1])[0]
+                if len(_on):
+                    onset_r = float(np.median(_margin[_on]))   # px to frame edge
+    except Exception:
+        pass
     xs = ys = zs = yaws = np.array([])
     tz = np.array([0.0]); dur = 0.0
     try:
@@ -319,21 +425,105 @@ def _print_run_validity(image_data, gt_data):
     Zhi = float(np.nanmax(zs - np.nanmedian(tz))) if len(zs) else 0.0
     def tag(v, lo):
         return "OK " if v >= lo else "LOW"
+    def tag_hi(v, hi):                     # pass when v is at or BELOW hi
+        return "OK " if v <= hi else "BAD"
     print(" duration      : %6.1f s" % dur)
-    print(" flow samples  : %6d   %s (need >=300)" % (flowN, tag(flowN, 300)))
-    print(" feature samp  : %6d" % featN)
+    print(" -- decode yield (did the camera actually SEE the marker?) --")
+    print(" decoded flow  : %6d   %s (need >=300 REAL, not row count)"
+          % (realN, tag(realN, 300)))
+    print(" coast (lost)  : %5.1f%%   %s (need <=%.0f%%)"
+          % (coast_pct, tag_hi(coast_pct, COAST_MAX_PCT), COAST_MAX_PCT))
+    print(" max blackout  : %6.1f s %s (need <=%.1f)"
+          % (blackout_s, tag_hi(blackout_s, BLACKOUT_MAX_S), BLACKOUT_MAX_S))
+    print(" logged rows   : %6d   (flow) / %6d (feature)  [incl. coast]"
+          % (flowN, featN))
+    print(" -- excitation (did the vehicle actually MOVE?) --")
     print(" X span        : %6.2f m %s (need >=0.40)" % (xsp, tag(xsp, 0.40)))
     print(" Y span        : %6.2f m %s (need >=0.40)" % (ysp, tag(ysp, 0.40)))
     print(" Z span        : %6.2f m %s (need >=0.40)" % (zsp, tag(zsp, 0.40)))
     print(" yaw span      : %6.1f d %s (need >=20)" % (yawsp, tag(yawsp, 20.0)))
     print(" height range  : %5.2f .. %5.2f m" % (Zlo, Zhi))
-    weak = [n for n, v, lo in [("flow", flowN, 300), ("X", xsp, 0.40), ("Y", ysp, 0.40),
+
+    # Marker physical size, measured from THIS run's own tracked frames
+    # (side_px = fx * L / z), not assumed. The 2026-07-27 advisory text hardcoded
+    # "0.28 m" from one specific marker; that stops being true the moment the
+    # marker is swapped (e.g. to fix decode yield) or the nested small marker is
+    # what's tracked, and would silently give wrong altitude/margin advice.
+    # Only uses the BIG-marker mode (side > 80 px raw), matching the threshold
+    # used throughout this session's marker-size/decode-yield analysis - the
+    # nested small marker's own apparent size is a different, much smaller L.
+    marker_L_m = float('nan')
+    try:
+        _P2 = np.asarray(image_data.get("Image Feature Pts", []), dtype=float)
+        if _P2.ndim == 4 and len(_P2) == len(tags):
+            _q2 = _P2[:, 0]
+            _side = np.linalg.norm(_q2 - np.roll(_q2, -1, axis=1), axis=2).mean(1)
+            _tr = np.array([t != "coast" for t in tags]) & (_side > 80)
+            if _tr.sum() > 20 and len(zs):
+                # altitude at tracked samples: reuse the same height-range
+                # convention as Zlo/Zhi (UAV z minus target z), nearest-index
+                # matched onto the flow array's own length.
+                _hgt = (zs - np.nanmedian(tz))
+                _idx = np.clip(np.linspace(0, len(_hgt) - 1, len(tags)).astype(int),
+                               0, len(_hgt) - 1)
+                _L = _side[_tr] * np.abs(_hgt[_idx][_tr]) / fx
+                _L = _L[np.isfinite(_L) & (_L > 0.02) & (_L < 1.0)]
+                if len(_L) > 10:
+                    marker_L_m = float(np.median(_L))
+    except Exception:
+        pass
+
+    weak = [n for n, v, lo in [("X", xsp, 0.40), ("Y", ysp, 0.40),
                                ("Z", zsp, 0.40), ("yaw", yawsp, 20.0)] if v < lo]
-    if weak:
+    lost = [n for n, v, hi in [("coast", coast_pct, COAST_MAX_PCT),
+                               ("blackout", blackout_s, BLACKOUT_MAX_S)] if v > hi]
+    if realN < 300:
+        lost.append("decoded<300")
+
+    # Reported SEPARATELY and never merged, because the two failures have
+    # OPPOSITE fixes. Low excitation -> move more. Low decode yield -> move
+    # LESS (slower, smaller, keep the marker framed). The old single "WEAK -
+    # low excitation" verdict pushed the operator to sweep harder, which threw
+    # the marker out of FoV and made the yield worse; measured corr(hand-speed,
+    # coast%) = +0.55. Gazebo hit the same wall and cut its sweep amplitude
+    # 0.7 -> 0.35 m for exactly this reason.
+    if lost:
+        print(" VERDICT: UNUSABLE - poor decode yield: %s" % ", ".join(lost))
+        if np.isfinite(onset_r) and onset_r < 25.0:
+            print("          Marker bbox was only %.0f px from the frame edge when"
+                  % onset_r)
+            print("          tracking died -> it ran out of FRAME, not of focus.")
+            if np.isfinite(marker_L_m):
+                print("          This camera is narrow (HFOV ~35 deg). This run's own"
+                      " tracked")
+                print("          marker measures ~%.2f m; at 1.0/1.5/2.0 m that leaves"
+                      % marker_L_m)
+                for _z in (1.0, 1.5, 2.0):
+                    _room = max(0.0, (2.0 * CALIB_CY - fx * marker_L_m / _z) * _z / fx / 2.0)
+                    print("            z=%.1fm: +/-%.2f m of lateral room" % (_z, _room))
+            else:
+                print("          This camera is narrow (HFOV ~35 deg): at 1.0/1.5/2.0 m a")
+                print("          0.28 m marker leaves only +/-0.10/0.21/0.33 m of lateral")
+                print("          room (reference figure - this run's own marker size")
+                print("          could not be measured).")
+            print("          Raise the altitude, use a smaller marker, or reduce the")
+            print("          lateral excursion -- the >=0.40 m span asked for above is")
+            print("          NOT geometrically achievable at low altitude with this marker.")
+        elif np.isfinite(onset_r):
+            print("          Marker still had %.0f px of frame margin when tracking"
+                  % onset_r)
+            print("          died -> not a framing limit; check the detection path")
+            print("          (re-acquisition / ROI recovery / marker scale switching).")
+        else:
+            print("          The marker was not reliably decoded; check framing first,")
+            print("          then the detection path.")
+    elif weak:
         print(" VERDICT: WEAK - low excitation in: %s" % ", ".join(weak))
-        print("          near-hover/single-axis takes are noise-dominated; consider re-recording")
+        print("          Each axis still needs a real sweep during its own phase")
+        print("          (phased single-axis takes are correct - it is a whole-run")
+        print("          near-hover that is noise-dominated).")
     else:
-        print(" VERDICT: GOOD excitation on all axes")
+        print(" VERDICT: GOOD - excitation and decode yield both pass")
     print("=" * 52 + "\n")
 
 

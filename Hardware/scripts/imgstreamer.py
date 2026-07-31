@@ -1,31 +1,29 @@
 """
-Picamera2 streaming for Raspberry Pi OS - RAW BAYER capture for 30+ FPS
+Picamera2 streaming for Raspberry Pi OS - single working resolution for
+callers, backed internally by a dual-stream capture.
 
-Dual-stream config: a small "main" YUV420 stream keeps the IPA's AEC/AGC
-control loop running (raw-only capture disables it, leaving frames
-severely underexposed) AND is exposed to callers via getMainImages() as a
-genuinely smaller ISP-scaled grayscale image (its Y-plane) - unlike the
-"raw" stream, the ISP CAN scale to arbitrary sizes (the sensor's native
-raw-mode limits don't apply here), so this is the correct path for anyone
-wanting a smaller frame for cheaper CPU-bound processing (e.g. ArUco
-detectMarkers - see img_data.py._detect_markers). Both streams are pulled
-from the SAME captured request each loop iteration (capture_request(),
-not two separate capture_array() calls) so they stay frame-synced.
+REWORKED 2026-07-30: img_data.py previously juggled two named streams
+("raw" 640x480 / "main" 320x240, with a self._aruco_scale conversion
+between them) - confusing, and getMainImages()/getMainResolution() were a
+second API callers had to know about. That concept is gone. getImages()/
+getResolution() now return the ISP-scaled working stream (size set by
+MAIN_STREAM_SIZE, default 320x240) directly - the ONE resolution img_data.py
+sees or does geometry in. img_geometry.py's CALIB_CX/CY/fx/fy were rescaled
+to match (see its own 2026-07-30 comment).
 
-The raw stream is SBGGR10_CSI2P: MIPI RAW10 packed format, 4 pixels packed
-into 5 bytes (captured shape is (H, W*10/8), NOT (H, W)). _unpack_raw10()
-unpacks this into a true (H, W) 8-bit Bayer image (taking the 8 MSBs of
-each 10-bit sample; the 2 packed LSBs are discarded - not needed for
-ArUco/optical-flow use).
-
-IMPORTANT: the IMX219 only has a fixed set of native raw sensor modes.
-Requesting a size that isn't one of them makes Picamera2 silently snap to
-the nearest native mode WITHOUT raising an error - so the requested
-`resolution` passed to __init__ may not be what the sensor actually
-delivers. We query the real negotiated size from camera_configuration()
-after start() and use THAT everywhere (unpacking width, getResolution()),
-never the raw constructor argument. The "main" stream has no such
-limitation - it negotiates to the exact requested size via ISP scaling.
+Internally, a raw stream is still configured (NOT surfaced to callers) for
+two hardware-forced reasons, both true regardless of what callers need:
+1. AEC/AGC: the IPA's auto-exposure control loop needs a raw stream present
+   in the configuration or frames come back severely underexposed.
+2. Sensor-mode pinning: including `raw={"size": resolution}` in the
+   Picamera2 config forces the sensor into a specific fixed native mode
+   (this project uses 640x480, the fastest/smallest available - the IMX219
+   has no smaller native raw mode) rather than letting it default to
+   something else. The ISP's "main" output has no such limit; it can scale
+   to arbitrary sizes regardless of which raw mode the sensor is in.
+Because nothing consumes the raw pixels anymore, `run()` no longer calls
+`request.make_array("raw")` or unpacks RAW10 - that per-frame CPU cost is
+gone along with the naming confusion.
 """
 
 from picamera2 import Picamera2
@@ -57,14 +55,6 @@ MAIN_STREAM_SIZE = tuple(
 CAM_MANUAL_EXPOSURE = os.environ.get("CAM_MANUAL_EXPOSURE", "0") == "1"
 CAM_EXPOSURE_US = int(os.environ.get("CAM_EXPOSURE_US", "3000"))
 CAM_ANALOGUE_GAIN = float(os.environ.get("CAM_ANALOGUE_GAIN", "8.0"))
-
-
-def _unpack_raw10(packed, width):
-    """MIPI RAW10 packed -> 8-bit Bayer, shape (H, W*10/8) -> (H, W)."""
-    h = packed.shape[0]
-    groups = width // 4
-    reshaped = packed[:, :groups * 5].reshape(h, groups, 5)
-    return reshaped[:, :, :4].reshape(h, groups * 4)
 
 
 class imgstream(Thread):
@@ -106,23 +96,24 @@ class imgstream(Thread):
             print(f"imgstream: controls set -> {controls}"
                   + (f" (manual exposure ON, AEC/AGC disabled)" if CAM_MANUAL_EXPOSURE else ""))
 
-        # Actual negotiated raw stream size - may differ from the requested
-        # `resolution` if the sensor has no matching native mode.
-        actual_size = tuple(self._camera.camera_configuration()["raw"]["size"])
-        if actual_size != tuple(resolution):
-            print(f"WARNING: imgstream requested resolution={resolution} but "
-                  f"sensor negotiated raw size={actual_size} (nearest native "
-                  f"mode). Downstream code MUST use getResolution(), not the "
-                  f"requested tuple.")
+        # Sanity-check the sensor actually landed on the requested raw mode
+        # (internal only - this is about pinning the sensor's native mode
+        # for AEC/AGC + speed, not about what callers see; see module
+        # docstring). Callers never see this "raw" size at all now.
+        _raw_size = tuple(self._camera.camera_configuration()["raw"]["size"])
+        if _raw_size != tuple(resolution):
+            print(f"WARNING: imgstream requested raw sensor mode={resolution} but "
+                  f"the sensor negotiated {_raw_size} (nearest native mode). This "
+                  f"only affects AEC/AGC + speed pinning, not the working "
+                  f"resolution callers use (getResolution()).")
 
-        self._resolution = actual_size
-        self._width = actual_size[0]
-        self._main_resolution = tuple(self._camera.camera_configuration()["main"]["size"])
-        self._main_width = self._main_resolution[0]
+        # The working stream callers see IS the ISP-scaled 'main' stream -
+        # this is the one and only resolution img_data.py does geometry in.
+        self._resolution = tuple(self._camera.camera_configuration()["main"]["size"])
+        self._width = self._resolution[0]
         self._capRate = capRate
         self._break_flag = False
         self._img_deque = deque([None, None], maxlen=2)
-        self._main_img_deque = deque([None, None], maxlen=2)
         # Hardware capture timestamps, parallel to the image deques above -
         # ported from a PX4_Gazebo fix (bba5c33) for the SAME symptom we hit
         # on the Pi (inconsistent GT-vs-raw time-lag scan, no stable peak):
@@ -150,12 +141,12 @@ class imgstream(Thread):
     def run(self):
         try:
             while not self._break_flag:
-                # Pull raw + main from the SAME request so they're frame-synced
-                # (two separate capture_array() calls could each trigger a
-                # fresh capture, drifting the two streams apart in time).
+                # A raw stream is still requested in the Picamera2 config (see
+                # module docstring: AEC/AGC + sensor-mode pinning), but its
+                # array is never pulled here - nothing consumes raw pixels
+                # anymore, so skip the make_array("raw")+unpack cost entirely.
                 request = self._camera.capture_request()
                 try:
-                    packed = request.make_array("raw")
                     main_yuv = request.make_array("main")
                     md = request.get_metadata()
                     cap_stamp = {
@@ -165,17 +156,15 @@ class imgstream(Thread):
                     }
                 finally:
                     request.release()
-                if packed is not None:
-                    frame = _unpack_raw10(packed, self._width)
+                if main_yuv is not None:
+                    # YUV420 planar array: Y (luma) plane is the first
+                    # height rows - directly usable as grayscale, no
+                    # separate colour conversion needed for ArUco/detection.
+                    frame = main_yuv[:self._resolution[1], :self._width]
                     self._img_deque.append(frame)
                     self._cap_stamp_deque.append(cap_stamp)
                     self._count += 1
                     self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
-                if main_yuv is not None:
-                    # YUV420 planar array: Y (luma) plane is the first
-                    # main_height rows - directly usable as grayscale, no
-                    # separate colour conversion needed for ArUco/detection.
-                    self._main_img_deque.append(main_yuv[:self._main_resolution[1], :self._main_width])
         except Exception as e:
             print(f"Error in imgstream: {e}")
         finally:
@@ -185,30 +174,22 @@ class imgstream(Thread):
         self._break_flag = True
 
     def getImages(self):
+        """Grayscale (Y-plane) frames from the ISP-scaled working stream -
+        the single resolution img_data.py does all geometry/detection in."""
         return self._img_deque
-
-    def getMainImages(self):
-        """Grayscale (Y-plane) frames from the ISP-scaled 'main' stream -
-        genuinely smaller than the raw stream (see module docstring), for
-        cheap CPU-bound detection work. Frame-synced with getImages()."""
-        return self._main_img_deque
 
     def getCaptureStamps(self):
         """Hardware capture timestamps (see __init__ comment) parallel to
-        getImages()/getMainImages() - dicts with sensor_timestamp_ns,
-        frame_wall_clock, and pulled_at_perf_counter (when the capture
-        thread actually received this request, distinct from when
-        img_data.py's processing thread later logs its own perf_counter()
-        for the SAME frame)."""
+        getImages() - dicts with sensor_timestamp_ns, frame_wall_clock, and
+        pulled_at_perf_counter (when the capture thread actually received
+        this request, distinct from when img_data.py's processing thread
+        later logs its own perf_counter() for the SAME frame)."""
         return self._cap_stamp_deque
 
     def getResolution(self):
-        """Actual negotiated (width, height) - use this, not the requested tuple."""
+        """Actual negotiated (width, height) of the working stream - use
+        this, not the requested tuple."""
         return self._resolution
-
-    def getMainResolution(self):
-        """Actual negotiated (width, height) of the 'main' ISP-scaled stream."""
-        return self._main_resolution
 
     def getFPS(self):
         if self._meanTimePerImage > 0:

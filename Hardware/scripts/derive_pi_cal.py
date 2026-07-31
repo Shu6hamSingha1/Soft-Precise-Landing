@@ -52,6 +52,56 @@ CAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "Test_Data", "Calibration")
 
 T_QTM_TO_FRD = np.diag([1.0, -1.0, -1.0])   # FLU -> FRD, 180deg about shared X
+
+# ---------------------------------------------------------------------------
+# LEVER ARMS (user-measured 2026-07-27, given in MOCAP FLU: X=fwd, Y=left, Z=up)
+#
+#   camera optical centre -> UAV mocap origin : X +0.08, Z +0.16  m
+#   ArUco centre          -> target mocap origin: X -0.012, Y -0.034 m (RE-MEASURED
+#     2026-07-28, superseding the original -0.04/-0.01 - prompted by 3 independent
+#     lever-arm-certification checks all preferring mrk_y more negative than -0.01
+#     and mrk_x closer to zero than +0.04; see project_pi_gt_lever_arm_2026_07_27)
+#
+# Those are stated as "A -> B" = the vector FROM A TO B. What the geometry
+# needs is the opposite: origin -> feature, so each is NEGATED below before
+# the FLU->FRD flip.
+#
+#   camera:  origin -> cam    = -(+0.08, 0, +0.16) FLU = (-0.08, 0, -0.16) FLU
+#                             -> T @ ... = (-0.08, 0, +0.16) FRD
+#            i.e. the camera sits 16 cm BELOW (+z is down in FRD) and 8 cm AFT
+#            of the UAV mocap origin - physically consistent with a
+#            downward-facing camera slung under the airframe.
+#   marker:  origin -> aruco  = -(-0.012, -0.034, 0) FLU = (+0.012, +0.034, 0) FLU
+#                             -> T @ ... = (+0.012, -0.034, 0) FRD
+#
+# Sign convention verified empirically, not just asserted: applying these
+# collapses the GT-vs-logged-corner residual (see the CHECK in __main__ /
+# project_pi_gt_lever_arm_2026_07_27). If a future re-measure flips a sign the
+# residual will BLOW UP rather than fail quietly, so re-run that check.
+#
+# cam_z DROPPED (2026-07-28), despite being user-measured at +0.16 m. It is
+# STRUCTURALLY DEGENERATE with the bearing's own scale: it enters
+# W = (target + ...) - (up + Ru@cam), and its z-component shifts the
+# effective depth Vz the SAME way an additive epsilon in 1/(Vz+eps) would -
+# which is exactly the arbitrary "+0.2" term just removed on principle
+# elsewhere in this file (see the 1/Vz commit). Keeping a value here that the
+# fit can neither confirm nor refute (a profile scan over it rails to
+# whatever bound is given, never converging - see
+# project_pi_gt_lever_arm_2026_07_27) would be inconsistent with having just
+# thrown out the epsilon for the same reason. Measured directly: dropping it
+# is not just "unconfirmable", it is marginally BETTER (mean residual against
+# Virtual Feature Pts, 6 runs: 0.109 with cam_z=0.16 -> 0.104 with cam_z=0).
+# cam_x is KEPT - its SIGN is independently confirmed (robust across both the
+# flawed and corrected comparand, see project_pi_gt_lever_arm_2026_07_27) and
+# unlike z it is not scale-degenerate, so it is a real (if imprecisely
+# measured) correction rather than a disguised epsilon.
+# Env-overridable in metres, FRD, as "x,y,z".
+def _lever(env, default_frd):
+    v = os.environ.get(env)
+    return np.array([float(x) for x in v.split(",")], float) if v else np.array(default_frd, float)
+
+R_CAM_FRD    = _lever("CAL_CAM_LEVER_FRD",    [-0.08, 0.0, 0.0])     # UAV origin -> camera (z omitted, see above)
+R_MARKER_FRD = _lever("CAL_MARKER_LEVER_FRD", [+0.012, -0.034, 0.0])   # target origin -> ArUco centre (re-measured 2026-07-28)
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
 FLOW_KF_Q = float(os.environ.get("FLOW_KF_Q", "5.0"))       # matches img_data.py default
@@ -228,6 +278,88 @@ def _robust_vel(x, t):
     return np.column_stack([np.interp(t, tu, vu[:, k]) for k in range(x.shape[1])])
 
 
+# Phase labels: 0=X, 1=Y, 2=Z, 3=yaw, -1=ambiguous/settle.
+PHASE_LAB = ['X', 'Y', 'Z', 'yaw']
+PHASE_WIN_S = float(os.environ.get("CAL_PHASE_WIN_S", "0.5"))
+PHASE_DOM_MIN = float(os.environ.get("CAL_PHASE_DOM_MIN", "0.45"))
+# 1 rad/s of yaw is treated as comparable "excitation effort" to this many m/s
+# of translation, so the dominance comparison is not unit-biased toward yaw.
+PHASE_YAW_SCALE = float(os.environ.get("CAL_PHASE_YAW_SCALE", "0.30"))
+
+
+def phase_labels(g, win_s=PHASE_WIN_S, dom_min=PHASE_DOM_MIN):
+    """Recover per-sample excitation-phase labels from mocap GT alone.
+
+    ADDED 2026-07-27. These recordings ARE phased (operator sweeps one axis at
+    a time -- verified from mocap: 0.21 axis-switches/window, 3-4s contiguous
+    single-axis blocks, 0.73-0.80 dominance across the 2026-07-26 set), but
+    output_calibration.py logs NO phase tag, unlike Gazebo's
+    record_output_calibration.py which writes gt['Phase'] per sample and whose
+    derive_board_cal.py then fits the centroid scale from the CLEAN
+    single-axis segment (`std_ratio(..., phase=='x')`).
+
+    Without tags derive_one() had to fit the centroid scale with one global
+    polyfit over all phases mixed. Measured cost of that on the 7-run
+    2026-07-26 set: 2/7 runs returned a PHYSICALLY IMPOSSIBLE negative scale
+    (-0.0097, -0.0320 -- moving right cannot swing the GT bearing left), and
+    the aggregate produced a spurious 3.1x sx/sy asymmetry (0.061 vs 0.189)
+    on what is a near-symmetric camera. Phase-selecting removes every negative
+    and brings sx/sy to within 7% (0.270 vs 0.288), halving sx inter-run CV
+    (0.88 -> 0.42).
+
+    Method: window the run, normalise each axis by its OWN rms (so dominance
+    is relative to that axis's excitation scale, not absolute m/s), and label
+    a window only when one axis carries > dom_min of the normalised energy.
+    Windows below that threshold stay -1 (settle/transition) and are excluded,
+    which is the tagged-'settle' equivalent of Gazebo's phase script.
+
+    FRAME NOTE (checked 2026-07-27 - do NOT "fix" this by swapping axes).
+    There IS a non-identity 90deg rotation between camera and body
+    (img_geometry.R_CAM_TO_BODY = [[0,1,0],[-1,0,0],[0,0,1]]) and another
+    between mocap and body (T_QTM_TO_FRD = diag(1,-1,-1), FLU->FRD). Neither
+    needs applying here, because both are already consumed UPSTREAM of the
+    arrays this function and derive_one() consume:
+      - "Feature Params" is built from get_virtual_pts(), which applies
+        R_CAM_TO_BODY and then the gravity-levelling R_inv (img_geometry.py
+        ~line 122) -> it is already V-frame / body-aligned, not raw camera.
+      - g["B_h_g"] comes from compute_gt_flow(), which applies T_QTM_TO_FRD.
+    So the labels below (0=X,1=Y in body-FRD) pair DIRECTLY with
+    Feature Params columns 0/1. Verified empirically on 4 runs: the body-Y
+    phase drives centroid column 1 (std 0.101/0.152/0.133) far more than
+    column 0 (0.026/0.045/0.029). Applying R_CAM_TO_BODY again here would
+    introduce the very 90deg error it looks like it is preventing.
+
+    Returns an int array on g['t_g'], same length as the GT grid.
+    """
+    t = np.asarray(g["t_g"], float)
+    alt = np.asarray(g["alt"], float)
+    # translational velocity (m/s): h = v/z  ->  v = h*z
+    v = np.asarray(g["B_h_g"], float)[:, :3] * alt[:, None]
+    yaw_rate = _robust_vel(np.unwrap(g["alpha"])[:, None], t)[:, 0]
+    A = np.column_stack([v, yaw_rate * PHASE_YAW_SCALE])
+
+    rms = np.sqrt(np.nanmean(A ** 2, 0)) + 1e-9
+    An = np.abs(A) / rms
+
+    lab = np.full(len(t), -1, dtype=int)
+    if len(t) < 4 or not np.isfinite(t).all():
+        return lab
+    edges = np.arange(t[0], t[-1], win_s)
+    for a, b in zip(edges[:-1], edges[1:]):
+        w = (t >= a) & (t < b)
+        if w.sum() < 3:
+            continue
+        e = np.nanmean(An[w] ** 2, 0)
+        tot = np.nansum(e)
+        if not np.isfinite(tot) or tot <= 0:
+            continue
+        f = e / tot
+        k = int(np.nanargmax(f))
+        if f[k] > dom_min:
+            lab[w] = k
+    return lab
+
+
 def compute_gt_flow(run_dir):
     """Pi-adapted port of gt_optical_flow.compute_gt_flow. Returns a dict
     with GT reference signals on the GT's own time axis (0-based, seconds
@@ -264,23 +396,64 @@ def compute_gt_flow(run_dir):
     for i in range(n):
         p, t = u[i], tp[i]
         up, Ru[i] = _pose_to_frd(p)
-        tpp, _ = _pose_to_frd(t)
-        W_x_tu[i] = tpp - up
-        yaw[i] = -np.deg2rad(p.yaw)   # QTM -> FRD yaw sign flip
+        tpp, Rt = _pose_to_frd(t)
+        # LEVER ARMS (2026-07-27, user-measured). The mocap rigid-body origins
+        # are NOT the optical centre / marker centre, and the difference is a
+        # real ~0.19-0.23 m systematic error in the GT bearing s (see
+        # project_pi_gt_lever_arm_2026_07_27: GT-predicted marker pixel missed
+        # the logged corners by 156px in x, 70px in y before this).
+        # The camera arm is BODY-FIXED so it rotates with the UAV (Ru @ ...);
+        # the marker arm is fixed in the TARGET body (Rt @ ...), which for this
+        # static, ~0-yaw target is effectively world-fixed.
+        # Flow is unaffected either way - a constant offset differentiates
+        # away - so this corrects the bearing/centroid chain only.
+        W_x_tu[i] = (tpp + Rt @ R_MARKER_FRD) - (up + Ru[i] @ R_CAM_FRD)
+        # FIXED 2026-07-28: was -deg2rad(p.yaw) - the UAV's own ABSOLUTE yaw,
+        # completely dropping the target's yaw (t.yaw, only used above for the
+        # marker lever-arm rotation, never for orientation). That mirrors the
+        # position bug this exact lever-arm fix already corrected: s/h are
+        # built from a RELATIVE vector (target - UAV, both lever-arm-corrected)
+        # while alpha was left absolute. It only looked fine because the
+        # current rig's target is static ("effectively world-fixed", see
+        # comment above) - a constant target yaw offset silently absorbs into
+        # the fit rather than showing up as error. It breaks the moment the
+        # target has ANY nonzero or time-varying yaw (the moving-target/rover
+        # phase). Relative yaw = UAV yaw - target yaw (target rotating the
+        # marker contributes DIRECTLY to how it looks rotated in-frame; UAV
+        # rotating the camera contributes OPPOSITELY - hence the differing
+        # sign before negation), then the same QTM->FRD sign flip as before.
+        yaw[i] = -np.deg2rad(p.yaw - t.yaw)
 
     W_v_tu = _robust_vel(W_x_tu, tg)
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)
     V_s_g = np.full((n, 2), np.nan)
+    # DEPTH DENOMINATOR: pure 1/Vz (2026-07-28), matching Gazebo's
+    # aggregate_calibration_phased.compute_gt_signals (Vx/Vz, Vy/Vz, no
+    # epsilon). The prior "+0.2" epsilon was tested and did NOT explain the
+    # GT-vs-image mismatch this whole thread chased (removing it made the
+    # match worse under the flawed raw-pixel comparand, see
+    # project_pi_gt_lever_arm_2026_07_27) - it was pure softening, not a
+    # physically-motivated term, so there is no reason to keep diverging from
+    # the validated Gazebo formula. V_x[2] and zB are numerically identical
+    # (confirmed |zB - Vz| = 0.0000 even at 13.5 deg tilt, since _v_frame is
+    # gravity-levelled) so one guard covers both s and h.
+    #
+    # A hard guard is now REQUIRED where the epsilon used to only soften: s
+    # previously had NO guard at all (only the +0.2 kept it finite), which was
+    # a latent bug independent of this change - a near-zero/negative Vz could
+    # already blow up silently. abs(zB) >= 0.1 matches the guard h already
+    # had; s now gets the same one instead of none.
     for i in range(n):
         zB = W_x_tu[i, 2]
+        if abs(zB) < 0.1:
+            continue
         B_x = Ru[i].T @ W_x_tu[i]
         V_x = _v_frame(Ru[i]) @ B_x
-        V_s_g[i] = [V_x[0] / (V_x[2] + 0.2), V_x[1] / (V_x[2] + 0.2)]
+        V_s_g[i] = [V_x[0] / zB, V_x[1] / zB]
         B_v = Ru[i].T @ W_v_tu[i]
         V_v = _v_frame(Ru[i]) @ B_v
-        if abs(zB) >= 0.1:
-            B_h_g[i] = B_v / (zB + 0.2)
-            V_h_g[i] = V_v / (zB + 0.2)
+        B_h_g[i] = B_v / zB
+        V_h_g[i] = V_v / zB
 
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2],
                B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
@@ -441,13 +614,69 @@ def derive_one(run_dir):
     pred = Rm @ Msol
     r2 = 1 - np.sum((Gm - pred) ** 2, 0) / np.sum((Gm - Gm.mean(0)) ** 2, 0)
 
-    # centroid scale: GT bearing vs raw feature xc/yc, plain regression
-    # slope (no phase tags on this continuous hand-move data, unlike
-    # Gazebo's phased std_ratio - a simple lstsq slope per axis instead).
+    # centroid scale: GT bearing vs raw feature xc/yc, per-axis regression
+    # slope, fitted on that axis's OWN excitation phase.
+    #
+    # FIXED 2026-07-27 (see phase_labels docstring): this used to be one global
+    # polyfit over ALL phases mixed, because output_calibration.py logs no
+    # phase tag. Cross-axis motion during the x-phase then leaks into the sy
+    # fit and vice versa, which on the 2026-07-26 set produced 2/7 physically
+    # impossible NEGATIVE scales and a spurious 3.1x sx/sy asymmetry. Phases
+    # are now recovered from mocap (no re-recording needed) and each axis is
+    # fitted from its own clean segment, matching what Gazebo's
+    # derive_board_cal.py does with its logged gt['Phase'] tags.
+    # Held-during-coast centroids are excluded too. The 2026-07-26 coast fix
+    # deliberately left "Feature Params" alone because it is rescued/held (not
+    # zeroed) during coast -- but a HELD centroid is still a stale constant
+    # sitting against a GT that keeps moving, which biases the slope just as
+    # surely as a zero does. Measured on the 7-run set: excluding them takes
+    # the sy inter-run CV from 0.74 to 0.10.
     gs = g["V_s_g"]
-    ms = np.all(np.isfinite(gs), 1) & np.all(np.isfinite(raw_feat_g[:, :2]), 1) & gok
-    sx = float(np.polyfit(raw_feat_g[ms, 0], gs[ms, 0], 1)[0]) if ms.sum() > 10 else np.nan
-    sy = float(np.polyfit(raw_feat_g[ms, 1], gs[ms, 1], 1)[0]) if ms.sum() > 10 else np.nan
+    s_tag = np.array([str(x) for x in img.get("S Estimator Tag", [])])
+    if len(s_tag) == len(t_img_abs):
+        s_real_g = g["align"](t_img_abs,
+                              (s_tag != "coast").astype(float)[:, None])[:, 0] > 0.99
+    else:                                          # older recording, no tag
+        s_real_g = np.ones(len(gs), dtype=bool)
+        print("  [warn] no usable 'S Estimator Tag' - centroid fit cannot "
+              "exclude held-during-coast samples; treat cal_s as provisional")
+
+    ms = (np.all(np.isfinite(gs), 1) & np.all(np.isfinite(raw_feat_g[:, :2]), 1)
+          & gok & s_real_g)
+    lab = phase_labels(g)
+    if len(lab) != len(ms):                       # defensive: keep masks aligned
+        lab = np.resize(lab, len(ms))
+
+    cov = ", ".join(f"{PHASE_LAB[k]}={int(((lab == k) & s_real_g).sum())}"
+                    for k in range(4))
+    print(f"  phase coverage (REAL, non-coast GT-grid samples): {cov}, "
+          f"settle/ambiguous={int((lab < 0).sum())}")
+
+    def _phase_slope(col, axis_k, name):
+        """Slope from axis_k's own phase, real samples only.
+
+        Deliberately NO fallback to the phase-mixed / coast-included fit: that
+        fallback is what manufactured the impossible negative scales this
+        function exists to eliminate. A starved phase means the marker was not
+        actually seen while that axis was driven, which is a RECORDING gap --
+        report NaN and say so, rather than emit a confident wrong number.
+        """
+        sel = ms & (lab == axis_k)
+        if sel.sum() > 50:
+            return float(np.polyfit(raw_feat_g[sel, col], gs[sel, col], 1)[0]), int(sel.sum())
+        print(f"  [warn] {name}: only {int(sel.sum())} REAL sample(s) in the "
+              f"{PHASE_LAB[axis_k]} phase (need >50) -> NaN. The marker was "
+              f"lost through most of this run's {PHASE_LAB[axis_k]} phase; "
+              f"re-record that phase rather than trusting a substitute fit")
+        return np.nan, int(sel.sum())
+
+    sx, nx = _phase_slope(0, 0, "sx")
+    sy, ny = _phase_slope(1, 1, "sy")
+    for nm, val in (("sx", sx), ("sy", sy)):
+        if np.isfinite(val) and val <= 0:
+            print(f"  [warn] {nm}={val:+.4f} is NON-POSITIVE -- physically "
+                  f"impossible for a centroid scale; this run's centroid fit "
+                  f"is contaminated, exclude it rather than averaging it in")
 
     return cal, r2, (sx, sy), len(Rm)
 
@@ -534,6 +763,19 @@ def check_mount_rotation(run_dir):
     velocity may be too drifty; expect weak/inconsistent correlations until a
     better-excited recording exists. Report it anyway (harmless when weak) so
     a future well-excited run's improvement is visible without code changes.
+
+    AXIS MAPPING IS NOW VALIDATED (2026-07-27) - but by a DIFFERENT route than
+    this function's translation block, which stays weak for the reason above.
+    Rather than FC INS velocity (drifty, GPS-denied), the check used mocap:
+    phase_labels() recovers the excitation phase, then the V-frame centroid
+    response is measured per phase. body-Y excitation drives centroid column 1
+    by 3-5x over column 0 (std 0.101/0.152/0.133 vs 0.026/0.045/0.029) on the
+    2026-07-26 runs; a wrong or missing 90 deg in R_CAM_TO_BODY would have
+    shown the opposite. See the AXIS MAPPING VALIDATED block in img_geometry.py.
+    So do NOT read this function's weak translation correlations as evidence
+    against the mount - they reflect the INS velocity reference, not the mount.
+    What remains genuinely unvalidated is the mount TRANSLATION (lever arm),
+    which is a different quantity - see project_pi_gt_lever_arm_2026_07_27.
 
     Runs entirely on already-recorded Img_Data.npy + Telemetry_Data.npy - no
     mocap Ground_Truth.npy needed, so this works even on non-mocap hardware
@@ -674,7 +916,22 @@ def main():
 
     cals = np.array(cals); r2s = np.array(r2s); calS = np.array(calS)
     M = cals.mean(0); Mstd = cals.std(0) if len(cals) > 1 else np.zeros_like(M)
-    sx = float(np.nanmedian(calS[:, 0])); sy = float(np.nanmedian(calS[:, 1]))
+
+    # Centroid scale must be POSITIVE (a bigger raw pixel offset means a bigger
+    # GT bearing, never a smaller one). A non-positive per-run slope is a
+    # contaminated fit, not a datum -- median-ing it in would drag the applied
+    # cal toward a value no camera can have. Dropped explicitly here rather
+    # than trusted to the median's outlier tolerance (2026-07-27).
+    def _pos_median(col, name):
+        v = calS[:, col]
+        good = v[np.isfinite(v) & (v > 0)]
+        n_bad = int((np.isfinite(v) & (v <= 0)).sum())
+        if n_bad:
+            print(f"  [warn] {name}: dropped {n_bad} non-positive per-run "
+                  f"slope(s) from the aggregate (physically impossible)")
+        return float(np.median(good)) if len(good) else np.nan
+
+    sx = _pos_median(0, "sx"); sy = _pos_median(1, "sy")
 
     print(f"\n\n=== AGGREGATE across {len(cals)} run(s) — PROVISIONAL, review before use ===")
     print("per-axis R^2 (mean):  " + "  ".join(f"{LAB[k]}={r2s[:,k].mean():.2f}" for k in range(6)))

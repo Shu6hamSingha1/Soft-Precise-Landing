@@ -681,6 +681,20 @@ class Controller(Thread):
         return bool(getattr(self._img_node, "FEATURE_IS_STALE", False))
 
     @property
+    def CBF_CORNERS_STALE(self):
+        """True once cbf_corners has been None (neither the PlanarFeatureMap
+        small-slot nor raw _feature_pts source available) for
+        CBF_CORNERS_STALE_FRAMES consecutive control-loop calls -- see the
+        staleness-tracking comment at the cbf_corners selection site and
+        PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md. Frame
+        count default (30) matches roughly the same ~1s window
+        MARKER_LOSS_GRACE's default uses at this loop's typical rate;
+        override via CBF_CORNERS_STALE_FRAMES if the live rate differs
+        meaningfully."""
+        _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
+        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+
+    @property
     def CBF_OVERFLOW(self):
         """True iff the CBF's own per-corner FoV-margin classification found the current
         CBF corner source (small-marker-preferred, see cone-angle computation) breaching
@@ -852,6 +866,14 @@ class Controller(Thread):
         """Loom-inversion soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds POSITIVE for _td_frames frames (= the vertical
         reversal at first contact) while near-centered. Depth-free (loom only), one-way latch."""
+        # DISABLED 2026-07-29 (user decision): armed on a single spiked h_z frame
+        # (-0.57, held constant 10 ticks -- a stale/corrupted frame, not real loom)
+        # while the drone was still climbing at 3-4m, then latched LANDED off
+        # ordinary positive h_z noise a few frames later -- false touchdown,
+        # mid-air. No persistence/spike-rejection gate on the arm condition (see
+        # controller.py:851 history). Re-enable once the arm condition is gated
+        # on _h_good and/or requires multi-frame persistence, not a single frame.
+        return
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -1092,6 +1114,13 @@ class Controller(Thread):
         self._t = []
         self._dt = []
         self._t0 = self._time.perf_counter()
+        # Savgol-predictor raw/good buffers MUST reset in lockstep with _t/_dt --
+        # _lastGood() returns indices into these buffers that _predictModel_s/_h
+        # then use directly to index self._t. Carrying stale (longer) s_raw/h_raw
+        # across a marker-loss -> reacquisition transition desyncs the lengths and
+        # crashes with IndexError on the first predict call after reacquisition.
+        self._h_raw = []; self._s_raw = []
+        self._h_good = []; self._s_good = []
 
     def run(self):
         while self._img_node.is_alive() and self._STAY_OPEN:
@@ -1400,9 +1429,25 @@ class Controller(Thread):
             V_ds_d_xy = np.linalg.inv(G_s) @ dzeta_sd + S_s @ self._dp_s[-1]
         else:
             # === legacy outer PID on s_e_n (default) ===
-            # Trapezoidal integration of normalized error + anti-windup
+            # Trapezoidal integration of normalized error + anti-windup, with
+            # CONDITIONAL INTEGRATION (freeze, mirrors _yawCtrl's ie_a anti-windup,
+            # 2026-06-08): a hard magnitude clamp bounds izeta's VALUE but does not stop
+            # it accumulating a fictitious error during a genuine feature coast (real
+            # 2026-07-30 hardware flights: s_e_n dead-reckoned via h_extrap/map_flow
+            # ramps linearly for ~400 frames while cbf_corners/FEATURE_PTS_FRESH are
+            # unfresh -> is_e_n/izeta wind up to their clamp on a signal that isn't real
+            # tracking error). Gate on FEATURE_PTS_FRESH (raw decode OR a validated
+            # rescue succeeded THIS frame), NOT FEATURE_IS_STALE -- Gazebo's own
+            # 2026-07-17 cbf_corners fix (see CBF_CORNERS_STALE docstring) found
+            # FEATURE_IS_STALE is a legacy raw-decode-miss counter with no rescue
+            # awareness that trips after just 3 misses even while a rescue is
+            # successfully covering every one -- gating on it would blind this
+            # integral during exactly the window a working rescue is active.
+            _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
             if len(self._is_e_n) == 0:
                 self._is_e_n.append(np.zeros(2))
+            elif not _feat_fresh:
+                self._is_e_n.append(self._is_e_n[-1].copy())   # hold -- do not integrate while unfresh
             else:
                 new_int = (self._is_e_n[-1]
                            + self._dt[-1] * 0.5 * (self._s_e_n[-1] + self._s_e_n[-2]))
@@ -1711,9 +1756,15 @@ class Controller(Thread):
         if self._touchdown_loom and len(self._s_e_n) > 0 and len(self._h) > 0:
             self._touchdownDetect(self._s_e_n[-1])
 
-        # Integral of zeta (trapezoidal) with anti-windup
+        # Integral of zeta (trapezoidal) with anti-windup, CONDITIONAL INTEGRATION
+        # (freeze while the feature measurement feeding zeta is unfresh -- see the
+        # matching is_e_n comment above; same 2026-07-30 hardware finding, same
+        # FEATURE_PTS_FRESH gate, same reason FEATURE_IS_STALE is the wrong flag).
+        _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
         if len(self._izeta) == 0:
             self._izeta.append(np.zeros(N_DIM))
+        elif not _feat_fresh:
+            self._izeta.append(self._izeta[-1].copy())   # hold -- do not integrate while unfresh
         else:
             new_int = (self._izeta[-1]
                        + self._dt[-1] * 0.5 * (self._zeta[-1] + self._zeta[-2]))
@@ -1846,7 +1897,22 @@ class Controller(Thread):
         # the freeze OFF) via large G·|σ| at close range — NOT the brief high-θ spikes the trigger
         # chased (θ>50 on only ~19% of frames). No θ threshold (50 or 200) catches it. The lever for
         # the E_Z=0.5 κ-bound is P_z (κ_eq ∝ 1/P leakage). See memory feedback_theta_norm_klt_drift.
-        if len(self._dt) > 0:
+        # KAPPA-RATCHET FIX (2026-07-30): freeze kappa (hold last value, skip the ODE
+        # integration) while CBF_CORNERS_STALE is True. Root cause found via real hardware
+        # flight telemetry the same session: 2 of 4 flights with real closed-loop feedback
+        # showed kappa growing 20-24x (0.75->16-18) and a_u peaking at 59-180 (vs single
+        # digits in the other 2) during sustained feature loss (cbf_corners none_streak
+        # reaching ~400). The kappa-ODE integrates dkappa/dt = Theta*N*G*|sigma| - N*P*kappa
+        # -- it has no way to tell "sigma is elevated because of real tracking error" apart
+        # from "sigma is elevated because there's no valid measurement to track against, so
+        # the feature signal is frozen/stale/extrapolated". On real hardware the latter is
+        # common (small marker, narrow FOV -> frequent multi-second coasts) and previously
+        # kept ratcheting kappa upward for the ENTIRE coast, so a rare reacquisition then
+        # applied an enormous, over-inflated corrective effort. CBF_CORNERS_STALE (added
+        # earlier this session, validated both by unit test and live on the Pi) is exactly
+        # the "no valid feature data" signal this needs -- gating on it directly parallels
+        # the existing FEATURE_IS_STALE-gated behavior elsewhere in this class.
+        if len(self._dt) > 0 and not self.CBF_CORNERS_STALE:
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
                             [self._sigma[-1], theta_ctrl], self._dt[-1])
             if hasattr(self, '_contained'):
@@ -2294,6 +2360,32 @@ class Controller(Thread):
             except (IndexError, AttributeError, TypeError):
                 cbf_corners = None
 
+        # CBF-CORNERS STALENESS TRACKING (2026-07-30): investigation this session
+        # (see PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md, ported
+        # here for parity) found real flights where cbf_corners went to None
+        # (neither the PlanarFeatureMap small-slot nor the raw _feature_pts
+        # source available) for a sustained stretch, silently freezing
+        # cbf2_filter's internal state (Phase 2, frozen delta_ref/Lw2_ref/
+        # cr_prev/d) for 30+ seconds -- while TARGET_IS_VISIBLE/FEATURE_IS_STALE
+        # (the signals hardware_landing.py's feature_fresh actually watches)
+        # kept reporting fine, because they reflect a DIFFERENT signal than
+        # what gates cbf_corners. The CBF degraded into a near-zero-authority
+        # state with NOTHING in the app loop noticing or falling back to the
+        # (already-validated) MARKER_LOSS_GRACE open-loop fallback. This
+        # counter + property exposes that staleness so hardware_landing.py can
+        # watch it directly, the same way it already watches FEATURE_IS_STALE.
+        if cbf_corners is None:
+            self._cbf_corners_none_streak = getattr(self, "_cbf_corners_none_streak", 0) + 1
+        else:
+            self._cbf_corners_none_streak = 0
+        if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+            self._cbf_corners_dbg_ctr = getattr(self, "_cbf_corners_dbg_ctr", 0) + 1
+            if self._cbf_corners_dbg_ctr % 15 == 0:
+                _fresh = getattr(self._img_node, "FEATURE_PTS_FRESH", None)
+                print(f"[cbf_corners] src={cbf_corners_src} FEATURE_PTS_FRESH={_fresh} "
+                      f"corners_is_none={cbf_corners is None} "
+                      f"none_streak={self._cbf_corners_none_streak}", flush=True)
+
         d_min_fov = 0.0
         self._cbf_overflow = False
         self._cbf_drift_off = False
@@ -2333,7 +2425,7 @@ class Controller(Thread):
                 d_min_fov = 0.0
 
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
-        focal_px = float(self._img_node.focal[0])
+        focal_px = float(np.atleast_1d(self._img_node.focal)[0])
         # Visibility tilt-cone headroom = current tilt + how far we can still tilt
         # before the nearest marker corner exits the FoV envelope, capped at theta_cap.
         # This is the cbf2 Phase-2 fallback cone (the exact camera-frame theta-QP below

@@ -712,6 +712,26 @@ class Controller(Thread):
         return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
 
     @property
+    def CBF_CORNERS_STALE_ABORT(self):
+        """Separate, much longer-fused staleness check for MISSION-ABORT decisions only
+        (landing_test.py's feature_fresh -> marker-loss-grace -> RTL handoff), added
+        2026-07-31 after CBF_CORNERS_STALE's fast ~30-frame/1s threshold was found to
+        false-trip on ordinary ArUco coast bursts on the Pi: the 2026-07-27 root-cause
+        investigation (project_pi_coast_root_cause) established that NORMAL, non-failure
+        coast bursts on that hardware commonly run 2-327 frames even while otherwise
+        tracking fine (narrow HFOV, small marker). Reusing the fast threshold for an
+        irreversible mission-abort meant nearly every flight in a 2026-07-31 hardware test
+        session (15 of 17 attempts) aborted to RTL within seconds, never reaching a
+        sustained closed-loop descent. The fast CBF_CORNERS_STALE stays as-is for the
+        kappa-freeze use below (low-risk, just pauses adaptation) -- only the abort path
+        gets this longer fuse. Default 350 frames sits just past the observed max normal
+        coast burst (327) on the Pi; override via CBF_CORNERS_STALE_ABORT_FRAMES if the
+        live rate or marker/FoV geometry differs on this platform. Ported from
+        Hardware/scripts/controller.py (Pi mirror) where this is already deployed/live."""
+        _frames = int(os.environ.get("CBF_CORNERS_STALE_ABORT_FRAMES", "350"))
+        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+
+    @property
     def CBF_OVERFLOW(self):
         """True iff the CBF's own per-corner FoV-margin classification found the current
         CBF corner source (small-marker-preferred, see cone-angle computation) breaching

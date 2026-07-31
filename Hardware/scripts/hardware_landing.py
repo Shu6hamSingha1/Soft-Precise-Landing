@@ -12,11 +12,18 @@ engaging the controller, marker-loss grace + open-loop fallback descent,
 TOUCHDOWN_DETECTED handling, a hover/descent-stall watchdog (using onboard
 FC_node.getPosBody() instead of Gazebo truth), and clean shutdown/disarm.
 
-*** THRUST CALIBRATION IS A PLACEHOLDER - DO NOT FLY UNTIL SET ***
-HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT below are NOT calibrated for
-this airframe. landing_test.py's 0.738 / 42.3 values are SITL X500-specific
-(different mass/ESC/prop). Real values must come from this vehicle's own
-tools/output_calibration.py or an input-calibration run BEFORE any flight.
+*** THRUST/RATE CALIBRATION: CALIBRATED, see Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt ***
+HOVER_THROTTLE_NORM / THRUST_SLOPE_N_PER_UNIT / RATE_CORRECTION defaults below
+are the FINAL adaptive-trim, drag-corrected, filtered, r^2-weighted result
+from Hardware/scripts/analyze_input_calibration.py (dataset: 47 runs,
+Input_Clean/, last updated 2026-07-22 — unchanged since, no new input-cal
+recordings). landing_test.py's 0.738 / 42.3 values are SITL X500-specific
+(different mass/ESC/prop) and are NOT used here. If new input-cal data is
+recorded, rerun analyze_input_calibration.py with best_trim_metrics() (the
+adaptive per-run trim search — main() alone does full-run-only and will NOT
+reproduce this file's numbers) and update CALIBRATION_RESULT.txt + the
+defaults below together; don't hand-derive a "candidate" value against a
+different (non-adaptive-trim) run of the script or a stale memory note.
 """
 
 import os
@@ -44,31 +51,46 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
 TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "3.0"))
 SLEEP_TIME = 1 / 200
 
-# *** PLACEHOLDER - replace with this airframe's own calibration ***
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.41"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
+# Final calibrated values (adaptive-trim, drag-corrected, filtered,
+# r^2-weighted; see CALIBRATION_RESULT.txt "2026-07-22 -- Adaptive per-run
+# trim" section). Implied mass -1.2% off known 1.204 kg.
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
-# *** Rate-axis command correction, r^2-weighted input-cal cross-check
-# (2026-07-21, Hardware/scripts/analyze_input_calibration.py) ***
+# *** Rate-axis command correction, r^2-weighted input-cal cross-check ***
 # gain = achieved/commanded from input-cal regression; dividing the intended
 # command by gain (== multiplying by these factors) should make the ACHIEVED
-# rate match what was originally intended. wy is the least-supported of the
-# three (n_eff=4.69 vs wx 6.06 / wz 10.02 after r^2-weighting) -- treat with
-# more caution than wx/wz on a first flight. See
-# Hardware/Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt for the
-# full derivation. Set RATE_CORRECTION_ENABLED=0 to disable and fall back to
-# uncorrected commands.
+# rate match what was originally intended. Adaptive-trim final values
+# (n_eff: wx 13.88, wy 15.59, wz 17.56) -- wy remains the least-supported of
+# the three but the gap narrowed a lot vs the earlier full-run-only pass.
+# See Hardware/Test_Data/Calibration/Input_Clean/CALIBRATION_RESULT.txt for
+# the full derivation. Set RATE_CORRECTION_ENABLED=0 to disable and fall
+# back to uncorrected commands.
 RATE_CORRECTION_ENABLED = os.environ.get("RATE_CORRECTION_ENABLED", "1") != "0"
 RATE_CORRECTION = np.array([
-    float(os.environ.get("RATE_CORRECTION_WX", "0.645")),
-    float(os.environ.get("RATE_CORRECTION_WY", "0.720")),
-    float(os.environ.get("RATE_CORRECTION_WZ", "0.689")),
+    float(os.environ.get("RATE_CORRECTION_WX", "0.758")),
+    float(os.environ.get("RATE_CORRECTION_WY", "0.739")),
+    float(os.environ.get("RATE_CORRECTION_WZ", "0.665")),
 ]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
-FINAL_DESCENT_THROTTLE = float(os.environ.get("LANDING_FINAL_DESCENT_THROTTLE",
-                                               str(HOVER_THROTTLE_NORM - 0.07)))
-FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "5.0"))
+# FALLBACK REDESIGN (2026-07-31): the old path sent zero body rates + a fixed throttle --
+# open-loop, freezing whatever tilt the vehicle had at the instant the marker was lost, with
+# no correction of any kind. Root-caused this session (video analysis of the 7 real 3m
+# flights on 2026-07-30): the marker only ever transits BRIEFLY through the narrow FOV
+# (~0.8-4s) before drifting out, and once lost, the old fallback did nothing about it. Went
+# through several iterations before landing here: (1) hold last-known XY via PX4's GPS-
+# derived position EKF -- REJECTED, this project's controller must never depend on GPS
+# (GPS-denied vision-only landing is the whole point; GPS on this airframe is logging-only,
+# per user); (2) GPS-free IMU-only active leveling + closed-loop throttle, ported from
+# PX4_Gazebo's TARGET_LOST-leveling fix -- worked but was still custom-reinvented flight
+# logic; (3) FINAL, per user direction: since this state is a DECLARED FAILURE and no
+# attempt is made to regain the marker, stop trying to fly/descend ourselves at all and hand
+# off entirely to PX4's own mature RETURN-TO-LAUNCH mode (climb to a safe altitude, fly back
+# to the launch point, land there) -- simpler, more robust, and the standard failsafe
+# response for a genuine failure, instead of reinventing descent/leveling logic.
+RTL_SAFE_ALTITUDE_M = float(os.environ.get("LANDING_RTL_SAFE_ALTITUDE_M", "3.0"))
+FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "60.0"))
 CONTROL_TIMEOUT_S = float(os.environ.get("LANDING_CONTROL_TIMEOUT_S", "90.0"))
 HOVER_STALL_S = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
 HOVER_STALL_DZ = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
@@ -175,7 +197,19 @@ class HardwareLandingSystem:
                 raise RuntimeError(f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
                                     f"{HOVER_STALL_S:.0f}s (alt={alt:.2f} m) - aborting")
 
-            feature_fresh = self.controller.TARGET_IS_VISIBLE and not self.controller.FEATURE_IS_STALE
+            # CBF_CORNERS_STALE (2026-07-30): a real degraded state was found this
+            # session where cbf_corners (what the visibility CBF actually reads)
+            # went unavailable for 30+ seconds while TARGET_IS_VISIBLE/
+            # FEATURE_IS_STALE (the signals feature_fresh already watched) kept
+            # reporting fine -- those reflect a DIFFERENT signal than what gates
+            # cbf_corners, so the CBF silently ran in a frozen, near-zero-
+            # authority Phase-2 fallback with nothing here noticing or falling
+            # back to the grace/open-loop path below. ANDed in (not OR'd) so it
+            # can force feature_fresh=False even when every other signal says
+            # fine. See PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md.
+            feature_fresh = (self.controller.TARGET_IS_VISIBLE
+                             and not self.controller.FEATURE_IS_STALE
+                             and not self.controller.CBF_CORNERS_STALE)
 
             if feature_fresh and not in_final_descent:
                 cmd = self.controller.getControlInput()
@@ -191,12 +225,32 @@ class HardwareLandingSystem:
                     marker_lost_t0 = now
                 await self.fc.send_attitude_rate(*last_good_sys_cmd)
             else:
+                # PX4 RTL HANDOFF (2026-07-31, simplified per user direction): earlier
+                # versions of this fallback tried increasingly elaborate custom logic (GPS
+                # position-hold -- rejected, no GPS dependency allowed; then IMU-only active
+                # leveling + closed-loop throttle) to keep flying/descending ourselves once
+                # the marker is lost beyond grace. But we're not attempting to REGAIN the
+                # marker at all in this state -- it's already a declared failed landing. The
+                # simplest, most robust choice is to stop trying to fly it ourselves and hand
+                # off to PX4's own mature RETURN-TO-LAUNCH mode: climbs to a safe altitude,
+                # returns to the recorded launch point, then lands there -- safer than landing
+                # in place (LAND) if the vehicle has drifted somewhere unexpected while the
+                # marker was lost, and the standard failsafe response for a declared failure.
+                # We stop sending OFFBOARD setpoints entirely once RTL is commanded --
+                # fighting it with our own attitude-rate commands would work against PX4's
+                # own mode.
                 if not in_final_descent:
                     in_final_descent = True
                     final_descent_t0 = now
                     print("[hardware_landing] Marker lost beyond grace - "
-                          f"open-loop fallback (throttle={FINAL_DESCENT_THROTTLE}).")
-                await self.fc.send_attitude_rate(0.0, 0.0, 0.0, FINAL_DESCENT_THROTTLE)
+                          f"declaring failed landing, handing off to PX4 RTL mode "
+                          f"(safe altitude={RTL_SAFE_ALTITUDE_M} m).")
+                    try:
+                        await self.fc.vehicle.action.set_return_to_launch_altitude(RTL_SAFE_ALTITUDE_M)
+                        await self.fc.vehicle.action.return_to_launch()
+                    except Exception as e:
+                        print(f"[hardware_landing] RTL handoff failed: {e}")
+                await asyncio.sleep(SLEEP_TIME)
                 if (now - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
                     print("[hardware_landing] Final-descent timeout - PX4 never reported LANDED.")
                     break
@@ -214,13 +268,18 @@ class HardwareLandingSystem:
 
         if self.fc.LANDED:
             print("Landed (PX4 LandedState or controller touchdown detect)")
+            # Command a safe PX4 LAND here, not an immediate disarm: the
+            # loom-inversion touchdown detector (TOUCHDOWN_DETECTED) can latch
+            # LANDED on a false positive well above the ground (observed
+            # mid-air at ~0.96m) -- an unconditional disarm() at that point
+            # cuts motors in flight. PX4 land() is safe either way: it is a
+            # controlled descent-and-disarm if genuinely still airborne, and
+            # a fast no-op-ish disarm if already on the ground.
             try:
-                await self.fc.send_attitude_rate(0.0, 0.0, 0.0, 0.0)
-                await asyncio.sleep(0.05)
-                await self.fc.vehicle.action.disarm()
-                print("Disarmed post-touchdown.")
+                await self.fc.vehicle.action.land()
+                print("Land command issued post-touchdown.")
             except Exception as e:
-                print(f"Disarm failed (probably already disarmed by PX4): {e}")
+                print(f"Land command failed (probably already landed/disarmed by PX4): {e}")
 
     def save_data(self):
         """Persist telemetry/controller logs to disk. Called BEFORE cleanup()

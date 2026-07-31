@@ -29,24 +29,48 @@ from img_geometry import (CALIB_CX, CALIB_CY, fx, fy, f, R_CAM_TO_BODY,
                            get_virtual_pts, get_real_pts_from_v, vframe_w,
                            fill_A, scaled_quad_points, marker_principal_angle,
                            get_img_features, _quat_to_dcm,
-                           quad_ill_conditioned, marker_near_fov_edge)
+                           quad_ill_conditioned, marker_near_fov_edge,
+                           quad_condition_score, marker_edge_margin_score)
 from planar_map import PlanarFeatureMap
+from numerical_methods import extrapolate
 FILTER_WIN = int(os.environ.get("IMG_FILTER_WIN", "13"))       # savgol FALLBACK window (Gazebo-aligned 13,1;
 FILTER_POLYORDER = int(os.environ.get("IMG_FILTER_POLY", "1"))  # the KF is the default runtime filter)
 
 VIDEO = False
 
 
-def debayer_bayer_to_bgr(frame, display_gain=4.0):
+def debayer_bayer_to_bgr(frame, target_mean=128.0, gain_min=0.15, gain_max=8.0):
     """Convert raw Bayer to BGR for DISPLAY only. Input: uint8 2D. Output: uint8 3-channel BGR.
-    Raw-stream capture bypasses the ISP digital gain/tone-mapping stage, so the
-    debayered image is genuinely dark (~20/255 mean indoors); display_gain
-    brightens it for human viewing. Detection/flow code uses the un-boosted
-    raw frame directly - do not apply this gain outside of display paths."""
+
+    FIXED 2026-07-30: display_gain used to be a FIXED 4.0x multiplier, tuned
+    against "~20/255 mean indoors" (see git history). Every recorded video
+    from the 2026-07-29 outdoor session was confirmed near-fully clipped
+    (mean brightness 199-251/255, 44-100% of frames saturated, across ALL 10
+    videos) because raw-stream capture bypasses the ISP's tone-mapping, so
+    outdoor daylight was already much brighter than the indoor-dark baseline
+    this constant assumed - a flat 4x on top of that guaranteed saturation.
+    Now computes the gain PER FRAME from that frame's own current
+    brightness, targeting target_mean instead of applying a fixed factor -
+    self-correcting across indoor/outdoor and time-of-day, including
+    ATTENUATING (gain < 1.0) an already-bright frame instead of only ever
+    brightening. Clamped to [gain_min, gain_max] so a near-black frame
+    doesn't get amplified into pure noise, and so an all-white frame
+    doesn't get divided into a near-black one from a division-by-small-
+    number blowup.
+
+    NOTE: this can only fix DISPLAY-PATH gain. If the raw sensor capture
+    itself is already clipping at the hardware level (before this function
+    ever runs), no software gain choice here can recover that lost detail -
+    that would need CAM_EXPOSURE_US/CAM_ANALOGUE_GAIN or AEC tuning instead.
+    Detection/flow code uses the un-boosted raw frame directly - do not
+    apply this gain outside of display paths."""
     if frame is None or frame.ndim != 2:
         return frame
     bgr = cv2.cvtColor(frame, cv2.COLOR_BAYER_BG2BGR)
-    return cv2.convertScaleAbs(bgr, alpha=display_gain, beta=0)
+    current_mean = float(bgr.mean())
+    gain = target_mean / max(current_mean, 1.0)
+    gain = float(np.clip(gain, gain_min, gain_max))
+    return cv2.convertScaleAbs(bgr, alpha=gain, beta=0)
 
 def build_aruco_detector():
     """Builds the (dict, params, detector) tuple shared by IMG_PROCESSOR and
@@ -99,6 +123,7 @@ class IMG_PROCESSOR(Thread):
         Thread.__init__(self)
         self.daemon = True  # never block process exit if run() hangs
         self.RECORD = False
+        self._preview_scale = None   # lazily computed on first VIDEO=True frame
 
         # Image streaming setup
         self._image_node = imgstream(resolution = resolution, capRate = capRate)
@@ -114,40 +139,38 @@ class IMG_PROCESSOR(Thread):
         self._calc_time = 1e-06
         self._fps = 0.0
         self._capRate = capRate
-        # imgstream may have silently negotiated a different sensor mode than
-        # requested (IMX219 only has fixed native raw modes) - use the ACTUAL
-        # resolution it reports, not the constructor argument, so self.center
-        # matches the real frame content.
+        # self._resolution is the ONE working resolution img_data.py sees or
+        # does geometry in (the ISP-scaled stream, default 320x240 via
+        # MAIN_STREAM_SIZE) - imgstreamer.py hides the underlying dual-stream
+        # capture entirely; see its module docstring. img_geometry.py's
+        # fx/fy/CALIB_CX/CALIB_CY were rescaled 2026-07-30 to match.
         self._resolution = self._image_node.getResolution()
         self.focal = f
-        # fx/fy/CALIB_CX/CALIB_CY were measured at 640x480 specifically - only
-        # valid at that resolution. Fall back to the geometric-center
-        # assumption (uncalibrated) at any other resolution and warn loudly,
-        # rather than silently applying a wrong-resolution principal point.
-        if tuple(self._resolution) == (640, 480):
+        if tuple(self._resolution) == (320, 240):
             self.center = np.array([CALIB_CX, CALIB_CY])
         else:
             print(f"WARNING: IMG_PROCESSOR resolution={self._resolution} != the "
-                  f"calibrated (640,480) - fx/fy/center are UNCALIBRATED guesses "
-                  f"at this resolution.")
+                  f"calibrated (320,240) - fx/fy/center are UNCALIBRATED guesses "
+                  f"at this resolution. Set MAIN_STREAM_SIZE=320,240 or "
+                  f"re-derive img_geometry.py's constants at the new size.")
             self.center = np.array(self._resolution)/2     # Here radius is considered zero for the center
-        self._sensor_cal_hw = np.diag([1/6, 1/6, 1/6, 1, 1, 1]) # Sensor calibration matrix
-        self._sensor_cal_s = np.diag([1/12, 1/12, 1, 1]) # Sensor calibration matrix
-
-        # ArUco detection runs on the smaller, ISP-scaled "main" stream
-        # (genuinely fewer pixels than the raw stream, which is locked to the
-        # sensor's native modes - see imgstreamer.py module docstring). The
-        # detectMarkers adaptive-threshold/contour search is the dominant
-        # per-frame cost (Hardware/docs/*timing* breakdown); shrinking the
-        # search image directly cuts it. Corners are found in main-stream
-        # pixel space, then scaled back up to the calibrated raw-resolution
-        # pixel space (fx/fy/center above are calibrated at raw resolution)
-        # before any downstream geometry touches them.
-        self._main_resolution = self._image_node.getMainResolution()
-        self._aruco_scale = np.array([
-            self._resolution[0] / self._main_resolution[0],
-            self._resolution[1] / self._main_resolution[1],
-        ], dtype=np.float32)
+        # APPLIED 2026-07-28 (was placeholder diag([1/6,1/6,1/6,1,1,1]) - never a real
+        # calibration, see project_pi_cal_never_applied): derive_pi_cal.py aggregate
+        # across all 44 available phased recordings (2026-07-23 through today, post
+        # marker-lever-arm fix). per-axis R^2: Hx=0.28 Hy=0.33 Hz=0.44 Wz=0.38 -
+        # PROVISIONAL (moderate, not high) per the tool's own flag; the dominant
+        # limiter is the marker/HFOV FoV ceiling characterized this session (small
+        # marker + narrow ~35deg HFOV bounds how much of each phased sweep survives
+        # marker-loss gap filtering), not a residual derivation bug. Re-run
+        # derive_pi_cal.py and re-paste if/when more/better phased data is collected.
+        self._sensor_cal_hw = np.array([
+            [+0.1433, +0.0353, -0.0398, -0.0210, +0.0110, -0.0034],
+            [-0.0121, +0.1615, +0.0503, -0.0323, -0.0027, -0.0489],
+            [-0.0133, +0.0489, +0.3262, -0.0362, -0.0090, -0.0398],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0340, +0.0464, -0.1956, +0.2504, +0.0552, +0.3364]])
+        self._sensor_cal_s = np.diag([0.1701, 0.4168, 1.0, 1.0])
 
         # PlanarFeatureMap SHADOW mode (2026-07-23, Phase 2 of the port scoped
         # earlier this session - Phase 0 feasibility benchmark + Phase 1 verbatim
@@ -156,14 +179,13 @@ class IMG_PROCESSOR(Thread):
         # pipeline, logs its own predictions to SEPARATE arrays, and touches
         # NOTHING getOptFlowAngVel()/getImgFeatureParam() actually return -
         # strictly observational until validated against real Pi data, same as
-        # Gazebo's own staged rollout. Tracks on the 320x240 main stream (NOT
-        # raw) - the Phase-0 benchmark measured ~13.6-18.4ms/frame there vs
-        # ~94.6ms/frame at 640x480, and 320x240 is now the validated final
-        # detection resolution (see this session's ARUCO_USE_ARUCO3 fix).
-        # center/focal must be in MAIN-STREAM pixel space (CALIB_CX/CY/fx/fy
-        # are calibrated at RAW resolution) - divide by _aruco_scale, the same
-        # conversion already used everywhere else corner geometry crosses
-        # between the two streams.
+        # Gazebo's own staged rollout. Tracks on img_data.py's one working
+        # stream (320x240 default) - the Phase-0 benchmark measured
+        # ~13.6-18.4ms/frame there vs ~94.6ms/frame at 640x480, and 320x240
+        # is the validated detection resolution (see this session's
+        # ARUCO_USE_ARUCO3 fix). center/focal are already in this same
+        # resolution's pixel space (img_geometry.py's constants), no
+        # conversion needed.
         self._planar_map_shadow = os.environ.get("PLANAR_MAP_SHADOW", "1") == "1"
         # Ported 2026-07-26 from PX4_Gazebo's MAP_REJECT_OVERFLOW_CORRECT/
         # PLASMC_MARKER_FOV_MARGIN (see img_geometry.quad_ill_conditioned /
@@ -204,11 +226,13 @@ class IMG_PROCESSOR(Thread):
         self._planar_map_primary_pred_px = None
         self._planar_map_rescue_active = False   # True iff THIS frame's s/alpha came from RESCUE, not raw decode - see RESCUE_ACTIVE property
         self._planar_map = None
-        self._planar_map_center = (CALIB_CX / self._aruco_scale[0], CALIB_CY / self._aruco_scale[1])
-        self._planar_map_focal = (fx / self._aruco_scale[0], fy / self._aruco_scale[1])
+        self._planar_map_center = (CALIB_CX, CALIB_CY)
+        self._planar_map_focal = (fx, fy)
         self._planar_map_center_log = []    # get_marker_center() each frame, or None
         self._planar_map_conf_log = []      # map_confidence each frame (marker-independent, see planar_map.py)
         self._planar_map_time_log = []      # own timestamp - unconditional every frame, like ring flow
+        self._cmap_raw_log = []             # (2,) map centroid in V-frame, pre-_sensor_cal_s, or (nan,nan)
+        self._amap_raw_log = []             # map alpha (rad) in V-frame, pre-cal, or nan
 
         # ArUco marker detection setup. detectMarkers() was measured as 76% of
         # per-frame cost (Hardware/docs/power_undervoltage_investigation.md,
@@ -246,19 +270,32 @@ class IMG_PROCESSOR(Thread):
         # per-frame cost, see Hardware/docs/*timing* breakdown) scales with
         # pixel area. Falls back to full-frame search when unlocked or after
         # too many consecutive ROI misses (fast motion / occlusion).
-        # BUMPED 2026-07-24: default was 80 (raw px, ~40 main-stream px),
-        # sized 2026-07-10 when this loop ran camera-fps-bound at ~30-46Hz
-        # (~22-33ms between calls). Confirmed live on battery power (this
-        # session): loop now runs 12.7-20.3Hz (50-79ms between calls, 2-3x
-        # longer), and roi_hits stayed 0 across two full recording sessions
-        # (always roi_misses -> fullframe fallback) even while the marker was
-        # being actively, successfully decoded via full-frame search moments
-        # later - the ROI crop was chronically too tight for how far the
-        # marker can now move between the (slower) processed frames, not a
-        # detection failure. Widened as a first-pass fix; if roi_hits stays
-        # 0 even at this margin, the fix needs to scale with measured
-        # inter-call dt instead of a fixed constant (see chat/memory).
-        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "200"))
+        # REVERTED 2026-07-28 back to the 2026-07-10-validated default of 80
+        # (raw px, ~40 main-stream px). The 2026-07-24 bump to 200 (see git
+        # history) was a first-pass reaction to a loop slowdown (30-46Hz ->
+        # 12.7-20.3Hz) that its OWN comment predicted might not work ("if
+        # roi_hits stays 0 even at this margin, the fix needs to scale with
+        # measured inter-call dt instead of a fixed constant") - and indeed,
+        # a fresh IMG_TIMING_DBG+ARUCO_ROI_DEBUG session at margin=200 still
+        # showed roi_hits near-zero in most windows. Per the ORIGINAL
+        # 2026-07-10 finding (img_process_freq_optimization.md, "Fix 2"),
+        # widening the ROI margin costs more per search attempt (bigger crop)
+        # without cutting the miss rate enough to compensate - so the 200px
+        # bump was very likely making the underlying slowdown WORSE, not
+        # better, by adding search cost on top of whatever caused the
+        # original regression. That original regression (something between
+        # 07-10 and 07-24 that dropped the camera-fps-bound baseline) is
+        # still unexplained and worth chasing separately - this revert only
+        # undoes a band-aid that never worked by its own stated criterion.
+        # Default halved 80->40 on 2026-07-30: ARUCO_ROI_MARGIN_PX used to be
+        # specified in RAW (640x480) pixels and converted via /_aruco_scale
+        # to main-stream (320x240) pixels for the actual crop - now that
+        # img_data.py works in ONE resolution (320x240) throughout, this is
+        # applied directly with no conversion. 40 preserves the exact same
+        # PHYSICAL crop size the validated 80-raw-px default already gave
+        # (80/aruco_scale(2.0)=40) - not a behavior change, just removing the
+        # now-redundant runtime division.
+        self._roi_margin_px = int(os.environ.get("ARUCO_ROI_MARGIN_PX", "40"))
         self._roi_max_misses = int(os.environ.get("ARUCO_ROI_MAX_MISSES", "5"))
         self._roi_miss_count = 0
         self._last_locked_corners = None   # (4,2) full-image px, most recent lock
@@ -286,8 +323,7 @@ class IMG_PROCESSOR(Thread):
         self._klt_min_tracked = 3 if self._klt_relax_gate else 4
         self._max_lk_steps = int(os.environ.get("MARKER_KLT_MAX_STEPS", "10"))
         self._lk_step_count = 0
-        self._last_good_main_img = None        # main-stream gray image, last successful decode
-        self._last_locked_corners_main = None  # (4,2) main-stream px, same frame as above
+        self._last_good_img = None  # gray image, last successful decode (for KLT fallback)
         self._klt_lk_params = dict(
             winSize=(int(os.environ.get("MARKER_KLT_LK_WIN", "21")),) * 2,
             maxLevel=int(os.environ.get("MARKER_KLT_LK_LVL", "3")),
@@ -296,6 +332,32 @@ class IMG_PROCESSOR(Thread):
         self._klt_hits = 0   # diagnostic counters
         self._klt_misses = 0
         self._frame_used_klt = False   # set by _klt_fallback_fill, read/reset per _optFlowAngVel call
+        self._frame_used_dense = False   # set by _klt_fallback_fill when dense-homography recovery filled a corner (2026-07-28)
+
+        # DENSE-HOMOGRAPHY RECOVERY (2026-07-28 port from PX4_Gazebo, closes the
+        # "third fallback tier" gap identified comparing the two pipelines' fallback
+        # order: ArUco decode -> KLT corner-fallback -> dense-homography recovery ->
+        # planar-map rescue / h_extrap. KLT tracks only the 4 primary corners and
+        # aborts outright the moment any one of them leaves the image; dense-recovery
+        # tracks MANY candidate points (RANSAC-filtered) across the same on-marker
+        # region, so it survives partial/near-edge occlusion that would kill KLT's
+        # strict all-4-in-bounds gate, and degrades gracefully as survivors thin out
+        # instead of hard-stopping. Default-off in Gazebo too (PLASMC_DENSE_RECOVER=0,
+        # unused in any Gazebo launcher/A-B script as of the port date) - ported
+        # as an available, A/B-testable option, not baked-on behavior.
+        self._dense_recover = os.environ.get("PLASMC_DENSE_RECOVER", "0") == "1"
+        self._dense_recover_min_pts = int(os.environ.get("DENSE_RECOVER_MIN_PTS", "12"))
+        self._dense_recover_ransac_px = float(os.environ.get("DENSE_RECOVER_RANSAC_PX", "3.0"))
+        self._dense_recover_max_frames = int(os.environ.get("DENSE_RECOVER_MAX_FRAMES", "60"))
+        self._dense_recover_min_inlier_frac = float(os.environ.get("DENSE_RECOVER_MIN_INLIER_FRAC", "0.5"))
+        self._dense_pts_per_side = int(os.environ.get("IMG_DENSE_PER_SIDE", "15"))
+        self._dense_soft_anchor_max_steps = int(os.environ.get("DENSE_SOFT_ANCHOR_MAX_STEPS", "2"))
+        self._dense_canon_quad = None      # (4,2) main-stream px, the anchor's raw corner quad
+        self._dense_canon_pts = None       # (M,2) canonical dense point layout, index-aligned with _dense_track_pts
+        self._dense_track_pts = None       # (M,2) CURRENT LK-tracked positions of the canonical points
+        self._dense_ref_img = None         # main-stream gray image the tracked points are relative to
+        self._dense_recover_active = False # True when the last frame's recovered quad came from this path (diagnostic)
+        self._dense_frames_since_anchor = 0
 
         # Nested-marker single-marker LOCK (Gazebo-aligned): lock one concentric
         # marker, re-lock only when it leaves both frames -> no per-frame min/max
@@ -367,6 +429,42 @@ class IMG_PROCESSOR(Thread):
         self._obs_kf_q = float(os.environ.get("CENTROID_RATE_KF_Q", "1e-3"))   # process noise
         self._obs_kf_r = float(os.environ.get("CENTROID_RATE_KF_R", "1e-3"))   # measurement noise
         self._observer_valid = False   # reset every frame; True when the observer produced flow this frame
+
+        # MAP-DERIVED FLOW (2026-07-28 port from PX4_Gazebo's _flowMap/_loomMapM_slot,
+        # closes project_map_flow_rescue_port_pending): during a marker-loss rescue frame,
+        # h previously only ever came from h_extrap (temporal extrapolation of the last
+        # REAL h values) - the map's own rich tracked-point history was never turned into
+        # a flow estimate, even though it already drives s/alpha rescue via the same
+        # primary-slot geometry. h_x/h_y: the SAME validated 2-state CV-Kalman rate
+        # estimator _obs_vel_kf uses, but with ITS OWN state (never touches
+        # _obs_kf_x/_obs_kf_y) - fed the map's primary-slot V-frame centre instead of a
+        # decoded centroid. h_z: the same causal d(ln M)/dt loom fit used for a real
+        # decode, but on the map's primary-slot corners and ITS OWN history (never
+        # touches _mtrace_hist). Gated by self._map_flow (env, default ON alongside the
+        # map itself) - a rescue frame still falls back to h_extrap if this is
+        # unavailable (map not ready / too few tracked corners / non-finite result).
+        self._map_flow = os.environ.get("PLASMC_MAP_FLOW", "1") == "1"
+        self._flowmap_kf_x = None; self._flowmap_kf_y = None
+        self._flowmap_kf_Px = None; self._flowmap_kf_Py = None
+        self._flowmap_kf_t = None
+        self._flowmap_lnM_hist = deque(maxlen=int(os.environ.get("FLOW_LOOM_WIN", "9")))
+        # DURATION CAP (2026-07-30, real hardware finding): unlike h_extrap (which decays
+        # its own output to 0 over H_EXTRAP_DECAY_FRAMES via _h_consec_misses), _flowMap/
+        # _loomMapM_primary previously only checked `pm.initialized` -- true indefinitely --
+        # so a KF that's been PREDICTING with no fresh correction for hundreds of frames kept
+        # asserting a confident nonzero velocity forever. Four real landing flights the same
+        # day showed h[:,1] pinned at a nonzero constant for a ~400-frame marker-loss window,
+        # dead-reckoning s_e_n into an unbounded linear ramp -> zeta/sigma blew up (sigma up to
+        # ~80x, kappa up 20-24x, a_u to 59-180) even with an anti-windup CLAMP on the PID
+        # integral (a value clamp bounds magnitude, not source; see izeta/is_e_n CONDITIONAL
+        # INTEGRATION fix above, which addresses the integral half but not this proportional-
+        # side source). PlanarFeatureMap already tracks exactly this staleness via
+        # map_confidence (decays linearly to 0 over decode_staleness_max_seconds as
+        # frames_since_decode grows, planar_map.py) -- reuse it instead of a new counter:
+        # below this confidence floor, _flowMap/_loomMapM_primary return None so the caller
+        # falls through to h_extrap's own (already-tested) decay-to-zero, rather than
+        # stacking a second untested decay on top.
+        self._flowmap_min_confidence = float(os.environ.get("PLANAR_MAP_FLOW_MIN_CONFIDENCE", "0.1"))
 
         # Perception CHECKPOSTS (Gazebo 97bd801): per-instant outlier rejection on
         # the lateral flow, centroid, and loom. Detection reference = last RAW
@@ -465,23 +563,25 @@ class IMG_PROCESSOR(Thread):
         self._ring_on = os.environ.get("FLOW_RINGS", "1") == "1"
         # calcOpticalFlowPyrLK builds its image pyramid over the WHOLE input
         # frame every call, regardless of point count - point count has
-        # already been cut 300->50 and window 41->20px (see comments above),
-        # but the pyramid-build cost is image-AREA bound, not point-count
-        # bound, and was never moved off the full 640x480 raw frame the way
-        # ArUco detection was moved to the smaller 320x240 'main' stream
-        # (self._aruco_scale). Tracking on 'main' instead is a 4x smaller
-        # pyramid for the same reason that helped ArUco. Seed points are
-        # generated in raw-pixel space (calibrated fx/fy/center are raw-
-        # resolution only - img_geometry.py), so they're scaled DOWN by
-        # self._aruco_scale before tracking and the tracked delta scaled
-        # BACK UP before any _getVirtualPts/_fill_A call, mirroring
-        # _detect_markers' own main->raw scale-up pattern. Env-gated so a
-        # tracking-quality regression (main stream is coarser, so a real
-        # sub-pixel corner shift there is a smaller sub-pixel shift in
-        # absolute terms) can be reverted without a code change.
-        self._ring_main_stream = os.environ.get("FLOW_RING_MAIN_STREAM", "1") == "1"
-        # Ring cal: placeholder identity — derive like the corner cal once recorded.
-        self._sensor_cal_ring = np.eye(6)
+        # already been cut 300->50 and window 41->20px (see comments above).
+        # Pyramid-build cost is image-AREA bound, so tracking on img_data.py's
+        # single (320x240 default) working resolution is already the cheapest
+        # option available - there's no separate raw/main choice to make here
+        # anymore (was self._ring_main_stream / self._aruco_scale, removed
+        # 2026-07-30 along with the rest of the dual-stream concept).
+        # APPLIED 2026-07-28 (was placeholder identity): derive_pi_cal.py ring
+        # aggregate across all 48 available phased recordings, transfer-derived
+        # against the corner cal above. per-axis R^2: Hx=0.35 Hy=0.31 Hz=0.38
+        # Wz=0.59 - PROVISIONAL, same caveats as the corner cal's comment above
+        # (FoV-ceiling-limited, not a derivation bug). Re-derive if _sensor_cal_hw
+        # above ever changes (ring cal is keyed to it).
+        self._sensor_cal_ring = np.array([
+            [+0.1876, +0.0027, -0.0189, +0.0089, +0.1814, -0.0640],
+            [+0.0130, +0.2110, +0.0582, -0.2078, +0.0160, +0.0234],
+            [-0.0016, -0.0226, +0.5761, +0.0176, +0.0017, -0.0242],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0199, +0.0505, +0.0320, -0.0416, +0.0389, -0.8331]])
         # Ring KF (same _kf_step model, separate state) + latest per-frame products.
         self._kf_x_ring = np.zeros((6, 2))
         self._kf_P_ring = np.tile(np.eye(2) * 1.0, (6, 1, 1))
@@ -566,7 +666,7 @@ class IMG_PROCESSOR(Thread):
         # Without this tag a calibration recording can't verify it actually
         # exercised both paths, or (in the future, if a coast/extrapolation
         # mechanism is ever added) exclude synthetic samples from the fit.
-        self._opt_flow_estimator_tag = []   # 'lstsq' | 'lstsq+klt', index-aligned with the above
+        self._opt_flow_estimator_tag = []   # 'lstsq'|'lstsq+klt'|'lstsq+dense'|'map_flow'|'coast', index-aligned with the above
         # Per-frame estimator tags for s/alpha (2026-07-25, user requirement: every
         # computational path feeding s/alpha/h must be individually identifiable so
         # calibration can be derived/validated per-path, not blindly mixed). Mirrors
@@ -575,11 +675,29 @@ class IMG_PROCESSOR(Thread):
         # the same C_nP/getImgFeatures call), 'planar_map_rescue' (RESCUE path fired
         # and passed plausibility), 'coast' (no raw, no rescue - feature KF predict-
         # only). Extended _opt_flow_estimator_tag itself to also fire every loss frame
-        # ('coast' - Pi has no h_extrap/observer port, ring flow already logs
+        # ('map_flow' when the map-derived flow fired this loss frame, else 'coast'
+        # even though the VALUE may still be h_extrap-filled when enabled - see
+        # __init__'s _h_extrap/_map_flow blocks below; ring flow already logs
         # separately/unconditionally in its own _ring_time_log) so BOTH tag arrays
         # stay dense/index-aligned across every frame, not just successful ones.
         self._s_estimator_tag = []
         self._feature_pts_fresh = False   # this frame's _feature_pts is LIVE geometry (raw or plausibility-checked rescue), not a held-over value
+
+        # h_extrap (2026-07-28 port from PX4_Gazebo, closes project_map_flow_rescue_port_pending):
+        # during marker loss the Pi zeroed h/w outright ("no h_extrap/observer port" above).
+        # That's a real gap, not just an intentional-parity note - the centroid/alpha DOES get
+        # rescued by the planar map (or held via kf_feat predict-only), but h/w had no equivalent,
+        # so every marker-loss frame fed zero flow to the corner+ring fusion EKF and to any
+        # calibration fit against those frames. Port the SAME decayed deg-1 real-only-history
+        # extrapolation Gazebo already runs in production (img_data.py ~line 3178), gated by
+        # PLASMC_H_EXTRAP so it can be disabled and fall back to the old hard-zero behavior.
+        self._h_extrap = os.environ.get("PLASMC_H_EXTRAP", "1") == "1"
+        self._h_extrap_decay_frames = int(os.environ.get("H_EXTRAP_DECAY_FRAMES", "10"))
+        self._h_extrap_max = float(os.environ.get("H_EXTRAP_MAX", "5.0"))
+        self._h_extrap_clip_bound = float(os.environ.get("H_EXTRAP_CLIP_BOUND", "10.0"))
+        self._h_real_t = []   # REAL-only history (raw decode frames), never receives extrapolated output back
+        self._h_real_v = []
+        self._h_consec_misses = 0   # frames since the last raw h decode (Pi has no shared _consec_misses like Gazebo's stale-tracker)
         self._imu_angvel_raw = []   # IMU FRD body rate [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quaternion [w,x,y,z], synced to the flow log
 
@@ -609,7 +727,6 @@ class IMG_PROCESSOR(Thread):
                 # tp = 10
                 timer_flag = self._time.perf_counter()
                 images = self._image_node.getImages()
-                main_images = self._image_node.getMainImages()
                 cap_stamps = self._image_node.getCaptureStamps()
 
                 # Hardware: quaternions/angvels from flight controller
@@ -627,12 +744,32 @@ class IMG_PROCESSOR(Thread):
                 
                 # Check if at least 2 frames of images have been received
                 if (images[0] is not None and images[1] is not None
-                        and main_images[0] is not None and main_images[1] is not None):
+                        and images[0] is not None and images[1] is not None):
                     if VIDEO:
-                        # Resize display image
-                        resized_img = cv2.resize(images[1], None, fx=1.0, fy=1.0, interpolation=cv2.INTER_AREA)
-                        resized_img = debayer_bayer_to_bgr(resized_img)
-                        cv2.imshow('Image Streamer', resized_img)
+                        # Show the 320x240 ISP-processed 'main' stream, not the raw
+                        # 640x480 Bayer stream - CHANGED 2026-07-30. detectMarkers
+                        # runs on imgs, not the raw stream (see _detect_markers),
+                        # and the main stream is ISP-denoised/sharpened while the raw
+                        # stream is not (Picamera2 manual: ISP output vs unprocessed
+                        # sensor write). A display/recording of the raw stream showed
+                        # a DIFFERENT image than what the detector actually saw - not
+                        # just a different size - making it useless for diagnosing why
+                        # ArUco decode fails under normal (not raw-quality) conditions.
+                        _disp_img = images[1]
+                        _disp_bgr = _disp_img if _disp_img.ndim == 3 else cv2.cvtColor(_disp_img, cv2.COLOR_GRAY2BGR)
+                        # Upscale for visibility - the main stream (320x240 default)
+                        # is too small to work with otherwise, same problem
+                        # PX4_Gazebo's img_data.py solves with a fixed fx=4/fy=4.
+                        # Here the scale is computed once from the real screen size
+                        # so the window covers >=60% of it, with a fixed-4x fallback
+                        # if the screen size can't be queried (e.g. headless/no
+                        # DISPLAY) - see _computePreviewScale().
+                        if self._preview_scale is None:
+                            self._preview_scale = self._computePreviewScale()
+                        if self._preview_scale != 1.0:
+                            _disp_bgr = cv2.resize(_disp_bgr, None, fx=self._preview_scale,
+                                    fy=self._preview_scale, interpolation=cv2.INTER_LINEAR)
+                        cv2.imshow('Image Streamer', _disp_bgr)
                         if cv2.waitKey(1) == 27:
                             self.close()
 
@@ -655,16 +792,25 @@ class IMG_PROCESSOR(Thread):
                             # Fixed path mismatch: this pointed at Test_Data/Test_Videos
                             # (never existed - cv2.VideoWriter does not auto-create dirs,
                             # so RECORD=True silently produced no video). The real videos
-                            # dir is Test_Data/Calibration/Test_Videos.
+                            # dir is Test_Data/Landing/Test_Videos (moved from
+                            # Test_Data/Calibration/Test_Videos 2026-07-29 so landing-
+                            # run video does not mix with calibration recordings).
                             self.timestamp = time.ctime().replace(':', '-')
-                            os.makedirs('Test_Data/Calibration/Test_Videos', exist_ok=True)
-                            self._video = cv2.VideoWriter(f'Test_Data/Calibration/Test_Videos/{self.timestamp}.mp4',
+                            os.makedirs('Test_Data/Landing/Test_Videos', exist_ok=True)
+                            # Records img_data.py's one working stream - the same
+                            # frame detectMarkers actually sees, so this is useful
+                            # for diagnosing why ArUco decode fails under normal
+                            # conditions (see _computePreviewScale for the same
+                            # reasoning applied to the live preview above).
+                            self._video = cv2.VideoWriter(f'Test_Data/Landing/Test_Videos/{self.timestamp}.mp4',
                                     cv2.VideoWriter_fourcc(*'mp4v'),
-                                    self._capRate, self._resolution)
-                        self._video.write(debayer_bayer_to_bgr(images[1]))
+                                    self._capRate, tuple(self._resolution))
+                        _rec_img = images[1]
+                        _rec_bgr = _rec_img if _rec_img.ndim == 3 else cv2.cvtColor(_rec_img, cv2.COLOR_GRAY2BGR)
+                        self._video.write(_rec_bgr)
 
                     # Calculate the radial optical flow if it is AVAILABLE. Else the loop is restarted.
-                    _opt_flow_result = self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, main_imgs = main_images, cap_stamps = cap_stamps)
+                    _opt_flow_result = self._optFlowAngVel(images, quaternions, angvels, showVideo = VIDEO, cap_stamps = cap_stamps)
 
                     # TRUE per-call loop time, captured unconditionally right after
                     # _optFlowAngVel returns - BEFORE any of the branch-specific
@@ -758,8 +904,7 @@ class IMG_PROCESSOR(Thread):
         """Wait until at least two frames are available."""
         print("Waiting for image streaming")
         start_time = self._time.perf_counter()
-        while (any(image is None for image in list(self._image_node.getImages()))
-               or any(image is None for image in list(self._image_node.getMainImages()))):
+        while any(image is None for image in list(self._image_node.getImages())):
             time.sleep(1/100)
             if (self._time.perf_counter() - start_time) > 20:
                 raise Exception("Unable to get image data.")
@@ -803,7 +948,7 @@ class IMG_PROCESSOR(Thread):
             self._timing_n = 0
 
     def _klt_track_corners(self, main_img_now):
-        """Track self._last_locked_corners_main forward into main_img_now via
+        """Track self._last_locked_corners forward into main_img_now via
         LK optical flow (see __init__ comment for the ported-from-SITL
         rationale). Returns (4,2) main-stream px corners on success, None
         otherwise. Does NOT reset/increment _lk_step_count on its own for
@@ -814,9 +959,9 @@ class IMG_PROCESSOR(Thread):
         MARKER_LOSS_GRACE upstream is the real backstop (matches Gazebo
         d3dc8b0/3e96a78)."""
         try:
-            seed = self._last_locked_corners_main.reshape(-1, 1, 2).astype(np.float32)
+            seed = self._last_locked_corners.reshape(-1, 1, 2).astype(np.float32)
             lk_out = cv2.calcOpticalFlowPyrLK(
-                self._last_good_main_img, main_img_now, seed, None, **self._klt_lk_params)
+                self._last_good_img, main_img_now, seed, None, **self._klt_lk_params)
             if lk_out is None or lk_out[0] is None or lk_out[1] is None:
                 self._klt_misses += 1
                 return None
@@ -846,8 +991,8 @@ class IMG_PROCESSOR(Thread):
                 # fresh full-frame re-acquisition next time it reappears.
                 self._klt_misses += 1
                 self._lk_step_count = 0
-                self._last_good_main_img = None
-                self._last_locked_corners_main = None
+                self._last_good_img = None
+                self._last_locked_corners = None
                 return None
             self._lk_step_count += 1
             self._klt_hits += 1
@@ -856,29 +1001,154 @@ class IMG_PROCESSOR(Thread):
             self._klt_misses += 1
             return None
 
-    def _klt_fallback_fill(self, main_imgs, results):
+    def _dense_recover_anchor(self, corners_main, img_main):
+        """Re-anchor the dense-homography-recovery canonical state on a CLEAN
+        decode of the locked marker (main-stream px, same space as
+        _last_locked_corners_main/_last_good_main_img): canonical dense layout +
+        canonical quad = THIS frame's geometry (so canonical==tracked right now),
+        ref image = img_main. Ported from PX4_Gazebo's _dense_recover_anchor,
+        adapted to the Pi's main-stream/locked-marker convention (Gazebo anchors
+        once per call on frame0; the Pi anchors wherever it updates its own KLT
+        seed, i.e. every clean raw decode of the locked marker)."""
+        if not self._dense_recover:
+            return
+        self._dense_canon_quad = np.asarray(corners_main, np.float32).reshape(-1, 2).copy()
+        self._dense_canon_pts = self._scaled_quad_points(self._dense_canon_quad,
+                                                           per_side=self._dense_pts_per_side)
+        self._dense_track_pts = self._dense_canon_pts.copy()
+        self._dense_ref_img = img_main.copy()
+        self._dense_recover_active = False
+        self._dense_frames_since_anchor = 0
+
+    def _dense_recover_step(self, img_main):
+        """Advance the dense-homography-recovery tracking one step (_dense_ref_img
+        -> img_main), independent of decode/KLT status - called every frame so it
+        survives partial dropouts the strict corner gate alone would fail. Drops
+        out-of-bounds/lost survivors; canonical<->tracked correspondence stays
+        index-aligned (both shrink together). Ported from PX4_Gazebo's
+        _dense_recover_step."""
+        if not self._dense_recover or self._dense_track_pts is None or self._dense_ref_img is None:
+            return
+        try:
+            g0 = self._dense_ref_img if self._dense_ref_img.ndim == 2 else cv2.cvtColor(self._dense_ref_img, cv2.COLOR_BGR2GRAY)
+            g1 = img_main if img_main.ndim == 2 else cv2.cvtColor(img_main, cv2.COLOR_BGR2GRAY)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, self._dense_track_pts, None, **self._klt_lk_params)
+            st = np.asarray(st).flatten().astype(bool)
+            _ih, _iw = img_main.shape[:2]
+            _p1f = p1.reshape(-1, 2)
+            _in = ((_p1f[:, 0] >= 0) & (_p1f[:, 0] < _iw) & (_p1f[:, 1] >= 0) & (_p1f[:, 1] < _ih))
+            keep = st & _in
+            self._dense_canon_pts = self._dense_canon_pts[keep]
+            self._dense_track_pts = _p1f[keep].astype(np.float32)
+            self._dense_ref_img = img_main.copy()
+            self._dense_frames_since_anchor += 1
+        except Exception:
+            self._dense_canon_pts = None
+            self._dense_track_pts = None
+            self._dense_ref_img = None
+
+    def _dense_recover_quad(self):
+        """Recover the FULL primary-corner quad (main-stream px) via a RANSAC
+        homography fit from the surviving canonical dense points to their tracked
+        positions, then map the canonical quad's 4 corners through it. Returns
+        (4,2) float32 recovered corners, or None if too few survivors / a
+        degenerate fit / too stale since the last real anchor. No depth/scale
+        needed - pure 2D pixel homography. Ported from PX4_Gazebo's
+        _dense_recover_quad."""
+        if (not self._dense_recover or self._dense_track_pts is None
+                or len(self._dense_track_pts) < self._dense_recover_min_pts
+                or self._dense_canon_quad is None
+                or self._dense_frames_since_anchor > self._dense_recover_max_frames):
+            return None
+        try:
+            Hmat, mask = cv2.findHomography(self._dense_canon_pts, self._dense_track_pts,
+                                             cv2.RANSAC, self._dense_recover_ransac_px)
+            if Hmat is None or mask is None or int(mask.sum()) < self._dense_recover_min_pts:
+                return None
+            _inlier_frac = float(mask.sum()) / max(1, len(self._dense_track_pts))
+            if _inlier_frac < self._dense_recover_min_inlier_frac:
+                return None
+            recovered = cv2.perspectiveTransform(
+                self._dense_canon_quad.reshape(-1, 1, 2), Hmat).reshape(-1, 2).astype(np.float32)
+            _ih, _iw = self._dense_ref_img.shape[:2]
+            if not (np.all(recovered[:, 0] >= -_iw) and np.all(recovered[:, 0] < 2 * _iw)
+                    and np.all(recovered[:, 1] >= -_ih) and np.all(recovered[:, 1] < 2 * _ih)):
+                return None
+            self._dense_recover_active = True
+            return recovered
+        except Exception:
+            return None
+
+    def _computePreviewScale(self):
+        """Scale factor for the VIDEO=True cv2.imshow preview so the window
+        covers >=60% of BOTH screen dimensions (not just area - taking the
+        max of the two per-axis required scales guarantees each axis meets
+        the 60% floor while preserving aspect ratio). Tries tkinter for the
+        real screen size - this is just an X query, so it works fine over
+        `ssh -X`/`-Y` forwarding, the way this project already runs the
+        preview remotely. Falls back to a fixed 4x (matches PX4_Gazebo's
+        img_data.py convention) if tkinter/DISPLAY is unavailable (e.g. a
+        genuinely headless run) so a missing screen-size query never crashes
+        or silently disables the preview scaling."""
+        _fallback = 4.0
+        try:
+            import tkinter as tk
+            _root = tk.Tk()
+            _root.withdraw()
+            screen_w = _root.winfo_screenwidth()
+            screen_h = _root.winfo_screenheight()
+            _root.destroy()
+            mw, mh = self._resolution
+            scale = max(0.6 * screen_w / mw, 0.6 * screen_h / mh)
+            scale = max(1.0, scale)   # never downscale below native size
+            print(f"[preview] screen={screen_w}x{screen_h}, main={mw}x{mh} -> "
+                  f"scale={scale:.2f}x ({int(mw*scale)}x{int(mh*scale)})")
+            return scale
+        except Exception as e:
+            print(f"[preview] Could not query screen size ({e}) - using fixed {_fallback}x scale.")
+            return _fallback
+
+    def _klt_fallback_fill(self, imgs, results):
         """For each image where the currently-locked marker wasn't decoded
         by ArUco, try to recover its corners via _klt_track_corners and
         splice a synthetic detection entry into that image's results (same
         shape a real cv2.aruco.detectMarkers hit would produce), so the
         existing common-marker/lock logic downstream picks it up with no
         other changes needed. Resets _lk_step_count once neither image
-        needed the fallback (a clean direct-decode frame)."""
+        needed the fallback (a clean direct-decode frame).
+
+        DENSE-HOMOGRAPHY RECOVERY (2026-07-28 port from PX4_Gazebo) runs as a
+        THIRD tier inside this same per-image loop, after KLT: it advances every
+        call regardless of outcome (_dense_recover_step) and is only asked for a
+        recovered quad when KLT itself couldn't fill this image. Default-off
+        (self._dense_recover)."""
+        if self._dense_recover:
+            for img in imgs:
+                self._dense_recover_step(img)
         if self._locked_marker_id is None:
             return results
         used_klt = False
+        used_dense = False
         new_results = list(results)
-        for i, img in enumerate(main_imgs):
+        for i, img in enumerate(imgs):
             corners, ids, rejected = new_results[i]
             ids_flat = np.asarray(ids).flatten() if ids is not None and len(ids) else np.array([])
             if self._locked_marker_id in ids_flat:
                 continue
-            if self._last_good_main_img is None or self._last_locked_corners_main is None:
-                continue
-            tracked = self._klt_track_corners(img)
+            tracked = None
+            if self._last_good_img is not None and self._last_locked_corners is not None:
+                tracked = self._klt_track_corners(img)
+            if tracked is not None:
+                used_klt = True
+            else:
+                tracked = self._dense_recover_quad()
+                if tracked is not None:
+                    used_dense = True
+                    if os.environ.get("DENSE_RECOVER_DBG", "0") == "1":
+                        print("[dr] t%.3f RECOVERED quad from %d dense survivors" % (
+                            self._time.perf_counter(), len(self._dense_track_pts)), flush=True)
             if tracked is None:
                 continue
-            used_klt = True
             new_corner = tracked.reshape(1, 4, 2).astype(np.float32)
             new_id = np.array([[self._locked_marker_id]], dtype=np.int32)
             if ids is not None and len(ids_flat):
@@ -892,32 +1162,25 @@ class IMG_PROCESSOR(Thread):
             self._frame_used_klt = True
         else:
             self._lk_step_count = 0
+        self._frame_used_dense = used_dense
+        self._dense_recover_active = used_dense
         return new_results
 
-    def _detect_markers(self, main_imgs):
-        """ArUco detection on the smaller 'main' stream (see __init__
-        comment: genuinely fewer pixels than the raw stream, cutting the
-        dominant per-frame cost), with an ROI-crop fast path around the
-        last locked marker location. Returns the same
-        [(corners, ids, rejected), ...] structure as a direct detectMarkers()
-        call, with corners scaled back up to the calibrated RAW-resolution
-        pixel space regardless of which path (ROI or full-frame) ran, so
-        every downstream consumer is unaffected by which stream this used."""
-        _mw, _mh = self._main_resolution
-        main_results = None   # (corners, ids, rejected) x2, in MAIN-stream px space
+    def _detect_markers(self, imgs):
+        """ArUco detection with an ROI-crop fast path around the last locked
+        marker location. Returns the same [(corners, ids, rejected), ...]
+        structure as a direct detectMarkers() call."""
+        _mw, _mh = self._resolution
+        main_results = None   # (corners, ids, rejected) x2
         if self._last_locked_corners is not None:
-            # last_locked_corners is stored in RAW pixel space (what every
-            # other consumer expects) - convert to main-stream space for the
-            # crop. _roi_margin_px is specified in RAW pixels for an
-            # intuitive env-var meaning; convert to main-stream pixels too.
-            _c_main = self._last_locked_corners / self._aruco_scale
-            _margin_main = max(1, int(self._roi_margin_px / self._aruco_scale.mean()))
+            _c_main = self._last_locked_corners
+            _margin_main = max(1, self._roi_margin_px)
             x0 = max(0, int(_c_main[:, 0].min()) - _margin_main)
             y0 = max(0, int(_c_main[:, 1].min()) - _margin_main)
             x1 = min(_mw, int(_c_main[:, 0].max()) + _margin_main)
             y1 = min(_mh, int(_c_main[:, 1].max()) + _margin_main)
             if x1 > x0 and y1 > y0:
-                crops = [img[y0:y1, x0:x1] for img in main_imgs]
+                crops = [img[y0:y1, x0:x1] for img in imgs]
                 if self._detector is not None:
                     roi_results = [self._detector.detectMarkers(c) for c in crops]
                 else:
@@ -960,34 +1223,31 @@ class IMG_PROCESSOR(Thread):
             # call, or too many consecutive ROI misses (cleared above).
             self._fullframe_searches += 1
             if self._detector is not None:
-                main_results = [self._detector.detectMarkers(img) for img in list(main_imgs)]
+                main_results = [self._detector.detectMarkers(img) for img in list(imgs)]
             else:
                 main_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
-                                 for img in main_imgs]
-        # KLT corner-tracking fallback (main-stream space, matching where
-        # _last_locked_corners_main lives) - fills in the locked marker for
-        # any image ArUco couldn't decode it in, before the final scale-up.
-        main_results = self._klt_fallback_fill(main_imgs, main_results)
-        return [(tuple(corner * self._aruco_scale for corner in corners), ids, rejected)
-                for corners, ids, rejected in main_results]
+                                 for img in imgs]
+        # KLT corner-tracking fallback - fills in the locked marker for any
+        # image ArUco couldn't decode it in.
+        return self._klt_fallback_fill(imgs, main_results)
 
-    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, main_imgs = None, cap_stamps = None):
+    def _optFlowAngVel(self, imgs, quats, angvels = None, showVideo = False, cap_stamps = None):
         # This function will return True if the optical flow is AVAILABLE and calculate the optical flow. Else, it will return False.
         # Return type is a Boolean
-        # imgs/main_imgs are the imgstreamer's live deques (maxlen=2), still
-        # being appended to by the background capture thread - snapshot to
-        # stable lists ONCE here so nothing downstream (multiple iteration
+        # imgs is the imgstreamer's live deque (maxlen=2), still being
+        # appended to by the background capture thread - snapshot to a
+        # stable list ONCE here so nothing downstream (multiple iteration
         # sites in _detect_markers/_klt_fallback_fill) races the capture
         # thread (confirmed 2026-07-11: "RuntimeError: deque mutated during
-        # iteration" from iterating main_imgs directly mid-capture).
+        # iteration" from iterating imgs directly mid-capture).
         imgs = list(imgs)
-        main_imgs = list(main_imgs) if main_imgs is not None else None
         _tt = self._time.perf_counter()
         self._frame_used_klt = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
+        self._frame_used_dense = False   # reset; set by _klt_fallback_fill (via _detect_markers) below
         # Texture-free RING flow (safety net) — runs EVERY frame, independent of
         # ArUco, so it survives marker death. Steps its own KF; latest raw stored.
         if self._ring_on:
-            _vvr, _pdiv, _nr, _rmom = self._compute_ring_flow(imgs, quats, main_imgs)
+            _vvr, _pdiv, _nr, _rmom = self._compute_ring_flow(imgs, quats)
             self._ring_v_raw = _vvr; self._ring_pure_div = _pdiv; self._ring_moment = _rmom
             self._ring_ok = bool(_nr > 0 and np.all(np.isfinite(_vvr)) and np.any(_vvr != 0))
             self._ring_n = int(_nr)
@@ -1008,9 +1268,9 @@ class IMG_PROCESSOR(Thread):
         # corner decode below (see __init__ comment). Wrapped defensively:
         # this is strictly observational, so any internal exception here must
         # never propagate and disturb the real corner/ring pipeline above.
-        if (self._planar_map_shadow or self._planar_map_primary) and main_imgs is not None and main_imgs[1] is not None:
+        if (self._planar_map_shadow or self._planar_map_primary) and imgs[1] is not None:
             try:
-                _pm_img = main_imgs[1] if main_imgs[1].ndim == 2 else cv2.cvtColor(main_imgs[1], cv2.COLOR_BGR2GRAY)
+                _pm_img = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
                 _pm_quat = quats[1] if (quats is not None and len(quats) > 1) else None
                 _pm_quat_R = _quat_to_dcm(_pm_quat) if _pm_quat is not None else None
                 if self._planar_map is None:
@@ -1068,38 +1328,61 @@ class IMG_PROCESSOR(Thread):
                               f"pred_cached={self._planar_map_primary_pred_px is not None}", flush=True)
                     self._pm_dbg_ctr = int(getattr(self, "_pm_dbg_ctr", 0)) + 1
                     if self._planar_map_primary and self._planar_map_gate_on:
-                        # SPACE FIX (2026-07-25): PlanarFeatureMap operates in MAIN-STREAM
-                        # pixel space (_planar_map_center/_focal = raw/_aruco_scale, per the
-                        # __init__ comment), but _planarMapPredictionPlausible/_getVirtualPts
-                        # both expect RAW-resolution space (self.center/self.focal) - same
-                        # convention _detect_markers uses when scaling corners back up
-                        # ("corners scaled back up to the calibrated RAW-resolution pixel
-                        # space"). Without this, every rescue attempt was silently comparing
-                        # a main-stream-scaled prediction against a raw-space extent - a
-                        # systematic ~_aruco_scale-factor size mismatch that rejected nearly
-                        # every rescue as "implausible size" regardless of the map's actual
-                        # estimate quality (caught live via PLANAR_MAP_DBG=1 -- every single
-                        # attempt in a test session was rejected on size until this fix).
-                        _pm_pred_main = self._planar_map.get_marker_frame_pts()
-                        self._planar_map_primary_pred_px = (
-                            _pm_pred_main * self._aruco_scale if _pm_pred_main is not None else None)
+                        # _planar_map_center/_focal == self.center/self.focal (both are
+                        # img_data.py's one working resolution now) - no space conversion
+                        # needed between the map's predictions and _planarMapPredictionPlausible/
+                        # _getVirtualPts (was a real bug here pre-2026-07-30: the map's
+                        # 320x240-space prediction vs a stale 640x480-space extent
+                        # comparison rejected nearly every rescue as "implausible size").
+                        self._planar_map_primary_pred_px = self._planar_map.get_marker_frame_pts()
                 _pm_center = self._planar_map.get_marker_center()
                 self._planar_map_center_log.append(_pm_center.copy() if _pm_center is not None else None)
                 self._planar_map_conf_log.append(self._planar_map.map_confidence)
                 self._planar_map_time_log.append(self._time.perf_counter())
+
+                # MAP-SOURCED centroid/alpha in V-FRAME, pre-_sensor_cal_s
+                # (2026-07-27, Pi counterpart of Gazebo's 'Centroid Map Raw' /
+                # 'Alpha Map Raw', see feedback_map_cal_validation_gap).
+                #
+                # ARCHITECTURE NOTE: this is NOT a line-by-line port. Gazebo has
+                # dedicated _centroidMap()/_alphaMap() consumers that OVERRIDE
+                # _img_feature_param[0..1]/[3] and whose raw values it logs. The Pi
+                # has no such consumer -- its map feeds the pipeline by substituting
+                # CORNERS (_planar_map_primary_pred_px), and centroid/alpha are then
+                # computed downstream by the normal path. So the equivalent
+                # INDEPENDENT map observable has to be built here from the map's own
+                # geometry rather than read off an override.
+                #
+                # get_marker_center_native() is preferred over get_marker_center():
+                # per its docstring it is the projective diagonal-intersection (a true
+                # projective invariant) rather than the corner mean, which perspective
+                # shifts off the real centre -- and it survives marker overflow, which
+                # is exactly when the map is worth having.
+                _cm_raw, _am_raw = (np.nan, np.nan), np.nan
+                try:
+                    _q1 = quats[1] if (quats is not None and len(quats) > 1
+                                       and quats[1] is not None) else None
+                    if _q1 is not None:
+                        _c_main = self._planar_map.get_marker_center_native()
+                        if _c_main is None:
+                            _c_main = _pm_center
+                        if _c_main is not None:
+                            _c_v = self._getVirtualPts(np.asarray([_c_main], np.float32), _q1)
+                            _cm_raw = (float(_c_v[0][0]), float(_c_v[0][1]))
+                        _p_main = self._planar_map.get_marker_frame_pts()
+                        if _p_main is not None and len(_p_main) >= 4:
+                            _p_v = self._getVirtualPts(np.asarray(_p_main, np.float32), _q1)
+                            _am_raw = float(marker_principal_angle(_p_v))
+                except Exception:
+                    pass       # never let the map cross-check touch the real pipeline
+                self._cmap_raw_log.append(_cm_raw)
+                self._amap_raw_log.append(_am_raw)
             except Exception:
                 pass   # shadow mode: never let an internal error touch the real pipeline
         _tt = self._tstage(_tt, "1b_planar_map_shadow")
 
-        # Detect markers on the smaller 'main' stream (ROI-crop fast path
-        # when locked). main_imgs is required - _detect_markers always
-        # scales its output up from main-stream to raw-resolution pixel
-        # space, so silently falling back to `imgs` (already raw-space)
-        # here would double up the scale factor and corrupt every corner.
-        if main_imgs is None:
-            raise ValueError("_optFlowAngVel requires main_imgs (the ISP-scaled "
-                              "'main' stream) for ArUco detection - see imgstreamer.getMainImages().")
-        results = self._detect_markers(main_imgs)
+        # Detect markers (ROI-crop fast path when locked).
+        results = self._detect_markers(imgs)
         _tt = self._tstage(_tt, "2_aruco_detect")
 
         # Check if both detections were successful
@@ -1156,8 +1439,17 @@ class IMG_PROCESSOR(Thread):
                 max(C_nP[0][:, 0].max() - C_nP[0][:, 0].min(),
                     C_nP[0][:, 1].max() - C_nP[0][:, 1].min()))
             self._last_locked_corners = np.asarray(C_nP[1], dtype=np.float32)   # for next call's ROI
-            self._last_good_main_img = main_imgs[1].copy()   # for next call's KLT fallback
-            self._last_locked_corners_main = self._last_locked_corners / self._aruco_scale
+            self._last_good_img = imgs[1].copy()   # for next call's KLT fallback
+            if self._dense_recover:
+                # Re-anchor on a genuine fresh decode of the locked marker (never on a
+                # KLT-filled or dense-recovered synthetic corner - that would compound
+                # drift into the canonical layout). Also SOFT-anchor after a short KLT
+                # chain (still close enough to trustworthy) - ported from Gazebo's
+                # _dense_soft_anchor_max_steps logic.
+                if not self._frame_used_klt and not self._dense_recover_active:
+                    self._dense_recover_anchor(self._last_locked_corners, imgs[1])
+                elif self._frame_used_klt and self._lk_step_count <= self._dense_soft_anchor_max_steps:
+                    self._dense_recover_anchor(self._last_locked_corners, imgs[1])
             # FIXED 2026-07-26 (user-identified bug): loop-closure correction used
             # to be gated on self._planar_map_shadow alone - meaning disabling
             # shadow mode while self._planar_map_primary stayed on (its default)
@@ -1176,15 +1468,69 @@ class IMG_PROCESSOR(Thread):
             # edge-degraded observation would poison the map's gauge/homography
             # rather than improve it, even though ArUco itself reported success.
             if self._planar_map is not None:
-                _reject_correct = False
+                # CONFIDENCE-WEIGHTED LOOP-CLOSURE CORRECTION (2026-07-30): previously a
+                # binary gate -- _reject_correct=True skipped loop_closure_correct entirely,
+                # throwing away a near-edge/marginal decode's information completely even
+                # though it still carries SOME real signal. Replaced with a continuous
+                # confidence in [0,1] (quad_condition_score * marker_edge_margin_score,
+                # img_geometry.py -- same underlying thresholds the old boolean gate used,
+                # just not thresholded away) passed into loop_closure_correct, which now
+                # BLENDS the map's per-corner position toward the decode by this amount
+                # instead of a hard snap-or-skip (see planar_map.py's confidence param
+                # docstring). A clean decode still re-anchors close to fully; a marginal one
+                # nudges gently instead of being discarded.
+                _corr_confidence = 1.0
                 if self._map_reject_overflow_correct:
-                    _mh, _mw = main_imgs[1].shape[:2]
-                    _near_edge = marker_near_fov_edge(self._last_locked_corners_main,
-                                                       (_mh, _mw), self._marker_fov_margin)
-                    _reject_correct = _near_edge or quad_ill_conditioned(self._last_locked_corners_main)
-                if not _reject_correct:
+                    _mh, _mw = imgs[1].shape[:2]
+                    _corr_confidence = (
+                        marker_edge_margin_score(self._last_locked_corners, (_mh, _mw), self._marker_fov_margin)
+                        * quad_condition_score(self._last_locked_corners))
+                    if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and _corr_confidence < 0.999:
+                        print(f"[planar_map] loop_closure_correct confidence={_corr_confidence:.3f} "
+                              f"(near-edge/marginal decode) t={float(getattr(self,'_stamp',0.0)):.2f}",
+                              flush=True)
+                # VALIDATION-TRIGGERED RESET (2026-07-30, ported from PX4_Gazebo/src/
+                # img_data.py -- see HANDOFF_cbf_lockout_planarmap_2026-07-30.md).
+                # HELD-OUT ground-truth cross-check: compare the map's own prediction
+                # for this marker (from BEFORE this frame's correction touches it) against
+                # the ACTUAL fresh decode (_last_locked_corners). This is a genuinely
+                # different signal from map_confidence/marker_rigid_ok -- those are
+                # computed FROM the map's own (possibly already-broken) internal state and
+                # were confirmed (2026-07-30 Gazebo crash) to stay healthy-looking
+                # (0.27-0.9) for the ENTIRE window a held-out err spiked 645-1483px, because
+                # they can't see their own failure. This check can, because it's compared
+                # against real ground truth. MUST be captured before loop_closure_correct
+                # runs below (comparing after would be circular -- map_pts gets set FROM
+                # this exact decode this frame, an exact round-trip by construction).
+                try:
+                    _val_slot = self._planar_map.identify_slot(self._last_locked_corners)
+                    _val_pred = (self._planar_map.get_marker_frame_pts(slot=_val_slot)
+                                 if _val_slot is not None else None)
+                except Exception:
+                    _val_pred = None
+                _val_err = None
+                if _val_pred is not None and len(_val_pred) == len(self._last_locked_corners):
+                    _val_err = float(np.mean(np.linalg.norm(
+                        np.asarray(_val_pred, dtype=np.float64)
+                        - np.asarray(self._last_locked_corners, dtype=np.float64), axis=1)))
+                _validation_reset_px = float(os.environ.get("PLANAR_MAP_VALIDATION_RESET_PX", "30.0"))
+                _validation_failed = (_val_err is not None and _val_err > _validation_reset_px)
+                if _validation_failed:
+                    if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
+                        print(f"[planar_map] VALIDATION-TRIGGERED RESET: held-out err="
+                              f"{_val_err:.1f}px exceeds {_validation_reset_px:.1f}px -- "
+                              f"discarding poisoned map state and re-bootstrapping fresh "
+                              f"from this decode", flush=True)
                     try:
-                        self._planar_map.loop_closure_correct(self._last_locked_corners_main, marker_id=mid)
+                        self._planar_map._full_reset()
+                        self._planar_map.bootstrap(_pm_img, marker_px_corners=self._last_locked_corners,
+                                                    marker_id=mid, quat_R=_pm_quat_R)
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        self._planar_map.loop_closure_correct(self._last_locked_corners, marker_id=mid,
+                                                                confidence=_corr_confidence)
                     except Exception:
                         pass
             _tt = self._tstage(_tt, "3_lock_and_extract")
@@ -1307,6 +1653,11 @@ class IMG_PROCESSOR(Thread):
             _corner_conf = 1.0
             if self._frame_used_klt:
                 _corner_conf = max(0.05, 1.0 - self._lk_step_count / max(self._max_lk_steps, 1))
+            elif self._frame_used_dense:
+                # Dense-homography recovery has no per-attempt step counter (RANSAC
+                # inlier fraction is its own within-frame quality gate) - decay on
+                # frames-since-anchor instead, same floor as the KLT case.
+                _corner_conf = max(0.05, 1.0 - self._dense_frames_since_anchor / max(self._dense_recover_max_frames, 1))
             if self._flow_cond_reject > 0:
                 try:
                     _cond = float(np.linalg.cond(_Asolve))
@@ -1371,7 +1722,16 @@ class IMG_PROCESSOR(Thread):
             _tt = self._tstage(_tt, "9_flow_checkpost")
 
             self._opt_flow_ang_vel_raw.append(B_v)
-            self._opt_flow_estimator_tag.append('lstsq+klt' if self._frame_used_klt else 'lstsq')
+            _decode_tag = ('lstsq+klt' if self._frame_used_klt
+                           else 'lstsq+dense' if self._frame_used_dense else 'lstsq')
+            self._opt_flow_estimator_tag.append(_decode_tag)
+            if self._h_extrap:
+                self._h_real_t.append(self._time.perf_counter())
+                self._h_real_v.append(B_v.copy())
+                if len(self._h_real_t) > 32:
+                    self._h_real_t = self._h_real_t[-32:]
+                    self._h_real_v = self._h_real_v[-32:]
+            self._h_consec_misses = 0
             # 2-state constant-velocity KF on the raw [h;w] (low-lag; getOptFlowAngVel
             # reads _kf_x). Stepped once per fresh frame.
             self._kf_update(B_v, self._time.perf_counter())
@@ -1380,7 +1740,7 @@ class IMG_PROCESSOR(Thread):
             # Feature params (centroid + yaw alpha) from the 4 primary corners.
             self._getImgFeatures(V_nP_norm[1])
             self._s_estimator_tag.append(
-                ('lstsq+klt' if self._frame_used_klt else 'lstsq') + ('+override' if _ov_fired else ''))
+                _decode_tag + ('+override' if _ov_fired else ''))
             self._feature_pts_fresh = True
             self._planar_map_rescue_active = False   # raw tier succeeded this frame, not a rescue
             _tt = self._tstage(_tt, "11_getImgFeatures")
@@ -1450,8 +1810,8 @@ class IMG_PROCESSOR(Thread):
                 # checkpost detection refs so the first re-acquired frame isn't rejected.
                 self._locked_marker_id = None
                 self._last_locked_corners = None   # drop ROI too, force full-frame re-acquire
-                self._last_good_main_img = None    # drop KLT anchor too
-                self._last_locked_corners_main = None
+                self._last_good_img = None    # drop KLT anchor too
+                self._last_locked_corners = None
                 self._lk_step_count = 0
                 self._mtrace_hist.clear()
                 self._flow_prev = None; self._s_prev = None; self._loom_lnM_prev = None
@@ -1519,11 +1879,48 @@ class IMG_PROCESSOR(Thread):
         if _pm_rescue:
             self._kf_feat_update(_s_final, _t)   # genuine correct-step against the rescue's fresh geometric estimate
 
-        # h: Pi has no h_extrap/observer port (ring flow already runs unconditionally,
-        # own _ring_time_log) - zeros here matches Gazebo's OWN fallback when its h_extrap
-        # feature is unavailable/off, not a Pi-specific weakening.
-        self._opt_flow_ang_vel_raw.append(np.zeros(6))
-        self._opt_flow_estimator_tag.append('coast')
+        # h: MAP-DERIVED flow preferred (2026-07-28 port from PX4_Gazebo's _flowMap,
+        # closes project_map_flow_rescue_port_pending) - a fresh geometric estimate from
+        # the map's own tracked points, rather than a temporal extrapolation of stale
+        # real values. Falls back to the h_extrap decayed deg-1 extrapolation (against
+        # REAL-ONLY history, never self-referencing) when the map isn't available/ready,
+        # then to hard zero. Ring flow still runs unconditionally (own _ring_time_log)
+        # and is unaffected either way.
+        self._h_consec_misses += 1
+        _q1 = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
+        # GATE (2026-07-28 fix): Gazebo never calls _flowMap without _smallSlotFlowReady
+        # first - a two-sided confidence+size-band gate (measured ~7x flow-error jump
+        # outside the reliable band). This port initially skipped that precondition
+        # entirely (map merely 'initialized' is a much weaker bar), confirmed live: a
+        # 15:47 recording showed map_flow firing on 168/395 frames vs only 17
+        # planar_map_rescue (the s/alpha equivalent, gated on _planar_map_gate_on) -
+        # h was trusting the map far more liberally than s/alpha for the same frames.
+        # Reuse the SAME confidence-streak gate s/alpha rescue already requires (the
+        # Pi's single-primary-slot design has no small/big extent-band concept to port
+        # a matching size gate from yet).
+        _map_h = (self._flowMap(_q1, self._time.perf_counter())
+                  if (self._map_flow and self._planar_map_gate_on) else None)
+        if _map_h is not None:
+            _h_out = _map_h
+            self._opt_flow_estimator_tag.append('map_flow')
+        else:
+            if self._h_extrap and len(self._h_real_t) >= 5:
+                _rt = np.asarray(self._h_real_t[-8:])
+                _rv = np.asarray(self._h_real_v[-8:])
+                _valid = np.all(np.abs(_rv) < self._h_extrap_clip_bound - 1e-3, axis=1)
+                if int(_valid.sum()) >= 5:
+                    _rt, _rv = _rt[_valid], _rv[_valid]
+                    _fit = extrapolate(_rt, _rv, n=min(4, len(_rt) - 1), deg=1, default_shape=6)
+                    _fit = np.nan_to_num(np.asarray(_fit), nan=0.0, posinf=self._h_extrap_max,
+                                          neginf=-self._h_extrap_max)
+                else:
+                    _fit = self._h_real_v[-1].copy() if self._h_real_v else np.zeros(6)
+                _decay = max(0.0, 1.0 - self._h_consec_misses / max(1, self._h_extrap_decay_frames))
+                _h_out = np.clip(_fit * _decay, -self._h_extrap_max, self._h_extrap_max)
+            else:
+                _h_out = np.zeros(6)
+            self._opt_flow_estimator_tag.append('coast')
+        self._opt_flow_ang_vel_raw.append(_h_out)
 
         # _feature_pts/_virtual_feature_pts: rescued geometry when available (so
         # MARKER_EXTENT_PX/CBF see LIVE map-grounded geometry, not frozen corners),
@@ -1583,6 +1980,104 @@ class IMG_PROCESSOR(Thread):
             out.append(float(st[1]))
         self._obs_kf_t = t
         return out[0], out[1]
+
+    def _loomMapM_primary(self, quat):
+        """Map-driven h_z helper (2026-07-28 port from PX4_Gazebo's _loomMapM_slot,
+        adapted to the Pi's single-primary-rescue design - no small/big HANDOVER_LATCHED
+        slot selection here, always the primary slot, matching how s/alpha rescue already
+        reads it). Same causal d(ln M)/dt fit as the real-decode loom (_mtrace_hist), on
+        its OWN separate history (self._flowmap_lnM_hist) so it never interferes with
+        the primary loom's own state."""
+        if self._planar_map is None or not getattr(self._planar_map, 'initialized', False) or quat is None:
+            return None
+        # DURATION CAP: same reasoning as _flowMap's gate above -- refuse once the map's own
+        # staleness clock (map_confidence) has decayed past the floor, rather than trusting an
+        # `initialized`-forever flag while the underlying tracking is stale.
+        if float(getattr(self._planar_map, 'map_confidence', 1.0)) < self._flowmap_min_confidence:
+            return None
+        try:
+            px = self._planar_map.get_marker_frame_pts()   # slot=None -> primary
+            if px is None or len(px) != 4:
+                return None
+            Vp = self._getVirtualPts(np.asarray(px, np.float32), quat)
+            if Vp is None or len(Vp) != 4:
+                return None
+            ctr = Vp[:, :2].mean(axis=0)
+            M = float(np.mean(np.sum((Vp[:, :2] - ctr) ** 2, axis=1)))
+            if not (M > 1e-12 and np.isfinite(M)):
+                return None
+            t = self._time.perf_counter()
+            lnM = float(np.log(M))
+            self._flowmap_lnM_hist.append((t, lnM))
+            if len(self._flowmap_lnM_hist) < 3:
+                return 0.0
+            ts = np.array([c[0] for c in self._flowmap_lnM_hist])
+            if ts.max() - ts.min() < 1e-4:
+                return 0.0
+            t0 = ts - ts[0]
+            slope = np.polyfit(t0, [c[1] for c in self._flowmap_lnM_hist], 1)[0]
+            return float(np.clip(-0.5 * slope * self._loom_gain, -10.0, 10.0))
+        except Exception:
+            return None
+
+    def _flowMap(self, quat, t):
+        """Map-driven flow [h_x, h_y, h_z] (2026-07-28 port from PX4_Gazebo's _flowMap),
+        for use during a marker-loss RESCUE frame - preferred over h_extrap when
+        available, since it's a fresh geometric estimate from the map's own tracked
+        points rather than a temporal extrapolation of stale real values. h_x/h_y: the
+        SAME 2-state CV-Kalman rate estimator _obs_vel_kf uses, own state
+        (_flowmap_kf_*), fed the map's primary-slot V-frame centre. h_z: _loomMapM_primary.
+        None -> caller falls back to h_extrap (or zero) as before."""
+        pm = self._planar_map
+        if pm is None or not getattr(pm, 'initialized', False) or quat is None:
+            return None
+        # DURATION CAP: see _flowmap_min_confidence comment at __init__ (2026-07-30). Without
+        # this, a map whose own tracking has gone stale (no fresh decode/correction for a long
+        # stretch) still reports `initialized=True` and this kept returning a KF-predicted
+        # velocity forever -- refuse once map_confidence has decayed past the floor.
+        if float(getattr(pm, 'map_confidence', 1.0)) < self._flowmap_min_confidence:
+            return None
+        try:
+            px = pm.get_marker_center_native()   # slot=None -> primary
+            if px is None:
+                return None
+            Vp = self._getVirtualPts(np.asarray([px], np.float32), quat)
+            if Vp is None or len(Vp) != 1:
+                return None
+            x0, y0 = float(Vp[0, 0]), float(Vp[0, 1])
+            if self._flowmap_kf_x is None or self._flowmap_kf_t is None:
+                self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                hx, hy = 0.0, 0.0
+            else:
+                dt = t - self._flowmap_kf_t
+                if dt <= 1e-4 or dt > 0.5:
+                    self._flowmap_kf_x = np.array([x0, 0.0]); self._flowmap_kf_y = np.array([y0, 0.0])
+                    self._flowmap_kf_Px = np.eye(2); self._flowmap_kf_Py = np.eye(2); self._flowmap_kf_t = t
+                    hx, hy = 0.0, 0.0
+                else:
+                    F = np.array([[1.0, dt], [0.0, 1.0]])
+                    Q = self._obs_kf_q * np.array([[dt ** 3 / 3, dt ** 2 / 2], [dt ** 2 / 2, dt]])
+                    r = self._obs_kf_r
+                    out = []
+                    for st, P, z in ((self._flowmap_kf_x, self._flowmap_kf_Px, x0),
+                                     (self._flowmap_kf_y, self._flowmap_kf_Py, y0)):
+                        st[:] = F @ st
+                        P[:] = F @ P @ F.T + Q
+                        S = P[0, 0] + r; K = P[:, 0] / S
+                        st[:] = st + K * (z - st[0])
+                        P[:] = P - np.outer(K, P[0, :])
+                        out.append(float(st[1]))
+                    hx, hy = out[0], out[1]
+                    self._flowmap_kf_t = t
+            hz = self._loomMapM_primary(quat)
+            if hz is None:
+                return None
+            if not all(np.isfinite(v) for v in (hx, hy, hz)):
+                return None
+            return np.array([hx, hy, hz, 0.0, 0.0, 0.0], dtype=float)   # w_x/w_y/w_z: not map-derived, zero (matches CTRL_ZERO_WXY level-target convention)
+        except Exception:
+            return None
 
     def _scaled_quad_points(self, corners, scales=(1.0, 2.0/3.0, 1.0/3.0), per_side=15):
         """See img_geometry.scaled_quad_points (single source of truth)."""
@@ -1766,7 +2261,7 @@ class IMG_PROCESSOR(Thread):
         """See img_geometry.vframe_w (single source of truth)."""
         return vframe_w(w_body, quat)
 
-    def _compute_ring_flow(self, imgs, quats, main_imgs=None):
+    def _compute_ring_flow(self, imgs, quats):
         """Texture-free V-frame flow from the fixed ring stations: LK-track the
         nadir-seeded ring on the real image, de-rotate to V, then the SAME
         _fill_A+lstsq as the corner flow. Returns (V_v_ring[6], pure_div,
@@ -1775,28 +2270,15 @@ class IMG_PROCESSOR(Thread):
         if (imgs is None or imgs[0] is None or imgs[1] is None
                 or quats is None or len(quats) < 2 or quats[0] is None or quats[1] is None):
             return zero
-        # Track on the smaller 'main' stream when available (see
-        # self._ring_main_stream comment in __init__) - smaller pyramid,
-        # same tracking math, just scaled. Falls back to the full raw frame
-        # if main_imgs wasn't passed (e.g. a caller that predates this) or
-        # is itself unavailable this frame, or the env toggle is off.
-        _use_main = (self._ring_main_stream and main_imgs is not None
-                     and main_imgs[0] is not None and main_imgs[1] is not None)
         try:
-            if _use_main:
-                g0 = main_imgs[0] if main_imgs[0].ndim == 2 else cv2.cvtColor(main_imgs[0], cv2.COLOR_BGR2GRAY)
-                g1 = main_imgs[1] if main_imgs[1].ndim == 2 else cv2.cvtColor(main_imgs[1], cv2.COLOR_BGR2GRAY)
-            else:
-                g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
-                g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
-            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # raw-pixel space (fx/fy/center are raw-only)
-            _seed_track = (_seed / self._aruco_scale) if _use_main else _seed
-            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed_track.astype(np.float32), None, **self._ring_lk_params)
+            g0 = imgs[0] if imgs[0].ndim == 2 else cv2.cvtColor(imgs[0], cv2.COLOR_BGR2GRAY)
+            g1 = imgs[1] if imgs[1].ndim == 2 else cv2.cvtColor(imgs[1], cv2.COLOR_BGR2GRAY)
+            _seed = self._getRealPtsFromV(self._ring_pts0_V, quats[0])   # pixel space (fx/fy/center)
+            p1, st, _ = cv2.calcOpticalFlowPyrLK(g0, g1, _seed.astype(np.float32), None, **self._ring_lk_params)
             st = np.asarray(st).flatten().astype(bool)
             if int(st.sum()) < 6:
                 return (np.zeros(6), 0.0, int(st.sum()), np.nan)
-            p1_raw = (p1 * self._aruco_scale) if _use_main else p1
-            r0 = _seed[st]; r1 = p1_raw.reshape(-1, 2)[st]
+            r0 = _seed[st]; r1 = p1.reshape(-1, 2)[st]
             # robustify: drop per-station flow-magnitude outliers (MAD)
             fm = np.linalg.norm(r1 - r0, axis=1)
             med = np.median(fm); mad = np.median(np.abs(fm - med)) + 1e-6
@@ -1939,11 +2421,81 @@ class IMG_PROCESSOR(Thread):
             "Planar Map Center": self._planar_map_center_log,
             "Planar Map Confidence": self._planar_map_conf_log,
             "Planar Map Time": self._planar_map_time_log,
+            "Centroid Map Raw": self._cmap_raw_log,   # (2,) V-frame, pre-_sensor_cal_s, nan when the map didn't fire
+            "Alpha Map Raw": self._amap_raw_log,      # rad, V-frame, pre-cal, nan when the map didn't fire
         }
     
     def getParams(self):
-        parameter = f"{{'Capture Rate':{self._capRate}, 'resolution':{self._resolution}}}"
-        return parameter
+        """Config snapshot written to Img_Params.txt at save time.
+
+        EXTENDED 2026-07-27. Was `{'Capture Rate':.., 'resolution':..}` only,
+        which meant a recording carried NO record of the signal-chain
+        configuration it was made under. That matters because
+        derive_pi_cal.py's default (no-argument) invocation aggregates EVERY
+        run under Test_Data/Calibration/ -- and the 2026-07-26 session alone
+        produced runs with PLASMC_CENTROID_RATE alternating 1/0, with and
+        without FLOW_LAT_REDUCED, and with the planar map on and off. Pooling
+        those fits signals from different chains into one cal, and nothing in
+        the recording let you detect it: you had to consult the shell history.
+        Same class of error as the savgol/KF train-run mismatch Gazebo fixed,
+        just across runs instead of across stages.
+
+        Emitted as a literal dict so a tool can ast.literal_eval() it and
+        group/reject runs by configuration. Values are the RESOLVED runtime
+        attributes wherever they exist (not os.environ lookups), so an unset
+        env var reports the default actually in force rather than absent.
+        The live sensor cal matrices are included too -- a recording is only
+        interpretable against the cal that was applied while it was made.
+        """
+        def _f(x):
+            try:
+                return np.asarray(x).tolist()
+            except Exception:
+                return None
+        cfg = {
+            # --- identity / geometry ---
+            'Capture Rate': self._capRate,
+            'resolution': self._resolution,
+            # --- filters (MUST match what derive_pi_cal.py replicates) ---
+            'IMG_FILTER': os.environ.get('IMG_FILTER', 'kf'),
+            'IMG_FEATURE_FILTER': os.environ.get('IMG_FEATURE_FILTER', 'kf'),
+            'FILTER_WIN': FILTER_WIN,
+            'FILTER_POLYORDER': FILTER_POLYORDER,
+            'FLOW_KF_Q': self._kf_q, 'FLOW_KF_R': self._kf_r,
+            'IMG_FEAT_KF_Q': self._kf_feat_q, 'IMG_FEAT_KF_R': self._kf_feat_r,
+            'CENTROID_RATE_KF_Q': getattr(self, '_obs_kf_q', None),
+            'CENTROID_RATE_KF_R': getattr(self, '_obs_kf_r', None),
+            # --- signal-chain switches (change the SHAPE of the logged signal) ---
+            'PLASMC_CENTROID_RATE': int(bool(getattr(self, '_centroid_rate', False))),
+            'FLOW_LAT_REDUCED': int(bool(getattr(self, '_lat_reduced', False))),
+            'FLOW_LOOM_DECOUPLE': int(bool(getattr(self, '_loom_decouple', False))),
+            'FLOW_FUSE_RING': int(bool(getattr(self, '_fuse_ring', False))),
+            'FLOW_DH_MAX': getattr(self, '_flow_dh_max', None),
+            'PLASMC_H_EXTRAP': int(bool(getattr(self, '_h_extrap', False))),
+            'PLASMC_DENSE_RECOVER': int(bool(getattr(self, '_dense_recover', False))),
+            'PLASMC_MAP_FLOW': int(bool(getattr(self, '_map_flow', False))),
+            'GYRO_COMP_WXY_MAX': getattr(self, '_gyro_comp_wxy_max', None),
+            # --- perception path ---
+            'PLANAR_MAP_SHADOW': int(bool(getattr(self, '_planar_map_shadow', False))),
+            'PLASMC_PLANAR_MAP_PRIMARY': int(bool(getattr(self, '_planar_map_primary', False))),
+            'MARKER_KLT_MAX_STEPS': getattr(self, '_max_lk_steps', None),
+            'ARUCO_ROI_MARGIN_PX': getattr(self, '_roi_margin_px', None),
+            'ARUCO_ROI_MAX_MISSES': getattr(self, '_roi_max_misses', None),
+            'ARUCO_CORNER_REFINE': os.environ.get('ARUCO_CORNER_REFINE', 'subpix'),
+            'ARUCO_MIN_PERIMETER_RATE': os.environ.get('ARUCO_MIN_PERIMETER_RATE', '0.02'),
+            'ARUCO_MAX_PERIMETER_RATE': os.environ.get('ARUCO_MAX_PERIMETER_RATE', '4.0'),
+            # --- camera ---
+            'CAM_MANUAL_EXPOSURE': os.environ.get('CAM_MANUAL_EXPOSURE', '0'),
+            'CAM_EXPOSURE_US': os.environ.get('CAM_EXPOSURE_US', None),
+            'CAM_ANALOGUE_GAIN': os.environ.get('CAM_ANALOGUE_GAIN', None),
+            'MAIN_STREAM_SIZE': os.environ.get('MAIN_STREAM_SIZE', '320,240'),
+            # --- cal APPLIED while recording (a recording is only
+            #     interpretable against the cal that was live) ---
+            'sensor_cal_hw': _f(self._sensor_cal_hw),
+            'sensor_cal_s': _f(self._sensor_cal_s),
+            'sensor_cal_ring': _f(getattr(self, '_sensor_cal_ring', None)),
+        }
+        return repr(cfg)
     
     def getImgFeatureParam(self):
         """Calibrated, KF-smoothed feature vector [xc, yc, 1, alpha] (Gazebo-aligned).
@@ -2014,11 +2566,105 @@ class IMG_PROCESSOR(Thread):
         time. None if no successful iteration has completed yet."""
         return self._time_log[-1] if self._time_log else None
 
+    def getRawOptFlowAngVel(self):
+        """Latest KF-smoothed corner [h;w] BEFORE _sensor_cal_hw (6-vec).
+
+        ADDED 2026-07-27. The Pi already co-samples getOptFlowAngVel() /
+        getImgFeatureParam() into Ground_Truth.npy alongside each mocap pose,
+        but those are CALIBRATED, so derive_pi_cal.py could not use them to
+        FIT a calibration and was forced to re-load Img_Data.npy and
+        np.interp() it onto the GT clock instead. That interpolation is a real
+        error source: validating GT s against the image gave corr 0.0-0.52 via
+        the interpolated path vs 0.29-0.83 using the exactly-paired co-sampled
+        rows on the same recordings.
+
+        Gazebo avoids this by co-sampling its RAW getters
+        (getRawOptFlowAngVel/getRawRingFlowAngVel) into the GT dict
+        specifically "so the derive tools can fit" - this is the missing Pi
+        counterpart.
+
+        DELIBERATELY does NOT mirror getOptFlowAngVel()'s fusion branch
+        (BUG FIX 2026-07-27, same day it was introduced). getOptFlowAngVel()
+        returns the fusion-EKF state when FLOW_FUSE_RING=1 and the EKF has
+        initialised - but that state is POST-cal and ring-fused: the EKF's
+        corner measurement is `_corner_cal = _sensor_cal_hw @ B_v` (see the
+        _fuse_step call site), so its output already has _sensor_cal_hw baked
+        in and is blended with the ring. Emitting it from a getter named "Raw"
+        would co-sample calibrated, fused data into "Raw Opt Flow Ang Vel",
+        and any cal fitted against it would be circular - fitting a cal
+        against a signal that already contains that cal.
+
+        This is not a corner case: on the Pi FLOW_FUSE_RING defaults to 1, and
+        _ekf_init flips True on the first frame with EITHER corner or ring
+        valid (ring logs unconditionally every frame), so the fusion branch is
+        taken essentially from the start of every recording. Always return the
+        PRE-cal filtered corner state instead.
+        """
+        if len(self._opt_flow_ang_vel_raw) == 0:
+            return np.zeros(6)
+        if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
+            return self._compute_savgol_output()
+        return self._kf_x[:, 0].copy()
+
+    def getRawImgFeatureParam(self):
+        """Latest KF-smoothed [xc, yc, 1, alpha] BEFORE _sensor_cal_s.
+        Raw counterpart of getImgFeatureParam() - see getRawOptFlowAngVel()
+        for why the co-sampled log needs the PRE-cal value."""
+        if len(self._img_feature_param) == 0:
+            return np.zeros(4)
+        if os.environ.get('IMG_FEATURE_FILTER', 'kf') != 'savgol':
+            n = len(self._img_feature_param)
+            if n != self._kf_feat_last_n:
+                self._kf_feat_last_n = n
+                self._kf_feat_update(self._img_feature_param[-1],
+                                     self._time.perf_counter())
+            if self._kf_feat_initialized:
+                return self._kf_feat_x[:, 0].copy()
+        if len(self._img_feature_param) >= FILTER_WIN:
+            sgf_buf = sgf(self._img_feature_param[-FILTER_WIN:], FILTER_WIN,
+                          FILTER_POLYORDER, axis=0)
+            return sgf_buf[int(FILTER_WIN / 2 + 1)]
+        return np.mean(self._img_feature_param, axis=0)
+
+    def getRawCentroidMapFeature(self):
+        """Latest raw (2,) V-frame centroid from the PlanarFeatureMap, BEFORE
+        _sensor_cal_s -- (nan, nan) if the map didn't produce one this frame
+        (map off, not yet bootstrapped, or no primary slot).
+
+        Co-sampled by output_calibration.py on the same tick as
+        getRawImgFeatureParam(), so deriving a MAP cal against it needs no
+        separate GT/img alignment. Pi counterpart of Gazebo's
+        getRawCentroidMapFeature (see feedback_map_cal_validation_gap); the
+        underlying value is built from the map's own geometry rather than read
+        off a _centroidMap override, because the Pi's map feeds CORNERS rather
+        than a dedicated centroid consumer -- see the logging site for the
+        space-chain and get_marker_center_native rationale.
+
+        Why it is worth having: the map path currently reaches the cal only
+        indirectly, as 'planar_map_rescue'/'*override*'-tagged rows inside the
+        ordinary feature stream. Logging the map's INDEPENDENT estimate lets
+        the map path be calibrated and cross-checked on its own, instead of
+        being either excluded wholesale or blindly trusted.
+        """
+        if len(self._cmap_raw_log) == 0:
+            return np.array([np.nan, np.nan])
+        return np.array(self._cmap_raw_log[-1], dtype=float)
+
+    def getRawAlphaMapFeature(self):
+        """Latest raw map alpha (rad, V-frame) BEFORE _sensor_cal_s -- nan if the
+        map didn't produce one this frame. Same co-sampling convention as
+        getRawCentroidMapFeature()."""
+        if len(self._amap_raw_log) == 0:
+            return np.nan
+        return float(self._amap_raw_log[-1])
+
     def getRawRingFlowAngVel(self):
         """Latest raw ring [h;w] BEFORE _sensor_cal_ring (for ring-cal derivation)."""
         return self._ring_v_raw
 
     def getRingFlowAngVel(self):
         """Calibrated, KF-smoothed ring flow (safety net; control consumes the
-        corner flow). _sensor_cal_ring is identity until derived like the corner cal."""
+        corner flow). _sensor_cal_ring is the derive_pi_cal.py transfer-derived
+        aggregate set above (R^2 0.35/0.31/0.38/0.59, PROVISIONAL, FoV-ceiling-
+        limited per that block's comment) -- not identity."""
         return self._sensor_cal_ring @ self._kf_x_ring[:, 0]

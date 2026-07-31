@@ -74,11 +74,23 @@ async def _run():
         ulg_files = [f for f in listing.files if f.endswith(".ulg")]
         print(f"  {len(ulg_files)} .ulg files: {ulg_files}")
 
+        # BUG FIX (2026-07-30): logs used to be saved flat into LOG_OUT_DIR keyed only by
+        # HH_MM_SS.ulg, the PX4-assigned filename WITHIN a date directory -- two different
+        # dates producing a log at the same clock time (confirmed live: a 2026-07-30 recording
+        # collided with a pre-existing 2026-07-20 file of the same name) silently overwrote
+        # one date's data with another's, with no warning. Each date now gets its own
+        # subdirectory (LOG_OUT_DIR/<date>/HH_MM_SS.ulg) so collisions are structurally
+        # impossible across dates; a same-date re-download overwriting itself is still fine
+        # (that's the same flight's log, not a different one).
+        date_name = os.path.basename(date_dir.rstrip("/"))
+        out_subdir = os.path.join(LOG_OUT_DIR, date_name)
+        os.makedirs(out_subdir, exist_ok=True)
+
         for fname in ulg_files:
             remote_path = f"{date_dir}/{fname}"
-            print(f"  Downloading {remote_path} -> {LOG_OUT_DIR}/ ...")
+            print(f"  Downloading {remote_path} -> {out_subdir}/ ...")
             try:
-                async for progress in vehicle.ftp.download(remote_path, LOG_OUT_DIR, True):
+                async for progress in vehicle.ftp.download(remote_path, out_subdir, True):
                     pass
                 print(f"    done: {fname}")
             except Exception as ex:

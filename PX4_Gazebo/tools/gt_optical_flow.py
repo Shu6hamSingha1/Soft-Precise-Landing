@@ -86,7 +86,20 @@ def compute_gt_flow(rep_dir):
         up  = NED_FROM_ENU @ np.array([p.position.x, p.position.y, p.position.z])
         tpp = NED_FROM_ENU @ np.array([t.position.x, t.position.y, t.position.z])
         W_x_tu[i] = tpp - up                                          # target-UAV, NED
-        yaw[i] = Quaternion([p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]).to_angles()[2]
+        # FIXED 2026-07-28 (ported from the analogous Pi derive_pi_cal.py fix,
+        # itself validated against this repo's own gt_feedback.py:146 formula
+        # -- "ry = _yaw_of(qu) - _yaw_of(qt)", PLASMC_GT_ALPHA_SIGN default 1.0,
+        # i.e. no extra sign flip beyond the relative subtraction itself): was
+        # UAV yaw alone, silently dropping the target's own orientation (t was
+        # only used for target POSITION above, never orientation). Matches
+        # analyze_calibration.py's own flagged follow-up ("4th component
+        # (alpha) calibration would need target yaw computation"). Numerically
+        # identical to before for a stationary/non-yawing target (the common
+        # case to date); now correct for a turning target (rover phase) too.
+        uav_yaw = Quaternion([p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]).to_angles()[2]
+        tgt_yaw = Quaternion([t.orientation.w, t.orientation.x, t.orientation.y, t.orientation.z]).to_angles()[2]
+        rel_yaw = uav_yaw - tgt_yaw
+        yaw[i] = np.arctan2(np.sin(rel_yaw), np.cos(rel_yaw))         # wrap to (-pi, pi]
 
     W_v_tu = _robust_vel(W_x_tu, tg)                                  # NED relative velocity
     B_h_g = np.full((n, 3), np.nan); V_h_g = np.full((n, 3), np.nan)

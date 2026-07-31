@@ -30,21 +30,52 @@ from ahrs import Quaternion
 # sensor with 62.2 deg hfov): 640x480 is a documented distinct "640x480p90"
 # sensor mode, not a simple downscale of the full-FOV binned modes, so a
 # narrower FOV / higher fx-in-pixels than the full-sensor spec is physically
-# expected, not a bug. FINAL FIT: principal point fixed at the geometric
-# center (CALIB_FIX_PRINCIPAL_POINT) on the full combined 123-image set (all
-# sessions: original 25 flat-pose + 20 fresh + 33 with deliberate vertical
-# coverage) - reprojection err 0.36px, small well-behaved distortion (vs
-# wild +/-10-30 coefficients in the unstable free-principal-point runs).
-# Cross-validated: independent fixed-center fits on the 45-image and
-# 33-image subsets gave fx=1011/1074 respectively - all three within ~6% of
-# this final value, good convergence. Measured hfov ~34 deg (vs the IMX219's
-# full-sensor 62 deg). The original fx=512/fy=384 was a linear scale-down of
-# an UNVERIFIED spec-sheet guess (768/576 @ 960x720, itself never
-# calibrated) and assumed a full-FOV bin - wrong assumption for this crop mode.
-CALIB_CX = 319.50  # measured principal point (~= geometric center 320.0)
-CALIB_CY = 239.50  # measured principal point (~= geometric center 240.0)
-fx = 1020.37
-fy = 1020.37
+# expected, not a bug.
+#
+# RE-DERIVED 2026-07-28, supersedes the fx=1020.37 fit below. The prior
+# "123-image set" this comment described was actually only 78 UNIQUE captures
+# (25 flat-pose + 20 fresh + 33 vertical-coverage, 25+20+33=78) - the on-disk
+# folder had 123 FILES because the 45-image midway "combined" checkpoint
+# (itself just the 25+20 union) got copied into the final folder a second
+# time under new names, so those 45 of 78 images carried double weight in the
+# least-squares fit. Also hit a real cv2 5.x compat bug while re-deriving:
+# findChessboardCorners' legacy fallback returns (N,2) on this opencv-python
+# build, not the (N,1,2) the script assumed - crashed outright rather than
+# silently miscalibrating, see compute_camera_calib.py's find_board() fix.
+# Re-ran compute_camera_calib.py on the 78 DEDUPLICATED images only (still
+# principal-point-fixed, still fx=fy constrained): reprojection err 0.36px
+# (same as before - the duplication didn't corrupt the ANSWER, just its
+# uncertainty), 78/78 images used, ZERO outliers rejected. Auto-detected
+# board size 8x5 inner corners, independently confirmed against the actual
+# board (user, 2026-07-28): a calib.io 6x9-square board has 5x8 inner
+# corners - same count, transposed - strong evidence the fit used the real
+# board geometry rather than a spurious sub-pattern match. New value is
+# within 0.6% of the prior fx=1020.37 (1020.37 -> 1026.95) - the duplication
+# bug was a methodology flaw, not a source of significant error; DID NOT
+# turn out to explain the separately-suspected GT-vs-image scale mismatch
+# (see project_pi_gt_lever_arm_2026_07_27) - that remains open.
+# Full audit trail: Test_Data/Calibration/Camera/calib_images_dedup78/
+# (images + cameraMatrix.txt/cameraDistortion.txt/calib_log.txt).
+#
+# Cross-validated (prior fit): independent fixed-center fits on the
+# 45-image and 33-image subsets gave fx=1011/1074 respectively - all within
+# ~6% of the final value, good convergence. Measured hfov ~34 deg (vs the
+# IMX219's full-sensor 62 deg). The original fx=512/fy=384 was a linear
+# scale-down of an UNVERIFIED spec-sheet guess (768/576 @ 960x720, itself
+# never calibrated) and assumed a full-FOV bin - wrong assumption for this
+# crop mode.
+# RESCALED 2026-07-30: img_data.py now works in a SINGLE resolution (the
+# 320x240 ISP-scaled "main" stream, was previously main_resolution/
+# main_images - that dual-stream concept has been removed entirely). These
+# constants were measured at 640x480 (see history above) and are halved here
+# to match. Halving center+focal together leaves every ratio built from them
+# (p_10 = center/focal, the CBF's focal_px terms, etc.) numerically
+# unchanged - this rescale does not alter controller behavior, only removes
+# the now-redundant self._aruco_scale conversion throughout img_data.py.
+CALIB_CX = 319.50 / 2  # = 159.75 (measured principal point, halved to main-stream units)
+CALIB_CY = 239.50 / 2  # = 119.75
+fx = 1026.95 / 2  # = 513.475
+fy = 1026.95 / 2  # = 513.475
 f = fx  # focal length in pixels
 # NOTE: this hfov (~35 deg) is NOT the same as the Gazebo sim camera (1.74 rad
 # / ~99.7 deg @640x480) - matching resolution alone never reproduced the sim's
@@ -74,9 +105,37 @@ f = fx  # focal length in pixels
 # genuine axis flip would break the +-1 relationship), which is what a
 # correctly-signed, non-mirrored, pure-yaw mount predicts. Does not
 # independently pin down the mount's fixed OFFSET angle (the -90 deg above) -
-# only that the rotation-rate coupling is right; the translation/axis-mapping
-# half of the matrix remains unvalidated (see check_mount_rotation docstring
-# - existing recordings are yaw-dominated, need an isolated-translation sweep).
+# only that the rotation-rate coupling is right. A fixed relative rotation
+# between two rigid bodies never changes their SHARED angular rate, so that
+# check is structurally BLIND to the offset angle; it cannot be fixed by more
+# yaw data, and needs a different observable entirely.
+#
+# AXIS MAPPING VALIDATED 2026-07-27 (supersedes this comment's former claim
+# that "the translation/axis-mapping half of the matrix remains unvalidated").
+# Supplied by exactly that different observable - TRANSLATION, phase-resolved.
+# Phase labels were recovered from mocap (derive_pi_cal.phase_labels) and the
+# V-frame centroid response measured per phase on the 2026-07-26 recordings:
+#
+#     body-X phase -> centroid col 0 std 0.088 / 0.063 / 0.042
+#     body-Y phase -> centroid col 1 std 0.101 / 0.152 / 0.133
+#                     (vs col 0 only 0.026 / 0.045 / 0.029 in the same phase)
+#
+# i.e. body-Y excitation drives V-frame column 1 by 3-5x over column 0. Since
+# "Feature Params" is built by get_virtual_pts() BELOW - which applies this
+# very matrix and then the gravity-levelling R_inv - a wrong or missing 90 deg
+# here would have shown up as body-Y driving column 0 instead. It does not.
+# The Y separation is clean; the X separation is real but weaker (1.1-1.7x),
+# limited by that phase's much lower usable-sample count, not by ambiguity in
+# the mapping.
+#
+# STILL UNVALIDATED: the mount TRANSLATION (lever arm) between the camera's
+# optical centre and both the FC/mocap body origin and the target origin. That
+# is a separate quantity from this rotation, is known non-zero (user-confirmed
+# 2026-07-27), and shows up as a ~0.19-0.23 m systematic error in GT bearing s
+# - see project_pi_gt_lever_arm_2026_07_27. It needs a physical measurement;
+# least-squares on existing data absorbs it into nonsense (a -1.53 m camera
+# z-offset). It does NOT affect optical FLOW, which differentiates a constant
+# offset away - only the bearing/centroid chain.
 R_CAM_TO_BODY = np.array([
     [0.0, 1.0, 0.0],
     [-1.0, 0.0, 0.0],
@@ -325,6 +384,51 @@ def quad_ill_conditioned(pts, min_angle_deg=None, max_elong=None):
         return bool(ang < min_angle_deg or elong > max_elong)
     except Exception:
         return True
+
+
+def quad_condition_score(pts, min_angle_deg=None, max_elong=None):
+    """CONTINUOUS companion to quad_ill_conditioned (2026-07-30, for confidence-weighted
+    loop_closure_correct): 1.0 = well-conditioned (near-square, diagonals near-perpendicular),
+    0.0 = at or beyond the same ill-conditioned thresholds quad_ill_conditioned rejects on.
+    Same underlying angle/elongation geometry, just returned as a smooth [0,1] score instead
+    of thresholded to a bool, so a caller can BLEND a marginal decode instead of a binary
+    accept/reject. See quad_ill_conditioned's docstring for the geometric rationale."""
+    if min_angle_deg is None:
+        min_angle_deg = float(os.environ.get("MAP_ILLCOND_ANGLE_DEG", "20"))
+    if max_elong is None:
+        max_elong = float(os.environ.get("MAP_ILLCOND_ELONG", "5"))
+    try:
+        c = np.asarray(pts, dtype=float).reshape(-1, 2)
+        if c.shape[0] != 4 or not np.all(np.isfinite(c)):
+            return 0.0
+        d1 = c[2] - c[0]; d2 = c[3] - c[1]
+        n1 = np.linalg.norm(d1); n2 = np.linalg.norm(d2)
+        if n1 < 1e-6 or n2 < 1e-6:
+            return 0.0
+        ang = np.degrees(np.arccos(np.clip(abs(np.dot(d1, d2) / (n1 * n2)), 0.0, 1.0)))
+        sides = [np.linalg.norm(c[(i + 1) % 4] - c[i]) for i in range(4)]
+        elong = max(sides) / max(min(sides), 1e-6)
+        w_ang = np.clip((ang - min_angle_deg) / max(90.0 - min_angle_deg, 1e-6), 0.0, 1.0)
+        w_elong = np.clip((max_elong - elong) / max(max_elong - 1.0, 1e-6), 0.0, 1.0)
+        return float(w_ang * w_elong)
+    except Exception:
+        return 0.0
+
+
+def marker_edge_margin_score(pts, resolution_hw, margin_px):
+    """CONTINUOUS companion to marker_near_fov_edge (2026-07-30, for confidence-weighted
+    loop_closure_correct): 1.0 = every corner well clear of the frame boundary, 0.0 = at or
+    inside margin_px of the edge (the same threshold marker_near_fov_edge rejects on).
+    Ramps linearly between those two -- so a decode that's a little close to the edge (but
+    not touching it) gets a partial-trust blend instead of being either fully accepted or
+    fully discarded."""
+    try:
+        c = np.asarray(pts, dtype=float).reshape(-1, 2)
+        h, w = resolution_hw
+        min_dist = min(c[:, 0].min(), w - c[:, 0].max(), c[:, 1].min(), h - c[:, 1].max())
+        return float(np.clip(min_dist / max(margin_px, 1e-6), 0.0, 1.0))
+    except Exception:
+        return 0.0
 
 
 def marker_near_fov_edge(pts, resolution_hw, margin_px):

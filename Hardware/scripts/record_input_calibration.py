@@ -66,8 +66,8 @@ DES_IMG_FEATURE_PARAM = np.array([0.0, 0.0, 1.0,
 TAKEOFF_HEIGHT = float(os.environ.get("LANDING_TAKEOFF_HEIGHT_M", "7.0"))
 SLEEP_TIME = 1 / 100
 
-HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.41"))
-THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.59"))
+HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
+THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
 CMD_RATE_AMP = float(os.environ.get("INPUT_CAL_RATE_AMP", "0.1"))     # rad/s
 CMD_THRUST_AMP_N = float(os.environ.get("INPUT_CAL_THRUST_AMP_N", "3.0"))  # Newtons excess-over-hover
