@@ -667,11 +667,22 @@ async def main(record = 'n'):
             # (not OR'd) so it can force feature_fresh=False even when every
             # other signal says fine. See
             # docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md.
+            #
+            # FALSE-ABORT FIX (2026-07-31, ported from Hardware/scripts/ where this is
+            # already live): CBF_CORNERS_STALE's fast ~30-frame/1s threshold was designed
+            # for the LOW-RISK kappa-freeze use inside controller.py (just pauses
+            # adaptation). Reusing it HERE for the irreversible mission-abort decision
+            # false-tripped on ordinary coast bursts on real Pi hardware (2-327 frames is
+            # normal there, see project_pi_coast_root_cause) -- 15 of 17 flights in a
+            # 2026-07-31 test session aborted within seconds, never reaching a sustained
+            # closed-loop descent. Use CBF_CORNERS_STALE_ABORT instead here -- a separate,
+            # longer-fused counter (default 350 frames, override via
+            # CBF_CORNERS_STALE_ABORT_FRAMES) sized past the observed normal-coast range.
             feature_fresh = ((os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
                              or (EC_node.TARGET_IS_VISIBLE
                                  and not EC_node.FEATURE_IS_STALE)
                              or EC_node._img_node.RESCUE_ACTIVE)
-                             and not EC_node.CBF_CORNERS_STALE)
+                             and not EC_node.CBF_CORNERS_STALE_ABORT)
             # ── Stale-streak commitment (see env knobs above; inert when EXTENT=0) ──
             if STALE_COMMIT_EXTENT > 0.0 and not in_final_descent:
                 if feature_fresh:
