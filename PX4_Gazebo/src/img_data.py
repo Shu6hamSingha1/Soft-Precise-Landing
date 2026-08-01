@@ -24,6 +24,14 @@ from numerical_methods import extrapolate
 from gz_subscriber import GZ_Subscriber, Image_Node
 from planar_map import PlanarFeatureMap
 
+# NOTE: MARKER_TYPE=cross no longer routes through this file -- superseded
+# 2026-08-01 by the standalone src/cross_marker_perception.py, selected in
+# controller.py instead of img_data.IMG_PROCESSOR. This file is ArUco-only.
+# (An earlier synthetic-4-corner-packaging approach lived here briefly;
+# removed once the design moved to a separate pipeline -- see
+# cross_marker_perception.py's module docstring for why PlanarFeatureMap/
+# marker-handover/decode-shaped packaging don't apply to that marker.)
+
 CHECK_NUM = 80
 # Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
 # fx = (W/2) / tan(hfov/2) = 320 / tan(0.87) ≈ 270.
