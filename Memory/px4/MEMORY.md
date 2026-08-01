@@ -4,7 +4,23 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟡 2026-07-31 (LATEST) — real-perception (non-GT-FB) moving-target still fails; root-caused
+> **🟢 2026-08-01 (LATEST) — decode-free cross+stub marker pipeline built, committed
+> (916aa53, pushed), as an ArUco alternative.** Standalone (`cross_marker_detector.py` +
+> `cross_marker_perception.py`), NOT routed through `img_data.py`/`IMG_PROCESSOR` — no
+> PlanarFeatureMap, no marker handover, no board layout (all ArUco-specific patches for
+> problems this marker's design doesn't have: decode-or-nothing dropout, multi-marker
+> range extension). Computes the manuscript's actual `s`/`alpha`/`h,w` (not the project's
+> ArUco-shaped conventions — `s`=homogeneous centroid, `alpha`=unweighted 2nd-moment over
+> real pixels, `h,w`=image-Jacobian solve over plate-wide Shi-Tomasi points). Wired into
+> `controller.py` via `MARKER_TYPE=cross`; single-point visibility CBF reuses
+> `cbf_visibility.py` unmodified. Validated offline + live (ground/5m/7m hover, partial
+> tilt). **NOT ready for closed-loop descent**: `CrossMarkerNode` only implements the
+> interface subset the hover path touches (no terminal-kick/ring-loom-fusion — will
+> AttributeError if exercised). Next planned step: output calibration for the
+> cross-marker `h,w` path (architecturally different from ArUco's `_sensor_cal_hw`, needs
+> its own derivation, not a port). [[project_cross_marker_pipeline_20260801]]
+
+> **🟡 2026-07-31 — real-perception (non-GT-FB) moving-target still fails; root-caused
 > to a coast/flow disconnect + implemented a fix (UNVALIDATED).** After the five 2026-07-30
 > fixes fully solved the rover case under GT-feedback (n=3 Linear 0.034-0.167m, matching
 > historical), the SAME test with GT-feedback OFF (real image+IMU driving the primary SMC
@@ -16,8 +32,11 @@
 > (which stayed accurate the whole time via a separate KF). `MARKER_LOSS_GRACE` (1.0s) is
 > working as designed but is tuned for stationary-target brief dropouts, not moving-target
 > multi-frame loss. FIX implemented (`_kf_feat_update`, flow-coupled coast: inject h_x/h_y as
-> the coast rate for xc/yc) -- NOT YET VALIDATED, n=3 real-perception re-test launched same
-> session, check result before trusting. [[project_20260731_moving_target_real_perception_chain]]
+> the coast rate for xc/yc) -- VALIDATED PARTIAL: outcome tracks coast duration exactly (0.62s
+> coast -> 0.044m, matching historical; 2.33s/6.09s coasts -> 1.12m/1.75m, still bad). Helps but
+> insufficient for multi-second outages; next lever is an independent corner-free source for h
+> itself (FLOW_FUSE_RING/PLASMC_CENTROID_RATE, both baked off, not re-examined for moving
+> targets yet). [[project_20260731_moving_target_real_perception_chain]]
 
 > **🟢 2026-07-31 — five 2026-07-30 perception/kappa fixes VALIDATED, no IC1-5
 > regression.** Parallel Windows/hardware session ported 5 fixes (self-heal, CBF_CORNERS_STALE
