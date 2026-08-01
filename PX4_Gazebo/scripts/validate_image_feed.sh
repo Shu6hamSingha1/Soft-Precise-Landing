@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Bring up the SITL infrastructure (headless) and run validate_image.py
-# to confirm: image dimensions, encoding, content stats, and ArUco
-# detectability.
+# Bring up the SITL infrastructure (headless) and run a validation script
+# against the live /image feed. Default: validate_image.py (dims/encoding/
+# ArUco detectability) against the aruco world. Override WORLD and
+# VALIDATE_SCRIPT to point at a different world/marker + detector, e.g.:
+#   WORLD=cross_marker VALIDATE_SCRIPT=apps/validate_cross_marker.py \
+#     bash scripts/validate_image_feed.sh
 set -u
 
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 VENV="${VENV:-$HOME/ws/scripts/env2025}"
+WORLD="${WORLD:-aruco}"
+VALIDATE_SCRIPT="${VALIDATE_SCRIPT:-apps/validate_image.py}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
@@ -21,7 +26,7 @@ cleanup() {
   sleep 1
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
-  pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
+  pkill -9 -f "parameter_bridge.*world/${WORLD}" 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
   echo "[validate] done."
 }
@@ -37,12 +42,12 @@ setsid env QT_QPA_PLATFORM=offscreen \
   PX4_SYS_AUTOSTART=4014 \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
-  PX4_GZ_WORLD=aruco \
+  PX4_GZ_WORLD="$WORLD" \
   bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PIDS+=($!)
 
-IMG_TOPIC='/world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image'
+IMG_TOPIC="/world/${WORLD}/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image"
 echo -n "[validate] waiting for image topic "
 WAITED=0
 while ! gz topic -l 2>/dev/null | grep -q "$IMG_TOPIC"; do
@@ -65,13 +70,13 @@ PIDS+=($!)
 sleep 3   # let the bridge settle and a few frames flow
 
 echo
-echo "[validate] running validate_image.py ..."
+echo "[validate] running $VALIDATE_SCRIPT ..."
 echo "------------------------------------------------------------"
 cd "$SCRIPT_DIR/.."
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
-python3 apps/validate_image.py
+python3 "$VALIDATE_SCRIPT"
 PY_RC=$?
 echo "------------------------------------------------------------"
-echo "[validate] validate_image.py exit code: $PY_RC"
+echo "[validate] $VALIDATE_SCRIPT exit code: $PY_RC"
 exit "$PY_RC"

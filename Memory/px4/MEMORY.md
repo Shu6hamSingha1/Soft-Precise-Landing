@@ -4,7 +4,38 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🔴🟢 2026-07-28 (LATEST) — accidental month-long PLASMC_SINGLE_MARKER=1 default found
+> **🟡 2026-07-31 (LATEST) — real-perception (non-GT-FB) moving-target still fails; root-caused
+> to a coast/flow disconnect + implemented a fix (UNVALIDATED).** After the five 2026-07-30
+> fixes fully solved the rover case under GT-feedback (n=3 Linear 0.034-0.167m, matching
+> historical), the SAME test with GT-feedback OFF (real image+IMU driving the primary SMC
+> signal) failed badly (n=3, all TARGET_LOST, impacts 57-311 m/s^2, xy_err ~1-1.4m) --
+> confirming perception itself (not just CBF-authority-starvation) needs hardening for a
+> moving target. Traced to: ~1.4-1.8s of genuine total corner loss near the deck (all 3 reps)
+> during which `s`'s predict-only coast (`img_data.py:_kf_step`) extrapolates using its OWN
+> weak, already-decayed position-derived rate state, fully decoupled from optical flow `h`
+> (which stayed accurate the whole time via a separate KF). `MARKER_LOSS_GRACE` (1.0s) is
+> working as designed but is tuned for stationary-target brief dropouts, not moving-target
+> multi-frame loss. FIX implemented (`_kf_feat_update`, flow-coupled coast: inject h_x/h_y as
+> the coast rate for xc/yc) -- NOT YET VALIDATED, n=3 real-perception re-test launched same
+> session, check result before trusting. [[project_20260731_moving_target_real_perception_chain]]
+
+> **🟢 2026-07-31 — five 2026-07-30 perception/kappa fixes VALIDATED, no IC1-5
+> regression.** Parallel Windows/hardware session ported 5 fixes (self-heal, CBF_CORNERS_STALE
+> + feature_fresh AND-gate, held-out validation-reset, confidence-weighted loop-closure,
+> kappa/integral freeze on staleness — the last is the direct, hardware-confirmed fix for the
+> a_u-explosion/kappa-ratchet this session traced by hand on the rover). IC1 n=3 + IC2-4 n=3 +
+> IC5 n=8: no crashes, no regression signature; IC5's one 19.5m outlier checked against 447
+> historical reps (p95-p99, not new) — [[project_20260730_five_fixes_ic_validation]].
+
+> **🔴 2026-07-30 — rover moving-target baseline is STALE, 0/3 re-test.** Re-ran the
+> documented 2026-07-02 rover command (GT-FB, Linear, ROVER_SPEED_MULT=0.3) that was 3/3
+> on-platform (rel-lat 0.044-0.28m) — n=3+1 re-test on 2026-07-29/30 is 0/4, all missing the
+> platform by 0.7-4.3m (inconsistent magnitude, no target_lost/perception-loss/descent_anomaly
+> flags — tracking-lag issue, not a hard failure). Multiple bake sessions since 07-02 (dense-
+> recovery, FLOW_FUSE_RING=0, MARKER_KLT_RELAX_GATE=1, s-extrap fix, 07-09) shifted the default
+> gains; rover parity never re-validated against them. [[project_rover_baseline_stale_2026-07-30]]
+
+> **🔴🟢 2026-07-28 — accidental month-long PLASMC_SINGLE_MARKER=1 default found
 > +reverted; exposed+fixed a dead-code shape bug; new residual gap found.** Chasing an
 > elevated TARGET_LOST/UNKNOWN rate traced to `_single_marker` defaulting ON since commit
 > `758dcb2a` (2026-06-24) -- meant for a different, uncommitted experiment, never reverted,

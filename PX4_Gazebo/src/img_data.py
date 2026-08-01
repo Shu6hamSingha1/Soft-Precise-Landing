@@ -24,6 +24,14 @@ from numerical_methods import extrapolate
 from gz_subscriber import GZ_Subscriber, Image_Node
 from planar_map import PlanarFeatureMap
 
+# NOTE: MARKER_TYPE=cross no longer routes through this file -- superseded
+# 2026-08-01 by the standalone src/cross_marker_perception.py, selected in
+# controller.py instead of img_data.IMG_PROCESSOR. This file is ArUco-only.
+# (An earlier synthetic-4-corner-packaging approach lived here briefly;
+# removed once the design moved to a separate pipeline -- see
+# cross_marker_perception.py's module docstring for why PlanarFeatureMap/
+# marker-handover/decode-shaped packaging don't apply to that marker.)
+
 CHECK_NUM = 80
 # Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
 # fx = (W/2) / tan(hfov/2) = 320 / tan(0.87) ≈ 270.
@@ -3730,8 +3738,33 @@ class IMG_PROCESSOR(Thread):
         didn't fire) are ALSO scaled now (2026-07-21, see feedback_decode_klt_confidence_
         scaled_r below) by a KLT-fallback-streak confidence, so decode isn't the
         unconditionally-trusted assumption every other fix this session was protecting
-        against."""
+        against.
+
+        FLOW-COUPLED COAST (2026-07-31, see feedback_s_coast_uses_h): during a predict-only
+        coast (z=None), _kf_step's own extrapolation for the xc/yc channels uses THEIR OWN
+        rate state -- a smoothed derivative of PAST xc/yc measurements, entirely decoupled
+        from h (optical flow), which is estimated by a separate KF/EKF (_kf_x / _ekf_x).
+        Traced live on a moving-target (rover) rep: during a ~1.8s total corner-loss window,
+        h stayed large and correctly tracked the true relative motion (it degrades gracefully
+        -- coasting a velocity-like quantity forward is far more physically valid than coasting
+        a position channel's own weak self-derived rate), while xc/yc's own rate state had
+        already decayed near-zero from a well-tracked pre-loss approach, so the position coast
+        barely moved even as the true bearing diverged by O(1) over the same window. FIX:
+        during a coast, overwrite the xc/yc rate slots with the CURRENT calibrated h_x/h_y
+        (via getOptFlowAngVel) before extrapolating -- first-order (ds/dt ~= h), ignoring the
+        s*h_z cross-term the full IBVS interaction matrix carries; a refinement, not a
+        ground-truth substitute (h itself may be coasting too over a long-enough gap -- see
+        that memory for the FLOW_FUSE_RING/centroid-rate-observer follow-up this doesn't
+        replace)."""
         z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        if z is None and self._kf_feat_initialized:
+            try:
+                _h_now = self.getOptFlowAngVel()[:2]
+                if np.all(np.isfinite(_h_now)):
+                    self._kf_feat_x[0, 1] = float(_h_now[0])
+                    self._kf_feat_x[1, 1] = float(_h_now[1])
+            except Exception:
+                pass   # never let the flow-coupling hint break the coast itself
         r_pos = self._kf_feat_r
         if z is not None:
             _map_tr = float(self._cmap_trust_log[-1]) if self._cmap_trust_log else 0.0

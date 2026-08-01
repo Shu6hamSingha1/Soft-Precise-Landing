@@ -55,6 +55,16 @@ import img_data as ID
 from ahrs import Quaternion
 from cbf_visibility import cbf2_filter
 
+# MARKER_TYPE=cross: use the standalone cross_marker_perception pipeline (no
+# ArUco decode, no PlanarFeatureMap rescue, no marker handover -- see
+# cross_marker_perception.py's module docstring for why those subsystems
+# aren't applicable) instead of img_data.IMG_PROCESSOR. Only the interface
+# subset controller.py actually calls is implemented -- see
+# CrossMarkerNode's docstring for the exact scope/gaps.
+MARKER_TYPE = os.environ.get("MARKER_TYPE", "aruco")
+if MARKER_TYPE == "cross":
+    from cross_marker_perception import CrossMarkerNode
+
 SLEEP_TIME = 1/200
 N_DIM = 3
 e3 = np.eye(N_DIM)[:, 2]
@@ -105,7 +115,10 @@ class Controller(Thread):
         self.TARGET_IS_VISIBLE = False
 
         self._FC = controller
-        self._img_node = ID.IMG_PROCESSOR(time_keeper=time_keeper, controller=controller)
+        if MARKER_TYPE == "cross":
+            self._img_node = CrossMarkerNode(time_keeper=time_keeper, controller=controller)
+        else:
+            self._img_node = ID.IMG_PROCESSOR(time_keeper=time_keeper, controller=controller)
         if record != 'n' or os.environ.get("IMG_RECORD", "0") == "1":
             self._img_node.RECORD = True
             print("Starting with recording...")
@@ -2376,70 +2389,89 @@ class Controller(Thread):
         # the small-slot read is only trusted via get_slot_confidence.
         cbf_corners = None
         cbf_corners_src = 'none'
-        try:
-            _pm = getattr(self._img_node, '_planar_map', None)
-            _sec = None
-            _sec_conf = 0.0
-            if _pm is not None and getattr(_pm, 'initialized', False):
-                _sec = _pm.secondary_slot_name()
-                _sec_conf = _pm.get_slot_confidence(_sec) if _sec is not None else 0.0
-            # HYSTERESIS (2026-07-17): immediate-off (any sub-threshold frame drops the streak
-            # and the switch instantly), N-frame persistence before switching ON -- see __init__
-            # comment. Prevents the corner-source (and therefore d_min_fov/theta_cone) from
-            # flickering between big-marker-real and small-marker-mapped geometry whenever
-            # confidence hovers near the threshold.
-            if _sec is not None and _sec_conf >= self._cbf_small_conf_min:
-                self._cbf_small_slot_streak += 1
-            else:
-                self._cbf_small_slot_streak = 0
-                self._cbf_small_slot_on = False
-            if not self._cbf_small_slot_on and self._cbf_small_slot_streak >= self._cbf_small_slot_on_frames:
-                self._cbf_small_slot_on = True
-            if self._cbf_small_slot_on and _sec is not None:
-                _sp = _pm.get_marker_frame_pts(slot=_sec)
-                if _sp is not None and len(_sp) == 4:
-                    cbf_corners = np.asarray(_sp, dtype=float)
-                    cbf_corners_src = 'small_slot'
-                else:
-                    self._cbf_small_slot_on = False   # prediction unavailable this frame -- fall back, don't hold a stale "on"
-        except (AttributeError, TypeError, ValueError):
-            cbf_corners = None
-        if cbf_corners is None:
-            # FRESHNESS GATE (2026-07-17, found via IC2 SITL trace; corrected same day per user
-            # pushback on the first version of this fix). _feature_pts HOLDS the last real
-            # corners indefinitely during a genuine total coast (img_data.py's "not
-            # FEATURE_DATA_IS_LOGGED" branch) -- reading it unconditionally fed the cone-clamp
-            # a frozen, arbitrarily-stale marker position as if it were live (IC2's terminal
-            # ~4s corner collapse, MARKER_EXTENT_PX frozen at 245.0px).
-            #
-            # FIRST FIX gated on FEATURE_IS_STALE -- WRONG: that's a legacy RAW-decode-miss
-            # counter that predates PlanarFeatureMap and has zero rescue awareness; it flips
-            # True after just STALE_THRESH=3 consecutive raw misses even while the map is
-            # successfully, plausibility-checked rescuing every one of them -- blinding the
-            # cone-clamp during exactly the scenario the map exists to cover. Root cause fixed
-            # instead: img_data.py's _feature_pts now gets updated with the rescue's plausible
-            # geometry (not held stale) whenever a rescue succeeds, and FEATURE_PTS_FRESH
-            # reflects "raw OR rescue succeeded this frame" (see img_data.py property doc) --
-            # ONLY a genuine total coast (neither raw nor rescue) is unfresh here.
+        if MARKER_TYPE == "cross":
+            # Cross-marker CBF source: the SINGLE tracked intersection point, raw pixels,
+            # shape (1,2) -- NOT the ArUco small-slot/feature_pts/coast_hold cascade below
+            # (PlanarFeatureMap rescue and marker handover don't apply to this marker; see
+            # cross_marker_perception.py's module docstring). cbf2_filter's Phase-1 barrier
+            # is already centroid-only (mean of `corners`, extent unused except for Phase-2
+            # fallback tightening -- see cbf_visibility.py's "delta_eff = 0" comment), so a
+            # single point is a natural input, not a workaround: the design decision
+            # (2026-08-01, user) is that the CBF's ONLY hard guarantee is the marker center
+            # staying in FoV; alpha/h,w already degrade gracefully on their own (hold-last,
+            # zero-output) and don't need CBF protection. get_center_px() returns None on any
+            # frame that didn't freshly confirm the center (not a stale/held pixel), so a
+            # genuine miss correctly falls through to cbf2_filter's own Phase-2 fallback,
+            # same as the ArUco path's freshness gating below.
+            _cpx = self._img_node.get_center_px()
+            if _cpx is not None:
+                cbf_corners = np.asarray([_cpx], dtype=float)   # (1, 2)
+                cbf_corners_src = 'cross_center'
+        else:
             try:
-                if getattr(self._img_node, 'FEATURE_PTS_FRESH', True):
-                    fp_list = self._img_node._feature_pts
-                    if len(fp_list) > 0:
-                        cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
-                        cbf_corners_src = 'feature_pts'
-                        self._cbf_coast_last_good = cbf_corners
-                        self._cbf_coast_ctr = 0
-                elif (self._cbf_coast_grace_frames > 0
-                      and self._cbf_coast_last_good is not None
-                      and self._cbf_coast_ctr < self._cbf_coast_grace_frames):
-                    # BOUNDED coast-hold (see __init__ comment): still within the grace budget
-                    # since the last fresh frame -- hold that last-good corner geometry rather
-                    # than snapping straight to "no tilt allowed".
-                    self._cbf_coast_ctr += 1
-                    cbf_corners = self._cbf_coast_last_good
-                    cbf_corners_src = 'coast_hold'
-            except (IndexError, AttributeError, TypeError):
+                _pm = getattr(self._img_node, '_planar_map', None)
+                _sec = None
+                _sec_conf = 0.0
+                if _pm is not None and getattr(_pm, 'initialized', False):
+                    _sec = _pm.secondary_slot_name()
+                    _sec_conf = _pm.get_slot_confidence(_sec) if _sec is not None else 0.0
+                # HYSTERESIS (2026-07-17): immediate-off (any sub-threshold frame drops the streak
+                # and the switch instantly), N-frame persistence before switching ON -- see __init__
+                # comment. Prevents the corner-source (and therefore d_min_fov/theta_cone) from
+                # flickering between big-marker-real and small-marker-mapped geometry whenever
+                # confidence hovers near the threshold.
+                if _sec is not None and _sec_conf >= self._cbf_small_conf_min:
+                    self._cbf_small_slot_streak += 1
+                else:
+                    self._cbf_small_slot_streak = 0
+                    self._cbf_small_slot_on = False
+                if not self._cbf_small_slot_on and self._cbf_small_slot_streak >= self._cbf_small_slot_on_frames:
+                    self._cbf_small_slot_on = True
+                if self._cbf_small_slot_on and _sec is not None:
+                    _sp = _pm.get_marker_frame_pts(slot=_sec)
+                    if _sp is not None and len(_sp) == 4:
+                        cbf_corners = np.asarray(_sp, dtype=float)
+                        cbf_corners_src = 'small_slot'
+                    else:
+                        self._cbf_small_slot_on = False   # prediction unavailable this frame -- fall back, don't hold a stale "on"
+            except (AttributeError, TypeError, ValueError):
                 cbf_corners = None
+            if cbf_corners is None:
+                # FRESHNESS GATE (2026-07-17, found via IC2 SITL trace; corrected same day per user
+                # pushback on the first version of this fix). _feature_pts HOLDS the last real
+                # corners indefinitely during a genuine total coast (img_data.py's "not
+                # FEATURE_DATA_IS_LOGGED" branch) -- reading it unconditionally fed the cone-clamp
+                # a frozen, arbitrarily-stale marker position as if it were live (IC2's terminal
+                # ~4s corner collapse, MARKER_EXTENT_PX frozen at 245.0px).
+                #
+                # FIRST FIX gated on FEATURE_IS_STALE -- WRONG: that's a legacy RAW-decode-miss
+                # counter that predates PlanarFeatureMap and has zero rescue awareness; it flips
+                # True after just STALE_THRESH=3 consecutive raw misses even while the map is
+                # successfully, plausibility-checked rescuing every one of them -- blinding the
+                # cone-clamp during exactly the scenario the map exists to cover. Root cause fixed
+                # instead: img_data.py's _feature_pts now gets updated with the rescue's plausible
+                # geometry (not held stale) whenever a rescue succeeds, and FEATURE_PTS_FRESH
+                # reflects "raw OR rescue succeeded this frame" (see img_data.py property doc) --
+                # ONLY a genuine total coast (neither raw nor rescue) is unfresh here.
+                try:
+                    if getattr(self._img_node, 'FEATURE_PTS_FRESH', True):
+                        fp_list = self._img_node._feature_pts
+                        if len(fp_list) > 0:
+                            cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
+                            cbf_corners_src = 'feature_pts'
+                            self._cbf_coast_last_good = cbf_corners
+                            self._cbf_coast_ctr = 0
+                    elif (self._cbf_coast_grace_frames > 0
+                          and self._cbf_coast_last_good is not None
+                          and self._cbf_coast_ctr < self._cbf_coast_grace_frames):
+                        # BOUNDED coast-hold (see __init__ comment): still within the grace budget
+                        # since the last fresh frame -- hold that last-good corner geometry rather
+                        # than snapping straight to "no tilt allowed".
+                        self._cbf_coast_ctr += 1
+                        cbf_corners = self._cbf_coast_last_good
+                        cbf_corners_src = 'coast_hold'
+                except (IndexError, AttributeError, TypeError):
+                    cbf_corners = None
 
         # CBF-CORNERS STALENESS TRACKING (2026-07-30): investigation this session
         # (see docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md) found real
