@@ -4,7 +4,24 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢 2026-08-01 (LATEST) — decode-free cross+stub marker pipeline built, committed
+> **🟡 2026-08-02 (LATEST) — cross+stub marker output calibration DERIVED and PASTED**
+> into `CrossMarkerPerception.__init__` (`_sensor_cal_hw`/`_sensor_cal_s`, replacing the
+> identity placeholder). Root-caused two Gazebo rendering bugs along the way: the marker
+> plate's PBR material was defaulting to reflective (mirroring the drone onto itself —
+> fixed via explicit metalness/roughness), and a pre-existing camera-render ghost (mirrored
+> drone duplicate in the outer frame margin, present in BOTH aruco and cross_marker worlds,
+> previously unnoticed since ArUco's small centered tag never reached it) was corrupting
+> detection whenever the 3m plate's arms reached the margin. Layered fix in
+> `cross_marker_detector.py` (position-based anisotropic ROI + a new shape/extent-based
+> `_reject_blobby_components`) cut the worst-case run from 22.9% to 69.5% detection ok-rate
+> and made the typical run ~92%+, though full run-to-run consistency (99%+) wasn't fully
+> recovered — some residual SITL/render stochasticity looks irreducible without deeper
+> engine investigation. Derived cal: R^2 Hx=0.40 Hy=0.49 Hz=0.34 Wz=0.36, centroid scale
+> still ~2.4x inter-run spread — usable starting point, NOT yet validated against
+> independent multisine/landing data (io-calibration skill's train/validate discipline).
+> [[project_cross_marker_pipeline_20260801]]
+
+> **🟢 2026-08-01 — decode-free cross+stub marker pipeline built, committed
 > (916aa53, pushed), as an ArUco alternative.** Standalone (`cross_marker_detector.py` +
 > `cross_marker_perception.py`), NOT routed through `img_data.py`/`IMG_PROCESSOR` — no
 > PlanarFeatureMap, no marker handover, no board layout (all ArUco-specific patches for
@@ -16,9 +33,7 @@
 > `cbf_visibility.py` unmodified. Validated offline + live (ground/5m/7m hover, partial
 > tilt). **NOT ready for closed-loop descent**: `CrossMarkerNode` only implements the
 > interface subset the hover path touches (no terminal-kick/ring-loom-fusion — will
-> AttributeError if exercised). Next planned step: output calibration for the
-> cross-marker `h,w` path (architecturally different from ArUco's `_sensor_cal_hw`, needs
-> its own derivation, not a port). [[project_cross_marker_pipeline_20260801]]
+> AttributeError if exercised). [[project_cross_marker_pipeline_20260801]]
 
 > **🟡 2026-07-31 — real-perception (non-GT-FB) moving-target still fails; root-caused
 > to a coast/flow disconnect + implemented a fix (UNVALIDATED).** After the five 2026-07-30

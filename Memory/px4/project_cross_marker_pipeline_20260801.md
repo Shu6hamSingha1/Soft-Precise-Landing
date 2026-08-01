@@ -83,8 +83,64 @@ the pairing bug recurring, but not a long sustained trial.
   garbage — none of these three needs re-litigating design-wise, only further testing/
   tuning if problems surface.
 
-**Next planned step (as of 2026-08-01):** output calibration (`_sensor_cal_hw`
-equivalent) for the cross-marker path before further SITL validation — the ArUco
-sensor-cal workflow (`io-calibration` skill) will need adapting since the cross
-marker's h/w computation is architecturally different (own image-Jacobian solve, not
-routed through img_data.py at all).
+**Output calibration DONE (2026-08-02).** Built `apps/record_cross_marker_calibration.py`
+(phased-excitation recorder mirroring the ArUco one, sourced from `CrossMarkerNode`'s own
+raw h,w/s) + `tools/derive_cross_marker_cal.py`. First attempt came back with unstable
+centroid scale / low R^2 — root-caused to two compounding issues, both fixed:
+
+1. **Marker plate was rendering as a mirror.** `cross_marker/model.sdf`'s PBR material had
+   `<metal><albedo_map>...` with no explicit metalness/roughness, so Gazebo Harmonic
+   defaulted it to a reflective surface — it was mirroring the drone flying overhead onto
+   its own face. Fixed with explicit `metalness=0`/`roughness=1` (external PX4-Autopilot
+   asset, backed up as `model.sdf.bak_20260801_mirrorfix`).
+2. **Pre-existing Gazebo camera-render ghost, NOT marker-specific.** Confirmed via
+   `apps/diag_raw_image_dump.py` that BOTH the aruco and cross_marker worlds render a
+   mirrored duplicate of the drone's own body in the outer ~20% top/bottom frame margin,
+   on every frame, even sitting disarmed on the ground. ArUco's small centered tag never
+   reached it (a latent, previously-unnoticed rendering bug); the cross marker's large
+   (3m) plate legitimately does during the calibration excitation.
+   Layered defense in `cross_marker_detector.py` (tried several things, see the file's own
+   inline history comments on `_restrict_to_center_roi`/`_reject_blobby_components` before
+   trusting a value quoted here):
+   - Symmetric `roi_frac=0.5` crop: fixed the ghost but cost real x/y translation range
+     (2/5 calibration runs lost the marker out of the crop).
+   - Reverting to loose 0.65 (relying on `_isolate_marker_by_shape`'s squareness gate
+     alone): inconsistent — when the marker is small/distant its bbox scale is close
+     enough to the ghost's for `MORPH_CLOSE` to bridge them into one merged blob that
+     evades the squareness filter.
+   - Anisotropic crop (`roi_frac_x=1.0`, `roi_frac_y=0.55` — the ghost is specifically a
+     vertical-margin artifact post-rotation, not horizontal): better, but the 3m plate can
+     still reach the crop boundary during translation and touch the ghost there.
+   - Added `_reject_blobby_components` (2026-08-02): position-independent, shape-based —
+     measured off a real ghost-overlap frame that the ghost's rotor-hub/housing fragments
+     are small near-square near-FILLED blobs (extent = area/bbox_area ~0.65-0.74) vs the
+     marker's thin sparse cross strokes (~0.15-0.25); zeroes out high-extent components
+     before the ROI crop runs. Loosened `roi_frac_y` back to 0.65 alongside this (shape
+     filter is now the primary defense). Does NOT fix genuine pixel-level touching (a thin
+     ghost sliver crossing a marker arm merges into a still-thin blob no shape metric can
+     retroactively split) — that residual failure mode still exists but is much rarer.
+   Combined effect across the investigation: detection ok-rate progressed 33% (broken
+   material) -> 59% (material fixed) -> 100% (anisotropic crop, best case) but with real
+   bimodal run-to-run variance (some runs 99%+, others 20-80%) -> with the shape filter,
+   the FLOOR improved substantially (worst observed run 69.5% vs earlier 22.9%) even
+   though perfect 99%+ consistency wasn't recovered. Some residual SITL/render
+   stochasticity looks irreducible without deeper Gazebo-engine investigation.
+   `tools/derive_cross_marker_cal.py` gates out any run below `CROSS_CAL_MIN_OKRATE`
+   (default 0.95, overridable — the 2026-08-02 derive used 0.85 to admit the
+   shape-filter-era runs which cluster around 92% rather than 99%+) using the per-frame
+   `Diag Log` (`(t, ok, fail_reason, bbox_area)`, from
+   `CrossMarkerNode.get_diag_log()`/`CROSS_DIAG_SAVE_DIR` frame dumps) so a degraded run
+   can't silently corrupt the fit.
+
+**Derived cal PASTED into `CrossMarkerPerception.__init__`** (2026-08-02, replacing the
+identity placeholder): from 4 runs (a 5th gated out at 69.5%). R^2: Hx=0.40 Hy=0.49
+Hz=0.34 Wz=0.36 (Wx/Wy forced 0, same level-target convention as the ArUco board cal).
+Centroid scale (`sx=0.32, sy=0.29`) still has ~2.4x inter-run spread across the 4 runs —
+a usable starting point, meaningfully more robust than earlier attempts (inter-run STD on
+the load-bearing Hx/Hy block dropped from ~0.1-0.17 to ~0.008-0.05), but NOT yet as tight
+as the ArUco cal typically is (R^2 0.8+). Re-derive with more (gated) runs before trusting
+this for precision landing.
+
+**Not yet validated:** the pasted cal hasn't been checked against independent
+multisine/landing validation data (the `io-calibration` skill's two-stage
+train/derive-then-validate discipline) — only the phased-excitation training data itself.

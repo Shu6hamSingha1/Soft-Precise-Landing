@@ -159,13 +159,27 @@ class CrossMarkerPerception:
         self._last_t = None
 
         # Output calibration (GT = cal @ raw), same convention as img_data.py's
-        # _sensor_cal_hw / _sensor_cal_s. Identity until derived from a phased
-        # calibration sweep (see apps/record_cross_marker_calibration.py +
-        # tools/derive_cross_marker_cal.py) -- the cross marker's h,w come from
-        # its own image-Jacobian solve (not img_data.py's), so it needs its own
+        # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
+        # own image-Jacobian solve (not img_data.py's), so it needs its own
         # empirical correction, not a reuse of the ArUco board's cal.
-        self._sensor_cal_hw = np.eye(6)
-        self._sensor_cal_s = np.diag([1.0, 1.0, 1.0, 1.0])
+        # Derived 2026-08-02 via apps/record_cross_marker_calibration.py +
+        # tools/derive_cross_marker_cal.py, from 4 phased-excitation runs (a 5th
+        # was gated out at 69.5% detection ok-rate; CROSS_CAL_MIN_OKRATE=0.85) --
+        # see Memory/px4/project_cross_marker_pipeline_20260801.md for the full
+        # investigation (Gazebo camera-render ghost artifact root-caused +
+        # layered shape/position rejection fixes in cross_marker_detector.py).
+        # R^2: Hx=0.40 Hy=0.49 Hz=0.34 Wz=0.36 (Wx/Wy forced 0, same level-target
+        # convention as the ArUco board cal). Centroid scale still has ~2.4x
+        # inter-run spread -- usable starting point, not as tight as the ArUco
+        # cal; re-derive with more runs if precision landing needs tightening.
+        self._sensor_cal_hw = np.array([
+            [+0.1651, +0.0040, +0.0535, +0.0062, +0.1837, -0.0485],
+            [-0.0090, +0.2024, -0.0558, -0.2010, -0.0180, -0.0703],
+            [-0.0274, -0.0369, +0.5992, +0.3072, +0.1833, +0.0229],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [-0.1273, +3.3435, -0.8369, -2.2182, -0.1183, -0.6168]])
+        self._sensor_cal_s = np.diag([0.3217, 0.2862, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap

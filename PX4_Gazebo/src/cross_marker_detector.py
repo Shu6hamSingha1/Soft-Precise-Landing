@@ -119,7 +119,7 @@ def _line_intersection(l1, l2):
     return (x01 + t * vx1, y01 + t * vy1)
 
 
-def _restrict_to_center_roi(mask, roi_frac=0.5):
+def _restrict_to_center_roi(mask, roi_frac_x=1.0, roi_frac_y=0.55):
     """First-pass clutter reduction: the downward camera is mounted centrally
     and the perception/CBF stack's whole job is to keep the marker near
     frame-center, so propeller clutter that sits at frame corners/far edges
@@ -127,20 +127,66 @@ def _restrict_to_center_roi(mask, roi_frac=0.5):
     see _isolate_marker_by_shape, which handles clutter (e.g. propeller arms)
     that still falls within this ROI when the drone has some lateral offset.
 
-    roi_frac tightened 0.65->0.5 (2026-08-01): diag_raw_image_dump.py exposed
-    a pre-existing Gazebo camera-render artifact -- a mirrored ghost of the
-    drone's own body in the outer ~18-25% top/bottom margin of EVERY frame,
-    present in both the aruco and cross_marker worlds (not new, not
-    marker-specific). ArUco's small centered tag never touched it (inside
-    even the old 0.65 crop); the cross marker's long arms legitimately reach
-    toward the frame edges during the calibration excitation and were
-    intersecting the ghost band, corrupting Hough/angle-clustering. 0.5 keeps
-    the analysis window clear of the observed ghost extent with margin."""
+    roi_frac history (2026-08-01):
+    - Started as a single symmetric roi_frac=0.65 (crops x and y equally).
+    - Tightened to 0.5 after diag_raw_image_dump.py exposed a pre-existing
+      Gazebo camera-render artifact -- a mirrored ghost of the drone's own
+      body in the outer ~18-25% top/bottom margin of EVERY frame (both
+      aruco and cross_marker worlds; not marker-specific -- ArUco's small
+      centered tag just never reached it). 0.5 excluded the ghost but also
+      cropped x, costing real x/y-phase translation range (2/5 runs in the
+      5-run recal sweep lost the marker out of the 0.5 crop, corrupting
+      exactly the samples the derive tool needs most).
+    - Reverted to a loose 0.65 to test whether _isolate_marker_by_shape's
+      squareness gate alone rejects the ghost blob without cropping x at
+      all: inconsistent (99.4% ok one run, 64.6% the next -- when the
+      marker is small/distant, e.g. the z-altitude phase, its bbox is
+      close enough in scale to the ghost's that MORPH_CLOSE bridges them
+      into one merged blob that evades the shape filter).
+    - SPLIT x/y (this revision): the ghost is specifically a top/bottom
+      (vertical, in this rotated-frame orientation) artifact -- the raw
+      dumps never showed a left/right intrusion post-rotation. So crop
+      ONLY vertically to the observed ghost band (~23% margin per side,
+      0.55 keeps clear with margin) and leave x uncropped (1.0) to keep
+      full x/y-phase translation range."""
     h, w = mask.shape
-    x0, x1 = int(w * (1 - roi_frac) / 2), int(w * (1 + roi_frac) / 2)
-    y0, y1 = int(h * (1 - roi_frac) / 2), int(h * (1 + roi_frac) / 2)
+    x0, x1 = int(w * (1 - roi_frac_x) / 2), int(w * (1 + roi_frac_x) / 2)
+    y0, y1 = int(h * (1 - roi_frac_y) / 2), int(h * (1 + roi_frac_y) / 2)
     out = np.zeros_like(mask)
     out[y0:y1, x0:x1] = mask[y0:y1, x0:x1]
+    return out
+
+
+GHOST_MAX_EXTENT = 0.5   # reject components filled beyond this fraction of their own bbox
+
+
+def _reject_blobby_components(mask, max_extent=GHOST_MAX_EXTENT, min_area=15):
+    """Position-independent ghost-fragment rejection (2026-08-02). The ROI crop
+    (_restrict_to_center_roi) only excludes a fixed screen-space band -- it can't
+    help when the marker itself is large enough to reach near that boundary, or
+    when the ghost overlaps the marker's own visible region. This filters by
+    SHAPE instead of position: measured directly off a real ghost-overlap frame
+    (calibration_data/output_cross/.../lost_002375_streak60_lt2_angle_clusters.png,
+    2026-08-02), the ghost's rotor-hub/motor-housing fragments are small,
+    near-square, near-FILLED blobs (extent = area/bbox_area ~0.65-0.74, solidity
+    ~0.8-1.0), while the marker's own cross strokes -- even where an individual
+    connected component only captures one arm or the crossing -- are thin and
+    sparse within their bbox (extent ~0.15-0.25). Zero out any component whose
+    extent exceeds max_extent; NOT sufficient alone -- a ghost sliver that
+    directly touches/crosses a marker arm merges into one still-thin blob that
+    this can't retroactively split (see _isolate_marker_by_shape's squareness
+    gate and the ROI crop, which remain the other two layers of defense)."""
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if n <= 1:
+        return mask
+    out = mask.copy()
+    for lbl in range(1, n):
+        x, y, bw, bh, area = stats[lbl]
+        if area < min_area:
+            continue
+        extent = area / max(bw * bh, 1)
+        if extent > max_extent:
+            out[labels == lbl] = 0
     return out
 
 
@@ -176,12 +222,24 @@ def _isolate_marker_by_shape(mask, min_area=15):
 
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
-           min_line_length=15, max_line_gap=10, identify_stub=True, roi_frac=0.5):
-    """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection."""
+           min_line_length=15, max_line_gap=10, identify_stub=True,
+           roi_frac_x=1.0, roi_frac_y=0.65):
+    """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection.
+
+    Ghost-rejection is now layered (2026-08-02): _reject_blobby_components runs
+    FIRST and is position-independent (shape/extent-based, catches the ghost's
+    fat rotor-hub fragments wherever they land); _restrict_to_center_roi is a
+    position-based backstop for whatever slips through (loosened back toward
+    0.65 vertically now that the shape filter is the primary defense -- 0.55
+    was costing legitimate marker content when the plate itself sat near the
+    crop boundary, without actually fixing the direct-touch/merge case the
+    shape filter also can't fix); _isolate_marker_by_shape's squareness gate
+    runs last as the final component-selection step."""
     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lower, upper)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
-    mask = _restrict_to_center_roi(mask, roi_frac)
+    mask = _reject_blobby_components(mask)
+    mask = _restrict_to_center_roi(mask, roi_frac_x, roi_frac_y)
     mask = _isolate_marker_by_shape(mask)
 
     ys, xs = np.nonzero(mask)

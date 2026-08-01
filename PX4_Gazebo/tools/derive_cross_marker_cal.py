@@ -24,6 +24,19 @@ CAL_DIR = os.environ.get(
 LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 RL  = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
 
+# 2026-08-01/02 (roi_frac investigation): even with the anisotropic ROI crop fix,
+# runs are bimodal -- most land at 99-100% detection ok-rate, but a residual
+# minority (marker/ghost merging at altitude, or occasional SITL spawn flakes --
+# see Memory/px4/project_cross_marker_pipeline_20260801.md) drop to 55-80%.
+# Blindly averaging in a degraded run corrupts the fit disproportionately: the
+# centroid scale (sx/sy) and lateral h/w rows are derived FROM the exact x/y-phase
+# samples the dropout concentrates in, so R^2 and inter-run std both cratered when
+# a bad run was included. Gate on the per-frame 'Diag Log' ok-rate (recorded by
+# apps/record_cross_marker_calibration.py via CrossMarkerNode.get_diag_log()) and
+# skip runs below threshold -- cheaper and more principled than manually curating
+# which run directories to feed in.
+MIN_OK_RATE = float(os.environ.get("CROSS_CAL_MIN_OKRATE", "0.95"))
+
 
 def main():
     runs = sorted(d for d in glob.glob(os.path.join(CAL_DIR, '*')) if os.path.isdir(d))
@@ -36,6 +49,14 @@ def main():
             continue
         if 'Phase' not in gt:
             continue
+        diag_log = gt.get('Diag Log', [])
+        if diag_log:
+            ok_rate = sum(r[1] for r in diag_log) / len(diag_log)
+            if ok_rate < MIN_OK_RATE:
+                print(f"  skip {os.path.basename(d)}: detection ok_rate {ok_rate:.1%} "
+                      f"< {MIN_OK_RATE:.0%} threshold (degraded run, likely ghost/merge "
+                      f"or SITL spawn flake -- see cross_marker_detector.py roi history)")
+                continue
         try:
             t, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, _ = compute_gt_signals(gt)
             # See derive_board_cal.py's identical comment: the V-frame is
