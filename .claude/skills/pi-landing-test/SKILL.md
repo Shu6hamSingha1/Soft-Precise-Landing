@@ -18,6 +18,11 @@ it's the full day-1 session summary this skill is built on top of. Don't re-deri
 after 07-28 (4 flown, 2 blew up: a_u to 59-180, kappa up 20-24x). Root cause + two code fixes
 (izeta/is_e_n conditional integration, `_flowMap`/`_loomMapM` duration cap) are summarized in the
 new checklist item 5 below; both fixes are UNTESTED LIVE.
+**⭐⭐⭐ Also read `project_pi_output_recal_2026_08_01` and `project_pi_pending_code_deploy_2026_08_02`
+(memory) before flying again** — a real, confirmed bug (`img_geometry.py::_rp_basis` gravity-vector
+sign error, live since day 1) was found and fixed 2026-08-02, but the fix is NOT yet deployed to the
+Pi (was closed when found). Do not fly on the current deployed calibration believing it reflects the
+best available understanding — see the updated checklist item 1 below.
 
 **⭐⭐⭐ If you're analyzing flight-test DATA after a session (not just preparing to fly), read
 `Hardware/docs/FLIGHT_TEST_ANALYSIS_PROCEDURE.md` first** — it's the living procedure doc for
@@ -29,11 +34,21 @@ issues — don't re-derive the same steps from scratch each session.
 
 ## Pre-flight checklist (read this before the user flies)
 
-1. **Output (image/flow) calibration — DONE 2026-07-28.** `_sensor_cal_hw`/`_sensor_cal_s`/
-   `_sensor_cal_ring` in `img_data.py` are now the real `derive_pi_cal.py` aggregate (44/48 runs),
-   not the old never-applied placeholder. **R² is moderate (~0.3-0.6), not high** — user made an
-   informed decision to proceed anyway (dominant limiter is a marker/HFOV FoV geometric ceiling,
-   not a bug). Don't re-litigate this call; know the number if asked.
+1. **Output (image/flow) calibration — the CURRENTLY DEPLOYED cal was derived under a CONFIRMED BUG,
+   fix not yet on the Pi (2026-08-02).** `img_geometry.py::_rp_basis` had the gravity-vector sign
+   wrong (`g = R @ [0,0,1]` instead of `R.T @ [0,0,1]`) — the exact bug `PX4_Gazebo/src/img_data.py`
+   already documented fixing on 2026-06-01, never ported to the Pi. This corrupts the V-frame
+   transform (hidden near-level, amplifies error during real tilt) - live in every real flight, not
+   just calibration recordings. Fixed locally (`Hardware/scripts/img_geometry.py`), verified on both
+   the Aug-1 (6-run) and old Jul23-28 (44-run) archives (Hx/Hy/Wz up 4-6x, centroid `sx`/`sy` went
+   from unstable/physically-impossible-negative to consistently positive, corr 0.7-0.9), **but the
+   fix is NOT yet deployed to the Pi** (was closed when found - see
+   `project_pi_pending_code_deploy_2026_08_02`). A new candidate `_sensor_cal_hw`/`_sensor_cal_s` was
+   also derived (Aug-1-only, matching the current camera config) but is PENDING REVIEW, not deployed.
+   **Do not treat the "R² moderate ~0.3-0.6, not a bug" framing from 2026-07-28 as current** — it
+   predates this finding. Deploy the `_rp_basis` fix (and ideally the reviewed new cal) before the
+   next flight if at all possible; if flying before then, know that the deployed cal is derived from
+   admittedly-corrupted geometry.
 2. **Input (thrust/rate) calibration — CONFIRMED CALIBRATED, 2026-07-31.** The old "placeholder"
    language above was stale — `hardware_landing.py` lines 14-18 now state the defaults ARE the
    final calibration, and `HOVER_THROTTLE_NORM=0.42` / `THRUST_SLOPE_N_PER_UNIT=31.98` exactly
@@ -46,11 +61,16 @@ issues — don't re-derive the same steps from scratch each session.
    changed since 2026-07-22, in which case this cal is stale and should be redone.
 3. **Perception pipeline fixes (all deployed + hash-verified, all default-on except
    `PLASMC_DENSE_RECOVER`):** `h_extrap`, map-derived flow (`_flowMap`, gated on
-   `_planar_map_gate_on`), `ARUCO_ROI_MARGIN_PX=80` (reverted from an unvalidated 200 bump),
-   frequency ~27-42Hz depending on config. None of these change happy-path behavior — they're
-   additive fallbacks for marker-loss frames, so they shouldn't introduce new failure modes, but
-   if something looks wrong during the flight, the **real calibration (item 1)** is the biggest
-   single behavioral change today and the first thing to suspect, not the perception fallbacks.
+   `_planar_map_gate_on`), `ARUCO_ROI_MARGIN_PX=40` (current pinned default as of 2026-08-01, NOT the
+   80 this line previously said — that value itself drifted 200→80→40 across project history with no
+   calibration-specific reasoning, see `project_pi_video_tag_alignment_2026_07_31`), frequency
+   ~27-42Hz depending on config. **Camera config also changed 2026-08-01**: `hardware_landing.py` now
+   defaults to the low-light-validated profile (`CAM_EXPOSURE_US=20000`, `CAM_AUTO_GAIN=1`,
+   `CAPTURE_RATE_HZ=30`), NOT the old `CAM_EXPOSURE_US=3000/CAM_ANALOGUE_GAIN=8.0` this line
+   previously described. None of these change happy-path behavior — they're additive fallbacks for
+   marker-loss frames, so they shouldn't introduce new failure modes, but if something looks wrong
+   during the flight, the **real calibration (item 1)** and the **camera config change** are the
+   biggest behavioral changes and the first things to suspect, not the perception fallbacks.
 4. **Known-open issues (don't be surprised by these):**
    - Detection-path reliability (KLT-chain failures, high ArUco `rejected_candidates`) is
      unresolved — root-caused to either detector-param tuning or the deliberate
@@ -73,12 +93,24 @@ issues — don't re-derive the same steps from scratch each session.
    `izeta`/`is_e_n` when `FEATURE_PTS_FRESH` is false, mirroring the existing yaw `ie_a` anti-windup
    pattern; `img_data.py` confidence-floor gate on `_flowMap`/`_loomMapM_*`, new env
    `PLANAR_MAP_FLOW_MIN_CONFIDENCE` default 0.1). Full detail + replay validation in
-   `project_pi_izeta_kappa_ratchet_fix_2026_07_31`. **Also found, separately: `h` (optical-flow
-   velocity) under-reports the controller's own `s_dot_meas` by ~4-7x consistently in ALL 4 flights
-   — likely calibration attenuation bias (moderate R² 0.28-0.44 per `derive_pi_cal.py`'s own flag),
-   not yet fixed, `derive_pi_cal.py`'s regression method (OLS vs errors-in-variables) not yet
-   checked.** This is why real lateral drift wasn't arrested before marker loss in the first place —
-   separate from and upstream of the izeta/kappa fix.
+   `project_pi_izeta_kappa_ratchet_fix_2026_07_31`. **CORRECTED 2026-08-01 (see
+   `project_pi_output_recal_2026_08_01`): the "~4-7x h under-report" finding above does NOT
+   generalize.** Re-checked `h` vs `s_dot_meas` across 47 real flights (not just these 4) and found
+   median ratio 0.87 (near 1:1), scattered weak correlation elsewhere - the 4-7x pattern is isolated
+   to these 4 flights' marker-loss dead-reckoning specifically (already addressed by the izeta/`_flowMap`
+   fixes above), not a general calibration-magnitude problem. Don't chase "closing the 4-7x gap" as a
+   calibration goal - the real, confirmed calibration issue is the `_rp_basis` bug in checklist item 1.
+
+6. **Quantified impact of the deployed (buggy) `sx`/`sy` on real flights (2026-08-02).** Deployed
+   `sx=0.17` vs the corrected `sx=0.38` (same 44-run archive, geometry fix applied) — the deployed
+   cal has been under-reporting real X-axis position error to the controller by roughly **2x**, for
+   every flight to date, not just the ones that blew up. `sy` was comparatively fine (deployed 0.42
+   vs corrected 0.35, ~18% off, opposite direction). Ring flow (`Hx/Hy/Hz/Wz`) reproduced exactly -
+   never affected, always trustworthy as the fallback signal. This gives a concrete, quantified
+   mechanism for why real lateral drift (X-axis specifically) wasn't well-corrected before marker
+   loss in the izeta/kappa blowup flights (item 5) - not proven as the direct cause of any specific
+   flight's outcome (no clean flight-data trace exists yet), but a real, structural contributor
+   layered on top of the already-known dead-reckoning mechanism.
 
 ## Key env knobs (`hardware_landing.py`)
 - `LANDING_TAKEOFF_HEIGHT_M` (default 3.0), `LANDING_REF_RAD_OPT_FLOW` (default -0.30),

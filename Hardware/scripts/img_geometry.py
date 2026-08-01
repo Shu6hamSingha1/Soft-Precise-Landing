@@ -157,9 +157,23 @@ def _quat_to_dcm(quat):
 
 def _rp_basis(quat):
     """Roll/pitch-only (yaw-removed) rotation basis columns [x,y,z], shared
-    by get_virtual_pts / get_real_pts_from_v / vframe_w."""
+    by get_virtual_pts / get_real_pts_from_v / vframe_w.
+
+    FIXED 2026-08-02: was `g = R @ [0,0,1]`. PX4_Gazebo/src/img_data.py's own
+    _getVirtualPts documents fixing this EXACT bug on 2026-06-01 ("g was
+    previously R @ [0,0,1], but AHRS' Quaternion.to_DCM() returns the
+    body->NED DCM, so R @ [0,0,1] gives body_z_in_NED, NOT world_down_in_body
+    ... For level drone both are (0,0,1), hiding the bug. For tilted drone the
+    V-frame then amplified the tilt-induced apparent marker offset instead of
+    cancelling it") - the Pi's port never received that fix. Confirmed via
+    derive_pi_cal.py's own GT-side _v_frame (mocap), which already uses the
+    correct R.T @ [0,0,1] and was never wrong - only this raw/image-side
+    function had the stale form. Matches this session's entire negative-sx
+    investigation: hidden near-hover (small tilt), amplifies error specifically
+    during real roll/pitch excitation - see project_pi_output_recal_2026_08_01.
+    """
     R = _quat_to_dcm(quat)
-    g = R @ np.array([0.0, 0.0, 1.0])
+    g = R.T @ np.array([0.0, 0.0, 1.0])
     z_axis = g / np.linalg.norm(g)
     x_axis = np.cross([0.0, 1.0, 0.0], z_axis)
     x_axis /= np.linalg.norm(x_axis)

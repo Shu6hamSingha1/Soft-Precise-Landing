@@ -526,6 +526,18 @@ class IMG_PROCESSOR(Thread):
         self._kf_feat_prev_t = None
         self._kf_feat_initialized = False
         self._kf_feat_last_n = 0
+        # ADDED 2026-08-02 (alpha-wrap KF fix, see _kf_feat_update): channel 3
+        # (alpha) is filtered via a separate [sin(alpha), cos(alpha)] 2-channel
+        # sub-filter instead of being passed to _kf_step as a raw linear
+        # channel like xc/yc/scale - ported from PX4_Gazebo/src/img_data.py's
+        # own _kf_feat_update, ~line 3703 (("channel 3 (alpha) is a WRAPPED
+        # ANGLE... tracked via a separate sin/cos-pair sub-filter"), which the
+        # Pi's version never received. _kf_step's own docstring states this as
+        # a hard rule: a wrapped angle must never be passed to it directly.
+        self._kf_feat_sc_x = np.zeros((2, 2))
+        self._kf_feat_sc_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
+        self._kf_feat_sc_prev_t = None
+        self._kf_feat_sc_initialized = False
 
         # ---- Texture-free RING flow (Gazebo-aligned safety net) ----
         # Fixed V-frame ring stations (concentric about the nadir), re-projected
@@ -2238,11 +2250,36 @@ class IMG_PROCESSOR(Thread):
         thin wrapper around the shared _kf_step, with its OWN (q, r)
         (self._kf_feat_q/_r — the flow KF's q/r are mis-scaled for the
         order-1 centroid). z: (4,) raw feature, or None for a PREDICT-ONLY
-        coast (marker-loss gap, no correction — mirrors _kf_update)."""
-        self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t, self._kf_feat_initialized = \
-            self._kf_step(self._kf_feat_x, self._kf_feat_P, self._kf_feat_prev_t,
-                          self._kf_feat_initialized, z, t,
+        coast (marker-loss gap, no correction — mirrors _kf_update).
+
+        FIXED 2026-08-02 (alpha-wrap KF bug, see __init__'s _kf_feat_sc_x
+        comment): channels 0-2 (xc, yc, scale=1) run through _kf_step
+        directly as before - plain linear quantities. Channel 3 (alpha) is a
+        WRAPPED ANGLE and is instead tracked via a separate
+        [sin(alpha), cos(alpha)] sub-filter through the SAME _kf_step (no
+        branch cut, no asymptote), ported from PX4_Gazebo/src/img_data.py's
+        own _kf_feat_update. self._kf_feat_x[3, 0] is kept synced to
+        atan2(sin_state, cos_state) so every existing consumer keeps reading
+        a plain alpha scalar from the same slot; self._kf_feat_x[3, 1] (rate)
+        is not meaningful in this representation and is left at 0. Ported
+        WITHOUT Gazebo's map-trust-scaled-r layer (a separate, larger,
+        Gazebo-specific feature not directly portable to the Pi's own map
+        integration) - r stays self._kf_feat_r for both sub-filters here."""
+        z_pos = None if z is None else np.asarray(z, dtype=float)[:3]
+        x_pos, P_pos, self._kf_feat_prev_t, self._kf_feat_initialized = \
+            self._kf_step(self._kf_feat_x[:3], self._kf_feat_P[:3], self._kf_feat_prev_t,
+                          self._kf_feat_initialized, z_pos, t,
                           self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+        self._kf_feat_x[:3] = x_pos
+        self._kf_feat_P[:3] = P_pos
+
+        z_sc = None if z is None else np.array([np.sin(float(z[3])), np.cos(float(z[3]))])
+        self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t, self._kf_feat_sc_initialized = \
+            self._kf_step(self._kf_feat_sc_x, self._kf_feat_sc_P, self._kf_feat_sc_prev_t,
+                          self._kf_feat_sc_initialized, z_sc, t,
+                          self._kf_feat_q, self._kf_feat_r, dt_unc_max=self._kf_dt_unc_max)
+        if self._kf_feat_sc_initialized:
+            self._kf_feat_x[3, 0] = np.arctan2(self._kf_feat_sc_x[0, 0], self._kf_feat_sc_x[1, 0])
 
     def _compute_savgol_output(self):
         """Latest savgol(FILTER_WIN, FILTER_POLYORDER) sample of the raw [h;w]

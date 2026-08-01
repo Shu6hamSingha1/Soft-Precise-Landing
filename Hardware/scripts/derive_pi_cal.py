@@ -124,6 +124,9 @@ GAP_EXCLUDE_S = float(os.environ.get("CAL_GAP_EXCLUDE_S", "1.0"))
 # this threshold now RESET the filter (re-initialize, like the very first
 # sample) instead of predicting across them.
 GAP_RESET_S = float(os.environ.get("CAL_GAP_RESET_S", "1.0"))
+# Number of real-tagged S samples immediately after a coast run to exclude as
+# a reacquisition transient (see the settle-guard comment in derive_one()).
+SETTLE_N = int(os.environ.get("CAL_SETTLE_N", "3"))
 
 
 def kf_filter_causal(raw, t, q, r):
@@ -393,10 +396,35 @@ def compute_gt_flow(run_dir):
     n = len(tg)
 
     W_x_tu = np.zeros((n, 3)); Ru = np.zeros((n, 3, 3)); yaw = np.zeros(n)
+    roll = np.zeros(n); pitch = np.zeros(n)
     for i in range(n):
         p, t = u[i], tp[i]
         up, Ru[i] = _pose_to_frd(p)
         tpp, Rt = _pose_to_frd(t)
+        # ROLL/PITCH GT (2026-08-01, for Wx/Wy columns - previously always zero,
+        # since only yaw/alpha had a GT reference). UAV's OWN absolute attitude
+        # (not relative-to-target, unlike yaw/alpha - Wx/Wy represent body
+        # angular velocity, the same quantity a gyro measures, not a marker's
+        # apparent in-image rotation, so there is no "target roll/pitch"
+        # analogue to subtract).
+        #
+        # SIGN FIXED same day: originally derived pitch_FRD=-pitch_QTM by pure
+        # analogy to yaw's T=diag(1,-1,-1) conjugation (R_x(180) flips rotations
+        # about Y/Z, leaves X unchanged) - mathematically valid IN GENERAL, but
+        # WRONG here because it assumes mocaptools.Pose.pitch directly
+        # parameterizes a pure-math R_y(theta), which its own sign convention
+        # apparently does not. Caught empirically while chasing the sx mystery:
+        # cross-checked mocap pitch against the FC's own independently-measured
+        # pitch (MAVSDK Odometry quaternion, Telemetry_Data.npy, standard
+        # aerospace arcsin(2(wy-zx)) extraction) on "Sat Aug 01 21-51-24 2026" -
+        # UNFLIPPED mocap pitch matches the FC to corr=+0.99, mean=0.69deg,
+        # std=0.57deg (same quality as roll, which was never flipped); the
+        # flipped convention gave corr=-0.99 (near-perfect ANTI-correlation -
+        # the tell that a sign was wrong, not a genuine multi-degree sensor
+        # disagreement as first suspected before this check). Roll stays
+        # unflipped (already agreed with the FC).
+        roll[i] = np.deg2rad(p.roll)
+        pitch[i] = np.deg2rad(p.pitch)
         # LEVER ARMS (2026-07-27, user-measured). The mocap rigid-body origins
         # are NOT the optical centre / marker centre, and the difference is a
         # real ~0.19-0.23 m systematic error in the GT bearing s (see
@@ -455,8 +483,16 @@ def compute_gt_flow(run_dir):
         B_h_g[i] = B_v / zB
         V_h_g[i] = V_v / zB
 
+    # Wx/Wy GT rates (2026-08-01): same _robust_vel treatment as yaw_rate below
+    # (unwrap first - raw differentiation of jittery mocap attitude amplifies
+    # noise, per _robust_vel's own docstring warning, and roll/pitch are
+    # arctan2-wrapped same as yaw).
+    roll_rate = _robust_vel(np.unwrap(roll)[:, None], tg)[:, 0]
+    pitch_rate = _robust_vel(np.unwrap(pitch)[:, None], tg)[:, 0]
+
     out = dict(t_g=tg, start_time=St, alt=W_x_tu[:, 2],
-               B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g)
+               B_h_g=B_h_g, V_h_g=V_h_g, loom=V_h_g[:, 2], alpha=yaw, V_s_g=V_s_g,
+               roll_rate=roll_rate, pitch_rate=pitch_rate)
 
     def align(t_abs, y):
         ti = np.asarray(t_abs, float) - St
@@ -489,6 +525,68 @@ def compute_gt_flow(run_dir):
     return out
 
 
+def std_ratio(gt, raw, mask, k_mad_sample=3.0):
+    """Signed scale factor with SAMPLE-LEVEL outlier rejection on matched pairs.
+    Ported verbatim from PX4_Gazebo/tools/aggregate_calibration_phased.py (2026-08-02,
+    while chasing the negative-sx mystery - see project_pi_output_recal_2026_08_01).
+
+    Unlike a plain np.polyfit slope (this file's OLD _phase_slope method - a raw OLS
+    fit with no defense against a handful of contaminated/transient samples flipping
+    its sign), this:
+      1. Derives SIGN from correlation and MAGNITUDE from the std ratio, not a raw
+         least-squares slope.
+      2. Does its own MAD-based outlier rejection on residuals before the final fit.
+      3. Returns NaN cleanly (rather than a confident wrong number) if the signal is
+         below the noise floor (|corr| < 0.05) either before or after cleaning.
+    Gazebo's own tooling has NO "drop non-positive slope" safeguard anywhere - this
+    method is very likely why: it's architecturally hardened against exactly the
+    failure mode that safeguard exists to catch on the Pi side.
+
+    Method: initial robust fit beta_init = sign(corr) * std(gt)/std(raw) on the
+    masked, finite pairs; compute residuals of raw vs raw_hat=gt/beta_init; drop
+    pairs with |resid - median(resid)| > k_mad_sample * MAD(resid); re-fit the same
+    sign/std-ratio on the cleaned set. Returns raw ≈ GT/beta, i.e. GT = beta*raw -
+    same convention this file's callers already use."""
+    g = gt[mask]; r = raw[mask]
+    finite = np.isfinite(g) & np.isfinite(r)
+    if finite.sum() < 30:
+        return float('nan')
+    gf = g[finite]; rf = r[finite]
+
+    sg0 = float(np.std(gf))
+    sr0 = float(np.std(rf))
+    if sr0 < 1e-9 or sg0 < 1e-9:
+        return float('nan')
+
+    co0 = float(np.corrcoef(gf, rf)[0, 1])
+    if not np.isfinite(co0) or abs(co0) < 0.05:
+        return float('nan')
+    sign0 = +1.0 if co0 > 0 else -1.0
+    beta_init = sign0 * sg0 / sr0
+
+    raw_hat = gf / beta_init
+    resid = rf - raw_hat
+    med = float(np.median(resid))
+    mad = float(np.median(np.abs(resid - med)))
+    if mad < 1e-12:
+        return beta_init
+
+    keep = np.abs(resid - med) <= k_mad_sample * mad
+    if keep.sum() < 30:
+        return beta_init
+    gc = gf[keep]; rc = rf[keep]
+
+    sg = float(np.std(gc))
+    sr = float(np.std(rc))
+    if sr < 1e-9 or sg < 1e-9:
+        return float('nan')
+    co = float(np.corrcoef(gc, rc)[0, 1])
+    if not np.isfinite(co) or abs(co) < 0.05:
+        return float('nan')
+    sign = +1.0 if co > 0 else -1.0
+    return sign * sg / sr
+
+
 def tls_fit(R, G):
     """Multivariate total-least-squares (orthogonal regression) fit of G = R @ Msol,
     for comparison against the OLS np.linalg.lstsq fit used elsewhere in this file.
@@ -515,7 +613,21 @@ def tls_fit(R, G):
     return -V12 @ np.linalg.inv(V22)
 
 
-def derive_one(run_dir, fit_method="ols"):
+CORNER_FLOW_TAGS = frozenset({'lstsq', 'lstsq+klt'})
+# FIXED 2026-08-02: was missing the '+override' variants. img_data.py's
+# _s_estimator_tag is built as _decode_tag + ('+override' if _ov_fired else '')
+# (_decode_tag itself always 'lstsq' or 'lstsq+klt') - so the full REAL
+# (non-coast, non-rescue) tag space is these 4 values, not 2. Confirmed on
+# "Sat Aug 01 22-35-29 2026": 494/812 samples (61%) were 'lstsq+override' -
+# a real decode with a plausibility-check override applied, not coast or
+# rescue - silently excluded from every centroid fit before this fix, which
+# is why that run only ever saw 20 "real" S samples instead of hundreds.
+CORNER_S_TAGS = frozenset({'lstsq', 'lstsq+klt', 'lstsq+override', 'lstsq+klt+override'})
+MAP_FLOW_TAGS = frozenset({'map_flow'})
+MAP_S_TAGS = frozenset({'planar_map_rescue'})
+
+
+def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=CORNER_S_TAGS):
     # Prefer the mount-rotation-corrected recompute (recompute_raw_flow.py)
     # when present - it reflects img_data.py's CURRENT _getVirtualPts math
     # (R_CAM_TO_BODY fix, 2026-07-11), re-derived offline from this same
@@ -544,26 +656,45 @@ def derive_one(run_dir, fit_method="ols"):
 
     # COAST-FRAME GUARD (2026-07-26, root-caused a session-long "why is R^2 always
     # weak" question): 'coast' means NO common marker decoded in both frames of the
-    # pair this call - img_data.py APPENDS A LITERAL np.zeros(6) for that sample
-    # (img_data.py:1520-1526), not a hold/extrapolation. On real runs this is 60-90%
-    # of ALL samples (see the coverage print above). g["align"]'s np.interp() uses
-    # EVERY row of t_img_abs/raw_flow as an interpolation knot - a zero at a coast
-    # timestamp drags the interpolated GT-grid curve toward 0 not just AT that
-    # instant but across its neighboring gap too, contaminating nearby genuine
-    # 'lstsq' samples' interpolated neighborhood as well. This is a strictly worse
-    # corruption than the existing >=1s gap_mask catches (that only guards
-    # SUSTAINED marker-loss; most coast runs here are brief, frame-to-frame
-    # flicker). Fix: drop coast rows from the FLOW's own (t, value) pair entirely
-    # before any interpolation/filtering, so align() only ever bridges two REAL
-    # measurements across whatever true gap exists between them. Feature Params is
-    # NOT corrupted the same way (rescued/held during coast, never zeroed - see
-    # img_data.py:1499-1516), so raw_feat keeps its own unfiltered t_img_abs.
-    _flow_real = (tag == 'lstsq') | (tag == 'lstsq+klt') if np.any(tag != '') else np.ones(len(tag), dtype=bool)
+    # pair this call AND no map rescue fired either - img_data.py APPENDS A LITERAL
+    # np.zeros(6) for that sample (img_data.py:1520-1526), not a hold/extrapolation.
+    # On real runs this is 60-90% of ALL samples (see the coverage print above).
+    # g["align"]'s np.interp() uses EVERY row of t_img_abs/raw_flow as an
+    # interpolation knot - a zero at a coast timestamp drags the interpolated
+    # GT-grid curve toward 0 not just AT that instant but across its neighboring
+    # gap too, contaminating nearby genuine samples' interpolated neighborhood as
+    # well. This is a strictly worse corruption than the existing >=1s gap_mask
+    # catches (that only guards SUSTAINED marker-loss; most coast runs here are
+    # brief, frame-to-frame flicker). Fix: drop coast rows from the FLOW's own
+    # (t, value) pair entirely before any interpolation/filtering, so align() only
+    # ever bridges two REAL measurements across whatever true gap exists between
+    # them. Feature Params is NOT corrupted the same way (rescued/held during
+    # coast, never zeroed - see img_data.py:1499-1516), so raw_feat keeps its own
+    # unfiltered t_img_abs.
+    #
+    # SEPARATE CALIBRATION PER ESTIMATION TECHNIQUE (2026-08-01): 'map_flow'
+    # (PlanarFeatureMap rescue, img_data.py's _flowMap ~line 1901-1905) is a
+    # genuine, plausibility-gated geometric estimate - NOT a literal zero like
+    # true 'coast' - but it is a DIFFERENT estimation technique from raw
+    # lstsq corner flow, with its own noise/lag/scale characteristics (its own
+    # homography-tracked-point geometry, not direct corner-pixel differencing).
+    # Briefly tried pooling it into ONE shared corner-cal fit (same day, see
+    # git history around this comment): R^2 got WORSE on 2 of 4 axes and
+    # produced a physically-suspicious |Wz gain|>1 with a flipped sign -
+    # evidence the two techniques don't share one linear transfer function.
+    # So each technique now gets its OWN calibration matrix instead (this
+    # function is called once per technique from main(), with `flow_tags`/
+    # `s_tags` selecting which estimator tags count as "real" input for THAT
+    # fit) - same pattern the ring flow cal already used relative to corner.
+    # Genuinely-zeroed 'coast' rows (no technique produced anything) are
+    # dropped from every technique's fit, same as before.
+    _flow_real = (np.isin(tag, list(flow_tags))
+                  if np.any(tag != '') else np.ones(len(tag), dtype=bool))
     t_flow_abs = t_img_abs[_flow_real]
     raw_flow = raw_flow[_flow_real]
     if np.any(~_flow_real):
-        print(f"  coast-frame guard (flow): {int((~_flow_real).sum())}/{len(_flow_real)} "
-              f"zero-flow 'coast' sample(s) dropped before KF/interp")
+        print(f"  flow tag filter ({sorted(flow_tags)}): kept {int(_flow_real.sum())}/{len(_flow_real)} "
+              f"sample(s) (rest dropped - coast or a different technique)")
 
     # Per-frame raw flow is noise-dominated (raw std ~1.4 vs true signal
     # ~0.05, per project convention) - MUST filter on its own native time
@@ -578,12 +709,46 @@ def derive_one(run_dir, fit_method="ols"):
     if len(raw_flow) > 1:
         raw_flow = reject_outliers(raw_flow, label="flow")
         raw_flow = kf_filter_causal(raw_flow, t_flow_abs, FLOW_KF_Q, FLOW_KF_R)
-    if n > 1:
+
+    # FEAT NaN-GAP GUARD (2026-08-02): Img_Data_Recomputed.npy (recompute_raw_flow.py)
+    # leaves NaN for rows it can't recompute (no predecessor quaternion, degenerate
+    # corners) rather than dropping them - unlike raw_flow above, raw_feat had NO
+    # pre-interpolation real-only filter (the coast-frame guard only ever applied to
+    # flow), so align()'s linear interpolation touches those scattered NaNs directly.
+    # A linear interpolation between ANY NaN-adjacent samples is itself NaN, so
+    # scattered ~50%-NaN input poisons nearly the ENTIRE interpolated output - this
+    # silently zeroed out sx/sy's sample count after the _rp_basis fix enabled using
+    # Img_Data_Recomputed.npy (confirmed: "phase coverage" showed real per-phase
+    # counts, but std_ratio saw 0 REAL samples - the interpolation NaN-poisoning
+    # between accounting for it in phase_labels(, computed from GT alone) and using
+    # it in _phase_slope (computed from raw_feat_g, NaN-poisoned) was the gap).
+    # Same fix pattern as the flow coast-guard: drop non-finite rows BEFORE
+    # outlier-reject/KF/interpolation, not after.
+    feat_finite = np.all(np.isfinite(raw_feat), axis=1)
+    t_feat_abs = t_img_abs[feat_finite]
+    raw_feat = raw_feat[feat_finite]
+    if np.any(~feat_finite):
+        print(f"  feat NaN-gap guard: {int((~feat_finite).sum())}/{len(feat_finite)} "
+              f"non-finite 'Feature Params' sample(s) dropped before KF/interp")
+    if len(raw_feat) > 1:
         raw_feat = reject_outliers(raw_feat, label="feature")
-        raw_feat = kf_filter_causal(raw_feat, t_img_abs, FEAT_KF_Q, FEAT_KF_R)
+        # ALPHA-WRAP KF FIX (2026-08-02, mirrors img_data.py::_kf_feat_update):
+        # column 3 (alpha) is a WRAPPED ANGLE - passing it to kf_filter_causal
+        # directly like an ordinary linear channel corrupts on any +-pi branch
+        # crossing (see _kf_step's own docstring rule, and the Pi/Gazebo
+        # comparison that found the Pi's runtime had the same bug). Filter
+        # columns 0-2 (xc, yc, scale) normally; filter alpha via a separate
+        # [sin(alpha), cos(alpha)] pair through the SAME kf_filter_causal, then
+        # resync column 3 to atan2(sin, cos) - matching the runtime fix exactly
+        # so this offline derivation reflects what the fixed runtime produces.
+        raw_feat_pos = kf_filter_causal(raw_feat[:, :3], t_feat_abs, FEAT_KF_Q, FEAT_KF_R)
+        raw_feat_sc = kf_filter_causal(
+            np.column_stack([np.sin(raw_feat[:, 3]), np.cos(raw_feat[:, 3])]),
+            t_feat_abs, FEAT_KF_Q, FEAT_KF_R)
+        raw_feat = np.column_stack([raw_feat_pos, np.arctan2(raw_feat_sc[:, 0], raw_feat_sc[:, 1])])
 
     raw_flow_g = g["align"](t_flow_abs, raw_flow)     # raw flow resampled onto GT clock (coast-free)
-    raw_feat_g = g["align"](t_img_abs, raw_feat)
+    raw_feat_g = g["align"](t_feat_abs, raw_feat)
 
     # Marker-loss gap guard (see GAP_EXCLUDE_S / g["gap_mask"]): align()
     # linearly interpolates raw_flow/raw_feat across whatever real-sample
@@ -619,7 +784,12 @@ def derive_one(run_dir, fit_method="ols"):
     # every derived calibration so far, independent of the other fixes.
     alpha_unwrapped = np.unwrap(g["alpha"])
     yaw_rate = _robust_vel(alpha_unwrapped[:, None], g["t_g"])[:, 0]
-    G = np.column_stack([g["V_h_g"], np.zeros((len(yaw_rate), 2)), yaw_rate])  # [h(3); w=(0,0,wz)] = 6 cols
+    # Wx/Wy ADDED 2026-08-01 (were np.zeros((n,2)) - Wx/Wy were never fitted at
+    # all, only Wz had a GT reference). g["roll_rate"]/g["pitch_rate"] are the
+    # UAV's own absolute body angular velocity (compute_gt_flow's roll/pitch
+    # GT block) - real targets for the raw w0/w1 columns instead of a
+    # structurally-zero column that made those rows unfittable by construction.
+    G = np.column_stack([g["V_h_g"], g["roll_rate"], g["pitch_rate"], yaw_rate])  # [h(3); w(3)] = 6 cols
 
     m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(raw_flow_g), 1) & gok
     Gm, Rm = G[m], raw_flow_g[m]
@@ -672,8 +842,29 @@ def derive_one(run_dir, fit_method="ols"):
     gs = g["V_s_g"]
     s_tag = np.array([str(x) for x in img.get("S Estimator Tag", [])])
     if len(s_tag) == len(t_img_abs):
-        s_real_g = g["align"](t_img_abs,
-                              (s_tag != "coast").astype(float)[:, None])[:, 0] > 0.99
+        s_is_real = np.isin(s_tag, list(s_tags))
+        # REACQUISITION SETTLE GUARD (2026-08-01, root-caused a "why does sx come
+        # out negative on some runs" investigation): a sample's OWN tag being
+        # real (e.g. 'lstsq') doesn't mean it's a clean measurement - checked the
+        # actual coast->lstsq transitions on a run that produced a strongly
+        # wrong-signed sx and found the raw xc JUMPS by 0.15-0.29 at the very
+        # first post-coast sample while GT (mocap) stays smooth/continuous
+        # through the same instant - the first reacquisition sample(s) are a
+        # transient (either genuinely catching up to real motion that happened
+        # blind during the loss, or a reacquisition detection glitch), not a
+        # clean instantaneous reading. Exclude the first SETTLE_N real-tagged
+        # samples after any coast run, same spirit as the existing coast guard
+        # but for the settle TRANSIENT rather than coast itself.
+        _edge = np.diff(s_is_real.astype(int), prepend=0) == 1   # False->True transitions
+        _settle = np.zeros(len(s_is_real), dtype=bool)
+        for _i in np.where(_edge)[0]:
+            _settle[_i:_i + SETTLE_N] = True
+        _n_settled = int((_settle & s_is_real).sum())
+        if _n_settled:
+            print(f"  reacquisition settle guard (S): {_n_settled} post-coast "
+                  f"sample(s) excluded (first {SETTLE_N} after each coast run)")
+        s_is_real = s_is_real & ~_settle
+        s_real_g = g["align"](t_img_abs, s_is_real.astype(float)[:, None])[:, 0] > 0.99
     else:                                          # older recording, no tag
         s_real_g = np.ones(len(gs), dtype=bool)
         print("  [warn] no usable 'S Estimator Tag' - centroid fit cannot "
@@ -691,25 +882,67 @@ def derive_one(run_dir, fit_method="ols"):
           f"settle/ambiguous={int((lab < 0).sum())}")
 
     def _phase_slope(col, axis_k, name):
-        """Slope from axis_k's own phase, real samples only.
+        """Slope from axis_k's own phase ONLY, real samples. Cross-check /
+        fallback, not the primary fit as of 2026-08-02 (see _mixed_motion_slope
+        below for why) - still useful as a stricter sanity check when it does
+        return a number, and as the fallback when mixed-motion itself is NaN.
 
-        Deliberately NO fallback to the phase-mixed / coast-included fit: that
-        fallback is what manufactured the impossible negative scales this
-        function exists to eliminate. A starved phase means the marker was not
-        actually seen while that axis was driven, which is a RECORDING gap --
-        report NaN and say so, rather than emit a confident wrong number.
+        FIT METHOD SWAPPED 2026-08-02 (see std_ratio's own docstring): was a
+        plain np.polyfit OLS slope, no defense against a handful of
+        contaminated/transient samples (e.g. post-coast reacquisition jumps)
+        flipping its sign - exactly the negative-sx failure mode this file's
+        _pos_median aggregate guard exists to catch downstream. std_ratio
+        (ported from Gazebo's aggregate_calibration_phased.py) derives sign
+        from correlation + does its own outlier rejection instead.
         """
         sel = ms & (lab == axis_k)
-        if sel.sum() > 50:
-            return float(np.polyfit(raw_feat_g[sel, col], gs[sel, col], 1)[0]), int(sel.sum())
-        print(f"  [warn] {name}: only {int(sel.sum())} REAL sample(s) in the "
-              f"{PHASE_LAB[axis_k]} phase (need >50) -> NaN. The marker was "
-              f"lost through most of this run's {PHASE_LAB[axis_k]} phase; "
-              f"re-record that phase rather than trusting a substitute fit")
-        return np.nan, int(sel.sum())
+        val = std_ratio(gs[:, col], raw_feat_g[:, col], sel)
+        return val, int(sel.sum())
 
-    sx, nx = _phase_slope(0, 0, "sx")
-    sy, ny = _phase_slope(1, 1, "sy")
+    def _mixed_motion_slope(col, name):
+        """PRIMARY fit as of 2026-08-02: std_ratio over ALL real samples,
+        regardless of which axis dominates that instant - no phase restriction.
+
+        The phase-purity requirement (_phase_slope above) existed specifically
+        to guard against tilt-dependent CROSS-AXIS contamination from the
+        img_geometry.py::_rp_basis gravity-vector sign bug (see
+        project_pi_output_recal_2026_08_01 - g was R@[0,0,1] instead of
+        R.T@[0,0,1], amplifying rather than cancelling tilt-induced error
+        during real excitation, exactly the kind of thing that leaks between
+        axes during MIXED motion). With that bug fixed, there is no longer a
+        structural reason mixed-motion samples should corrupt this fit -
+        confirmed empirically (2026-08-02): pooling all-real-sample data
+        recovered 5/6 runs with clean positive sx/sy (vs 2/6 phase-restricted),
+        pooled corr 0.76/0.90, consistent with the phase-restricted result but
+        from ~3x the sample count. std_ratio's own outlier rejection still
+        provides defense against ordinary contamination (reacquisition
+        transients not caught by the settle guard, detection glitches, etc.)
+        - this isn't a return to the pre-2026-07-27 "one global polyfit over
+        everything" approach that produced impossible negative scales; that
+        one had neither std_ratio's sign-from-correlation robustness nor its
+        outlier rejection.
+        """
+        val = std_ratio(gs[:, col], raw_feat_g[:, col], ms)
+        return val, int(ms.sum())
+
+    def _slope(col, axis_k, name):
+        mixed, n_mixed = _mixed_motion_slope(col, name)
+        phased, n_phased = _phase_slope(col, axis_k, name)
+        mixed_str = f"{mixed:+.4f}" if np.isfinite(mixed) else "NaN"
+        phased_str = f"{phased:+.4f}" if np.isfinite(phased) else "NaN"
+        print(f"  {name}: mixed-motion={mixed_str} (n={n_mixed})  "
+              f"phase-restricted={phased_str} (n={n_phased})")
+        val, n_used = (mixed, n_mixed) if np.isfinite(mixed) else (phased, n_phased)
+        if np.isfinite(val):
+            return val, n_used
+        print(f"  [warn] {name}: NaN from BOTH mixed-motion and phase-restricted fits "
+              f"({n_mixed} total real sample(s), {n_phased} in the {PHASE_LAB[axis_k]} "
+              f"phase) - too few real samples or signal below the noise floor; "
+              f"re-record rather than trusting a substitute fit")
+        return np.nan, n_used
+
+    sx, nx = _slope(0, 0, "sx")
+    sy, ny = _slope(1, 1, "sy")
     for nm, val in (("sx", sx), ("sy", sy)):
         if np.isfinite(val) and val <= 0:
             print(f"  [warn] {nm}={val:+.4f} is NON-POSITIVE -- physically "
@@ -756,7 +989,7 @@ def derive_ring_one(run_dir):
 
     alpha_unwrapped = np.unwrap(g["alpha"])
     yaw_rate = _robust_vel(alpha_unwrapped[:, None], g["t_g"])[:, 0]
-    G = np.column_stack([g["V_h_g"], np.zeros((len(yaw_rate), 2)), yaw_rate])
+    G = np.column_stack([g["V_h_g"], g["roll_rate"], g["pitch_rate"], yaw_rate])
 
     m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(raw_ring_g), 1) & gok
     Gm, Rm = G[m], raw_ring_g[m]
@@ -985,6 +1218,61 @@ def main():
         "[" + ", ".join(f"{M[i,j]:+.4f}" for j in range(6)) + "]" for i in range(6))
     print(f"        self._sensor_cal_hw = np.array([\n            {rows}])")
     print(f"        self._sensor_cal_s  = np.diag([{sx:.4f}, {sy:.4f}, 1.0, 1.0])")
+
+    # MAP cal (2026-08-01): PlanarFeatureMap rescue is its own estimation
+    # technique (img_data.py's _flowMap for flow, 'planar_map_rescue' for the
+    # centroid/S path) with its own noise/lag/scale characteristics - fit
+    # SEPARATELY from the corner cal above rather than pooled into it (pooling
+    # was tried and made 2/4 flow axes worse with a physically-suspicious
+    # |Wz gain|>1 - see derive_one's flow-tag-filter comment). Most existing
+    # runs will have zero 'map_flow'/'planar_map_rescue' samples (map was
+    # off/rare during calibration recording until 2026-08-01) and skip here -
+    # that's expected, not a bug.
+    print("\n\n=== MAP CAL (map_flow/planar_map_rescue technique, independent of corner fit) ===")
+    map_cals, map_r2s, map_calS = [], [], []
+    for run_dir in runs:
+        name = os.path.basename(run_dir)
+        try:
+            cal, r2, (sx, sy), nfit = derive_one(run_dir, flow_tags=MAP_FLOW_TAGS, s_tags=MAP_S_TAGS)
+        except Exception as e:
+            print(f"  skip {name}: {e}")
+            continue
+        print(f"\n=== {name} (n={nfit} fit samples) ===")
+        print("per-axis R^2: " + "  ".join(f"{LAB[k]}={r2[k]:.2f}" for k in range(6)))
+        print(cal)
+        print(f"centroid slope: sx={sx:.4f}  sy={sy:.4f}")
+        map_cals.append(cal); map_r2s.append(r2); map_calS.append([sx, sy])
+
+    if not map_cals:
+        print("\nNo usable map-technique runs.")
+    else:
+        map_cals = np.array(map_cals); map_r2s = np.array(map_r2s); map_calS = np.array(map_calS)
+        Mm = map_cals.mean(0); Mmstd = map_cals.std(0) if len(map_cals) > 1 else np.zeros_like(Mm)
+
+        def _pos_median_map(col, name):
+            v = map_calS[:, col]
+            good = v[np.isfinite(v) & (v > 0)]
+            n_bad = int((np.isfinite(v) & (v <= 0)).sum())
+            if n_bad:
+                print(f"  [warn] {name}: dropped {n_bad} non-positive per-run "
+                      f"slope(s) from the aggregate (physically impossible)")
+            return float(np.median(good)) if len(good) else np.nan
+
+        sx_m = _pos_median_map(0, "sx"); sy_m = _pos_median_map(1, "sy")
+        print(f"\n\n=== MAP AGGREGATE across {len(map_cals)} run(s) — PROVISIONAL, review before use ===")
+        print("per-axis R^2 (mean):  " + "  ".join(f"{LAB[k]}={map_r2s[:,k].mean():.2f}" for k in range(6)))
+        if len(map_cals) > 1:
+            print("\ninter-run STD of M (small = robust):")
+            print("       " + "  ".join(f"{r:>6}" for r in RL))
+            for i in range(6):
+                print(f"  {LAB[i]:>2} " + "  ".join(f"{Mmstd[i,j]:6.3f}" for j in range(6)))
+        print(f"\ncentroid cal_s:  sx={sx_m:.4f}  sy={sy_m:.4f}")
+        print("\n--- candidate paste for img_data.py (DO NOT apply without reviewing R^2 above, "
+              "AND without wiring a map-technique consumer to actually use it) ---")
+        rows_m = ",\n            ".join(
+            "[" + ", ".join(f"{Mm[i,j]:+.4f}" for j in range(6)) + "]" for i in range(6))
+        print(f"        self._sensor_cal_map = np.array([\n            {rows_m}])")
+        print(f"        self._sensor_cal_s_map  = np.diag([{sx_m:.4f}, {sy_m:.4f}, 1.0, 1.0])")
 
     # Ring cal, from the SAME runs' "Ring Opt Flow Ang Vel"/"Ring Time" logs
     # (see derive_ring_one docstring - requires a recording made after the

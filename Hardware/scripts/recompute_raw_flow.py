@@ -98,12 +98,31 @@ def recompute_one(run_dir):
         A = IG.fill_A(V_dense[1])
         Y = np.reshape(V_dense[1] - V_dense[0], (-1,)) * fps_log[i]
 
+        # FIXED 2026-08-02: this used to ALWAYS take the gyro-comp (3-DOF,
+        # w_x=w_y hardcoded to 0) branch unconditionally - which is what
+        # img_data.py's runtime does MOST of the time (FLOW_GYRO_COMP=1 is the
+        # default), but NOT always: img_data.py:1616-1649 falls back to the
+        # FULL 6-DOF solve whenever the gyro-measured residual roll/pitch rate
+        # exceeds GYRO_COMP_WXY_MAX (0.2 rad/s default) - i.e. the yaw-only
+        # assumption breaks down under genuine co-excited roll/pitch motion.
+        # Replicating ONLY the always-zero branch meant Wx/Wy could never be
+        # recomputed as anything but zero, even on the (presumably rarer)
+        # frames where the real runtime itself produced a genuine nonzero
+        # value. This now mirrors BOTH branches exactly, so a Wx/Wy
+        # calibration fit against this recompute reflects the SAME rare
+        # fallback-only frames the real runtime actually uses for Wx/Wy -
+        # not a synthetic full-6-DOF solve the deployed system never runs.
         av1 = _mkangvel(av_log[i])
         wv = IG.vframe_w([av1.forward_rad_s, av1.right_rad_s, av1.down_rad_s], q1)
-        wz = float(wv[2])
-        Yc = Y - A[:, 5] * wz
-        h = np.linalg.lstsq(A[:, 0:3], Yc, rcond=1e-3)[0]
-        new_flow[i] = [h[0], h[1], h[2], 0.0, 0.0, wz]
+        gyro_comp_wxy_max = float(os.environ.get("GYRO_COMP_WXY_MAX", "0.2"))
+        if max(abs(float(wv[0])), abs(float(wv[1]))) <= gyro_comp_wxy_max:
+            wz = float(wv[2])
+            Yc = Y - A[:, 5] * wz
+            h = np.linalg.lstsq(A[:, 0:3], Yc, rcond=1e-3)[0]
+            new_flow[i] = [h[0], h[1], h[2], 0.0, 0.0, wz]
+        else:
+            h = np.linalg.lstsq(A, Y, rcond=1e-3)[0]
+            new_flow[i] = h
 
         V_nP0 = IG.get_virtual_pts(C_nP[0], q0, center=_CENTER)
         V_nP1 = IG.get_virtual_pts(C_nP[1], q1, center=_CENTER)
