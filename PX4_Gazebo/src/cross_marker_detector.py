@@ -44,6 +44,11 @@ class CrossMarkerDetection:
     heading_deg: Optional[float]   # stub direction from center, or None if not identified
     ok: bool
     mask_bbox: Optional[tuple] = None  # (x, y, w, h) of the color-gated blob, for sanity bounds
+    # Diagnostic (2026-08-01, point-starvation/centroid-instability investigation):
+    # which of detect()'s early-return gates fired, or None on ok=True. Lets a caller
+    # log WHY a frame failed instead of just that it did, without re-running the
+    # pipeline with breakpoints. See docstrings at each return site below for meaning.
+    fail_reason: Optional[str] = None
     # Added for cross_marker_perception.py (h/w/alpha computation) -- populated only on
     # ok=True detections; empty/None on failure (callers must not assume presence).
     line_points_i: tuple = ()          # real detected pixels fit to cross-arm line i
@@ -114,13 +119,23 @@ def _line_intersection(l1, l2):
     return (x01 + t * vx1, y01 + t * vy1)
 
 
-def _restrict_to_center_roi(mask, roi_frac=0.65):
+def _restrict_to_center_roi(mask, roi_frac=0.5):
     """First-pass clutter reduction: the downward camera is mounted centrally
     and the perception/CBF stack's whole job is to keep the marker near
     frame-center, so propeller clutter that sits at frame corners/far edges
     can be zeroed out by restricting to a central ROI. NOT sufficient alone --
     see _isolate_marker_by_shape, which handles clutter (e.g. propeller arms)
-    that still falls within this ROI when the drone has some lateral offset."""
+    that still falls within this ROI when the drone has some lateral offset.
+
+    roi_frac tightened 0.65->0.5 (2026-08-01): diag_raw_image_dump.py exposed
+    a pre-existing Gazebo camera-render artifact -- a mirrored ghost of the
+    drone's own body in the outer ~18-25% top/bottom margin of EVERY frame,
+    present in both the aruco and cross_marker worlds (not new, not
+    marker-specific). ArUco's small centered tag never touched it (inside
+    even the old 0.65 crop); the cross marker's long arms legitimately reach
+    toward the frame edges during the calibration excitation and were
+    intersecting the ghost band, corrupting Hough/angle-clustering. 0.5 keeps
+    the analysis window clear of the observed ghost extent with margin."""
     h, w = mask.shape
     x0, x1 = int(w * (1 - roi_frac) / 2), int(w * (1 + roi_frac) / 2)
     y0, y1 = int(h * (1 - roi_frac) / 2), int(h * (1 + roi_frac) / 2)
@@ -161,7 +176,7 @@ def _isolate_marker_by_shape(mask, min_area=15):
 
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
-           min_line_length=15, max_line_gap=10, identify_stub=True, roi_frac=0.65):
+           min_line_length=15, max_line_gap=10, identify_stub=True, roi_frac=0.5):
     """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection."""
     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lower, upper)
@@ -171,20 +186,20 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
 
     ys, xs = np.nonzero(mask)
     if len(xs) < 20:
-        return CrossMarkerDetection(None, None, False)
+        return CrossMarkerDetection(None, None, False, fail_reason='color_gate_empty')
     bbox = (int(xs.min()), int(ys.min()), int(xs.max() - xs.min()), int(ys.max() - ys.min()))
 
     edges = cv2.Canny(mask, 50, 150, apertureSize=3)
     lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=25,
                              minLineLength=min_line_length, maxLineGap=max_line_gap)
     if lines is None or len(lines) < 2:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='hough_lt2_lines')
 
     segs = lines[:, 0, :]
     angles = [_angle_deg(*s) for s in segs]
     clusters = _cluster_line_angles(angles)
     if len(clusters) < 2:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='lt2_angle_clusters')
 
     # Pick the two clusters that are the real cross arms. Closest-to-90-degrees-apart
     # alone is NOT a reliable criterion on its own (2026-08-01, found via the off-frame
@@ -215,11 +230,11 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
 
     best_pair = _best_pair(require_support=True) or _best_pair(require_support=False)
     if best_pair is None:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='no_pair_found')
     i, j = best_pair
     ang_i, ang_j = np.mean(clusters[i]), np.mean(clusters[j])
     if _circ_diff(ang_i, ang_j) < MIN_INTER_LINE_ANGLE_DEG:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='near_parallel_pair')
 
     # Approximate center (mask bbox center) used only to select full-mask pixels by
     # angle-from-center; NOT used as the final answer. Using only Hough segment
@@ -251,12 +266,12 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
 
     pts_i, pts_j = _cluster_points_from_mask(i), _cluster_points_from_mask(j)
     if len(pts_i) < 2 or len(pts_j) < 2:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='lt2_mask_points_on_arm')
 
     line_i, line_j = _robust_fit_line(pts_i), _robust_fit_line(pts_j)
     center = _line_intersection(line_i, line_j)
     if center is None:
-        return CrossMarkerDetection(None, None, False, bbox)
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='ill_conditioned_intersection')
 
     # Sanity check -- SPLIT by whether the fitted intersection lands in-frame,
     # because the two cases need different validity criteria (2026-08-01, fixing
@@ -295,18 +310,18 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         centroid_err = np.hypot(center[0] - centroid_x, center[1] - centroid_y)
         max_centroid_err = 0.12 * max(bw, bh, 1)   # tight: true crossing point should sit very close to centroid
         if centroid_err > max_centroid_err:
-            return CrossMarkerDetection(None, None, False, bbox)
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
         margin = 0.25 * max(bw, bh, 1)
         if not (bx - margin <= center[0] <= bx + bw + margin and
                 by - margin <= center[1] <= by + bh + margin):
-            return CrossMarkerDetection(None, None, False, bbox)
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason='center_outside_bbox_margin')
     else:
         frame_diag = float(np.hypot(frame_w, frame_h))
         bcx, bcy = bx + bw / 2.0, by + bh / 2.0
         extrap_dist = float(np.hypot(center[0] - bcx, center[1] - bcy))
         MAX_EXTRAPOLATION_DIAGS = 3.0   # generous -- a sanity cap, not a precision bound
         if extrap_dist > MAX_EXTRAPOLATION_DIAGS * frame_diag:
-            return CrossMarkerDetection(None, None, False, bbox)
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason='extrapolation_too_far')
 
     heading = None
     stub_points_out = None
