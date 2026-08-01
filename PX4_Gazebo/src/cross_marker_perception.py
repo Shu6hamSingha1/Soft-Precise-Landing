@@ -158,6 +158,40 @@ class CrossMarkerPerception:
         self._ok = False
         self._last_t = None
 
+        # Output calibration (GT = cal @ raw), same convention as img_data.py's
+        # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
+        # own image-Jacobian solve (not img_data.py's), so it needs its own
+        # empirical correction, not a reuse of the ArUco board's cal.
+        # Derived 2026-08-02 via apps/record_cross_marker_calibration.py +
+        # tools/derive_cross_marker_cal.py, from 4 phased-excitation runs (a 5th
+        # was gated out at 69.5% detection ok-rate; CROSS_CAL_MIN_OKRATE=0.85) --
+        # see Memory/px4/project_cross_marker_pipeline_20260801.md for the full
+        # investigation (Gazebo camera-render ghost artifact root-caused +
+        # layered shape/position rejection fixes in cross_marker_detector.py).
+        # R^2: Hx=0.40 Hy=0.49 Hz=0.34 Wz=0.36 (Wx/Wy forced 0, same level-target
+        # convention as the ArUco board cal). Centroid scale still has ~2.4x
+        # inter-run spread -- usable starting point, not as tight as the ArUco
+        # cal; re-derive with more runs if precision landing needs tightening.
+        self._sensor_cal_hw = np.array([
+            [+0.1651, +0.0040, +0.0535, +0.0062, +0.1837, -0.0485],
+            [-0.0090, +0.2024, -0.0558, -0.2010, -0.0180, -0.0703],
+            [-0.0274, -0.0369, +0.5992, +0.3072, +0.1833, +0.0229],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [-0.1273, +3.3435, -0.8369, -2.2182, -0.1183, -0.6168]])
+        self._sensor_cal_s = np.diag([0.3217, 0.2862, 1.0, 1.0])
+
+        # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
+        # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
+        # to keep. Frame dumps around ok-state transitions are opt-in via
+        # CROSS_DIAG_SAVE_DIR (off by default -- full-res frame writes are not free).
+        self._diag_log = []
+        self._diag_save_dir = os.environ.get("CROSS_DIAG_SAVE_DIR", "")
+        self._diag_frame_idx = 0
+        self._diag_lost_streak = 0
+        if self._diag_save_dir:
+            os.makedirs(self._diag_save_dir, exist_ok=True)
+
     @staticmethod
     def _dilate_mask(mask):
         kernel = np.ones((2 * MASK_DILATE_PX + 1, 2 * MASK_DILATE_PX + 1), np.uint8)
@@ -237,6 +271,9 @@ class CrossMarkerPerception:
 
         det = cmd.detect(img_bgr)
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        bbox_area = (det.mask_bbox[2] * det.mask_bbox[3]) if det.mask_bbox else 0
+        self._diag_log.append((t, bool(det.ok), det.fail_reason, bbox_area))
+        self._diag_frame_idx += 1
 
         if not det.ok:
             self._ok = False
@@ -245,7 +282,23 @@ class CrossMarkerPerception:
                                           # as a live in-FoV measurement (see get_center_px())
             # hold last s/alpha; hw defaults to zero (no motion info without a fix)
             self._hw = np.zeros(6)
+            self._diag_lost_streak += 1
+            # dump the frame at the START of a loss streak (streak==1) and every 30
+            # frames thereafter, so a long freeze is sampled across its duration
+            # instead of just once -- lets us see whether the cause is static (same
+            # failure mode throughout) or drifts (e.g. lighting/tilt changing).
+            if self._diag_save_dir and (self._diag_lost_streak == 1 or self._diag_lost_streak % 30 == 0):
+                fn = os.path.join(self._diag_save_dir,
+                                   f"lost_{self._diag_frame_idx:06d}_streak{self._diag_lost_streak}_{det.fail_reason}.png")
+                cv2.imwrite(fn, img_bgr)
             return self.get_output()
+
+        if self._diag_save_dir and self._diag_lost_streak >= 5:
+            # recovery frame right after a real (>=5-frame) loss streak
+            fn = os.path.join(self._diag_save_dir,
+                               f"recovered_{self._diag_frame_idx:06d}_afterstreak{self._diag_lost_streak}.png")
+            cv2.imwrite(fn, img_bgr)
+        self._diag_lost_streak = 0
 
         cx, cy = det.center
         self._center_px = np.array([cx, cy])
@@ -280,11 +333,23 @@ class CrossMarkerPerception:
         return dict(ok=self._ok, s=self._s.copy(), alpha=self._alpha, hw=self._hw.copy())
 
     # ---- getters mirroring IMG_PROCESSOR's public interface, for controller.py ----
-    def getImgFeatureParam(self):
+    def getRawImgFeatureParam(self):
+        """Uncalibrated [xc, yc, 1, alpha] -- what the calibration recorder logs."""
         return np.array([self._s[0], self._s[1], self._s[2], self._alpha])
 
-    def getOptFlowAngVel(self):
+    def getRawOptFlowAngVel(self):
+        """Uncalibrated [h1,h2,h3,w1,w2,w3] -- what the calibration recorder logs."""
         return self._hw.copy()
+
+    def getImgFeatureParam(self):
+        return self._sensor_cal_s @ self.getRawImgFeatureParam()
+
+    def getOptFlowAngVel(self):
+        return self._sensor_cal_hw @ self.getRawOptFlowAngVel()
+
+    def get_diag_log(self):
+        """List of (t, ok, fail_reason, bbox_area) -- one entry per process_frame call."""
+        return list(self._diag_log)
 
     def get_center_px(self):
         """(2,) raw pixel [cx, cy] for the visibility CBF, or None if this frame
@@ -363,6 +428,15 @@ class CrossMarkerNode(Thread):
 
     def getOptFlowAngVel(self):
         return self._perception.getOptFlowAngVel()
+
+    def getRawImgFeatureParam(self):
+        return self._perception.getRawImgFeatureParam()
+
+    def getRawOptFlowAngVel(self):
+        return self._perception.getRawOptFlowAngVel()
+
+    def get_diag_log(self):
+        return self._perception.get_diag_log()
 
     def get_center_px(self):
         return self._perception.get_center_px()

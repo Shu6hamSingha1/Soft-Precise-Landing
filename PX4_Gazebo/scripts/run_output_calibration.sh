@@ -10,6 +10,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
+# WORLD overridable so this launcher can also run the cross-marker world's
+# calibration app, e.g.:
+#   WORLD=cross_marker CALIB_APP=apps/record_cross_marker_calibration.py \
+#   CALIB_OUT_BASE=$PWD/calibration_data/output_cross bash scripts/run_output_calibration.sh
+WORLD="${WORLD:-aruco}"
+
 # Every run lands in its own timestamped folder so we keep history (matches
 # the original ~/ws/scripts/soft_precise_landing/record_output_calibration.py
 # convention which used time.ctime()-style names). A `latest` symlink in the
@@ -38,7 +44,7 @@ cleanup() {
   pkill -9 -f 'record_output_calibration.py' 2>/dev/null || true
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
-  pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
+  pkill -9 -f "parameter_bridge.*world/$WORLD" 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
   pkill -9 -f 'QGroundControl' 2>/dev/null || true
   echo "[calib] done."
@@ -77,14 +83,14 @@ setsid env QT_QPA_PLATFORM=offscreen \
   PX4_SYS_AUTOSTART=4014 \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
-  PX4_GZ_WORLD=aruco \
+  PX4_GZ_WORLD="$WORLD" \
   bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 -d -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PIDS+=($!)
 
 echo -n "[calib] waiting for Gazebo "
 WAITED=0
-while ! gz topic -l 2>/dev/null | grep -q '/world/aruco/clock'; do
+while ! gz topic -l 2>/dev/null | grep -q "/world/$WORLD/clock"; do
   sleep 1; echo -n "."
   WAITED=$((WAITED + 1))
   [ "$WAITED" -gt 60 ] && { echo " timeout"; exit 1; }
@@ -92,16 +98,16 @@ done
 echo " up after ${WAITED}s"
 
 start_bg bridge_clock ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock \
-  --ros-args -r /world/aruco/clock:=/clock
+  "/world/$WORLD/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock" \
+  --ros-args -r "/world/$WORLD/clock:=/clock"
 
 start_bg bridge_pose ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V \
-  --ros-args -r /world/aruco/pose/info:=/pose
+  "/world/$WORLD/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V" \
+  --ros-args -r "/world/$WORLD/pose/info:=/pose"
 
 start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image \
-  --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
+  "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \
+  --ros-args -r "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image"
 
 if [ -x "$HOME/Downloads/QGroundControl.AppImage" ]; then
   # Non-fatal: QGC FUSE-mount failures (stale /tmp/.mount_QGroun* leftovers

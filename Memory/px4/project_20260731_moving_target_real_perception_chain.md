@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: e7d8e3d1-20d0-4b05-a155-9404e14de645
-  modified: 2026-07-31T15:22:25.894Z
+  modified: 2026-07-31T15:31:00.628Z
 ---
 
 Continuation of [[project_rover_baseline_stale_2026-07-30]] / [[project_20260730_five_fixes_ic_validation]]:
@@ -67,13 +67,26 @@ deliberately ignoring the `s*h_z` cross-term the full IBVS interaction matrix ca
 refinement left for later if this first cut isn't sufficient). Wrapped in try/except so a
 flow-read failure can't break the coast path itself.
 
-**How to apply:** this is a real, code-level fix, not yet validated -- an n=3 real-perception
-(non-GT-FB) rover re-test was launched same session; check its result before treating this as
-settled. If it helps but doesn't fully close the gap, the next lever (per the same
-investigation) is giving `h` itself an independent, corner-free source during a total-coast
-window -- `FLOW_FUSE_RING=1` or `PLASMC_CENTROID_RATE=1`, both currently baked OFF for
+**VALIDATION RESULT (2026-07-31, same session, n=3 real-perception rover re-test):** partial
+fix, confirmed coast-duration-dependent. Rep1 (0.62s longest post-engage coast): min_alt_xy
+0.044m -- matches the historical GT-feedback-level baseline (0.034-0.143m), the first
+real-perception rover rep to do so. Rep2 (6.09s coast): 1.751m. Rep3 (2.33s coast): 1.122m.
+Directly confirms the predicted failure boundary: the fix works when the coast is short
+enough that `h`'s own last-fresh value (itself also coasting, no independent corner-free
+source in the default config) is still close to true; it can't help once the coast runs
+multiple seconds and `h` itself has drifted. **Fix is real and worth keeping, but not
+sufficient alone for long outages.**
+
+**How to apply:** the fix is validated-useful, not validated-sufficient. The next lever,
+directly indicated by the coast-duration correlation above, is giving `h` an INDEPENDENT,
+corner-free data source during exactly these multi-second outages -- `FLOW_FUSE_RING=1`
+(ring flow already "computed every frame, survives the marker death" per its own
+`img_data.py` comment, `:3171`) or `PLASMC_CENTROID_RATE=1`. Both are currently baked OFF for
 stationary-target reasons (ring flow's fixed radii overlap the marker near touchdown) that may
-not apply the same way to the moving-target case; not yet re-examined for that context.
+not apply the same way to the moving-target case; not yet re-examined for that context. Also
+still fully open: why the corner-loss coast durations themselves are so long (0.6-6.1s) for a
+moving target in the first place -- likely the same near-deck marker-overflow geometry as
+everywhere else this session, but not separately root-caused for the multi-second tail case.
 
 Also open, not yet acted on: the Linear-vs-Circular rover comparison needs re-running with
 matched absolute tangential speed (Circular's `ROVER_CIRCLE_VTAN` set to Linear's ~0.467 m/s
