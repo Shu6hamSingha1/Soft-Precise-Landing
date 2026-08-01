@@ -18,6 +18,15 @@ marker (not just translation) for this part to have signal.
 
 Throwaway diagnostic - not wired into anything, discard after use.
 """
+import os
+# WIRED 2026-08-01 to match hardware_landing.py's now-validated real-flight
+# defaults (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13) - this bench
+# needs real decode success against real scene texture, so it should run
+# under the same exposure/gain regime the drone actually flies with.
+os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
+
 import asyncio
 import time
 import numpy as np

@@ -17,6 +17,12 @@ os.environ.setdefault("FLOW_DH_MAX", "0")
 os.environ.setdefault("FLOW_DS_MAX", "0")
 os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+# WIRED 2026-08-01 to match hardware_landing.py's now-validated real-flight
+# defaults (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13) - this script
+# previously left CAPTURE_RATE/CAM_EXPOSURE_US/CAM_AUTO_GAIN at old defaults.
+os.environ.setdefault("CAPTURE_RATE_HZ", "30")
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
 
 import asyncio
 import time
@@ -31,7 +37,7 @@ import img_data as ID
 # saved video file instead, at no such cost.
 ID.VIDEO = False
 
-CAPTURE_RATE = 60
+CAPTURE_RATE = int(os.environ.get("CAPTURE_RATE_HZ", "60"))
 RESOLUTION = (640, 480)
 RUN_SECONDS = 20
 HOLD_TIMEOUT_S = 60.0

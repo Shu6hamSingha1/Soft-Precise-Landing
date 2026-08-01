@@ -35,6 +35,42 @@ from datetime import datetime
 
 sys.path.insert(0, ".")
 
+# CAM_MANUAL_EXPOSURE (2026-08-01): was only ever set by output_calibration.py's own
+# hand-sweep recordings (see imgstreamer.py's CAM_MANUAL_EXPOSURE comment for the full
+# 2026-07-22 diagnosis -- vigorous motion under auto-exposure blurs the marker's bit
+# pattern past decodability). Every real hardware_landing.py flight through 2026-07-31
+# ran on auto-exposure/auto-gain instead, since this script never set it -- a real drone
+# in flight moves at least as vigorously as a calibration hand-sweep, so the same
+# motion-blur risk applies here and was never mitigated. Default ON; must be set BEFORE
+# importing controller/img_data/imgstreamer below, since these are read at their MODULE
+# IMPORT time, not per-call.
+os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+
+# CAPTURE_RATE_HZ=30 (2026-08-01): the real achieved image rate on this hardware is
+# ~25-31Hz regardless of what's requested (empirical raw-mode ceiling, see
+# img_process_freq_optimization.md + this session's own Img_Data.npy measurement) --
+# so requesting the previous default (60Hz) bought nothing but DID cap ExposureTime at
+# ~16667us via FrameDurationLimits. Requesting 30Hz explicitly (matching what's actually
+# delivered) raises that ceiling to ~33333us at no real throughput cost -- see
+# FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12.
+os.environ.setdefault("CAPTURE_RATE_HZ", "30")
+
+# CAM_EXPOSURE_US=20000 / CAM_AUTO_GAIN=1 (2026-08-01): validated 2026-08-01 on real
+# bench recordings -- the old default (3000us/8.0 gain, auto-exposure's usual ballpark)
+# gave 0% ArUco decode in poor indoor lighting (a real sensor noise-floor problem, not a
+# levels problem -- proven by digital brightness-correction alone still failing).
+# 20000us (still well under the ~33333us ceiling above) took that to 43-65% decode on
+# real footage. CAM_AUTO_GAIN=1 closes the loop on GAIN ONLY (exposure stays fixed at
+# CAM_EXPOSURE_US, so blur behavior is unaffected by lighting) targeting the empirically
+# best brightness band (~73-90) found the same session -- this is what lets ONE
+# configuration serve both poor and good lighting without knowing conditions ahead of
+# flight time; a single static gain can't (a bright-enough-for-dark gain overexposes a
+# lit scene). Real validated result: 73.7% decode across a 60s bench recording spanning
+# a genuine lighting change mid-recording, best result of the session. See
+# FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13 before changing these.
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
+
 try:
     from ahrs import RAD2DEG
     from flight_controller import FC
@@ -135,6 +171,15 @@ class HardwareLandingSystem:
         # IMG_PROCESSOR here. pose_node=None: no ground-truth on hardware.
         self.controller = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM,
                                       time, self.fc, pose_node=None)
+        # Off by default (video write cost every frame) - env-gated so a real
+        # flight can opt in when video/estimator-tag alignment is wanted (see
+        # project_pi_izeta_kappa_ratchet_fix_2026_07_31: real landing flights
+        # had video but no Img_Data.npy at all, so there was no way to align
+        # recorded video frames to "Opt Flow Estimator Tag" after the fact).
+        if os.environ.get("LANDING_RECORD_VIDEO", "0") == "1":
+            self.controller.enableRecording()
+            print("   Video recording ENABLED (LANDING_RECORD_VIDEO=1) -> "
+                  "Test_Data/Landing/Test_Videos/<timestamp>.mp4")
         print("   Controller thread started (not yet engaged)")
         print("\n3. System ready for takeoff")
 
@@ -207,9 +252,23 @@ class HardwareLandingSystem:
             # back to the grace/open-loop path below. ANDed in (not OR'd) so it
             # can force feature_fresh=False even when every other signal says
             # fine. See PX4_Gazebo/docs/HANDOFF_cbf_lockout_planarmap_2026-07-30.md.
+            #
+            # FALSE-ABORT FIX (2026-07-31): CBF_CORNERS_STALE's fast ~30-frame/1s
+            # threshold was designed for the LOW-RISK kappa-freeze use inside
+            # controller.py (just pauses adaptation). Reusing it HERE for the
+            # irreversible mission-abort decision was wrong -- normal ArUco coast
+            # bursts on this hardware commonly run 2-327 frames even during ordinary
+            # tracking (see project_pi_coast_root_cause, 2026-07-27), so the fast
+            # threshold false-tripped on nearly every flight of the 2026-07-31 test
+            # session (15/17 aborted to RTL within seconds, none reaching a sustained
+            # closed-loop descent). Use CBF_CORNERS_STALE_ABORT instead here -- a
+            # separate, longer-fused counter (default 350 frames, override via
+            # CBF_CORNERS_STALE_ABORT_FRAMES) sized past the observed normal-coast
+            # range, so only a genuinely sustained loss triggers the abort.
+            cbf_corners_stale_abort = self.controller.CBF_CORNERS_STALE_ABORT
             feature_fresh = (self.controller.TARGET_IS_VISIBLE
                              and not self.controller.FEATURE_IS_STALE
-                             and not self.controller.CBF_CORNERS_STALE)
+                             and not cbf_corners_stale_abort)
 
             if feature_fresh and not in_final_descent:
                 cmd = self.controller.getControlInput()
@@ -300,10 +359,18 @@ class HardwareLandingSystem:
         controller_data = self.controller.getLogData()
         controller_params = self.controller.getParams()
         img_params = self.controller.getImgParams()
+        # ADDED 2026-07-31: real flights previously saved no per-frame
+        # "Opt Flow Estimator Tag"/"Time" at all (only Control_Data.npy's
+        # controller-internal h(t)/s(t)), so recorded video (when
+        # LANDING_RECORD_VIDEO=1) could never be aligned to which estimator
+        # fired each frame - see project_pi_izeta_kappa_ratchet_fix_2026_07_31.
+        # getImgData() mirrors output_calibration.py's own image_data save.
+        img_data = self.controller.getImgData()
 
         np.save(f"{dir_name}/Telemetry_Data", telemetry_data)
         np.save(f"{dir_name}/Control_Data", controller_data)
         np.save(f"{dir_name}/Control_Params", controller_params)
+        np.save(f"{dir_name}/Img_Data", img_data)
         np.save(f"{dir_name}/Local_Logs", self.logs)
         with open(f"{dir_name}/Img_Params.txt", "w") as f:
             f.write(str(img_params))

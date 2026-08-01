@@ -40,6 +40,36 @@ os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 # CAM_ANALOGUE_GAIN per lighting if the default under/over-exposes.
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 
+# MATCHED TO hardware_landing.py 2026-08-01 (PINNED here 2026-08-01): that
+# script switched to CAM_EXPOSURE_US=20000/CAM_AUTO_GAIN=1 for real low-light
+# flights (validated: 0% decode at the old 3000us/auto-exposure default in
+# poor indoor lighting -> 43-73% at 20000us with gain closing the loop -
+# see FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13). A calibration
+# recorded at the OLD exposure/rate is a train/run mismatch against flights
+# now made at the NEW ones - same class of bug as the ARUCO_ROI_MARGIN_PX
+# pin above, just on the camera side instead of the detector side. If
+# hardware_landing.py's own defaults are ever retuned again, update these to
+# match rather than letting them drift apart silently.
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
+
+# PINNED 2026-07-31: img_data.py's own ARUCO_ROI_MARGIN_PX default has changed
+# TWICE in this project's history (200 -> 80 -> 40, the last a units-only
+# rescale, "not a behavior change" per img_data.py's own comment) purely from
+# unrelated code edits, with no calibration-specific reasoning behind either
+# change. That silent drift is exactly what produced the Jul 28 morning-vs-
+# afternoon fit-quality gap this session traced (bias 0.057 -> 0.093,
+# corresponding to a ROI_MARGIN_PX 200 -> 80 change mid-day) - it was
+# initially mistaken for a mocap lever-arm shift before Img_Params.txt showed
+# the real cause. Pinning it explicitly here (same pattern as FLOW_DH_MAX
+# etc. above) means calibration recordings stay on ONE value regardless of
+# whatever img_data.py's own default becomes for flight use - if that value
+# is deliberately changed, update this pin too so calibration keeps testing
+# the config that's actually deployed. Value matches img_data.py's current
+# default (40) as of this pin - verify against a fresh Img_Params.txt if
+# img_data.py's default is ever touched again.
+os.environ.setdefault("ARUCO_ROI_MARGIN_PX", "40")
+
 # PlanarFeatureMap: LEFT ON during calibration (2026-07-27). This REVERSES the
 # 2026-07-26 decision to force PLANAR_MAP_SHADOW=0 / PLASMC_PLANAR_MAP_PRIMARY=0
 # here. Keeping the history because both the original reasoning and why it was
@@ -113,7 +143,15 @@ SLEEP_TIME = 1/200   # match hardware_landing.py:45 (was 1/30 - 6.7x slower than
                       # fixed for the same reason - see its own SLEEP_TIME comment)
 
 # Companion Computer Details:
-CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
+# MATCHED TO hardware_landing.py 2026-08-01: this used to be a hardcoded 60,
+# passed EXPLICITLY to IMG_PROCESSOR(capRate=...) below - so it silently
+# overrode img_data.py's own CAPTURE_RATE_HZ env-var default (60 there too,
+# historically) regardless of what that env var said, which is why simply
+# setting CAPTURE_RATE_HZ would NOT have picked up hardware_landing.py's
+# 2026-08-01 switch to 30Hz (the real achieved rate on this hardware
+# regardless of what's requested - see FLIGHT_TEST_ANALYSIS_PROCEDURE.md
+# catalog #12). Now reads the same env var so both scripts move together.
+CAPTURE_RATE = int(os.environ.get("CAPTURE_RATE_HZ", "30"))
 # RESOLUTION = (1280, 960)
 RESOLUTION = (640, 480)  # MUST match the calibrated resolution (fx/fy/center in
 # img_data.py are ONLY measured at 640x480 - a mismatch silently uses the wrong
@@ -333,6 +371,24 @@ def _print_run_validity(image_data, gt_data):
     print("\n" + "=" * 52)
     print(" RUN VALIDITY (hand-move output-cal take)")
     print("=" * 52)
+    # VISIBILITY CHECK (2026-07-31): print the detection-config env vars this
+    # run actually used, pinned near the top of this file specifically so they
+    # can't silently drift between calibration sessions the way
+    # ARUCO_ROI_MARGIN_PX did (200 -> 80 mid-day on 2026-07-28, initially
+    # mistaken for a mocap lever-arm shift - see check_lever_arm.py / this
+    # session's history). A mismatch here doesn't necessarily mean anything is
+    # wrong (an explicit env override for a deliberate A/B test is fine) but
+    # it should never be SILENT.
+    _pinned = {"ARUCO_ROI_MARGIN_PX": "40", "CAM_MANUAL_EXPOSURE": "1",
+               "FLOW_DH_MAX": "0", "FLOW_DS_MAX": "0", "FLOW_LOOM_DECOUPLE": "0",
+               # ADDED 2026-08-01, matched to hardware_landing.py's low-light switch
+               "CAM_EXPOSURE_US": "20000", "CAM_AUTO_GAIN": "1",
+               "CAPTURE_RATE_HZ": "30"}
+    print(" -- detection/pipeline config this run used --")
+    for _k, _default in _pinned.items():
+        _v = os.environ.get(_k)
+        _flag = "" if _v == _default else f"  [DIFFERS FROM PINNED DEFAULT {_default}]"
+        print(f" {_k:<22}: {_v}{_flag}")
     try:
         flowN = len(image_data.get("Opt Flow Ang Vel", [])) if image_data else 0
         featN = len(image_data.get("Feature Params", [])) if image_data else 0
@@ -528,8 +584,18 @@ def _print_run_validity(image_data, gt_data):
 
 
 if __name__ == "__main__":
-    res = 'n'
-    # res = input("Do you want to record? (y/n)")
+    # FIXED 2026-07-31: hardcoded to 'n' with the prompt commented out - RECORD
+    # was silently NEVER True regardless of intent, which is why zero runs in
+    # the entire calibration archive have ever produced a video despite
+    # img_data.py's video-write path being correct (confirmed by grepping every
+    # existing calibration run: no video timestamp overlaps any Output/ run
+    # dir). Restored to match the existing interactive save-prompt below it.
+    # Defaults to recording ON a bare Enter (RECORD is diagnostically useful
+    # and cheap - see img_data.py:800-804's own reasoning) unless the user
+    # explicitly types 'n'.
+    res = input("Do you want to record? (Y/n) ").strip().lower()
+    if res == '':
+        res = 'y'
 
     try:
         asyncio.run(main(res))

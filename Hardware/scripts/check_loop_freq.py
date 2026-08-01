@@ -18,6 +18,17 @@ os.environ.setdefault("FLOW_DH_MAX", "0")
 os.environ.setdefault("FLOW_DS_MAX", "0")
 os.environ.setdefault("FLOW_LOOM_DECOUPLE", "0")
 os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")   # matches output_calibration.py's default
+
+# WIRED 2026-08-01 to match hardware_landing.py's now-validated real-flight defaults
+# (see FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13) -- this script previously
+# hardcoded CAPTURE_RATE=60 and left CAM_EXPOSURE_US/CAM_ANALOGUE_GAIN/CAM_AUTO_GAIN at
+# imgstreamer.py's own old defaults (3000us/8.0/off), so a loop-frequency check run here
+# was silently measuring a DIFFERENT camera configuration than what real flights now
+# actually use. Override on the command line to check other configs (e.g.
+# CAPTURE_RATE_HZ=60 CAM_AUTO_GAIN=0 python3 check_loop_freq.py for the old baseline).
+os.environ.setdefault("CAPTURE_RATE_HZ", "30")
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
 # UPDATED 2026-07-28: the 2026-07-26 rationale for forcing these to 0 was ITSELF
 # reversed the next day (output_calibration.py's 2026-07-27 comment) - the map's
 # override never touches the flow-calibration path (only centroid), and disabling
@@ -35,7 +46,13 @@ import numpy as np
 from flight_controller import FC
 import img_data as ID
 
-CAPTURE_RATE = 60      # matches output_calibration.py's CAPTURE_RATE
+CAPTURE_RATE = int(os.environ.get("CAPTURE_RATE_HZ", "60"))
+# Was a hardcoded 60 -- but IMG_PROCESSOR is called below with capRate=CAPTURE_RATE
+# explicitly, which would override img_data.py's own CAPTURE_RATE_HZ-driven default
+# (an explicit kwarg always wins over a function default) and silently ignore the
+# os.environ.setdefault("CAPTURE_RATE_HZ", "30") above. Reading the same env var here
+# keeps this script's explicit pass-through consistent with that default instead of
+# fighting it.
 RESOLUTION = (640, 480)
 RUN_SECONDS = 20
 

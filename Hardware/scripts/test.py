@@ -65,15 +65,24 @@
 # Test Image + FC Feed
 # **************************************************************************
 import asyncio
+import os
 import time
 import numpy as np
+
+# WIRED 2026-08-01 to match hardware_landing.py's now-validated real-flight
+# defaults (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13).
+os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+os.environ.setdefault("CAPTURE_RATE_HZ", "30")
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
+
 import img_data as ID
 from flight_controller import FC
 
 SLEEP_TIME = 1/30
 
 # Companion Computer Details:
-CAPTURE_RATE = 60 # Capture Rate = {90, 120, 200}
+CAPTURE_RATE = int(os.environ.get("CAPTURE_RATE_HZ", "60")) # Capture Rate = {90, 120, 200}
 # RESOLUTION = (1280, 960)
 # RESOLUTION = (640, 480)
 RESOLUTION = (320, 240)

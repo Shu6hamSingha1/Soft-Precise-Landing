@@ -31,6 +31,15 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 N_FRAMES = 6
 CAPTURE_WINDOW_S = 8.0
 
+# WIRED 2026-08-01 to match hardware_landing.py's now-validated real-flight
+# defaults (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13). This only
+# affects the "manual exposure" burst below - the "auto exposure" burst
+# explicitly forces CAM_MANUAL_EXPOSURE=0 regardless, since the whole point of
+# this script is comparing the two regimes.
+CAPTURE_RATE_HZ = int(os.environ.get("CAPTURE_RATE_HZ", "30"))
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
+
 _arucoDict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 _arucoParams = cv2.aruco.DetectorParameters()
 _arucoParams.adaptiveThreshWinSizeMin = 15
@@ -52,7 +61,7 @@ def capture_burst(label, manual_exposure, out_subdir):
     from imgstreamer import imgstream
 
     print(f"\n=== {label} (CAM_MANUAL_EXPOSURE={os.environ['CAM_MANUAL_EXPOSURE']}) ===")
-    strm = imgstream(resolution=(640, 480), capRate=60)
+    strm = imgstream(resolution=(640, 480), capRate=CAPTURE_RATE_HZ)
     time.sleep(2.0)  # let AEC/AGC (if on) or manual controls settle
 
     os.makedirs(out_subdir, exist_ok=True)

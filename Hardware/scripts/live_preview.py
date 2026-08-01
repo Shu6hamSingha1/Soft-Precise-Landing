@@ -18,12 +18,20 @@ it's actually decoding, not just whether the marker LOOKS visible.
 Press Ctrl+C to stop. Throwaway diagnostic - not wired into anything.
 """
 import os
-# No CAM_MANUAL_EXPOSURE override here (unlike output_calibration.py/
-# check_loop_freq.py) - this is an aiming/decode-check tool, not a motion
-# recording script, so it should inherit imgstreamer.py's own default (auto
-# exposure) same as any other unmodified run of the pipeline, not force the
-# fixed-exposure recording setting that (2026-07-25 investigation) may itself
-# suppress marker decode under some lighting.
+# WIRED 2026-08-01 to match hardware_landing.py/check_loop_freq.py's now-
+# validated real-flight defaults (see FLIGHT_TEST_ANALYSIS_PROCEDURE.md
+# catalog #12/#13). SUPERSEDES the prior rationale below: this file used to
+# deliberately skip CAM_MANUAL_EXPOSURE so aiming previews reflected whatever
+# regime was live, but that meant an aiming check could look fine (or fail)
+# under a DIFFERENT exposure/gain profile than what the drone actually flies
+# with, which is misleading for its whole purpose (confirming decode before a
+# flight). Now defaults to the same profile as the real landing flight;
+# override on the command line (e.g. CAM_MANUAL_EXPOSURE=0 python3
+# live_preview.py) to preview a different regime on purpose.
+os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
+os.environ.setdefault("CAPTURE_RATE_HZ", "30")
+os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+os.environ.setdefault("CAM_AUTO_GAIN", "1")
 
 import time
 import cv2
@@ -62,9 +70,11 @@ DISPLAY_SCALE = 6.0         # upscale factor for the preview window - getImages(
 # 4.0 in img_data.py, 2026-07-24/25 overflow-marker investigation).
 _arucoDict, _arucoParams, _detector = build_aruco_detector()
 
+CAPTURE_RATE_HZ = int(os.environ.get("CAPTURE_RATE_HZ", "60"))
+
 
 def main():
-    strm = imgstream(resolution=(640, 480), capRate=60)
+    strm = imgstream(resolution=(640, 480), capRate=CAPTURE_RATE_HZ)
     print("Live preview running at ~4Hz refresh (full capture continues faster "
           "underneath) - press ESC in the window or Ctrl+C here to stop.")
     try:

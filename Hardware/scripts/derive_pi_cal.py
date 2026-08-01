@@ -489,7 +489,33 @@ def compute_gt_flow(run_dir):
     return out
 
 
-def derive_one(run_dir):
+def tls_fit(R, G):
+    """Multivariate total-least-squares (orthogonal regression) fit of G = R @ Msol,
+    for comparison against the OLS np.linalg.lstsq fit used elsewhere in this file.
+
+    Standard Golub-Van Loan TLS: unlike OLS (which assumes only G is noisy and
+    minimizes ||G - R@Msol||, biasing the fitted slope toward zero whenever R
+    itself is noisy - exactly derive_one()'s raw_flow regressor, raw std ~1.4
+    vs true signal ~0.05), TLS assumes noise on BOTH R and G and minimizes the
+    orthogonal (perpendicular) distance to the fit instead of the vertical one.
+    This is the textbook correction for errors-in-variables / regression-
+    attenuation bias - see project_pi_izeta_kappa_ratchet_fix_2026_07_31.
+
+    R: (n, m) regressor (raw flow). G: (n, k) target (GT). Returns Msol (m, k)
+    such that G ~= R @ Msol, i.e. same convention/shape as np.linalg.lstsq(R, G).
+    """
+    m = R.shape[1]
+    C = np.hstack([R, G])
+    _, _, Vt = np.linalg.svd(C, full_matrices=True)
+    V = Vt.T
+    k = G.shape[1]
+    Vxy = V[:, m:]          # (m+k, k) - columns for the k smallest singular values
+    V12 = Vxy[:m, :]        # (m, k)
+    V22 = Vxy[m:, :]        # (k, k)
+    return -V12 @ np.linalg.inv(V22)
+
+
+def derive_one(run_dir, fit_method="ols"):
     # Prefer the mount-rotation-corrected recompute (recompute_raw_flow.py)
     # when present - it reflects img_data.py's CURRENT _getVirtualPts math
     # (R_CAM_TO_BODY fix, 2026-07-11), re-derived offline from this same
@@ -609,7 +635,19 @@ def derive_one(run_dir):
     print("  raw corrcoef(GT, raw) [rows=GT Hx/Hy/Hz/Wx/Wy/Wz, cols=raw h0/h1/h2/w0/w1/w2]:")
     print(" ", np.array2string(corr, precision=3, suppress_small=True).replace("\n", "\n   "))
 
-    Msol, _, _, _ = np.linalg.lstsq(Rm, Gm, rcond=None)   # G = R @ Msol
+    if fit_method == "tls":
+        # G's Wx/Wy columns (3,4) are STRUCTURALLY zero (np.zeros above, not just
+        # noisy - Wx/Wy are never GT-estimated) - feeding a rank-deficient target
+        # into the joint-SVD TLS solve makes V22 near-singular and its inverse
+        # blow up (empirically confirmed: naive full-6-column TLS gave R^2 in the
+        # -20 to -120 range and wildly unstable per-run diagonals, worse than OLS
+        # in every respect). Fit TLS only over the 4 real columns and leave the
+        # other two at zero, matching what OLS already effectively does for them.
+        real_cols = [0, 1, 2, 5]
+        Msol = np.zeros((Rm.shape[1], Gm.shape[1]))
+        Msol[:, real_cols] = tls_fit(Rm, Gm[:, real_cols])
+    else:
+        Msol, _, _, _ = np.linalg.lstsq(Rm, Gm, rcond=None)   # G = R @ Msol
     cal = Msol.T                                          # GT = cal @ raw
     pred = Rm @ Msol
     r2 = 1 - np.sum((Gm - pred) ** 2, 0) / np.sum((Gm - Gm.mean(0)) ** 2, 0)

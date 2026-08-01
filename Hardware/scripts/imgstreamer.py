@@ -56,6 +56,57 @@ CAM_MANUAL_EXPOSURE = os.environ.get("CAM_MANUAL_EXPOSURE", "0") == "1"
 CAM_EXPOSURE_US = int(os.environ.get("CAM_EXPOSURE_US", "3000"))
 CAM_ANALOGUE_GAIN = float(os.environ.get("CAM_ANALOGUE_GAIN", "8.0"))
 
+# CAM_AUTO_GAIN (2026-08-01): closed-loop gain control while keeping EXPOSURE
+# fixed -- "shutter priority", which libcamera's own AGC doesn't expose as a
+# single flag (it jointly optimizes exposure+gain, can't be told "keep
+# exposure short, let gain float"). Motivation: a 2026-08-01 investigation
+# found ONE static manual exposure/gain config can't serve both poor and
+# good lighting -- a fixed setting strong enough to fix underexposed poor-
+# light frames (mean brightness ~17-25/255, 0% ArUco decode even after
+# digital brightness correction -- proven to be a real sensor noise-floor
+# problem, not a levels problem, since denoising made it WORSE) would badly
+# overexpose/clip a well-lit scene (~90-190/255 baseline) at the same
+# settings. Real photon-integration time (ExposureTime), not gain, is what
+# actually fixes the poor-light noise floor -- confirmed live 2026-08-01:
+# CAM_EXPOSURE_US=20000/CAM_ANALOGUE_GAIN=16.0 (vs the 3000/8.0 default)
+# took a 0%-decode poor-light scene to 43-65% decode on real bench footage.
+# So: keep ExposureTime FIXED (that's the blur-safety knob, doesn't need to
+# change with lighting -- 20ms was checked directly against real hand-motion
+# footage and holds decode at 65-72% up to a frame-diff motion metric of
+# ~10, degrading above that) and let GAIN close the loop against measured
+# scene brightness instead of hardcoding one value. Off by default (a fixed
+# CAM_ANALOGUE_GAIN is still fine for a single known lighting condition,
+# e.g. a dedicated calibration session); only useful stacked with
+# CAM_MANUAL_EXPOSURE=1 (this is meaningless under auto-exposure, which
+# already handles brightness some other way).
+CAM_AUTO_GAIN = os.environ.get("CAM_AUTO_GAIN", "0") == "1"
+CAM_GAIN_TARGET_BRIGHTNESS = float(os.environ.get("CAM_GAIN_TARGET_BRIGHTNESS", "85.0"))
+# ~73-90 mean (std~36-40) was the best-performing real bench take 2026-08-01
+# (65.4% decode) -- see FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12.
+CAM_GAIN_MIN = float(os.environ.get("CAM_GAIN_MIN", "1.0"))
+CAM_GAIN_MAX = float(os.environ.get("CAM_GAIN_MAX", "16.0"))
+# Confirmed hardware ceiling via Picamera2().camera_controls (2026-08-01) --
+# don't raise CAM_GAIN_MAX past this, the sensor can't go higher.
+CAM_GAIN_UPDATE_EVERY_N_FRAMES = int(os.environ.get("CAM_GAIN_UPDATE_EVERY_N_FRAMES", "15"))
+# ~0.5s at 30Hz -- frequent enough to track a lighting change (e.g. walking
+# indoors to outdoors) without thrashing set_controls() every frame.
+CAM_GAIN_STEP_FRACTION = float(os.environ.get("CAM_GAIN_STEP_FRACTION", "0.3"))
+# Proportional step size (fraction of the brightness error's implied gain
+# correction to actually apply per update) -- damped below 1.0 so the loop
+# doesn't overshoot/oscillate on a single noisy frame's brightness reading.
+
+# FAST-START (2026-08-01, added after the first real CAM_AUTO_GAIN test): the
+# damped 0.3 step is right for steady-state (avoids oscillating once near
+# target) but means a COLD START from the wrong gain takes several update
+# cycles to converge -- the first live test spent ~15% of a 60s recording
+# (roughly 9s) at 0% decode before the loop caught up to the room's actual
+# brightness. Use a much larger (effectively near-instant) step for the
+# first few updates only, then drop to the normal damped rate once roughly
+# in the right neighborhood -- avoids re-introducing steady-state
+# oscillation while fixing the slow cold start.
+CAM_GAIN_FAST_START_UPDATES = int(os.environ.get("CAM_GAIN_FAST_START_UPDATES", "3"))
+CAM_GAIN_FAST_START_STEP_FRACTION = float(os.environ.get("CAM_GAIN_FAST_START_STEP_FRACTION", "1.0"))
+
 
 class imgstream(Thread):
     def __init__(self, resolution=(640, 480), capRate=30):
@@ -95,6 +146,23 @@ class imgstream(Thread):
             self._camera.set_controls(controls)
             print(f"imgstream: controls set -> {controls}"
                   + (f" (manual exposure ON, AEC/AGC disabled)" if CAM_MANUAL_EXPOSURE else ""))
+
+        # Closed-loop gain (CAM_AUTO_GAIN, see module-level comment) -- only
+        # meaningful stacked on top of the fixed-exposure manual config above.
+        self._auto_gain = CAM_AUTO_GAIN and CAM_MANUAL_EXPOSURE
+        if CAM_AUTO_GAIN and not CAM_MANUAL_EXPOSURE:
+            print("imgstream: CAM_AUTO_GAIN=1 but CAM_MANUAL_EXPOSURE=0 -- ignoring "
+                  "(closed-loop gain needs a fixed exposure to control against; "
+                  "auto-exposure already manages brightness on its own).")
+        self._current_gain = CAM_ANALOGUE_GAIN
+        self._gain_frame_ctr = 0
+        self._gain_update_count = 0   # counts completed _updateAutoGain() calls, for fast-start
+        if self._auto_gain:
+            print(f"imgstream: CAM_AUTO_GAIN ON -- exposure fixed at {CAM_EXPOSURE_US}us, "
+                  f"gain will auto-adjust toward mean brightness "
+                  f"{CAM_GAIN_TARGET_BRIGHTNESS:.0f}/255 (range "
+                  f"[{CAM_GAIN_MIN:.1f}, {CAM_GAIN_MAX:.1f}], every "
+                  f"{CAM_GAIN_UPDATE_EVERY_N_FRAMES} frames)")
 
         # Sanity-check the sensor actually landed on the requested raw mode
         # (internal only - this is about pinning the sensor's native mode
@@ -165,10 +233,54 @@ class imgstream(Thread):
                     self._cap_stamp_deque.append(cap_stamp)
                     self._count += 1
                     self._meanTimePerImage = (time.perf_counter() - self._start_time) / self._count
+
+                    if self._auto_gain:
+                        self._gain_frame_ctr += 1
+                        if self._gain_frame_ctr >= CAM_GAIN_UPDATE_EVERY_N_FRAMES:
+                            self._gain_frame_ctr = 0
+                            self._updateAutoGain(frame)
         except Exception as e:
             print(f"Error in imgstream: {e}")
         finally:
             self._camera.stop()
+
+    def _updateAutoGain(self, frame):
+        """Closed-loop gain step (see CAM_AUTO_GAIN module comment): measure
+        the just-captured frame's mean brightness, compute what gain WOULD
+        have hit CAM_GAIN_TARGET_BRIGHTNESS assuming a roughly linear
+        brightness~gain relationship (true pre-saturation; this is a
+        proportional controller, not an exact model -- damped by
+        CAM_GAIN_STEP_FRACTION and re-run every CAM_GAIN_UPDATE_EVERY_N_FRAMES
+        specifically so a wrong single-step estimate self-corrects over a
+        few updates rather than needing to be exact in one shot). ExposureTime
+        is NEVER touched here -- only AnalogueGain, so blur behavior stays
+        exactly what CAM_EXPOSURE_US was set to regardless of lighting.
+
+        FAST-START (see module comment): the first CAM_GAIN_FAST_START_UPDATES
+        calls use CAM_GAIN_FAST_START_STEP_FRACTION (default 1.0 -- jump
+        straight to the estimated target) instead of the normal damped
+        CAM_GAIN_STEP_FRACTION, so a cold start from the wrong gain doesn't
+        spend several seconds converging in small steps. Steady-state
+        (after the fast-start budget is used up) reverts to the damped rate
+        to avoid oscillating once already near the target."""
+        mean_brightness = float(frame.mean())
+        if mean_brightness < 1.0:
+            target_gain = CAM_GAIN_MAX  # pure-black frame -- push gain up hard, avoid /~0
+        else:
+            target_gain = self._current_gain * (CAM_GAIN_TARGET_BRIGHTNESS / mean_brightness)
+        target_gain = max(CAM_GAIN_MIN, min(CAM_GAIN_MAX, target_gain))
+        step_fraction = (CAM_GAIN_FAST_START_STEP_FRACTION
+                         if self._gain_update_count < CAM_GAIN_FAST_START_UPDATES
+                         else CAM_GAIN_STEP_FRACTION)
+        new_gain = self._current_gain + step_fraction * (target_gain - self._current_gain)
+        new_gain = max(CAM_GAIN_MIN, min(CAM_GAIN_MAX, new_gain))
+        self._gain_update_count += 1
+        if abs(new_gain - self._current_gain) > 0.05:  # skip no-op set_controls calls
+            self._current_gain = new_gain
+            try:
+                self._camera.set_controls({"AnalogueGain": new_gain})
+            except Exception as e:
+                print(f"imgstream: CAM_AUTO_GAIN set_controls failed: {e}")
 
     def close(self):
         self._break_flag = True

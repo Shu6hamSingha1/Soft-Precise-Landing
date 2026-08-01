@@ -695,6 +695,24 @@ class Controller(Thread):
         return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
 
     @property
+    def CBF_CORNERS_STALE_ABORT(self):
+        """Separate, much longer-fused staleness check for MISSION-ABORT decisions only
+        (hardware_landing.py's feature_fresh -> marker-loss-grace -> RTL handoff), added
+        2026-07-31 after CBF_CORNERS_STALE's fast ~30-frame/1s threshold was found to
+        false-trip on ordinary ArUco coast bursts: the 2026-07-27 root-cause investigation
+        (project_pi_coast_root_cause) established that NORMAL, non-failure coast bursts on
+        this hardware commonly run 2-327 frames even while otherwise tracking fine (narrow
+        HFOV, small marker). Reusing the fast threshold for an irreversible mission-abort
+        meant nearly every flight in the 2026-07-31 test session (15 of 17 attempts) aborted
+        to RTL within seconds, never reaching a sustained closed-loop descent. The fast
+        CBF_CORNERS_STALE stays as-is for the kappa-freeze use below (low-risk, just pauses
+        adaptation) -- only the abort path gets this longer fuse. Default 350 frames sits
+        just past the observed max normal coast burst (327); override via
+        CBF_CORNERS_STALE_ABORT_FRAMES if the live rate or marker/FoV geometry changes."""
+        _frames = int(os.environ.get("CBF_CORNERS_STALE_ABORT_FRAMES", "350"))
+        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+
+    @property
     def CBF_OVERFLOW(self):
         """True iff the CBF's own per-corner FoV-margin classification found the current
         CBF corner source (small-marker-preferred, see cone-angle computation) breaching
@@ -1103,6 +1121,12 @@ class Controller(Thread):
         self._cbf_small_slot_on = False
         self._cbf_small_slot_streak = 0
         self._cbf_small_slot_on_frames = int(os.environ.get("CBF_SMALL_SLOT_ON_FRAMES", "5"))
+        # BOUNDED coast-hold for cbf_corners (ported from PX4_Gazebo/src/controller.py,
+        # 2026-07-31) -- see the coast-hold comment at the cbf_corners selection site.
+        # Default 30 frames; 0 = OFF (snap to no-corners on every coast frame).
+        self._cbf_coast_grace_frames = int(os.environ.get("PLASMC_CBF_COAST_GRACE", "30"))
+        self._cbf_coast_last_good = None
+        self._cbf_coast_ctr = 0
         self._cbf_overflow = False
         self._cbf_drift_off = False
         self._cbf_drift_axis = None
@@ -2351,12 +2375,32 @@ class Controller(Thread):
             # a frozen, arbitrarily-stale marker position as if it were live.
             # FEATURE_PTS_FRESH reflects "raw OR rescue succeeded this frame" -- ONLY a
             # genuine total coast (neither raw nor rescue) is unfresh here.
+            #
+            # BOUNDED COAST-HOLD (ported from PX4_Gazebo/src/controller.py, 2026-07-31):
+            # this hardware's raw-decode coast bursts routinely run into the hundreds of
+            # frames (project_pi_coast_root_cause, 2026-07-27). With zero bridging, a
+            # SINGLE missed frame at the start of any such burst blanked cbf_corners for
+            # the ENTIRE burst, feeding directly into CBF_CORNERS_STALE_ABORT and causing
+            # 15 of 17 flights in the 2026-07-31 test session to false-abort within
+            # seconds. Hold the last-good corner geometry through a BOUNDED number of
+            # consecutive coast frames (default 30, PLASMC_CBF_COAST_GRACE) before
+            # falling back to no-corners -- low-risk since this only affects the CBF's
+            # corner geometry for the visibility barrier, not the flow/position
+            # controller directly.
             try:
                 if getattr(self._img_node, 'FEATURE_PTS_FRESH', True):
                     fp_list = self._img_node._feature_pts
                     if len(fp_list) > 0:
                         cbf_corners = np.asarray(fp_list[-1][1])   # (4, 2) — (u, v) top-left
                         cbf_corners_src = 'feature_pts'
+                        self._cbf_coast_last_good = cbf_corners
+                        self._cbf_coast_ctr = 0
+                elif (self._cbf_coast_grace_frames > 0
+                      and self._cbf_coast_last_good is not None
+                      and self._cbf_coast_ctr < self._cbf_coast_grace_frames):
+                    self._cbf_coast_ctr += 1
+                    cbf_corners = self._cbf_coast_last_good
+                    cbf_corners_src = 'coast_hold'
             except (IndexError, AttributeError, TypeError):
                 cbf_corners = None
 

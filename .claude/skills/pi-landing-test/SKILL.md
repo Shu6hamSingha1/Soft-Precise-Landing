@@ -19,6 +19,14 @@ after 07-28 (4 flown, 2 blew up: a_u to 59-180, kappa up 20-24x). Root cause + t
 (izeta/is_e_n conditional integration, `_flowMap`/`_loomMapM` duration cap) are summarized in the
 new checklist item 5 below; both fixes are UNTESTED LIVE.
 
+**⭐⭐⭐ If you're analyzing flight-test DATA after a session (not just preparing to fly), read
+`Hardware/docs/FLIGHT_TEST_ANALYSIS_PROCEDURE.md` first** — it's the living procedure doc for
+extraction (Pi paths, `download_flight_logs.py`, bandwidth-conscious tar pulls),
+console-log triage markers, `Control_Data.npy`/`Img_Data.npy` analysis methodology (including the
+`MARKER_EXTENT_PX`-freeze-streak staleness proxy — NOT bit-identical `h`, which freezes normally
+every ~9-10 ticks), and a living known-failure-mode catalog. Keep it updated as you find/fix new
+issues — don't re-derive the same steps from scratch each session.
+
 ## Pre-flight checklist (read this before the user flies)
 
 1. **Output (image/flow) calibration — DONE 2026-07-28.** `_sensor_cal_hw`/`_sensor_cal_s`/

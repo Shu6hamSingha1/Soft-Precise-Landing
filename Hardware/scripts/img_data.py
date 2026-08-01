@@ -119,7 +119,9 @@ def build_aruco_detector():
 
 
 class IMG_PROCESSOR(Thread):
-    def __init__(self, resolution = (640, 480), capRate = 60, time_keeper=time, controller=None):
+    def __init__(self, resolution = (640, 480),
+                 capRate = int(os.environ.get("CAPTURE_RATE_HZ", "60")),
+                 time_keeper=time, controller=None):
         Thread.__init__(self)
         self.daemon = True  # never block process exit if run() hangs
         self.RECORD = False

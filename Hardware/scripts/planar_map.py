@@ -234,7 +234,18 @@ class PlanarFeatureMap:
         # _degenerate_since_t above -- see that comment for the full rationale; this was
         # the one remaining place it hadn't been applied yet).
         self._last_decode_t = None
-        self.decode_staleness_max_seconds = float(os.environ.get("PLANAR_MAP_DECODE_STALENESS_SECONDS", "2.0"))
+        # BAKED 5.0 (2026-07-31): was 2.0. Found via real hardware flight-telemetry
+        # analysis that map_confidence's 2s decay ceiling meant PlanarFeatureMap was
+        # never configured to satisfy a >=5s marker-invisibility retention requirement --
+        # it was hitting its own designed 2s cutoff, not "failing" against an unset target.
+        # NOT YET VALIDATED at 5.0 -- KLT-only tracking accumulates drift the longer it
+        # runs uncorrected, so a longer trust window needs confirming rigid_ok/reprojection
+        # error still catch a bad estimate at the new duration, not just accepted blindly.
+        # Plan: QTM mocap ground-truth bench test (see Hardware/docs/
+        # FLIGHT_TEST_ANALYSIS_PROCEDURE.md) -- no flight needed, output_calibration.py
+        # already co-records QTM GT with camera data; cover the marker for >=5s during a
+        # GT-recorded run and compare PlanarFeatureMap's s/alpha/h against QTM truth.
+        self.decode_staleness_max_seconds = float(os.environ.get("PLANAR_MAP_DECODE_STALENESS_SECONDS", "5.0"))
 
     def _new_ids(self, n):
         ids = list(range(self.next_id, self.next_id + n))
