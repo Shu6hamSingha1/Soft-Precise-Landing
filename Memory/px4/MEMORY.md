@@ -4,7 +4,26 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟡 2026-08-02 (LATEST) — cross+stub marker output calibration DERIVED and PASTED**
+> **🔴 2026-08-02 (LATEST) — cross-marker calibration found NOT to generalize on
+> independent multisine validation (near-zero/negative R^2) → root-caused to a
+> `resolution[::-1]` transpose bug in `CrossMarkerPerception.__init__`'s `self.center`**
+> (swapped cx/cy, corrupting the h,w Jacobian solve + centroid `s` geometry). This is the
+> SAME mistake `img_data.py` made and reverted in June 2026 (see that file's own comment)
+> — repeated fresh because the fix only ever lived as a comment there, not shared/tested
+> code, and `cross_marker_perception.py` deliberately duplicates that math standalone.
+> Point starvation, ill-conditioning, and temporal misalignment were all ruled out first
+> (new `_flow_diag_log` diagnostics: n_kept, cond(A), in-sample LSTSQ residual) before the
+> geometry bug was found. Fixed: raw Hz-vs-GT correlation 0.014→0.652, Wz stayed strong at
+> 0.75 on independent data; Hx/Hy improved only slightly (0.04/0.05→0.06/0.10) — STILL
+> WEAK, unexplained, next thing to chase before the cal can be trusted. The DERIVED cal
+> pasted 2026-08-02 (below) predates this fix and should be treated as unreliable —
+> re-derive after the Hx/Hy weakness is resolved. New tools:
+> `apps/record_cross_marker_validation.py` + `tools/validate_cross_marker_flow.py` (GT-direct
+> R^2 check against the live cal, closes the io-calibration skill's train/validate loop).
+> Process lesson: [[feedback_duplicated_math_diff_check]].
+> [[project_cross_marker_pipeline_20260801]]
+
+> **🟡 2026-08-02 — cross+stub marker output calibration DERIVED and PASTED**
 > into `CrossMarkerPerception.__init__` (`_sensor_cal_hw`/`_sensor_cal_s`, replacing the
 > identity placeholder). Root-caused two Gazebo rendering bugs along the way: the marker
 > plate's PBR material was defaulting to reflective (mirroring the drone onto itself —

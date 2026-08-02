@@ -251,7 +251,8 @@ async def main(record='n'):
                        "Opt Flow Ang Vel": opt_flow_ang_vel,
                        "Img Feature Params": img_feature_param,
                        "Command": cmd, "Phase": phase_log,
-                       "Diag Log": img_node.get_diag_log()}   # [(t, ok, fail_reason, bbox_area), ...]
+                       "Diag Log": img_node.get_diag_log(),   # [(t, ok, fail_reason, bbox_area), ...]
+                       "Flow Diag Log": img_node.get_flow_diag_log()}   # [(t, n_kept, cond, solved), ...]
             img_params = img_node.getParams()
 
         if img_node and img_node.is_alive():

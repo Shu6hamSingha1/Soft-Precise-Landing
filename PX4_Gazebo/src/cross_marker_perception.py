@@ -137,8 +137,24 @@ class CrossMarkerPerception:
     validation pattern), same as cross_marker_detector.detect() was."""
 
     def __init__(self, resolution=(480, 640)):
-        self._resolution = resolution   # (h, w), rotated-frame convention (see img_data.py:69-85)
-        self.center = np.array(resolution[::-1]) / 2.0   # (cx, cy)
+        # resolution is `_image_node.getImgResolution()` = (msg.height, msg.width)
+        # of the ORIGINAL pre-rotation image, i.e. (480, 640) for this camera --
+        # NOT the rotated frame's own (h, w). Because cv2.ROTATE_90_CW swaps the
+        # two dimensions, `resolution[0]` (480) happens to equal the ROTATED
+        # frame's width and `resolution[1]` (640) its height, so
+        # np.array(resolution)/2 = (240, 320) is ALREADY (cx, cy) with no
+        # reversal needed. A `[::-1]` here silently transposes cx/cy, corrupting
+        # every point normalization downstream (the h,w Jacobian solve AND the
+        # `s` centroid). See img_data.py:69-91's identical convention -- that
+        # file's own comment documents someone adding this exact `[::-1]` on
+        # 2026-06-01, believing it fixed a bug, then reverting it after
+        # empirical verification showed the original was correct. This module
+        # repeated that same mistake fresh on 2026-08-01; fixed 2026-08-02 after
+        # a flow-accuracy investigation (near-zero raw-vs-GT correlation despite
+        # healthy point counts/conditioning/in-sample fit residual) traced back
+        # to this transpose. Do NOT re-add `[::-1]` without re-deriving why.
+        self._resolution = resolution
+        self.center = np.array(resolution) / 2.0   # (cx, cy) = (240, 320)
         self.focal = np.array([fx, fy])
 
         self._prev_gray = None
@@ -192,6 +208,19 @@ class CrossMarkerPerception:
         if self._diag_save_dir:
             os.makedirs(self._diag_save_dir, exist_ok=True)
 
+        # Point-count/conditioning/correspondence diagnostic (2026-08-02, flow-accuracy
+        # investigation): per-flow-solve (t, n_kept, cond(A), solved, rel_resid,
+        # px_disp_median, px_disp_std) log. n_kept/cond(A) ruled out point starvation and
+        # ill-conditioning as the cause of near-zero raw-vs-GT correlation on clean
+        # (det.ok=True) frames. rel_resid (||A@sol-b||/||b||, the LSTSQ fit's own
+        # in-sample residual) now checks whether the tracked points at least agree with
+        # EACH OTHER on a single global flow (low resid -> systematic bug elsewhere, e.g.
+        # scale/sign/frame convention) or disagree with each other too (high resid ->
+        # real per-point LK correspondence noise, e.g. from the marker's self-similar
+        # speckle texture). px_disp_median/std are the raw per-point pixel displacements
+        # feeding that fit, for a sanity check against plausible motion magnitude.
+        self._flow_diag_log = []
+
     @staticmethod
     def _dilate_mask(mask):
         kernel = np.ones((2 * MASK_DILATE_PX + 1, 2 * MASK_DILATE_PX + 1), np.uint8)
@@ -212,7 +241,19 @@ class CrossMarkerPerception:
         A = _fill_A(prev_n)
         b = vel.reshape(-1)
         sol, *_ = np.linalg.lstsq(A, b, rcond=None)
-        return sol
+        cond = np.linalg.cond(A)
+        # In-sample fit quality (2026-08-02, LK-correspondence-noise investigation):
+        # relative residual = ||A@sol - b|| / ||b||. LOW means the tracked points
+        # broadly AGREE with each other on a single global rigid/affine flow (so if
+        # GT correlation is still poor, the bug is a systematic scale/sign/frame
+        # issue elsewhere, not per-point tracking noise). HIGH means the points
+        # themselves are inconsistent -- direct evidence of bad LK correspondences
+        # (e.g. the speckle texture's self-similarity causing mismatches), which no
+        # amount of recalibration downstream could fix.
+        b_norm = np.linalg.norm(b)
+        rel_resid = np.linalg.norm(A @ sol - b) / b_norm if b_norm > 1e-12 else np.nan
+        px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
+        return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
     def _compute_hw(self, gray, mask, dt):
         """LK-track flow points from the previous frame, solve the image
@@ -260,9 +301,11 @@ class CrossMarkerPerception:
         self._prev_gray = gray
 
         if n_kept < MIN_FLOW_POINTS_SOLVE or dt <= 0:
+            self._flow_diag_log.append((self._last_t, n_kept, np.nan, False, np.nan, np.nan, np.nan))
             return np.zeros(6), False
 
-        sol = self._solve_jacobian(prev_pts, curr_pts, dt)
+        sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(prev_pts, curr_pts, dt)
+        self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
     def process_frame(self, img_bgr, t):
@@ -351,6 +394,12 @@ class CrossMarkerPerception:
         """List of (t, ok, fail_reason, bbox_area) -- one entry per process_frame call."""
         return list(self._diag_log)
 
+    def get_flow_diag_log(self):
+        """List of (t, n_kept, cond(A), solved, rel_resid, px_disp_median, px_disp_std)
+        -- one entry per flow-solve attempt (only logged on det.ok=True frames, since
+        _compute_hw only runs then)."""
+        return list(self._flow_diag_log)
+
     def get_center_px(self):
         """(2,) raw pixel [cx, cy] for the visibility CBF, or None if this frame
         did not confirm the center is in-frame (see _center_fresh in
@@ -437,6 +486,9 @@ class CrossMarkerNode(Thread):
 
     def get_diag_log(self):
         return self._perception.get_diag_log()
+
+    def get_flow_diag_log(self):
+        return self._perception.get_flow_diag_log()
 
     def get_center_px(self):
         return self._perception.get_center_px()
