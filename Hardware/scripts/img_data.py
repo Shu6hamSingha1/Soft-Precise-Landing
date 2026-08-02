@@ -1436,6 +1436,7 @@ class IMG_PROCESSOR(Thread):
                     # Directly relevant on the Pi given the nested-marker setup.
                     self._kf_initialized = False
                     self._kf_feat_initialized = False
+                    self._kf_feat_sc_initialized = False   # alpha sin/cos sub-filter - same discontinuity as the xy/scale block above
                     self._prev_alpha = None   # discontinuous geometry step - re-bootstrap disambiguation
                     self._centroid_hist.clear()   # centroid-rate observer: same discontinuity, don't diff across a marker-ID switch
                     self._obs_kf_x = None; self._obs_kf_t = None   # force _obs_vel_kf to re-bootstrap

@@ -6,7 +6,9 @@ description: Run/monitor/debug the first (or any subsequent) real-hardware PLASM
 # Pi hardware landing test
 
 **Entry point:** `Hardware/scripts/hardware_landing.py` on the Pi
-(`doctor@192.168.0.161:~/ws/scripts/precise_landing/hardware_landing.py`). Modeled on Gazebo's
+(`doctor@10.176.60.133:~/ws/scripts/precise_landing/hardware_landing.py` — ethernet, confirmed working
+2026-08-02; the wifi IP `192.168.0.161` is a fallback if ethernet is down, see
+`reference_raspberrypi_ssh_connection` memory). Modeled on Gazebo's
 `PX4_Gazebo/apps/landing_test.py`, driving the same `Controller` class, with the Gazebo-only
 pieces removed (no ROS2 ground truth, no fly-to-ENU-IC, no MATLAB post-hoc classification).
 Keeps everything safety-relevant: warmup before controller engage, marker-loss grace + open-loop
@@ -20,9 +22,10 @@ after 07-28 (4 flown, 2 blew up: a_u to 59-180, kappa up 20-24x). Root cause + t
 new checklist item 5 below; both fixes are UNTESTED LIVE.
 **⭐⭐⭐ Also read `project_pi_output_recal_2026_08_01` and `project_pi_pending_code_deploy_2026_08_02`
 (memory) before flying again** — a real, confirmed bug (`img_geometry.py::_rp_basis` gravity-vector
-sign error, live since day 1) was found and fixed 2026-08-02, but the fix is NOT yet deployed to the
-Pi (was closed when found). Do not fly on the current deployed calibration believing it reflects the
-best available understanding — see the updated checklist item 1 below.
+sign error, live since day 1) was found 2026-08-02 AND has now been deployed+verified on the Pi
+(same day, once it came back online) along with 3 other fixes and the approved recalibrated matrix.
+See the updated checklist item 1 below — none of this has been flight-tested yet, only
+import/syntax/unit-test verified, so a real landing test is still the next real-world check.
 
 **⭐⭐⭐ If you're analyzing flight-test DATA after a session (not just preparing to fly), read
 `Hardware/docs/FLIGHT_TEST_ANALYSIS_PROCEDURE.md` first** — it's the living procedure doc for
@@ -34,21 +37,23 @@ issues — don't re-derive the same steps from scratch each session.
 
 ## Pre-flight checklist (read this before the user flies)
 
-1. **Output (image/flow) calibration — the CURRENTLY DEPLOYED cal was derived under a CONFIRMED BUG,
-   fix not yet on the Pi (2026-08-02).** `img_geometry.py::_rp_basis` had the gravity-vector sign
-   wrong (`g = R @ [0,0,1]` instead of `R.T @ [0,0,1]`) — the exact bug `PX4_Gazebo/src/img_data.py`
-   already documented fixing on 2026-06-01, never ported to the Pi. This corrupts the V-frame
-   transform (hidden near-level, amplifies error during real tilt) - live in every real flight, not
-   just calibration recordings. Fixed locally (`Hardware/scripts/img_geometry.py`), verified on both
-   the Aug-1 (6-run) and old Jul23-28 (44-run) archives (Hx/Hy/Wz up 4-6x, centroid `sx`/`sy` went
-   from unstable/physically-impossible-negative to consistently positive, corr 0.7-0.9), **but the
-   fix is NOT yet deployed to the Pi** (was closed when found - see
-   `project_pi_pending_code_deploy_2026_08_02`). A new candidate `_sensor_cal_hw`/`_sensor_cal_s` was
-   also derived (Aug-1-only, matching the current camera config) but is PENDING REVIEW, not deployed.
-   **Do not treat the "R² moderate ~0.3-0.6, not a bug" framing from 2026-07-28 as current** — it
-   predates this finding. Deploy the `_rp_basis` fix (and ideally the reviewed new cal) before the
-   next flight if at all possible; if flying before then, know that the deployed cal is derived from
-   admittedly-corrupted geometry.
+1. **Output (image/flow) calibration — FIXED AND DEPLOYED 2026-08-02, NOT YET FLIGHT-TESTED.**
+   `img_geometry.py::_rp_basis` had the gravity-vector sign wrong (`g = R @ [0,0,1]` instead of
+   `R.T @ [0,0,1]`) — the exact bug `PX4_Gazebo/src/img_data.py` already documented fixing on
+   2026-06-01, never ported to the Pi. This corrupted the V-frame transform (hidden near-level,
+   amplified error during real tilt) - live in every real flight before this fix, not just
+   calibration recordings. Verified on both the Aug-1 (6-run) and old Jul23-28 (44-run) archives
+   (Hx/Hy/Wz up 4-6x, centroid `sx`/`sy` went from unstable/physically-impossible-negative to
+   consistently positive, corr 0.7-0.9). **Deployed to the Pi 2026-08-02** along with the
+   alpha-wrap KF fix, the `alpha_0=-49.8deg`/`cal_s[3]=-1.0` yaw calibration, and the approved
+   recalibrated `_sensor_cal_hw`/`_sensor_cal_s` matrix (`sx=0.7434, sy=0.7446`) — see
+   `project_pi_pending_code_deploy_2026_08_02`'s deploy log for exactly what changed and how it was
+   verified (import + unit test only, NOT a real flight). **Do not treat the "R² moderate ~0.3-0.6,
+   not a bug" framing from 2026-07-28 as current** — it predates this finding. The next flight is the
+   first REAL validation of all of this - watch yaw behavior closely (the alpha calibration in
+   particular has never been flight-tested) and be ready to revert via the Pi's own
+   `.bak_before_rpbasis_alpha0_20260802`/`.bak_before_alphakf_cal_deploy_20260802` backups if
+   something looks wrong.
 2. **Input (thrust/rate) calibration — CONFIRMED CALIBRATED, 2026-07-31.** The old "placeholder"
    language above was stale — `hardware_landing.py` lines 14-18 now state the defaults ARE the
    final calibration, and `HOVER_THROTTLE_NORM=0.42` / `THRUST_SLOPE_N_PER_UNIT=31.98` exactly
