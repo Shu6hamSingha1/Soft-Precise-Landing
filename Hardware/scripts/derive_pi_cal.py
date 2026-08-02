@@ -748,7 +748,15 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
         raw_feat = np.column_stack([raw_feat_pos, np.arctan2(raw_feat_sc[:, 0], raw_feat_sc[:, 1])])
 
     raw_flow_g = g["align"](t_flow_abs, raw_flow)     # raw flow resampled onto GT clock (coast-free)
-    raw_feat_g = g["align"](t_feat_abs, raw_feat)
+    # WRAP-SAFE ALIGNMENT (2026-08-02): g["align"]'s plain np.interp is wrong for
+    # column 3 (alpha, wrapped to (-pi,pi]) whenever a real +-pi crossing falls
+    # inside an interpolation window - linearly interpolating e.g. +3.10 and
+    # -3.10 gives ~0 (the wrong side of the circle) instead of the true ~+-pi
+    # crossing point. Align columns 0-2 normally; align alpha via sin/cos.
+    raw_feat_g = np.column_stack([
+        g["align"](t_feat_abs, raw_feat[:, :3]),
+        np.arctan2(g["align"](t_feat_abs, np.sin(raw_feat[:, 3])),
+                   g["align"](t_feat_abs, np.cos(raw_feat[:, 3])))])
 
     # Marker-loss gap guard (see GAP_EXCLUDE_S / g["gap_mask"]): align()
     # linearly interpolates raw_flow/raw_feat across whatever real-sample
@@ -949,7 +957,47 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
                   f"impossible for a centroid scale; this run's centroid fit "
                   f"is contaminated, exclude it rather than averaging it in")
 
-    return cal, r2, (sx, sy), len(Rm)
+    # ALPHA CAL (2026-08-02): _sensor_cal_s[3] has always been hardcoded 1.0
+    # (identity - never derived from data), on the assumption alpha needs no
+    # correction (true on Gazebo, "cal_s[3]=1.0 is CORRECT, alpha tracks GT
+    # r=1.00" per that project's own memory - but never independently checked
+    # on the Pi). Checked directly: alpha_raw is NOT a 1:1 match to GT alpha -
+    # testing both sign conventions with wrap-safe circular statistics, the
+    # SIGN-FLIPPED hypothesis (alpha_raw = -1*alpha_GT + alpha_0) fits an
+    # order of magnitude tighter than the identity one. alpha_0 is a genuine,
+    # separate, still-open TODO already flagged in get_img_features's own
+    # docstring ("alpha_0 = 0 here... recalibrate the equilibrium offset once
+    # good mocap data exists") - never actually derived until now. Two
+    # DIFFERENT knobs, NOT interchangeable: alpha_0 is SUBTRACTED inside
+    # marker_principal_angle (img_geometry.py) BEFORE the 2pi-disambiguation,
+    # while cal_s[3] is a MULTIPLICATIVE sign applied AFTER, downstream in
+    # img_data.py - a diagonal cal_s cannot represent an additive offset on a
+    # wrapped angle by itself, so alpha_0 must be applied separately, not
+    # folded into cal_s.
+    def _alpha_cal():
+        sel = ms & np.isfinite(raw_feat_g[:, 3]) & np.isfinite(gs_alpha)
+        if sel.sum() < 30:
+            return np.nan, np.nan, np.nan, int(sel.sum())
+        ar = raw_feat_g[sel, 3]; ag = gs_alpha[sel]
+        best = None
+        for sign in (+1.0, -1.0):
+            resid = np.arctan2(np.sin(ar - sign * ag), np.cos(ar - sign * ag))
+            c = np.arctan2(np.median(np.sin(resid)), np.median(np.cos(resid)))
+            spread = float(np.median(np.abs(np.arctan2(np.sin(resid - c), np.cos(resid - c)))))
+            if best is None or spread < best[2]:
+                best = (sign, float(c), spread)
+        sign, offset, spread = best
+        return sign, offset, spread, int(sel.sum())
+
+    gs_alpha = g["alpha"]
+    a_sign, a_offset, a_spread, a_n = _alpha_cal()
+    if np.isfinite(a_sign):
+        print(f"  alpha cal: sign={a_sign:+.0f}  alpha_0={np.degrees(a_offset):+.1f}deg  "
+              f"residual spread={np.degrees(a_spread):.1f}deg  (n={a_n})")
+    else:
+        print(f"  alpha cal: too few real samples ({a_n}) for a fit")
+
+    return cal, r2, (sx, sy), len(Rm), (a_sign, a_offset, a_spread, a_n)
 
 
 def derive_ring_one(run_dir):
@@ -1167,11 +1215,11 @@ def main():
         runs = sorted(d for d in glob.glob(os.path.join(CAL_DIR, "*")) if os.path.isdir(d))
 
     np.set_printoptions(precision=4, suppress=True, linewidth=130)
-    cals, r2s, calS = [], [], []
+    cals, r2s, calS, alphaS = [], [], [], []
     for run_dir in runs:
         name = os.path.basename(run_dir)
         try:
-            cal, r2, (sx, sy), nfit = derive_one(run_dir)
+            cal, r2, (sx, sy), nfit, (a_sign, a_offset, a_spread, a_n) = derive_one(run_dir)
         except Exception as e:
             print(f"  skip {name}: {e}")
             continue
@@ -1180,6 +1228,8 @@ def main():
         print(cal)
         print(f"centroid slope: sx={sx:.4f}  sy={sy:.4f}")
         cals.append(cal); r2s.append(r2); calS.append([sx, sy])
+        if np.isfinite(a_sign):
+            alphaS.append([a_sign, a_offset, a_spread])
 
     if not cals:
         print("\nNo usable runs.")
@@ -1204,6 +1254,31 @@ def main():
 
     sx = _pos_median(0, "sx"); sy = _pos_median(1, "sy")
 
+    # ALPHA CAL AGGREGATE (2026-08-02): sign must be UNANIMOUS across runs (a
+    # geometric convention, not a noisy magnitude - if runs disagree on sign
+    # something is wrong, don't average +1 and -1 into a meaningless ~0).
+    # alpha_0 is circularly averaged (via sin/cos) across runs that agree on
+    # sign. cal_s[3] gets the derived sign; alpha_0 is reported separately -
+    # it belongs in img_geometry.py::marker_principal_angle's alpha_0
+    # constant (or an env-configurable equivalent), not in cal_s (a diagonal
+    # matrix can't represent an additive offset on a wrapped angle).
+    a_sign_cal = 1.0
+    alpha_0_deg = None
+    if alphaS:
+        alphaS = np.array(alphaS)
+        signs = alphaS[:, 0]
+        if len(set(signs.tolist())) > 1:
+            print(f"  [warn] alpha cal: sign DISAGREES across runs ({signs.tolist()}) - "
+                  f"not applying an alpha cal, investigate before trusting either sign")
+        else:
+            a_sign_cal = float(signs[0])
+            sin_m = np.median(np.sin(alphaS[:, 1])); cos_m = np.median(np.cos(alphaS[:, 1]))
+            alpha_0 = float(np.arctan2(sin_m, cos_m))
+            alpha_0_deg = np.degrees(alpha_0)
+            print(f"\nalpha cal: sign={a_sign_cal:+.0f} (unanimous across {len(alphaS)} run(s))  "
+                  f"alpha_0={alpha_0_deg:+.1f}deg  (per-run residual spread "
+                  f"{np.degrees(alphaS[:,2]).mean():.1f}deg avg)")
+
     print(f"\n\n=== AGGREGATE across {len(cals)} run(s) — PROVISIONAL, review before use ===")
     print("per-axis R^2 (mean):  " + "  ".join(f"{LAB[k]}={r2s[:,k].mean():.2f}" for k in range(6)))
     if len(cals) > 1:
@@ -1217,7 +1292,11 @@ def main():
     rows = ",\n            ".join(
         "[" + ", ".join(f"{M[i,j]:+.4f}" for j in range(6)) + "]" for i in range(6))
     print(f"        self._sensor_cal_hw = np.array([\n            {rows}])")
-    print(f"        self._sensor_cal_s  = np.diag([{sx:.4f}, {sy:.4f}, 1.0, 1.0])")
+    print(f"        self._sensor_cal_s  = np.diag([{sx:.4f}, {sy:.4f}, 1.0, {a_sign_cal:+.1f}])")
+    if alpha_0_deg is not None:
+        print(f"        # ALSO apply alpha_0={alpha_0_deg:+.1f}deg ({np.radians(alpha_0_deg):+.4f} rad) "
+              f"in img_geometry.py::marker_principal_angle's alpha_0 constant (NOT in cal_s - a "
+              f"diagonal matrix can't represent this additive offset)")
 
     # MAP cal (2026-08-01): PlanarFeatureMap rescue is its own estimation
     # technique (img_data.py's _flowMap for flow, 'planar_map_rescue' for the
@@ -1233,7 +1312,7 @@ def main():
     for run_dir in runs:
         name = os.path.basename(run_dir)
         try:
-            cal, r2, (sx, sy), nfit = derive_one(run_dir, flow_tags=MAP_FLOW_TAGS, s_tags=MAP_S_TAGS)
+            cal, r2, (sx, sy), nfit, _alpha_unused = derive_one(run_dir, flow_tags=MAP_FLOW_TAGS, s_tags=MAP_S_TAGS)
         except Exception as e:
             print(f"  skip {name}: {e}")
             continue

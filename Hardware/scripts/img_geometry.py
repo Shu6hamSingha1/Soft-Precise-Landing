@@ -340,9 +340,23 @@ def get_img_features(pts, prev_angle=None):
     injects a yaw-coupled lateral bias + degrades the linear centroid cal.)
 
     Yaw alpha = 2pi-disambiguated WEIGHTED-moment orientation - the weights
-    are required to make a square marker yaw-observable. alpha_0 = 0 here
-    (Pi-specific; recalibrate the equilibrium offset once good mocap data
-    exists, mirroring Gazebo's _moment_alpha_0).
+    are required to make a square marker yaw-observable.
+
+    alpha_0 DERIVED 2026-08-02 (was 0.0 - Pi-specific placeholder equilibrium
+    offset, "recalibrate once good mocap data exists, mirroring Gazebo's
+    _moment_alpha_0"; this session's Aug-1 mocap recordings ARE that data).
+    derive_pi_cal.py's alpha cal fit (wrap-safe circular statistics, 6/6
+    Aug-1 runs unanimous on sign) found alpha_raw = -1*alpha_GT + alpha_0
+    with alpha_0 = -49.8deg (-0.869 rad), residual spread only 1-2deg per
+    run - NOT a 1:1 identity as previously assumed (that assumption was
+    validated on Gazebo only, "cal_s[3]=1.0 is CORRECT" per that project's
+    memory, but never checked on the Pi's own marker/mount). The matching
+    SIGN flip (this function's raw output needs a -1 factor to match GT
+    convention) is applied downstream via _sensor_cal_s[3], NOT here - this
+    constant is ONLY the additive equilibrium offset, which a diagonal cal_s
+    can't represent. Env-overridable (ALPHA_0_DEG) for re-derivation after
+    any marker/mount change, matching this file's existing config pattern
+    (see quad_ill_conditioned's MAP_ILLCOND_ANGLE_DEG).
 
     prev_angle: passed straight through to marker_principal_angle - see its
     docstring (2026-07-26 fix) for why continuity beats the single-frame
@@ -353,7 +367,7 @@ def get_img_features(pts, prev_angle=None):
     xc = float(np.mean(x))
     yc = float(np.mean(y))
 
-    alpha_0 = 0.0
+    alpha_0 = np.deg2rad(float(os.environ.get("ALPHA_0_DEG", "-49.8")))
     raw = marker_principal_angle(pts, prev_angle=prev_angle)
     alpha = float(np.arctan2(np.sin(raw - alpha_0), np.cos(raw - alpha_0)))
 

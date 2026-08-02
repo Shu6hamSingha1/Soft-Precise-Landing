@@ -2514,6 +2514,7 @@ class IMG_PROCESSOR(Thread):
             'PLASMC_DENSE_RECOVER': int(bool(getattr(self, '_dense_recover', False))),
             'PLASMC_MAP_FLOW': int(bool(getattr(self, '_map_flow', False))),
             'GYRO_COMP_WXY_MAX': getattr(self, '_gyro_comp_wxy_max', None),
+            'ALPHA_0_DEG': os.environ.get('ALPHA_0_DEG', '-49.8'),
             # --- perception path ---
             'PLANAR_MAP_SHADOW': int(bool(getattr(self, '_planar_map_shadow', False))),
             'PLASMC_PLANAR_MAP_PRIMARY': int(bool(getattr(self, '_planar_map_primary', False))),
