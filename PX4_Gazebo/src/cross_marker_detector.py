@@ -175,12 +175,31 @@ def _reject_blobby_components(mask, max_extent=GHOST_MAX_EXTENT, min_area=15):
     extent exceeds max_extent; NOT sufficient alone -- a ghost sliver that
     directly touches/crosses a marker arm merges into one still-thin blob that
     this can't retroactively split (see _isolate_marker_by_shape's squareness
-    gate and the ROI crop, which remain the other two layers of defense)."""
+    gate and the ROI crop, which remain the other two layers of defense).
+
+    CROSS-AWARE (2026-08-02, retexture investigation): a textured background
+    can introduce faint near-black noise (compression/antialiasing/mipmap
+    fringing at the texture's own edges) that MORPH_CLOSE bridges onto the
+    cross's own rounded line-caps -- a filled circle is naturally high-extent
+    (~0.785) even in isolation, so a cross+noise merge can push the WHOLE
+    marker's extent over threshold and get discarded outright (observed:
+    'after ROI crop: 0' -- the entire cross vanished, not just background
+    clutter). The ghost's rotor-hub fragments were always small (measured
+    area ~300-2500px, see the module docstring's reference frame); the real
+    marker, even fused with noise, is the dominant coherent structure on the
+    plate. So: NEVER reject the single LARGEST surviving component by area,
+    regardless of its extent -- that guarantees the cross survives even when
+    merged with noise, while smaller extent-violating fragments (the actual
+    ghost pieces) still get removed normally."""
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if n <= 1:
         return mask
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    largest_lbl = int(np.argmax(areas)) + 1 if len(areas) else None
     out = mask.copy()
     for lbl in range(1, n):
+        if lbl == largest_lbl:
+            continue
         x, y, bw, bh, area = stats[lbl]
         if area < min_area:
             continue

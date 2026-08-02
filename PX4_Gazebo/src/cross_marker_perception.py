@@ -51,7 +51,14 @@ from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agn
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
 GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "6"))
-LK_WIN = (15, 15)
+# 2026-08-02 (Hx/Hy investigation): the marker's speckle texture measured at
+# ~13-18px/blob across the useful altitude range (see
+# feedback_duplicated_math_diff_check's sibling investigation), comparable to
+# the default 15x15 LK window -- a window that size can straddle multiple
+# repeating blobs, an aperture/correspondence-ambiguity risk. Env-overridable
+# to test smaller windows without a code edit each time.
+_lk_win = int(os.environ.get("CROSS_LK_WIN", "15"))
+LK_WIN = (_lk_win, _lk_win)
 LK_MAX_LEVEL = 2
 
 # Diagnosed 2026-08-01: at 5m altitude the isolated marker mask is only ~76x76px,
@@ -64,12 +71,20 @@ MIN_FLOW_POINTS_SOLVE = 4     # attempt the lstsq with whatever survived, down t
                                # (2*4=8 >= 6 unknowns -- still solvable, just less overdetermined)
 RESAMPLE_TRIGGER = 10          # proactively top up the point pool below this count, but don't
                                # discard current tracking to do it (see _compute_hw)
-MASK_DILATE_PX = 4             # dilation radius for BOTH GFT sampling bounds and the post-LK
+MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
+                               # dilation radius for BOTH GFT sampling bounds and the post-LK
                                # mask-membership retention check -- a fresh per-frame recomputed
                                # mask jitters by a few px frame-to-frame; a tracked point that's
                                # still physically on the marker but just outside this frame's
                                # exact mask boundary was being discarded as "off-target," which
                                # was avoidable attrition, not a real off-target rejection.
+                               # 2026-08-02 (Hx/Hy texture investigation): the color gate
+                               # (V<20) only sees the black cross+stub, not the surrounding
+                               # textured background -- so this dilation radius is ALSO what
+                               # decides how much of that background texture GFT actually gets
+                               # to sample. Default 4px was a thin margin; env-overridable to
+                               # test a much wider band so a retextured background can matter
+                               # for optical flow at all.
 
 
 def _unweighted_principal_angle(pts):
@@ -467,7 +482,17 @@ class CrossMarkerNode(Thread):
                 if imgs[-1] is None:
                     time.sleep(0.002)
                     continue
-                self._perception.process_frame(imgs[-1], self._time.perf_counter())
+                # Use the frame's OWN capture stamp (msg.header.stamp, sim time,
+                # already fetched above via getStamp()) for dt, not perf_counter()
+                # at the polling callback -- img_data.py's own comment documents
+                # why: perf_counter() is quantized to the ~250 Hz sim clock and
+                # jitters the apparent frame interval (62/83/125 Hz instead of a
+                # clean ~60), which directly corrupts vel = (curr_n-prev_n)/dt.
+                # Found 2026-08-02 during the Hx/Hy flow-accuracy investigation --
+                # this module had reproduced the jittered pattern fresh instead of
+                # the stamp-based fix, same class of mistake as the resolution
+                # transpose bug (see feedback_duplicated_math_diff_check).
+                self._perception.process_frame(imgs[-1], stamp)
             except Exception as e:
                 print(f"[CrossMarkerNode] frame processing error: {e}")
                 time.sleep(0.01)

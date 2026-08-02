@@ -51,7 +51,18 @@ def main():
             continue
         diag_log = gt.get('Diag Log', [])
         if diag_log:
-            ok_rate = sum(r[1] for r in diag_log) / len(diag_log)
+            # 2026-08-02 (s/alpha calibration investigation): Diag Log starts as soon as
+            # CrossMarkerNode is constructed, well before CONTROLLER_READY/arm -- the
+            # pre-arm/settling period's detections (drone on the ground, camera pointed
+            # arbitrarily) are frequently bad and were dragging this metric down even
+            # though that period is NEVER part of the recorded flight data (Opt Flow Ang
+            # Vel/Img Feature Params only start appending post-CONTROLLER_READY). A run
+            # measured at "86% ok" this way was actually 100% ok over the samples that
+            # matter. Filter to t >= Start Time before computing the rate.
+            start = gt.get('Start Time')
+            if start is not None:
+                diag_log = [r for r in diag_log if r[0] - start >= 0]
+            ok_rate = sum(r[1] for r in diag_log) / max(len(diag_log), 1)
             if ok_rate < MIN_OK_RATE:
                 print(f"  skip {os.path.basename(d)}: detection ok_rate {ok_rate:.1%} "
                       f"< {MIN_OK_RATE:.0%} threshold (degraded run, likely ghost/merge "
