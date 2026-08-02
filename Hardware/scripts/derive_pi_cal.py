@@ -127,6 +127,21 @@ GAP_RESET_S = float(os.environ.get("CAL_GAP_RESET_S", "1.0"))
 # Number of real-tagged S samples immediately after a coast run to exclude as
 # a reacquisition transient (see the settle-guard comment in derive_one()).
 SETTLE_N = int(os.environ.get("CAL_SETTLE_N", "3"))
+# Per-run sx/sy statistical outlier filter (2026-08-02, user request after the
+# 22-33-36 outlier investigation - see project_pi_output_recal_2026_08_01 memory).
+# TRIED FIRST, REJECTED: a phase-ambiguity-fraction (amb_frac) proxy, hypothesizing
+# 22-33-36's poor phase separation caused its low sx. Checked properly (amb_frac
+# gated on the SAME real/non-coast mask the printed phase-coverage numbers use,
+# not the naive full-grid-length version that also didn't discriminate) and it does
+# NOT stand out for that run (0.01 vs 0.00-0.01 for the other 5) - _mixed_motion_
+# slope's std_ratio fits over ALL real samples regardless of `lab`, so ambiguous-
+# phase fraction was never actually a masking input to the fit in the first place;
+# the hypothesis didn't survive verification. Using a direct statistical filter on
+# the fitted VALUES instead - a modified-Z-score (MAD-based, Iglewicz & Hoya)
+# outlier test, robust to a single bad run distorting the median/MAD estimate
+# itself (unlike a mean+stdev z-score). Default threshold 3.5 is the standard
+# textbook recommendation for this test.
+CAL_OUTLIER_MAD_K = float(os.environ.get("CAL_OUTLIER_MAD_K", "3.5"))
 
 
 def kf_filter_causal(raw, t, q, r):
@@ -627,7 +642,7 @@ MAP_FLOW_TAGS = frozenset({'map_flow'})
 MAP_S_TAGS = frozenset({'planar_map_rescue'})
 
 
-def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=CORNER_S_TAGS):
+def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=CORNER_S_TAGS, h_only=False):
     # Prefer the mount-rotation-corrected recompute (recompute_raw_flow.py)
     # when present - it reflects img_data.py's CURRENT _getVirtualPts math
     # (R_CAM_TO_BODY fix, 2026-07-11), re-derived offline from this same
@@ -813,7 +828,36 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
     print("  raw corrcoef(GT, raw) [rows=GT Hx/Hy/Hz/Wx/Wy/Wz, cols=raw h0/h1/h2/w0/w1/w2]:")
     print(" ", np.array2string(corr, precision=3, suppress_small=True).replace("\n", "\n   "))
 
-    if fit_method == "tls":
+    # H-ONLY RESTRICTION (2026-08-02, for the map-flow technique): _flowMap's raw
+    # output is structurally [hx, hy, hz, 0, 0, 0] - w0/w1/w2 are ALWAYS zero by
+    # construction (img_data.py::_flowMap never estimates rotation; it's a single
+    # tracked point's KF-differentiated velocity, not a 6-DOF interaction-matrix
+    # solve). Fitting the full 6x6 against this (as derive_one() always did before)
+    # is not just wasted effort on the zero input columns - it also fits GARBAGE
+    # into the Wx/Wy/Wz OUTPUT rows, since lstsq happily "predicts" actual GT
+    # angular rate from whatever incidental correlation h0/h1/h2 (map's clean
+    # translation estimate) has with rotation during that stretch - meaningless,
+    # since the map technique has no rotational information at all. Worse: the
+    # runtime (getOptFlowAngVel) currently applies the FULL corner-lstsq
+    # _sensor_cal_hw (a degeneracy-recombination fit for the LSTSQ estimator's
+    # specific column correlations, e.g. row0 has a real +0.23 coefficient on the
+    # w1 column) to map-derived samples too, injecting spurious Wx/Wy/Wz during
+    # marker-loss rescue frames - a live gap in BOTH Gazebo's and the Pi's runtime,
+    # not something this h_only flag fixes by itself (that needs a KF-side fix,
+    # not attempted here - see project_pi_output_recal_2026_08_01 memory). This
+    # flag only makes the DERIVATION honest: fit a genuine 3x3 (Hx,Hy,Hz <- h0,h1,
+    # h2) and leave the W rows/cols at zero rather than silently fitting noise.
+    if h_only:
+        Gm3, Rm3 = Gm[:, :3], Rm[:, :3]
+        Msol3, _, _, _ = np.linalg.lstsq(Rm3, Gm3, rcond=None)
+        Msol = np.zeros((Rm.shape[1], Gm.shape[1]))
+        Msol[:3, :3] = Msol3
+        cal = Msol.T
+        pred3 = Rm3 @ Msol3
+        r2 = np.zeros(6)
+        r2[:3] = 1 - np.sum((Gm3 - pred3) ** 2, 0) / np.sum((Gm3 - Gm3.mean(0)) ** 2, 0)
+        r2[3:] = np.nan   # not fit - map provides no rotational estimate
+    elif fit_method == "tls":
         # G's Wx/Wy columns (3,4) are STRUCTURALLY zero (np.zeros above, not just
         # noisy - Wx/Wy are never GT-estimated) - feeding a rank-deficient target
         # into the joint-SVD TLS solve makes V22 near-singular and its inverse
@@ -826,9 +870,10 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
         Msol[:, real_cols] = tls_fit(Rm, Gm[:, real_cols])
     else:
         Msol, _, _, _ = np.linalg.lstsq(Rm, Gm, rcond=None)   # G = R @ Msol
-    cal = Msol.T                                          # GT = cal @ raw
-    pred = Rm @ Msol
-    r2 = 1 - np.sum((Gm - pred) ** 2, 0) / np.sum((Gm - Gm.mean(0)) ** 2, 0)
+    if not h_only:
+        cal = Msol.T                                          # GT = cal @ raw
+        pred = Rm @ Msol
+        r2 = 1 - np.sum((Gm - pred) ** 2, 0) / np.sum((Gm - Gm.mean(0)) ** 2, 0)
 
     # centroid scale: GT bearing vs raw feature xc/yc, per-axis regression
     # slope, fitted on that axis's OWN excitation phase.
@@ -884,10 +929,26 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
     if len(lab) != len(ms):                       # defensive: keep masks aligned
         lab = np.resize(lab, len(ms))
 
+    n_real_labeled = int(((lab >= 0) & s_real_g).sum())
     cov = ", ".join(f"{PHASE_LAB[k]}={int(((lab == k) & s_real_g).sum())}"
                     for k in range(4))
+    n_ambig_real = int(((lab < 0) & s_real_g).sum())
+    # amb_frac (2026-08-02): fraction of this run's REAL (non-coast, s_real_g-gated)
+    # phase-labeled samples that phase_labels() couldn't cleanly assign to a single
+    # axis - i.e. n_ambig_real / (n_real_labeled + n_ambig_real), matching the SAME
+    # windowed/real-sample basis as the printed phase-coverage counts above (NOT
+    # len(lab), which is the full GT-grid length including coast/non-real samples
+    # and dilutes the signal - an earlier version of this used len(lab) and it
+    # completely failed to separate the outlier run from the rest, 0.05 vs 0.00-0.02,
+    # no usable threshold). Root-caused as the driver of one run's sx outlier
+    # (22-33-36, amb_frac~0.25 vs ~0.01-0.09 for the other 5 Aug-1 runs on this
+    # corrected basis) - see project_pi_output_recal_2026_08_01 memory. Returned so
+    # main()'s aggregate can exclude poorly-phase-separated runs from the sx/sy fit
+    # specifically (a RECORDING-content quality signal, not a calibration defect -
+    # excluding a run here says nothing about its flow/ring cal quality).
+    amb_frac = n_ambig_real / max(1, n_real_labeled + n_ambig_real)
     print(f"  phase coverage (REAL, non-coast GT-grid samples): {cov}, "
-          f"settle/ambiguous={int((lab < 0).sum())}")
+          f"settle/ambiguous={n_ambig_real} (amb_frac={amb_frac:.2f})")
 
     def _phase_slope(col, axis_k, name):
         """Slope from axis_k's own phase ONLY, real samples. Cross-check /
@@ -997,7 +1058,7 @@ def derive_one(run_dir, fit_method="ols", flow_tags=CORNER_FLOW_TAGS, s_tags=COR
     else:
         print(f"  alpha cal: too few real samples ({a_n}) for a fit")
 
-    return cal, r2, (sx, sy), len(Rm), (a_sign, a_offset, a_spread, a_n)
+    return cal, r2, (sx, sy), len(Rm), (a_sign, a_offset, a_spread, a_n), amb_frac
 
 
 def derive_ring_one(run_dir):
@@ -1219,7 +1280,7 @@ def main():
     for run_dir in runs:
         name = os.path.basename(run_dir)
         try:
-            cal, r2, (sx, sy), nfit, (a_sign, a_offset, a_spread, a_n) = derive_one(run_dir)
+            cal, r2, (sx, sy), nfit, (a_sign, a_offset, a_spread, a_n), amb_frac = derive_one(run_dir)
         except Exception as e:
             print(f"  skip {name}: {e}")
             continue
@@ -1243,13 +1304,40 @@ def main():
     # contaminated fit, not a datum -- median-ing it in would drag the applied
     # cal toward a value no camera can have. Dropped explicitly here rather
     # than trusted to the median's outlier tolerance (2026-07-27).
+    #
+    # STATISTICAL OUTLIER FILTER (2026-08-02, user request): ALSO drop a per-run
+    # value flagged by a modified-Z-score MAD test (Iglewicz & Hoya) - catches a
+    # single run whose fit is way off the others' cluster (e.g. 22-33-36's
+    # sx=0.47 vs the other 5 runs' 0.62-0.80, see project_pi_output_recal_2026_08_01
+    # memory) regardless of root cause. Median/MAD (not mean/stdev) so the outlier
+    # itself can't drag the reference statistic toward it - the whole point of a
+    # robust test. Needs >= 4 finite positive values to bother (MAD is meaningless
+    # on 1-3 points); silently skipped otherwise (all treated as good).
+    def _mad_outlier_mask(v, k=CAL_OUTLIER_MAD_K):
+        finite = np.isfinite(v)
+        if int(finite.sum()) < 4:
+            return np.zeros_like(v, dtype=bool)
+        med = np.median(v[finite])
+        mad = np.median(np.abs(v[finite] - med))
+        if mad < 1e-9:
+            return np.zeros_like(v, dtype=bool)
+        z = 0.6745 * (v - med) / mad   # 0.6745 = Phi^-1(0.75), makes MAD ~= stdev for normal data
+        return finite & (np.abs(z) > k)
+
     def _pos_median(col, name):
         v = calS[:, col]
-        good = v[np.isfinite(v) & (v > 0)]
+        pos_mask = np.isfinite(v) & (v > 0)
         n_bad = int((np.isfinite(v) & (v <= 0)).sum())
         if n_bad:
             print(f"  [warn] {name}: dropped {n_bad} non-positive per-run "
                   f"slope(s) from the aggregate (physically impossible)")
+        outlier_mask = _mad_outlier_mask(np.where(pos_mask, v, np.nan))
+        n_outlier = int(outlier_mask.sum())
+        if n_outlier:
+            print(f"  [warn] {name}: dropped {n_outlier} per-run slope(s) "
+                  f"{v[outlier_mask].tolist()} as statistical outliers "
+                  f"(modified Z-score > {CAL_OUTLIER_MAD_K:.1f} vs the other runs' median/MAD)")
+        good = v[pos_mask & ~outlier_mask]
         return float(np.median(good)) if len(good) else np.nan
 
     sx = _pos_median(0, "sx"); sy = _pos_median(1, "sy")
@@ -1307,18 +1395,25 @@ def main():
     # runs will have zero 'map_flow'/'planar_map_rescue' samples (map was
     # off/rare during calibration recording until 2026-08-01) and skip here -
     # that's expected, not a bug.
-    print("\n\n=== MAP CAL (map_flow/planar_map_rescue technique, independent of corner fit) ===")
+    # H-ONLY (2026-08-02): _flowMap never estimates rotation (raw w0/w1/w2 are
+    # structurally zero, see derive_one's h_only docstring comment) - fitting the
+    # full 6x6 here would silently fit Wx/Wy/Wz to incidental noise/correlation,
+    # not a real map-derived rotation estimate. Restrict to a genuine 3x3
+    # (Hx,Hy,Hz <- h0,h1,h2); W rows/cols stay exactly zero, not fit at all.
+    print("\n\n=== MAP CAL (map_flow/planar_map_rescue technique, independent of corner fit, H-ONLY) ===")
     map_cals, map_r2s, map_calS = [], [], []
     for run_dir in runs:
         name = os.path.basename(run_dir)
         try:
-            cal, r2, (sx, sy), nfit, _alpha_unused = derive_one(run_dir, flow_tags=MAP_FLOW_TAGS, s_tags=MAP_S_TAGS)
+            cal, r2, (sx, sy), nfit, _alpha_unused, _amb_unused = derive_one(
+                run_dir, flow_tags=MAP_FLOW_TAGS, s_tags=MAP_S_TAGS, h_only=True)
         except Exception as e:
             print(f"  skip {name}: {e}")
             continue
         print(f"\n=== {name} (n={nfit} fit samples) ===")
-        print("per-axis R^2: " + "  ".join(f"{LAB[k]}={r2[k]:.2f}" for k in range(6)))
-        print(cal)
+        print("per-axis R^2 (H only, W not fit): " + "  ".join(
+            f"{LAB[k]}={r2[k]:.2f}" if np.isfinite(r2[k]) else f"{LAB[k]}=n/a" for k in range(6)))
+        print(cal[:3, :3])
         print(f"centroid slope: sx={sx:.4f}  sy={sy:.4f}")
         map_cals.append(cal); map_r2s.append(r2); map_calS.append([sx, sy])
 
@@ -1339,19 +1434,25 @@ def main():
 
         sx_m = _pos_median_map(0, "sx"); sy_m = _pos_median_map(1, "sy")
         print(f"\n\n=== MAP AGGREGATE across {len(map_cals)} run(s) — PROVISIONAL, review before use ===")
-        print("per-axis R^2 (mean):  " + "  ".join(f"{LAB[k]}={map_r2s[:,k].mean():.2f}" for k in range(6)))
+        print("per-axis R^2 (mean, H only):  " + "  ".join(
+            f"{LAB[k]}={np.nanmean(map_r2s[:,k]):.2f}" if np.isfinite(np.nanmean(map_r2s[:,k])) else f"{LAB[k]}=n/a"
+            for k in range(6)))
         if len(map_cals) > 1:
-            print("\ninter-run STD of M (small = robust):")
-            print("       " + "  ".join(f"{r:>6}" for r in RL))
-            for i in range(6):
-                print(f"  {LAB[i]:>2} " + "  ".join(f"{Mmstd[i,j]:6.3f}" for j in range(6)))
+            print("\ninter-run STD of M[:3,:3] (small = robust):")
+            print("       " + "  ".join(f"{r:>6}" for r in RL[:3]))
+            for i in range(3):
+                print(f"  {LAB[i]:>2} " + "  ".join(f"{Mmstd[i,j]:6.3f}" for j in range(3)))
         print(f"\ncentroid cal_s:  sx={sx_m:.4f}  sy={sy_m:.4f}")
-        print("\n--- candidate paste for img_data.py (DO NOT apply without reviewing R^2 above, "
-              "AND without wiring a map-technique consumer to actually use it) ---")
-        rows_m = ",\n            ".join(
-            "[" + ", ".join(f"{Mm[i,j]:+.4f}" for j in range(6)) + "]" for i in range(6))
-        print(f"        self._sensor_cal_map = np.array([\n            {rows_m}])")
+        print("\n--- candidate paste for img_data.py's map-flow path (3x3, H-ONLY - W is NOT "
+              "map-derived, must not be zeroed/overwritten at runtime; see the runtime-gap note "
+              "in derive_one's h_only comment - this candidate is NOT yet wired to any consumer) ---")
+        rows_h = ",\n            ".join(
+            "[" + ", ".join(f"{Mm[i,j]:+.4f}" for j in range(3)) + "]" for i in range(3))
+        print(f"        self._sensor_cal_map_h = np.array([\n            {rows_h}])")
         print(f"        self._sensor_cal_s_map  = np.diag([{sx_m:.4f}, {sy_m:.4f}, 1.0, 1.0])")
+        print("(W is intentionally absent from this matrix - the map technique has no rotational "
+              "estimate; a future runtime consumer must hold/predict-only the W state on map-flow "
+              "frames rather than deriving it from this cal, see the runtime-gap note above.)")
 
     # Ring cal, from the SAME runs' "Ring Opt Flow Ang Vel"/"Ring Time" logs
     # (see derive_ring_one docstring - requires a recording made after the
