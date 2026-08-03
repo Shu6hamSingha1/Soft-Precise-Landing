@@ -13,6 +13,7 @@ Pipeline (matches the design note, PX4_Gazebo/docs/cross_marker.pdf discussion):
   5. sub-pixel intersection of the two cross lines -> center, with ill-conditioning guards
   6. optional: identify the stub cluster (~45 deg off both cross lines, not through center) -> heading
 """
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -30,6 +31,11 @@ import numpy as np
 # body, propeller tips) sits higher -- V<20 leaves margin without re-admitting them.
 DEFAULT_LOWER = np.array([0, 0, 0])
 DEFAULT_UPPER = np.array([180, 255, 20])  # low-V gate: marker is dark, background is light
+
+# 2026-08-03 (Hz/Wz/Wx/Wy radial-spread investigation): with _reject_blobby_components
+# now the PRIMARY ghost defense, roi_frac_y is just a backstop -- loosening it further
+# should be safe. Env-overridable so it can be A/B tested without editing code.
+ROI_FRAC_Y_DEFAULT = float(os.environ.get("CROSS_ROI_FRAC_Y", "0.65"))
 
 MIN_INTER_LINE_ANGLE_DEG = 15.0   # below this, lines are too near-parallel to trust intersection
 STUB_REL_ANGLE_DEG = 45.0
@@ -175,12 +181,31 @@ def _reject_blobby_components(mask, max_extent=GHOST_MAX_EXTENT, min_area=15):
     extent exceeds max_extent; NOT sufficient alone -- a ghost sliver that
     directly touches/crosses a marker arm merges into one still-thin blob that
     this can't retroactively split (see _isolate_marker_by_shape's squareness
-    gate and the ROI crop, which remain the other two layers of defense)."""
+    gate and the ROI crop, which remain the other two layers of defense).
+
+    CROSS-AWARE (2026-08-02, retexture investigation): a textured background
+    can introduce faint near-black noise (compression/antialiasing/mipmap
+    fringing at the texture's own edges) that MORPH_CLOSE bridges onto the
+    cross's own rounded line-caps -- a filled circle is naturally high-extent
+    (~0.785) even in isolation, so a cross+noise merge can push the WHOLE
+    marker's extent over threshold and get discarded outright (observed:
+    'after ROI crop: 0' -- the entire cross vanished, not just background
+    clutter). The ghost's rotor-hub fragments were always small (measured
+    area ~300-2500px, see the module docstring's reference frame); the real
+    marker, even fused with noise, is the dominant coherent structure on the
+    plate. So: NEVER reject the single LARGEST surviving component by area,
+    regardless of its extent -- that guarantees the cross survives even when
+    merged with noise, while smaller extent-violating fragments (the actual
+    ghost pieces) still get removed normally."""
     n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     if n <= 1:
         return mask
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    largest_lbl = int(np.argmax(areas)) + 1 if len(areas) else None
     out = mask.copy()
     for lbl in range(1, n):
+        if lbl == largest_lbl:
+            continue
         x, y, bw, bh, area = stats[lbl]
         if area < min_area:
             continue
@@ -223,7 +248,7 @@ def _isolate_marker_by_shape(mask, min_area=15):
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
            min_line_length=15, max_line_gap=10, identify_stub=True,
-           roi_frac_x=1.0, roi_frac_y=0.65):
+           roi_frac_x=1.0, roi_frac_y=ROI_FRAC_Y_DEFAULT):
     """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection.
 
     Ghost-rejection is now layered (2026-08-02): _reject_blobby_components runs

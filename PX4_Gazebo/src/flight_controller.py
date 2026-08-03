@@ -437,6 +437,18 @@ class FC():
     def getQuat(self):
         return self._quat[-1]
 
+    def getQuatTime(self):
+        """Sim-time (same clock as image msg.header.stamp -- self._time is the
+        shared Clock_Node) timestamp of the LATEST quaternion sample, i.e. when
+        _getOdometry's async loop actually appended it. Added 2026-08-02 while
+        debugging a V-frame-leveling regression in the cross-marker pipeline:
+        getQuat() alone gives no way to tell how stale the "latest" quaternion
+        is relative to the image frame it's being used to level -- odometry
+        arrives on its own independent MAVSDK stream, not synced to image
+        capture. _odo_ts was already being recorded (getLogData exposes it as
+        "Odometry Timestamp") but had no live getter."""
+        return self._odo_ts[-1] if self._odo_ts else None
+
     def getVelBody(self):
         return self._vel_body[-1]
 

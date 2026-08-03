@@ -49,6 +49,16 @@ CALIB_FREQ_HZ    = float(os.environ.get("CALIB_FREQ_HZ", "0.5"))
 CALIB_SEND_TIMEOUT_S = 0.5
 CALIB_ALT_DROP_BAIL_M = 2.0
 
+# Roll/pitch-EXCITE phases (2026-08-03, ported from record_output_calibration.py --
+# never carried over when this recorder was first built, so Wx/Wy have been untested,
+# not proven-zero, this whole investigation). Small amplitude + high frequency so the
+# marker stays framed (small position excursion) while tilt-RATE (wx/wy) is large --
+# tilt_angle ~ A*omega^2 but tilt_RATE ~ A*omega^3, so high omega buys rate without
+# leaving FoV. Opt-in via CALIB_PHASES (not in the default set), same as the ArUco one.
+CALIB_AMP_RP  = float(os.environ.get("CALIB_AMP_RP", "0.12"))
+CALIB_FREQ_RP = float(os.environ.get("CALIB_FREQ_RP", "1.0"))
+CALIB_RP_S    = float(os.environ.get("CALIB_RP_S", "12.0"))
+
 CONTROLLER_READY = False
 
 image_data = None
@@ -88,17 +98,20 @@ async def main(record='n'):
     sin_z   = lambda tau: CALIB_AMP_Z  * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw_agg = lambda tau: CALIB_AMP_YAW_AGG_DEG * np.sin(2*np.pi*CALIB_FREQ_YAW_AGG * tau)
+    sin_rp = lambda tau: CALIB_AMP_RP * np.sin(2*np.pi*CALIB_FREQ_RP * tau)
 
     _selected = os.environ.get("CALIB_PHASES", "yaw,x,y,z,yawagg").split(",")
     _selected = [s.strip() for s in _selected if s.strip()]
     _phase_fns = {
-        'yaw':    (zero, zero, zero, sin_yaw),
-        'x':      (sin_x, zero, zero, zero),
-        'y':      (zero, sin_y, zero, zero),
-        'z':      (zero, zero, sin_z, zero),
-        'yawagg': (zero, zero, zero, sin_yaw_agg),
+        'yaw':      (zero, zero, zero, sin_yaw),
+        'x':        (sin_x, zero, zero, zero),
+        'y':        (zero, sin_y, zero, zero),
+        'z':        (zero, zero, sin_z, zero),
+        'yawagg':   (zero, zero, zero, sin_yaw_agg),
+        'rollexc':  (sin_rp, zero, zero, zero),      # body-x osc -> strong roll-rate (wx) excitation
+        'pitchexc': (zero, sin_rp, zero, zero),      # body-y osc -> strong pitch-rate (wy) excitation
     }
-    _phase_dur = {'yawagg': CALIB_YAW_AGG_S}
+    _phase_dur = {'yawagg': CALIB_YAW_AGG_S, 'rollexc': CALIB_RP_S, 'pitchexc': CALIB_RP_S}
     phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S)]
     for _ph in _selected:
         if _ph not in _phase_fns:
@@ -252,7 +265,9 @@ async def main(record='n'):
                        "Img Feature Params": img_feature_param,
                        "Command": cmd, "Phase": phase_log,
                        "Diag Log": img_node.get_diag_log(),   # [(t, ok, fail_reason, bbox_area), ...]
-                       "Flow Diag Log": img_node.get_flow_diag_log()}   # [(t, n_kept, cond, solved), ...]
+                       "Flow Diag Log": img_node.get_flow_diag_log(),   # [(t, n_kept, cond, solved), ...]
+                       "Z_V Log": img_node.get_z_v_log(),   # min(z_v) per _getVirtualPts call
+                       "Radial Diag Log": img_node.get_radial_diag_log()}   # TEMP 2026-08-03, Wx/Wy investigation
             img_params = img_node.getParams()
 
         if img_node and img_node.is_alive():

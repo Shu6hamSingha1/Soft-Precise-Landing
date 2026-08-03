@@ -42,6 +42,7 @@ from threading import Thread
 
 import cv2
 import numpy as np
+from ahrs import Quaternion
 
 import cross_marker_detector as cmd
 from img_data import fx, fy   # reuse the project's calibrated intrinsics, don't refork them
@@ -51,7 +52,14 @@ from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agn
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
 GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "6"))
-LK_WIN = (15, 15)
+# 2026-08-02 (Hx/Hy investigation): the marker's speckle texture measured at
+# ~13-18px/blob across the useful altitude range (see
+# feedback_duplicated_math_diff_check's sibling investigation), comparable to
+# the default 15x15 LK window -- a window that size can straddle multiple
+# repeating blobs, an aperture/correspondence-ambiguity risk. Env-overridable
+# to test smaller windows without a code edit each time.
+_lk_win = int(os.environ.get("CROSS_LK_WIN", "15"))
+LK_WIN = (_lk_win, _lk_win)
 LK_MAX_LEVEL = 2
 
 # Diagnosed 2026-08-01: at 5m altitude the isolated marker mask is only ~76x76px,
@@ -64,12 +72,20 @@ MIN_FLOW_POINTS_SOLVE = 4     # attempt the lstsq with whatever survived, down t
                                # (2*4=8 >= 6 unknowns -- still solvable, just less overdetermined)
 RESAMPLE_TRIGGER = 10          # proactively top up the point pool below this count, but don't
                                # discard current tracking to do it (see _compute_hw)
-MASK_DILATE_PX = 4             # dilation radius for BOTH GFT sampling bounds and the post-LK
+MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
+                               # dilation radius for BOTH GFT sampling bounds and the post-LK
                                # mask-membership retention check -- a fresh per-frame recomputed
                                # mask jitters by a few px frame-to-frame; a tracked point that's
                                # still physically on the marker but just outside this frame's
                                # exact mask boundary was being discarded as "off-target," which
                                # was avoidable attrition, not a real off-target rejection.
+                               # 2026-08-02 (Hx/Hy texture investigation): the color gate
+                               # (V<20) only sees the black cross+stub, not the surrounding
+                               # textured background -- so this dilation radius is ALSO what
+                               # decides how much of that background texture GFT actually gets
+                               # to sample. Default 4px was a thin margin; env-overridable to
+                               # test a much wider band so a retextured background can matter
+                               # for optical flow at all.
 
 
 def _unweighted_principal_angle(pts):
@@ -159,6 +175,10 @@ class CrossMarkerPerception:
 
         self._prev_gray = None
         self._prev_flow_pts = None   # (N,2) pixel coords tracked for h,w
+        self._prev_quat = None       # quat AT prev_flow_pts' own frame (2026-08-02 V-frame fix)
+        self._prev_frame_t = None    # timestamp AT prev_flow_pts' own frame (2026-08-03 dt-staleness
+                                      # fix -- see _compute_hw's docstring)
+        self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
         self._last_alpha = 0.0
         self._alpha_valid_once = False
 
@@ -178,24 +198,47 @@ class CrossMarkerPerception:
         # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
         # own image-Jacobian solve (not img_data.py's), so it needs its own
         # empirical correction, not a reuse of the ArUco board's cal.
-        # Derived 2026-08-02 via apps/record_cross_marker_calibration.py +
-        # tools/derive_cross_marker_cal.py, from 4 phased-excitation runs (a 5th
-        # was gated out at 69.5% detection ok-rate; CROSS_CAL_MIN_OKRATE=0.85) --
-        # see Memory/px4/project_cross_marker_pipeline_20260801.md for the full
-        # investigation (Gazebo camera-render ghost artifact root-caused +
-        # layered shape/position rejection fixes in cross_marker_detector.py).
-        # R^2: Hx=0.40 Hy=0.49 Hz=0.34 Wz=0.36 (Wx/Wy forced 0, same level-target
-        # convention as the ArUco board cal). Centroid scale still has ~2.4x
-        # inter-run spread -- usable starting point, not as tight as the ArUco
-        # cal; re-derive with more runs if precision landing needs tightening.
+        # RE-DERIVED 2026-08-03 (supersedes the 2026-08-02 version) via
+        # apps/record_cross_marker_calibration.py + tools/derive_cross_marker_cal.py,
+        # from 5 clean phased-excitation runs (all passed the 95% detection
+        # ok-rate gate), AFTER root-causing and fixing two real bugs found during
+        # this session's Hx/Hy flow-accuracy investigation (see
+        # Memory/px4/project_cross_marker_pipeline_20260801.md and
+        # feedback_missing_vframe_leveling_port / feedback_dt_staleness_after_
+        # detection_dropout for the full writeups):
+        #   1. Missing V-frame gravity-leveling (_getVirtualPts) -- this module
+        #      computed h,w,s directly from raw, un-leveled camera-frame pixels
+        #      with zero attitude compensation, while GT (compute_gt_signals) is
+        #      in the tilt-compensated V-frame img_data.py's ArUco pipeline
+        #      already reprojects through. Ported _getVirtualPts in, wired the
+        #      quaternion through CrossMarkerNode via Image_Node.getQuaternions()
+        #      (tightly paired with each frame at capture time, NOT a separately-
+        #      polled FC.getQuat() -- that first attempt regressed Hx instead of
+        #      fixing it).
+        #   2. dt/staleness mismatch on detection-dropout recovery: dt was built
+        #      from the outer polling clock (advances every call) while the LK
+        #      "previous frame" state only advances on successful detections --
+        #      after any dropout (common, every run had some), the next good
+        #      frame divided a multi-frame-accumulated displacement by a
+        #      single-frame dt, spiking all six solved parameters. Fixed by
+        #      tracking the timestamp actually paired with self._prev_gray.
+        # Effect: raw Hx/Hy-vs-GT correlation went from ~0.01-0.10 (every test
+        # before these fixes) to a consistent 0.74-0.87 across independent
+        # flights. R^2 (this fit): Hx=0.70 Hy=0.71 Hz=0.42 Wz=0.52 (Wx/Wy forced
+        # 0, same level-target convention as the ArUco board cal) -- Hx/Hy are
+        # now within 0.05 of ArUco's own 13-run board cal (0.75/0.75); Hz/Wz
+        # remain the honest gap (ArUco: 0.79/0.71). Centroid scale sx/sy inter-
+        # run spread dropped to ~7-10% (was ~2.4x before these fixes) -- TIGHTER
+        # than ArUco's own current live cal (h_x 1.091+-0.266 = ~24%, h_y
+        # 1.063+-0.198 = ~19%, per img_data.py's own provenance comments).
         self._sensor_cal_hw = np.array([
-            [+0.1651, +0.0040, +0.0535, +0.0062, +0.1837, -0.0485],
-            [-0.0090, +0.2024, -0.0558, -0.2010, -0.0180, -0.0703],
-            [-0.0274, -0.0369, +0.5992, +0.3072, +0.1833, +0.0229],
+            [+0.9108, +0.0771, -0.0143, -0.0965, +0.9116, -0.0023],
+            [+0.0518, +1.0905, -0.0532, -1.1048, +0.0552, -0.0049],
+            [-0.0468, +0.1164, +0.4899, -0.1512, -0.1164, -0.0079],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.1273, +3.3435, -0.8369, -2.2182, -0.1183, -0.6168]])
-        self._sensor_cal_s = np.diag([0.3217, 0.2862, 1.0, 1.0])
+            [+1.0417, +3.0649, -0.0620, -2.8697, +1.0600, +0.6217]])
+        self._sensor_cal_s = np.diag([1.0647, 1.1124, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -220,6 +263,8 @@ class CrossMarkerPerception:
         # speckle texture). px_disp_median/std are the raw per-point pixel displacements
         # feeding that fit, for a sanity check against plausible motion magnitude.
         self._flow_diag_log = []
+        self._radial_diag_log = []   # TEMP DIAG 2026-08-03, see _solve_jacobian
+        self._radial_diag = (np.nan, np.nan, np.nan, np.nan)
 
     @staticmethod
     def _dilate_mask(mask):
@@ -234,9 +279,67 @@ class CrossMarkerPerception:
             return np.zeros((0, 2), dtype=np.float32)
         return pts.reshape(-1, 2).astype(np.float32)
 
-    def _solve_jacobian(self, prev_pts, curr_pts, dt):
-        prev_n = (prev_pts - self.center) / self.focal
-        curr_n = (curr_pts - self.center) / self.focal
+    def _getVirtualPts(self, pts, quat):
+        """Reproject camera-frame pixels onto the virtual image plane V: a
+        LEVEL frame (gravity-aligned z) that preserves the UAV's yaw heading.
+        Direct port of img_data.py's _getVirtualPts (same V-frame convention
+        compute_gt_signals uses for GT, so raw and GT are finally in the SAME
+        frame) -- adapted to this module's self.center/self.focal instead of
+        img_data.py's module-level cx,cy/fx,fy.
+
+        MISSING FROM THIS MODULE UNTIL 2026-08-02: the raw h,w computation
+        previously used un-leveled camera-frame coordinates directly, with NO
+        attitude compensation at all -- comparing that against V-frame GT
+        (which removes roll/pitch by construction) is comparing different
+        physical quantities whenever the drone tilts, which happens
+        specifically during the x/y translation phases that excite Hx/Hy.
+        Root-caused as the likely dominant remaining cause of the Hx/Hy
+        weak-correlation investigation -- see
+        Memory/px4/project_cross_marker_pipeline_20260801.md. quat=None
+        (not yet available, e.g. before FC connects) falls back to the
+        un-leveled normalization so callers degrade gracefully rather than
+        crash.
+        """
+        if quat is None:
+            cx, cy = self.center
+            fxx, fyy = self.focal
+            return np.column_stack([(pts[:, 0] - cx) / fxx, (pts[:, 1] - cy) / fyy])
+
+        R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
+        g = R.T @ np.array([0, 0, 1])   # world-down in body/camera frame (camera=body-FRD aligned)
+
+        z_axis = g / np.linalg.norm(g)
+        x_axis = np.cross([0, 1, 0], z_axis)
+        x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        C_R_V = np.column_stack([x_axis, y_axis, z_axis])
+
+        cx, cy = self.center
+        fxx, fyy = self.focal
+        x = (pts[:, 0] - cx) / fxx
+        y = (pts[:, 1] - cy) / fyy
+        rays = np.column_stack([x, y, np.ones_like(x)])
+        V_rays = rays @ C_R_V
+        z_v = V_rays[:, 2]
+        # Diagnostic (2026-08-02, V-frame regression debug): img_data.py tracks this
+        # exact quantity for the exact same reason (its own comment: "z_v -> 0 or
+        # negative means this corner's ray... is not representable in the
+        # gravity-leveled V-frame -- grazing/behind-camera obliqueness"). A near-zero
+        # z_v blows up the perspective divide into a huge or sign-flipped point,
+        # exactly the kind of thing that could turn a real translational signal into
+        # noise/garbage without tripping any of the existing n_kept/cond/rel_resid
+        # diagnostics (those check the LSTSQ fit, not the per-point projection that
+        # feeds it).
+        self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
+        return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+
+    def _solve_jacobian(self, prev_pts, curr_pts, dt, prev_quat=None, curr_quat=None):
+        # Level EACH frame's points with THAT frame's own quaternion -- img_data.py's
+        # comment on this exact point ("aruco_pts_0 belongs to frame-0 -> level with
+        # quats[0], not quats[1]") warns that using the wrong quat leaves a residual
+        # tilt proportional to angular rate, a source of yaw/rate leakage.
+        prev_n = self._getVirtualPts(prev_pts, prev_quat)
+        curr_n = self._getVirtualPts(curr_pts, curr_quat)
         vel = (curr_n - prev_n) / dt   # (N,2) per-point normalized velocity
         A = _fill_A(prev_n)
         b = vel.reshape(-1)
@@ -253,9 +356,19 @@ class CrossMarkerPerception:
         b_norm = np.linalg.norm(b)
         rel_resid = np.linalg.norm(A @ sol - b) / b_norm if b_norm > 1e-12 else np.nan
         px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
+        # TEMP DIAG (2026-08-03, Wx/Wy investigation): radial extent of the
+        # normalized points actually fed into A -- max/mean |x|,|y| in prev_n.
+        # w1/w2 (cols 3,4 of A) are QUADRATIC in x,y (x*y, x^2, y^2), unlike h3/w3
+        # (cols 2,5) which are linear -- so w1/w2 need much larger radial spread
+        # for equivalent leverage/conditioning. Logging this to check if the
+        # cross-marker's actual tracked-point spread is the limiting factor.
+        self._radial_diag = (float(np.max(np.abs(prev_n[:, 0]))),
+                              float(np.max(np.abs(prev_n[:, 1]))),
+                              float(np.mean(np.abs(prev_n[:, 0]))),
+                              float(np.mean(np.abs(prev_n[:, 1]))))
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
-    def _compute_hw(self, gray, mask, dt):
+    def _compute_hw(self, gray, mask, t, quat=None):
         """LK-track flow points from the previous frame, solve the image
         Jacobian pseudo-inverse for [h1,h2,h3,w1,w2,w3]. Two-threshold
         hysteresis (see MIN_FLOW_POINTS_SOLVE/RESAMPLE_TRIGGER comments):
@@ -263,12 +376,31 @@ class CrossMarkerPerception:
         a hard floor; only DISCARD current tracking for a full fresh-sample
         when the count drops below that floor. A fresh-sample frame still
         can't report a velocity (no correspondence yet), but that no longer
-        also happens on every minor, recoverable point-count dip."""
+        also happens on every minor, recoverable point-count dip.
+
+        `quat` is THIS frame's attitude, used to level curr_pts (self._prev_quat
+        holds the attitude that was current when self._prev_flow_pts was last
+        observed, i.e. the PREVIOUS frame's quat) -- see _getVirtualPts.
+
+        `t` is THIS frame's own timestamp (was `dt` from the caller's outer
+        polling clock until 2026-08-03). BUG: process_frame's `self._last_t`
+        (source of the old `dt`) advances on EVERY call, det.ok or not, but
+        `self._prev_gray`/`_prev_flow_pts` only advance on SUCCESSFUL frames --
+        held frozen across a detection dropout. After a gap, the old `dt` was
+        just ONE poll interval while LK was tracking across the FULL dropout
+        duration, inflating the computed velocity by roughly the gap length --
+        a spike hitting all six solved parameters on every recovery-from-
+        dropout frame. Fixed by tracking `self._prev_frame_t` (the timestamp
+        actually paired with `self._prev_gray`) and computing dt from THAT,
+        not the outer poll clock."""
         dilated_mask = self._dilate_mask(mask)
+        dt = 0.0 if self._prev_frame_t is None else t - self._prev_frame_t
 
         if self._prev_gray is None or self._prev_flow_pts is None or len(self._prev_flow_pts) == 0:
             self._prev_flow_pts = self._sample_flow_points(gray, dilated_mask)
             self._prev_gray = gray
+            self._prev_quat = quat
+            self._prev_frame_t = t
             return np.zeros(6), False
 
         tracked, status, _ = cv2.calcOpticalFlowPyrLK(
@@ -289,6 +421,7 @@ class CrossMarkerPerception:
         prev_pts = self._prev_flow_pts[keep]
         curr_pts = tracked[keep]
         n_kept = len(prev_pts)
+        prev_quat = self._prev_quat   # the attitude prev_pts were actually observed at
 
         if n_kept < RESAMPLE_TRIGGER:
             # top up the pool with fresh candidates rather than discarding what's
@@ -299,17 +432,25 @@ class CrossMarkerPerception:
         else:
             self._prev_flow_pts = curr_pts
         self._prev_gray = gray
+        self._prev_quat = quat   # whatever survives to be "prev" next call was observed at THIS quat
+        self._prev_frame_t = t   # ...and at THIS timestamp (2026-08-03 dt-staleness fix)
 
         if n_kept < MIN_FLOW_POINTS_SOLVE or dt <= 0:
             self._flow_diag_log.append((self._last_t, n_kept, np.nan, False, np.nan, np.nan, np.nan))
             return np.zeros(6), False
 
-        sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(prev_pts, curr_pts, dt)
+        sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(
+            prev_pts, curr_pts, dt, prev_quat=prev_quat, curr_quat=quat)
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
+        self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
-    def process_frame(self, img_bgr, t):
-        dt = 0.0 if self._last_t is None else max(t - self._last_t, 1e-6)
+    def process_frame(self, img_bgr, t, quat=None):
+        # self._last_t is a general "last frame seen" timestamp (used by
+        # _flow_diag_log entries below); the h,w Jacobian's own dt is now
+        # computed inside _compute_hw from self._prev_frame_t instead (was
+        # computed here and passed down -- see _compute_hw's docstring for
+        # the staleness bug that caused).
         self._last_t = t
 
         det = cmd.detect(img_bgr)
@@ -346,7 +487,9 @@ class CrossMarkerPerception:
         cx, cy = det.center
         self._center_px = np.array([cx, cy])
         self._center_fresh = True
-        s_xy = (np.array([cx, cy]) - self.center) / self.focal
+        # Level the centroid into the SAME V-frame compute_gt_signals' GT is in
+        # (2026-08-02 fix -- was raw camera-frame, tilt-uncompensated, same gap as h,w).
+        s_xy = self._getVirtualPts(np.array([[cx, cy]]), quat)[0]
         self._s = np.array([s_xy[0], s_xy[1], 1.0])
 
         # --- alpha: unweighted moment over REAL detected arm/stub pixels ---
@@ -366,7 +509,7 @@ class CrossMarkerPerception:
 
         # --- h, w: image Jacobian solve over Shi-Tomasi points on the marker plate ---
         mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray.shape, np.uint8)
-        hw, hw_ok = self._compute_hw(gray, mask, dt)
+        hw, hw_ok = self._compute_hw(gray, mask, t, quat=quat)
         self._hw = hw if hw_ok else np.zeros(6)
 
         self._ok = True
@@ -399,6 +542,16 @@ class CrossMarkerPerception:
         -- one entry per flow-solve attempt (only logged on det.ok=True frames, since
         _compute_hw only runs then)."""
         return list(self._flow_diag_log)
+
+    def get_radial_diag_log(self):
+        """TEMP DIAG 2026-08-03: (t, max|x|, max|y|, mean|x|, mean|y|) of the
+        normalized points fed into A, per successful solve."""
+        return list(self._radial_diag_log)
+
+    def get_z_v_log(self):
+        """List of min(z_v) per _getVirtualPts call (2 per flow solve: prev_pts,
+        curr_pts, plus 1 for the centroid) -- degeneracy diagnostic."""
+        return list(self._z_v_log)
 
     def get_center_px(self):
         """(2,) raw pixel [cx, cy] for the visibility CBF, or None if this frame
@@ -467,7 +620,40 @@ class CrossMarkerNode(Thread):
                 if imgs[-1] is None:
                     time.sleep(0.002)
                     continue
-                self._perception.process_frame(imgs[-1], self._time.perf_counter())
+                # Use the frame's OWN capture stamp (msg.header.stamp, sim time,
+                # already fetched above via getStamp()) for dt, not perf_counter()
+                # at the polling callback -- img_data.py's own comment documents
+                # why: perf_counter() is quantized to the ~250 Hz sim clock and
+                # jitters the apparent frame interval (62/83/125 Hz instead of a
+                # clean ~60), which directly corrupts vel = (curr_n-prev_n)/dt.
+                # Found 2026-08-02 during the Hx/Hy flow-accuracy investigation --
+                # this module had reproduced the jittered pattern fresh instead of
+                # the stamp-based fix, same class of mistake as the resolution
+                # transpose bug (see feedback_duplicated_math_diff_check).
+                #
+                # quat: live attitude for the V-frame gravity-leveling transform
+                # (_getVirtualPts) -- img_data.py's IMG_PROCESSOR does this for
+                # every point; this module never did until this same 2026-08-02
+                # investigation traced the missing step as the likely dominant
+                # remaining cause of Hx/Hy weakness (raw camera-frame flow vs
+                # V-frame GT is comparing different physical quantities under
+                # any real tilt).
+                #
+                # FIRST ATTEMPT (regressed Hx instead of fixing it) called
+                # self._FC.getQuat() separately here -- measured lag against the
+                # frame's own stamp was small (<=28ms) so that wasn't the whole
+                # story. Root cause: img_data.py NEVER calls FC.getQuat() from its
+                # own polling loop at all -- Image_Node.image_callback samples
+                # quat = self._FC.getQuat() SYNCHRONOUSLY inside the same callback
+                # that captures the frame, storing both into paired deques
+                # (self._img_deque / self._quat_deque, appended back-to-back) --
+                # see gz_subscriber.py's image_callback. getQuaternions() returns
+                # that ALREADY-paired quat, tightly synced to imgs[-1] by
+                # construction, not independently re-polled later from a separate
+                # thread with its own scheduling jitter. Use that instead.
+                quats = self._image_node.getQuaternions()
+                quat = quats[-1] if quats else None
+                self._perception.process_frame(imgs[-1], stamp, quat=quat)
             except Exception as e:
                 print(f"[CrossMarkerNode] frame processing error: {e}")
                 time.sleep(0.01)
@@ -489,6 +675,12 @@ class CrossMarkerNode(Thread):
 
     def get_flow_diag_log(self):
         return self._perception.get_flow_diag_log()
+
+    def get_radial_diag_log(self):
+        return self._perception.get_radial_diag_log()
+
+    def get_z_v_log(self):
+        return self._perception.get_z_v_log()
 
     def get_center_px(self):
         return self._perception.get_center_px()
