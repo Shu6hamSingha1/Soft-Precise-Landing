@@ -4,7 +4,7 @@ import numpy as np
 from pathlib import Path
 import json
 
-landing_dir = Path("L:/Claude/Soft Landing/Hardware/Test_Data/Landing")
+landing_dir = Path("L:/Claude/Soft Landing/Hardware/Test_Data/Landing/2026-08-03")
 test_dirs = sorted([d for d in landing_dir.glob("Mon Aug  3*") if d.is_dir()])
 
 print(f"Found {len(test_dirs)} test directories from today")

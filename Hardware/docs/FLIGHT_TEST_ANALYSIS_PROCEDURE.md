@@ -26,8 +26,8 @@ testing is done for the session.
 
 | Data | Source path (on Pi) | Destination (Windows) |
 |---|---|---|
-| Per-run telemetry (`Control_Data.npy`, `Img_Data.npy`, `Telemetry_Data.npy`, `Img_Params.txt`) | `~/ws/scripts/precise_landing/Test_Data/Landing/<Day Mon DD HH-MM-SS YYYY>/` | `Hardware/Test_Data/Landing/` (same canonical folder — check for name collisions first, don't create a separate `_pulled_<date>` staging folder, it's an unnecessary parallel structure) |
-| Videos | `~/ws/scripts/precise_landing/Test_Data/Landing/Test_Videos/*.mp4` | `Hardware/Test_Data/Landing/Test_Videos/` |
+| Per-run telemetry (`Control_Data.npy`, `Img_Data.npy`, `Telemetry_Data.npy`, `Img_Params.txt`) | `~/ws/scripts/precise_landing/Test_Data/Landing/<Day Mon DD HH-MM-SS YYYY>/` (Pi writes new runs flat, no date subfolder) | `Hardware/Test_Data/Landing/<YYYY-MM-DD>/<Day Mon DD HH-MM-SS YYYY>/` — **reorganized 2026-08-04 into per-test-date subfolders**; file each pull into the matching date subfolder (check for name collisions first), don't create a separate `_pulled_<date>` staging folder |
+| Videos | `~/ws/scripts/precise_landing/Test_Data/Landing/Test_Videos/*.mp4` | `Hardware/Test_Data/Landing/<YYYY-MM-DD>/Test_Videos/` |
 | PX4 flight logs (`.ulg`) | FC's own SD card, `/fs/microsd/log/<date>/` — **not** on the Pi filesystem, needs MAVSDK FTP | `Hardware/Test_Data/FlightLogs/<date>/` |
 
 **Flight logs — use the existing tool, don't hand-roll FTP calls:**
@@ -47,15 +47,15 @@ connection:
 ```bash
 ssh doctor@<pi-ip> "cd ~/ws/scripts/precise_landing/Test_Data/Landing && \
   tar czf - '<Day> <Mon> <DD>'*/ Test_Videos/'<Day> <Mon> <DD>'*.mp4" 2>/dev/null \
-  | tar xzf - -C "Hardware/Test_Data/Landing"
+  | tar xzf - -C "Hardware/Test_Data/Landing/<YYYY-MM-DD>"
 ```
-Extract straight into the canonical `Hardware/Test_Data/Landing/` — **check for run-directory
-name collisions first** (`ls -d "<Day Mon DD>"*`) rather than staging into a separate
-`_pulled_<date>` folder (an earlier session did this once; it was an unnecessary parallel
-structure and got merged back in). Scope the tar's glob to **only the date(s) you need** —
-the full `Test_Data/Landing/` history goes back multiple days and is large. Same pattern for
-pulling `.ulg` logs from the Pi to Windows after `download_flight_logs.py` has staged them
-there.
+Extract into the matching `Hardware/Test_Data/Landing/<YYYY-MM-DD>/` subfolder (create it if
+new) — **check for run-directory name collisions first** (`ls -d "<Day Mon DD>"*`) rather
+than staging into a separate `_pulled_<date>` folder (an earlier session did this once; it
+was an unnecessary parallel structure and got merged back in). Scope the tar's glob to
+**only the date(s) you need** — the full `Test_Data/Landing/` history goes back multiple
+days and is large. Same pattern for pulling `.ulg` logs from the Pi to Windows after
+`download_flight_logs.py` has staged them there.
 
 For code edits (not data pulls): **SSH-edit in place** (heredoc/sed), never `scp` a locally
 staged copy — see `feedback_pi_edit_in_place` memory. Data extraction (this section) is the
@@ -65,7 +65,7 @@ one case where bulk `scp`/tar transfer is correct; code deployment is not.
 
 ## 2. Console-log triage (fast, no data pulled yet)
 
-If you only have the terminal transcript (`Hardware/Test_Data/Landing/<DDMMYYYY>[_N].txt`),
+If you only have the terminal transcript (`Hardware/Test_Data/Landing/<YYYY-MM-DD>/<DDMMYYYY>[_N].txt`),
 grep for these markers first — they answer "what happened" before any numeric analysis:
 
 ```
