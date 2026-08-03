@@ -263,6 +263,8 @@ class CrossMarkerPerception:
         # speckle texture). px_disp_median/std are the raw per-point pixel displacements
         # feeding that fit, for a sanity check against plausible motion magnitude.
         self._flow_diag_log = []
+        self._radial_diag_log = []   # TEMP DIAG 2026-08-03, see _solve_jacobian
+        self._radial_diag = (np.nan, np.nan, np.nan, np.nan)
 
     @staticmethod
     def _dilate_mask(mask):
@@ -354,6 +356,16 @@ class CrossMarkerPerception:
         b_norm = np.linalg.norm(b)
         rel_resid = np.linalg.norm(A @ sol - b) / b_norm if b_norm > 1e-12 else np.nan
         px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
+        # TEMP DIAG (2026-08-03, Wx/Wy investigation): radial extent of the
+        # normalized points actually fed into A -- max/mean |x|,|y| in prev_n.
+        # w1/w2 (cols 3,4 of A) are QUADRATIC in x,y (x*y, x^2, y^2), unlike h3/w3
+        # (cols 2,5) which are linear -- so w1/w2 need much larger radial spread
+        # for equivalent leverage/conditioning. Logging this to check if the
+        # cross-marker's actual tracked-point spread is the limiting factor.
+        self._radial_diag = (float(np.max(np.abs(prev_n[:, 0]))),
+                              float(np.max(np.abs(prev_n[:, 1]))),
+                              float(np.mean(np.abs(prev_n[:, 0]))),
+                              float(np.mean(np.abs(prev_n[:, 1]))))
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
     def _compute_hw(self, gray, mask, t, quat=None):
@@ -430,6 +442,7 @@ class CrossMarkerPerception:
         sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(
             prev_pts, curr_pts, dt, prev_quat=prev_quat, curr_quat=quat)
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
+        self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
     def process_frame(self, img_bgr, t, quat=None):
@@ -529,6 +542,11 @@ class CrossMarkerPerception:
         -- one entry per flow-solve attempt (only logged on det.ok=True frames, since
         _compute_hw only runs then)."""
         return list(self._flow_diag_log)
+
+    def get_radial_diag_log(self):
+        """TEMP DIAG 2026-08-03: (t, max|x|, max|y|, mean|x|, mean|y|) of the
+        normalized points fed into A, per successful solve."""
+        return list(self._radial_diag_log)
 
     def get_z_v_log(self):
         """List of min(z_v) per _getVirtualPts call (2 per flow solve: prev_pts,
@@ -657,6 +675,9 @@ class CrossMarkerNode(Thread):
 
     def get_flow_diag_log(self):
         return self._perception.get_flow_diag_log()
+
+    def get_radial_diag_log(self):
+        return self._perception.get_radial_diag_log()
 
     def get_z_v_log(self):
         return self._perception.get_z_v_log()

@@ -266,7 +266,8 @@ async def main(record='n'):
                        "Command": cmd, "Phase": phase_log,
                        "Diag Log": img_node.get_diag_log(),   # [(t, ok, fail_reason, bbox_area), ...]
                        "Flow Diag Log": img_node.get_flow_diag_log(),   # [(t, n_kept, cond, solved), ...]
-                       "Z_V Log": img_node.get_z_v_log()}   # min(z_v) per _getVirtualPts call
+                       "Z_V Log": img_node.get_z_v_log(),   # min(z_v) per _getVirtualPts call
+                       "Radial Diag Log": img_node.get_radial_diag_log()}   # TEMP 2026-08-03, Wx/Wy investigation
             img_params = img_node.getParams()
 
         if img_node and img_node.is_alive():

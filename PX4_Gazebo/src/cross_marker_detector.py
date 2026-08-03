@@ -13,6 +13,7 @@ Pipeline (matches the design note, PX4_Gazebo/docs/cross_marker.pdf discussion):
   5. sub-pixel intersection of the two cross lines -> center, with ill-conditioning guards
   6. optional: identify the stub cluster (~45 deg off both cross lines, not through center) -> heading
 """
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -30,6 +31,11 @@ import numpy as np
 # body, propeller tips) sits higher -- V<20 leaves margin without re-admitting them.
 DEFAULT_LOWER = np.array([0, 0, 0])
 DEFAULT_UPPER = np.array([180, 255, 20])  # low-V gate: marker is dark, background is light
+
+# 2026-08-03 (Hz/Wz/Wx/Wy radial-spread investigation): with _reject_blobby_components
+# now the PRIMARY ghost defense, roi_frac_y is just a backstop -- loosening it further
+# should be safe. Env-overridable so it can be A/B tested without editing code.
+ROI_FRAC_Y_DEFAULT = float(os.environ.get("CROSS_ROI_FRAC_Y", "0.65"))
 
 MIN_INTER_LINE_ANGLE_DEG = 15.0   # below this, lines are too near-parallel to trust intersection
 STUB_REL_ANGLE_DEG = 45.0
@@ -242,7 +248,7 @@ def _isolate_marker_by_shape(mask, min_area=15):
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
            min_line_length=15, max_line_gap=10, identify_stub=True,
-           roi_frac_x=1.0, roi_frac_y=0.65):
+           roi_frac_x=1.0, roi_frac_y=ROI_FRAC_Y_DEFAULT):
     """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection.
 
     Ghost-rejection is now layered (2026-08-02): _reject_blobby_components runs

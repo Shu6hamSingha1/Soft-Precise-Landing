@@ -4,7 +4,24 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢 2026-08-03 (LATEST) — cross-marker Hx/Hy weakness RESOLVED: two real bugs in the
+> **🟢 2026-08-03 (LATEST) — cross-marker Wx/Wy confirmed genuinely unrecoverable
+> (not just untested); Hz/Wz gap vs ArUco root-caused to point radial spread.** Ported
+> rollexc/pitchexc excitation phases into `record_cross_marker_calibration.py` (were
+> missing — Wx/Wy had only ever seen incidental x/y-phase tilt); dedicated-excitation
+> raw-vs-GT correlation came back -0.15/-0.09 (near-zero, wrong-signed). Root cause: `_fill_A`'s
+> Hz/Wz columns are linear in point (x,y), Wx/Wy's are QUADRATIC — both need radial spread
+> the marker doesn't achieve (measured max|x|,|y| ~35-50% of frame half-extent, every
+> phase). Tried both fixes: loosening the `roi_frac_y=0.65` ghost-defense crop (now
+> env-overridable, `CROSS_ROI_FRAC_Y`) to 0.90/1.00 — ghost defense held (99.7-99.9%
+> ok-rate, `_reject_blobby_components` is the real defense now) but Wx/Wy only reached a
+> noisy +0.1..+0.26, x-spread barely moved (footprint-limited, not ROI-limited). Lowering
+> `CALIB_TAKEOFF_HEIGHT` 2.7m->2.4m->2.0m — 2.4m no improvement, 2.0m broke detection
+> outright (ok-rate 25%, marker overflows frame). **Ceiling is the marker's physical
+> footprint (3.0m plate), not a recorder/detector parameter** — untried lever is a bigger
+> plate. Wx/Wy=0 confirmed correct, not a gap. [[feedback_cross_marker_radial_spread_ceiling]]
+> [[project_cross_marker_pipeline_20260801]]
+
+> **🟢 2026-08-03 — cross-marker Hx/Hy weakness RESOLVED: two real bugs in the
 > raw h,w/s computation, not the calibration methodology.** (1) Missing V-frame
 > gravity-leveling — `cross_marker_perception.py` computed flow from raw un-leveled camera
 > pixels with zero attitude compensation, while GT is in the tilt-compensated V-frame

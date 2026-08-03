@@ -190,6 +190,64 @@ flow solve does not recover roll/pitch rate with usable SNR. Forcing Wx/Wy=0
 is the correct modeling choice for this marker, same as ArUco's own
 level-target convention, not an open gap.
 
+**ROOT CAUSE identified 2026-08-03 (radial-spread / Jacobian-leverage
+investigation) — why Hz/Wz lag ArUco AND why Wx/Wy specifically die.** Added
+a temporary diagnostic, `Radial Diag Log` (`CrossMarkerPerception._solve_
+jacobian`/`get_radial_diag_log`, wired into `record_cross_marker_calibration.py`;
+backup of the pre-instrumented file at
+`src/cross_marker_perception.py.bak_before_radialdiag_20260803`), logging
+max/mean `|x|,|y|` of the normalized points actually fed into `_fill_A` per
+solve. `_fill_A`'s Hz/Wz columns (h3, col 2 and w3, col 5) are LINEAR in
+(x,y); its Wx/Wy columns (w1/w2, cols 3/4) are QUADRATIC (`x*y`, `1+x^2`,
+`1+y^2`) — quadratic terms need much larger radial spread for equivalent
+leverage/conditioning than linear ones.
+
+Measured spread at the then-live 2.7m/roi_frac_y=0.65 config: mean|x|~0.26,
+mean|y|~0.25, max~0.44 in BOTH axes, against frame normalized half-extents
+x=1.19/y=0.89 — i.e. tracked points only reach ~35-50% of the available
+radial range, on every phase (not just rollexc/pitchexc). Two suspected
+causes: (a) `_restrict_to_center_roi(roi_frac_y=0.65)` in
+`cross_marker_detector.py`, added 2026-08-02 as ghost-artifact defense, caps
+y-reach outright; (b) the marker's own footprint at 2.7m doesn't reach the
+frame edges in x even though `roi_frac_x=1.0` is unrestricted.
+
+**Both levers tested and found insufficient, in combination and alone** (see
+[[feedback_cross_marker_radial_spread_ceiling]] for the full data table and
+the reasoning against retrying either):
+- Made `roi_frac_y` env-overridable (`CROSS_ROI_FRAC_Y`, default unchanged at
+  0.65 — no behavior change unless explicitly set) in `cross_marker_detector.py`.
+  Loosening to 0.90 and 1.00 confirmed `_reject_blobby_components` (2026-08-02)
+  is now the real ghost defense — ok-rate held 99.7-99.9% even with the ROI
+  crop fully removed — but Wx/Wy correlation only moved to a noisy, sign-
+  flipping +0.1..+0.26 (pitchexc best case), never solid, and x-spread barely
+  moved at any ROI setting (footprint-limited, not ROI-limited, confirming (b)).
+- Lowering `CALIB_TAKEOFF_HEIGHT` from 2.7m: 2.4m held ok-rate 100% and grew
+  x-spread modestly (max|x| 0.44->0.55) but did NOT move Wx/Wy correlation
+  (-0.17/+0.18, same order as baseline). 2.0m broke detection outright —
+  ok-rate collapsed to 25% (`lt2_angle_clusters`/`hough_lt2_lines` dominate;
+  marker overflows frame / line-fit geometry breaks down when too close) and
+  the few surviving raw values were garbage (std 1.98 vs GT std 0.13,
+  10-40x the healthy-config noise floor). The combined 2.4m+ROI-0.90 config
+  didn't stack the individual gains either (+0.11/-0.01).
+
+**Conclusion: the Wx/Wy ceiling is the marker's PHYSICAL FOOTPRINT, not a
+recorder/detector parameter.** Raw signal std stays 3-5x below GT std in
+every tested configuration (0.02-0.09 vs 0.09-0.13) — achievable point
+spread never lifts the angular-rate-induced flow meaningfully above LK
+tracking noise, and pushing spread via altitude runs into a detection-
+failure wall (2.0m) before the flow signal improves enough to matter. The
+only remaining lever is a bigger physical marker plate (model-geometry
+change in `~/PX4-Autopilot/Tools/simulation/gz/models/cross_marker/model.sdf`,
+currently 3.0m at 2.7m calibration altitude) so tracked points sit farther
+from center while the whole shape still fits in frame — not attempted this
+session. Useful side-finding: z-phase raw Hz vs GT correlation is strong
+(r=0.93-0.96) across every tested config — the depth signal itself is NOT
+noisy; the lstsq R^2=0.42 gap from the 2026-08-03 cal derive is from
+cross-column conditioning/coupling in the joint 6-DOF solve, not from Hz
+being intrinsically weak. `Radial Diag Log` instrumentation and the
+`CROSS_ROI_FRAC_Y` env override were left in place (both opt-in / no default
+behavior change) for any future retry.
+
 **Still not validated:** the re-derived cal hasn't been re-checked against
 independent multisine/landing data (only the phased-excitation training data
 itself, same gap as before).
