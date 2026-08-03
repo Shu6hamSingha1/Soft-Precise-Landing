@@ -712,6 +712,16 @@ class IMG_PROCESSOR(Thread):
         self._h_real_t = []   # REAL-only history (raw decode frames), never receives extrapolated output back
         self._h_real_v = []
         self._h_consec_misses = 0   # frames since the last raw h decode (Pi has no shared _consec_misses like Gazebo's stale-tracker)
+        # s-coast freeze (2026-08-03): during a confirmed (multi-frame) coast, _s_final was
+        # toggling tick-to-tick between the KF predict-only coast value and the planar_map
+        # rescue's fresh geometric value whenever the rescue's plausibility check flip-flopped
+        # near its threshold -- real flight showed this driving theta to 20-40x normal and
+        # a_u_xy spiking to 56 m/s^2 (real, non-decaying square-wave "disturbance" every tick).
+        # Freeze s at the last _s_final once PLASMC_S_COAST_FREEZE_STREAK consecutive loss
+        # frames have elapsed, instead of continuing to toggle candidate sources.
+        self._s_coast_streak = 0
+        self._s_coast_freeze_streak = int(os.environ.get("PLASMC_S_COAST_FREEZE_STREAK", "3"))
+        self._s_frozen = None
         self._imu_angvel_raw = []   # IMU FRD body rate [fwd,right,down], synced to the flow log
         self._quat_log = []         # FC quaternion [w,x,y,z], synced to the flow log
 
@@ -1758,6 +1768,8 @@ class IMG_PROCESSOR(Thread):
                 _decode_tag + ('+override' if _ov_fired else ''))
             self._feature_pts_fresh = True
             self._planar_map_rescue_active = False   # raw tier succeeded this frame, not a rescue
+            self._s_coast_streak = 0                 # real decode resets the coast-freeze streak
+            self._s_frozen = None
             _tt = self._tstage(_tt, "11_getImgFeatures")
 
             # Centroid checkpost: reject a per-frame |Δs| jump (detect/LK glitch), hold last-good.
@@ -1887,6 +1899,21 @@ class IMG_PROCESSOR(Thread):
                 _pm_rescue = False
                 if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
                     print(f"[planar_map rescue] REJECTED implausible {_why} -- falling back to coast", flush=True)
+
+        # s-coast freeze: once the marker has been lost for _s_coast_freeze_streak
+        # consecutive frames (a CONFIRMED coast, not a single-frame blip), stop letting
+        # _s_final toggle between the KF-predict coast value and the rescue's fresh
+        # geometric value tick-to-tick -- hold the first frozen value for the rest of
+        # the coast instead. See project_pi_izeta_kappa_ratchet_fix memory / 2026-08-03
+        # a_u_xy=56 finding for why the toggle is dangerous, not just noisy.
+        self._s_coast_streak += 1
+        if self._s_coast_streak >= self._s_coast_freeze_streak:
+            if self._s_frozen is None:
+                self._s_frozen = _s_final.copy()
+            _s_final = self._s_frozen
+            _pm_rescue = False   # frozen value isn't a fresh rescue correct-step
+            if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and self._s_coast_streak == self._s_coast_freeze_streak:
+                print(f"[s_coast_freeze] streak={self._s_coast_streak} -- freezing s, no more toggling until real decode", flush=True)
 
         self._img_feature_param.append(_s_final)
         self._s_estimator_tag.append('planar_map_rescue' if _pm_rescue else 'coast')

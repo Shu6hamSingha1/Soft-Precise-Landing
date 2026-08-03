@@ -1,0 +1,1510 @@
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+1429
+Robust Image-Based Landing Control of a
+Quadrotor on an Unpredictable Moving
+Vehicle Using Circle Features
+Jie Lin
+, Yaonan Wang
+, Zhiqiang Miao
+, Member, IEEE, Hesheng Wang
+, Senior Member, IEEE,
+and Rafael Fierro
+, Senior Member, IEEE
+Abstract—This paper addresses the landing problem of a
+quadrotor on an unpredictable moving vehicle, using a robust
+image-based visual servoing (IBVS) method. The circle-based
+image moments are deﬁned to construct image dynamics, and
+the passivity-like property of the circle features is preserved
+by reprojecting to the virtual image plane. The landing con-
+trol system is decoupled into translation and rotation modules
+due to the rotation invariance of the proposed circle features.
+First, by exploiting the error transformation in the image
+space, a robust IBVS controller can overcome the lack of
+both the desired depth information of target features and the
+velocity feedback of the target. Next, an adaptive geometric
+attitude controller is developed directly using rotation matrices
+to avoid the singularities of Euler-angles and the ambiguity of
+quaternions. One beneﬁt of the proposed scheme is that it can
+potentially improve the camera visibility, guarantee the transient
+and steady-state behaviors in image space, and be efﬁciently
+implemented on the low-cost quadrotor. Finally, The stability
+analysis is presented using Lyapunov stability theory on cascaded
+systems, and the effectiveness of the proposed control strategy is
+demonstrated through simulations and experiments.
+Note to Practitioners—The motivation of this paper is to
+investigate a practical control strategy for the image-based
+Manuscript received 21 March 2022; revised 28 April 2022; accepted 1 June
+2022. Date of publication 8 June 2022; date of current version 7 April 2023.
+This article was recommended for publication by Associate Editor G. Palli
+and Editor J. Yi upon evaluation of the reviewers’ comments. This work was
+supported in part by the National Key Research and Development Program
+of China under Grant 2021YFB1714700, in part by the Natural Science
+Foundation of China under Grant 61733004 and Grant 61903135, in part
+by the Postgraduate Scientiﬁc Research Innovation Project of Hunan Province
+under Grant QL20210080, in part by the Natural Science Foundation of Hunan
+Province under Grant 2021JJ20029, in part by the Science and Technology
+Innovation Program of Hunan Province under Grant 2021RC3060, and in part
+by the Youth Talent Support Project of the Chinese Association for Science
+and Technology. (Corresponding author: Zhiqiang Miao.)
+Jie Lin, Yaonan Wang, and Zhiqiang Miao are with the College of Electrical
+and Information Engineering, Hunan University, Changsha 410082, China,
+and also with the National Engineering Laboratory for Robot Visual Percep-
+tion and Control, Changsha 410082, China (e-mail: linjie0275@hnu.edu.cn;
+yaonan@hnu.edu.cn; miaozhiqiang@hnu.edu.cn).
+Hesheng Wang is with the Department of Automation and the Key Labo-
+ratory of System Control and Information Processing, Ministry of Education
+of China, Shanghai Jiao Tong University, Shanghai 200240, China, and also
+with the State Key Laboratory of Robotics and System, Harbin Institute of
+Technology, Harbin 150001, China (e-mail: wanghesheng@sjtu.edu.cn).
+Rafael Fierro is with the MARHES Laboratory, Department of Electrical
+and Computer Engineering, The University of New Mexico, Albuquerque,
+NM 87131 USA (e-mail: rﬁerro@unm.edu).
+This
+article
+has
+supplementary
+material
+provided
+by
+the
+authors
+and
+color
+versions
+of
+one
+or
+more
+ﬁgures
+available
+at
+https://doi.org/10.1109/TASE.2022.3180506.
+Digital Object Identiﬁer 10.1109/TASE.2022.3180506
+landing control of underactuated quadrotors on an unpredictable
+moving vehicle. In most of the existing image-based landing
+control schemes for underactuated quadrotors, having the prior
+predictive model of the moving landing vehicle to provide
+a feed-forward compensation during the landing maneuver.
+However, due to the fact that the landing environment and
+vehicle are primarily stochastic, resulting in no predictive models
+are valid in practice. Therefore, this paper suggests a robust
+image-based landing control strategy without the model or state
+of the moving landing vehicle. In particular, a novel virtual
+circle feature, possessing the characteristic of rotation invariance,
+is designed for the landing of underactuated quadrotors, which
+decouples the landing system and simpliﬁes the control design.
+Moreover, the image feature errors are directly retained within
+prescribed performance funnels in the image space. As a result,
+the transient and steady-state landing behaviors can be implicitly
+guaranteed in Cartesian space. The stability and convergence
+of the system are analyzed mathematically and the experiment
+using quadrotors provides promising results. In ongoing research,
+we are addressing the issues of collision avoidances and unknown
+disturbances to provide a more realistic setup for the autonomous
+deployment
+and
+recovery
+of
+underactuated
+quadrotors
+in
+GPS-denied environments.
+Index Terms—Automatic landing, image-based visual servoing,
+nonlinear control, quadrotor, unmanned aerial vehicle (UAV).
+I. INTRODUCTION
+T
+HE
+autonomous control of unmanned aerial vehi-
+cles (UAVs) is an active and challenging ﬁeld of research,
+which has attracted signiﬁcant attention recently in numerous
+civilian and military applications, such as industrial inspection,
+site surveillance, or search and rescue operations [1]–[3]. UAV
+autonomous control has been proven to be advantageous for
+dangerous and high-precision missions over human operators.
+In particular, quadrotors serve as the ideal aerial platforms
+suited for the development of autonomous systems because of
+the high-mobility capabilities to hover and take off and land
+vertically, as depicted in [4], [5]. With the increasing interest
+in quadrotors to offer effective and large-scale services, it is
+important to realize the automation of quadrotors with less
+cost, weight, and human involvement.
+Due to the increasingly accurate and reliable technology in
+sensing, different onboard sensors have been vastly developed
+to address the localization of quadrotors. A traditional pose
+measured from the inertial measurement unit (IMU) or global
+position system (GPS) is sufﬁcient for general applications,
+1545-5955 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1430
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+but the local accuracy is unsuitable for a precision land-
+ing [6]. In addition, they are increasing in offering a wide
+scope of applications intended to extend well beyond GPS
+environments. Some works employing laser range ﬁnders
+or LIDAR increased the energetic cost of staying airborne
+to obtain enough space information [7], [8]. However, one
+sensor that is becoming increasingly popular for UAVs is
+lightweight onboard monocular cameras, which can provide
+richer information at a lower cost [9]. Considerable effort
+has been devoted to vision-based control of UAVs, and
+visual servo approaches are generally classiﬁed into two main
+classes: position-based visual servoing (PBVS) [10]–[18] and
+image-based visual servoing (IBVS) [19]–[22]. The PBVS
+focuses on the explicit calculation of 3-D pose estimation from
+the known target markers [10], and a large variety of ﬁducial
+markers have been proposed including point maker [11],
+roundel marker [12], aruco marker [13], and apriltag [14]. The
+case of combining a Kalman ﬁlter by using additional sensors
+was presented in [15]–[18]. Although the pose measurements
+of the PBVS is intuitive in 3-D space, it raises the computation
+burden of low-cost quadrotors. Different from PBVS, the
+IBVS makes use of image features directly such that tasks are
+implicitly accomplished in Cartesian space when the image
+features converge to the desired conﬁguration in the image
+space [19]. Although it needs feature depths to link the spatial
+velocity of the camera to the temporal variation of the selected
+image features [20]–[22], it is insensitive to the feature depth
+and the camera calibration errors.
+It is well known that proper feature extraction is essential
+to the performance of IBVS. Especially, quadrotors, as a kind
+of thrust vectored vehicles, have six degrees of freedom and
+only four inputs. Its strongly coupled dynamics raises some
+technical issues in the IBVS design [23], [24], based on IBVS
+theory, several appropriate image features have been widely
+investigated to overcome the underactuated nature of quadro-
+tors, mainly including spherical image moments [25]–[30] and
+virtual image moments [31]–[42]. In [25], the spherical image
+moments were shown to be effective in decoupling the position
+and orientation dynamics of the quadrotor system, using the
+passivity-like properties of spherical camera geometry. In [26],
+it was demonstrated that the conventionally spherical image
+moments exist in an ill-conditioned feedback matrix. Thus,
+this work has been modiﬁed in [27]–[29] by rescaling the
+image features to redeﬁne the error criterion. The case has
+been tested in a real experiment by [30]. However, It is worth
+noting the limitations of spherical image moments, which
+perform undesired behavior in the vertical axis because of
+the nature of the spherical camera geometry. Moreover, the
+moment invariants have been well studied for visual servoing
+in [31], which has good decoupling and linearizing properties
+when the object is parallel to the image plane. In [32]–[35],
+a virtual image moment was developed for the visual servoing
+of the quadrotors, and it transformed the real image plane to
+a virtual image plane through a rotation matrix to make the
+quadrotor be always parallel to the planar target lying on the
+level ground. Thus, the virtual image moment has the constant
+advantage of decoupling. A modiﬁed work was to plan the
+trajectory on the virtual image plane in [36]. In [37]–[39],
+the visual target was kept in the real camera’s ﬁeld of view
+using the virtual camera approach. These works were further
+extended to track a moving target in [40]–[42].
+In most of the aforementioned studies, the proposed landing
+control schemes have been traditionally focused on predictable
+landing vehicles, and it assumes that relative states are avail-
+able for feedback. The position and velocity of the ground
+target were transmitted to the quadrotor through a communi-
+cation sensor in [16]. Some works exploited a reliable predic-
+tive model of the motion of the landing vehicle to provide
+a feed-forward compensation during the landing maneuver.
+In [6], [42], the vertical motions of the landing target were
+modeled as a superposition of several sine functions. In
+[17], [18], a car-like model was adopted to predict the future
+motion of vehicles. However, due to the random landing
+vehicles and limited computational resources, it suffers from
+the disadvantage that predictable vehicle models are difﬁcult
+to obtain in reality. In [35], an adaptive rule was described to
+account for the lack of linear velocity of the ground target.
+However, it is only considered kinematic control. In [28], the
+optic ﬂow was used for aerial robots to provide relative veloc-
+ity. The case with bounded linear accelerations of the target
+was considered in [29] to widen the range of applicability,
+but it is not always available in reality due to the hypothesis
+of invariable gray level and inaccurate velocity measurements.
+In [41], the ﬁlter-like auxiliary dynamic system was designed
+to solve the relative velocity. In [40], a tracking-differentiator
+observer was developed to estimate the target’s parameters.
+In this paper, a robust image-based control approach is
+proposed to address the autonomous landing of underactuated
+quadrotors on an unpredictable moving vehicle. The landing
+control of the quadrotor involves a hierarchical control para-
+digm with the outer-loop IBVS controller governing the trans-
+lation, and the inner-loop controller regulating the attitude.
+Motivated by the funnel control approaches that have excellent
+prescribed performance in Cartesian space [43], we creatively
+introduced funnel functions to design error transformation in
+the image space to enhance the robustness against uncertain
+systems. Using Lyapunov tools on cascaded systems, the sta-
+bility of the closed-loop control system is guaranteed. Prelim-
+inary results in this paper have been presented in [44]. In this
+paper, detailed theoretical analysis and extensive simulation
+and experimental results have been presented to support the
+developed control strategy. Compared with other image-based
+quadrotors landing works, the main contributions of this article
+can be summarized as follows:
+i) By exploiting the circle feature in the virtual image
+plane, the image dynamics possesses the characteristic of
+rotation invariance to conquer the underactuated nature
+of quadrotors. Different from the classic virtual camera
+method used point features in [33]–[42], it is indepen-
+dent of yaw angle and thus simpliﬁes control design.
+What’s more, it is more robust for the motion blur
+and the partial occlusion. The spherical image moments
+applied in [22], [27]–[29] are also rotation invariance,
+but each point projected onto the spherical image plane
+has a different depth value, thus resulting in undesired
+behavior in the vertical axis. In contrast, our method can
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+LIN et al.: ROBUST IMAGE-BASED LANDING CONTROL OF QUADROTOR ON UNPREDICTABLE MOVING VEHICLE
+1431
+Fig. 1.
+System overview and frames of reference used.
+improve the tracking trajectory quality of the quadrotor
+effectively.
+ii) The designed robust IBVS controller can overcome the
+lack of both desired depth information of features and
+velocity measurements of targets. Furthermore, a relaxed
+assumption for practical applications only requires the
+velocity of the unpredictable targets is bounded. While
+in [6], [17], [18], [42], the target model was known
+and its velocity was required to be sufﬁciently smooth.
+In [40], [41], the desired depth values were assumed to
+be known and additional observers were used to estimate
+the velocity information of the target. On the other hand,
+by designing the favorable error transformation for the
+image feature, the proposed controller can potentially
+improve the camera visibility and guarantee the transient
+and steady-state behaviors in Cartesian space.
+iii) A geometric attitude controller is developed directly using
+rotation matrices to avoid the singularities of Euler-angles
+and the ambiguity of quaternions. In particular, due to the
+unknown target velocity, the derivative of the quadrotor
+thrust is unavailable (hence the desired angular velocity
+can’t be deﬁned). To this end, a command ﬁlter is
+designed to obtain the derivative of the thrust so that
+the desired angular velocity implemented in the attitude
+controller can be well-deﬁned.
+The remainder of this paper is organized as follows.
+Section II introduces system modeling and problem state-
+ments. Section III presents the control design and stability
+analysis. Simulation and experimental results to verify the
+effectiveness of the proposed control method are shown in
+Section IV. Section V concludes the paper.
+II. PROBLEM FORMULATION
+A. System Description and Modelling
+In our consideration, an autonomic landing system is
+designed for many applications of interest, which is composed
+of a quadrotor UAV equipped with a monocular camera and
+an IMU, and a ground vehicle posted with a circular visual
+feature, as shown in Fig. 1. The motion of the quadrotor
+is described in two coordinated frames: the inertia frame I
+and the body-ﬁxed frame B whose origin is located in the
+mass center of the quadrotor. Denote p ∈R3 and v ∈R3
+are the position and velocity vector of quadrotor expressed
+in I, R ∈R3×3 is the rotation matrix from its body-ﬁxed
+frame to the inertial frame, and  ∈R3 is the angular
+velocity expressed in B. Based on Euler-Newton formulae,
+the dynamics of the quadrotor is described as
+˙p = v,
+(1)
+m ˙v = −f Ri3 + mgi3,
+(2)
+˙R = R∧,
+(3)
+J ˙ = −∧J + τ,
+(4)
+where the physical properties of the quadrotor are deﬁned
+by the total mass m, gravity acceleration g, and constant
+symmetric inertia matrix J
+= diag(Jx, Jy, Jz) ∈R3×3;
+f and τ ∈R3 represent the net thrust force and the torque
+inputs, respectively. The constant vector i3 = [0, 0, 1]T is the
+thrust orientation, and g is the gravitational acceleration. The
+operator (·)∧: R3 →so(3) is deﬁned such that (x)∧y =
+x × y for all x, y ∈R3, where × denotes the cross product.
+The inverse of (·)∧: so(3) →R3 is denoted by (·)∨.
+A circular visual feature lies on a textured plane of the
+ground vehicle called the target plane, which is assumed
+to be horizontal and visible at the initial moment. A look-
+down camera is rigidly attached to the center of mass of the
+vehicle so that C coincides with B. Instead of measuring and
+estimating the velocity of the moving vehicle, we only assume
+that:
+Assumption 1: The linear velocity of the ground vehicle
+vt ∈R3 is unknown, but there is an unknown real positive
+constant ¯vt such that ∥vt∥< ¯vt.
+B. Visual Features and Dynamics
+In this section, image features and their dynamics imple-
+mented in the IBVS scheme are presented. To obtain a
+decoupled link between the image space and the task space,
+we introduce the perspective projection image moments. The
+various image moments can be summarized into two types:
+point-based and region-based image moments. Though three
+noncollinear points are enough to deﬁne the image moments,
+the point feature is unreliable because of the motion blur and
+the partial occlusion, especially for the visual servoing task
+of the quadrotor in the 3-D space. We observe that the circle
+feature, as a special type of region-based image feature, has
+the geometric characteristics of center symmetry so that it has
+the advantage of yaw angle invariance compared with the point
+feature when the quadrotor is parallel to the target plane.
+A natural idea is to apply a virtual rotation to the real camera
+so that the image plane in its virtual desired position is parallel
+to the target plane, such a conﬁguration is usually called a
+virtual image plane, as shown in Fig. 2. The angle invariance
+of the circle feature will be enlarged in this conﬁguration. The
+circle feature of the target plane can be deﬁned by a set of
+closed contours in the virtual image plane, next, we give the
+image dynamics based on a circle feature. Firstly, the mapping
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1432
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+Fig. 2. Geometry relationship between the real image plane, the virtual image
+plane, and the target plane.
+from an observed point PC = [XC, YC, ZC]T in C to an image
+coordinate qc = [mc, nc]T using a perspective camera model
+is given by
+qc =
+mc
+nc
+
+= fc
+ZC
+XC
+YC
+
+.
+(5)
+where fc > 0 is the focal length of the camera.
+A virtual camera frame V is designed to inherit the trans-
+lation but not the rotation of C, its origin coincides with the
+real camera frame. Similarly, a point is described as PV =
+[XV , YV , ZV ]T in V, and the corresponding image coordinate
+is qv = [mv, nv]T . It’s clear that the rotation matrix IRV from
+V to I is the identity matrix as I3 ∈SO(3), then PV = RPC.
+Denoted ¯q = [mc, nc, 1]T , since only qc is available, one way
+to get qv can be denoted by
+qv =
+mv
+nv
+
+=
+1
+r3 ¯q
+r1 ¯q
+r2 ¯q
+
+.
+(6)
+where the ri ∈R1×3 is the ith row of the matrix VRC.
+Now a circle-based image moment is considered to control
+the translation motion of the quadrotor, its 2 −D moments
+mij of order i + j are deﬁned by:
+mij =
+
+mi
+vn j
+vdmvdnv,
+The perspective moments are chosen as xg = m10/a, yg =
+m01/a, and a = m00 being the circle area. Therefore, the
+image moment features are deﬁned as
+st = [anxg, anyg, an]T ,
+(7)
+where an = √a∗/a, and a∗is its desired value of circle area,
+which can be calculated using the desired images.
+The visual dynamics is presented for the visual servoing
+after simple computations as follows:
+˙st = −1
+Z∗
+V
+(v −vt).
+(8)
+where the Z∗
+V > 0 is its desired depth from V to target plane.
+Remark 1: The designed visual features st are not depen-
+dent on a desired depth Z∗
+V, and the derived visual dynamics
+(8) are very simple and decoupled. Compared with a discrete
+set of point features, a novel circle-based moment feature
+deﬁned in a non-rotating virtual image plane has angle invari-
+ance and is more robust for the interference of untextured
+or unreliable textures in practical scenes. As a result, the
+characteristics of visual dynamics are crucial to the design
+of the subsequent controller.
+C. Problem Statement
+The objective of this work is to design a robust image-based
+controller for the landing of a low-cost quadrotor on an unpre-
+dictable moving vehicle. The unpredictable ground vehicle
+implies that there is not any prior model knowledge so that
+the linear velocity vt and the angular velocity t can’t be
+measured or estimated in the closed-loop system. The quadro-
+tor requires only a minimal sensing suit that is a monocular
+camera and an IMU, which can execute some interesting
+and real-time applications in GPS-denied environments, such
+as cities and forests. The target’s linear velocity vt is only
+bounded but can be a time-varying conﬁguration. Speciﬁcally,
+given a desired image moment s∗
+t , the goal is to design the
+thrust force f and the torque input τ for the quadrotor so
+that the designed visual feature converges to a predeﬁned
+and arbitrarily small neighborhood of s∗
+t . More importantly,
+it implies that the quadrotor reaches the desired position
+relative to the moving vehicle in Cartesian space.
+III. CONTROL DESIGN
+In this section, the design of the robust image-based con-
+troller is provided in detail. The landing controller involves
+a cascaded control paradigm, including an IBVS outer-loop
+controller to govern the translational motion, and a geometric
+inner-loop controller to regulate the rotational motion, as is
+shown in Fig. 3. Finally, the stability analysis is presented
+based on Lyapunov stability theory.
+A. Performance Funnel for Landing
+Before designing the controller, we ﬁrst introduce the con-
+cept of a performance funnel Fρ, which is constructed to shape
+the evolution of the error ei as
+Fρ := {(t, ei) ∈R≥0 × R | ∥ei(t)∥< ρi(t)},
+(9)
+where R≥0 denote the sets of nonnegative real numbers.
+It is worth noting that the funnel boundary is ﬂexible,
+and a monotone funnel is convenient to be choosed in most
+situations. A funnel function ρi(t) can be deﬁned by the
+following exponentially decaying form
+ρi(t) = (ρi(0) −ρ∞
+i )exp(−lit) + ρ∞
+i .
+(10)
+where the ρi(0) > 0 denotes a maximum allowable error;
+the constant li > 0 represents the exponential convergence
+rate of the error; ρ∞
+i
+> 0 is the steady-state performance
+speciﬁcation; They all are design parameters.
+Remark 2: An important feature of the performance funnel
+boundary is that it is far away from zero and ﬂexible, which
+allows the convergence residual set, convergence speed, and
+error overshoot to be determined in advance. To
+this end,
+a variety of different funnel boundaries is possible. Further-
+more, the funnel function is introduced for the design of a
+robust IBVS controller.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+LIN et al.: ROBUST IMAGE-BASED LANDING CONTROL OF QUADROTOR ON UNPREDICTABLE MOVING VEHICLE
+1433
+Fig. 3.
+Block diagram of the proposed robust landing controller for the underactuated quadrotor.
+Remark 3: Owing to the ﬂexibility properties of the perfor-
+mance funnel function, the initial maximum allowable error
+ρi(0) of the funnel function can be set quantitatively a priori
+based on the initial error ei(0). By designing a proper funnel
+function for landing tasks, the initial error is always within the
+boundaries, achieving the convergence of the feature errors to
+a predeﬁned neighborhood of zero.
+B. Robust IBVS Controller Design
+To begin with, the feature error is deﬁned as et = st −s∗
+t .
+Using the performance funnel functions, we can deﬁne the
+following image error transformation
+ξt,k = et,k/ρt,k,
+(11)
+where et,k is kth variable of et, for k = 1, 2, 3. As long as
+it is guaranteed that the boundary of the transformed error
+such that |ξt,k| ≤1, the et,k can be enforced to remain
+strictly within the time-varying boundary of ρt,k, ∀t ≥0.
+Since the boundary of the performance funnel is ﬂexible
+and completely self-designed, it meets the requirements of
+transient and steady-state performance for landing in many
+applications of interest.
+The differentiation of (11) with respect to time is given by
+˙ξt,k = ˙et,kρt,k −et,k ˙ρt,k
+ρ2
+t,k
+.
+(12)
+To guarantee |ξt,k| ≤1, the following log-type Barrier Lya-
+punov Function (BLF) candidate is employed due to its ability
+to provably establish invariance of sets by
+Vt =
+3
+
+k=1
+(1
+2 ln
+1
+1 −ξ2
+t,k
+).
+(13)
+Exploiting (8), we can derive from (13) that
+˙Vt =
+3
+
+k=1
+
+ξt,k
+ρt,k(1 −ξ2
+t,k)(−vk −vt,k
+Z∗
+V
+−˙ρt,kξt,k)
+
+.
+(14)
+Deﬁne the velocity errors as ev,k = vk −ˆvk, where ˆvk is a
+virtual intermediate variable to be designed later. Then (14)
+can be rewritten as
+˙Vt =
+3
+
+k=1
+
+ξt,k
+ρt,k(1 −ξ2
+t,k)(−vk + ˆvk −ˆvk −vt,k
+Z∗
+V
+−˙ρt,kξt,k)
+
+=
+3
+
+k=1
+
+ξt,k
+ρt,k(1 −ξ2
+t,k)(−ev,k + ˆvk −vt,k
+Z∗
+V
+−˙ρt,kξt,k)
+
+.
+To guarantee ξt,k is Lyapunov stable, the virtual intermediate
+variable ˆvk is given by
+ˆvk = Kt,k
+et,k
+1 −ξ2
+t,k
+,
+(15)
+where Kt,k > 0 is a positive constant.
+Similarly as (11) and (13), we get the transformed errors
+ξv,k = ev,k/ρv,k, and the time-varying barrier function is
+constructed for the transformed velocity error as
+Vv =
+3
+
+k=1
+(1
+2 ln
+1
+1 −ξ2
+v,k
+),
+(16)
+The time derivative of Vv gives
+˙Vv =
+3
+
+k=1
+
+ξv,k
+ρv,k(1 −ξ2
+v,k)(˙ev,k −˙ρv,kξv,k)
+
+.
+(17)
+Substituting (2) into (17), one yield
+˙Vv =
+3
+
+k=1
+
+ξv,k
+ρv,k(1 −ξ2
+v,k)( ¯gk −
+¯fk
+m −˙ˆvk −˙ρv,kξv,k)
+
+,
+(18)
+where ¯gk is kth variable of ¯g = [0, 0, g]T , and
+¯fk is kth
+variable of ¯f = f Ri3. Now, the thrust f is designed as
+f = FT (Ri3),
+(19)
+where Fk = m ¯gk + Kv,k
+ev,k
+1−ξ2
+v,k is kth variable of F ∈R3, and
+Kv,k > 0 is a constant for k = 1, 2, 3.
+Remark 4: Several similar BLFs are effectively used to
+deal with the state constraints problem, mainly including
+tan-type and log-type. Based on the characteristic of the two
+kinds of functions, both of them are feasible to guarantee
+|ξt,k| ≤1. Here we use a log-type BLF in the proposed
+method. However, notice that the highlight of the proposed
+method is not to design a novel barrier function, but to
+propose an error transformation based on funnel function for
+the IBVS control, thereby directly governing the performance
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1434
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+of errors in the image plane. Two BLFs are exploited to
+achieve tailored image features and linear velocity tracking
+performance at both transient and steady states, respectively.
+On the other hand, due to the properties of the BLF appearing
+in (13) and (16), it leads to proving that ξt,k and ξv,k evolve
+strictly within the open set (−1, 1). As a result, the proposed
+landing scheme is of robustness due to the feature errors
+being strictly driven within the prescribed performance funnel.
+Therefore, it does not incorporate both the desired depth
+information of target features and any prior model knowledge
+of the moving vehicle. What’s more, this control mechanism
+avoids the tedious algebra related to backstepping iterations
+and can be efﬁciently implemented on the low-cost quadrotor.
+C. Geometric Attitude Controller Design on SO(3)
+The attitude controller is developed directly using rota-
+tion matrices to avoid the singularities of Euler-angles and
+the ambiguity of quaternions. In the following, the desired
+rotation matrices are deﬁned by the geometric methods, and
+attitude error conﬁguration on nonlinear manifolds SO(3) are
+presented to design the geometric attitude controller.
+The desired attitude Rd
+=
+[rd1, rd2, rd3] is directly
+extracted from F as follows
+⎧
+⎪⎪⎪⎪⎨
+⎪⎪⎪⎪⎩
+rd1 = rd2 × rd3,
+rd2 =
+rd3 × b
+∥rd3 × b∥,
+rd3 = −F
+∥F∥,
+(20)
+where desired yaw angle vector b = [cos(ψ∗), sin(ψ∗), 0]T .
+Since the symmetrical physical structure of the quadrotor, only
+an arbitrarily ﬁxed ψ∗is required when landing. To achieve
+R →Rd, a real-valued error function is deﬁned as
+ϒ(R, Rd) = 1
+2tr[I −RT
+d R].
+(21)
+The attitude error is denoted in the sublevel set L = {R ∈
+SO(3)∥ϒ(R, Rd) < 2}, which almost covers SO(3).
+The desired angular velocity and its derivative are given by
+∧
+d = RT
+d ˙Rd and ˙∧
+d = (∧
+d )T RT
+d ˙Rd + RT
+d ¨Rd. The attitude
+and angular velocity errors are chosen as
+eR = 1
+2(RT
+d R −RTRd)∨,
+(22)
+e =  −RT Rdd.
+(23)
+Motivated by the standard geometric controller designed
+in [23], we design the torque input τ as follows,
+τ = −kReR −ke + ∧J
+−J(∨RT
+d Rd −RT Rd ˙d).
+(24)
+where kR, k are positive constant gains.
+D. Stability Analysis
+Consider the proposed outer-loop IBVS controller (19)
+and inner-loop geometric controller (24), the corresponding
+stability results can be stated in the following claim:
+Theorem 1: For the image-based landing system introduced
+in (1)-(4) and (8), all closed-loop signals are uniformly ulti-
+mately bounded, and the transient and steady-state perfor-
+mance of errors are guaranteed within the funnel function (10).
+Proof:
+To analyze the stability of the rotational error
+dynamics, differentiating equations (21) and (23) and substi-
+tuting (24) into (4), we have:
+˙ϒ(R, Rd) = eT
+Re,
+(25)
+J ˙e = −kReR −ke,
+(26)
+Consider the following Lyapunov candidate function as
+V = 1
+2 eT
+ Je + kRϒ(R, Rd),
+(27)
+Then the time derivative of V is
+˙V = eT
+ J ˙e + kReT
+Re = −k∥e∥2 ≤0.
+(28)
+Based on the Lyapunov stability theory, we have e →0 when
+t →∞since ˙V ≤0. Moreover, it can be shown that the ˙e
+is uniformly continuous. Applying Barbalat’s Lemma to (26),
+it follows that ˙e →0 as t →∞. Then eR →0 when
+t →∞. Therefore, the attitude controller achieves asymptotic
+stability for rotational error dynamics.
+To prove the stability of the overall translational error
+dynamics, it sufﬁces to show the transformed errors ξt,k and
+ξv,k are bounded within the open set (−1, 1). Therefore,
+we can further demonstrate et,k and ev,k achieve the pre-
+determined performance speciﬁed by (10). In the following,
+we proceed in three steps to prove the stability. In step 1,
+the existence and uniqueness of a maximal system solution
+[ξt,k, ξv,k]T : [0, τmax) →Aξ for some τmax > 0, is guaran-
+teed. In step 2, the boundedness of all closed-loop signals is
+proven, and their boundaries belong to a compact subset of
+Aξ. Consequently, in step 3, the points raised in the second
+step are proven to remain when τmax →∞.
+Step 1: Prove the existence and uniqueness of the system
+solution over a time interval [0, τmax).
+An open set is ﬁrst deﬁned as
+Aξ = (−1, 1) × (−1, 1).
+(29)
+The set Aξ is nonempty and open. Using (10), the fact that
+constructed funnel function satisﬁes ∥ρt,k(0)∥> ∥et,k(0)∥
+and ∥ρv,k(0)∥
+>
+∥ev,k(0)∥, therefore the ∥ξt,k(0)∥
+=
+∥et,k(0)/ρt,k(0)∥< 1 and ∥ξv,k(0)∥= ∥ev,k(0)/ρv,k(0)∥<1.
+If we deﬁne ξk = [ξt,k, ξv,k]T , where k = 1, 2, 3. As a result,
+the ξk ∈Aξ. The time derivative of ξk is given by
+˙ξk =
+⎡
+⎢⎢⎣
+1
+ρt,k
+( ˙et,k
+ρt,k
+−ξt,k ˙ρt,k)
+1
+ρv,k
+( ˙ev,k
+ρv,k
+−ξv,k ˙ρv,k)
+⎤
+⎥⎥⎦.
+(30)
+Since funnel functions ρt,k and ρv,k are bounded by construc-
+tion, the ˙ρt,k, ξt,k, ˙ρv,k, and ξv,k are bounded and continuously
+differentiable with time. Utilizing (15) and (19), the interme-
+diate control signal ˆv and control law f are smooth over Aξ,
+then ˙et,k and ˙ev,k are continuously differentiable functions.
+Therefore ˙ξk is bounded and continuously differentiable as
+well as locally Lipschitz ξk over the set Aξ. Thus, a uniqueness
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+LIN et al.: ROBUST IMAGE-BASED LANDING CONTROL OF QUADROTOR ON UNPREDICTABLE MOVING VEHICLE
+1435
+of a maximal solution ξk: [0, τmax) →Aξ of ˙ξk over the set
+Aξ for a time interval [0, τmax) is guaranteed, which implies
+ξt,k ∈(−1, 1),
+ξv,k ∈(−1, 1),
+∀t ∈[0, τmax).
+(31)
+Step 2: The boundedness of all closed-loop signals is
+proven, and their boundaries belong to a compact subset of
+Aξ for all t ∈[0, τmax).
+Substituting the (15) into (14). we have
+˙Vt = −
+3
+
+k=1
+Kt,k
+Z∗
+V
+ξ2
+t,k
+(1 −ξ2
+t,k)2 +
+3
+
+k=1
+ξt,k
+ρt,k(1 −ξ2
+t,k)κt,k,
+(32)
+where κt,k = −ev,k + vt,k −˙ρt,kξt,k.
+Since chosen functions ρt,k > 0, ρv,k > 0, ˙ρt,k, and ˙ρv,k
+are bounded, one observes the ev,k = ρv,kξv,k is bound. Under
+Assumption 1, the linear velocity of vehicle vt,k is bounded.
+Additionally, we can conclude that the boundedness of κt,k for
+all t ∈[0, τmax) such that
+∥κt,k∥≤∥ev,k∥+ ∥vt,k∥+ ∥˙ρt,kξt,k∥≤ t,k,
+(33)
+Because ρt,k > ρt,k
+∞> 0, it exists 1/ρt,k ≤ t,k, and the
+following inequality holds in terms of Young’s inequality
+ξt,k
+ρt,k(1 −ξ2
+t,k)κt,k ≤
+σt,kξ2
+t,k
+(1 −ξ2
+t,k)2 +  t,k
+4σt,k
+ 2
+t,k,
+(34)
+where σt,k is a positive constant.
+Noting that ξt,k ∈(−1, 1) for all t ∈[0, τmax) in (31),
+we get 1/(1 −ξ2
+t,k) ≥1, ∀t ∈[0, τmax). Using [39], the
+following inequality holds
+ξ2
+t,k
+(1 −ξ2
+t,k)2 ≥
+ξ2
+t,k
+1 −ξ2
+t,k
+≥ln
+1
+1 −ξ2
+t,k
+,
+(35)
+Therefore, the inequality (32) can be represented as
+˙Vt ≤−atVt + bt,
+(36)
+where at = min(Kt,k/Z∗
+V −σt,k, |k = 1, 2, 3), and bt =
+3
+k=1  t,k 2
+t,k/(4σt,k). We assume that Kt,k and σt,k are
+chosen as Kt,k/Z∗
+V > σt,k such that −at < 0.
+Integrating (36) over t ∈[0, τmax) yields
+0 ≤Vt(t) ≤Vt(0)e−at + bt/at.
+(37)
+Obviously, we can conclude the terms ln[1/(1 −ξ2
+t,k)] is
+bounded such that −1 < ξ t,k < ξt,k < ¯ξt,k < 1, ∀t ∈
+[0, τmax) for all k ∈1, 2, 3.
+Review the (18), we have
+˙Vv =
+3
+
+k=1
+
+ξ2
+v,k
+ρv,k(1 −ξ2
+v,k)( ¯gk −Fk
+m −δk
+m −˙ˆvk −˙ρv,kξv,k)
+
+,
+where δk =
+¯fk −Fk is kth variable of the coupled term
+δ =
+¯f −F. Exploiting (20), the coupled term δ between
+translational dynamics and rotational dynamics can be rewrit-
+ten as
+δ = ∥F∥(((Rdi3)T Ri3)Ri3 −Rdi3).
+(38)
+According to Rodrigues’ formula, we obtain ∥eR∥= sin ∥x∥,
+when RT
+d R = exp ˆx for x ∈R3, so ∥eR∥represents the sine
+of the eigen-axis rotation angle between R and Rd such that
+∥(((Rdi3)T Ri3)Ri3 −Rdi3)∥≤∥eR∥< 1.
+(39)
+Therefore we get ∥δ∥≤∥F∥. From (18), yields
+∥Fk∥≤∥m ¯gk∥+ ∥Kv,k
+ev,k
+1 −ξ2
+v,k
+∥.
+(40)
+Next, based on the designed thrust input (19), we have
+˙Vv = −
+3
+
+k=1
+Kv,k
+m
+ξ2
+v,k
+(1 −ξ2
+v,k)2 +
+3
+
+k=1
+ξv,k
+ρv,k(1 −ξ2
+v,k)κv,k,
+(41)
+where κv,k = δk
+m −˙ˆvk −˙ρv,kξv,k. Using (15), the time derivative
+of the virtual velocity is expressed as
+˙ˆvk = Kt,k
+
+˙et,k
+(1 −ξ2
+t,k)2 + 2et,kξt,k ˙ξt,k
+(1 −ξ2
+v,k)2
+
+.
+(42)
+Since the fact that terms ∥ξt,k∥< 1, ∥ξv,k∥< 1, et,k = ρt,kξt,k,
+and ev,k = ρv,kξv,k are bounded for all t ∈[0, τmax), and
+the ˙et,k and ˙ξt,k are bounded in (36), then the δk and ˙ˆvk are
+bounded such that the following inequality holds
+∥κv,k∥≤∥δk∥
+m
++ ∥˙ˆvk∥+ ∥˙ρv,kξv,k∥≤ v,k.
+(43)
+Using 1/ρv,k ≤ v,k and Young’s inequality, we have
+ξv,k
+ρv,k(1 −ξ2
+v,k)κv,k ≤
+σv,kξ2
+v,k
+(1 −ξ2
+v,k)2 +  v,k
+4σv,k
+ 2
+v,k,
+(44)
+where σv,k is a positive constant. Because of (35), (38) is
+written as follows,
+˙Vv ≤−avVv + bv,
+(45)
+where av = min(Kv,k/m −σv,k, |k = 1, 2, 3), and bv =
+3
+k=1  v,k 2
+v,k/(4σv,k). We assume that Kv,k and σv,k are
+chosen as Kv,k/m > σv,k such that −av < 0.
+Integrating (45) over t ∈[0, τmax) yields
+0 ≤Vv(t) ≤Vv(0)e−av + bv/av.
+(46)
+So the terms ln[1/(1 −ξ2
+v,k)] is bounded such that −1 <
+ξv,k < ξv,k < ¯ξv,k < 1, ∀t ∈[0, τmax). From the previous
+discussion, all signals are uniformly ultimately bounded for
+all t ∈[0, τmax).
+Step 3: The points raised in the second part are proven to
+remain when τmax →∞.
+It is veriﬁed that ξ j(t) ∈A′
+ξ for all t ∈[0, τmax), where
+the set A′
+ξ = (ξ pj, ¯ξpj) × (ξvj, ¯ξvj) ∈Aξ is nonempty and
+compact. However [45] dictates the existence of a time instant
+t′ ∈[0, τmax) such that ξ j(t′) /∈A′
+ξ. Thus we naturally
+come to the conclusion that τmax = ∞by contradiction, and
+completes the proof.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1436
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+Fig. 4.
+The comparative study for the proposed virtual circle image moments and the classical spherical image moments. (a) Trajectories of a quadrotor and
+a moving target. (b) The evolution of the image feature errors along with the corresponding funnel boundaries (red). (c) The time response of attitude errors
+eR = [eR,1, eR,2, eR,3]T . (d) The torque inputs τ = [τx, τy, τz]T and net thrust force f of the quadrotor with respect to time.
+E. Modiﬁed Geometric Attitude Controller Based on Filter
+From a practical standpoint, it is possible to neglect the
+last two terms in the controller and achieve satisfactory
+performance [1]. Especially, this method has been adopted
+in the standard PX4 controller [46]. In addition, [47] have
+presented that the geometric controller remains stable in the
+absence of the higher-order inertial cancelation terms when the
+desired attitude is ﬁxed. Therefore, the higher-order inertial
+cancelation terms are neglected for the ﬁxed desired attitude,
+and the geometric attitude control law is given by
+τ = −kReR −Ke + ∧J.
+(47)
+Remark 5: There is no doubt that the controller (47) is
+effective but suffers from the disadvantage of needing the
+target velocity measurements vt. This is because d imple-
+mented in e depends on the derivative of the quadrotor
+thrust ˙F, and ˙F is related to vt. However, since the velocity
+of the unpredictable moving target is unavailable,
+˙F can’t
+be obtained (hence the desired angular velocity d can’t be
+deﬁned). To avoid the velocity measurements for unpredictable
+targets, a command ﬁlter is designed to obtain ˙F so that the
+desired angular velocity can be well-deﬁned.
+To eliminate the inﬂuence of unavailable velocity for d,
+a command ﬁlter [48] is used herein to compute ˙F due to
+it requires that only the signal F and obviates the need for
+analytic computation of command signal derivatives as follows
+
+˙zi,1 = ωnzi,2,
+˙zi,2 = −2ζωnzi,2 −ωn(zi,1 −Fi),
+(48)
+with i ∈1, 2, 3, and the outputs of each command ﬁlter denote
+zi,1 = Fi and zi,2 = ˙Fi. The parameters of ﬁlter can be chosen
+as ωn > 0 and ζ ∈(0, 1].
+IV. SIMULATIONS AND EXPERIMENTS
+In this section, the theoretical results presented above are
+validated by simulation studies and experiments. No prior
+knowledge of ground vehicles is provided. We considered a
+circle with a radius of 0.08 m attached to the plane of the
+vehicle for visual servoing. The rotation matrix was initialized
+as R(0) =
+I. The desired image moments were set as
+s∗
+t = [0, 0, 1]T . The parameters of the quadrotor dynamics
+were set as follows: m = 2.48 kg, g = 9.81 m/s2, and J =
+diag(0.0756, 0.0756, 0.1277) kg · m2/rad2. The parameters of
+the controller were chosen for the repeatability results for both
+simulation and experiment as follows: Kt,1 = Kt,2 = 4.5,
+Kt,3 = 2.25, Kv,1 = Kv,2 = 2.5, Kv,3 = 1.25, kR = 20, and
+k = 5. In addition, the gains of the ﬁlter (48) were chosen
+as ζ = 0.5 and ωn = 0.02. Before investigating experimental
+results using hardware, the simulation results allow us to gain
+insight into the proposed method in different scenarios that
+may be of a larger scale than it is possible in the hardware
+setup, e.g. due to restrictions regarding laboratory size.
+A. Simulation Results Considering a Comparative Study
+Under the same simulation conditions, we evaluated the
+proposed IBVS controller deﬁned in (19) and compared the
+results with those of the approach based on spherical image
+moments in [29]. The landing scheme in [29] is similarly
+deﬁned for the system modeled by (1)-(4), but its controller
+requires the velocity of the target. In this simulation, the linear
+velocity of the vehicle was set as vt = 0.5 m/s, and the
+parameters of funnel function were given by ρ∞
+t,k = 0.05,
+ρ∞
+v,k = 0.2, and lt,k = lv,k = 1 for k = 1, 2, 3. The simulation
+results are shown in Fig. 4. Fig. 4(a) depicts the quadrotor’s
+trajectories of the proposed method (blue) and the comparative
+method (green). The time evolution of the feature errors is
+illustrated in Fig. 4(b). The time evolution of the attitude errors
+is illustrated in Fig. 4(c). Fig. 4(d) shows the torque inputs τ
+and net thrust force f . It can be observed that the trajectory
+of the quadrotor of the comparative method is not satisfactory
+due to the undesired behavior in the vertical axis. What’s
+more, its convergence speed is slow. In contrary, the proposed
+method can guarantee the image feature errors converge to the
+neighborhood of zero without violating the designed funnels.
+Hence, the camera visibility and the transient and steady-state
+behaviors are potentially improved. Consequently, the results
+show the effectiveness of the proposed IBVS scheme although
+in the absence of the target velocity measurements.
+B. Simulation Results for Strong Robustness Veriﬁcation
+To further demonstrate the performance and robustness of
+the proposed landing controllers for practical applications.
+The quadrotor is considered to suffer from sensor noises and
+external disturbances. What’s more, the target is endowed
+with complex motions involving acceleration and deceleration.
+Without loss of generality, the wind caused a time-varying
+accelerated speed disturbance as 0.2sin(0.1t) m/s2; the noise
+was imposed on the normalized image feature measurements
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+LIN et al.: ROBUST IMAGE-BASED LANDING CONTROL OF QUADROTOR ON UNPREDICTABLE MOVING VEHICLE
+1437
+Fig. 5.
+Simulation results for the strong robustness veriﬁcation, where the quadrotor landed on a target moving in an “8” shaped trajectory in a wind
+disturbance environment. (a) Trajectories of a quadrotor and a moving target. (b) The evolution of the image feature errors along with the corresponding
+funnel boundaries (red). (c) The time response of attitude errors. (d) The torque inputs and net thrust force of the quadrotor.
+Fig. 6.
+Simulation in Gazebo: Quadrotor lands on a high-speed target moving in a linear trajectory (2m/s). (a) Trajectories of a quadrotor and a moving
+target. (b) The evolution of the image feature errors along with the corresponding funnel boundaries (red). (c) The time response of attitude errors. (d) The
+torque inputs and net thrust force of the quadrotor.
+with a standard deviation of 0.005; an “8” shaped motion
+trajectory was chosen as
+⎧
+⎪⎪⎪⎨
+⎪⎪⎪⎩
+˙xt = vt cos(θt),
+˙yt = vt sin(θt),
+˙θt = t,
+vt =
+
+(0.3 cos(0.1t))2 + (0.4 cos(0.2t))2,
+t = −0.024 sin(0.2t) cos(0.1t) −0.12 sin(0.1t) cos(0.2t)
+v2t
+,
+where xt, yt, and θt denote the position and angle of the
+vehicle, respectively. The parameters of the funnel function
+were given by ρ∞
+t,k = 0.1, ρ∞
+v,k = 0.2, and lt,k = lv,k = 1 for
+k = 1, 2, 3. The results are shown in Fig. 5. Fig. 5(a) depicts
+the trajectories of a quadrotor and a moving target. The
+time evolution of the feature errors is plotted in Fig. 5(b).
+The time evolution of the attitude errors is illustrated in
+Fig. 5(c). Fig. 5(d) illustrates the torque inputs and net thrust
+force. It can be observed that the frequent variations of target
+velocities arose certain tracking errors, the noise imposed
+negative inﬂuences on image feature measurements and the
+wind caused a time-varying accelerated speed disturbance.
+However, the quadrotor can track the moving target with a
+smooth trajectory. This part is due to that the image feature
+errors are strictly driven within the prescribed performance
+funnel. Therefore, the studies show the strong robustness of
+the proposed method although in the presence of sensor noises,
+external disturbances, and complex target trajectories.
+C. Simulation in GAZEBO for the High-Speed Targets
+There is no doubt that the high-speed targets are important
+in practice. To evaluate the performance for a high-speed tar-
+get, we further test the control algorithm using Gazebo virtual
+world and robot operating system (ROS). The Gazebo allows
+simulation of robotic and sensors applications in almost real
+three-dimensional indoor and outdoor environments results so
+that the simulation algorithms can be directly deployed to the
+real robot hardware. The velocity of the high-speed target was
+given by vt = 2 m/s. The parameters of funnel function were
+given by ρ∞
+t,k = 0.2, ρ∞
+v,k = 0.3, and lt,k = lv,k = 0.8 for
+k = 1, 2, 3. The results are shown in Fig. 6. Fig. 6(a) illustrates
+the trajectories of a quadrotor and a high-speed target. Fig. 6(b)
+and Fig. 6(c) depict the time response of feature errors and
+attitude errors. Fig. 6(d) shows the torque inputs τ and net
+thrust force f . From the results, although the high-speed target
+arose certain tracking errors, the image feature errors still sat-
+isﬁed the transient and steady-state speciﬁcations imposed by
+the corresponding performance funnel. More signiﬁcantly, the
+proposed method can be adapted to the different high-speed
+targets due to the fact that it can freely select the performance
+boundary. But in addition to this extreme requirement, a ﬁxed
+satisfying performance boundary is enough to handle most
+low-speed scenarios. As a result, a quadrotor can track a
+high-speed target effectively and the landing trajectory is
+satisfactory. From this study, the effectiveness of the proposed
+method for a high-speed target is demonstrated.
+D. Experimental Results
+In addition to the simulation study, we further test the
+proposed control method in a real-world experiment on the
+quadrotor developed in our Robotic Laboratory. As shown in
+Fig. 7, the entire experimental platform includes a quadro-
+tor with a down-looking monocular camera and a mobile
+robot Husky attached a circle mark. The DAHENG IMAGI
+NG VEN-161 as a monocular camera is used to get its
+grayscale image at 50 Hz. The quadrotor is equipped with
+an open-source autopilot Pixhawk 4 (building-in IMUs) for
+the control purpose, and the algorithm was implemented on
+an onboard computer that communicates with Pixhawk 4 via
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1438
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+Fig. 7.
+The overall experiment setup for the landing system.
+Fig. 8.
+Experiment 1: Quadrotor lands on an unpredictable moving target moving in an “8” shape trajectory. (a) Trajectories of a quadrotor and a moving
+target. (b) The evolution of the image feature errors along with the corresponding funnel boundaries (red). (c) The time response of attitude errors. (d) The
+torque inputs and net thrust force of the quadrotor.
+Fig. 9.
+Experiment 2: Quadrotor lands on an unpredictable moving target moving in a rectangular trajectory. (a) Trajectories of a quadrotor and a moving
+target. (b) The evolution of the image feature errors along with the corresponding funnel boundaries (red). (c) The time response of attitude errors. (d) The
+torque inputs and net thrust force of the quadrotor.
+MAVROS protocol. Using the native topics of MAVROS
+named “mavros/actuator_control,” we can send raw servo
+values to Pixhawk 4 for direct actuator controls. The essential
+thing is that the thrust and torque, designed in Eq. (19) and
+Eq. (48), have to be published in a normalized form. The image
+processing algorithm, and the image-based landing control law
+are directly implemented on the Intel NUC i7 PC onboard
+the quadrotor. The feedback control loop runs at a frequency
+of about 250 Hz. The proposed algorithm is implemented in
+the robot operating system neotic, running on Ubuntu 20.04.
+The parameters of funnel function were set as ρ∞
+t,k = 0.3,
+ρ∞
+v,k = 0.5, and lt,k = lv,k = 0.8 for k = 1, 2, 3. The
+OptiTrack motion capture system is only utilized to obtain
+the ground truth information about the 3-D positions of the
+quadrotor and target with respect to the global coordinate
+frame. Two cases of experiments were considered as follows:
+Case 1: The target moves in an “8” shaped trajectory.
+Case 2: The target moves in a rectangular trajectory.
+In the ﬁrst case, the quadrotor was required to track
+a moving target moving in an “8” shaped trajectory. The
+experimental results are shown in Fig. 8. Fig. 8(a) illustrates
+the trajectories of a quadrotor and a landing vehicle recorded
+by the OptiTrack system. The time evolution of the feature
+errors is plotted in Fig. 8(b). The time evolution of the attitude
+errors is illustrated in Fig. 8(c). Fig. 8(d) shows the torque
+inputs τ and net thrust force f . It can be observed the quadro-
+tor follows the unpredictable moving target effectively, and the
+image feature errors converge to a neighborhood around zero
+without violation of the prescribed transient bound. The results
+show the effectiveness of the proposed IBVS scheme.
+In the second case, the quadrotor was required to track a
+moving target moving in a rectangular trajectory. The results
+are shown in Fig. 9. Fig. 9(a) indicates the tracking trajectory.
+The time evolution of the feature errors is plotted in Fig. 9(b).
+The time evolution of the attitude errors is illustrated in
+Fig. 9(c). Fig.
+9(d) shows the torque inputs and net thrust
+force. It can be observed that the image feature errors are
+strictly retained within performance funnels. Therefore, the
+quadrotor attained the smooth tracking trajectory for landing
+although in the absence of the velocity information of the
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+LIN et al.: ROBUST IMAGE-BASED LANDING CONTROL OF QUADROTOR ON UNPREDICTABLE MOVING VEHICLE
+1439
+target. The experimental results verify that the quadrotor can
+track the target quickly and has a good tracking performance,
+which further exhibit the performance of the proposed method.
+V. CONCLUSION
+In this paper, a robust IBVS controller has been designed
+to land a quadrotor on an unpredictable moving vehicle using
+a circle feature. In particular, the passivity-like property of
+the circle features was preserved by reprojecting to the virtual
+image plane. By designing the error transformation in image
+space, the proposed IBVS controller can overcome the lack
+of both the desired depth information of the features and the
+velocity measurements of the targets. The proposed geometric
+attitude controller could cope with unpredictable moving target
+because the desired angular velocity was obtained by a com-
+mand ﬁlter. The stability of the landing control scheme was
+proved using Lyapunov stability theory on a cascaded system.
+Simulation studies and experiment results have demonstrated
+the effectiveness of the proposed controller. In the future work,
+we plan to extend the proposed strategy to situations where
+cameras have visibility constraints.
+REFERENCES
+[1] V. Kumar and N. Michael,
+“Opportunities
+and challenges
+with
+autonomous micro aerial vehicles,” Int. J. Robot. Res., vol. 31, no. 11,
+pp. 1279–1291, 2012.
+[2] D. Floreano and R. J. Wood, “Science, technology and the future of
+small autonomous drones,” Nature, vol. 521, no. 7553, pp. 460–466,
+2015.
+[3] N. Mathew, S. L. Smith, and S. L. Waslander, “Planning paths for
+package delivery in heterogeneous multirobot teams,” IEEE Trans.
+Autom. Sci. Eng., vol. 12, no. 4, pp. 1298–1308, Oct. 2015.
+[4] T. Ryan and H. J. Kim, “LMI-based gain synthesis for simple robust
+quadrotor control,” IEEE Trans. Autom. Sci. Eng., vol. 10, no. 4,
+pp. 1173–1178, Oct. 2013.
+[5] S. Grzonka, G. Grisetti, and W. Burgard, “A fully autonomous indoor
+quadrotor,” IEEE Trans. Robot., vol. 28, no. 1, pp. 90–100, Feb. 2012.
+[6] S.-R. Oh, K. Pathak, S. K. Agrawal, H. R. Pota, and M. Garratt,
+“Approaches for a tether-guided landing of an autonomous helicopter,”
+IEEE Trans. Robot., vol. 22, no. 3, pp. 536–544, Jun. 2006.
+[7] J. Dougherty, D. Lee, and T. Lee, “Laser-based guidance of a quadrotor
+uav for precise landing on an inclined surface,” in Proc. Amer. Control
+Conf., Jun. 2014, pp. 1210–1215.
+[8] B. J. Guerreiro, C. Silvestre, R. Cunha, and D. Cabecinhas, “LiDAR-
+based control of autonomous rotorcraft for the inspection of pier-
+like structures,” IEEE Trans. Control Syst. Technol., vol. 26, no. 4,
+pp. 1430–1438, Jul. 2017.
+[9] H. Wang, D. Zheng, J. Wang, W. Chen, and J. Yuan, “Ego-motion
+estimation of a quadrotor based on nonlinear observer,” IEEE/ASME
+Trans. Mechatronics, vol. 23, no. 3, pp. 1138–1147, Jun. 2018.
+[10] A. Huster, “Relative position sensing by fusion monocular vision and
+inertial rate sensors,” Ph.D. thesis, Stanford University, Stanford, CA,
+USA, 2003.
+[11] K. Zhang, F. Chaumette, and J. Chen, “Trifocal tensor-based 6-DOF
+visual servoing,” Int. J. Robot. Res., vol. 38, nos. 10–11, pp. 1208–1228,
+Sep. 2019.
+[12] G. Li, B. Gabrich, D. Saldana, J. Das, V. Kumar, and M. Yim,
+“ModQuad-vi: A vision-based self-assembling modular quadrotor,” in
+Proc. Int. Conf. Robot. Autom. (ICRA), May 2019, pp. 346–352.
+[13] K. P. Jain, M. Park, and M. W. Mueller, “Docking two multirotors in
+midair using relative vision measurements,” 2020, arXiv:2011.05565.
+[14] A. Paris, B. T. Lopez, and J. P. How, “Dynamic landing of an
+autonomous quadrotor on a moving platform in turbulent wind con-
+ditions,” in Proc. IEEE Int. Conf. Robot. Autom. (ICRA), May 2020,
+pp. 9577–9583.
+[15] J. Lin, Y. Wang, Z. Miao, H. Zhong, and R. Fierro, “Low-complexity
+control for vision-based landing of quadrotor UAV on unknown moving
+platform,” IEEE Trans. Ind. Informat., vol. 18, no. 8, pp. 5348–5358,
+Aug. 2022.
+[16] A. Borowczyk, D.-T. Nguyen, A. P.-V. Nguyen, D. Q. Nguyen,
+D. Saussie, and J. Le Ny, “Autonomous landing of a multirotor micro air
+vehicle on a high velocity ground vehicle,” IFAC-PapersOnLine, vol. 50,
+no. 1, pp. 10488–10494, 2017.
+[17] T. Baca et al., “Autonomous landing on a moving vehicle with an
+unmanned aerial vehicle,” J. Field Robot., vol. 36, no. 5, pp. 874–891,
+2019.
+[18] J. Ghommam and M. Saad, “Autonomous landing of a quadrotor on a
+moving platform,” IEEE Trans. Aerosp. Electron. Syst., vol. 53, no. 3,
+pp. 1504–1519, Jun. 2017.
+[19] F. Chaumette and S. Hutchinson, “Visual servo control. I. Basic
+approaches,” IEEE Robot. Autom. Mag., vol. 13, no. 4, pp. 82–90,
+Dec. 2006.
+[20] X. Li, H. Zhao, and H. Ding, “Logarithmic observation of feature depth
+for image-based visual servoing,” IEEE Trans. Autom. Sci. Eng., early
+access, Nov. 12, 2021, doi: 10.1109/TASE.2021.3125698.
+[21] T. Xu, Y. Guan, J. Liu, and X. Wu, “Image-based visual servoing of
+helical microswimmers for planar path following,” IEEE Trans. Autom.
+Sci. Eng., vol. 17, no. 1, pp. 325–333, Jan. 2020.
+[22] O. Bourquardez, R. Mahony, N. Guenard, F. Chaumette, T. Hamel, and
+L. Eck, “Image-based visual servo control of the translation kinematics
+of a quadrotor aerial vehicle,” IEEE Trans. Robot., vol. 25, no. 3,
+pp. 743–749, Jun. 2009.
+[23] T. Lee, M. Leok, and N. H. McClamroch, “Geometric tracking control
+of a quadrotor UAV on SE(3),” in Proc. 49th IEEE Conf. Decis. Control
+(CDC), Dec. 2010, pp. 5420–5425.
+[24] X. Zhang, J. Jiang, Y. Fang, X. Zhang, and X. Chen, “Enhanced ﬁducial
+marker based precise landing for quadrotors,” in Proc. IEEE/ASME Int.
+Conf. Adv. Intell. Mechatronics (AIM), Jul. 2019, pp. 1353–1358.
+[25] T. Hamel and R. Mahony, “Visual servoing of an under-actuated dynamic
+rigid-body system: An image-based approach,” IEEE Trans. Robot.
+Autom., vol. 18, no. 2, pp. 187–198, Apr. 2002.
+[26] N. Guenard, T. Hamel, and R. Mahony, “A practical visual servo control
+for an unmanned aerial vehicle,” IEEE Trans. Robot., vol. 24, no. 2,
+pp. 331–340, Apr. 2008.
+[27] R. Mebarki, V. Lippiello, and B. Siciliano, “Nonlinear visual control
+of unmanned aerial vehicles in GPS-denied environments,” IEEE Trans.
+Robot., vol. 31, no. 4, pp. 1004–1017, Aug. 2015.
+[28] B. Herissé, T. Hamel, R. Mahony, and F.-X. Russotto, “Landing a VTOL
+unmanned aerial vehicle on a moving platform using optical ﬂow,” IEEE
+Trans. Robot., vol. 28, no. 1, pp. 77–89, Feb. 2012.
+[29] P. Serra, R. Cunha, T. Hamel, D. Cabecinhas, and C. Silvestre, “Landing
+of a quadrotor on a moving target using dynamic image-based visual
+servo control,” IEEE Trans. Robot., vol. 32, no. 6, pp. 1524–1535,
+Dec. 2016.
+[30] H. Zhong et al., “A practical visual servo control for aerial manipulation
+using a spherical projection model,” IEEE Trans. Ind. Electron., vol. 67,
+no. 12, pp. 10564–10574, Dec. 2020.
+[31] O. Tahri and F. Chaumette, “Point-based and region-based image
+moments for visual servoing of planar objects,” IEEE Trans. Robot.,
+vol. 21, no. 6, pp. 1116–1127, Dec. 2005.
+[32] M. A. Raﬁque and A. F. Lynch, “Output-feedback image-based visual
+servoing for multirotor unmanned aerial vehicle line following,” IEEE
+Trans. Aerosp. Electron. Syst., vol. 56, no. 4, pp. 3182–3196, Aug. 2020.
+[33] D. Zheng, H. Wang, J. Wang, S. Chen, W. Chen, and X. Liang,
+“Image-based visual servoing of a quadrotor using virtual cam-
+era approach,” IEEE/ASME Trans. Mechatronics, vol. 22, no. 2,
+pp. 972–982, Apr. 2017.
+[34] H. Xie, K. H. Low, and Z. He, “Adaptive visual servoing of
+unmanned aerial vehicles in GPS-denied environments,” IEEE/ASME
+Trans. Mechatronics, vol. 22, no. 6, pp. 2554–2563, Dec. 2017.
+[35] D. Lee, T. Ryan, and H. J. Kim, “Autonomous landing of a VTOL UAV
+on a moving platform using image-based visual servoing,” in Proc. IEEE
+Int. Conf. Robot. Autom., May 2012, pp. 971–976.
+[36] D. Zheng, H. Wang, W. Chen, and Y. Wang, “Planning and tracking
+in image space for image-based visual servoing of a quadrotor,” IEEE
+Trans. Ind. Electron., vol. 65, no. 4, pp. 3376–3385, Apr. 2018.
+[37] K. Zhang, Y. Shi, and H. Sheng, “Robust nonlinear model predictive
+control based visual servoing of quadrotor UAVs,” IEEE/ASME Trans.
+Mechatronics, vol. 26, no. 2, pp. 700–708, Apr. 2021.
+[38] D. Zheng, H. Wang, J. Wang, X. Zhang, and W. Chen, “Toward visibility
+guaranteed visual servoing control of quadrotor UAVs,” IEEE/ASME
+Trans. Mechatronics, vol. 24, no. 3, pp. 1087–1095, Jun. 2019.
+[39] H. Xie and A. F. Lynch, “Input saturated visual servoing for unmanned
+aerial vehicles,” IEEE/ASME Trans. Mechatronics, vol. 22, no. 2,
+pp. 952–960, Apr. 2017.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 
+1440
+IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING, VOL. 20, NO. 2, APRIL 2023
+[40] Z. Cao et al., “Image dynamics-based visual servoing for quadrotors
+tracking a target with a nonlinear trajectory observer,” IEEE Trans. Syst.,
+Man, Cybern., Syst., vol. 50, no. 1, pp. 376–384, Jul. 2020.
+[41] H. Jabbari Asl, “Robust vision-based tracking control of VTOL
+unmanned
+aerial
+vehicles,”
+Automatica,
+vol.
+107,
+pp. 425–432,
+Sep. 2019.
+[42] A. Abdessameud and F. Janabi-Shariﬁ, “Image-based tracking control
+of VTOL unmanned aerial vehicles,” Automatica, vol. 53, pp. 111–119,
+Mar. 2015.
+[43] S. Wang, H. Yu, J. Yu, J. Na, and X. Ren, “Neural-network-based
+adaptive funnel control for servo mechanisms with unknown dead-zone,”
+IEEE Trans. Cybern., vol. 50, no. 4, pp. 1383–1394, Apr. 2020.
+[44] J. Lin, Y. Wang, Z. Miao, H. Zhong, J. Nie, and R. Fierro, “Robust
+image-based landing control of a quadrotor on an unknown moving
+platform using circle features,” in Proc. IEEE Int. Conf. Real-time
+Comput. Robot. (RCAR), Jul. 2021, pp. 177–182.
+[45] E. D. Sontag, Mathematical Control Theory: Deterministic Finite
+Dimensional Systems. New York, NY, USA: Springer-Verlag, 1990.
+[46] K. Mohta et al., “Fast, autonomous ﬂight in GPS-denied and cluttered
+environments,” J. Field Robot., vol. 35, no. 1, pp. 101–120, 2018.
+[47] R. Mahony, V. Kumar, and P. Corke, “Multirotor aerial vehicles: Mod-
+eling, estimation, and control of quadrotor,” IEEE Robot. Autom. Mag.,
+vol. 19, no. 3, pp. 20–32, Sep. 2012.
+[48] J. A. Farrell, M. Polycarpou, M. Sharma, and W. Dong, “Command
+ﬁltered backstepping,” IEEE Trans. Autom. Control, vol. 54, no. 6,
+pp. 1391–1395, Jun. 2009.
+Jie Lin received the B.S. degree in automation from
+the College of Electrical Engineering and Automa-
+tion, Fuzhou University, Fujian, China, in 2019.
+He is currently pursuing the Ph.D. degree in con-
+trol science and engineering with Hunan University,
+Changsha, China.
+His current research interests include multi-robot
+systems, visual servoing, and nonlinear control.
+Yaonan Wang received the B.S. degree in com-
+puter engineering from the East China University of
+Science and Technology (ECSTU), Fuzhou, China,
+in 1981, and the M.S. and Ph.D. degrees in electri-
+cal engineering from Hunan University, Changsha,
+China, in 1990 and 1994, respectively.
+He has been a Professor with Hunan University
+since 1995. His current research interests include
+robotics, intelligent perception and control, and com-
+puter vision for industrial applications. He is an aca-
+demician of the Chinese Academy of Engineering.
+Zhiqiang Miao (Member, IEEE) received the B.S.
+and Ph.D. degrees in electrical and information engi-
+neering from Hunan University, Changsha, China, in
+2010 and 2016, respectively.
+From 2014 to 2015, he was a Visiting Scholar with
+The University of New Mexico, Albuquerque, USA.
+From 2016 to 2018, he was a Post-Doctoral Fellow
+with the Department of Mechanical and Automation
+Engineering, The Chinese University of Hong Kong,
+Hong Kong, China. Currently, he is an Associate
+Professor with the College of Electrical and Infor-
+mation Engineering, Hunan University. His research interests include multi-
+robot systems, visual navigation, and nonlinear control. He was a recipient of
+the Outstanding Doctoral Dissertation Award of Hunan Province in 2018,
+the Outstanding Doctoral Dissertation Nomination Award of the Chinese
+Association of Control in 2018, and the IEEE ROBOTICS AND AUTOMATION
+LETTERS Best Paper Honorable Mention Award in 2020. He served as the
+Associate Editor for the ICRA 2022, IROS 2020, and IEEE ARM 2022.
+Hesheng Wang (Senior Member, IEEE) received
+the B.Eng. degree in electrical engineering from
+the Harbin Institute of Technology in 2002 and
+the M.Phil. and Ph.D. degrees in automation and
+computer-aided engineering from The Chinese Uni-
+versity of Hong Kong, China, in 2004 and 2007,
+respectively.
+He was a Post-Doctoral Fellow and a Research
+Assistant with the Department of Mechanical and
+Automation Engineering, The Chinese University of
+Hong Kong, from 2007 to 2009. He is currently a
+Professor with the Department of Automation, Shanghai Jiao Tong University.
+His current research interests include visual servoing, service robot, adaptive
+robot control, and autonomous driving. He was the General Chair of the
+IEEE RCAR 2016 and the Program Chair of the IEEE ROBIO 2014 and
+IEEE/ASME AIM 2019. He served as an Associate Editor for the IEEE
+TRANSACTIONS ON ROBOTICS from 2015 to 2019. He is an Associate
+Editor of Assembly Automation and the International Journal of Humanoid
+Robotics and a Technical Editor of the IEEE/ASME TRANSACTIONS ON
+MECHATRONICS.
+Rafael Fierro (Senior Member, IEEE) received the
+M.Sc. degree in control engineering from the Uni-
+versity of Bradford, U.K., and the Ph.D. degree in
+electrical engineering from The University of Texas
+at Arlington.
+Before joining UNM, he held a post-doctoral
+appointment with the General Robotics, Automa-
+tion, Sensing and Perception (GRASP) Laboratory,
+University of Pennsylvania; and a faculty position
+with the Department of Electrical and Computer
+Engineering, Oklahoma State University. He has
+been a Professor with the Department of Electrical and Computer Engineering,
+The University of New Mexico, since 2007. The National Science Foundation
+(NSF), the U.S. Army Research Laboratory (ARL); the Air Force Research
+Laboratory (AFRL), Department of Energy (DOE); and Sandia National
+Laboratories have funded his research. He directs the AFRL-UNM Agile
+Manufacturing Center and the Multi-Agent, Robotics, and Heterogeneous
+Systems (MARHES) Laboratory. His current research interests include het-
+erogeneous robotic networks, unmanned aerial systems (UAS), and space
+robotics for on-orbit servicing. He has served on the Editorial Board of the
+Journal of Intelligent and Robotic Systems, IEEE Control Systems Magazine,
+IEEE TRANSACTIONS ON CONTROL OF NETWORK SYSTEMS (T-CNS),
+and IEEE TRANSACTIONS ON AUTOMATION SCIENCE AND ENGINEERING
+(T-ASE). He was the recipient of the Fulbright Scholarship, the National
+Science Foundation CAREER Award, and the 2008 International Society of
+Automation (ISA) Transactions Best Paper Award.
+Authorized licensed use limited to: J.R.D. Tata Memorial Library Indian Institute of Science Bengaluru. Downloaded on May 31,2026 at 15:00:20 UTC from IEEE Xplore.  Restrictions apply. 

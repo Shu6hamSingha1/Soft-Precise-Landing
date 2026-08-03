@@ -1,0 +1,189 @@
+\documentclass{IEEEtaes}
+
+\usepackage{color,array,amsthm}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[nice]{nicefrac}
+\usepackage[center]{caption}
+\usepackage{subcaption}
+\bibliographystyle{IEEEtaes.bst}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
+
+\jvol{XX}
+\jnum{XX}
+\jmonth{XXXXX}
+\paper{1234567}
+\pubyear{2020}
+\doiinfo{TAES.2020.Doi Number}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\setcounter{page}{1}
+\newtheorem{remark}{Remark}
+\newtheorem{assumption}{Assumption}
+\newtheorem{definition}{Definition}
+%% \setcounter{secnumdepth}{0}
+
+% Revision markup: new/changed content rendered in red for reviewer pass.
+\newcommand{\new}[1]{\textcolor{red}{#1}}
+
+\begin{document}
+
+\title{Visual Dual-Funnel Adaptive Sliding-Mode Control for Guaranteed Soft-Precise Landing under Target Visibility Constraints}
+
+\author{SHUBHAM SINGHAL}
+\member{Graduate Student Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India}
+
+\author{SRIKRISHNA TKVSS}
+\member{Graduate Student Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India}
+
+\author{SURESH SUNDARAM}
+\member{Senior Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India} 
+
+\author{JISHNU KESHAVAN}
+\member{Member, IEEE}
+\affil{Indian Institute of Science, Bengaluru, Karnataka 560012, India}
+
+\receiveddate{Manuscript received XXXXX 00, 0000; revised XXXXX 00, 0000; accepted XXXXX 00, 0000.\\
+This work was supported in part by the SERB Core Research Grant CRG/2021/006872 and the Space Technology Cell Grant STC/P-486.}
+%% \accepteddate{XXXXX XX XXXX}
+%% \publisheddate{XXXXX XX XXXX}
+
+\corresp{Corresponding author: Shubham Singhal}
+
+\authoraddress{Shubham Singhal, Suresh Sundaram and Jishnu Keshavan are with the Robert Bosch Centre for Cyber-Physical Systems, Indian Institute of Science, Bengaluru, Karnataka 560012, India (e-mail: \href{mailto:shubhamsing2@iisc.ac.in}{shubhamsing2@iisc.ac.in}; \href{mailto:vssuresh@iisc.ac.in}{vssuresh@iisc.ac.in}; \href{mailto:kjishnu@iisc.ac.in}{kjishnu@iisc.ac.in}).
+SriKrishna TKVSS is with the Department of Mechanical Engineering, Indian Institute of Science, Bengaluru, Karnataka 560012, India (e-mail: \href{mailto:srikrishnat@iisc.ac.in}{srikrishnat@iisc.ac.in}).
+Suresh Sundaram is also with the Department of Aerospace Engineering, Indian Institute of Science, Bengaluru, Karnataka 560012, India.
+Jishnu Keshavan is also with the Department of Mechanical Engineering, Indian Institute of Science, Bengaluru, Karnataka 560012, India.}
+
+% \editor{Mentions of supplemental materials and animal/human rights statements can be included here.}
+\supplementary{A video of the closed-loop simulation runs is available at: \url{https://youtu.be/1wcuQ9zRay0}.}
+
+\markboth{SINGHAL ET AL.}{VISUAL DUAL-FUNNEL ASMC FOR SOFT-PRECISE LANDING}
+\maketitle
+
+\begin{abstract}This paper addresses autonomous soft-precise landing of a quadrotor on a moving target from monocular vision alone, with no metric depth or heading measurement. Existing visual-servoing laws built for tracking do not guarantee the soft-precise touchdown, motivating \emph{Visual Dual-Funnel Adaptive Sliding-Mode Control} (VDF-ASMC). An optic-flow funnel generates the commanded acceleration through a leakage-type adaptive sliding-mode law. A target image funnel defines a state-dependent attitude cone that kinematically clips the commanded acceleration, enforcing the visibility constraint. By deriving the desired optic flow and the yaw reference from scale-independent image parameters, VDF-ASMC eliminates the controller's dependence on metric-depth or heading measurements. A layered stability certificate delivers adaptive optic-flow funnel invariance, magnetometer-free heading alignment, and kinematic target visibility. Simulations across five initial conditions and five trajectories (including two ship-deck cases) under depth-dependent pixel noise, wind with turbulence, parametric uncertainty, ground effect, delay, and saturation yield a $25/25$ landing rate with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$ across the 25-run robustness study. In a comparative benchmark against four recent baselines, VDF-ASMC is the only controller to achieve worst-case $\le 2.1~\text{cm}$ touchdown on every trajectory in the IC$_2$ comparison study, well inside the $0.08~\text{m}$ precise threshold.
+\end{abstract}
+
+\begin{abstract}This paper addresses the challenge of ensuring autonomous soft-precise landing of a quadrotor on a moving target from pure monocular vision, with no additional metric depth or global heading measurement. In contrast to the existing image based visual-servoing laws, the current work proposes a \emph{Visual Dual-Funnel Adaptive Sliding-Mode Control} (VDF-ASMC) scheme, to operate under the combined constraints of no metric scale, input constraints and external disturbances. \textcolor{red}{ An optic-flow funnel along with a leakage-type adaptive sliding-mode law generates the commanded acceleration. A target image funnel defines a state-dependent attitude cone that kinematically clips the commanded acceleration, enforcing the visibility constraint. By deriving the desired optic flow and the yaw reference from scale-independent image parameters, VDF-ASMC eliminates the controller's dependence on metric-depth or heading measurements. A layered stability certificate delivers adaptive optic-flow funnel invariance, magnetometer-free heading alignment, and kinematic target visibility.} Simulations across five initial conditions and five trajectories (including two ship-deck cases) under depth-dependent pixel noise, wind with turbulence, parametric uncertainty, ground effect, delay, and saturation yield a $25/25$ landing rate with mean landing time $\le 18.2~\text{s}$ and worst-case horizontal error of $5.7~\text{cm}$ across the 25-run robustness study. In a comparative benchmark against four recent baselines, MDF-ASMC is the only controller to achieve worst-case $\le 2.1~\text{cm}$ touchdown on every trajectory in the IC$_2$ comparison study, well inside the $0.08~\text{m}$ precise threshold.
+\end{abstract}
+% \section*{Nomenclature}
+
+% \begin{tabular}{@{}l @{\quad=\quad} l@{}}
+% $t$ & time, s \\
+% $m$ & mass, kg \\
+% $\boldsymbol{r}$ & radial position vector, m \\
+% $\boldsymbol{v}$ & linear velocity vector, m/s \\
+% $\boldsymbol{\omega}$ & angular velocity vector, rad/s \\
+% $\boldsymbol{F}$ & force vector, N \\
+% $J$ & moment of inertia matrix, kg m$^2$ \\
+% $\boldsymbol{\tau}$ & torque vector, N m \\
+% $T$ & total thrust of the rotors, N \\
+% $\hat{\boldsymbol{r}}$ & image point \\
+% $\boldsymbol{s}$ & normalized position vector, rad \\
+% $\alpha$ & image orientation, rad \\
+% $\boldsymbol{h}$ & optical flow, rad/s \\
+% $\boldsymbol{q}$ & system output vector \\
+% $\boldsymbol{u}$ & system input vector \\
+% $\beta$ & uncertainty parameter \\
+% $\boldsymbol{c}$ & vector representing known system dynamics \\
+% $\boldsymbol{d}$ & vector representing unknown system dynamics \\
+% $\boldsymbol{p}$ & performance function vector \\
+% $V$ & Lyapunov function
+% \end{tabular}
+
+\section{INTRODUCTION} \label{intro: section}
+U{\scshape nmanned} Aerial Vehicles (UAVs) are increasingly tasked with autonomous landings on mobile platforms such as ships and ground vehicles \new{for delivery supplies and controlled landing on difficult terrains}~\cite{lin2022, herisse2012, paris2020, bouazza2025, singhal2025}. An imprecise landing \new{in such applications} risks missing the platform entirely or grazing its edge, while a hard landing risks airframe and payload damage on contact. Hence, the terminal landing phase demands both \emph{precise} positioning and a \emph{soft} touchdown. For a guaranteed soft-precise landing, the functional requirements are (a) the smooth lateral approach of the UAV to a close vicinity of the target before touchdown, and (b) the simultaneous convergence of the UAV's altitude and velocity to those of the target at touchdown.
+
+\new{Precise UAV positioning in practice faces three major challenges. First, the terminal-descent phase is often {GPS-denied} (e.g., shipboard recoveries, urban canyons, indoor warehouses)~\cite{xie2016}, so global-frame positioning can be either unavailable or corrupted, forcing the controller to rely on onboard relative cues for precision. Second, small UAVs impose strict size-weight-and-power (\emph{SWaP}) limits, making a single downward-facing monocular camera the most reliable practical exteroceptive sensor~\cite{chaumette2006, herisse2012}, which provides only the image features without metric scale information. Third, the target's three-dimensional geometry and instantaneous motion are unknown at flight time~\cite{lin2023, bouazza2025}. A landing controller that simultaneously delivers (a)--(b) under all three challenges is therefore the operational target of this paper.}
+
+\new{Existing visual-servoing solutions fall into position-based (PBVS) and image-based (IBVS) frameworks. PBVS approaches reconstruct an explicit metric 3-D pose of the target relative to the UAV and apply standard outer-loop position control on this reconstructed state. The reconstruction step requires one of (1) known target geometry with accurate camera intrinsics, degraded by calibration drift; (2) metric depth from a stereo rig or LiDAR, expensive on small platforms; or (3) GPS or motion-capture feedback, unavailable in the deployment scenarios above. Each of these conditions is fragile, and degradation of any of them biases the reconstructed pose and breaks the precise-touchdown guarantee. Two recent PBVS landing designs illustrate further structural drawbacks. The prescribed-performance design of~\cite{lin2022} enforces a backstepping cascade with two prescribed-performance barrier-function envelopes, one on the position error and one on the velocity error. The velocity-error envelope is driven to its barrier under mean wind plus moving-target chase, at which point the closed loop loses descent authority. The adaptive extended disturbance observer (AEDO) design of~\cite{zhang2026} adapts its observer bandwidth online but stabilizes the closed loop through a backstepping controller with fixed gains. The resulting per-axis closed-loop bandwidth is set in advance, and on faster moving targets the vertical descent loop completes before the horizontal loop has closed its lateral chase error.}
+
+\new{IBVS methods instead drive image features directly~\cite{chaumette2006}, with aerial extensions~\cite{jabbari2014, lee2012, fink2017, xie2016_2, xie2020} that introduce a virtual-camera abstraction and adaptive depth compensation. These designs target the precise-touchdown requirement through asymptotic image-feature convergence. They share three structural prerequisites incompatible with monocular scale-free operation, namely explicit metric depth or implicit scale information, noise-free image features, and perfect intrinsic calibration. Two adaptive IBVS landing designs illustrate further structural drawbacks. The feed-forward IBVS of~\cite{cho2022} uses an unscaled pseudo-inverse lateral velocity command together with an adaptive sigmoid that scales the descent command by the image-centroid displacement. The lateral and altitude commands are decoupled, so the lateral command can saturate the field of view before the sigmoid permits descent. The robust IBVS of~\cite{lin2023} shapes the image-feature error with a prescribed-performance funnel, but fixes that funnel in advance and carries no disturbance-rejection integrator, so a steady image offset persists under wind.}
+
+\new{These PBVS and IBVS frameworks target asymptotic position or image-feature convergence, which does not imply the soft touchdown. \emph{Optic flow} couples UAV-target relative altitude to their relative velocity~\cite{herisse2012, izzo2011, singhal2025}, so regulating it drives this velocity to zero as the altitude shrinks, without explicit metric-depth measurement. Existing optic-flow soft-landing designs are confined to narrow operating regimes. The spherical-optic-flow design of~\cite{herisse2012} stabilizes a constant offset from a moving platform and lands vertically. A high-gain orientation inner loop assumes an external attitude/heading reference. The optimal constant-flow guidance of~\cite{izzo2011} treats one-dimensional vertical descent on a stationary lunar surface. The adaptive optic-flow soft-landing law of~\cite{singhal2025} certifies vertical optic-flow descent on a stationary surface and holds the heading at a fixed reference, with lateral stabilization shown only experimentally. None of these designs certifies soft landing on a moving target with lateral motion.}
+
+\new{An orthogonal line of work enforces visibility constraints directly to keep the target inside the field of view (FoV). The constrained-IBVS design of~\cite{salehi2021} transforms the image-feature kinematics into an unconstrained system on a barrier-augmented state, with a control law that grows unbounded as the features approach the FoV boundary. The closed-loop guarantee is only local asymptotic stability on a stationary scene. The input-saturated visual servoing of~\cite{xie2016} regulates image moments in a virtual-camera frame and caps the roll, pitch, and thrust inputs with fixed nested saturation bounds. This design admits no rigorous FoV guarantee, and the saturation bound cannot tighten as the features approach the FoV edge. Both designs treat visibility as a standalone objective on a stationary scene, with no link to a descent or soft-touchdown requirement.}
+
+\new{Complementary approaches augment the visual loop with additional sensing or learning. The cascade observer of~\cite{bouazza2025} fuses inertial measurements from the UAV and the platform with monocular bearing and surface-normal observations to estimate relative pose and velocity. The design assumes a planar target geometry and an inter-platform communication link to exchange inertial data, and provides no closed-loop controller. The boundary-layer sliding controller of~\cite{paris2020} combines a GPS-aided extended Kalman filter with a vision-based platform estimator and a model-based wind feed-forward. The design relies on a partial GPS phase, motion-capture feedback for the UAV state, and a pre-characterized disturbance bound. The physics-informed Koopman operator of~\cite{kamath2026} trains a learned dynamics model offline and embeds it in a nonlinear model-predictive controller. The framework relies on a heavy onboard perception and optimization pipeline and targets generic trajectory tracking rather than the terminal landing phase.}
+
+\new{To the best of the authors' knowledge, the literature exhibits three research gaps that the present paper closes. \emph{(i)} A soft-precise touchdown on a moving target without reliance on metric scale estimates of target depth or vehicle velocity remains unaddressed. The PBVS, IBVS, sensor-fusion, and learning designs of~\cite{lin2022, zhang2026, cho2022, lin2023, bouazza2025, paris2020, kamath2026} all depend on metric-scale information through pose reconstruction, depth estimation, velocity feedback, auxiliary GPS, motion-capture, or offline training. The optic-flow designs of~\cite{herisse2012, izzo2011, singhal2025} relax this dependency but operate only on a stationary surface or under one-dimensional vertical descent. \emph{(ii)} Online identification of the full uncertainty on the optic-flow dynamics, including depth scaling, exogenous disturbances, and noisy image features, is unresolved. The adaptive observer of~\cite{zhang2026} adapts only an observer bandwidth while leaving the controller gains and disturbance bound fixed. The prescribed-performance designs of~\cite{lin2022, lin2023} fix the performance envelope in advance, and the sliding-mode design of~\cite{paris2020} fixes the disturbance bound in advance. The learned operator of~\cite{kamath2026} is trained offline. \emph{(iii)} A closed-loop stability certificate that simultaneously guarantees the soft touchdown, the precise touchdown, and target visibility is missing. The PBVS, IBVS, and optic-flow designs of~\cite{lin2022, zhang2026, cho2022, lin2023, herisse2012, izzo2011, singhal2025} carry no certificate that the target remains within the field of view. The visibility designs of~\cite{salehi2021, xie2016} carry no soft-precise touchdown certificate. These three gaps, summarized qualitatively in Table~\ref{tab:comparison}, motivate the Visual Dual-Funnel Adaptive Sliding-Mode Control (VDF-ASMC) framework developed in this paper.}
+
+The main contributions of this paper are:
+\begin{enumerate}
+    \item[(a)] \new{A leakage-type adaptive sliding-mode control (ASMC) law stabilizes an optic-flow funnel with a switching gain identified online without an \emph{a priori} uncertainty bound. A target image funnel sizes a state-dependent attitude cone that bounds the commanded acceleration to enforce the visibility constraint (Section~\ref{control design: section}-\ref{outer loop: section}, closing gap~(ii)).}
+    \item[(b)] \new{Optic flow and the virtual image orientation make VDF-ASMC the only scale-free framework in Table~\ref{tab:comparison}, eliminating the metric-depth and heading-measurement dependencies retained by existing image-based landing laws (Section~\ref{background: section}-\ref{image parameters: section}, closing gap~(i)).}
+    \item[(c)] \new{A layered Lyapunov argument proves the optic-flow error (Theorem~1) and the image-orientation error (Theorem~2) globally uniformly ultimately bounded (GUUB), and propagates the optic-flow invariance to a target-visibility certificate (Corollary~1). The visibility component of gap~(iii) is closed theoretically, and the soft-precise touchdown is validated empirically in (d) (Section~\ref{control design: section}-\ref{stability: section}).}
+    \item[(d)] \new{A 33-axis deep sweep over the locked VDF-ASMC parameters and a $\pm 40\%$ speed-envelope study empirically validate the soft-precise touchdown across the design margin. A comparative benchmark against four recent baselines~\cite{lin2022,zhang2026,lin2023,cho2022} under a shared disturbance model exposes the structural limitations summarized in Table~\ref{tab:comparison} (Section~\ref{experimentation: section}).}
+\end{enumerate}
+
+The rest of the paper is structured as follows. Section~\ref{background: section} presents the image-kinematic model of the optic-flow-guided soft-precise landing problem. Section~\ref{control design: section} develops the dual-funnel prescribed-performance design, the leakage-type adaptive sliding mode law, and the layered Lyapunov stability analysis. Section~\ref{experimentation: section} reports the numerical validation, including the robustness study across initial conditions (ICs) and target speeds and the comparative benchmark against four state-of-the-art landing controllers. Finally, Section~\ref{conclusion: section} presents the conclusions of this study.
+
+\begin{table}[!t]
+\centering
+\caption{Comparison of key features of related visual-servoing-based UAV landing strategies. \checkmark/$\times$ reflect framework intent as claimed by the original authors. Structural limitations exposed under the shared disturbance model are detailed in Section~\ref{experimentation: section}-\ref{comparison: subsec}.}
+\label{tab:comparison}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Reference} & \textbf{Scale} & \textbf{Robust} & \textbf{Disturbance} & \textbf{Input} & \textbf{Stability} \\
+ & \textbf{Free} & \textbf{Design} & \textbf{Handling} & \textbf{Saturation} & \textbf{Guarantee} \\
+\midrule
+\cite{jabbari2014}            & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
+\cite{lee2012}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{xie2016}                & $\times$ & $\times$    & $\times$    & \checkmark  & \checkmark  \\
+\cite{xie2016_2}              & $\times$ & $\times$    & \checkmark  & $\times$    & \checkmark  \\
+\cite{xie2020}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{salehi2021}             & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{paris2020}              & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{cho2022}                & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
+\cite{lin2022}                & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{lin2023}               & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\cite{bouazza2025}            & $\times$ & $\times$    & $\times$    & $\times$    & $\times$    \\
+\cite{kamath2026}             & $\times$ & \checkmark  & \checkmark  & \checkmark  & $\times$    \\
+\cite{zhang2026}              & $\times$ & \checkmark  & \checkmark  & $\times$    & \checkmark  \\
+\textbf{Proposed}            & \checkmark & \checkmark & \checkmark  & \checkmark  & \checkmark  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\input{control_formulation}
+
+\input{results}
+
+\section{CONCLUSION}
+\label{conclusion: section}
+VDF-ASMC delivers both the soft-precise touchdown and target visibility in closed-loop simulation, with no metric depth or heading measurement. A leakage-type adaptive sliding-mode law stabilizes the optic-flow funnel online without any \emph{a priori} uncertainty bound. An exponentially-decaying target image funnel sizes a state-dependent attitude cone that kinematically clips the commanded acceleration in closed form. A layered stability certificate delivers optic-flow funnel invariance, magnetometer-free heading alignment, and kinematic target visibility under actuator saturation, ground effect, pixel noise, and computational delay.
+
+Across twenty-five deterministic runs covering five ICs (nominal $+$ four displaced) and five target trajectories (including two ship-deck cases), the closed-loop simulation lands in every run with worst-case horizontal error $5.7~\text{cm}$ and remains soft and precise across a $\pm 40\%$ target-speed envelope. In a comparative benchmark against four recent baselines, VDF-ASMC is the only controller to clear the visibility, soft-touchdown, and precise-touchdown thresholds on every trajectory in the comparison study.
+
+Future work includes PX4 hardware-in-the-loop validation on the X500 platform, an analytic bound on the cone-projection residual to tighten Theorem~1's UUB bound (which currently absorbs the cone-projection residual into $\boldsymbol{d}_h$) from implicit absorption to an explicit residual, and a target-rate-adaptive funnel schedule to widen the admissible speed band beyond the $\pm 40\%$ envelope edge. Together, the dual-funnel architecture and its layered stability certificate establish the theoretical and empirical basis for autonomous monocular soft-precise landing on moving targets.
+
+\bibliography{IEEEabrv, bibliography}
+
+% \begin{IEEEbiography}{Shubham Singhal}{\space}(Graduate Student Member, IEEE) received the B.Tech. degree in mechanical engineering from the Delhi Technological University, Delhi, India, in 2017.  He is currently working toward a Ph.D. degree in cyber-physical systems with the Indian Institute of Science, Bengaluru, Karnataka, India.
+
+% From 2017 to 2021, he was a Mechanical Design Engineer at Larsen \& Toubro Limited, Bengaluru, Karnataka, India. His current research interests include robust control, adaptive non-linear control, and their applications to unmanned aerial vehicles.
+% \end{IEEEbiography}%
+
+% \begin{IEEEbiography}{Suresh Sundaram}(Senior Member, IEEE) received the Ph.D. degree in aerospace engineering from the Indian Institute of Science, Bengaluru, Karnataka, India, in 2005.
+
+% He is currently an Associate Professor with the Department of Aerospace Engineering and the Robert Bosch Centre for Cyber-Physical Systems at Indian Institute of Science, Bengaluru, Karnataka, India. From 2010 to 2018, he was an Associate Professor at the School of Computer Science and Engineering at Nanyang Technological University, Singapore. His research interests include flight control, unmanned aerial vehicle design, machine learning, optimization, and computer vision.
+% \end{IEEEbiography}
+
+% \begin{IEEEbiography}{Jishnu Keshavan} (Member, IEEE)  received the B.Tech. degree in aerospace engineering from the Indian Institute of Technology Bombay, Mumbai, India, in 2004, and the M.S. and Ph.D. degrees in aerospace engineering from the University of Maryland at College Park, College Park, MD, USA, in 2007 and 2012, respectively.
+
+% He is an Assistant Professor with the Department of Mechanical Engineering and the Robert Bosch Centre for Cyber-Physical Systems at Indian Institute of Science, Bengaluru, Karnataka, India. His research interests are broadly in the areas of dynamical systems theory, data-driven nonlinear dynamics and control, and autonomous vision.
+% \end{IEEEbiography}
+\end{document}

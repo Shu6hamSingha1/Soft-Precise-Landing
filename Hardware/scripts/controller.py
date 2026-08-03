@@ -448,6 +448,11 @@ class Controller(Thread):
         # Global (all-altitude) lateral-accel cap — tames the off-center APPROACH over-aggression
         # (a_u_xy ~102 at ~2.3m), which is where 53% of combined fly-aways breach. 0 = OFF.
         self._au_max_xy = float(os.environ.get("PLASMC_AU_MAX_XY", "0"))
+        # Global (all-altitude) vertical-accel cap -- bounds |a_u_z| so a stale-perception
+        # reacquisition burst (h_z frozen during coast -> real error dumped at once on
+        # reacquisition, seen hitting -7.4 m/s^2 in real flight 2026-08-03) can't fire an
+        # aggressive one-shot climb/descent command. 0 = OFF.
+        self._au_max_z = float(os.environ.get("PLASMC_AU_MAX_Z", "0.2"))
         self._commit_win = int(os.environ.get("PLASMC_COMMIT_WIN", "7"))   # median window vs extent spikes
         self._ext_win = deque(maxlen=self._commit_win)
         self._committed = False
@@ -1997,6 +2002,12 @@ class Controller(Thread):
             _nag = float(np.linalg.norm(a_u[:2]))
             if _nag > self._au_max_xy:
                 a_u[:2] = a_u[:2] * (self._au_max_xy / _nag)
+        # DESCENT-ONLY a_u_z cap (PLASMC_AU_MAX_Z): bound the DOWNWARD vertical accel at ALL
+        # altitudes; climb direction left uncapped. Found 2026-08-03: a_u_z hit -7.4 m/s^2 as a
+        # one-shot correction burst when perception reacquired after a coast during which h_z
+        # stayed frozen near zero (see project_pi_izeta_kappa_ratchet_fix memory). 0 = OFF.
+        if self._au_max_z > 0 and a_u[2] < -self._au_max_z:
+            a_u[2] = -self._au_max_z
         # NOTE: the legacy |a_u|>100 abort was removed. PX4 saturates attitude-
         # rate setpoints internally to physical limits (~±220 deg/s); an
         # over-large a_u from a noisy startup PID firing just produces a

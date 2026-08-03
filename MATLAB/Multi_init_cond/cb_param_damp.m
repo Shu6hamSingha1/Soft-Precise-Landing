@@ -1,0 +1,49 @@
+function cb_param_damp()
+% WHICH control parameter reduces the limit cycle? On Liss IC3 (keep s_ddot, tau=0.7),
+% from a fixed baseline, vary ONE parameter at a time and measure the CYCLE ITSELF:
+%   pp(vx) = peak-to-peak lateral vel over last 4 s (cycle amplitude),
+%   netDamp = corr(a_actual, vx) (more NEGATIVE = more damped),
+%   termV   = terminal |v|.
+% Baseline: kR=[3;3;0.5] kOmega=[0.6;0.6;0.1] Gamma_xy=0.44/0.5 E_xy=1.0 gamma2=0.2
+%           chi_r=0.85 p2inf=0.5. DROP = max-damping reference.
+    rows={ {'baseline',     '',0,0}, ...
+           {'kR_xy=1.5',    'KR',[1.5;1.5;0.5],0}, ...
+           {'kR_xy=4',      'KR',[4;4;0.5],0}, ...
+           {'kR_xy=5',      'KR',[5;5;0.5],0}, ...
+           {'kOmega_xy=0.3','KO',[0.3;0.3;0.1],0}, ...
+           {'kOmega_xy=1.0','KO',[1.0;1.0;0.1],0}, ...
+           {'Gamma_xy=1.0', 'GA',[1.0;1.0],0}, ...
+           {'Gamma_xy=2.0', 'GA',[2.0;2.0],0}, ...
+           {'E_xy=0.5',     'EX',[0.5;0.5],0}, ...
+           {'E_xy=0.3',     'EX',[0.3;0.3],0}, ...
+           {'gamma2=0.5',   'G2',[0.5;0.5],0}, ...
+           {'chi_r=0.5',    'CH',[0.5;0.5],0}, ...
+           {'chi_r=1.2',    'CH',[1.2;1.2],0}, ...
+           {'DROP s_ddot',  'DR',1,0} };
+    fprintf('  param         | pp(vx) | netDamp corr(a,vx) | termV\n');
+    for r=rows
+      rr=r{1}; fprintf('ROW %s\n',rr{1});
+      try; probe(rr{2},rr{3}); catch; fprintf('DATA DIVERGED\n'); end
+    end
+end
+function probe(pname,pval)
+    global IC_OVERRIDE NOISE_OVERRIDE TRAJ_OVERRIDE COMBINED_BARRIER C_SIMPLE CB_DROP_SDDOT CB_SDDOT_TAU ...
+           P2INF_XY_OVERRIDE CHI_R_OVERRIDE PRINF_OVERRIDE KR_OVERRIDE KOMEGA_OVERRIDE ...
+           GAMMA_XY_OVERRIDE E_XY_OVERRIDE GAMMA2_XY_OVERRIDE
+    IC_OVERRIDE=[2;-2;-5]; NOISE_OVERRIDE=0; TRAJ_OVERRIDE="Lissajous"; COMBINED_BARRIER=1; C_SIMPLE=1;
+    CB_DROP_SDDOT=0; CB_SDDOT_TAU=0.7; P2INF_XY_OVERRIDE=[0.5;0.5]; CHI_R_OVERRIDE=[0.85;0.85];
+    PRINF_OVERRIDE=[1.0;1.0]; KR_OVERRIDE=[3;3;0.5]; KOMEGA_OVERRIDE=[0.6;0.6;0.1];
+    GAMMA_XY_OVERRIDE=[]; E_XY_OVERRIDE=[]; GAMMA2_XY_OVERRIDE=[];
+    switch pname
+      case 'KR'; KR_OVERRIDE=pval;        case 'KO'; KOMEGA_OVERRIDE=pval;
+      case 'GA'; GAMMA_XY_OVERRIDE=pval;  case 'EX'; E_XY_OVERRIDE=pval;
+      case 'G2'; GAMMA2_XY_OVERRIDE=pval; case 'CH'; CHI_R_OVERRIDE=pval;
+      case 'DR'; CB_DROP_SDDOT=pval;
+    end
+    visualControl_IBVS_adaptive;
+    n=idx; w=min(400,n-5); k=(n-w):n;
+    vx=(X_DS(8,k)-dx_t(1,k))'; ax=gradient(vx,0.01);
+    a=ax-mean(ax); b=vx-mean(vx); dd=sqrt(sum(a.^2)*sum(b.^2)); cc=0; if dd>0; cc=sum(a.*b)/dd; end
+    vrel=I_v_c-dx_t(1:3,idx);
+    fprintf('DATA pp=%.3f netDamp=%+.2f termV=%.3f\n', max(vx)-min(vx), cc, norm(vrel));
+end

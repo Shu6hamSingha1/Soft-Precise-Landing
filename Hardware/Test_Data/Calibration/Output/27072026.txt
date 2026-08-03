@@ -1,0 +1,1619 @@
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:01:21,920 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:01:21,958 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:01:21,970 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:01:21,974 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:01:21,974 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:01:23,044 - qtm - INFO - Connected
+[1:05:27.829837780] [2486]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[1:05:27.849029071] [2529]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[1:05:27.874240720] [2529]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[1:05:27.880858704] [2529]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[1:05:27.880927204] [2529]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:01:23,192 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:01:23,193 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:01:23,197 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:05:27.889045311] [2486]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[1:05:27.889649048] [2529]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:01:23,200 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:01:23,221 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 55.62, 'img_process_freq': 17.48}
+{'fps': 56.37, 'img_process_freq': 67.47}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.0, 'img_process_freq': 34.34}
+{'fps': 57.43, 'img_process_freq': 67.31}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.98, 'img_process_freq': 35.03}
+{'fps': 59.04, 'img_process_freq': 78.52}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.09, 'img_process_freq': 58.59}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.18, 'img_process_freq': 33.29}
+{'fps': 59.19, 'img_process_freq': 55.62}
+{'fps': 59.23, 'img_process_freq': 64.14}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.31, 'img_process_freq': 32.29}
+{'fps': 59.33, 'img_process_freq': 42.53}
+{'fps': 59.36, 'img_process_freq': 88.24}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+Status: CRITICAL: Preflight: GPS fix too low
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:01:53,188 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 22:01:53,247 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   29.9 s
+ flow samples  :   1494   OK  (need >=300)
+ feature samp  :   1494
+ X span        :   0.50 m OK  (need >=0.40)
+ Y span        :   0.88 m OK  (need >=0.40)
+ Z span        :   1.18 m OK  (need >=0.40)
+ yaw span      :   75.2 d OK  (need >=20)
+ height range  :  0.17 ..  1.35 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 22:02:05,229 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:07:27,920 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:07:27,960 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:07:27,973 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:07:27,977 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:07:27,977 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:07:28,970 - qtm - INFO - Connected
+[1:11:33.756385964] [2585]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[1:11:33.775812382] [2628]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[1:11:33.800674703] [2628]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[1:11:33.806957535] [2628]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[1:11:33.807025440] [2628]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:07:29,118 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:07:29,119 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:07:29,124 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:11:33.815235439] [2585]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[1:11:33.815678514] [2628]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:07:29,126 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:07:29,147 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 42.92, 'img_process_freq': 33.53}
+{'fps': 51.48, 'img_process_freq': 34.65}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 54.42, 'img_process_freq': 38.58}
+{'fps': 55.84, 'img_process_freq': 59.27}
+{'fps': 56.69, 'img_process_freq': 54.04}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.51, 'img_process_freq': 31.77}
+{'fps': 57.86, 'img_process_freq': 64.29}
+{'fps': 58.08, 'img_process_freq': 38.87}
+{'fps': 58.28, 'img_process_freq': 39.62}
+{'fps': 58.44, 'img_process_freq': 58.4}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:07:48,310 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 22:07:48,310 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   19.1 s
+ flow samples  :    917   OK  (need >=300)
+ feature samp  :    917
+ X span        :   0.18 m LOW (need >=0.40)
+ Y span        :   0.69 m OK  (need >=0.40)
+ Z span        :   1.29 m OK  (need >=0.40)
+ yaw span      :   86.3 d OK  (need >=20)
+ height range  :  0.17 ..  1.45 m
+ VERDICT: WEAK - low excitation in: X
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 22:07:54,523 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:15:17,412 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:15:17,450 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:15:17,464 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:15:17,467 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:15:17,468 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:15:18,399 - qtm - INFO - Connected
+[1:19:23.190207019] [2669]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[1:19:23.209276834] [2712]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[1:19:23.233182153] [2712]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[1:19:23.239324831] [2712]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[1:19:23.239394496] [2712]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:15:18,551 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:15:18,551 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:15:18,556 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:19:23.247173656] [2669]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[1:19:23.247577906] [2712]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:15:18,557 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:15:18,578 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 46.56, 'img_process_freq': 36.47}
+{'fps': 52.44, 'img_process_freq': 39.96}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 54.88, 'img_process_freq': 39.21}
+{'fps': 55.96, 'img_process_freq': 40.34}
+{'fps': 56.84, 'img_process_freq': 38.52}
+{'fps': 57.36, 'img_process_freq': 36.79}
+{'fps': 57.72, 'img_process_freq': 40.89}
+{'fps': 57.97, 'img_process_freq': 59.38}
+{'fps': 58.19, 'img_process_freq': 38.67}
+Status: CRITICAL: Preflight Fail: Yaw estimate error
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 58.39, 'img_process_freq': 41.27}
+{'fps': 58.54, 'img_process_freq': 42.57}
+{'fps': 58.66, 'img_process_freq': 39.83}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 58.76, 'img_process_freq': 40.9}
+{'fps': 58.86, 'img_process_freq': 63.22}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 58.93, 'img_process_freq': 35.96}
+{'fps': 59.01, 'img_process_freq': 41.19}
+Status: CRITICAL: Preflight Fail: Yaw estimate error
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 59.07, 'img_process_freq': 40.11}
+{'fps': 59.12, 'img_process_freq': 40.5}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 59.17, 'img_process_freq': 56.35}
+{'fps': 59.22, 'img_process_freq': 37.6}
+{'fps': 59.26, 'img_process_freq': 61.09}
+{'fps': 59.29, 'img_process_freq': 34.04}
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 59.33, 'img_process_freq': 153.61}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS fix too low
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:15:45,501 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 22:15:45,656 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   26.9 s
+ flow samples  :   1229   OK  (need >=300)
+ feature samp  :   1229
+ X span        :   0.24 m LOW (need >=0.40)
+ Y span        :   0.36 m LOW (need >=0.40)
+ Z span        :   1.19 m OK  (need >=0.40)
+ yaw span      :  375.4 d OK  (need >=20)
+ height range  :  0.16 ..  1.35 m
+ VERDICT: WEAK - low excitation in: X, Y
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 22:15:48,517 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:19:52,186 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:19:52,225 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:19:52,238 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:19:52,242 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:19:52,242 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Status: CRITICAL: Preflight: GPS fix too low
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:19:53,061 - qtm - INFO - Connected
+[1:23:57.850201958] [2757]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[1:23:57.869443875] [2800]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[1:23:57.893813866] [2800]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[1:23:57.900217623] [2800]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[1:23:57.900284510] [2800]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:19:53,211 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:19:53,212 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:19:53,217 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:23:57.908715897] [2757]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[1:23:57.909165834] [2800]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:19:53,219 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:19:53,241 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 52.84, 'img_process_freq': 41.86}
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 54.94, 'img_process_freq': 32.37}
+{'fps': 56.13, 'img_process_freq': 32.68}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 56.86, 'img_process_freq': 32.36}
+{'fps': 57.33, 'img_process_freq': 27.31}
+{'fps': 57.67, 'img_process_freq': 33.98}
+{'fps': 58.01, 'img_process_freq': 29.32}
+{'fps': 58.2, 'img_process_freq': 36.11}
+{'fps': 58.4, 'img_process_freq': 25.88}
+{'fps': 58.54, 'img_process_freq': 34.62}
+{'fps': 58.65, 'img_process_freq': 28.8}
+{'fps': 58.78, 'img_process_freq': 35.25}
+{'fps': 58.84, 'img_process_freq': 29.8}
+{'fps': 58.95, 'img_process_freq': 31.36}
+{'fps': 59.02, 'img_process_freq': 26.61}
+{'fps': 59.07, 'img_process_freq': 29.39}
+{'fps': 59.13, 'img_process_freq': 56.47}
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS fix too low
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:20:16,813 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 22:20:16,910 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   23.5 s
+ flow samples  :    944   OK  (need >=300)
+ feature samp  :    944
+ X span        :   0.36 m LOW (need >=0.40)
+ Y span        :   0.65 m OK  (need >=0.40)
+ Z span        :   1.22 m OK  (need >=0.40)
+ yaw span      :  389.6 d OK  (need >=20)
+ height range  :  0.16 ..  1.39 m
+ VERDICT: WEAK - low excitation in: X
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 22:20:18,421 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:22:39,268 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:22:39,307 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:22:39,320 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:22:39,323 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:22:39,324 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:22:40,324 - qtm - INFO - Connected
+[1:26:45.102987854] [2852]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[1:26:45.122095621] [2895]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[1:26:45.146681726] [2895]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[1:26:45.153064068] [2895]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[1:26:45.153132623] [2895]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:22:40,465 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:22:40,465 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:22:40,470 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[1:26:45.161285066] [2852]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[1:26:45.161848927] [2895]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:22:40,472 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:22:40,493 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 51.96, 'img_process_freq': 35.9}
+{'fps': 54.65, 'img_process_freq': 44.3}
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 55.81, 'img_process_freq': 42.42}
+{'fps': 56.75, 'img_process_freq': 70.33}
+{'fps': 57.23, 'img_process_freq': 67.18}
+{'fps': 57.65, 'img_process_freq': 62.43}
+{'fps': 57.95, 'img_process_freq': 60.44}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.33, 'img_process_freq': 38.21}
+{'fps': 58.47, 'img_process_freq': 40.03}
+{'fps': 58.62, 'img_process_freq': 41.69}
+{'fps': 58.73, 'img_process_freq': 56.71}
+{'fps': 58.82, 'img_process_freq': 30.38}
+{'fps': 58.89, 'img_process_freq': 62.39}
+{'fps': 58.97, 'img_process_freq': 39.8}
+{'fps': 59.05, 'img_process_freq': 55.81}
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+{'fps': 59.1, 'img_process_freq': 56.23}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS fix too low
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:23:03,749 - qtm - INFO - Disconnected
+2026-07-26 22:23:03,766 - picamera2.picamera2 - INFO - Camera stopped
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   23.2 s
+ flow samples  :   1227   OK  (need >=300)
+ feature samp  :   1227
+ X span        :   0.30 m LOW (need >=0.40)
+ Y span        :   0.51 m OK  (need >=0.40)
+ Z span        :   1.26 m OK  (need >=0.40)
+ yaw span      :  322.8 d OK  (need >=20)
+ height range  :  0.17 ..  1.43 m
+ VERDICT: WEAK - low excitation in: X
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 22:23:05,375 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh -Y doctor@192.168.0.161
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sun Jul 26 21:14:16 2026 from 192.168.0.119
+(denv) doctor@doctor:~ $ cd /home/doctor/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ cd /home/doctor/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 22:58:18,788 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 22:58:18,826 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 22:58:18,839 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 22:58:18,843 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 22:58:18,843 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 22:58:19,678 - qtm - INFO - Connected
+[2:02:24.616348814] [3134]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:02:24.635117402] [3177]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:02:24.659392553] [3177]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:02:24.665641885] [3177]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:02:24.665717014] [3177]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 22:58:19,977 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 22:58:19,977 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 22:58:19,982 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:02:24.673884396] [3134]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:02:24.674482056] [3177]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 22:58:19,984 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 22:58:20,005 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 45.47, 'img_process_freq': 31.31}
+{'fps': 52.12, 'img_process_freq': 59.27}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.3, 'img_process_freq': 31.93}
+{'fps': 56.94, 'img_process_freq': 65.25}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.75, 'img_process_freq': 31.78}
+{'fps': 58.04, 'img_process_freq': 27.0}
+{'fps': 58.23, 'img_process_freq': 53.13}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.21, 'img_process_freq': 36.86}
+{'fps': 59.25, 'img_process_freq': 33.67}
+{'fps': 59.29, 'img_process_freq': 30.32}
+{'fps': 59.33, 'img_process_freq': 60.54}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 22:58:43,331 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 22:58:43,377 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   23.3 s
+ flow samples  :    959   OK  (need >=300)
+ feature samp  :    959
+ X span        :   0.60 m OK  (need >=0.40)
+ Y span        :   0.44 m OK  (need >=0.40)
+ Z span        :   0.34 m LOW (need >=0.40)
+ yaw span      :   68.6 d OK  (need >=20)
+ height range  :  0.85 ..  1.19 m
+ VERDICT: WEAK - low excitation in: Z
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 22:58:53,953 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_CENTROID_RATE=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:00:57,710 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:00:57,749 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:00:57,762 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:00:57,765 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:00:57,766 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:00:58,778 - qtm - INFO - Connected
+[2:05:03.565953535] [3216]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:05:03.585381431] [3259]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:05:03.610303946] [3259]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:05:03.616577649] [3259]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:05:03.616648407] [3259]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:00:58,928 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:00:58,928 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:00:58,933 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:05:03.624721347] [3216]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:05:03.625158138] [3259]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:00:58,935 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:00:58,957 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 53.62, 'img_process_freq': 35.31}
+{'fps': 55.3, 'img_process_freq': 62.12}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.56, 'img_process_freq': 31.51}
+{'fps': 57.17, 'img_process_freq': 52.54}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.79, 'img_process_freq': 36.87}
+{'fps': 58.04, 'img_process_freq': 52.38}
+{'fps': 58.27, 'img_process_freq': 50.7}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.8, 'img_process_freq': 38.47}
+{'fps': 58.86, 'img_process_freq': 34.92}
+{'fps': 58.96, 'img_process_freq': 33.76}
+{'fps': 59.01, 'img_process_freq': 28.72}
+{'fps': 59.04, 'img_process_freq': 38.96}
+{'fps': 59.12, 'img_process_freq': 30.9}
+{'fps': 59.16, 'img_process_freq': 27.87}
+{'fps': 59.23, 'img_process_freq': 28.67}
+{'fps': 59.26, 'img_process_freq': 32.05}
+{'fps': 59.31, 'img_process_freq': 28.14}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:01:22,298 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:01:22,405 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   23.3 s
+ flow samples  :    895   OK  (need >=300)
+ feature samp  :    895
+ X span        :   0.48 m OK  (need >=0.40)
+ Y span        :   0.43 m OK  (need >=0.40)
+ Z span        :   0.40 m OK  (need >=0.40)
+ yaw span      :   75.2 d OK  (need >=20)
+ height range  :  0.75 ..  1.15 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 23:01:26,306 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_CENTROID_RATE=0 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:01:41,214 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:01:41,252 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:01:41,266 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:01:41,269 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:01:41,269 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:01:42,591 - qtm - INFO - Connected
+[2:05:47.391822452] [3272]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:05:47.411839749] [3315]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:05:47.437729457] [3315]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:05:47.444552819] [3315]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:05:47.444639892] [3315]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:01:42,756 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:01:42,756 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:01:42,762 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:05:47.467817077] [3272]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:05:47.468324219] [3315]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:01:42,778 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:01:42,801 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 41.56, 'img_process_freq': 34.16}
+{'fps': 51.24, 'img_process_freq': 67.99}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 55.09, 'img_process_freq': 31.99}
+{'fps': 56.2, 'img_process_freq': 65.8}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.92, 'img_process_freq': 34.4}
+{'fps': 58.98, 'img_process_freq': 64.07}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.14, 'img_process_freq': 37.49}
+{'fps': 59.17, 'img_process_freq': 34.93}
+{'fps': 59.21, 'img_process_freq': 33.76}
+{'fps': 59.26, 'img_process_freq': 27.84}
+{'fps': 59.29, 'img_process_freq': 33.14}
+{'fps': 59.31, 'img_process_freq': 41.81}
+{'fps': 59.36, 'img_process_freq': 30.94}
+{'fps': 59.39, 'img_process_freq': 30.58}
+{'fps': 59.4, 'img_process_freq': 33.31}
+{'fps': 59.43, 'img_process_freq': 35.49}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:02:11,134 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:02:11,238 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   28.3 s
+ flow samples  :   1122   OK  (need >=300)
+ feature samp  :   1122
+ X span        :   0.50 m OK  (need >=0.40)
+ Y span        :   0.57 m OK  (need >=0.40)
+ Z span        :   0.68 m OK  (need >=0.40)
+ yaw span      :   74.0 d OK  (need >=20)
+ height range  :  0.67 ..  1.35 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:02:14,385 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_CENTROID_RATE=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:04:35,495 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:04:35,532 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:04:35,541 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:04:35,546 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:04:35,546 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:04:36,448 - qtm - INFO - Connected
+[2:08:41.235707737] [3364]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:08:41.254854934] [3407]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:08:41.279044441] [3407]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:08:41.285352810] [3407]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:08:41.285423624] [3407]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:04:36,597 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:04:36,597 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:04:36,602 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:08:41.293366381] [3364]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:08:41.293845413] [3407]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:04:36,604 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:04:36,624 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:04:56,353 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:04:56,379 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   19.7 s
+ flow samples  :    778   OK  (need >=300)
+ feature samp  :    778
+ X span        :   0.90 m OK  (need >=0.40)
+ Y span        :   0.69 m OK  (need >=0.40)
+ Z span        :   1.02 m OK  (need >=0.40)
+ yaw span      :   81.6 d OK  (need >=20)
+ height range  :  0.16 ..  1.18 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)n
+Closed without saving!
+2026-07-26 23:04:58,558 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_CENTROID_RATE=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:05:22,656 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:05:22,697 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:05:22,708 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:05:22,712 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:05:22,712 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:05:23,812 - qtm - INFO - Connected
+[2:09:28.599371795] [3421]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:09:28.618905914] [3464]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:09:28.643850746] [3464]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:09:28.650267780] [3464]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:09:28.650338557] [3464]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:05:23,962 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:05:23,962 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:05:23,967 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:09:28.658809660] [3421]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:09:28.659240136] [3464]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:05:23,969 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:05:23,990 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+LANDING PAD VISIBLE NOW...
+{'fps': 8.87, 'img_process_freq': 35.14}
+{'fps': 47.45, 'img_process_freq': 40.52}
+{'fps': 52.79, 'img_process_freq': 48.97}
+{'fps': 54.97, 'img_process_freq': 68.42}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.14, 'img_process_freq': 35.7}
+{'fps': 56.88, 'img_process_freq': 38.34}
+{'fps': 57.35, 'img_process_freq': 37.96}
+{'fps': 57.73, 'img_process_freq': 61.67}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.25, 'img_process_freq': 38.48}
+{'fps': 58.41, 'img_process_freq': 55.79}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.67, 'img_process_freq': 38.71}
+{'fps': 58.78, 'img_process_freq': 67.06}
+{'fps': 58.88, 'img_process_freq': 26.11}
+{'fps': 58.94, 'img_process_freq': 29.92}
+{'fps': 59.0, 'img_process_freq': 30.76}
+{'fps': 59.05, 'img_process_freq': 32.62}
+{'fps': 59.13, 'img_process_freq': 31.23}
+{'fps': 59.18, 'img_process_freq': 28.45}
+{'fps': 59.21, 'img_process_freq': 31.45}
+{'fps': 59.25, 'img_process_freq': 29.69}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:05:46,252 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:05:46,253 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   22.2 s
+ flow samples  :    880   OK  (need >=300)
+ feature samp  :    880
+ X span        :   0.79 m OK  (need >=0.40)
+ Y span        :   0.46 m OK  (need >=0.40)
+ Z span        :   0.48 m OK  (need >=0.40)
+ yaw span      :   79.8 d OK  (need >=20)
+ height range  :  0.74 ..  1.23 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 23:05:49,264 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_CENTROID_RATE=0 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:05:55,251 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:05:55,290 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:05:55,303 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:05:55,306 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:05:55,307 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:05:56,273 - qtm - INFO - Connected
+[2:10:01.053991083] [3476]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:10:01.073160132] [3519]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:10:01.097746542] [3519]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:10:01.104120429] [3519]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:10:01.104187336] [3519]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:05:56,415 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:05:56,416 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:05:56,421 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:10:01.112636476] [3476]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:10:01.113044119] [3519]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:05:56,423 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:05:56,444 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 54.6, 'img_process_freq': 33.79}
+{'fps': 55.95, 'img_process_freq': 38.8}
+{'fps': 56.75, 'img_process_freq': 68.0}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+No common marker in both frames. Skipping optical flow calculation.
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.78, 'img_process_freq': 33.54}
+{'fps': 58.03, 'img_process_freq': 42.8}
+{'fps': 58.32, 'img_process_freq': 27.18}
+{'fps': 58.47, 'img_process_freq': 28.4}
+{'fps': 58.61, 'img_process_freq': 63.59}
+{'fps': 58.7, 'img_process_freq': 61.17}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.83, 'img_process_freq': 38.09}
+{'fps': 58.92, 'img_process_freq': 51.8}
+{'fps': 58.98, 'img_process_freq': 40.07}
+{'fps': 59.04, 'img_process_freq': 38.11}
+{'fps': 59.09, 'img_process_freq': 39.2}
+{'fps': 59.14, 'img_process_freq': 33.93}
+{'fps': 59.18, 'img_process_freq': 42.3}
+{'fps': 59.22, 'img_process_freq': 36.24}
+{'fps': 59.27, 'img_process_freq': 33.47}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:06:19,162 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:06:19,307 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   22.7 s
+ flow samples  :    922   OK  (need >=300)
+ feature samp  :    922
+ X span        :   0.71 m OK  (need >=0.40)
+ Y span        :   0.38 m LOW (need >=0.40)
+ Z span        :   0.54 m OK  (need >=0.40)
+ yaw span      :   65.2 d OK  (need >=20)
+ height range  :  0.69 ..  1.23 m
+ VERDICT: WEAK - low excitation in: Y
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 23:06:21,368 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:23:13,457 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:23:13,492 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:23:13,501 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:23:13,506 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:23:13,506 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Status: CRITICAL: Preflight: GPS fix too low
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:23:14,435 - qtm - INFO - Connected
+[2:27:19.222619759] [3673]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:27:19.241689353] [3716]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:27:19.265834818] [3716]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:27:19.271982049] [3716]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:27:19.272133677] [3716]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:23:14,583 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:23:14,584 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:23:14,589 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:27:19.280459292] [3673]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:27:19.280882251] [3716]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:23:14,591 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:23:14,612 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 51.59, 'img_process_freq': 32.78}
+{'fps': 54.44, 'img_process_freq': 71.63}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.23, 'img_process_freq': 35.34}
+{'fps': 58.4, 'img_process_freq': 26.53}
+{'fps': 58.54, 'img_process_freq': 81.86}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.65, 'img_process_freq': 66.55}
+{'fps': 58.77, 'img_process_freq': 76.91}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.88, 'img_process_freq': 29.41}
+{'fps': 58.94, 'img_process_freq': 89.89}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.02, 'img_process_freq': 36.24}
+{'fps': 59.09, 'img_process_freq': 67.22}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.13, 'img_process_freq': 33.51}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:23:34,041 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:23:34,200 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   19.4 s
+ flow samples  :    927   OK  (need >=300)
+ feature samp  :    927
+ X span        :   0.53 m OK  (need >=0.40)
+ Y span        :   0.41 m OK  (need >=0.40)
+ Z span        :   0.28 m LOW (need >=0.40)
+ yaw span      :  100.7 d OK  (need >=20)
+ height range  :  0.85 ..  1.13 m
+ VERDICT: WEAK - low excitation in: Z
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 23:23:39,863 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:24:29,701 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:24:29,740 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:24:29,753 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:24:29,756 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:24:29,756 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:24:30,855 - qtm - INFO - Connected
+[2:28:35.642718026] [3754]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:28:35.662067207] [3798]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:28:35.686654702] [3798]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:28:35.692971412] [3798]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:28:35.693040078] [3798]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:24:31,004 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:24:31,005 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:24:31,010 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:28:35.701463932] [3754]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:28:35.701890501] [3798]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:24:31,012 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:24:31,035 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 51.67, 'img_process_freq': 43.06}
+{'fps': 54.45, 'img_process_freq': 66.3}
+{'fps': 55.85, 'img_process_freq': 77.04}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.65, 'img_process_freq': 39.95}
+{'fps': 57.2, 'img_process_freq': 58.81}
+{'fps': 57.65, 'img_process_freq': 27.12}
+{'fps': 57.89, 'img_process_freq': 30.24}
+{'fps': 58.16, 'img_process_freq': 66.68}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.38, 'img_process_freq': 37.72}
+{'fps': 58.51, 'img_process_freq': 28.25}
+{'fps': 58.65, 'img_process_freq': 31.53}
+{'fps': 58.75, 'img_process_freq': 27.68}
+{'fps': 58.82, 'img_process_freq': 49.13}
+{'fps': 58.91, 'img_process_freq': 67.35}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.07, 'img_process_freq': 32.45}
+{'fps': 59.12, 'img_process_freq': 37.31}
+{'fps': 59.16, 'img_process_freq': 38.13}
+{'fps': 59.22, 'img_process_freq': 58.05}
+{'fps': 59.26, 'img_process_freq': 58.42}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:24:52,794 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:24:52,854 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   21.7 s
+ flow samples  :    929   OK  (need >=300)
+ feature samp  :    929
+ X span        :   0.36 m LOW (need >=0.40)
+ Y span        :   0.36 m LOW (need >=0.40)
+ Z span        :   0.62 m OK  (need >=0.40)
+ yaw span      :   75.7 d OK  (need >=20)
+ height range  :  0.78 ..  1.40 m
+ VERDICT: WEAK - low excitation in: X, Y
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)
+Saved to CSV!
+2026-07-26 23:24:57,808 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:26:02,878 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:26:02,916 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:26:02,930 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:26:02,933 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:26:02,934 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:26:04,023 - qtm - INFO - Connected
+[2:30:08.808699213] [3834]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:30:08.829165880] [3877]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:30:08.854582863] [3877]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:30:08.861340512] [3877]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:30:08.861410418] [3877]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:26:04,173 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:26:04,173 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:26:04,178 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:30:08.869790012] [3834]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:30:08.870241748] [3877]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:26:04,180 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:26:04,201 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+LANDING PAD VISIBLE NOW...
+{'fps': 8.95, 'img_process_freq': 34.21}
+{'fps': 47.49, 'img_process_freq': 41.67}
+{'fps': 52.85, 'img_process_freq': 61.76}
+{'fps': 54.99, 'img_process_freq': 64.03}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.08, 'img_process_freq': 39.24}
+{'fps': 56.9, 'img_process_freq': 38.91}
+{'fps': 57.37, 'img_process_freq': 34.53}
+{'fps': 57.74, 'img_process_freq': 84.86}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.23, 'img_process_freq': 36.7}
+{'fps': 58.4, 'img_process_freq': 57.05}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.52, 'img_process_freq': 32.0}
+{'fps': 58.68, 'img_process_freq': 36.05}
+{'fps': 58.79, 'img_process_freq': 73.69}
+{'fps': 58.87, 'img_process_freq': 39.49}
+{'fps': 58.93, 'img_process_freq': 41.37}
+{'fps': 59.0, 'img_process_freq': 39.38}
+{'fps': 59.08, 'img_process_freq': 58.43}
+{'fps': 59.14, 'img_process_freq': 45.11}
+{'fps': 59.17, 'img_process_freq': 29.62}
+{'fps': 59.22, 'img_process_freq': 35.62}
+{'fps': 59.26, 'img_process_freq': 34.12}
+{'fps': 59.3, 'img_process_freq': 90.61}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.32, 'img_process_freq': 36.33}
+{'fps': 59.36, 'img_process_freq': 66.38}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.42, 'img_process_freq': 37.52}
+{'fps': 59.45, 'img_process_freq': 61.47}
+{'fps': 59.48, 'img_process_freq': 79.91}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:26:35,398 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:26:35,505 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   31.1 s
+ flow samples  :   1482   OK  (need >=300)
+ feature samp  :   1482
+ X span        :   0.57 m OK  (need >=0.40)
+ Y span        :   0.82 m OK  (need >=0.40)
+ Z span        :   0.67 m OK  (need >=0.40)
+ yaw span      :  101.1 d OK  (need >=20)
+ height range  :  1.27 ..  1.94 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:26:40,248 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:27:14,108 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:27:14,146 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:27:14,160 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:27:14,163 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:27:14,163 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Status: CRITICAL: Preflight: GPS fix too low
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:27:15,088 - qtm - INFO - Connected
+Status: CRITICAL: Preflight: GPS fix too low
+Status: INFO: GCS connection regained
+[2:31:19.872201332] [3915]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:31:19.891398436] [3960]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:31:19.916173758] [3960]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:31:19.922507577] [3960]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:31:19.922578391] [3960]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:27:15,234 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:27:15,234 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:27:15,239 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:31:19.930939393] [3915]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:31:19.931389184] [3960]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:27:15,241 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:27:15,263 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+{'fps': 8.93, 'img_process_freq': 37.95}
+{'fps': 47.07, 'img_process_freq': 44.82}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 55.77, 'img_process_freq': 33.57}
+{'fps': 56.6, 'img_process_freq': 62.2}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 57.23, 'img_process_freq': 37.24}
+{'fps': 57.58, 'img_process_freq': 73.19}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.32, 'img_process_freq': 38.19}
+{'fps': 58.46, 'img_process_freq': 36.94}
+{'fps': 58.59, 'img_process_freq': 31.91}
+{'fps': 58.7, 'img_process_freq': 76.3}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.07, 'img_process_freq': 31.25}
+{'fps': 59.14, 'img_process_freq': 74.1}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.23, 'img_process_freq': 37.51}
+{'fps': 59.27, 'img_process_freq': 103.58}
+{'fps': 59.29, 'img_process_freq': 36.81}
+{'fps': 59.35, 'img_process_freq': 37.57}
+{'fps': 59.36, 'img_process_freq': 34.59}
+{'fps': 59.39, 'img_process_freq': 40.27}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:27:41,754 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:27:41,936 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   26.4 s
+ flow samples  :   1338   OK  (need >=300)
+ feature samp  :   1338
+ X span        :   0.68 m OK  (need >=0.40)
+ Y span        :   0.81 m OK  (need >=0.40)
+ Z span        :   0.76 m OK  (need >=0.40)
+ yaw span      :  118.9 d OK  (need >=20)
+ height range  :  1.18 ..  1.94 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:27:44,233 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:28:04,978 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:28:05,017 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:28:05,030 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:28:05,034 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:28:05,034 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:28:05,949 - qtm - INFO - Connected
+[2:32:10.737898782] [3972]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:32:10.756910665] [4028]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:32:10.781161047] [4028]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:32:10.787287091] [4028]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:32:10.787356794] [4028]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:28:06,099 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:28:06,099 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:28:06,104 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:32:10.795595647] [3972]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:32:10.796166512] [4028]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:28:06,106 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:28:06,127 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+LANDING PAD VISIBLE NOW...
+{'fps': 8.72, 'img_process_freq': 39.32}
+{'fps': 47.05, 'img_process_freq': 98.33}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 55.05, 'img_process_freq': 35.18}
+{'fps': 56.18, 'img_process_freq': 69.4}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.89, 'img_process_freq': 33.49}
+{'fps': 57.38, 'img_process_freq': 65.93}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.49, 'img_process_freq': 37.18}
+{'fps': 58.63, 'img_process_freq': 75.71}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.98, 'img_process_freq': 31.44}
+{'fps': 59.04, 'img_process_freq': 119.38}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.3, 'img_process_freq': 35.6}
+{'fps': 59.32, 'img_process_freq': 74.7}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:28:31,183 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:28:31,331 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   25.0 s
+ flow samples  :   1290   OK  (need >=300)
+ feature samp  :   1290
+ X span        :   0.79 m OK  (need >=0.40)
+ Y span        :   0.71 m OK  (need >=0.40)
+ Z span        :   0.84 m OK  (need >=0.40)
+ yaw span      :   96.5 d OK  (need >=20)
+ height range  :  1.05 ..  1.89 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:28:34,953 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:28:57,212 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:28:57,251 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:28:57,264 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:28:57,268 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:28:57,268 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:28:58,102 - qtm - INFO - Connected
+[2:33:02.888238773] [4052]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:33:02.908452772] [4108]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:33:02.934641428] [4108]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:33:02.941073283] [4108]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:33:02.941154078] [4108]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:28:58,253 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:28:58,254 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:28:58,259 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:33:02.950285477] [4052]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:33:02.950822693] [4108]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:28:58,261 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:28:58,284 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+Status: CRITICAL: Preflight: GPS fix too low
+Status: CRITICAL: Preflight: GPS fix too low
+Status: INFO: GCS connection regained
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 56.77, 'img_process_freq': 33.22}
+{'fps': 57.28, 'img_process_freq': 32.62}
+{'fps': 57.71, 'img_process_freq': 81.85}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.09, 'img_process_freq': 32.03}
+{'fps': 58.29, 'img_process_freq': 34.63}
+{'fps': 58.45, 'img_process_freq': 32.92}
+{'fps': 58.59, 'img_process_freq': 31.02}
+{'fps': 58.71, 'img_process_freq': 96.84}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.9, 'img_process_freq': 36.31}
+{'fps': 58.98, 'img_process_freq': 64.15}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.09, 'img_process_freq': 35.97}
+{'fps': 59.13, 'img_process_freq': 32.6}
+{'fps': 59.18, 'img_process_freq': 32.49}
+{'fps': 59.23, 'img_process_freq': 23.76}
+{'fps': 59.24, 'img_process_freq': 43.48}
+{'fps': 59.28, 'img_process_freq': 40.8}
+{'fps': 59.34, 'img_process_freq': 66.91}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.41, 'img_process_freq': 35.65}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:29:24,863 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:29:24,944 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   26.5 s
+ flow samples  :   1217   OK  (need >=300)
+ feature samp  :   1217
+ X span        :   0.80 m OK  (need >=0.40)
+ Y span        :   0.78 m OK  (need >=0.40)
+ Z span        :   0.77 m OK  (need >=0.40)
+ yaw span      :   79.6 d OK  (need >=20)
+ height range  :  1.02 ..  1.79 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:29:32,363 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:29:50,548 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:29:50,587 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:29:50,600 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:29:50,604 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:29:50,604 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:29:51,529 - qtm - INFO - Connected
+[2:33:56.313646091] [4131]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:33:56.332778879] [4187]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:33:56.356968944] [4187]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:33:56.363455243] [4187]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:33:56.363521094] [4187]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:29:51,675 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:29:51,675 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:29:51,680 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:33:56.371996500] [4131]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:33:56.372456624] [4187]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:29:51,682 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:29:51,704 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: vertical velocity unstable
+Status: CRITICAL: Preflight: GPS fix too low
+Status: CRITICAL: Preflight: GPS fix too low
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS fix too low
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.49, 'img_process_freq': 29.43}
+{'fps': 59.52, 'img_process_freq': 87.12}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:30:23,699 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:30:23,715 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   31.9 s
+ flow samples  :   1462   OK  (need >=300)
+ feature samp  :   1462
+ X span        :   0.22 m LOW (need >=0.40)
+ Y span        :   0.70 m OK  (need >=0.40)
+ Z span        :   1.31 m OK  (need >=0.40)
+ yaw span      :   58.9 d OK  (need >=20)
+ height range  :  0.48 ..  1.79 m
+ VERDICT: WEAK - low excitation in: X
+          near-hover/single-axis takes are noise-dominated; consider re-recording
+====================================================
+
+Do you want to save the dataset? (y/n)n
+Closed without saving!
+2026-07-26 23:30:25,904 - picamera2.picamera2 - INFO - Camera closed successfully.
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ FLOW_LAT_REDUCED=1 python3 output_calibration.py
+[output_calibration] recording TRUE raw flow: FLOW_DH_MAX=0 FLOW_DS_MAX=0 FLOW_LOOM_DECOUPLE=0 (checkpost/loom-override disabled for calibration - see comment above)
+2026-07-26 23:30:32,691 - mavsdk_server - INFO - MAVSDK version: v3.15.0 (mavsdk_impl.cpp:33)
+2026-07-26 23:30:32,730 - mavsdk_server - INFO - Waiting to discover system on serial:///dev/serial/by-id/usb-CubePilot_CubeOrange_0-if00:57600... (connection_initiator.h:20)
+2026-07-26 23:30:32,743 - mavsdk_server - INFO - System discovered (connection_initiator.h:62)
+2026-07-26 23:30:32,747 - mavsdk_server - INFO - Server started (grpc_server.cpp:177)
+2026-07-26 23:30:32,747 - mavsdk_server - INFO - Server set to listen on 0.0.0.0:50051 (grpc_server.cpp:178)
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Connecting to QTM on 192.168.0.111
+2026-07-26 23:30:33,623 - qtm - INFO - Connected
+[2:34:38.409067280] [4211]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[2:34:38.428462695] [4254]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[2:34:38.453505583] [4254]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[2:34:38.459757402] [4254]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[2:34:38.459828328] [4254]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+2026-07-26 23:30:33,771 - picamera2.picamera2 - INFO - Initialization successful.
+2026-07-26 23:30:33,772 - picamera2.picamera2 - INFO - Camera now open.
+2026-07-26 23:30:33,776 - picamera2.picamera2 - INFO - Camera configuration has been adjusted!
+[2:34:38.468533120] [4211]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[2:34:38.468967115] [4254]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+2026-07-26 23:30:33,779 - picamera2.picamera2 - INFO - Configuration successful!
+2026-07-26 23:30:33,800 - picamera2.picamera2 - INFO - Camera started
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667), 'AeEnable': False, 'ExposureTime': 3000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+Waiting for image streaming
+Starting without recording...!
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 55.99, 'img_process_freq': 32.45}
+{'fps': 56.8, 'img_process_freq': 37.15}
+{'fps': 57.2, 'img_process_freq': 38.48}
+{'fps': 57.64, 'img_process_freq': 65.53}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.34, 'img_process_freq': 36.19}
+{'fps': 58.48, 'img_process_freq': 34.74}
+{'fps': 58.61, 'img_process_freq': 59.18}
+{'fps': 58.71, 'img_process_freq': 37.69}
+{'fps': 58.84, 'img_process_freq': 65.1}
+{'fps': 58.91, 'img_process_freq': 65.34}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 58.99, 'img_process_freq': 38.05}
+{'fps': 59.02, 'img_process_freq': 40.9}
+{'fps': 59.11, 'img_process_freq': 66.3}
+{'fps': 59.16, 'img_process_freq': 70.65}
+{'fps': 59.21, 'img_process_freq': 38.28}
+{'fps': 59.25, 'img_process_freq': 31.13}
+{'fps': 59.26, 'img_process_freq': 62.27}
+{'fps': 59.31, 'img_process_freq': 70.41}
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+{'fps': 59.4, 'img_process_freq': 30.46}
+{'fps': 59.44, 'img_process_freq': 29.5}
+{'fps': 59.46, 'img_process_freq': 31.34}
+{'fps': 59.46, 'img_process_freq': 26.99}
+{'fps': 59.49, 'img_process_freq': 79.24}
+^CStopped (Ctrl+C, or a task was cancelled) - see cancelled_error.log for details
+
+Video recording stopped...
+2026-07-26 23:31:05,142 - picamera2.picamera2 - INFO - Camera stopped
+2026-07-26 23:31:05,321 - qtm - INFO - Disconnected
+Flow Streamer thread is deleted...
+
+====================================================
+ RUN VALIDITY (hand-move output-cal take)
+====================================================
+ duration      :   31.3 s
+ flow samples  :   1395   OK  (need >=300)
+ feature samp  :   1395
+ X span        :   0.67 m OK  (need >=0.40)
+ Y span        :   0.70 m OK  (need >=0.40)
+ Z span        :   0.92 m OK  (need >=0.40)
+ yaw span      :   74.1 d OK  (need >=20)
+ height range  :  0.85 ..  1.78 m
+ VERDICT: GOOD excitation on all axes
+====================================================
+
+Do you want to save the dataset? (y/n)
+Flight Controller is disconnected...
+Saved to CSV!
+2026-07-26 23:31:07,692 - picamera2.picamera2 - INFO - Camera closed successfully.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\System32> ssh -Y doctor@192.168.0.161
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sun Jul 26 22:57:14 2026 from 192.168.0.119
+(denv) doctor@doctor:~ $

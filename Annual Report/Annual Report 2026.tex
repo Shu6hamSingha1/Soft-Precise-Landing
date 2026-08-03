@@ -1,0 +1,80 @@
+\documentclass[conf]{new-aiaa}
+%\documentclass[journal]{new-aiaa} for journal papers
+\usepackage[utf8]{inputenc}
+
+\usepackage{subcaption}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage[version=4]{mhchem}
+\usepackage{siunitx}
+\usepackage{longtable,tabularx}
+\setlength\LTleft{0pt} 
+
+\title{Development of Advanced Autonomous Algorithms for Unmanned Aerial Vehicles}
+
+\author{Shubham Singhal (RBCCPS) \and
+Supervisors: Dr. Jishnu Keshavan and Dr. Suresh Sundaram
+}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+Unmanned Aerial Vehicles (UAVs) are increasingly tasked with autonomous landings on mobile platforms such as ships and ground vehicles. An imprecise landing risks missing the platform entirely or grazing its edge, while a hard landing risks airframe and payload damage on contact. Hence, the terminal landing phase demands both \emph{precise} positioning and a \emph{soft} touchdown, despite encountering the worst wind, ground effect, and measurement noise of the descent. For a guaranteed soft-precise landing, the functional requirements are (a) smooth lateral approach of the UAV to a close vicinity of the target before touchdown, and (b) simultaneous convergence of the UAV's altitude and velocity to those of the target at touchdown.
+
+Existing position-based visual-servoing (PBVS) landing laws \cite{lin2022, zhang2026} reconstruct an explicit metric 3-D pose of the target, requiring either known geometry, stereo or LiDAR depth, or auxiliary GPS, all of which are unavailable in GPS-denied terminal descent on small monocular platforms. Image-based visual-servoing (IBVS) alternatives \cite{chaumette2006, cho2022, chen2025} drive image features directly but retain an implicit dependence on metric depth or perfect calibration, and target only asymptotic image-feature convergence rather than the simultaneous altitude--velocity convergence required for a soft touchdown. Optic-flow-based designs \cite{herisse2012, singhal2025} couple the relative altitude to the relative velocity and offer a natural sensing modality for soft touchdown, but are confined to stationary targets or one-dimensional vertical descent. Complementary visibility-constrained designs \cite{salehi2021} keep the target inside the camera field of view but provide no link to a descent or soft-touchdown requirement.
+
+To the best of our knowledge, a robust landing controller that guarantees soft-precise touchdown on a moving platform from pure monocular vision (without any metric-depth or global-heading measurement) over a wide range of initial conditions is still an area of open research. To this end, the current research work proposes a \emph{Visual Dual-Funnel Adaptive Sliding-Mode Control} (VDF-ASMC) framework that couples an optic-flow funnel with a target image funnel to simultaneously enforce target visibility, actuator-saturation, and soft-precise touchdown constraints throughout the descent. Building on our prior adaptive sliding-mode design \cite{singhal2025}, the proposed framework does not need any prior knowledge of the system uncertainty bounds. A layered Lyapunov certificate proves the optic-flow funnel invariance, magnetometer-free heading alignment, and kinematic target visibility.
+
+\section*{Work Progress}
+\begin{figure}[hbt!]
+\centering
+    \includegraphics[width=\textwidth]{Graphs/block_diagram_v3.pdf}
+    \caption{Block diagram of the VDF-ASMC architecture. The target image funnel sizes a state-dependent attitude cone that kinematically clips the commanded acceleration, while the optic-flow funnel drives a leakage-type adaptive sliding-mode law on the scale-independent image parameters, namely the virtual image position ($\boldsymbol{s}$), orientation ($\alpha$), and optic flow ($\boldsymbol{h}$).}
+    \label{Controller Diagram}
+\end{figure}
+
+In the current research work, the main objectives are summarized as follows:
+\begin{enumerate}
+    \item Develop a fully image-based control strategy for a UAV that guarantees soft-precise landing on stationary and moving platforms without metric-depth, vehicle-velocity, or global-heading estimation. Fig.~\ref{Controller Diagram} shows the VDF-ASMC architecture, which couples a target image funnel with an optic-flow funnel through a state-dependent attitude cone built from scale-independent image parameters $(\boldsymbol{s},\,\alpha,\,\boldsymbol{h})$.
+    \item Design a leakage-type adaptive sliding-mode law that identifies the unknown disturbance bound online and ensures global uniform ultimate boundedness of both the optic-flow error and the image-orientation error under system uncertainties, input saturation, ground effect, computational delay, and depth-dependent pixel noise near touchdown.
+    \item Enforce target visibility and actuator saturation kinematically through the state-dependent attitude cone, so that the field-of-view constraint is preserved without resort to barrier functions that grow unbounded near the boundary and lose tracking authority under mean wind or moving-target chase.
+    \item Generalize the control strategy to lateral and heading motion to allow soft-precise touchdown on dynamically moving targets, including ship-deck trajectories with simultaneous heave, roll, and pitch oscillation.
+\end{enumerate}
+
+In order to achieve these objectives, we have employed image-feature dynamics given as:
+\begin{equation}
+    \boldsymbol{\dot{s}}(t) = - \boldsymbol{h}(t) - \boldsymbol{\omega}(t) \times \boldsymbol{s}(t) + \left\{\big[ \boldsymbol{h}(t) +  \boldsymbol{\omega}_c(t) \times \boldsymbol{s}(t) \big]  \cdot \boldsymbol{\hat{e}}_3\right\} \boldsymbol{s}(t),
+\end{equation}
+where $\boldsymbol{s}$ is the image-feature vector, $\boldsymbol{h}$ is the optic-flow vector, $\boldsymbol{\omega}$ is the angular velocity vector and $\boldsymbol{\hat{e}}_3 = \begin{bmatrix} 0 & 0 & 1 \end{bmatrix}^{\top}$.
+We have incorporated the above feature dynamics in the optic-flow error dynamics:
+\begin{equation}
+    \boldsymbol{\dot{h}}_e(t) = \frac{\boldsymbol{a}(t)}{z(t)} + \left\{\big[ \boldsymbol{h}(t) +  \boldsymbol{\omega}(t) \times \boldsymbol{s}(t) \big]  \cdot \boldsymbol{\hat{e}}_3\right\} \boldsymbol{h}(t) - \boldsymbol{\dot{h}}^*(t),
+\end{equation}
+where $\boldsymbol{a}$ is the acceleration vector, $\boldsymbol{h}_e$ is the optic-flow error and $\boldsymbol{h}^*$ is the desired optic flow derived from the target image funnel.
+
+We have proved the global uniform ultimate boundedness of the proposed controller through a layered Lyapunov stability argument. Fig.~\ref{State-Input-Output} illustrates the closed-loop trajectories for the most demanding target (Case~5, circular ship deck) under the full disturbance model, demonstrating soft-precise landing across five initial conditions.
+
+\begin{figure}[hbt!]
+\centering
+    \includegraphics[width=\textwidth]{Graphs/Circular_combined.pdf}
+    \caption{Closed-loop simulation of VDF-ASMC on the circular ship-deck target across five initial conditions. \emph{Left}: three-dimensional trajectories with the shaded box marking the soft-precise allowable landing region around the target trajectory. \emph{Right}: image-plane evolution of the four tracked feature points within the camera field of view.}
+    \label{State-Input-Output}
+\end{figure}
+
+The following inferences can be derived from the MATLAB simulation results, comprising twenty-five deterministic runs (five initial conditions $\times$ five target trajectories) and a $\pm 40\%$ target-speed sweep on the moving cases:
+\begin{enumerate}
+    \item VDF-ASMC demonstrates guaranteed soft-precise landing under the full disturbance model, with mean landing time $\le 18.2$~s and worst-case horizontal error of $5.7$~cm, well within the $0.08$~m precise and $0.20$~m/s soft thresholds.
+    \item The target-speed sweep demonstrates guaranteed soft-precise touchdown over a $\pm 40\%$ envelope without retuning, while a comparative benchmark against four recent state-of-the-art landing controllers \cite{lin2022, zhang2026, chen2025, cho2022} fails to deliver soft-precise touchdown under the same disturbance model.
+\end{enumerate}
+
+\section*{Future Work Plan}
+\begin{enumerate}
+    \item \textit{Hardware demonstration of guaranteed soft-precise landing on a moving target}: PX4 software-in-the-loop validation in GAZEBO, followed by hardware-in-the-loop validation on an X500-class quadrotor, and closed-loop flight experiments on stationary and moving ground platforms under outdoor wind disturbances.
+    \item \textit{Cooperative payload delivery by vertical stacking of quadrotor UAVs}: Extension of the dual-funnel optic-flow strategy to multi-agent precision landing for soft vertical docking, first on a hovering UAV and then on a moving UAV, validated in simulation and on real quadrotors.
+\end{enumerate}
+
+\bibliography{bibliography}
+
+\end{document}

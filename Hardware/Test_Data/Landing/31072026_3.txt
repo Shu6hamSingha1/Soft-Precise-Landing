@@ -1,0 +1,977 @@
+PS C:\WINDOWS\System32> ssh -Y doctor@10.196.6.17
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Fri Jul 31 17:06:17 2026 from 10.196.6.116
+(denv) doctor@doctor:~ $ cd /home/doctor/ws/scripts/precise_landing
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ IMG_RECORD=1 PLANAR_MAP_DBG=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-07-31 17:37:03
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+[0:00:42.919876140] [1876]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:00:42.939611511] [1937]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:00:42.966601659] [1937]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:00:42.973364085] [1937]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:00:42.973436196] [1937]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:00:42.980171936] [1876]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:00:42.980619048] [1937]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Waiting for image streaming
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-31/17_38_20.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Takeoff detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Altitude reached via AUTO_TAKEOFF
+2.879204273223877 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.3647829592227936, y_m: -0.11955846846103668, z_m: -3.2326416969299316]
+Takeoff complete
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+[hardware_landing] Marker lost beyond grace - declaring failed landing, handing off to PX4 RTL mode (safe altitude=3.0 m).
+Status: INFO: RTL: start return at 941 m (4 m above destination)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=1.2s alt=2.79m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=2.4s alt=2.15m visible=False stale=False
+Status: INFO: RTL: land at destination
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=3.6s alt=1.46m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=4.8s alt=0.81m visible=False stale=False
+[planar_map] loop_closure_correct confidence=0.976 (near-edge/marginal decode) t=0.00
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[planar_map] loop_closure_correct confidence=0.976 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.976 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.916 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.917 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.946 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.946 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.936 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.899 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.946 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.857 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.649 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.550 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.489 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.543 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.622 (near-edge/marginal decode) t=0.00
+[planar_map gate] confidence=0.625 map_confidence=0.439 rigid_ok=True gate_streak=17 gate_on=True override_streak=17 override_on=True pred_cached=True
+[planar_map] loop_closure_correct confidence=0.663 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.675 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.500 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.344 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.172 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+  t=8.0s alt=0.50m visible=True stale=False
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=8
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=23
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=38
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=53
+Status: INFO: Pilot took over using sticks
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=68
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=83
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=98
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=113
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=128
+  t=10.8s alt=0.24m visible=True stale=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=143
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=158
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=173
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=188
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=203
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=218
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=233
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=248
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=263
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=278
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=293
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=308
+  t=13.6s alt=-0.16m visible=True stale=False
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+  t=14.8s alt=-0.26m visible=False stale=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+  t=16.0s alt=-0.33m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+  t=17.2s alt=-0.37m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=True
+  t=18.5s alt=-0.34m visible=False stale=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Jul 31 17-38-47 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.37m, max=3.24m, avg=0.73m
+Duration: 18.8s, iterations: 1128
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ IMG_RECORD=1 PLANAR_MAP_DBG=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-07-31 17:39:03
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+[0:01:28.573840804] [1964]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:01:28.599522002] [2006]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:01:28.624208803] [2006]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:01:28.630552010] [2006]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:01:28.630613089] [2006]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:01:28.637437423] [1964]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:01:28.639204755] [2006]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Waiting for image streaming
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-31/17_39_06.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Takeoff detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.818 (near-edge/marginal decode) t=0.00
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[planar_map] loop_closure_correct confidence=0.812 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.842 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.843 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.896 (near-edge/marginal decode) t=0.00
+[planar_map gate] confidence=0.000 map_confidence=0.320 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Altitude reached via AUTO_TAKEOFF
+2.872709035873413 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+[planar_map gate] confidence=0.000 map_confidence=0.153 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.6878631114959717, y_m: -1.327357292175293, z_m: -3.228156089782715]
+Takeoff complete
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=15
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=30
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=45
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=60
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=75
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=90
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=1.8s alt=3.97m visible=False stale=False
+[hardware_landing] Marker lost beyond grace - declaring failed landing, handing off to PX4 RTL mode (safe altitude=3.0 m).
+Status: INFO: RTL: start return at 943 m (5 m above destination)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=2.9s alt=4.66m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=4.2s alt=4.30m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=5.4s alt=3.59m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=6.7s alt=2.85m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=8.0s alt=2.13m visible=False stale=False
+Status: INFO: RTL: land at destination
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=9.3s alt=1.41m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=10.5s alt=0.82m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Pilot took over using sticks
+  t=11.8s alt=0.55m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=13.0s alt=0.13m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=14.2s alt=0.01m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Landing detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=15.4s alt=-0.01m visible=False stale=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Jul 31 17-39-29 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.03m, max=4.66m, avg=2.17m
+Duration: 15.4s, iterations: 1200
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ IMG_RECORD=1 PLANAR_MAP_DBG=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-07-31 17:39:49
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+[0:02:14.396002475] [2033]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:02:14.421984945] [2075]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:02:14.446654819] [2075]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:02:14.452953992] [2075]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:02:14.453023500] [2075]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:02:14.459755841] [2033]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:02:14.460231609] [2075]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Waiting for image streaming
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  is_armable after 1.0s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-31/17_39_51.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Takeoff detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Altitude reached via AUTO_TAKEOFF
+2.8223166465759277 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.9998921155929565, y_m: 0.14980164170265198, z_m: -3.204338788986206]
+Takeoff complete
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+[hardware_landing] Marker lost beyond grace - declaring failed landing, handing off to PX4 RTL mode (safe altitude=3.0 m).
+Status: INFO: RTL: start return at 941 m (4 m above destination)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=1.2s alt=2.74m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=2.4s alt=2.06m visible=False stale=False
+Status: INFO: RTL: land at destination
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=3.6s alt=1.35m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=4.8s alt=0.83m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=6.0s alt=0.72m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=7.2s alt=0.60m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=8.4s alt=0.49m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=9.5s alt=0.40m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=10.7s alt=0.29m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=11.9s alt=0.17m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=13.0s alt=0.06m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=14.2s alt=-0.02m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=15.4s alt=-0.08m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=16.5s alt=-0.03m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=17.7s alt=0.06m visible=False stale=False
+Status: INFO: Landing detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=18.9s alt=0.02m visible=False stale=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+
+Flight data saved -> Test_Data/Landing/Fri Jul 31 17-40-19 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.08m, max=3.21m, avg=0.70m
+Duration: 18.9s, iterations: 1603
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ IMG_RECORD=1 PLANAR_MAP_DBG=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-07-31 17:40:24
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+[0:02:49.394280133] [2102]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:02:49.418322236] [2144]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:02:49.442625178] [2144]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:02:49.448854331] [2144]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:02:49.448925016] [2144]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:02:49.455820128] [2102]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:02:49.457068019] [2144]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Waiting for image streaming
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  is_armable after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-31/17_40_26.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Takeoff detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.391 (near-edge/marginal decode) t=0.00
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[planar_map] loop_closure_correct confidence=0.444 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.574 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.681 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.760 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.378 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.516 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.566 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.648 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.703 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.707 (near-edge/marginal decode) t=0.00
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.754 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.974 (near-edge/marginal decode) t=0.00
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Altitude reached via AUTO_TAKEOFF
+2.8399746417999268 3.0
+Switching to OFFBOARD mode!
+[planar_map] loop_closure_correct confidence=0.980 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.979 (near-edge/marginal decode) t=0.00
+-- Starting offboard (attempt 1/5)
+[planar_map] loop_closure_correct confidence=0.972 (near-edge/marginal decode) t=0.00
+[planar_map gate] confidence=0.000 map_confidence=0.405 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.970 (near-edge/marginal decode) t=0.00
+[planar_map] loop_closure_correct confidence=0.972 (near-edge/marginal decode) t=0.00
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 2.8232295513153076, y_m: -0.9630165696144104, z_m: -3.2031185626983643]
+Takeoff complete
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=15
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=30
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=45
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=60
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=75
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=90
+[planar_map gate] confidence=0.000 map_confidence=0.039 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=105
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=120
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=135
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=150
+  t=2.5s alt=3.61m visible=True stale=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=165
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=180
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=195
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=210
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=225
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=240
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=255
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=270
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=285
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=300
+  t=5.0s alt=4.51m visible=True stale=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=315
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=330
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=345
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=360
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=375
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=390
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=405
+[hardware_landing] Marker lost beyond grace - declaring failed landing, handing off to PX4 RTL mode (safe altitude=3.0 m).
+Status: INFO: RTL: start return at 944 m (6 m above destination)
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=420
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=435
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=450
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=465
+  t=7.5s alt=5.29m visible=True stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=480
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=495
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=8.9s alt=4.54m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.901 (near-edge/marginal decode) t=0.00
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=7
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=22
+[planar_map] loop_closure_correct confidence=0.835 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.573 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[planar_map] loop_closure_correct confidence=0.405 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=15
+  t=11.9s alt=2.85m visible=True stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map] loop_closure_correct confidence=0.482 (near-edge/marginal decode) t=0.00
+[cbf_corners] src=feature_pts FEATURE_PTS_FRESH=True corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=coast_hold FEATURE_PTS_FRESH=False corners_is_none=False none_streak=0
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=10
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=25
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=40
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=55
+Status: INFO: RTL: land at destination
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=70
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=85
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=100
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=115
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=130
+  t=14.8s alt=1.14m visible=True stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=145
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=160
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=175
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=190
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=205
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=220
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=235
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=250
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=265
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=280
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=295
+  t=17.7s alt=0.63m visible=True stale=False
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=310
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=325
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=340
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=355
+[cbf_corners] src=none FEATURE_PTS_FRESH=False corners_is_none=True none_streak=370
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=19.6s alt=0.47m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=20.9s alt=0.36m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=22.2s alt=0.25m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=23.4s alt=0.13m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=24.7s alt=0.07m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=25.9s alt=0.14m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=27.1s alt=0.20m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=28.4s alt=0.17m visible=False stale=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Jul 31 17-41-04 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=0.07m, max=5.52m, avg=1.67m
+Duration: 29.0s, iterations: 1552
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ IMG_RECORD=1 PLANAR_MAP_DBG=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-07-31 17:41:34
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+[0:03:58.900859952] [2171]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:03:58.925467567] [2213]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:03:58.950103113] [2213]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:03:58.956514747] [2213]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:03:58.956577290] [2213]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:03:58.963859506] [2171]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:03:58.964420188] [2213]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Waiting for image streaming
+Starting with recording...
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  is_armable after 0.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-07-31/17_41_36.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Takeoff detected
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Altitude reached via AUTO_TAKEOFF
+2.954084634780884 3.0
+Switching to OFFBOARD mode!
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 2.2472379207611084, y_m: -1.9556692838668823, z_m: -3.240739345550537]
+Takeoff complete
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+[hardware_landing] Marker lost beyond grace - declaring failed landing, handing off to PX4 RTL mode (safe altitude=3.0 m).
+Status: INFO: RTL: start return at 941 m (4 m above destination)
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=1.2s alt=2.78m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=2.4s alt=2.12m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: RTL: land at destination
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=3.6s alt=1.42m visible=False stale=False
+  t=4.8s alt=0.83m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=6.0s alt=0.70m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=7.2s alt=0.57m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=8.3s alt=0.45m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=9.5s alt=0.34m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=10.7s alt=0.24m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=11.9s alt=0.14m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=13.1s alt=0.01m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=14.2s alt=-0.07m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=15.4s alt=-0.18m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+  t=16.6s alt=-0.25m visible=False stale=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+[planar_map gate] confidence=0.000 map_confidence=0.000 rigid_ok=False gate_streak=0 gate_on=False override_streak=0 override_on=False pred_cached=False
+Status: INFO: Landing detected
+  t=17.7s alt=-0.32m visible=False stale=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Jul 31 17-42-02 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.32m, max=3.25m, avg=0.70m
+Duration: 17.9s, iterations: 1510
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 live_preview.py
+[0:04:35.874319659] [2240]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:04:35.894306325] [2249]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:04:35.917768622] [2249]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:04:35.923921199] [2249]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:04:35.923989336] [2249]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media0
+[0:04:35.930789096] [2240]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:04:35.931218254] [2249]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (16667, 16667)}
+Live preview running at ~4Hz refresh (full capture continues faster underneath) - press ESC in the window or Ctrl+C here to stop.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+^C^C^C^X
