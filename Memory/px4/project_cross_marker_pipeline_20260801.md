@@ -171,14 +171,24 @@ Hz/Wz remain the honest gap. Cross-marker's centroid inter-run stability
 (~7-10%) is actually TIGHTER than ArUco's own live cal (`h_x` 1.091+-0.266 =
 ~24%, `h_y` 1.063+-0.198 = ~19%).
 
-**Still not done:** Wx/Wy remain forced to zero — untested, not proven-zero.
-`record_cross_marker_calibration.py` never got the `rollexc`/`pitchexc` phases
-`record_output_calibration.py` (ArUco) has (small-amplitude, high-frequency
-oscillation specifically for roll/pitch-RATE excitation while keeping the
-marker framed) — the x/y translation phases only produce roll/pitch as an
-incidental side-effect, not a real test. Quick check on existing x/y-phase data
-gave weak/inconsistent Wx/Wy correlation (-0.06 to +0.28) but that's not
-diagnostic given the untargeted excitation.
+**RESOLVED 2026-08-03: Wx/Wy genuinely tested, confirmed near-unrecoverable —
+zeroing is correct, not a gap.** Ported `rollexc`/`pitchexc` phases (opt-in via
+`CALIB_PHASES`, same small-amplitude/high-frequency-oscillation design as
+ArUco's own recorder — `tilt_angle ~ A*omega^2` but `tilt_RATE ~ A*omega^3`, so
+high omega buys tilt-rate without pushing the marker out of frame) into
+`record_cross_marker_calibration.py`. Flew a dedicated
+`CALIB_PHASES=yaw,x,y,z,rollexc,pitchexc,yawagg` flight
+(`calibration_data/diag_rprexc/`) and checked RAW (pre-cal) Wx/Wy against
+un-zeroed GT roll/pitch rate, deduped to genuine new-frame updates only (not
+held outer-loop duplicates): rollexc phase, 417 real frames, corr(raw Wx, GT
+wx) = **-0.15**; pitchexc phase, 428 real frames, corr(raw Wy, GT wy) =
+**-0.09**. Both near-zero AND wrong-signed; raw amplitude ~4x smaller than GT
+(std 0.033-0.034 vs 0.11-0.13). This is now a genuine dedicated-excitation
+result, not an artifact of untargeted x/y-phase incidental tilt (the earlier
+-0.06..+0.28 range from x/y-phase data) — the cross-marker's line-geometry
+flow solve does not recover roll/pitch rate with usable SNR. Forcing Wx/Wy=0
+is the correct modeling choice for this marker, same as ArUco's own
+level-target convention, not an open gap.
 
 **Still not validated:** the re-derived cal hasn't been re-checked against
 independent multisine/landing data (only the phased-excitation training data
