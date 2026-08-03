@@ -199,6 +199,33 @@ These were runnable from an agent session with the Bash sandbox disabled, but pe
 - Treating the pre-fps-fix multisine as a validation set → leveling bug, misleading.
 - Re-deriving the "ring is depth-mixed" rationale → falsified (`ring-depth-mixing-falsified`).
 
+# When a NEW perception module's cal validates badly, check the raw signal before
+# blaming the fit methodology (2026-08-02/03, cross-marker case study)
+A derived cal can validate at near-zero/negative R² on independent data for reasons that
+have nothing to do with n≥5, purity gating, or fit robustness — if the module computing
+the raw signal is itself new (not `img_data.py`), suspect a missing or broken transform
+stage before re-tuning the derive tool. Two real bugs found this way in
+`cross_marker_perception.py` (a from-scratch module that "mirrors" `img_data.py`'s math
+without importing it):
+1. **A load-bearing transform step silently dropped in the port.** `img_data.py` always
+   reprojects points through `_getVirtualPts` (gravity-leveled V-frame) before computing
+   flow; the new module never got that step, so it was comparing raw tilt-contaminated
+   flow against tilt-compensated GT. Symptom-free at build time because validation was
+   hover-only (near-zero tilt). Fix: diff the new module's per-stage structure against
+   the original it claims to mirror, don't just spot-check the final formula.
+   See `feedback_missing_vframe_leveling_port` / `feedback_duplicated_math_diff_check`.
+2. **dt computed from the wrong clock relative to the state it's dividing.** A per-frame
+   dt built from "time since the last function call" is only valid if the tracked state
+   also updates every call — if it only updates on success (e.g. gated behind a detector),
+   any gap leaves dt reflecting one interval while the tracked displacement spans many.
+   Symptom: a fix that should obviously help (like #1) shows no effect, or an
+   inconsistent one, because this noise floor dominates. See
+   `feedback_dt_staleness_after_detection_dropout`.
+Both were confirmed by comparing raw-vs-GT correlation directly (not just the fitted R²)
+on independent flights, phase-isolated and restricted to detection-ok samples — a cal
+that validates badly but a RAW correlation check that's ALSO near-zero on clean data
+points at the raw signal, not the fit.
+
 # Recalibration procedure
 1. Identify which chain: OUTPUT (corner/ring flow) or INPUT (rate/thrust).
 2. Record ≥5 phased calibration runs (user, Gazebo) to the default `calibration_data/...`.

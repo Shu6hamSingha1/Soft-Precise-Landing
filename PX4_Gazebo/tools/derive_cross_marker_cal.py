@@ -37,6 +37,52 @@ RL  = ['h0', 'h1', 'h2', 'w0', 'w1', 'w2']
 # which run directories to feed in.
 MIN_OK_RATE = float(os.environ.get("CROSS_CAL_MIN_OKRATE", "0.95"))
 
+# 2026-08-02 (centroid sx/sy convergence): Hardware/scripts/derive_pi_cal_clean_axis.py
+# hit the same problem on real hardware -- phase_labels()/the maneuver script's own
+# phase tag only requires the labeled axis to carry the PLURALITY of a window's
+# excitation energy, not that other axes are near-zero. A window tagged "x phase" can
+# still have real simultaneous yaw/z motion (PX4 tracking imperfection), which can
+# distort or even INVERT the fitted sx. Pi's fix (2/6 runs there were giving a
+# physically-impossible negative sx): a STRICT purity gate computed directly from the
+# GT velocity itself, not trusted from the script's phase label -- the dominant axis
+# must be clearly excited AND every OTHER axis must sit below an absolute floor for
+# the whole window. Adopted here the same way.
+PURITY_MAX = float(os.environ.get("CROSS_PURITY_MAX", "0.06"))       # V_h_g units (h=v/z), non-dominant translation
+PURITY_YAW_MAX = float(os.environ.get("CROSS_PURITY_YAW_MAX", "0.15"))  # rad/s, yaw during a translation window
+WIN_S = float(os.environ.get("CROSS_PURITY_WIN_S", "0.5"))
+
+
+def clean_axis_mask(t, phase, V_h_g, yaw_rate):
+    """Per-sample boolean 'genuinely clean' mask for the axis the maneuver
+    script LABELS as active in `phase` (0=X, 1=Y). Unlike
+    derive_pi_cal_clean_axis.py's version (which also auto-detects the
+    dominant axis from GT, needed there since Pi's flight isn't a clean
+    single-axis script), we already trust the phased-excitation script's own
+    axis label for WHICH axis should be dominant -- the purity gate only
+    needs to verify every OTHER axis is genuinely near-zero for that window,
+    not inferred contamination like a freeform flight would need."""
+    vx, vy, vz = V_h_g[:, 0], V_h_g[:, 1], V_h_g[:, 2]
+    clean = np.zeros(len(t), dtype=bool)
+    if len(t) < 4:
+        return clean
+    edges = np.arange(t[0], t[-1], WIN_S)
+    for a, b in zip(edges[:-1], edges[1:]):
+        w = (t >= a) & (t < b)
+        if w.sum() < 3:
+            continue
+        ph = phase[w]
+        if not (np.all(ph == 'x') or np.all(ph == 'y')):
+            continue   # window straddles a phase boundary -- skip, don't guess
+        axis = 0 if ph[0] == 'x' else 1
+        others = {0: vx, 1: vy, 2: vz}
+        oth_vals = [np.nanmedian(np.abs(others[k][w])) for k in (0, 1, 2) if k != axis]
+        yaw_val = np.nanmedian(np.abs(yaw_rate[w]))
+        if not all(np.isfinite(oth_vals)) or not np.isfinite(yaw_val):
+            continue
+        if all(v < PURITY_MAX for v in oth_vals) and yaw_val < PURITY_YAW_MAX:
+            clean[w] = True
+    return clean
+
 
 def main():
     runs = sorted(d for d in glob.glob(os.path.join(CAL_DIR, '*')) if os.path.isdir(d))
@@ -78,19 +124,54 @@ def main():
 
         raw = np.asarray(gt['Opt Flow Ang Vel'])
         raw_s = np.asarray(gt['Img Feature Params'])
-        nm = min(len(raw), len(raw_s), len(valid))
+        t_outer = np.asarray(gt['Time'])   # outer 200Hz loop clock, relative to Start Time
+        nm = min(len(raw), len(raw_s), len(valid), len(t_outer))
         raw = raw[:nm][valid[:nm]]
         raw_s = raw_s[:nm][valid[:nm]]
+        t_outer = t_outer[:nm][valid[:nm]]
         phase = np.array(gt['Phase'])[:nm][valid[:nm]]
-        n_kf = min(len(raw), len(t))
-        raw = raw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]
-        if n_kf > 1:
-            raw = kf_filter_causal(raw, t[:n_kf], FLOW_KF_Q, FLOW_KF_R)
-            raw_s = kf_filter_causal(raw_s, t[:n_kf], FEAT_KF_Q, FEAT_KF_R)
 
-        n = min(len(raw), len(V_h_g))
-        G = np.hstack([V_h_g[:n], -V_w_ug[:n]])
-        R = raw[:n]
+        # STRICT purity gate (see Hardware/scripts/derive_pi_cal_clean_axis.py) --
+        # computed on t/phase's own native alignment, before the sync_t interpolation
+        # below re-indexes onto the outer loop's clock. t/V_h_g/V_w_ug (length =
+        # compute_gt_signals' own valid.sum()) and phase (length = valid[:nm].sum())
+        # can differ by a few samples if raw/raw_s were shorter than compute_gt_signals'
+        # own working range -- truncate to the common length rather than assume equal.
+        n_native = min(len(t), len(phase))
+        clean_native = clean_axis_mask(t[:n_native], phase[:n_native],
+                                        V_h_g[:n_native], -V_w_ug[:n_native, 2])
+
+        # PER-SAMPLE time sync (2026-08-02, replaces same-index alignment): raw/raw_s
+        # are read from the async perception thread (~60Hz) by the outer 200Hz polling
+        # loop, so each sample's TRUE effective timestamp is whenever that thread last
+        # finished a frame -- NOT t_outer[i], which is up to one camera period (~16.7ms)
+        # later and, critically, staggers differently sample-to-sample (not a single
+        # fixed lag for the whole run -- confirmed empirically: per-sample sync moved
+        # correlation by +0.01 to +0.07 depending on channel/run, more than a constant
+        # shift alone). Flow Diag Log records each REAL frame's own capture stamp
+        # (post-2026-08-02 dt fix, jitter-free); for each outer-loop sample, find the
+        # most recently completed frame at or before that poll and interpolate GT at
+        # THAT timestamp instead of at t_outer directly.
+        flog = gt.get('Flow Diag Log', [])
+        start = gt.get('Start Time')
+        if flog and start is not None:
+            flog_t_rel = np.array([r[0] for r in flog]) - start
+            idx = np.searchsorted(flog_t_rel, t_outer, side='right') - 1
+            idx = np.clip(idx, 0, len(flog_t_rel) - 1)
+            sync_t = flog_t_rel[idx]
+        else:
+            sync_t = t_outer   # older recordings without Flow Diag Log -- fall back
+
+        n_kf = min(len(raw), len(sync_t))
+        raw = raw[:n_kf]; raw_s = raw_s[:n_kf]; phase = phase[:n_kf]; sync_t = sync_t[:n_kf]
+        if n_kf > 1:
+            raw = kf_filter_causal(raw, sync_t, FLOW_KF_Q, FLOW_KF_R)
+            raw_s = kf_filter_causal(raw_s, sync_t, FEAT_KF_Q, FEAT_KF_R)
+
+        # interpolate GT at each sample's TRUE (sync_t) timestamp, not by naive index
+        G = np.column_stack([np.interp(sync_t, t, V_h_g[:, k], left=np.nan, right=np.nan) for k in range(3)] +
+                             [np.interp(sync_t, t, -V_w_ug[:, k], left=np.nan, right=np.nan) for k in range(3)])
+        R = raw
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
         if len(R) < 200:
@@ -102,9 +183,19 @@ def main():
         ss = 1 - np.sum((G - pred) ** 2, 0) / np.sum((G - G.mean(0)) ** 2, 0)
         Ms.append(cal); R2s.append(ss)
 
-        ng = min(len(V_xc_g), len(phase), len(raw_s))
-        sx = std_ratio(V_xc_g[:ng], raw_s[:ng, 0], (phase[:ng] == 'x'))
-        sy = std_ratio(V_yc_g[:ng], raw_s[:ng, 1], (phase[:ng] == 'y'))
+        xc_true = np.interp(sync_t, t, V_xc_g, left=np.nan, right=np.nan)
+        yc_true = np.interp(sync_t, t, V_yc_g, left=np.nan, right=np.nan)
+        # nearest-match the strict-purity mask (computed on t[:n_native]'s native
+        # alignment) onto sync_t -- boolean, so nearest-neighbor is the right
+        # interpolation (not linear), same principle as derive_pi_cal_clean_axis.py's
+        # discrete-tag nearest-match.
+        idx_c = np.clip(np.searchsorted(t[:n_native], sync_t), 0, n_native - 1)
+        clean_at_sync = clean_native[idx_c]
+        sx = std_ratio(xc_true, raw_s[:, 0], (phase == 'x') & clean_at_sync)
+        sy = std_ratio(yc_true, raw_s[:, 1], (phase == 'y') & clean_at_sync)
+        n_clean_x = int(((phase == 'x') & clean_at_sync).sum())
+        n_clean_y = int(((phase == 'y') & clean_at_sync).sum())
+        print(f"  {os.path.basename(d)}: strict-purity clean samples -- x={n_clean_x} y={n_clean_y}")
         calS.append([sx, sy])
         used += 1
 

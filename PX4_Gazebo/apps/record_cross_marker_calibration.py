@@ -252,7 +252,8 @@ async def main(record='n'):
                        "Img Feature Params": img_feature_param,
                        "Command": cmd, "Phase": phase_log,
                        "Diag Log": img_node.get_diag_log(),   # [(t, ok, fail_reason, bbox_area), ...]
-                       "Flow Diag Log": img_node.get_flow_diag_log()}   # [(t, n_kept, cond, solved), ...]
+                       "Flow Diag Log": img_node.get_flow_diag_log(),   # [(t, n_kept, cond, solved), ...]
+                       "Z_V Log": img_node.get_z_v_log()}   # min(z_v) per _getVirtualPts call
             img_params = img_node.getParams()
 
         if img_node and img_node.is_alive():

@@ -141,6 +141,79 @@ the load-bearing Hx/Hy block dropped from ~0.1-0.17 to ~0.008-0.05), but NOT yet
 as the ArUco cal typically is (R^2 0.8+). Re-derive with more (gated) runs before trusting
 this for precision landing.
 
-**Not yet validated:** the pasted cal hasn't been checked against independent
-multisine/landing validation data (the `io-calibration` skill's two-stage
-train/derive-then-validate discipline) — only the phased-excitation training data itself.
+**SUPERSEDED 2026-08-03 — two real bugs root-caused in the raw h,w/s computation
+itself, both fixed, cal re-derived.** The 2026-08-02 cal above validated at
+near-zero/negative R^2 on independent multisine data (the io-calibration skill's
+train/validate discipline caught it). Root cause was NOT the calibration
+methodology — it was the raw signal:
+1. **Missing V-frame gravity-leveling.** `cross_marker_perception.py` computed
+   h,w,s from raw un-leveled camera pixels with ZERO attitude compensation,
+   while GT (`compute_gt_signals`) is in the tilt-compensated V-frame
+   `img_data.py`'s `_getVirtualPts` always projects through. This module never
+   got that port. See [[feedback_missing_vframe_leveling_port]].
+2. **dt/staleness mismatch on detection-dropout recovery.** dt came from the
+   outer polling clock (advances every call) while the LK "previous frame"
+   state only advances on successful detections — after any dropout (every run
+   had some), the next good frame divided a multi-frame-accumulated
+   displacement by a one-frame dt, spiking all six solved parameters. See
+   [[feedback_dt_staleness_after_detection_dropout]].
+Fixing (1) alone showed no clear improvement (Hz even regressed) — bug (2) was
+masking (1)'s real benefit. Fixing both together: raw Hx/Hy-vs-GT correlation
+went from ~0.01-0.10 (every test before) to a consistent 0.74-0.87 across
+independent flights.
+
+**RE-DERIVED cal PASTED 2026-08-03** (supersedes 2026-08-02): from 5 clean runs
+(all passed the 95% ok-rate gate). R^2: Hx=0.70 Hy=0.71 Hz=0.42 Wz=0.52.
+Centroid `sx=1.06, sy=1.11`, inter-run spread now only ~7-10% (was ~2.4x).
+Compared to ArUco's own 13-run board cal (R^2 Hx=0.75 Hy=0.75 Hz=0.79 Wz=0.71,
+per `img_data.py`'s provenance comments): Hx/Hy are now within 0.05 of ArUco;
+Hz/Wz remain the honest gap. Cross-marker's centroid inter-run stability
+(~7-10%) is actually TIGHTER than ArUco's own live cal (`h_x` 1.091+-0.266 =
+~24%, `h_y` 1.063+-0.198 = ~19%).
+
+**Still not done:** Wx/Wy remain forced to zero — untested, not proven-zero.
+`record_cross_marker_calibration.py` never got the `rollexc`/`pitchexc` phases
+`record_output_calibration.py` (ArUco) has (small-amplitude, high-frequency
+oscillation specifically for roll/pitch-RATE excitation while keeping the
+marker framed) — the x/y translation phases only produce roll/pitch as an
+incidental side-effect, not a real test. Quick check on existing x/y-phase data
+gave weak/inconsistent Wx/Wy correlation (-0.06 to +0.28) but that's not
+diagnostic given the untargeted excitation.
+
+**Still not validated:** the re-derived cal hasn't been re-checked against
+independent multisine/landing data (only the phased-excitation training data
+itself, same gap as before).
+
+**Also found and fixed along the way (2026-08-02/03), all still live:**
+- `resolution[::-1]` transpose bug in `self.center` (swapped cx/cy) — see
+  [[feedback_duplicated_math_diff_check]].
+- Jittered `perf_counter()`-at-callback instead of the frame's own capture
+  stamp for dt.
+- `derive_cross_marker_cal.py`'s ok-rate gate was counting the pre-arm settling
+  period (never part of the recorded flight data) — a run measured at "86% ok"
+  was actually 100% over the samples that matter.
+- Per-sample time sync (via `Flow Diag Log`'s real per-frame timestamps)
+  replacing naive same-index alignment between raw and GT in the derive tool.
+- `_reject_blobby_components` now never rejects the single largest connected
+  component, so a textured background's stray noise merging onto the cross's
+  own rounded line-caps can't push the whole marker's extent over threshold.
+- Adopted Hardware/'s `derive_pi_cal_clean_axis.py` strict-purity-gate pattern
+  for sx/sy (didn't fix our specific inter-run spread — that turned out to be
+  the h,w bugs above, not axis contamination — but is a real, kept hardening).
+- `CrossMarkerNode` now sources its quaternion from `Image_Node.getQuaternions()`
+  (synced inside the same image callback that captures the frame) instead of a
+  separately-polled `FC.getQuat()` — first V-frame attempt used the latter and
+  regressed Hx instead of fixing it, even though the measured timing lag alone
+  (<=28ms) was too small to explain the regression; the real issue was an
+  unrelated editing mistake (a deleted `process_frame()` call) discovered
+  during that debug, not the quat source itself — but the synced source is the
+  more correct pattern regardless and was kept.
+
+Two retexture attempts (grid, then a user-supplied reference-image-derived
+irregular texture) were tried to fix a separate hypothesis (LK correspondence
+ambiguity on the marker's coarse ~46px-period speckle) and both failed for
+reasons unrelated to that hypothesis (a real conflict between
+`_reject_blobby_components`'s ghost-rejection and any added texture noise near
+the cross, plus at least one genuine environmental SITL flake) — reverted,
+original texture is live. Not revisited after the h,w bugs above turned out to
+explain the Hx/Hy weakness on their own.

@@ -4,7 +4,27 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🔴 2026-08-02 (LATEST) — cross-marker calibration found NOT to generalize on
+> **🟢 2026-08-03 (LATEST) — cross-marker Hx/Hy weakness RESOLVED: two real bugs in the
+> raw h,w/s computation, not the calibration methodology.** (1) Missing V-frame
+> gravity-leveling — `cross_marker_perception.py` computed flow from raw un-leveled camera
+> pixels with zero attitude compensation, while GT is in the tilt-compensated V-frame
+> `img_data.py` always projects through (`_getVirtualPts`); ported it in, sourced the quat
+> from `Image_Node.getQuaternions()` (synced to frame capture, not a separately-polled
+> `FC.getQuat()`). (2) dt/staleness mismatch: dt came from the outer polling clock
+> (advances every call) while the LK "previous frame" state only advances on successful
+> detections — after any dropout (every run had some), the next good frame divided a
+> multi-frame displacement by a one-frame dt, spiking all six solved params. Fixing (1)
+> alone showed NO improvement (Hz even regressed) — (2) was masking (1)'s real benefit.
+> Together: raw Hx/Hy-vs-GT correlation went from ~0.01-0.10 (every test before) to a
+> consistent 0.74-0.87. Re-derived + pasted cal (5 clean runs): R^2 Hx=0.70 Hy=0.71
+> Hz=0.42 Wz=0.52 (vs ArUco's 0.75/0.75/0.79/0.71 — Hx/Hy now within 0.05, Hz/Wz remain
+> the gap); centroid sx/sy inter-run spread ~7-10% (TIGHTER than ArUco's own live cal's
+> ~19-24%). Wx/Wy still untested (no rollexc/pitchexc phases ported to the cross-marker
+> recorder yet). Cal NOT yet re-validated against independent multisine data.
+> Process lessons: [[feedback_missing_vframe_leveling_port]],
+> [[feedback_dt_staleness_after_detection_dropout]]. [[project_cross_marker_pipeline_20260801]]
+
+> **🔴 2026-08-02 — cross-marker calibration found NOT to generalize on
 > independent multisine validation (near-zero/negative R^2) → root-caused to a
 > `resolution[::-1]` transpose bug in `CrossMarkerPerception.__init__`'s `self.center`**
 > (swapped cx/cy, corrupting the h,w Jacobian solve + centroid `s` geometry). This is the
