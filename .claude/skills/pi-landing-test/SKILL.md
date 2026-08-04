@@ -6,9 +6,10 @@ description: Run/monitor/debug the first (or any subsequent) real-hardware PLASM
 # Pi hardware landing test
 
 **Entry point:** `Hardware/scripts/hardware_landing.py` on the Pi
-(`doctor@10.176.60.133:~/ws/scripts/precise_landing/hardware_landing.py` — ethernet, confirmed working
-2026-08-02; the wifi IP `192.168.0.161` is a fallback if ethernet is down, see
-`reference_raspberrypi_ssh_connection` memory). Modeled on Gazebo's
+(`doctor@<IP>:~/ws/scripts/precise_landing/hardware_landing.py` — **the Pi's IP changes with
+whatever network it's on, do NOT assume a fixed value; verify with the user each session** — it
+was `10.176.60.133` through 2026-08-03, then `10.196.6.17` as of 2026-08-04. See
+`reference_raspberrypi_ssh_connection` memory for the fallback-candidate list). Modeled on Gazebo's
 `PX4_Gazebo/apps/landing_test.py`, driving the same `Controller` class, with the Gazebo-only
 pieces removed (no ROS2 ground truth, no fly-to-ENU-IC, no MATLAB post-hoc classification).
 Keeps everything safety-relevant: warmup before controller engage, marker-loss grace + open-loop
@@ -36,6 +37,24 @@ every ~9-10 ticks), and a living known-failure-mode catalog. Keep it updated as 
 issues — don't re-derive the same steps from scratch each session.
 
 ## Pre-flight checklist (read this before the user flies)
+
+0. **⭐⭐⭐ 2026-08-03 test session found 6 real bugs; ALL fixed 2026-08-04 — read
+   `project_pi_hardware_fixes_validation_2026_08_03` first, then each fix's own memory.**
+   55-run test on 2026-08-03 surfaced: (1) false "Landed" from a LANDED-flag race
+   (`project_pi_landed_flag_race_2026_08_04`), (2) `COMMAND_DENIED` on `takeoff()` from an
+   insufficient pre-arm gate (`project_pi_command_denied_takeoff_2026_08_04`), (3) a PX4 native
+   RTL fallback computing a nonsensical 954m return altitude indoors — **RTL handoff on
+   marker-loss-beyond-grace is GONE, replaced with an OFFBOARD hold+climb+search+reacquire loop**
+   (`project_pi_descent_stall_search_climb_2026_08_04`), (4) a one-tick yaw command blowup
+   (`u_a=-423497`) from `dt` being wrongly gated on marker visibility, fixed at the source + also
+   ported to Gazebo (`project_pi_dt_visibility_independence_2026_08_04`), (5) the PlanarFeatureMap
+   rescue silently never applying since the 07-26 port (`project_pi_rescue_apply_bug_fixed_2026_08_04`),
+   (6) unbounded flow-KF drift during coast causing sustained `a_u_z` climb spikes — closes the
+   long-open "coast has no staleness cap" TODO item (`project_pi_coast_staleness_cap_2026_08_04`).
+   **All deployed+verified on the Pi (backup, ast.parse, byte-identical diff each time) but
+   UNTESTED LIVE as of this writing — a NEW test session already exists on disk
+   (`Hardware/Test_Data/Landing/2026-08-04/`, 36 attempts) that may be the first real validation;
+   check whether that's been analyzed yet before assuming these are still unvalidated.**
 
 1. **Output (image/flow) calibration — FIXED AND DEPLOYED 2026-08-02, NOT YET FLIGHT-TESTED.**
    `img_geometry.py::_rp_basis` had the gravity-vector sign wrong (`g = R @ [0,0,1]` instead of
@@ -123,11 +142,20 @@ issues — don't re-derive the same steps from scratch each session.
 - `HW_HOVER_THROTTLE_NORM` / `HW_THRUST_SLOPE` — see checklist item 2, verify before flying
 - `RATE_CORRECTION_ENABLED` (default on) + `RATE_CORRECTION_WX/WY/WZ` (0.758/0.739/0.665)
 - `LANDING_MARKER_LOSS_GRACE` (default 1.0s) — how long a marker dropout is tolerated before
-  falling back to open-loop descent
-- `LANDING_FINAL_DESCENT_THROTTLE` / `LANDING_FINAL_DESCENT_TIMEOUT_S` (default 5.0s)
+  falling back to the search-climb (below)
+- **Search-climb fallback (2026-08-04, replaces the old RTL-handoff/`LANDING_FINAL_DESCENT_*`
+  vars, which no longer exist):** `LANDING_SEARCH_CLIMB_RATE_M_S` (default 0.3 m/s),
+  `LANDING_SEARCH_CLIMB_MAX_ADD_M` (default 1.5m above the loss altitude),
+  `LANDING_SEARCH_TIMEOUT_S` (default 45s per search attempt),
+  `LANDING_MAX_DESCENT_ATTEMPTS` (default 3 total, then falls back to a plain PX4 `LAND` at
+  current position) — see `project_pi_descent_stall_search_climb_2026_08_04`
 - `LANDING_CONTROL_TIMEOUT_S` (default 90.0s) — hard abort if the controller runs this long
 - `LANDING_HOVER_STALL_S` (default 25.0s) / `LANDING_HOVER_STALL_DZ` (default 0.3m) — watchdog:
-  aborts if altitude hasn't changed by more than `DZ` in `S` seconds (stuck hover/descent-stall)
+  aborts if altitude hasn't changed by more than `DZ` in `S` seconds; suspended during search-climb
+- `PLASMC_PREDICT_MAX_GAP_S` (default 0.3s, 2026-08-04) — `_predictModel_s`'s extrapolation gap
+  cap before falling back to the raw measurement instead
+- `PLASMC_KF_COAST_FREEZE_STREAK` (default 3, 2026-08-04) — flow-KF whole-state freeze threshold
+  during a coast (mirrors `PLASMC_S_COAST_FREEZE_STREAK`'s existing lateral-feature freeze)
 - `LANDING_OUT_BASE` (default `Test_Data/Landing`) — where the recording saves
 
 ## Conventions carried over from today's session

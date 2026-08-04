@@ -517,6 +517,15 @@ class IMG_PROCESSOR(Thread):
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
         self._kf_initialized = False
+        # STALENESS-CAP FREEZE (2026-08-04, mirrors _s_coast_streak/_s_coast_freeze_streak
+        # below -- see project_pi_coast_staleness_cap_2026_08_04 memory): _kf_step's
+        # predict-only branch never decays the [value,rate] state's rate component, so an
+        # unbounded coast dead-reckons every channel of this KF (incl. h_z/loom) linearly
+        # forever using whatever rate was last estimated -- root-caused as the source of a
+        # sustained a_u_z climb-spike pattern. See _kf_update() for the freeze logic.
+        self._kf_coast_streak = 0
+        self._kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
+        self._kf_frozen = None
         # Centroid-feature KF — same model, DECOUPLED (q, r): the order-1 centroid
         # needs a much smaller r than the flow's rad/s ang-vel (else over-smooth).
         self._kf_feat_q = float(os.environ.get("IMG_FEAT_KF_Q", "5.0"))
@@ -2268,7 +2277,36 @@ class IMG_PROCESSOR(Thread):
 
     def _kf_update(self, z, t):
         """Corner-flow KF — thin wrapper around _kf_step.
-        z=None -> predict-only coast (marker-loss gap, no correction)."""
+        z=None -> predict-only coast (marker-loss gap, no correction).
+
+        STALENESS-CAP FREEZE (2026-08-04, mirrors _rescueOrCoastFeatureLog's
+        s-coast-freeze -- see the _kf_coast_streak __init__ comment and
+        project_pi_coast_staleness_cap_2026_08_04 memory for the full writeup):
+        once a coast streak exceeds _kf_coast_freeze_streak consecutive
+        predict-only ticks, stop predicting and hold the ENTIRE 6-channel
+        state at its last value (simpler + more consistent than a per-channel
+        selective freeze -- during a genuine sustained coast every channel is
+        equally unobservable) until a real measurement arrives. A real
+        measurement (z is not None) always resets the streak and un-freezes,
+        even if this exact tick's z ends up rejected downstream -- matches
+        s-coast-freeze's own reset-on-decode semantics."""
+        if z is not None:
+            self._kf_coast_streak = 0
+            self._kf_frozen = None
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
+                self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
+                self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
+            return
+        self._kf_coast_streak += 1
+        if self._kf_coast_streak >= self._kf_coast_freeze_streak:
+            if self._kf_frozen is None:
+                self._kf_frozen = self._kf_x.copy()
+            self._kf_x = self._kf_frozen
+            if (os.environ.get("PLANAR_MAP_DBG", "0") == "1"
+                    and self._kf_coast_streak == self._kf_coast_freeze_streak):
+                print(f"[kf_coast_freeze] streak={self._kf_coast_streak} -- "
+                      f"freezing flow KF, no more drift until real decode", flush=True)
+            return
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
             self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
