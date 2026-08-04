@@ -1178,6 +1178,24 @@ class IMG_PROCESSOR(Thread):
         # Tags — s: 'board_homography' | 'single_marker_moment' | 'coast' (exclude from fit).
         self._h_estimator_tag = []
         self._s_estimator_tag = []
+        # s-coast freeze (ported from Hardware/scripts/img_data.py 2026-08-03 --
+        # see project_pi_izeta_kappa_ratchet_fix_2026_07_31 / 2026-08-03 a_u_xy=56
+        # hardware finding): during a confirmed (multi-frame) coast, _s_final/
+        # extrapolated_img_feature_param can toggle tick-to-tick between the KF
+        # predict-only coast value and the planar_map rescue's fresh geometric value
+        # whenever the rescue's plausibility check flip-flops near its threshold --
+        # on hardware this drove theta to 20-40x normal and a_u_xy spiking to 56 m/s^2.
+        # Confirmed 2026-08-04 Gazebo has the same unmitigated gate-toggle mechanism
+        # (one run hit a_u_xy=1225 m/s^2, see project_gazebo_confidence_toggling_
+        # confirmed_2026_08_04) -- freeze s at the last value once
+        # PLASMC_S_COAST_FREEZE_STREAK consecutive loss frames have elapsed, instead
+        # of continuing to toggle candidate sources. UNVERIFIED against live Gazebo
+        # confidence traces -- re-run the Wed Jul 22 16-24-34 scenario before trusting
+        # this tuning (default matches hardware's, not re-derived for Gazebo's own
+        # confidence dynamics per feedback_sitl_vs_hardware_no_blind_copy).
+        self._s_coast_streak = 0
+        self._s_coast_freeze_streak = int(os.environ.get("PLASMC_S_COAST_FREEZE_STREAK", "3"))
+        self._s_frozen = None
         # RAW (PRE-CAL) map-sourced logs (2026-07-20 -- see feedback_map_cal_validation_gap):
         # _centroidMap/_alphaMap/_flowMap's OWN return value, logged every frame regardless of
         # whether the soft gate ultimately blended it in, BEFORE _sensor_cal_s/_sensor_cal_hw are
@@ -1275,6 +1293,20 @@ class IMG_PROCESSOR(Thread):
         self._kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
         self._kf_prev_t = None
         self._kf_initialized = False
+        # STALENESS-CAP FREEZE (ported from Hardware/scripts/img_data.py 2026-08-04 --
+        # see project_pi_coast_staleness_cap_2026_08_04 memory): _kf_step's predict-only
+        # branch never decays the [value,rate] state's rate component, so an unbounded
+        # coast dead-reckons every channel of this KF (incl. h_z/loom) linearly forever
+        # using whatever rate was last estimated -- root-caused on hardware as the source
+        # of a sustained a_u_z climb-spike pattern. Confirmed 2026-08-04 that Gazebo has
+        # the identical unmitigated mechanism (see project_gazebo_confidence_toggling_
+        # confirmed_2026_08_04). See _kf_update() for the freeze logic. UNVERIFIED against
+        # live Gazebo confidence traces -- re-run the Wed Jul 22 16-24-34 scenario before
+        # trusting this tuning (PLASMC_KF_COAST_FREEZE_STREAK default matches hardware's,
+        # not re-derived for Gazebo's own confidence dynamics).
+        self._kf_coast_streak = 0
+        self._kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
+        self._kf_frozen = None
         # Ring-flow KF — the SAME _kf_step filter, separate state (V_v_ring through it)
         self._kf_x_ring = np.zeros((6, 2))
         self._kf_P_ring = np.tile(np.eye(2) * 1.0, (6, 1, 1))
@@ -3122,6 +3154,8 @@ class IMG_PROCESSOR(Thread):
                 self._feature_pts.append(C_nP)
                 self._feature_pts_fresh = True   # genuine raw decode/KLT this frame
                 self._virtual_feature_pts.append(V_aruco_norm)
+                self._s_coast_streak = 0   # real decode resets the coast-freeze streak
+                self._s_frozen = None
 
         elif self.FEATURE_IS_VISIBLE:
             self._count_check_img_feature +=1
@@ -3427,6 +3461,22 @@ class IMG_PROCESSOR(Thread):
             # genuine (use-genuine-data directive). Only nan if the FC quat itself is missing.
             _qL = quats[1] if (quats is not None and len(quats) > 1 and quats[1] is not None) else None
             self._quat_log.append(np.array([_qL.w, _qL.x, _qL.y, _qL.z]) if _qL is not None else np.full(4, np.nan))
+
+            # s-coast freeze (ported from Hardware/scripts/img_data.py 2026-08-03 -- see
+            # __init__ comment / project_pi_izeta_kappa_ratchet_fix_2026_07_31): once the
+            # marker has been lost for _s_coast_freeze_streak consecutive frames (a
+            # CONFIRMED coast, not a single-frame blip), stop letting the emitted s toggle
+            # between the KF-predict coast value and the rescue's fresh geometric value
+            # tick-to-tick -- hold the first frozen value for the rest of the coast instead.
+            self._s_coast_streak += 1
+            if self._s_coast_streak >= self._s_coast_freeze_streak:
+                if self._s_frozen is None:
+                    self._s_frozen = extrapolated_img_feature_param.copy()
+                extrapolated_img_feature_param = self._s_frozen
+                _pm_rescue = False   # frozen value isn't a fresh rescue correct-step
+                if os.environ.get("PLANAR_MAP_DBG", "0") == "1" and self._s_coast_streak == self._s_coast_freeze_streak:
+                    print(f"[s_coast_freeze] streak={self._s_coast_streak} -- freezing s, no more toggling until real decode", flush=True)
+
             self._img_feature_param.append(extrapolated_img_feature_param)
             self._s_estimator_tag.append('planar_map_rescue' if _pm_rescue else 'coast')
             # _centroidMap/_alphaMap/_flowMap (the OVERRIDE consumers) never run in this branch
@@ -3616,7 +3666,36 @@ class IMG_PROCESSOR(Thread):
 
     def _kf_update(self, z, t):
         """Corner-flow KF — thin wrapper around _kf_step on the corner state.
-        z=None -> predict-only coast (marker-loss gap, no correction)."""
+        z=None -> predict-only coast (marker-loss gap, no correction).
+
+        STALENESS-CAP FREEZE (ported from Hardware/scripts/img_data.py 2026-08-04,
+        mirrors the s-coast-freeze above -- see the _kf_coast_streak __init__
+        comment and project_pi_coast_staleness_cap_2026_08_04 memory for the full
+        writeup): once a coast streak exceeds _kf_coast_freeze_streak consecutive
+        predict-only ticks, stop predicting and hold the ENTIRE 6-channel state at
+        its last value (simpler + more consistent than a per-channel selective
+        freeze -- during a genuine sustained coast every channel is equally
+        unobservable) until a real measurement arrives. A real measurement (z is
+        not None) always resets the streak and un-freezes, even if this exact
+        tick's z ends up rejected downstream -- matches s-coast-freeze's own
+        reset-on-decode semantics."""
+        if z is not None:
+            self._kf_coast_streak = 0
+            self._kf_frozen = None
+            self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
+                self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
+                self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
+            return
+        self._kf_coast_streak += 1
+        if self._kf_coast_streak >= self._kf_coast_freeze_streak:
+            if self._kf_frozen is None:
+                self._kf_frozen = self._kf_x.copy()
+            self._kf_x = self._kf_frozen
+            if (os.environ.get("PLANAR_MAP_DBG", "0") == "1"
+                    and self._kf_coast_streak == self._kf_coast_freeze_streak):
+                print(f"[kf_coast_freeze] streak={self._kf_coast_streak} -- "
+                      f"freezing flow KF, no more drift until real decode", flush=True)
+            return
         self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized = self._kf_step(
             self._kf_x, self._kf_P, self._kf_prev_t, self._kf_initialized, z, t,
             self._kf_q, self._kf_r, dt_unc_max=self._kf_dt_unc_max)
