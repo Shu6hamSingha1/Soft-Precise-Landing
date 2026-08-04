@@ -252,6 +252,13 @@ class HardwareLandingSystem:
         attempt_idx = 1
         last_good_sys_cmd = None
         marker_lost_t0 = None
+        # STARTUP-GRACE FIX (2026-08-04, see the grace-hold elif below): snapshot of
+        # current pose, taken ONCE the instant we first hit a miss with no
+        # last_good_sys_cmd yet -- reused for the duration of that specific grace
+        # window (same one-shot-snapshot pattern as search_hold_x/y/z/yaw above, not
+        # re-fetched every tick, to avoid any control chatter from constantly
+        # re-anchoring to a slightly-drifted "current" position).
+        startup_hold_pose = None
         start_time = time.perf_counter()
         _best_alt = None
         _stall_t0 = None
@@ -332,6 +339,7 @@ class HardwareLandingSystem:
                     attempt_idx += 1
                     marker_lost_t0 = None
                     last_good_sys_cmd = None
+                    startup_hold_pose = None   # so a later no-command grace-hold gets a fresh snapshot
                     _best_alt = None   # restart descent-stall tracking fresh for the new attempt
                     _stall_t0 = now
                 else:
@@ -359,12 +367,39 @@ class HardwareLandingSystem:
                 self.logs["control_output"].append(list(sys_cmd))
                 last_good_sys_cmd = sys_cmd
                 marker_lost_t0 = None
-            elif (last_good_sys_cmd is not None
-                  and (marker_lost_t0 is None
-                       or (now - marker_lost_t0) < MARKER_LOSS_GRACE)):
+                startup_hold_pose = None   # so a later no-command grace-hold gets a fresh snapshot
+            elif (marker_lost_t0 is None
+                  or (now - marker_lost_t0) < MARKER_LOSS_GRACE):
+                # STARTUP-GRACE FIX (2026-08-04, ported from the identical fix in
+                # PX4_Gazebo/apps/landing_test.py -- confirmed via direct SITL
+                # instrumentation that a miss on the VERY FIRST control tick after
+                # engage, before last_good_sys_cmd is ever set, previously had NO
+                # grace window here: this elif's `last_good_sys_cmd is not None`
+                # requirement made it skip straight to the attempt-budget/
+                # HOLD+CLIMB-SEARCH branches below on that very first miss --
+                # launching a spurious search-climb maneuver on nothing more than
+                # "haven't seen the marker yet, give it one tick." Fix: enter grace
+                # even with no prior command -- hold the CURRENT position (snapshot
+                # ONCE, same one-shot pattern as the search-climb branch's own
+                # search_hold_x/y/z/yaw) instead of assuming a last_good_sys_cmd
+                # exists. An attitude-rate/thrust guess was deliberately avoided here
+                # (see the PID-warmup comment above: "an open-loop throttle-only
+                # hover would drift/climb/drop, especially with an uncalibrated
+                # HOVER_THROTTLE_NORM") -- send_position_ned is what this file
+                # already trusts for a safe hold.
                 if marker_lost_t0 is None:
                     marker_lost_t0 = now
-                await self.fc.send_attitude_rate(*last_good_sys_cmd)
+                if last_good_sys_cmd is not None:
+                    await self.fc.send_attitude_rate(*last_good_sys_cmd)
+                else:
+                    if startup_hold_pose is None:
+                        p_h = self.fc.getPosBody()
+                        q_h = self.fc.getQuat()
+                        yaw_h = float(np.degrees(np.arctan2(
+                            2.0 * (q_h.w * q_h.z + q_h.x * q_h.y),
+                            1.0 - 2.0 * (q_h.y * q_h.y + q_h.z * q_h.z))))
+                        startup_hold_pose = (p_h.x_m, p_h.y_m, p_h.z_m, yaw_h)
+                    await self.fc.send_position_ned(*startup_hold_pose)
             elif attempt_idx >= MAX_DESCENT_ATTEMPTS:
                 # Attempt budget already exhausted (attempt_idx only increments on a
                 # SUCCESSFUL reacquisition, so this is the count of completed descent
