@@ -165,14 +165,14 @@ class IMG_PROCESSOR(Thread):
         # marker + narrow ~35deg HFOV bounds how much of each phased sweep survives
         # marker-loss gap filtering), not a residual derivation bug. Re-run
         # derive_pi_cal.py and re-paste if/when more/better phased data is collected.
-        self._sensor_cal_hw = np.array([
-            [+0.1433, +0.0353, -0.0398, -0.0210, +0.0110, -0.0034],
-            [-0.0121, +0.1615, +0.0503, -0.0323, -0.0027, -0.0489],
-            [-0.0133, +0.0489, +0.3262, -0.0362, -0.0090, -0.0398],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0340, +0.0464, -0.1956, +0.2504, +0.0552, +0.3364]])
-        self._sensor_cal_s = np.diag([0.1701, 0.4168, 1.0, 1.0])
+        self._sensor_cal_hw = np.array([  # RE-DERIVED 2026-08-02 post _rp_basis fix (6 Aug-1 runs, low-light cam config)
+            [+0.2990, +0.0160, -0.0096, -0.0137, +0.2315, -0.0180],
+            [-0.0029, +0.3622, +0.0016, -0.4138, -0.0310, -0.0101],
+            [-0.0071, +0.0199, +0.5028, +0.0412, +0.0523, -0.0096],
+            [-0.0343, -0.0261, -0.3004, +0.0571, +0.0236, -0.0065],
+            [+0.0275, +0.0056, +0.2030, +0.0406, +0.1568, -0.0107],
+            [+0.3926, -0.2091, -0.0427, -0.3143, +0.2349, -0.1454]])
+        self._sensor_cal_s = np.diag([0.7434, 0.7446, 1.0, -1.0])  # RE-DERIVED 2026-08-02: sx/sy corrected ~4x/~2x post _rp_basis fix; alpha sign -1 (see get_img_features alpha_0)
 
         # PlanarFeatureMap SHADOW mode (2026-07-23, Phase 2 of the port scoped
         # earlier this session - Phase 0 feasibility benchmark + Phase 1 verbatim

@@ -125,8 +125,33 @@ MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
 # off entirely to PX4's own mature RETURN-TO-LAUNCH mode (climb to a safe altitude, fly back
 # to the launch point, land there) -- simpler, more robust, and the standard failsafe
 # response for a genuine failure, instead of reinventing descent/leveling logic.
-RTL_SAFE_ALTITUDE_M = float(os.environ.get("LANDING_RTL_SAFE_ALTITUDE_M", "3.0"))
-FINAL_DESCENT_TIMEOUT = float(os.environ.get("LANDING_FINAL_DESCENT_TIMEOUT_S", "60.0"))
+# SEARCH-CLIMB REDESIGN (2026-08-04, per explicit user direction, supersedes the
+# 2026-07-31 RTL handoff above): root-caused via a real 2026-08-03 "descent stall"
+# abort (see project_pi_descent_stall_search_climb_2026_08_04 memory) that PX4's
+# native return_to_launch() computed a nonsensical RTL altitude (954m, logged live)
+# for this indoor/no-real-GPS-fix test setup -- RTL's altitude planning depends on
+# GPS/AMSL semantics that don't hold indoors, making it fundamentally unsound as the
+# marker-loss fallback here, not just this one bad run. Replaced with a HOLD +
+# CLIMB-SEARCH fallback using our own OFFBOARD position setpoints (same
+# send_position_ned() mechanism already used, and already accepted, for takeoff-climb
+# and the PID-warmup hold above -- this does NOT reintroduce the previously-rejected
+# "GPS position-hold during marker-loss to keep flying ourselves" design (that
+# rejection was about substituting GPS-derived position for the vision-based LANDING
+# control law itself; this is a bounded, temporary safety hold/search when vision is
+# already unavailable, exactly like the takeoff climb already is).
+#
+# The Controller's own background thread (controller.py::run()) ALREADY auto-
+# reinitializes (archives the old getLogData() segment, resets kappa/sigma/all
+# adaptive/integrator state to fresh __init__ values) every time
+# self._img_node.FEATURE_IS_VISIBLE transitions False->True -- see
+# _initialize_controller()'s call site and getLogData()'s own docstring ("locate
+# re-inits via kappa resetting to kappa_0"). So no new reset logic is needed here:
+# once the search-climb reacquires the marker, simply resuming the normal branch
+# below is sufficient -- getControlInput() will already reflect the fresh state.
+SEARCH_CLIMB_RATE_M_S = float(os.environ.get("LANDING_SEARCH_CLIMB_RATE_M_S", "0.3"))
+SEARCH_CLIMB_MAX_ADD_M = float(os.environ.get("LANDING_SEARCH_CLIMB_MAX_ADD_M", "1.5"))
+SEARCH_TIMEOUT_S = float(os.environ.get("LANDING_SEARCH_TIMEOUT_S", "45.0"))
+MAX_DESCENT_ATTEMPTS = int(os.environ.get("LANDING_MAX_DESCENT_ATTEMPTS", "3"))
 CONTROL_TIMEOUT_S = float(os.environ.get("LANDING_CONTROL_TIMEOUT_S", "90.0"))
 HOVER_STALL_S = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
 HOVER_STALL_DZ = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
@@ -148,7 +173,11 @@ class HardwareLandingSystem:
         self.fc = None
         self.controller = None
         self.takeoff_height = takeoff_height
-        self.logs = {"time": [], "altitude": [], "control_output": []}
+        # "attempt"/"state" (2026-08-04, search-climb redesign): every tick is now
+        # tagged with which descent attempt it belongs to and whether the app was
+        # actively descending or in the hold+search fallback -- needed now that a
+        # single continuous flight/recording can contain multiple landing attempts.
+        self.logs = {"time": [], "altitude": [], "control_output": [], "attempt": [], "state": []}
 
     async def initialize(self):
         print("=" * 60)
@@ -210,8 +239,17 @@ class HardwareLandingSystem:
             await self.fc.send_position_ned(p0.x_m, p0.y_m, p0.z_m, yaw0_deg)
             await asyncio.sleep(0.02)
 
-        in_final_descent = False
-        final_descent_t0 = None
+        # in_search_climb (2026-08-04, replaces the old in_final_descent RTL-handoff
+        # flag): True while holding position + climbing to search for the marker
+        # after a declared marker-loss-beyond-grace. attempt_idx counts descent
+        # attempts (starts at 1 for the initial descent; incremented each time the
+        # marker is reacquired after a search) -- logged every tick via
+        # self.logs["attempt"] so a single continuous recording spanning multiple
+        # attempts can be told apart post-hoc.
+        in_search_climb = False
+        search_t0 = None
+        search_hold_x = search_hold_y = search_base_z = search_hold_yaw = None
+        attempt_idx = 1
         last_good_sys_cmd = None
         marker_lost_t0 = None
         start_time = time.perf_counter()
@@ -225,22 +263,29 @@ class HardwareLandingSystem:
             pos = self.fc.getPosBody()
             alt = -pos.z_m if pos else 0.0  # NED z is negative-up -> altitude
             self.logs["altitude"].append(alt)
+            self.logs["attempt"].append(attempt_idx)
+            self.logs["state"].append("search" if in_search_climb else "descent")
 
             # Hover/descent-stall watchdog (onboard altitude, no ground truth needed).
             # alt is +up; descent progress = reaching a NEW LOW. Track the minimum
             # altitude and reset the stall timer whenever we descend >DZ below it.
             # (Mirrors landing_test.py, which tracks ENU min with `alt < best - DZ`.)
-            if _best_alt is None or alt < _best_alt - HOVER_STALL_DZ:
-                _best_alt = alt
-                _stall_t0 = now
-            if _stall_t0 is None:
-                _stall_t0 = now
+            # SUSPENDED during in_search_climb (2026-08-04): deliberately not
+            # descending while holding/searching is expected, not a stall -- reset
+            # cleanly (_best_alt=None) the moment a fresh descent attempt resumes,
+            # see the search-climb reacquisition handling below.
+            if not in_search_climb:
+                if _best_alt is None or alt < _best_alt - HOVER_STALL_DZ:
+                    _best_alt = alt
+                    _stall_t0 = now
+                if _stall_t0 is None:
+                    _stall_t0 = now
+                if (now - _stall_t0) > HOVER_STALL_S:
+                    raise RuntimeError(f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
+                                        f"{HOVER_STALL_S:.0f}s (alt={alt:.2f} m) - aborting")
             if (now - start_time) > CONTROL_TIMEOUT_S:
                 raise RuntimeError(f"control timeout: no landing in {CONTROL_TIMEOUT_S:.0f}s "
                                     f"(alt={alt:.2f} m) - aborting")
-            if (now - _stall_t0) > HOVER_STALL_S:
-                raise RuntimeError(f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
-                                    f"{HOVER_STALL_S:.0f}s (alt={alt:.2f} m) - aborting")
 
             # CBF_CORNERS_STALE (2026-07-30): a real degraded state was found this
             # session where cbf_corners (what the visibility CBF actually reads)
@@ -270,49 +315,89 @@ class HardwareLandingSystem:
                              and not self.controller.FEATURE_IS_STALE
                              and not cbf_corners_stale_abort)
 
-            if feature_fresh and not in_final_descent:
+            if in_search_climb:
+                # SEARCH-CLIMB fallback (2026-08-04). Check reacquisition FIRST, before
+                # sending another search setpoint this tick -- the Controller's own
+                # background thread already auto-reinitialized (fresh kappa/sigma/
+                # integrators, archived the prior getLogData() segment) the instant
+                # self.controller.TARGET_IS_VISIBLE flipped back True (see
+                # controller.py::run()), so simply resuming the normal branch on the
+                # NEXT iteration is sufficient -- no manual reset needed here.
+                if feature_fresh:
+                    print(f"[hardware_landing] {datetime.now().isoformat()} -- Marker "
+                          f"reacquired after {now - search_t0:.1f}s search (attempt "
+                          f"{attempt_idx} -> {attempt_idx + 1}) - resuming descent "
+                          f"(controller auto-reinitialized on reacquisition).")
+                    in_search_climb = False
+                    attempt_idx += 1
+                    marker_lost_t0 = None
+                    last_good_sys_cmd = None
+                    _best_alt = None   # restart descent-stall tracking fresh for the new attempt
+                    _stall_t0 = now
+                else:
+                    elapsed = now - search_t0
+                    # NED z is negative-up: climbing = more NEGATIVE z. Ramp from
+                    # search_base_z toward (search_base_z - SEARCH_CLIMB_MAX_ADD_M) at
+                    # SEARCH_CLIMB_RATE_M_S, capped at the max additional height.
+                    climb_add = min(SEARCH_CLIMB_MAX_ADD_M, SEARCH_CLIMB_RATE_M_S * elapsed)
+                    target_z = search_base_z - climb_add
+                    await self.fc.send_position_ned(search_hold_x, search_hold_y,
+                                                     target_z, search_hold_yaw)
+                    if elapsed > SEARCH_TIMEOUT_S:
+                        print(f"[hardware_landing] {datetime.now().isoformat()} -- "
+                              f"Search-climb timed out after {elapsed:.1f}s (attempt "
+                              f"{attempt_idx}) - commanding safe LAND at current position.")
+                        try:
+                            await self.fc.vehicle.action.land()
+                        except Exception as e:
+                            print(f"[hardware_landing] LAND command failed: {e}")
+                        break
+            elif feature_fresh:
                 cmd = self.controller.getControlInput()
                 sys_cmd = convert_2_sys_cmd(cmd)
                 await self.fc.send_attitude_rate(*sys_cmd)
                 self.logs["control_output"].append(list(sys_cmd))
                 last_good_sys_cmd = sys_cmd
                 marker_lost_t0 = None
-            elif (not in_final_descent and last_good_sys_cmd is not None
+            elif (last_good_sys_cmd is not None
                   and (marker_lost_t0 is None
                        or (now - marker_lost_t0) < MARKER_LOSS_GRACE)):
                 if marker_lost_t0 is None:
                     marker_lost_t0 = now
                 await self.fc.send_attitude_rate(*last_good_sys_cmd)
+            elif attempt_idx >= MAX_DESCENT_ATTEMPTS:
+                # Attempt budget already exhausted (attempt_idx only increments on a
+                # SUCCESSFUL reacquisition, so this is the count of completed descent
+                # attempts) -- don't start yet another search, go straight to a safe
+                # LAND at the current position instead.
+                print(f"[hardware_landing] {datetime.now().isoformat()} -- Marker lost "
+                      f"beyond grace after {attempt_idx} descent attempt(s) (max "
+                      f"{MAX_DESCENT_ATTEMPTS}) - commanding safe LAND at current position.")
+                try:
+                    await self.fc.vehicle.action.land()
+                except Exception as e:
+                    print(f"[hardware_landing] LAND command failed: {e}")
+                break
             else:
-                # PX4 RTL HANDOFF (2026-07-31, simplified per user direction): earlier
-                # versions of this fallback tried increasingly elaborate custom logic (GPS
-                # position-hold -- rejected, no GPS dependency allowed; then IMU-only active
-                # leveling + closed-loop throttle) to keep flying/descending ourselves once
-                # the marker is lost beyond grace. But we're not attempting to REGAIN the
-                # marker at all in this state -- it's already a declared failed landing. The
-                # simplest, most robust choice is to stop trying to fly it ourselves and hand
-                # off to PX4's own mature RETURN-TO-LAUNCH mode: climbs to a safe altitude,
-                # returns to the recorded launch point, then lands there -- safer than landing
-                # in place (LAND) if the vehicle has drifted somewhere unexpected while the
-                # marker was lost, and the standard failsafe response for a declared failure.
-                # We stop sending OFFBOARD setpoints entirely once RTL is commanded --
-                # fighting it with our own attitude-rate commands would work against PX4's
-                # own mode.
-                if not in_final_descent:
-                    in_final_descent = True
-                    final_descent_t0 = now
-                    print("[hardware_landing] Marker lost beyond grace - "
-                          f"declaring failed landing, handing off to PX4 RTL mode "
-                          f"(safe altitude={RTL_SAFE_ALTITUDE_M} m).")
-                    try:
-                        await self.fc.vehicle.action.set_return_to_launch_altitude(RTL_SAFE_ALTITUDE_M)
-                        await self.fc.vehicle.action.return_to_launch()
-                    except Exception as e:
-                        print(f"[hardware_landing] RTL handoff failed: {e}")
-                await asyncio.sleep(SLEEP_TIME)
-                if (now - final_descent_t0) > FINAL_DESCENT_TIMEOUT:
-                    print("[hardware_landing] Final-descent timeout - PX4 never reported LANDED.")
-                    break
+                # HOLD + CLIMB-SEARCH fallback (2026-08-04 -- see the module-level
+                # SEARCH_CLIMB_* comment for why this replaced the RTL handoff).
+                # Snapshot the current NED pose/yaw exactly like the PID-warmup hold
+                # above, and start climbing from here to search for reacquisition.
+                p_now = self.fc.getPosBody()
+                q_now = self.fc.getQuat()
+                search_hold_x, search_hold_y, search_base_z = p_now.x_m, p_now.y_m, p_now.z_m
+                search_hold_yaw = float(np.degrees(np.arctan2(
+                    2.0 * (q_now.w * q_now.z + q_now.x * q_now.y),
+                    1.0 - 2.0 * (q_now.y * q_now.y + q_now.z * q_now.z))))
+                in_search_climb = True
+                search_t0 = now
+                print(f"[hardware_landing] {datetime.now().isoformat()} -- Marker lost "
+                      f"beyond grace (attempt {attempt_idx}) - holding position and "
+                      f"climbing to search (base_alt={-search_base_z:.2f}m, max +"
+                      f"{SEARCH_CLIMB_MAX_ADD_M:.1f}m, timeout {SEARCH_TIMEOUT_S:.0f}s, "
+                      f"max {MAX_DESCENT_ATTEMPTS} attempts).")
+                await self.fc.send_position_ned(search_hold_x, search_hold_y,
+                                                 search_base_z, search_hold_yaw)
 
             if self.controller.TOUCHDOWN_DETECTED and not self.fc.LANDED:
                 print("[hardware_landing] Loom-inversion touchdown (controller) - LANDED")

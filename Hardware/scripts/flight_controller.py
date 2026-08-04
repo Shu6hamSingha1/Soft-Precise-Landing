@@ -15,6 +15,7 @@ import time
 import numpy as np
 from mavsdk import System
 from mavsdk.offboard import (OffboardError, PositionNedYaw, VelocityBodyYawspeed, AccelerationNed, Attitude, AttitudeRate, ActuatorControl, ActuatorControlGroup)
+from mavsdk.action import ActionError
 from mavsdk.telemetry import LandedState
 
 
@@ -49,6 +50,28 @@ class FC():
         self.CONNECTED = False
         self._OFFBOARD = False
         self.LANDED = True
+        # BUG FIX (2026-08-04, see project_pi_landed_flag_race_2026_08_04 memory):
+        # arm_and_takeoff() resets LANDED=False once, right after the AUTO_TAKEOFF
+        # wait window -- but if AUTO_TAKEOFF plateaued without leaving the ground
+        # (a documented "consistent" PX4 quirk, see the AUTO_TAKEOFF_WINDOW_S
+        # comment below), PX4's own landed_state() telemetry is STILL reporting
+        # ON_GROUND at that exact moment, and _getLandedState() immediately
+        # re-latches LANDED=True -- with nothing left to ever clear it again, so
+        # a genuinely successful OFFBOARD climb afterward starts the landing loop
+        # with a stale LANDED=True and exits instantly, 0 control ticks logged.
+        # _landed_reset_allowed gates BOTH halves of the fix: (a) arm_and_takeoff
+        # does an explicit second `self.LANDED = False` the moment real altitude
+        # is confirmed (AUTO_TAKEOFF success OR the OFFBOARD climb fallback), and
+        # (b) _getLandedState() also clears LANDED=False on IN_AIR/TAKING_OFF
+        # telemetry as a general safety net for the same race -- but ONLY while
+        # this flag is True. Both halves flip it False the moment real altitude
+        # is confirmed, so once genuine flight begins this reverts to a true
+        # one-way latch again: a real touchdown (PX4 ON_GROUND or the accel-spike
+        # _impactDetector) can never be silently undone by a late/transient
+        # IN_AIR sample (e.g. during a hard-landing bounce before landed_state
+        # settles) -- IN_AIR-based resets are structurally impossible once
+        # _landed_reset_allowed is False.
+        self._landed_reset_allowed = True
         self._STAY_OPEN  = True
         self._governor_boosted = False   # only close() reverts if arm_and_takeoff set it
 
@@ -250,21 +273,32 @@ class FC():
             # 20-40 s when lockstep is racing. After is_armable, arm() should
             # succeed first try; if it doesn't we raise to trigger an outer
             # retry of the whole stack.
-            print("-- Waiting for is_armable (EKF / lockstep ready)...")
+            # BUG FIX (2026-08-04, fix (a) -- see project_pi_command_denied_takeoff_2026_08_04
+            # memory): waiting on is_armable alone isn't sufficient. Root-caused from 3
+            # real COMMAND_DENIED-on-takeoff() failures on 2026-08-03: is_armable reflects
+            # baseline EKF/IMU readiness for ARMING, but PX4 requires a separately-settled
+            # GPS/position estimate to accept a subsequent TAKEOFF mode-switch -- 2 of the 3
+            # failures showed explicit "GPS PDOP too high"/"GPS ... Drift too high"/"height
+            # estimate not stable" CRITICAL warnings in the same window right before
+            # is_armable went true, meaning arm() succeeded on a still-settling position
+            # estimate that PX4 then refused to fly on. Now also wait for
+            # is_global_position_ok and is_home_position_ok, not just is_armable.
+            print("-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...")
             armable_timeout = 60.0
             async def _wait_armable():
                 async for health in self.vehicle.telemetry.health():
-                    if health.is_armable:
+                    if (health.is_armable and health.is_global_position_ok
+                            and health.is_home_position_ok):
                         return
             t0 = time.monotonic()
             try:
                 await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
             except asyncio.TimeoutError:
                 raise RuntimeError(
-                    f"is_armable did not go True within {armable_timeout}s "
-                    f"— PX4 lockstep race is not recovering."
+                    f"is_armable + global/home position did not go True within "
+                    f"{armable_timeout}s — PX4 lockstep race is not recovering."
                 )
-            print(f"  is_armable after {time.monotonic() - t0:.1f}s")
+            print(f"  is_armable + position ready after {time.monotonic() - t0:.1f}s")
 
             print("-- Arming")
             try:
@@ -289,7 +323,36 @@ class FC():
         if takeoff_hgt > 0:
             print("-- Taking off")
             await self.vehicle.action.set_takeoff_altitude(1.2*takeoff_hgt)
-            await self.vehicle.action.takeoff()
+            # BUG FIX (2026-08-04, fix (b) -- see project_pi_command_denied_takeoff_2026_08_04
+            # memory): fix (a) above closes the main gap, but retry here too as a safety net
+            # for any remaining transient PX4-side rejection, mirroring the existing
+            # offboard.start() retry pattern elsewhere in this same method. Unlike
+            # offboard.start(), takeoff() doesn't need a setpoint stream pumped between
+            # attempts -- it's a discrete action command, not an offboard mode -- so a
+            # short backoff sleep is enough.
+            TAKEOFF_RETRY_ATTEMPTS = 3
+            TAKEOFF_RETRY_DELAY_S = 2.0
+            last_err = None
+            for attempt in range(TAKEOFF_RETRY_ATTEMPTS):
+                try:
+                    await self.vehicle.action.takeoff()
+                    last_err = None
+                    break
+                except ActionError as error:
+                    last_err = error
+                    print(f"  takeoff() attempt {attempt + 1}/{TAKEOFF_RETRY_ATTEMPTS} "
+                          f"failed: {error._result.result} — retrying after "
+                          f"{TAKEOFF_RETRY_DELAY_S:.0f}s...")
+                    await asyncio.sleep(TAKEOFF_RETRY_DELAY_S)
+            if last_err is not None:
+                raise RuntimeError(
+                    f"takeoff() failed after {TAKEOFF_RETRY_ATTEMPTS} attempts: "
+                    f"{last_err._result.result}. See project_pi_command_denied_takeoff_"
+                    f"2026_08_04 memory for the known root cause (GPS/position estimate "
+                    f"not settled) — if this keeps recurring even after fix (a)'s "
+                    f"stronger pre-arm wait, the position estimate may need longer to "
+                    f"settle than the health flags alone indicate."
+                )
         #-- wait to reach the target altitude via PX4's own AUTO_TAKEOFF
             # 2026-07-11: root-caused via .ulg analysis (see
             # project_flight_anomaly_investigation_2026_07_10 memory) -- PX4's
@@ -308,12 +371,14 @@ class FC():
             # requested altitude.
             AUTO_TAKEOFF_WINDOW_S = 12.0
             t0_takeoff = time.monotonic()
+            _auto_takeoff_reached_alt = False
             while self._STAY_OPEN :
                 await asyncio.sleep(0.5)
                 alt_now = -self._pos_body[-1].z_m
                 if alt_now >= 0.9*takeoff_hgt:
                     print("Altitude reached via AUTO_TAKEOFF")
                     print(alt_now, takeoff_hgt)
+                    _auto_takeoff_reached_alt = True
                     break
                 if (time.monotonic() - t0_takeoff) > AUTO_TAKEOFF_WINDOW_S:
                     print(f"AUTO_TAKEOFF plateaued at alt={alt_now:.2f}m (target "
@@ -322,6 +387,16 @@ class FC():
                           f"the climb via our own OFFBOARD position setpoint next.")
                     break
             self.LANDED = False
+            # BUG FIX (2026-08-04) fix (a) part 1 -- see _landed_reset_allowed
+            # comment in __init__. Only close the gate here if AUTO_TAKEOFF
+            # actually reached real altitude: in the plateau/timeout branch the
+            # drone is still genuinely on the ground, so PX4's landed_state()
+            # can legitimately re-latch LANDED=True moments after this reset --
+            # leave the gate OPEN so fix (b)'s IN_AIR/TAKING_OFF safety net can
+            # still clear it once the OFFBOARD climb below actually leaves the
+            # ground (which also closes the gate itself, at that point).
+            if _auto_takeoff_reached_alt:
+                self._landed_reset_allowed = False
         else:
             raise Exception("Request for takeoff rejected.")
 
@@ -390,6 +465,15 @@ class FC():
                 alt_now = -self._pos_body[-1].z_m
                 if alt_now >= 0.9 * takeoff_hgt:
                     print(f"Altitude reached via OFFBOARD climb: {alt_now:.2f}m")
+                    # BUG FIX (2026-08-04) fix (a) part 2 -- see _landed_reset_allowed
+                    # comment in __init__. Real altitude is now confirmed (this is
+                    # exactly the branch that races against a stale ON_GROUND sample
+                    # from the AUTO_TAKEOFF-plateau case above), so explicitly clear
+                    # any stale LANDED=True one more time here and close the gate for
+                    # good -- from this point on LANDED is a genuine one-way latch
+                    # again, same as before this fix.
+                    self.LANDED = False
+                    self._landed_reset_allowed = False
                     break
                 if (time.monotonic() - t0_climb) > OFFBOARD_CLIMB_TIMEOUT_S:
                     raise RuntimeError(
@@ -498,6 +582,22 @@ class FC():
                 if state == LandedState.ON_GROUND and not self.LANDED:
                     print("[FC] PX4 reports ON_GROUND — LANDED=True")
                     self.LANDED = True
+                # BUG FIX (2026-08-04, fix (b) -- see the _landed_reset_allowed
+                # comment in __init__ for the full race-condition writeup): a
+                # late/stale ON_GROUND sample arriving right after
+                # arm_and_takeoff's LANDED=False reset (still-genuinely-grounded
+                # AUTO_TAKEOFF-plateau case) can re-latch LANDED=True with nothing
+                # left to clear it once the OFFBOARD climb afterward actually
+                # succeeds. This general safety net clears it on IN_AIR/
+                # TAKING_OFF telemetry too -- but ONLY while _landed_reset_allowed
+                # is still True (i.e. before real altitude has been confirmed).
+                # Gated so it can NEVER undo a genuine post-landing latch (PX4
+                # ON_GROUND or the accel-spike _impactDetector) from a late/
+                # transient IN_AIR sample during a hard-landing bounce.
+                elif (state in (LandedState.IN_AIR, LandedState.TAKING_OFF)
+                        and self.LANDED and self._landed_reset_allowed):
+                    print(f"[FC] PX4 reports {state} during takeoff -- clearing stale LANDED=True")
+                    self.LANDED = False
                 if not self._STAY_OPEN:
                     break
         except grpc.RpcError as e:

@@ -577,6 +577,12 @@ class Controller(Thread):
         self._predict_lead = float(os.environ.get("PLASMC_PREDICT_LEAD_S", "0.04"))  # forward horizon (s; 0=just correct)
         self._predict_win  = int(os.environ.get("PLASMC_PREDICT_WIN", "15"))         # fit window (warm at terminal)
         self._predict_deg  = int(os.environ.get("PLASMC_PREDICT_DEG", "2"))          # poly degree (2=curvature)
+        # BUG FIX (2026-08-04, see project_pi_dt_visibility_independence_2026_08_04
+        # memory): max last-good-frame gap _predictModel_s will extrapolate over
+        # before falling back to the raw measurement instead -- see that method's
+        # own comment for the full writeup (dt bypasses the self._dt fix, and
+        # MULTIPLIES the extrapolation term, so a large gap directly inflates it).
+        self._predict_max_gap_s = float(os.environ.get("PLASMC_PREDICT_MAX_GAP_S", "0.3"))
         # PER-AXIS rate-gate limits — the loom (z) has a different scale than the lateral (x,y), so
         # its limit is separate. Derived from the terminal-kick data (approach p90 << limit << terminal p90).
         _dh_xy = float(os.environ.get("PLASMC_DH_LIMIT_XY", "10.0"))
@@ -668,6 +674,15 @@ class Controller(Thread):
         # the initial-approach data needed to diagnose the failure that caused the loss.
         # _archive in run() snapshots the lists before each re-init; getLogData merges.
         self._log_segments = []
+
+        # BUG FIX (2026-08-04, see project_pi_dt_visibility_independence_2026_08_04
+        # memory): a pure wall-clock heartbeat, refreshed EVERY run() loop
+        # iteration regardless of marker visibility (see run()/_updateTime()) --
+        # deliberately initialized here in true __init__, NOT inside
+        # _initialize_controller() (which re-runs on every marker-loss reinit),
+        # so this keeps ticking continuously across reinits too.
+        self._last_loop_t = None
+        self._last_loop_dt = None
 
         self._initialize_controller()
         self.start()
@@ -871,7 +886,22 @@ class Controller(Thread):
             return self._s_raw[-1][k]
         ip, ih = gi[-1], hi[-1]
         s_prev = self._s_raw[ip][k]; h_lat = self._h_raw[ih][k]; h_z = self._h_raw[ih][2]
-        dt = max(float(self._t[-1]) - float(self._t[ip]), 1e-3) + lead
+        raw_gap = float(self._t[-1]) - float(self._t[ip])
+        # BUG FIX (2026-08-04, see project_pi_dt_visibility_independence_2026_08_04
+        # memory): dt here is computed directly from self._t (last-good frame ->
+        # now), bypassing the self._dt fix entirely -- self._t/_s_raw/_s_good only
+        # grow on visible ticks, so ip can point to a pre-gap entry when the first
+        # fresh measurement after a marker-loss gap looks "spiked" relative to
+        # stale history. Unlike dw/_predictModel_h's sdot (dt in the denominator --
+        # a large gap only damps those, doesn't blow them up), dt MULTIPLIES the
+        # extrapolation term here, so a large gap directly inflates the output.
+        # Same fallback philosophy as _predictForward ("falls back to the raw last
+        # value when there aren't enough good frames"): beyond a sane gap, don't
+        # trust a linear extrapolation that far out -- fall back to the raw
+        # measurement instead of extrapolating with a huge dt.
+        if raw_gap > self._predict_max_gap_s:
+            return self._s_raw[-1][k]
+        dt = max(raw_gap, 1e-3) + lead
         return s_prev + (h_lat - s_prev * h_z) * dt
 
     def _predictModel_h(self, k, lead):
@@ -1153,6 +1183,20 @@ class Controller(Thread):
 
     def run(self):
         while self._img_node.is_alive() and self._STAY_OPEN:
+            # BUG FIX (2026-08-04, see project_pi_dt_visibility_independence_2026_08_04
+            # memory): refresh the loop-wall-clock heartbeat EVERY iteration, BEFORE
+            # the visibility check below -- independent of whether the marker is
+            # currently visible. self._updateTime() uses self._last_loop_dt (not a
+            # gap between visible-marker ticks) so dt always reflects the true small
+            # per-loop-iteration period, never a multi-frame/multi-second visibility
+            # gap. self._last_loop_t/_dt persist across marker-loss reinits (see
+            # __init__, not _initialize_controller()) -- they're pure wall-clock
+            # bookkeeping, not control-law state.
+            _now_loop = self._time.perf_counter()
+            if self._last_loop_t is not None:
+                self._last_loop_dt = _now_loop - self._last_loop_t
+            self._last_loop_t = _now_loop
+
             # GT-FEEDBACK: keep the loop alive on GT even if perception loses the
             # marker (the GT target pose is always available) — isolates control
             # from the perception-visibility gate through terminal descent.
@@ -1294,7 +1338,27 @@ class Controller(Thread):
             while self._t[-1] == self._t[-2]:
                 time.sleep(SLEEP_TIME)
                 self._t[-1] = self._time.perf_counter()
-            self._dt.append(self._t[-1] - self._t[-2])
+            # ROOT-CAUSE FIX (2026-08-04, per user architectural correction -- see
+            # project_pi_dt_visibility_independence_2026_08_04 memory, supersedes an
+            # earlier dt-cap band-aid): dt used to be self._t[-1]-self._t[-2], i.e.
+            # time since the LAST VISIBLE-marker tick -- since _updateTime() only
+            # runs while FEATURE_IS_VISIBLE (see run()), ANY marker-loss gap (not
+            # just the old RTL-handoff path -- ordinary in-grace coast bursts too,
+            # documented elsewhere as commonly running up to ~300+ frames / several
+            # seconds) showed up as a giant single-step dt feeding straight into
+            # RK5/trapezoidal integrators on the reacquisition tick (root-caused:
+            # u_a=-423497 rad/s for one tick, see
+            # project_pi_yaw_rk5_dt_blowup_2026_08_04). The actual bug: time/dt
+            # bookkeeping was WRONGLY coupled to marker visibility -- time passes
+            # regardless of whether we can currently see the marker. Fixed at the
+            # source instead of capped after the fact: dt is now taken from
+            # self._last_loop_dt, refreshed EVERY outer-loop iteration in run()
+            # independent of visibility, so it always reflects the true small
+            # per-loop-iteration period (~SLEEP_TIME) -- never a visibility gap.
+            # self._t itself is unchanged (still only appended on visible ticks,
+            # preserving index-alignment with every other per-tick logged array).
+            self._dt.append(self._last_loop_dt if self._last_loop_dt is not None
+                             else self._t[-1] - self._t[-2])
 
     def _updatePerfFunc(self):
         """Middle-loop optical-flow performance envelope (MATLAB-style)."""
