@@ -710,14 +710,29 @@ async def main(record = 'n'):
                 last_good_sys_cmd = sys_cmd
                 marker_lost_t0 = None
             elif (not in_final_descent
-                  and last_good_sys_cmd is not None
                   and (marker_lost_t0 is None
                        or (time_node.perf_counter() - marker_lost_t0) < MARKER_LOSS_GRACE)):
-                # Marker briefly lost OR feature stale — hold last valid command
-                # within grace, give the detector a chance to re-acquire.
+                # Marker briefly lost OR feature stale — hold last valid command within
+                # grace, give the detector a chance to re-acquire.
+                #
+                # STARTUP-GRACE FIX (2026-08-04): this branch used to also require
+                # `last_good_sys_cmd is not None`, so a miss on the VERY FIRST control
+                # tick after engage (before perception has produced even one detection —
+                # confirmed empirically: fires at t_since_engage=0.10s, i.e. one tick past
+                # the 100ms PID-warmup window) had NO grace window at all — it fell
+                # straight through to the `else` branch below and permanently committed
+                # to open-loop TARGET_LOST from t=0, on every single cross-marker run
+                # this session (ArUco's faster/more-reliable first-frame decode masked
+                # this same gap). Fix: still enter the grace-hold branch with no prior
+                # command — hold a neutral hover (zero body rate, hover thrust) instead
+                # of a real command, and only fall to `else` if the marker is STILL not
+                # found after the full grace window elapses.
                 if marker_lost_t0 is None:
                     marker_lost_t0 = time_node.perf_counter()
-                await FC_node.send_attitude_rate(*last_good_sys_cmd)
+                if last_good_sys_cmd is not None:
+                    await FC_node.send_attitude_rate(*last_good_sys_cmd)
+                else:
+                    await FC_node.send_attitude_rate(0.0, 0.0, 0.0, 0.738)  # hover thrust (X500, see convert_2_sys_cmd)
             else:
                 # Marker lost beyond grace (or never seen) → final descent.
                 # Hold zero body rate, push constant sub-hover thrust until
@@ -777,6 +792,10 @@ async def main(record = 'n'):
 
             await asyncio.sleep(SLEEP_TIME)
 
+        print(f"[landing_test] descent loop exited: FC_node.LANDED={FC_node.LANDED} "
+              f"EC_node.is_alive()={EC_node.is_alive()} "
+              f"(2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death "
+              f"vs impact-spike as the exit cause)")
         if FC_node.LANDED:
             print("Landed (PX4 LandedState or impact spike)")
             # Signal touchdown to the chase recorder so its video ends at touchdown
