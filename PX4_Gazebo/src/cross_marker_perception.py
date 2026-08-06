@@ -38,6 +38,7 @@ then removed as redundant for ArUco, 2026-07-17).
 """
 import os
 import time
+from collections import deque
 from threading import Thread
 
 import cv2
@@ -48,6 +49,15 @@ import cross_marker_detector as cmd
 from img_data import fx, fy   # reuse the project's calibrated intrinsics, don't refork them
 from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agnostic raw capture --
                                                         # no ArUco logic in it, safe to reuse as-is
+
+# 2026-08-03 (s_e_n single-frame-spike investigation): _getVirtualPts's perspective divide
+# (V_rays[:,0]/z_v) blows up into a huge or sign-flipped point once a ray's z_v approaches
+# or crosses zero (grazing/behind-camera obliqueness under a transient tilt) -- reproduced
+# via Z_V_DIAG with min_z_v as low as -1.33 and output up to 41x normal magnitude on the
+# CENTROID ray specifically (feeds s/s_e_n). 0.5 is a conservative margin (real, healthy
+# frames observed well above this); below it, reject the frame rather than accept a
+# perspective-divide artifact -- see process_frame's centroid plausibility gate.
+Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
 
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
@@ -86,6 +96,28 @@ MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
                                # to sample. Default 4px was a thin margin; env-overridable to
                                # test a much wider band so a retextured background can matter
                                # for optical flow at all.
+
+# 2026-08-06 (Hz/Wz observability fix, ported from the radial-spread root-cause dig --
+# see feedback_cross_marker_radial_spread_ceiling memory): unbiased GFT over the whole
+# marker mask lets the cross's central intersection -- the single strongest Shi-Tomasi
+# corner in the shape -- dominate the point pool every frame. Measured (Radial Diag Log,
+# a real calibration recording): tracked points reach ~0.26 normalized radius at their
+# MAX but only ~0.05 on AVERAGE -- i.e. a far corner is occasionally found, but rarely
+# selected/kept. The flow Jacobian's Hz/Wz/Wx/Wy columns are all (x,y)-dependent (see
+# _fill_A), so this centroid-clustering starves exactly those rows of real signal while
+# leaving Hx/Hy (position-independent columns) unaffected -- matches the observed R^2
+# asymmetry. Fix: exclude a central disk (sized relative to the mask's OWN current
+# extent, so it scales with altitude) from the GFT mask, biasing candidate corners
+# toward the arm/stub tips; fall back to the unbiased mask if too few peripheral
+# corners survive (e.g. marker small/far, altitude high).
+CROSS_FLOW_CENTER_EXCLUDE_FRAC = float(os.environ.get("CROSS_FLOW_CENTER_EXCLUDE_FRAC", "0.35"))
+MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4"))
+# Exclude candidate corners this close to the TRUE frame edge -- during lateral or
+# descent motion these are exactly the points most likely to leave the frame within a
+# few LK steps (correspondence lost), so keeping them out of the candidate pool avoids
+# repeatedly proposing-then-losing the far-from-center points the bias above is trying
+# to add in the first place.
+FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "20"))
 
 
 def _unweighted_principal_angle(pts):
@@ -193,52 +225,70 @@ class CrossMarkerPerception:
         self._hw = np.zeros(6)
         self._ok = False
         self._last_t = None
+        # Color-gated mask bbox (x, y, w, h) of the last SUCCESSFUL detection -- scale-free
+        # proxy for marker span, feeds MARKER_EXTENT_PX (controller.py) via
+        # CrossMarkerNode._feature_pts. Held (not cleared) across a loss streak, same
+        # hold-last-good convention as _s/_alpha -- MARKER_EXTENT_PX returning 0.0 is meant
+        # for "never detected yet", not "lost this exact frame".
+        self._last_bbox = None
 
         # Output calibration (GT = cal @ raw), same convention as img_data.py's
         # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
         # own image-Jacobian solve (not img_data.py's), so it needs its own
         # empirical correction, not a reuse of the ArUco board's cal.
-        # RE-DERIVED 2026-08-03 (supersedes the 2026-08-02 version) via
+        # RE-DERIVED 2026-08-05 (supersedes the 2026-08-03 version) via
         # apps/record_cross_marker_calibration.py + tools/derive_cross_marker_cal.py,
-        # from 5 clean phased-excitation runs (all passed the 95% detection
-        # ok-rate gate), AFTER root-causing and fixing two real bugs found during
-        # this session's Hx/Hy flow-accuracy investigation (see
-        # Memory/px4/project_cross_marker_pipeline_20260801.md and
-        # feedback_missing_vframe_leveling_port / feedback_dt_staleness_after_
-        # detection_dropout for the full writeups):
-        #   1. Missing V-frame gravity-leveling (_getVirtualPts) -- this module
-        #      computed h,w,s directly from raw, un-leveled camera-frame pixels
-        #      with zero attitude compensation, while GT (compute_gt_signals) is
-        #      in the tilt-compensated V-frame img_data.py's ArUco pipeline
-        #      already reprojects through. Ported _getVirtualPts in, wired the
-        #      quaternion through CrossMarkerNode via Image_Node.getQuaternions()
-        #      (tightly paired with each frame at capture time, NOT a separately-
-        #      polled FC.getQuat() -- that first attempt regressed Hx instead of
-        #      fixing it).
-        #   2. dt/staleness mismatch on detection-dropout recovery: dt was built
-        #      from the outer polling clock (advances every call) while the LK
-        #      "previous frame" state only advances on successful detections --
-        #      after any dropout (common, every run had some), the next good
-        #      frame divided a multi-frame-accumulated displacement by a
-        #      single-frame dt, spiking all six solved parameters. Fixed by
-        #      tracking the timestamp actually paired with self._prev_gray.
-        # Effect: raw Hx/Hy-vs-GT correlation went from ~0.01-0.10 (every test
-        # before these fixes) to a consistent 0.74-0.87 across independent
-        # flights. R^2 (this fit): Hx=0.70 Hy=0.71 Hz=0.42 Wz=0.52 (Wx/Wy forced
-        # 0, same level-target convention as the ArUco board cal) -- Hx/Hy are
-        # now within 0.05 of ArUco's own 13-run board cal (0.75/0.75); Hz/Wz
-        # remain the honest gap (ArUco: 0.79/0.71). Centroid scale sx/sy inter-
-        # run spread dropped to ~7-10% (was ~2.4x before these fixes) -- TIGHTER
-        # than ArUco's own current live cal (h_x 1.091+-0.266 = ~24%, h_y
-        # 1.063+-0.198 = ~19%, per img_data.py's own provenance comments).
+        # from 5 clean phased-excitation runs (95% detection ok-rate gate; a 6th run
+        # at 88.2% was correctly auto-skipped). Required after a cluster of same-day
+        # changes that all touch the raw h/w/s signal: camera-mount yaw+90deg (moved
+        # the landing-leg ghost out of top/bottom into left/right margins), camera Z
+        # offset .20->.18/.15, cross_marker.png line width halved, color-gate
+        # threshold 20->100 (needed for the thinner line's anti-aliasing at range),
+        # tracking-based ROI added, and -- most consequential for this specific
+        # matrix -- the [-y,x]->[y,-x] axis-sign-flip fix in _getVirtualPts (see that
+        # function's own comment for the empirical derivation). The stale
+        # pre-2026-08-05 recordings this fit would otherwise have mixed in were moved
+        # to calibration_data/output_cross_stale_pre20260805/, not deleted.
+        # R^2 (this fit): Hx=0.55 Hy=0.63 Hz=0.22 Wz=0.57 (Wx/Wy forced 0, same
+        # level-target convention as the ArUco board cal). Centroid scale sx=1.044
+        # sy=1.012, inter-run spread modest (~5-11% across the 5 runs).
+        #
+        # 2026-08-06 ROOT-CAUSE FOLLOW-UP on Hz/Wz weakness: ruled out data
+        # contamination. An initial diagnostic (ad-hoc script, not this tool) appeared
+        # to find z-phase windows dominated by constant yaw-rate (~1.0-1.4 rad/s)
+        # instead of vz -- that "finding" was itself a bug: the script truncated
+        # gt['Phase'] via a naive [:n] slice instead of applying the same
+        # valid-mask filter compute_gt_signals() uses internally (which drops
+        # scattered duplicate-timestamp samples, not a trailing block), desyncing
+        # phase labels from the GT arrays. Re-checked with correct alignment
+        # (matching derive_cross_marker_cal.py's own indexing) across all 6
+        # recordings: z/yaw/yawagg phases are genuinely clean in every run (z:
+        # vz~0.15-0.35 dominant, wz~0.001-0.003; yaw/yawagg: wz~1.1-1.3 dominant,
+        # as expected). A purity gate built on the false premise (clean_zyaw_mask,
+        # briefly added to derive_cross_marker_cal.py) made Wz worse, not better,
+        # and has been reverted -- consistent with there being no real
+        # contamination for it to remove. This exact M-matrix (identical to what's
+        # here) is confirmed reproducible from the reverted tool.
+        #
+        # So Hz(R^2=0.22)/Wz(STD 1.2-3.0, coefficients up to 12.9) reflect a genuine
+        # REGRESSION-CONDITIONING/OBSERVABILITY limit, not a data-quality bug: Wz's
+        # own row coefficients are large on the h1/w1 (y-flow) columns specifically,
+        # the signature of near-collinearity -- the yaw phase's raw-flow response
+        # isn't cleanly separable from y-translation flow in this pipeline's
+        # regressor. Hz's low R^2 likely reflects genuinely weak/noisy vertical-flow
+        # sensitivity for this marker/geometry. Treat Hz/Wz-derived signals (loom,
+        # yaw-rate coupling) with proportionally less confidence than Hx/Hy/centroid;
+        # improving this would need better-separated/larger-amplitude z and yaw
+        # excitation phases in the recorder, not a purity-gate fix on the derivation
+        # side.
         self._sensor_cal_hw = np.array([
-            [+0.9108, +0.0771, -0.0143, -0.0965, +0.9116, -0.0023],
-            [+0.0518, +1.0905, -0.0532, -1.1048, +0.0552, -0.0049],
-            [-0.0468, +0.1164, +0.4899, -0.1512, -0.1164, -0.0079],
+            [+0.9532, +0.0049, +0.0103, -0.0028, +0.9559, -0.0034],
+            [-0.0186, +1.0921, +0.0024, -1.0923, -0.0169, -0.0106],
+            [-0.1469, +0.0883, +0.5679, -0.0790, -0.1275, +0.0053],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+1.0417, +3.0649, -0.0620, -2.8697, +1.0600, +0.6217]])
-        self._sensor_cal_s = np.diag([1.0647, 1.1124, 1.0, 1.0])
+            [+0.3215, +12.9132, +0.7293, -12.9874, +0.3896, +0.5447]])
+        self._sensor_cal_s = np.diag([1.0439, 1.0118, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -266,18 +316,107 @@ class CrossMarkerPerception:
         self._radial_diag_log = []   # TEMP DIAG 2026-08-03, see _solve_jacobian
         self._radial_diag = (np.nan, np.nan, np.nan, np.nan)
 
+        # Time-series logging (2026-08-04, perception-quality debugging): log full
+        # frame-by-frame history so getLogData() can return it for comparison with GT.
+        # Each appended once per process_frame() call, matching img_data.py's pattern.
+        self._time_log = []
+        self._quat_log = []      # quaternion (for V-frame reconstruction)
+        self._s_log = []         # (3,) per frame — centroid in V-frame
+        self._hw_log = []        # (6,) per frame — optical flow Jacobian solve
+        self._alpha_log = []     # scalar per frame — marker orientation
+        self._n_flow_corners_log = []  # per-frame KLT corner count
+        self._feature_visibility_log = []  # True if detection succeeded
+        self._detection_reason_log = []  # fail_reason when det.ok=False
+        self._marker_extent_log = []  # MARKER_EXTENT_PX per frame
+        self._center_px_log = []  # raw pixel center (for CBF use)
+
+        # 2026-08-05: parity fields ported from img_data.py's IMG_PROCESSOR getLogData()
+        # (see that class's own field list) -- everything here has a direct, generic
+        # analog for a single-marker pipeline. Fields that are ArUco/ring-flow/
+        # PlanarFeatureMap-specific (KLT Diag, Ring *, Opt Flow Fused, Target Vel,
+        # Centroid/Alpha/Flow Map *, Planar Map Shadow) have NO counterpart here --
+        # this module has no ring-flow, no multi-marker board, no map-based rescue --
+        # so they're intentionally not ported (see CrossMarkerNode's own class
+        # docstring for the documented scope/gaps vs IMG_PROCESSOR).
+        self._imu_angvel_log = []      # (3,) [forward,right,down] rad/s, paired to the same frame as quat
+        self._fps_log = []             # per-frame reported capture FPS (self._image_node.getFPS())
+        self._stamp_log = []           # raw capture stamp (vs Time, which is the same value here --
+                                        # img_data.py distinguishes perf_counter-based Time from the
+                                        # frame's own header stamp; this module already uses the
+                                        # frame's own stamp as `t` throughout, so the two coincide)
+        self._feature_pts_raw_log = []  # raw (line_i + line_j + stub) pixel points, this frame's detection
+        self._img_feature_param_log = []  # CALIBRATED [xc,yc,1,alpha] (getImgFeatureParam() output),
+                                            # as opposed to _s_log/_alpha_log which are pre-calibration
+
+        # TRACKING-BASED ROI (2026-08-05): persistent state dict passed into cmd.detect()
+        # every call -- see cross_marker_detector.py's TRACK_MARGIN_PX comment for the
+        # full design (ported from Hardware/scripts/img_data.py's ArUco
+        # ARUCO_ROI_MARGIN_PX fast path). Owned here (not module-global) so it resets
+        # cleanly per-instance/per-flight.
+        self._track_state = {'last_bbox': None, 'miss_count': 0}
+
     @staticmethod
     def _dilate_mask(mask):
         kernel = np.ones((2 * MASK_DILATE_PX + 1, 2 * MASK_DILATE_PX + 1), np.uint8)
         return cv2.dilate(mask, kernel)
 
     def _sample_flow_points(self, gray, dilated_mask):
+        h, w = dilated_mask.shape
+
+        # boundary-margin mask: never propose a corner this close to the true frame
+        # edge -- it's likely to exit frame (LK correspondence lost) within a few
+        # frames under lateral/descent motion, see FLOW_BOUNDARY_MARGIN_PX's comment.
+        m = FLOW_BOUNDARY_MARGIN_PX
+        boundary_mask = dilated_mask
+        if m > 0 and h > 2 * m and w > 2 * m:
+            boundary_mask = dilated_mask.copy()
+            boundary_mask[:m, :] = 0
+            boundary_mask[-m:, :] = 0
+            boundary_mask[:, :m] = 0
+            boundary_mask[:, -m:] = 0
+
+        # peripheral mask: exclude a central disk around the marker's OWN centroid,
+        # sized relative to its OWN current extent -- biases GFT candidates toward
+        # the arm/stub tips instead of letting the cross's central intersection
+        # (the strongest corner in the shape) dominate the point pool.
+        peripheral_mask = boundary_mask
+        ys, xs = np.nonzero(boundary_mask)
+        if len(xs) > 0:
+            mcx, mcy = float(xs.mean()), float(ys.mean())
+            half_extent = max(float(xs.max() - xs.min()), float(ys.max() - ys.min())) / 2.0
+            if half_extent > 0:
+                exclude_r = CROSS_FLOW_CENTER_EXCLUDE_FRAC * half_extent
+                yy, xx = np.ogrid[:h, :w]
+                center_disk = (xx - mcx) ** 2 + (yy - mcy) ** 2 < exclude_r ** 2
+                peripheral_mask = boundary_mask.copy()
+                peripheral_mask[center_disk] = 0
+
         pts = cv2.goodFeaturesToTrack(
             gray, maxCorners=GFT_MAX_CORNERS, qualityLevel=GFT_QUALITY,
-            minDistance=GFT_MIN_DIST, mask=dilated_mask)
+            minDistance=GFT_MIN_DIST, mask=peripheral_mask)
+        peripheral_pts = (pts.reshape(-1, 2).astype(np.float32) if pts is not None
+                          else np.zeros((0, 2), dtype=np.float32))
+        if len(peripheral_pts) >= MIN_PERIPHERAL_POINTS:
+            return peripheral_pts
+
+        # too few peripheral corners survived (small/distant marker) -- fall back to
+        # the unbiased boundary-margin-only mask so this never returns FEWER points
+        # than the pre-2026-08-06 behavior would have.
+        pts = cv2.goodFeaturesToTrack(
+            gray, maxCorners=GFT_MAX_CORNERS, qualityLevel=GFT_QUALITY,
+            minDistance=GFT_MIN_DIST, mask=boundary_mask)
         if pts is None:
-            return np.zeros((0, 2), dtype=np.float32)
-        return pts.reshape(-1, 2).astype(np.float32)
+            return peripheral_pts
+        full_pts = pts.reshape(-1, 2).astype(np.float32)
+        if len(peripheral_pts) == 0:
+            return full_pts
+        # merge without near-duplicates of what peripheral sampling already found
+        keep = np.ones(len(full_pts), dtype=bool)
+        for i, p in enumerate(full_pts):
+            if np.any(np.linalg.norm(peripheral_pts - p, axis=1) < GFT_MIN_DIST):
+                keep[i] = False
+        merged = np.vstack([peripheral_pts, full_pts[keep]])
+        return merged[:GFT_MAX_CORNERS]
 
     def _getVirtualPts(self, pts, quat):
         """Reproject camera-frame pixels onto the virtual image plane V: a
@@ -300,10 +439,27 @@ class CrossMarkerPerception:
         un-leveled normalization so callers degrade gracefully rather than
         crash.
         """
+        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): x500_mono_cam_down/model.sdf's
+        # camera mount now has yaw+=90deg on top of the pre-existing pointing-down
+        # pitch=90deg (moved the drone's landing-leg mirrored ghost from the top/bottom
+        # to the left/right image margins -- see _restrict_to_center_roi's docstring).
+        # The OLD "camera=body-FRD aligned" ray=[x,y,1] convention needs a compensating
+        # rotation. Initial derivation (Rz(+90deg) -> [-y,x]) was empirically WRONG:
+        # verified against the marker's known world-yaw=0deg (cross_marker/model.sdf's
+        # static pose) via the alpha (heading) computation -- unswapped raw alpha read
+        # ~90deg (not ~0deg) after the mount change, and [-y,x] added ANOTHER +90deg
+        # instead of correcting it. Also independently confirmed by s_e_n DIVERGING
+        # (0.056->0.459 over a 5s test) instead of converging with the [-y,x] version --
+        # a live closed-loop instability signature consistent with a 180deg-opposite
+        # control direction. Correct transform is [y,-x] (Rz(-90deg)) -- i.e. swap x
+        # and y, negate the new y. Applied to BOTH the quat-based V-frame path and the
+        # quat=None raw fallback for consistency (same physical camera).
         if quat is None:
             cx, cy = self.center
             fxx, fyy = self.focal
-            return np.column_stack([(pts[:, 0] - cx) / fxx, (pts[:, 1] - cy) / fyy])
+            x = (pts[:, 0] - cx) / fxx
+            y = (pts[:, 1] - cy) / fyy
+            return np.column_stack([y, -x])
 
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
         g = R.T @ np.array([0, 0, 1])   # world-down in body/camera frame (camera=body-FRD aligned)
@@ -318,7 +474,7 @@ class CrossMarkerPerception:
         fxx, fyy = self.focal
         x = (pts[:, 0] - cx) / fxx
         y = (pts[:, 1] - cy) / fyy
-        rays = np.column_stack([x, y, np.ones_like(x)])
+        rays = np.column_stack([y, -x, np.ones_like(x)])
         V_rays = rays @ C_R_V
         z_v = V_rays[:, 2]
         # Diagnostic (2026-08-02, V-frame regression debug): img_data.py tracks this
@@ -331,6 +487,18 @@ class CrossMarkerPerception:
         # diagnostics (those check the LSTSQ fit, not the per-point projection that
         # feeds it).
         self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
+        # TEMP DIAG (2026-08-03, s_e_n/h_y single-frame-spike investigation): confirm/deny
+        # the near-zero-z_v perspective-divide-blowup mechanism the comment above already
+        # theorizes. Fires on ANY ray this close to grazing, npts distinguishes the
+        # centroid call (npts=1, feeds s) from the flow-point call (npts=N, feeds h).
+        if len(z_v) and np.min(z_v) < 0.5:
+            # tilt-from-vertical computed from this SAME quat/DCM -- self-contained, no
+            # cross-clock lookup needed (2026-08-03, "is 60deg cap enough?" follow-up).
+            _tilt_deg = float(np.degrees(np.arccos(np.clip(R[2, 2], -1.0, 1.0))))
+            _i_worst = int(np.argmin(z_v))
+            print(f"[Z_V_DIAG] t={self._last_t} npts={len(z_v)} min_z_v={np.min(z_v):.4f} "
+                  f"tilt_deg={_tilt_deg:.1f} x,y(worst)={x[_i_worst]:.3f},{y[_i_worst]:.3f} "
+                  f"max|out|={np.max(np.abs(np.column_stack([V_rays[:,0]/z_v, V_rays[:,1]/z_v]))):.3f}")
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
 
     def _solve_jacobian(self, prev_pts, curr_pts, dt, prev_quat=None, curr_quat=None):
@@ -453,7 +621,15 @@ class CrossMarkerPerception:
         # the staleness bug that caused).
         self._last_t = t
 
-        det = cmd.detect(img_bgr)
+        # EXTENT-ADAPTIVE ROI (2026-08-04): decided INSIDE detect() itself now, from the
+        # blobby-stage mask's own largest-component extent (see cross_marker_detector's
+        # ROI_FRAC_X_DEFAULT/_LOOSENED comment) -- a caller-side decision based on
+        # self._last_bbox (the last SUCCESSFUL detection) hit a bootstrap deadlock: if
+        # the tight crop truncates the marker right as it crosses the adaptive
+        # threshold, successful detections never record the marker's true (larger)
+        # size, so the loosened crop never triggers. Computing it fresh from
+        # ROI-independent, already-ghost-filtered data every call avoids that.
+        det = cmd.detect(img_bgr, track_state=self._track_state)
         gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         bbox_area = (det.mask_bbox[2] * det.mask_bbox[3]) if det.mask_bbox else 0
         self._diag_log.append((t, bool(det.ok), det.fail_reason, bbox_area))
@@ -475,6 +651,8 @@ class CrossMarkerPerception:
                 fn = os.path.join(self._diag_save_dir,
                                    f"lost_{self._diag_frame_idx:06d}_streak{self._diag_lost_streak}_{det.fail_reason}.png")
                 cv2.imwrite(fn, img_bgr)
+            # Log even on detection misses
+            self._log_frame_data(t, quat, hw_ok=False, det=det)
             return self.get_output()
 
         if self._diag_save_dir and self._diag_lost_streak >= 5:
@@ -485,11 +663,35 @@ class CrossMarkerPerception:
         self._diag_lost_streak = 0
 
         cx, cy = det.center
-        self._center_px = np.array([cx, cy])
-        self._center_fresh = True
         # Level the centroid into the SAME V-frame compute_gt_signals' GT is in
         # (2026-08-02 fix -- was raw camera-frame, tilt-uncompensated, same gap as h,w).
         s_xy = self._getVirtualPts(np.array([[cx, cy]]), quat)[0]
+        # PLAUSIBILITY GATE (2026-08-03, s_e_n single-frame-spike investigation): confirmed
+        # via Z_V_DIAG that a transient tilt can push the centroid ray's z_v near/below zero
+        # for exactly one frame -- _getVirtualPts's own comment already predicted this would
+        # "blow up the perspective divide into a huge or sign-flipped point" invisibly (no
+        # existing diagnostic caught it). Reproduced: min_z_v as low as -1.33, output up to
+        # 41x normal magnitude. That single-frame garbage s fed sigma -> the adaptive-gain
+        # ODE ratcheted kappa 0.29->3.18 in ~130ms and never recovered (frozen there by the
+        # staleness gate once perception subsequently dropped out), driving a real a_u/accel
+        # spike that falsely triggered the impact detector well above the marker. self._z_v_log
+        # was just appended by the call above (nothing else calls _getVirtualPts in between),
+        # so [-1] is this exact centroid ray's min z_v -- treat like a genuine miss (same
+        # fields as the `not det.ok` branch above) rather than accept a point from a ray
+        # that's behind/grazing the virtual camera.
+        _z_v_centroid = self._z_v_log[-1] if self._z_v_log else float('nan')
+        if not (np.isfinite(_z_v_centroid) and _z_v_centroid > Z_V_MIN_CENTROID):
+            self._diag_z_v_reject_count = getattr(self, '_diag_z_v_reject_count', 0) + 1
+            self._ok = False
+            self._center_fresh = False
+            self._hw = np.zeros(6)
+            self._diag_lost_streak += 1
+            return self.get_output()
+
+        self._center_px = np.array([cx, cy])
+        self._center_fresh = True
+        if det.mask_bbox is not None:
+            self._last_bbox = det.mask_bbox
         self._s = np.array([s_xy[0], s_xy[1], 1.0])
 
         # --- alpha: unweighted moment over REAL detected arm/stub pixels ---
@@ -497,6 +699,16 @@ class CrossMarkerPerception:
         if det.stub_points is not None and len(det.stub_points) >= 2:
             stub_pts = np.asarray(det.stub_points, dtype=np.float64)
             arm_pts = np.asarray(pts_for_alpha, dtype=np.float64)
+            # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): empirically verified against
+            # the marker's known world-yaw=0deg (cross_marker/model.sdf's static pose) --
+            # the ORIGINAL (+90deg, [-y,x]) direction was backwards: unswapped raw alpha
+            # measured ~90deg (not ~0deg) after the camera-mount yaw change, and the
+            # [-y,x] swap ADDED another +90deg on top, landing at ~180deg instead of
+            # correcting back to ~0deg. Correct transform is [y,-x] (Rz(-90deg)), which
+            # empirically lands alpha back near 0deg -- see _getVirtualPts and
+            # cbf_visibility.py for the identical sign correction applied there.
+            stub_pts = np.column_stack([stub_pts[:, 1], -stub_pts[:, 0]])
+            arm_pts = np.column_stack([arm_pts[:, 1], -arm_pts[:, 0]])
             all_pts = np.vstack([arm_pts, stub_pts])
             a_raw, _ = _unweighted_principal_angle(all_pts)
             asym = (float(stub_pts[:, 0].mean() - arm_pts[:, 0].mean()),
@@ -513,7 +725,69 @@ class CrossMarkerPerception:
         self._hw = hw if hw_ok else np.zeros(6)
 
         self._ok = True
+
+        # Log full time-series (2026-08-04, frame-by-frame debugging)
+        self._log_frame_data(t, quat, hw_ok)
+
         return self.get_output()
+
+    def _log_frame_data(self, t, quat, hw_ok, det=None):
+        """Log full frame-by-frame state for time-series analysis."""
+        try:
+            self._time_log.append(float(t) if t is not None else np.nan)
+            # Log quat as tuple (w,x,y,z) to avoid pickle issues
+            if quat is not None:
+                self._quat_log.append(tuple([float(getattr(quat, k, np.nan)) for k in ['w','x','y','z']]))
+            else:
+                self._quat_log.append(None)
+            self._s_log.append(self._s.copy())
+            self._hw_log.append(self._hw.copy())
+            self._alpha_log.append(float(self._alpha))
+            # hw_ok tracks whether LK flow succeeded (for debugging corner loss)
+            self._n_flow_corners_log.append(int(len(self._prev_flow_pts)) if self._prev_flow_pts is not None else 0)
+            self._feature_visibility_log.append(bool(self._ok))
+            self._detection_reason_log.append("ok" if self._ok else "miss")
+            # Marker extent from bbox (scale-free proximity proxy)
+            if self._last_bbox is not None:
+                extent = float(max(self._last_bbox[2], self._last_bbox[3]))  # max(w, h)
+            else:
+                extent = 0.0
+            self._marker_extent_log.append(extent)
+            # Center px as simple tuple
+            if self._center_px is not None:
+                self._center_px_log.append(tuple(float(x) for x in self._center_px))
+            else:
+                self._center_px_log.append((np.nan, np.nan))
+
+            # 2026-08-05: parity fields (see __init__'s comment for scope). angvel/fps/
+            # stamp are set as instance attrs by CrossMarkerNode.run() just before
+            # calling process_frame() -- avoids changing process_frame()'s own call
+            # signature (other callers, e.g. offline replay scripts, call it directly).
+            _av = getattr(self, '_pending_angvel', None)
+            if _av is not None:
+                self._imu_angvel_log.append((float(_av.forward_rad_s), float(_av.right_rad_s), float(_av.down_rad_s)))
+            else:
+                self._imu_angvel_log.append((np.nan, np.nan, np.nan))
+            self._fps_log.append(float(getattr(self, '_pending_fps', np.nan)))
+            self._stamp_log.append(float(getattr(self, '_pending_stamp', np.nan)))
+
+            # Raw feature points this frame (arm + stub lines), if a fresh detection
+            # happened -- held empty on a miss (no fresh points to report).
+            if det is not None and det.ok:
+                _raw_pts = list(det.line_points_i) + list(det.line_points_j)
+                if det.stub_points is not None:
+                    _raw_pts += list(det.stub_points)
+                self._feature_pts_raw_log.append(np.asarray(_raw_pts, dtype=np.float64))
+            else:
+                self._feature_pts_raw_log.append(np.zeros((0, 2)))
+
+            # Calibrated feature param [xc,yc,1,alpha] (getImgFeatureParam()'s own
+            # output) -- distinct from _s_log/_alpha_log, which are pre-calibration.
+            self._img_feature_param_log.append(
+                self._sensor_cal_s @ np.array([self._s[0], self._s[1], self._s[2], self._alpha]))
+        except Exception as e:
+            # If logging fails, don't crash the perception pipeline
+            print(f"[CrossMarkerNode._log_frame_data] warning: {e}")
 
     def get_output(self):
         return dict(ok=self._ok, s=self._s.copy(), alpha=self._alpha, hw=self._hw.copy())
@@ -563,6 +837,15 @@ class CrossMarkerPerception:
             return None
         return self._center_px.copy()
 
+    def get_bbox_corners(self):
+        """4 corner points (4,2) of the last successful color-gated mask bbox, in the
+        (x,y,w,h) -> [[x,y],[x+w,y],[x,y+h],[x+w,y+h]] convention MARKER_EXTENT_PX
+        (controller.py) expects -- or None if never detected yet."""
+        if self._last_bbox is None:
+            return None
+        x, y, w, h = self._last_bbox
+        return np.array([[x, y], [x + w, y], [x, y + h], [x + w, y + h]], dtype=float)
+
     @property
     def FEATURE_IS_VISIBLE(self):
         return self._ok
@@ -599,10 +882,17 @@ class CrossMarkerNode(Thread):
         self.focal = self._perception.focal
 
         # plain-attribute stand-ins for controller.py's other self._img_node.* touches
-        self.RECORD = False
+        self.RECORD = os.environ.get("IMG_RECORD", "0") == "1"   # IMG_RECORD=1 saves the descent video
         self.CONTROLLER_READY = False
-        self._feature_pts = []
+        self._feature_pts = deque(maxlen=5)   # only fp_list[-1] is ever read (MARKER_EXTENT_PX)
         self._ring_loom_source = "n/a"
+        # Live cv2.VideoWriter.write() from this background thread was found to silently
+        # drop frames (153 write() calls -> 1 decodable frame on disk, headless/offscreen
+        # OpenCV video backend + non-main-thread write is unreliable) -- dump raw PNG
+        # frames instead (same pattern as img_data.py's IMG_RECORD_RAW) and stitch to mp4
+        # in close(), single-threaded, after the flight.
+        self._rec_dir = None
+        self._rec_n = 0
 
         self._running = True
         self.start()
@@ -654,6 +944,30 @@ class CrossMarkerNode(Thread):
                 quats = self._image_node.getQuaternions()
                 quat = quats[-1] if quats else None
                 self._perception.process_frame(imgs[-1], stamp, quat=quat)
+
+                # Feed MARKER_EXTENT_PX (controller.py) -- reads self._img_node._feature_pts
+                # as fp_list[-1][1], a (4,2) corner array (ArUco's [prev,curr]-paired
+                # convention; only [1] is ever read there). Without this, MARKER_EXTENT_PX
+                # is permanently 0.0 under MARKER_TYPE=cross, silently disabling the
+                # marker-fills-FoV terminal-commit trigger (_terminalCommitStep).
+                _corners = self._perception.get_bbox_corners()
+                if _corners is not None:
+                    self._feature_pts.append((None, _corners))
+
+                # IMG_RECORD=1 -> save the descent video (mirrors img_data.py's IMG_PROCESSOR;
+                # gated the same way: only once the controller has engaged).
+                if self.RECORD and self.CONTROLLER_READY:
+                    frame = imgs[-1]
+                    if self._rec_dir is None:
+                        self._rec_ts = time.ctime().replace(':', '-')
+                        self._rec_dir = ('/home/shubham/Soft-Precise-Landing/PX4_Gazebo/'
+                                          f'test_data/Test_Videos/{self._rec_ts}_raw')
+                        os.makedirs(self._rec_dir, exist_ok=True)
+                        _fps = self._image_node.getFPS()
+                        self._rec_fps = _fps if (isinstance(_fps, (int, float)) and _fps > 1) else 30.0
+                    cv2.imwrite(f'{self._rec_dir}/f{self._rec_n:05d}.png', frame,
+                                [cv2.IMWRITE_PNG_COMPRESSION, 1])
+                    self._rec_n += 1
             except Exception as e:
                 print(f"[CrossMarkerNode] frame processing error: {e}")
                 time.sleep(0.01)
@@ -689,15 +1003,175 @@ class CrossMarkerNode(Thread):
     def FEATURE_IS_VISIBLE(self):
         return self._perception.FEATURE_IS_VISIBLE
 
+    @property
+    def RESCUE_ACTIVE(self):
+        """Always False: RESCUE_ACTIVE is the ArUco PlanarFeatureMap rescue signal
+        (img_data.py) -- this pipeline has no rescue/map fallback (see class docstring),
+        so it can never be "rescuing" a frame. Stubbed so apps/landing_test.py's
+        feature_fresh OR-check doesn't AttributeError under MARKER_TYPE=cross."""
+        return False
+
     def getLogData(self):
-        return dict(s=self._perception._s.copy(), alpha=self._perception._alpha,
-                     hw=self._perception._hw.copy())
+        """Return full time-series logs for frame-by-frame comparison with GT."""
+        return {
+            "Time": self._perception._time_log,
+            "Quat": self._perception._quat_log,
+            "s_V": self._perception._s_log,         # centroid in V-frame
+            "h_V": self._perception._hw_log,        # optical flow (raw, before cal)
+            "alpha(t)": self._perception._alpha_log,
+            "N Flow Corners": self._perception._n_flow_corners_log,
+            "FEATURE_IS_VISIBLE": self._perception._feature_visibility_log,
+            "Detection Status": self._perception._detection_reason_log,
+            "MARKER_EXTENT_PX": self._perception._marker_extent_log,
+            "Center Px": self._perception._center_px_log,
+        }
 
     def getParams(self):
-        return dict(center=self.center.copy(), focal=self.focal.copy())
+        # img_data.py's IMG_PROCESSOR.getParams() returns a str (apps/landing_test.py
+        # writes it verbatim via f.write()) -- match that contract, not a dict.
+        return f"{{'center':{tuple(self.center)}, 'focal':{tuple(self.focal)}}}"
+
+    def getFailureCause(self):
+        """Always "UNKNOWN": DRIFT_OFF/OVERFLOW are img_data.py's ring-loom-fusion-derived
+        tags (self._last_drifted_off/_last_overflow), a signal this single-marker pipeline
+        has no counterpart for (see class docstring) -- matches img_data.py's own fallback
+        return when neither ArUco-specific signal fired."""
+        return "UNKNOWN"
+
+    def update_cbf_handover_signal(self, cbf_overflow):
+        """No-op: marker handover is an ArUco dual-slot (big/small marker) concept
+        that has no counterpart in the single cross-marker pipeline (see class
+        docstring). Stubbed so apps/landing_test.py's per-step call doesn't
+        AttributeError under MARKER_TYPE=cross."""
+        pass
+
+    def _stitch_recording(self):
+        if self._rec_dir is None or self._rec_n == 0:
+            return
+        import glob
+        frames = sorted(glob.glob(f'{self._rec_dir}/f*.png'))
+        if not frames:
+            return
+        first = cv2.imread(frames[0])
+        h, w = first.shape[0], first.shape[1]
+        out_path = ('/home/shubham/Soft-Precise-Landing/PX4_Gazebo/'
+                    f'test_data/Test_Videos/{self._rec_ts}.mp4')
+        writer = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'),
+                                  self._rec_fps, (w, h), isColor=(first.ndim == 3))
+        for fp in frames:
+            writer.write(cv2.imread(fp))
+        writer.release()
+        print(f"[CrossMarkerNode] IMG_RECORD: stitched {len(frames)} frames -> {out_path}")
+
+    def _print_diag_summary(self):
+        """One-off teardown summary distinguishing a genuinely-slow process_frame() CALL
+        rate (thread starvation / camera delivery) from a fast call rate that mostly FAILS
+        detection (s(t) then holds last-good, which looks identical to a slow rate from the
+        controller's side -- see the 2026-08-03 perception-loop-rate investigation)."""
+        log = self._perception.get_diag_log()
+        if len(log) < 2:
+            return
+        ts = np.array([e[0] for e in log], dtype=float)
+        oks = np.array([e[1] for e in log], dtype=bool)
+        dt = np.diff(ts)
+        dt = dt[dt > 0]
+        call_hz = 1.0 / np.mean(dt) if len(dt) else float('nan')
+        from collections import Counter
+        fails = Counter(e[2] for e in log if not e[1])
+        print(f"[CrossMarkerNode] diag: {len(log)} process_frame() calls over "
+              f"{ts[-1]-ts[0]:.2f}s (mean call rate {call_hz:.1f} Hz), "
+              f"detect ok {oks.sum()}/{len(oks)} ({100*oks.mean():.0f}%)"
+              + (f", fail reasons: {dict(fails)}" if fails else ""))
+
+        # 2026-08-04: hough_lt2_lines root-cause breakdown -- see cross_marker_detector's
+        # HOUGH_DIAG_LOG (populated on every hough_lt2_lines occurrence, not just a sample).
+        hlog = [e for e in cmd.HOUGH_DIAG_LOG if e.get('bbox') is not None]
+        n_empty = sum(1 for e in cmd.HOUGH_DIAG_LOG if e.get('bbox') is None)
+        if hlog:
+            mask_px = np.array([e['mask_px'] for e in hlog])
+            bboxes = np.array([e['bbox'] for e in hlog])  # (N,4): x,y,w,h
+            n_edge = np.array([e['n_edge_px'] for e in hlog])
+            stage_px = np.array([e['stage_px'] for e in hlog])  # (N,5): raw,close,blobby,roi,shape
+            bbox_w, bbox_h = bboxes[:, 2], bboxes[:, 3]
+            bbox_extent = np.maximum(bbox_w, bbox_h)
+            print(f"[CrossMarkerNode] HOUGH_DIAG ({len(hlog)} hough_lt2_lines events"
+                  + (f", {n_empty} color_gate_empty" if n_empty else "") + "): "
+                  f"mask_px min/med/max={mask_px.min()}/{int(np.median(mask_px))}/{mask_px.max()}, "
+                  f"bbox_extent min/med/max={bbox_extent.min()}/{int(np.median(bbox_extent))}/{bbox_extent.max()}")
+            # Breakdown by extent bucket, WITH per-stage pixel survival, to see which
+            # filter stage (raw color-gate / morph-close / blobby-reject / roi-crop /
+            # shape-isolate) is killing the mask in each extent regime.
+            for lo, hi in [(0, 50), (50, 100), (100, 200), (200, 300), (300, 500)]:
+                bmask = (bbox_extent >= lo) & (bbox_extent < hi)
+                if np.any(bmask):
+                    sp = stage_px[bmask]
+                    print(f"    extent {lo:3d}-{hi:3d}px: {np.sum(bmask):4d} events -- "
+                          f"stage_px med: raw={int(np.median(sp[:,0]))} close={int(np.median(sp[:,1]))} "
+                          f"blobby={int(np.median(sp[:,2]))} roi={int(np.median(sp[:,3]))} "
+                          f"shape={int(np.median(sp[:,4]))}")
+
+            # 2026-08-04: DISTINCT-pattern dedup -- a repeated identical (bbox, mask_px)
+            # combo strongly suggests one frozen frame (e.g. during the post-TARGET_LOST
+            # open-loop tail, where the same unchanging view gets detect()'d hundreds of
+            # times) counted many times, not genuine per-frame variety. Report the true
+            # distinct-pattern count so the extent-bucket breakdown above isn't misread.
+            from collections import Counter
+            patterns = Counter((tuple(bboxes[i]), int(mask_px[i])) for i in range(len(hlog)))
+            print(f"    {len(patterns)} DISTINCT (bbox, mask_px) patterns out of {len(hlog)} events "
+                  f"(top 5 by count): {patterns.most_common(5)}")
+
+            # Cross-reference against the per-frame _diag_log's own (t, ok, fail_reason,
+            # bbox_area) tuples -- both lists are appended in the same call order (once
+            # per process_frame -> detect() call), so the Nth hough_lt2_lines entry in
+            # _diag_log aligns positionally with the Nth cmd.HOUGH_DIAG_LOG entry. Lets
+            # us see WHEN these fire without touching detect()'s signature.
+            full_log = self._perception.get_diag_log()
+            hough_ts = [e[0] for e in full_log if e[2] == 'hough_lt2_lines']
+            if len(hough_ts) == len(cmd.HOUGH_DIAG_LOG):
+                hough_ts = np.array(hough_ts)
+                t0, t1 = hough_ts.min(), hough_ts.max()
+                print(f"    time range of ALL hough_lt2_lines events: {t0:.2f}s-{t1:.2f}s "
+                      f"(over the {full_log[-1][0]-full_log[0][0]:.1f}s run)")
+                # Same distinct-pattern dedup, but only within the FIRST half of the run
+                # (active tracking) vs SECOND half (likely post-TARGET_LOST open-loop tail)
+                mid = (full_log[0][0] + full_log[-1][0]) / 2.0
+                early = hough_ts < mid
+                print(f"    {np.sum(early)} events before t={mid:.1f}s (active-tracking half), "
+                      f"{np.sum(~early)} after (likely open-loop tail)")
+
+                # GHOST-FILTERED active-half breakdown (2026-08-04): the (206,513,68,14)
+                # bbox is a fixed-pixel-location rendering artifact (the documented
+                # top/bottom-margin body-ghost, see _restrict_to_center_roi's docstring)
+                # that dominates the raw counts above but isn't the marker at all --
+                # filter it out and re-show what's LEFT in the active-tracking half, to
+                # see the genuine (non-ghost) failure pattern during real tracking.
+                GHOST_BBOX = (206, 513, 68, 14)
+                is_ghost = np.array([tuple(bboxes[i]) == GHOST_BBOX for i in range(len(hlog))])
+                active_nonghost = early & ~is_ghost
+                print(f"    active-half, GHOST-FILTERED: {np.sum(active_nonghost)} genuine "
+                      f"events (vs {np.sum(early)} raw, {np.sum(early & is_ghost)} were ghost)")
+                if np.any(active_nonghost):
+                    ext_ag = bbox_extent[active_nonghost]
+                    mp_ag = mask_px[active_nonghost]
+                    print(f"      extent min/med/max={ext_ag.min()}/{int(np.median(ext_ag))}/{ext_ag.max()}, "
+                          f"mask_px min/med/max={mp_ag.min()}/{int(np.median(mp_ag))}/{mp_ag.max()}")
+                    ag_patterns = Counter((tuple(bboxes[i]), int(mask_px[i]))
+                                          for i in np.where(active_nonghost)[0])
+                    print(f"      top 5 active-half non-ghost patterns: {ag_patterns.most_common(5)}")
+            else:
+                print(f"    WARNING: hough_ts count ({len(hough_ts)}) != HOUGH_DIAG_LOG count "
+                      f"({len(cmd.HOUGH_DIAG_LOG)}) -- positional alignment assumption broken")
 
     def close(self):
         self._running = False
+        try:
+            self._print_diag_summary()
+        except Exception as e:
+            print(f"[CrossMarkerNode] diag summary failed: {e}")
+        try:
+            self._stitch_recording()
+        except Exception as e:
+            print(f"[CrossMarkerNode] video stitch failed: {e}")
         try:
             self._image_sub.close()
         except Exception:

@@ -226,12 +226,72 @@ on independent flights, phase-isolated and restricted to detection-ok samples �
 that validates badly but a RAW correlation check that's ALSO near-zero on clean data
 points at the raw signal, not the fit.
 
+# Cross-marker output cal: its OWN derive tool, separate data dir
+The cross+stub fiducial (`src/cross_marker_perception.py`) is NOT routed through
+`img_data.py`/`IMG_PROCESSOR` at all — its own image-Jacobian solve (`_fill_A`, same
+6-DOF math as the corner cal but independently implemented) needs its own cal, derived
+by `tools/derive_cross_marker_cal.py` (recordings: `apps/record_cross_marker_calibration.py`
+→ `calibration_data/output_cross/`, NOT `calibration_data/output/`). Same phased-excitation
+/ ≥5-run / MIN_OK_RATE=95%-gate discipline as the ArUco board cal, but it's a genuinely
+separate cal pipeline — don't assume the ArUco cal transfers.
+
+## Hz/Wz weakness root-cause chain (2026-08-05/06 — read before re-touching this cal)
+Applies to `_sensor_cal_hw`'s Hz row (R²~0.22, the weakest of Hx/Hy/Hz) and Wz (large
+inter-run STD, coefficients swinging to ~10-13). Investigated in 3 stages, each RULED
+OUT the previous stage's suspect rather than confirming it — read in order before
+re-diagnosing this from scratch:
+1. **NOT data contamination.** An ad-hoc diagnostic script appeared to find z-phase GT
+   windows dominated by yaw-rate instead of vz — that "finding" was itself a bug: the
+   script truncated `gt['Phase']` via a naive `[:n]` slice instead of applying the same
+   `valid`-mask filter `compute_gt_signals()` uses internally (drops scattered
+   duplicate-timestamp samples, not a trailing block), desyncing phase labels from the
+   GT arrays. Re-checked with correct alignment across all 6 original recordings:
+   z/yaw/yawagg phases are genuinely clean in every run. A purity gate built on this
+   false premise (`clean_zyaw_mask`, briefly added to `derive_cross_marker_cal.py`) made
+   Wz WORSE and was reverted. See `feedback_cross_marker_radial_spread_ceiling`.
+2. **Radial spread was the next suspect, per the existing Wx/Wy-unrecoverable finding**
+   (same memory): the flow Jacobian's `Hz`/`Wz` columns (`_fill_A`, linear in point
+   (x,y)) and `Wx`/`Wy` columns (quadratic) all need tracked points spread far from
+   image center; the cross marker's `goodFeaturesToTrack` corners measured only
+   ~0.05 mean / ~0.26 max normalized radius (the shape's own strongest corner — the
+   cross intersection — dominates the point pool every frame). Fix attempt:
+   `_sample_flow_points` (cross_marker_perception.py) now excludes a central disk
+   (`CROSS_FLOW_CENTER_EXCLUDE_FRAC`, default 0.35× the mask's own half-extent) from the
+   GFT mask, biasing candidates toward arm/stub tips, plus a frame-boundary margin
+   (`CROSS_FLOW_BOUNDARY_MARGIN_PX`, default 20px) excluding corners likely to exit
+   frame mid-track. Falls back to the unbiased mask if too few peripheral corners
+   survive (`MIN_PERIPHERAL_POINTS`, default 4).
+3. **Result (n=4 fresh runs, one 75%-ok-rate run correctly gated out): MIXED, not a
+   clean win.** Radial spread DID increase as measured (mean p90 0.113→0.184, max p90
+   0.289→0.380 — confirms the mechanism is real and the fix works as designed). Hx/Hy
+   R² improved substantially (0.55→0.73, 0.63→0.79). **But Hz's R² was UNCHANGED
+   (0.22→0.22 to 2 decimal places)** despite the spread increase, and Wz got marginally
+   worse (R² 0.57→0.53, inter-run STD worse on some columns, though its own coefficient
+   magnitude dropped 12.9→9.4). **Conclusion: radial spread is NOT the (sole) binding
+   constraint for Hz specifically** — something else caps vertical-flow observability
+   (leading suspects, NOT yet investigated: z-phase excitation amplitude too small
+   relative to noise, or `_getVirtualPts`'s perspective-divide noise near-grazing rays
+   swamping the loom signal regardless of point spread). The peripheral-bias code is a
+   net win for Hx/Hy and doesn't hurt detection ok-rate, but has NOT been deployed to
+   the live `_sensor_cal_hw`/`_sensor_cal_s` pending this next investigation — don't
+   assume it's live without checking the file's own provenance comment/date.
+4. **Hardware (ArUco) shows the OPPOSITE profile** — checked for comparison, not a
+   contradiction: `Hz` is the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are
+   weak (0.07-0.08, real-camera noise/blur, not geometry) and `Wz` is weak on both
+   platforms (0.57 cross-marker vs 0.08 hardware). Don't treat "Hz/Wz are universally
+   the hardest-to-observe rows" as a cross-platform law — the weak axes only overlap on
+   Wz; Hz's weakness is cross-marker-specific.
+
 # Recalibration procedure
-1. Identify which chain: OUTPUT (corner/ring flow) or INPUT (rate/thrust).
-2. Record ≥5 phased calibration runs (user, Gazebo) to the default `calibration_data/...`.
-3. Derive: `derive_board_cal.py` (corner) → paste `_sensor_cal_hw`/`_sensor_cal_s`; then
-   `derive_ring_cal.py` (ring, keyed to the new corner M) → paste `_sensor_cal_ring`.
-   (Input: `aggregate_input_calibration.py` → thrust slope + lag table.)
+1. Identify which chain: OUTPUT (corner/ring flow, ArUco) / OUTPUT (cross-marker,
+   separate pipeline — see above) / INPUT (rate/thrust).
+2. Record ≥5 phased calibration runs (user, Gazebo) to the default `calibration_data/...`
+   (ArUco: `output/`; cross-marker: `output_cross/` — separate dirs, don't mix).
+3. Derive: `derive_board_cal.py` (ArUco corner) → paste `_sensor_cal_hw`/`_sensor_cal_s`;
+   `derive_ring_cal.py` (ring, keyed to the new corner M) → paste `_sensor_cal_ring`;
+   `derive_cross_marker_cal.py` (cross-marker, independent pipeline) → paste into
+   `CrossMarkerPerception.__init__`. (Input: `aggregate_input_calibration.py` → thrust
+   slope + lag table.)
 4. Validate on INDEPENDENT data: multisine + landing (output) / multi-axis + landing (input),
    in `validation_data/`. Notebooks auto-load the new cal.
 5. The notebooks + tools auto-load — no manual re-sync. Re-run `derive_ring_cal.py` whenever

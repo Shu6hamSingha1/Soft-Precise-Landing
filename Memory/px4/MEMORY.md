@@ -4,7 +4,43 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢 2026-08-03 (LATEST) — cross-marker Wx/Wy confirmed genuinely unrecoverable
+> **🟡 2026-08-06 (LATEST) — cross-marker Hz/Wz calibration weakness: contamination
+> hypothesis DISPROVEN (bug in own diagnostic script), radial-spread fix shipped a
+> software-only point-selection bias (not just marker size) that fixed Hx/Hy but left
+> Hz UNCHANGED — root cause of Hz specifically still open.** Chain: (1) an apparent
+> z-phase GT contamination finding traced to a misaligned ad-hoc script (didn't apply
+> `compute_gt_signals`'s own `valid`-mask before truncating `gt['Phase']`); reverted the
+> resulting purity-gate addition to `tools/derive_cross_marker_cal.py` (it made Wz
+> worse — no real contamination to remove). (2) `_sample_flow_points`
+> (`cross_marker_perception.py`) edited to bias `goodFeaturesToTrack` toward the
+> marker's arm/stub tips (central-disk exclusion, `CROSS_FLOW_CENTER_EXCLUDE_FRAC=0.35`)
+> + a frame-boundary exclusion margin (`CROSS_FLOW_BOUNDARY_MARGIN_PX=20`, corners near
+> the true edge drop out mid-track under lateral/descent motion, biasing the survivor
+> pool back toward center). (3) Re-recorded 4 valid runs, re-derived: radial spread
+> genuinely increased (Radial Diag Log mean p90 0.113->0.184), Hx/Hy improved
+> substantially (0.55->0.73, 0.63->0.79), but **Hz stayed EXACTLY 0.22** and Wz got
+> marginally worse. Conclusion: radial spread is not Hz's binding constraint — next
+> suspects (untried): z-phase excitation amplitude, or `_getVirtualPts` perspective-
+> divide noise on near-grazing rays. Peripheral-bias code is a net win for Hx/Hy, not
+> yet deployed to the live `_sensor_cal_hw`/`_sensor_cal_s` pending Hz resolution. Also
+> checked hardware (ArUco) output-cal for comparison: OPPOSITE profile (Hz=0.64 strong,
+> Hx/Hy=0.07-0.08 weak from real-camera noise) — only Wz is weak on both platforms;
+> "Hz/Wz are universally hardest to observe" is not a cross-platform law.
+> [[feedback_cross_marker_radial_spread_ceiling]] [[project_cross_marker_pipeline_20260801]]
+
+> **⏸ 2026-08-04 (LATEST) — rover/ArUco moving-target thread PAUSED**, superseded by the
+> cross-marker work below (same investigation, different chat). Marker-agnostic carryovers
+> for whatever marker sticks: the kappa-ratchet/staleness-freeze principle, MARKER_LOSS_GRACE's
+> 1.0s-too-long-for-a-moving-target issue (unfixed), the flow-coupled-coast KF architecture
+> point (validated partial fix), the theta_cone/CBF tilt-not-arresting-growth question (found
+> but not investigated: a rover rep's downward camera lost the ENTIRE ground scene, not just
+> the marker, after tilt climbed steadily past 11deg — ring-flow/observer fixes would NOT have
+> helped THIS failure), GT-FB-vs-real-perception independence, and the rover_trajectory.py
+> Linear/Circular speed-scaling bug. ArUco-specific work (PlanarFeatureMap multi-slot/overflow,
+> the 5 ported fixes' implementation details) is moot if the new marker doesn't use a similar
+> homography-map architecture. [[project_20260731_moving_target_real_perception_chain]]
+
+> **🟢 2026-08-03 — cross-marker Wx/Wy confirmed genuinely unrecoverable
 > (not just untested); Hz/Wz gap vs ArUco root-caused to point radial spread.** Ported
 > rollexc/pitchexc excitation phases into `record_cross_marker_calibration.py` (were
 > missing — Wx/Wy had only ever seen incidental x/y-phase tilt); dedicated-excitation
