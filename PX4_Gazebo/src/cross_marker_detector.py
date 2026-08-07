@@ -14,7 +14,7 @@ Pipeline (matches the design note, PX4_Gazebo/docs/cross_marker.pdf discussion):
   6. optional: identify the stub cluster (~45 deg off both cross lines, not through center) -> heading
 """
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 import cv2
@@ -29,19 +29,83 @@ import numpy as np
 # at both ground-level (marker fills frame) and 5m altitude (marker ~90px), actual
 # marker-stroke pixels sit at V<10 while background/non-marker-dark clutter (drone
 # body, propeller tips) sits higher -- V<20 leaves margin without re-admitting them.
+#
+# LOOSENED to V<100 (2026-08-05): the 2026-08-04 camera-mount yaw fix + camera Z
+# offset reduction (.20->.18) shrank the drone-body ghost's footprint enough that
+# _reject_blobby_components/_isolate_marker_by_shape reject it on shape alone, even
+# with far more of it passing this color gate -- verified clean (correct bbox, no
+# ghost contamination) at 2.5m, 5m, AND 10m, both with and without the ROI crop.
+# Needed because the cross_marker.png line width was independently halved this same
+# session (2026-08-05, tools/halve_cross_marker_linewidth.py) -- at 10m the thinner,
+# anti-aliased stroke's own pixels only reached V~60-140 (background sits ~140-160),
+# so V<20 (or even V<60) left too few qualifying pixels for Hough line detection to
+# find the marker at all, despite it being clearly visible to the eye. If either the
+# ghost's footprint grows again (camera remounted further from body) or a scene with
+# heavier background shadowing is used, re-verify this doesn't reintroduce the
+# original V<90 regression before trusting it.
 DEFAULT_LOWER = np.array([0, 0, 0])
-DEFAULT_UPPER = np.array([180, 255, 20])  # low-V gate: marker is dark, background is light
+DEFAULT_UPPER = np.array([180, 255, 100])  # low-V gate: marker is dark, background is light
 
-# 2026-08-03 (Hz/Wz/Wx/Wy radial-spread investigation): with _reject_blobby_components
-# now the PRIMARY ghost defense, roi_frac_y is just a backstop -- loosening it further
-# should be safe. Env-overridable so it can be A/B tested without editing code.
-ROI_FRAC_Y_DEFAULT = float(os.environ.get("CROSS_ROI_FRAC_Y", "0.65"))
+# 2026-08-04 CORRECTED: earlier same-day investigation (a "single-loss-event root cause"
+# analysis, near-touchdown ROI-crop-truncation narrative) was run against the WRONG
+# Gazebo world (run_aruco_landing.sh's hardcoded PX4_GZ_WORLD=aruco, not the dedicated
+# cross_marker.sdf world run_cross_marker_altitude_test.sh actually loads) -- that
+# evidence (mask_before_roi=3957px -> mask_before_shape=44px on a 68x412 bbox) was
+# analyzing the drone-body ghost + a small ArUco tag, NOT the real cross marker at all,
+# and does not directly apply. Separately, and independently: the camera mount
+# (x500_mono_cam_down/model.sdf) was re-oriented this same day (yaw+=90deg on top of the
+# existing pitch=90deg, verified via gz model pose query + direct visual before/after
+# comparison in the correctly-rotated frame) to move the drone's own landing-leg mirrored
+# ghost from the TOP/BOTTOM image margins to the LEFT/RIGHT margins instead. So the crop
+# axis needs to swap to match: X gets the tight crop now (ghost lives there), Y stays
+# uncropped. The EXTENT-ADAPTIVE mechanism itself (loosen the crop once a large real
+# detection is confirmed, computed from the ROI-independent blobby-stage largest-
+# component extent to avoid a caller-side bootstrap deadlock) remains a reasonable
+# defensive design regardless of which axis it applies to -- kept, just redirected to X.
+ROI_FRAC_X_DEFAULT = float(os.environ.get("CROSS_ROI_FRAC_X", "0.65"))
+ROI_FRAC_X_LOOSENED = float(os.environ.get("CROSS_ROI_FRAC_X_LOOSENED", "1.0"))
+EXTENT_ADAPTIVE_ROI_THRESHOLD_PX = float(os.environ.get("CROSS_EXTENT_ADAPTIVE_ROI_PX", "250"))
+
+# TRACKING-BASED ROI (2026-08-05): ported from Hardware/scripts/img_data.py's ArUco
+# ARUCO_ROI_MARGIN_PX fast path. Confirmed via direct test (shift a real marker sample
+# progressively off-center): the STATIC central crop above (ROI_FRAC_X_DEFAULT) starts
+# truncating an off-center marker's own mask past ~150-180px of lateral offset (~28% of
+# frame width), degrading through insufficient_fit_points -> centroid_mismatch ->
+# outright picking up a different (ghost) component -- while the marker stays fully
+# visible in the raw frame the whole time. The static crop has no notion of WHERE the
+# marker actually is, only the frame's geometric center.
+#
+# Fix: track the last-known-good bbox and crop AROUND IT (not the frame center) with a
+# margin, same as the ArUco reference. If that tracked-crop attempt fails, fall back to
+# the existing full-frame path (static ROI + extent-adaptive loosening) -- so a missed
+# frame costs one slower full-frame search, never a silent, permanent loss the way the
+# static-only crop could. After TRACK_MAX_MISSES consecutive full-frame-path frames
+# in a row, the lock is presumed genuinely gone (not just a transient miss) and stays
+# full-frame until a fresh detection re-establishes it.
+TRACK_MARGIN_PX = int(os.environ.get("CROSS_TRACK_MARGIN_PX", "60"))
+TRACK_MAX_MISSES = int(os.environ.get("CROSS_TRACK_MAX_MISSES", "5"))
 
 MIN_INTER_LINE_ANGLE_DEG = 15.0   # below this, lines are too near-parallel to trust intersection
+# 2026-08-03 (near-parallel-fit root cause): MIN_INTER_LINE_ANGLE_DEG above only gates the
+# PRE-FIT Hough-segment cluster mean angle -- a different, thin-segment-derived signal from
+# the ACTUAL fitted line direction _robust_fit_line produces from _cluster_points_from_mask's
+# (much larger, angle-from-centroid-selected) point set. Confirmed via LINE_DIAG: at close
+# range (large marker extent) one arm's fixed real-world stroke width subtends an increasingly
+# wide angle from the centroid, swamping its point count (seen up to 27729) while the other
+# arm gets angularly squeezed to a handful (seen as low as 16) -- a fit through that few,
+# poorly-constrained points can land almost anywhere, including near-parallel to the dominant
+# arm, DESPITE the Hough-segment pre-check showing a healthy ~90 deg separation (segments are
+# always thin regardless of mask blob size, so they don't see this failure mode at all).
+MIN_FIT_INTER_LINE_ANGLE_DEG = 15.0   # same bar, but applied to the POST-FIT line directions
+MIN_FIT_POINTS = 20   # a fit through fewer points than this is unstable/unconstrained regardless
+                        # of the angle it happens to land on -- lt2_mask_points_on_arm's floor of
+                        # 2 only guards against an outright empty cluster, not this
 STUB_REL_ANGLE_DEG = 45.0
 STUB_REL_ANGLE_TOL_DEG = 12.0
 MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a real line over noise
                            # (see the cross-arm pairing fix in detect() for why this exists)
+
+HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
 
 
 @dataclass
@@ -125,7 +189,7 @@ def _line_intersection(l1, l2):
     return (x01 + t * vx1, y01 + t * vy1)
 
 
-def _restrict_to_center_roi(mask, roi_frac_x=1.0, roi_frac_y=0.55):
+def _restrict_to_center_roi(mask, roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
     """First-pass clutter reduction: the downward camera is mounted centrally
     and the perception/CBF stack's whole job is to keep the marker near
     frame-center, so propeller clutter that sits at frame corners/far edges
@@ -133,28 +197,25 @@ def _restrict_to_center_roi(mask, roi_frac_x=1.0, roi_frac_y=0.55):
     see _isolate_marker_by_shape, which handles clutter (e.g. propeller arms)
     that still falls within this ROI when the drone has some lateral offset.
 
-    roi_frac history (2026-08-01):
+    roi_frac history (2026-08-01 through 2026-08-04):
     - Started as a single symmetric roi_frac=0.65 (crops x and y equally).
     - Tightened to 0.5 after diag_raw_image_dump.py exposed a pre-existing
       Gazebo camera-render artifact -- a mirrored ghost of the drone's own
-      body in the outer ~18-25% top/bottom margin of EVERY frame (both
-      aruco and cross_marker worlds; not marker-specific -- ArUco's small
-      centered tag just never reached it). 0.5 excluded the ghost but also
-      cropped x, costing real x/y-phase translation range (2/5 runs in the
-      5-run recal sweep lost the marker out of the 0.5 crop, corrupting
-      exactly the samples the derive tool needs most).
-    - Reverted to a loose 0.65 to test whether _isolate_marker_by_shape's
-      squareness gate alone rejects the ghost blob without cropping x at
-      all: inconsistent (99.4% ok one run, 64.6% the next -- when the
-      marker is small/distant, e.g. the z-altitude phase, its bbox is
-      close enough in scale to the ghost's that MORPH_CLOSE bridges them
-      into one merged blob that evades the shape filter).
-    - SPLIT x/y (this revision): the ghost is specifically a top/bottom
-      (vertical, in this rotated-frame orientation) artifact -- the raw
-      dumps never showed a left/right intrusion post-rotation. So crop
-      ONLY vertically to the observed ghost band (~23% margin per side,
-      0.55 keeps clear with margin) and leave x uncropped (1.0) to keep
-      full x/y-phase translation range."""
+      body (its landing legs) in the outer ~18-25% margin of EVERY frame
+      (both aruco and cross_marker worlds; not marker-specific -- ArUco's
+      small centered tag just never reached it). 0.5 excluded the ghost but
+      also cropped the other axis, costing real translation range.
+    - Reverted to a loose 0.65, then SPLIT x/y (crop only the ghost's axis,
+      leave the other at 1.0) once the ghost was confirmed to sit specifically
+      along ONE axis in the rotated frame the pipeline actually processes
+      (originally the y/vertical margins -- top/bottom).
+    - 2026-08-04: the camera mount itself (x500_mono_cam_down/model.sdf) was
+      re-oriented (yaw+=90deg added on top of the existing pointing-down
+      pitch) to relocate the ghost from the y/top-bottom margins to the
+      x/left-right margins instead (verified via gz model pose query +
+      direct before/after visual comparison in the correctly-rotated frame).
+      The crop axis swaps to match: x gets the tight crop now, y stays
+      uncropped -- see ROI_FRAC_X_DEFAULT's module-level comment."""
     h, w = mask.shape
     x0, x1 = int(w * (1 - roi_frac_x) / 2), int(w * (1 + roi_frac_x) / 2)
     y0, y1 = int(h * (1 - roi_frac_y) / 2), int(h * (1 + roi_frac_y) / 2)
@@ -246,29 +307,61 @@ def _isolate_marker_by_shape(mask, min_area=15):
     return np.where(labels == best_label, 255, 0).astype(np.uint8)
 
 
-def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
-           min_line_length=15, max_line_gap=10, identify_stub=True,
-           roi_frac_x=1.0, roi_frac_y=ROI_FRAC_Y_DEFAULT):
+def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
+                  min_line_length=15, max_line_gap=10, identify_stub=True,
+                  roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
     """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection.
 
     Ghost-rejection is now layered (2026-08-02): _reject_blobby_components runs
     FIRST and is position-independent (shape/extent-based, catches the ghost's
     fat rotor-hub fragments wherever they land); _restrict_to_center_roi is a
-    position-based backstop for whatever slips through (loosened back toward
-    0.65 vertically now that the shape filter is the primary defense -- 0.55
-    was costing legitimate marker content when the plate itself sat near the
-    crop boundary, without actually fixing the direct-touch/merge case the
-    shape filter also can't fix); _isolate_marker_by_shape's squareness gate
-    runs last as the final component-selection step."""
+    position-based backstop for whatever slips through -- as of 2026-08-04 this
+    crops X (the ghost's axis post camera-rotation fix, see ROI_FRAC_X_DEFAULT's
+    module-level comment), not Y; _isolate_marker_by_shape's squareness gate
+    runs last as the final component-selection step.
+
+    Pure, stateless, frame-local coordinates -- see detect() for the tracking-based
+    ROI wrapper (mirrors Hardware/scripts/img_data.py's ARUCO_ROI_MARGIN_PX fast
+    path) that calls this on either a crop or the full frame and owns the
+    coordinate-offset bookkeeping."""
     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lower, upper)
+    _px_raw = int(np.sum(mask > 0))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    _px_close = int(np.sum(mask > 0))
     mask = _reject_blobby_components(mask)
-    mask = _restrict_to_center_roi(mask, roi_frac_x, roi_frac_y)
+    _px_blobby = int(np.sum(mask > 0))
+
+    # EXTENT-ADAPTIVE ROI (2026-08-04): decide the x-crop tightness HERE, from the
+    # BLOBBY-STAGE mask's own largest-component extent -- this data is ROI-independent
+    # (computed before any crop) and already ghost-shape-filtered (by
+    # _reject_blobby_components above), so it can't suffer a bootstrap deadlock a
+    # caller-side decision based on a prior SUCCESSFUL bbox would hit (if the crop
+    # truncates the marker right as it crosses the threshold, a post-crop bbox never
+    # records the marker's true size, so the loosened crop never triggers). Mirrors
+    # what _isolate_marker_by_shape will eventually pick anyway (largest candidate).
+    _n_lbl, _lbls, _stats_b, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    _largest_extent = 0
+    if _n_lbl > 1:
+        _areas = _stats_b[1:, cv2.CC_STAT_AREA]
+        _best_lbl = 1 + int(np.argmax(_areas))
+        _largest_extent = max(_stats_b[_best_lbl, cv2.CC_STAT_WIDTH],
+                               _stats_b[_best_lbl, cv2.CC_STAT_HEIGHT])
+    _roi_frac_x_eff = (ROI_FRAC_X_LOOSENED if _largest_extent >= EXTENT_ADAPTIVE_ROI_THRESHOLD_PX
+                       else roi_frac_x)
+    mask = _restrict_to_center_roi(mask, _roi_frac_x_eff, roi_frac_y)
+    _px_roi = int(np.sum(mask > 0))
     mask = _isolate_marker_by_shape(mask)
+    _px_shape = int(np.sum(mask > 0))
+    _stage_px = (_px_raw, _px_close, _px_blobby, _px_roi, _px_shape)
 
     ys, xs = np.nonzero(mask)
     if len(xs) < 20:
+        # DIAG (2026-08-04): which stage killed the mask? See HOUGH_DIAG_LOG.
+        HOUGH_DIAG_LOG.append({
+            'mask_px': int(len(xs)), 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+            'stage_px': _stage_px, 'reason': 'color_gate_empty',
+        })
         return CrossMarkerDetection(None, None, False, fail_reason='color_gate_empty')
     bbox = (int(xs.min()), int(ys.min()), int(xs.max() - xs.min()), int(ys.max() - ys.min()))
 
@@ -276,6 +369,17 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=25,
                              minLineLength=min_line_length, maxLineGap=max_line_gap)
     if lines is None or len(lines) < 2:
+        # DIAG (2026-08-04, hough_lt2_lines root-cause investigation): hough_lt2_lines is
+        # the dominant failure mode (60-70% of misses) -- log every occurrence's mask/bbox
+        # stats (cheap, no image write) so the distribution of WHY it fires can be seen
+        # across a whole run, not just a hand-sampled subset. stage_px tracks pixel count
+        # after each filter stage (raw, morph-close, blobby-reject, roi-crop, shape-isolate)
+        # to see WHICH stage is killing the mask when bbox is large but mask_px is tiny.
+        HOUGH_DIAG_LOG.append({
+            'mask_px': int(len(xs)), 'bbox': bbox,
+            'n_edge_px': int(np.sum(edges > 0)), 'n_lines': 0 if lines is None else int(len(lines)),
+            'stage_px': _stage_px, 'reason': 'hough_lt2_lines',
+        })
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='hough_lt2_lines')
 
     segs = lines[:, 0, :]
@@ -348,10 +452,23 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         return list(zip(xs[sel].tolist(), ys[sel].tolist()))
 
     pts_i, pts_j = _cluster_points_from_mask(i), _cluster_points_from_mask(j)
-    if len(pts_i) < 2 or len(pts_j) < 2:
-        return CrossMarkerDetection(None, None, False, bbox, fail_reason='lt2_mask_points_on_arm')
+    if len(pts_i) < MIN_FIT_POINTS or len(pts_j) < MIN_FIT_POINTS:
+        # See MIN_FIT_POINTS' 2026-08-03 comment: a fit through too few points is
+        # unconstrained regardless of what angle it happens to land on.
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='insufficient_fit_points')
 
     line_i, line_j = _robust_fit_line(pts_i), _robust_fit_line(pts_j)
+    # POST-FIT near-parallel gate (2026-08-03): ang_i/ang_j (checked above, line ~319) is the
+    # PRE-FIT Hough-segment cluster mean -- a different signal from the line _robust_fit_line
+    # actually produces from the (much larger, angle-from-centroid-selected) mask-pixel set.
+    # Confirmed via LINE_DIAG these can diverge sharply (Hough sep ~90 deg, actual fit sep
+    # <1 deg) specifically at close range / large marker extent -- check the REAL fitted
+    # directions before trusting their intersection, not just the pre-fit proxy.
+    _fit_ang_i = np.degrees(np.arctan2(line_i[1], line_i[0])) % 180.0
+    _fit_ang_j = np.degrees(np.arctan2(line_j[1], line_j[0])) % 180.0
+    if _circ_diff(_fit_ang_i, _fit_ang_j) < MIN_FIT_INTER_LINE_ANGLE_DEG:
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='near_parallel_fit')
+
     center = _line_intersection(line_i, line_j)
     if center is None:
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='ill_conditioned_intersection')
@@ -436,3 +553,88 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     return CrossMarkerDetection((float(center[0]), float(center[1])), heading, True, bbox,
                                  line_points_i=tuple(pts_i), line_points_j=tuple(pts_j),
                                  stub_points=stub_points_out, isolated_mask=mask, in_fov=in_fov)
+
+
+def _shift_detection(det, x0, y0, full_shape):
+    """Offset a CrossMarkerDetection computed on a CROP (top-left at x0,y0 in full-frame
+    coords) back into full-frame coordinates. isolated_mask is embedded into a
+    full_shape-sized zero canvas at the crop's offset -- required because downstream
+    consumers (cross_marker_perception.py's _compute_hw) pass it to
+    cv2.goodFeaturesToTrack(gray, mask=...) alongside the FULL-FRAME gray image, which
+    requires matching shapes."""
+    if not det.ok:
+        return det
+    new_center = (det.center[0] + x0, det.center[1] + y0) if det.center else None
+    new_bbox = ((det.mask_bbox[0] + x0, det.mask_bbox[1] + y0, det.mask_bbox[2], det.mask_bbox[3])
+                if det.mask_bbox else None)
+    shift = np.array([x0, y0], dtype=np.float64)
+    new_line_i = tuple(map(tuple, np.asarray(det.line_points_i, dtype=np.float64) + shift)) if det.line_points_i else ()
+    new_line_j = tuple(map(tuple, np.asarray(det.line_points_j, dtype=np.float64) + shift)) if det.line_points_j else ()
+    new_stub = (tuple(map(tuple, np.asarray(det.stub_points, dtype=np.float64) + shift))
+                if det.stub_points else None)
+    full_mask = None
+    if det.isolated_mask is not None:
+        full_mask = np.zeros(full_shape, dtype=det.isolated_mask.dtype)
+        ch, cw = det.isolated_mask.shape[:2]
+        full_mask[y0:y0 + ch, x0:x0 + cw] = det.isolated_mask
+    return replace(det, center=new_center, mask_bbox=new_bbox,
+                   line_points_i=new_line_i, line_points_j=new_line_j,
+                   stub_points=new_stub, isolated_mask=full_mask)
+
+
+def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
+           min_line_length=15, max_line_gap=10, identify_stub=True,
+           roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0, track_state=None):
+    """Tracking-based-ROI wrapper around _detect_core (see TRACK_MARGIN_PX's module-level
+    comment for the full design rationale -- ported from Hardware/scripts/img_data.py's
+    ArUco ARUCO_ROI_MARGIN_PX fast path).
+
+    track_state: optional mutable dict the CALLER owns and passes the SAME instance of
+    on every call (mirrors cbf_visibility.py's own explicit-state-dict pattern). Keys:
+    'last_bbox' ((x,y,w,h) in full-frame px, or None) and 'miss_count' (int). Pass None
+    (default) to get the exact old behavior (always full-frame, no tracking fast path).
+
+    Fast path: if a recent lock exists (miss_count < TRACK_MAX_MISSES), crop to
+    last_bbox + TRACK_MARGIN_PX and run _detect_core on JUST that region first -- much
+    cheaper than a full-frame search when the marker hasn't moved far. On success,
+    offset the result back to full-frame coords and refresh the lock. On failure,
+    silently fall through to the full-frame path below (this frame just costs a slower
+    search, not a lost detection) and count the miss; after TRACK_MAX_MISSES consecutive
+    full-frame frames the lock is presumed stale and stays cleared until a fresh
+    full-frame detection re-establishes it.
+    """
+    if (track_state is not None and track_state.get('last_bbox') is not None
+            and track_state.get('miss_count', 0) < TRACK_MAX_MISSES):
+        H, W = frame_bgr.shape[:2]
+        bx, by, bw, bh = track_state['last_bbox']
+        x0 = max(0, bx - TRACK_MARGIN_PX)
+        y0 = max(0, by - TRACK_MARGIN_PX)
+        x1 = min(W, bx + bw + TRACK_MARGIN_PX)
+        y1 = min(H, by + bh + TRACK_MARGIN_PX)
+        if x1 > x0 and y1 > y0:
+            crop = frame_bgr[y0:y1, x0:x1]
+            det = _detect_core(crop, lower, upper, min_line_length, max_line_gap,
+                                identify_stub, roi_frac_x=1.0, roi_frac_y=1.0)   # no static
+                                # crop inside the already-small tracked window -- the tight
+                                # bbox+margin crop IS the ROI here; a second static crop on
+                                # top would risk re-truncating the marker for no benefit.
+            if det.ok:
+                det = _shift_detection(det, x0, y0, frame_bgr.shape[:2])
+                track_state['last_bbox'] = det.mask_bbox
+                track_state['miss_count'] = 0
+                return det
+            track_state['miss_count'] = track_state.get('miss_count', 0) + 1
+
+    # Full-frame path: first lock, tracked-crop miss this call, or lock presumed stale.
+    det = _detect_core(frame_bgr, lower, upper, min_line_length, max_line_gap,
+                        identify_stub, roi_frac_x=roi_frac_x, roi_frac_y=roi_frac_y)
+    if track_state is not None:
+        if det.ok:
+            track_state['last_bbox'] = det.mask_bbox
+            track_state['miss_count'] = 0
+        # else: leave miss_count as incremented above (or untouched if we never
+        # attempted the fast path this call, e.g. no lock yet) -- a full-frame miss
+        # doesn't itself increment miss_count further; TRACK_MAX_MISSES counts
+        # consecutive FAST-PATH misses specifically, matching the ArUco reference's
+        # own roi_miss_count semantics.
+    return det

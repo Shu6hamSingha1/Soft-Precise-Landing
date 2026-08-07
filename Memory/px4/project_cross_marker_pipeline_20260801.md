@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: dbc47060-f292-4fca-8a3d-75a6066d2b5c
-  modified: 2026-08-01T15:08:59.355Z
+  modified: 2026-08-07T06:11:11.473Z
 ---
 
 Built and committed (916aa53, pushed to main) a standalone perception pipeline for a
@@ -285,3 +285,95 @@ reasons unrelated to that hypothesis (a real conflict between
 the cross, plus at least one genuine environmental SITL flake) — reverted,
 original texture is live. Not revisited after the h,w bugs above turned out to
 explain the Hx/Hy weakness on their own.
+
+**ROLLUP 2026-08-06/07 — camera-geometry re-cal, peripheral-bias Hx/Hy fix
+DEPLOYED, Wz collinearity mechanism found, z-amplitude lever tested and
+ruled out for Hz.** Continues directly from the 2026-08-03 state above.
+
+*Camera/geometry cluster (08-04/05, cause of a transient Hz/Wz dip, not yet
+in a dedicated memory):* several same-day changes all touching the raw h/w/s
+signal landed together — camera-mount yaw+90° (moved the landing-leg render
+ghost from top/bottom into left/right margins), camera Z offset .20->.18/.15,
+`cross_marker.png` line width halved, color-gate threshold 20->100 (thinner
+line's anti-aliasing needed it), a tracking-based ROI fast path ported from
+Hardware's ArUco `ARUCO_ROI_MARGIN_PX` pattern, and — most consequential —
+an axis-sign-flip fix in `_getVirtualPts` for the new camera-mount yaw
+(`[-y,x]` initially, empirically WRONG — verified via alpha reading ~90° off
+and closed-loop `s_e_n` diverging instead of converging; corrected to
+`[y,-x]`, see that function's own comment for the full derivation). Re-cal
+after this cluster (5 clean runs, 95%+ ok-rate): R^2 Hx=0.55 Hy=0.63 Hz=0.22
+Wz=0.57 — Hx/Hy/Hz all DROPPED vs the 2026-08-03 baseline (0.70/0.71/0.42),
+Wz roughly flat. This drop, NOT the later peripheral-bias change, is what
+took Hz from 0.42->0.22 — isolated below.
+
+*Purity-gate false alarm (08-06, same day, reverted):* briefly suspected
+z-phase GT contamination (dominant yaw-rate instead of vz) as a distinct Hz
+cause; traced to a bug in an ad-hoc diagnostic script (naive `gt['Phase']`
+`[:n]` truncation desyncing from `compute_gt_signals`' own duplicate-
+timestamp filter), not real data. All 6 recordings' z/yaw/yawagg phases are
+genuinely clean on correct alignment; the purity gate built on the false
+premise made Wz worse and was reverted. See
+[[feedback_cross_marker_radial_spread_ceiling]]'s 2026-08-06 entry for the
+full trace.
+
+*Peripheral-corner-bias fix (08-06) — DEPLOYED 2026-08-07.*
+`_sample_flow_points` (`cross_marker_perception.py`) changed to exclude a
+central disk (`CROSS_FLOW_CENTER_EXCLUDE_FRAC=0.35`x the mask's own
+half-extent) from the `goodFeaturesToTrack` mask plus a frame-boundary
+exclusion (`CROSS_FLOW_BOUNDARY_MARGIN_PX=20`), biasing GFT candidates
+toward the arm/stub tips instead of letting the cross's central intersection
+dominate every frame's point pool (falls back to the unbiased mask if too
+few peripheral corners survive). Isolated effect (same 08-05 camera config,
+only the point-sampling changed), confirmed via a live re-derive: **Hx
+0.55->0.73, Hy 0.63->0.79 (real win, now BEATS the pre-08-05 baseline
+0.70/0.71) — Hz stayed EXACTLY 0.22, Wz roughly flat 0.57->0.53 (a wash, not
+a regression).** Radial spread genuinely increased as measured (`Radial
+Diag Log` p90 0.113->0.184). Decision: no real tradeoff once isolated
+cleanly — kept the code and pasted the matrix into
+`CrossMarkerPerception.__init__` (R^2 Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53,
+cal_s sx=1.0225 sy=0.9727). This is the LIVE deployed cal as of 2026-08-07.
+
+**Wz mechanism directly confirmed (08-06/07):** raw correlation matrix of
+the 6 `Opt Flow Ang Vel` columns has two near-zero eigenvalues (0.0015,
+0.0021) — raw `h1`(Ty)/`w0`(Wx) correlate r=0.98-1.00 in EVERY phase alike
+(x/y/z/yaw/yawagg/settle), a structural degeneracy in `_fill_A` itself:
+the Wx column `-(1+y^2)` stays ~constant (~-1) whenever `|y|` is small,
+numerically indistinguishable from Ty's constant `+1` column at this
+marker's achievable radial spread. Explains Wz's huge/cancelling
+coefficients on columns h1/w0 (+9.4/-9.3 in the deployed matrix, up to
++13.4/-13.4 in other derivations) directly, and explains why Wz did NOT
+respond to the peripheral-bias fix the way Hx/Hy did (needs `y` spread
+large enough to break `1+y^2~=const`, which peripheral bias's achieved
+spread doesn't reach).
+
+**Z-excitation-amplitude tested and RULED OUT as Hz's bottleneck
+(2026-08-07).** `CALIB_AMP_Z=1.2` (position-sine amplitude) had been stuck
+since the recorder's creation, inherited from `record_output_calibration.py`
+where a stale memory had already flagged it as aggressive (~2.2g thrust,
+clip-saturates flow_x/y/w_x/y) and recommended ~0.9 without ever applying
+it. Single-run test at 2.2: achieved altitude swing 0.52m->0.80m, z-phase
+raw-h2/noise-floor SNR 0.16-0.60->1.98 (real ~4x gain; PX4 position tracking
+attenuates the commanded sine ~2.3-2.7x at 0.5Hz, so the amplitude parameter
+overstates achieved velocity a lot). Full n=4 batch (6 recorded, 1 empty
+armable-timeout flake, 1 below the 95% ok-rate gate) re-derived: Hz
+0.22->0.25, Wz 0.53->0.56 (both within noise) while Hx 0.73->0.68 and Hy
+0.79->0.75 both DROPPED — reproducing the exact ArUco-era tradeoff. A ~4x
+SNR gain moving R^2 by only +0.03 rules out amplitude/noise-floor as the
+binding constraint for Hz. NOT deployed — live cal stays the AMP_Z=1.2/
+peripheral-bias one above. `calibration_data/output_cross_amp22/` kept on
+disk as negative-result evidence, not wired into any script.
+
+**Net status 2026-08-07:** Hx/Hy/centroid solid and near ArUco parity
+(0.73/0.79 vs ArUco 0.75/0.75). Hz(0.22)/Wz(0.53)/Wx/Wy(forced 0) remain
+the honest gap, now well-diagnosed rather than mysterious: Wx/Wy and Wz are
+the SAME marker-footprint/radial-spread ceiling as before (only untried
+lever: bigger physical plate); Hz's specific weakness is unexplained by
+spread, amplitude, or data contamination — next untried suspect is
+`_getVirtualPts`'s perspective-divide noise near grazing rays (never
+investigated). Still not validated against independent multisine/landing
+data (same longstanding gap). Cross-marker code changes this session
+(`cross_marker_perception.py`, `cross_marker_detector.py`,
+`derive_cross_marker_cal.py`, `cross_marker_altitude_test.py`) are
+UNCOMMITTED as of this writing — check `git status` before assuming any of
+this is on `main`. See [[feedback_cross_marker_radial_spread_ceiling]] for
+the detailed data tables underlying all of the above.

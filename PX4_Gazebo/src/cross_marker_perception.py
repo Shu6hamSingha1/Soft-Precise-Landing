@@ -281,14 +281,36 @@ class CrossMarkerPerception:
         # improving this would need better-separated/larger-amplitude z and yaw
         # excitation phases in the recorder, not a purity-gate fix on the derivation
         # side.
+        #
+        # 2026-08-06 RE-DERIVED again after landing the peripheral-corner-bias GFT
+        # sampling change (CROSS_FLOW_CENTER_EXCLUDE_FRAC, see _sample_flow_points)
+        # -- 4 clean runs (a 5th at 71.9% ok-rate auto-skipped). CONFIRMED raw
+        # correlation matrix of the 6 raw columns has two near-zero eigenvalues
+        # (0.0015, 0.0021): raw h1(Ty)/w0(Wx) correlate r=0.98-1.00 in EVERY phase
+        # (x/y/z/yaw/yawagg/settle alike) -- a structural degeneracy in the per-frame
+        # Jacobian solve itself (_fill_A's Wx column -(1+y^2) stays ~constant when
+        # |y| is small, same shape as Ty's constant +1 column), not an excitation-
+        # purity artifact. This is the same radial-spread ceiling as
+        # feedback_cross_marker_radial_spread_ceiling, sharpened with a mechanism.
+        # Net effect of the peripheral-bias change, isolated (same camera/geometry
+        # config as the 2026-08-05 fit above, ONLY the point-sampling changed):
+        # Hx 0.55->0.73, Hy 0.63->0.79 (real win, now BEATS the pre-08-05 baseline
+        # 0.70/0.71) -- Hz stayed EXACTLY 0.22, Wz roughly flat 0.57->0.53 (a wash,
+        # not a regression -- consistent with the degeneracy above being unrelated
+        # to point radial spread within the achievable range). DEPLOYED: net win,
+        # no measured downside. Hz's real culprit is upstream of this change (in
+        # the 08-03->08-05 camera-mount/axis-sign changes) and Wz's is the raw-
+        # signal collinearity above -- neither is fixable by more calibration runs
+        # or point-sampling tweaks; see the radial-spread-ceiling memory for the
+        # next untried lever (bigger physical marker).
         self._sensor_cal_hw = np.array([
-            [+0.9532, +0.0049, +0.0103, -0.0028, +0.9559, -0.0034],
-            [-0.0186, +1.0921, +0.0024, -1.0923, -0.0169, -0.0106],
-            [-0.1469, +0.0883, +0.5679, -0.0790, -0.1275, +0.0053],
+            [+1.0333, +0.0549, +0.0096, -0.0524, +1.0344, -0.0058],
+            [-0.0352, +1.1346, +0.0218, -1.1336, -0.0302, -0.0097],
+            [-0.0804, -0.2487, +0.4139, +0.2312, -0.0908, -0.0048],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.3215, +12.9132, +0.7293, -12.9874, +0.3896, +0.5447]])
-        self._sensor_cal_s = np.diag([1.0439, 1.0118, 1.0, 1.0])
+            [+1.7199, +9.3866, +0.9181, -9.3067, +1.8608, +0.5424]])
+        self._sensor_cal_s = np.diag([1.0225, 0.9727, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap

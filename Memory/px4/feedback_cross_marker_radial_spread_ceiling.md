@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 79646ad7-0ee0-45bb-bd3b-73e43c1470bf
-  modified: 2026-08-06T18:40:36.948Z
+  modified: 2026-08-07T06:00:39.210Z
 ---
 
 The cross+stub marker's flow-Jacobian solve (`_fill_A` in
@@ -93,10 +93,61 @@ it DOES explain Hx/Hy's weakness relative to ArUco. But **it does NOT
 explain Hz specifically** — Hz's flat R² despite a confirmed, substantial
 spread increase rules out radial spread as Hz's (sole) binding constraint.
 The peripheral-bias code is a net win for Hx/Hy (and doesn't hurt detection
-ok-rate) but as of this writing has NOT been deployed to the live
-`_sensor_cal_hw`/`_sensor_cal_s` — check `cross_marker_perception.py`'s own
-provenance comment/date before assuming it's live. Leading untried suspects
-for Hz specifically: z-phase excitation amplitude too small relative to
-noise, or `_getVirtualPts`'s perspective-divide noise near grazing rays
-swamping the loom signal regardless of point spread — neither investigated
-yet. See [[project_cross_marker_pipeline_20260801]].
+ok-rate). Leading untried suspects for Hz specifically: z-phase excitation
+amplitude too small relative to noise, or `_getVirtualPts`'s
+perspective-divide noise near grazing rays swamping the loom signal
+regardless of point spread — neither investigated yet. See
+[[project_cross_marker_pipeline_20260801]].
+
+**2026-08-07 DEPLOYED + Wz mechanism confirmed.** Decision (no real tradeoff
+to weigh, once measured cleanly): kept the peripheral-bias code and pasted
+the freshly re-derived matrix into `CrossMarkerPerception.__init__`
+(`_sensor_cal_hw`/`_sensor_cal_s`, R² Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53) — Hx/Hy
+win, Hz/Wz genuinely flat (not a regression caused by this change). Also
+directly confirmed the mechanism behind Wz's huge/cancelling coefficients
+(the "signature of near-collinearity" noted above): raw correlation matrix
+of the 6 `Opt Flow Ang Vel` columns from the live `calibration_data/
+output_cross/` runs has two near-zero eigenvalues (0.0015, 0.0021) — raw
+`h1`(Ty)/`w0`(Wx) correlate r=0.98–1.00 in EVERY phase alike (x/y/z/yaw/
+yawagg/settle), not just where they're co-excited. Cause: `_fill_A`'s Wx
+column is `-(1+y^2)`, which stays ~constant (≈-1) whenever `|y|` is small —
+numerically indistinguishable from Ty's constant `+1` column at the radial
+spread this marker achieves. This is a structural degeneracy in the
+per-frame Jacobian solve itself, present regardless of excitation purity or
+calibration-run count — confirms Wz's weakness is the same radial-spread
+ceiling as Hx/Hy conceptually, but unlike Hx/Hy it did NOT respond to the
+peripheral-bias fix (Wz 0.57→0.53, roughly flat) because the degeneracy
+needs `y` spread specifically large enough to break `1+y^2≈const`, which the
+peripheral bias's achieved spread (p90 0.18–0.38) still doesn't reach.
+Reinforces: bigger physical marker remains the only lever left for Hz/Wz/Wx/Wy.
+
+**2026-08-07 z-excitation-amplitude suspect TESTED AND RULED OUT for Hz.**
+`CALIB_AMP_Z` (position-sine amplitude, m) had been stuck at 1.2 since the
+cross-marker recorder was created — inherited verbatim from
+`record_output_calibration.py`, where a same-named 21-day-old memory
+(`reference_aggregate_calibration`) had already flagged 1.2 as aggressive
+(~2.2g thrust, raises clip-saturation on flow_x/y/ω_x/y 0.03%→0.28%) and
+recommended backing off to ~0.9 — a recommendation that was never applied to
+either recorder's code. Single-run test at `CALIB_AMP_Z=2.2`: achieved
+altitude swing 0.52m→0.80m, z-phase raw-h2/noise-floor SNR 0.16–0.60→1.98 (a
+genuine ~4x signal improvement, confirmed via `UAV Pose` vs commanded-z
+tracking — PX4 position-tracking attenuates the commanded sine ~2.3-2.7x at
+0.5Hz, so achieved velocity is much smaller than the amplitude parameter
+implies). Full n=4 batch (6 recorded, 1 empty/armable-timeout SITL flake, 1
+below the 95% ok-rate gate) re-derived: **Hz 0.22→0.25, Wz 0.53→0.56 — both
+within noise, NOT a real gain — while Hx 0.73→0.68 and Hy 0.79→0.75 both
+dropped**, reproducing the exact ArUco-era tradeoff (over-driving z costs the
+other axes) the stale memory had flagged but never validated. A ~4x SNR
+improvement moving R² by only +0.03 is decisive: if noise-floor/SNR were
+Hz's binding constraint, that much SNR gain should have moved R² well beyond
+noise. It didn't — **this rules out z-excitation amplitude as Hz's
+bottleneck** and leaves the raw h1(Ty)/w0(Wx) structural collinearity above
+as the standing, amplitude-independent explanation for both Hz and Wz.
+DECISION: did NOT deploy the AMP_Z=2.2 cal (costs Hx/Hy for no real Hz/Wz
+benefit) — live cal stays the AMP_Z=1.2/peripheral-bias one from the entry
+above. `calibration_data/output_cross_amp22/` recordings kept on disk as
+negative-result evidence, not wired into any script. Both untried suspects
+from this memory's earlier "leading untried suspect" line are now closed
+(radial spread: fixed for Hx/Hy, doesn't touch Hz/Wz; amplitude: ruled out
+for Hz) — only the marker-footprint-size lever and
+`_getVirtualPts`-perspective-divide-noise idea (never investigated) remain.
