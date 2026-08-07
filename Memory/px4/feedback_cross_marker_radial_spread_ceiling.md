@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 79646ad7-0ee0-45bb-bd3b-73e43c1470bf
-  modified: 2026-08-07T06:00:39.210Z
+  modified: 2026-08-07T09:09:44.464Z
 ---
 
 The cross+stub marker's flow-Jacobian solve (`_fill_A` in
@@ -151,3 +151,116 @@ from this memory's earlier "leading untried suspect" line are now closed
 (radial spread: fixed for Hx/Hy, doesn't touch Hz/Wz; amplitude: ruled out
 for Hz) — only the marker-footprint-size lever and
 `_getVirtualPts`-perspective-divide-noise idea (never investigated) remain.
+
+**2026-08-07 perspective-divide-noise suspect ALSO RULED OUT; real cause
+found — see [[project_cross_marker_pipeline_20260801]] for the full
+writeup.** `Z_V Log` (min `z_v` per `_getVirtualPts` call, already
+instrumented) shows grazing rays NEVER occur during calibration maneuvers —
+min `z_v` stays >=0.888 across all 5 recordings, nowhere near the 0.5
+blowup threshold — so this idea is dead too, not just untested. Chasing it
+led to a bigger finding: the 08-03 memory's claim "raw Hz-vs-GT correlation
+is strong, r=0.93-0.96" is now FALSE and was stale — re-measured on current
+data, z-phase raw `h2`-vs-GT correlation is only 0.07-0.67 (mean ~0.5),
+against 0.90-0.96 on the archived pre-08-05 recordings
+(`calibration_data/output_cross_stale_pre20260805/`). **Hz's raw signal
+itself regressed somewhere in the 08-04/05 camera/geometry change cluster —
+this is a genuine bug to find and fix, not an intrinsic observability
+ceiling like Wz's.** Leading hypothesis (code-derived, not yet flight-
+tested): the 2026-08-05 color-gate loosening `V<20->V<100`
+(`cross_marker_detector.py`, needed to admit enough pixels for line
+detection after the marker's line width was independently halved the same
+day) now admits large amounts of anti-aliased edge pixels into the GFT
+mask — these are positionally noisy and their noise is POSITION-correlated
+(worse near the thin stroke's edges / at range), which disproportionately
+corrupts Hz's `[-x,-y]` and Wz's `[-y,x]` position-WEIGHTED raw columns
+in `_fill_A` while leaving Hx/Hy's position-INDEPENDENT `[1,0]`/`[0,1]`
+columns comparatively immune (per-point noise averages out for a constant
+column, doesn't for a position-weighted one). Also explains why
+peripheral-bias didn't help Hz (biases toward exactly the noisiest,
+farthest-from-center pixels) and why the intermediate pre-peripheral-bias
+batch showed high run-to-run variance (r=0.21-0.88, consistent with a
+marginal/brittle threshold, not a deterministic bug). Next concrete test
+(flight required, not yet run): tighten the color gate back toward
+V<20-60 while relying on `_reject_blobby_components`'s shape gate alone for
+ghost defense (the same 2026-08-05 comment already confirms that holds
+without the loose color gate's help) — check if Hz's raw correlation
+recovers.
+
+**2026-08-07 color-gate hypothesis TESTED — mostly negative, NOT the
+(sole) cause.** Added `CROSS_COLOR_GATE_V_MAX` env override (default
+unchanged at 100) and flew 2 runs each at V<60 and V<20 (5m calibration
+altitude, `output_cross_colorgate{60,20}_test/`):
+
+| setting | z-phase corr(h2,GT_vz) | detection ok-rate |
+|---|---|---|
+| V<100 (existing, 5 runs) | 0.07, 0.46, 0.61, 0.67, 0.15 (mean ~0.5) | 100% all 5 |
+| V<60 (2 runs) | 0.449, 0.005 | 100%, 100% |
+| V<20 (2 runs) | 0.745, 0.557 | **90%, 58%** |
+
+V<60 showed no consistent improvement over V<100 at all (0.005-0.449, same
+noisy range). V<20 showed a modestly higher average (0.56-0.75) but
+**detection reliability collapsed unpredictably** (90%->58% between two
+nominally identical runs, both below the 95% cal-quality gate,
+`insufficient_fit_points`/`color_gate_empty` dominate) — impractical even
+if the correlation gain were real. Neither setting reaches anywhere close
+to the pre-08-05 level (0.90-0.96). **Conclusion: the color-gate loosening
+explains at most a weak partial contribution, not the dominant cause of
+Hz's regression.** Did NOT adopt either gate value — reverted the working
+tree to the default V<100 (kept the new `CROSS_COLOR_GATE_V_MAX` override
+in the code, low-cost and reusable). The real driver is still
+unidentified among the remaining 08-04/05 cluster: camera-mount yaw+90deg,
+camera Z-offset .20->.18/.15, the line-width halving ITSELF (independent
+of the gate threshold that was only a downstream compensating parameter),
+the axis-sign-flip, or the tracking ROI. Next bisection candidate,
+untested: camera Z-offset or line-width reverted independently of the
+gate.
+
+**2026-08-07 camera-Z-offset bisection: inconclusive (variance too large at
+n=2), AND user clarified Z=.15 is a load-bearing design tradeoff, not a
+revertible regression.** Tested Z=.20 (2 runs, using the exact pre-existing
+`model.sdf.bak_before_campos_20260805_010737` backup — Z reverted, yaw+90
+and everything else unchanged; camera restored to the live Z=.15 default
+immediately after): corr(h2,GT_vz) = 0.791, 0.017 — same huge 0-0.8
+run-to-run spread seen at every other setting tested this session
+(V<100/V<60/V<20 all showed comparable spread). **This spread is bigger
+than the effect size any single tested parameter could plausibly produce
+at n=2 — bisection at this sample size cannot distinguish a real shift
+from noise.** More importantly: **user clarified `Z=.15` was deliberately
+reduced from `.20` specifically to keep the drone's landing legs out of
+the downward camera's FoV** (the 08-05 comment's "reducing landing-leg
+visibility" was the actual design driver, not incidental) — user prefers Z
+as LARGE as possible, but that requires widening the physical gap between
+the landing legs first (a model-geometry change to `x500`/the airframe,
+not just the camera mount pose) so a larger Z doesn't reintroduce leg
+visibility. **Revering Z outright is therefore NOT an adoptable fix even
+if it turned out to help Hz** — any real pursuit of this lever needs the
+landing-leg-gap widening done first, not just a pose-value change. Not yet
+pursued (bigger scope, airframe geometry change + re-validate ghost
+defense). Open question, not yet resolved: whether the large per-run
+variance itself (seen across every parameter tested) has a separate root
+cause worth finding before any more single-knob bisection is attempted.
+
+**2026-08-07 leg-gap investigation: no SDF-only widening lever exists, AND
+corrects a mislabeling — the "ghost" IS the real landing legs, not a
+mirrored render duplicate.** Full trace in
+[[project_cross_marker_pipeline_20260801]]. Summary: dumped raw on-ground
+disarmed frames (`apps/diag_raw_image_dump.py`) and confirmed the artifact
+at the frame's top/bottom margins is two distinct real leg-strut+skid
+shapes (front vs back leg pairs) matching the SDF's own leg collision
+geometry closely — not a duplicated whole-drone silhouette. The
+2026-08-02 "pre-existing Gazebo camera-render ghost... mirrored duplicate
+of the drone's own body" description in the project memory was a
+misdiagnosis, likely conflated with the SEPARATE, actually-real
+marker-reflectivity bug found the same session (that one WAS a genuine
+mirroring bug, just of the marker's material, not the camera). The
+existing "ghost defense" code in `cross_marker_detector.py`
+(`_restrict_to_center_roi`, `_reject_blobby_components`) is unaffected by
+this correction — it was built/validated against real frames of this real
+artifact, only the naming/mental-model was wrong. Separately: no SDF-only
+lever exists to widen the leg gap — `x500_base/meshes/NXP-HGD-CF.dae` is
+ONE combined mesh for the whole airframe (body+arms+motors+legs, no
+separate leg link/pose); the 4 leg SDF entries that DO have independent
+poses are physics-only collision boxes, invisible to the camera. Widening
+the visual leg gap needs real `.dae` mesh editing — no config-only path.
+Per user instruction, no mesh edit attempted; this lever stays open only
+if the user does that edit externally.

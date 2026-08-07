@@ -4,9 +4,70 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢🟡 2026-08-07 (LATEST) — cross-marker peripheral-bias cal DEPLOYED (Hx/Hy win);
+> **🔴 2026-08-07b (LATEST) — Hz's real cause found: a genuine RAW-SIGNAL
+> REGRESSION in the 08-04/05 camera/geometry cluster, not an intrinsic ceiling
+> like Wz's. Perspective-divide-noise (the last suspect from the entry below)
+> RULED OUT too — `Z_V Log` shows grazing rays never happen in calibration
+> flights (min z_v >=0.888 always).** Re-checked the 08-03 memory's claim
+> "raw Hz-vs-GT correlation is strong, r=0.93-0.96" — now FALSE, was stale:
+> current data gives z-phase raw `h2`-vs-GT r=0.07-0.67 (mean ~0.5) vs
+> 0.90-0.96 on the archived pre-08-05 recordings
+> (`calibration_data/output_cross_stale_pre20260805/`), direct same-maneuver
+> before/after. Confirmed the intermediate pre-peripheral-bias batch was
+> already degraded too (r=0.21-0.88, high variance) — rules out peripheral-
+> bias itself as the cause, isolates it to the earlier camera/geometry
+> cluster (mount yaw+90deg, Z offset .20->.18/.15, line width halved,
+> color-gate 20->100, tracking ROI, axis-sign-flip). Leading hypothesis
+> (code-derived, NOT flight-tested yet): the 08-05 color-gate loosening
+> `V<20->V<100` (needed because the halved line width left too few pixels
+> for line detection at the old threshold) now admits large amounts of
+> POSITION-correlated anti-aliased edge noise into the GFT mask, which
+> disproportionately corrupts `_fill_A`'s position-WEIGHTED Hz `[-x,-y]`/Wz
+> `[-y,x]` columns while leaving Hx/Hy's position-INDEPENDENT `[1,0]`/`[0,1]`
+> columns comparatively immune — also explains why peripheral-bias (which
+> biases toward the noisiest, farthest-from-center pixels) never moved Hz.
+> Next test (not yet run): tighten the color gate back toward V<20-60,
+> relying on `_reject_blobby_components`'s shape gate alone for ghost
+> defense (already confirmed sufficient per the 08-05 comment).
+> [[feedback_cross_marker_radial_spread_ceiling]] [[project_cross_marker_pipeline_20260801]]
+
+> **🔴 2026-08-07c (LATEST) — Hz bisection (color gate + camera Z-offset)
+> BOTH inconclusive at n=2, swamped by ~0-0.8 run-to-run variance bigger
+> than any tested parameter's likely effect; separately CORRECTED a
+> mislabeling — the "ghost" from the 2026-08-02 entry is the drone's REAL
+> landing legs, not a mirrored render duplicate; and confirmed no SDF-only
+> lever exists to widen the leg gap.** Color gate: V<60 (2 runs) 0.005/0.449,
+> V<20 (2 runs) 0.745/0.557 but with UNSTABLE detection ok-rate (90%/58%,
+> below the 95% cal-quality gate) — reverted to V<100, not adopted. Camera
+> Z-offset: tested Z=.20 (2 runs, isolated via the pre-existing
+> `model.sdf.bak_before_campos_20260805_010737` backup) got 0.791/0.017 —
+> same huge spread. Camera restored to live Z=.15 immediately. User
+> clarified Z=.15 is a DELIBERATE tradeoff (keeps landing legs out of the
+> downward FoV), not a revertible regression — reverting Z is not an
+> adoptable fix regardless of Hz correlation unless the legs' footprint is
+> separately widened. Investigating that surfaced the ghost correction:
+> dumped raw on-ground disarmed frames
+> (`apps/diag_raw_image_dump.py`/`calibration_data/diag_raw_ghost_check/`)
+> and confirmed the top/bottom-margin artifact is two distinct real
+> leg-strut+skid shapes (front/back leg pairs) matching the SDF's own leg
+> COLLISION geometry, not a duplicated drone silhouette — the "mirrored
+> ghost of the drone's own body" description was a misdiagnosis, likely
+> conflated with the separate, actually-real marker-reflectivity bug from
+> the same 08-02 session. Existing ghost-defense code in
+> `cross_marker_detector.py` is unaffected (built against the real
+> artifact, only the mental model was wrong). Checked whether the leg gap
+> could be widened via SDF: NO — `x500_base/meshes/NXP-HGD-CF.dae` is ONE
+> combined mesh for the whole airframe (no separate leg link/pose); the
+> leg SDF entries with independent poses are physics-only collision boxes,
+> invisible to the camera. Needs real `.dae` mesh editing, no config path —
+> not attempted per user instruction. Net: Hz's real cause is STILL open;
+> both suspects tested this round were inconclusive, not confirmed or
+> ruled out, due to insufficient n. [[feedback_cross_marker_radial_spread_ceiling]]
+> [[project_cross_marker_pipeline_20260801]]
+
+> **🟢🟡 2026-08-07 — cross-marker peripheral-bias cal DEPLOYED (Hx/Hy win);
 > Wz's collinearity mechanism confirmed directly; z-excitation-amplitude tested and
-> RULED OUT as Hz's cause; Hz itself still unexplained.** Continues the 2026-08-06
+> RULED OUT as Hz's cause; Hz itself still unexplained (superseded by 08-07b above).** Continues the 2026-08-06
 > entry below (kept for its contamination-disproof + hardware-comparison history).
 > Deployed: re-derived the peripheral-bias cal isolated from the 08-05 camera/axis
 > changes — Hx 0.55->0.73, Hy 0.63->0.79 (BEATS the pre-08-05 baseline 0.70/0.71),

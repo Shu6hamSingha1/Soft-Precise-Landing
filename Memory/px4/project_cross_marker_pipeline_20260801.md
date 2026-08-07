@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: dbc47060-f292-4fca-8a3d-75a6066d2b5c
-  modified: 2026-08-07T06:11:11.473Z
+  modified: 2026-08-07T09:09:24.337Z
 ---
 
 Built and committed (916aa53, pushed to main) a standalone perception pipeline for a
@@ -363,17 +363,132 @@ binding constraint for Hz. NOT deployed — live cal stays the AMP_Z=1.2/
 peripheral-bias one above. `calibration_data/output_cross_amp22/` kept on
 disk as negative-result evidence, not wired into any script.
 
+**Perspective-divide-noise suspect RULED OUT; Hz's real cause found to be a
+GENUINE RAW-SIGNAL REGRESSION, not an intrinsic ceiling (2026-08-07).**
+`Z_V Log` (already-instrumented min `z_v` per `_getVirtualPts` call) shows
+grazing rays never occur during calibration flights — min `z_v` stays
+>=0.888 across all 5 current recordings, far above the 0.5 blowup
+threshold — so this idea is dead, not just untested. Chasing it prompted
+re-checking the 2026-08-03 memory's claim that "raw Hz-vs-GT correlation is
+strong, r=0.93-0.96" (used at the time to argue the R^2=0.42 gap was a
+joint-fit-conditioning artifact, not raw-signal weakness). That claim is
+now FALSE on current data and was simply stale: z-phase raw `h2`-vs-GT
+correlation measured 0.07-0.67 (mean ~0.5) on the 5 current recordings, vs
+0.90-0.96 on the archived pre-08-05 runs
+(`calibration_data/output_cross_stale_pre20260805/`) — direct, controlled
+before/after, same maneuver. **Hz's raw signal genuinely broke somewhere
+in the 08-04/05 camera/geometry change cluster** (camera-mount yaw+90deg,
+camera Z offset .20->.18/.15, line width halved, color-gate threshold
+20->100, tracking ROI, axis-sign-flip) — a bug to find and fix, unlike
+Wz's structural collinearity ceiling above.
+
+Checked the intermediate pre-peripheral-bias/post-camera-changes batch
+(`calibration_data/output_cross_pre_peripheralbias_20260806/`, 6 runs) to
+rule out peripheral-bias itself as the cause: already degraded there too
+(r=0.21-0.88, high run-to-run VARIANCE) — confirms the regression predates
+peripheral-bias and is somewhere in the earlier camera/geometry cluster.
+
+**Leading hypothesis (code-derived, NOT yet flight-tested):** the
+2026-08-05 color-gate loosening `V<20->V<100`
+(`cross_marker_detector.py`'s own comment traces exactly why: the marker's
+line width was independently halved the same day, and at 10m range the
+thinner anti-aliased stroke's pixels only reach V~60-140 against a
+V~140-160 background, so V<20 left too few pixels for Hough line detection
+to find the marker at all) now admits far more anti-aliased EDGE pixels
+into the GFT mask. This noise is POSITION-correlated (worse near the thin
+stroke's boundary / at range), which should disproportionately corrupt
+`_fill_A`'s position-WEIGHTED columns — Hz's `[-x,-y]` and Wz's `[-y,x]` —
+while leaving Hx/Hy's position-INDEPENDENT `[1,0]`/`[0,1]` columns
+comparatively immune (per-point noise averages out across many points for
+a constant column, doesn't for a position-weighted one). This also
+explains two things that were otherwise puzzling: why the peripheral-bias
+fix didn't move Hz at all (it biases point selection TOWARD the arm/stub
+tips — exactly where this noise should be worst) and the high run-to-run
+variance in the intermediate batch (consistent with a marginal/brittle
+threshold, not a deterministic bug). Next concrete test, not yet run:
+tighten the color gate back toward V<20-60 while relying on
+`_reject_blobby_components`'s shape gate alone for ghost defense (the same
+2026-08-05 comment already confirms that holds without the loose color
+gate's help) — check whether Hz's raw correlation recovers.
+
 **Net status 2026-08-07:** Hx/Hy/centroid solid and near ArUco parity
-(0.73/0.79 vs ArUco 0.75/0.75). Hz(0.22)/Wz(0.53)/Wx/Wy(forced 0) remain
-the honest gap, now well-diagnosed rather than mysterious: Wx/Wy and Wz are
-the SAME marker-footprint/radial-spread ceiling as before (only untried
-lever: bigger physical plate); Hz's specific weakness is unexplained by
-spread, amplitude, or data contamination — next untried suspect is
-`_getVirtualPts`'s perspective-divide noise near grazing rays (never
-investigated). Still not validated against independent multisine/landing
-data (same longstanding gap). Cross-marker code changes this session
+(0.73/0.79 vs ArUco 0.75/0.75). Wx/Wy(forced 0)/Wz(0.53) are the marker-
+footprint/radial-spread ceiling (only untried lever: bigger physical
+plate). Hz(0.22) is NOT that same ceiling — it's a real regression with a
+concrete, testable hypothesis (color-gate anti-aliasing noise) awaiting a
+flight test. Still not validated against independent multisine/landing
+data (same longstanding gap). Cross-marker code changes through 2026-08-06
 (`cross_marker_perception.py`, `cross_marker_detector.py`,
-`derive_cross_marker_cal.py`, `cross_marker_altitude_test.py`) are
-UNCOMMITTED as of this writing — check `git status` before assuming any of
-this is on `main`. See [[feedback_cross_marker_radial_spread_ceiling]] for
-the detailed data tables underlying all of the above.
+`cross_marker_altitude_test.py`, 3 new tool scripts) were COMMITTED AND
+PUSHED 2026-08-07 (`19cfc49`/`75ca05a` after a rebase onto unrelated
+Hardware/Pi commits) — but the color-gate hypothesis above and any further
+Hz work are NOT yet committed as of this writing; check `git status`. See
+[[feedback_cross_marker_radial_spread_ceiling]] for the detailed data
+tables underlying all of the above.
+
+**Color-gate hypothesis (above) TESTED 2026-08-07, mostly negative.**
+Flew 2 runs each at `V<60` and `V<20` (new `CROSS_COLOR_GATE_V_MAX` env
+override, default unchanged): neither showed a clean, consistent
+improvement over the current `V<100`'s already-noisy range (V<60:
+0.005/0.449; V<20: 0.557/0.745, but at the cost of unstable detection
+ok-rate 90%/58%, below the 95% cal-quality gate). Reverted to `V<100` in
+the working tree — no color-gate change deployed. See
+[[feedback_cross_marker_radial_spread_ceiling]] for the full table.
+
+**Camera-Z-offset bisection ALSO inconclusive (2026-08-07) — and revealed
+this whole approach has a problem.** Tested `Z=.20` (2 runs, using the
+pre-existing `model.sdf.bak_before_campos_20260805_010737` backup which
+has Z=.20 with the 08-04 yaw+90 fix already applied — isolates the Z
+change cleanly) vs the live `Z=.15`: 0.791, 0.017 — the SAME ~0-0.8
+run-to-run spread seen at every other setting tested (color gate included).
+This spread is bigger than the effect any single tested parameter could
+plausibly produce at n=2, so none of this session's single-knob bisection
+(color gate, Z-offset) can be trusted as confirming OR ruling out its
+target — a real answer needs n>=5 per setting (the project's own sweep
+floor) or finding the variance's own root cause first. Camera restored to
+the live `Z=.15` immediately after the test — **user clarified `Z=.15` was
+deliberately chosen to keep the landing legs out of the downward camera's
+FoV, not an arbitrary/reversible parameter** — reverting it is not an
+adoptable fix regardless of what Hz correlation shows, unless the legs'
+physical footprint is separately addressed. See
+[[feedback_cross_marker_radial_spread_ceiling]] for the full trace.
+
+**"Landing-leg ghost" investigated for widenability — CORRECTS the
+2026-08-02 entry above: it is NOT a mirrored render duplicate, it's the
+drone's real legs (2026-08-07).** User asked whether the drone's landing-
+leg gap could be widened in the SDF to allow a larger camera Z without
+leg interference. Investigating this surfaced that the entry above
+("Pre-existing Gazebo camera-render ghost... mirrored duplicate of the
+drone's own body... rotor-hub/housing fragments") was a MISDIAGNOSIS.
+Dumped raw on-ground disarmed frames (`apps/diag_raw_image_dump.py`,
+`calibration_data/diag_raw_ghost_check/`) and cropped the artifact regions
+closely: the pre-rotation raw frame shows two distinct leg-strut-shaped
+blobs at the TOP and BOTTOM margins only (left/right margins are plain
+background floor) — each blob's shape (two diagonal struts converging
+into a horizontal skid bar) matches the SDF's own leg COLLISION geometry
+almost exactly (`x500_base/model.sdf` `base_link_collision_1..4`: diagonal
+struts at y=+-0.098 converging to horizontal skid bars at y=+-0.132, length
+0.25m). These are two DIFFERENT real leg assemblies (front vs back
+pairs), not one leg duplicated — no second copy of the whole drone body
+anywhere in frame. **This was never a rendering bug** — it's the drone's
+own real legs entering the wide-FOV downward camera's periphery, almost
+certainly conflated at the time with the SEPARATE, actually-confirmed
+marker-reflectivity bug from the same investigation session (a real
+mirroring bug, but of the MARKER's material, not the camera render).
+All of `cross_marker_detector.py`'s "ghost defense" code
+(`_restrict_to_center_roi`, `_reject_blobby_components`, `ROI_FRAC_X/Y`)
+still functions correctly regardless of this relabeling — it was built and
+validated against real captured frames showing this real artifact, the
+naming/mental-model was just wrong, not the defense itself.
+
+Also checked: **no SDF-only lever exists to widen the leg gap.**
+`x500_base/meshes/` has exactly one combined visual mesh
+(`NXP-HGD-CF.dae`) for the ENTIRE airframe — body, arms, motors, AND legs
+all baked into one `<visual>` element with no separate leg link/pose to
+reposition. The 4 leg COLLISION boxes are independent physics-only proxies
+(invisible to the camera) — moving them would not change what's rendered
+at all. Widening the visual leg gap genuinely requires editing the `.dae`
+mesh asset itself (3D-modeling tooling, e.g. Blender) — there is no
+config/pose-only path. Per user instruction, did NOT attempt any mesh
+edit. This lever (bigger camera Z via wider legs) stays open only if the
+user does the mesh edit externally; not pursued further this session.
