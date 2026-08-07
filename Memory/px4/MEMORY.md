@@ -4,7 +4,37 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🔴 2026-08-07b (LATEST) — Hz's real cause found: a genuine RAW-SIGNAL
+> **🟢 2026-08-07d (LATEST) — Hz's variance source FOUND AND FIXED, R^2
+> DOUBLED (0.22->0.48), DEPLOYED.** Pure analysis of already-collected `Flow
+> Diag Log`s (no new flights needed to find it): `_sample_flow_points` (GFT
+> corner search) only fires on cold-start or when the tracked pool drops
+> below `RESAMPLE_TRIGGER=10` — between those events the SAME point set
+> tracks forward via LK indefinitely. 4/5 pre-fix runs showed a perfectly
+> CONSTANT `n_kept` for their ENTIRE ~500-frame z-phase (zero resamples) —
+> whichever corner subset got picked once near takeoff just persisted the
+> whole flight. Hz/Wz's raw `_fill_A` columns are position-WEIGHTED
+> (`[-x,-y]`/`[-y,x]`), so that one-time draw's exact locations
+> disproportionately set the WHOLE flight's Hz/Wz quality, while Hx/Hy
+> (position-INDEPENDENT columns) stayed robust — explains the large,
+> previously-unexplained run-to-run variance that made the 08-07c color-gate
+> and camera-Z bisections (below) inconclusive; neither of those parameters
+> touches this mechanism at all. **Fix:** `RESAMPLE_PERIOD_S=1.0`
+> (`CROSS_RESAMPLE_PERIOD_S`) forces the existing top-up-refresh logic
+> periodically, independent of pool size. Validated n=5 (flake rate
+> unusually high this session): R^2 Hx=0.69 Hy=0.76 **Hz=0.48** Wz=0.50 vs
+> the prior deployed Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53 — Hz MORE THAN DOUBLED,
+> everything else within normal noise (0.03-0.06 vs typical 0.1-0.2+
+> swings), no detection-quality cost. DEPLOYED into
+> `CrossMarkerPerception.__init__`, superseding the peripheral-bias-only
+> cal. Closes the variance-source thread; color-gate/camera-Z stay formally
+> inconclusive but are now low priority. Wx/Wy/Wz's separate structural
+> collinearity ceiling is untouched — still needs a bigger marker plate.
+> User decision: only pursue a full PHYSICAL drone scale-up (real coupled
+> mass/inertia/rotor-arm/thrust, not a cosmetic mesh trick) if this thread
+> hits a dead end specifically needing more camera height.
+> [[feedback_cross_marker_radial_spread_ceiling]] [[project_cross_marker_pipeline_20260801]]
+
+> **🔴 2026-08-07b — Hz's real cause found: a genuine RAW-SIGNAL
 > REGRESSION in the 08-04/05 camera/geometry cluster, not an intrinsic ceiling
 > like Wz's. Perspective-divide-noise (the last suspect from the entry below)
 > RULED OUT too — `Z_V Log` shows grazing rays never happen in calibration

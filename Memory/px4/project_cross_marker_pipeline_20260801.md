@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: dbc47060-f292-4fca-8a3d-75a6066d2b5c
-  modified: 2026-08-07T09:09:24.337Z
+  modified: 2026-08-07T12:27:48.610Z
 ---
 
 Built and committed (916aa53, pushed to main) a standalone perception pipeline for a
@@ -492,3 +492,90 @@ mesh asset itself (3D-modeling tooling, e.g. Blender) — there is no
 config/pose-only path. Per user instruction, did NOT attempt any mesh
 edit. This lever (bigger camera Z via wider legs) stays open only if the
 user does the mesh edit externally; not pursued further this session.
+User decision: only pursue the full physical scale-up (real mass/inertia/
+rotor-arm/thrust scaling, not a cosmetic mesh-only trick) if this whole
+Hz/output-cal thread reaches a dead end that specifically needs more
+camera height — not a default next step.
+
+**VARIANCE SOURCE FOUND AND FIXED, Hz DOUBLED, DEPLOYED (2026-08-07,
+same session).** Pure data analysis (no new flights needed to find the
+cause) of the already-collected `Flow Diag Log`s showed `_sample_flow_points`
+(the GFT corner search feeding the h,w Jacobian solve) was only ever
+called on cold-start or when the tracked point pool dropped below
+`RESAMPLE_TRIGGER=10` — between those events the SAME point set just
+tracks forward via LK indefinitely. 4/5 pre-fix calibration runs showed a
+perfectly CONSTANT `n_kept` for their entire ~500-frame z-phase (zero
+resamples) — whichever corner subset got picked once, near takeoff, just
+persisted for the rest of the flight. Because Hz/Wz's raw columns in
+`_fill_A` are position-WEIGHTED (`[-x,-y]`/`[-y,x]`) while Hx/Hy's are
+position-INDEPENDENT constants, this one-time draw's exact (x,y) locations
+disproportionately determined the WHOLE flight's Hz/Wz quality while
+leaving Hx/Hy comparatively robust — explaining the large, previously-
+unexplained run-to-run variance that made every single-parameter
+bisection this session (color gate, camera Z-offset) inconclusive.
+
+**Fix implemented:** `RESAMPLE_PERIOD_S=1.0` (env `CROSS_RESAMPLE_PERIOD_S`)
+forces the same top-up-refresh logic periodically, independent of pool
+size, so the tracked set gets re-diversified regularly instead of frozen
+from one early draw. **Validated at n=5** (flake rate was unusually high
+this session — several runs auto-skipped below the 95% ok-rate gate along
+the way): z-phase raw correlation mean 0.4->0.69, std 0.24->0.067 (a real
+level gain AND ~3.5x tighter spread) on a 4-run quick check; full n=5
+re-derive gave **R^2 Hx=0.69 Hy=0.76 Hz=0.48 Wz=0.50** vs the deployed
+peripheral-bias cal's Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53 — **Hz more than
+DOUBLED**, everything else within normal noise (0.03-0.06 shifts vs this
+session's typical 0.1-0.2+ swings). No detection-quality cost (100%
+ok-rate on the clean runs). **DEPLOYED** into
+`CrossMarkerPerception.__init__`, superseding the 2026-08-06
+peripheral-bias-only cal. This closes the "unexplained run-to-run
+variance" thread that had blocked the color-gate and camera-Z bisections —
+those two remain formally inconclusive (not confirmed OR ruled out), but
+are now much lower priority since the dominant variance source is fixed.
+Wx/Wy/Wz's own structural collinearity ceiling (a different mechanism,
+`_fill_A`'s quadratic/near-degenerate columns) is UNTOUCHED by this fix —
+still needs a bigger marker plate if pursued further. See
+[[feedback_cross_marker_radial_spread_ceiling]] for the full numeric trace.
+
+**DESIGN DIRECTION UPDATE (2026-08-07): ring/texture-flow approach being
+RETIRED, replaced by a 4-corner-ArUco marker layout.** User: the textured
+background + dense-GFT-point approach was built specifically to counter
+point starvation on the sparse cross+stub shape (the "ring approach" this
+whole thread's mechanism analyses assumed) — no longer needed once the
+textured area is replaced by 4 corner ArUco tags. NOT YET IMPLEMENTED in
+code as of this writing — purely a stated design direction. Implication
+for everything above: the `_fill_A` image-Jacobian math is marker-agnostic
+(generic 6-DOF flow solve over tracked points), so the Wz/Wx/Wy
+collinearity mechanism will likely still apply to WHATEVER point layout
+the new marker uses, but should be RE-DERIVED/RE-VERIFIED once built, not
+assumed to transfer. The corner-ArUco layout may also enable falling back
+on ArUco's own decode-based orientation (removing the stub-asymmetry
+dependency `alpha`'s disambiguation currently has, see below) if corner
+IDs are used.
+
+**Confirmed s/h/alpha computation methodology (2026-08-07, user-requested
+review before the next validation flight) — no code changes, verification
+only:** `s` = line-intersection of the two cross-arm lines
+(`cross_marker_detector.py::_line_intersection`), degrades gracefully
+under partial occlusion. `h` = `cv2.goodFeaturesToTrack` restricted to
+`det.isolated_mask` (the SAME-FRAME color-gated+shape-filtered detector
+mask, not the whole image) plus the boundary-margin/center-disk
+exclusions from the peripheral-bias fix — structurally impossible for a
+candidate to land outside the mask; residual risk is mask QUALITY
+(anti-aliasing edge noise, or real legs passing the color gate before
+shape-filter rejection), not missing ROI restriction. `alpha` = plain
+unweighted 2nd-moment (`_unweighted_principal_angle`) over real
+arm+stub pixels (no ArUco `[4,3,2,1]` weighting hack), stub resolves the
+pi-ambiguity, holds last-good if stub not detected that frame. See
+[[feedback_cross_marker_radial_spread_ceiling]] and the io-calibration
+skill's new "s/h/alpha computation reference" section for the same
+writeup with code line references.
+
+**NEXT STEP (agreed, separate chat): independent multisine validation**
+of the currently-deployed cal (`apps/record_cross_marker_validation.py` +
+`tools/validate_cross_marker_flow.py`, built 2026-08-02, never actually
+run) — the io-calibration skill's train/validate discipline has never
+been closed for this pipeline at any point in this whole thread, no
+matter how good training-data R^2 has looked. **Also confirmed: NOT ready
+for a real closed-loop landing flight test** — `CrossMarkerNode` still
+doesn't implement terminal-kick/ring-loom-fusion (own class docstring:
+will AttributeError on a real descent), unchanged since 2026-08-01.

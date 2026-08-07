@@ -82,6 +82,27 @@ MIN_FLOW_POINTS_SOLVE = 4     # attempt the lstsq with whatever survived, down t
                                # (2*4=8 >= 6 unknowns -- still solvable, just less overdetermined)
 RESAMPLE_TRIGGER = 10          # proactively top up the point pool below this count, but don't
                                # discard current tracking to do it (see _compute_hw)
+
+# 2026-08-07 (Hz/Wz run-to-run variance root-cause): RESAMPLE_TRIGGER alone means
+# _sample_flow_points is effectively called ONCE per flight (whenever the pool first
+# drops below 10) and the SAME point set is then tracked forward via LK for the rest
+# of the flight, since count-only-shrinks-or-tops-up never revisits WHERE the points
+# are. Confirmed via Flow Diag Log: 4/5 calibration runs showed a perfectly CONSTANT
+# n_kept for their entire ~500-frame z-phase (24, 38, 37, 12 -- zero variation) --
+# i.e. no resample happened at all during that whole window; whatever corner subset
+# got picked at some earlier, arbitrary moment (near takeoff) just persisted. Hx/Hy
+# are largely immune (their raw columns are position-INDEPENDENT constants -- any
+# reasonably-tracking point set works), but Hz/Wz's columns are position-WEIGHTED
+# (`_fill_A`'s [-x,-y]/[-y,x]), so whichever specific (x,y) locations that one-time
+# draw happened to land on determines the WHOLE flight's Hz/Wz bias/noise
+# characteristic -- explaining both the large run-to-run spread (each flight's GFT
+# seeding moment is subject to small stochastic rendering differences) and why
+# single-parameter bisection (color gate, camera Z) couldn't find a clean effect:
+# none of those settings touch this mechanism. Fix: force a periodic refresh
+# (independent of pool size) so the tracked set gets re-diversified regularly
+# instead of being frozen from one early draw. See
+# feedback_cross_marker_radial_spread_ceiling memory for the full trace.
+RESAMPLE_PERIOD_S = float(os.environ.get("CROSS_RESAMPLE_PERIOD_S", "1.0"))
 MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
                                # dilation radius for BOTH GFT sampling bounds and the post-LK
                                # mask-membership retention check -- a fresh per-frame recomputed
@@ -210,6 +231,8 @@ class CrossMarkerPerception:
         self._prev_quat = None       # quat AT prev_flow_pts' own frame (2026-08-02 V-frame fix)
         self._prev_frame_t = None    # timestamp AT prev_flow_pts' own frame (2026-08-03 dt-staleness
                                       # fix -- see _compute_hw's docstring)
+        self._last_resample_t = None  # timestamp of the last _sample_flow_points() call (2026-08-07
+                                       # periodic-refresh fix -- see RESAMPLE_PERIOD_S's comment)
         self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
         self._last_alpha = 0.0
         self._alpha_valid_once = False
@@ -303,14 +326,36 @@ class CrossMarkerPerception:
         # signal collinearity above -- neither is fixable by more calibration runs
         # or point-sampling tweaks; see the radial-spread-ceiling memory for the
         # next untried lever (bigger physical marker).
+        # 2026-08-07 RE-DERIVED again after the periodic-resample fix (see
+        # RESAMPLE_PERIOD_S's comment) -- root-caused and fixed the large
+        # run-to-run Hz/Wz variance that made every single-parameter bisection
+        # this session (color gate, camera Z-offset) inconclusive: without a
+        # periodic forced refresh, RESAMPLE_TRIGGER alone meant the tracked
+        # point set was effectively seeded ONCE near takeoff and then just
+        # tracked forward via LK for the whole flight (confirmed via Flow Diag
+        # Log: 4/5 pre-fix runs showed a perfectly CONSTANT n_kept for their
+        # entire ~500-frame z-phase, i.e. zero resamples during that window).
+        # Whichever specific (x,y) locations that one-time early draw landed on
+        # then determined the WHOLE flight's Hz/Wz bias (position-WEIGHTED
+        # columns in _fill_A), while Hx/Hy (position-INDEPENDENT columns) were
+        # largely immune -- exactly the asymmetry observed all session.
+        # 5 clean runs post-fix (95%+ ok-rate; SITL flake rate was unusually
+        # high this session, several runs auto-skipped): R^2 Hx=0.69 Hy=0.76
+        # **Hz=0.48** Wz=0.50 -- Hz more than DOUBLED vs the 2026-08-06
+        # peripheral-bias cal below (0.22->0.48), Hx/Hy/Wz shifted by only
+        # 0.03-0.06 (well inside this session's normal run-to-run noise, e.g.
+        # +-0.1-0.2+ swings seen everywhere else). Net win with no measured
+        # cost. Wx/Wy still correctly forced 0 (same collinearity ceiling as
+        # before, untouched by this fix -- it's a different mechanism, see
+        # feedback_cross_marker_radial_spread_ceiling memory).
         self._sensor_cal_hw = np.array([
-            [+1.0333, +0.0549, +0.0096, -0.0524, +1.0344, -0.0058],
-            [-0.0352, +1.1346, +0.0218, -1.1336, -0.0302, -0.0097],
-            [-0.0804, -0.2487, +0.4139, +0.2312, -0.0908, -0.0048],
+            [+0.9981, +0.0683, -0.0277, -0.0597, +1.0006, -0.0032],
+            [+0.0014, +1.1479, +0.0100, -1.1458, -0.0003, -0.0109],
+            [+0.0960, +0.0123, +0.6862, -0.0912, -0.0026, -0.0063],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+1.7199, +9.3866, +0.9181, -9.3067, +1.8608, +0.5424]])
-        self._sensor_cal_s = np.diag([1.0225, 0.9727, 1.0, 1.0])
+            [+0.3501, +8.7902, +0.1728, -8.8684, +0.2324, +0.5228]])
+        self._sensor_cal_s = np.diag([1.1015, 1.0226, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -588,6 +633,7 @@ class CrossMarkerPerception:
 
         if self._prev_gray is None or self._prev_flow_pts is None or len(self._prev_flow_pts) == 0:
             self._prev_flow_pts = self._sample_flow_points(gray, dilated_mask)
+            self._last_resample_t = t
             self._prev_gray = gray
             self._prev_quat = quat
             self._prev_frame_t = t
@@ -613,11 +659,20 @@ class CrossMarkerPerception:
         n_kept = len(prev_pts)
         prev_quat = self._prev_quat   # the attitude prev_pts were actually observed at
 
-        if n_kept < RESAMPLE_TRIGGER:
+        # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
+        # when it nearly empties -- see RESAMPLE_PERIOD_S's comment. Without this, a
+        # point set that never drops below RESAMPLE_TRIGGER just tracks the SAME
+        # corners for the whole flight, freezing in whatever radial-spread bias that
+        # one early draw happened to have (the actual root cause of the large
+        # run-to-run Hz/Wz variance, not per-frame noise).
+        due_for_refresh = (self._last_resample_t is None or
+                            (t - self._last_resample_t) >= RESAMPLE_PERIOD_S)
+        if n_kept < RESAMPLE_TRIGGER or due_for_refresh:
             # top up the pool with fresh candidates rather than discarding what's
             # still tracking -- only replace outright if the fresh yield actually
             # beats what survived (never make the pool WORSE)
             fresh = self._sample_flow_points(gray, dilated_mask)
+            self._last_resample_t = t
             self._prev_flow_pts = fresh if len(fresh) > n_kept else curr_pts
         else:
             self._prev_flow_pts = curr_pts

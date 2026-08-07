@@ -235,52 +235,120 @@ by `tools/derive_cross_marker_cal.py` (recordings: `apps/record_cross_marker_cal
 / ≥5-run / MIN_OK_RATE=95%-gate discipline as the ArUco board cal, but it's a genuinely
 separate cal pipeline — don't assume the ArUco cal transfers.
 
-## Hz/Wz weakness root-cause chain (2026-08-05/06 — read before re-touching this cal)
-Applies to `_sensor_cal_hw`'s Hz row (R²~0.22, the weakest of Hx/Hy/Hz) and Wz (large
-inter-run STD, coefficients swinging to ~10-13). Investigated in 3 stages, each RULED
-OUT the previous stage's suspect rather than confirming it — read in order before
-re-diagnosing this from scratch:
-1. **NOT data contamination.** An ad-hoc diagnostic script appeared to find z-phase GT
-   windows dominated by yaw-rate instead of vz — that "finding" was itself a bug: the
-   script truncated `gt['Phase']` via a naive `[:n]` slice instead of applying the same
-   `valid`-mask filter `compute_gt_signals()` uses internally (drops scattered
-   duplicate-timestamp samples, not a trailing block), desyncing phase labels from the
-   GT arrays. Re-checked with correct alignment across all 6 original recordings:
-   z/yaw/yawagg phases are genuinely clean in every run. A purity gate built on this
-   false premise (`clean_zyaw_mask`, briefly added to `derive_cross_marker_cal.py`) made
-   Wz WORSE and was reverted. See `feedback_cross_marker_radial_spread_ceiling`.
-2. **Radial spread was the next suspect, per the existing Wx/Wy-unrecoverable finding**
-   (same memory): the flow Jacobian's `Hz`/`Wz` columns (`_fill_A`, linear in point
-   (x,y)) and `Wx`/`Wy` columns (quadratic) all need tracked points spread far from
-   image center; the cross marker's `goodFeaturesToTrack` corners measured only
-   ~0.05 mean / ~0.26 max normalized radius (the shape's own strongest corner — the
-   cross intersection — dominates the point pool every frame). Fix attempt:
-   `_sample_flow_points` (cross_marker_perception.py) now excludes a central disk
-   (`CROSS_FLOW_CENTER_EXCLUDE_FRAC`, default 0.35× the mask's own half-extent) from the
-   GFT mask, biasing candidates toward arm/stub tips, plus a frame-boundary margin
-   (`CROSS_FLOW_BOUNDARY_MARGIN_PX`, default 20px) excluding corners likely to exit
-   frame mid-track. Falls back to the unbiased mask if too few peripheral corners
-   survive (`MIN_PERIPHERAL_POINTS`, default 4).
-3. **Result (n=4 fresh runs, one 75%-ok-rate run correctly gated out): MIXED, not a
-   clean win.** Radial spread DID increase as measured (mean p90 0.113→0.184, max p90
-   0.289→0.380 — confirms the mechanism is real and the fix works as designed). Hx/Hy
-   R² improved substantially (0.55→0.73, 0.63→0.79). **But Hz's R² was UNCHANGED
-   (0.22→0.22 to 2 decimal places)** despite the spread increase, and Wz got marginally
-   worse (R² 0.57→0.53, inter-run STD worse on some columns, though its own coefficient
-   magnitude dropped 12.9→9.4). **Conclusion: radial spread is NOT the (sole) binding
-   constraint for Hz specifically** — something else caps vertical-flow observability
-   (leading suspects, NOT yet investigated: z-phase excitation amplitude too small
-   relative to noise, or `_getVirtualPts`'s perspective-divide noise near-grazing rays
-   swamping the loom signal regardless of point spread). The peripheral-bias code is a
-   net win for Hx/Hy and doesn't hurt detection ok-rate, but has NOT been deployed to
-   the live `_sensor_cal_hw`/`_sensor_cal_s` pending this next investigation — don't
-   assume it's live without checking the file's own provenance comment/date.
-4. **Hardware (ArUco) shows the OPPOSITE profile** — checked for comparison, not a
-   contradiction: `Hz` is the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are
-   weak (0.07-0.08, real-camera noise/blur, not geometry) and `Wz` is weak on both
-   platforms (0.57 cross-marker vs 0.08 hardware). Don't treat "Hz/Wz are universally
-   the hardest-to-observe rows" as a cross-platform law — the weak axes only overlap on
-   Wz; Hz's weakness is cross-marker-specific.
+## Hz/Wz weakness root-cause chain (2026-08-05→07 — read before re-touching this cal)
+**Current deployed state (2026-08-07): R² Hx=0.69 Hy=0.76 Hz=0.48 Wz=0.50** (Wx/Wy
+correctly forced 0). Investigated across many stages, each RULING OUT the previous
+suspect rather than confirming it — the two weak rows (Hz, Wz) turned out to be **two
+different phenomena, not one "hardest to observe" pattern** — don't conflate them:
+
+**Wz is a REAL structural ceiling, unresolved, marker-size-limited.** Its raw columns
+(`h1`=Ty, `w0`=Wx in `_fill_A`) are near-perfectly collinear (r=0.98-1.00 in every
+excitation phase — two near-zero eigenvalues in the raw 6-column correlation matrix)
+because `_fill_A`'s Wx column `-(1+y²)` stays ~constant whenever `|y|` is small, at
+this marker's achievable radial spread — numerically aliasing Ty's constant column.
+Same underlying cause as Wx/Wy being force-zeroed (genuinely unrecoverable, confirmed
+via dedicated rollexc/pitchexc excitation, r=-0.09..-0.15). **The only remaining lever
+for Wz/Wx/Wy is a bigger physical marker plate** — not fixable by recal, point-sampling,
+or excitation tuning. Not pursued further as of 2026-08-07 (deprioritized: the project
+is moving to a 4-corner-ArUco marker design, see below, which may sidestep this
+geometry-limited regressor entirely).
+
+**Hz's weakness was NOT the same phenomenon — it was 3 stacked, fixable bugs, 2 now
+fixed, 1 still open:**
+1. **NOT data contamination** (ruled out 2026-08-06) — an ad-hoc diagnostic script's
+   own alignment bug, not a real z-phase GT contamination. See
+   `feedback_cross_marker_radial_spread_ceiling`.
+2. **Radial spread — partial fix, doesn't touch Hz.** `_sample_flow_points`
+   (`cross_marker_perception.py`) excludes a central disk
+   (`CROSS_FLOW_CENTER_EXCLUDE_FRAC=0.35`) + a frame-boundary margin
+   (`CROSS_FLOW_BOUNDARY_MARGIN_PX=20`) to bias GFT candidates toward the arm/stub
+   tips. DEPLOYED (2026-08-06): fixed Hx/Hy (0.55→0.73, 0.63→0.79, beating even the
+   pre-camera-change baseline) but left Hz flat (0.22→0.22) — proved radial spread
+   isn't Hz's constraint.
+3. **A genuine raw-signal regression, 08-04/05 camera/geometry cluster — STILL NOT
+   ROOT-CAUSED.** Re-checked and found the earlier "raw Hz-vs-GT r=0.93-0.96" claim
+   was stale: current-era data showed only r=0.07-0.67 (mean~0.5), vs 0.90-0.96 on
+   archived pre-08-05 recordings (`calibration_data/output_cross_stale_pre20260805/`).
+   Bisected two suspects at n=2 each (color-gate threshold `V<100→V<20/60` via new
+   `CROSS_COLOR_GATE_V_MAX` env; camera Z-offset `.15→.20`, isolated via
+   `x500_mono_cam_down/model.sdf.bak_before_campos_20260805_010737`) — BOTH
+   inconclusive, swamped by huge run-to-run variance. Neither adopted; camera/gate
+   left at live defaults. **Note: camera Z=.15 is a DELIBERATE tradeoff (keeps
+   landing legs out of the downward FoV), not a revertible regression** — don't
+   suggest reverting it without addressing leg visibility first (see below).
+4. **The variance itself was the real story — found and FIXED (2026-08-07), Hz
+   R² doubled.** `_sample_flow_points` (GFT) was only called on cold-start or when
+   the tracked pool dropped below `RESAMPLE_TRIGGER=10` — between those events the
+   SAME point set just tracked forward via LK indefinitely. Confirmed: 4/5 pre-fix
+   calibration runs had a perfectly CONSTANT `n_kept` for their ENTIRE ~500-frame
+   z-phase (zero resamples) — whichever corner subset got picked once, near takeoff,
+   persisted the whole flight. Because Hz/Wz's `_fill_A` columns are
+   position-WEIGHTED (`[-x,-y]`/`[-y,x]`) while Hx/Hy's are position-INDEPENDENT
+   constants, that one-time draw's exact locations disproportionately set the WHOLE
+   flight's Hz/Wz quality while Hx/Hy stayed robust — explaining the large,
+   previously-unexplained run-to-run spread that made suspect-3's bisection
+   inconclusive. **Fix: `RESAMPLE_PERIOD_S=1.0`** (`CROSS_RESAMPLE_PERIOD_S` env)
+   forces periodic refresh independent of pool size. Validated n=5: R² Hx=0.69
+   Hy=0.76 **Hz=0.48** Wz=0.50 vs the prior Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53 — Hz MORE
+   THAN DOUBLED, everything else within normal noise. DEPLOYED.
+5. **Suspect 3 (the raw-signal regression) is STILL OPEN** — Hz=0.48 is a real
+   improvement but not yet at Hx/Hy parity (~0.7), so don't treat Hz as "solved."
+   Whatever in the 08-04/05 camera cluster caused the r=0.9→0.5 drop hasn't been
+   found; it's just no longer masked by the resample-variance bug on top of it.
+6. **Hardware (ArUco) shows the OPPOSITE profile** (checked for comparison): `Hz` is
+   the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are weak (0.07-0.08,
+   real-camera noise). This had already disproven "Hz/Wz are universally the
+   hardest-to-observe rows" as a cross-platform law before the 08-07 fix above
+   further sharpened the point: don't cite that framing at all going forward — Wz
+   is genuinely hard to observe; Hz's past weakness was mostly bugs, not geometry.
+
+## s/h/alpha computation reference (cross-marker pipeline, confirmed 2026-08-07)
+- **`s` (centroid):** `cross_marker_detector.py::detect()` fits the two cross-arm
+  lines from real detected pixels, `center = _line_intersection(line_i, line_j)`.
+  Degrades gracefully under partial occlusion (only needs 2 non-parallel lines
+  fittable from whatever real pixels are visible).
+- **`h` (optical flow):** `cv2.goodFeaturesToTrack` is called with `mask =
+  det.isolated_mask` — the SAME-FRAME color-gated + shape-filtered detector mask,
+  not the whole image. Structurally impossible for GFT to place a candidate outside
+  that mask; a boundary-margin exclusion (`FLOW_BOUNDARY_MARGIN_PX`) and center-disk
+  exclusion (`CROSS_FLOW_CENTER_EXCLUDE_FRAC`) further restrict candidates within it.
+  The residual risk is mask-QUALITY (color-gate anti-aliasing edge noise, or the
+  drone's own real legs passing the color gate before shape-filter rejection — see
+  the "ghost" correction below), not missing ROI restriction.
+- **`alpha` (orientation):** `_unweighted_principal_angle()` over
+  `line_points_i + line_points_j + stub_points` (real arm+stub pixels, camera-mount-
+  yaw-corrected) — a PLAIN unweighted 2nd-moment (no ArUco `[4,3,2,1]` synthetic
+  weighting hack, unneeded since the stub is a real geometric asymmetry). The stub
+  also resolves the π-ambiguity (`_disambiguate_angle` via stub-centroid-minus-arm-
+  centroid vector). Holds last-good alpha if the stub isn't detected that frame.
+
+## "Ghost" correction (2026-08-07) + no SDF-only leg-widening lever
+The 2026-08-02 "pre-existing Gazebo camera-render ghost... mirrored duplicate of the
+drone's own body" finding (below/in project memory) was a MISDIAGNOSIS — confirmed via
+raw disarmed-frame inspection (`apps/diag_raw_image_dump.py`) that the top/bottom-margin
+artifact is the drone's REAL landing legs (matches the SDF's own leg collision geometry
+almost exactly), not a render duplicate. The existing ghost-defense code
+(`_restrict_to_center_roi`, `_reject_blobby_components`) is unaffected — built against
+the real artifact, only the naming was wrong. Separately: no SDF-only lever exists to
+widen the leg gap for a larger camera Z — `x500_base/meshes/NXP-HGD-CF.dae` is ONE
+combined mesh for the whole airframe (no separate leg link/pose); only a full mesh edit
+(or a full physically-consistent scale-up: mass+inertia+rotor-arm+thrust together, real
+flight-dynamics risk) would do it. User decision: only pursue that if this whole thread
+hits a dead end specifically needing more camera height.
+
+## Design direction (as of 2026-08-07): ring/texture approach being retired
+The marker's textured background + ring-flow-style dense-point approach was built to
+counter point starvation on a sparse cross+stub shape. User is moving to a **4-corner
+ArUco marker layout** replacing the textured area, which may sidestep the sparse-point
+problem (and possibly some of Wz's geometry-limited ceiling above) differently. Not yet
+implemented in code as of this writing — when it lands, re-verify which of the
+Hz/Wz/radial-spread findings above still apply vs. are now moot (the `_fill_A` math is
+generic and marker-agnostic, so the collinearity mechanism likely still applies to
+whatever point layout replaces the current GFT-on-texture approach, but re-derive
+rather than assume). Next planned step (separate chat): independent multisine
+validation of the CURRENT cal (`apps/record_cross_marker_validation.py` +
+`tools/validate_cross_marker_flow.py`, built 2026-08-02, unused since) — the
+train/validate discipline above has never been closed for this pipeline at any point.
 
 # Recalibration procedure
 1. Identify which chain: OUTPUT (corner/ring flow, ArUco) / OUTPUT (cross-marker,

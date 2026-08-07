@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: feedback
   originSessionId: 79646ad7-0ee0-45bb-bd3b-73e43c1470bf
-  modified: 2026-08-07T09:09:44.464Z
+  modified: 2026-08-07T10:52:42.179Z
 ---
 
 The cross+stub marker's flow-Jacobian solve (`_fill_A` in
@@ -263,4 +263,77 @@ separate leg link/pose); the 4 leg SDF entries that DO have independent
 poses are physics-only collision boxes, invisible to the camera. Widening
 the visual leg gap needs real `.dae` mesh editing — no config-only path.
 Per user instruction, no mesh edit attempted; this lever stays open only
-if the user does that edit externally.
+if the user does that edit externally. **User decision (2026-08-07): only
+pursue the physical scale-up (real, coupled mass/inertia/rotor-arm/thrust
+scaling, not a cosmetic mesh-only trick) if this whole thread hits a dead
+end that specifically needs more camera height — not a default next step.**
+
+**2026-08-07 VARIANCE SOURCE FOUND AND FIXED — Hz DOUBLED (0.22->0.48),
+DEPLOYED.** Root cause (pure analysis of already-collected data, no new
+flights needed to find it): `_sample_flow_points` (the GFT corner search)
+was only ever called on cold-start or when the tracked pool dropped below
+`RESAMPLE_TRIGGER=10`. Between those events, points just get tracked
+forward via LK — the SAME set persists. Confirmed via `Flow Diag Log`:
+4/5 pre-fix calibration runs showed a perfectly CONSTANT `n_kept` for their
+ENTIRE ~500-frame z-phase (24, 38, 37, 12 -- zero variation) — i.e. no
+resample happened during that whole window; whatever corner subset got
+picked at some earlier, arbitrary moment (near takeoff, well before the
+z-phase itself) just persisted for the rest of the flight. This explains
+the whole session's variance pattern: stable WITHIN a run (frozen set),
+wildly different BETWEEN runs (each flight's one-time GFT seeding moment
+is subject to small stochastic rendering differences), and immune to every
+single-parameter bisection tried (color gate, camera Z) since none of
+those touch this mechanism. Ties directly to the Hx/Hy-vs-Hz asymmetry
+established earlier: Hx/Hy's raw columns are position-INDEPENDENT
+constants (robust to WHICH points survive), Hz/Wz's are position-WEIGHTED
+(`_fill_A`'s `[-x,-y]`/`[-y,x]`, exquisitely sensitive to WHERE the frozen
+set happens to sit).
+
+**Fix (`cross_marker_perception.py`, `RESAMPLE_PERIOD_S=1.0` env-overridable
+via `CROSS_RESAMPLE_PERIOD_S`):** force a periodic refresh (via the same
+existing top-up logic used for the low-pool-count case) independent of
+pool size, so the tracked set gets re-diversified every ~1s instead of
+being frozen from one early draw. **Validated at n=5** (this session had
+an unusually high SITL flake rate, several runs auto-skipped below the
+95% ok-rate gate): z-phase raw h2-vs-GT correlation went from mean~0.4
+(std~0.24, range 0.07-0.67) to **mean=0.69 (std=0.067, range 0.63-0.79)**
+across 4 quick test runs -- both a real level improvement AND ~3.5x
+tighter variance. Full n=5 batch re-derive: **R^2 Hx=0.69 Hy=0.76
+Hz=0.48 Wz=0.50** vs the deployed peripheral-bias cal's Hx=0.73 Hy=0.79
+Hz=0.22 Wz=0.53 -- **Hz more than DOUBLED**, Hx/Hy/Wz shifted by only
+0.03-0.06 (well inside normal run-to-run noise). No detection-quality
+cost (100% ok-rate on the clean runs). **DEPLOYED** into
+`CrossMarkerPerception.__init__` 2026-08-07, superseding the peripheral-
+bias-only cal above. Closes out this memory's open "variance source"
+question -- the real culprit was never the individually-tested parameters,
+it was the point-tracking pool's staleness. Wx/Wy/Wz's own collinearity
+ceiling (separate mechanism, see above) is UNTOUCHED by this fix -- still
+needs a bigger marker plate if pursued further.
+
+**CORRECTION (2026-08-07): "Hz/Wz are the hardest-to-observe rows" is NOT
+one pattern -- split it.** An earlier session (and this memory's own
+history) grouped Hz(R^2=0.22)/Wz(huge unstable coefficients) together as
+a single "hardest to observe" phenomenon. That conflation is now shown to
+be wrong for Hz specifically:
+- **Wz genuinely IS hard to observe** -- real, structural, mechanistically
+  explained (raw `h1`(Ty)/`w0`(Wx) near-collinearity, r=0.98-1.00, tied to
+  this marker's achievable point spread) and UNCHANGED by anything fixed
+  this session (still R^2~0.50). This is a real geometric ceiling.
+- **Hz's weakness was NOT the same phenomenon -- it was two stacked
+  software bugs**, not an intrinsic property of the row: (1) the still-
+  unexplained 08-04/05 camera-geometry raw-signal regression, and (2) the
+  frozen point-tracking pool (fixed above). Fixing ONLY #2 alone MORE THAN
+  DOUBLED Hz's R^2 (0.22->0.48) -- a genuine geometric/observability
+  ceiling does not move that much from a tracking-hygiene fix; a buggy
+  signal does. 0.48 still isn't at Hx/Hy parity (~0.7), so a smaller
+  residual observability component in Hz isn't ruled out, but the
+  dominant story is "buggy," not "inherently hard."
+- Also already on record (2026-08-06 entry above): hardware (ArUco)
+  output-cal showed the OPPOSITE profile (Hz=0.64 strong, Hx/Hy=0.07-0.08
+  weak) -- this alone had already disproven "Hz/Wz universally hardest to
+  observe" as a cross-platform law before today's fix.
+**How to apply:** don't cite "Hz/Wz are hardest to observe" as a single
+justification going forward. For Wz, that's still accurate and load-
+bearing. For Hz, treat any future weak-Hz reading as a suspect bug first,
+not an accepted ceiling, until the remaining 08-04/05 raw-signal
+regression is actually root-caused (still open, see the entry above).

@@ -44,7 +44,13 @@ import numpy as np
 # heavier background shadowing is used, re-verify this doesn't reintroduce the
 # original V<90 regression before trusting it.
 DEFAULT_LOWER = np.array([0, 0, 0])
-DEFAULT_UPPER = np.array([180, 255, 100])  # low-V gate: marker is dark, background is light
+# 2026-08-07: env-overridable to test tightening this back down (Hz/Wz raw-signal
+# regression investigation -- see feedback_cross_marker_radial_spread_ceiling memory).
+# Hypothesis: V<100 admits too much position-correlated anti-aliased edge noise into
+# the GFT mask, disproportionately corrupting the position-weighted Hz/Wz raw columns.
+# Default unchanged at 100 unless CROSS_COLOR_GATE_V_MAX is set.
+_COLOR_GATE_V_MAX = int(os.environ.get("CROSS_COLOR_GATE_V_MAX", "100"))
+DEFAULT_UPPER = np.array([180, 255, _COLOR_GATE_V_MAX])  # low-V gate: marker is dark, background is light
 
 # 2026-08-04 CORRECTED: earlier same-day investigation (a "single-loss-event root cause"
 # analysis, near-touchdown ROI-crop-truncation narrative) was run against the WRONG
