@@ -26,42 +26,50 @@ LAB = ['Hx', 'Hy', 'Hz', 'Wx', 'Wy', 'Wz']
 def prep(d):
     """Shared load+cal+align core -- returns aligned (G_hw, cal_hw_pred, V_z_g,
     det_ok, G_s, cal_s_pred) for either channel_r2() (whole-flight) or
-    validate_landing() (altitude-binned) to slice as needed."""
+    validate_landing() (altitude-binned) to slice as needed.
+
+    Uses Img_Data.npy's TRUE per-detect-call raw signal ('h_V'/'s_V'/'alpha(t)',
+    paired with its own 'Time'), NOT gt['Opt Flow Ang Vel']/'Img Feature Params'
+    (2026-08-08 fix): the GT dict's copies are written by the OUTER 200Hz polling
+    loop, which re-logs the SAME last-computed value on every poll between actual
+    ~38-60Hz detect() calls -- ~3x oversampling here, confirmed via Img_Data vs GT
+    sample counts (9400 vs 3156 on one holdout flight). This is the EXACT same
+    artifact already root-caused for alpha earlier this session (see
+    cross_marker_perception.py's _alpha_0 comment) -- it was fixed there and for
+    the landing validation, but this whole-flight R^2 check still used the
+    oversampled path until now. Effect was NOT subtle: re-checking one multisine
+    holdout flight with the true per-frame rate moved Hx R^2 0.16->0.73, Hy
+    0.32->0.71 -- the earlier "Hx/Hy noise floor" conclusion was itself mostly
+    this measurement artifact, not a real sensor/geometry limitation."""
     p = CrossMarkerPerception()
     cal_hw, cal_s = p._sensor_cal_hw, p._sensor_cal_s
 
     gt = np.load(os.path.join(d, 'Ground_Truth.npy'), allow_pickle=True).item()
     t, V_h_g, V_w_ug, V_xc_g, V_yc_g, valid, V_z_g = compute_gt_signals(gt)
     V_w_ug = V_w_ug.copy(); V_w_ug[:, 0:2] = 0.0   # V-frame w is yaw-only (see derive tools)
+    t_abs = t + gt['Start Time']   # -> same absolute clock as Img_Data's 'Time'
 
-    raw = np.asarray(gt['Opt Flow Ang Vel'])
-    raw_s = np.asarray(gt['Img Feature Params'])
-    nm = min(len(raw), len(raw_s), len(valid))
-    # t/V_h_g/etc from compute_gt_signals are already reduced to the `valid`
-    # subsequence internally; det_ok must be reduced the SAME way (not
-    # independently masked) to stay positionally aligned with them.
-    det_ok_full = ~np.all(raw[:nm] == 0, axis=1)   # CrossMarkerPerception zeros
-                                                     # _hw (holds stale s/alpha)
-                                                     # whenever det.ok is False --
-                                                     # a spurious zero-flow reading
-                                                     # during dropout would otherwise
-                                                     # silently corrupt the R^2 fit.
-    det_ok_frac = det_ok_full.mean()
-    raw = raw[:nm][valid[:nm]]; raw_s = raw_s[:nm][valid[:nm]]
-    det_ok = det_ok_full[valid[:nm]]   # same subsequence/order as V_h_g/t now
+    img = np.load(os.path.join(d, 'Img_Data.npy'), allow_pickle=True).item()
+    t_img = np.asarray(img['Time'])
+    raw = np.asarray(img['h_V'])                                   # raw pre-cal [Tx,Ty,Tz,Wx,Wy,Wz]
+    raw_s = np.column_stack([img['s_V'], img['alpha(t)']])         # raw pre-cal [xc,yc,1,alpha]
+    det_ok_frac = float(np.mean(~np.all(raw == 0, axis=1)))
+    det_ok = np.ones(len(t_img), dtype=bool)   # Img_Data only logs on det.ok=True frames already
 
-    n_kf = min(len(raw), len(t))
-    raw = raw[:n_kf]; raw_s = raw_s[:n_kf]; det_ok = det_ok[:n_kf]
-    if n_kf > 1:
-        raw = kf_filter_causal(raw, t[:n_kf], FLOW_KF_Q, FLOW_KF_R)
-        raw_s = kf_filter_causal(raw_s, t[:n_kf], FEAT_KF_Q, FEAT_KF_R)
+    if len(raw) > 1:
+        raw = kf_filter_causal(raw, t_img, FLOW_KF_Q, FLOW_KF_R)
+        raw_s = kf_filter_causal(raw_s, t_img, FEAT_KF_Q, FEAT_KF_R)
+    cal_hw_pred = raw @ cal_hw.T                    # calibrated = cal @ raw, at true detect-rate
+    cal_s_pred = raw_s @ cal_s.T
 
-    n = min(len(raw), len(V_h_g), len(det_ok), len(V_z_g))
-    G_hw = np.hstack([V_h_g[:n], -V_w_ug[:n]])          # GT [h;w], manuscript w = -V_w_ug
-    cal_hw_pred = raw[:n] @ cal_hw.T                    # calibrated = cal @ raw
-    cal_s_pred = raw_s[:n] @ cal_s.T
-    G_s = np.column_stack([V_xc_g[:n], V_yc_g[:n]])
-    V_z = V_z_g[:n]
+    # interpolate GT onto the TRUE per-frame clock (t_img), not the other way
+    # around -- avoids re-introducing an outer-loop-rate assumption anywhere
+    G_hw = np.column_stack(
+        [np.interp(t_img, t_abs, V_h_g[:, k], left=np.nan, right=np.nan) for k in range(3)] +
+        [np.interp(t_img, t_abs, -V_w_ug[:, k], left=np.nan, right=np.nan) for k in range(3)])
+    G_s = np.column_stack([np.interp(t_img, t_abs, V_xc_g, left=np.nan, right=np.nan),
+                            np.interp(t_img, t_abs, V_yc_g, left=np.nan, right=np.nan)])
+    V_z = np.interp(t_img, t_abs, V_z_g, left=np.nan, right=np.nan)
 
     return dict(cal_hw=cal_hw, cal_s=cal_s, G_hw=G_hw, cal_hw_pred=cal_hw_pred,
                 G_s=G_s, cal_s_pred=cal_s_pred, V_z=V_z, det_ok=det_ok,
