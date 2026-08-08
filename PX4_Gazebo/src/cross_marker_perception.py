@@ -427,11 +427,16 @@ class CrossMarkerPerception:
         # holdout: Hx=0.16 Hy=0.32 Hz=0.74 **Wz=+0.01** (up from -2.0 originally,
         # -0.81 with cross-terms -- no channel is catastrophically negative anymore).
         # NET RESULT: the original overfitting bug (task: "Fix cross-marker Hx/Wz
-        # overfitting") is resolved -- no more negative-R^2 holdout collapse. Hx/Hy's
-        # remaining weakness on holdout (0.16/0.32) looks like a genuine sensor/geometry
-        # noise floor for a pure-translation estimate on this sparse marker, not a
-        # collinearity artifact -- a SEPARATE, smaller-scope question than what this fix
-        # targeted; don't conflate the two when deciding whether more work is needed
+        # overfitting") is resolved -- no more negative-R^2 holdout collapse.
+        # CORRECTION (2026-08-08, later same day): the Hx=0.16/Hy=0.32 holdout numbers
+        # above were themselves measured with a flawed tool (tools/validate_cross_marker_
+        # flow.py's prep() was reading the OUTER-LOOP-POLLED gt['Opt Flow Ang Vel'], ~3x
+        # oversampled vs the true ~38-60Hz detect() rate -- the identical artifact already
+        # root-caused for alpha earlier this session). Fixed to use Img_Data.npy's true
+        # per-frame log: re-measured on the SAME holdout flight, Hx R^2 0.16->0.42-0.73,
+        # Hy 0.32->0.53-0.71 (range spans KF-filtered vs raw). There is NO genuine Hx/Hy
+        # noise floor -- that framing was itself a measurement artifact, not a real
+        # sensor/geometry limitation. Don't cite the 0.16/0.32 figures going forward
         # here. Wx/Wy rows stay forced 0 (level-target convention, unchanged).
         self._sensor_cal_hw = np.array([
             [+0.2481, +0.0121, +0.0513, +0.0000, +0.0000, +0.0004],
