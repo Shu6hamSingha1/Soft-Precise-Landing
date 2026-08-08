@@ -93,16 +93,63 @@ def channel_r2(d):
     print(f"\ncentroid R^2: xc={r2x:+.3f}  yc={r2y:+.3f}")
 
 
-def validate_landing(d):
+def _compute_gt_flow_zreg(rep_dir, Z_REG):
+    """Depth-regularized GT flow, 1/(z+Z_REG) -- matches gt_feedback.py's
+    Z_REG convention (its own extensively-documented history: Z_REG=0.01
+    let computed z fall low enough that 1/z->100, a non-physical spike that
+    caused a real terminal instability bug there; empirically the true
+    touchdown floor is ~0.096-0.14m, landing gear + perception saturation
+    -- baked to 0.1-0.2 there, NOT gt_optical_flow.py's much smaller 0.01,
+    which is fine for its normal (in-flight, altitude-gated) use but produces
+    the same non-physical blowup gt_feedback.py's history already diagnosed
+    when used down to true touchdown, as a landing validation needs. No
+    altitude gate (unlike compute_gt_flow's abs(zB)>=0.1) -- 1/(z+Z_REG)
+    stays bounded to the deck on its own, same as gt_feedback.py's own
+    comment: 'no altitude gate: 1/(z+Z_REG) stays bounded to the deck'."""
+    from ahrs import Quaternion
+    from gt_optical_flow import NED_FROM_ENU, FRD_2_FLU, _v_frame, _robust_vel
+    gt = np.load(os.path.join(rep_dir, "Ground_Truth.npy"), allow_pickle=True).item()
+    St = float(gt['Start Time'])
+    tg = np.asarray(gt['Time'], float)
+    u, tp = gt['UAV Pose'], gt['Target Pose']
+    n = min(len(tg), len(u), len(tp))
+    tg, u, tp = tg[:n], u[:n], tp[:n]
+    keep = np.hstack(([True], np.diff(tg) > 1e-6))
+    tg = tg[keep]; u = [u[i] for i in range(n) if keep[i]]; tp = [tp[i] for i in range(n) if keep[i]]
+    n = len(tg)
+    W_x_tu = np.zeros((n, 3)); Ru = np.zeros((n, 3, 3))
+    for i in range(n):
+        p, t = u[i], tp[i]
+        Rfu = Quaternion([p.orientation.w, p.orientation.x, p.orientation.y, p.orientation.z]).to_DCM()
+        Ru[i] = NED_FROM_ENU @ Rfu @ FRD_2_FLU
+        up = NED_FROM_ENU @ np.array([p.position.x, p.position.y, p.position.z])
+        tpp = NED_FROM_ENU @ np.array([t.position.x, t.position.y, t.position.z])
+        W_x_tu[i] = tpp - up
+    W_v_tu = _robust_vel(W_x_tu, tg)
+    V_h_g = np.full((n, 3), np.nan)
+    for i in range(n):
+        zB = max(float(W_x_tu[i, 2]), 0.0)
+        B_v = Ru[i].T @ W_v_tu[i]
+        V_v = _v_frame(Ru[i]) @ B_v
+        V_h_g[i] = V_v / (zB + Z_REG)
+
+    def align(t_abs, y):
+        ti = np.asarray(t_abs, float) - St
+        return np.column_stack([np.interp(tg, ti, y[:, k]) for k in range(y.shape[1])])
+    return dict(t_g=tg, alt=W_x_tu[:, 2], V_h_g=V_h_g, align=align)
+
+
+def validate_landing(d, z_reg=None):
     """To-touchdown (ALTITUDE-binned) validation on one landing-profile recording.
-    Uses gt_optical_flow.compute_gt_flow (z-floor 0.1m) instead of prep()'s
+    Uses _compute_gt_flow_zreg (PLASMC_GT_Z_REG-regularized, default 0.1,
+    matching gt_feedback.py's own converged value) instead of prep()'s
     compute_gt_signals (Vz>1.0m gate, fine for calibration -- always flown at
     altitude -- but useless here: it NaNs out everything below 1m, exactly the
     range a landing validation exists to check). Only checks translational h
-    (Hx,Hy,Hz) + centroid bearing -- compute_gt_flow doesn't cover w (no GT
-    angular-rate reference), fine for a straight-down zero-yaw descent profile."""
-    from gt_optical_flow import compute_gt_flow
-    g = compute_gt_flow(d)
+    (Hx,Hy,Hz) -- no GT angular-rate reference available here, fine for a
+    straight-down zero-yaw descent profile."""
+    Z_REG = z_reg if z_reg is not None else float(os.environ.get("PLASMC_GT_Z_REG", "0.1"))
+    g = _compute_gt_flow_zreg(d, Z_REG)
     p = CrossMarkerPerception()
     cal_hw = p._sensor_cal_hw
 
@@ -114,6 +161,7 @@ def validate_landing(d):
     h_meas = g['align'](t_img, cal_pred[:, :3])   # -> GT's own time grid
     alt, V_h_g = g['alt'], g['V_h_g']
     LABH = ['Hx', 'Hy', 'Hz']
+    print(f"(Z_REG={Z_REG})")
     m = np.all(np.isfinite(V_h_g), 1) & np.all(np.isfinite(h_meas), 1) & np.isfinite(alt)
     alt_m, G, P_ = alt[m], V_h_g[m], h_meas[m]
     print(f"=== {os.path.basename(d)} ===  n={len(G)}  alt {alt[0]:.2f}->{alt[-1]:.2f}m\n")
