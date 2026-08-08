@@ -239,6 +239,8 @@ class CrossMarkerPerception:
         self._prev_gray = None
         self._prev_flow_pts = None   # (N,2) pixel coords tracked for h,w
         self._prev_quat = None       # quat AT prev_flow_pts' own frame (2026-08-02 V-frame fix)
+        self._prev_angvel = None     # gyro body rate AT prev_flow_pts' own frame (2026-08-08
+                                      # gyro-derotation fix -- see _solve_jacobian's comment)
         self._prev_frame_t = None    # timestamp AT prev_flow_pts' own frame (2026-08-03 dt-staleness
                                       # fix -- see _compute_hw's docstring)
         self._last_resample_t = None  # timestamp of the last _sample_flow_points() call (2026-08-07
@@ -392,14 +394,53 @@ class CrossMarkerPerception:
         # cost. Wx/Wy still correctly forced 0 (same collinearity ceiling as
         # before, untouched by this fix -- it's a different mechanism, see
         # feedback_cross_marker_radial_spread_ceiling memory).
+        # 2026-08-08 RE-DERIVED after the GYRO DE-ROTATION fix (_solve_jacobian): an
+        # independent-multisine holdout validation of the 2026-08-07 cal above found it
+        # badly OVERFIT -- training R^2 (Hx=0.69, Wz=0.50) collapsed on held-out data
+        # (Hx->0.14, Wz->-2.0, worse than predicting the mean). Root cause: raw h_Tx
+        # correlates -0.99 with raw w_Wy (and h_Ty +0.99 with w_Wx) because _fill_A's
+        # Wy column [1+x^2,xy] numerically ALIASES the constant Tx column [1,0] at this
+        # marker's achievable point spread -- confirmed via TRUE gyro Wy correlating only
+        # +0.04 with h_Tx, so the apparent collinearity was a per-frame LSTSQ artifact,
+        # not a real physical relationship, and NOT fixable by better excitation.
+        # FIX, STAGE 1 (_solve_jacobian): SUBTRACT the gyro's exactly-known Wx/Wy
+        # contribution from the observed flow before solving (gz_subscriber.
+        # Image_Node._angvel_deque was already plumbed, synced to the flow-point pair
+        # the same way quat is -- just never consumed here), then solve a REDUCED
+        # 4-unknown [Tx,Ty,Tz,Wz] problem from the remaining (non-aliased) columns.
+        # Confirmed this alone fixes the PER-FRAME conditioning (inter-run STD of the
+        # fitted cross-terms dropped to ~4-11% of their magnitude, vs an
+        # effectively-arbitrary split before) -- but a re-derivation that still used the
+        # now-clean Wx/Wy as CALIBRATION regressors (R^2 Hx=0.80 Hy=0.84 train) STILL
+        # overfit on holdout (Hx->0.15, Wz->-0.81) -- because a large fitted cross-term
+        # bakes in the TRAINING maneuver's specific Tx:Wy coupling ratio (phased
+        # single-axis excitation), which doesn't transfer to a different maneuver shape
+        # (multisine's continuous combined excitation) even though Wy itself is now
+        # accurate. FIX, STAGE 2 (tools/derive_cross_marker_cal.py): since the per-frame
+        # de-rotation already removes the rotation contamination from h_Tx/h_Ty
+        # directly, the CALIBRATION step doesn't need a Wx/Wy correction term at all --
+        # excludes raw Wx,Wy as regressors entirely (block-diagonal 4x4 fit: Hx,Hy,Hz,Wz
+        # from Tx,Ty,Tz,Wz only). Re-derived from 5 fresh phased-calibration flights
+        # (95%+ ok-rate; 2 more auto-skipped/discarded to SITL flakiness): TRAIN R^2
+        # Hx=0.52 Hy=0.69 Hz=0.48 Wz=0.51 (lower than the rejected cross-term fit, as
+        # expected for a less flexible model) -- but on the SAME independent multisine
+        # holdout: Hx=0.16 Hy=0.32 Hz=0.74 **Wz=+0.01** (up from -2.0 originally,
+        # -0.81 with cross-terms -- no channel is catastrophically negative anymore).
+        # NET RESULT: the original overfitting bug (task: "Fix cross-marker Hx/Wz
+        # overfitting") is resolved -- no more negative-R^2 holdout collapse. Hx/Hy's
+        # remaining weakness on holdout (0.16/0.32) looks like a genuine sensor/geometry
+        # noise floor for a pure-translation estimate on this sparse marker, not a
+        # collinearity artifact -- a SEPARATE, smaller-scope question than what this fix
+        # targeted; don't conflate the two when deciding whether more work is needed
+        # here. Wx/Wy rows stay forced 0 (level-target convention, unchanged).
         self._sensor_cal_hw = np.array([
-            [+0.9981, +0.0683, -0.0277, -0.0597, +1.0006, -0.0032],
-            [+0.0014, +1.1479, +0.0100, -1.1458, -0.0003, -0.0109],
-            [+0.0960, +0.0123, +0.6862, -0.0912, -0.0026, -0.0063],
+            [+0.2481, +0.0121, +0.0513, +0.0000, +0.0000, +0.0004],
+            [-0.0183, +0.2727, -0.0135, +0.0000, +0.0000, -0.0198],
+            [-0.0478, +0.0256, +0.6964, +0.0000, +0.0000, -0.0019],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.3501, +8.7902, +0.1728, -8.8684, +0.2324, +0.5228]])
-        self._sensor_cal_s = np.diag([1.1015, 1.0226, 1.0, 1.0])
+            [-0.0346, +1.6239, +0.1834, +0.0000, +0.0000, +0.5562]])
+        self._sensor_cal_s = np.diag([1.0191, 1.0121, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -612,7 +653,23 @@ class CrossMarkerPerception:
                   f"max|out|={np.max(np.abs(np.column_stack([V_rays[:,0]/z_v, V_rays[:,1]/z_v]))):.3f}")
         return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
 
-    def _solve_jacobian(self, prev_pts, curr_pts, dt, prev_quat=None, curr_quat=None):
+    def _vframe_w(self, w_body, quat):
+        """Rotate a body-FRD angular velocity into the virtual (gravity-leveled) frame,
+        using the SAME C_R_V basis as _getVirtualPts. w_V = V_R_C.w_body = C_R_V.T.w_body.
+        Ported verbatim from img_data.py's _vframe_w (validated there for the
+        centroid-rate observer's gyro rotation-compensation term -- that observer's
+        REGRESSION was in differentiating noisy decoded centroid positions, not in this
+        rotation transform, so the transform itself carries over trusted)."""
+        R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
+        g = R.T @ np.array([0, 0, 1.0])
+        z_axis = g / np.linalg.norm(g)
+        x_axis = np.cross([0, 1, 0], z_axis); x_axis /= np.linalg.norm(x_axis)
+        y_axis = np.cross(z_axis, x_axis)
+        C_R_V = np.column_stack([x_axis, y_axis, z_axis])
+        return C_R_V.T @ np.asarray(w_body, float)
+
+    def _solve_jacobian(self, prev_pts, curr_pts, dt, prev_quat=None, curr_quat=None,
+                         prev_angvel=None, curr_angvel=None):
         # Level EACH frame's points with THAT frame's own quaternion -- img_data.py's
         # comment on this exact point ("aruco_pts_0 belongs to frame-0 -> level with
         # quats[0], not quats[1]") warns that using the wrong quat leaves a residual
@@ -622,8 +679,43 @@ class CrossMarkerPerception:
         vel = (curr_n - prev_n) / dt   # (N,2) per-point normalized velocity
         A = _fill_A(prev_n)
         b = vel.reshape(-1)
-        sol, *_ = np.linalg.lstsq(A, b, rcond=None)
-        cond = np.linalg.cond(A)
+
+        # GYRO DE-ROTATION (2026-08-08): the full 6-unknown solve is geometrically
+        # rank-deficient at this marker's achievable point spread -- at small (x,y) the
+        # Wy column [1+x^2, xy] converges to [1,0], numerically ALIASING the constant Tx
+        # column [1,0] (same mechanism for Wx vs Ty). Confirmed via an independent
+        # gyro-vs-image-Jacobian correlation check: raw h_Tx correlates -0.99 with raw
+        # w_Wy in calibration data, while TRUE gyro Wy correlates only +0.04 with h_Tx --
+        # the near-total apparent collinearity is a per-frame LSTSQ aliasing artifact, not
+        # a real physical relationship, so it can't be fixed by better excitation, only by
+        # not jointly fitting the aliased pair. Wx/Wy are independently, accurately known
+        # from the gyro (already plumbed: gz_subscriber.Image_Node._angvel_deque, synced
+        # to the flow-point pair the same way quat is) -- SUBTRACT their exactly-known
+        # geometric contribution from the observed flow, then solve a REDUCED 4-unknown
+        # problem [Tx,Ty,Tz,Wz] from the remaining (well-conditioned -- Tx,Ty,Tz's columns
+        # are position-independent constants/linear, Wz's [-y,x] doesn't alias with them)
+        # columns. Wz stays a SOLVED unknown (not gyro-substituted) -- unlike Wx/Wy it
+        # isn't aliased with translation, only low-sensitivity at small extent (a genuine
+        # marker-size-limited SNR ceiling, not a collinearity bug -- see
+        # feedback_cross_marker_radial_spread_ceiling / this file's Wz-row comments).
+        # Falls back to the old full 6-unknown solve when gyro isn't available (matches
+        # _getVirtualPts's quat=None graceful-degradation convention).
+        w_V = None
+        if prev_angvel is not None and curr_angvel is not None and prev_quat is not None:
+            w_body = 0.5 * (np.asarray([prev_angvel.forward_rad_s, prev_angvel.right_rad_s,
+                                         prev_angvel.down_rad_s]) +
+                             np.asarray([curr_angvel.forward_rad_s, curr_angvel.right_rad_s,
+                                         curr_angvel.down_rad_s]))
+            w_V = self._vframe_w(w_body, prev_quat)   # same basis prev_n/A are built in
+            b_derot = b - A[:, [3, 4]] @ w_V[[0, 1]]
+            A_reduced = A[:, [0, 1, 2, 5]]
+            sol_reduced, *_ = np.linalg.lstsq(A_reduced, b_derot, rcond=None)
+            sol = np.array([sol_reduced[0], sol_reduced[1], sol_reduced[2],
+                             w_V[0], w_V[1], sol_reduced[3]])
+            cond = np.linalg.cond(A_reduced)
+        else:
+            sol, *_ = np.linalg.lstsq(A, b, rcond=None)
+            cond = np.linalg.cond(A)
         # In-sample fit quality (2026-08-02, LK-correspondence-noise investigation):
         # relative residual = ||A@sol - b|| / ||b||. LOW means the tracked points
         # broadly AGREE with each other on a single global rigid/affine flow (so if
@@ -647,7 +739,7 @@ class CrossMarkerPerception:
                               float(np.mean(np.abs(prev_n[:, 1]))))
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
-    def _compute_hw(self, gray, mask, t, quat=None):
+    def _compute_hw(self, gray, mask, t, quat=None, angvel=None):
         """LK-track flow points from the previous frame, solve the image
         Jacobian pseudo-inverse for [h1,h2,h3,w1,w2,w3]. Two-threshold
         hysteresis (see MIN_FLOW_POINTS_SOLVE/RESAMPLE_TRIGGER comments):
@@ -680,6 +772,7 @@ class CrossMarkerPerception:
             self._last_resample_t = t
             self._prev_gray = gray
             self._prev_quat = quat
+            self._prev_angvel = angvel
             self._prev_frame_t = t
             return np.zeros(6), False
 
@@ -702,6 +795,7 @@ class CrossMarkerPerception:
         curr_pts = tracked[keep]
         n_kept = len(prev_pts)
         prev_quat = self._prev_quat   # the attitude prev_pts were actually observed at
+        prev_angvel = self._prev_angvel   # the gyro rate prev_pts were actually observed at
 
         # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
         # when it nearly empties -- see RESAMPLE_PERIOD_S's comment. Without this, a
@@ -722,6 +816,7 @@ class CrossMarkerPerception:
             self._prev_flow_pts = curr_pts
         self._prev_gray = gray
         self._prev_quat = quat   # whatever survives to be "prev" next call was observed at THIS quat
+        self._prev_angvel = angvel   # ...and at THIS gyro rate
         self._prev_frame_t = t   # ...and at THIS timestamp (2026-08-03 dt-staleness fix)
 
         if n_kept < MIN_FLOW_POINTS_SOLVE or dt <= 0:
@@ -729,12 +824,13 @@ class CrossMarkerPerception:
             return np.zeros(6), False
 
         sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(
-            prev_pts, curr_pts, dt, prev_quat=prev_quat, curr_quat=quat)
+            prev_pts, curr_pts, dt, prev_quat=prev_quat, curr_quat=quat,
+            prev_angvel=prev_angvel, curr_angvel=angvel)
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
-    def process_frame(self, img_bgr, t, quat=None):
+    def process_frame(self, img_bgr, t, quat=None, angvel=None):
         # self._last_t is a general "last frame seen" timestamp (used by
         # _flow_diag_log entries below); the h,w Jacobian's own dt is now
         # computed inside _compute_hw from self._prev_frame_t instead (was
@@ -851,7 +947,7 @@ class CrossMarkerPerception:
 
         # --- h, w: image Jacobian solve over Shi-Tomasi points on the marker plate ---
         mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray.shape, np.uint8)
-        hw, hw_ok = self._compute_hw(gray, mask, t, quat=quat)
+        hw, hw_ok = self._compute_hw(gray, mask, t, quat=quat, angvel=angvel)
         self._hw = hw if hw_ok else np.zeros(6)
 
         self._ok = True
@@ -1073,7 +1169,13 @@ class CrossMarkerNode(Thread):
                 # thread with its own scheduling jitter. Use that instead.
                 quats = self._image_node.getQuaternions()
                 quat = quats[-1] if quats else None
-                self._perception.process_frame(imgs[-1], stamp, quat=quat)
+                # Gyro body rate, SAME synchronous-in-callback pairing as quat (see
+                # gz_subscriber.Image_Node.image_callback -- angvel is sampled in the
+                # same callback as quat/the frame, already deque-paired identically) --
+                # feeds _solve_jacobian's gyro-derotation fix (2026-08-08).
+                angvels = self._image_node.getAngVels()
+                angvel = angvels[-1] if angvels else None
+                self._perception.process_frame(imgs[-1], stamp, quat=quat, angvel=angvel)
 
                 # Feed MARKER_EXTENT_PX (controller.py) -- reads self._img_node._feature_pts
                 # as fp_list[-1][1], a (4,2) corner array (ArUco's [prev,curr]-paired

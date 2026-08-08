@@ -209,10 +209,36 @@ def main():
         if len(R) < 200:
             print(f"  skip {os.path.basename(d)}: only {len(R)} valid (purity-gated) samples")
             continue
-        Msol, _, _, _ = np.linalg.lstsq(R, G, rcond=None)
-        cal = Msol.T
-        pred = R @ Msol
-        ss = 1 - np.sum((G - pred) ** 2, 0) / np.sum((G - G.mean(0)) ** 2, 0)
+        # REDUCED regressor fit (2026-08-08, post gyro-derotation fix): only fit
+        # Hx,Hy,Hz,Wz (cols/rows 0,1,2,5) against Tx,Ty,Tz,Wz raw columns -- NOT against
+        # raw Wx,Wy (cols 3,4), even though those are now clean gyro values (not noisy
+        # per-frame-solve artifacts) post _solve_jacobian's de-rotation fix. Reasoning:
+        # an independent-multisine holdout check after that fix STILL showed Hx/Wz
+        # badly overfit (Hx R^2 0.80 train -> 0.15 held-out, Wz -0.81) despite the
+        # per-frame aliasing being resolved -- because a full 6-column joint fit still
+        # puts a LARGE coefficient on w1(Wy) for the Hx row (comparable to the diagonal
+        # term), which only transfers between flights if the TRUE Tx:Wy coupling ratio
+        # (an artifact of how translate-via-pitch executes for a GIVEN maneuver shape)
+        # is universal -- it isn't: the phased calibration's single-axis-at-a-time
+        # excitation has a different effective Tx:Wy ratio than the multisine's
+        # continuous combined excitation, so a large cross-term tuned to the training
+        # maneuver doesn't generalize. Since the per-frame de-rotation ALREADY removes
+        # the geometric rotation contamination from h_Tx/h_Ty directly (that's the
+        # actual fix), the calibration step doesn't need a Wx/Wy correction term at all
+        # -- excluding them removes the maneuver-dependent overfitting risk entirely
+        # rather than trading one flavor of it for another.
+        idx = [0, 1, 2, 5]   # Hx,Hy,Hz,Wz <- Tx,Ty,Tz,Wz (Wx,Wy excluded as regressors)
+        R_red, G_red = R[:, idx], G[:, idx]
+        Msol_red, _, _, _ = np.linalg.lstsq(R_red, G_red, rcond=None)
+        pred_red = R_red @ Msol_red
+        ss_red = 1 - np.sum((G_red - pred_red) ** 2, 0) / np.sum((G_red - G_red.mean(0)) ** 2, 0)
+        cal = np.zeros((6, 6))
+        for oi, o in enumerate(idx):
+            for ii, i in enumerate(idx):
+                cal[o, i] = Msol_red[ii, oi]   # Msol_red: GT_red = R_red @ Msol_red -> cal = Msol_red.T, indexed back into 6x6
+        ss = np.full(6, np.nan)
+        for oi, o in enumerate(idx):
+            ss[o] = ss_red[oi]
         Ms.append(cal); R2s.append(ss)
 
         xc_true = np.interp(sync_t, t, V_xc_g, left=np.nan, right=np.nan)
