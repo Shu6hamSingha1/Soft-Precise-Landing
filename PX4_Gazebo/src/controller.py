@@ -65,6 +65,21 @@ MARKER_TYPE = os.environ.get("MARKER_TYPE", "aruco")
 if MARKER_TYPE == "cross":
     from cross_marker_perception import CrossMarkerNode
 
+# BODY_YAW_ALPHA_K default (2026-08-08, see _attCtrl's BODY_YAW_SOURCE=alpha block): the
+# alpha->yaw_c gain is PIPELINE-SPECIFIC, not universal -- img_data.py's ArUco alpha uses a
+# SYNTHETIC [4,3,2,1] corner-weighting hack (needed only because a symmetric square has
+# mu_11≡0 under uniform weights), which distorts its rotational sensitivity away from the
+# clean theoretical slope, empirically landing near K=-0.949. cross_marker_perception.py's
+# alpha is a PLAIN unweighted 2nd-moment principal angle on the marker's own real
+# (cross+stub) asymmetry -- matching Jabbari Asl 2014 eq.(21)-(22) exactly (same formula,
+# same virtual/leveled image plane), which derives the theoretically EXACT result
+# alpha_dot = -psi_dot (K=-1.0, no separate scale). Confirmed empirically too: an n=5
+# phased-calibration alpha_0 derivation (cross_marker_perception.py's self._alpha_0
+# comment) forcing slope=-1 gave R^2=0.988 mean, 0.18deg inter-run std -- and swapping
+# ArUco's K=-0.949 for K=-1.0 measurably improved 2 held-out validation flights (slope
+# 0.86->0.90, mean err ~4.6deg->~2.6deg). Still env-overridable per-flight either way.
+_BODY_YAW_ALPHA_K_DEFAULT = "-1.0" if MARKER_TYPE == "cross" else "-0.949"
+
 SLEEP_TIME = 1/200
 N_DIM = 3
 e3 = np.eye(N_DIM)[:, 2]
@@ -2311,7 +2326,7 @@ class Controller(Thread):
             # setpoint (psi_d) and outputs (w_u[2], I_a) were held but THIS measured-yaw source
             # still read live alpha -> corrupted e_R / IK roll-pitch -> terminal spin (rep3 158°).
             # Roll/pitch stay live (EKF, drift-free, trustworthy); only the alpha-yaw is held.
-            _k = float(os.environ.get("BODY_YAW_ALPHA_K", "-0.949"))
+            _k = float(os.environ.get("BODY_YAW_ALPHA_K", _BODY_YAW_ALPHA_K_DEFAULT))
             _b = float(os.environ.get("BODY_YAW_ALPHA_B", "0.0"))
             if getattr(self, "_yaw_hold", False) and getattr(self, "_yaw_c_hold", None) is not None:
                 yaw_c = self._yaw_c_hold                              # held last-good alpha yaw

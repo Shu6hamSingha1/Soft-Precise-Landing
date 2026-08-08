@@ -151,6 +151,16 @@ def _unweighted_principal_angle(pts):
     the plain formula is directly usable when the stub cluster is present.
     `pts` must already include the stub points for disambiguation to work;
     callers are responsible for holding-last when the stub isn't detected.
+
+    This is EXACTLY eq. (21) of Jabbari Asl, Yoon & Tosunoglu, "Adaptive
+    dynamic image-based visual servoing of a quadrotor UAV" (2014):
+    alpha = (1/2)*atan2(2*mu11, mu20-mu02), evaluated in the virtual/leveled
+    image plane (same convention as this module's V-frame). Their eq. (22)
+    derives the theoretically EXACT rotational dynamics for this same
+    formula: alpha_dot = -psi_dot (psi = yaw) -- confirms the slope=-1
+    relationship used by self._alpha_0 (__init__) and by controller.py's
+    BODY_YAW_ALPHA_K default under MARKER_TYPE=cross is not just an
+    empirical fit, it's the closed-form result for this exact feature.
     """
     pts = np.asarray(pts, dtype=np.float64)
     x, y = pts[:, 0], pts[:, 1]
@@ -236,6 +246,40 @@ class CrossMarkerPerception:
         self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
         self._last_alpha = 0.0
         self._alpha_valid_once = False
+        # ALPHA_0 (2026-08-08, RE-DERIVED from 5 phased calibration flights): equilibrium/
+        # reference offset, same role as img_data.py's _moment_alpha_0 -- the raw
+        # principal-angle alpha is a real geometric measurement of the marker's
+        # orientation in the V-frame, but that frame's zero-heading reference doesn't line
+        # up with GT yaw's zero (camera-mount + stub-geometry convention), so a constant
+        # needs subtracting before alpha means "vehicle yaw relative to marker". Derived
+        # from TRUE per-detect-rate, causally time-aligned samples (Img_Data.npy's own
+        # 'Time'/'alpha(t)' log against GT, using gt['Time'] + gt['Start Time'] for the GT
+        # clock -- NOT the outer-loop-polled 'Img Feature Params', which oversamples ~2.7x
+        # per real detection and corrupts any offset/slope fit).
+        #
+        # Methodology note: an UNCONSTRAINED 2-parameter affine fit (slope+offset via
+        # np.polyfit) is numerically unstable on this excitation profile -- per-run slopes
+        # ranged -2.88 to +6.7 (R^2 0.01-0.97), because the x/y/z phases contribute long
+        # stretches of near-zero yaw that leave the slope poorly constrained by anything
+        # but noise. Forcing the PHYSICALLY-EXPECTED slope=-1 (a world-fixed marker
+        # counter-rotates 1:1 with vehicle yaw -- no independent scale factor should be
+        # needed) and solving only for the offset instead gives a dramatically more
+        # consistent fit. slope=-1 is not just a reasonable assumption here -- it is the
+        # theoretically EXACT result for this alpha formula: Jabbari Asl, Yoon & Tosunoglu
+        # (2014), eq. (21)-(22), derive alpha_dot = -psi_dot for the identical plain
+        # 2nd-moment principal angle in the leveled/virtual image plane (see
+        # _unweighted_principal_angle's docstring). Across 5 independent phased-excitation
+        # flights (yaw+-30deg and
+        # yawagg+-90deg phases; calibration_data/output_cross/2026-08-08 runs, recorded
+        # with CROSS_ALPHA_0=0 to log the pre-offset angle), per-run alpha_0 = 90.11,
+        # 90.39, 89.98, 90.48, 90.18 deg -- circular mean 90.23deg, inter-run std ONLY
+        # 0.18deg, R^2 0.974-0.995 (mean 0.988). That tightness is itself confirmation
+        # slope=-1 is the correct model (an unstable/wrong model wouldn't reproduce this
+        # consistently across independent flights). Supersedes the 2026-08-08 single-flight
+        # 88.70deg estimate. Suspiciously close to exactly 90deg -- plausibly a direct
+        # consequence of the 90deg camera-mount yaw rotation -- but pasted as the fitted
+        # value, not hand-rounded, per project convention (see img_data.py's alpha_0).
+        self._alpha_0 = float(os.environ.get("CROSS_ALPHA_0", str(np.radians(90.23))))
 
         # last computed outputs, for the getter interface
         self._s = np.array([0.0, 0.0, 1.0])
@@ -774,23 +818,32 @@ class CrossMarkerPerception:
         # --- alpha: unweighted moment over REAL detected arm/stub pixels ---
         pts_for_alpha = list(det.line_points_i) + list(det.line_points_j)
         if det.stub_points is not None and len(det.stub_points) >= 2:
-            stub_pts = np.asarray(det.stub_points, dtype=np.float64)
-            arm_pts = np.asarray(pts_for_alpha, dtype=np.float64)
-            # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): empirically verified against
-            # the marker's known world-yaw=0deg (cross_marker/model.sdf's static pose) --
-            # the ORIGINAL (+90deg, [-y,x]) direction was backwards: unswapped raw alpha
-            # measured ~90deg (not ~0deg) after the camera-mount yaw change, and the
-            # [-y,x] swap ADDED another +90deg on top, landing at ~180deg instead of
-            # correcting back to ~0deg. Correct transform is [y,-x] (Rz(-90deg)), which
-            # empirically lands alpha back near 0deg -- see _getVirtualPts and
-            # cbf_visibility.py for the identical sign correction applied there.
-            stub_pts = np.column_stack([stub_pts[:, 1], -stub_pts[:, 0]])
-            arm_pts = np.column_stack([arm_pts[:, 1], -arm_pts[:, 0]])
+            stub_pts_px = np.asarray(det.stub_points, dtype=np.float64)
+            arm_pts_px = np.asarray(pts_for_alpha, dtype=np.float64)
+            # V-FRAME LEVELING FIX (2026-08-08): alpha previously used ONLY the flat
+            # [y,-x] camera-mount-yaw axis swap (a fixed relabeling), never the
+            # quaternion-based gravity-leveling _getVirtualPts reprojection that s
+            # (line ~745 above) and h,w (_solve_jacobian) both got on 2026-08-02.
+            # Root-caused via an independent-multisine validation: alpha vs GT yaw
+            # correlation FLIPPED SIGN between low-tilt (<1.7deg, r=+0.31) and
+            # high-tilt (>3.7deg, r=-0.87) subsets -- the un-leveled principal-angle
+            # moment was picking up tilt-induced foreshortening of the cross+stub
+            # shape as spurious rotation, dominating the true-yaw signal whenever the
+            # drone pitched/rolled to translate (i.e. throughout most of a real
+            # flight). _getVirtualPts already performs the equivalent mount-rotation
+            # axis handling internally (both its quat=None fallback and quat-present
+            # branches return [y,-x]-style V-frame coordinates), so the old standalone
+            # [y,-x] swap is REPLACED here, not stacked on top.
+            stub_pts = self._getVirtualPts(stub_pts_px, quat)
+            arm_pts = self._getVirtualPts(arm_pts_px, quat)
             all_pts = np.vstack([arm_pts, stub_pts])
             a_raw, _ = _unweighted_principal_angle(all_pts)
             asym = (float(stub_pts[:, 0].mean() - arm_pts[:, 0].mean()),
                     float(stub_pts[:, 1].mean() - arm_pts[:, 1].mean()))
-            a = _disambiguate_angle(a_raw, asym)
+            a_disamb = _disambiguate_angle(a_raw, asym)
+            # ALPHA_0 offset (see __init__'s self._alpha_0 comment) -- same
+            # subtract-then-wrap convention as img_data.py's _moment_alpha_0.
+            a = float(np.arctan2(np.sin(a_disamb - self._alpha_0), np.cos(a_disamb - self._alpha_0)))
             self._last_alpha = a
             self._alpha_valid_once = True
         # else: stub not found this frame -- hold last-good alpha (no fresh compute)

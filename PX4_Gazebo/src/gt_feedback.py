@@ -37,8 +37,12 @@ FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=
 # ORIGIN poses, but the camera and (on some targets) the marker are mounted off
 # those, so the controller's target = MARKER as seen by the CAMERA needs the
 # relative vector (marker - camera), not (target_origin - uav_base).
-#   - CAMERA: x500_mono_cam_down mono_cam at <pose>0 0 .20 ...> -> +0.20 m above
-#     base_link. UNIVERSAL (same drone in every world) -> default 0.20.
+#   - CAMERA: x500_mono_cam_down mono_cam at <pose>0 0 .15 ...> -> +0.15 m above
+#     base_link. UNIVERSAL (same drone in every world) -> default 0.15. (Was 0.20 until
+#     the 2026-08-05 camera-mount Z reduction (x500_mono_cam_down/model.sdf, .20->.18->.15
+#     -- keeps the landing legs out of the downward FoV); this default silently went
+#     stale for 3 days since nothing re-checks it against the live SDF. Re-verify here
+#     whenever the SDF's camera pose changes again -- see CLAUDE.md's camera section.)
 #   - MARKER: WORLD-SPECIFIC. The stationary `aruco` world's arucotag is FLAT on
 #     the ground (target origin AT the marker plane, z~0) -> offset 0. The rover
 #     mounts the marker +0.50 m up (rover_aruco SDF) -> the rover launcher sets
@@ -46,7 +50,7 @@ FRD_2_FLU    = np.diag([1., -1., -1.])                                  # DCM(x=
 #     hardcode 0.5 or it biases every non-rover target's depth.
 # FLU here; converted to FRD (FRD_2_FLU is self-inverse) before rotating by the
 # body->NED DCM.
-_CAM_OFF_FLU    = np.array([0., 0., float(os.environ.get("PLASMC_GT_CAM_DZ",    "0.20"))])
+_CAM_OFF_FLU    = np.array([0., 0., float(os.environ.get("PLASMC_GT_CAM_DZ",    "0.15"))])
 _MARKER_OFF_FLU = np.array([0., 0., float(os.environ.get("PLASMC_GT_MARKER_DZ", "0.00"))])
 
 
