@@ -439,13 +439,13 @@ class CrossMarkerPerception:
         # sensor/geometry limitation. Don't cite the 0.16/0.32 figures going forward
         # here. Wx/Wy rows stay forced 0 (level-target convention, unchanged).
         self._sensor_cal_hw = np.array([
-            [+0.2481, +0.0121, +0.0513, +0.0000, +0.0000, +0.0004],
-            [-0.0183, +0.2727, -0.0135, +0.0000, +0.0000, -0.0198],
-            [-0.0478, +0.0256, +0.6964, +0.0000, +0.0000, -0.0019],
+            [+0.2916, -0.0110, +0.0050, +0.0000, +0.0000, +0.0003],
+            [+0.0088, +0.3019, +0.0189, +0.0000, +0.0000, -0.0149],
+            [-0.0182, -0.0160, +0.9137, +0.0000, +0.0000, +0.0019],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.0346, +1.6239, +0.1834, +0.0000, +0.0000, +0.5562]])
-        self._sensor_cal_s = np.diag([1.0191, 1.0121, 1.0, 1.0])
+            [-0.1852, +1.1381, -0.0117, +0.0000, +0.0000, +0.5977]])
+        self._sensor_cal_s = np.diag([0.9923, 1.0066, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap

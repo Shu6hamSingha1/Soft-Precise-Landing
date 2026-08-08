@@ -47,7 +47,27 @@ CALIB_PHASE_S    = float(os.environ.get("CALIB_PHASE_S", "8.0"))
 CALIB_SETTLE_S   = float(os.environ.get("CALIB_SETTLE_S", "1.0"))
 CALIB_FREQ_HZ    = float(os.environ.get("CALIB_FREQ_HZ", "0.5"))
 CALIB_SEND_TIMEOUT_S = 0.5
-CALIB_ALT_DROP_BAIL_M = 2.0
+
+# LOW-ALTITUDE phases (2026-08-08, task: cross-marker landing validation found the
+# output cal degrades sharply below ~2m -- but task "cross-marker has no close-range
+# fallback for FoV overflow" root-caused the 0.2-1.0m collapse specifically to
+# MARKER_EXTENT_PX saturating at the frame width (marker physically overflows the
+# FoV there) -- recording MORE calibration data at that altitude wouldn't help, it'd
+# just fit to an equally-degenerate signal. Scoped instead to the range that's
+# still well-conditioned but never exercised by the default 5m-hover phases: ~2m,
+# comfortably above where extent starts saturating (the landing validation's own
+# altitude-binned data: 2.0-1.0m already mostly saturated med=413px max=625px,
+# 1.0m and below fully saturated at 639px). Opt-in via CALIB_PHASES (not in the
+# default set), same convention as rollexc/pitchexc. CALIB_TAKEOFF_HEIGHT read here
+# too (not just at the takeoff call below) so the descent offset is computed
+# correctly regardless of a non-default takeoff height.
+CALIB_LOW_ALT = float(os.environ.get("CALIB_LOW_ALT", "2.0"))
+_low_alt_dz = float(os.environ.get("CALIB_TAKEOFF_HEIGHT", "5.0")) - CALIB_LOW_ALT
+# Bail threshold must clear the INTENTIONAL low-alt descent (_low_alt_dz) with margin,
+# or the safety guard below mistakes the lowalt_* phases for a PX4 failsafe and bails
+# early (found live: bailed mid-lowalt_x with the old hardcoded 2.0m literal against a
+# 3.0m intentional drop). Env-overridable like everything else here.
+CALIB_ALT_DROP_BAIL_M = float(os.environ.get("CALIB_ALT_DROP_BAIL_M", str(max(2.0, _low_alt_dz + 0.5))))
 
 # Roll/pitch-EXCITE phases (2026-08-03, ported from record_output_calibration.py --
 # never carried over when this recorder was first built, so Wx/Wy have been untested,
@@ -99,6 +119,10 @@ async def main(record='n'):
     sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw_agg = lambda tau: CALIB_AMP_YAW_AGG_DEG * np.sin(2*np.pi*CALIB_FREQ_YAW_AGG * tau)
     sin_rp = lambda tau: CALIB_AMP_RP * np.sin(2*np.pi*CALIB_FREQ_RP * tau)
+    # LOW-ALTITUDE phases: constant z-offset (descend to CALIB_LOW_ALT and hold)
+    # + the SAME x/y/yaw excitation as the normal phases, so the low-altitude cal
+    # is derived under the identical excitation regime, just at a different altitude.
+    lowalt_z = lambda tau: _low_alt_dz
 
     _selected = os.environ.get("CALIB_PHASES", "yaw,x,y,z,yawagg").split(",")
     _selected = [s.strip() for s in _selected if s.strip()]
@@ -110,6 +134,9 @@ async def main(record='n'):
         'yawagg':   (zero, zero, zero, sin_yaw_agg),
         'rollexc':  (sin_rp, zero, zero, zero),      # body-x osc -> strong roll-rate (wx) excitation
         'pitchexc': (zero, sin_rp, zero, zero),      # body-y osc -> strong pitch-rate (wy) excitation
+        'lowalt_x':   (sin_x, zero, lowalt_z, zero),      # x excitation at CALIB_LOW_ALT
+        'lowalt_y':   (zero, sin_y, lowalt_z, zero),      # y excitation at CALIB_LOW_ALT
+        'lowalt_yaw': (zero, zero, lowalt_z, sin_yaw),    # yaw excitation at CALIB_LOW_ALT
     }
     _phase_dur = {'yawagg': CALIB_YAW_AGG_S, 'rollexc': CALIB_RP_S, 'pitchexc': CALIB_RP_S}
     phase_script = [('settle', zero, zero, zero, zero, CALIB_SETTLE_S)]
