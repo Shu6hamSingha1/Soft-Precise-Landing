@@ -487,6 +487,15 @@ class CrossMarkerPerception:
         self._flow_diag_log = []
         self._radial_diag_log = []   # TEMP DIAG 2026-08-03, see _solve_jacobian
         self._radial_diag = (np.nan, np.nan, np.nan, np.nan)
+        # TEMP DIAG 2026-08-09 (Hz sign-flip point-set-composition follow-up, see
+        # HANDOVER_cross_marker_hz_signflip_20260809.md): _radial_diag_log only has
+        # aggregate max/mean spread, not per-point resolution -- can't tell whether the
+        # low-altitude point set is symmetric-but-wider (SNR-only) or asymmetric
+        # (biased to one side, which could alias into the reduced 4-unknown solve). Log
+        # the full normalized point set fed into A (prev_n) plus the solved Tz (sol[2])
+        # per solve so this can be checked directly on a new flight.
+        self._point_diag_log = []
+        self._point_diag = (None, np.nan)
 
         # Time-series logging (2026-08-04, perception-quality debugging): log full
         # frame-by-frame history so getLogData() can return it for comparison with GT.
@@ -757,6 +766,10 @@ class CrossMarkerPerception:
                               float(np.max(np.abs(prev_n[:, 1]))),
                               float(np.mean(np.abs(prev_n[:, 0]))),
                               float(np.mean(np.abs(prev_n[:, 1]))))
+        # TEMP DIAG 2026-08-09: full point set + solved Tz, see __init__'s
+        # _point_diag_log comment. prev_n is what _fill_A/A_reduced were actually
+        # built from; sol[2] is the Tz this exact point set produced.
+        self._point_diag = (prev_n.copy(), float(sol[2]))
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
     def _compute_hw(self, gray, mask, t, quat=None, angvel=None):
@@ -848,6 +861,7 @@ class CrossMarkerPerception:
             prev_angvel=prev_angvel, curr_angvel=angvel)
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
+        self._point_diag_log.append((self._last_t,) + self._point_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
     def process_frame(self, img_bgr, t, quat=None, angvel=None):
@@ -1073,6 +1087,12 @@ class CrossMarkerPerception:
         curr_pts, plus 1 for the centroid) -- degeneracy diagnostic."""
         return list(self._z_v_log)
 
+    def get_point_diag_log(self):
+        """TEMP DIAG 2026-08-09: list of (t, prev_n (N,2) normalized point set fed
+        into A, solved Tz) per successful solve -- see __init__'s _point_diag_log
+        comment. Per-point-resolution follow-up to get_radial_diag_log()."""
+        return list(self._point_diag_log)
+
     def get_center_px(self):
         """(2,) raw pixel [cx, cy] for the visibility CBF, or None if this frame
         did not confirm the center is in-frame (see _center_fresh in
@@ -1278,6 +1298,9 @@ class CrossMarkerNode(Thread):
 
     def get_radial_diag_log(self):
         return self._perception.get_radial_diag_log()
+
+    def get_point_diag_log(self):
+        return self._perception.get_point_diag_log()
 
     def get_z_v_log(self):
         return self._perception.get_z_v_log()
