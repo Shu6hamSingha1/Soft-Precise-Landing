@@ -39,6 +39,7 @@ then removed as redundant for ArUco, 2026-07-17).
 import os
 import time
 from collections import deque
+import queue
 from threading import Thread
 
 import cv2
@@ -438,14 +439,28 @@ class CrossMarkerPerception:
         # noise floor -- that framing was itself a measurement artifact, not a real
         # sensor/geometry limitation. Don't cite the 0.16/0.32 figures going forward
         # here. Wx/Wy rows stay forced 0 (level-target convention, unchanged).
+        # 2026-08-09 (Hz-regression investigation): re-derived EXCLUDING lowalt_x/y/yaw
+        # samples from the M-fit (tools/derive_cross_marker_cal.py,
+        # CROSS_CAL_EXCLUDE_LOWALT=1 default). M is supposed to be altitude-invariant
+        # by construction (both raw and GT sides are already Z-normalized via
+        # h=v/(z+Z_REG) -- see feedback_scale_free_depth_free) so the lowalt_* phases
+        # were solving the wrong problem: they added low-altitude COVERAGE, but
+        # investigation found the low-alt transition never settles within its phase
+        # window (still-descending transient, ~9s to actually arrive at target alt),
+        # so those samples are noisier, not more representative -- including them was
+        # actively corrupting the Hz row (position-weighted _fill_A column gives the
+        # noisy low-alt samples outsized leverage). Same underlying leg-extension +
+        # hi-res-texture flights (5 runs, CALIB_LOW_ALT=0.7), just fit on the clean
+        # (higher-altitude) phases only. Wx/Wy rows stay forced 0 (level-target
+        # convention, unchanged).
         self._sensor_cal_hw = np.array([
-            [+0.2916, -0.0110, +0.0050, +0.0000, +0.0000, +0.0003],
-            [+0.0088, +0.3019, +0.0189, +0.0000, +0.0000, -0.0149],
-            [-0.0182, -0.0160, +0.9137, +0.0000, +0.0000, +0.0019],
+            [+0.1335, +0.0099, +0.0013, +0.0000, +0.0000, -0.0015],
+            [-0.0104, +0.1719, +0.0010, +0.0000, +0.0000, -0.0071],
+            [-0.2212, +0.0532, +0.4331, +0.0000, +0.0000, -0.0214],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [-0.1852, +1.1381, -0.0117, +0.0000, +0.0000, +0.5977]])
-        self._sensor_cal_s = np.diag([0.9923, 1.0066, 1.0, 1.0])
+            [+0.0195, +1.9644, -0.0426, +0.0000, +0.0000, +0.5201]])
+        self._sensor_cal_s = np.diag([1.0320, 0.9984, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -1124,9 +1139,39 @@ class CrossMarkerNode(Thread):
         # in close(), single-threaded, after the flight.
         self._rec_dir = None
         self._rec_n = 0
+        # WRITER QUEUE (2026-08-09): synchronous cv2.imwrite() inside this SAME thread's
+        # run() loop (the one also driving process_frame()) was found to destabilize the
+        # vehicle specifically near touchdown -- every IMG_RECORD=1 landing-validation
+        # flight crashed hard at the very end (impact forces up to 329 m/s^2) while the
+        # identical profile landed cleanly with IMG_RECORD=0. Per-frame disk I/O blocking
+        # this thread delays how promptly the next frame gets processed and FEATURE_IS_
+        # VISIBLE/flow gets updated, exactly when position tracking needs to be tightest
+        # (touchdown). Fix: enqueue a frame copy and let a SEPARATE writer thread own the
+        # actual cv2.imwrite() calls, so this thread never blocks on disk I/O. Queue is
+        # unbounded by design -- frames are small/compressed fast enough in practice that
+        # it drains continuously, and dropping frames under backpressure would silently
+        # corrupt the recording in a way that's hard to notice, worse than using more RAM
+        # for the duration of one flight.
+        self._rec_queue = queue.Queue() if self.RECORD else None
+        self._rec_writer_thread = None
+        if self.RECORD:
+            self._rec_writer_thread = Thread(target=self._rec_writer_loop, daemon=True)
+            self._rec_writer_thread.start()
 
         self._running = True
         self.start()
+
+    def _rec_writer_loop(self):
+        """Background writer thread (2026-08-09, see _rec_queue's __init__ comment) --
+        owns ALL disk I/O for IMG_RECORD, off the frame-processing thread's hot path."""
+        while True:
+            item = self._rec_queue.get()
+            if item is None:   # sentinel, see close()
+                self._rec_queue.task_done()
+                break
+            idx, frame = item
+            cv2.imwrite(f'{self._rec_dir}/f{idx:05d}.png', frame, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+            self._rec_queue.task_done()
 
     def run(self):
         last_stamp = None
@@ -1202,8 +1247,12 @@ class CrossMarkerNode(Thread):
                         os.makedirs(self._rec_dir, exist_ok=True)
                         _fps = self._image_node.getFPS()
                         self._rec_fps = _fps if (isinstance(_fps, (int, float)) and _fps > 1) else 30.0
-                    cv2.imwrite(f'{self._rec_dir}/f{self._rec_n:05d}.png', frame,
-                                [cv2.IMWRITE_PNG_COMPRESSION, 1])
+                    # Enqueue only -- the actual cv2.imwrite() happens on _rec_writer_loop's
+                    # own thread (see _rec_queue's __init__ comment). .copy() because `frame`
+                    # is imgs[-1], a live deque slot that gets overwritten by the next
+                    # image_callback -- without a copy the writer thread could see a
+                    # different frame's data than what was queued (a torn/overwritten array).
+                    self._rec_queue.put((self._rec_n, frame.copy()))
                     self._rec_n += 1
             except Exception as e:
                 print(f"[CrossMarkerNode] frame processing error: {e}")
@@ -1405,6 +1454,15 @@ class CrossMarkerNode(Thread):
             self._print_diag_summary()
         except Exception as e:
             print(f"[CrossMarkerNode] diag summary failed: {e}")
+        if self.RECORD and self._rec_writer_thread is not None:
+            # Flush the writer queue (all frames enqueued during the flight, disk I/O
+            # deferred off the hot path -- see _rec_queue's __init__ comment) BEFORE
+            # stitching, so _stitch_recording() doesn't glob a partially-written directory.
+            try:
+                self._rec_queue.put(None)   # sentinel
+                self._rec_writer_thread.join(timeout=30.0)
+            except Exception as e:
+                print(f"[CrossMarkerNode] recording writer flush failed: {e}")
         try:
             self._stitch_recording()
         except Exception as e:

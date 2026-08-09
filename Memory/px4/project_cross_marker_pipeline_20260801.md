@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: dbc47060-f292-4fca-8a3d-75a6066d2b5c
-  modified: 2026-08-07T12:27:48.610Z
+  modified: 2026-08-08T18:23:23.681Z
 ---
 
 Built and committed (916aa53, pushed to main) a standalone perception pipeline for a
@@ -536,13 +536,29 @@ Wx/Wy/Wz's own structural collinearity ceiling (a different mechanism,
 still needs a bigger marker plate if pursued further. See
 [[feedback_cross_marker_radial_spread_ceiling]] for the full numeric trace.
 
-**DESIGN DIRECTION UPDATE (2026-08-07): ring/texture-flow approach being
-RETIRED, replaced by a 4-corner-ArUco marker layout.** User: the textured
+**CORRECTION (2026-08-08): the entry below, as originally written, had the
+design direction BACKWARDS — there is NO 4-corner-ArUco redesign planned or
+in progress. The user's original statement (2026-08-07 session
+5724b899-b139-4696-9885-806686d7d2c7, verbatim: "Now the textured area
+around the cross marker is replaced with four corner ArUCo marker
+approach") was a typo/misstatement of the intended meaning, clarified
+2026-08-08: "the textured area around the cross marker REPLACES the four
+corner ArUco marker approach" — i.e. the CURRENT textured cross+stub
+design is what superseded an earlier, since-abandoned 4-corner-ArUco
+concept, not the other way around. The cross+stub pipeline is the settled
+design; do not plan around, cite, or re-verify against a 4-corner-ArUco
+migration — none is planned. (Original mis-derived entry preserved below,
+struck through in spirit, kept only so the correction has visible context;
+its RETIRED-ring-approach conclusion and the "no longer needed once
+replaced" framing do not hold.)**
+
+~~DESIGN DIRECTION UPDATE (2026-08-07): ring/texture-flow approach being
+RETIRED, replaced by a 4-corner-ArUco marker layout.~~ User: the textured
 background + dense-GFT-point approach was built specifically to counter
 point starvation on the sparse cross+stub shape (the "ring approach" this
-whole thread's mechanism analyses assumed) — no longer needed once the
-textured area is replaced by 4 corner ArUco tags. NOT YET IMPLEMENTED in
-code as of this writing — purely a stated design direction. Implication
+whole thread's mechanism analyses assumed). ~~No longer needed once the
+textured area is replaced by 4 corner ArUco tags.~~ ~~NOT YET IMPLEMENTED in
+code as of this writing — purely a stated design direction.~~ ~~Implication
 for everything above: the `_fill_A` image-Jacobian math is marker-agnostic
 (generic 6-DOF flow solve over tracked points), so the Wz/Wx/Wy
 collinearity mechanism will likely still apply to WHATEVER point layout
@@ -550,7 +566,7 @@ the new marker uses, but should be RE-DERIVED/RE-VERIFIED once built, not
 assumed to transfer. The corner-ArUco layout may also enable falling back
 on ArUco's own decode-based orientation (removing the stub-asymmetry
 dependency `alpha`'s disambiguation currently has, see below) if corner
-IDs are used.
+IDs are used.~~
 
 **Confirmed s/h/alpha computation methodology (2026-08-07, user-requested
 review before the next validation flight) — no code changes, verification
@@ -579,3 +595,191 @@ matter how good training-data R^2 has looked. **Also confirmed: NOT ready
 for a real closed-loop landing flight test** — `CrossMarkerNode` still
 doesn't implement terminal-kick/ring-loom-fusion (own class docstring:
 will AttributeError on a real descent), unchanged since 2026-08-01.
+
+**CLOSE-RANGE (<~1m) FLOW COLLAPSE ROOT-CAUSED (2026-08-09) — TEXTURE
+RESOLUTION, not FoV-overflow geometry, not motion blur.** Landing
+validation (independent position-SP descent to touchdown) found the
+output cal degrades sharply below ~1-2m, R^2 strongly negative and slopes
+0.09-0.27 near touchdown. Two hypotheses ruled out with direct evidence
+before finding the real one:
+1. NOT a discrete-marker-handover/FoV-overflow problem (user's own
+   framing: cross-marker's whole point vs. nested ArUco is a CONTINUOUS
+   single-marker signal, so overflow "shouldn't" cause a hard failure by
+   construction) -- confirmed correct: per-frame point spread/conditioning
+   (`Flow Diag Log` cond) actually IMPROVES near touchdown (4.3 at
+   altitude -> 1.2-1.5 near deck), n_kept stays healthy (46->55). The
+   geometric solve itself is fine.
+2. NOT motion blur -- initially misdiagnosed as this from visually blurry
+   frames, but [[feedback_descent_perception_ceiling]] already established
+   for THIS exact simulator (ArUco perception work, Laplacian-sharpness
+   measurement) that Gazebo renders sharp instantaneous frames with no
+   motion blur to remove (decode-fail frames measured equally sharp as
+   decoded ones). Re-checked with IMG_RECORD fixed to not destabilize the
+   vehicle (see below) -- the visual blur is real but altitude-triggered,
+   not motion-triggered.
+3. **Real mechanism: the cross+stub marker's fine speckle TEXTURE (added
+   specifically to solve GFT point-starvation on the sparse cross+stub
+   shape) has finite native resolution: 1024x1024px on a 3.0x3.0m physical
+   plane = ~0.29cm/texel. The camera (fx=fy=270px) resolves finer than one
+   texel below Z ~= texel_size * fx ~= 0.79m, so GPU texture filtering
+   visibly blurs the fine pattern exactly where GFT/LK need sharp local
+   gradients** -- confirmed both visually (frames sharp at 0.6m, blurred by
+   ~0.4-0.45m, matching the predicted crossover order of magnitude) and
+   numerically (`Flow Diag Log`'s px_disp_std/rel_resid explode in the same
+   altitude range: rel_resid climbs to ~0.95-0.97, meaning tracked points
+   stop agreeing on a common flow). Both marker pipelines share the
+   IDENTICAL physical camera mount, so this is NOT a camera-height
+   difference between ArUco and cross-marker.
+   **Why ArUco never hit this:** its pattern is bold/geometric (checkerboard-
+   style corners), not a fine raster texture -- no sub-texel-scale content
+   to lose under filtering, so it stays sharp at any zoom. Cross-marker's
+   texture-based point generation trades that robustness away for solving
+   the point-starvation problem, and this close-range degradation is the
+   cost of that trade, not a bug.
+   **Candidate fix, not yet applied:** swap in a higher-resolution texture
+   asset. A user-supplied 2816x1536px candidate, square-cropped to 1536,
+   would push the crossover 0.79m -> 0.53m -- real but partial; likely
+   pairs with a confidence/validity-flag fallback (mirroring img_data.py's
+   corner_conf, which cross-marker still has no equivalent of) for
+   whatever range remains below the new crossover.
+
+**SEPARATE FIX, same investigation: IMG_RECORD (`CrossMarkerNode`)
+destabilized the vehicle near touchdown.** Every `IMG_RECORD=1` landing-
+validation flight crashed hard at the very end (impact forces up to
+329 m/s^2) while the identical profile landed cleanly with IMG_RECORD=0 --
+synchronous `cv2.imwrite()` inside the SAME thread driving `process_frame()`
+was blocking on disk I/O exactly when tight position tracking mattered
+most. Fixed: frames are now enqueued (`.copy()`'d) to a separate writer
+thread that owns all the disk I/O, `close()` flushes+joins it before
+stitching. Confirmed fixed -- a landing flight with the same profile
+completed with no impact/failsafe messages afterward. Useful precedent: if
+any OTHER per-frame recording/logging is ever added to this hot path,
+route it through the same queue+writer-thread pattern, don't write
+synchronously inline.
+
+**CLOSE-RANGE FIX PROTOTYPED AND USER-VALIDATED (2026-08-09): landing-gear
+COLLISION extension, not a camera reposition.** Following the texture-
+resolution root-cause above, two fixes were tried for more camera-to-marker
+standoff at touchdown:
+1. **Camera X-offset (exploiting that all 4 leg collision boxes in
+   x500_base/model.sdf sit at body-X=0, zero X extent) -- TRIED, DOESN'T
+   WORK.** Tested X=.13 at Z=.15/.16/.17/.19/.25 (x500_mono_cam_down/
+   model.sdf's camera mount pose) -- the Z ceiling for leg-free framing
+   stays essentially at the existing .15-.16 regardless of X-offset; by
+   Z=.17 legs are already back to substantial intrusion. Reverted cleanly
+   (`model.sdf.bak_before_xoffset_20260809` matches exactly).
+2. **Landing-gear COLLISION extension -- WORKS, this is the adopted fix.**
+   `x500_base/model.sdf`'s `base_link_collision_3`/`_4` (the horizontal
+   skid bars, the actual lowest/ground-contact collision element) had
+   their Z pose extended from -.2195 to -.7195 (+0.5m). Collision geometry
+   in SDF is a physics-only proxy, completely independent of the VISUAL
+   mesh (`NXP-HGD-CF.dae`, one combined mesh for the whole airframe,
+   already established as unmodifiable without real 3D-modeling tooling)
+   -- so this raises the physical ground-contact/touchdown height with
+   ZERO camera-visibility tradeoff, unlike option 1 or the earlier
+   camera-Z-only attempts. No mass/inertia implications either (collision
+   geometry doesn't drive the separately-specified `<inertial>` block).
+   **Confirmed working two ways:** telemetry (body touchdown altitude
+   0.05m -> 0.487m, matching the +0.5m extension almost exactly) AND
+   visually by the user directly in the Gazebo GUI (a clear gap between
+   the rendered/visual legs and the ground at rest -- the collision stops
+   the vehicle well before the visual mesh would suggest, exactly as
+   predicted). Frame quality at the new touchdown height improved
+   (still slightly soft, but clearly resolvable vs. fully washed-out
+   before) but camera-to-marker distance at touchdown (~0.34m, since the
+   camera itself hangs ~0.15m below the body) is still short of the
+   texture-resolution crossover (0.79m current texture / 0.53m candidate
+   higher-res texture) -- this fix alone is a big improvement, not a full
+   fix; pairing it with the texture swap is the likely next step to fully
+   close the gap. Backup: `x500_base/model.sdf.bak_before_legext_20260809`.
+   **NOT YET DONE:** re-run the full altitude-binned landing validation
+   (R^2/slope) at the new touchdown height, the texture swap itself, or a
+   combined test of both fixes together.
+
+**HZ 2.0-0.5m COLLAPSE INVESTIGATION (2026-08-09, continued in a follow-up
+session -- see docs/HANDOVER_cross_marker_hz_signflip_20260809.md for the
+full narrative and exact next-step plan). Net result: NOT a regression,
+IS a real pre-existing sign-flip in the raw per-frame Jacobian solve.**
+
+Sequence (each step ruled out the previous suspect -- same pattern as the
+Hz root-cause chain above, read in order, don't re-litigate ruled-out
+suspects):
+
+1. **`lowalt_x/y/yaw` calibration phases never settle.** Added in the
+   low-altitude-coverage task (`CALIB_LOW_ALT=0.7`), these phases' own
+   logged altitude trace shows the vehicle still actively descending
+   through ~90% of the phase window (5.3m -> 1.0m over the first ~6s of an
+   ~12s window) -- `clean_axis_mask` in `derive_cross_marker_cal.py` never
+   purity-gates non-`x`/`y` phase labels, so this transient-contaminated
+   data was feeding the M-fit ungated. FIX APPLIED (default ON):
+   `derive_cross_marker_cal.py` now excludes `lowalt_*` samples from the
+   M-fit entirely (`CROSS_CAL_EXCLUDE_LOWALT`, default `1`) -- reasoning:
+   the cal is supposed to be ALTITUDE-INVARIANT by construction (both raw
+   and GT sides already Z-normalized, h=v/(z+Z_REG)), so fixing coverage
+   was solving the wrong problem; fit on the cleanest (highest-SNR, i.e.
+   high-altitude) data instead. Re-derived cal is live in
+   `cross_marker_perception.py` (`_sensor_cal_hw`/`_sensor_cal_s`,
+   2026-08-09 comment block).
+2. **But excluding lowalt data barely moved the validation numbers**
+   (2.0-1.0m Hz -12.15 -> -10.89, same flight) -- ruled OUT as the cause of
+   the specific Hz-collapse-in-that-band symptom, even though it's still
+   the right default going forward per point 1's reasoning.
+3. **Bisected leg-extension vs texture-swap via a same-day, texture-
+   untouched flight** (`validation_data/cross_output_legext_test/`,
+   recorded AFTER the leg extension but BEFORE the hires-texture swap).
+   Applying the OLD (pre-08-09) cal to it still showed a bad 1.0-0.5m Hz
+   (-39), but that number ALSO showed up on a clean PRE-legext flight with
+   the same old cal -- i.e. the 1.0-0.5m catastrophic Hz predates every
+   2026-08-09 change; it's task #7's ORIGINAL problem, not a regression.
+   The 2.0-1.0m band looked like a NEW regression from a single-flight
+   comparison (-0.13 pre vs -2.62 post, same old cal) -- but see point 4.
+4. **Single-flight before/after comparisons are unreliable for this
+   channel -- CONFIRMED via a proper 5-flight batch.** Ran 5 headless
+   landing-validation flights under the CURRENT setup (leg-ext + hires-tex
+   + lowalt-excluded cal, `validation_data/cross_output_landing_batch/`):
+   2.0-1.0m Hz clustered TIGHTLY at -12.3 to -18.8 (mean -15) and 1.0-0.5m
+   at -20.5 to -35.0 (mean -28) across all 5 -- i.e. genuinely repeatable,
+   not noise, when the setup is held fixed. Then ran a matched 3-flight
+   batch (SITL flaked on 2 of 5, normal pattern) under the REVERTED setup
+   (old collision geometry, old texture, old cal,
+   `validation_data/cross_output_landing_batch_reverted/`): SAME
+   catastrophic range, 2.0-1.0m Hz = -2.75/-198/-21.3 and 1.0-0.5m Hz =
+   -9.8/-31.8/-0.03 -- comparable-or-worse severity with MUCH higher
+   variance than the current setup. **Conclusion: the leg extension,
+   texture swap, and lowalt-cal exclusion did NOT cause or worsen the
+   0.5-2.0m Hz collapse -- it's present, comparably bad, in both
+   configurations.** Lesson for future single-flight A/B claims on this
+   channel specifically: don't trust them, this bin's run-to-run scatter
+   (-0.03 to -198 seen in just 3 reverted-setup flights) is larger than
+   most real effects you'd be trying to detect -- batch (n>=3) before
+   concluding anything moved.
+5. **ROOT CAUSE FOUND: the raw pre-calibration Tz signal's correlation
+   with true GT vertical velocity FLIPS SIGN around 2m altitude.**
+   Computed directly (`img['h_V']` pre-cal signal vs `_compute_gt_flow_zreg`
+   GT, per-frame, no calibration involved) on 3 independent flights:
+   9-2.0m band corr = +0.65/+0.68/+0.70 (consistently strongly positive);
+   2.0-1.0m band corr = -0.74/-0.78/-0.61 (consistently strongly
+   NEGATIVE); 1.0-0.5m weaker/mixed (-0.13/-0.18/-0.45). This is a
+   systematic sign inversion, not noise -- reproduces across all 3
+   flights at essentially the same altitude threshold. A single linear
+   calibration (fit mostly on abundant high-altitude data) necessarily
+   picks a positive Tz coefficient, which then predicts the WRONG
+   DIRECTION once applied below 2m -- this is the actual mechanism behind
+   every catastrophic negative Hz R^2 seen in this whole investigation
+   thread, at ANY point in time, under ANY of the tested
+   geometry/texture/cal configurations. `_fill_A`'s Tz column (`-x, -y`,
+   standard depth-normalized image-Jacobian form) has no altitude
+   dependence written into it, so the flip must come from the TRACKED
+   POINT SET (`_sample_flow_points`) or a KF/dt-related effect changing
+   character across that altitude threshold -- NOT YET IDENTIFIED which.
+   **This reframes task #7 entirely: it was filed as "no close-range
+   fallback for FoV overflow" but the actual mechanism is a sign-inverting
+   per-frame solve at ~2m, unrelated to overflow.**
+
+**STATUS: root cause narrowed to "something in the point-sampling or
+per-frame solve inverts Tz's effective sign relative to true Z-velocity
+around 2m altitude" -- NOT yet identified further. See the handover doc
+for the concrete next-step plan (dump per-point Tz Jacobian contributions
+above vs below 2m; check whether `CROSS_FLOW_CENTER_EXCLUDE_FRAC`/
+boundary-margin point selection changes composition across that
+threshold; check dt/KF phase behavior at the same threshold).**

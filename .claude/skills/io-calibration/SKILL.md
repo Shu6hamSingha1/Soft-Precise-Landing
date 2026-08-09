@@ -249,9 +249,7 @@ this marker's achievable radial spread — numerically aliasing Ty's constant co
 Same underlying cause as Wx/Wy being force-zeroed (genuinely unrecoverable, confirmed
 via dedicated rollexc/pitchexc excitation, r=-0.09..-0.15). **The only remaining lever
 for Wz/Wx/Wy is a bigger physical marker plate** — not fixable by recal, point-sampling,
-or excitation tuning. Not pursued further as of 2026-08-07 (deprioritized: the project
-is moving to a 4-corner-ArUco marker design, see below, which may sidestep this
-geometry-limited regressor entirely).
+or excitation tuning. Not pursued further as of 2026-08-07.
 
 **Hz's weakness was NOT the same phenomenon — it was 3 stacked, fixable bugs, 2 now
 fixed, 1 still open:**
@@ -295,6 +293,20 @@ fixed, 1 still open:**
    improvement but not yet at Hx/Hy parity (~0.7), so don't treat Hz as "solved."
    Whatever in the 08-04/05 camera cluster caused the r=0.9→0.5 drop hasn't been
    found; it's just no longer masked by the resample-variance bug on top of it.
+   **⭐ 2026-08-09 UPDATE (OPEN, active investigation):** the whole-flight R²=0.48
+   number above averages over a much bigger effect discovered on
+   altitude-BINNED landing validation — raw pre-cal Tz's correlation with true GT
+   vertical velocity FLIPS SIGN around 2m altitude (+0.65..+0.70 above 2m,
+   -0.61..-0.78 just below it, reproduced on 3 independent flights), so any single
+   linear cal (fit mostly on the abundant high-altitude data) predicts the WRONG
+   DIRECTION below 2m — this, not "weak but same-sign," is the actual shape of
+   Hz's remaining problem, and it's present regardless of leg-extension/texture/cal
+   changes (ruled out via matched multi-flight batches — n=1 A/Bs on this specific
+   channel are unreliable, scatter -0.03 to -198 seen across 3 same-setup flights).
+   Root mechanism not yet found — see
+   `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md` and
+   `project_cross_marker_pipeline_20260801` memory's "HZ 2.0-0.5m COLLAPSE
+   INVESTIGATION" section for the full trace and next-step plan.
 6. **Hardware (ArUco) shows the OPPOSITE profile** (checked for comparison): `Hz` is
    the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are weak (0.07-0.08,
    real-camera noise). This had already disproven "Hz/Wz are universally the
@@ -336,19 +348,16 @@ combined mesh for the whole airframe (no separate leg link/pose); only a full me
 flight-dynamics risk) would do it. User decision: only pursue that if this whole thread
 hits a dead end specifically needing more camera height.
 
-## Design direction (as of 2026-08-07): ring/texture approach being retired
-The marker's textured background + ring-flow-style dense-point approach was built to
-counter point starvation on a sparse cross+stub shape. User is moving to a **4-corner
-ArUco marker layout** replacing the textured area, which may sidestep the sparse-point
-problem (and possibly some of Wz's geometry-limited ceiling above) differently. Not yet
-implemented in code as of this writing — when it lands, re-verify which of the
-Hz/Wz/radial-spread findings above still apply vs. are now moot (the `_fill_A` math is
-generic and marker-agnostic, so the collinearity mechanism likely still applies to
-whatever point layout replaces the current GFT-on-texture approach, but re-derive
-rather than assume). Next planned step (separate chat): independent multisine
-validation of the CURRENT cal (`apps/record_cross_marker_validation.py` +
-`tools/validate_cross_marker_flow.py`, built 2026-08-02, unused since) — the
-train/validate discipline above has never been closed for this pipeline at any point.
+## Design direction: cross+stub is the settled marker (CORRECTED 2026-08-08)
+No 4-corner-ArUco redesign is planned. An earlier version of this note claimed the
+opposite (user moving from the textured cross+stub to a 4-corner-ArUco layout) --
+that was a misreading of a typo'd 2026-08-07 user message; the corrected, confirmed
+meaning is the reverse: the CURRENT textured cross+stub design is what superseded an
+earlier, since-abandoned 4-corner-ArUco concept. Do not plan around, cite, or
+re-verify against a 4-corner-ArUco migration for this marker -- none is coming. The
+ring/texture-flow approach (built to counter point starvation on the sparse
+cross+stub shape) is still not needed per that same 2026-08-07 message, independent
+of the corrected/retracted redesign claim.
 
 # Recalibration procedure
 1. Identify which chain: OUTPUT (corner/ring flow, ArUco) / OUTPUT (cross-marker,

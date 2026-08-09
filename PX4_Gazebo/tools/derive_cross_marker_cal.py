@@ -204,6 +204,24 @@ def main():
         # introduced alongside the now-reverted clean_zyaw_mask, not present
         # originally). The M-fit uses a finite-value filter only, same as it always
         # did before the 2026-08-06 investigation.
+        # 2026-08-09: EXCLUDE lowalt_x/y/yaw from the M-fit by default. The cal
+        # (M) maps already-Z-normalized raw columns to already-Z-normalized GT
+        # (h=v/(z+Z_REG) on both sides -- see feedback_scale_free_depth_free /
+        # gt_feedback.py's Z_REG convention) so M is supposed to be altitude-
+        # invariant by construction. The lowalt_* phases were added to give the
+        # fit low-altitude COVERAGE, but investigation (project memory,
+        # 2026-08-09) found the low-alt transition never actually settles
+        # within its phase window -- most of each lowalt_* sample is really a
+        # still-descending transient with inflated noise (raw h_Tz std ~3x its
+        # own GT std in lowalt_yaw), and clean_axis_mask never purity-gates
+        # these phases at all. Since M shouldn't need low-alt data to be valid
+        # at low alt, best fix is to derive from the CLEANEST (highest-SNR)
+        # altitude data only, not to chase coverage. CROSS_CAL_EXCLUDE_LOWALT=0
+        # restores the old pooled behavior for comparison.
+        if os.environ.get("CROSS_CAL_EXCLUDE_LOWALT", "1") != "0":
+            lowalt = np.array([str(p).startswith('lowalt') for p in phase])
+            R = R[~lowalt]; G = G[~lowalt]
+
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
         if len(R) < 200:

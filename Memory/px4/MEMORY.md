@@ -4,7 +4,39 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
-> **🟢 2026-08-07d (LATEST) — Hz's variance source FOUND AND FIXED, R^2
+> **⭐ Standing reference: `PX4_Gazebo/px4_autopilot_overrides/` (git-tracked) is a
+> snapshot+restore point for every `~/PX4-Autopilot` file this project has modified
+> (camera/marker/world SDFs, airframe configs) — that repo is external/untracked by
+> this project's git, so a reset/reinstall would silently lose those edits otherwise.
+> Update it whenever a PX4-Autopilot asset changes. See
+> [[reference_px4_autopilot_overrides_backup]].** ⚠ STALE as of 2026-08-09 — does
+> not yet reflect the hi-res `cross_marker.png` texture swap; re-snapshot before
+> relying on it for a PX4-Autopilot restore.
+
+> **🔴 2026-08-09 (OPEN, follow-up session in progress) — cross-marker Hz
+> collapses (R²≈-15 to -35) below ~2m altitude because the RAW pre-calibration
+> Tz signal's correlation with true GT vertical velocity FLIPS SIGN around 2m
+> (+0.65..+0.70 above, -0.61..-0.78 just below, confirmed on 3 independent
+> flights) — a linear cal fit on abundant high-altitude data necessarily
+> predicts the wrong direction below 2m. CONFIRMED NOT caused by the leg-gear
+> extension, hi-res texture swap, or the lowalt-cal-phase exclusion (all
+> ruled out via matched multi-flight batches, not single-flight A/Bs — see
+> below). Root mechanism (point-sampling vs KF/dt effect) NOT YET FOUND. Full
+> narrative + next-step plan:
+> `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md`. See also
+> [[project_cross_marker_pipeline_20260801]]'s "HZ 2.0-0.5m COLLAPSE
+> INVESTIGATION" section.**
+
+> **⚠ Methodology note (2026-08-09): single-flight before/after comparisons
+> are UNRELIABLE for the cross-marker Hz channel specifically in the
+> 0.5-2.0m band — its run-to-run scatter (R² -0.03 to -198 seen across just
+> 3 same-setup flights) exceeds most real effects being tested. Batch
+> (n≥3, ideally 5) before concluding any change moved this channel. A
+> same-day leg-extension-only flight vs. an older baseline flight looked
+> like a "-0.13 → -2.62" regression at n=1; a proper 5-vs-3 flight batch
+> showed both setups land in the same -2 to -200 scatter band.**
+
+> **🟢 2026-08-07d — Hz's variance source FOUND AND FIXED, R^2
 > DOUBLED (0.22->0.48), DEPLOYED.** Pure analysis of already-collected `Flow
 > Diag Log`s (no new flights needed to find it): `_sample_flow_points` (GFT
 > corner search) only fires on cold-start or when the tracked pool drops
