@@ -1,0 +1,8 @@
+#!/bin/sh
+# @name Rover Aruco
+# @type Rover
+# @class Rover
+
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=rover_aruco}
+
+. ${R}etc/init.d-posix/airframes/4012_gz_rover_ackermann

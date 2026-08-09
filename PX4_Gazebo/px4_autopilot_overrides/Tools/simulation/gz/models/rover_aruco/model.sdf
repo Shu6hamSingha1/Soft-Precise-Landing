@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='rover_aruco'>
+    <self_collide>false</self_collide>
+    <include merge='true'>
+      <uri>rover_ackermann</uri>
+    </include>
+    <!-- Solid landing PLATFORM carrying the ArUco marker on its top face, fixed
+         to the rover base_link so it rides the rover. The drone lands ON the
+         platform (top at 0.5 m) like a real moving platform. Previously the
+         marker was a floating visual-only plane at 0.5 m with NO contact surface,
+         which was the terminal-fly-away root cause (controlled A/B 2026-07-02):
+         the elevated marker put the terminal high-1/Z regime in open air with no
+         contact to arrest the latent kick. The marker is now a VISUAL on this
+         (properly jointed) link, not a separate massless include -- a separate
+         static include's link detached and fell when the model link/joint tree
+         changed. Pedestal 0.1 m (rover body top, clear of ground/wheels) to
+         0.5 m; 1 m marker plane on top (same texture/size as the old arucotag,
+         so the derived cal/decode range is unchanged). -->
+    <link name='landing_platform'>
+      <pose>0 0 0.30 0 0 0</pose>
+      <inertial>
+        <mass>0.5</mass>
+        <inertia>
+          <ixx>0.022</ixx><iyy>0.022</iyy><izz>0.03</izz>
+          <ixy>0</ixy><ixz>0</ixz><iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name='platform_collision'>
+        <geometry><box><size>0.6 0.6 0.4</size></box></geometry>
+      </collision>
+      <visual name='platform_visual'>
+        <geometry><box><size>0.6 0.6 0.4</size></box></geometry>
+        <material>
+          <diffuse>0.25 0.25 0.3 1</diffuse>
+        </material>
+      </visual>
+      <visual name='marker_visual'>
+        <pose>0 0 0.201 0 0 0</pose>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>1.0 1.0</size>
+          </plane>
+        </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://arucotag/arucotag.png</albedo_map>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+    <joint name='platform_joint' type='fixed'>
+      <parent>base_link</parent>
+      <child>landing_platform</child>
+    </joint>
+  </model>
+</sdf>

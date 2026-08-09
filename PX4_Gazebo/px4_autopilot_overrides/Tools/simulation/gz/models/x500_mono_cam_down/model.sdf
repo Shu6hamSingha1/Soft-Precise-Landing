@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='x500_mono_cam_down'>
+    <self_collide>false</self_collide>
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+    <include merge='true'>
+      <uri>model://mono_cam</uri>
+      <!-- 2026-08-04: yaw=1.5707 (90deg) added on top of the existing pitch=1.5707
+           (90deg, still required to keep the optical axis pointing straight down;
+           pitch is the only single axis that can redirect the camera's default +X
+           forward axis to -Z; see the CameraJoint pose below, which is the
+           authoritative live transform; this include pose is kept in sync with it
+           but may not itself be load-bearing). The added yaw rotates the image's
+           in-plane up reference from body +X (forward) to body +Y (right),
+           verified via rotation-matrix check: optical axis stays [0,0,-1], up
+           reference goes from [1,0,0] to [0,1,0]. Moves the landing-leg mirrored
+           ghost (fore/aft legs, previously in the top/bottom image margins) to
+           the left/right margins instead; see _restrict_to_center_roi's docstring
+           in cross_marker_perception.py for the ghost's original documentation.
+           roi_frac_x/roi_frac_y in that file's crop convention will need to swap
+           to match (crop x instead of y) once this is validated live. -->
+      <!-- 2026-08-05: Z offset reduced .20 -> .18 (first incremental step, per user
+           request to try a small reduction before a bigger one) to move the camera
+           closer to the body, reducing landing-leg visibility in the downward FOV. -->
+      <pose>0 0 .15 0 1.5707 1.5707</pose>
+      <name>mono_cam</name>
+    </include>
+    <joint name="CameraJoint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose relative_to="base_link">0 0 0 0 1.5707 1.5707</pose>
+    </joint>
+  </model>
+</sdf>
