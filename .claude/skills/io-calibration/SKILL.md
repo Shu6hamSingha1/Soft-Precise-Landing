@@ -289,24 +289,69 @@ fixed, 1 still open:**
    forces periodic refresh independent of pool size. Validated n=5: R² Hx=0.69
    Hy=0.76 **Hz=0.48** Wz=0.50 vs the prior Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53 — Hz MORE
    THAN DOUBLED, everything else within normal noise. DEPLOYED.
-5. **Suspect 3 (the raw-signal regression) is STILL OPEN** — Hz=0.48 is a real
-   improvement but not yet at Hx/Hy parity (~0.7), so don't treat Hz as "solved."
-   Whatever in the 08-04/05 camera cluster caused the r=0.9→0.5 drop hasn't been
-   found; it's just no longer masked by the resample-variance bug on top of it.
-   **⭐ 2026-08-09 UPDATE (OPEN, active investigation):** the whole-flight R²=0.48
-   number above averages over a much bigger effect discovered on
-   altitude-BINNED landing validation — raw pre-cal Tz's correlation with true GT
-   vertical velocity FLIPS SIGN around 2m altitude (+0.65..+0.70 above 2m,
-   -0.61..-0.78 just below it, reproduced on 3 independent flights), so any single
-   linear cal (fit mostly on the abundant high-altitude data) predicts the WRONG
-   DIRECTION below 2m — this, not "weak but same-sign," is the actual shape of
-   Hz's remaining problem, and it's present regardless of leg-extension/texture/cal
-   changes (ruled out via matched multi-flight batches — n=1 A/Bs on this specific
-   channel are unreliable, scatter -0.03 to -198 seen across 3 same-setup flights).
-   Root mechanism not yet found — see
-   `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md` and
-   `project_cross_marker_pipeline_20260801` memory's "HZ 2.0-0.5m COLLAPSE
-   INVESTIGATION" section for the full trace and next-step plan.
+5. **Suspect 3 (the raw-signal regression) is STILL OPEN, but CONFIRMED REAL
+   (2026-08-10) and 2 of ~4 candidate causes are now RULED OUT with real n≥3 data**
+   (the original 08-05 bisection was only n=2 per side, too weak — re-ran properly).
+   Re-measured cleanly: z-excitation-phase raw Tz-vs-GT correlation is a TIGHT
+   0.90-0.96 on pre-08-05 archived data (`calibration_data/output_cross_stale_pre20260805/`,
+   n=5) vs a TIGHT 0.78-0.82 on current data (n=5), same measurement method both
+   sides (apples-to-apples) — a real, consistent ~0.15 gap, not a fluke (unlike the
+   sign-flip above). Bisected:
+   - **Color-gate threshold (100→20): RULED OUT** — reverting it under the CURRENT
+     thinner marker line doesn't cause a subtle correlation drop, it breaks
+     detection almost completely (0% ok-rate, `color_gate_empty` on ~93% of
+     frames). Not a live candidate; the two changes (line-width halving,
+     gate-threshold widening) are coupled and can't be independently reverted.
+   - **Camera Z offset (.15→.20 revert): RULED OUT** — 3 flights with the camera
+     temporarily reverted to the pre-08-05 Z=.20 position (backed up as
+     `x500_mono_cam_down/model.sdf.bak_current_z15_20260810`, restored after)
+     gave z-phase correlation 0.80/0.87/0.80 — statistically indistinguishable
+     from the current Z=.15 baseline (0.78-0.82). No effect.
+   - **Tracking-based ROI addition: RULED OUT (2026-08-10)** — 3 flights with it
+     disabled (temp toggle `CROSS_DISABLE_TRACK_ROI=1` in
+     `cross_marker_perception.py`'s `process_frame`, forces `track_state=None`
+     so `cross_marker_detector.detect()` always takes the pre-08-05 full-frame
+     path) gave z-phase correlation 0.82/0.84/0.84 — again indistinguishable
+     from baseline. **Remove the toggle once this thread is fully closed out**
+     (currently still in the file, harmless no-op unless the env var is set).
+   - **Still untested, and NOT a natural next step:** mount-yaw+90° rotation.
+     Unlike the 3 ruled-out candidates, this isn't a clean isolated toggle — it's
+     a coordinate-frame convention several other fixes were built on top of
+     (see its own module comment), so reverting it risks reintroducing bugs
+     those fixes solved rather than isolating this one. (The `_getVirtualPts`
+     axis-sign-flip is similarly a correctness fix for a real bug, not a live
+     candidate.)
+   **Status as of 2026-08-10: 3 of 4 candidates from the 08-04/05 cluster ruled
+   out with clean n=3-5 data each, none show any effect.** The remaining ~0.15
+   gap (0.9→0.8, still real per the apples-to-apples check above) may not trace
+   to any single one of these changes — could be a combined/nonlinear effect of
+   several small changes together, or something outside this candidate list
+   entirely. Given the already-banked win (Hz whole-flight R² 0.22→0.48 from the
+   resample-variance fix) and the risk/cost of testing the remaining candidate,
+   this is a reasonable point to STOP the bisection unless a cheap new idea
+   surfaces — don't keep spending flight batches on this without one.
+   **⭐ 2026-08-09/10 UPDATE: the "sign flip below 2m" theory was investigated and
+   RESOLVED FALSE (not just superseded — actively disproven).** An initial 5-flight
+   batch (all launched back-to-back) appeared to show raw pre-cal Tz's correlation
+   with GT vertical velocity flipping sign around 2m altitude. A follow-up 3-flight
+   batch showed the OPPOSITE sign in the same band, and pooling all 12 available
+   landing flights (demeaned per-flight) gives the TRUE population correlation as
+   **+0.23 in the 1-2m band — positive, same sign as everywhere else. No inversion
+   exists.** Mechanism: the landing-validation maneuver is a near-constant-vz linear
+   descent, so within any narrow altitude slice the true signal has almost no
+   variance (`std(vz_g)≈0.04-0.05`, barely above the raw measurement's own noise
+   floor) — a Pearson correlation there is noise-dominated and its sign is close to
+   a coin flip per flight. The original 5/5-negative batch was an unlucky ~3%-chance
+   cluster, not a real effect. **Don't re-derive a sign-flip mechanism from a single
+   batch on this channel — pool ≥3 independent sessions before trusting its sign.**
+   What's still genuinely open, reframed correctly: Hz's raw correlation is modest
+   (mean ~0.5, same sign throughout) and R² can still read catastrophically negative
+   near touchdown as an artifact of comparing against a near-zero-variance true
+   signal there, not because the prediction is pointing the wrong way — check
+   bias/noise floor next, not sign. Full trace:
+   `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md` (read bottom-up —
+   the top sections describe the now-disproven theory) and
+   `project_cross_marker_pipeline_20260801` memory.
 6. **Hardware (ArUco) shows the OPPOSITE profile** (checked for comparison): `Hz` is
    the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are weak (0.07-0.08,
    real-camera noise). This had already disproven "Hz/Wz are universally the
