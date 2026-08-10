@@ -330,13 +330,29 @@ fixed, 1 still open:**
      which corner subset the periodic-resample (`RESAMPLE_PERIOD_S`, the
      08-07 fix) settles on. NOT adopted; don't re-derive "revert the line
      width" as a fix from this result without addressing the variance first.
-   - **Still untested, and NOT a natural next step:** mount-yaw+90° rotation.
-     Unlike the other candidates, this isn't a clean isolated toggle — it's
-     a coordinate-frame convention several other fixes were built on top of
-     (see its own module comment), so reverting it risks reintroducing bugs
-     those fixes solved rather than isolating this one. (The `_getVirtualPts`
-     axis-sign-flip is similarly a correctness fix for a real bug, not a live
+   - **Mount-yaw+90° rotation: TESTED 2026-08-10, INCONCLUSIVE.** Did a
+     physically self-consistent isolated test — reverted BOTH the SDF mount
+     yaw (90°→0°, camera Z held fixed at .15) AND the matched code-side ray
+     convention (`_getVirtualPts`'s `[y,-x]`→`[x,y]`, both branches) via a
+     temporary toggle, confirmed valid by 100% detection ok-rate. Result:
+     +0.775/+0.803/-0.193 across 3 flights — two near baseline, one sign
+     flip. Given this session's own lesson about narrow z-phase checks
+     being noisy (see the exclude-frac entry above), not treated as a real
+     effect without more data, and not pursued further given how coupled/
+     risky this revert is to keep re-testing. (The `_getVirtualPts`
+     axis-sign-flip itself is a correctness fix for a real bug, not a live
      candidate.)
+   - **Timestamp sync (perception vs. GT): VERIFIED SOUND, 2026-08-10.**
+     Checked directly in response to a methodology question: `Img_Data`'s
+     `Time` (image capture `msg.header.stamp`) and the GT dict's
+     `Time`+`Start Time` (`Clock_Node.perf_counter()`) are the same Gazebo
+     `/clock` sim-time domain, not two different clocks. For in-range
+     samples the nearest-GT-sample gap is tiny (median 0ms, 95th pct 4ms,
+     max 24ms — sub-frame-period). The ~10% of frames captured before
+     `gt['Start Time']` (during arm/takeoff/hover) are correctly excluded
+     via `left=np.nan` in every `np.interp` call used for GT alignment, both
+     in `derive_cross_marker_cal.py` and in this investigation's ad-hoc
+     checks — not a source of the low-R² findings above.
    **Also tried (2026-08-10): raising `CROSS_FLOW_CENTER_EXCLUDE_FRAC`
    0.35→0.55 (radial-leverage idea — Hz's per-point signal is linear in
    radial distance, `_fill_A`'s Tz column is `[-x,-y]`, so point QUALITY
