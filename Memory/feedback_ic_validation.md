@@ -6,6 +6,15 @@ originSessionId: 3ffdaf6f-0da4-4c9f-b4df-fb9a91a7eb04
 ---
 **Rule:** Any change to a default value, gain, or controller behavior that improves IC1 must be validated on IC2-5 (`run_ic_validation.sh`) before merging to defaults.
 
+**SCOPE (user correction, 2026-08-10): this rule is about CONTROLLER GAIN tuning specifically.**
+The mechanism it guards against (IC1-tuned lateral gains trading convergence speed for
+precision, which only works when already centered) is a controller/gain phenomenon, not a
+universal law. **During perception-pipeline development** (calibration, point-sampling,
+detector/tracker changes — not gain tuning), a fix that demonstrably works on ANY single IC
+can be baked without an IC2-5 gate first — perception correctness isn't IC-position-dependent
+the way lateral-authority tradeoffs are. Don't over-apply this rule to perception work; ask
+which regime a proposed default change falls into before invoking it as a blocker.
+
 **SEQUENCING (user directive, 2026-06-10): do NOT run IC2-5 at all until IC1 is performing *perfectly* — clean, repeatable, no TL/drift.** IC2-5 is the pre-merge *gate*, but it is wasted effort while IC1 still fails; fix IC1 first, then gate on IC2-5. (As of 2026-06-10 IC1 is NOT clean — no verified SP, ~2/5 perception TLs — so IC2-5 testing is **on hold**. All current sweeps are IC1-only.)
 
 ## Why
