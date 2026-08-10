@@ -314,22 +314,67 @@ fixed, 1 still open:**
      path) gave z-phase correlation 0.82/0.84/0.84 — again indistinguishable
      from baseline. **Remove the toggle once this thread is fully closed out**
      (currently still in the file, harmless no-op unless the env var is set).
+   - **Line-width halving (independent of the gate threshold — re-tested
+     2026-08-10 after realizing the two changes are NOT actually coupled):
+     INCONCLUSIVE, not adopted.** Earlier note wrongly assumed line-width and
+     gate-threshold couldn't be independently tested; they can — generated a
+     full-width mask at the CURRENT hi-res texture's resolution (extract the
+     pre-08-05-backup's mask, upscale 3x nearest-neighbor, same method as
+     `make_cross_marker_hirestex.py`, fresh speckle background), swapped it in
+     via `model.sdf`'s `albedo_map` temporarily (no live-file edits). Result:
+     z-phase correlation across 3 flights was **-0.03, +0.60, +0.94** — much
+     HIGHER variance than the tight half-width baseline (0.78-0.82), with
+     `n_kept` (tracked point count) also swinging 13-33 median across runs vs.
+     a narrower baseline range. Mean isn't clearly better and variance is
+     worse — full-width line isn't a clean fix; if anything it may destabilize
+     which corner subset the periodic-resample (`RESAMPLE_PERIOD_S`, the
+     08-07 fix) settles on. NOT adopted; don't re-derive "revert the line
+     width" as a fix from this result without addressing the variance first.
    - **Still untested, and NOT a natural next step:** mount-yaw+90° rotation.
-     Unlike the 3 ruled-out candidates, this isn't a clean isolated toggle — it's
+     Unlike the other candidates, this isn't a clean isolated toggle — it's
      a coordinate-frame convention several other fixes were built on top of
      (see its own module comment), so reverting it risks reintroducing bugs
      those fixes solved rather than isolating this one. (The `_getVirtualPts`
      axis-sign-flip is similarly a correctness fix for a real bug, not a live
      candidate.)
-   **Status as of 2026-08-10: 3 of 4 candidates from the 08-04/05 cluster ruled
-   out with clean n=3-5 data each, none show any effect.** The remaining ~0.15
-   gap (0.9→0.8, still real per the apples-to-apples check above) may not trace
-   to any single one of these changes — could be a combined/nonlinear effect of
-   several small changes together, or something outside this candidate list
-   entirely. Given the already-banked win (Hz whole-flight R² 0.22→0.48 from the
-   resample-variance fix) and the risk/cost of testing the remaining candidate,
-   this is a reasonable point to STOP the bisection unless a cheap new idea
-   surfaces — don't keep spending flight batches on this without one.
+   **Also tried (2026-08-10): raising `CROSS_FLOW_CENTER_EXCLUDE_FRAC`
+   0.35→0.55 (radial-leverage idea — Hz's per-point signal is linear in
+   radial distance, `_fill_A`'s Tz column is `[-x,-y]`, so point QUALITY
+   should matter more than count). A narrow z-phase-only check looked
+   promising (mean 0.804→0.835, n=5) but the WHOLE-FLIGHT joint fit showed
+   a net regression across nearly every channel (Hz R² 0.48→0.07, Hx
+   0.69→0.48, Hy 0.76→0.65, consistent across all 5 runs) — the more
+   aggressive exclusion starves the point pool (n_kept median 10-17→8-10)
+   enough to add noise everywhere, outweighing the narrow z-phase gain.
+   REVERTED; default stays 0.35. Lesson: always re-derive the whole-flight
+   fit before adopting a point-sampling change, a narrow single-phase
+   diagnostic can't see costs elsewhere.
+
+   **Also tested (2026-08-10), separate from the 08-04/05 cluster: the
+   08-09 hi-res texture swap. RULED OUT, and actually a net POSITIVE.**
+   Reverting to pre-hires (current line-width/gate held fixed) for 3
+   flights gave z-phase correlation +0.52/+0.57/+0.20 — WORSE than the
+   current hires baseline (0.78-0.82), not better. Point-set diagnostics:
+   pre-hires had MORE tracked points (n_kept median 24-55) but LOWER radial
+   spread (mean 0.09-0.13); current-hires has FEWER points (median 10-17)
+   but a higher max spread (0.19-0.26) — a few high-leverage far corners
+   from the finer speckle matter more for Tz's position-weighted column
+   than raw point count. Don't revert the hi-res texture for this
+   regression — it's a red herring in the opposite direction, and an
+   implementation audit (same date) also confirmed the Jacobian formula
+   and V-frame leveling are correct and identical across all 4 platforms
+   (MATLAB, ArUco PX4, cross-marker PX4, hardware) — this is not a code bug.
+   **Status as of 2026-08-10: 4 of 5 candidates from the 08-04/05 cluster
+   tested, none give a clean fix** (3 ruled out with no effect; line-width
+   gives a noisier, not-clearly-better result). The remaining ~0.15 gap
+   (0.9→0.8 mean, still real per the apples-to-apples check above) may not
+   trace to any single one of these changes — could be a combined/nonlinear
+   effect of several small changes together, or something outside this
+   candidate list entirely. Given the already-banked win (Hz whole-flight R²
+   0.22→0.48 from the resample-variance fix) and the risk/cost of testing the
+   one remaining candidate, this is a reasonable point to STOP the bisection
+   unless a cheap new idea surfaces — don't keep spending flight batches on
+   this without one.
    **⭐ 2026-08-09/10 UPDATE: the "sign flip below 2m" theory was investigated and
    RESOLVED FALSE (not just superseded — actively disproven).** An initial 5-flight
    batch (all launched back-to-back) appeared to show raw pre-cal Tz's correlation
