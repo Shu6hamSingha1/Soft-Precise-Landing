@@ -132,6 +132,21 @@ MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
 # extent, so it scales with altitude) from the GFT mask, biasing candidate corners
 # toward the arm/stub tips; fall back to the unbiased mask if too few peripheral
 # corners survive (e.g. marker small/far, altitude high).
+#
+# 2026-08-10 (raw-signal-regression bisection, see HANDOVER_cross_marker_hz_
+# signflip_20260809.md and project_cross_marker_hz_regression_bisection_20260810
+# memory): 0.55 TRIED AND REVERTED. A narrow z-phase-only raw Tz-vs-GT
+# correlation check looked promising (0.35->0.55 raised the mean 0.804->0.835,
+# n=5) -- but the actual whole-flight joint calibration fit (derive_cross_
+# marker_cal.py, which uses ALL phases, not just z) showed 0.55 is a NET
+# REGRESSION: Hz whole-flight R^2 0.48->0.07, and Hx/Hy dropped too
+# (0.69->0.48, 0.76->0.65) -- consistent across all 5 runs, not an outlier.
+# Mechanism: the more aggressive exclusion starves the point pool (n_kept
+# median 10-17 -> 8-10), and that overall point-count reduction adds noise
+# to EVERY phase (x/y/yaw dominate sample count and were made noisier), which
+# outweighs the narrow z-phase leverage gain the isolated check was measuring.
+# Lesson: don't judge a point-sampling change from an isolated single-phase
+# diagnostic -- always re-derive+check the whole-flight fit before adopting.
 CROSS_FLOW_CENTER_EXCLUDE_FRAC = float(os.environ.get("CROSS_FLOW_CENTER_EXCLUDE_FRAC", "0.35"))
 MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4"))
 # Exclude candidate corners this close to the TRUE frame edge -- during lateral or
