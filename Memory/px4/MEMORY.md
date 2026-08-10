@@ -13,28 +13,58 @@
 > not yet reflect the hi-res `cross_marker.png` texture swap; re-snapshot before
 > relying on it for a PX4-Autopilot restore.
 
-> **🔴 2026-08-09 (OPEN, follow-up session in progress) — cross-marker Hz
-> collapses (R²≈-15 to -35) below ~2m altitude because the RAW pre-calibration
-> Tz signal's correlation with true GT vertical velocity FLIPS SIGN around 2m
-> (+0.65..+0.70 above, -0.61..-0.78 just below, confirmed on 3 independent
-> flights) — a linear cal fit on abundant high-altitude data necessarily
-> predicts the wrong direction below 2m. CONFIRMED NOT caused by the leg-gear
-> extension, hi-res texture swap, or the lowalt-cal-phase exclusion (all
-> ruled out via matched multi-flight batches, not single-flight A/Bs — see
-> below). Root mechanism (point-sampling vs KF/dt effect) NOT YET FOUND. Full
-> narrative + next-step plan:
-> `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md`. See also
-> [[project_cross_marker_pipeline_20260801]]'s "HZ 2.0-0.5m COLLAPSE
-> INVESTIGATION" section.**
-
-> **⚠ Methodology note (2026-08-09): single-flight before/after comparisons
-> are UNRELIABLE for the cross-marker Hz channel specifically in the
-> 0.5-2.0m band — its run-to-run scatter (R² -0.03 to -198 seen across just
-> 3 same-setup flights) exceeds most real effects being tested. Batch
-> (n≥3, ideally 5) before concluding any change moved this channel. A
-> same-day leg-extension-only flight vs. an older baseline flight looked
-> like a "-0.13 → -2.62" regression at n=1; a proper 5-vs-3 flight batch
-> showed both setups land in the same -2 to -200 scatter band.**
+> **✅ 2026-08-10 RESOLVED (was the 08-09 "sign flip" theory below — that
+> theory is FALSE, disproven, not just superseded):** the claimed "Tz
+> sign-flips around 2m altitude" mechanism never existed. Pooling all 12
+> available cross-marker landing flights (per-flight demeaned) gives the
+> TRUE 1-2m-band correlation as **+0.23 — positive, same sign as every
+> other band.** The original 5/5-negative finding was a ~3%-chance unlucky
+> cluster from one back-to-back-launched batch; a follow-up 3-flight batch
+> showed the opposite sign. Mechanism: the "landing" validation maneuver is
+> a near-constant-vz linear descent, so a narrow-altitude-band correlation
+> there is noise-dominated and its sign is close to a coin flip per flight
+> — see [[feedback_correlation_needs_pooling]]. **Don't re-derive a
+> sign-flip fix from this.** The catastrophic negative Hz R² near touchdown
+> is still real but is better explained as a near-zero-true-variance R²
+> artifact, not a sign problem — check bias/noise floor, not sign, next.
+> Full trace (read bottom-up, top sections describe the disproven theory):
+> `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md`.
+>
+> **2026-08-10: `CROSS_FLOW_CENTER_EXCLUDE_FRAC` 0.35→0.55 tried (radial-
+> leverage idea, since Hz's per-point signal is linear in radial distance)
+> and REVERTED** — a narrow z-phase-only check looked promising but the
+> whole-flight fit showed a net regression across Hx/Hy/Hz alike (point
+> starvation from the more aggressive exclusion). See
+> [[feedback_whole_flight_fit_before_adopting]] for the methodology lesson.
+>
+> **⚠ CLOSED 2026-08-10: user explicitly accepted the 0.9→0.8 z-phase
+> correlation gap as tolerable — do not reopen or re-propose bisection work
+> on this unless the user raises it again.** History kept below for
+> reference.
+>
+> The cross-marker's raw-signal regression (was OPEN, now closed)
+> (z-excitation-phase Tz-vs-GT correlation 0.90-0.96 pre-08-05 archived data
+> → 0.78-0.82 current, confirmed real via apples-to-apples n=5-per-side).
+> 4 of 5 candidates from the 08-04/05 change cluster TESTED 2026-08-10 via
+> proper n=3 A/Bs (each temporarily reverted then restored), none give a
+> clean fix: color-gate threshold RULED OUT (breaks detection under current
+> line-width), camera Z offset RULED OUT (.15→.20 revert: no change),
+> tracking-based ROI addition RULED OUT (disabled: no change), line-width
+> halving INCONCLUSIVE (full-width hi-res mask gave -0.03/+0.60/+0.94 —
+> much noisier, not adopted). Mount-yaw+90° TESTED 2026-08-10 (matched
+> SDF+code revert, physically self-consistent, 100% detection ok-rate
+> confirmed the match was valid): +0.775/+0.803/-0.193 — inconclusive, one
+> sign flip, not pursued further. All 5 candidates from the cluster now
+> tried; none give a clean fix. Recommendation: stop bisecting without a
+> new cheap idea — may be a combined/nonlinear effect, not one cause. Also
+> verified 2026-08-10: perception/GT timestamp sync is sound (in-range gap
+> median 0ms, 95th pct 4ms) — the low-R² findings above are not a sync
+> artifact. See
+> [[project_cross_marker_hz_regression_bisection_20260810]].
+>
+> **Project focus as of 2026-08-10:** active work is cross-marker only;
+> ArUco is comparison-baseline-only, not itself under investigation. See
+> [[project_20260810_cross_marker_focus]].
 
 > **🟢 2026-08-07d — Hz's variance source FOUND AND FIXED, R^2
 > DOUBLED (0.22->0.48), DEPLOYED.** Pure analysis of already-collected `Flow

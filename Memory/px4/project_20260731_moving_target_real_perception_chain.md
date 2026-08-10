@@ -92,3 +92,34 @@ Also open, not yet acted on: the Linear-vs-Circular rover comparison needs re-ru
 matched absolute tangential speed (Circular's `ROVER_CIRCLE_VTAN` set to Linear's ~0.467 m/s
 equivalent, not just the same `ROVER_SPEED_MULT`) before drawing any real trajectory-shape
 conclusion.
+
+**FURTHER DIAGNOSED (still 2026-07-31 session):** checked the worst rover rep (6.09s coast,
+1.75m final error) for WHY corners AND ring flow both hit zero simultaneously. Found: `N Ring
+Corners` collapses in lockstep with `N Flow Corners` (48->34->0 over ~0.5s) while `Quat`-derived
+tilt climbs STEADILY (not a spike) from ~2deg to 11deg+ over the same window. Conclusion: this
+specific severe-failure class is NOT "marker overflows near the deck" -- it's sustained tracking
+error -> growing commanded tilt trying to correct -> tilt eventually large enough that the
+DOWNWARD CAMERA SWEEPS THE ENTIRE GROUND SCENE OUT OF FRAME (marker AND background both), so
+NO vision-based signal (ring flow, centroid-rate observer, anything) has data to work with
+regardless of source. This means ring-flow/observer-based fixes (the previously-proposed next
+levers) would NOT fix this failure mode -- the real lever is whatever's supposed to bound tilt
+generically (the `theta_cone`/CBF visibility constraint) not arresting the growth. NOT YET
+INVESTIGATED further (session paused here -- see 2026-08-04 note below).
+
+**SESSION PAUSED 2026-08-04 (user decision):** user has started a parallel thread evaluating a
+different (non-ArUco, "cross") marker design in another chat and does not plan to continue
+deep ArUco-specific debugging here. Marker-AGNOSTIC findings from this whole investigation that
+DO carry over to any future marker choice: (1) the kappa-ratchet/a_u-explosion mechanism and
+the staleness-freeze principle (needs an equivalent "no valid measurement" signal for whatever
+new detector is used); (2) MARKER_LOSS_GRACE's 1.0s hold being tuned for a stationary target,
+not fixed; (3) the flow-coupled-coast fix and the general KF-coast-should-use-velocity-not-
+position's-own-rate architecture point; (4) the theta_cone/CBF tilt-bound-not-arresting-growth
+question immediately above, still open; (5) the GT-feedback-vs-real-perception independence
+(GT-FB never validates whatever the real detector is); (6) the rover_trajectory.py
+Linear-vs-Circular speed_mult scaling bug; (7) the practice of measuring effective processing
+Hz during the hardest flight phase, not at rest. NOW MOOT (ArUco-specific, drop if switching
+markers): PlanarFeatureMap's multi-slot big/small handover and quad-corner overflow math,
+confidence-lockup self-heal/validation-reset AS IMPLEMENTED (the detect-map-disagreement
+PRINCIPLE could transfer to a new map if one is built), KLT-on-ArUco-corners drift diagnostics.
+The mixed-motion-homography critique transfers ONLY if the new marker approach also uses a
+shared-scene homography/SLAM-style map; moot if it doesn't.
