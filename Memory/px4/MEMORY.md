@@ -90,8 +90,13 @@
 > near the dynamic range to track it, so the controller never brakes hard.
 > kappa/s_e_n/CBF stayed nominal throughout. A rate-limiter alone would NOT
 > fix problem #2; real candidates are a depth-aware fallback near the
-> ground or re-deriving the cal for that regime specifically. Full
-> procedure + diagnostic trace:
+> ground or re-deriving the cal for that regime specifically. **This
+> misdiagnosis (first pass compared perceived h_z only against the
+> controller's own h_d_z, not GT) is now codified as a hard rule + skill:
+> [[feedback_diagnose_against_gt_not_internal_reference]] /
+> `PX4_Gazebo/.claude/skills/diagnose-flight-data/SKILL.md` — invoke before
+> any future "the perception was wrong" conclusion from recorded data.**
+> Full procedure + diagnostic trace:
 > [[reference_cross_marker_headless_flight_testing]] /
 > `PX4_Gazebo/docs/HANDOVER_cross_marker_headless_flight_testing_20260811.md`.
 
