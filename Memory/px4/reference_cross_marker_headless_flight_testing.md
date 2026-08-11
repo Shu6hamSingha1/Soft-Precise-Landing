@@ -25,14 +25,19 @@ Full procedure: `PX4_Gazebo/docs/HANDOVER_cross_marker_headless_flight_testing_2
 real PLASMC controller (not a scripted recorder app) was ever run against
 the cross-marker pipeline.
 
-**Open issue from that first landing:** hard touchdown (541 m/s² impact,
-4.27 m/s rel-vel) despite clean perception the whole flight (100% detection,
-kappa/s_e_n/CBF all nominal, no ratchet/breach/saturation). Live lead:
-commanded velocity (`w_u`) was climbing through the terminal descent instead
-of braking — likely a descent-pacing/terminal-gating assumption tuned
-against ArUco's `MARKER_EXTENT_PX` scale that doesn't transfer to the
-cross-marker's different extent growth rate. Not yet root-caused. See the
-full doc for the diagnostic trace and next steps.
+**ROOT-CAUSED, that first landing's hard touchdown (541 m/s² impact, 4.27 m/s
+rel-vel):** the perceived vertical flow `h_z` went noisy and briefly
+WRONG-SIGNED (+0.27 vs. a flat -0.30 reference) right at ~1.5m altitude,
+corrupting the vertical-velocity braking command exactly when needed — a
+real, live consequence of the Hz-weak-near-the-ground problem this whole
+session's calibration work was chasing (the "sign-flips-at-2m" STATISTICAL
+theory was debunked, but the underlying low-altitude Hz noisiness was never
+in question). Perception itself was fine (100% detection); kappa/s_e_n/CBF
+all stayed nominal — this is specifically the terminal vertical-velocity
+control loop trusting a bad `h_z` reading. See the full doc for the
+diagnostic trace and the proposed next step (a safety-net/rate-limiter on
+`h_z` near the ground, analogous to ArUco's ring-loom-fusion fallback,
+which this marker's docstring explicitly says isn't implemented).
 
 **How to apply:** before any future cross-marker flight, check whether you
 need (1) calibration, (2) independent validation, or (3) a real closed-loop
