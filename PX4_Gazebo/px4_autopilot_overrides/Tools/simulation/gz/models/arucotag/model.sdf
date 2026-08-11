@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='arucotag'>
+    <static>true</static>
+    <pose>0 0 0.001 0 0 0</pose>
+    <link name='base'>
+      <visual name='base_visual'>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <!-- <size>0.5 0.5</size> -->
+            <!-- <size>1.0 1.0</size>  SINGLE ArUco (2026-06-23): 1m = decode 100% at 7m -->
+            <size>1.0 1.0</size>  <!-- NESTED reduced to 1m (2026-07-03, user directive) -->
+            <!-- <size>1.5 1.5</size>  was for 10m (58px@7m, more margin but earlier overflow 0.84m + needs re-cal) -->
+            <!-- <size>2.5 2.5</size>  inner-cluster board (approach B) -->
+            <!-- <size>2.0 2.0</size>  textured nested marker (approach A) -->
+          </plane>
+        </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular>
+          <pbr>
+            <metal>
+              <!-- <albedo_map>model://arucotag/arucotag.png</albedo_map>  SINGLE marker (2026-06-22) -->
+              <!-- <albedo_map>model://arucotag/0-small_10-big.png</albedo_map>  NESTED plain (RGBA fixed 2026-07-03) -->
+              <albedo_map>model://arucotag/0-small_10-big_textured.png</albedo_map>  <!-- TEXTURED nested fine-stipple (2026-07-17, user directive): re-opening the 2026-07-10 falsification (0/5 precise, 3/5 TARGET_LOST via ArUco decode interference) BECAUSE planar_map_rescue landed 2026-07-16 AFTER it -- texture feeds the map the scene features it needs, and the map is meant to bridge exactly the decode dropouts the texture causes. Complementary, not a re-run. -->
+              <!-- <albedo_map>model://arucotag/aruco_board.png</albedo_map>  board (baseline) -->
+              <!-- <albedo_map>model://arucotag/0-small_10-big_coarse.png</albedo_map>  coarse squares (2026-07-10, decode-safe, NOT YET TESTED) -->
+              <!-- <albedo_map>model://arucotag/0-small_10-big_multiscale.png</albedo_map>  multiscale -->
+              <!-- <albedo_map>model://arucotag/0-small_10-big_textured.png</albedo_map>  fine-stipple (FALSIFIED 2026-07-10: hurt ArUco primary decode, 3/5 TARGET_LOST) -->
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

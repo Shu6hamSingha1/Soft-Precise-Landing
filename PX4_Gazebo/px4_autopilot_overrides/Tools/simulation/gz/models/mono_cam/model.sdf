@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='mono_cam'>
+    <pose>0 0 0 0 0 0</pose>
+    <self_collide>false</self_collide>
+    <static>false</static>
+    <link name="camera_link">
+      <inertial>
+        <pose>0.03 0.03 0.03 0 0 0</pose>
+        <mass>0.050</mass>
+        <inertia>
+          <ixx>0.00004</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00004</iyy>
+          <iyz>0</iyz>
+          <izz>0.00004</izz>
+        </inertia>
+      </inertial>
+      <visual name="mono_cam/visual/housing">
+        <geometry>
+          <box>
+            <size>0.02 0.04 0.04</size>
+          </box>
+        </geometry>
+      </visual>
+      <visual name="mono_cam/visual/lens">
+        <pose>0.015 0 0 0 1.5707 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.008</radius>
+            <length>0.01</length>
+          </cylinder>
+        </geometry>
+      </visual>
+      <visual name="mono_cam/visual/lens_glass">
+        <pose>0.014 0 0 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.0079</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>.4 .4 .5 .95</ambient>
+          <diffuse>.4 .4 .5 .95</diffuse>
+          <specular>1 1 1 1</specular>
+          <emissive>0 0 0 1</emissive>
+        </material>
+      </visual>
+      <sensor name="imager" type="camera">
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.74</horizontal_fov>
+          <image>
+            <!-- 640x480 @ hfov=1.74 rad gives fx = fy = 270 px.
+                 Empirically validated as the largest resolution that holds a
+                 steady 62 Hz on this hardware (1280x960 dropped to 21 Hz
+                 native / 41 Hz on the bridge with 90 ms outliers).
+                 Same hfov as MATLAB (1.74 rad), so normalized image coords
+                 and PLASMC gain tuning are invariant; pixel-space FoV margins
+                 scale 2x vs MATLAB's 320x240. -->
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>3000</far>
+          </clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>60</update_rate>
+        <!-- <update_rate>30</update_rate> -->
+        <visualize>true</visualize>
+      </sensor>
+      <gravity>true</gravity>
+      <velocity_decay/>
+    </link>
+  </model>
+</sdf>

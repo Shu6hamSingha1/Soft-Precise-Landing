@@ -33,11 +33,13 @@ OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "run_lo
 
 
 class ImageCapture(Node):
-    def __init__(self, target_frames):
+    def __init__(self, target_frames, pose_node=None):
         super().__init__('cross_marker_altitude_capture')
         self._bridge = CvBridge()
         self._target = target_frames
+        self._pose_node = pose_node
         self.frames = []
+        self.gt_poses = []   # (uav_x,uav_y,uav_z, tgt_x,tgt_y,tgt_z) at capture time, parallel to frames
         self.capturing = False  # gated -- don't collect until explicitly armed post-takeoff,
                                  # else the buffer fills with pre-liftoff ground frames
         self.sub = self.create_subscription(Image, '/image', self._cb, 10)
@@ -48,6 +50,15 @@ class ImageCapture(Node):
         try:
             img = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             self.frames.append(img)
+            if self._pose_node is not None:
+                p = self._pose_node.getPose()
+                if p.UAV is not None and p.target is not None:
+                    u, t = p.UAV.position, p.target.position
+                    self.gt_poses.append((u.x, u.y, u.z, t.x, t.y, t.z))
+                else:
+                    self.gt_poses.append(None)
+            else:
+                self.gt_poses.append(None)
         except Exception:
             pass
 
@@ -70,7 +81,7 @@ async def main():
                 raise Exception("no FC data")
             time.sleep(0.05)
 
-        img_node = ImageCapture(N_FRAMES); img_sub = GZ_Subscriber(img_node)
+        img_node = ImageCapture(N_FRAMES, pose_node=pose_node); img_sub = GZ_Subscriber(img_node)
 
         print(f"[cross_alt] taking off to {ALT} m...")
         await FC_node.arm_and_takeoff(ALT)
@@ -99,18 +110,39 @@ async def main():
 
         # --- run detector against every captured frame ---
         os.makedirs(OUT_DIR, exist_ok=True)
-        print("\n  idx | ok    | center             | heading_deg")
-        print("  --- | ----- | ------------------- | -----------")
+        _record_all = os.environ.get("CROSS_RECORD_ALL_FRAMES", "0") == "1"
+        _frames_dir = os.path.join(OUT_DIR, "all_frames")
+        if _record_all:
+            os.makedirs(_frames_dir, exist_ok=True)
+        print("\n  idx | ok    | center             | heading_deg | GT xy_err (m)  | GT alt (m)")
+        print("  --- | ----- | ------------------- | ----------- | -------------- | ----------")
         centers = []
         n_ok = 0
         for i, frame in enumerate(img_node.frames):
             det = cmd.detect(frame)
             row_c = f"({det.center[0]:7.1f},{det.center[1]:7.1f})" if det.center else "  n/a"
             row_h = f"{det.heading_deg:6.1f}" if det.heading_deg is not None else "  n/a"
-            print(f"  {i:3d} | {str(det.ok):5s} | {row_c:19s} | {row_h}")
+            gt = img_node.gt_poses[i] if i < len(img_node.gt_poses) else None
+            if gt is not None:
+                ux, uy, uz, tx, ty, tz = gt
+                gt_xy_err = float(np.hypot(ux - tx, uy - ty))
+                gt_alt = float(uz - tz)
+                row_gt = f"{gt_xy_err:8.3f}       | {gt_alt:6.2f}"
+            else:
+                row_gt = "   n/a          |    n/a"
+            print(f"  {i:3d} | {str(det.ok):5s} | {row_c:19s} | {row_h} | {row_gt}")
             if det.ok:
                 n_ok += 1
                 centers.append(det.center)
+            if _record_all:
+                annotated = frame.copy()
+                if det.ok and det.center:
+                    cx, cy = int(det.center[0]), int(det.center[1])
+                    cv2.circle(annotated, (cx, cy), 6, (0, 255, 0) if det.ok else (0, 0, 255), -1)
+                cv2.putText(annotated, f"{i:03d} ok={det.ok} {det.fail_reason or ''}",
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
+                            (0, 255, 0) if det.ok else (0, 0, 255), 2)
+                cv2.imwrite(os.path.join(_frames_dir, f"f{i:03d}.png"), annotated)
 
         if img_node.frames:
             mid = img_node.frames[len(img_node.frames) // 2]
@@ -128,6 +160,19 @@ async def main():
         if centers:
             xs = [c[0] for c in centers]; ys = [c[1] for c in centers]
             print(f"[cross_alt] center jitter: dx={max(xs)-min(xs):.1f}px dy={max(ys)-min(ys):.1f}px")
+
+        if _record_all and img_node.frames:
+            import glob
+            frame_files = sorted(glob.glob(os.path.join(_frames_dir, "f*.png")))
+            if frame_files:
+                first = cv2.imread(frame_files[0])
+                h, w = first.shape[:2]
+                video_path = os.path.join(OUT_DIR, "cross_alt_frames.mp4")
+                writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 3, (w, h))
+                for fp in frame_files:
+                    writer.write(cv2.imread(fp))
+                writer.release()
+                print(f"[cross_alt] recorded {len(frame_files)} frames -> {video_path}")
 
     finally:
         for s in (img_sub, pose_sub, time_sub):

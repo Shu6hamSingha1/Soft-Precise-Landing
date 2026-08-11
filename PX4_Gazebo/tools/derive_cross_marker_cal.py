@@ -140,6 +140,22 @@ def main():
         n_native = min(len(t), len(phase))
         clean_native = clean_axis_mask(t[:n_native], phase[:n_native],
                                         V_h_g[:n_native], -V_w_ug[:n_native, 2])
+        # 2026-08-06: clean_zyaw_mask (the z/yaw purity gate previously applied here)
+        # was REMOVED -- it was built on a false premise. The "contaminated z-phase"
+        # finding that motivated it traced to a bug in an AD-HOC DIAGNOSTIC SCRIPT (not
+        # this tool): that script truncated gt['Phase'] via a naive [:n] slice instead
+        # of applying the SAME valid-mask filter compute_gt_signals() applies internally
+        # to build t/V_h_g (which drops scattered duplicate-timestamp samples, not just
+        # a trailing block) -- so phase[:n] and t/V_h_g were desynced, and the
+        # "contaminated" window it found didn't correspond to the real z-phase data at
+        # all. Re-checked all 6 recordings with correct alignment (phase[:nm][valid[:nm]],
+        # matching this tool's own indexing) and z/yaw/yawagg are genuinely clean in
+        # every run (z: vz~0.15-0.35 dominant, wz~0.001-0.003; yaw/yawagg: wz~1.1-1.3
+        # dominant). The gate made Hz/Wz WORSE (not better) when it was live, consistent
+        # with it having no real contamination to remove. See project memory for the
+        # full trace; Hz/Wz weakness (if it persists here) is NOT a data-purity issue --
+        # look elsewhere (observability/excitation-amplitude/geometry) before re-adding
+        # a gate like this.
 
         # PER-SAMPLE time sync (2026-08-02, replaces same-index alignment): raw/raw_s
         # are read from the async perception thread (~60Hz) by the outer 200Hz polling
@@ -172,30 +188,90 @@ def main():
         G = np.column_stack([np.interp(sync_t, t, V_h_g[:, k], left=np.nan, right=np.nan) for k in range(3)] +
                              [np.interp(sync_t, t, -V_w_ug[:, k], left=np.nan, right=np.nan) for k in range(3)])
         R = raw
+
+        # nearest-match the strict-purity mask (computed on t[:n_native]'s native
+        # alignment) onto sync_t -- boolean, so nearest-neighbor is the right
+        # interpolation (not linear), same principle as derive_pi_cal_clean_axis.py's
+        # discrete-tag nearest-match. Moved BEFORE the M-matrix fit (2026-08-06) so it
+        # can also gate that fit -- previously only computed after and used for sx/sy.
+        idx_c = np.clip(np.searchsorted(t[:n_native], sync_t), 0, n_native - 1)
+        clean_at_sync = clean_native[idx_c]
+
+        # NOTE: clean_axis_mask (clean_native) only ever marks x/y-phase windows --
+        # it `continue`s (leaves False) for z/yaw/yawagg/settle. Gating the M-matrix
+        # fit on clean_at_sync would therefore silently drop 100% of the z/yaw/yawagg
+        # samples that make up the Hz/Wz rows, which is wrong (that was a bug
+        # introduced alongside the now-reverted clean_zyaw_mask, not present
+        # originally). The M-fit uses a finite-value filter only, same as it always
+        # did before the 2026-08-06 investigation.
+        # 2026-08-09: EXCLUDE lowalt_x/y/yaw from the M-fit by default. The cal
+        # (M) maps already-Z-normalized raw columns to already-Z-normalized GT
+        # (h=v/(z+Z_REG) on both sides -- see feedback_scale_free_depth_free /
+        # gt_feedback.py's Z_REG convention) so M is supposed to be altitude-
+        # invariant by construction. The lowalt_* phases were added to give the
+        # fit low-altitude COVERAGE, but investigation (project memory,
+        # 2026-08-09) found the low-alt transition never actually settles
+        # within its phase window -- most of each lowalt_* sample is really a
+        # still-descending transient with inflated noise (raw h_Tz std ~3x its
+        # own GT std in lowalt_yaw), and clean_axis_mask never purity-gates
+        # these phases at all. Since M shouldn't need low-alt data to be valid
+        # at low alt, best fix is to derive from the CLEANEST (highest-SNR)
+        # altitude data only, not to chase coverage. CROSS_CAL_EXCLUDE_LOWALT=0
+        # restores the old pooled behavior for comparison.
+        if os.environ.get("CROSS_CAL_EXCLUDE_LOWALT", "1") != "0":
+            lowalt = np.array([str(p).startswith('lowalt') for p in phase])
+            R = R[~lowalt]; G = G[~lowalt]
+
         m = np.all(np.isfinite(G), 1) & np.all(np.isfinite(R), 1)
         G, R = G[m], R[m]
         if len(R) < 200:
-            print(f"  skip {os.path.basename(d)}: only {len(R)} valid samples")
+            print(f"  skip {os.path.basename(d)}: only {len(R)} valid (purity-gated) samples")
             continue
-        Msol, _, _, _ = np.linalg.lstsq(R, G, rcond=None)
-        cal = Msol.T
-        pred = R @ Msol
-        ss = 1 - np.sum((G - pred) ** 2, 0) / np.sum((G - G.mean(0)) ** 2, 0)
+        # REDUCED regressor fit (2026-08-08, post gyro-derotation fix): only fit
+        # Hx,Hy,Hz,Wz (cols/rows 0,1,2,5) against Tx,Ty,Tz,Wz raw columns -- NOT against
+        # raw Wx,Wy (cols 3,4), even though those are now clean gyro values (not noisy
+        # per-frame-solve artifacts) post _solve_jacobian's de-rotation fix. Reasoning:
+        # an independent-multisine holdout check after that fix STILL showed Hx/Wz
+        # badly overfit (Hx R^2 0.80 train -> 0.15 held-out, Wz -0.81) despite the
+        # per-frame aliasing being resolved -- because a full 6-column joint fit still
+        # puts a LARGE coefficient on w1(Wy) for the Hx row (comparable to the diagonal
+        # term), which only transfers between flights if the TRUE Tx:Wy coupling ratio
+        # (an artifact of how translate-via-pitch executes for a GIVEN maneuver shape)
+        # is universal -- it isn't: the phased calibration's single-axis-at-a-time
+        # excitation has a different effective Tx:Wy ratio than the multisine's
+        # continuous combined excitation, so a large cross-term tuned to the training
+        # maneuver doesn't generalize. Since the per-frame de-rotation ALREADY removes
+        # the geometric rotation contamination from h_Tx/h_Ty directly (that's the
+        # actual fix), the calibration step doesn't need a Wx/Wy correction term at all
+        # -- excluding them removes the maneuver-dependent overfitting risk entirely
+        # rather than trading one flavor of it for another.
+        idx = [0, 1, 2, 5]   # Hx,Hy,Hz,Wz <- Tx,Ty,Tz,Wz (Wx,Wy excluded as regressors)
+        R_red, G_red = R[:, idx], G[:, idx]
+        Msol_red, _, _, _ = np.linalg.lstsq(R_red, G_red, rcond=None)
+        pred_red = R_red @ Msol_red
+        ss_red = 1 - np.sum((G_red - pred_red) ** 2, 0) / np.sum((G_red - G_red.mean(0)) ** 2, 0)
+        cal = np.zeros((6, 6))
+        for oi, o in enumerate(idx):
+            for ii, i in enumerate(idx):
+                cal[o, i] = Msol_red[ii, oi]   # Msol_red: GT_red = R_red @ Msol_red -> cal = Msol_red.T, indexed back into 6x6
+        ss = np.full(6, np.nan)
+        for oi, o in enumerate(idx):
+            ss[o] = ss_red[oi]
         Ms.append(cal); R2s.append(ss)
 
         xc_true = np.interp(sync_t, t, V_xc_g, left=np.nan, right=np.nan)
         yc_true = np.interp(sync_t, t, V_yc_g, left=np.nan, right=np.nan)
-        # nearest-match the strict-purity mask (computed on t[:n_native]'s native
-        # alignment) onto sync_t -- boolean, so nearest-neighbor is the right
-        # interpolation (not linear), same principle as derive_pi_cal_clean_axis.py's
-        # discrete-tag nearest-match.
-        idx_c = np.clip(np.searchsorted(t[:n_native], sync_t), 0, n_native - 1)
-        clean_at_sync = clean_native[idx_c]
         sx = std_ratio(xc_true, raw_s[:, 0], (phase == 'x') & clean_at_sync)
         sy = std_ratio(yc_true, raw_s[:, 1], (phase == 'y') & clean_at_sync)
         n_clean_x = int(((phase == 'x') & clean_at_sync).sum())
         n_clean_y = int(((phase == 'y') & clean_at_sync).sum())
-        print(f"  {os.path.basename(d)}: strict-purity clean samples -- x={n_clean_x} y={n_clean_y}")
+        n_clean_z = int(((phase == 'z') & clean_at_sync).sum())
+        n_clean_yaw = int(((phase == 'yaw') & clean_at_sync).sum())
+        n_clean_yawagg = int(((phase == 'yawagg') & clean_at_sync).sum())
+        n_z_total = int((phase == 'z').sum())
+        print(f"  {os.path.basename(d)}: strict-purity clean samples -- x={n_clean_x} y={n_clean_y} "
+              f"z={n_clean_z}/{n_z_total} yaw={n_clean_yaw} yawagg={n_clean_yawagg} "
+              f"(M-fit total clean samples: {int(m.sum())})")
         calS.append([sx, sy])
         used += 1
 

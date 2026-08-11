@@ -89,6 +89,13 @@ over and likely bind harder. Expect the cycle to be the binding issue at rover s
 ## Prep plan / first steps for the new chat
 2. **Build a moving-target IC/landing test** (analogue of `run_ic_validation.sh` for the rover world;
    the rover moving; pick a speed range). SoftPrecise eval is already relative.
+   **✅ DONE, in spirit (2026-07-02, corrected 2026-08-10): don't cite this bullet as an open
+   gap — `run_rover_landing.sh` + `rover_drive.py` exist and a real speed-sweep campaign ran
+   (GT-FB, Linear, n=3/cell) establishing the ≤1.1 m/s reliable envelope, see
+   [[project_rover_speed_sweep]] / [[project_moving_rover_landing_works]]. What's still
+   genuinely NOT built is narrower: a literal lateral-START-OFFSET analog of stationary
+   IC2-5 (the rover tests vary SPEED, not the UAV's initial lateral offset relative to the
+   target) — that specific variant is the real remaining gap, not "no moving-target harness."**
 3. **Yaw calibration** for the moving/turning target (the moment-alpha cal; cal_s[3]).
 4. **Run the carried-over baked config** (W_U_MAX=2.0, q=1, Z_REG=0.2) on the rover as the baseline,
    then tune the tracking + terminal cycle at rover speed.

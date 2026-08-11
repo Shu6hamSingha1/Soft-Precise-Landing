@@ -167,7 +167,9 @@ async def main():
                        "Opt Flow Ang Vel": opt_flow, "Img Feature Params": feat,
                        "Command": cmd, "Phase": phase_log,
                        "Diag Log": img_node.get_diag_log(),
-                       "Flow Diag Log": img_node.get_flow_diag_log()}
+                       "Flow Diag Log": img_node.get_flow_diag_log(),
+                       "Radial Diag Log": img_node.get_radial_diag_log(),
+                       "Point Diag Log": img_node.get_point_diag_log()}
             img_params = img_node.getParams()
         for node in (img_node, pose_subscriber, time_subscriber):
             if node and node.is_alive():

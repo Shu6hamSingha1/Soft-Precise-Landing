@@ -22,7 +22,7 @@
 - [Terminal newline = Alt+Enter (Cursor)](feedback_terminal_newline.md) — don't remap Shift+Enter / Ctrl+J
 - [PX4/Gazebo Python lives in git project](feedback_px4_python_location.md) — copy from ~/ws/, edit copies; never edit ~/ws/ in place
 - [Don't suggest thrust+torque refactor](feedback_thrust_torque.md) — rejected; stay in rate-mode MAVSDK
-- [Always validate IC2-5 before defaulting](feedback_ic_validation.md) — IC1 wins regress off-center; run_ic_validation.sh mandatory
+- [Always validate IC2-5 before defaulting](feedback_ic_validation.md) — for GAIN/controller changes only; IC1 wins regress off-center; run_ic_validation.sh mandatory. Perception-pipeline fixes don't need this gate (any-IC evidence suffices)
 - [Sweep methodology](feedback_sensitivity_sweep_methodology.md) — n=1 is noise; trust direction-of-effect; validate singletons at n≥5 before stacking
 - [Historical record CAL-CONTAMINATED](feedback_historical_cal_confound.md) — ~2000 pre-June reps at 2-13× broken cal; "lag is the floor" confounded; timing numbers survive. The meta-memory that supersedes the contaminated phase/precision/coord conclusions
 - [HARD CONSTRAINT: scale-free & depth-free](feedback_scale_free_depth_free.md) — no Z/altitude/metric in control law or mode switching, ever; truth only for test setup+eval

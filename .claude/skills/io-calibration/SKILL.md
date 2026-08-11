@@ -226,12 +226,255 @@ on independent flights, phase-isolated and restricted to detection-ok samples �
 that validates badly but a RAW correlation check that's ALSO near-zero on clean data
 points at the raw signal, not the fit.
 
+# Cross-marker output cal: its OWN derive tool, separate data dir
+The cross+stub fiducial (`src/cross_marker_perception.py`) is NOT routed through
+`img_data.py`/`IMG_PROCESSOR` at all — its own image-Jacobian solve (`_fill_A`, same
+6-DOF math as the corner cal but independently implemented) needs its own cal, derived
+by `tools/derive_cross_marker_cal.py` (recordings: `apps/record_cross_marker_calibration.py`
+→ `calibration_data/output_cross/`, NOT `calibration_data/output/`). Same phased-excitation
+/ ≥5-run / MIN_OK_RATE=95%-gate discipline as the ArUco board cal, but it's a genuinely
+separate cal pipeline — don't assume the ArUco cal transfers.
+
+## Hz/Wz weakness root-cause chain (2026-08-05→07 — read before re-touching this cal)
+**Current deployed state (2026-08-07): R² Hx=0.69 Hy=0.76 Hz=0.48 Wz=0.50** (Wx/Wy
+correctly forced 0). Investigated across many stages, each RULING OUT the previous
+suspect rather than confirming it — the two weak rows (Hz, Wz) turned out to be **two
+different phenomena, not one "hardest to observe" pattern** — don't conflate them:
+
+**Wz is a REAL structural ceiling, unresolved, marker-size-limited.** Its raw columns
+(`h1`=Ty, `w0`=Wx in `_fill_A`) are near-perfectly collinear (r=0.98-1.00 in every
+excitation phase — two near-zero eigenvalues in the raw 6-column correlation matrix)
+because `_fill_A`'s Wx column `-(1+y²)` stays ~constant whenever `|y|` is small, at
+this marker's achievable radial spread — numerically aliasing Ty's constant column.
+Same underlying cause as Wx/Wy being force-zeroed (genuinely unrecoverable, confirmed
+via dedicated rollexc/pitchexc excitation, r=-0.09..-0.15). **The only remaining lever
+for Wz/Wx/Wy is a bigger physical marker plate** — not fixable by recal, point-sampling,
+or excitation tuning. Not pursued further as of 2026-08-07.
+
+**Hz's weakness was NOT the same phenomenon — it was 3 stacked, fixable bugs, 2 now
+fixed, 1 still open:**
+1. **NOT data contamination** (ruled out 2026-08-06) — an ad-hoc diagnostic script's
+   own alignment bug, not a real z-phase GT contamination. See
+   `feedback_cross_marker_radial_spread_ceiling`.
+2. **Radial spread — partial fix, doesn't touch Hz.** `_sample_flow_points`
+   (`cross_marker_perception.py`) excludes a central disk
+   (`CROSS_FLOW_CENTER_EXCLUDE_FRAC=0.35`) + a frame-boundary margin
+   (`CROSS_FLOW_BOUNDARY_MARGIN_PX=20`) to bias GFT candidates toward the arm/stub
+   tips. DEPLOYED (2026-08-06): fixed Hx/Hy (0.55→0.73, 0.63→0.79, beating even the
+   pre-camera-change baseline) but left Hz flat (0.22→0.22) — proved radial spread
+   isn't Hz's constraint.
+3. **A genuine raw-signal regression, 08-04/05 camera/geometry cluster — STILL NOT
+   ROOT-CAUSED.** Re-checked and found the earlier "raw Hz-vs-GT r=0.93-0.96" claim
+   was stale: current-era data showed only r=0.07-0.67 (mean~0.5), vs 0.90-0.96 on
+   archived pre-08-05 recordings (`calibration_data/output_cross_stale_pre20260805/`).
+   Bisected two suspects at n=2 each (color-gate threshold `V<100→V<20/60` via new
+   `CROSS_COLOR_GATE_V_MAX` env; camera Z-offset `.15→.20`, isolated via
+   `x500_mono_cam_down/model.sdf.bak_before_campos_20260805_010737`) — BOTH
+   inconclusive, swamped by huge run-to-run variance. Neither adopted; camera/gate
+   left at live defaults. **Note: camera Z=.15 is a DELIBERATE tradeoff (keeps
+   landing legs out of the downward FoV), not a revertible regression** — don't
+   suggest reverting it without addressing leg visibility first (see below).
+4. **The variance itself was the real story — found and FIXED (2026-08-07), Hz
+   R² doubled.** `_sample_flow_points` (GFT) was only called on cold-start or when
+   the tracked pool dropped below `RESAMPLE_TRIGGER=10` — between those events the
+   SAME point set just tracked forward via LK indefinitely. Confirmed: 4/5 pre-fix
+   calibration runs had a perfectly CONSTANT `n_kept` for their ENTIRE ~500-frame
+   z-phase (zero resamples) — whichever corner subset got picked once, near takeoff,
+   persisted the whole flight. Because Hz/Wz's `_fill_A` columns are
+   position-WEIGHTED (`[-x,-y]`/`[-y,x]`) while Hx/Hy's are position-INDEPENDENT
+   constants, that one-time draw's exact locations disproportionately set the WHOLE
+   flight's Hz/Wz quality while Hx/Hy stayed robust — explaining the large,
+   previously-unexplained run-to-run spread that made suspect-3's bisection
+   inconclusive. **Fix: `RESAMPLE_PERIOD_S=1.0`** (`CROSS_RESAMPLE_PERIOD_S` env)
+   forces periodic refresh independent of pool size. Validated n=5: R² Hx=0.69
+   Hy=0.76 **Hz=0.48** Wz=0.50 vs the prior Hx=0.73 Hy=0.79 Hz=0.22 Wz=0.53 — Hz MORE
+   THAN DOUBLED, everything else within normal noise. DEPLOYED.
+5. **Suspect 3 (the raw-signal regression) is STILL OPEN, but CONFIRMED REAL
+   (2026-08-10) and 2 of ~4 candidate causes are now RULED OUT with real n≥3 data**
+   (the original 08-05 bisection was only n=2 per side, too weak — re-ran properly).
+   Re-measured cleanly: z-excitation-phase raw Tz-vs-GT correlation is a TIGHT
+   0.90-0.96 on pre-08-05 archived data (`calibration_data/output_cross_stale_pre20260805/`,
+   n=5) vs a TIGHT 0.78-0.82 on current data (n=5), same measurement method both
+   sides (apples-to-apples) — a real, consistent ~0.15 gap, not a fluke (unlike the
+   sign-flip above). Bisected:
+   - **Color-gate threshold (100→20): RULED OUT** — reverting it under the CURRENT
+     thinner marker line doesn't cause a subtle correlation drop, it breaks
+     detection almost completely (0% ok-rate, `color_gate_empty` on ~93% of
+     frames). Not a live candidate; the two changes (line-width halving,
+     gate-threshold widening) are coupled and can't be independently reverted.
+   - **Camera Z offset (.15→.20 revert): RULED OUT** — 3 flights with the camera
+     temporarily reverted to the pre-08-05 Z=.20 position (backed up as
+     `x500_mono_cam_down/model.sdf.bak_current_z15_20260810`, restored after)
+     gave z-phase correlation 0.80/0.87/0.80 — statistically indistinguishable
+     from the current Z=.15 baseline (0.78-0.82). No effect.
+   - **Tracking-based ROI addition: RULED OUT (2026-08-10)** — 3 flights with it
+     disabled (temp toggle `CROSS_DISABLE_TRACK_ROI=1` in
+     `cross_marker_perception.py`'s `process_frame`, forces `track_state=None`
+     so `cross_marker_detector.detect()` always takes the pre-08-05 full-frame
+     path) gave z-phase correlation 0.82/0.84/0.84 — again indistinguishable
+     from baseline. **Remove the toggle once this thread is fully closed out**
+     (currently still in the file, harmless no-op unless the env var is set).
+   - **Line-width halving (independent of the gate threshold — re-tested
+     2026-08-10 after realizing the two changes are NOT actually coupled):
+     INCONCLUSIVE, not adopted.** Earlier note wrongly assumed line-width and
+     gate-threshold couldn't be independently tested; they can — generated a
+     full-width mask at the CURRENT hi-res texture's resolution (extract the
+     pre-08-05-backup's mask, upscale 3x nearest-neighbor, same method as
+     `make_cross_marker_hirestex.py`, fresh speckle background), swapped it in
+     via `model.sdf`'s `albedo_map` temporarily (no live-file edits). Result:
+     z-phase correlation across 3 flights was **-0.03, +0.60, +0.94** — much
+     HIGHER variance than the tight half-width baseline (0.78-0.82), with
+     `n_kept` (tracked point count) also swinging 13-33 median across runs vs.
+     a narrower baseline range. Mean isn't clearly better and variance is
+     worse — full-width line isn't a clean fix; if anything it may destabilize
+     which corner subset the periodic-resample (`RESAMPLE_PERIOD_S`, the
+     08-07 fix) settles on. NOT adopted; don't re-derive "revert the line
+     width" as a fix from this result without addressing the variance first.
+   - **Mount-yaw+90° rotation: TESTED 2026-08-10, INCONCLUSIVE.** Did a
+     physically self-consistent isolated test — reverted BOTH the SDF mount
+     yaw (90°→0°, camera Z held fixed at .15) AND the matched code-side ray
+     convention (`_getVirtualPts`'s `[y,-x]`→`[x,y]`, both branches) via a
+     temporary toggle, confirmed valid by 100% detection ok-rate. Result:
+     +0.775/+0.803/-0.193 across 3 flights — two near baseline, one sign
+     flip. Given this session's own lesson about narrow z-phase checks
+     being noisy (see the exclude-frac entry above), not treated as a real
+     effect without more data, and not pursued further given how coupled/
+     risky this revert is to keep re-testing. (The `_getVirtualPts`
+     axis-sign-flip itself is a correctness fix for a real bug, not a live
+     candidate.)
+   - **Timestamp sync (perception vs. GT): VERIFIED SOUND, 2026-08-10.**
+     Checked directly in response to a methodology question: `Img_Data`'s
+     `Time` (image capture `msg.header.stamp`) and the GT dict's
+     `Time`+`Start Time` (`Clock_Node.perf_counter()`) are the same Gazebo
+     `/clock` sim-time domain, not two different clocks. For in-range
+     samples the nearest-GT-sample gap is tiny (median 0ms, 95th pct 4ms,
+     max 24ms — sub-frame-period). The ~10% of frames captured before
+     `gt['Start Time']` (during arm/takeoff/hover) are correctly excluded
+     via `left=np.nan` in every `np.interp` call used for GT alignment, both
+     in `derive_cross_marker_cal.py` and in this investigation's ad-hoc
+     checks — not a source of the low-R² findings above.
+   **Also tried (2026-08-10): raising `CROSS_FLOW_CENTER_EXCLUDE_FRAC`
+   0.35→0.55 (radial-leverage idea — Hz's per-point signal is linear in
+   radial distance, `_fill_A`'s Tz column is `[-x,-y]`, so point QUALITY
+   should matter more than count). A narrow z-phase-only check looked
+   promising (mean 0.804→0.835, n=5) but the WHOLE-FLIGHT joint fit showed
+   a net regression across nearly every channel (Hz R² 0.48→0.07, Hx
+   0.69→0.48, Hy 0.76→0.65, consistent across all 5 runs) — the more
+   aggressive exclusion starves the point pool (n_kept median 10-17→8-10)
+   enough to add noise everywhere, outweighing the narrow z-phase gain.
+   REVERTED; default stays 0.35. Lesson: always re-derive the whole-flight
+   fit before adopting a point-sampling change, a narrow single-phase
+   diagnostic can't see costs elsewhere.
+
+   **Also tested (2026-08-10), separate from the 08-04/05 cluster: the
+   08-09 hi-res texture swap. RULED OUT, and actually a net POSITIVE.**
+   Reverting to pre-hires (current line-width/gate held fixed) for 3
+   flights gave z-phase correlation +0.52/+0.57/+0.20 — WORSE than the
+   current hires baseline (0.78-0.82), not better. Point-set diagnostics:
+   pre-hires had MORE tracked points (n_kept median 24-55) but LOWER radial
+   spread (mean 0.09-0.13); current-hires has FEWER points (median 10-17)
+   but a higher max spread (0.19-0.26) — a few high-leverage far corners
+   from the finer speckle matter more for Tz's position-weighted column
+   than raw point count. Don't revert the hi-res texture for this
+   regression — it's a red herring in the opposite direction, and an
+   implementation audit (same date) also confirmed the Jacobian formula
+   and V-frame leveling are correct and identical across all 4 platforms
+   (MATLAB, ArUco PX4, cross-marker PX4, hardware) — this is not a code bug.
+   **Status as of 2026-08-10: 4 of 5 candidates from the 08-04/05 cluster
+   tested, none give a clean fix** (3 ruled out with no effect; line-width
+   gives a noisier, not-clearly-better result). The remaining ~0.15 gap
+   (0.9→0.8 mean, still real per the apples-to-apples check above) may not
+   trace to any single one of these changes — could be a combined/nonlinear
+   effect of several small changes together, or something outside this
+   candidate list entirely. Given the already-banked win (Hz whole-flight R²
+   0.22→0.48 from the resample-variance fix) and the risk/cost of testing the
+   one remaining candidate, this is a reasonable point to STOP the bisection
+   unless a cheap new idea surfaces — don't keep spending flight batches on
+   this without one.
+   **⭐ 2026-08-09/10 UPDATE: the "sign flip below 2m" theory was investigated and
+   RESOLVED FALSE (not just superseded — actively disproven).** An initial 5-flight
+   batch (all launched back-to-back) appeared to show raw pre-cal Tz's correlation
+   with GT vertical velocity flipping sign around 2m altitude. A follow-up 3-flight
+   batch showed the OPPOSITE sign in the same band, and pooling all 12 available
+   landing flights (demeaned per-flight) gives the TRUE population correlation as
+   **+0.23 in the 1-2m band — positive, same sign as everywhere else. No inversion
+   exists.** Mechanism: the landing-validation maneuver is a near-constant-vz linear
+   descent, so within any narrow altitude slice the true signal has almost no
+   variance (`std(vz_g)≈0.04-0.05`, barely above the raw measurement's own noise
+   floor) — a Pearson correlation there is noise-dominated and its sign is close to
+   a coin flip per flight. The original 5/5-negative batch was an unlucky ~3%-chance
+   cluster, not a real effect. **Don't re-derive a sign-flip mechanism from a single
+   batch on this channel — pool ≥3 independent sessions before trusting its sign.**
+   What's still genuinely open, reframed correctly: Hz's raw correlation is modest
+   (mean ~0.5, same sign throughout) and R² can still read catastrophically negative
+   near touchdown as an artifact of comparing against a near-zero-variance true
+   signal there, not because the prediction is pointing the wrong way — check
+   bias/noise floor next, not sign. Full trace:
+   `PX4_Gazebo/docs/HANDOVER_cross_marker_hz_signflip_20260809.md` (read bottom-up —
+   the top sections describe the now-disproven theory) and
+   `project_cross_marker_pipeline_20260801` memory.
+6. **Hardware (ArUco) shows the OPPOSITE profile** (checked for comparison): `Hz` is
+   the *strongest* row on hardware (R²=0.64) while `Hx/Hy` are weak (0.07-0.08,
+   real-camera noise). This had already disproven "Hz/Wz are universally the
+   hardest-to-observe rows" as a cross-platform law before the 08-07 fix above
+   further sharpened the point: don't cite that framing at all going forward — Wz
+   is genuinely hard to observe; Hz's past weakness was mostly bugs, not geometry.
+
+## s/h/alpha computation reference (cross-marker pipeline, confirmed 2026-08-07)
+- **`s` (centroid):** `cross_marker_detector.py::detect()` fits the two cross-arm
+  lines from real detected pixels, `center = _line_intersection(line_i, line_j)`.
+  Degrades gracefully under partial occlusion (only needs 2 non-parallel lines
+  fittable from whatever real pixels are visible).
+- **`h` (optical flow):** `cv2.goodFeaturesToTrack` is called with `mask =
+  det.isolated_mask` — the SAME-FRAME color-gated + shape-filtered detector mask,
+  not the whole image. Structurally impossible for GFT to place a candidate outside
+  that mask; a boundary-margin exclusion (`FLOW_BOUNDARY_MARGIN_PX`) and center-disk
+  exclusion (`CROSS_FLOW_CENTER_EXCLUDE_FRAC`) further restrict candidates within it.
+  The residual risk is mask-QUALITY (color-gate anti-aliasing edge noise, or the
+  drone's own real legs passing the color gate before shape-filter rejection — see
+  the "ghost" correction below), not missing ROI restriction.
+- **`alpha` (orientation):** `_unweighted_principal_angle()` over
+  `line_points_i + line_points_j + stub_points` (real arm+stub pixels, camera-mount-
+  yaw-corrected) — a PLAIN unweighted 2nd-moment (no ArUco `[4,3,2,1]` synthetic
+  weighting hack, unneeded since the stub is a real geometric asymmetry). The stub
+  also resolves the π-ambiguity (`_disambiguate_angle` via stub-centroid-minus-arm-
+  centroid vector). Holds last-good alpha if the stub isn't detected that frame.
+
+## "Ghost" correction (2026-08-07) + no SDF-only leg-widening lever
+The 2026-08-02 "pre-existing Gazebo camera-render ghost... mirrored duplicate of the
+drone's own body" finding (below/in project memory) was a MISDIAGNOSIS — confirmed via
+raw disarmed-frame inspection (`apps/diag_raw_image_dump.py`) that the top/bottom-margin
+artifact is the drone's REAL landing legs (matches the SDF's own leg collision geometry
+almost exactly), not a render duplicate. The existing ghost-defense code
+(`_restrict_to_center_roi`, `_reject_blobby_components`) is unaffected — built against
+the real artifact, only the naming was wrong. Separately: no SDF-only lever exists to
+widen the leg gap for a larger camera Z — `x500_base/meshes/NXP-HGD-CF.dae` is ONE
+combined mesh for the whole airframe (no separate leg link/pose); only a full mesh edit
+(or a full physically-consistent scale-up: mass+inertia+rotor-arm+thrust together, real
+flight-dynamics risk) would do it. User decision: only pursue that if this whole thread
+hits a dead end specifically needing more camera height.
+
+## Design direction: cross+stub is the settled marker (CORRECTED 2026-08-08)
+No 4-corner-ArUco redesign is planned. An earlier version of this note claimed the
+opposite (user moving from the textured cross+stub to a 4-corner-ArUco layout) --
+that was a misreading of a typo'd 2026-08-07 user message; the corrected, confirmed
+meaning is the reverse: the CURRENT textured cross+stub design is what superseded an
+earlier, since-abandoned 4-corner-ArUco concept. Do not plan around, cite, or
+re-verify against a 4-corner-ArUco migration for this marker -- none is coming. The
+ring/texture-flow approach (built to counter point starvation on the sparse
+cross+stub shape) is still not needed per that same 2026-08-07 message, independent
+of the corrected/retracted redesign claim.
+
 # Recalibration procedure
-1. Identify which chain: OUTPUT (corner/ring flow) or INPUT (rate/thrust).
-2. Record ≥5 phased calibration runs (user, Gazebo) to the default `calibration_data/...`.
-3. Derive: `derive_board_cal.py` (corner) → paste `_sensor_cal_hw`/`_sensor_cal_s`; then
-   `derive_ring_cal.py` (ring, keyed to the new corner M) → paste `_sensor_cal_ring`.
-   (Input: `aggregate_input_calibration.py` → thrust slope + lag table.)
+1. Identify which chain: OUTPUT (corner/ring flow, ArUco) / OUTPUT (cross-marker,
+   separate pipeline — see above) / INPUT (rate/thrust).
+2. Record ≥5 phased calibration runs (user, Gazebo) to the default `calibration_data/...`
+   (ArUco: `output/`; cross-marker: `output_cross/` — separate dirs, don't mix).
+3. Derive: `derive_board_cal.py` (ArUco corner) → paste `_sensor_cal_hw`/`_sensor_cal_s`;
+   `derive_ring_cal.py` (ring, keyed to the new corner M) → paste `_sensor_cal_ring`;
+   `derive_cross_marker_cal.py` (cross-marker, independent pipeline) → paste into
+   `CrossMarkerPerception.__init__`. (Input: `aggregate_input_calibration.py` → thrust
+   slope + lag table.)
 4. Validate on INDEPENDENT data: multisine + landing (output) / multi-axis + landing (input),
    in `validation_data/`. Notebooks auto-load the new cal.
 5. The notebooks + tools auto-load — no manual re-sync. Re-run `derive_ring_cal.py` whenever

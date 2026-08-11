@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='cross_marker'>
+    <static>true</static>
+    <pose>0 0 0.001 0 0 0</pose>
+    <link name='base'>
+      <visual name='base_visual'>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <!-- 1.0 1.0: original size, arm stroke (4.5% of marker = 4.5cm physical) only
+                 projects to ~2.4px at 5m hover (fx=270) -- below reliable Canny/Hough
+                 resolution, confirmed by a live SITL altitude test 2026-08-01 (0/15
+                 detections at 5m despite the ground-level gate/ROI fixes working). -->
+            <size>3.0 3.0</size>  <!-- resized 2026-08-01: stroke ~7.2px at 5m (270*0.045*3.0/5), matches largest arucotag variant tried (2.5m, for ~10m decode range) -->
+          </plane>
+        </geometry>
+        <material>
+          <diffuse>1 1 1 1</diffuse>
+          <specular>0.4 0.4 0.4 1</specular>
+          <pbr>
+            <metal>
+              <albedo_map>model://cross_marker/cross_marker.png</albedo_map>
+              <!-- 2026-08-01: unspecified metalness/roughness defaulted to a highly
+                   reflective metallic surface in Gazebo Harmonic -- the plate was
+                   mirroring the sky and the drone flying overhead onto itself,
+                   intermittently wiping out the color-gate/Hough-line detection
+                   (diagnosed via apps/record_cross_marker_calibration.py's
+                   CROSS_DIAG_SAVE frame dumps + fail_reason logging). Force a fully
+                   diffuse, non-reflective surface -- this is a printed marker plate,
+                   not metal. -->
+              <metalness>0.0</metalness>
+              <roughness>1.0</roughness>
+            </metal>
+          </pbr>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
