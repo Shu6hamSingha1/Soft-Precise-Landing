@@ -383,12 +383,7 @@ def _print_run_validity(image_data, gt_data):
                "FLOW_DH_MAX": "0", "FLOW_DS_MAX": "0", "FLOW_LOOM_DECOUPLE": "0",
                # ADDED 2026-08-01, matched to hardware_landing.py's low-light switch
                "CAM_EXPOSURE_US": "20000", "CAM_AUTO_GAIN": "1",
-               "CAPTURE_RATE_HZ": "30",
-               # ADDED 2026-08-02: derived alpha equilibrium offset (see
-               # img_geometry.py::get_img_features) - a silent change here would
-               # invalidate the alpha_0/_sensor_cal_s[3] derivation the same way
-               # ARUCO_ROI_MARGIN_PX drift once did for the lever-arm fit.
-               "ALPHA_0_DEG": "-49.8"}
+               "CAPTURE_RATE_HZ": "30"}
     print(" -- detection/pipeline config this run used --")
     for _k, _default in _pinned.items():
         _v = os.environ.get(_k)
