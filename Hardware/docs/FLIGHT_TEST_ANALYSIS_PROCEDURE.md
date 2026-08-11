@@ -61,6 +61,37 @@ For code edits (not data pulls): **SSH-edit in place** (heredoc/sed), never `scp
 staged copy — see `feedback_pi_edit_in_place` memory. Data extraction (this section) is the
 one case where bulk `scp`/tar transfer is correct; code deployment is not.
 
+**⚠ Pi system-clock skew, 2026-08-06 through 2026-08-10 — RESOLVED 2026-08-11.** The Pi's
+system clock was stuck reporting `2026-08-06` across what were actually three separate real
+calendar days (08-06, 08-08, 08-10) of testing — this stuck clock drives both the console
+`Started:` timestamp and the `Test_Data/Landing/<run-dir>` folder name, so all three days'
+Landing run directories landed on disk literally named `Thu Aug  6 ...`. The FC's own onboard
+clock (independent hardware) stayed correct, so the `.ulg` logger paths
+(`/fs/microsd/log/<real-date>/...`) are the ground truth for which day a run actually happened.
+The console transcript filenames were NOT renamed (`06082026.txt`, `08082026.txt`,
+`10082026.txt` — the original names, reverted 2026-08-11 after a brief rename-to-match
+experiment); each file's `Started:` lines still read `2026-08-06` internally regardless of
+its own filename (don't trust that field for the `08082026.txt`/`10082026.txt` files), but its
+`[logger] /fs/microsd/log/...` lines give the true date, which does match the filename. These
+five loose console `.txt` files (`05082026.txt`, `06082026.txt`, `08082026.txt`,
+`10082026.txt`, `11082026.txt`) sat directly under `Hardware/Test_Data/Landing/` until
+2026-08-11, when they were moved into their matching `<YYYY-MM-DD>/` subfolder (matching this
+doc's `<YYYY-MM-DD>/<DDMMYYYY>[_N].txt` convention below) — e.g. `08082026.txt` now lives at
+`Hardware/Test_Data/Landing/2026-08-08/08082026.txt` even though its filename encodes the
+same misleading `Started:` date issue described here, not its true date. Each
+file's session forms one
+contiguous chronological block, so the Landing run-directories were reconciled by extracting
+each file's `Flight data saved -> Test_Data/Landing/<dir>` lines and moving those directories
+out of the mixed `Hardware/Test_Data/Landing/2026-08-06/` bucket into correctly-dated
+`2026-08-06/` (12 runs, true), `2026-08-08/` (42 runs), `2026-08-10/` (31 runs) subfolders —
+now consistent with `Hardware/Test_Data/FlightLogs/<date>/`'s `.ulg` counts (13/39/29
+respectively; the small mismatch is expected — some armed attempts produced a `.ulg` but
+aborted before a Landing run directory was saved, or vice versa when a session's tail output
+was lost to an SSH drop before printing `Flight data saved ->`, e.g. the `13-58-53` run).
+**If a new console log's `Started:` date looks internally inconsistent with its own
+`[logger]` line dates, suspect this same stuck-clock pattern before trusting either field
+blindly — cross-check against the FC's `.ulg` date directories.**
+
 ---
 
 ## 2. Console-log triage (fast, no data pulled yet)
