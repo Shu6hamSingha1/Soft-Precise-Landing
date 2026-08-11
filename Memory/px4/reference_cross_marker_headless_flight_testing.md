@@ -26,18 +26,26 @@ real PLASMC controller (not a scripted recorder app) was ever run against
 the cross-marker pipeline.
 
 **ROOT-CAUSED, that first landing's hard touchdown (541 m/s² impact, 4.27 m/s
-rel-vel):** the perceived vertical flow `h_z` went noisy and briefly
-WRONG-SIGNED (+0.27 vs. a flat -0.30 reference) right at ~1.5m altitude,
-corrupting the vertical-velocity braking command exactly when needed — a
-real, live consequence of the Hz-weak-near-the-ground problem this whole
-session's calibration work was chasing (the "sign-flips-at-2m" STATISTICAL
-theory was debunked, but the underlying low-altitude Hz noisiness was never
-in question). Perception itself was fine (100% detection); kappa/s_e_n/CBF
-all stayed nominal — this is specifically the terminal vertical-velocity
-control loop trusting a bad `h_z` reading. See the full doc for the
-diagnostic trace and the proposed next step (a safety-net/rate-limiter on
-`h_z` near the ground, analogous to ArUco's ring-loom-fusion fallback,
-which this marker's docstring explicitly says isn't implemented).
+rel-vel) — CORRECTED after a methodology check (compare against proper
+Z_REG-regularized, time-synced GT, not just the controller's own desired
+reference):** two distinct problems. (1) A real, GT-confirmed sign flip —
+perceived `h_z` reads +0.27 (ascending) while properly-computed GT `h_z`
+(`_compute_gt_flow_zreg`, `Z_REG=0.2`, matching `gt_feedback.py`'s
+convention) is -0.78 to -0.86 (descending) at the same instant, ~1.3m
+altitude. (2) The DOMINANT problem: perceived `h_z` stays pinned around
+-0.15 to -0.27 through the whole terminal second while true GT `h_z` grows
+to -5.70 near touchdown (the classic `1/(z+Z_REG)` terminal amplification
+this project has documented extensively for ArUco) — the perceived signal
+has nowhere near the dynamic range to track the true near-ground blowup, so
+the controller sees "close enough to the -0.30 reference" and never brakes
+hard. `compute_gt_signals` (used for all the day's earlier calibration
+z-phase checks) CANNOT see this at all — it has no Z_REG and hard-NaNs
+below 1m depth; `_compute_gt_flow_zreg` is the correct tool for anything
+touchdown-adjacent. Perception detection itself was fine (100%);
+kappa/s_e_n/CBF all stayed nominal. See the full doc for the diagnostic
+trace and the two candidate fixes (a depth-aware fallback/blend near the
+ground, or re-deriving the cal specifically for the near-ground regime —
+a rate-limiter alone would NOT fix the dominant magnitude problem).
 
 **How to apply:** before any future cross-marker flight, check whether you
 need (1) calibration, (2) independent validation, or (3) a real closed-loop
