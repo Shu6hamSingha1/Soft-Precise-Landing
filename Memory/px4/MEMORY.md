@@ -77,11 +77,15 @@
 > hardcoded to `PX4_GZ_WORLD=aruco`), enabling the FIRST-EVER real
 > closed-loop landing test against the cross-marker pipeline
 > (`WORLD=cross_marker MARKER_TYPE=cross`). First flight: perception clean
-> (100% detection) but a HARD landing (541 m/s² impact, 4.27 m/s touchdown)
-> — ruled out kappa-ratchet/funnel-breach/CBF-saturation, live lead is an
-> accelerating terminal descent (`w_u` climbing, not braking) possibly tied
-> to `MARKER_EXTENT_PX`-scale assumptions tuned for ArUco not transferring.
-> NOT YET ROOT-CAUSED. Full procedure + diagnostic trace + next steps:
+> (100% detection) but a HARD landing (541 m/s² impact, 4.27 m/s touchdown).
+> **ROOT-CAUSED same session:** the perceived `h_z` (vertical flow) went
+> noisy and briefly WRONG-SIGNED (+0.27 vs. flat -0.30 reference) at ~1.5m
+> altitude, corrupting the terminal braking command — kappa/s_e_n/CBF all
+> stayed nominal, this is specifically Hz's known low-altitude weakness
+> (see the whole session's cal work) showing up as a real closed-loop
+> failure, not a new bug. Proposed next step: a safety-net/rate-limiter on
+> `h_z` near the ground (analogous to ArUco's ring-loom fallback, absent
+> for this marker). Full procedure + diagnostic trace:
 > [[reference_cross_marker_headless_flight_testing]] /
 > `PX4_Gazebo/docs/HANDOVER_cross_marker_headless_flight_testing_20260811.md`.
 

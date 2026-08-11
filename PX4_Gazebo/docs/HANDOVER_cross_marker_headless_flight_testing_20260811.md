@@ -105,20 +105,42 @@ perception failure. Diagnosed from `Control_Data.npy`:
   swung sharply negative (+0.2→-2.75) as altitude dropped from 1.6m to
   1.3m — the controller was accelerating the descent right through the
   terminal approach instead of braking, right up to the impact.
-- **Not yet root-caused:** why. `CrossMarkerNode`'s own class docstring
-  already warns that ArUco-specific subsystems (ring-loom fusion,
-  `PlanarFeatureMap` rescue, marker handover, and implicitly whatever in the
-  descent-pacing/terminal logic references those) are NOT implemented for
-  this marker and "expect AttributeErrors" if exercised — none fired here
-  (no crash), so this isn't that exact gap, but it's consistent with the
-  same class of problem: descent-rate shaping and/or terminal gating that
-  was tuned against ArUco's `MARKER_EXTENT_PX` growth characteristics may
-  not transfer cleanly to the cross-marker's different extent-px scale/growth
-  rate. Next step: read the descent-regressor / terminal-approach logic in
-  `controller.py` that consumes `MARKER_EXTENT_PX` and compare its assumed
-  scale against the cross-marker's actual extent trace (310→347px over the
-  terminal window logged here) against whatever ArUco reference values it
-  was tuned on.
+- **ROOT-CAUSED (2026-08-11, same-session follow-up):** the perceived
+  vertical optical-flow signal `h_z` (`Control_Data.npy`'s `h(t)[:,2]`)
+  goes noisy and briefly WRONG-SIGNED right at the failure onset. The
+  reference `h_d_z` stays flat at -0.30 throughout, but `h_z` reads -0.33,
+  then -1.15 (3.8x over), then **+0.27 (positive — perceived ASCENDING
+  while actually accelerating downward)**, then -0.23 (under-read), all
+  within the ~0.3s window starting at t=39.06 (altitude ≈1.5-1.6m). That
+  corrupted error signal feeds directly into the vertical-velocity control
+  law, and the true GT descent trace shows the runaway starts at almost
+  exactly this same altitude: a gentle ~0.74 m/s average descent from 5m
+  down to 1.6m over ~4.6s, then the remaining 1.1m covered in ~0.5s,
+  ending at the reported 4.27 m/s. `w_u` and `B_T`'s behavior (noted above)
+  were downstream symptoms of the controller reacting to this bad
+  measurement, not the root cause themselves.
+
+  **This is a live, practical instance of the Hz-weak-near-the-ground
+  problem this whole session's calibration/bisection work was chasing**
+  (see [[project_cross_marker_hz_regression_bisection_20260810]] /
+  `HANDOVER_cross_marker_hz_signflip_20260809.md`) — the specific
+  "sign-flips-at-2m" STATISTICAL theory from that investigation was
+  debunked (pooling showed no stable inversion), but the underlying fact
+  that `Hz` is genuinely noisy/weak below ~1.5-2m for this marker was never
+  in question, and this flight is the first time it showed up as a REAL
+  closed-loop consequence instead of an offline correlation number.
+
+  **Next step:** this reframes the whole Hz investigation's priority — the
+  offline whole-flight R²≈0.48 metric already flagged Hz as weak, but this
+  flight shows it's weak enough, at exactly the wrong moment, to corrupt a
+  real landing. Before any more calibration bisection, consider whether the
+  terminal descent needs a SAFETY NET independent of raw Hz near the ground
+  (e.g. a velocity-rate limiter that ignores an implausible single-frame
+  sign flip in `h_z`, or leaning on the vertical-rate reference / a
+  descent-rate governor rather than trusting `h_z` directly below some
+  altitude) — the same class of fix as the ArUco pipeline's ring-loom
+  fusion safety net, which this marker's docstring explicitly says isn't
+  implemented.
 
 **Don't treat this landing's hardness as evidence the cross-marker perception
 is bad** — tracking was clean and stable the entire flight. This is a
