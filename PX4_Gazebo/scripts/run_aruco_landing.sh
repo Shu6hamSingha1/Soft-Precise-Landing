@@ -5,6 +5,13 @@
 #
 # Scenario: stationary ArUco target, x500_mono_cam_down drone.
 # Adapted from tips.txt steps 1–7.
+#
+# WORLD overridable (2026-08-11, matches run_output_calibration.sh's pattern)
+# so this launcher can also drive a landing test in the cross-marker world,
+# e.g.: WORLD=cross_marker MARKER_TYPE=cross bash run_aruco_landing.sh
+# (MARKER_TYPE=cross is read by controller.py, selecting CrossMarkerNode --
+# see its own module comment. Model name (x500_mono_cam_down) is unaffected;
+# only the world/$WORLD topic-path prefix changes.)
 
 set -u
 
@@ -13,6 +20,7 @@ VENV="${VENV:-$HOME/ws/scripts/env2025}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
+WORLD="${WORLD:-aruco}"
 
 # HEADLESS=1 -> no Gazebo GUI client, no QGroundControl. PX4's gz launch
 # script honors the HEADLESS env var.
@@ -47,7 +55,7 @@ cleanup() {
   # Catch any matching strays just in case (orphaned grandchildren).
   pkill -9 -f 'px4_sitl_default/bin/px4' 2>/dev/null || true
   pkill -9 -f 'gz sim' 2>/dev/null || true
-  pkill -9 -f 'parameter_bridge.*world/aruco' 2>/dev/null || true
+  pkill -9 -f "parameter_bridge.*world/$WORLD" 2>/dev/null || true
   pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
   pkill -9 -f 'QGroundControl' 2>/dev/null || true
   echo "[run] done."
@@ -106,7 +114,7 @@ setsid env $EXTRA_ENV_HEADLESS \
   PX4_SYS_AUTOSTART=4014 \
   PX4_GZ_MODEL_POSE="0,0" \
   PX4_SIM_MODEL=x500_mono_cam_down \
-  PX4_GZ_WORLD=aruco \
+  PX4_GZ_WORLD="$WORLD" \
   bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" \
   > "$LOG_DIR/px4_sitl.log" 2>&1 &
 PX4_PID=$!
@@ -116,13 +124,13 @@ NAMES[$PX4_PID]="px4_sitl"
 # Wait for the Gazebo /clock topic to come up before bridging.
 echo -n "[run] waiting for Gazebo to come up "
 WAITED=0
-while ! gz topic -l 2>/dev/null | grep -q '/world/aruco/clock'; do
+while ! gz topic -l 2>/dev/null | grep -q "/world/$WORLD/clock"; do
   sleep 1
   echo -n "."
   WAITED=$((WAITED + 1))
   if [ "$WAITED" -gt 60 ]; then
     echo " timed out!"
-    echo "[run] PX4 SITL did not bring up Gazebo's /world/aruco/clock in 60s."
+    echo "[run] PX4 SITL did not bring up Gazebo's /world/$WORLD/clock in 60s."
     echo "[run] Last PX4 SITL log lines:"
     tail -n 30 "$LOG_DIR/px4_sitl.log" || true
     exit 1
@@ -132,16 +140,16 @@ echo " up after ${WAITED}s."
 
 # 3) ros_gz bridges
 start_bg bridge_clock ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock \
-  --ros-args -r /world/aruco/clock:=/clock
+  "/world/$WORLD/clock@rosgraph_msgs/msg/Clock@gz.msgs.Clock" \
+  --ros-args -r "/world/$WORLD/clock:=/clock"
 
 start_bg bridge_pose ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V \
-  --ros-args -r /world/aruco/pose/info:=/pose
+  "/world/$WORLD/pose/info@geometry_msgs/msg/PoseArray@gz.msgs.Pose_V" \
+  --ros-args -r "/world/$WORLD/pose/info:=/pose"
 
 start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
-  /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image \
-  --ros-args -r /world/aruco/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image
+  "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \
+  --ros-args -r "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image"
 
 # 4) QGroundControl — always launch if available (its heartbeats satisfy
 # PX4's "No connection to ground control station" preflight check). QGC

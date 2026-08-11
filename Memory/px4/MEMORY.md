@@ -65,6 +65,25 @@
 > **Project focus as of 2026-08-10:** active work is cross-marker only;
 > ArUco is comparison-baseline-only, not itself under investigation. See
 > [[project_20260810_cross_marker_focus]].
+>
+> **2026-08-11 — ArUco IC1-5 comparison baseline established** (n=2/IC,
+> `run_ic_validation.sh`): all 10/10 landed, 0 fly-aways; IC1 excellent
+> (0.021m mean xy, precise); IC2-5 classic off-center pattern (mean xy
+> 0.98-1.39m, no precise, mostly soft) — somewhat better than the last
+> full gate on record. See
+> [[project_20260811_aruco_ic1to5_comparison_baseline]].
+>
+> **2026-08-11 — `run_aruco_landing.sh` gained a `WORLD=` override** (was
+> hardcoded to `PX4_GZ_WORLD=aruco`), enabling the FIRST-EVER real
+> closed-loop landing test against the cross-marker pipeline
+> (`WORLD=cross_marker MARKER_TYPE=cross`). First flight: perception clean
+> (100% detection) but a HARD landing (541 m/s² impact, 4.27 m/s touchdown)
+> — ruled out kappa-ratchet/funnel-breach/CBF-saturation, live lead is an
+> accelerating terminal descent (`w_u` climbing, not braking) possibly tied
+> to `MARKER_EXTENT_PX`-scale assumptions tuned for ArUco not transferring.
+> NOT YET ROOT-CAUSED. Full procedure + diagnostic trace + next steps:
+> [[reference_cross_marker_headless_flight_testing]] /
+> `PX4_Gazebo/docs/HANDOVER_cross_marker_headless_flight_testing_20260811.md`.
 
 > **🟢 2026-08-07d — Hz's variance source FOUND AND FIXED, R^2
 > DOUBLED (0.22->0.48), DEPLOYED.** Pure analysis of already-collected `Flow
