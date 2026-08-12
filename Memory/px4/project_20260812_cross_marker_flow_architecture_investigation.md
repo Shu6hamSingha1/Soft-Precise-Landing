@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-12T05:40:16.172Z
+  modified: 2026-08-12T13:33:33.915Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -68,6 +68,40 @@ terminal-descent window, even "normal" (non-outlier) point-diag entries ran
 detection itself intermittently fails throughout the terminal window (not
 just isolated spikes), forcing LK to bridge correspondingly larger real
 gaps every time.
+
+**IMPLEMENTED 2026-08-12** (`CrossMarkerNode.run()`, `process_frame`,
+`_compute_hw`, `__init__` — all in `cross_marker_perception.py`). Validated:
+3 real flights landed without crashing, `dt` now pinned to exactly 0.016s
+(min=median=max=p95) across 800+ solves per flight, zero entries above
+0.05s (previously routine during terminal descent); a targeted unit test
+(24 steps mixing real frames + forced detection misses) confirmed the new
+`det.ok=False` path (still-advance-LK-tracking with `mask=None`) degrades
+and recovers gracefully with zero exceptions.
+
+**⚠ BUT THIS DOES NOT FIX THE HARD LANDING — verified directly, don't
+assume it does.** Ran a fresh flight WITH the fix live and re-did the same
+GT-comparison check (`_compute_gt_flow_zreg`) that found the original
+problem. Result: the flight STILL landed hard (`rel_vel=1.74 m/s`, not
+soft/precise, `min_alt=1.26m` — cut short even higher than before) and the
+same two problems are still present in the raw data:
+- **Sign-flip: still happens, one instance actually WORSE than pre-fix**
+  (perceived `+2.96` vs GT `-0.80` at t=39.044 -- roughly 10x larger error
+  than any pre-fix flip magnitude). This proves dt-staleness was never the
+  root cause of the LK correspondence failures themselves -- they can and
+  do happen on a single clean native-rate step too, whenever the tracked
+  points are poorly conditioned or genuinely mistrack.
+- **Dynamic-range gap: still present.** Even non-flipped frames show
+  perceived `h_z` around -0.5 to -1.0 while GT is already -0.6 to -0.85 and
+  climbing in the same narrow window.
+
+**Conclusion: the dt/frame-pairing fix is real, validated, worth keeping
+(correct architecture regardless), but it was never the mechanism behind
+the hard landing.** Don't report it as resolving the touchdown problem.
+The two candidates that actually target the observed failure modes remain
+open: moment-loom+MAD-rejection (§3 -- targets the sign-flip specifically,
+does NOT fix the magnitude gap either, confirmed in that section's own
+testing) and a depth-aware fallback/recalibration for the near-ground
+dynamic-range ceiling (still untried).
 
 ## 3. Moment-loom + MAD outlier rejection for `Tz`: VALIDATED on real flip data, NOT yet implemented
 
