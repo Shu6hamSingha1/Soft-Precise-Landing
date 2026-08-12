@@ -805,7 +805,19 @@ class CrossMarkerPerception:
         # stays in the pinv fit (confirmed via SVD that removing it wouldn't
         # affect Tx/Ty/Wz conditioning anyway, but the fit SHAPE is kept as-is
         # regardless); this only overrides the reported sol[2].
-        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "8"))
+        #
+        # 2026-08-12: default LOWERED 8->6, per a live-flight miss found right
+        # after first deploying this override -- a real flip frame had n=7
+        # (below the original threshold of 8), so the override never fired and
+        # fell back to the wrong pinv value (+0.248); recomputing offline showed
+        # moment-loom WOULD have given -0.619 (correct sign, close to GT -0.599)
+        # had it been allowed to run. 6 is still 2 above MIN_FLOW_POINTS_SOLVE=4
+        # (kept some margin above the absolute pinv floor for the mean-based
+        # moment to have a little averaging benefit) but no longer excludes this
+        # specific documented case. Not yet re-validated at scale -- watch for
+        # whether 6 introduces its OWN instability (a smaller n makes the mean
+        # itself noisier) on the next batch of live flights.
+        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "6"))
         if len(prev_n) >= moment_min_pts:
             fm = np.linalg.norm(curr_n - prev_n, axis=1)
             med = np.median(fm)
