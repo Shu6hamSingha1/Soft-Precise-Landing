@@ -13,25 +13,39 @@
 > not yet reflect the hi-res `cross_marker.png` texture swap; re-snapshot before
 > relying on it for a PX4-Autopilot restore.
 
-> **🔧 2026-08-12 — cross-marker flow-computation ARCHITECTURE investigation**
-> (deeper than the calibration-derivation work below): fixed a real
-> `getFPS()` init/crash bug (`gz_subscriber.py`, IMPLEMENTED); found the
-> real dt/frame-pairing staleness bug (`self._prev_gray`/`_prev_frame_t`
-> persist across detection dropouts, unlike `img_data.py`'s always-adjacent-
-> frame-pair design — plan REVIEWED, not yet implemented); validated
-> moment-loom+MAD-outlier-rejection as a real `Tz` fix on 3 real flip
-> events (NOT yet implemented, don't drop Tz's column from the joint solve
-> per user directive); RE-CONFIRMED gyro-derotation is structurally
-> necessary (full 6-col cond 9-103 vs derotated 4-col's 1.7-4.6); and
-> **RETRACTED a wrong claim** — the intended comparison target is the
-> **nested TEXTURED ArUco marker** (the live `aruco.sdf` world's single
-> `arucotag` model: small tag nested in a big tag, textured background, one
-> physical plate) — NOT a spread multi-marker board, and it does NOT avoid
-> the Wx/Wy aliasing via spatial spread (disproven directly: its own
-> achieved corner spread and condition number are comparable-to-worse than
-> the cross-marker's). Don't re-cite "ArUco board" framing for this
-> comparison. Full
-> trace: [[project_20260812_cross_marker_flow_architecture_investigation]].
+> **🔧 2026-08-12 — cross-marker flow-computation ARCHITECTURE investigation,
+> CLOSED with an honest negative result: neither fix resolves the hard
+> landing.** Fixed a real `getFPS()` init/crash bug (`gz_subscriber.py`,
+> IMPLEMENTED); IMPLEMENTED the dt/frame-pairing fix (removed
+> `self._prev_gray`/`_prev_frame_t`/`_prev_quat`/`_prev_angvel` entirely,
+> `dt` now pinned to native camera rate ~0.016s, was 4-8x inflated during
+> terminal-descent dropouts); IMPLEMENTED moment-loom+MAD-outlier-rejection
+> for `Tz` (overrides `sol[2]`, joint solve unchanged per user directive).
+> **Both validated as REAL, individually-correct fixes (no crashes, dt
+> confirmed clean, moment-loom matches hand-prototyped numbers exactly) —
+> and BOTH separately re-tested live and CONFIRMED to NOT fix the hard
+> landing.** Sign-flips still occur post-dt-fix (one instance actually
+> worse than pre-fix); moment-loom recovers isolated-outlier cases but
+> fails when the point cloud is majority-corrupted (which the touchdown
+> window's point scarcity makes common) or when point count drops below
+> its own minimum threshold. **Root cause is structural: too few reliable
+> tracked points at extreme close range — neither fix adds new
+> information, both only better-use whatever points already exist.** Real
+> next steps: more/better close-range points (structural marker-geometry
+> problem) or a different close-range signal source entirely (depth-aware
+> fallback, untried) — not further refinement of point-set processing.
+> RE-CONFIRMED gyro-derotation is structurally necessary (full 6-col cond
+> 9-103 vs derotated 4-col's 1.7-4.6); **RETRACTED a wrong claim** — the
+> intended comparison target is the **nested TEXTURED ArUco marker** (the
+> live `aruco.sdf` world's single `arucotag` model: small tag nested in a
+> big tag, textured background, one physical plate) — NOT a spread
+> multi-marker board, and it does NOT avoid the Wx/Wy aliasing via spatial
+> spread (disproven directly: its own achieved corner spread and condition
+> number are comparable-to-worse than the cross-marker's) — its real
+> advantage is ~2.5x lower per-point correspondence noise (exact ID-decode
+> vs LK-tracked), confirmed across full datasets. Don't re-cite "ArUco
+> board spread" framing for this comparison. Full trace:
+> [[project_20260812_cross_marker_flow_architecture_investigation]].
 >
 > **✅ 2026-08-10 RESOLVED (was the 08-09 "sign flip" theory below — that
 > theory is FALSE, disproven, not just superseded):** the claimed "Tz

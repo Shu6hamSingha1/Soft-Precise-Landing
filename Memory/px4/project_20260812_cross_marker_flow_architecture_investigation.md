@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "Deep-dive into the cross-marker Hz sign-flip/hard-landing root cause: found and fixed a real getFPS() init bug, diagnosed a dt/frame-pairing architecture flaw (self._prev_gray staleness across detection dropouts, unlike img_data.py's always-adjacent-frame-pair design), validated moment-loom+MAD-outlier-rejection as a real Tz-quality improvement on live flight data, confirmed gyro-derotation is still structurally necessary for the cross-marker (NOT avoidable the way originally guessed), and retracted an earlier wrong claim about why ArUco doesn't need it."
+description: "CLOSED, honest negative result: implemented + live-validated TWO real fixes for the cross-marker hard landing (getFPS() init bug; dt/frame-pairing staleness fix, removes self._prev_gray/_prev_frame_t entirely; moment-loom+MAD-outlier-rejection for Tz) -- both individually correct and validated, NEITHER resolves the hard landing. Root cause is structural point-scarcity at close range, not staleness or per-point-solve quality. Also confirmed gyro-derotation still structurally necessary, and retracted an earlier wrong claim about why the nested textured ArUco marker doesn't need it (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-12T13:33:33.915Z
+  modified: 2026-08-12T17:14:11.618Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -103,7 +103,7 @@ does NOT fix the magnitude gap either, confirmed in that section's own
 testing) and a depth-aware fallback/recalibration for the near-ground
 dynamic-range ceiling (still untried).
 
-## 3. Moment-loom + MAD outlier rejection for `Tz`: VALIDATED on real flip data, NOT yet implemented
+## 3. Moment-loom + MAD outlier rejection for `Tz`: IMPLEMENTED, validated offline AND live -- real but partial improvement, NOT a fix
 
 Ported concept from `img_data.py`'s ring-moment (`h_z = -0.5*d(ln M)/dt`,
 `M`=mean squared distance of tracked points from their own centroid, in
@@ -145,9 +145,61 @@ rates. Revisit only if a future flight shows meaningfully larger tilt rates.
 solve** (even though a direct SVD test showed doing so wouldn't change the
 Tx/Ty/Wz conditioning at all, since Tz's and Wz's columns are exactly
 orthogonal per point and contribute paired/equal singular values). Moment-
-loom is to be implemented as an ADDITIONAL, separately-computed `Tz` that
-OVERRIDES `sol[2]` in the final output — the joint solve keeps producing all
-4 unknowns exactly as today.
+loom is IMPLEMENTED as an ADDITIONAL, separately-computed `Tz` that
+OVERRIDES `sol[2]` in `_solve_jacobian`'s output — the joint solve keeps
+producing all 4 unknowns exactly as before; `rel_resid` is computed BEFORE
+the override so it stays a clean diagnostic of the original pinv fit.
+Gated on `len(prev_n) >= CROSS_MOMENT_LOOM_MIN_PTS` (env, default 8) and
+`n_valid_after_MAD >= max(4, min_pts//2)` — below that, holds the pinv Tz
+unmodified (untested/unstable moment estimate at very low N).
+
+**IMPLEMENTED 2026-08-12** (`_solve_jacobian` in `cross_marker_perception.py`).
+Offline sanity check against the exact pre-implementation prototype numbers
+matched exactly (-0.6172, both computed independently). Live-flight-tested
+(2 flights, no crash, no exception, moment-loom values visibly appearing in
+`Point Diag Log`'s `sol[2]`).
+
+**⚠ Live-flight validation (2026-08-12): confirmed a real, partial
+improvement — NOT a fix. Two distinct residual failure modes found by
+re-running the exact same GT-comparison diagnostic on a fresh flight:**
+- **Threshold-too-conservative miss** (t=38.644, this flight): `n_total=7`,
+  below `CROSS_MOMENT_LOOM_MIN_PTS=8` — override never fired, fell back to
+  the raw (wrong) pinv value `+0.248`. Had it fired, moment-loom would have
+  given `-0.619`, correct sign, close to GT `-0.599`. **The default
+  threshold (8) is one point too conservative for at least this case** —
+  worth lowering and re-testing, but not yet done (don't assume 8 is
+  correctly tuned).
+- **Genuine point-cloud corruption, MAD rejection insufficient** (t=39.444):
+  `n_total=8` (at threshold), override DID fire, MAD rejection kept 6 of 8
+  points as "valid" — but moment-loom itself still computed `+1.430`
+  (wrong sign, matching the bad logged value exactly — verified by direct
+  independent recomputation, not just reading the log). At this altitude
+  (0.815m) the point cloud is likely corrupted more broadly than 1-2
+  isolated outliers (the pattern MAD rejection was designed for) — probably
+  the same close-range breakdown (marker overflowing FoV, aperture-problem-
+  prone tracking at extreme close range) documented elsewhere in this
+  project's history. **No amount of outlier-rejection on THIS point set can
+  fix a majority-corrupted sample — moment-loom and pinv both draw from the
+  same underlying, sometimes-too-few/too-corrupted points.**
+
+Overall test result on this flight: still landed hard (not soft/precise);
+3 of 10 samples below 2m altitude still showed a sign mismatch vs GT even
+with moment-loom live (down from... not directly comparable to a pre-fix
+baseline at the SAME flight, but the mechanism above explains why it isn't
+zero).
+
+**Conclusion: moment-loom is real and worth keeping (helps when it has
+enough points and only isolated bad ones), but it is NOT a fix for the
+hard landing, and neither is the dt/frame-pairing fix (§2).** Both
+failure modes trace back to the SAME root structural issue this entire
+investigation keeps landing on: too few reliable tracked points at extreme
+close range near touchdown. Neither fix ADDS information -- they only make
+better use of whatever points already exist. A real fix needs either (a)
+more/better points at close range (the structural corner-scarcity problem
+from the marker's thin-line geometry, see the io-calibration skill's
+cross-marker Hz history), or (b) a fundamentally different close-range
+signal source (a depth-aware fallback, still untried) rather than
+continuing to refine how the existing sparse/noisy point set is processed.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 

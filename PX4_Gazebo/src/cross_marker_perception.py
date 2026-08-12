@@ -772,6 +772,55 @@ class CrossMarkerPerception:
         # amount of recalibration downstream could fix.
         b_norm = np.linalg.norm(b)
         rel_resid = np.linalg.norm(A @ sol - b) / b_norm if b_norm > 1e-12 else np.nan
+        # (rel_resid measures the ORIGINAL joint-solve fit quality -- computed BEFORE
+        # the moment-loom Tz override below, so it stays a clean diagnostic of the
+        # pinv fit regardless of whether the override fires.)
+
+        # MOMENT-LOOM Tz OVERRIDE (2026-08-12, validated on real flip-event data --
+        # see project_20260812_cross_marker_flow_architecture_investigation memory
+        # §3). Ported from img_data.py's ring-moment: Tz as a closed-form scalar
+        # from the rate of change of the tracked point cloud's own spread (mean
+        # squared distance from its own centroid, in V-frame), instead of reading
+        # it out of the joint pseudo-inverse. On 3 real documented sign-flip/
+        # overshoot events this recovered the correct sign (pinv wrongly flipped
+        # positive twice; moment-loom stayed correctly negative both times) and
+        # matched GT more closely once outlier rejection was added -- see below.
+        # Does NOT fix the SEPARATE, larger near-touchdown dynamic-range problem
+        # (perceived h_z pinned well below true GT magnitude) -- that is a known,
+        # still-open gap, not something this override addresses.
+        #
+        # MAD-based outlier rejection (SAME pattern/threshold as img_data.py's
+        # ring-moment, k=3.0*1.4826 on per-point flow magnitude) is NOT optional:
+        # confirmed on real data that 2 of 15 genuinely mistracked points (15-40x
+        # every other point's displacement) skewed the unweighted mean badly
+        # enough to make moment-loom WORSE than the pinv solve without it
+        # (-1.151 vs pinv's -0.511, GT=-0.567); with rejection, -0.617, between
+        # pinv and GT.
+        #
+        # Gyro-derotation tested and NOT applied here: at this dataset's highest
+        # observed rotation rate (Wx=0.284 rad/s), derotating shifted the moment
+        # estimate by only +0.0040 -- negligible against the actual problem scale.
+        #
+        # The joint solve above is UNCHANGED -- per user directive, Tz's column
+        # stays in the pinv fit (confirmed via SVD that removing it wouldn't
+        # affect Tx/Ty/Wz conditioning anyway, but the fit SHAPE is kept as-is
+        # regardless); this only overrides the reported sol[2].
+        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "8"))
+        if len(prev_n) >= moment_min_pts:
+            fm = np.linalg.norm(curr_n - prev_n, axis=1)
+            med = np.median(fm)
+            mad = np.median(np.abs(fm - med)) + 1e-6
+            valid = fm < med + 3.0 * 1.4826 * mad
+            if valid.sum() >= max(4, moment_min_pts // 2):
+                pv, cv_ = prev_n[valid], curr_n[valid]
+                c0, c1 = pv.mean(0), cv_.mean(0)
+                M0 = float(np.mean(np.sum((pv - c0) ** 2, axis=1)))
+                M1 = float(np.mean(np.sum((cv_ - c1) ** 2, axis=1)))
+                if M0 > 1e-12 and M1 > 1e-12 and dt > 0:
+                    sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
+        # else: too few points for a stable moment estimate (untested below
+        # ~8-10 points) -- hold the pinv-solved Tz unmodified.
+
         px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
         # TEMP DIAG (2026-08-03, Wx/Wy investigation): radial extent of the
         # normalized points actually fed into A -- max/mean |x|,|y| in prev_n.
