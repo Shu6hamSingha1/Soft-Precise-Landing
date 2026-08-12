@@ -13,6 +13,26 @@
 > not yet reflect the hi-res `cross_marker.png` texture swap; re-snapshot before
 > relying on it for a PX4-Autopilot restore.
 
+> **🔧 2026-08-12 — cross-marker flow-computation ARCHITECTURE investigation**
+> (deeper than the calibration-derivation work below): fixed a real
+> `getFPS()` init/crash bug (`gz_subscriber.py`, IMPLEMENTED); found the
+> real dt/frame-pairing staleness bug (`self._prev_gray`/`_prev_frame_t`
+> persist across detection dropouts, unlike `img_data.py`'s always-adjacent-
+> frame-pair design — plan REVIEWED, not yet implemented); validated
+> moment-loom+MAD-outlier-rejection as a real `Tz` fix on 3 real flip
+> events (NOT yet implemented, don't drop Tz's column from the joint solve
+> per user directive); RE-CONFIRMED gyro-derotation is structurally
+> necessary (full 6-col cond 9-103 vs derotated 4-col's 1.7-4.6); and
+> **RETRACTED a wrong claim** — the intended comparison target is the
+> **nested TEXTURED ArUco marker** (the live `aruco.sdf` world's single
+> `arucotag` model: small tag nested in a big tag, textured background, one
+> physical plate) — NOT a spread multi-marker board, and it does NOT avoid
+> the Wx/Wy aliasing via spatial spread (disproven directly: its own
+> achieved corner spread and condition number are comparable-to-worse than
+> the cross-marker's). Don't re-cite "ArUco board" framing for this
+> comparison. Full
+> trace: [[project_20260812_cross_marker_flow_architecture_investigation]].
+>
 > **✅ 2026-08-10 RESOLVED (was the 08-09 "sign flip" theory below — that
 > theory is FALSE, disproven, not just superseded):** the claimed "Tz
 > sign-flips around 2m altitude" mechanism never existed. Pooling all 12

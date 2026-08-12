@@ -155,6 +155,12 @@ class Image_Node(Node):
         self._t1 = self._start_time
         self._meanTimePerImage = None
         self._res = None
+        # 2026-08-12: was never initialized here -- only ever assigned inside
+        # image_callback's `if self._t0 != self._t1` branch, so getFPS() (a bare
+        # `return self._fps`, no guard) could raise AttributeError if called before
+        # that branch first fires. None is a valid "not ready yet" sentinel callers
+        # must handle (see getFPS()'s own docstring).
+        self._fps = None
 
     def image_callback(self, msg):
         """
@@ -178,7 +184,16 @@ class Image_Node(Node):
             self._t0 = self._t1
             self._t1 = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
 
-            if self._t0 != self._t1:
+            # 2026-08-12: floor the interval before inverting -- a near-duplicate-
+            # timestamp callback (ROS message-queue burst, or two callbacks landing
+            # on the same quantized sim-clock tick) previously produced a momentary
+            # non-physical fps spike (1/tiny_dt), a single-sample event (not
+            # smoothed) that any caller reading getFPS() right then would get
+            # directly. 1e-4 s = 10 kHz ceiling, comfortably above any real camera
+            # rate this project uses (~60 Hz) but rejects a genuine duplicate/near-
+            # duplicate stamp. On reject, keep the last good self._fps rather than
+            # spiking -- a slightly-stale-but-sane value beats a garbage one.
+            if self._t0 != self._t1 and (self._t1 - self._t0) > 1e-4:
                 self._fps = 1/(self._t1 - self._t0)
 
                 # Convert ROS Image message to OpenCV image
@@ -240,6 +255,13 @@ class Image_Node(Node):
         return list(self._angvel_deque)
 
     def getFPS(self):
+        """Instantaneous fps from the two most recent frames' own capture stamps
+        (native camera rate, jitter-free -- see image_callback's comment). Returns
+        None if no qualifying frame pair has arrived yet (first callback(s), or if
+        every pair so far had a near-duplicate/degenerate timestamp) -- callers MUST
+        handle None, not assume a numeric value. A single low-quality sample isn't
+        smoothed/averaged, so also sanity-check the returned value (e.g.
+        `isinstance(fps, (int, float)) and fps > 1`) rather than trusting it blindly."""
         # return 1/self._meanTimePerImage
         return self._fps
 

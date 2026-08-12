@@ -510,7 +510,7 @@ class CrossMarkerPerception:
         # the full normalized point set fed into A (prev_n) plus the solved Tz (sol[2])
         # per solve so this can be checked directly on a new flight.
         self._point_diag_log = []
-        self._point_diag = (None, np.nan)
+        self._point_diag = (None, np.nan, None, np.nan, None)
 
         # Time-series logging (2026-08-04, perception-quality debugging): log full
         # frame-by-frame history so getLogData() can return it for comparison with GT.
@@ -784,7 +784,18 @@ class CrossMarkerPerception:
         # TEMP DIAG 2026-08-09: full point set + solved Tz, see __init__'s
         # _point_diag_log comment. prev_n is what _fill_A/A_reduced were actually
         # built from; sol[2] is the Tz this exact point set produced.
-        self._point_diag = (prev_n.copy(), float(sol[2]))
+        #
+        # EXTENDED 2026-08-12 (sign-flip root-cause, per-point noise investigation):
+        # the original 2-tuple only let us reconstruct the SOLVE (prev_n -> A -> Tz),
+        # not what fed it -- couldn't tell whether a Tz swing came from genuine
+        # per-point LK-tracked velocity noise (the live hypothesis) vs. something in
+        # the solve itself (already ruled out separately -- the matrix is
+        # well-conditioned, cond~2, and per-point leverage is evenly graded, not
+        # concentrated). Added curr_n (so vel=(curr_n-prev_n)/dt is fully
+        # reconstructable per point), dt (vel's own denominator -- small dt inflates
+        # any fixed position-tracking jitter into larger apparent velocity noise),
+        # and the full sol vector (not just Tz) for completeness.
+        self._point_diag = (prev_n.copy(), float(sol[2]), curr_n.copy(), float(dt), sol.copy())
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
     def _compute_hw(self, gray, mask, t, quat=None, angvel=None):
@@ -1103,9 +1114,13 @@ class CrossMarkerPerception:
         return list(self._z_v_log)
 
     def get_point_diag_log(self):
-        """TEMP DIAG 2026-08-09: list of (t, prev_n (N,2) normalized point set fed
-        into A, solved Tz) per successful solve -- see __init__'s _point_diag_log
-        comment. Per-point-resolution follow-up to get_radial_diag_log()."""
+        """TEMP DIAG 2026-08-09, EXTENDED 2026-08-12: list of
+        (t, prev_n, solved_Tz, curr_n, dt, sol) per successful solve -- see
+        __init__'s _point_diag_log comment. prev_n/curr_n are the (N,2) normalized
+        V-frame points _fill_A/A were built from (before/after this solve's LK
+        step); per-point velocity is fully reconstructable as
+        (curr_n-prev_n)/dt. sol is the full solved [Tx,Ty,Tz,Wx,Wy,Wz] vector
+        (not just Tz). Per-point-resolution follow-up to get_radial_diag_log()."""
         return list(self._point_diag_log)
 
     def get_center_px(self):
@@ -1348,6 +1363,16 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
             "Center Px": self._perception._center_px_log,
+            # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
+            # calibration/validation recorder apps exposed these via their own explicit
+            # get_point_diag_log()/get_radial_diag_log() calls into Ground_Truth.npy --
+            # the real landing-test path (this getLogData(), saved as Img_Data.npy by
+            # apps/landing_test.py) never did, so a real flight's terminal-descent point
+            # geometry couldn't be reconstructed after the fact. Both logs are already
+            # accumulated by the underlying CrossMarkerPerception regardless of caller;
+            # just exposing them here.
+            "Point Diag Log": self._perception.get_point_diag_log(),
+            "Radial Diag Log": self._perception.get_radial_diag_log(),
         }
 
     def getParams(self):
