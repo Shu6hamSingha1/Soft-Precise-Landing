@@ -31,6 +31,26 @@ import os
 import numpy as np
 
 
+def _project_box(th, anchor, Lw, m, iters=10):
+    """Signed per-axis projection of the lean ``th`` onto ``|anchor + Lw@th| <= m``.
+
+    Extracted 2026-08-13 from the Phase-1 loop so Phase 2 can reuse the SAME
+    algorithm instead of its own (defective) isotropic magnitude clamp. Only the
+    violated side of each axis is corrected, so a command that moves the feature
+    back INSIDE the box passes through untouched -- that asymmetry is the whole
+    point of a barrier and is what the old Phase-2 clamp destroyed.
+    """
+    th = np.asarray(th, float).copy()
+    for _ in range(iters):
+        f = anchor + Lw @ th
+        for k in range(2):
+            if f[k] > m[k]:
+                r = Lw[k]; th = th - (f[k] - m[k]) / (r @ r + 1e-12) * r; f = anchor + Lw @ th
+            elif f[k] < -m[k]:
+                r = Lw[k]; th = th - (f[k] + m[k]) / (r @ r + 1e-12) * r; f = anchor + Lw @ th
+    return th
+
+
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                 p_10, theta_cone, dt_last, w_rp, state, env=None):
     """Constrain the lateral accel command for target visibility (cbf2).
@@ -162,13 +182,31 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
     except (IndexError, AttributeError, ValueError, TypeError):
         ok = False
     if not ok:
-        # Phase 2: central marker overflowed / decode failed.
-        # Hysteresis-gate: require CBF_PHASE2_HYSTERESIS consecutive decode-fails
-        # before activating, to suppress flicker near touchdown. Ramp delta_eff from
-        # 0 -> last measured 1/2 ptp over CBF_PHASE2_RAMP_FRAMES frames.
+        # ---- Phase 2: no usable corners this tick (decode fail / marker overflow) ----
+        # REWRITTEN 2026-08-13. The previous implementation collapsed the per-axis FoV
+        # constraint to a SCALAR via min(effective_margin / row_norms) and applied it as
+        # an isotropic magnitude clamp with "direction preserved". Three consequences,
+        # all measured across 256 recorded flights from this very pipeline (see memory
+        # project_pi_cbf_phase2_zeroes_lateral_2026_08_12):
+        #   1. np.min() collapses a PER-AXIS bound to a scalar, so a marker near ONE
+        #      edge removed lateral authority on BOTH axes.
+        #   2. "direction preserved" cannot distinguish a command that pushes the marker
+        #      further OUT from one that pulls it back IN -- the recovery action was
+        #      throttled exactly as hard as the drift causing the problem.
+        #   3. effective_margin floors at 0 -> theta_cone = 0 -> a_xy_lim = a_z*tan(0)
+        #      = 0, i.e. lateral authority EXACTLY zero. That state self-latches: no
+        #      authority -> cannot re-centre -> cannot decode -> stays in Phase 2.
+        #      Measured pass-through |I_a_xy| out/in: 1.02 in Phase 1, 0.000 in Phase 2,
+        #      over 70% of all ticks and ~100% of every terminal approach. This is the
+        #      root cause of poor landing precision and of the null 08-05..08-11 gain
+        #      sweep (the gains were being multiplied by zero downstream).
+        # Now: run the SAME signed per-axis box projection Phase 1 uses (_project_box),
+        # on a conservatively shrunken box built from the last-known geometry. An anchor
+        # already outside the box yields a corrective INWARD lean instead of zero.
         state["decode_fail_n"] = state.get("decode_fail_n", 0) + 1
-        fail_thresh = int(env.get("CBF_PHASE2_HYSTERESIS", "3"))
-        ramp_frames = float(env.get("CBF_PHASE2_RAMP_FRAMES", "5"))
+        fail_thresh = int(env.get("CBF_PHASE2_HYSTERESIS", "20"))    # was 3
+        ramp_frames = float(env.get("CBF_PHASE2_RAMP_FRAMES", "20"))  # was 5
+        max_frames = int(env.get("CBF_PHASE2_MAX_FRAMES", "60"))      # NEW: give-up horizon
         if state["decode_fail_n"] >= fail_thresh:
             alpha = state.get("phase2_alpha", 0.0)
             # clamp ramp so delta never lags the fill
@@ -176,21 +214,47 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         delta_ref = state.get("delta_prev")
         Lw2_ref = state.get("Lw2_prev")
         p2_alpha = state.get("phase2_alpha", 0.0)
-        if delta_ref is not None and Lw2_ref is not None and p2_alpha > 0:
-            delta_eff = delta_ref * p2_alpha
-            ddelta_eff = state.get("ddelta_ref", np.zeros(2)) * p2_alpha
+        if (delta_ref is not None and Lw2_ref is not None and p2_alpha > 0
+                and state["decode_fail_n"] <= max_frames):
             tau_p2 = float(env.get("CBF_TAU", "0.3"))
-            m2_p2 = np.maximum(np.asarray(p_10, float) - delta_eff - tau_p2 * ddelta_eff, 1e-3)
-            # Per-axis headroom -> conservative theta tightening for magnitude clamp.
+            delta_eff = np.asarray(delta_ref, float) * p2_alpha
+            ddelta_eff = np.asarray(state.get("ddelta_ref", np.zeros(2)), float) * p2_alpha
+            # Defect 3 floor: the box may narrow as the stale marker grows, but must
+            # never close -- 1e-3 was numerically "open" yet physically zero authority.
+            box_min = float(env.get("CBF_PHASE2_BOX_MIN", "0.05"))
+            m2_p2 = np.maximum(np.asarray(p_10, float) - delta_eff - tau_p2 * ddelta_eff,
+                               box_min)
+            # Lw2_prev is stashed BEFORE Phase 1 applies the CBF_LW_ROT lean->rotation-axis
+            # correction. The OLD scalar path used only its ROW NORMS, which M leaves
+            # unchanged (M orthogonal), so the omission was invisible. A DIRECTIONAL
+            # projection needs the rotated form.
+            Lw2_p2 = np.asarray(Lw2_ref, float)
+            if env.get("CBF_LW_ROT", "1") == "1":
+                Lw2_p2 = Lw2_p2 @ np.array([[0.0, 1.0], [-1.0, 0.0]])
+            # Same image-axis geometry as Phase 1, recomputed here rather than hoisted so
+            # the (working, validated) Phase-1 path is left byte-identical. th_curr comes
+            # from ATTITUDE, not the camera -- it is fully available during a decode gap.
+            cz, sz = np.cos(yaw_c), np.sin(yaw_c)
+            Rzm = np.array([[cz, sz], [-sz, cz]])                 # Rz(-yaw): inertial -> image
+            th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3))
+            th_p2 = Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6))
             cr_ref = np.asarray(state.get("cr_prev", np.zeros(2)), float)
             dft_ref = tau_p2 * np.asarray(state.get("d", np.zeros(2)), float)
-            effective_margin = np.maximum(m2_p2 - np.abs(cr_ref + dft_ref), 0.0)
-            row_norms = np.linalg.norm(Lw2_ref, axis=1)
-            theta_tight = float(np.min(effective_margin / (row_norms + 1e-9)))
-            theta_cone = float(min(theta_cone, max(theta_tight, 0.0)))
-        # magnitude-clamp fallback (direction preserved)
-        a_xy_lim = a_z * np.tan(theta_cone)
-        a_xy_n = np.linalg.norm(I_a[:2])
-        if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
-            I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
+            anchor_p2 = cr_ref - Lw2_p2 @ th_curr + dft_ref
+            th_p2 = _project_box(th_p2, anchor_p2, Lw2_p2, m2_p2)
+            # Bound what a STALE anchor may demand. Phase 1 needs no equivalent (its
+            # anchor is measured this tick); the caller's theta_cap is 60deg, far too
+            # loose to serve as this bound.
+            th_max = float(env.get("CBF_PHASE2_THETA_MAX", "0.15"))   # rad, ~8.6 deg
+            n_p2 = float(np.linalg.norm(th_p2))
+            if n_p2 > th_max:
+                th_p2 = th_p2 * (th_max / n_p2)
+            I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th_p2)
+            theta_cone = float(np.linalg.norm(th_p2))
+        # else: no usable reference yet, or the anchor is staler than
+        # CBF_PHASE2_MAX_FRAMES -- pass the command through UNTOUCHED. A barrier enforced
+        # on a guess constrains nothing real while still blocking recovery. Genuine marker
+        # loss is owned by MARKER_LOSS_GRACE -> hold -> search-climb -> abort in
+        # hardware_landing.py, which acts on POSITION rather than tilt and is the right
+        # instrument for it. Set CBF_PHASE2_MAX_FRAMES huge to restore always-constrain.
     return I_a, theta_cone, ok, th_safe

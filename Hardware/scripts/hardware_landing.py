@@ -55,20 +55,29 @@ os.environ.setdefault("CAM_MANUAL_EXPOSURE", "1")
 # FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12.
 os.environ.setdefault("CAPTURE_RATE_HZ", "30")
 
-# CAM_EXPOSURE_US=20000 / CAM_AUTO_GAIN=1 (2026-08-01): validated 2026-08-01 on real
-# bench recordings -- the old default (3000us/8.0 gain, auto-exposure's usual ballpark)
-# gave 0% ArUco decode in poor indoor lighting (a real sensor noise-floor problem, not a
-# levels problem -- proven by digital brightness-correction alone still failing).
-# 20000us (still well under the ~33333us ceiling above) took that to 43-65% decode on
-# real footage. CAM_AUTO_GAIN=1 closes the loop on GAIN ONLY (exposure stays fixed at
-# CAM_EXPOSURE_US, so blur behavior is unaffected by lighting) targeting the empirically
-# best brightness band (~73-90) found the same session -- this is what lets ONE
-# configuration serve both poor and good lighting without knowing conditions ahead of
-# flight time; a single static gain can't (a bright-enough-for-dark gain overexposes a
-# lit scene). Real validated result: 73.7% decode across a 60s bench recording spanning
-# a genuine lighting change mid-recording, best result of the session. See
-# FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #12/#13 before changing these.
-os.environ.setdefault("CAM_EXPOSURE_US", "20000")
+# CAM_EXPOSURE_US=200 (2026-08-12, user bake): matches what every real flight from
+# 2026-08-11 onward actually launched with (the command line overrode the previous 20000
+# default on every single run; 08-05..08-10 used 2000). Making the default match flown
+# practice removes the per-launch override and stops the file default drifting away from
+# what the vehicle is really configured with.
+#
+# HISTORY of the previous 20000 default (2026-08-01): validated on real BENCH recordings
+# -- 3000us/8.0 gain gave 0% ArUco decode in poor indoor lighting (a sensor noise-floor
+# problem, not a levels problem), and 20000us took that to 43-65%, peaking at 73.7% across
+# a 60s recording spanning a lighting change. That result was never reproduced in flight:
+# the 2026-08-12 campaign review measured 6.4% median decode at 200us vs 5.3% at 2000us
+# across 215 flights, i.e. exposure barely moved decode rate in the air, so the bench
+# number does not transfer. The binding limiter in flight is marker PIXEL EXTENT (0.28m
+# marker at 320x240, f~=515px -> 48px = 8px/ArUco-cell at 3m), not exposure time -- see
+# project_pi_cbf_phase2_zeroes_lateral_2026_08_12 and FLIGHT_TEST_ANALYSIS_PROCEDURE.md
+# catalog #12/#13. If venue lighting changes, re-pick this with a record_test_feed.py
+# bench run in the ACTUAL venue rather than assuming either number transfers.
+#
+# CAM_AUTO_GAIN=1 closes the loop on GAIN ONLY (exposure stays fixed at CAM_EXPOSURE_US,
+# so blur behavior is unaffected by lighting), targeting the empirically best brightness
+# band (~73-90) -- this is what lets one configuration serve both poor and good lighting
+# without knowing conditions ahead of flight time; a single static gain can't.
+os.environ.setdefault("CAM_EXPOSURE_US", "200")
 os.environ.setdefault("CAM_AUTO_GAIN", "1")
 
 try:

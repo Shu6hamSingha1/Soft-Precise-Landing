@@ -92,6 +92,20 @@ was lost to an SSH drop before printing `Flight data saved ->`, e.g. the `13-58-
 `[logger]` line dates, suspect this same stuck-clock pattern before trusting either field
 blindly — cross-check against the FC's `.ulg` date directories.**
 
+**⚠ Recurrence, 2026-08-11 (intraday, no date-folder move needed).** Same stuck-clock
+mechanism recurred same-day: a batch of 31 `Test_Data/Landing/` run directories and their
+console `Started:` lines both read `Tue Aug 11 16:03:59`–`16:54:56`, but the matching 32
+`.ulg` files (confirmed by count/session-shape correlation, not by trusting either clock) are
+timestamped `17:31:42`–`18:36:46` in `/fs/microsd/log/2026-08-11/` — there are zero `.ulg`
+files anywhere in the `15:xx`/`16:xx` hour range that day. User confirmed no testing happened
+4–5pm; the real session was 5–6pm. Because both mislabeled artifacts stayed within the same
+calendar date this time, no directory move was needed (unlike the multi-day 08-06/08/10 case
+above) — this is purely a **within-file timestamp problem**: don't trust the `16:xx` label on
+this specific batch for anything time-sensitive (e.g. correlating against video/other
+instrumentation by wall-clock time). **Lesson: always sanity-check a session's claimed hour
+against the actual `.ulg` hour-range on the SD card before assuming Pi wall-clock timestamps
+are trustworthy, even within a single already-correct calendar date.**
+
 ---
 
 ## 2. Console-log triage (fast, no data pulled yet)
