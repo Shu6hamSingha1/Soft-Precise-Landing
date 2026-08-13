@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T10:30:42.443Z
+  modified: 2026-08-13T15:23:48.874Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -702,6 +702,98 @@ doesn't regress the live ArUco pipeline (only verified via static import
 resolution + the numerical delta2 cross-check so far); the CBF_PHASE2_FIX
 in-module-toggle follow-up noted above, if still wanted; the still-open n>=5
 IC1-5 cross-marker sweep from 3d/3e.
+
+## 3g. UNRELATED (pre-existing, not CBF/cross-marker-caused) NaN self-latch bug: found + root-caused + FIXED (2026-08-13)
+
+Found while checking 3f's Phase-2-defect question on a real flight log
+(`test_data/Landing_Test/Thu Aug 13 15-34-16 2026`): `theta_cone(t)`,
+`kappa(t)`, `a_u(t)`, `w_u(t)`, `B_T(t)` all go NaN and STAY NaN for the
+rest of that flight, starting at t=37.040 -- while `Detection Status` was
+still `'ok'` (Phase 1, not a decode-fail/Phase-2 event; this was NOT the
+Phase-2 defect being investigated). Confirmed present in 3/6 of that day's
+test flights, absent in a flight from before any of the day's CBF/radius
+work -- correlation only, not proof of causation at the time.
+
+**Root-caused precisely, step by step against the logs (not guessed):**
+1. `G`, `p`, `S`, `sigma`, `dp` all checked and stayed perfectly finite
+   through the transition -- ruled out the funnel/barrier-transform math
+   and the CBF's own margin computation entirely.
+2. `dh_d(t)` (SMC's desired-flow RATE, `controller.py`'s
+   `_dh_d_deque.append((_hd_src[-1]-_hd_src[-2])/self._dt[-1])`,
+   ~line 1918 pre-fix) showed `[50, 50, nan]` for EXACTLY one frame at
+   t=37.040 -- x/y pinned at the `DH_D_MAX=50` clip (evidence of a genuine
+   near-inf blowup), z a literal unclippable `nan` (`np.clip(nan,...)`
+   stays nan). `_hd_src` (`h_d`/`h_d_noS`) itself was checked and was
+   smooth/finite through the same window -- the corruption is the
+   DIVISION, not the input data.
+3. Traced the divisor: `self._last_loop_dt` (`controller.py` `run()`,
+   `_now_loop - self._last_loop_t` from `time.perf_counter()`) had **NO
+   minimum-dt floor at all** -- unlike `gz_subscriber.py`'s `getFPS()`,
+   fixed EARLIER THIS SAME SESSION for the textbook-identical class of bug
+   (a near-duplicate-timestamp read producing a momentary non-physical
+   spike; see that fix's own comment). A `perf_counter()` read landing
+   within the OS clock's resolution of the previous one -> `dt~=0` ->
+   `nonzero/~0` -> inf (clipped to 50 on x/y) or, when the numerator also
+   happened to be ~0 on z, literal `0/0=nan`.
+4. `dh_d[-1]` feeds `c` (SMC known-dynamics term) directly -> `c` NaN ->
+   `vector`/`theta_ctrl` AND `a_v` both NaN same frame (matches `a_u`'s
+   NaN onset exactly) -> `theta_cone` (via `I_a`, inside `cbf2_filter`)
+   NaN same frame -> `kappa`'s RK5 update ingests the NaN `theta_ctrl` ->
+   `self._kappa[-1]` NaN from the NEXT step onward, PERMANENTLY --
+   integrating an ODE forward from a NaN state can never recover. This is
+   the self-latching mechanism; structurally analogous to (but a
+   completely different code location from) the 3 Phase-2 defects
+   `cbf_visibility_aruco.py` was built to fix -- unrelated to that
+   investigation, a coincidental discovery while checking it.
+
+**Confirmed NOT caused by, and NOT related to, any of this file's CBF/
+radius/ring-sampling work** -- fires with detection `'ok'` (Phase 1),
+entirely inside the SMC's own `h_d`-rate finite-difference, several steps
+upstream of anything touched in sections 1-3f.
+
+**Checked MATLAB and Hardware for the same bug (user-requested):**
+- **MATLAB** (`visualControl_IBVS_adaptive.m`): does NOT have this bug --
+  `dt` there is a FIXED simulation timestep constant, never derived from
+  wall-clock reads, so the near-duplicate-`perf_counter()`-read failure
+  mode is structurally impossible in MATLAB.
+- **Hardware** (`Hardware/scripts/controller.py`): HAS THE IDENTICAL BUG,
+  same unguarded pattern at the same relative lines (`_last_loop_dt`
+  computation ~line 1195-1198; the vulnerable `_dh_d_deque.append(...)`
+  division ~line 1825) -- confirms `PX4_Gazebo/src/controller.py` inherited
+  it via the documented 2026-08-04 port from Hardware. This is a REAL
+  pre-existing exposure on the actual hardware-flight pipeline, not
+  SITL-only. NOT YET FIXED THERE -- only PX4_Gazebo/src/controller.py was
+  edited this session (backup-discipline / explicit-confirmation norm for
+  touching the hardware-flight codebase; ask before porting).
+
+**FIXED (PX4_Gazebo/src/controller.py only, this session):**
+- `run()`: `self._last_loop_dt` now only updates when `_now_loop -
+  self._last_loop_t > 1e-4` (same floor value/convention as
+  `gz_subscriber.py`'s fix); on reject, holds the last-good dt rather than
+  accepting a near-zero read.
+- `_dh_d_deque.append(...)`: independent second guard -- computes the
+  raw ratio only if `self._dt[-1] > 1e-6` (matching the CV-KF sibling
+  branch's existing threshold), AND explicitly checks
+  `np.all(np.isfinite(...))` before appending; either failure holds the
+  deque's last entry instead of pushing a non-finite value in. Belt-and-
+  suspenders: the dt floor should prevent this from ever firing, but the
+  finite-check catches it independently even if some other divisor/path
+  produces non-finite output in the future.
+
+**Verified:** unit-tested both guard branches directly (dt=0 -> holds
+last; dt<=1e-6 -> holds last; normal case unaffected) before trusting live.
+Two live HEADLESS flights post-fix (IC2 and IC3-equivalent off-center
+ICs, the same class of flight that showed the bug pre-fix): zero NaN in
+`dh_d(t)`, `kappa(t)`, `a_u(t)`, `w_u(t)`, `B_T(t)`, `theta_cone(t)` in
+either. Given the bug was intermittent even pre-fix (didn't fire in every
+flight), 2 clean flights is reassuring but not exhaustive proof -- no
+contradicting evidence found, and the fix is verified correct at the
+mechanism level (unit tests), not just by absence-of-symptom.
+
+**Not yet done:** port the same fix to `Hardware/scripts/controller.py` if
+wanted (real hardware flights are exposed to this same latent bug);
+broader n>=5 confirmation that the intermittent trigger condition never
+recurs post-fix.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 

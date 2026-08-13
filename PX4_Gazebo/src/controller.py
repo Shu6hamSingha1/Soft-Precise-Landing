@@ -1293,7 +1293,23 @@ class Controller(Thread):
             # __init__, not _initialize_controller()) -- they're pure wall-clock
             # bookkeeping, not control-law state.
             _now_loop = self._time.perf_counter()
-            if self._last_loop_t is not None:
+            # MIN-DT FLOOR (2026-08-13, NaN-corruption root cause -- see
+            # project_20260812_cross_marker_flow_architecture_investigation memory):
+            # this read had NO floor at all, unlike gz_subscriber.py's getFPS() (fixed
+            # earlier this same session for the identical near-duplicate-timestamp
+            # class of bug). A `perf_counter()` read landing within the OS clock's
+            # resolution of the previous one produced self._last_loop_dt ~= 0, which
+            # then divided straight into _dh_d's plain finite-difference (~line 1918,
+            # no dt>1e-6 guard the way its own CV-KF sibling branch has) -- observed
+            # live: dh_d=[50,50,nan] for exactly one control step (x/y saturated the
+            # DH_D_MAX clip from a near-inf blowup; z hit literal 0/0=nan, which
+            # np.clip cannot catch), which then poisoned c -> theta_ctrl/a_v -> a_u ->
+            # the CBF's theta_cone (same step) and kappa's RK5 state (next step,
+            # SELF-LATCHING from then on -- integrating forward from a NaN state can
+            # never recover). On reject, hold the last-good dt rather than accepting a
+            # near-zero read -- a slightly-stale-but-sane value beats a garbage one,
+            # same convention as gz_subscriber.py's fix.
+            if self._last_loop_t is not None and (_now_loop - self._last_loop_t) > 1e-4:
                 self._last_loop_dt = _now_loop - self._last_loop_t
             self._last_loop_t = _now_loop
 
@@ -1915,7 +1931,19 @@ class Controller(Thread):
         else:
             _hd_src = self._h_d
         if len(_hd_src) > 1:
-            self._dh_d_deque.append((_hd_src[-1] - _hd_src[-2]) / self._dt[-1])
+            # SECOND, INDEPENDENT guard (2026-08-13, belt-and-suspenders alongside the
+            # min-dt floor in run() -- see that fix's comment for the full mechanism):
+            # this plain finite-difference has no dt>1e-6 check the way its CV-KF
+            # sibling branch does below, and np.clip (DH_D_MAX, a few lines down)
+            # cannot catch a literal nan/inf -- only bounds already-finite values. If
+            # dt is still somehow non-positive/degenerate here, hold the deque's last
+            # entry rather than push a non-finite one in (a repeated-last-value beats
+            # smearing nan through smooth4() and every downstream consumer of c/
+            # theta_ctrl/kappa for the rest of the flight).
+            _raw_dhd = (_hd_src[-1] - _hd_src[-2]) / self._dt[-1] if self._dt[-1] > 1e-6 else self._dh_d_deque[-1]
+            if not np.all(np.isfinite(_raw_dhd)):
+                _raw_dhd = self._dh_d_deque[-1]
+            self._dh_d_deque.append(_raw_dhd)
             self._dh_d_deque.popleft()
         if self._dhd_kf and len(_hd_src) > 0 and len(self._dt) > 0 and self._dt[-1] > 1e-6:
             _dhd = self._cvkfVecRate(self._dhd_kf_st, _hd_src[-1], self._dt[-1])   # CV-KF rate of the selected _hd_src
