@@ -156,6 +156,25 @@ MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4")
 # to add in the first place.
 FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "20"))
 
+# 2026-08-13 (ring-style sampling, user-proposed -- see origin-spread gate finding
+# in project_20260812_cross_marker_flow_architecture_investigation memory): ArUco's
+# img_data.py guarantees multi-radius/angular coverage by sampling FIXED ring
+# stations over the whole (generally-textured) background. The cross-marker's
+# candidate region is instead restricted to the thin dilated-mask band around the
+# drawn lines (see CROSS_FLOW_CENTER_EXCLUDE_FRAC's comment above -- "structural
+# corner scarcity"), so fixed station positions would mostly land on untextured
+# background with nothing to track. Adapted design: partition the SAME eligible
+# (boundary-margin) mask into radius-band x angle-sector cells around the marker's
+# own centroid, and draw GFT candidates per-cell -- guarantees whatever texture
+# DOES exist gets sampled from multiple directions instead of letting one strong
+# local region (e.g. the central intersection) dominate via a single unconstrained
+# GFT call. Off by default; CROSS_RING_SAMPLING=1 to enable.
+RING_SAMPLING = os.environ.get("CROSS_RING_SAMPLING", "0") == "1"
+RING_N_BANDS = int(os.environ.get("CROSS_RING_N_BANDS", "2"))
+RING_N_SECTORS = int(os.environ.get("CROSS_RING_N_SECTORS", "8"))   # must be even -- paired-opposite
+                                                                      # rejection needs a diametric partner
+RING_PTS_PER_CELL = int(os.environ.get("CROSS_RING_PTS_PER_CELL", "2"))
+
 
 def _unweighted_principal_angle(pts):
     """Manuscript alpha (Sec. Image Features, eq. ~197): plain 2nd-moment
@@ -261,6 +280,11 @@ class CrossMarkerPerception:
         # still needs to persist across calls -- everything else is supplied fresh.
         # See project_20260812_cross_marker_flow_architecture_investigation memory.
         self._prev_flow_pts = None   # (N,2) pixel coords tracked for h,w
+        # 2026-08-13 (ring sampling): parallel (N,) array of cell-id (band*RING_N_SECTORS+
+        # sector) per point in self._prev_flow_pts, only populated when RING_SAMPLING is on
+        # (else None). Lets _compute_hw find a lost point's diametric partner (opposite
+        # sector, same band) and drop it too -- mirrors img_data.py's PLASMC_RING_PAIRED.
+        self._prev_flow_cell_id = None
         self._last_resample_t = None  # timestamp of the last _sample_flow_points() call (2026-08-07
                                        # periodic-refresh fix -- see RESAMPLE_PERIOD_S's comment)
         self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
@@ -559,6 +583,81 @@ class CrossMarkerPerception:
         return cv2.dilate(mask, kernel)
 
     def _sample_flow_points(self, gray, dilated_mask):
+        """Returns (points, cell_ids). cell_ids is None unless RING_SAMPLING is on
+        (see _sample_flow_points_ring's docstring) -- callers must handle both."""
+        if RING_SAMPLING:
+            return self._sample_flow_points_ring(gray, dilated_mask)
+        return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+    def _sample_flow_points_ring(self, gray, dilated_mask):
+        """Ring-style adaptation for the cross-marker (2026-08-13, user-proposed).
+        Partitions the boundary-margin-eligible mask into RING_N_BANDS radius bands x
+        RING_N_SECTORS angle sectors around the marker's OWN centroid/extent (same
+        normalization _sample_flow_points_unconstrained uses), and draws up to
+        RING_PTS_PER_CELL GFT candidates from each cell independently -- guarantees
+        multi-directional coverage of whatever eligible texture exists (mirrors
+        img_data.py's fixed ring stations, but cell-gated by real texture instead of
+        fixed absolute pixel positions, since the marker's own eligible band is
+        thin/sparse -- see RING_SAMPLING's top-of-file comment). RING_N_SECTORS must
+        be even: sector s's diametric opposite is (s + RING_N_SECTORS//2) %
+        RING_N_SECTORS, used by _compute_hw for paired-opposite LK-failure rejection.
+
+        Returns (points (N,2) float32, cell_ids (N,) int -- band*RING_N_SECTORS+sector).
+        Falls back to the unconstrained sampler (cell_ids=None) if the mask is empty."""
+        h, w = dilated_mask.shape
+        m = FLOW_BOUNDARY_MARGIN_PX
+        boundary_mask = dilated_mask
+        if m > 0 and h > 2 * m and w > 2 * m:
+            boundary_mask = dilated_mask.copy()
+            boundary_mask[:m, :] = 0
+            boundary_mask[-m:, :] = 0
+            boundary_mask[:, :m] = 0
+            boundary_mask[:, -m:] = 0
+
+        ys, xs = np.nonzero(boundary_mask)
+        if len(xs) == 0:
+            return np.zeros((0, 2), dtype=np.float32), np.zeros((0,), dtype=int)
+        mcx, mcy = float(xs.mean()), float(ys.mean())
+        half_extent = max(float(xs.max() - xs.min()), float(ys.max() - ys.min())) / 2.0
+        if half_extent <= 0:
+            half_extent = 1.0
+
+        # per-pixel (radius, angle) relative to the marker's own centroid/extent
+        yy, xx = np.mgrid[:h, :w]
+        r_norm = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2) / half_extent
+        theta = np.arctan2(yy - mcy, xx - mcx)   # (-pi, pi]
+        band_edges = np.linspace(0.0, max(r_norm[boundary_mask > 0].max(), 1e-6) + 1e-6,
+                                  RING_N_BANDS + 1)
+        sector_width = 2 * np.pi / RING_N_SECTORS
+
+        all_pts = []
+        all_cell_ids = []
+        for b in range(RING_N_BANDS):
+            band_mask = (r_norm >= band_edges[b]) & (r_norm < band_edges[b + 1])
+            for s in range(RING_N_SECTORS):
+                lo = -np.pi + s * sector_width
+                hi = -np.pi + (s + 1) * sector_width
+                sector_mask = (theta >= lo) & (theta < hi)
+                cell_mask = (boundary_mask > 0) & band_mask & sector_mask
+                if not cell_mask.any():
+                    continue
+                cell_mask_u8 = cell_mask.astype(np.uint8) * 255
+                pts = cv2.goodFeaturesToTrack(
+                    gray, maxCorners=RING_PTS_PER_CELL, qualityLevel=GFT_QUALITY,
+                    minDistance=GFT_MIN_DIST, mask=cell_mask_u8)
+                if pts is None:
+                    continue
+                cell_pts = pts.reshape(-1, 2).astype(np.float32)
+                all_pts.append(cell_pts)
+                all_cell_ids.extend([b * RING_N_SECTORS + s] * len(cell_pts))
+
+        if not all_pts:
+            # no eligible cell yielded a corner (very sparse texture) -- fall back
+            # rather than returning nothing this call
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+        return np.vstack(all_pts)[:GFT_MAX_CORNERS], np.array(all_cell_ids[:GFT_MAX_CORNERS], dtype=int)
+
+    def _sample_flow_points_unconstrained(self, gray, dilated_mask):
         h, w = dilated_mask.shape
 
         # boundary-margin mask: never propose a corner this close to the true frame
@@ -828,7 +927,31 @@ class CrossMarkerPerception:
                 c0, c1 = pv.mean(0), cv_.mean(0)
                 M0 = float(np.mean(np.sum((pv - c0) ** 2, axis=1)))
                 M1 = float(np.mean(np.sum((cv_ - c1) ** 2, axis=1)))
-                if M0 > 1e-12 and M1 > 1e-12 and dt > 0:
+                # ORIGIN-SPREAD GATE (2026-08-13, user-proposed, quantified same day --
+                # see project_20260812_cross_marker_flow_architecture_investigation
+                # memory's t=39.444 case). Tz's per-point contribution is -Tz*(x,y):
+                # when the validated points all sit at nearly the SAME (x,y) -- i.e.
+                # clustered in one region FAR from the image origin, regardless of how
+                # internally consistent their tracking is -- that contribution is
+                # nearly IDENTICAL for every point, which looks like a uniform shift
+                # of the whole cluster, not a spread change. Centroid-relative variance
+                # is insensitive to a uniform shift BY CONSTRUCTION (same reason Tx/Ty
+                # don't affect it), so the real Tz signal barely reaches this
+                # computation in that geometry, regardless of point count or
+                # cleanliness. ratio = M0 (the cluster's own internal spread) /
+                # ||centroid||^2 (how far the whole cluster sits from the origin)
+                # quantifies this directly: a real, decisive separation was measured
+                # on 4 real documented cases -- the one KNOWN-FAILED case (wrong sign
+                # despite clean, consistent tracking) had ratio=0.028; all 3 KNOWN-
+                # WORKING cases had ratio 5.3-8823, orders of magnitude higher.
+                # CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO=1.0 sits with huge margin on both
+                # sides of that measured gap. Below it, hold the pinv Tz instead --
+                # moment-loom has no real signal to work with in this geometry, no
+                # matter how the point set is otherwise filtered/cleaned.
+                origin_dist2 = float(np.sum(c0 ** 2))
+                origin_ratio = M0 / max(origin_dist2, 1e-9)
+                min_origin_ratio = float(os.environ.get("CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO", "1.0"))
+                if M0 > 1e-12 and M1 > 1e-12 and dt > 0 and origin_ratio >= min_origin_ratio:
                     sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
         # else: too few points for a stable moment estimate (untested below
         # ~8-10 points) -- hold the pinv-solved Tz unmodified.
@@ -904,7 +1027,7 @@ class CrossMarkerPerception:
             # mask to sample candidates from
             if dilated_mask is None:
                 return np.zeros(6), False
-            self._prev_flow_pts = self._sample_flow_points(gray_curr, dilated_mask)
+            self._prev_flow_pts, self._prev_flow_cell_id = self._sample_flow_points(gray_curr, dilated_mask)
             self._last_resample_t = self._last_t
             return np.zeros(6), False
 
@@ -912,6 +1035,26 @@ class CrossMarkerPerception:
             gray_prev, gray_curr, self._prev_flow_pts, None,
             winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
         status = status.flatten().astype(bool)
+
+        # 2026-08-13 (ring sampling, paired-opposite rejection, user-proposed): if a
+        # point failed LK this frame, ALSO drop its diametrically-opposite partner
+        # (same band, sector -> sector+RING_N_SECTORS//2) from this frame's kept set --
+        # mirrors img_data.py's PLASMC_RING_PAIRED. Rationale: a ring cell's opposite
+        # partner exists specifically to balance that cell's contribution to the
+        # centroid/moment; keeping the opposite alone while the pair-partner vanishes
+        # re-introduces exactly the one-sided centroid bias pairing was meant to avoid.
+        # Only meaningful when RING_SAMPLING populated cell ids this flight.
+        if self._prev_flow_cell_id is not None and len(self._prev_flow_cell_id) == len(status):
+            half = RING_N_SECTORS // 2
+            failed_cells = set(self._prev_flow_cell_id[~status].tolist())
+            opp_failed_cells = set()
+            for c in failed_cells:
+                b, s = divmod(int(c), RING_N_SECTORS)
+                opp_failed_cells.add(b * RING_N_SECTORS + (s + half) % RING_N_SECTORS)
+            if opp_failed_cells:
+                is_opp_of_failed = np.array(
+                    [cid in opp_failed_cells for cid in self._prev_flow_cell_id])
+                status = status & ~is_opp_of_failed
 
         if dilated_mask is not None:
             # keep only points that (a) tracked successfully and (b) are still within
@@ -933,6 +1076,8 @@ class CrossMarkerPerception:
         prev_pts = self._prev_flow_pts[keep]
         curr_pts = tracked[keep]
         n_kept = len(prev_pts)
+        kept_cell_id = (self._prev_flow_cell_id[keep]
+                         if self._prev_flow_cell_id is not None else None)
 
         if dilated_mask is not None:
             # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
@@ -947,13 +1092,17 @@ class CrossMarkerPerception:
                 # top up the pool with fresh candidates rather than discarding what's
                 # still tracking -- only replace outright if the fresh yield actually
                 # beats what survived (never make the pool WORSE)
-                fresh = self._sample_flow_points(gray_curr, dilated_mask)
+                fresh, fresh_cell_id = self._sample_flow_points(gray_curr, dilated_mask)
                 self._last_resample_t = self._last_t
-                self._prev_flow_pts = fresh if len(fresh) > n_kept else curr_pts
+                if len(fresh) > n_kept:
+                    self._prev_flow_pts, self._prev_flow_cell_id = fresh, fresh_cell_id
+                else:
+                    self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
             else:
-                self._prev_flow_pts = curr_pts
+                self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
         else:
-            self._prev_flow_pts = curr_pts   # no mask to resample against; just advance tracking
+            # no mask to resample against; just advance tracking
+            self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
 
         if dilated_mask is None or n_kept < MIN_FLOW_POINTS_SOLVE or not (dt > 0):
             self._flow_diag_log.append((self._last_t, n_kept, np.nan, False, np.nan, np.nan, np.nan))

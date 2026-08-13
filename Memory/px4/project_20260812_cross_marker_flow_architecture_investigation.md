@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "CLOSED, honest negative result: implemented + live-validated TWO real fixes for the cross-marker hard landing (getFPS() init bug; dt/frame-pairing staleness fix, removes self._prev_gray/_prev_frame_t entirely; moment-loom+MAD-outlier-rejection for Tz) -- both individually correct and validated, NEITHER resolves the hard landing. Root cause is structural point-scarcity at close range, not staleness or per-point-solve quality. Also confirmed gyro-derotation still structurally necessary, and retracted an earlier wrong claim about why the nested textured ArUco marker doesn't need it (real reason: ~2.5x lower correspondence noise, not board spread)."
+description: "CLOSED, honest negative result: implemented + live-validated TWO real fixes for the cross-marker hard landing (getFPS() init bug; dt/frame-pairing staleness fix, removes self._prev_gray/_prev_frame_t entirely; moment-loom+MAD-outlier-rejection for Tz, incl. origin-spread gate refinement) -- correct and validated, NEITHER resolves the hard landing. Root cause is structural point-scarcity/poor-distribution at close range, not staleness or per-point-solve quality. Also confirmed gyro-derotation still structurally necessary, retracted an earlier wrong claim about the nested textured ArUco marker (real reason: ~2.5x lower correspondence noise, not board spread), and added ring-style sampling + paired-opposite LK-failure rejection (CROSS_RING_SAMPLING=1) to proactively address point DISTRIBUTION -- implemented+live-tested (775-frame flight, no crash, 100% detect), before/after origin_ratio comparison still open."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-12T17:28:55.733Z
+  modified: 2026-08-13T04:48:02.035Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -213,6 +213,32 @@ with moment-loom live (down from... not directly comparable to a pre-fix
 baseline at the SAME flight, but the mechanism above explains why it isn't
 zero).
 
+**FIXED same day (2026-08-13, user-proposed): origin-spread gate.** Added
+`origin_ratio = M0 / ||centroid||^2` (cluster's own internal spread vs. how
+far it sits from the image origin) as a precondition for applying the
+moment-loom override at all, `CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO=1.0`
+(env). Quantified on the 4 documented real cases before implementing: the
+KNOWN-FAILED case (t=39.444) measured ratio=0.028; all 3 KNOWN-WORKING
+cases measured 5.3-8823 — a massive, unambiguous gap, threshold=1.0 sits
+with huge margin on both sides. Offline-verified all 4 cases route
+correctly (fails→held-pinv, all 3 working cases→still use moment-loom,
+matching their previously-validated values exactly). Live-flight-tested:
+no crash, landed; in that flight 4.2% of eligible solves correctly fell
+below the gate (held pinv instead), median ratio a healthy 20.1 (min
+observed 0.51, close to but below threshold — plausible, not obviously
+mis-set).
+
+**Important, deliberately NOT overclaimed:** falling back to pinv on a
+gated-out frame does NOT mean that frame reads correctly — pinv can still
+be wrong for its own, separate reasons (confirmed: the t=39.444 case's
+held-pinv fallback is still `+1.430` vs GT `-0.80`, unchanged). The gate's
+job is narrower and more honest than "fixing" that frame: it stops
+moment-loom from being applied in a geometry where it structurally cannot
+help (so it can't make an already-uncertain frame WORSE), it does not
+manufacture a correct answer where the underlying raw data doesn't support
+one. The dynamic-range/depth-aware-fallback gap (§1 of the original
+handover doc) is still the real remaining lever for frames like this.
+
 **Conclusion: moment-loom is real and worth keeping (helps when it has
 enough points, isolated bad ones get rejected, AND the surviving points
 have real radial diversity), but it is NOT a fix for the hard landing, and
@@ -235,6 +261,73 @@ io-calibration skill's cross-marker Hz history), or (b) a fundamentally
 different close-range signal source (a depth-aware fallback, still
 untried) rather than continuing to refine how the existing sparse/noisy
 point set is processed.
+
+## 3b. Ring-style sampling (2026-08-13, user-proposed): IMPLEMENTED, offline+live tested, addresses (b) not (a)
+
+§3's conclusion identified "too few, too poorly-distributed reliable tracked
+points" as the root structural issue. This is a direct attempt at the
+DISTRIBUTION half (not the count half): guarantee tracked points come from
+multiple directions around the marker's own centroid, rather than letting
+one strong local corner (or one lucky early GFT draw) dominate the pool —
+i.e., proactively prevent the exact off-center-clustering geometry that
+made §3(ii)'s origin-spread gate necessary reactively.
+
+Adapted (not directly ported) from `img_data.py`'s ArUco fixed-ring-station
+design, because the two markers' eligible sampling regions differ
+fundamentally: ArUco samples arbitrary background/scene texture (fixed
+absolute pixel ring positions work fine, texture is everywhere); the
+cross-marker's eligible region is the thin `dilated_mask` band around the
+drawn lines only (the "structural corner scarcity" finding, §3's closing
+paragraph) — fixed absolute ring positions would mostly land on nothing.
+
+**Design** (`src/cross_marker_perception.py`, `CROSS_RING_SAMPLING=1` env,
+off by default): partition the SAME eligible boundary-margin mask into
+`CROSS_RING_N_BANDS` (default 2) radius bands x `CROSS_RING_N_SECTORS`
+(default 8, must stay even) angle sectors, normalized by the marker's OWN
+current centroid/half-extent (same normalization `_sample_flow_points`
+already used for its center-exclusion disk). Each (band, sector) cell gets
+its own masked `goodFeaturesToTrack` call, up to `CROSS_RING_PTS_PER_CELL`
+(default 2) candidates — draws from whatever eligible texture exists in
+that direction specifically, instead of one unconstrained call over the
+whole region that a single strong local corner can dominate. Falls back to
+the pre-existing unconstrained sampler if literally no cell yields a point
+(empty mask edge case).
+
+**Paired-opposite rejection** (user's explicit second requirement): a
+parallel `self._prev_flow_cell_id` array (band*N_SECTORS+sector per point)
+persists alongside `self._prev_flow_pts`. In `_compute_hw`, right after the
+LK step's `status` array comes back, any point whose LK status is False
+also invalidates its diametric partner's cell (`sector +
+RING_N_SECTORS//2`, mirrors ArUco's `PLASMC_RING_PAIRED`/`_ring_opp_idx`)
+for THAT frame's `keep` mask — rationale: a ring pair exists specifically
+to balance that direction's contribution to the centroid/moment; letting
+the surviving partner alone through re-introduces the same one-sided bias
+pairing was meant to prevent, silently (not caught by the origin-spread
+gate, which only looks at the surviving set's own geometry, not at what
+asymmetry a one-sided drop just introduced).
+
+**Verified before/along with implementation** (not asserted):
+- Synthetic mask unit test: 2 bands x 8 sectors → 16 unique cells
+  populated, exactly the expected structure.
+- Synthetic status-array test: killing cell 2's point correctly also drops
+  cell 6 (its diametric opposite, `2+8//2=6`) — confirmed by hand
+  computation, not just code inspection.
+- `python3 -c "import ast; ast.parse(...)"` synta check + a full HEADLESS
+  live flight (`WORLD=cross_marker MARKER_TYPE=cross CROSS_RING_SAMPLING=1`,
+  2026-08-13): 775 `process_frame()` calls over 23.7s, 100% detect rate,
+  zero exceptions/tracebacks in the run log. Landing outcome unchanged
+  (xy_err=0.420m, rel_vel=1.711 m/s — still a hard landing, as expected:
+  this addresses point DISTRIBUTION, not the separate dynamic-range/
+  close-range point-COUNT gap that §3's conclusion also named as needed).
+
+**NOT yet done / open follow-up:** a direct before/after comparison of
+`origin_ratio` (§3's metric) and n_kept-per-frame between
+`CROSS_RING_SAMPLING=0` and `=1` on matched flights — the live test above
+only confirms the mechanism runs correctly end-to-end, not yet that it
+measurably improves the distribution metric in practice. Do that comparison
+(offline, from two flights' Point/Radial Diag Logs) before considering this
+"validated" in the same sense §3's origin-spread gate was; log the result
+here when done.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
