@@ -1449,6 +1449,36 @@ class CrossMarkerPerception:
             return None
         return self._center_px.copy()
 
+    def get_marker_radius_px(self):
+        """Half of MARKER_EXTENT_PX (max(bbox_w, bbox_h)/2) for the visibility CBF's
+        circle-around-center, or None on the same freshness contract as
+        get_center_px() (paired -- both must come from the SAME confirmed-in-frame
+        frame, never a stale bbox alongside a fresh center or vice versa).
+
+        2026-08-13 (FOV-CBF extent-blindness fix, see project_20260812_cross_marker_
+        flow_architecture_investigation memory sec 3c/3d): controller.py's cross-
+        marker CBF branch previously fed cbf_corners a SINGLE point (get_center_px()
+        alone) -- cbf2_filter's Phase-1 QP is centroid-only by design for BOTH marker
+        types (delta_eff=0, "deliberately allow the marker to grow and overflow"), so
+        this doesn't change Phase-1's hard bound either way. But a single point also
+        makes cbf2_filter's internal delta2 = 0.5*(corners.max(0)-corners.min(0))
+        TRIVIALLY ZERO (max-min of one point), which two EXISTING, already-graduated/
+        soft mechanisms depend on: (a) Phase-2's decode-fail fallback ramps
+        delta_eff = delta_prev*phase2_alpha -- with delta_prev always [0,0] for
+        cross-marker, this ramp was silently inert; (b) controller.py's own drift-off
+        pullback (p_10_eff *= (1-frac) on the breaching axis) is driven by d_min_fov,
+        which is computed from cbf_corners' per-axis extremes -- also extent-blind
+        with a single point. Feeding a circle of points (this radius) around center
+        makes BOTH existing soft/graduated mechanisms extent-aware, without adding a
+        new hard constraint: unlike ArUco (where every one of the 4 REAL corners must
+        stay resolvable for decode to succeed at all -- an inherent hard requirement),
+        the cross-marker only needs its center intersection point, so this radius is
+        informational/margin-shaping input to already-soft machinery, not a literal
+        "must stay in frame" requirement on the circle points themselves."""
+        if not self._center_fresh or self._last_bbox is None:
+            return None
+        return 0.5 * max(self._last_bbox[2], self._last_bbox[3])
+
     def get_bbox_corners(self):
         """4 corner points (4,2) of the last successful color-gated mask bbox, in the
         (x,y,w,h) -> [[x,y],[x+w,y],[x,y+h],[x+w,y+h]] convention MARKER_EXTENT_PX
@@ -1668,6 +1698,9 @@ class CrossMarkerNode(Thread):
 
     def get_center_px(self):
         return self._perception.get_center_px()
+
+    def get_marker_radius_px(self):
+        return self._perception.get_marker_radius_px()
 
     @property
     def FEATURE_IS_VISIBLE(self):

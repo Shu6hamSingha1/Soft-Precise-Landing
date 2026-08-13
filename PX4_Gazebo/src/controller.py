@@ -2509,21 +2509,61 @@ class Controller(Thread):
         cbf_corners = None
         cbf_corners_src = 'none'
         if MARKER_TYPE == "cross":
-            # Cross-marker CBF source: the SINGLE tracked intersection point, raw pixels,
-            # shape (1,2) -- NOT the ArUco small-slot/feature_pts/coast_hold cascade below
-            # (PlanarFeatureMap rescue and marker handover don't apply to this marker; see
-            # cross_marker_perception.py's module docstring). cbf2_filter's Phase-1 barrier
-            # is already centroid-only (mean of `corners`, extent unused except for Phase-2
-            # fallback tightening -- see cbf_visibility.py's "delta_eff = 0" comment), so a
-            # single point is a natural input, not a workaround: the design decision
-            # (2026-08-01, user) is that the CBF's ONLY hard guarantee is the marker center
-            # staying in FoV; alpha/h,w already degrade gracefully on their own (hold-last,
-            # zero-output) and don't need CBF protection. get_center_px() returns None on any
-            # frame that didn't freshly confirm the center (not a stale/held pixel), so a
-            # genuine miss correctly falls through to cbf2_filter's own Phase-2 fallback,
-            # same as the ArUco path's freshness gating below.
+            # Cross-marker CBF source: a CIRCLE of 4 points (radius = current
+            # MARKER_EXTENT_PX/2) around the tracked intersection point, raw pixels,
+            # shape (4,2) -- NOT the ArUco small-slot/feature_pts/coast_hold cascade
+            # below (PlanarFeatureMap rescue and marker handover don't apply to this
+            # marker; see cross_marker_perception.py's module docstring).
+            #
+            # 2026-08-13 (FOV-CBF extent-blindness fix -- see project_20260812_cross_
+            # marker_flow_architecture_investigation memory sec 3c/3d): was a SINGLE
+            # point (center only) until this fix. Root-caused the sub-2m detection
+            # collapse seen on 4/5 IC1-5 flights to the marker's true edge (center +/-
+            # extent/2) exiting the camera frame boundary while the bare center pixel
+            # was still comfortably inside the CBF's fixed rho_fov margin -- the CBF
+            # had NO visibility into the marker's growing size at all. Fixed by
+            # circumscribing the center with 4 points at get_marker_radius_px()
+            # (empirically validated: gives 0.24-0.85s+ lead time before the actual
+            # sub-2m detection failures in IC2-5, no spurious mid-flight triggers in
+            # the one flight (IC1) that never fails).
+            #
+            # SOFT, not hard (2026-08-13, user distinction from the ArUco case below):
+            # for ArUco, EVERY ONE of the 4 real corners must stay resolvable or
+            # decode fails outright -- an inherent hard requirement, which is why
+            # cbf2_filter's Phase-1 QP (centroid-only, delta_eff=0 for BOTH marker
+            # types -- see cbf_visibility.py's own comment) is the operative hard
+            # bound there. For the cross-marker, only the center intersection point is
+            # actually needed; alpha/h,w already degrade gracefully on their own
+            # (hold-last, zero-output). Circumscribing with 4 SYMMETRIC points does
+            # NOT change Phase-1's hard QP bound at all (their mean is still exactly
+            # the center, and Phase-1 ignores spread by design) -- it only feeds two
+            # already-graduated/soft mechanisms that were previously extent-blind
+            # because a single point makes their spread computation trivially zero:
+            # (a) cbf2_filter's Phase-2 decode-fail fallback, which RAMPS a shrink
+            #     (delta_eff = delta_prev*phase2_alpha) over CBF_PHASE2_RAMP_FRAMES,
+            #     not an instant hard cutoff;
+            # (b) controller.py's own drift-off pullback below (p_10_eff *=
+            #     (1-frac) on the breaching axis only), already a FRACTIONAL, not
+            #     absolute, tightening.
+            # So the marker's growing size now informs existing soft margin-shaping,
+            # without imposing a new hard "circle must stay in frame" requirement --
+            # matching the ArUco/cross distinction the user drew.
+            #
+            # get_center_px()/get_marker_radius_px() both return None on any frame
+            # that didn't freshly confirm the center (not a stale/held pixel/bbox), so
+            # a genuine miss correctly falls through to cbf2_filter's own Phase-2
+            # fallback, same as the ArUco path's freshness gating below.
             _cpx = self._img_node.get_center_px()
-            if _cpx is not None:
+            _rpx = self._img_node.get_marker_radius_px()
+            if _cpx is not None and _rpx is not None and _rpx > 0:
+                cx, cy = float(_cpx[0]), float(_cpx[1])
+                cbf_corners = np.array([[cx + _rpx, cy], [cx - _rpx, cy],
+                                         [cx, cy + _rpx], [cx, cy - _rpx]], dtype=float)   # (4, 2)
+                cbf_corners_src = 'cross_circle'
+            elif _cpx is not None:
+                # radius not available this frame (shouldn't happen alongside a fresh
+                # center given both share the same freshness gate, but degrade to the
+                # bare point rather than dropping the frame entirely if it ever does)
                 cbf_corners = np.asarray([_cpx], dtype=float)   # (1, 2)
                 cbf_corners_src = 'cross_center'
         else:

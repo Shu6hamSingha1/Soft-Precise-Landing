@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. NEW (2026-08-13, biggest finding): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY (center+extent/2 crosses the true edge) due to sustained lateral drift on off-center ICs -- NOT extent/color-gate saturation (extent only 189-230px at failure, well under half-frame). Perception (alpha/s/h) freezes on stale hold-last-good values for the rest of the descent; the existing FOV-cone CBF (theta_cone/theta_current) does not trip at the failure moment -- unexplained, open follow-up. Likely a bigger direct hard-landing contributor than the flow/Tz mechanisms this file otherwise focuses on. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
+description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED by circumscribing center with a 4-point circle (r=MARKER_EXTENT_PX/2, empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1) -- live-tested: IC2 detect rate 77.7%->100% (n=1, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T06:56:43.585Z
+  modified: 2026-08-13T09:58:17.720Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -483,6 +483,103 @@ a fix (tighter FOV-margin CBF gain, or investigating why theta_cone didn't
 trip); and determining whether this same mechanism, not the flow/Tz
 degradation this file otherwise focuses on, is the PRIMARY hard-landing
 cause for off-center ICs specifically.
+
+## 3d. FOV-CBF extent-blindness fix: circle-around-center (2026-08-13, user-proposed), IMPLEMENTED + live-tested
+
+Follow-up to 3c's root-cause (marker exits the true frame boundary while
+the CBF's margin check, fed only the bare center pixel, stays "healthy").
+Traced WHY the CBF didn't trip: `controller.py`'s cross-marker branch
+(pre-fix) set `cbf_corners = [[get_center_px()]]` -- a SINGLE point. This
+was an explicit 2026-08-01 design decision ("the CBF's ONLY hard guarantee
+is the marker center staying in FoV... alpha/h,w already degrade
+gracefully... don't need CBF protection"). Traced the actual mechanics in
+`cbf_visibility.py::cbf2_filter`: Phase-1 (successful decode) is
+CENTROID-ONLY by design for BOTH marker types (`delta_eff=0`,
+"deliberately allow the marker to grow and overflow" -- comment predates
+this investigation and is unrelated to the cross/ArUco distinction). So a
+symmetric multi-point circle around center does NOT change Phase-1's hard
+bound (mean is unchanged). What a single point DOES silently break: it
+makes `delta2 = 0.5*(corners.max(0)-corners.min(0))` (the per-axis spread
+cbf2_filter tracks every frame) trivially [0,0] -- which starves TWO
+EXISTING, already-graduated/soft mechanisms of any real extent signal:
+(a) Phase-2's decode-fail fallback, which RAMPS `delta_eff =
+delta_prev*phase2_alpha` over `CBF_PHASE2_RAMP_FRAMES` (not an instant
+cutoff) -- was silently inert for cross-marker (delta_prev always zero);
+(b) controller.py's own drift-off pullback (`p_10_eff *= (1-frac)` on the
+breaching axis only, already fractional/soft, line ~2731) -- driven by
+`d_min_fov`, itself computed from `cbf_corners`' per-axis extremes, also
+extent-blind with one point.
+
+**User's key distinction, honored in the implementation:** ArUco's 4 real
+corners are a HARD requirement (every one must stay resolvable or decode
+fails outright) -- that's why ArUco's `d_min_fov`/drift-off naturally
+reflects true marker geometry, no special-casing needed. The cross-marker
+only needs its center intersection point (alpha/h/w already degrade
+gracefully via hold-last/zero-output), so its extent-awareness should be
+SOFT, informing the two already-graduated mechanisms above, NOT a new hard
+"circle must stay in frame" cutoff. Since symmetric circle points leave
+Phase-1's hard QP bound untouched (proven above, not just intended), this
+distinction falls out of the existing architecture for free -- no new
+hard/soft branching logic was needed, just feeding the right points in.
+
+**Implementation:**
+- `CrossMarkerPerception.get_marker_radius_px()` (new): `0.5 *
+  max(last_bbox_w, last_bbox_h)` -- i.e. `MARKER_EXTENT_PX/2` -- gated on
+  the SAME `_center_fresh` contract as `get_center_px()` (both null
+  together on a genuine miss, never a stale bbox paired with a fresh
+  center). Passthrough added on `CrossMarkerNode`.
+- `controller.py`'s cross-marker CBF branch (~line 2511): `cbf_corners`
+  is now 4 points, `center +/- (r,0)` and `center +/- (0,r)`, `r =
+  get_marker_radius_px()`. Falls back to the bare center point if the
+  radius is unavailable on an otherwise-fresh frame (shouldn't happen
+  given the shared freshness gate, but degrades rather than drops the
+  frame).
+
+**Radius choice, empirically grounded (not assumed):** tested `r =
+MARKER_EXTENT_PX/2` (already-computed, no new tuning constant) against
+the actual IC1-5 failure data from 3c by recomputing what `d_min_fov`
+would have been with a circle of that radius vs. the original bare-point
+margin:
+- IC3: circle margin goes negative at t=36.82, actual detection failure
+  at t=37.67 -- **0.85s lead time**.
+- IC5: negative at t=36.92, failure at t=37.40 -- **0.48s lead time**.
+- IC4: negative at t=41.68, failure at t=41.92 -- **0.24s lead time**
+  (tightest case -- a fast 2-frame extent jump 172->204->222px).
+- IC2: already negative at the start of the available trace (can't lower-
+  bound the lead time from this data, but it's at least as long as the
+  window).
+- IC1 (the one flight that never fails): only 15/673 ok-frames show a
+  negative circle margin, all clustered right at touchdown (extent~500px)
+  -- no spurious mid-flight triggers.
+
+**Verified before/after implementing:**
+- `get_marker_radius_px()` unit-tested standalone: correct value from a
+  synthetic bbox, `None` when not fresh, `None` when no bbox recorded yet.
+- `python3 -c "import ast; ast.parse(...)"` on both edited files.
+- Live HEADLESS flight, default (centered) IC: clean run (2nd attempt;
+  1st hit the known unrelated SITL "descent stall" flakiness, zero code
+  exceptions in either). `d_min_fov` now goes <=0 on 96/573 frames of that
+  flight (vs. essentially never, pre-fix, until the very final frames) --
+  confirms the circle margin is actively engaging through a meaningful
+  portion of the descent, not just a no-op.
+- Live HEADLESS flight, IC2 (`INITIAL_DRONE_ENU=2.0,2.0,5.0` -- the exact
+  off-center IC that had 77.7% whole-flight detect / sustained miss
+  through the final ~1.5m in the 3c investigation): **100% detect
+  (519/519) for the entire flight** with this fix. Single rep (n=1) --
+  a strong, directionally-correct signal on the exact scenario this fix
+  targets, but NOT yet a validated result (needs n>=5 per the project's
+  own sweep-methodology rule before treating as confirmed). `min_alt`
+  reported unusually high (3.94m) for this rep -- flagged but not
+  chased down this session, worth checking before drawing conclusions
+  about landing QUALITY (xy_err/rel_vel) from this same rep, as opposed
+  to the detect-rate finding, which is unambiguous.
+
+**Not yet done:** n>=5 IC1-5 sweep to confirm the detect-rate improvement
+reproduces and to check whether it actually improves SoftPrecise
+landing outcomes (fixing detection doesn't automatically fix the
+downstream control response to previously-missing data -- a real
+possibility, not assumed away); investigate the `min_alt=3.94m` anomaly
+on the IC2 test rep before trusting its xy_err/rel_vel numbers.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
