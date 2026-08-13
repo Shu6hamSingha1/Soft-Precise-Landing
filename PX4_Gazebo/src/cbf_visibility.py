@@ -1,5 +1,13 @@
 """Isolated, pure-function port of the cbf2 target-visibility CBF.
 
+CROSS-MARKER-DEDICATED (2026-08-13, user split): ArUco has its own separate
+copy, ``cbf_visibility_aruco.py`` (real-4-corner-array ``delta2`` derivation,
+plus a Phase-2 signed-projection rewrite under test there). This module now
+assumes a SINGLE tracked point (the cross-marker's intersection) plus an
+explicit ``radius`` param for size -- see ``cbf2_filter``'s docstring for why
+the two marker types need genuinely different `delta2` derivations, not just
+a shared function with an optional knob.
+
 This module lifts the ``FUNNEL_MODE == "cbf2"`` block out of
 ``controller.py`` (formerly inlined at controller.py:1074-1167) so the
 camera-plane visibility CBF can be exercised in isolation by the offline
@@ -32,8 +40,28 @@ import numpy as np
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, env=None, radius=0.0):
+                p_10, theta_cone, dt_last, w_rp, state, radius, env=None):
     """Constrain the lateral accel command for target visibility (cbf2).
+
+    2026-08-13 (user, cross-marker/ArUco split): this module is now the
+    CROSS-MARKER-DEDICATED cbf2 implementation -- ArUco has its own separate
+    copy, ``cbf_visibility_aruco.py``, which keeps the original real-corner-
+    array ``delta2`` derivation. The two markers' visibility geometry differs
+    fundamentally, not just in what data happens to be available: ArUco's
+    hard requirement is that all 4 REAL corners stay resolvable, and their
+    spread naturally reflects marker size at every altitude (near-coincident
+    at high altitude, splayed out up close) -- ``delta2`` there is correctly
+    DERIVED from the corner array itself, nothing else needed. The
+    cross-marker only needs its single intersection point to stay in FoV
+    (alpha/h,w degrade gracefully on their own); its size is a SEPARATE,
+    independently-measured quantity (``MARKER_EXTENT_PX/2``, from the
+    color-gated mask bbox) that has no implicit representation in a
+    single tracked point at all -- there is no "radius=0.0 means don't use
+    this" case to special-case, ``radius`` is simply always the input that
+    conveys size for this marker type. Mandatory param (was optional with a
+    corner-array-spread fallback in the same commit that introduced it;
+    removed same day per user correction once this call/copy distinction
+    was made explicit).
 
     Pure except for the explicit ``state`` dict. Mutates and returns ``I_a``.
 
@@ -70,23 +98,20 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         Persistent CBF state (the former ``self._lw_*``). Keys used:
         ``delta_prev, ddelta_ref, decode_fail_n, phase2_alpha, cr_prev, d,
         Lw2_prev``. Pass the same dict each cycle.
+    radius : float
+        Marker radius in raw PIXEL units (``MARKER_EXTENT_PX/2`` --
+        ``CrossMarkerPerception.get_marker_radius_px()``). Converted to the SAME
+        normalized-tangent units as ``ct`` (divide by focal length per axis -- a
+        circle of pixel-radius r projects to an axis-aligned ellipse of
+        half-extent r/fx, r/fy in tangent space) to become ``delta2``, the
+        per-axis half-extent Phase-2's decode-fail fallback ramps toward. See
+        this function's module-level docstring for why this is mandatory (not
+        derived from ``corners``, unlike ArUco's separate copy) -- pass 0.0
+        explicitly for a genuine zero-size/degenerate reading, not as an "off"
+        sentinel.
     env : mapping, optional
         Environment overrides (defaults to ``os.environ``). Reads
         ``CBF_TAU, CBF_DMIN_EMA, CBF_PHASE2_HYSTERESIS, CBF_PHASE2_RAMP_FRAMES``.
-    radius : float, optional
-        Marker radius in raw PIXEL units (e.g. cross-marker's MARKER_EXTENT_PX/2),
-        default 0.0. 2026-08-13 (FOV-CBF extent-blindness fix, see
-        project_20260812_cross_marker_flow_architecture_investigation memory sec
-        3c/3d/3e): ``corners`` alone can't convey a marker's true size when it's a
-        single tracked point (the cross-marker's case) -- ``delta2`` below (the
-        per-axis half-extent Phase-2's decode-fail fallback ramps toward) would be
-        trivially [0,0] from one point's own max-min. When ``radius`` is nonzero, it
-        is converted to the SAME normalized-tangent units as ``ct`` (divide by focal
-        length per axis -- a circle of pixel-radius r projects to an axis-aligned
-        ellipse of half-extent r/fx, r/fy in tangent space) and used in place of the
-        corner-array spread. Default 0.0 makes this a no-op for every existing
-        ArUco caller (whose real 4 corners already encode spread in the points
-        themselves) -- bit-identical to before this parameter existed.
 
     Returns
     -------
@@ -127,11 +152,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         x2, y2 = float(cr2[0]), float(cr2[1])
         Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
         tau = float(env.get("CBF_TAU", "0.3"))
-        # actual per-axis half-extent: closed-form from radius (px -> tangent units,
-        # via foc) when given (single-point callers, e.g. cross-marker), else the
-        # corner array's own spread (real multi-corner callers, e.g. ArUco) -- see
-        # this function's `radius` param doc.
-        delta2 = (np.full(2, float(radius)) / foc) if radius else 0.5 * (ct.max(0) - ct.min(0))
+        # actual per-axis half-extent: closed-form from radius (px -> tangent
+        # units, via foc) -- see this function's `radius` param doc for why this
+        # is the cross-marker's only source of size (no corner-array spread to
+        # fall back to; ArUco's separate copy keeps that derivation instead).
+        delta2 = np.full(2, float(radius)) / foc
         # Track delta and its loom rate for Phase 2 tau*ddelta_eff term
         if dt_last is not None and dt_last > 1e-6 and state.get("delta_prev") is not None:
             state["ddelta_ref"] = np.maximum((delta2 - state["delta_prev"]) / dt_last, 0.0)

@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED via a CLOSED-FORM radius (r=MARKER_EXTENT_PX/2, cbf_radius param threaded through controller.py + cbf_visibility.py -- NOT materialized 4-point circle, superseded same day per user request; proven numerically identical to the 4-point version) -- empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1; live-tested IC2 detect rate 77.7%->95.6-100% across two reps (n=1 each, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement; cbf_visibility.py is now free to carry cross-marker-specific logic since cbf_visibility_aruco.py exists as ArUco's own isolated copy. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
+description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED via a CLOSED-FORM radius (r=MARKER_EXTENT_PX/2, cbf_radius param threaded through controller.py + cbf_visibility.py -- NOT materialized 4-point circle, superseded same day per user request; proven numerically identical to the 4-point version) -- empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1; live-tested IC2 detect rate 77.7%->95.6-100% across two reps (n=1 each, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement; cbf_visibility.py is now FULLY DEDICATED to cross-marker (radius mandatory, no corner-array fallback) and cbf_visibility_aruco.py unconditionally serves ArUco (controller.py's import now routes by MARKER_TYPE, not the old CBF_PHASE2_FIX gate -- side effect: ArUco always runs the Phase-2 rewrite now, flagged, not yet flight-verified for ArUco specifically). Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T10:05:10.390Z
+  modified: 2026-08-13T10:30:42.443Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -636,6 +636,72 @@ computed:
 version specifically): n>=5 IC1-5 sweep to confirm the detect-rate
 improvement reproduces and check downstream SoftPrecise landing-outcome
 impact, not just detection rate.
+
+## 3f. 3e's `radius=0.0` OPTIONAL-with-fallback param REMOVED: cbf_visibility.py fully dedicated to cross-marker, ArUco gets its own file unconditionally (2026-08-13, user correction)
+
+User: "With cross-marker, we don't need radius=0.0 param approach." Asked to
+confirm the routing implication before touching it (`cbf_visibility.py` was,
+by DEFAULT, still the file BOTH marker types imported -- `CBF_PHASE2_FIX=1`
+only ever switched ArUco to `cbf_visibility_aruco.py`, an unrelated,
+already-in-place 2026-08-13 change (Phase-2 signed-projection rewrite under
+test, not made by me) whose own docstring already stated "`cbf_visibility.py`
+is the module the CROSS-MARKER pipeline runs" as an aspiration that hadn't
+actually been wired up yet).
+
+User's clarification, the real conceptual distinction (not just a style
+preference): **ArUco's real 4 corners naturally encode marker size at every
+altitude via their own spread** (near-coincident/tiny spread at high
+altitude, splayed out close-up) -- `delta2` there is correctly DERIVED from
+the corner array itself; there is no meaningful "radius" input separate from
+that. **The cross-marker's single tracked point has no implicit size
+representation at all** -- its radius (`MARKER_EXTENT_PX/2`, from the
+color-gated mask bbox) is a genuinely separate, always-needed measurement,
+not an optional add-on with an "off" (0.0) state.
+
+**Change:**
+- `cbf_visibility.py` (`cbf2_filter`): `radius` is now a REQUIRED
+  parameter (no default, no corner-array-spread fallback branch);
+  `delta2 = radius/foc` unconditionally. Module + function docstrings
+  rewritten to state this file is now CROSS-MARKER-DEDICATED.
+- `cbf_visibility_aruco.py`: added an accepted-but-UNUSED `radius=0.0` param
+  purely for shared-call-site compatibility (controller.py's single
+  `cbf2_filter(...)` call site is generic over both marker types); its own
+  `delta2` derivation (real corner-array spread) is untouched. Module
+  docstring updated to state it's now ArUco's unconditional default, not a
+  `CBF_PHASE2_FIX`-gated alternative.
+- `controller.py`: import switch changed from `CBF_PHASE2_FIX`-gated to
+  `MARKER_TYPE`-gated -- `MARKER_TYPE=="cross"` always imports
+  `cbf_visibility.py`, else always `cbf_visibility_aruco.py`.
+  **Side effect, flagged explicitly (not hidden):** `CBF_PHASE2_FIX` no
+  longer selects between two cbf2_filter implementations for ArUco (that
+  was its whole prior purpose) -- ArUco now ALWAYS runs
+  `cbf_visibility_aruco.py`'s Phase-2 rewrite unconditionally, since there
+  is no longer an ArUco-compatible `cbf_visibility.py` to fall back to.
+  If the original (pre-rewrite) Phase-2 behavior still needs to be A/B-
+  tested for ArUco, that toggle would need to move INSIDE
+  `cbf_visibility_aruco.py` as an in-module branch -- not implemented,
+  out of this session's scope, flagged in that file's own docstring too.
+
+**Verified:**
+- Direct numerical comparison (same methodology as 3e): cross-marker's
+  single-point+radius=100 call and ArUco's real-4-corner call (radius
+  ignored) both produce IDENTICAL `delta2` = `[0.370, 0.370]` for
+  geometrically equivalent inputs -- confirms the two files agree exactly
+  where their inputs actually correspond, despite the split.
+- `python3 -c "import ast; ast.parse(...)"` on all three edited files.
+- Direct import test: `MARKER_TYPE=aruco` resolves `controller.cbf2_filter`
+  to `cbf_visibility_aruco` (module attribute check, not just no-crash);
+  `MARKER_TYPE=cross` already covered by the live flight test below.
+- Live HEADLESS flight, IC2 (cross-marker, mandatory-radius path): clean
+  run, no exceptions (ArUco's live path not re-flown this round -- only
+  import-resolution-verified, not flight-tested, since no ArUco-specific
+  behavior changed beyond the file-selection switch itself).
+
+**Not yet done:** an actual ArUco SITL flight to confirm the routing switch
+doesn't regress the live ArUco pipeline (only verified via static import
+resolution + the numerical delta2 cross-check so far); the CBF_PHASE2_FIX
+in-module-toggle follow-up noted above, if still wanted; the still-open n>=5
+IC1-5 cross-marker sweep from 3d/3e.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 

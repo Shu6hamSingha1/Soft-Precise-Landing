@@ -8,11 +8,16 @@ active development; it is deliberately left at its committed state. This copy
 carries the Phase-2 (no-corners fallback) rewrite so it can be exercised against
 the ARUCO pipeline in Gazebo without perturbing cross-marker work at all.
 
-Select it with ``CBF_PHASE2_FIX=1`` (controller.py's import switch). Default is
-OFF, so every existing run -- cross-marker or ArUco -- is bit-identical to
-before this file existed.
-
-    MARKER_TYPE=aruco CBF_PHASE2_FIX=1 HEADLESS=1 bash scripts/run_aruco_landing.sh
+2026-08-13 UPDATE: ``cbf_visibility.py`` has since been dedicated fully to the
+cross-marker (mandatory ``radius`` param, no corner-array ``delta2`` fallback --
+see its module docstring), so it can no longer serve ArUco's real-corner-array
+case at all. ``controller.py``'s import now routes by MARKER_TYPE: ArUco always
+imports THIS file, cross-marker always imports ``cbf_visibility.py``.
+``CBF_PHASE2_FIX`` no longer selects between the two files (that selection is
+now MARKER_TYPE's job) -- it is currently unused as an import switch; if a
+toggle between the Phase-2 rewrite here and the original Phase-2 fallback is
+still wanted for ArUco A/B testing, it would need to become an in-module
+branch instead (not implemented).
 
 WHAT DIFFERS from cbf_visibility.py: only ``_project_box`` (new module-level
 helper) and the body of the ``if not ok:`` Phase-2 branch. The Phase-1 path is
@@ -87,7 +92,13 @@ def _project_box(th, anchor, Lw, m, iters=10):
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, env=None):
+                p_10, theta_cone, dt_last, w_rp, state, radius=0.0, env=None):
+    # `radius` (2026-08-13): call-site compatibility with cbf_visibility.py's
+    # now-mandatory cross-marker `radius` param (controller.py calls
+    # cbf2_filter through one shared call site regardless of which module got
+    # imported) -- ACCEPTED BUT UNUSED here. ArUco's real 4-corner `corners`
+    # array already encodes marker size at every altitude via its own spread
+    # (see delta2 below); an explicit radius has no role in this copy.
     """Constrain the lateral accel command for target visibility (cbf2).
 
     Pure except for the explicit ``state`` dict. Mutates and returns ``I_a``.
