@@ -165,7 +165,18 @@ class Controller(Thread):
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
         # For Gazebo 1280x960 @ f=540: ~[1.185, 0.889]
-        self._p_10 = self._img_node.center / self._img_node.focal  # (2,)
+        #
+        # CAMERA-MOUNT YAW FIX (2026-08-04): x500_mono_cam_down/model.sdf's camera mount
+        # now has yaw+=90deg on the pointing-down pitch (moved the drone's landing-leg
+        # ghost out of the top/bottom image margins). This swaps which physical FoV
+        # half-extent (cx/fx vs cy/fy) applies to the NEW image-x vs image-y axis -- see
+        # cross_marker_perception.py's _getVirtualPts for the full derivation
+        # (ray_body = Rz(90deg) @ ray_image). p_10 is not itself a directional/signed
+        # quantity (both components are positive FoV bounds), so only the component
+        # ORDER needs to swap, not any sign -- reversed here to match every downstream
+        # consumer (s_e_n, dsn, _hd_rate, dr_bar_e, the CBF's m2) that now receives
+        # axis-swapped s/h from the perception pipeline.
+        self._p_10 = self._img_node.center[::-1] / self._img_node.focal[::-1]  # (2,)
 
         # ════ Outer-loop Virtual Image Point PID  [manuscript: K_rp, K_ri, K_rd] ════
         # DIRECT per-axis control parameters (2026-06-03 cleanup: scale factors on
@@ -403,10 +414,17 @@ class Controller(Thread):
         # In BOARD mode these protect the PRIMARY marker's corners only (see
         # docs/CONTROLLER_PARITY.md board-mode note). The validated IC1 config sizes
         # the envelope to the sensor edge: U0=290, V0=315, Uinf=220, Vinf=300.
-        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0")),
-                                      float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0"))])
-        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0")),
-                                      float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0"))])
+        # CAMERA-MOUNT YAW FIX (2026-08-04): U/V here are asymmetric (290 vs 210), and the
+        # image-axis convention swapped ([-y,x] -- see cross_marker_perception.py's
+        # _getVirtualPts). Component order reversed (V,U instead of U,V) so index 0 still
+        # matches the NEW image-x axis and index 1 the NEW image-y axis, consistent with
+        # every other per-axis quantity in this file (p_10, u_centered/v_centered, etc.).
+        # Env var NAMES kept as U/V (still label the PHYSICAL sensor axis each controls)
+        # to avoid an unrelated config-surface rename.
+        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0")),
+                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0"))])
+        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0")),
+                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0"))])
         # rho_fov held CONSTANT at rho_fov_0 by default (l_fov=0 -> exp(0)=1 -> rho_fov_curr=rho_fov_0).
         # The decay to rho_fov_inf (80px) shrank the visibility funnel far inside the camera FoV,
         # firing the perception-death handoff prematurely (marker fills 80px while still visible to
@@ -618,6 +636,13 @@ class Controller(Thread):
         self._predict_lead = float(os.environ.get("PLASMC_PREDICT_LEAD_S", "0.04"))  # forward horizon (s; 0=just correct)
         self._predict_win  = int(os.environ.get("PLASMC_PREDICT_WIN", "15"))         # fit window (warm at terminal)
         self._predict_deg  = int(os.environ.get("PLASMC_PREDICT_DEG", "2"))          # poly degree (2=curvature)
+        # BUG FIX (2026-08-04, ported from Hardware/scripts/controller.py -- see
+        # project_pi_dt_visibility_independence_2026_08_04 memory): max last-good-
+        # frame gap _predictModel_s will extrapolate over before falling back to the
+        # raw measurement instead -- see that method's own comment for the full
+        # writeup (dt bypasses the self._dt fix, and MULTIPLIES the extrapolation
+        # term, so a large gap directly inflates it).
+        self._predict_max_gap_s = float(os.environ.get("PLASMC_PREDICT_MAX_GAP_S", "0.3"))
         # PER-AXIS rate-gate limits — the loom (z) has a different scale than the lateral (x,y), so
         # its limit is separate. Derived from the terminal-kick data (approach p90 << limit << terminal p90).
         _dh_xy = float(os.environ.get("PLASMC_DH_LIMIT_XY", "10.0"))
@@ -709,6 +734,16 @@ class Controller(Thread):
         # the initial-approach data needed to diagnose the failure that caused the loss.
         # _archive in run() snapshots the lists before each re-init; getLogData merges.
         self._log_segments = []
+
+        # BUG FIX (2026-08-04, ported from Hardware/scripts/controller.py -- see
+        # project_pi_dt_visibility_independence_2026_08_04 memory): a pure
+        # wall-clock heartbeat, refreshed EVERY run() loop iteration regardless of
+        # marker visibility (see run()/_updateTime()) -- deliberately initialized
+        # here in true __init__, NOT inside _initialize_controller() (which re-runs
+        # on every marker-loss reinit), so this keeps ticking continuously across
+        # reinits too.
+        self._last_loop_t = None
+        self._last_loop_dt = None
 
         self._initialize_controller()
         self.start()
@@ -913,8 +948,32 @@ class Controller(Thread):
         if not gi or not hi:
             return self._s_raw[-1][k]
         ip, ih = gi[-1], hi[-1]
+        # ip/ih index the paired _s_raw/_s_good and _h_raw/_h_good arrays (always appended
+        # together, same call site) -- but self._t is appended separately (once per control
+        # tick, not necessarily 1:1 with feature-param updates) and can fall behind them,
+        # e.g. during a perception catch-up processing >1 new sample per tick. Found
+        # 2026-08-03: an unguarded self._t[ip] IndexError here killed the controller's own
+        # background thread uncaught (no try/except around run()), silently ending the
+        # descent (landing_test's while EC_node.is_alive() loop just exits) with NO
+        # touchdown detection at all -- looked like a false "PX4 landed" until traced.
+        if ip >= len(self._t) or ih >= len(self._h_raw):
+            return self._s_raw[-1][k]
         s_prev = self._s_raw[ip][k]; h_lat = self._h_raw[ih][k]; h_z = self._h_raw[ih][2]
-        dt = max(float(self._t[-1]) - float(self._t[ip]), 1e-3) + lead
+        raw_gap = float(self._t[-1]) - float(self._t[ip])
+        # BUG FIX (2026-08-04, ported from Hardware/scripts/controller.py -- see
+        # project_pi_dt_visibility_independence_2026_08_04 memory): dt here is
+        # computed directly from self._t (last-good frame -> now), bypassing the
+        # self._dt fix entirely -- self._t/_s_raw/_s_good only grow on visible
+        # ticks, so ip can point to a pre-gap entry when the first fresh
+        # measurement after a marker-loss gap looks "spiked" relative to stale
+        # history. dt MULTIPLIES the extrapolation term here, so a large gap
+        # directly inflates the output. Same fallback philosophy as
+        # _predictForward ("falls back to the raw last value when there aren't
+        # enough good frames"): beyond a sane gap, don't trust a linear
+        # extrapolation that far out -- fall back to the raw measurement instead.
+        if raw_gap > self._predict_max_gap_s:
+            return self._s_raw[-1][k]
+        dt = max(raw_gap, 1e-3) + lead
         return s_prev + (h_lat - s_prev * h_z) * dt
 
     def _predictModel_h(self, k, lead):
@@ -925,6 +984,11 @@ class Controller(Thread):
         if len(gi) < 2 or not hi:
             return self._h_raw[-1][k]
         i0, i1, ih = gi[0], gi[1], hi[-1]
+        # See _predictModel_s's 2026-08-03 comment: gi/hi index the paired _s_raw/_s_good
+        # and _h_raw/_h_good arrays, not self._t, which can fall behind -- bounds-check
+        # before indexing self._t to avoid an uncaught IndexError killing this thread.
+        if i0 >= len(self._t) or i1 >= len(self._t) or ih >= len(self._h_raw):
+            return self._h_raw[-1][k]
         sdot = (self._s_raw[i1][k] - self._s_raw[i0][k]) / max(float(self._t[i1]) - float(self._t[i0]), 1e-3)
         return sdot + self._s_raw[i1][k] * self._h_raw[ih][2]
 
@@ -1205,6 +1269,21 @@ class Controller(Thread):
 
     def run(self):
         while self._img_node.is_alive() and self._STAY_OPEN:
+            # BUG FIX (2026-08-04, ported from Hardware/scripts/controller.py -- see
+            # project_pi_dt_visibility_independence_2026_08_04 memory): refresh the
+            # loop-wall-clock heartbeat EVERY iteration, BEFORE the visibility check
+            # below -- independent of whether the marker is currently visible.
+            # self._updateTime() uses self._last_loop_dt (not a gap between
+            # visible-marker ticks) so dt always reflects the true small
+            # per-loop-iteration period, never a multi-frame/multi-second visibility
+            # gap. self._last_loop_t/_dt persist across marker-loss reinits (see
+            # __init__, not _initialize_controller()) -- they're pure wall-clock
+            # bookkeeping, not control-law state.
+            _now_loop = self._time.perf_counter()
+            if self._last_loop_t is not None:
+                self._last_loop_dt = _now_loop - self._last_loop_t
+            self._last_loop_t = _now_loop
+
             # GT-FEEDBACK: keep the loop alive on GT even if perception loses the
             # marker (the GT target pose is always available) — isolates control
             # from the perception-visibility gate through terminal descent.
@@ -1346,7 +1425,20 @@ class Controller(Thread):
             while self._t[-1] == self._t[-2]:
                 time.sleep(SLEEP_TIME)
                 self._t[-1] = self._time.perf_counter()
-            self._dt.append(self._t[-1] - self._t[-2])
+            # ROOT-CAUSE FIX (2026-08-04, ported from Hardware/scripts/controller.py
+            # -- see project_pi_dt_visibility_independence_2026_08_04 memory): dt
+            # used to be self._t[-1]-self._t[-2], i.e. time since the LAST VISIBLE-
+            # marker tick -- since _updateTime() only runs while FEATURE_IS_VISIBLE
+            # (see run()), ANY marker-loss gap showed up as a giant single-step dt
+            # feeding straight into RK5/trapezoidal integrators on the reacquisition
+            # tick. Fixed at the source: dt is now taken from self._last_loop_dt,
+            # refreshed EVERY outer-loop iteration in run() independent of
+            # visibility, so it always reflects the true small per-loop-iteration
+            # period. self._t itself is unchanged (still only appended on visible
+            # ticks, preserving index-alignment with every other per-tick logged
+            # array).
+            self._dt.append(self._last_loop_dt if self._last_loop_dt is not None
+                             else self._t[-1] - self._t[-2])
 
     def _updatePerfFunc(self):
         """Middle-loop optical-flow performance envelope (MATLAB-style)."""
@@ -2521,8 +2613,14 @@ class Controller(Thread):
         if cbf_corners is not None:
             try:
                 cx, cy = self._img_node.center
-                u_centered = cbf_corners[:, 0] - cx
-                v_centered = cbf_corners[:, 1] - cy
+                # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): cbf_corners are raw pixel
+                # positions (same convention as cbf_visibility.py's own `corners` param)
+                # -- apply the identical [y,-x] swap (Rz(-90deg), corrected sign) so
+                # u_centered/v_centered stay consistent with the new image-axis
+                # convention (and rho_fov_curr's reversed component order, see
+                # self._rho_fov_0/_rho_fov_inf's own fix).
+                u_centered = cbf_corners[:, 1] - cy
+                v_centered = -(cbf_corners[:, 0] - cx)
                 d_corner_x = rho_fov_curr[0] - np.abs(u_centered)   # (4,)
                 d_corner_y = rho_fov_curr[1] - np.abs(v_centered)   # (4,)
                 d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
@@ -2734,8 +2832,13 @@ class Controller(Thread):
             # Env CBF_RD3_DIRECT=0 reverts to the accel path for A/B.
             ts = self._theta_safe
             if ts is not None and os.environ.get("CBF_RD3_DIRECT", "1") == "1":
+                # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): th_safe is "image axes"
+                # (per cbf2_filter's docstring) -- needs Rz(-90deg) BEFORE the yaw
+                # rotation below, same as cbf2_filter's own (corrected) I_a[:2] fix
+                # (see cbf_visibility.py).
+                ts = np.array([ts[1], -ts[0]])
                 a_xy_dir = np.array([cy * ts[0] - sy * ts[1],
-                                     sy * ts[0] + cy * ts[1]])      # Rz(yaw)@th_safe
+                                     sy * ts[0] + cy * ts[1]])      # Rz(yaw)@Rz(-90deg)@th_safe
                 rd3 = np.array([-a_xy_dir[0], -a_xy_dir[1], 1.0])
                 rd3 = rd3 / np.linalg.norm(rd3)
             else:

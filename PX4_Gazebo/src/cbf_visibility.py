@@ -102,6 +102,13 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             raise ValueError("no corners")
         rc = np.asarray(corners, float)
         ct = (rc - np.asarray(center, float)) / foc
+        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): same physical camera-mount
+        # change (yaw+=90deg on the pointing-down pitch) as cross_marker_perception.py/
+        # img_data.py's _getVirtualPts -- this function does its OWN separate raw-pixel
+        # normalization (not routed through _getVirtualPts), so it needs the identical
+        # [y,-x] compensating swap (Rz(-90deg), corrected sign -- see _getVirtualPts's
+        # comment for the empirical evidence that [-y,x]/Rz(+90) was backwards).
+        ct = np.column_stack([ct[:, 1], -ct[:, 0]])
         cr2 = ct.mean(0)
         x2, y2 = float(cr2[0]), float(cr2[1])
         Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
@@ -130,8 +137,15 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         state["Lw2_prev"] = Lw2.copy()                               # stash for Phase 2 headroom calc
         cz, sz = np.cos(yaw_c), np.sin(yaw_c)
         Rzm = np.array([[cz, sz], [-sz, cz]])                        # Rz(-yaw): inertial -> image
-        th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3))   # current image-axis tilt
-        th = Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6))     # theta_d = Rz(-yaw)@(a_xy/a_z)
+        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): Rzm alone converts
+        # inertial->BODY-aligned image axes (the OLD "camera=body-FRD aligned"
+        # assumption); now needs an additional Rz(+90deg) to correctly land in the NEW
+        # (post camera-yaw) image axes -- forward is ray_body = Rz(-90deg) @ ray_image
+        # (corrected sign, see _getVirtualPts's comment for the empirical evidence),
+        # so converting body/inertial -> image needs the inverse, Rz(+90deg).
+        Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])                # Rz(+90deg)
+        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current image-axis tilt
+        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # theta_d = Rz(-yaw)@(a_xy/a_z)
         # --- lean-vector -> rotation-axis correction (CBF_LW_ROT) ---
         # L_w couples the body ANGULAR-RATE vector omega_rp to the feature flow
         # (cr_dot = L_w @ omega_rp), but theta here is the LEAN-direction vector
@@ -156,7 +170,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # The CALLER applies it post-CBF (controller.py), so this function stays a pure
         # visibility QP whose ONLY constraint is the FoV box projection above.
         th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
-        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)      # a_xy* = a_z*Rz(yaw)@theta*
+        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): image -> body/inertial applies
+        # the FORWARD transform directly (Rz(-90deg), same direction as _getVirtualPts),
+        # BEFORE the existing Rz(yaw) inertial-yaw-alignment step.
+        Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])              # Rz(-90deg)
+        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz(-90deg)@theta*
         theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
         ok = True
     except (IndexError, AttributeError, ValueError, TypeError):
