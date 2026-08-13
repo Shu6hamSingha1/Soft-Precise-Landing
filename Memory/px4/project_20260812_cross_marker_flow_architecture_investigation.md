@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED via a CLOSED-FORM radius (r=MARKER_EXTENT_PX/2, cbf_radius param threaded through controller.py + cbf_visibility.py -- NOT materialized 4-point circle, superseded same day per user request; proven numerically identical to the 4-point version) -- empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1; live-tested IC2 detect rate 77.7%->95.6-100% across two reps (n=1 each, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement; cbf_visibility.py is now FULLY DEDICATED to cross-marker (radius mandatory, no corner-array fallback) and cbf_visibility_aruco.py unconditionally serves ArUco (controller.py's import now routes by MARKER_TYPE, not the old CBF_PHASE2_FIX gate -- side effect: ArUco always runs the Phase-2 rewrite now, flagged, not yet flight-verified for ArUco specifically). Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
+description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED via a CLOSED-FORM radius (r=MARKER_EXTENT_PX/2, cbf_radius param threaded through controller.py + cbf_visibility.py -- NOT materialized 4-point circle, superseded same day per user request; proven numerically identical to the 4-point version) -- empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1; live-tested IC2 detect rate 77.7%->95.6-100% across two reps (n=1 each, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement; cbf_visibility.py is now FULLY DEDICATED to cross-marker (radius mandatory, no corner-array fallback) and cbf_visibility_aruco.py unconditionally serves ArUco (controller.py's import now routes by MARKER_TYPE, not the old CBF_PHASE2_FIX gate -- side effect: ArUco always runs the Phase-2 rewrite now -- VERIFIED PASSED via a separate-session ArUco SITL flight, landed SOFT+PRECISE). Radius further split into TWO knobs (2026-08-13, sec 3i): live+CAPPED (CROSS_CBF_RADIUS_CAP_PX=100px default) for d_min_fov/overflow/drift-off, vs FIXED (CROSS_CBF_PHASE2_RADIUS_PX=100px default) for cbf2_filter's Phase-2 delta2 only -- the cap specifically prevents cbf_radius alone (unbounded/frame-filling at point-blank range, measured 633-639px pre-takeoff) from triggering ArUco's benign-but-cross-marker-inapplicable OVERFLOW misclassification, which would otherwise silently disable the drift-off pullback. Ring-sampling origin_ratio A/B: INCONCLUSIVE (n=1 each, sec 3h). Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T15:23:48.874Z
+  modified: 2026-08-13T17:33:31.094Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -794,6 +794,106 @@ mechanism level (unit tests), not just by absence-of-symptom.
 wanted (real hardware flights are exposed to this same latent bug);
 broader n>=5 confirmation that the intermittent trigger condition never
 recurs post-fix.
+
+## 3h. Two follow-up verifications (2026-08-13, done in a separate session): ArUco regression PASSED, ring-sampling A/B INCONCLUSIVE
+
+Per user report (verified in a separate session, not re-derived here):
+- **ArUco regression check (3f's open item): PASSED.** Headless ArUco SITL
+  flight landed SOFT+PRECISE (xy_err=0.011m, rel_vel=0.025 m/s). Confirms
+  the `MARKER_TYPE`-based `cbf_visibility.py`/`cbf_visibility_aruco.py`
+  import-routing switch does not regress the live ArUco pipeline.
+- **Ring-sampling `origin_ratio` before/after (3b's open item):
+  INCONCLUSIVE, n=1 each side.** Matched IC2 cross-marker flights
+  (`CROSS_RING_SAMPLING=0` vs `=1`, `test_data/RingSampling_AB/`), compared
+  via a new `tools/compare_ring_sampling.py` (reuses the existing "Point
+  Diag Log" already saved in `Img_Data.npy` -- no new instrumentation
+  needed). Both single-rep flights failed the landing (`target_lost`,
+  xy_err 3.2-3.6m) -- too noisy to draw a landing-outcome conclusion,
+  consistent with the project's own n=1-is-noise rule. The symmetry metric
+  itself showed no clean win either: median `origin_ratio` barely moved
+  (+0.004), while mean/p90 blew up under ring sampling (17->198, 54->279)
+  with fewer solves overall (334->176) -- outlier-dominated, not a clean
+  improvement. Needs n>=5 before drawing any conclusion either way.
+
+## 3i. `cbf_radius` split into TWO knobs + a size-driven-misclassification cap: IMPLEMENTED + live-tested (2026-08-13, user-driven)
+
+Follow-up to 3d-3f. Two separate refinements, decided through direct
+back-and-forth (not implemented until both were settled):
+
+**(A) Keep `cbf2_filter`'s `radius` CONSTANT, decoupled from the live one.**
+User's insight, which retroactively explains why this matters: `cbf_radius`
+was feeding TWO different consumers -- controller.py's own `d_min_fov`/
+drift-off (the live, proactive, real-time mechanism that actually fixed the
+IC2 detect-rate problem) AND `cbf2_filter`'s `radius` param (which only
+feeds Phase-2's `delta2`/`state["delta_prev"]`). A LIVE, growing value in
+the SECOND role risks reactivating the 3 Phase-2 defects
+(`cbf_visibility_aruco.py`'s rewrite target) that were dormant for
+cross-marker only because a bare point made `delta_prev` trivially zero
+(see the "check cbf_visibility_aruco.py" investigation, folded into 3f's
+history). Phase-2 is a reactive fallback during a blind window, not a
+real-time signal -- it doesn't need precision, it needs to not compound.
+Split into `cbf_radius` (live, capped -- see B) for `d_min_fov`, and
+`cbf_radius_phase2` (fixed `CROSS_CBF_PHASE2_RADIUS_PX`, default 100px,
+env-overridable) for `cbf2_filter` only.
+
+**(B) Cap the live `cbf_radius` -- `CROSS_CBF_RADIUS_CAP_PX`, default
+100px.** User: "we need to stop the extending radius at some threshold.
+Otherwise it will just overflow and obstruct the real command." Checked
+HOW ArUco's CBF responds once its marker has overflowed the FoV
+(`controller.py`'s `CBF_OVERFLOW`/`CBF_DRIFT_OFF` classification,
+~line 2716-2730): a BOTH-SIDES breach ("span") is classified `OVERFLOW`,
+deliberately treated as BENIGN -- signals hand-over-readiness to ArUco's
+smaller nested marker (`img_data.py` switches primary tracking there). A
+ONE-SIDED breach is `DRIFT_OFF`, which DOES trigger the corrective
+response (`p_10_eff *= (1-frac)` on the breaching axis). Found the failure
+mode this creates for cross-marker: if `cbf_radius` alone (independent of
+ANY real position error) ever exceeds `rho_fov`'s smaller axis (`rho_fov_0
+=[210,290]`), BOTH sides breach simultaneously even at perfect centering
+(`u_centered=0`) -> misclassified as `OVERFLOW`, NOT `DRIFT_OFF` -> the one
+real corrective mechanism silently DISABLES ITSELF exactly when the marker
+is largest/closest. Cross-marker has no secondary marker to hand over to
+(the intersection point IS the smallest trackable feature), so ArUco's
+"benign" framing doesn't apply -- this would be actively harmful.
+
+Checked the marker's real spread at true point-blank range (drone landed
+directly on the marker, pre-takeoff) across 10 flights: `MARKER_EXTENT_PX`
+is remarkably consistent at 633-639px there (radius ~316-320px) -- frame-
+filling, far exceeding EITHER `rho_fov` axis. This reframed the cap's job:
+it can't and shouldn't try to "cover" true worst-case size (unbounded/
+frame-filling, the acknowledged perception-death floor per
+`FUNNEL_CBF_DESIGN.md` sec 2 -- no cap fixes that). Its real job is
+guaranteeing size ALONE can never trigger the false `OVERFLOW`
+misclassification, while preserving the lead-time-validated USEFUL range
+(radius ~95-115px, where 3d's fix measurably helped). 100px (first
+proposed at 70% of `rho_fov`=147px, explicitly rejected by the user as too
+high; revised down using the point-blank data) sits just above that useful
+range and leaves `rho_fov[0]-100=110px` of real margin regardless of how
+frame-filling the marker becomes.
+
+**Implementation** (`controller.py`): `CROSS_CBF_RADIUS_CAP_PX` /
+`CROSS_CBF_PHASE2_RADIUS_PX` (both default 100.0, env-overridable) defined
+near the top of the file. Cross-marker branch: `cbf_radius = min(live_radius,
+CROSS_CBF_RADIUS_CAP_PX)` feeds `d_min_fov`/overflow/drift-off (unchanged
+formula, just now bounded input); `cbf_radius_phase2 =
+CROSS_CBF_PHASE2_RADIUS_PX` (always the fixed constant, never live) is what
+gets passed as `cbf2_filter`'s `radius=` kwarg. Both stay at their `0.0`
+pre-init default on a genuine center-miss (same freshness-gated fallback
+behavior as before).
+
+**Verified:** unit-tested the cap/split logic directly (radius 0/50/100/
+150/250/320/~319.5px all map to the expected capped/fixed pair). Live
+HEADLESS flight (IC2): clean, no exceptions, and this specific flight
+reached `extent=639px` (uncapped radius would have been 319.5px, past
+`rho_fov[0]=210` -- exactly the misclassification scenario this fix
+targets) -- `d_min_fov` stayed properly bounded `[0, 49]`, never negative,
+`kappa`/`a_u`/`theta_cone` all zero-NaN throughout.
+
+**Not yet done:** hasn't been specifically checked whether `_cbf_overflow`
+now correctly stays `False` (not misclassified) at exactly the point the
+UNCAPPED radius would have exceeded `rho_fov` in a real flight -- the live
+test above confirms no crash/NaN and bounded `d_min_fov`, but didn't
+explicitly log/assert the overflow/drift-off classification itself; still
+folds into the broader n>=5 IC1-5 sweep that's been open since 3d.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
