@@ -32,7 +32,7 @@ import numpy as np
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, env=None):
+                p_10, theta_cone, dt_last, w_rp, state, env=None, radius=0.0):
     """Constrain the lateral accel command for target visibility (cbf2).
 
     Pure except for the explicit ``state`` dict. Mutates and returns ``I_a``.
@@ -73,6 +73,20 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
     env : mapping, optional
         Environment overrides (defaults to ``os.environ``). Reads
         ``CBF_TAU, CBF_DMIN_EMA, CBF_PHASE2_HYSTERESIS, CBF_PHASE2_RAMP_FRAMES``.
+    radius : float, optional
+        Marker radius in raw PIXEL units (e.g. cross-marker's MARKER_EXTENT_PX/2),
+        default 0.0. 2026-08-13 (FOV-CBF extent-blindness fix, see
+        project_20260812_cross_marker_flow_architecture_investigation memory sec
+        3c/3d/3e): ``corners`` alone can't convey a marker's true size when it's a
+        single tracked point (the cross-marker's case) -- ``delta2`` below (the
+        per-axis half-extent Phase-2's decode-fail fallback ramps toward) would be
+        trivially [0,0] from one point's own max-min. When ``radius`` is nonzero, it
+        is converted to the SAME normalized-tangent units as ``ct`` (divide by focal
+        length per axis -- a circle of pixel-radius r projects to an axis-aligned
+        ellipse of half-extent r/fx, r/fy in tangent space) and used in place of the
+        corner-array spread. Default 0.0 makes this a no-op for every existing
+        ArUco caller (whose real 4 corners already encode spread in the points
+        themselves) -- bit-identical to before this parameter existed.
 
     Returns
     -------
@@ -113,7 +127,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         x2, y2 = float(cr2[0]), float(cr2[1])
         Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
         tau = float(env.get("CBF_TAU", "0.3"))
-        delta2 = 0.5 * (ct.max(0) - ct.min(0))                       # actual per-axis half-extent
+        # actual per-axis half-extent: closed-form from radius (px -> tangent units,
+        # via foc) when given (single-point callers, e.g. cross-marker), else the
+        # corner array's own spread (real multi-corner callers, e.g. ArUco) -- see
+        # this function's `radius` param doc.
+        delta2 = (np.full(2, float(radius)) / foc) if radius else 0.5 * (ct.max(0) - ct.min(0))
         # Track delta and its loom rate for Phase 2 tau*ddelta_eff term
         if dt_last is not None and dt_last > 1e-6 and state.get("delta_prev") is not None:
             state["ddelta_ref"] = np.maximum((delta2 - state["delta_prev"]) / dt_last, 0.0)

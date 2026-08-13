@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED by circumscribing center with a 4-point circle (r=MARKER_EXTENT_PX/2, empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1) -- live-tested: IC2 detect rate 77.7%->100% (n=1, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
+description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. BIGGEST FINDING (2026-08-13): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY due to lateral drift on off-center ICs, NOT extent/color-gate saturation -- root-caused to the FOV-CBF feeding cbf_corners a SINGLE bare center point (extent-blind), FIXED via a CLOSED-FORM radius (r=MARKER_EXTENT_PX/2, cbf_radius param threaded through controller.py + cbf_visibility.py -- NOT materialized 4-point circle, superseded same day per user request; proven numerically identical to the 4-point version) -- empirically gives 0.24-0.85s lead time before actual failure in IC2-5, no false triggers in IC1; live-tested IC2 detect rate 77.7%->95.6-100% across two reps (n=1 each, promising but not yet a validated sweep result). Fix is SOFT (informs existing graduated Phase-2-ramp/drift-off-pullback mechanisms, doesn't touch cbf2_filter's centroid-only hard Phase-1 bound) by design, distinct from ArUco's inherent hard 4-corner requirement; cbf_visibility.py is now free to carry cross-marker-specific logic since cbf_visibility_aruco.py exists as ArUco's own isolated copy. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T09:58:17.720Z
+  modified: 2026-08-13T10:05:10.390Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -580,6 +580,62 @@ landing outcomes (fixing detection doesn't automatically fix the
 downstream control response to previously-missing data -- a real
 possibility, not assumed away); investigate the `min_alt=3.94m` anomaly
 on the IC2 test rep before trusting its xy_err/rel_vel numbers.
+
+## 3e. 3d SUPERSEDED same day: closed-form circle equation, not 4 materialized points (2026-08-13, user correction)
+
+User: "Instead of building a circle of 4 points... use the mathematically
+equation of the circle to find d_min_fov," plus: `cbf_visibility_aruco.py`
+now exists as ArUco's own isolated copy (a SEPARATE, unrelated 2026-08-13
+change -- a Phase-2 signed-projection rewrite gated behind
+`CBF_PHASE2_FIX=1`, tested against ArUco only, not touched by this
+section), freeing `cbf_visibility.py` itself to be edited for the
+cross-marker's needs without the old "must stay bit-identical for every
+caller" constraint 3d operated under.
+
+**Change:** reverted `controller.py`'s cross-marker `cbf_corners` to a
+single point again (matching pre-3d), and added a separate scalar
+`cbf_radius` (= `get_marker_radius_px()`, 0.0 when unavailable/ArUco)
+carried alongside it. Applied analytically wherever a per-axis margin was
+computed:
+- `d_min_fov` (controller.py): `rho_fov - (|center_offset| + cbf_radius)`
+  per axis, and the overflow/drift-off breach thresholds
+  (`bx_neg`/`bx_pos`/`by_neg`/`by_pos`) similarly radius-adjusted. This is
+  EXACT, not an approximation -- for a circle of radius r centered at
+  (u0,v0) tested against an axis-aligned box, the closest-to-breaching
+  point on the circle is always exactly u0+/-r (same for v), so this
+  closed form gives the identical worst-case margin the 4-point version
+  computed, proven by direct comparison (below), not just argued.
+- `cbf2_filter` (`cbf_visibility.py`, NOW free to edit for cross-marker
+  per the user's note above): added an optional `radius=0.0` param (px).
+  `delta2` (the per-axis half-extent Phase-2's ramped fallback uses) is
+  now `radius/foc` (px -> tangent units via focal length) when
+  `radius` is nonzero, else falls back to the original
+  `0.5*(ct.max(0)-ct.min(0))` corner-array-spread calc -- so every
+  existing ArUco caller (which never passes `radius`, default 0.0) is
+  bit-identical to before this parameter existed.
+
+**Verified:**
+- Direct numerical comparison: `cbf2_filter` called once with a single
+  point + `radius=100`, once with the OLD 4-materialized-point circle
+  (same center, same radius) + `radius=0` -- both produced IDENTICAL
+  `state["delta_prev"]` (`[0.370, 0.370]`), confirming the closed form is
+  exact, not an approximation with different edge-case behavior.
+  `radius=0` with real 4-corner-style input also reproduces the same
+  value (ArUco-style backward-compat check).
+- `python3 -c "import ast; ast.parse(...)"` on all three edited files.
+- Live HEADLESS flight, IC2 (the same previously-failing off-center case
+  3d tested): clean run, no exceptions. Whole-flight detect 95.6%
+  (476/498) -- consistent with 3d's 100% (519/519) given both
+  implementations are proven mathematically identical, so the small
+  difference is ordinary rep-to-rep noise (n=1 each), not an
+  implementation regression. This rep's `min_alt=0.49m` (reached real
+  touchdown) resolves 3d's flagged `min_alt=3.94m` anomaly as unremarkable
+  run-to-run variance in THAT specific rep, not a fix-induced issue.
+
+**Still not yet done** (same open items as 3d, now against the closed-form
+version specifically): n>=5 IC1-5 sweep to confirm the detect-rate
+improvement reproduces and check downstream SoftPrecise landing-outcome
+impact, not just detection rate.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 

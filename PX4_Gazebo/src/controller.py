@@ -2508,64 +2508,60 @@ class Controller(Thread):
         # the small-slot read is only trusted via get_slot_confidence.
         cbf_corners = None
         cbf_corners_src = 'none'
+        cbf_radius = 0.0   # px, raw-pixel units; ArUco (real corners) never sets this --
+                            # its spread is already IN the corner points themselves
         if MARKER_TYPE == "cross":
-            # Cross-marker CBF source: a CIRCLE of 4 points (radius = current
-            # MARKER_EXTENT_PX/2) around the tracked intersection point, raw pixels,
-            # shape (4,2) -- NOT the ArUco small-slot/feature_pts/coast_hold cascade
-            # below (PlanarFeatureMap rescue and marker handover don't apply to this
-            # marker; see cross_marker_perception.py's module docstring).
+            # Cross-marker CBF source: the SINGLE tracked intersection point, raw
+            # pixels, shape (1,2) -- NOT the ArUco small-slot/feature_pts/coast_hold
+            # cascade below (PlanarFeatureMap rescue and marker handover don't apply
+            # to this marker; see cross_marker_perception.py's module docstring).
             #
             # 2026-08-13 (FOV-CBF extent-blindness fix -- see project_20260812_cross_
-            # marker_flow_architecture_investigation memory sec 3c/3d): was a SINGLE
-            # point (center only) until this fix. Root-caused the sub-2m detection
-            # collapse seen on 4/5 IC1-5 flights to the marker's true edge (center +/-
-            # extent/2) exiting the camera frame boundary while the bare center pixel
-            # was still comfortably inside the CBF's fixed rho_fov margin -- the CBF
-            # had NO visibility into the marker's growing size at all. Fixed by
-            # circumscribing the center with 4 points at get_marker_radius_px()
-            # (empirically validated: gives 0.24-0.85s+ lead time before the actual
-            # sub-2m detection failures in IC2-5, no spurious mid-flight triggers in
-            # the one flight (IC1) that never fails).
+            # marker_flow_architecture_investigation memory sec 3c/3d/3e): the CBF
+            # used to see ONLY this bare point, with zero awareness of the marker's
+            # own size. Root-caused the sub-2m detection collapse seen on 4/5 IC1-5
+            # flights to the marker's true edge (center +/- extent/2) exiting the
+            # camera frame boundary while the bare center pixel stayed comfortably
+            # inside the CBF's fixed rho_fov margin. FIRST FIX (same day) approximated
+            # a circle by materializing 4 axis-extreme points -- CORRECTED (same day,
+            # user) to a closed-form radius instead: `cbf_radius` (=
+            # get_marker_radius_px() = MARKER_EXTENT_PX/2) is carried alongside the
+            # single center point and applied ANALYTICALLY wherever a per-axis margin
+            # is computed below (d_min_fov: `rho_fov - (|center_offset| + radius)`,
+            # the exact closed-form worst-case point on a circle against an
+            # axis-aligned box -- mathematically identical to the 4-point
+            # approximation, no array of synthetic corners needed) and inside
+            # cbf2_filter itself (see cbf_visibility.py's `radius` param).
             #
-            # SOFT, not hard (2026-08-13, user distinction from the ArUco case below):
-            # for ArUco, EVERY ONE of the 4 real corners must stay resolvable or
-            # decode fails outright -- an inherent hard requirement, which is why
-            # cbf2_filter's Phase-1 QP (centroid-only, delta_eff=0 for BOTH marker
-            # types -- see cbf_visibility.py's own comment) is the operative hard
-            # bound there. For the cross-marker, only the center intersection point is
-            # actually needed; alpha/h,w already degrade gracefully on their own
-            # (hold-last, zero-output). Circumscribing with 4 SYMMETRIC points does
-            # NOT change Phase-1's hard QP bound at all (their mean is still exactly
-            # the center, and Phase-1 ignores spread by design) -- it only feeds two
-            # already-graduated/soft mechanisms that were previously extent-blind
-            # because a single point makes their spread computation trivially zero:
-            # (a) cbf2_filter's Phase-2 decode-fail fallback, which RAMPS a shrink
-            #     (delta_eff = delta_prev*phase2_alpha) over CBF_PHASE2_RAMP_FRAMES,
-            #     not an instant hard cutoff;
-            # (b) controller.py's own drift-off pullback below (p_10_eff *=
-            #     (1-frac) on the breaching axis only), already a FRACTIONAL, not
-            #     absolute, tightening.
-            # So the marker's growing size now informs existing soft margin-shaping,
-            # without imposing a new hard "circle must stay in frame" requirement --
-            # matching the ArUco/cross distinction the user drew.
+            # SOFT, not hard (user distinction from the ArUco case below): for ArUco,
+            # EVERY ONE of the 4 real corners must stay resolvable or decode fails
+            # outright -- an inherent hard requirement, which is why cbf2_filter's
+            # Phase-1 QP (centroid-only, delta_eff=0 for BOTH marker types -- see
+            # cbf_visibility.py's own comment) is the operative hard bound there. For
+            # the cross-marker, only the center intersection point is actually needed;
+            # alpha/h,w already degrade gracefully on their own (hold-last,
+            # zero-output). `cbf_radius` does NOT change Phase-1's hard QP bound at
+            # all (the centroid it uses is still exactly the bare center point) -- it
+            # only feeds two already-graduated/soft mechanisms that were previously
+            # extent-blind because a bare point makes their spread computation
+            # trivially zero: (a) cbf2_filter's Phase-2 decode-fail fallback, which
+            # RAMPS a shrink (delta_eff = delta_prev*phase2_alpha) over
+            # CBF_PHASE2_RAMP_FRAMES, not an instant hard cutoff; (b) controller.py's
+            # own drift-off pullback below (p_10_eff *= (1-frac) on the breaching
+            # axis only), already a FRACTIONAL, not absolute, tightening. So the
+            # marker's growing size now informs existing soft margin-shaping, without
+            # imposing a new hard "circle must stay in frame" requirement.
             #
             # get_center_px()/get_marker_radius_px() both return None on any frame
             # that didn't freshly confirm the center (not a stale/held pixel/bbox), so
             # a genuine miss correctly falls through to cbf2_filter's own Phase-2
             # fallback, same as the ArUco path's freshness gating below.
             _cpx = self._img_node.get_center_px()
-            _rpx = self._img_node.get_marker_radius_px()
-            if _cpx is not None and _rpx is not None and _rpx > 0:
-                cx, cy = float(_cpx[0]), float(_cpx[1])
-                cbf_corners = np.array([[cx + _rpx, cy], [cx - _rpx, cy],
-                                         [cx, cy + _rpx], [cx, cy - _rpx]], dtype=float)   # (4, 2)
-                cbf_corners_src = 'cross_circle'
-            elif _cpx is not None:
-                # radius not available this frame (shouldn't happen alongside a fresh
-                # center given both share the same freshness gate, but degrade to the
-                # bare point rather than dropping the frame entirely if it ever does)
+            if _cpx is not None:
                 cbf_corners = np.asarray([_cpx], dtype=float)   # (1, 2)
                 cbf_corners_src = 'cross_center'
+                _rpx = self._img_node.get_marker_radius_px()
+                cbf_radius = float(_rpx) if _rpx is not None and _rpx > 0 else 0.0
         else:
             try:
                 _pm = getattr(self._img_node, '_planar_map', None)
@@ -2673,8 +2669,19 @@ class Controller(Thread):
                 # self._rho_fov_0/_rho_fov_inf's own fix).
                 u_centered = cbf_corners[:, 1] - cy
                 v_centered = -(cbf_corners[:, 0] - cx)
-                d_corner_x = rho_fov_curr[0] - np.abs(u_centered)   # (4,)
-                d_corner_y = rho_fov_curr[1] - np.abs(v_centered)   # (4,)
+                # CLOSED-FORM CIRCLE (2026-08-13, user correction -- see cbf_radius's
+                # top-of-branch comment): rather than materializing points around a
+                # circle of radius cbf_radius, subtract it directly from each per-axis
+                # margin. This is EXACT, not an approximation: for a circle of radius r
+                # centered at (u0,v0) tested against an axis-aligned box, the point on
+                # the circle closest to breaching the u-edge is always exactly u0 +/- r
+                # (same for v) -- so `rho_fov - (|center_offset| + r)` is the true
+                # worst-case margin, identical to what 4 axis-extreme points would have
+                # given, without needing to build that array. cbf_radius=0.0 for ArUco
+                # (and for cross-marker whenever the radius wasn't available this
+                # frame) collapses this back to the original bare-point margin exactly.
+                d_corner_x = rho_fov_curr[0] - (np.abs(u_centered) + cbf_radius)
+                d_corner_y = rho_fov_curr[1] - (np.abs(v_centered) + cbf_radius)
                 d_min_fov = max(float(np.min(np.concatenate([d_corner_x, d_corner_y]))), 0.0)
 
                 # OVERFLOW vs DRIFT-OFF (2026-07-17, user design): classify off the SAME
@@ -2683,11 +2690,12 @@ class Controller(Thread):
                 # purpose). OVERFLOW = corners breach on OPPOSITE sides of an axis (spanning
                 # -- still over target, benign, marks the BIG marker ready for handover).
                 # DRIFT-OFF = breach on ONE side only (target visibility genuinely failing --
-                # the CBF's own job to prevent, not just observe).
-                bx_neg = bool(np.any(u_centered < -rho_fov_curr[0]))
-                bx_pos = bool(np.any(u_centered >  rho_fov_curr[0]))
-                by_neg = bool(np.any(v_centered < -rho_fov_curr[1]))
-                by_pos = bool(np.any(v_centered >  rho_fov_curr[1]))
+                # the CBF's own job to prevent, not just observe). Breach thresholds also
+                # circle-adjusted (radius pushed toward the boundary, same closed-form logic).
+                bx_neg = bool(np.any(u_centered - cbf_radius < -rho_fov_curr[0]))
+                bx_pos = bool(np.any(u_centered + cbf_radius >  rho_fov_curr[0]))
+                by_neg = bool(np.any(v_centered - cbf_radius < -rho_fov_curr[1]))
+                by_pos = bool(np.any(v_centered + cbf_radius >  rho_fov_curr[1]))
                 span = (bx_neg and bx_pos) or (by_neg and by_pos)
                 leaving = bx_neg or bx_pos or by_neg or by_pos
                 self._cbf_overflow = bool(leaving and span)
@@ -2778,7 +2786,7 @@ class Controller(Thread):
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
             p_10_eff, theta_cone,
-            dt_last, w_rp, self._cbf_state)
+            dt_last, w_rp, self._cbf_state, radius=cbf_radius)
         # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
         # it is a thrust-deliverability bound, not a visibility constraint. The CBF
         # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
