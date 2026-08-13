@@ -439,9 +439,16 @@ class HardwareLandingSystem:
                 self.fc.LANDED = True
 
             if len(self.logs["time"]) % 100 == 0:
+                # `stale=` REMOVED 2026-08-12: it printed controller.FEATURE_IS_STALE,
+                # which forwards a flag the Pi's img_data.py never defines (see its
+                # FEATURE_PTS_FRESH docstring: "Pi has none currently, unlike Gazebo's
+                # legacy FEATURE_IS_STALE"). controller.py's property resolves it via
+                # getattr(..., False), so it was hardcoded False on hardware -- verified
+                # across every recorded transcript: 0 occurrences of stale=True out of
+                # 4896. Meaningful Pi staleness signals are FEATURE_PTS_FRESH and the
+                # CBF_CORNERS_STALE / _ABORT coast-streak counters, not this.
                 print(f"  t={now - start_time:.1f}s alt={alt:.2f}m "
-                      f"visible={self.controller.TARGET_IS_VISIBLE} "
-                      f"stale={self.controller.FEATURE_IS_STALE}")
+                      f"visible={self.controller.TARGET_IS_VISIBLE}")
 
             await asyncio.sleep(SLEEP_TIME)
 
