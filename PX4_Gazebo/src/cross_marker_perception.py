@@ -590,17 +590,35 @@ class CrossMarkerPerception:
         return self._sample_flow_points_unconstrained(gray, dilated_mask), None
 
     def _sample_flow_points_ring(self, gray, dilated_mask):
-        """Ring-style adaptation for the cross-marker (2026-08-13, user-proposed).
+        """Ring-style adaptation for the cross-marker (2026-08-13, user-proposed;
+        RE-CENTERED 2026-08-13 after a design error was caught -- see below).
         Partitions the boundary-margin-eligible mask into RING_N_BANDS radius bands x
-        RING_N_SECTORS angle sectors around the marker's OWN centroid/extent (same
-        normalization _sample_flow_points_unconstrained uses), and draws up to
-        RING_PTS_PER_CELL GFT candidates from each cell independently -- guarantees
-        multi-directional coverage of whatever eligible texture exists (mirrors
-        img_data.py's fixed ring stations, but cell-gated by real texture instead of
-        fixed absolute pixel positions, since the marker's own eligible band is
-        thin/sparse -- see RING_SAMPLING's top-of-file comment). RING_N_SECTORS must
-        be even: sector s's diametric opposite is (s + RING_N_SECTORS//2) %
+        RING_N_SECTORS angle sectors CENTERED ON THE IMAGE CENTER (self.center), and
+        draws up to RING_PTS_PER_CELL GFT candidates from each cell independently --
+        guarantees multi-directional coverage of whatever eligible texture exists
+        (mirrors img_data.py's fixed ring stations, but cell-gated by real texture
+        instead of fixed absolute pixel positions, since the marker's own eligible
+        band is thin/sparse -- see RING_SAMPLING's top-of-file comment). RING_N_SECTORS
+        must be even: sector s's diametric opposite is (s + RING_N_SECTORS//2) %
         RING_N_SECTORS, used by _compute_hw for paired-opposite LK-failure rejection.
+
+        WHY IMAGE CENTER, NOT MARKER CENTROID (2026-08-13 correction -- the first cut
+        of this method centered on the mask's own centroid, which is WRONG and was
+        caught before it shipped): img_data.py's ring design (`_ring_pts0_V`,
+        `_ring_opp_idx`) centers on the V-frame nadir specifically so that two
+        diametrically-opposite stations -- same radius, angle i and i+N/2, both
+        measured from the IMAGE CENTER -- see a translation-induced flow component
+        that CANCELS between the pair (equal magnitude, opposite sign) while a
+        divergence/Tz-induced (radial) component ADDS (same sign at both, since
+        "radially outward" points in opposite real-world directions for the two
+        stations). That cancellation is the entire reason `_ring_opp_idx`'s
+        paired-rejection rule ("drop a station if its opposite partner also failed")
+        is meaningful -- it's preserving a symmetry that only exists relative to the
+        image center. Centering on the marker's own centroid instead breaks this:
+        the marker is not generally at the image center, so "diametrically opposite
+        across the marker centroid" is a different, unrelated pair of directions with
+        no such cancellation property. Re-centered here to match img_data.py's actual
+        (verified by re-reading the code) design.
 
         Returns (points (N,2) float32, cell_ids (N,) int -- band*RING_N_SECTORS+sector).
         Falls back to the unconstrained sampler (cell_ids=None) if the mask is empty."""
@@ -614,17 +632,20 @@ class CrossMarkerPerception:
             boundary_mask[:, :m] = 0
             boundary_mask[:, -m:] = 0
 
-        ys, xs = np.nonzero(boundary_mask)
-        if len(xs) == 0:
+        if not boundary_mask.any():
             return np.zeros((0, 2), dtype=np.float32), np.zeros((0,), dtype=int)
-        mcx, mcy = float(xs.mean()), float(ys.mean())
-        half_extent = max(float(xs.max() - xs.min()), float(ys.max() - ys.min())) / 2.0
-        if half_extent <= 0:
-            half_extent = 1.0
 
-        # per-pixel (radius, angle) relative to the marker's own centroid/extent
+        # ring geometry centered on the IMAGE center (self.center = (cx, cy)), NOT
+        # the mask/marker centroid -- see docstring above. Normalized by R_max =
+        # min(h,w)/2 (resolution-adaptive, same convention as img_data.py's _Rmax),
+        # not by the mask's own extent, since the mask's position relative to center
+        # is exactly what must NOT bias the radius/angle assignment.
+        mcx, mcy = float(self.center[0]), float(self.center[1])
+        r_max = float(min(h, w)) / 2.0
+
+        # per-pixel (radius, angle) relative to the IMAGE center
         yy, xx = np.mgrid[:h, :w]
-        r_norm = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2) / half_extent
+        r_norm = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2) / r_max
         theta = np.arctan2(yy - mcy, xx - mcx)   # (-pi, pi]
         band_edges = np.linspace(0.0, max(r_norm[boundary_mask > 0].max(), 1e-6) + 1e-6,
                                   RING_N_BANDS + 1)

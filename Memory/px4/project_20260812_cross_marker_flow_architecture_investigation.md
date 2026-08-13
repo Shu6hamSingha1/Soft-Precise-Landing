@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T04:48:02.035Z
+  modified: 2026-08-13T05:09:24.769Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -320,14 +320,45 @@ asymmetry a one-sided drop just introduced).
   this addresses point DISTRIBUTION, not the separate dynamic-range/
   close-range point-COUNT gap that §3's conclusion also named as needed).
 
+**CORRECTED same day (2026-08-13, user-caught): ring center was WRONG in the
+first cut, fixed before it was trusted.** The initial implementation
+centered the radius/angle partitioning on the MASK's own centroid
+(mirroring `_sample_flow_points_unconstrained`'s center-exclusion-disk
+normalization). User caught this by re-deriving the actual mechanism from
+first principles: img_data.py's ring design (`_ring_pts0_V`, centered on
+the V-frame nadir/image center; `_ring_opp_idx`, pairing angle i with
+i+N/2 at the SAME radius) relies on translational flow CANCELING between a
+diametrically-opposite pair measured from the IMAGE CENTER (equal
+magnitude, opposite sign) while divergence/Tz-induced radial flow ADDS
+(same sign at both) — verified this is really what the code does by
+re-reading `img_data.py:329-341` directly (comment at line 330: "the ring
+ALWAYS tracks the NADIR patch ... = tilt-invariant flow"). Centering on the
+MARKER centroid instead breaks this cancellation whenever the marker isn't
+at the image center (the normal case), which would have made the
+paired-opposite-rejection logic (this section's core requirement) silently
+meaningless — rejecting a "partner" cell with no actual
+translation-cancellation relationship to the failed point. Re-centered on
+`self.center` (image center, resolution-adaptive `r_max = min(h,w)/2`,
+matching img_data.py's `_Rmax` convention) before any live test was
+trusted. Re-verified after the fix: synthetic test with an intentionally
+OFF-CENTER mask confirms (a) points are still found (8 pts, 4 cells, after
+moving the mask far enough from the frame edge that
+FLOW_BOUNDARY_MARGIN_PX didn't wipe it — an unrelated test-setup artifact
+caught along the way, not a code bug) and (b) every returned point's sector
+assignment matches independently-recomputed image-center-relative theta.
+Live-flight-retested with the corrected center (2nd attempt succeeded; 1st
+hit the known unrelated "descent stall" SITL flakiness — 694/1290
+process_frame() calls respectively, 100% detect, zero code exceptions in
+either): 694 frames, clean run, no crash.
+
 **NOT yet done / open follow-up:** a direct before/after comparison of
 `origin_ratio` (§3's metric) and n_kept-per-frame between
-`CROSS_RING_SAMPLING=0` and `=1` on matched flights — the live test above
-only confirms the mechanism runs correctly end-to-end, not yet that it
-measurably improves the distribution metric in practice. Do that comparison
-(offline, from two flights' Point/Radial Diag Logs) before considering this
-"validated" in the same sense §3's origin-spread gate was; log the result
-here when done.
+`CROSS_RING_SAMPLING=0` and `=1` on matched flights — the live tests above
+only confirm the mechanism runs correctly end-to-end with the corrected
+(image-center) geometry, not yet that it measurably improves the
+distribution metric in practice. Do that comparison (offline, from two
+flights' Point/Radial Diag Logs) before considering this "validated" in the
+same sense §3's origin-spread gate was; log the result here when done.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
