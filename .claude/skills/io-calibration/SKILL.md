@@ -251,6 +251,25 @@ via dedicated rollexc/pitchexc excitation, r=-0.09..-0.15). **The only remaining
 for Wz/Wx/Wy is a bigger physical marker plate** — not fixable by recal, point-sampling,
 or excitation tuning. Not pursued further as of 2026-08-07.
 
+**2026-08-12 re-confirmation + important correction:** the SAME Wx/Wy-vs-Tx/Ty
+aliasing (this is why `_solve_jacobian`'s gyro-derotation exists) was re-verified
+directly via SVD on real logged point sets — full 6-column condition number 9-103
+across real frames vs. the gyro-derotated reduced system's 1.7-4.6; even the
+WIDEST achieved point spread only gets the full system to cond=9.3. **Keep
+gyro-derotation — it is structurally necessary, not a removable workaround.**
+⚠ The intended comparison target is the **nested TEXTURED ArUco marker** (live
+`aruco.sdf` world's single `arucotag` model: small tag nested in a big tag,
+textured background, one physical plate) — NOT a spread multi-marker board. A
+claim that it avoids the aliasing via multi-marker spread was made and then
+DIRECTLY DISPROVEN — its own achieved corner spread and condition number
+(measured from real flight data: cond 15.4-21.7) are comparable-to-worse than
+the cross-marker's. Don't re-cite "board spread" framing. See
+`project_20260812_cross_marker_flow_architecture_investigation` memory for the
+full trace, the live (better-supported, not yet fully verified) correspondence-
+quality hypothesis, and a separate dt/frame-pairing architecture bug found in
+the same investigation (staleness across detection dropouts, fix reviewed not
+yet implemented).
+
 **Hz's weakness was NOT the same phenomenon — it was 3 stacked, fixable bugs, 2 now
 fixed, 1 still open:**
 1. **NOT data contamination** (ruled out 2026-08-06) — an ad-hoc diagnostic script's

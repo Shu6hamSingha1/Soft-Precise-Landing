@@ -156,6 +156,46 @@ MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4")
 # to add in the first place.
 FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "20"))
 
+# 2026-08-13 (ring-style sampling, user-proposed -- see origin-spread gate finding
+# in project_20260812_cross_marker_flow_architecture_investigation memory): ArUco's
+# img_data.py guarantees multi-radius/angular coverage by sampling FIXED ring
+# stations over the whole (generally-textured) background. The cross-marker's
+# candidate region is instead restricted to the thin dilated-mask band around the
+# drawn lines (see CROSS_FLOW_CENTER_EXCLUDE_FRAC's comment above -- "structural
+# corner scarcity"), so fixed station positions would mostly land on untextured
+# background with nothing to track. Adapted design: partition the SAME eligible
+# (boundary-margin) mask into radius-band x angle-sector cells around the marker's
+# own centroid, and draw GFT candidates per-cell -- guarantees whatever texture
+# DOES exist gets sampled from multiple directions instead of letting one strong
+# local region (e.g. the central intersection) dominate via a single unconstrained
+# GFT call. Off by default; CROSS_RING_SAMPLING=1 to enable.
+RING_SAMPLING = os.environ.get("CROSS_RING_SAMPLING", "0") == "1"
+RING_N_BANDS = int(os.environ.get("CROSS_RING_N_BANDS", "2"))
+RING_N_SECTORS = int(os.environ.get("CROSS_RING_N_SECTORS", "8"))   # must be even -- paired-opposite
+                                                                      # rejection needs a diametric partner
+RING_PTS_PER_CELL = int(os.environ.get("CROSS_RING_PTS_PER_CELL", "2"))
+# 2026-08-13 (user correction, moving-target concern): the ring's translation-
+# cancels/divergence-adds property (see _sample_flow_points_ring's docstring) only
+# holds for a station pair that's actually ON the marker/target -- if the image
+# center isn't currently over the marker (target has moved off-center, or the
+# marker is small and off to one side), a ring built from the FULL frame radius
+# would draw "opposite pair" points from wherever texture exists in that direction,
+# which may be background/empty space, not the target. Two guards:
+#   (a) only use ring sampling on a frame where the marker mask actually SURROUNDS
+#       the image center in enough directions (RING_MIN_COVERED_SECTORS of
+#       RING_N_SECTORS must have eligible marker pixels) -- else fall back to the
+#       unconstrained sampler for that frame (ring geometry isn't meaningful yet).
+#   (b) ring radius is ADAPTIVE to how far the marker actually extends around the
+#       center that frame (not a fixed frame-relative Rmax), so bands never reach
+#       past real marker/target pixels.
+# A minimum radius keeps stations off the noisy/degenerate near-center pixels
+# (small angular denominator, and for the cross-marker specifically, the exact
+# center is often the low-texture blank space BETWEEN arms if the drone is
+# centered over the marker).
+RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
+                                               str(RING_N_SECTORS // 2)))
+RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "20"))
+
 
 def _unweighted_principal_angle(pts):
     """Manuscript alpha (Sec. Image Features, eq. ~197): plain 2nd-moment
@@ -252,13 +292,20 @@ class CrossMarkerPerception:
         self.center = np.array(resolution) / 2.0   # (cx, cy) = (240, 320)
         self.focal = np.array([fx, fy])
 
-        self._prev_gray = None
+        # 2026-08-12: self._prev_gray/_prev_quat/_prev_angvel/_prev_frame_t used to be
+        # persisted here (cross-call state for the LK "prev" reference) -- REMOVED, not
+        # just fixed, by the dt/frame-pairing architecture change. process_frame() now
+        # receives its own adjacent frame pair + quat/angvel pair + native dt directly
+        # from the caller every call, so no persisted "prev" state can go stale across a
+        # detection dropout. Only the tracked POINT IDENTITY (_prev_flow_pts, positions)
+        # still needs to persist across calls -- everything else is supplied fresh.
+        # See project_20260812_cross_marker_flow_architecture_investigation memory.
         self._prev_flow_pts = None   # (N,2) pixel coords tracked for h,w
-        self._prev_quat = None       # quat AT prev_flow_pts' own frame (2026-08-02 V-frame fix)
-        self._prev_angvel = None     # gyro body rate AT prev_flow_pts' own frame (2026-08-08
-                                      # gyro-derotation fix -- see _solve_jacobian's comment)
-        self._prev_frame_t = None    # timestamp AT prev_flow_pts' own frame (2026-08-03 dt-staleness
-                                      # fix -- see _compute_hw's docstring)
+        # 2026-08-13 (ring sampling): parallel (N,) array of cell-id (band*RING_N_SECTORS+
+        # sector) per point in self._prev_flow_pts, only populated when RING_SAMPLING is on
+        # (else None). Lets _compute_hw find a lost point's diametric partner (opposite
+        # sector, same band) and drop it too -- mirrors img_data.py's PLASMC_RING_PAIRED.
+        self._prev_flow_cell_id = None
         self._last_resample_t = None  # timestamp of the last _sample_flow_points() call (2026-08-07
                                        # periodic-refresh fix -- see RESAMPLE_PERIOD_S's comment)
         self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
@@ -510,7 +557,7 @@ class CrossMarkerPerception:
         # the full normalized point set fed into A (prev_n) plus the solved Tz (sol[2])
         # per solve so this can be checked directly on a new flight.
         self._point_diag_log = []
-        self._point_diag = (None, np.nan)
+        self._point_diag = (None, np.nan, None, np.nan, None)
 
         # Time-series logging (2026-08-04, perception-quality debugging): log full
         # frame-by-frame history so getLogData() can return it for comparison with GT.
@@ -557,6 +604,133 @@ class CrossMarkerPerception:
         return cv2.dilate(mask, kernel)
 
     def _sample_flow_points(self, gray, dilated_mask):
+        """Returns (points, cell_ids). cell_ids is None unless RING_SAMPLING is on
+        (see _sample_flow_points_ring's docstring) -- callers must handle both."""
+        if RING_SAMPLING:
+            return self._sample_flow_points_ring(gray, dilated_mask)
+        return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+    def _sample_flow_points_ring(self, gray, dilated_mask):
+        """Ring-style adaptation for the cross-marker (2026-08-13, user-proposed;
+        RE-CENTERED 2026-08-13 after a design error was caught -- see below).
+        Partitions the boundary-margin-eligible mask into RING_N_BANDS radius bands x
+        RING_N_SECTORS angle sectors CENTERED ON THE IMAGE CENTER (self.center), and
+        draws up to RING_PTS_PER_CELL GFT candidates from each cell independently --
+        guarantees multi-directional coverage of whatever eligible texture exists
+        (mirrors img_data.py's fixed ring stations, but cell-gated by real texture
+        instead of fixed absolute pixel positions, since the marker's own eligible
+        band is thin/sparse -- see RING_SAMPLING's top-of-file comment). RING_N_SECTORS
+        must be even: sector s's diametric opposite is (s + RING_N_SECTORS//2) %
+        RING_N_SECTORS, used by _compute_hw for paired-opposite LK-failure rejection.
+
+        WHY IMAGE CENTER, NOT MARKER CENTROID (2026-08-13 correction -- the first cut
+        of this method centered on the mask's own centroid, which is WRONG and was
+        caught before it shipped): img_data.py's ring design (`_ring_pts0_V`,
+        `_ring_opp_idx`) centers on the V-frame nadir specifically so that two
+        diametrically-opposite stations -- same radius, angle i and i+N/2, both
+        measured from the IMAGE CENTER -- see a translation-induced flow component
+        that CANCELS between the pair (equal magnitude, opposite sign) while a
+        divergence/Tz-induced (radial) component ADDS (same sign at both, since
+        "radially outward" points in opposite real-world directions for the two
+        stations). That cancellation is the entire reason `_ring_opp_idx`'s
+        paired-rejection rule ("drop a station if its opposite partner also failed")
+        is meaningful -- it's preserving a symmetry that only exists relative to the
+        image center. Centering on the marker's own centroid instead breaks this:
+        the marker is not generally at the image center, so "diametrically opposite
+        across the marker centroid" is a different, unrelated pair of directions with
+        no such cancellation property. Re-centered here to match img_data.py's actual
+        (verified by re-reading the code) design.
+
+        GUARD + ADAPTIVE RADIUS (2026-08-13, user correction -- moving-target
+        concern): the translation-cancels/divergence-adds property above only
+        holds for a station pair that's actually ON the marker/target. Using a
+        fixed frame-relative radius (old behavior) would draw "opposite pair"
+        points from wherever texture happens to exist at that radius/angle even
+        if the marker has moved off-center or is small -- possibly off-target
+        background, which is not what the pairing math assumes. Two guards now
+        apply: (a) ring sampling is only attempted when the marker mask actually
+        SURROUNDS the image center in enough directions (>= RING_MIN_COVERED_
+        SECTORS of RING_N_SECTORS carry eligible marker pixels beyond
+        RING_CENTER_MIN_R_PX) -- otherwise this frame falls back to the
+        unconstrained sampler entirely, same as the empty-mask case; (b) the ring
+        radius is capped at the marker's OWN actual extent from center THIS frame
+        (not a fixed frame Rmax), so bands never reach past real marker pixels.
+        RING_CENTER_MIN_R_PX also excludes the near-center pixels themselves --
+        for the cross-marker specifically, the exact center of a well-centered
+        marker is the low-texture gap between the arms, and small-radius angles
+        are numerically noisy regardless of marker shape.
+
+        Returns (points (N,2) float32, cell_ids (N,) int -- band*RING_N_SECTORS+sector).
+        Falls back to the unconstrained sampler (cell_ids=None) if the mask is
+        empty, or if the center-coverage guard fails (image center not currently
+        over the marker)."""
+        h, w = dilated_mask.shape
+        m = FLOW_BOUNDARY_MARGIN_PX
+        boundary_mask = dilated_mask
+        if m > 0 and h > 2 * m and w > 2 * m:
+            boundary_mask = dilated_mask.copy()
+            boundary_mask[:m, :] = 0
+            boundary_mask[-m:, :] = 0
+            boundary_mask[:, :m] = 0
+            boundary_mask[:, -m:] = 0
+
+        if not boundary_mask.any():
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+        # per-pixel (radius, angle) relative to the IMAGE center (self.center),
+        # NOT the mask/marker centroid -- see docstring above.
+        mcx, mcy = float(self.center[0]), float(self.center[1])
+        yy, xx = np.mgrid[:h, :w]
+        r_px = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2)
+        theta = np.arctan2(yy - mcy, xx - mcx)   # (-pi, pi]
+
+        eligible = (boundary_mask > 0) & (r_px >= RING_CENTER_MIN_R_PX)
+        if not eligible.any():
+            # marker doesn't reach RING_CENTER_MIN_R_PX from the image center at
+            # all this frame -- center isn't over the marker, ring geometry isn't
+            # meaningful yet
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+        # guard (a): does the marker surround the center in enough directions?
+        sector_width = 2 * np.pi / RING_N_SECTORS
+        sector_idx_map = np.clip(((theta + np.pi) / sector_width).astype(int), 0, RING_N_SECTORS - 1)
+        covered_sectors = set(np.unique(sector_idx_map[eligible]).tolist())
+        if len(covered_sectors) < RING_MIN_COVERED_SECTORS:
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+        # guard (b): cap ring radius at the marker's OWN extent from center this
+        # frame (adaptive), not a fixed frame-relative bound
+        r_ring_max = float(r_px[eligible].max())
+        band_edges = np.linspace(RING_CENTER_MIN_R_PX, r_ring_max + 1e-6, RING_N_BANDS + 1)
+
+        all_pts = []
+        all_cell_ids = []
+        for b in range(RING_N_BANDS):
+            band_mask = (r_px >= band_edges[b]) & (r_px < band_edges[b + 1])
+            for s in range(RING_N_SECTORS):
+                lo = -np.pi + s * sector_width
+                hi = -np.pi + (s + 1) * sector_width
+                sector_mask = (theta >= lo) & (theta < hi)
+                cell_mask = eligible & band_mask & sector_mask
+                if not cell_mask.any():
+                    continue
+                cell_mask_u8 = cell_mask.astype(np.uint8) * 255
+                pts = cv2.goodFeaturesToTrack(
+                    gray, maxCorners=RING_PTS_PER_CELL, qualityLevel=GFT_QUALITY,
+                    minDistance=GFT_MIN_DIST, mask=cell_mask_u8)
+                if pts is None:
+                    continue
+                cell_pts = pts.reshape(-1, 2).astype(np.float32)
+                all_pts.append(cell_pts)
+                all_cell_ids.extend([b * RING_N_SECTORS + s] * len(cell_pts))
+
+        if not all_pts:
+            # no eligible cell yielded a corner (very sparse texture) -- fall back
+            # rather than returning nothing this call
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+        return np.vstack(all_pts)[:GFT_MAX_CORNERS], np.array(all_cell_ids[:GFT_MAX_CORNERS], dtype=int)
+
+    def _sample_flow_points_unconstrained(self, gray, dilated_mask):
         h, w = dilated_mask.shape
 
         # boundary-margin mask: never propose a corner this close to the true frame
@@ -770,6 +944,91 @@ class CrossMarkerPerception:
         # amount of recalibration downstream could fix.
         b_norm = np.linalg.norm(b)
         rel_resid = np.linalg.norm(A @ sol - b) / b_norm if b_norm > 1e-12 else np.nan
+        # (rel_resid measures the ORIGINAL joint-solve fit quality -- computed BEFORE
+        # the moment-loom Tz override below, so it stays a clean diagnostic of the
+        # pinv fit regardless of whether the override fires.)
+
+        # MOMENT-LOOM Tz OVERRIDE (2026-08-12, validated on real flip-event data --
+        # see project_20260812_cross_marker_flow_architecture_investigation memory
+        # §3). Ported from img_data.py's ring-moment: Tz as a closed-form scalar
+        # from the rate of change of the tracked point cloud's own spread (mean
+        # squared distance from its own centroid, in V-frame), instead of reading
+        # it out of the joint pseudo-inverse. On 3 real documented sign-flip/
+        # overshoot events this recovered the correct sign (pinv wrongly flipped
+        # positive twice; moment-loom stayed correctly negative both times) and
+        # matched GT more closely once outlier rejection was added -- see below.
+        # Does NOT fix the SEPARATE, larger near-touchdown dynamic-range problem
+        # (perceived h_z pinned well below true GT magnitude) -- that is a known,
+        # still-open gap, not something this override addresses.
+        #
+        # MAD-based outlier rejection (SAME pattern/threshold as img_data.py's
+        # ring-moment, k=3.0*1.4826 on per-point flow magnitude) is NOT optional:
+        # confirmed on real data that 2 of 15 genuinely mistracked points (15-40x
+        # every other point's displacement) skewed the unweighted mean badly
+        # enough to make moment-loom WORSE than the pinv solve without it
+        # (-1.151 vs pinv's -0.511, GT=-0.567); with rejection, -0.617, between
+        # pinv and GT.
+        #
+        # Gyro-derotation tested and NOT applied here: at this dataset's highest
+        # observed rotation rate (Wx=0.284 rad/s), derotating shifted the moment
+        # estimate by only +0.0040 -- negligible against the actual problem scale.
+        #
+        # The joint solve above is UNCHANGED -- per user directive, Tz's column
+        # stays in the pinv fit (confirmed via SVD that removing it wouldn't
+        # affect Tx/Ty/Wz conditioning anyway, but the fit SHAPE is kept as-is
+        # regardless); this only overrides the reported sol[2].
+        #
+        # 2026-08-12: default LOWERED 8->6, per a live-flight miss found right
+        # after first deploying this override -- a real flip frame had n=7
+        # (below the original threshold of 8), so the override never fired and
+        # fell back to the wrong pinv value (+0.248); recomputing offline showed
+        # moment-loom WOULD have given -0.619 (correct sign, close to GT -0.599)
+        # had it been allowed to run. 6 is still 2 above MIN_FLOW_POINTS_SOLVE=4
+        # (kept some margin above the absolute pinv floor for the mean-based
+        # moment to have a little averaging benefit) but no longer excludes this
+        # specific documented case. Not yet re-validated at scale -- watch for
+        # whether 6 introduces its OWN instability (a smaller n makes the mean
+        # itself noisier) on the next batch of live flights.
+        moment_min_pts = int(os.environ.get("CROSS_MOMENT_LOOM_MIN_PTS", "6"))
+        if len(prev_n) >= moment_min_pts:
+            fm = np.linalg.norm(curr_n - prev_n, axis=1)
+            med = np.median(fm)
+            mad = np.median(np.abs(fm - med)) + 1e-6
+            valid = fm < med + 3.0 * 1.4826 * mad
+            if valid.sum() >= max(4, moment_min_pts // 2):
+                pv, cv_ = prev_n[valid], curr_n[valid]
+                c0, c1 = pv.mean(0), cv_.mean(0)
+                M0 = float(np.mean(np.sum((pv - c0) ** 2, axis=1)))
+                M1 = float(np.mean(np.sum((cv_ - c1) ** 2, axis=1)))
+                # ORIGIN-SPREAD GATE (2026-08-13, user-proposed, quantified same day --
+                # see project_20260812_cross_marker_flow_architecture_investigation
+                # memory's t=39.444 case). Tz's per-point contribution is -Tz*(x,y):
+                # when the validated points all sit at nearly the SAME (x,y) -- i.e.
+                # clustered in one region FAR from the image origin, regardless of how
+                # internally consistent their tracking is -- that contribution is
+                # nearly IDENTICAL for every point, which looks like a uniform shift
+                # of the whole cluster, not a spread change. Centroid-relative variance
+                # is insensitive to a uniform shift BY CONSTRUCTION (same reason Tx/Ty
+                # don't affect it), so the real Tz signal barely reaches this
+                # computation in that geometry, regardless of point count or
+                # cleanliness. ratio = M0 (the cluster's own internal spread) /
+                # ||centroid||^2 (how far the whole cluster sits from the origin)
+                # quantifies this directly: a real, decisive separation was measured
+                # on 4 real documented cases -- the one KNOWN-FAILED case (wrong sign
+                # despite clean, consistent tracking) had ratio=0.028; all 3 KNOWN-
+                # WORKING cases had ratio 5.3-8823, orders of magnitude higher.
+                # CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO=1.0 sits with huge margin on both
+                # sides of that measured gap. Below it, hold the pinv Tz instead --
+                # moment-loom has no real signal to work with in this geometry, no
+                # matter how the point set is otherwise filtered/cleaned.
+                origin_dist2 = float(np.sum(c0 ** 2))
+                origin_ratio = M0 / max(origin_dist2, 1e-9)
+                min_origin_ratio = float(os.environ.get("CROSS_MOMENT_LOOM_MIN_ORIGIN_RATIO", "1.0"))
+                if M0 > 1e-12 and M1 > 1e-12 and dt > 0 and origin_ratio >= min_origin_ratio:
+                    sol[2] = float(np.clip(-0.5 * (np.log(M1) - np.log(M0)) / dt, -20.0, 20.0))
+        # else: too few points for a stable moment estimate (untested below
+        # ~8-10 points) -- hold the pinv-solved Tz unmodified.
+
         px_disp = np.linalg.norm(curr_pts - prev_pts, axis=1)   # raw pixel displacement per point
         # TEMP DIAG (2026-08-03, Wx/Wy investigation): radial extent of the
         # normalized points actually fed into A -- max/mean |x|,|y| in prev_n.
@@ -784,108 +1043,165 @@ class CrossMarkerPerception:
         # TEMP DIAG 2026-08-09: full point set + solved Tz, see __init__'s
         # _point_diag_log comment. prev_n is what _fill_A/A_reduced were actually
         # built from; sol[2] is the Tz this exact point set produced.
-        self._point_diag = (prev_n.copy(), float(sol[2]))
+        #
+        # EXTENDED 2026-08-12 (sign-flip root-cause, per-point noise investigation):
+        # the original 2-tuple only let us reconstruct the SOLVE (prev_n -> A -> Tz),
+        # not what fed it -- couldn't tell whether a Tz swing came from genuine
+        # per-point LK-tracked velocity noise (the live hypothesis) vs. something in
+        # the solve itself (already ruled out separately -- the matrix is
+        # well-conditioned, cond~2, and per-point leverage is evenly graded, not
+        # concentrated). Added curr_n (so vel=(curr_n-prev_n)/dt is fully
+        # reconstructable per point), dt (vel's own denominator -- small dt inflates
+        # any fixed position-tracking jitter into larger apparent velocity noise),
+        # and the full sol vector (not just Tz) for completeness.
+        self._point_diag = (prev_n.copy(), float(sol[2]), curr_n.copy(), float(dt), sol.copy())
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
-    def _compute_hw(self, gray, mask, t, quat=None, angvel=None):
-        """LK-track flow points from the previous frame, solve the image
-        Jacobian pseudo-inverse for [h1,h2,h3,w1,w2,w3]. Two-threshold
+    def _compute_hw(self, gray_prev, gray_curr, mask, dt, quat_prev=None, quat_curr=None,
+                     angvel_prev=None, angvel_curr=None):
+        """LK-track flow points from THIS call's own adjacent frame pair, solve the
+        image Jacobian pseudo-inverse for [h1,h2,h3,w1,w2,w3]. Two-threshold
         hysteresis (see MIN_FLOW_POINTS_SOLVE/RESAMPLE_TRIGGER comments):
         attempt the solve with however many points survived tracking, down to
         a hard floor; only DISCARD current tracking for a full fresh-sample
-        when the count drops below that floor. A fresh-sample frame still
-        can't report a velocity (no correspondence yet), but that no longer
-        also happens on every minor, recoverable point-count dip.
+        when the count drops below that floor.
 
-        `quat` is THIS frame's attitude, used to level curr_pts (self._prev_quat
-        holds the attitude that was current when self._prev_flow_pts was last
-        observed, i.e. the PREVIOUS frame's quat) -- see _getVirtualPts.
+        REWRITTEN 2026-08-12 (dt/frame-pairing architecture fix, see
+        project_20260812_cross_marker_flow_architecture_investigation memory).
+        OLD BUG: this method used to take a single `gray` (this frame only) and
+        rely on `self._prev_gray`/`self._prev_frame_t`/`self._prev_quat`/
+        `self._prev_angvel`, persisted across calls and only updated on a
+        SUCCESSFUL solve. On a detection dropout (mask unavailable that frame,
+        e.g. `centroid_mismatch` near touchdown -- see cross_marker_detector.py),
+        this method wasn't even called, so that persisted state froze for the
+        whole dropout streak; once detection recovered, LK had to bridge the
+        ENTIRE accumulated gap in one step (large real displacement, degraded
+        correspondence) instead of one native frame interval, and `dt` was
+        inflated to match (not wrong arithmetic, but the resulting LARGE GAP
+        itself degrades LK correspondence quality -- confirmed empirically:
+        chronic point starvation + degraded detection reliability compound in
+        exactly this terminal-descent window).
 
-        `t` is THIS frame's own timestamp (was `dt` from the caller's outer
-        polling clock until 2026-08-03). BUG: process_frame's `self._last_t`
-        (source of the old `dt`) advances on EVERY call, det.ok or not, but
-        `self._prev_gray`/`_prev_flow_pts` only advance on SUCCESSFUL frames --
-        held frozen across a detection dropout. After a gap, the old `dt` was
-        just ONE poll interval while LK was tracking across the FULL dropout
-        duration, inflating the computed velocity by roughly the gap length --
-        a spike hitting all six solved parameters on every recovery-from-
-        dropout frame. Fixed by tracking `self._prev_frame_t` (the timestamp
-        actually paired with `self._prev_gray`) and computing dt from THAT,
-        not the outer poll clock."""
-        dilated_mask = self._dilate_mask(mask)
-        dt = 0.0 if self._prev_frame_t is None else t - self._prev_frame_t
+        NEW: caller (`process_frame`) now supplies its OWN `gray_prev`/
+        `gray_curr` (from `gz_subscriber.Image_Node`'s rolling 2-frame deque,
+        i.e. always a genuinely adjacent pair, regardless of consumer-loop
+        timing or whether detection succeeded on intervening frames) and `dt`
+        (`1/fps`, the camera's own native frame interval, NEVER derived from
+        "time since my own state was last updated"). `mask` is None on a
+        detection-miss frame (no fresh mask to validate points against) --
+        the LK step still runs (keeps tracked points CURRENT every call, never
+        stale), but no resample/solve is attempted without a mask. No
+        `self._prev_gray`/`_prev_frame_t`/`_prev_quat`/`_prev_angvel` state is
+        read or written by this method anymore -- eliminated, not just fixed."""
+        dilated_mask = self._dilate_mask(mask) if mask is not None else None
 
-        if self._prev_gray is None or self._prev_flow_pts is None or len(self._prev_flow_pts) == 0:
-            self._prev_flow_pts = self._sample_flow_points(gray, dilated_mask)
-            self._last_resample_t = t
-            self._prev_gray = gray
-            self._prev_quat = quat
-            self._prev_angvel = angvel
-            self._prev_frame_t = t
+        if self._prev_flow_pts is None or len(self._prev_flow_pts) == 0:
+            # cold start / pool empty -- only recoverable on a frame with a fresh
+            # mask to sample candidates from
+            if dilated_mask is None:
+                return np.zeros(6), False
+            self._prev_flow_pts, self._prev_flow_cell_id = self._sample_flow_points(gray_curr, dilated_mask)
+            self._last_resample_t = self._last_t
             return np.zeros(6), False
 
         tracked, status, _ = cv2.calcOpticalFlowPyrLK(
-            self._prev_gray, gray, self._prev_flow_pts, None,
+            gray_prev, gray_curr, self._prev_flow_pts, None,
             winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
         status = status.flatten().astype(bool)
-        # keep only points that (a) tracked successfully and (b) are still within
-        # the DILATED marker mask -- on-target guarantee, but tolerant of a few
-        # px of frame-to-frame mask-boundary jitter (see MASK_DILATE_PX)
-        in_mask = np.zeros(len(tracked), dtype=bool)
-        h, w = dilated_mask.shape
-        for k, p in enumerate(tracked):
-            xi, yi = int(round(p[0])), int(round(p[1]))
-            if 0 <= xi < w and 0 <= yi < h:
-                in_mask[k] = dilated_mask[yi, xi] > 0
-        keep = status & in_mask
+
+        # 2026-08-13 (ring sampling, paired-opposite rejection, user-proposed): if a
+        # point failed LK this frame, ALSO drop its diametrically-opposite partner
+        # (same band, sector -> sector+RING_N_SECTORS//2) from this frame's kept set --
+        # mirrors img_data.py's PLASMC_RING_PAIRED. Rationale: a ring cell's opposite
+        # partner exists specifically to balance that cell's contribution to the
+        # centroid/moment; keeping the opposite alone while the pair-partner vanishes
+        # re-introduces exactly the one-sided centroid bias pairing was meant to avoid.
+        # Only meaningful when RING_SAMPLING populated cell ids this flight.
+        if self._prev_flow_cell_id is not None and len(self._prev_flow_cell_id) == len(status):
+            half = RING_N_SECTORS // 2
+            failed_cells = set(self._prev_flow_cell_id[~status].tolist())
+            opp_failed_cells = set()
+            for c in failed_cells:
+                b, s = divmod(int(c), RING_N_SECTORS)
+                opp_failed_cells.add(b * RING_N_SECTORS + (s + half) % RING_N_SECTORS)
+            if opp_failed_cells:
+                is_opp_of_failed = np.array(
+                    [cid in opp_failed_cells for cid in self._prev_flow_cell_id])
+                status = status & ~is_opp_of_failed
+
+        if dilated_mask is not None:
+            # keep only points that (a) tracked successfully and (b) are still within
+            # the DILATED marker mask -- on-target guarantee, but tolerant of a few
+            # px of frame-to-frame mask-boundary jitter (see MASK_DILATE_PX)
+            in_mask = np.zeros(len(tracked), dtype=bool)
+            h, w = dilated_mask.shape
+            for k, p in enumerate(tracked):
+                xi, yi = int(round(p[0])), int(round(p[1]))
+                if 0 <= xi < w and 0 <= yi < h:
+                    in_mask[k] = dilated_mask[yi, xi] > 0
+            keep = status & in_mask
+        else:
+            # detection miss this frame -- no fresh mask to validate on-target
+            # membership against; keep whatever LK tracked successfully so the
+            # point set stays current (never frozen), skip resample this frame
+            keep = status
 
         prev_pts = self._prev_flow_pts[keep]
         curr_pts = tracked[keep]
         n_kept = len(prev_pts)
-        prev_quat = self._prev_quat   # the attitude prev_pts were actually observed at
-        prev_angvel = self._prev_angvel   # the gyro rate prev_pts were actually observed at
+        kept_cell_id = (self._prev_flow_cell_id[keep]
+                         if self._prev_flow_cell_id is not None else None)
 
-        # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
-        # when it nearly empties -- see RESAMPLE_PERIOD_S's comment. Without this, a
-        # point set that never drops below RESAMPLE_TRIGGER just tracks the SAME
-        # corners for the whole flight, freezing in whatever radial-spread bias that
-        # one early draw happened to have (the actual root cause of the large
-        # run-to-run Hz/Wz variance, not per-frame noise).
-        due_for_refresh = (self._last_resample_t is None or
-                            (t - self._last_resample_t) >= RESAMPLE_PERIOD_S)
-        if n_kept < RESAMPLE_TRIGGER or due_for_refresh:
-            # top up the pool with fresh candidates rather than discarding what's
-            # still tracking -- only replace outright if the fresh yield actually
-            # beats what survived (never make the pool WORSE)
-            fresh = self._sample_flow_points(gray, dilated_mask)
-            self._last_resample_t = t
-            self._prev_flow_pts = fresh if len(fresh) > n_kept else curr_pts
+        if dilated_mask is not None:
+            # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
+            # when it nearly empties -- see RESAMPLE_PERIOD_S's comment. Without this, a
+            # point set that never drops below RESAMPLE_TRIGGER just tracks the SAME
+            # corners for the whole flight, freezing in whatever radial-spread bias that
+            # one early draw happened to have (the actual root cause of the large
+            # run-to-run Hz/Wz variance, not per-frame noise).
+            due_for_refresh = (self._last_resample_t is None or
+                                (self._last_t - self._last_resample_t) >= RESAMPLE_PERIOD_S)
+            if n_kept < RESAMPLE_TRIGGER or due_for_refresh:
+                # top up the pool with fresh candidates rather than discarding what's
+                # still tracking -- only replace outright if the fresh yield actually
+                # beats what survived (never make the pool WORSE)
+                fresh, fresh_cell_id = self._sample_flow_points(gray_curr, dilated_mask)
+                self._last_resample_t = self._last_t
+                if len(fresh) > n_kept:
+                    self._prev_flow_pts, self._prev_flow_cell_id = fresh, fresh_cell_id
+                else:
+                    self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
+            else:
+                self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
         else:
-            self._prev_flow_pts = curr_pts
-        self._prev_gray = gray
-        self._prev_quat = quat   # whatever survives to be "prev" next call was observed at THIS quat
-        self._prev_angvel = angvel   # ...and at THIS gyro rate
-        self._prev_frame_t = t   # ...and at THIS timestamp (2026-08-03 dt-staleness fix)
+            # no mask to resample against; just advance tracking
+            self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
 
-        if n_kept < MIN_FLOW_POINTS_SOLVE or dt <= 0:
+        if dilated_mask is None or n_kept < MIN_FLOW_POINTS_SOLVE or not (dt > 0):
             self._flow_diag_log.append((self._last_t, n_kept, np.nan, False, np.nan, np.nan, np.nan))
             return np.zeros(6), False
 
         sol, cond, rel_resid, px_disp_med, px_disp_std = self._solve_jacobian(
-            prev_pts, curr_pts, dt, prev_quat=prev_quat, curr_quat=quat,
-            prev_angvel=prev_angvel, curr_angvel=angvel)
+            prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr,
+            prev_angvel=angvel_prev, curr_angvel=angvel_curr)
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         self._point_diag_log.append((self._last_t,) + self._point_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
-    def process_frame(self, img_bgr, t, quat=None, angvel=None):
+    def process_frame(self, img_bgr_prev, img_bgr_curr, t, fps, quat_prev=None, quat_curr=None,
+                       angvel_prev=None, angvel_curr=None):
+        """REWRITTEN 2026-08-12 (dt/frame-pairing architecture fix): now takes the
+        caller's own adjacent frame pair (img_bgr_prev/img_bgr_curr, from
+        gz_subscriber.Image_Node's rolling 2-frame deque) and the camera's native
+        fps, instead of a single frame + relying on internally-persisted "prev"
+        state that could go stale across a detection dropout -- see _compute_hw's
+        docstring and project_20260812_cross_marker_flow_architecture_
+        investigation memory for the full mechanism/rationale."""
         # self._last_t is a general "last frame seen" timestamp (used by
-        # _flow_diag_log entries below); the h,w Jacobian's own dt is now
-        # computed inside _compute_hw from self._prev_frame_t instead (was
-        # computed here and passed down -- see _compute_hw's docstring for
-        # the staleness bug that caused).
+        # _flow_diag_log entries etc.)
         self._last_t = t
+        dt = 1.0 / fps if (isinstance(fps, (int, float)) and fps > 1) else np.nan
 
         # EXTENT-ADAPTIVE ROI (2026-08-04): decided INSIDE detect() itself now, from the
         # blobby-stage mask's own largest-component extent (see cross_marker_detector's
@@ -895,8 +1211,9 @@ class CrossMarkerPerception:
         # threshold, successful detections never record the marker's true (larger)
         # size, so the loosened crop never triggers. Computing it fresh from
         # ROI-independent, already-ghost-filtered data every call avoids that.
-        det = cmd.detect(img_bgr, track_state=self._track_state)
-        gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+        det = cmd.detect(img_bgr_curr, track_state=self._track_state)
+        gray_curr = cv2.cvtColor(img_bgr_curr, cv2.COLOR_BGR2GRAY)
+        gray_prev = cv2.cvtColor(img_bgr_prev, cv2.COLOR_BGR2GRAY)
         bbox_area = (det.mask_bbox[2] * det.mask_bbox[3]) if det.mask_bbox else 0
         self._diag_log.append((t, bool(det.ok), det.fail_reason, bbox_area))
         self._diag_frame_idx += 1
@@ -906,6 +1223,11 @@ class CrossMarkerPerception:
             self._center_fresh = False   # explicit: this frame did NOT confirm the center is
                                           # in-frame -- the CBF must not treat a stale self._center_px
                                           # as a live in-FoV measurement (see get_center_px())
+            # 2026-08-12: still advance LK point tracking (mask=None -- see _compute_hw's
+            # docstring) so the tracked point set never goes stale across a dropout streak,
+            # even though no Jacobian solve can be committed without a fresh mask this frame.
+            self._compute_hw(gray_prev, gray_curr, None, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                              angvel_prev=angvel_prev, angvel_curr=angvel_curr)
             # hold last s/alpha; hw defaults to zero (no motion info without a fix)
             self._hw = np.zeros(6)
             self._diag_lost_streak += 1
@@ -916,22 +1238,22 @@ class CrossMarkerPerception:
             if self._diag_save_dir and (self._diag_lost_streak == 1 or self._diag_lost_streak % 30 == 0):
                 fn = os.path.join(self._diag_save_dir,
                                    f"lost_{self._diag_frame_idx:06d}_streak{self._diag_lost_streak}_{det.fail_reason}.png")
-                cv2.imwrite(fn, img_bgr)
+                cv2.imwrite(fn, img_bgr_curr)
             # Log even on detection misses
-            self._log_frame_data(t, quat, hw_ok=False, det=det)
+            self._log_frame_data(t, quat_curr, hw_ok=False, det=det)
             return self.get_output()
 
         if self._diag_save_dir and self._diag_lost_streak >= 5:
             # recovery frame right after a real (>=5-frame) loss streak
             fn = os.path.join(self._diag_save_dir,
                                f"recovered_{self._diag_frame_idx:06d}_afterstreak{self._diag_lost_streak}.png")
-            cv2.imwrite(fn, img_bgr)
+            cv2.imwrite(fn, img_bgr_curr)
         self._diag_lost_streak = 0
 
         cx, cy = det.center
         # Level the centroid into the SAME V-frame compute_gt_signals' GT is in
         # (2026-08-02 fix -- was raw camera-frame, tilt-uncompensated, same gap as h,w).
-        s_xy = self._getVirtualPts(np.array([[cx, cy]]), quat)[0]
+        s_xy = self._getVirtualPts(np.array([[cx, cy]]), quat_curr)[0]
         # PLAUSIBILITY GATE (2026-08-03, s_e_n single-frame-spike investigation): confirmed
         # via Z_V_DIAG that a transient tilt can push the centroid ray's z_v near/below zero
         # for exactly one frame -- _getVirtualPts's own comment already predicted this would
@@ -950,6 +1272,10 @@ class CrossMarkerPerception:
             self._diag_z_v_reject_count = getattr(self, '_diag_z_v_reject_count', 0) + 1
             self._ok = False
             self._center_fresh = False
+            # 2026-08-12: same LK-continuity rationale as the not-det.ok branch above --
+            # this is a genuine miss (degenerate centroid ray), treat identically.
+            self._compute_hw(gray_prev, gray_curr, None, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                              angvel_prev=angvel_prev, angvel_curr=angvel_curr)
             self._hw = np.zeros(6)
             self._diag_lost_streak += 1
             return self.get_output()
@@ -979,8 +1305,8 @@ class CrossMarkerPerception:
             # axis handling internally (both its quat=None fallback and quat-present
             # branches return [y,-x]-style V-frame coordinates), so the old standalone
             # [y,-x] swap is REPLACED here, not stacked on top.
-            stub_pts = self._getVirtualPts(stub_pts_px, quat)
-            arm_pts = self._getVirtualPts(arm_pts_px, quat)
+            stub_pts = self._getVirtualPts(stub_pts_px, quat_curr)
+            arm_pts = self._getVirtualPts(arm_pts_px, quat_curr)
             all_pts = np.vstack([arm_pts, stub_pts])
             a_raw, _ = _unweighted_principal_angle(all_pts)
             asym = (float(stub_pts[:, 0].mean() - arm_pts[:, 0].mean()),
@@ -995,14 +1321,15 @@ class CrossMarkerPerception:
         self._alpha = self._last_alpha if self._alpha_valid_once else 0.0
 
         # --- h, w: image Jacobian solve over Shi-Tomasi points on the marker plate ---
-        mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray.shape, np.uint8)
-        hw, hw_ok = self._compute_hw(gray, mask, t, quat=quat, angvel=angvel)
+        mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
+        hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                                      angvel_prev=angvel_prev, angvel_curr=angvel_curr)
         self._hw = hw if hw_ok else np.zeros(6)
 
         self._ok = True
 
         # Log full time-series (2026-08-04, frame-by-frame debugging)
-        self._log_frame_data(t, quat, hw_ok)
+        self._log_frame_data(t, quat_curr, hw_ok)
 
         return self.get_output()
 
@@ -1103,9 +1430,13 @@ class CrossMarkerPerception:
         return list(self._z_v_log)
 
     def get_point_diag_log(self):
-        """TEMP DIAG 2026-08-09: list of (t, prev_n (N,2) normalized point set fed
-        into A, solved Tz) per successful solve -- see __init__'s _point_diag_log
-        comment. Per-point-resolution follow-up to get_radial_diag_log()."""
+        """TEMP DIAG 2026-08-09, EXTENDED 2026-08-12: list of
+        (t, prev_n, solved_Tz, curr_n, dt, sol) per successful solve -- see
+        __init__'s _point_diag_log comment. prev_n/curr_n are the (N,2) normalized
+        V-frame points _fill_A/A were built from (before/after this solve's LK
+        step); per-point velocity is fully reconstructable as
+        (curr_n-prev_n)/dt. sol is the full solved [Tx,Ty,Tz,Wx,Wy,Wz] vector
+        (not just Tz). Per-point-resolution follow-up to get_radial_diag_log()."""
         return list(self._point_diag_log)
 
     def get_center_px(self):
@@ -1218,7 +1549,7 @@ class CrossMarkerNode(Thread):
                     continue
                 last_stamp = stamp
                 imgs = self._image_node.getImages()
-                if imgs[-1] is None:
+                if imgs[0] is None or imgs[1] is None:
                     time.sleep(0.002)
                     continue
                 # Use the frame's OWN capture stamp (msg.header.stamp, sim time,
@@ -1253,14 +1584,29 @@ class CrossMarkerNode(Thread):
                 # construction, not independently re-polled later from a separate
                 # thread with its own scheduling jitter. Use that instead.
                 quats = self._image_node.getQuaternions()
-                quat = quats[-1] if quats else None
                 # Gyro body rate, SAME synchronous-in-callback pairing as quat (see
                 # gz_subscriber.Image_Node.image_callback -- angvel is sampled in the
                 # same callback as quat/the frame, already deque-paired identically) --
                 # feeds _solve_jacobian's gyro-derotation fix (2026-08-08).
                 angvels = self._image_node.getAngVels()
-                angvel = angvels[-1] if angvels else None
-                self._perception.process_frame(imgs[-1], stamp, quat=quat, angvel=angvel)
+                # 2026-08-12 (dt/frame-pairing architecture fix, see
+                # project_20260812_cross_marker_flow_architecture_investigation memory):
+                # pass the FULL adjacent frame pair (imgs[0]=prev, imgs[1]=curr) plus the
+                # native-rate fps, instead of only the newest frame. Previously
+                # process_frame() only ever saw imgs[-1] and relied on its own
+                # self._prev_gray/_prev_frame_t persisted across calls -- which went stale
+                # across a detection-dropout streak (self._prev_gray frozen at whatever
+                # frame the LAST SUCCESSFUL solve used, so LK ended up bridging the WHOLE
+                # dropout gap in one step once detection recovered, instead of one native
+                # frame interval). imgs[0]/imgs[1]/getFPS() are always mutually consistent
+                # (updated together in the same image_callback), so every call now gets a
+                # correct, small, native dt by construction -- see img_data.py's own
+                # imgs[0]/imgs[1]/self._fps pattern, which this mirrors.
+                fps = self._image_node.getFPS()
+                self._perception.process_frame(
+                    imgs[0], imgs[1], stamp, fps,
+                    quat_prev=quats[0] if quats else None, quat_curr=quats[1] if quats else None,
+                    angvel_prev=angvels[0] if angvels else None, angvel_curr=angvels[1] if angvels else None)
 
                 # Feed MARKER_EXTENT_PX (controller.py) -- reads self._img_node._feature_pts
                 # as fp_list[-1][1], a (4,2) corner array (ArUco's [prev,curr]-paired
@@ -1348,6 +1694,16 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
             "Center Px": self._perception._center_px_log,
+            # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
+            # calibration/validation recorder apps exposed these via their own explicit
+            # get_point_diag_log()/get_radial_diag_log() calls into Ground_Truth.npy --
+            # the real landing-test path (this getLogData(), saved as Img_Data.npy by
+            # apps/landing_test.py) never did, so a real flight's terminal-descent point
+            # geometry couldn't be reconstructed after the fact. Both logs are already
+            # accumulated by the underlying CrossMarkerPerception regardless of caller;
+            # just exposing them here.
+            "Point Diag Log": self._perception.get_point_diag_log(),
+            "Radial Diag Log": self._perception.get_radial_diag_log(),
         }
 
     def getParams(self):

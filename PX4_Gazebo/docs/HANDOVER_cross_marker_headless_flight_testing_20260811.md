@@ -105,20 +105,43 @@ perception failure. Diagnosed from `Control_Data.npy`:
   swung sharply negative (+0.2→-2.75) as altitude dropped from 1.6m to
   1.3m — the controller was accelerating the descent right through the
   terminal approach instead of braking, right up to the impact.
-- **ROOT-CAUSED (2026-08-11, same-session follow-up):** the perceived
-  vertical optical-flow signal `h_z` (`Control_Data.npy`'s `h(t)[:,2]`)
-  goes noisy and briefly WRONG-SIGNED right at the failure onset. The
-  reference `h_d_z` stays flat at -0.30 throughout, but `h_z` reads -0.33,
-  then -1.15 (3.8x over), then **+0.27 (positive — perceived ASCENDING
-  while actually accelerating downward)**, then -0.23 (under-read), all
-  within the ~0.3s window starting at t=39.06 (altitude ≈1.5-1.6m). That
-  corrupted error signal feeds directly into the vertical-velocity control
-  law, and the true GT descent trace shows the runaway starts at almost
-  exactly this same altitude: a gentle ~0.74 m/s average descent from 5m
-  down to 1.6m over ~4.6s, then the remaining 1.1m covered in ~0.5s,
-  ending at the reported 4.27 m/s. `w_u` and `B_T`'s behavior (noted above)
-  were downstream symptoms of the controller reacting to this bad
-  measurement, not the root cause themselves.
+- **ROOT-CAUSED (2026-08-11, same-session follow-up, CORRECTED after a
+  methodology check the user prompted):** the first version of this
+  diagnosis only compared the perceived `h_z` (`Control_Data.npy`'s
+  `h(t)[:,2]`) against the controller's own DESIRED reference `h_d_z`
+  (flat -0.30) — not against true ground truth. Re-checked properly using
+  `tools/validate_cross_marker_flow.py::_compute_gt_flow_zreg` (the
+  `PLASMC_GT_Z_REG`-regularized GT flow, `h = v/(z+Z_REG)`, matching
+  `gt_feedback.py`'s own convention — NOT `aggregate_calibration_phased.py`'s
+  `compute_gt_signals`, which has no `Z_REG` and hard-NaNs anything below
+  1m depth, making it unusable for this touchdown-adjacent window), with
+  proper timestamp sync (`Start Time`-aligned, same Gazebo `/clock` domain,
+  verified median 0ms / p95 4ms gap between perception and GT samples).
+
+  **Two distinct problems, not one:**
+  1. **A real, GT-confirmed sign flip.** At t=39.22-39.32s (altitude
+     ≈1.25-1.38m) perceived `h_z` reads **+0.27 (positive — perceived
+     ascending)** while the properly-computed GT `h_z` is **-0.78 to -0.86**
+     (genuinely, strongly descending) at the exact same instant. This is
+     confirmed against ground truth, not just against the internal desired
+     reference.
+  2. **A much bigger systematic gap: perceived `h_z` has nowhere near
+     enough dynamic range to track the true near-touchdown blowup.** GT
+     `h_z` (correctly, physically) grows from -0.75 at 1.57m to **-5.70 at
+     0.53m** as `1/(z+Z_REG)` amplifies near the ground — this is the same
+     "terminal 1/Z amplification" mechanism this project has documented
+     extensively for the ArUco pipeline (the reason `Z_REG` exists as a
+     control-law regularization at all). The cross-marker's perceived
+     `h_z`, meanwhile, stays pinned around -0.15 to -0.27 the entire final
+     second. So the controller compares -0.27 (perceived) against -0.30
+     (desired), sees "close enough, no urgency," and never realizes the
+     true velocity is 5-20x larger and accelerating. This magnitude gap,
+     not just the one sign-flipped frame, is the dominant mechanism behind
+     the hard landing.
+
+  `w_u` and `B_T`'s behavior (noted above) were downstream symptoms of the
+  controller reacting to this under-read signal, not the root cause
+  themselves.
 
   **This is a live, practical instance of the Hz-weak-near-the-ground
   problem this whole session's calibration/bisection work was chasing**
@@ -132,15 +155,30 @@ perception failure. Diagnosed from `Control_Data.npy`:
 
   **Next step:** this reframes the whole Hz investigation's priority — the
   offline whole-flight R²≈0.48 metric already flagged Hz as weak, but this
-  flight shows it's weak enough, at exactly the wrong moment, to corrupt a
-  real landing. Before any more calibration bisection, consider whether the
-  terminal descent needs a SAFETY NET independent of raw Hz near the ground
-  (e.g. a velocity-rate limiter that ignores an implausible single-frame
-  sign flip in `h_z`, or leaning on the vertical-rate reference / a
-  descent-rate governor rather than trusting `h_z` directly below some
-  altitude) — the same class of fix as the ArUco pipeline's ring-loom
-  fusion safety net, which this marker's docstring explicitly says isn't
-  implemented.
+  flight shows the weakness is specifically a NEAR-GROUND DYNAMIC-RANGE
+  problem (perceived `h_z` can't keep up with the true `1/(z+Z_REG)`
+  amplification), not just generic noise. A single-frame sign-flip
+  rate-limiter would only address problem #1 above and would NOT fix
+  problem #2 (the systematic under-read) — the perceived signal would
+  still be wrong in MAGNITUDE even with the correct sign. Two real
+  candidate fixes, in order of how directly they address the dominant
+  (magnitude) problem:
+  1. **A depth-aware fallback/blend near the ground** — e.g. the same class
+     of fix as the ArUco pipeline's ring-loom-fusion safety net (explicitly
+     NOT implemented for this marker per its own docstring), or a
+     model-based descent-rate estimate (from commanded thrust/known
+     dynamics) blended in as `h_z`'s calibrated confidence drops near
+     touchdown.
+  2. **Re-derive/extend the cross-marker's calibration specifically for
+     the near-ground regime** — the current cal is fit mostly on abundant
+     higher-altitude phased-excitation data; if the raw signal's transfer
+     function genuinely changes character near the ground (different point
+     geometry, different LK dynamic range at that scale), a single global
+     linear cal may not be recoverable at all no matter how it's
+     re-derived, and a fallback (option 1) may be necessary regardless.
+  Re-run this same `_compute_gt_flow_zreg`-based check on a few more
+  landing flights before concluding the magnitude gap is systematic rather
+  than this-flight-specific (n=1 so far).
 
 **Don't treat this landing's hardness as evidence the cross-marker perception
 is bad** — tracking was clean and stable the entire flight. This is a

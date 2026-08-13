@@ -4408,7 +4408,19 @@ class IMG_PROCESSOR(Thread):
         cx, cy = self.center
         x = (pts[:, 0] - cx) / fx
         y = (pts[:, 1] - cy) / fy
-        rays = np.column_stack([x, y, np.ones_like(x)])              # (N × 3)
+        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): x500_mono_cam_down/model.sdf's
+        # camera mount (shared by BOTH the aruco and cross_marker worlds -- same
+        # airframe) now has yaw+=90deg on top of the pre-existing pointing-down
+        # pitch=90deg, to move the drone's landing-leg mirrored ghost out of the
+        # top/bottom image margins. The OLD "camera=body-FRD aligned" ray=[x,y,1]
+        # convention needs a compensating rotation. Initial derivation ([-y,x], Rz(+90))
+        # was empirically WRONG -- verified against the cross-marker world's known
+        # marker world-yaw=0deg via the alpha computation (unswapped raw alpha read
+        # ~90deg, and [-y,x] added ANOTHER +90 instead of correcting to ~0), and via
+        # s_e_n diverging instead of converging in closed-loop with [-y,x]. Correct
+        # transform is [y,-x] (Rz(-90deg)) -- swap x and y, negate the new y. See
+        # cross_marker_perception.py's identical fix (same physical camera) for detail.
+        rays = np.column_stack([y, -x, np.ones_like(x)])              # (N × 3)
 
         # Rotate rays into V: V_ray = (V_R_C) · C_ray = C_R_V.T · C_ray.
         # Equivalent np-broadcast form: rays @ C_R_V.
@@ -4448,7 +4460,12 @@ class IMG_PROCESSOR(Thread):
         """INVERSE of _getVirtualPts: project V-frame (gravity-leveled) NORMALIZED image points
         back to REAL camera pixels for the current tilt. Used to seed the virtual-plane ring into
         the real image each frame so LK tracks the NADIR patch regardless of tilt. Round-trip with
-        _getVirtualPts is exact to machine precision (verified)."""
+        _getVirtualPts is exact to machine precision (verified).
+
+        CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): _getVirtualPts's forward ray is
+        now [y_pixel, -x_pixel, 1] (see its own comment for the derivation), so this
+        inverse must undo that exact substitution to preserve the round-trip property:
+        from ray=[y,-x,1], x_pixel = -ray[1], y_pixel = ray[0]."""
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
         g = R.T @ np.array([0, 0, 1])
         z_axis = g / np.linalg.norm(g)
@@ -4458,7 +4475,7 @@ class IMG_PROCESSOR(Thread):
         V_rays = np.column_stack([V_pts[:, 0], V_pts[:, 1], np.ones(len(V_pts))])
         C_rays = V_rays @ C_R_V.T                                            # rotate V rays -> camera rays
         cx, cy = self.center
-        xc = C_rays[:, 0] / C_rays[:, 2]; yc = C_rays[:, 1] / C_rays[:, 2]
+        xc = -C_rays[:, 1] / C_rays[:, 2]; yc = C_rays[:, 0] / C_rays[:, 2]
         return np.column_stack([xc * fx + cx, yc * fy + cy]).astype(np.float32)
     
     def _showOptFlow(self, img, C_pts, V_nP_norm):
