@@ -73,45 +73,89 @@ def Rz(a):
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
+# CAMERA-MOUNT YAW FIX (2026-08-04, added to cbf_visibility.py; propagated into this
+# oracle 2026-08-13 -- see verify_cbf_convention.py scratchpad check + memory
+# project_20260813_cbf_extent_fix_followup): cbf2_filter's real camera-mount
+# convention is not "camera=body-FRD aligned" -- there is an additional Rz(+90deg)
+# between body/inertial axes and image axes (equivalently, a [y,-x] swap on raw
+# BODY-FRD tangent to get IMAGE-frame tangent). Every helper below that produces or
+# consumes an image-frame tangent/tilt must apply this, or it's silently checking a
+# 90deg-rotated wrong quantity (this is exactly what made tests 2/3/5/0 fail before
+# this fix -- confirmed via a standalone independent check, not just code-reading).
+_SWAP = np.array([[0.0, 1.0], [-1.0, 0.0]])     # body (x,y) -> image (y,-x) role-swap
+_RZ_P90B = np.array([[0.0, -1.0], [1.0, 0.0]])  # Rz(+90deg); cbf2_filter's inertial/body -> image
+_RZ_M90B = np.array([[0.0, 1.0], [-1.0, 0.0]])  # Rz(-90deg); cbf2_filter's image -> inertial/body
+
+
+def _swap(v):
+    """body-FRD tangent (x,y) -> image tangent (y,-x); matches cbf_visibility.py's
+    `ct = column_stack([ct[:,1], -ct[:,0]])`."""
+    return np.array([v[1], -v[0]])
+
+
+def _unswap(v):
+    """Inverse of _swap: image tangent -> body-FRD tangent."""
+    return np.array([-v[1], v[0]])
+
+
 def project_tangent(R, cam_pos, P):
-    """Downward pinhole (optical axis = body +z, FRD). Returns tangent (x,y)."""
+    """Downward pinhole (optical axis = body +z, FRD), IMAGE-frame tangent (after the
+    camera-mount yaw swap -- this is what a marker's measured `cr` actually is)."""
     b = R.T @ (P - cam_pos)          # cam->point in body frame
-    return np.array([b[0] / b[2], b[1] / b[2]])
+    body = np.array([b[0] / b[2], b[1] / b[2]])
+    return _swap(body)
 
 
 def corners_from_tangent(cr, half_ext=(0.05, 0.05)):
-    """Synthesize 4 raw-pixel corners whose mean tangent == cr and per-axis
-    half-extent == half_ext (matches img_node._feature_pts[-1][1] format)."""
-    hx, hy = half_ext
-    tang = np.array([[cr[0] - hx, cr[1] - hy], [cr[0] + hx, cr[1] - hy],
-                     [cr[0] + hx, cr[1] + hy], [cr[0] - hx, cr[1] + hy]])
+    """Synthesize 4 raw-pixel corners whose mean IMAGE-frame tangent == cr and
+    per-axis IMAGE-frame half-extent == half_ext (matches img_node._feature_pts[-1][1]
+    format -- corners are stored in raw/body-FRD pixel space; cbf2_filter applies the
+    swap when it reads them back, same as project_tangent does above for cr)."""
+    hx_img, hy_img = half_ext
+    bx, by = _unswap(cr)
+    hx_body, hy_body = hy_img, hx_img   # a body-aligned box's half-extents swap axes too
+    tang = np.array([[bx - hx_body, by - hy_body], [bx + hx_body, by - hy_body],
+                     [bx + hx_body, by + hy_body], [bx - hx_body, by + hy_body]])
     return CENTER + FOCAL * tang     # back to pixels
 
 
 def Ia_from_tilt(th_img, yaw, a_z):
-    """Inverse of the controller's a_xy = a_z*Rz(yaw)@th map (for test inputs)."""
-    a_xy = a_z * (Rz(yaw)[:2, :2] @ th_img)
+    """Inverse of cbf2_filter's own forward map,
+    I_a[:2] = a_z * Rz(yaw) @ Rz(-90deg) @ th (for test inputs)."""
+    a_xy = a_z * (Rz(yaw)[:2, :2] @ (_RZ_M90B @ th_img))
     return np.array([a_xy[0], a_xy[1], -a_z])
 
 
+def th_curr_of(R, yaw):
+    """Matches cbf2_filter's own th_curr = Rz(+90deg) @ Rz(-yaw) @ (-R[:2,2]/R33)."""
+    return _RZ_P90B @ (Rz(-yaw)[:2, :2] @ (-R[:2, 2] / max(abs(R[2, 2]), 1e-9)))
+
+
 def R_from_image_tilt(th_img, yaw):
-    """Realize a body attitude whose controller-extracted image tilt == th_img
-    (small-angle: pitch=-th_x, roll=th_y), then NEWTON-refine so the realized
-    R reproduces th_img exactly under th_curr = Rz(-yaw)@(-R[:2,2]/R33)."""
-    pitch, roll = -th_img[0], th_img[1]
-    for _ in range(30):
+    """Realize a body attitude whose controller-extracted image tilt == th_img,
+    NEWTON-refined (finite-difference Jacobian -- robust to the extra Rz(+90deg)
+    camera-mount factor in th_curr_of, no hand-derived small-angle sign to get
+    wrong) so the realized R reproduces th_img exactly under th_curr_of(R, yaw)."""
+    # small-angle initial guess: th_curr_of's pre-swap quantity is ~(-pitch, roll)
+    # (as in the pre-camera-mount-fix convention); the +90deg swap then maps that
+    # to th_img ~= (-roll, -pitch), i.e. pitch ~= -th_img[1], roll ~= -th_img[0].
+    pitch, roll = -th_img[1], -th_img[0]
+    for _ in range(50):
         R = Rz(yaw) @ Ry(pitch) @ Rx(roll)
-        th_cur = Rz(-yaw)[:2, :2] @ (-R[:2, 2] / max(abs(R[2, 2]), 1e-9))
+        th_cur = th_curr_of(R, yaw)
         err = th_img - th_cur
         if np.linalg.norm(err) < 1e-12:
             break
-        pitch += -err[0]            # d th_x/d pitch ~ -1 ; d th_y/d roll ~ +1
-        roll += err[1]
+        eps = 1e-6
+        Jp = (th_curr_of(Rz(yaw) @ Ry(pitch + eps) @ Rx(roll), yaw) - th_cur) / eps
+        Jr = (th_curr_of(Rz(yaw) @ Ry(pitch) @ Rx(roll + eps), yaw) - th_cur) / eps
+        J = np.column_stack([Jp, Jr])
+        try:
+            d = np.linalg.solve(J, err)
+        except np.linalg.LinAlgError:
+            break
+        pitch += d[0]; roll += d[1]
     return Rz(yaw) @ Ry(pitch) @ Rx(roll)
-
-
-def th_curr_of(R, yaw):
-    return Rz(-yaw)[:2, :2] @ (-R[:2, 2] / max(abs(R[2, 2]), 1e-9))
 
 
 # ============================================================================
@@ -122,11 +166,14 @@ class _S:                              # mock 'self' carrying the old _lw_* attr
 
 
 def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
-                      p_10, theta_cone, dt_last, w_rp, S, env):
-    """Independent transcription of the cbf2 block (originally commit 4c6b4b2),
-    SYNCED 2026-06-16 to the cap-moved-out form: the theta_cap deliverability clip
-    was removed from the CBF (it is now applied by the caller), so this reference
-    omits it too — a parity mismatch reveals an extraction error against the new form."""
+                      p_10, theta_cone, dt_last, w_rp, S, radius, env):
+    """Independent (hand-copied, not imported) transcription of cbf2_filter, kept as
+    a second implementation to catch ACCIDENTAL drift in the real one (typos,
+    dropped terms) -- not a check against pre-refactor behavior, since cbf_visibility.py
+    has since intentionally diverged from its original form (2026-08-04 camera-mount
+    yaw fix propagated below; 2026-08-13 radius-based delta2 replaces the old
+    corner-spread derivation, also propagated below -- see the module docstring on
+    cbf_visibility.py's own `radius` param for why corner-spread is gone for good)."""
     foc = np.asarray(focal, float)
     a_z = abs(I_a[2]); ok = False
     try:
@@ -134,10 +181,11 @@ def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
             raise ValueError
         rc = np.asarray(corners, float)
         ct = (rc - np.asarray(center, float)) / foc
+        ct = np.column_stack([ct[:, 1], -ct[:, 0]])      # camera-mount yaw swap
         cr2 = ct.mean(0); x2, y2 = float(cr2[0]), float(cr2[1])
         Lw2 = np.array([[x2 * y2, -(1 + x2 * x2)], [1 + y2 * y2, -x2 * y2]])
         tau = float(env.get("CBF_TAU", "0.3"))
-        delta2 = 0.5 * (ct.max(0) - ct.min(0))
+        delta2 = np.full(2, float(radius)) / foc
         if dt_last is not None and dt_last > 1e-6 and getattr(S, "_lw_delta_prev", None) is not None:
             S._lw_ddelta_ref = np.maximum((delta2 - S._lw_delta_prev) / dt_last, 0.0)
         else:
@@ -156,8 +204,10 @@ def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
         S._lw_Lw2_prev = Lw2.copy()
         cz, sz = np.cos(yaw_c), np.sin(yaw_c)
         Rzm = np.array([[cz, sz], [-sz, cz]])
-        th_curr = Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3))
-        th = Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6))
+        Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])
+        Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])
+        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))
+        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))
         anchor = cr2 - Lw2 @ th_curr + dft
         for _ in range(10):
             f = anchor + Lw2 @ th
@@ -167,7 +217,7 @@ def _inline_reference(I_a, R, R33, yaw_c, corners, center, focal,
                 elif f[k] < -m2[k]:
                     r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
         # theta_cap deliverability clip removed (now caller-applied) — see cbf2_filter.
-        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ th)
+        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))
         theta_cone = float(np.linalg.norm(th))
         ok = True
     except (IndexError, AttributeError, ValueError, TypeError):
@@ -224,12 +274,13 @@ def test_parity():
             R33 = R[2, 2]
             dt = RNG.uniform(0.01, 0.03)
             w_rp = RNG.uniform(-0.5, 0.5, 2)
+            radius = float(RNG.uniform(0.0, 20.0))     # px, arbitrary per-step test value
             out_ref, tc_ref, ok_ref = _inline_reference(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
-                0.3, dt, w_rp, S, env)
+                0.3, dt, w_rp, S, radius, env)
             out_new, tc_new, ok_new, _ths = cbf2_filter(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
-                0.3, dt, w_rp, state, env)
+                0.3, dt, w_rp, state, radius, env)
             d = max(np.max(np.abs(out_ref - out_new)), abs(tc_ref - tc_new))
             worst = max(worst, d)
             if ok_ref != ok_new or d > 1e-12:
@@ -246,7 +297,25 @@ def test_lw_fidelity():
     """The model the QP enforces, cr + L_w@coupling@(th - th_curr), vs the TRUE
     feature shift from an independent pinhole+attitude camera. Compares the
     current-code coupling (identity) against the fix (M90). The barrier is only
-    meaningful if this model is faithful."""
+    meaningful if this model is faithful.
+
+    2026-08-13: kept in the BODY-FRD frame (local helpers, not the module-level
+    project_tangent/th_curr_of, which are now in the camera-mount-swapped IMAGE
+    frame for the tests that call cbf2_filter). This test never calls cbf2_filter
+    -- it's an independent check of the L_omega interaction-matrix model itself,
+    which is a body-frame-native physics question (the M90 lean-vs-rotation-axis
+    correction it validates is unrelated to the camera-mount fix). Mixing the two
+    conventions here produced a bogus ~200% "error" that was a frame mismatch in
+    the test, not a modeling error -- see the barrier/no-strangle root-cause
+    write-up (project_20260813_cbf_extent_fix_followup memory)."""
+    def _proj_body(R, cam_pos, P):
+        b = R.T @ (P - cam_pos)
+        return np.array([b[0] / b[2], b[1] / b[2]])
+
+    def _th_curr_body(R, yaw):
+        Rzm = Rz(-yaw)[:2, :2]
+        return Rzm @ (-R[:2, 2] / max(abs(R[2, 2]), 1e-3))
+
     worst_id = 0.0; worst_fix = 0.0
     for _ in range(2000):
         yaw = RNG.uniform(-np.pi, np.pi)
@@ -255,13 +324,13 @@ def test_lw_fidelity():
         P = np.array([RNG.uniform(-0.7, 0.7) * Z, RNG.uniform(-0.5, 0.5) * Z, 0.0])
         roll0, pitch0 = RNG.uniform(-0.08, 0.08, 2)   # near-hover descent tilt envelope
         R0 = Rz(yaw) @ Ry(pitch0) @ Rx(roll0)
-        cr0 = project_tangent(R0, cam, P)
+        cr0 = _proj_body(R0, cam, P)
         x, y = cr0
         L_w = np.array([[x * y, -(1 + x * x)], [1 + y * y, -x * y]])
         dr, dp = RNG.uniform(-1e-4, 1e-4, 2)     # tiny step => clean Jacobian test
         R1 = Rz(yaw) @ Ry(pitch0 + dp) @ Rx(roll0 + dr)
-        cr1 = project_tangent(R1, cam, P)
-        dth = th_curr_of(R1, yaw) - th_curr_of(R0, yaw)   # code's image-tilt change
+        cr1 = _proj_body(R1, cam, P)
+        dth = _th_curr_body(R1, yaw) - _th_curr_body(R0, yaw)   # code's image-tilt change
         actual = cr1 - cr0
         denom = np.linalg.norm(actual) + 1e-6
         worst_id = max(worst_id, np.linalg.norm(L_w @ dth - actual) / denom)
@@ -297,11 +366,11 @@ def test_barrier_and_end_to_end():
         I_a = Ia_from_tilt(th_des, yaw, a_z)
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R0, R0[2, 2], yaw, corners,
                                   CENTER, FOCAL, P_10, 0.3,
-                                  None, np.zeros(2), {}, FIX_ENV)
+                                  None, np.zeros(2), {}, 0.0, FIX_ENV)
         if not ok:
             continue
         # recover commanded image tilt from the returned accel
-        a_xy = out[:2]; th_star = Rz(-yaw)[:2, :2] @ (a_xy / a_z)
+        a_xy = out[:2]; th_star = _RZ_P90B @ (Rz(-yaw)[:2, :2] @ (a_xy / a_z))
         # (2) predicted feature under the (fixed) linear model the QP used
         L_w = np.array([[cr0[0]*cr0[1], -(1+cr0[0]**2)],
                         [1+cr0[1]**2, -cr0[0]*cr0[1]]]) @ M90
@@ -349,7 +418,7 @@ def test_minimal_intervention():
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(th_des, yaw),
                                   np.cos(np.linalg.norm(th_des)), yaw, corners,
                                   CENTER, FOCAL, P_10, 0.3,
-                                  None, np.zeros(2), {}, FIX_ENV)
+                                  None, np.zeros(2), {}, 0.0, FIX_ENV)
         worst = max(worst, np.max(np.abs(out[:2] - I_a[:2])))
     ok = worst < 1e-6
     _record("4. minimal intervention (feasible passthrough)", ok,
@@ -376,7 +445,7 @@ def test_no_strangle():
         I_a = Ia_from_tilt(th_des, yaw, a_z)
         out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(np.clip(th_des, -0.3, 0.3), yaw),
                                   np.cos(0.2), yaw, corners, CENTER, FOCAL, P_10,
-                                  0.3, None, np.zeros(2), {}, FIX_ENV)
+                                  0.3, None, np.zeros(2), {}, 0.0, FIX_ENV)
         if not ok:
             continue
         n_in = np.linalg.norm(I_a[:2]); n_out = np.linalg.norm(out[:2])
@@ -415,13 +484,13 @@ def test_phase2():
     I_a = Ia_from_tilt(np.array([0.1, 0.0]), yaw, 9.0)
     cbf2_filter(I_a.copy(), R_from_image_tilt(np.array([0.1, 0.0]), yaw),
                 np.cos(0.1), yaw, corners, CENTER, FOCAL, P_10, 0.3,
-                0.02, np.zeros(2), state)
+                0.02, np.zeros(2), state, 0.0)
     env = {"CBF_PHASE2_HYSTERESIS": "3", "CBF_PHASE2_RAMP_FRAMES": "5"}
     alphas = []
     for _ in range(10):     # feed decode-fails (corners=None)
         I_a = Ia_from_tilt(np.array([0.5, 0.3]), yaw, 9.0)
         cbf2_filter(I_a.copy(), np.eye(3), 1.0, yaw, None, CENTER, FOCAL, P_10,
-                    0.3, 0.02, np.zeros(2), state, env)
+                    0.3, 0.02, np.zeros(2), state, 0.0, env)
         alphas.append(state.get("phase2_alpha", 0.0))
     # hysteresis: alpha stays 0 for first 2 fails (thresh=3), then ramps by 1/5
     hyst_ok = alphas[0] == 0.0 and alphas[1] == 0.0 and alphas[2] > 0.0
@@ -447,8 +516,11 @@ def test_fixB_rd3():
         ts = RNG.uniform(-0.8, 0.8, 2)              # safe lean vector (theta_cap-bounded)
         a_z = RNG.uniform(4, 12)
         cy, sy = np.cos(yaw), np.sin(yaw)
-        # --- controller's th_safe-direct rd3 (Fix B) ---
-        a_xy_dir = np.array([cy * ts[0] - sy * ts[1], sy * ts[0] + cy * ts[1]])
+        # --- controller's th_safe-direct rd3 (Fix B): a_xy_dir = Rz(yaw)@Rz(-90deg)@th_safe
+        # (CAMERA-MOUNT YAW FIX, controller.py:2924-2930 -- propagated here 2026-08-13,
+        # this test previously omitted the Rz(-90deg) factor) ---
+        ts_rot = _RZ_M90B @ ts
+        a_xy_dir = np.array([cy * ts_rot[0] - sy * ts_rot[1], sy * ts_rot[0] + cy * ts_rot[1]])
         rd3_dir = np.array([-a_xy_dir[0], -a_xy_dir[1], 1.0]); rd3_dir /= np.linalg.norm(rd3_dir)
         # --- unfiltered accel-path rd3 (what the LPF would converge to) ---
         I_a = np.array([a_z * a_xy_dir[0], a_z * a_xy_dir[1], -a_z])
