@@ -174,6 +174,27 @@ RING_N_BANDS = int(os.environ.get("CROSS_RING_N_BANDS", "2"))
 RING_N_SECTORS = int(os.environ.get("CROSS_RING_N_SECTORS", "8"))   # must be even -- paired-opposite
                                                                       # rejection needs a diametric partner
 RING_PTS_PER_CELL = int(os.environ.get("CROSS_RING_PTS_PER_CELL", "2"))
+# 2026-08-13 (user correction, moving-target concern): the ring's translation-
+# cancels/divergence-adds property (see _sample_flow_points_ring's docstring) only
+# holds for a station pair that's actually ON the marker/target -- if the image
+# center isn't currently over the marker (target has moved off-center, or the
+# marker is small and off to one side), a ring built from the FULL frame radius
+# would draw "opposite pair" points from wherever texture exists in that direction,
+# which may be background/empty space, not the target. Two guards:
+#   (a) only use ring sampling on a frame where the marker mask actually SURROUNDS
+#       the image center in enough directions (RING_MIN_COVERED_SECTORS of
+#       RING_N_SECTORS must have eligible marker pixels) -- else fall back to the
+#       unconstrained sampler for that frame (ring geometry isn't meaningful yet).
+#   (b) ring radius is ADAPTIVE to how far the marker actually extends around the
+#       center that frame (not a fixed frame-relative Rmax), so bands never reach
+#       past real marker/target pixels.
+# A minimum radius keeps stations off the noisy/degenerate near-center pixels
+# (small angular denominator, and for the cross-marker specifically, the exact
+# center is often the low-texture blank space BETWEEN arms if the drone is
+# centered over the marker).
+RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
+                                               str(RING_N_SECTORS // 2)))
+RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "20"))
 
 
 def _unweighted_principal_angle(pts):
@@ -620,8 +641,29 @@ class CrossMarkerPerception:
         no such cancellation property. Re-centered here to match img_data.py's actual
         (verified by re-reading the code) design.
 
+        GUARD + ADAPTIVE RADIUS (2026-08-13, user correction -- moving-target
+        concern): the translation-cancels/divergence-adds property above only
+        holds for a station pair that's actually ON the marker/target. Using a
+        fixed frame-relative radius (old behavior) would draw "opposite pair"
+        points from wherever texture happens to exist at that radius/angle even
+        if the marker has moved off-center or is small -- possibly off-target
+        background, which is not what the pairing math assumes. Two guards now
+        apply: (a) ring sampling is only attempted when the marker mask actually
+        SURROUNDS the image center in enough directions (>= RING_MIN_COVERED_
+        SECTORS of RING_N_SECTORS carry eligible marker pixels beyond
+        RING_CENTER_MIN_R_PX) -- otherwise this frame falls back to the
+        unconstrained sampler entirely, same as the empty-mask case; (b) the ring
+        radius is capped at the marker's OWN actual extent from center THIS frame
+        (not a fixed frame Rmax), so bands never reach past real marker pixels.
+        RING_CENTER_MIN_R_PX also excludes the near-center pixels themselves --
+        for the cross-marker specifically, the exact center of a well-centered
+        marker is the low-texture gap between the arms, and small-radius angles
+        are numerically noisy regardless of marker shape.
+
         Returns (points (N,2) float32, cell_ids (N,) int -- band*RING_N_SECTORS+sector).
-        Falls back to the unconstrained sampler (cell_ids=None) if the mask is empty."""
+        Falls back to the unconstrained sampler (cell_ids=None) if the mask is
+        empty, or if the center-coverage guard fails (image center not currently
+        over the marker)."""
         h, w = dilated_mask.shape
         m = FLOW_BOUNDARY_MARGIN_PX
         boundary_mask = dilated_mask
@@ -633,33 +675,43 @@ class CrossMarkerPerception:
             boundary_mask[:, -m:] = 0
 
         if not boundary_mask.any():
-            return np.zeros((0, 2), dtype=np.float32), np.zeros((0,), dtype=int)
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
 
-        # ring geometry centered on the IMAGE center (self.center = (cx, cy)), NOT
-        # the mask/marker centroid -- see docstring above. Normalized by R_max =
-        # min(h,w)/2 (resolution-adaptive, same convention as img_data.py's _Rmax),
-        # not by the mask's own extent, since the mask's position relative to center
-        # is exactly what must NOT bias the radius/angle assignment.
+        # per-pixel (radius, angle) relative to the IMAGE center (self.center),
+        # NOT the mask/marker centroid -- see docstring above.
         mcx, mcy = float(self.center[0]), float(self.center[1])
-        r_max = float(min(h, w)) / 2.0
-
-        # per-pixel (radius, angle) relative to the IMAGE center
         yy, xx = np.mgrid[:h, :w]
-        r_norm = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2) / r_max
+        r_px = np.sqrt((xx - mcx) ** 2 + (yy - mcy) ** 2)
         theta = np.arctan2(yy - mcy, xx - mcx)   # (-pi, pi]
-        band_edges = np.linspace(0.0, max(r_norm[boundary_mask > 0].max(), 1e-6) + 1e-6,
-                                  RING_N_BANDS + 1)
+
+        eligible = (boundary_mask > 0) & (r_px >= RING_CENTER_MIN_R_PX)
+        if not eligible.any():
+            # marker doesn't reach RING_CENTER_MIN_R_PX from the image center at
+            # all this frame -- center isn't over the marker, ring geometry isn't
+            # meaningful yet
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+        # guard (a): does the marker surround the center in enough directions?
         sector_width = 2 * np.pi / RING_N_SECTORS
+        sector_idx_map = np.clip(((theta + np.pi) / sector_width).astype(int), 0, RING_N_SECTORS - 1)
+        covered_sectors = set(np.unique(sector_idx_map[eligible]).tolist())
+        if len(covered_sectors) < RING_MIN_COVERED_SECTORS:
+            return self._sample_flow_points_unconstrained(gray, dilated_mask), None
+
+        # guard (b): cap ring radius at the marker's OWN extent from center this
+        # frame (adaptive), not a fixed frame-relative bound
+        r_ring_max = float(r_px[eligible].max())
+        band_edges = np.linspace(RING_CENTER_MIN_R_PX, r_ring_max + 1e-6, RING_N_BANDS + 1)
 
         all_pts = []
         all_cell_ids = []
         for b in range(RING_N_BANDS):
-            band_mask = (r_norm >= band_edges[b]) & (r_norm < band_edges[b + 1])
+            band_mask = (r_px >= band_edges[b]) & (r_px < band_edges[b + 1])
             for s in range(RING_N_SECTORS):
                 lo = -np.pi + s * sector_width
                 hi = -np.pi + (s + 1) * sector_width
                 sector_mask = (theta >= lo) & (theta < hi)
-                cell_mask = (boundary_mask > 0) & band_mask & sector_mask
+                cell_mask = eligible & band_mask & sector_mask
                 if not cell_mask.any():
                     continue
                 cell_mask_u8 = cell_mask.astype(np.uint8) * 255

@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T05:09:24.769Z
+  modified: 2026-08-13T05:45:24.699Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -351,14 +351,52 @@ hit the known unrelated "descent stall" SITL flakiness — 694/1290
 process_frame() calls respectively, 100% detect, zero code exceptions in
 either): 694 frames, clean run, no crash.
 
+**REFINED same day (2026-08-13, user's moving-target concern): center-
+coverage guard + adaptive radius, min radius 20px.** Even correctly
+image-centered, the original ring used a FIXED frame-relative radius
+(`r_max = min(h,w)/2`) — on a frame where the marker has moved off-center
+(the whole point of the upcoming moving-target/rover phase) or is small,
+that would draw "opposite pair" points from whatever texture exists at
+that fixed radius/angle, which may not be ON the marker/target at all,
+silently breaking the translation-cancellation the pairing math assumes.
+Two guards added:
+- **(a) center-coverage guard:** ring sampling only proceeds if the marker
+  mask has eligible pixels (beyond the min radius) in >=
+  `CROSS_RING_MIN_COVERED_SECTORS` (default `RING_N_SECTORS//2` = 4 of 8)
+  angular sectors around the image center — i.e. the marker actually
+  surrounds the center in enough directions. Fails → falls back to the
+  unconstrained sampler for that frame (same code path as the empty-mask
+  case), not a forced/degenerate ring.
+- **(b) adaptive radius:** ring band radii are capped at
+  `r_px[eligible].max()` (the marker's own actual extent from center THAT
+  frame), not the fixed frame bound — bands never reach past real marker
+  pixels regardless of how far/close the target is.
+- **min radius `CROSS_RING_CENTER_MIN_R_PX=20`** (px): excludes the
+  near-center pixels from both the guard check and the sampling bands —
+  for the cross-marker specifically the exact image center (when the
+  marker IS well-centered) is the low-texture gap between the arms, plus
+  small-radius angles are numerically noisy in general.
+
+Verified with synthetic masks before trusting it live: a marker centered
+on/surrounding the image center still ring-samples normally (32 pts, min
+observed radius 20.1px, i.e. respects the 20px floor); a small marker
+mask confined to one corner (not surrounding center) correctly triggers
+the guard and falls back to the unconstrained sampler (`cell_ids is
+None`). Live-flight-retested with the refined guard: clean run, no
+exceptions.
+
 **NOT yet done / open follow-up:** a direct before/after comparison of
 `origin_ratio` (§3's metric) and n_kept-per-frame between
 `CROSS_RING_SAMPLING=0` and `=1` on matched flights — the live tests above
 only confirm the mechanism runs correctly end-to-end with the corrected
-(image-center) geometry, not yet that it measurably improves the
-distribution metric in practice. Do that comparison (offline, from two
-flights' Point/Radial Diag Logs) before considering this "validated" in the
-same sense §3's origin-spread gate was; log the result here when done.
+(image-center, guarded, adaptive-radius) geometry, not yet that it
+measurably improves the distribution metric in practice. Do that
+comparison (offline, from two flights' Point/Radial Diag Logs) before
+considering this "validated" in the same sense §3's origin-spread gate
+was; log the result here when done. Also untested so far: an actual
+moving-target (rover world) flight, which is the scenario this guard was
+specifically added for — the guard's logic has only been synthetic- and
+stationary-marker-tested to date.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
