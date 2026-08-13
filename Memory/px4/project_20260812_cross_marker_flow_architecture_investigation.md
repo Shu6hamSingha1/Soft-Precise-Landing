@@ -1,11 +1,11 @@
 ---
 name: project_20260812_cross_marker_flow_architecture_investigation
-description: "CLOSED, honest negative result: implemented + live-validated TWO real fixes for the cross-marker hard landing (getFPS() init bug; dt/frame-pairing staleness fix, removes self._prev_gray/_prev_frame_t entirely; moment-loom+MAD-outlier-rejection for Tz, incl. origin-spread gate refinement) -- correct and validated, NEITHER resolves the hard landing. Root cause is structural point-scarcity/poor-distribution at close range, not staleness or per-point-solve quality. Also confirmed gyro-derotation still structurally necessary, retracted an earlier wrong claim about the nested textured ArUco marker (real reason: ~2.5x lower correspondence noise, not board spread), and added ring-style sampling + paired-opposite LK-failure rejection (CROSS_RING_SAMPLING=1) to proactively address point DISTRIBUTION -- implemented+live-tested (775-frame flight, no crash, 100% detect), before/after origin_ratio comparison still open."
+description: "Cross-marker hard-landing investigation. Implemented+live-validated fixes (getFPS() init; dt/frame-pairing staleness; moment-loom+MAD+origin-spread-gate for Tz; ring-style sampling w/ paired-opposite rejection, CROSS_RING_SAMPLING=1) -- all correct but NONE alone resolves the hard landing; flow/Tz point-scarcity was not the whole story. NEW (2026-08-13, biggest finding): for 4/5 IC1-5 flights, detection goes to 96-100% 'miss' for the final 1.5-3m of descent because the MARKER EXITS THE CAMERA FRAME BOUNDARY (center+extent/2 crosses the true edge) due to sustained lateral drift on off-center ICs -- NOT extent/color-gate saturation (extent only 189-230px at failure, well under half-frame). Perception (alpha/s/h) freezes on stale hold-last-good values for the rest of the descent; the existing FOV-cone CBF (theta_cone/theta_current) does not trip at the failure moment -- unexplained, open follow-up. Likely a bigger direct hard-landing contributor than the flow/Tz mechanisms this file otherwise focuses on. Also: confirmed gyro-derotation structurally necessary, retracted a wrong claim about nested-textured-ArUco (real reason: ~2.5x lower correspondence noise, not board spread)."
 metadata: 
   node_type: memory
   type: project
   originSessionId: 3600b91d-f44b-4754-86bc-066d9ec45b18
-  modified: 2026-08-13T05:45:24.699Z
+  modified: 2026-08-13T06:56:43.585Z
 ---
 
 Follow-up to [[project_cross_marker_hz_regression_bisection_20260810]] and
@@ -397,6 +397,92 @@ was; log the result here when done. Also untested so far: an actual
 moving-target (rover world) flight, which is the scenario this guard was
 specifically added for — the guard's logic has only been synthetic- and
 stationary-marker-tested to date.
+
+## 3c. "Alpha collapse" near touchdown: NOT an alpha bug -- marker exits the camera FRAME BOUNDARY due to lateral drift (2026-08-13)
+
+Follow-up to an IC1-5 (n=1, `CROSS_RING_SAMPLING=1`) smoke-test batch
+(`test_data/ICValidation/20260813-111935/`, all 5 landed, none precise/soft).
+A GT comparison of perception s/h/alpha vs independently-computed,
+Z_REG=0.1-regularized, V-framed GT (sync-verified: median gap 0-4ms, p95
+4-8ms within GT's logged window) found alpha R^2 catastrophically negative
+near touchdown (-30k to -119k in the 1-0.5m bin) in IC2-IC5. Root-caused
+below -- it is NOT a defect in the alpha formula (`_unweighted_principal_
+angle`/`_disambiguate_angle`), NOT a pi-wrap issue, and not specific to
+alpha at all.
+
+**Finding 1 -- total detection dropout, not an alpha-specific issue.**
+`Img_Data.npy`'s `alpha(t)` is EXACTLY constant (a single unique value,
+std=0.0) for the entire sub-2m window in IC2, IC3, IC4, IC5 (IC1's
+apparent "collapse" was a red herring -- just GT-coverage sparsity, n=5
+samples; IC1 in fact has 99.6% detect for the WHOLE flight and never
+exhibits this). `s_V` (centroid) is frozen too (1-3 unique values in the
+same window). Cross-referencing `Detection Status`: for these 4 flights,
+detection is `'miss'` for 96-100% of frames from the point alpha stops
+updating through touchdown (70-105 consecutive missed frames, i.e. the
+LAST several meters of every one of these descents). This is `det.ok`
+going false and STAYING false -- the whole detection pipeline (center, s,
+alpha, and by extension h/w since `_compute_hw` needs a fresh mask) goes
+stale simultaneously via the existing hold-last-good fallback, not an
+alpha-only symptom. The "catastrophic" R^2 is just: a flat frozen value
+vs. GT yaw that kept evolving underneath it for 2-3 seconds -- a real,
+growing, structural bias, not sensor noise.
+
+**Finding 2 -- root cause is the marker exiting the FRAME BOUNDARY, not
+extent/color-gate saturation.** Initial hypothesis (marker fills frame ->
+color-gate/Hough saturates) was directly checked against `MARKER_EXTENT_PX`
+and `Center Px` and DISPROVEN: extent at the point of permanent failure
+was only 189-230px (frame is 480w x 640h in the rotated working
+convention -- see CLAUDE.md's `img_data.py`-derived resolution note),
+well under half the frame width, and extent had reached much larger
+values earlier in-flight without failing. What actually correlates:
+**the marker's CENTER pixel position, tracked over its last ~10 OK
+frames before permanent loss, is moving steadily toward one frame edge**
+(IC2: cx 141->71, frame width 480, extent~228 -> left edge = cx-extent/2
+already crosses 0 by the last OK frame; IC3: cy 419->599, frame
+height 640, extent~220 -> bottom edge crosses 640; IC4: cx 105->57,
+extent~199 -> left edge crosses 0; IC5: cy 287->560, extent~189-221 ->
+bottom edge crosses 640). In all 4 failing flights, `center +/-
+extent/2` crosses the true frame boundary in the direction of sustained
+lateral drift right at/before the last successful detection -- the
+marker physically leaves the camera's field of view, at a MODERATE
+altitude (~3m) and a MODEST marker size, well before touchdown. IC1 (the
+only flight with 99.6% whole-flight detect) has a centered target
+(ENU 0,0,5 -- no lateral correction needed) vs. IC2-5's off-center
+targets ((2,2),(-2,2),(2,2,7),(2,2,3)) that all require sustained lateral
+correction during descent; IC1 does drift toward its own frame edge too
+late in the flight (extent 500px, center approaching a boundary-crossing
+position) but only right at/after touchdown, when it no longer matters.
+
+**Open observation, not yet resolved:** the existing FOV-cone visibility
+CBF (`Control_Data.npy`'s `theta_cone(t)`/`theta_current(t)`/`rho_fov(t)`/
+`d_min_fov(t)`) does NOT trip at the moment of marker loss in IC2 (spot-
+checked): `theta_current` stays comfortably below `theta_cone`
+(0.019 vs 0.133 rad at the last OK frame before permanent miss) right
+through the failure. Either this CBF's geometric visibility model doesn't
+correspond to what the Hough/color-gate detector actually needs to keep
+finding >=2 line clusters, or it's measuring the wrong quantity for this
+failure mode. Not dug into further this session -- worth a dedicated
+follow-up given it's the CBF specifically meant to prevent this class of
+failure.
+
+**Practical implication:** for 4/5 of these landings, the controller was
+flying the final ~1.5-3m on frozen/stale perception (dead-reckoning),
+independent of anything the ring-sampling (S3b) or moment-loom (S3) work
+touches -- those only matter once detection succeeds at all. This is
+likely a bigger, more direct contributor to why these particular landings
+were hard than the flow/Tz-focused mechanisms investigated earlier in this
+file. Root cause is lateral-tracking/FOV-margin, not a flow-computation or
+alpha-computation defect. Ties into the project's known "lateral wall"
+history (see MEMORY.md's standing correction on lateral-wall root causes)
+but is a DISTINCT, newly-quantified mechanism: the marker leaving frame
+entirely, not degraded-but-present flow signal.
+
+**Not yet done:** an n>=5 sweep to confirm this reproduces reliably (this
+session's batch was n=1/IC, per the project's own sweep-methodology rule);
+a fix (tighter FOV-margin CBF gain, or investigating why theta_cone didn't
+trip); and determining whether this same mechanism, not the flow/Tz
+degradation this file otherwise focuses on, is the PRIMARY hard-landing
+cause for off-center ICs specifically.
 
 ## 4. Gyro-derotation: CONFIRMED structurally necessary for the cross-marker (empirically re-verified)
 
