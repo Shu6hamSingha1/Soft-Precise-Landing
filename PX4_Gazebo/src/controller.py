@@ -53,7 +53,19 @@ from collections import deque
 from numerical_methods import RK5, smooth4
 import img_data as ID
 from ahrs import Quaternion
-from cbf_visibility import cbf2_filter
+# CBF_PHASE2_FIX=1 (2026-08-13) selects cbf_visibility_aruco.py -- an isolated copy of
+# this module carrying the Phase-2 (no-corners fallback) rewrite, for testing against the
+# ARUCO pipeline in Gazebo. Default OFF, so the cross-marker pipeline (and every existing
+# ArUco run) imports the untouched cbf_visibility.py and is bit-identical to before this
+# switch existed. See cbf_visibility_aruco.py's module docstring for what differs and why
+# the fix is scoped to ArUco rather than applied in place.
+#   MARKER_TYPE=aruco CBF_PHASE2_FIX=1 HEADLESS=1 bash scripts/run_aruco_landing.sh
+if os.environ.get("CBF_PHASE2_FIX", "0") == "1":
+    from cbf_visibility_aruco import cbf2_filter
+    print("[controller] CBF_PHASE2_FIX=1: using cbf_visibility_aruco.cbf2_filter "
+          "(Phase-2 signed-projection rewrite)")
+else:
+    from cbf_visibility import cbf2_filter
 
 # MARKER_TYPE=cross: use the standalone cross_marker_perception pipeline (no
 # ArUco decode, no PlanarFeatureMap rescue, no marker handover -- see
