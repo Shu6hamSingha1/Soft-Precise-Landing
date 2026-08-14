@@ -168,8 +168,15 @@ FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "2
 # own centroid, and draw GFT candidates per-cell -- guarantees whatever texture
 # DOES exist gets sampled from multiple directions instead of letting one strong
 # local region (e.g. the central intersection) dominate via a single unconstrained
-# GFT call. Off by default; CROSS_RING_SAMPLING=1 to enable.
-RING_SAMPLING = os.environ.get("CROSS_RING_SAMPLING", "0") == "1"
+# GFT call.
+# DEFAULT-ON (2026-08-14): root-caused a loom (h_z) spike + subsequent freeze/miss
+# cascade (project_20260813... IC2_rep3 diagnosis, see memory) to n_flow_corners
+# collapsing from ~10 to 4-5 as MARKER_EXTENT_PX crosses ~210-220px -- below
+# CROSS_MOMENT_LOOM_MIN_PTS(=6), forcing an unprotected raw-pinv Tz fallback that's
+# far more sensitive to a single bad correspondence. Ring sampling's paired-opposite
+# LK-failure rejection targets exactly this point-scarcity-near-marker-edge failure
+# mode. CROSS_RING_SAMPLING=0 to revert to the single unconstrained GFT call.
+RING_SAMPLING = os.environ.get("CROSS_RING_SAMPLING", "1") == "1"
 RING_N_BANDS = int(os.environ.get("CROSS_RING_N_BANDS", "2"))
 RING_N_SECTORS = int(os.environ.get("CROSS_RING_N_SECTORS", "8"))   # must be even -- paired-opposite
                                                                       # rejection needs a diametric partner
