@@ -108,18 +108,17 @@ class HWPosFeedback:
         return ts[-n:], np.asarray(self._wx)[-n:], np.asarray(self._ry)[-n:]
 
     def update(self, uav_pose, target_pose, t):
-        """uav_pose: object with .position(.x_m/.y_m/.z_m or .x/.y/.z, NED) and
-        .orientation(.w/.x/.y/.z, body-FRD->NED) -- e.g. FC.getPosBody()/getQuat()
-        wrapped by HWPoseNode below. target_pose: unused (kept for call-site parity
+        """uav_pose: object with .position(.x/.y/.z, NED) and .orientation(.w/.x/.y/.z,
+        body-FRD->NED) -- i.e. FC.getPosBody()/getQuat() wrapped into _Vec3/_Quat by
+        HWPoseNode below (NOT a raw MAVSDK PositionBody, which uses .x_m/.y_m/.z_m).
+        target_pose: unused (kept for call-site parity
         with gt_feedback.GTFeedback.update / controller.py's _gt_feedback.update()
         signature) -- the marker position is the fixed self._marker_ned instead.
         t: monotonic loop time (s). Returns (s_4vec, flow_6vec)."""
         qu = uav_pose.orientation
         Ru = Quaternion([qu.w, qu.x, qu.y, qu.z]).to_DCM()   # body-FRD -> NED (already native)
         pos = uav_pose.position
-        up = np.array([getattr(pos, "x_m", None) or pos.x,
-                        getattr(pos, "y_m", None) or pos.y,
-                        getattr(pos, "z_m", None) or pos.z], dtype=float)
+        up = np.array([pos.x, pos.y, pos.z], dtype=float)
 
         cam_ned = up + Ru @ _CAM_OFF_FRD                       # camera position, NED
         marker_ned = self._marker_ned + _MARKER_OFF_FRD        # marker position, NED (static, unrotated)
