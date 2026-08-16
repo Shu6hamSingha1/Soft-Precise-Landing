@@ -88,14 +88,6 @@ class HWPosFeedback:
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
 
-        # Fixed marker NED position, measured ONCE relative to the PX4 EKF's
-        # local-origin (home point) before flight -- e.g. pace off / tape-measure
-        # the marker's (north, east, down) offset from the takeoff spot. Format:
-        # "n,e,d" in meters. Default 0,0,0 assumes takeoff directly over the marker.
-        _mx, _my, _mz = (float(v) for v in
-                          os.environ.get("PLASMC_HW_MARKER_NED_XYZ", "0,0,0").split(","))
-        self._marker_ned = np.array([_mx, _my, _mz])
-
     def _vel_window(self):
         """Identical to gt_feedback.GTFeedback._vel_window."""
         ts = np.asarray(self._t, float)
@@ -108,20 +100,22 @@ class HWPosFeedback:
         return ts[-n:], np.asarray(self._wx)[-n:], np.asarray(self._ry)[-n:]
 
     def update(self, uav_pose, target_pose, t):
-        """uav_pose: object with .position(.x/.y/.z, NED) and .orientation(.w/.x/.y/.z,
-        body-FRD->NED) -- i.e. FC.getPosBody()/getQuat() wrapped into _Vec3/_Quat by
-        HWPoseNode below (NOT a raw MAVSDK PositionBody, which uses .x_m/.y_m/.z_m).
-        target_pose: unused (kept for call-site parity
-        with gt_feedback.GTFeedback.update / controller.py's _gt_feedback.update()
-        signature) -- the marker position is the fixed self._marker_ned instead.
+        """uav_pose, target_pose: objects with .position(.x/.y/.z, NED) and
+        .orientation(.w/.x/.y/.z, body-FRD->NED) -- i.e. FC.getPosBody()/getQuat()
+        and the fixed marker point, both wrapped into _Vec3/_Quat by HWPoseNode
+        below (NOT a raw MAVSDK PositionBody, which uses .x_m/.y_m/.z_m). target_pose
+        is the SOLE source of the marker position (HWPoseNode owns parsing
+        PLASMC_HW_MARKER_NED_XYZ) -- this class holds no marker state of its own, so
+        there is only one place the marker offset is read from.
         t: monotonic loop time (s). Returns (s_4vec, flow_6vec)."""
         qu = uav_pose.orientation
         Ru = Quaternion([qu.w, qu.x, qu.y, qu.z]).to_DCM()   # body-FRD -> NED (already native)
         pos = uav_pose.position
         up = np.array([pos.x, pos.y, pos.z], dtype=float)
+        tpp = np.array([target_pose.position.x, target_pose.position.y, target_pose.position.z], dtype=float)
 
         cam_ned = up + Ru @ _CAM_OFF_FRD                       # camera position, NED
-        marker_ned = self._marker_ned + _MARKER_OFF_FRD        # marker position, NED (static, unrotated)
+        marker_ned = tpp + _MARKER_OFF_FRD                     # marker position, NED (static, unrotated)
 
         W_x_tu = marker_ned - cam_ned                          # marker - camera, NED
 
