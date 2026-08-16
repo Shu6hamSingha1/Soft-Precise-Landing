@@ -107,6 +107,42 @@ CAM_GAIN_STEP_FRACTION = float(os.environ.get("CAM_GAIN_STEP_FRACTION", "0.3"))
 CAM_GAIN_FAST_START_UPDATES = int(os.environ.get("CAM_GAIN_FAST_START_UPDATES", "3"))
 CAM_GAIN_FAST_START_STEP_FRACTION = float(os.environ.get("CAM_GAIN_FAST_START_STEP_FRACTION", "1.0"))
 
+# CAM_AUTO_EXPOSURE (2026-08-16): extends CAM_AUTO_GAIN to also step
+# ExposureTime when gain alone can't reach CAM_GAIN_TARGET_BRIGHTNESS within
+# its clamp. Gain has a hardware floor of 1.0x (CAM_GAIN_MIN) -- on a bright
+# sunny day a fixed CAM_EXPOSURE_US that's too long saturates the sensor and
+# NO gain reduction can undo it (can't go below unity gain to compensate for
+# light already integrated). Symmetric on the dim side: gain pinned at its
+# 16.0x ceiling (CAM_GAIN_MAX) still can't reach target under a too-short
+# exposure. This is WHY one fixed CAM_EXPOSURE_US has needed manual
+# per-session re-tuning (200-2000us outdoors depending on the day, vs
+# 20000us indoors/poor-light) instead of CAM_AUTO_GAIN handling it alone --
+# gain-only closes the loop WITHIN one exposure regime, not ACROSS regimes.
+# Off by default; only meaningful stacked with CAM_AUTO_GAIN=1 (same guard
+# pattern as that flag). ExposureTime is the blur-safety knob (see
+# CAM_MANUAL_EXPOSURE's comment), so this steps it CONSERVATIVELY -- only
+# after CAM_EXPOSURE_PIN_TRIGGER consecutive gain-update cycles land pinned
+# in the SAME direction (not one noisy frame), in large multiplicative jumps
+# (not fine adjustments), and clamped to [CAM_EXPOSURE_MIN_US,
+# CAM_EXPOSURE_MAX_US]. NOT YET VALIDATED against real footage as of
+# 2026-08-16 -- bench-test before flight, same discipline CAM_AUTO_GAIN
+# itself went through (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #13).
+CAM_AUTO_EXPOSURE = os.environ.get("CAM_AUTO_EXPOSURE", "0") == "1"
+CAM_EXPOSURE_MIN_US = int(os.environ.get("CAM_EXPOSURE_MIN_US", "200"))
+CAM_EXPOSURE_MAX_US = int(os.environ.get("CAM_EXPOSURE_MAX_US", "20000"))
+# 20000us is the validated blur-safety ceiling (catalog #12: real hand-motion
+# footage held decode at 65-72% up to a frame-diff motion metric of ~10 at
+# this exposure, degrading above it) -- don't raise CAM_EXPOSURE_MAX_US past
+# this without re-checking blur tolerance on real footage first.
+CAM_EXPOSURE_STEP_FACTOR = float(os.environ.get("CAM_EXPOSURE_STEP_FACTOR", "2.0"))
+# Multiplicative step (halve when stepping down, double when stepping up).
+CAM_EXPOSURE_PIN_TRIGGER = int(os.environ.get("CAM_EXPOSURE_PIN_TRIGGER", "3"))
+# Consecutive gain-update cycles pinned at a clamp (AND still off-target,
+# i.e. the UNCLAMPED target gain is outside [CAM_GAIN_MIN, CAM_GAIN_MAX])
+# required before stepping exposure -- roughly CAM_EXPOSURE_PIN_TRIGGER *
+# CAM_GAIN_UPDATE_EVERY_N_FRAMES frames (~1.5s at the defaults/30Hz) of
+# sustained saturation/underexposure before acting.
+
 
 class imgstream(Thread):
     def __init__(self, resolution=(640, 480), capRate=30):
@@ -163,6 +199,22 @@ class imgstream(Thread):
                   f"{CAM_GAIN_TARGET_BRIGHTNESS:.0f}/255 (range "
                   f"[{CAM_GAIN_MIN:.1f}, {CAM_GAIN_MAX:.1f}], every "
                   f"{CAM_GAIN_UPDATE_EVERY_N_FRAMES} frames)")
+
+        # CAM_AUTO_EXPOSURE (see module comment) -- only meaningful stacked on
+        # top of a running gain loop, same dependency shape as _auto_gain.
+        self._auto_exposure = CAM_AUTO_EXPOSURE and self._auto_gain
+        if CAM_AUTO_EXPOSURE and not self._auto_gain:
+            print("imgstream: CAM_AUTO_EXPOSURE=1 but CAM_AUTO_GAIN is off (or "
+                  "CAM_MANUAL_EXPOSURE=0) -- ignoring (needs the gain loop running "
+                  "to detect a pinned-gain saturation/underexposure state).")
+        self._current_exposure_us = CAM_EXPOSURE_US
+        self._exposure_pin_dir = 0   # -1 = saturated-at-floor, +1 = dim-at-ceiling, 0 = neither
+        self._exposure_pin_ctr = 0
+        if self._auto_exposure:
+            print(f"imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within "
+                  f"[{CAM_EXPOSURE_MIN_US}, {CAM_EXPOSURE_MAX_US}]us (x{CAM_EXPOSURE_STEP_FACTOR:.1f} "
+                  f"per step) whenever gain is pinned at a clamp and still off-target for "
+                  f"{CAM_EXPOSURE_PIN_TRIGGER} consecutive gain updates")
 
         # Sanity-check the sensor actually landed on the requested raw mode
         # (internal only - this is about pinning the sensor's native mode
@@ -265,10 +317,10 @@ class imgstream(Thread):
         to avoid oscillating once already near the target."""
         mean_brightness = float(frame.mean())
         if mean_brightness < 1.0:
-            target_gain = CAM_GAIN_MAX  # pure-black frame -- push gain up hard, avoid /~0
+            raw_target_gain = CAM_GAIN_MAX  # pure-black frame -- push gain up hard, avoid /~0
         else:
-            target_gain = self._current_gain * (CAM_GAIN_TARGET_BRIGHTNESS / mean_brightness)
-        target_gain = max(CAM_GAIN_MIN, min(CAM_GAIN_MAX, target_gain))
+            raw_target_gain = self._current_gain * (CAM_GAIN_TARGET_BRIGHTNESS / mean_brightness)
+        target_gain = max(CAM_GAIN_MIN, min(CAM_GAIN_MAX, raw_target_gain))
         step_fraction = (CAM_GAIN_FAST_START_STEP_FRACTION
                          if self._gain_update_count < CAM_GAIN_FAST_START_UPDATES
                          else CAM_GAIN_STEP_FRACTION)
@@ -281,6 +333,62 @@ class imgstream(Thread):
                 self._camera.set_controls({"AnalogueGain": new_gain})
             except Exception as e:
                 print(f"imgstream: CAM_AUTO_GAIN set_controls failed: {e}")
+
+        if self._auto_exposure:
+            self._updateAutoExposurePin(raw_target_gain)
+
+    def _updateAutoExposurePin(self, raw_target_gain):
+        """CAM_AUTO_EXPOSURE (see module comment): gain alone can't correct a
+        frame whose brightness demands a gain OUTSIDE [CAM_GAIN_MIN,
+        CAM_GAIN_MAX] -- raw_target_gain (the UNCLAMPED gain _updateAutoGain
+        would need to hit CAM_GAIN_TARGET_BRIGHTNESS, computed before that
+        function clips it) is the signal: below CAM_GAIN_MIN means the frame
+        is saturated even at floor gain (too bright -- exposure needs to come
+        DOWN); above CAM_GAIN_MAX means gain is pinned at ceiling and still
+        dim (exposure needs to go UP). Requires CAM_EXPOSURE_PIN_TRIGGER
+        consecutive gain-update cycles in the SAME direction before acting --
+        a direction change or a return to normal range resets the counter, so
+        one noisy frame (or a brief real transient, e.g. a cloud passing)
+        can't trigger a jump. Exposure changes the blur regime (unlike gain),
+        so this is deliberately coarser and slower than the loop it rides on."""
+        if raw_target_gain < CAM_GAIN_MIN:
+            direction = -1
+        elif raw_target_gain > CAM_GAIN_MAX:
+            direction = 1
+        else:
+            direction = 0
+
+        if direction != self._exposure_pin_dir:
+            self._exposure_pin_dir = direction
+            self._exposure_pin_ctr = 0
+        if direction == 0:
+            return
+
+        self._exposure_pin_ctr += 1
+        if self._exposure_pin_ctr < CAM_EXPOSURE_PIN_TRIGGER:
+            return
+        self._exposure_pin_ctr = 0
+
+        if direction < 0:
+            new_exposure = self._current_exposure_us / CAM_EXPOSURE_STEP_FACTOR
+        else:
+            new_exposure = self._current_exposure_us * CAM_EXPOSURE_STEP_FACTOR
+        new_exposure = int(max(CAM_EXPOSURE_MIN_US, min(CAM_EXPOSURE_MAX_US, new_exposure)))
+        if new_exposure == self._current_exposure_us:
+            return  # already at the bound in this direction -- nothing more to do
+
+        print(f"imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime "
+              f"{self._current_exposure_us}us -> {new_exposure}us "
+              f"({'saturated even at gain floor' if direction < 0 else 'dim even at gain ceiling'})")
+        self._current_exposure_us = new_exposure
+        try:
+            self._camera.set_controls({"ExposureTime": new_exposure})
+        except Exception as e:
+            print(f"imgstream: CAM_AUTO_EXPOSURE set_controls failed: {e}")
+            return
+        # Re-trigger gain's fast-start so it reconverges quickly at the new
+        # exposure instead of crawling back with the damped steady-state step.
+        self._gain_update_count = 0
 
     def close(self):
         self._break_flag = True
@@ -307,3 +415,15 @@ class imgstream(Thread):
         if self._meanTimePerImage > 0:
             return 1.0 / self._meanTimePerImage
         return 0
+
+    def getCurrentGain(self):
+        """Current AnalogueGain -- the CAM_AUTO_GAIN/CAM_AUTO_EXPOSURE loops'
+        own tracked value (self._current_gain), not a fresh camera query, so
+        it reflects what was actually last commanded via set_controls()."""
+        return self._current_gain
+
+    def getCurrentExposureUs(self):
+        """Current ExposureTime (us) -- same tracked-value semantics as
+        getCurrentGain(). Static (== CAM_EXPOSURE_US) unless CAM_AUTO_EXPOSURE
+        has stepped it."""
+        return self._current_exposure_us

@@ -88,15 +88,34 @@ def record_camera_feed(duration=60, output_dir="Test_Data/Calibration/Test_Video
     # on top of the channel-count bug below.
     actual_res = stream.getResolution()
 
+    # TIGHTENED 2026-08-16 (was a hardcoded 30.0, same "assume the request"
+    # bug class as the frame-dedup fix above -- CAPTURE_RATE_HZ is a REQUEST,
+    # not a guarantee; this project's raw-Bayer mode has an empirical ~25-31Hz
+    # ceiling regardless of what's requested). getFPS() is imgstreamer's own
+    # cumulative average since stream start (self._count/elapsed, measured
+    # inside the real capture thread -- same source img_data.py's production
+    # loop already trusts, see its own `self._fps = self._image_node.getFPS()`
+    # line), so by this point (after the 2s settle sleep above, which is
+    # itself several dozen frames of real capture) it reflects the actual
+    # achieved rate, not the requested one. A VideoWriter opened at the wrong
+    # fixed fps plays back at the wrong apparent speed even with the frame
+    # dedup fix in place (dedup fixes DUPLICATE frames; this fixes the
+    # container's own timeline being scaled wrong). Clamped to a sane range
+    # so a near-zero reading this early (e.g. AEC/AGC still converging, very
+    # few frames counted yet) can't produce a broken/unplayable file.
+    measured_fps = stream.getFPS()
+    video_fps = max(1.0, min(60.0, measured_fps)) if measured_fps > 0 else 30.0
+
     print(f"Recording camera feed to: {output_file}")
     print(f"Duration: {duration}s")
     print(f"Resolution: {actual_res[0]}x{actual_res[1]} (negotiated)")
-    print(f"FPS: 30")
+    print(f"FPS: requested {CAPTURE_RATE_HZ}Hz, measured {measured_fps:.1f}Hz "
+          f"-> VideoWriter opened at {video_fps:.1f}fps")
     print()
 
     # Setup video writer
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(output_file, fourcc, 30.0, actual_res)
+    out = cv2.VideoWriter(output_file, fourcc, video_fps, actual_res)
 
     if DISPLAY_PREVIEW:
         print("Live preview ON (~4Hz) -- press ESC in the preview window to stop early.")
@@ -106,67 +125,106 @@ def record_camera_feed(duration=60, output_dir="Test_Data/Calibration/Test_Video
     frame_count = 0
     last_display_t = 0.0
 
+    # NEW-FRAME DEDUP (2026-08-16 fix, see bench_auto_exposure.py's identical
+    # pattern): this loop used to poll getImages()[-1] every 1ms with no check
+    # for whether it was actually a NEW camera frame - the capture thread only
+    # appends a fresh frame when one is really captured, so a fast poll
+    # re-reads (and here, re-WRITES to the video + counts toward FPS) the SAME
+    # frame many times between real captures. Two consequences, both silent:
+    # (1) `fps = frame_count / elapsed` measured POLLING rate, not camera
+    # throughput - could read well above the real ~25-31Hz ceiling
+    # (img_process_freq_optimization.md) while the camera itself did far
+    # less. (2) the recorded MP4 has DUPLICATE frames baked into its 30fps
+    # VideoWriter timeline, distorting apparent motion on playback - a
+    # calibration hand-sweep recording reviewed for motion blur would show a
+    # false stutter/hold pattern that isn't what the camera actually saw.
+    # getCaptureStamps()'s pulled_at_perf_counter changes only on a genuine
+    # new capture (set inside imgstreamer.py's own capture thread, same
+    # timing source as its internal frame counter) - gate on that instead.
+    last_stamp_perf = None
+
     while time.time() - start_time < duration:
+        stamps = stream.getCaptureStamps()
+        cur_stamp = stamps[-1] if stamps else None
+        cur_perf = cur_stamp.get("pulled_at_perf_counter") if cur_stamp else None
+        if cur_perf is None or cur_perf == last_stamp_perf:
+            time.sleep(0.001)
+            continue
+        last_stamp_perf = cur_perf
+
         imgs = stream.getImages()
-        if imgs and len(imgs) > 0:
-            frame = imgs[-1]
-            if frame is not None:
-                # BUGFIX 2026-07-23: getImages() returns a single-channel
-                # frame - writing that straight to a VideoWriter opened with
-                # the default isColor=True (3-channel) silently rejects EVERY
-                # frame ("expected 3 channels but got 1"), so the file was
-                # never actually getting any frames despite frame_count
-                # climbing.
-                # UPDATED 2026-07-30: getImages() now returns the ISP-scaled
-                # working stream (grayscale Y-plane), not raw Bayer data -
-                # imgstreamer.py no longer exposes the raw stream at all (see
-                # its module docstring). Bayer-demosaicing this would produce
-                # garbage (there's no real Bayer mosaic in ISP luma output) -
-                # a plain grayscale->BGR conversion is the correct match now,
-                # same as every other display/recording path in this codebase.
-                bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
-                out.write(bgr)
-                frame_count += 1
+        frame = imgs[-1] if imgs and len(imgs) > 0 else None
+        if frame is None:
+            continue
 
-                # Progress
-                elapsed = time.time() - start_time
-                if frame_count % 30 == 0:
-                    print(f"  {elapsed:.1f}s / {duration}s — {frame_count} frames")
+        # BUGFIX 2026-07-23: getImages() returns a single-channel
+        # frame - writing that straight to a VideoWriter opened with
+        # the default isColor=True (3-channel) silently rejects EVERY
+        # frame ("expected 3 channels but got 1"), so the file was
+        # never actually getting any frames despite frame_count
+        # climbing.
+        # UPDATED 2026-07-30: getImages() now returns the ISP-scaled
+        # working stream (grayscale Y-plane), not raw Bayer data -
+        # imgstreamer.py no longer exposes the raw stream at all (see
+        # its module docstring). Bayer-demosaicing this would produce
+        # garbage (there's no real Bayer mosaic in ISP luma output) -
+        # a plain grayscale->BGR conversion is the correct match now,
+        # same as every other display/recording path in this codebase.
+        bgr = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        out.write(bgr)
+        frame_count += 1
 
-                if DISPLAY_PREVIEW and (elapsed - last_display_t) >= DISPLAY_INTERVAL_S:
-                    last_display_t = elapsed
-                    corners, ids, _ = _detector.detectMarkers(frame)
-                    decoded = ids is not None and len(ids) > 0
-                    vis = bgr.copy()
-                    if decoded:
-                        cv2.aruco.drawDetectedMarkers(vis, corners, ids)
-                    label = f"DECODED (id={ids.flatten().tolist()})" if decoded else "not decoded"
-                    cv2.putText(vis, label, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                (0, 255, 0) if decoded else (0, 0, 255), 1)
-                    vis = cv2.resize(vis, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE,
-                                      interpolation=cv2.INTER_AREA)
-                    cv2.imshow("Recording preview (~4Hz)", vis)
-                    if cv2.waitKey(1) == 27:   # ESC -- stop recording early
-                        break
+        # Progress
+        elapsed = time.time() - start_time
+        if frame_count % 30 == 0:
+            print(f"  {elapsed:.1f}s / {duration}s — {frame_count} frames")
 
-        time.sleep(0.001)
+        if DISPLAY_PREVIEW and (elapsed - last_display_t) >= DISPLAY_INTERVAL_S:
+            last_display_t = elapsed
+            corners, ids, _ = _detector.detectMarkers(frame)
+            decoded = ids is not None and len(ids) > 0
+            vis = bgr.copy()
+            if decoded:
+                cv2.aruco.drawDetectedMarkers(vis, corners, ids)
+            label = f"DECODED (id={ids.flatten().tolist()})" if decoded else "not decoded"
+            cv2.putText(vis, label, (5, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        (0, 255, 0) if decoded else (0, 0, 255), 1)
+            vis = cv2.resize(vis, None, fx=DISPLAY_SCALE, fy=DISPLAY_SCALE,
+                              interpolation=cv2.INTER_AREA)
+            cv2.imshow("Recording preview (~4Hz)", vis)
+            if cv2.waitKey(1) == 27:   # ESC -- stop recording early
+                break
 
     out.release()
     stream.close()
     if DISPLAY_PREVIEW:
         cv2.destroyAllWindows()
-    
+
     elapsed = time.time() - start_time
-    fps = frame_count / elapsed
+    fps = frame_count / elapsed if elapsed > 0 else 0.0
     file_size = os.path.getsize(output_file) / (1024 * 1024)
     
     print()
     print("✓ Recording complete")
     print(f"  Duration: {elapsed:.1f}s")
     print(f"  Frames: {frame_count}")
-    print(f"  FPS: {fps:.1f}")
+    print(f"  FPS: {fps:.1f} (whole-recording average; video written at {video_fps:.1f}fps)")
     print(f"  File size: {file_size:.1f} MB")
     print(f"  Path: {output_file}")
+    # Sanity check: video_fps was fixed from a ~2s sample BEFORE recording
+    # started, so it can't reflect anything that changed mid-recording (an
+    # exposure-transition stall, a lighting change altering achieved rate,
+    # etc). If the true whole-recording average drifted meaningfully from
+    # what the file was opened at, the saved MP4's playback speed is off by
+    # that ratio -- flag it rather than let it pass silently.
+    if fps > 0 and abs(fps - video_fps) / video_fps > 0.10:
+        print(f"  WARNING: measured whole-recording FPS ({fps:.1f}) differs from the "
+              f"video's opened fps ({video_fps:.1f}) by >10% -- playback speed in the "
+              f"saved file will be off by roughly that ratio. The rate likely drifted "
+              f"during recording (e.g. a lighting change or CAM_AUTO_EXPOSURE step); "
+              f"don't trust the video's apparent motion/timing if you need it exact --"
+              f" re-record, or use bench_auto_exposure.py instead, which logs true "
+              f"per-frame timing to CSV rather than baking a single fixed fps into a video.")
 
 
 if __name__ == "__main__":
