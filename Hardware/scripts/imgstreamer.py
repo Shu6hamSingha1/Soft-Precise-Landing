@@ -129,11 +129,17 @@ CAM_GAIN_FAST_START_STEP_FRACTION = float(os.environ.get("CAM_GAIN_FAST_START_ST
 # itself went through (FLIGHT_TEST_ANALYSIS_PROCEDURE.md catalog #13).
 CAM_AUTO_EXPOSURE = os.environ.get("CAM_AUTO_EXPOSURE", "0") == "1"
 CAM_EXPOSURE_MIN_US = int(os.environ.get("CAM_EXPOSURE_MIN_US", "200"))
-CAM_EXPOSURE_MAX_US = int(os.environ.get("CAM_EXPOSURE_MAX_US", "20000"))
-# 20000us is the validated blur-safety ceiling (catalog #12: real hand-motion
-# footage held decode at 65-72% up to a frame-diff motion metric of ~10 at
-# this exposure, degrading above it) -- don't raise CAM_EXPOSURE_MAX_US past
-# this without re-checking blur tolerance on real footage first.
+CAM_EXPOSURE_MAX_US = int(os.environ.get("CAM_EXPOSURE_MAX_US", "4000"))
+# Lowered 20000->4000, 2026-08-16: a stationary/hand-held indoor bench sweep at MATCHED
+# brightness (gain compensating) showed decode collapsing with exposure duration ALONE --
+# 100% @2000us, 84.7% @4000us, 27.7% @8000us, 0% @16000us, 18.1% @20000us (see
+# project_pi_auto_exposure_bench_decode_collapse memory / bench_auto_exposure.py run). The old
+# 20000us ceiling (catalog #12: poor-light validation, "65-72% decode up to motion-diff ~10")
+# was a poor-light-specific number, not a general blur-safety ceiling, and is directly
+# contradicted by the 2026-08-16 bench run at that same 20000us setting (18.1% decode).
+# 4000us is the last point in the 2026-08-16 sweep with still-strong decode. NOT YET
+# RE-VALIDATED ON REAL FOOTAGE/FLIGHT as of this change -- bench-test before flight, same
+# discipline CAM_AUTO_GAIN itself went through.
 CAM_EXPOSURE_STEP_FACTOR = float(os.environ.get("CAM_EXPOSURE_STEP_FACTOR", "2.0"))
 # Multiplicative step (halve when stepping down, double when stepping up).
 CAM_EXPOSURE_PIN_TRIGGER = int(os.environ.get("CAM_EXPOSURE_PIN_TRIGGER", "3"))

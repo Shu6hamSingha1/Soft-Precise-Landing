@@ -121,6 +121,19 @@ PositionBody:                          # launch-hover offset from home
 cbf_corners.*none_streak               # perception staleness (needs PLANAR_MAP_DBG=1)
 ```
 
+**`PLANAR_MAP_DBG=1` is a pure console-logging flag — verified 2026-08-16, zero effect on
+results.** Every site gating on it in `img_data.py` (9 sites) / `controller.py` (1 site) wraps
+only a `print(...)` (plus a cosmetic counter used solely to throttle print frequency); none
+touch `_s_final`, `cbf_corners`, control gains, or anything that feeds `Control_Data.npy`/
+`Img_Data.npy`/`Telemetry_Data.npy`. Default is `"0"` (off) if unset. **A session run without
+it is numerically identical to one run with it** — the only cost is missing the inline
+`[planar_map]`/`[planar_map gate]`/`[cbf_corners]`/`[s_coast_freeze]`/`[kf_coast_freeze]`
+diagnostic lines in the console transcript. Everything those lines would have shown is still
+derivable from the `.npy` telemetry (`Planar Map Confidence`, `Planar Map Center`,
+`S Estimator Tag` in `Img_Data.npy`; `s_e_n(t)` etc. in `Control_Data.npy`) — so a flight run
+without `PLANAR_MAP_DBG=1` is NOT missing data, just missing a console shortcut to it. (Known
+affected range: all landing tests 2026-08-05 through 2026-08-12 ran without this flag.)
+
 **Multiple transcript files for one session are common** (terminal restarts, SSH drops) —
 check `wc -l` and the first `Started:` timestamp of each before assuming they're sequential
 or duplicates. One past session had a `.txt` and a `_1.txt` that were byte-identical prefix
