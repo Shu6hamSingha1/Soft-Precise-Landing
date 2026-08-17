@@ -182,16 +182,53 @@ class _PoseData:
 
 class HWPoseNode:
     """Drop-in analog of gz_subscriber.Pose_Node for hardware: getPose().UAV is
-    built live from the FC's own EKF odometry, getPose().target is the fixed
-    marker point (identity orientation -- static, non-rotating). Lets
-    controller.py's existing `pose_node.getPose().UAV/.target` call sites (used
-    by the GT-FEEDBACK integration in startController()) work unchanged."""
+    built live from the FC's own EKF odometry, getPose().target is the marker
+    point (identity orientation -- static, non-rotating). Lets controller.py's
+    existing `pose_node.getPose().UAV/.target` call sites (used by the
+    GT-FEEDBACK integration in startController()) work unchanged.
+
+    MARKER POSITION (2026-08-17, replaces the old "just trust
+    PLASMC_HW_MARKER_NED_XYZ=0,0,0" default): a hardcoded (0,0,0) assumes the
+    vehicle's PX4 LOCAL NED ORIGIN coincides with the marker -- false in
+    practice even when the vehicle is physically powered on and sitting
+    exactly on the marker. PX4's local origin anchors to the EKF's GLOBAL
+    position estimate at the moment the origin is first set (first usable GPS
+    fix), which carries ordinary GPS accuracy error (commonly 2-5 m); the
+    estimate then keeps refining for the next several minutes as satellite
+    geometry improves, drifting getPosBody() away from that now-stale origin
+    even with ZERO physical movement (same root cause as
+    project_pi_chronic_gps_pdop_drift / the "wait ~5min after power-up"
+    lesson from project_pi_aug10_crash_offboard_rc_race). Confirmed
+    empirically 2026-08-17: every one of 12 flights that day showed a
+    1.3-4.1 m mismatch between assumed (0,0,0) and the vehicle's own
+    position at flight start, matching ordinary GPS error magnitude.
+
+    FIX: since the vehicle genuinely does sit on the marker from power-on
+    through arming, snapshotMarkerFromCurrentPosition() (call this ONCE,
+    immediately before arming) reads getPosBody() AT THAT MOMENT and uses it
+    as the marker's NED position for the whole flight -- self-relative, so
+    correct regardless of how far the origin itself has drifted since boot.
+    PLASMC_HW_MARKER_NED_XYZ remains available as an explicit override (set
+    it if the marker is NOT where the vehicle takes off from) -- if the env
+    var is present at construction time, the snapshot call becomes a no-op."""
 
     def __init__(self, fc):
         self._fc = fc
+        self._explicit_override = "PLASMC_HW_MARKER_NED_XYZ" in os.environ
         _mx, _my, _mz = (float(v) for v in
                           os.environ.get("PLASMC_HW_MARKER_NED_XYZ", "0,0,0").split(","))
         self._target = _Pose(_Vec3(_mx, _my, _mz), _Quat(1., 0., 0., 0.))
+
+    def snapshotMarkerFromCurrentPosition(self):
+        """Call ONCE, immediately before arming, while the vehicle still sits
+        on the marker. No-op if PLASMC_HW_MARKER_NED_XYZ was explicitly set
+        (that override takes precedence over the live snapshot)."""
+        if self._explicit_override:
+            return
+        pb = self._fc.getPosBody()
+        self._target = _Pose(_Vec3(pb.x_m, pb.y_m, pb.z_m), _Quat(1., 0., 0., 0.))
+        print(f"[hw_pos_feedback] marker position snapshotted from current pose: "
+              f"({pb.x_m:.3f}, {pb.y_m:.3f}, {pb.z_m:.3f}) NED")
 
     def getPose(self):
         pb = self._fc.getPosBody()
