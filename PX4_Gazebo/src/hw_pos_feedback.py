@@ -88,6 +88,35 @@ class HWPosFeedback:
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
 
+        # POSITION SLEW-RATE LIMITER (2026-08-17): unlike the perception path
+        # (which has outlier rejection + KF smoothing on its raw signal), the raw
+        # PX4 EKF position from FC.getPosBody() feeds directly into the LS-slope
+        # velocity window below with NO filtering -- a single glitched EKF sample
+        # corrupts h(t)'s velocity estimate for the full _tau window. Root-caused
+        # 2026-08-17 (Test_Data/Landing/2026-08-17, run "12-26-42"): a discrete
+        # ~0.15 m step in the EKF's OWN z-position estimate (not a perception
+        # artifact -- confirmed via raw Telemetry_Data, x/y/attitude stayed
+        # smooth through the same instant) produced an implied ~150 m/s vertical
+        # rate, which an already-inflated adaptive kappa (~25, vs KAPPA0=0.5)
+        # amplified into an a_u spike of ~-5964 (should be O(10)). The step was
+        # PERSISTENT (didn't revert next tick), so a reject-and-hold-last-good
+        # filter would get stuck forever after any genuine EKF correction --
+        # slew-RATE limiting instead: clamp the per-tick position change to a
+        # physically plausible max speed, so a step (transient OR persistent) is
+        # smoothly absorbed over a few ticks rather than injected as an
+        # instantaneous velocity spike, while still eventually tracking the true
+        # value (never permanently stuck).
+        # 5.0 m/s default: real flight telemetry across all 2026-08-17 flights showed a
+        # max speed of 3.87 m/s (99.9th pct ~3.5 m/s) -- 5.0 gives margin above the
+        # observed envelope while still meaningfully clamping a glitch (the 2026-08-17
+        # spike implied ~150 m/s). 10.0 (the first cut of this fix) was too generous --
+        # the slew-limiter's own catch-up ramp toward a stepped value implies a
+        # "velocity" of up to max_speed itself, so an over-generous limit barely
+        # suppresses the very spike it's meant to catch.
+        self._max_speed = float(os.environ.get("PLASMC_HW_POS_MAX_SPEED_MPS", "5.0"))
+        self._filt_up = None
+        self._filt_up_t = None
+
     def _vel_window(self):
         """Identical to gt_feedback.GTFeedback._vel_window."""
         ts = np.asarray(self._t, float)
@@ -111,7 +140,17 @@ class HWPosFeedback:
         qu = uav_pose.orientation
         Ru = Quaternion([qu.w, qu.x, qu.y, qu.z]).to_DCM()   # body-FRD -> NED (already native)
         pos = uav_pose.position
-        up = np.array([pos.x, pos.y, pos.z], dtype=float)
+        up_raw = np.array([pos.x, pos.y, pos.z], dtype=float)
+        # Slew-rate limit the raw EKF position (see __init__'s comment) before it
+        # touches anything -- both this tick's bearing AND the velocity window.
+        if self._filt_up is None:
+            up = up_raw
+        else:
+            dt = max(t - self._filt_up_t, 1e-6)
+            max_step = self._max_speed * dt
+            up = self._filt_up + np.clip(up_raw - self._filt_up, -max_step, max_step)
+        self._filt_up = up
+        self._filt_up_t = t
         tpp = np.array([target_pose.position.x, target_pose.position.y, target_pose.position.z], dtype=float)
 
         cam_ned = up + Ru @ _CAM_OFF_FRD                       # camera position, NED
