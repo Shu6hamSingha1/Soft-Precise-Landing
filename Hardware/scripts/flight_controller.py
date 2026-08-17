@@ -97,6 +97,15 @@ class FC():
         self._alt = []
         self._flight_state = [LandedState.ON_GROUND]
 
+        # Downward rangefinder (2026-08-17, for hw_pos_feedback.py's opt-in
+        # PLASMC_HW_USE_RANGEFINDER_Z path -- see that file's HWPoseNode docstring).
+        # Confirmed present on this airframe by the user 2026-08-17. Not consumed
+        # by anything unless explicitly opted into; harmless if the sensor is
+        # absent (the async generator simply never yields, list stays empty,
+        # getDistanceSensor() returns None).
+        self._dist_sensor = []
+        self._dist_sensor_ts = []
+
         # Instantiate a System object, that will serve as a proxy to all the MAVSDK plugins.
         self.vehicle = System()
 
@@ -124,6 +133,7 @@ class FC():
                 asyncio.create_task(self._getOdometry()),
                 asyncio.create_task(self._getAcc()),
                 asyncio.create_task(self._getLandedState()),
+                asyncio.create_task(self._getDistanceSensor()),
                 asyncio.create_task(self.print_status_text())
             ]
             # _impactDetector is Gazebo-tuned (IMPACT_THRESH=50 m/s^2 assumes
@@ -566,6 +576,21 @@ class FC():
         except Exception as e:
             print(f"Unexpected error during acceleration retrieval: {e}")
 
+    async def _getDistanceSensor(self):
+        """Subscribe to the downward rangefinder. See __init__'s comment --
+        currently only consumed by hw_pos_feedback.py's opt-in
+        PLASMC_HW_USE_RANGEFINDER_Z path."""
+        try:
+            async for ds in self.vehicle.telemetry.distance_sensor():
+                self._dist_sensor.append(ds)
+                self._dist_sensor_ts.append(self._time.perf_counter())
+                if not self._STAY_OPEN:
+                    break
+        except grpc.RpcError as e:
+            print(f"gRPC error during distance sensor retrieval: {e.details()}")
+        except Exception as e:
+            print(f"Unexpected error during distance sensor retrieval: {e}")
+
     async def _getLandedState(self):
         """Subscribe to PX4's LandedState — onboard-only landing detection.
         PX4 fuses accel/baro/gyro/EKF to publish one of:
@@ -667,7 +692,12 @@ class FC():
         # None until the IMU task posts its first sample - same race as
         # getAngVelIMU() (both come from _getAcc()); callers must handle None.
         return self._acc_frd[-1] if self._acc_frd else None
-    
+
+    def getDistanceSensor(self):
+        # None until the rangefinder task posts its first sample, OR if no
+        # rangefinder is actually publishing telemetry - callers must handle None.
+        return self._dist_sensor[-1] if self._dist_sensor else None
+
     def getLogData(self):
         return {
             "Position Body": self._pos_body,
@@ -678,4 +708,6 @@ class FC():
             "Acceleration": self._acc_frd,
             "Angular Velocity FRD": self._ang_vel_frd,
             "IMU Timestamp": self._imu_ts,
+            "Distance Sensor": self._dist_sensor,
+            "Distance Sensor Timestamp": self._dist_sensor_ts,
         }

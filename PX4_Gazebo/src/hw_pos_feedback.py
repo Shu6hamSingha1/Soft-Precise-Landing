@@ -258,6 +258,40 @@ class HWPoseNode:
                           os.environ.get("PLASMC_HW_MARKER_NED_XYZ", "0,0,0").split(","))
         self._target = _Pose(_Vec3(_mx, _my, _mz), _Quat(1., 0., 0., 0.))
 
+        # RANGEFINDER Z-ANCHORING (2026-08-17, opt-in via PLASMC_HW_USE_RANGEFINDER_Z=1):
+        # the vehicle's z channel otherwise comes straight from the EKF, which is
+        # exactly what produced the 2026-08-17 a_u spike (a discrete ~0.15 m EKF-fusion
+        # step -- see HWPosFeedback's slew-limiter comment). A downward rangefinder
+        # measures height above ground directly, bypassing GPS/baro/EKF-fusion events
+        # entirely. Design: anchor the rangefinder to the EKF's z0 at snapshot time (the
+        # SAME instant the marker's z is captured, so the two stay mutually consistent),
+        # then track z during flight purely from CHANGES in the rangefinder reading --
+        # never touching the EKF's z again after that one snapshot sample. Off by
+        # default (fall back to raw EKF z, matching pre-rangefinder behavior) since a
+        # rangefinder has its own failure modes (surface reflectivity, min/max range,
+        # tilt near the edge of its usable cone) not yet characterized on this airframe.
+        self._use_rangefinder = os.environ.get("PLASMC_HW_USE_RANGEFINDER_Z", "0") == "1"
+        self._range0 = None    # tilt-compensated rangefinder height at snapshot (m)
+        self._z0_ekf = None    # EKF z at that same snapshot instant (m, NED)
+
+    def _tilt_compensated_height(self):
+        """Current downward-rangefinder reading, tilt-compensated to true vertical
+        height (slant_range * cos(tilt), tilt from the live attitude). Returns None
+        if no valid reading is available (sensor not yet reporting, or tilted past a
+        usable cone -- e.g. R22<=0.05 is >87 deg off vertical, reading is unusable
+        regardless of sensor health)."""
+        ds = self._fc.getDistanceSensor()
+        if ds is None:
+            return None
+        q = self._fc.getQuat()
+        # body->NED DCM[2,2] from the quaternion directly (w,x,y,z) -- the vertical
+        # projection of the body-down axis, i.e. cos(tilt). Cheaper than building the
+        # full DCM via ahrs.Quaternion since only this one element is needed here.
+        R22 = 1.0 - 2.0 * (q.x * q.x + q.y * q.y)
+        if R22 <= 0.05:
+            return None
+        return float(ds.current_distance_m) * R22
+
     def snapshotMarkerFromCurrentPosition(self):
         """Call ONCE, immediately before arming, while the vehicle still sits
         on the marker. No-op if PLASMC_HW_MARKER_NED_XYZ was explicitly set
@@ -268,9 +302,27 @@ class HWPoseNode:
         self._target = _Pose(_Vec3(pb.x_m, pb.y_m, pb.z_m), _Quat(1., 0., 0., 0.))
         print(f"[hw_pos_feedback] marker position snapshotted from current pose: "
               f"({pb.x_m:.3f}, {pb.y_m:.3f}, {pb.z_m:.3f}) NED")
+        if self._use_rangefinder:
+            h0 = self._tilt_compensated_height()
+            if h0 is not None:
+                self._range0 = h0
+                self._z0_ekf = pb.z_m
+                print(f"[hw_pos_feedback] PLASMC_HW_USE_RANGEFINDER_Z=1 -- z-anchor set "
+                      f"(range0={h0:.3f}m, ekf_z0={pb.z_m:.3f}m)")
+            else:
+                print("[hw_pos_feedback] PLASMC_HW_USE_RANGEFINDER_Z=1 but no valid "
+                      "rangefinder reading at snapshot time -- falling back to EKF z "
+                      "for this flight")
 
     def getPose(self):
         pb = self._fc.getPosBody()
         q = self._fc.getQuat()
-        uav = _Pose(_Vec3(pb.x_m, pb.y_m, pb.z_m), _Quat(q.w, q.x, q.y, q.z))
+        z = pb.z_m
+        if self._use_rangefinder and self._range0 is not None:
+            h_now = self._tilt_compensated_height()
+            if h_now is not None:
+                # height gained since snapshot = h_now - range0 (NED z decreases as
+                # the vehicle climbs, so subtract the gain from the anchored z0).
+                z = self._z0_ekf - (h_now - self._range0)
+        uav = _Pose(_Vec3(pb.x_m, pb.y_m, z), _Quat(q.w, q.x, q.y, q.z))
         return _PoseData(UAV=uav, target=self._target)
