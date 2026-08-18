@@ -80,6 +80,26 @@ os.environ.setdefault("CAPTURE_RATE_HZ", "30")
 os.environ.setdefault("CAM_EXPOSURE_US", "200")
 os.environ.setdefault("CAM_AUTO_GAIN", "1")
 
+# CAM_AUTO_EXPOSURE=1 (2026-08-17): was previously OFF here (unset), so exposure sat
+# pinned at CAM_EXPOSURE_US=200 for every flight regardless of actual lighting -- correct
+# for direct sun, wrong for anything dimmer (cloud cover, overcast, dusk), with no way to
+# recover since gain alone can't compensate once its own [1.0, 16.0] range is pinned.
+# Real outdoor hand-held bench validation (2026-08-17, two independent runs -- see
+# project_pi_outdoor_exposure_2000us_failed memory): sunny settled at 200us (99.8% decode),
+# cloudy settled at 500us (100% decode), both via the step-DOWN/step-UP logic in
+# imgstreamer.py correctly tracking real conditions -- a single fixed value cannot serve
+# both. CAM_EXPOSURE_MAX_US intentionally left at imgstreamer.py's own default (4000, see
+# that file's comment) -- outdoor tests never approached that ceiling, so it doesn't
+# constrain the outdoor case; it exists as a blur-safety cap if conditions are ever dim
+# enough to need to step up.
+#
+# NOTE: a prior 215-flight campaign review (2026-08-12, see CAM_EXPOSURE_US comment above)
+# found exposure barely moved real-flight decode rate historically, attributing the
+# dominant limiter to marker PIXEL EXTENT, not exposure time. This change is justified by
+# the 2026-08-17 bench evidence but should NOT be assumed to fix decode rate on its own --
+# see project_pi_cbf_phase2_zeroes_lateral_2026_08_12 for the still-open Tier 0 work.
+os.environ.setdefault("CAM_AUTO_EXPOSURE", "1")
+
 try:
     from ahrs import RAD2DEG
     from flight_controller import FC
