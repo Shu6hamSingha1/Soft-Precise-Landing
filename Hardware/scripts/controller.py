@@ -118,21 +118,39 @@ class Controller(Thread):
         # GT-FEEDBACK scaffold (PLASMC_GT_FEEDBACK=1): replace perception s/h with the
         # exact V-frame ground truth from the Gazebo poses, to isolate CONTROL from
         # PERCEPTION. See src/gt_feedback.py + tools/validate_gt_feedback.py.
+        #
+        # HARDWARE analog (PLASMC_HW_POS_FEEDBACK=1): same isolation test, but on
+        # hardware there is no Gazebo GT -- instead uses the PX4 EKF's own local
+        # position/attitude (FC.getPosBody/getQuat) plus a fixed, once-measured
+        # marker NED point. This is NOT true ground truth (it's only as good as the
+        # EKF estimate -- see project memory on GPS/PDOP drift), so it's a SEPARATE
+        # env var from PLASMC_GT_FEEDBACK to avoid conflating the two tests. See
+        # src/hw_pos_feedback.py. Mutually exclusive with PLASMC_GT_FEEDBACK; if both
+        # are set, GT_FEEDBACK (the Gazebo path) wins.
         self._pose_node = pose_node
         self._gt_feedback = None
-        if os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1":
+        _gt_on = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
+        _hw_on = os.environ.get("PLASMC_HW_POS_FEEDBACK", "0") == "1"
+        if _gt_on or _hw_on:
             if pose_node is None:
-                print("[controller] PLASMC_GT_FEEDBACK=1 but no pose_node passed — DISABLED")
-            else:
+                _flag = "PLASMC_GT_FEEDBACK" if _gt_on else "PLASMC_HW_POS_FEEDBACK"
+                print(f"[controller] {_flag}=1 but no pose_node passed — DISABLED")
+            elif _gt_on:
                 from gt_feedback import GTFeedback
                 self._gt_feedback = GTFeedback()
+                _flag_label = "PLASMC_GT_FEEDBACK"
+            else:
+                from hw_pos_feedback import HWPosFeedback
+                self._gt_feedback = HWPosFeedback()
+                _flag_label = "PLASMC_HW_POS_FEEDBACK"
+            if self._gt_feedback is not None:
                 # PER-CHANNEL GT ABLATION (2026-07-04): GT_ABLATE = comma-list of channels to take
                 # from GT, REST from perception — isolate the binding perception signal one at a time.
                 # Channels: s (centroid xy), h (lateral flow xy), hz (loom), yaw (alpha), wz (yaw rate).
                 # Unset/empty/'all' -> full GT-FB (back-compat). e.g. GT_ABLATE=h -> only flow from GT.
                 _abl = os.environ.get("GT_ABLATE", "all").strip().lower()
                 self._gt_ablate = set() if _abl in ("all", "") else set(c.strip() for c in _abl.split(","))
-                print(f"[controller] PLASMC_GT_FEEDBACK=1 — GT channels: {_abl} (perception for the rest)")
+                print(f"[controller] {_flag_label}=1 — GT channels: {_abl} (perception for the rest)")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -2005,7 +2023,6 @@ class Controller(Thread):
         # earlier this session, validated both by unit test and live on the Pi) is exactly
         # the "no valid feature data" signal this needs -- gating on it directly parallels
         # the existing FEATURE_IS_STALE-gated behavior elsewhere in this class.
-        #
         # DECAY-DURING-STALE FIX (2026-08-17): the freeze above blocks BOTH terms of the
         # ODE while stale -- the untrustworthy growth term (correct to block) AND the pure
         # leakage term -N@P@kappa (WRONG to block: it depends only on kappa itself, not on
