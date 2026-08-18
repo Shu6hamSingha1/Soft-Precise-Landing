@@ -2005,9 +2005,33 @@ class Controller(Thread):
         # earlier this session, validated both by unit test and live on the Pi) is exactly
         # the "no valid feature data" signal this needs -- gating on it directly parallels
         # the existing FEATURE_IS_STALE-gated behavior elsewhere in this class.
-        if len(self._dt) > 0 and not self.CBF_CORNERS_STALE:
+        #
+        # DECAY-DURING-STALE FIX (2026-08-17): the freeze above blocks BOTH terms of the
+        # ODE while stale -- the untrustworthy growth term (correct to block) AND the pure
+        # leakage term -N@P@kappa (WRONG to block: it depends only on kappa itself, not on
+        # any measurement, so there's no reason staleness should suppress it too). Root-
+        # caused live: run "12-26-42" (2026-08-17) had kappa_Y ratchet 0.31->25.07 over
+        # ~8s of real (non-stale) tracking against a genuinely large offset -- correct
+        # adaptive behavior for a real large-error IC (e.g. the marker not being where the
+        # controller initially assumed -- a VALID operating condition, not a fault to
+        # engineer away) -- then corners went stale for the remaining ~10s of the flight,
+        # and the pre-existing freeze held kappa_Y at that exact peak value bit-for-bit for
+        # the whole remainder, with no path back down. An unrelated later transient (a
+        # slew-limited-but-still-nonzero EKF position glitch) then hit while kappa was
+        # still parked at 25x nominal, producing an a_u spike of ~-5964 (verified: a_u =
+        # -G^-1@a_v reproduces the logged spike exactly from the logged G(t)/a_v(t)).
+        # Fix: keep integrating through staleness, but pass sigma=0 so ONLY the leakage
+        # term acts -- kappa relaxes toward its decay equilibrium while corners are
+        # unavailable, and growth re-engages immediately (no reset/delay needed) the
+        # instant a real sigma is available again on the next non-stale tick. This does
+        # NOT cap or restrict how large kappa can legitimately grow in response to a real,
+        # sustained large error -- it only removes the ability for a PAST peak to remain
+        # frozen in place once the measurements that justified it are gone.
+        if len(self._dt) > 0:
+            sigma_for_kappa = (self._sigma[-1] if not self.CBF_CORNERS_STALE
+                                else np.zeros_like(self._sigma[-1]))
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
-                            [self._sigma[-1], theta_ctrl], self._dt[-1])
+                            [sigma_for_kappa, theta_ctrl], self._dt[-1])
             if hasattr(self, '_contained'):
                 new_kappa[self._contained] = self._kappa[-1][self._contained]
             self._kappa.append(np.minimum(new_kappa, self._kappa_max))
