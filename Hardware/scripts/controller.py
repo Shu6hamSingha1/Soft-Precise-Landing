@@ -2388,7 +2388,33 @@ class Controller(Thread):
         # BODY_YAW_SOURCE=compass for the legacy manuscript behaviour. s[3]->yaw map is
         # env-tunable (K,B). Falls back to compass when no marker (len(_s)==0). Only
         # valid with the moment-2π alpha (s[3]≈world yaw); see moment-yaw-canonical.
-        if os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha" and len(self._s) > 0:
+        #
+        # BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-08-21): BODY_YAW_ALPHA_K/_B
+        # (default K=-0.949) is a REAL-PERCEPTION calibration constant (output-cal,
+        # derived against real ArUco pixel-feature alpha, which has an inverse
+        # relationship to true yaw due to camera geometry -- hence the negative
+        # slope). Under an analytic-feedback mode (self._gt_feedback is not None),
+        # `alpha` (s[3]) is NOT a perception feature -- hw_pos_feedback.py/gt_feedback.py
+        # compute it directly as the vehicle's own true yaw (the static/GT target has
+        # no tracked orientation of its own, so relative-yaw = the vehicle's own yaw,
+        # sign convention PLASMC_GT_ALPHA_SIGN, default +1). Applying K=-0.949 to an
+        # already-true yaw value roughly SIGN-FLIPS it (e.g. true yaw -18deg ->
+        # yaw_c=-0.949*(-18)=+17deg) -- confirmed root cause of two symptoms in the
+        # 2026-08-21 hardware batch: (1) the roll-vs-pitch actuator-saturation
+        # asymmetry (roll saturating ~17x more than pitch across every run) and (2) a
+        # persistent ~25-30deg phase bias between the commanded lateral correction and
+        # the TRUE radial position error (measured via real telemetry vs marker
+        # snapshot), which manifested as the drone orbiting/circling the marker
+        # instead of converging straight in (large single loops, 140-341deg net
+        # rotation, same CCW-dominant direction essentially every flight -- because
+        # takeoff yaw itself clustered tightly at -17 to -19deg every launch, so the
+        # resulting sign-flip error was always the same direction too). Force the
+        # compass path in analytic-feedback modes -- there is no perception-drift
+        # problem to compensate for there in the first place, so the alpha-yaw
+        # mechanism (and its perception-only K/B calibration) simply doesn't apply.
+        _yaw_source_is_alpha = (os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha"
+                                 and self._gt_feedback is None)
+        if _yaw_source_is_alpha and len(self._s) > 0:
             # NEGATIVE slope: the compass yaw euler[2] we replace is NED, which is
             # ANTI-correlated with alpha (alpha≈+0.949·GT_yaw_ENU, euler[2]_NED≈
             # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the

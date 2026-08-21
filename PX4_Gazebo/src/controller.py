@@ -2526,7 +2526,21 @@ class Controller(Thread):
         # BODY_YAW_SOURCE=compass for the legacy manuscript behaviour. s[3]->yaw map is
         # env-tunable (K,B). Falls back to compass when no marker (len(_s)==0). Only
         # valid with the moment-2π alpha (s[3]≈world yaw); see moment-yaw-canonical.
-        if os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha" and len(self._s) > 0:
+        #
+        # BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-08-21, ported from the Hardware
+        # fork): BODY_YAW_ALPHA_K/_B (default K=-0.949) is a REAL-PERCEPTION calibration
+        # constant -- under an analytic-feedback mode (self._gt_feedback is not None),
+        # `alpha` (s[3]) is NOT a perception feature, it's the vehicle's own true yaw
+        # computed directly by gt_feedback.py/hw_pos_feedback.py. Applying K=-0.949 to an
+        # already-true yaw value roughly SIGN-FLIPS it. Confirmed root cause (real
+        # hardware, 2026-08-21) of the roll-vs-pitch actuator-saturation asymmetry and a
+        # persistent ~25-30deg phase bias between commanded correction and true radial
+        # error that manifested as orbiting/circling the target instead of converging.
+        # Force the compass path in analytic-feedback modes -- no perception-drift
+        # problem exists there to compensate for.
+        _yaw_source_is_alpha = (os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha"
+                                 and self._gt_feedback is None)
+        if _yaw_source_is_alpha and len(self._s) > 0:
             # NEGATIVE slope: the compass yaw euler[2] we replace is NED, which is
             # ANTI-correlated with alpha (alpha≈+0.949·GT_yaw_ENU, euler[2]_NED≈
             # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the

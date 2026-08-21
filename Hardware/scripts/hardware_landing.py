@@ -122,6 +122,46 @@ SLEEP_TIME = 1 / 200
 HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
 THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
+# BATTERY-VOLTAGE HOVER CORRECTION (2026-08-21): HOVER_THROTTLE_NORM=0.42 is a
+# single fixed value; project_hover_voltage_curve (find_hover_throttle.py bisection
+# campaign, 2026-07-09/10) found the REAL hover throttle is voltage-dependent --
+# flat ~0.388 across a 22.4-24.0V plateau, but rising above 0.389 below ~22.2V and
+# falling below 0.387 above ~24.25V (higher voltage needs less throttle to hover).
+# Root-caused as the explanation for a recurring uncommanded-climb-to-8m incident
+# (2026-08-20/21): every excess-climb event across 10 battery swaps/5 days of test
+# data fell in the first 1-4 runs of a fresh-battery session (highest voltage of
+# the session -> true hover point lowest, below the fixed 0.42 assumption) and
+# NEVER at session position 5+ (voltage settled into the plateau). This
+# correction is COARSE -- built from the existing project_hover_voltage_curve
+# clusters (21.68-24.36V, several points still "not yet bisected" per that memory,
+# not a clean regression fit) -- not a precise linear model. Deliberately
+# conservative at the edges (rounds toward MORE throttle, i.e. less aggressive
+# descent, at low voltage; LESS throttle, i.e. less aggressive climb-risk, at high
+# voltage) since a wrong correction that undershoots is safer than one that
+# overshoots into the opposite failure mode. Set HW_HOVER_VOLTAGE_CORRECTION=0 to
+# disable and use the flat HOVER_THROTTLE_NORM unconditionally (e.g. if this
+# correction is ever found to hurt more than help). An explicit
+# HW_HOVER_THROTTLE_NORM override still takes precedence (skips voltage read
+# entirely) -- same override-wins convention as PLASMC_HW_MARKER_NED_XYZ elsewhere
+# in this file.
+HOVER_VOLTAGE_CORRECTION_ENABLED = (
+    os.environ.get("HW_HOVER_VOLTAGE_CORRECTION", "1") != "0"
+    and "HW_HOVER_THROTTLE_NORM" not in os.environ
+)
+
+
+def _voltage_corrected_hover_throttle(voltage_v):
+    """Coarse piecewise hover-throttle estimate from project_hover_voltage_curve's
+    clusters. Returns HOVER_THROTTLE_NORM unchanged if voltage is None or falls
+    in the well-supported 22.4-24.0V plateau; nudges up/down outside it."""
+    if voltage_v is None:
+        return HOVER_THROTTLE_NORM
+    if voltage_v <= 22.2:
+        return 0.395       # 21.68-22.19V cluster: every point sank even at 0.389
+    if voltage_v <= 24.0:
+        return 0.388       # 22.4-24.0V plateau: converged across 5 sweeps
+    return 0.380            # >24.0V: 24.25/24.36V points all climbed even below 0.388
+
 # *** Rate-axis command correction, r^2-weighted input-cal cross-check ***
 # gain = achieved/commanded from input-cal regression; dividing the intended
 # command by gain (== multiplying by these factors) should make the ACHIEVED
@@ -196,13 +236,20 @@ HOVER_STALL_S = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
 HOVER_STALL_DZ = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
 
 
+# Mutable: HardwareLandingSystem.arm_and_takeoff() overwrites this once, right
+# after takeoff, with the voltage-corrected value (see HOVER_VOLTAGE_CORRECTION_ENABLED
+# above) -- convert_2_sys_cmd reads it fresh every call rather than closing over
+# the module-level constant, so the correction takes effect for the whole flight.
+_active_hover_throttle_norm = HOVER_THROTTLE_NORM
+
+
 def convert_2_sys_cmd(cmd):
     """[roll_rate, pitch_rate, yaw_rate] rad/s + B_T (N, excess-over-hover) ->
     [roll_rate, pitch_rate, yaw_rate] deg/s + normalized throttle [0,1].
     Same mapping as landing_test.py's convert_2_sys_cmd - PLACEHOLDER thrust
     constants above must be calibrated for this airframe before flight."""
     thrust_norm = float(np.clip(
-        HOVER_THROTTLE_NORM - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
+        _active_hover_throttle_norm - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
     rates = np.array(cmd[:3], dtype=float) * RATE_CORRECTION
     return np.append(RAD2DEG * rates, thrust_norm)
 
@@ -293,6 +340,21 @@ class HardwareLandingSystem:
         print("\nArming and taking off to {:.2f} m...".format(self.takeoff_height))
         await self.fc.arm_and_takeoff(takeoff_hgt=self.takeoff_height)
         print("Takeoff complete")
+
+        # Voltage-corrected hover throttle (see HOVER_VOLTAGE_CORRECTION_ENABLED
+        # above) -- read once here, same MAVSDK call find_hover_throttle.py uses.
+        global _active_hover_throttle_norm
+        if HOVER_VOLTAGE_CORRECTION_ENABLED:
+            try:
+                battery = await self.fc.vehicle.telemetry.battery().__aiter__().__anext__()
+                v = float(battery.voltage_v)
+                _active_hover_throttle_norm = _voltage_corrected_hover_throttle(v)
+                print(f"Battery voltage: {v:.2f}V -> hover throttle {_active_hover_throttle_norm:.3f} "
+                      f"(base {HOVER_THROTTLE_NORM:.3f})")
+            except Exception as e:
+                print(f"[WARN] Could not read battery voltage, using base hover throttle "
+                      f"{HOVER_THROTTLE_NORM:.3f}: {e}")
+                _active_hover_throttle_norm = HOVER_THROTTLE_NORM
 
     async def landing_loop(self):
         print("\n" + "=" * 60)
