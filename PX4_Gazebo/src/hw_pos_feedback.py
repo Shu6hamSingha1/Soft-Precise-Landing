@@ -178,6 +178,25 @@ class HWPosFeedback:
         V_x = _v_frame(Ru) @ B_x
         _zb = max(float(V_x[2]), 0.0) + Z_REG
         s_xy = np.array([V_x[0] / _zb, V_x[1] / _zb])
+        # BEARING CLAMP (2026-08-19): near the ground, true depth (V_x[2]) can dip
+        # toward/through the Z_REG floor for a large fraction of low-altitude flight
+        # time (not just at touchdown) -- when it does, s_xy's magnitude can spike
+        # 2x+ in a single control tick (verified against 2026-08-19 hardware flight
+        # data: s_e_n climbing from ~10 to ~20+ in one sample right as altitude
+        # crossed ~0.49m), which the kappa-ODE reacts to as if it were a genuine
+        # large tracking error -- kappa detonates and pins high for 10-28s, starving
+        # the vertical channel of command authority (a_u_xy climbed into the
+        # hundreds while a_u_z stayed near-flat) and stalling descent at 0.3-0.5m.
+        # This is the SAME class of fix as the position slew-rate limiter above
+        # (bound a physically-implausible instantaneous jump at its source) rather
+        # than raising Z_REG globally, which would also soften genuine far-range
+        # bearings. Default 8.0: observed max |s| in flights that did NOT detonate
+        # kappa stayed under ~3; 8.0 gives headroom for real large-offset ICs while
+        # still cutting off the 10-87 magnitude spikes seen in the stalled runs.
+        _s_max = float(os.environ.get("PLASMC_HW_S_MAX", "8.0"))
+        _s_mag = float(np.linalg.norm(s_xy))
+        if _s_mag > _s_max:
+            s_xy = s_xy * (_s_max / _s_mag)
         alpha = float(np.arctan2(np.sin(_asign * ry), np.cos(_asign * ry)))
         s4 = np.array([s_xy[0], s_xy[1], 1.0, alpha])
 

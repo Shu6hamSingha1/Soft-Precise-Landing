@@ -237,7 +237,7 @@ class Controller(Thread):
         self._N       = np.diag(pa("N",      0.1, 0.1, 0.1))   # N_xy 0.02->0.1 BAKED 2026-06-25 (user): REMOVES the frozen-kappa_xy band-aid (N=0.02 -> tau=1/(N*P)=33s >> 7s descent -> kappa_xy never adapts AND inadvertently CAPS the terminal switching by being too slow to ramp). N=0.1 (tau~7s) wakes kappa_xy -> tighter descent s_e_n BUT exposes the terminal: at the deck ζ_h explodes -> the fast κ-ODE ramps κ_xy 0.42->13.5 -> a_u_xy 64x -> launch -> REGRESSES tally 7/0/1 -> 4/2/3 (gate 175559 vs 145330). The terminal is the actuator wall ([[feedback_terminal_smc_actuator_wall]]) -> fix via velocity damping (flow funnel / arrest v_lat early), NOT the frozen kappa. P_xy=1.5 (leakage) bounds kappa_eq=θG|σ|/P. N_z=0.1: a LEGITIMATE PX4-specific divergence from MATLAB vdf_params (P.N_z=0.02), NOT a stale bug. VDF-parity A/B 2026-06-22 (Nz_IC2, N=15, clean combined baseline) REJECTED N_z=0.02: it RAISED terminal descent |vz| spikes (vzmax med 3.57→5.10, p90 6.56→9.59) + regressed sub-meter 5→3/15 + TL 1→3. Reason: PX4's SITL descent is only ~2s so κ_z is ADAPTATION-RATE-LIMITED — faster N_z=0.1 ramps κ_z up in time for terminal z-BRAKING; the slow VDF 0.02 under-brakes (MATLAB's slower dynamics make 0.02 right THERE). N = κ-ODE adapt rate (dκ/dt=Θ·N·G·|σ|−N·P·κ). Like chi_r=0.5 vs 0.85, a SITL-timing divergence. Do NOT re-align to 0.02.
         self._P       = np.diag(pa("P",      1.5, 1.5, 5.0))     # P_xy 5->1.5 (2026-06-12 Combo bake): MATLAB parity; paired with KP=5 the lateral kappa stays bounded without the over-gained P=5
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
-        self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
+        self._kappa_max = pa("KAPPA_MAX", 30.0, 30.0, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones. KAPPA_MAX_XY 1e6->30.0 (2026-08-19, defense-in-depth alongside the hw_pos_feedback.py s_xy clamp): real hardware flights (2026-08-19) showed kappa_xy detonating to 25-29 and pinning there for 10-28s once the depth-floor bearing spike (see hw_pos_feedback.py's PLASMC_HW_S_MAX comment) fed it a large error — X/Y were previously uncapped BY DESIGN (unlike Z) with no backstop at all. 30.0 sits above every legitimate-tracking kappa_xy value observed in this dataset (max ~11-12 outside the detonation events) but well below the uncapped 1e6, so it only bites during a genuine runaway, not normal large-IC tracking.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
         # Cap on the |omega_dot x s| c-term sub-term (the angular-accel feedforward). 0 = OFF (no cap).
         # dw is already clamped to dw_max, but omega_dot x s still explodes when the centroid s is LARGE
@@ -728,7 +728,29 @@ class Controller(Thread):
         count default (30) matches roughly the same ~1s window
         MARKER_LOSS_GRACE's default uses at this loop's typical rate;
         override via CBF_CORNERS_STALE_FRAMES if the live rate differs
-        meaningfully."""
+        meaningfully.
+
+        BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-08-19): this flag is
+        purely a real-perception signal (_cbf_corners_none_streak counts
+        missing ArUco/PlanarFeatureMap corners) -- it has no relationship to
+        the analytic s/h fed in by gt_feedback.py / hw_pos_feedback.py, but
+        it was still gating kappa's adaptive-growth term (see the
+        sigma_for_kappa call below) even in that mode. Real hardware data
+        (2026-08-19 A/B, Test_Data/Landing/2026-08-19) showed this WAS
+        biting: every run where real corners went stale for long stretches
+        had kappa pinned at exactly its KAPPA0 bootstrap value (0.5) for the
+        whole flight -- not decaying to a settled low value, literally never
+        growing once -- while a minority of runs where perception happened
+        to stay non-stale long enough saw kappa actually respond (correctly)
+        to the real, still-diverging s_e_n error. The isolation intent of
+        HW_POS_FEEDBACK (isolate CONTROL from the PERCEPTION ceiling) was
+        being defeated by this one remaining consumer of real corner state.
+        self._gt_feedback is not None iff either isolation mode is active
+        (see its assignment above) -- treat corners as never stale there,
+        the same way FEATURE_IS_STALE/visibility gating was already bypassed
+        for search-climb/abort in hardware_landing.py's _HW_POS_FEEDBACK_ACTIVE."""
+        if self._gt_feedback is not None:
+            return False
         _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
         return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
 
