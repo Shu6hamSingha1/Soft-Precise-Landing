@@ -684,7 +684,25 @@ class Controller(Thread):
         # require the loom to actually SPIKE, not merely flip sign. h_z=vz/Z is already the
         # scale-free ratio (no metric/depth added) -- this is a magnitude threshold on the SAME
         # signal already used for the sign check, not a new depth-dependent gate.
-        self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.5"))  # min |h_z| to count (PROVISIONAL, n=2 evidence -- validate at n>=5)
+        self._td_spike = float(os.environ.get("PLASMC_TD_SPIKE", "0.0"))  # min |h_z| to count. REVERTED 0.5->0.0
+        # (2026-08-23): the 0.5 default was PROVISIONAL (n=2 evidence, own comment said "validate
+        # at n>=5" -- never done). n=5 PLASMC_TD_SPIKE sweep this session: 0.0 -> 5/5 SOFT+PRECISE
+        # (min_alt 0.4869-0.4871, std 0.0001); 0.1/0.3/0.5 -> 0/15 combined landings (mostly 25s
+        # descent-stall timeouts, some kappa/a_u-detonation crashes at 3.8-4.3 m/s). Measured h_z
+        # over a full 20s stall window peaks at only 0.031 (noise-floor scale) -- ANY threshold
+        # above ~0.03 structurally can't latch on the real signal, so 0.1 is already ~3x too high
+        # and 0.5 (the prior default) ~16x too high. This is THE cause of the GT-FB IC1-5 SP
+        # regression from the 2026-06-30 19/25-SP campaign (486f713): a wholesale revert of
+        # controller.py+cbf_visibility.py+img_data.py+gt_feedback.py to that commit, re-run n=5,
+        # reproduced the identical SOFT+PRECISE outcome at the identical altitude (0.0->h_z>0.0 was
+        # 486f713's literal touchdown condition, no magnitude gate). CAVEAT (not fully resolved):
+        # ground truth confirms REAL ground contact is ~0.01m (matches the median min_alt=-0.0088m
+        # across 1340 archived historical PRECISE landings) -- 0.0 accepts a genuine but WEAK loom
+        # inversion ~0.48m above the true ground as "landed" (a real near-field/marker-overflow
+        # signal, not noise -- h_z reliably flips sign there, just never past +-0.03). This restores
+        # the historically-validated, working touchdown condition; it does not explain why the
+        # descent stops ~0.48m short of true ground contact in the first place. See
+        # project_20260823_td_spike_regression memory for the full sweep + revert-and-rerun trace.
         self._td_debug = os.environ.get("TD_DEBUG", "0") == "1"  # per-call h_z/streak/s_e_n trace, for
                                                                     # tracing the exact trigger sequence
                                                                     # instead of reconstructing it offline
