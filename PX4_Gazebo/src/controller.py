@@ -921,11 +921,30 @@ class Controller(Thread):
         showed this WAS biting: runs with long real-corner staleness had
         kappa pinned at exactly its KAPPA0 bootstrap value (0.5) the whole
         flight, never growing once. self._gt_feedback is not None iff either
-        isolation mode is active -- treat corners as never stale there."""
+        isolation mode is active -- treat corners as never stale there.
+
+        WINDOWED-FRACTION OR (2026-08-23): the consecutive-streak check alone is defeated by
+        FLICKER (cbf_corners alternating None<->valid resets the streak to 0 on every "found"
+        frame, even during a sustained underlying loss -- see the _cbf_corners_hist tracking
+        comment at the cbf_corners selection site, and
+        project_20260823_kappa_ratchet_detection_flicker). ORed in here (never WEAKENS the
+        fast streak-based trip, only closes the flicker gap it has) -- deliberately NOT added
+        to CBF_CORNERS_STALE_ABORT below, whose whole design point is tolerating a HIGH
+        fraction of missing-corner frames during a normal, long, harmless coast burst (2-327
+        frames observed on real hardware); adding this there would reintroduce the exact
+        false-abort problem CBF_CORNERS_STALE_ABORT was created to fix. Safe here because this
+        property only pauses kappa's adaptation (low-risk, explicitly documented below)."""
         if self._gt_feedback is not None:
             return False
         _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
-        return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
+        if getattr(self, "_cbf_corners_none_streak", 0) >= _frames:
+            return True
+        _hist = getattr(self, "_cbf_corners_hist", None)
+        if _hist is not None and len(_hist) >= max(5, _hist.maxlen // 2):
+            _frac = float(os.environ.get("CBF_CORNERS_STALE_FRACTION", "0.5"))
+            if (sum(_hist) / len(_hist)) >= _frac:
+                return True
+        return False
 
     @property
     def CBF_CORNERS_STALE_ABORT(self):
@@ -2872,6 +2891,27 @@ class Controller(Thread):
             self._cbf_corners_none_streak = getattr(self, "_cbf_corners_none_streak", 0) + 1
         else:
             self._cbf_corners_none_streak = 0
+        # WINDOWED-FRACTION STALENESS (2026-08-23, marker-agnostic): the consecutive-streak
+        # counter above is defeated by FLICKER -- any single not-None frame resets it to 0,
+        # even if that "not-None" frame is itself a stale/degenerate re-validation (e.g. an
+        # ArUco small_slot hysteresis re-trigger, or a noisy per-frame cross-marker
+        # _center_fresh flip -- see project_20260823_kappa_ratchet_detection_flicker). Found
+        # via a real IC2 ArUco flight where cbf_corners flickered None<->valid on ~alternating
+        # frames while the RAW detector had been fully dead underneath for 0.93s -- the
+        # consecutive-streak never reached CBF_CORNERS_STALE_FRAMES, so kappa's freshness
+        # guard never tripped, and kappa ratcheted 0.78->2.07 feeding a 4-order-of-magnitude
+        # a_u blow-up right at touchdown. Cross-marker's own freshness signal
+        # (CrossMarkerPerception._center_fresh) is a RAW per-frame flag with NO hysteresis at
+        # all (unlike ArUco's small_slot, which at least has a 5-frame on-ramp) -- structurally
+        # MORE exposed to this exact gap, not less. Track a bounded window of recent
+        # cbf_corners validity and ALSO trip staleness if the FRACTION of None frames in that
+        # window is high, even when the consecutive streak keeps getting reset by isolated
+        # "found" frames. ORed with the existing streak check (never WEAKENS the fast-reacting
+        # sustained-loss case, only closes the flicker gap).
+        _corners_hist_win = int(os.environ.get("CBF_CORNERS_STALE_WINDOW", "40"))
+        if not hasattr(self, "_cbf_corners_hist") or self._cbf_corners_hist.maxlen != _corners_hist_win:
+            self._cbf_corners_hist = deque(maxlen=_corners_hist_win)
+        self._cbf_corners_hist.append(cbf_corners is None)
         if os.environ.get("PLANAR_MAP_DBG", "0") == "1":
             self._cbf_corners_dbg_ctr = getattr(self, "_cbf_corners_dbg_ctr", 0) + 1
             if self._cbf_corners_dbg_ctr % 15 == 0:

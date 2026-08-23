@@ -371,6 +371,39 @@ class CrossMarkerPerception:
         # for "never detected yet", not "lost this exact frame".
         self._last_bbox = None
 
+        # CENTER-BRIDGE via KLT (2026-08-23): cross_marker_detector.detect() is a from-scratch
+        # Hough-line geometric detector re-run every frame with ZERO temporal memory (color-gate
+        # -> Hough lines -> angle clustering -> line-pair intersection -> plausibility checks,
+        # ~10 sequential hard-gated failure points, track_state only crops the search ROI, it
+        # doesn't track). Any single-frame perturbation flips det.ok for that one frame even
+        # while the marker is plainly still there -- found via a real IC2 ArUco flight (same
+        # flicker CLASS, different detector) whose cbf_corners flickered None<->valid on
+        # alternating frames while defeating CBF_CORNERS_STALE's consecutive-streak guard (see
+        # project_20260823_kappa_ratchet_detection_flicker) -- cross-marker's _center_fresh has
+        # even less protection (raw per-frame flag, no hysteresis at all). Rather than paper
+        # over it with a smarter streak counter downstream, bridge it AT THE SOURCE: this class
+        # already runs real KLT point tracking every frame regardless of det.ok (_compute_hw's
+        # own docstring: "still advance LK point tracking... even though no Jacobian solve can
+        # be committed"), and _prev_flow_cell_id persists (subsetted, never resampled) across
+        # consecutive miss frames -- see _compute_hw's "no mask to resample against; just
+        # advance tracking". That means tracked points can be matched by cell_id across a miss
+        # streak, giving a real (not fabricated) displacement estimate from the last confirmed
+        # detection. Bounded + plausibility-gated (short horizon, minimum surviving point count,
+        # max displacement vs. last known marker size) -- same "reject implausible, don't clip"
+        # philosophy as the ArUco PlanarFeatureMap rescue's own plausibility gate.
+        # Default OFF (CROSS_CENTER_BRIDGE_FRAMES=0) until validated against real cross-marker
+        # flight data -- this is a NEW perception mechanism, not yet flight-tested; see
+        # feedback_aruco_perception_scope.md / project_marker_roadmap_gt_ablation.md for why
+        # that validation happens on the cross-marker+GT-feedback track, not via ArUco testing.
+        self._bridge_max_frames = int(os.environ.get("CROSS_CENTER_BRIDGE_FRAMES", "0"))
+        self._bridge_min_pts = int(os.environ.get("CROSS_CENTER_BRIDGE_MIN_PTS", "6"))
+        self._bridge_max_jump_ratio = float(os.environ.get("CROSS_CENTER_BRIDGE_MAX_JUMP_RATIO", "1.5"))
+        self._bridge_anchor_center_px = None      # center_px at the last confirmed detection
+        self._bridge_anchor_bbox = None           # last_bbox at that same moment (translated, not resized, while bridging)
+        self._bridge_anchor_cell_id = None        # _prev_flow_cell_id at that same moment (for cell_id-matched displacement)
+        self._bridge_anchor_pts = None            # _prev_flow_pts at that same moment (parallel to _bridge_anchor_cell_id)
+        self._bridge_streak = 0
+
         # Output calibration (GT = cal @ raw), same convention as img_data.py's
         # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
         # own image-Jacobian solve (not img_data.py's), so it needs its own
@@ -554,6 +587,15 @@ class CrossMarkerPerception:
         # speckle texture). px_disp_median/std are the raw per-point pixel displacements
         # feeding that fit, for a sanity check against plausible motion magnitude.
         self._flow_diag_log = []
+        # TEMP DIAG 2026-08-15 (user question: is ring sampling actually engaged during
+        # the point-starvation spike window, or has it silently fallen back to the
+        # unconstrained sampler by then?): (t, ring_active) per _compute_hw call.
+        # ring_active = self._prev_flow_cell_id is not None at solve time -- true iff the
+        # CURRENTLY-TRACKED point set was drawn by _sample_flow_points_ring (not just
+        # RING_SAMPLING=1; the per-frame coverage/non-empty guards inside it can still
+        # fall back silently, and most frames reuse points from the last resample rather
+        # than re-attempting ring sampling every call -- see RESAMPLE_PERIOD_S).
+        self._ring_active_log = []
         self._radial_diag_log = []   # TEMP DIAG 2026-08-03, see _solve_jacobian
         self._radial_diag = (np.nan, np.nan, np.nan, np.nan)
         # TEMP DIAG 2026-08-09 (Hz sign-flip point-set-composition follow-up, see
@@ -1184,6 +1226,8 @@ class CrossMarkerPerception:
             # no mask to resample against; just advance tracking
             self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
 
+        self._ring_active_log.append((self._last_t, self._prev_flow_cell_id is not None))
+
         if dilated_mask is None or n_kept < MIN_FLOW_POINTS_SOLVE or not (dt > 0):
             self._flow_diag_log.append((self._last_t, n_kept, np.nan, False, np.nan, np.nan, np.nan))
             return np.zeros(6), False
@@ -1195,6 +1239,58 @@ class CrossMarkerPerception:
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         self._point_diag_log.append((self._last_t,) + self._point_diag)
         return sol, True   # [h1,h2,h3,w1,w2,w3]
+
+    def _snapshotBridgeAnchor(self):
+        """Call right after a CONFIRMED detection (det.ok, z_v check passed) and after
+        _compute_hw has updated _prev_flow_pts/_prev_flow_cell_id for this frame -- stores
+        the (center_px, bbox, tracked-point-set) triple that _tryCenterBridge extrapolates
+        from on subsequent miss frames. See CROSS_CENTER_BRIDGE_FRAMES's __init__ comment."""
+        self._bridge_anchor_center_px = self._center_px.copy() if self._center_px is not None else None
+        self._bridge_anchor_bbox = self._last_bbox
+        self._bridge_anchor_cell_id = (self._prev_flow_cell_id.copy()
+                                        if self._prev_flow_cell_id is not None else None)
+        self._bridge_anchor_pts = (self._prev_flow_pts.copy()
+                                    if self._prev_flow_pts is not None else None)
+        self._bridge_streak = 0
+
+    def _tryCenterBridge(self):
+        """Bridge a raw-detect miss using the tracked flow points' motion since the last
+        confirmed detection -- see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment for the
+        full rationale. Call AFTER _compute_hw has updated _prev_flow_pts/_prev_flow_cell_id
+        for THIS (miss) frame. Returns (center_px, bbox) if the bridge is accepted, None if
+        disabled, no anchor yet, too few matched points, the streak budget is exhausted, or
+        the implied displacement fails the plausibility check (reject, don't clip -- same
+        philosophy as the ArUco PlanarFeatureMap rescue's own gate)."""
+        if self._bridge_max_frames <= 0 or self._bridge_streak >= self._bridge_max_frames:
+            return None
+        if (self._bridge_anchor_center_px is None or self._bridge_anchor_cell_id is None
+                or self._prev_flow_cell_id is None or len(self._prev_flow_cell_id) == 0):
+            return None
+        # Match by cell_id (persists, subsetted, across consecutive miss frames -- see
+        # _compute_hw's "no mask to resample against; just advance tracking") rather than by
+        # array index, which is NOT stable once points have been dropped by failed LK/masking.
+        anchor_by_cell = dict(zip(self._bridge_anchor_cell_id.tolist(), self._bridge_anchor_pts))
+        curr_by_cell = dict(zip(self._prev_flow_cell_id.tolist(), self._prev_flow_pts))
+        common = anchor_by_cell.keys() & curr_by_cell.keys()
+        if len(common) < self._bridge_min_pts:
+            return None
+        disp = np.array([curr_by_cell[c] - anchor_by_cell[c] for c in common])
+        med_disp = np.median(disp, axis=0)
+        # Plausibility gate: reject a displacement implausibly large relative to the marker's
+        # last known size (same "reject implausible, don't clip" pattern the ArUco rescue
+        # uses for its own position/size check) -- a genuine few-frame bridge should move a
+        # small fraction of the marker's own extent, not jump past it.
+        if self._bridge_anchor_bbox is not None:
+            half_extent = 0.5 * max(self._bridge_anchor_bbox[2], self._bridge_anchor_bbox[3])
+            if half_extent > 0 and np.linalg.norm(med_disp) > self._bridge_max_jump_ratio * half_extent:
+                return None
+        self._bridge_streak += 1
+        bridged_center = self._bridge_anchor_center_px + med_disp
+        bridged_bbox = self._bridge_anchor_bbox
+        if bridged_bbox is not None:
+            bx, by, bw, bh = bridged_bbox
+            bridged_bbox = (bx + med_disp[0], by + med_disp[1], bw, bh)   # translate only, never resize
+        return bridged_center, bridged_bbox
 
     def process_frame(self, img_bgr_prev, img_bgr_curr, t, fps, quat_prev=None, quat_curr=None,
                        angvel_prev=None, angvel_curr=None):
@@ -1235,6 +1331,16 @@ class CrossMarkerPerception:
             # even though no Jacobian solve can be committed without a fresh mask this frame.
             self._compute_hw(gray_prev, gray_curr, None, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                               angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+            # CENTER-BRIDGE (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
+            # just updated _prev_flow_pts/_prev_flow_cell_id for THIS frame -- attempt to
+            # bridge the raw-detect miss from their tracked motion since the last confirmed
+            # detection. Only overrides center_px/center_fresh/last_bbox; det.ok is still
+            # False (this is not a genuine decode) so self._ok/FEATURE_IS_VISIBLE, s, alpha,
+            # hw all keep their existing hold-last/zero behavior below.
+            _bridged = self._tryCenterBridge()
+            if _bridged is not None:
+                self._center_px, self._last_bbox = _bridged
+                self._center_fresh = True
             # hold last s/alpha; hw defaults to zero (no motion info without a fix)
             self._hw = np.zeros(6)
             self._diag_lost_streak += 1
@@ -1283,6 +1389,10 @@ class CrossMarkerPerception:
             # this is a genuine miss (degenerate centroid ray), treat identically.
             self._compute_hw(gray_prev, gray_curr, None, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                               angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+            _bridged = self._tryCenterBridge()   # see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment
+            if _bridged is not None:
+                self._center_px, self._last_bbox = _bridged
+                self._center_fresh = True
             self._hw = np.zeros(6)
             self._diag_lost_streak += 1
             return self.get_output()
@@ -1332,6 +1442,11 @@ class CrossMarkerPerception:
         hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                                       angvel_prev=angvel_prev, angvel_curr=angvel_curr)
         self._hw = hw if hw_ok else np.zeros(6)
+        # CENTER-BRIDGE anchor (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
+        # above just updated _prev_flow_pts/_prev_flow_cell_id for this CONFIRMED-detection
+        # frame -- snapshot them alongside center_px/last_bbox so a subsequent miss can bridge
+        # from real tracked motion rather than falling straight to center_fresh=False.
+        self._snapshotBridgeAnchor()
 
         self._ok = True
 
@@ -1430,6 +1545,11 @@ class CrossMarkerPerception:
         """TEMP DIAG 2026-08-03: (t, max|x|, max|y|, mean|x|, mean|y|) of the
         normalized points fed into A, per successful solve."""
         return list(self._radial_diag_log)
+
+    def get_ring_active_log(self):
+        """TEMP DIAG 2026-08-15: (t, ring_active) per _compute_hw call -- see
+        __init__'s _ring_active_log comment."""
+        return list(self._ring_active_log)
 
     def get_z_v_log(self):
         """List of min(z_v) per _getVirtualPts call (2 per flow solve: prev_pts,
@@ -1658,6 +1778,20 @@ class CrossMarkerNode(Thread):
                 # gated the same way: only once the controller has engaged).
                 if self.RECORD and self.CONTROLLER_READY:
                     frame = imgs[-1]
+                    # TEMP DIAG 2026-08-15 (user request: visually confirm ring-sampled
+                    # points land ON the marker, not background): overlay the CURRENTLY-
+                    # tracked flow points (self._perception._prev_flow_pts, raw pixel
+                    # coords -- the same set _compute_hw solves against next call) onto
+                    # the recorded frame. Green = ring-sampled this cycle (cell_id
+                    # populated), yellow = unconstrained-sampler fallback (cell_id None).
+                    # CROSS_RING_OVERLAY_DBG=0 to disable (adds draw cost to this thread).
+                    if os.environ.get("CROSS_RING_OVERLAY_DBG", "1") == "1":
+                        _pp = self._perception._prev_flow_pts
+                        if _pp is not None and len(_pp) > 0:
+                            frame = frame.copy()
+                            _col = (0, 255, 0) if self._perception._prev_flow_cell_id is not None else (0, 255, 255)
+                            for _px, _py in _pp:
+                                cv2.circle(frame, (int(round(_px)), int(round(_py))), 3, _col, -1)
                     if self._rec_dir is None:
                         self._rec_ts = time.ctime().replace(':', '-')
                         self._rec_dir = ('/home/shubham/Soft-Precise-Landing/PX4_Gazebo/'
@@ -1696,6 +1830,9 @@ class CrossMarkerNode(Thread):
 
     def get_radial_diag_log(self):
         return self._perception.get_radial_diag_log()
+
+    def get_ring_active_log(self):
+        return self._perception.get_ring_active_log()
 
     def get_point_diag_log(self):
         return self._perception.get_point_diag_log()
@@ -1744,6 +1881,7 @@ class CrossMarkerNode(Thread):
             # just exposing them here.
             "Point Diag Log": self._perception.get_point_diag_log(),
             "Radial Diag Log": self._perception.get_radial_diag_log(),
+            "Ring Active Log": self._perception.get_ring_active_log(),
         }
 
     def getParams(self):
