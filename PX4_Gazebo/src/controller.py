@@ -150,6 +150,37 @@ g = 9.80      # m/s^2 (matches Gazebo aruco.sdf <gravity>0 0 -9.8</gravity>;
               # MATLAB Constants.m uses 9.81 internally — sub-0.1% difference,
               # the 9.80 value here is correct for SITL physics)
 
+# THRUST_MAX_N (2026-08-22, climb-direction thrust-map validation --
+# apps/record_input_validation_climb.py, validation_data/input_climb/Sat Aug
+# 22 22-04-42 2026): the flight-conversion slope (landing_test.py's
+# thrust_norm = 0.738 - B_T/42.3) is calibrated from a SMALL-SIGNAL fit
+# (input-cal's +-5N sinusoid, near-hover validation staircase down to
+# thrust_norm=0.55) that never exercised anything near full throttle -- the
+# "T_max ~ 31.8N" implied by extrapolating THAT slope to thrust_norm=1.0 was
+# never validated. A dedicated ascending thrust staircase (0.75->0.97,
+# velocity-braked between levels to avoid an altitude/velocity runaway) gave
+# a MEASURED slope of ~51.2 N/unit (steeper than the 42.3 small-signal
+# slope), extrapolating to T_max(1.0) ~= 33.85N -- closely matching the
+# INDEPENDENT SDF motor-physics estimate (4 motors x motorConstant x
+# maxRotVelocity^2 = 34.19N, from x500/model.sdf). Two independent estimates
+# converging on ~34N replaces the earlier unvalidated 31.8N figure.
+# THRUST_MARGIN (2026-08-23, user): 0.85 -- the last ~3% of the measured
+# curve (thrust_norm 0.97->1.0) is still extrapolated, not measured (the
+# validation run's abort fired on GT altitude, not on reaching 1.0), so keep
+# real margin below the converged estimate rather than trusting its edge.
+THRUST_MAX_N = float(os.environ.get("PLASMC_THRUST_MAX_N", "33.85"))
+THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
+# A_CAP: real ceiling on total specific thrust-accel magnitude
+# (|I_a + g*e3|, i.e. |thrust_vec|/mass) -- ~13.61 m/s^2 at defaults. This
+# replaces the previous I_a[2] = max(I_a[2], -50.0) floor, which was an
+# arbitrary safety catch never derived from the vehicle's actual deliverable
+# thrust (see the -50.0 removal site below for why a per-axis floor is
+# insufficient on its own -- it needs to be a magnitude cap on the FULL
+# thrust vector, applied before R_d/Gram-Schmidt, or the direction the
+# attitude loop chases can silently exceed what thrust_norm's downstream
+# clip [0,1] can actually deliver).
+A_CAP = THRUST_MAX_N * THRUST_MARGIN / mass
+
 # Clamp |S| < 1 - S_MARGIN to keep log-barrier finite (MATLAB uses 0.05 margin)
 S_MARGIN = 0.05
 
@@ -803,6 +834,17 @@ class Controller(Thread):
         # integral contribution X·∫ζ to σ stays ≤ λ_max(X)·5 ≤ 0.25, within
         # the boundary-layer thickness ε_k = 1 used in the simulations.
         self._izeta_clamp = 5.0
+        # Conditional-integration freshness gate (added 2026-07-30, ABSENT at 486f713 --
+        # the GT-FB IC1-5 19/25-SP snapshot). Gates izeta / is_e_n integration on the
+        # PERCEPTION flag FEATURE_PTS_FRESH. Set 0 to bypass. 2026-08-20: traced a
+        # repeatable GT-FB descent stall (hover at 0.486 m, 4.8 cm lateral, permanent
+        # 0.30 loom error) to izeta_z being EXACTLY frozen (1 distinct value over 1557
+        # samples) while zeta_z=+0.406 -- i.e. the integral that would break the
+        # kappa-leakage equilibrium is disabled. Not anti-windup (|izeta_z|=0.18 vs
+        # clamp 5.0). Under GT_FEEDBACK the integrated signal is ground truth, so a
+        # perception-freshness gate is measuring the wrong thing entirely.
+        self._fresh_gate_integ = os.environ.get("PLASMC_FRESH_GATE_INTEG", "1") == "1"
+        self._fresh_gate_blocked_n = 0   # diag: control steps where the gate froze izeta
         # _ie_a_clamp REMOVED 2026-06-08 — the fixed yaw-integral clamp was a band-aid
         # that masked integral windup during large initial-yaw slews (and drove the
         # post-slew overshoot). Replaced by CONDITIONAL INTEGRATION in _yawCtrl
@@ -1261,7 +1303,8 @@ class Controller(Thread):
         self._h_d_noS = []             # h_d minus the s_dot term (transport+descent) -> dh_d drops s_ddot
         self._h_d_kfree = []           # h_d minus the -k_r*zeta_r/g_r branch only (dh_d 'nokr' source, 2026-07-02)
         self._hd_rate_log = []         # DIAG (2026-06-30): the _hd_rate term of h_d (funnel-ref vs s_dot) for zeta_h-degeneracy decomposition
-        self._theta = []      # ||Theta||_F
+        self._theta = []      # ACTUALLY-operative theta_ctrl (per-axis 3-vec by default, PLASMC_THETA_PER_AXIS=1;
+                               # legacy scalar ||Theta||_F only if PLASMC_THETA_PER_AXIS=0 -- see the append site
         self._sigma = []
         self._kappa = [self._kappa_0.copy()]
 
@@ -1743,7 +1786,13 @@ class Controller(Thread):
             # awareness that trips after just 3 misses even while a rescue is
             # successfully covering every one -- gating on it would blind this
             # integral during exactly the window a working rescue is active.
-            _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+            # PLASMC_FRESH_GATE_INTEG=0 bypasses this freshness gate (2026-08-20 diag):
+            # under PLASMC_GT_FEEDBACK/HW_POS_FEEDBACK the s/h fed to the control law come
+            # from ground truth, NOT perception -- so gating the integrators on a PERCEPTION
+            # freshness flag throttles the control law from a signal that is irrelevant to
+            # the data it is actually integrating. Default "1" = current behavior, unchanged.
+            _feat_fresh = (bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+                           or not self._fresh_gate_integ)
             if len(self._is_e_n) == 0:
                 self._is_e_n.append(np.zeros(2))
             elif not _feat_fresh:
@@ -2072,10 +2121,13 @@ class Controller(Thread):
         # (freeze while the feature measurement feeding zeta is unfresh -- see the
         # matching is_e_n comment above; same 2026-07-30 hardware finding, same
         # FEATURE_PTS_FRESH gate, same reason FEATURE_IS_STALE is the wrong flag).
-        _feat_fresh = bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+        # PLASMC_FRESH_GATE_INTEG=0 bypasses the gate -- see the matching is_e_n site above.
+        _feat_fresh = (bool(getattr(self._img_node, "FEATURE_PTS_FRESH", True))
+                       or not self._fresh_gate_integ)
         if len(self._izeta) == 0:
             self._izeta.append(np.zeros(N_DIM))
         elif not _feat_fresh:
+            self._fresh_gate_blocked_n += 1
             self._izeta.append(self._izeta[-1].copy())   # hold -- do not integrate while unfresh
         else:
             new_int = (self._izeta[-1]
@@ -2193,12 +2245,19 @@ class Controller(Thread):
                   + self._S[-1] @ self._dp[-1]
                   - np.linalg.solve(self._G[-1], chi_zeta_aug))
         Theta = np.hstack([vector.reshape(-1, 1), np.eye(N_DIM)])
-        self._theta.append(np.linalg.norm(Theta, ord='fro'))   # scalar ||Theta||_F (logged for continuity)
-        # theta used by the control law: per-axis row-norm (decoupled) or the shared scalar (default).
+        # theta used by the control law: per-axis row-norm (decoupled, DEFAULT) or the shared
+        # scalar (legacy, PLASMC_THETA_PER_AXIS=0). 2026-08-17 (user): stopped logging the
+        # legacy ||Theta||_F scalar under self._theta/"theta(t)" regardless of mode -- it was
+        # misleading a diagnosis (looked like "the shared coupling scalar" but per-axis
+        # decoupling has been default-ON since 2026-06-25, so under default config that
+        # logged value was NEVER the quantity actually driving any axis's kappa-ODE). Log
+        # whichever value is ACTUALLY operative instead -- a per-axis 3-vector by default,
+        # the legacy scalar only when PLASMC_THETA_PER_AXIS=0 is explicitly set.
         if self._theta_per_axis:
             theta_ctrl = np.sqrt(vector ** 2 + 1.0)            # theta_i = ||row_i(Theta)|| = sqrt(vec_i^2+1)
         else:
-            theta_ctrl = self._theta[-1]
+            theta_ctrl = float(np.linalg.norm(Theta, ord='fro'))
+        self._theta.append(theta_ctrl)
 
         # Adaptive-gain (translational) update via RK5
         # MATLAB: dkappa/dt = Theta_norm * N * G * |sigma| - N * P * kappa
@@ -2893,6 +2952,49 @@ class Controller(Thread):
         # below gravity.
         if I_a[2] >= 0:
             I_a[2] = -3.0
+
+        # AZ VISIBILITY LIFT CORRECTION (2026-08-23, user design): cbf2_filter below
+        # bounds ax/ay against the marker leaving the FoV, but az has never had any
+        # visibility feedback at all -- pure descent can loom the marker out of frame
+        # even with zero lateral drift. This is a REACTIVE proportional correction,
+        # not a predictive QP like the lateral one: az->loom is relative-degree-2
+        # (az -> Vz -> Zdot -> loom), and modeling that step needs depth (Z), which
+        # this project's scale-free/depth-free hard constraint forbids. The sign is
+        # unambiguous regardless of that gap (more lift always slows the physical
+        # closing rate, hence always reduces loom-rate), so only the gain needs
+        # tuning, not the direction. dt_last hoisted here (was computed just before
+        # the cbf2_filter call below) so both this correction and cbf2_filter share
+        # one dt_last read this cycle.
+        #
+        # Uses the SAME measured loom-rate cbf_visibility.py tracks internally as
+        # state["ddelta_ref"] (delta2 = radius/focal, finite-differenced against
+        # last cycle's state["delta_prev"]) -- recomputed here, BEFORE cbf2_filter
+        # runs, from the same cbf_radius_phase2/focal/self._cbf_state inputs, so
+        # a_z (cbf2_filter's lateral scale factor, |I_a[2]|) already reflects the
+        # correction rather than being adjusted after the lateral QP already used
+        # the uncorrected value. Ordering matters here the same way it matters for
+        # A_CAP's magnitude rescale below: rd3/attitude direction is built from
+        # I_a's ratio, so whichever value of I_a[2] is "final" when direction gets
+        # computed is the one that actually governs delivered lean vs delivered lift.
+        dt_last = self._dt[-1] if len(self._dt) > 0 else None
+        if dt_last is not None and dt_last > 1e-6:
+            _foc = np.asarray(self._img_node.focal, float)
+            _delta2_now = np.full(2, float(cbf_radius_phase2)) / _foc
+            _delta_prev = self._cbf_state.get("delta_prev")
+            _ddelta_now = (np.maximum((_delta2_now - _delta_prev) / dt_last, 0.0)
+                           if _delta_prev is not None else np.zeros(2))
+        else:
+            _ddelta_now = np.zeros(2)
+        _az_tau        = float(os.environ.get("PLASMC_AZ_TAU",        "0.3"))   # lookahead horizon (s), matches CBF_TAU's default
+        _az_margin_min = float(os.environ.get("PLASMC_AZ_MARGIN_MIN", "0.05"))  # tangent-unit safety buffer to hold at the lookahead
+        _az_lift_gain  = float(os.environ.get("PLASMC_AZ_LIFT_GAIN",  "20.0"))  # (m/s^2 of extra lift) per (tangent-unit of predicted violation); tunable, sign fixed by physics
+        # d_min_fov is pixel-unit (theta_cone above divides it by focal_px for the
+        # same reason) -- convert to tangent units to match _ddelta_now before combining.
+        _margin_pred = d_min_fov / focal_px - float(np.max(_ddelta_now)) * _az_tau
+        _az_violation = max(0.0, _az_margin_min - _margin_pred)
+        if _az_violation > 0.0:
+            I_a[2] -= _az_lift_gain * _az_violation   # more negative I_a[2] = more lift = slower descent
+
         # Low-pass the DESIRED accel BEFORE the CBF, so the QP re-imposes the hard FoV
         # bound on the FILTERED input (clean attitude, bound NOT smeared — filtering the
         # CBF OUTPUT would smear the bound). Ported from the MATLAB result
@@ -2931,7 +3033,8 @@ class Controller(Thread):
             _axis, _sign = self._cbf_drift_axis
             p_10_eff = self._p_10.copy()
             p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
-        dt_last = self._dt[-1] if len(self._dt) > 0 else None
+        # dt_last hoisted above (AZ VISIBILITY LIFT CORRECTION block, before the
+        # upright guard) so this call and that correction share one dt_last read.
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
         I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
@@ -2949,7 +3052,25 @@ class Controller(Thread):
                 self._theta_safe = self._theta_safe * _scl
                 I_a[:2] = I_a[:2] * _scl
             theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
-        I_a[2] = max(I_a[2], -50.0)
+        # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
+        # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
+        # just above only bounds LEAN ANGLE; nothing previously bounded the FULL thrust
+        # VECTOR magnitude against what thrust_norm's downstream [0,1] clip
+        # (landing_test.py:convert_2_sys_cmd) can actually deliver. That matters because
+        # R_d/Gram-Schmidt (below) builds attitude DIRECTION from I_a's ratio alone,
+        # independent of whether the resulting thrust demand is deliverable -- if
+        # |thrust_vec| exceeds T_max, thrust clips downstream to T_max but attitude
+        # keeps chasing the UNCLIPPED direction, silently under-delivering whichever
+        # axis that direction favored (this is exactly why the AZ LIFT CORRECTION above
+        # is dangerous to leave unbounded: it shifts the ratio toward vertical, and
+        # once saturated that steals delivered lateral accel from the visibility CBF).
+        # Rescale the FULL vector (preserves direction, unlike clamping I_a[2] alone)
+        # so attitude and deliverable thrust stay consistent.
+        _thrust_vec = I_a + np.array([0.0, 0.0, g])
+        _thrust_mag = float(np.linalg.norm(_thrust_vec))
+        if _thrust_mag > A_CAP > 0.0:
+            _thrust_vec *= A_CAP / _thrust_mag
+            I_a = _thrust_vec - np.array([0.0, 0.0, g])
 
         # log FoV diagnostics
         self._rho_fov_log.append(rho_fov_curr.copy())
@@ -3257,6 +3378,7 @@ class Controller(Thread):
             "S(t)": self._S,
             "zeta(t)": self._zeta,
             "izeta(t)": self._izeta,
+            "Fresh Gate Blocked N": self._fresh_gate_blocked_n,   # diag 2026-08-20, see _fresh_gate_integ
             "G(t)": self._G,
             "theta(t)": self._theta,
             "sigma(t)": self._sigma,
