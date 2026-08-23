@@ -977,7 +977,15 @@ class Controller(Thread):
         the image CENTER, which is also large when a small marker drifts to
         the image EDGE (lateral error at altitude) — that caused 3 false-
         positive commitments (1.5-2.5 m soft landings). Span distinguishes
-        the two cases: big-marker-anywhere vs small-marker-at-edge."""
+        the two cases: big-marker-anywhere vs small-marker-at-edge.
+
+        MARKER_TYPE=cross: CrossMarkerNode implements its OWN _feature_pts
+        deque specifically to feed this property (cross_marker_perception.py,
+        "Feed MARKER_EXTENT_PX (controller.py)") -- confirmed working (real
+        115-119px values logged) BEFORE any cross-marker-specific branch was
+        added here. A 2026-08-23 edit briefly added one on a false premise
+        (assumed _feature_pts was ArUco-only without checking) -- reverted
+        same day once the recorded data showed it was already correct."""
         try:
             fp_list = self._img_node._feature_pts
             if len(fp_list) > 0:
@@ -1360,6 +1368,14 @@ class Controller(Thread):
         self._rho_fov_log = []
         self._d_min_fov_log = []
         self._theta_cone_log = []
+        # AZ VISIBILITY LIFT CORRECTION diagnostics (2026-08-23): _az_violation was
+        # only ever visible indirectly via I_a[2]-I_a_raw[2], which also conflates the
+        # A_CAP magnitude-cap rescale, the upright guard, terminal-stabilization holds,
+        # and the tau_ia LPF -- not enough to confirm the correction itself is firing
+        # for the right reason. Log the raw terms directly.
+        self._az_violation_log = []
+        self._az_ddelta_log = []
+        self._az_margin_pred_log = []
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -2976,8 +2992,27 @@ class Controller(Thread):
         # A_CAP's magnitude rescale below: rd3/attitude direction is built from
         # I_a's ratio, so whichever value of I_a[2] is "final" when direction gets
         # computed is the one that actually governs delivered lean vs delivered lift.
+        # DETECTION-CONTINUITY GATE (2026-08-23, first live sweep): raw cbf_radius_phase2
+        # is NOT a continuous physical signal -- a fresh detection (after startup, or any
+        # gap/flicker) makes it jump discontinuously (e.g. MARKER_EXTENT_PX 10.81->56.48
+        # px in a single ~8ms tick, observed in test_data/AzLiftGain_IC1's first sweep),
+        # which a raw finite-difference misreads as an enormous "loom rate" -- same failure
+        # CLASS as the dh_d discrete-jump spikes DGATE's own 1-pole LPF exists to prevent
+        # (see this file's h_ref_eff/_dgate_g comment). That spurious spike fired a large,
+        # unwarranted lift correction right at the takeoff->descent handoff on ~20-40% of
+        # reps (I_a[2] burst to -12.2 vs hover -9.8), which then failed to ever re-engage a
+        # real descent (stalled at ~6m for the full timeout) or lost the marker shortly
+        # after -- both traced via d_min_fov staying near its ceiling for the REST of every
+        # examined flight, i.e. the correction was otherwise correctly inert; only this one
+        # startup transient caused the damage. Fix: only trust the finite-difference across
+        # two CONSECUTIVE genuine Phase-1 decodes (cbf_corners not None both this frame and
+        # last) -- any detection transition (start, resume-after-gap) contributes zero, same
+        # treatment a fully-None frame already got. Mirrors the streak-gated pattern already
+        # used for CBF_SMALL_SLOT_ON_FRAMES elsewhere in this file, not a new idiom.
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
-        if dt_last is not None and dt_last > 1e-6:
+        _az_prev_valid = getattr(self, "_az_prev_corners_valid", False)
+        _az_curr_valid = cbf_corners is not None
+        if dt_last is not None and dt_last > 1e-6 and _az_prev_valid and _az_curr_valid:
             _foc = np.asarray(self._img_node.focal, float)
             _delta2_now = np.full(2, float(cbf_radius_phase2)) / _foc
             _delta_prev = self._cbf_state.get("delta_prev")
@@ -2985,15 +3020,44 @@ class Controller(Thread):
                            if _delta_prev is not None else np.zeros(2))
         else:
             _ddelta_now = np.zeros(2)
+        self._az_prev_corners_valid = _az_curr_valid
         _az_tau        = float(os.environ.get("PLASMC_AZ_TAU",        "0.3"))   # lookahead horizon (s), matches CBF_TAU's default
         _az_margin_min = float(os.environ.get("PLASMC_AZ_MARGIN_MIN", "0.05"))  # tangent-unit safety buffer to hold at the lookahead
-        _az_lift_gain  = float(os.environ.get("PLASMC_AZ_LIFT_GAIN",  "20.0"))  # (m/s^2 of extra lift) per (tangent-unit of predicted violation); tunable, sign fixed by physics
-        # d_min_fov is pixel-unit (theta_cone above divides it by focal_px for the
-        # same reason) -- convert to tangent units to match _ddelta_now before combining.
-        _margin_pred = d_min_fov / focal_px - float(np.max(_ddelta_now)) * _az_tau
-        _az_violation = max(0.0, _az_margin_min - _margin_pred)
+        _az_lift_gain  = float(os.environ.get("PLASMC_AZ_LIFT_GAIN",  "20.0"))  # (m/s^2 of extra lift) per (tangent-unit of predicted violation); tunable, sign fixed by physics.
+        # Gain history: 20 (initial) -> 10 (2026-08-23, post detection-continuity-gate
+        # sweep) -> 20 (2026-08-23, post NO-DATA GUARD fix -- the 20->10 drop was decided
+        # on top of the still-buggy correction; test_data/AzLiftGain_IC1_fix3, the first
+        # sweep run AFTER the no-data guard, reversed the ranking entirely: gain=0 was the
+        # WORST arm (1/4 SP, one outright failed landing), gain=20 the BEST (4/5 SP, mean
+        # xy_err 0.016m, zero target_lost) vs gain=10's 2/5 SP with a catastrophic outlier
+        # (xy_err 2.23m). n=4-5 per arm -- the project's stated minimum, not a firm bar --
+        # so treat this as a direction, not a settled tune; a larger sweep would firm it up.
+        # NO-DATA GUARD (2026-08-23, real root cause -- the detection-continuity gate
+        # above did NOT fix this for MARKER_TYPE=aruco, the mode every sweep actually ran:
+        # cbf_radius_phase2 stays HARDCODED 0.0 for ArUco (only cross-marker ever sets it
+        # nonzero, see its own top-of-block comment), so _ddelta_now was ALREADY always
+        # zero regardless of that gate. The REAL trigger: d_min_fov is initialized 0.0 and
+        # only overwritten `if cbf_corners is not None` -- so on any frame the marker isn't
+        # decoded yet (pre-detection at takeoff, or a transient loss), margin_pred=0-0=0,
+        # which is BELOW margin_min=0.05 -> fires a violation from having NO DATA, not from
+        # any real close-to-the-edge measurement. At gain=50 that's 0.05*50=2.5 m/s^2 of
+        # unwarranted extra lift for the ENTIRE pre-detection window of every flight
+        # (matches the observed -12.2 vs hover -9.8 spike almost exactly: -9.8-2.5~=-12.3).
+        # "no data" must mean "don't correct", not "assume zero margin" -- skip entirely
+        # when cbf_corners is None, exactly like _ddelta_now's own None-frame treatment.
+        if cbf_corners is None:
+            _az_violation = 0.0
+            _margin_pred = None
+        else:
+            # d_min_fov is pixel-unit (theta_cone above divides it by focal_px for the
+            # same reason) -- convert to tangent units to match _ddelta_now before combining.
+            _margin_pred = d_min_fov / focal_px - float(np.max(_ddelta_now)) * _az_tau
+            _az_violation = max(0.0, _az_margin_min - _margin_pred)
         if _az_violation > 0.0:
             I_a[2] -= _az_lift_gain * _az_violation   # more negative I_a[2] = more lift = slower descent
+        self._az_violation_log.append(_az_violation)
+        self._az_ddelta_log.append(float(np.max(_ddelta_now)))
+        self._az_margin_pred_log.append(_margin_pred if _margin_pred is not None else float('nan'))
 
         # Low-pass the DESIRED accel BEFORE the CBF, so the QP re-imposes the hard FoV
         # bound on the FILTERED input (clean attitude, bound NOT smeared — filtering the
@@ -3403,6 +3467,9 @@ class Controller(Thread):
             "d_min_fov(t)": self._d_min_fov_log,
             "theta_cone(t)": self._theta_cone_log,
             "theta_current(t)": self._theta_current_log,
+            "az_violation(t)": self._az_violation_log,
+            "az_ddelta(t)": self._az_ddelta_log,
+            "az_margin_pred(t)": self._az_margin_pred_log,
         }
 
     def getImgData(self):
