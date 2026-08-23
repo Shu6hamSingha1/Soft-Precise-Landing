@@ -80,6 +80,26 @@ os.environ.setdefault("CAPTURE_RATE_HZ", "30")
 os.environ.setdefault("CAM_EXPOSURE_US", "200")
 os.environ.setdefault("CAM_AUTO_GAIN", "1")
 
+# CAM_AUTO_EXPOSURE=1 (2026-08-17): was previously OFF here (unset), so exposure sat
+# pinned at CAM_EXPOSURE_US=200 for every flight regardless of actual lighting -- correct
+# for direct sun, wrong for anything dimmer (cloud cover, overcast, dusk), with no way to
+# recover since gain alone can't compensate once its own [1.0, 16.0] range is pinned.
+# Real outdoor hand-held bench validation (2026-08-17, two independent runs -- see
+# project_pi_outdoor_exposure_2000us_failed memory): sunny settled at 200us (99.8% decode),
+# cloudy settled at 500us (100% decode), both via the step-DOWN/step-UP logic in
+# imgstreamer.py correctly tracking real conditions -- a single fixed value cannot serve
+# both. CAM_EXPOSURE_MAX_US intentionally left at imgstreamer.py's own default (4000, see
+# that file's comment) -- outdoor tests never approached that ceiling, so it doesn't
+# constrain the outdoor case; it exists as a blur-safety cap if conditions are ever dim
+# enough to need to step up.
+#
+# NOTE: a prior 215-flight campaign review (2026-08-12, see CAM_EXPOSURE_US comment above)
+# found exposure barely moved real-flight decode rate historically, attributing the
+# dominant limiter to marker PIXEL EXTENT, not exposure time. This change is justified by
+# the 2026-08-17 bench evidence but should NOT be assumed to fix decode rate on its own --
+# see project_pi_cbf_phase2_zeroes_lateral_2026_08_12 for the still-open Tier 0 work.
+os.environ.setdefault("CAM_AUTO_EXPOSURE", "1")
+
 try:
     from ahrs import RAD2DEG
     from flight_controller import FC
@@ -102,6 +122,46 @@ SLEEP_TIME = 1 / 200
 HOVER_THROTTLE_NORM = float(os.environ.get("HW_HOVER_THROTTLE_NORM", "0.42"))
 THRUST_SLOPE_N_PER_UNIT = float(os.environ.get("HW_THRUST_SLOPE", "31.98"))
 
+# BATTERY-VOLTAGE HOVER CORRECTION (2026-08-21): HOVER_THROTTLE_NORM=0.42 is a
+# single fixed value; project_hover_voltage_curve (find_hover_throttle.py bisection
+# campaign, 2026-07-09/10) found the REAL hover throttle is voltage-dependent --
+# flat ~0.388 across a 22.4-24.0V plateau, but rising above 0.389 below ~22.2V and
+# falling below 0.387 above ~24.25V (higher voltage needs less throttle to hover).
+# Root-caused as the explanation for a recurring uncommanded-climb-to-8m incident
+# (2026-08-20/21): every excess-climb event across 10 battery swaps/5 days of test
+# data fell in the first 1-4 runs of a fresh-battery session (highest voltage of
+# the session -> true hover point lowest, below the fixed 0.42 assumption) and
+# NEVER at session position 5+ (voltage settled into the plateau). This
+# correction is COARSE -- built from the existing project_hover_voltage_curve
+# clusters (21.68-24.36V, several points still "not yet bisected" per that memory,
+# not a clean regression fit) -- not a precise linear model. Deliberately
+# conservative at the edges (rounds toward MORE throttle, i.e. less aggressive
+# descent, at low voltage; LESS throttle, i.e. less aggressive climb-risk, at high
+# voltage) since a wrong correction that undershoots is safer than one that
+# overshoots into the opposite failure mode. Set HW_HOVER_VOLTAGE_CORRECTION=0 to
+# disable and use the flat HOVER_THROTTLE_NORM unconditionally (e.g. if this
+# correction is ever found to hurt more than help). An explicit
+# HW_HOVER_THROTTLE_NORM override still takes precedence (skips voltage read
+# entirely) -- same override-wins convention as PLASMC_HW_MARKER_NED_XYZ elsewhere
+# in this file.
+HOVER_VOLTAGE_CORRECTION_ENABLED = (
+    os.environ.get("HW_HOVER_VOLTAGE_CORRECTION", "1") != "0"
+    and "HW_HOVER_THROTTLE_NORM" not in os.environ
+)
+
+
+def _voltage_corrected_hover_throttle(voltage_v):
+    """Coarse piecewise hover-throttle estimate from project_hover_voltage_curve's
+    clusters. Returns HOVER_THROTTLE_NORM unchanged if voltage is None or falls
+    in the well-supported 22.4-24.0V plateau; nudges up/down outside it."""
+    if voltage_v is None:
+        return HOVER_THROTTLE_NORM
+    if voltage_v <= 22.2:
+        return 0.395       # 21.68-22.19V cluster: every point sank even at 0.389
+    if voltage_v <= 24.0:
+        return 0.388       # 22.4-24.0V plateau: converged across 5 sweeps
+    return 0.380            # >24.0V: 24.25/24.36V points all climbed even below 0.388
+
 # *** Rate-axis command correction, r^2-weighted input-cal cross-check ***
 # gain = achieved/commanded from input-cal regression; dividing the intended
 # command by gain (== multiplying by these factors) should make the ACHIEVED
@@ -117,6 +177,16 @@ RATE_CORRECTION = np.array([
     float(os.environ.get("RATE_CORRECTION_WY", "0.739")),
     float(os.environ.get("RATE_CORRECTION_WZ", "0.665")),
 ]) if RATE_CORRECTION_ENABLED else np.array([1.0, 1.0, 1.0])
+
+# HW_POS_FEEDBACK VISIBILITY DECOUPLING (2026-08-17, per explicit user direction):
+# when PLASMC_HW_POS_FEEDBACK=1, the control loop is driven entirely by the FC's
+# own EKF position/attitude (hw_pos_feedback.py), not by ArUco/optical-flow
+# perception -- so the marker-visibility-gated grace/search-climb/abort machinery
+# below (designed for the perception-only path, where losing the marker means
+# losing the control signal) no longer has anything to protect: losing sight of
+# the marker does not touch what's driving control in this mode. Read once at
+# import time (same convention as every other env flag in this file).
+_HW_POS_FEEDBACK_ACTIVE = os.environ.get("PLASMC_HW_POS_FEEDBACK", "0") == "1"
 
 MARKER_LOSS_GRACE = float(os.environ.get("LANDING_MARKER_LOSS_GRACE", "1.0"))
 # FALLBACK REDESIGN (2026-07-31): the old path sent zero body rates + a fixed throttle --
@@ -166,13 +236,20 @@ HOVER_STALL_S = float(os.environ.get("LANDING_HOVER_STALL_S", "25.0"))
 HOVER_STALL_DZ = float(os.environ.get("LANDING_HOVER_STALL_DZ", "0.3"))
 
 
+# Mutable: HardwareLandingSystem.arm_and_takeoff() overwrites this once, right
+# after takeoff, with the voltage-corrected value (see HOVER_VOLTAGE_CORRECTION_ENABLED
+# above) -- convert_2_sys_cmd reads it fresh every call rather than closing over
+# the module-level constant, so the correction takes effect for the whole flight.
+_active_hover_throttle_norm = HOVER_THROTTLE_NORM
+
+
 def convert_2_sys_cmd(cmd):
     """[roll_rate, pitch_rate, yaw_rate] rad/s + B_T (N, excess-over-hover) ->
     [roll_rate, pitch_rate, yaw_rate] deg/s + normalized throttle [0,1].
     Same mapping as landing_test.py's convert_2_sys_cmd - PLACEHOLDER thrust
     constants above must be calibrated for this airframe before flight."""
     thrust_norm = float(np.clip(
-        HOVER_THROTTLE_NORM - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
+        _active_hover_throttle_norm - cmd[3] / THRUST_SLOPE_N_PER_UNIT, 0.0, 1.0))
     rates = np.array(cmd[:3], dtype=float) * RATE_CORRECTION
     return np.append(RAD2DEG * rates, thrust_norm)
 
@@ -186,7 +263,14 @@ class HardwareLandingSystem:
         # tagged with which descent attempt it belongs to and whether the app was
         # actively descending or in the hold+search fallback -- needed now that a
         # single continuous flight/recording can contain multiple landing attempts.
-        self.logs = {"time": [], "altitude": [], "control_output": [], "attempt": [], "state": []}
+        # "marker_visible" (2026-08-17): raw perception visibility, logged every
+        # tick REGARDLESS of whether PLASMC_HW_POS_FEEDBACK is bypassing it for
+        # control decisions -- needed to compare perception vs FC-driven control
+        # post-hoc (did the marker actually stay in view while FC data flew the
+        # approach, and if not, did FC-driven control still look sane through
+        # that stretch?).
+        self.logs = {"time": [], "altitude": [], "control_output": [], "attempt": [],
+                      "state": [], "marker_visible": []}
 
     async def initialize(self):
         print("=" * 60)
@@ -206,25 +290,71 @@ class HardwareLandingSystem:
         print("\n2. Starting Controller (owns its own IMG_PROCESSOR/camera)...")
         # Controller.__init__ constructs its own IMG_PROCESSOR internally via
         # `controller=` (the FC instance, for quat/angvel) - do NOT pass an
-        # IMG_PROCESSOR here. pose_node=None: no ground-truth on hardware.
+        # IMG_PROCESSOR here.
+        #
+        # PLASMC_HW_POS_FEEDBACK=1: pass an HWPoseNode (analytic s/h from the PX4
+        # EKF position/attitude + a fixed measured marker NED point, in place of
+        # ArUco/optical-flow perception). NOT true ground truth -- see
+        # hw_pos_feedback.py's module docstring. Off by default (pose_node=None,
+        # perception-only, unchanged behavior).
+        hw_pose_node = None
+        if os.environ.get("PLASMC_HW_POS_FEEDBACK", "0") == "1":
+            from hw_pos_feedback import HWPoseNode
+            hw_pose_node = HWPoseNode(self.fc)
+            if "PLASMC_HW_MARKER_NED_XYZ" in os.environ:
+                print("   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed"
+                      f" (marker NED override = {os.environ['PLASMC_HW_MARKER_NED_XYZ']})")
+            else:
+                print("   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed"
+                      " (marker position will be snapshotted from current pose right before arming)")
+        self.hw_pose_node = hw_pose_node   # stashed so arm_and_takeoff() can snapshot it just before arming
         self.controller = Controller(REF_RAD_OPT_FLOW, DES_IMG_FEATURE_PARAM,
-                                      time, self.fc, pose_node=None)
-        # Off by default (video write cost every frame) - env-gated so a real
-        # flight can opt in when video/estimator-tag alignment is wanted (see
-        # project_pi_izeta_kappa_ratchet_fix_2026_07_31: real landing flights
-        # had video but no Img_Data.npy at all, so there was no way to align
-        # recorded video frames to "Opt Flow Estimator Tag" after the fact).
-        if os.environ.get("LANDING_RECORD_VIDEO", "0") == "1":
+                                      time, self.fc, pose_node=hw_pose_node)
+        # UNIFIED 2026-08-16: was a separate LANDING_RECORD_VIDEO flag that just
+        # called enableRecording() -> self._img_node.RECORD = True -- the exact same
+        # effect as IMG_RECORD=1 (checked inside Controller.__init__, controller.py).
+        # Two names for one flag was a footgun (easy to set the wrong one and get no
+        # video); IMG_RECORD is the name already used everywhere else in the
+        # codebase, so this now checks that instead. (Controller.__init__ already
+        # honors IMG_RECORD=1 at construction time above, so this block only remains
+        # for the printed confirmation -- explicit >>> enableRecording() is otherwise
+        # redundant but harmless if IMG_RECORD was also passed as record != 'n'.)
+        if os.environ.get("IMG_RECORD", "0") == "1":
             self.controller.enableRecording()
-            print("   Video recording ENABLED (LANDING_RECORD_VIDEO=1) -> "
+            print("   Video recording ENABLED (IMG_RECORD=1) -> "
                   "Test_Data/Landing/Test_Videos/<timestamp>.mp4")
         print("   Controller thread started (not yet engaged)")
         print("\n3. System ready for takeoff")
 
     async def arm_and_takeoff(self):
+        # Snapshot the marker's NED position from the vehicle's OWN current pose,
+        # right here -- the last moment it's guaranteed to still be sitting on the
+        # marker (see hw_pos_feedback.py's HWPoseNode docstring for why a hardcoded
+        # (0,0,0) is wrong even when physically powered on at the marker: the PX4
+        # local origin anchors to an early, still-converging GPS estimate, so
+        # getPosBody() drifts away from (0,0,0) over the minutes between power-up
+        # and arming even with zero physical movement). No-op if
+        # PLASMC_HW_MARKER_NED_XYZ was set explicitly (that override wins).
+        if self.hw_pose_node is not None:
+            self.hw_pose_node.snapshotMarkerFromCurrentPosition()
         print("\nArming and taking off to {:.2f} m...".format(self.takeoff_height))
         await self.fc.arm_and_takeoff(takeoff_hgt=self.takeoff_height)
         print("Takeoff complete")
+
+        # Voltage-corrected hover throttle (see HOVER_VOLTAGE_CORRECTION_ENABLED
+        # above) -- read once here, same MAVSDK call find_hover_throttle.py uses.
+        global _active_hover_throttle_norm
+        if HOVER_VOLTAGE_CORRECTION_ENABLED:
+            try:
+                battery = await self.fc.vehicle.telemetry.battery().__aiter__().__anext__()
+                v = float(battery.voltage_v)
+                _active_hover_throttle_norm = _voltage_corrected_hover_throttle(v)
+                print(f"Battery voltage: {v:.2f}V -> hover throttle {_active_hover_throttle_norm:.3f} "
+                      f"(base {HOVER_THROTTLE_NORM:.3f})")
+            except Exception as e:
+                print(f"[WARN] Could not read battery voltage, using base hover throttle "
+                      f"{HOVER_THROTTLE_NORM:.3f}: {e}")
+                _active_hover_throttle_norm = HOVER_THROTTLE_NORM
 
     async def landing_loop(self):
         print("\n" + "=" * 60)
@@ -281,6 +411,18 @@ class HardwareLandingSystem:
             self.logs["altitude"].append(alt)
             self.logs["attempt"].append(attempt_idx)
             self.logs["state"].append("search" if in_search_climb else "descent")
+            # checkTargetVisibility() (-> self._img_node.FEATURE_IS_VISIBLE directly),
+            # NOT self.controller.TARGET_IS_VISIBLE: under PLASMC_HW_POS_FEEDBACK (or
+            # Gazebo's PLASMC_GT_FEEDBACK) controller.py::run()'s own visibility-latch
+            # only clears while `self._img_node.FEATURE_IS_VISIBLE or self._gt_feedback
+            # is not None` is False -- and self._gt_feedback is not None is permanently
+            # true in this mode, so that branch never runs and TARGET_IS_VISIBLE gets
+            # stuck True after its first tick, never reflecting a later marker loss
+            # (confirmed in Test_Data/Landing/17082026.txt: "visible=True" printed
+            # straight through stretches where the perception layer itself logged
+            # "LANDING PAD NOT VISIBLE..."). checkTargetVisibility() reads the flag
+            # un-latched, so it stays accurate for this comparison regardless of mode.
+            self.logs["marker_visible"].append(bool(self.controller.checkTargetVisibility()))
 
             # Hover/descent-stall watchdog (onboard altitude, no ground truth needed).
             # alt is +up; descent progress = reaching a NEW LOW. Track the minimum
@@ -327,9 +469,26 @@ class HardwareLandingSystem:
             # CBF_CORNERS_STALE_ABORT_FRAMES) sized past the observed normal-coast
             # range, so only a genuinely sustained loss triggers the abort.
             cbf_corners_stale_abort = self.controller.CBF_CORNERS_STALE_ABORT
-            feature_fresh = (self.controller.TARGET_IS_VISIBLE
-                             and not self.controller.FEATURE_IS_STALE
-                             and not cbf_corners_stale_abort)
+            # checkTargetVisibility(), not TARGET_IS_VISIBLE -- see the
+            # self.logs["marker_visible"] comment above for why the latter is
+            # unusable once PLASMC_HW_POS_FEEDBACK is active (stuck True after its
+            # first tick). Using checkTargetVisibility() here also fixes a latent
+            # bug in the perception-only path's own gating: TARGET_IS_VISIBLE was
+            # already relying on the same latch machinery, just harmlessly (it
+            # tracked correctly there ONLY because self._gt_feedback was always
+            # None on hardware before PLASMC_HW_POS_FEEDBACK existed).
+            raw_feature_fresh = (self.controller.checkTargetVisibility()
+                                 and not self.controller.FEATURE_IS_STALE
+                                 and not cbf_corners_stale_abort)
+            # PLASMC_HW_POS_FEEDBACK=1: control gating is decoupled from raw
+            # perception visibility (see the module-level _HW_POS_FEEDBACK_ACTIVE
+            # comment) -- force the gate open so the branches below always take
+            # the normal-descent path and never enter grace/search-climb/abort.
+            # raw_feature_fresh itself (and self.logs["marker_visible"] above)
+            # still reflect the TRUE perception state every tick, unaffected by
+            # this override, so a post-hoc comparison of "was the marker actually
+            # visible" vs "what did FC-driven control do" stays possible.
+            feature_fresh = True if _HW_POS_FEEDBACK_ACTIVE else raw_feature_fresh
 
             if in_search_climb:
                 # SEARCH-CLIMB fallback (2026-08-04). Check reacquisition FIRST, before
@@ -457,7 +616,7 @@ class HardwareLandingSystem:
                 # 4896. Meaningful Pi staleness signals are FEATURE_PTS_FRESH and the
                 # CBF_CORNERS_STALE / _ABORT coast-streak counters, not this.
                 print(f"  t={now - start_time:.1f}s alt={alt:.2f}m "
-                      f"visible={self.controller.TARGET_IS_VISIBLE}")
+                      f"visible={self.controller.checkTargetVisibility()}")
 
             await asyncio.sleep(SLEEP_TIME)
 
@@ -498,7 +657,7 @@ class HardwareLandingSystem:
         # ADDED 2026-07-31: real flights previously saved no per-frame
         # "Opt Flow Estimator Tag"/"Time" at all (only Control_Data.npy's
         # controller-internal h(t)/s(t)), so recorded video (when
-        # LANDING_RECORD_VIDEO=1) could never be aligned to which estimator
+        # IMG_RECORD=1) could never be aligned to which estimator
         # fired each frame - see project_pi_izeta_kappa_ratchet_fix_2026_07_31.
         # getImgData() mirrors output_calibration.py's own image_data save.
         img_data = self.controller.getImgData()

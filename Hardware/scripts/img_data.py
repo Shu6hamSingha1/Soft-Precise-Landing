@@ -250,6 +250,28 @@ class IMG_PROCESSOR(Thread):
         # detections at an untested altitude/distance.
         self._arucoDict, self._arucoParams, self._detector = build_aruco_detector()
 
+        # CAM_CLAHE (2026-08-16): optional local-contrast boost applied ONLY to the
+        # image passed into ArUco detectMarkers() calls -- never to the raw `imgs`
+        # list itself, which ring-flow/KLT/dense-recover downstream all still need
+        # unmodified (their Lucas-Kanade brightness-constancy assumption would break
+        # under CLAHE's nonlinear per-tile remapping). This does NOT undo motion
+        # blur -- blur destroys edge information CLAHE has no way to reconstruct --
+        # it only helps borderline cases where an edge is soft-but-present or the
+        # frame is genuinely low-contrast (underexposed, not blacked out). Off by
+        # default. TESTED 2026-08-16 offline against 2 real hand-held recordings
+        # (2413 + 650 frames, both well-lit, blur-dominated failures, not
+        # underexposed) across a clip-limit/tile-size sweep -- CLAHE never beat
+        # the plain baseline (8.7/8.8% plain vs 7.8-8.6% with CLAHE on every
+        # config tried). Confirms it doesn't help THIS failure mode (blur, not
+        # contrast). Still untested against a genuinely underexposed-but-not-
+        # blacked-out scene (no such footage recorded yet) -- leave off by
+        # default, don't expect it to fix the current decode-rate problem.
+        self._clahe_on = os.environ.get("CAM_CLAHE", "0") == "1"
+        if self._clahe_on:
+            self._clahe = cv2.createCLAHE(
+                clipLimit=float(os.environ.get("CAM_CLAHE_CLIP_LIMIT", "2.0")),
+                tileGridSize=(int(os.environ.get("CAM_CLAHE_TILE_SIZE", "8")),) * 2)
+
         # Flags and counters
         self._STAY_OPEN = True
         self.FEATURE_IS_VISIBLE = False
@@ -1199,6 +1221,11 @@ class IMG_PROCESSOR(Thread):
         self._dense_recover_active = used_dense
         return new_results
 
+    def _clahe_prep(self, img):
+        """Local-contrast boost for detection only -- see CAM_CLAHE comment in
+        __init__. No-op (returns img unchanged) unless CAM_CLAHE=1."""
+        return self._clahe.apply(img) if self._clahe_on else img
+
     def _detect_markers(self, imgs):
         """ArUco detection with an ROI-crop fast path around the last locked
         marker location. Returns the same [(corners, ids, rejected), ...]
@@ -1214,11 +1241,12 @@ class IMG_PROCESSOR(Thread):
             y1 = min(_mh, int(_c_main[:, 1].max()) + _margin_main)
             if x1 > x0 and y1 > y0:
                 crops = [img[y0:y1, x0:x1] for img in imgs]
+                crops_det = [self._clahe_prep(c) for c in crops] if self._clahe_on else crops
                 if self._detector is not None:
-                    roi_results = [self._detector.detectMarkers(c) for c in crops]
+                    roi_results = [self._detector.detectMarkers(c) for c in crops_det]
                 else:
                     roi_results = [cv2.aruco.detectMarkers(c, self._arucoDict, parameters=self._arucoParams)
-                                    for c in crops]
+                                    for c in crops_det]
                 if all(r[0] for r in roi_results):
                     _off = np.array([x0, y0], dtype=np.float32)
                     main_results = [(tuple(corner + _off for corner in corners), ids, rejected)
@@ -1255,11 +1283,12 @@ class IMG_PROCESSOR(Thread):
             # Full-frame search on the main stream: first lock, ROI miss this
             # call, or too many consecutive ROI misses (cleared above).
             self._fullframe_searches += 1
+            imgs_det = [self._clahe_prep(img) for img in imgs] if self._clahe_on else list(imgs)
             if self._detector is not None:
-                main_results = [self._detector.detectMarkers(img) for img in list(imgs)]
+                main_results = [self._detector.detectMarkers(img) for img in imgs_det]
             else:
                 main_results = [cv2.aruco.detectMarkers(img, self._arucoDict, parameters=self._arucoParams)
-                                 for img in imgs]
+                                 for img in imgs_det]
         # KLT corner-tracking fallback - fills in the locked marker for any
         # image ArUco couldn't decode it in.
         return self._klt_fallback_fill(imgs, main_results)

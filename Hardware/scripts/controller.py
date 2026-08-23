@@ -118,21 +118,39 @@ class Controller(Thread):
         # GT-FEEDBACK scaffold (PLASMC_GT_FEEDBACK=1): replace perception s/h with the
         # exact V-frame ground truth from the Gazebo poses, to isolate CONTROL from
         # PERCEPTION. See src/gt_feedback.py + tools/validate_gt_feedback.py.
+        #
+        # HARDWARE analog (PLASMC_HW_POS_FEEDBACK=1): same isolation test, but on
+        # hardware there is no Gazebo GT -- instead uses the PX4 EKF's own local
+        # position/attitude (FC.getPosBody/getQuat) plus a fixed, once-measured
+        # marker NED point. This is NOT true ground truth (it's only as good as the
+        # EKF estimate -- see project memory on GPS/PDOP drift), so it's a SEPARATE
+        # env var from PLASMC_GT_FEEDBACK to avoid conflating the two tests. See
+        # src/hw_pos_feedback.py. Mutually exclusive with PLASMC_GT_FEEDBACK; if both
+        # are set, GT_FEEDBACK (the Gazebo path) wins.
         self._pose_node = pose_node
         self._gt_feedback = None
-        if os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1":
+        _gt_on = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
+        _hw_on = os.environ.get("PLASMC_HW_POS_FEEDBACK", "0") == "1"
+        if _gt_on or _hw_on:
             if pose_node is None:
-                print("[controller] PLASMC_GT_FEEDBACK=1 but no pose_node passed — DISABLED")
-            else:
+                _flag = "PLASMC_GT_FEEDBACK" if _gt_on else "PLASMC_HW_POS_FEEDBACK"
+                print(f"[controller] {_flag}=1 but no pose_node passed — DISABLED")
+            elif _gt_on:
                 from gt_feedback import GTFeedback
                 self._gt_feedback = GTFeedback()
+                _flag_label = "PLASMC_GT_FEEDBACK"
+            else:
+                from hw_pos_feedback import HWPosFeedback
+                self._gt_feedback = HWPosFeedback()
+                _flag_label = "PLASMC_HW_POS_FEEDBACK"
+            if self._gt_feedback is not None:
                 # PER-CHANNEL GT ABLATION (2026-07-04): GT_ABLATE = comma-list of channels to take
                 # from GT, REST from perception — isolate the binding perception signal one at a time.
                 # Channels: s (centroid xy), h (lateral flow xy), hz (loom), yaw (alpha), wz (yaw rate).
                 # Unset/empty/'all' -> full GT-FB (back-compat). e.g. GT_ABLATE=h -> only flow from GT.
                 _abl = os.environ.get("GT_ABLATE", "all").strip().lower()
                 self._gt_ablate = set() if _abl in ("all", "") else set(c.strip() for c in _abl.split(","))
-                print(f"[controller] PLASMC_GT_FEEDBACK=1 — GT channels: {_abl} (perception for the rest)")
+                print(f"[controller] {_flag_label}=1 — GT channels: {_abl} (perception for the rest)")
 
         # ---------------- MATLAB-aligned gains ----------------
         # Normalized pixel-error half-range (MATLAB: K_ctrl.p_10 = [res(2)/2/f; res(1)/2/f])
@@ -219,7 +237,7 @@ class Controller(Thread):
         self._N       = np.diag(pa("N",      0.1, 0.1, 0.1))   # N_xy 0.02->0.1 BAKED 2026-06-25 (user): REMOVES the frozen-kappa_xy band-aid (N=0.02 -> tau=1/(N*P)=33s >> 7s descent -> kappa_xy never adapts AND inadvertently CAPS the terminal switching by being too slow to ramp). N=0.1 (tau~7s) wakes kappa_xy -> tighter descent s_e_n BUT exposes the terminal: at the deck ζ_h explodes -> the fast κ-ODE ramps κ_xy 0.42->13.5 -> a_u_xy 64x -> launch -> REGRESSES tally 7/0/1 -> 4/2/3 (gate 175559 vs 145330). The terminal is the actuator wall ([[feedback_terminal_smc_actuator_wall]]) -> fix via velocity damping (flow funnel / arrest v_lat early), NOT the frozen kappa. P_xy=1.5 (leakage) bounds kappa_eq=θG|σ|/P. N_z=0.1: a LEGITIMATE PX4-specific divergence from MATLAB vdf_params (P.N_z=0.02), NOT a stale bug. VDF-parity A/B 2026-06-22 (Nz_IC2, N=15, clean combined baseline) REJECTED N_z=0.02: it RAISED terminal descent |vz| spikes (vzmax med 3.57→5.10, p90 6.56→9.59) + regressed sub-meter 5→3/15 + TL 1→3. Reason: PX4's SITL descent is only ~2s so κ_z is ADAPTATION-RATE-LIMITED — faster N_z=0.1 ramps κ_z up in time for terminal z-BRAKING; the slow VDF 0.02 under-brakes (MATLAB's slower dynamics make 0.02 right THERE). N = κ-ODE adapt rate (dκ/dt=Θ·N·G·|σ|−N·P·κ). Like chi_r=0.5 vs 0.85, a SITL-timing divergence. Do NOT re-align to 0.02.
         self._P       = np.diag(pa("P",      1.5, 1.5, 5.0))     # P_xy 5->1.5 (2026-06-12 Combo bake): MATLAB parity; paired with KP=5 the lateral kappa stays bounded without the over-gained P=5
         self._kappa_0 =         pa("KAPPA0", 0.5, 0.5, 1.0)     # KAPPA0_xy 0.125->0.5 (gain-chain crossing brake); KAPPA0_Z 0.25->1.0 (2026-06-13 soft-config bake): the BOOTSTRAP value — z braking authority from t=0 -> soft touchdown (vel 4.4->1.3-1.8 m/s) AND prevents the E_z=0.1 κ_z ratchet
-        self._kappa_max = pa("KAPPA_MAX", 1e6, 1e6, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones.
+        self._kappa_max = pa("KAPPA_MAX", 30.0, 30.0, 3.0)                # KAPPA_MAX_Z=3.0 (REVERTED from 10.0, 2026-06-13): the IC2-5 gate CONFIRMED 10.0 is net-negative — κ_z ran to 10 in the drift/hard reps (IC3_rep4 11.5 m/s, IC4) where 3.0 would have held it (more violent), while clean soft reps sit at κ_z~1 (cap irrelevant). The 3.0 backstop is load-bearing in bad reps, inert in good ones. KAPPA_MAX_XY 1e6->30.0 (2026-08-19, defense-in-depth alongside the hw_pos_feedback.py s_xy clamp): real hardware flights (2026-08-19) showed kappa_xy detonating to 25-29 and pinning there for 10-28s once the depth-floor bearing spike (see hw_pos_feedback.py's PLASMC_HW_S_MAX comment) fed it a large error — X/Y were previously uncapped BY DESIGN (unlike Z) with no backstop at all. 30.0 sits above every legitimate-tracking kappa_xy value observed in this dataset (max ~11-12 outside the detonation events) but well below the uncapped 1e6, so it only bites during a genuine runaway, not normal large-IC tracking.
         self._dw_max    = float(os.environ.get("PLASMC_DW_MAX", "30.0"))   # physical clamp on |dw| (rad/s²) for the c-term feedforward
         # Cap on the |omega_dot x s| c-term sub-term (the angular-accel feedforward). 0 = OFF (no cap).
         # dw is already clamped to dw_max, but omega_dot x s still explodes when the centroid s is LARGE
@@ -710,7 +728,29 @@ class Controller(Thread):
         count default (30) matches roughly the same ~1s window
         MARKER_LOSS_GRACE's default uses at this loop's typical rate;
         override via CBF_CORNERS_STALE_FRAMES if the live rate differs
-        meaningfully."""
+        meaningfully.
+
+        BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-08-19): this flag is
+        purely a real-perception signal (_cbf_corners_none_streak counts
+        missing ArUco/PlanarFeatureMap corners) -- it has no relationship to
+        the analytic s/h fed in by gt_feedback.py / hw_pos_feedback.py, but
+        it was still gating kappa's adaptive-growth term (see the
+        sigma_for_kappa call below) even in that mode. Real hardware data
+        (2026-08-19 A/B, Test_Data/Landing/2026-08-19) showed this WAS
+        biting: every run where real corners went stale for long stretches
+        had kappa pinned at exactly its KAPPA0 bootstrap value (0.5) for the
+        whole flight -- not decaying to a settled low value, literally never
+        growing once -- while a minority of runs where perception happened
+        to stay non-stale long enough saw kappa actually respond (correctly)
+        to the real, still-diverging s_e_n error. The isolation intent of
+        HW_POS_FEEDBACK (isolate CONTROL from the PERCEPTION ceiling) was
+        being defeated by this one remaining consumer of real corner state.
+        self._gt_feedback is not None iff either isolation mode is active
+        (see its assignment above) -- treat corners as never stale there,
+        the same way FEATURE_IS_STALE/visibility gating was already bypassed
+        for search-climb/abort in hardware_landing.py's _HW_POS_FEEDBACK_ACTIVE."""
+        if self._gt_feedback is not None:
+            return False
         _frames = int(os.environ.get("CBF_CORNERS_STALE_FRAMES", "30"))
         return getattr(self, "_cbf_corners_none_streak", 0) >= _frames
 
@@ -2005,9 +2045,32 @@ class Controller(Thread):
         # earlier this session, validated both by unit test and live on the Pi) is exactly
         # the "no valid feature data" signal this needs -- gating on it directly parallels
         # the existing FEATURE_IS_STALE-gated behavior elsewhere in this class.
-        if len(self._dt) > 0 and not self.CBF_CORNERS_STALE:
+        # DECAY-DURING-STALE FIX (2026-08-17): the freeze above blocks BOTH terms of the
+        # ODE while stale -- the untrustworthy growth term (correct to block) AND the pure
+        # leakage term -N@P@kappa (WRONG to block: it depends only on kappa itself, not on
+        # any measurement, so there's no reason staleness should suppress it too). Root-
+        # caused live: run "12-26-42" (2026-08-17) had kappa_Y ratchet 0.31->25.07 over
+        # ~8s of real (non-stale) tracking against a genuinely large offset -- correct
+        # adaptive behavior for a real large-error IC (e.g. the marker not being where the
+        # controller initially assumed -- a VALID operating condition, not a fault to
+        # engineer away) -- then corners went stale for the remaining ~10s of the flight,
+        # and the pre-existing freeze held kappa_Y at that exact peak value bit-for-bit for
+        # the whole remainder, with no path back down. An unrelated later transient (a
+        # slew-limited-but-still-nonzero EKF position glitch) then hit while kappa was
+        # still parked at 25x nominal, producing an a_u spike of ~-5964 (verified: a_u =
+        # -G^-1@a_v reproduces the logged spike exactly from the logged G(t)/a_v(t)).
+        # Fix: keep integrating through staleness, but pass sigma=0 so ONLY the leakage
+        # term acts -- kappa relaxes toward its decay equilibrium while corners are
+        # unavailable, and growth re-engages immediately (no reset/delay needed) the
+        # instant a real sigma is available again on the next non-stale tick. This does
+        # NOT cap or restrict how large kappa can legitimately grow in response to a real,
+        # sustained large error -- it only removes the ability for a PAST peak to remain
+        # frozen in place once the measurements that justified it are gone.
+        if len(self._dt) > 0:
+            sigma_for_kappa = (self._sigma[-1] if not self.CBF_CORNERS_STALE
+                                else np.zeros_like(self._sigma[-1]))
             new_kappa = RK5(self._kappaSolver, t, self._kappa[-1],
-                            [self._sigma[-1], theta_ctrl], self._dt[-1])
+                            [sigma_for_kappa, theta_ctrl], self._dt[-1])
             if hasattr(self, '_contained'):
                 new_kappa[self._contained] = self._kappa[-1][self._contained]
             self._kappa.append(np.minimum(new_kappa, self._kappa_max))
@@ -2325,7 +2388,33 @@ class Controller(Thread):
         # BODY_YAW_SOURCE=compass for the legacy manuscript behaviour. s[3]->yaw map is
         # env-tunable (K,B). Falls back to compass when no marker (len(_s)==0). Only
         # valid with the moment-2π alpha (s[3]≈world yaw); see moment-yaw-canonical.
-        if os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha" and len(self._s) > 0:
+        #
+        # BYPASS under GT_FEEDBACK/HW_POS_FEEDBACK (2026-08-21): BODY_YAW_ALPHA_K/_B
+        # (default K=-0.949) is a REAL-PERCEPTION calibration constant (output-cal,
+        # derived against real ArUco pixel-feature alpha, which has an inverse
+        # relationship to true yaw due to camera geometry -- hence the negative
+        # slope). Under an analytic-feedback mode (self._gt_feedback is not None),
+        # `alpha` (s[3]) is NOT a perception feature -- hw_pos_feedback.py/gt_feedback.py
+        # compute it directly as the vehicle's own true yaw (the static/GT target has
+        # no tracked orientation of its own, so relative-yaw = the vehicle's own yaw,
+        # sign convention PLASMC_GT_ALPHA_SIGN, default +1). Applying K=-0.949 to an
+        # already-true yaw value roughly SIGN-FLIPS it (e.g. true yaw -18deg ->
+        # yaw_c=-0.949*(-18)=+17deg) -- confirmed root cause of two symptoms in the
+        # 2026-08-21 hardware batch: (1) the roll-vs-pitch actuator-saturation
+        # asymmetry (roll saturating ~17x more than pitch across every run) and (2) a
+        # persistent ~25-30deg phase bias between the commanded lateral correction and
+        # the TRUE radial position error (measured via real telemetry vs marker
+        # snapshot), which manifested as the drone orbiting/circling the marker
+        # instead of converging straight in (large single loops, 140-341deg net
+        # rotation, same CCW-dominant direction essentially every flight -- because
+        # takeoff yaw itself clustered tightly at -17 to -19deg every launch, so the
+        # resulting sign-flip error was always the same direction too). Force the
+        # compass path in analytic-feedback modes -- there is no perception-drift
+        # problem to compensate for there in the first place, so the alpha-yaw
+        # mechanism (and its perception-only K/B calibration) simply doesn't apply.
+        _yaw_source_is_alpha = (os.environ.get("BODY_YAW_SOURCE", "alpha") == "alpha"
+                                 and self._gt_feedback is None)
+        if _yaw_source_is_alpha and len(self._s) > 0:
             # NEGATIVE slope: the compass yaw euler[2] we replace is NED, which is
             # ANTI-correlated with alpha (alpha≈+0.949·GT_yaw_ENU, euler[2]_NED≈
             # -GT_yaw_ENU). yaw_alpha must move WITH psi_d as alpha falls (like the
