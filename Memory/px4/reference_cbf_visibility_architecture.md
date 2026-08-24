@@ -205,6 +205,21 @@ downstream SYMPTOM surfacing an old, still-open one.
 window, while the FAIL reps' doesn't. This would close the causal chain from "known lateral-
 convergence deficiency" through "DRIFT_OFF" to "the specific false touchdown-latch event."
 
+**CONCURRENT WORK (2026-08-24, another session)**: implementing a fix that slows descent when
+`DRIFT_OFF` is active, using this finding as motivation. Two cautions flagged for that work,
+both grounded in this session's own evidence, not speculation:
+1. `DRIFT_OFF` fires ~22-26% of the time even in the SUCCESSFUL rep, not just failures -- any
+   slow-descent response will engage frequently during normal operation, not just as a rare
+   emergency case. Test that it doesn't degrade landing time/precision on the majority of
+   flights where `DRIFT_OFF` fires transiently but recovery still happens fine anyway (which,
+   per the finding above, is what actually distinguishes SP from FAIL -- not `DRIFT_OFF` itself).
+2. **Real risk of reintroducing the Gazebo ODE auto-sleep bug** (see
+   [[project_20260823_td_spike_regression]]): sustained near-zero-velocity dwell causes Gazebo's
+   physics engine to auto-disable the rigid body. Any "slow/pause descent" response that holds
+   low velocity for more than a couple frames should be explicitly tested for that exact
+   signature (bit-frozen `Ground_Truth.npy` position across consecutive samples while `/clock`
+   keeps advancing) before being trusted.
+
 **Why:** three architecture/methodology misreads in one session (conflating rho_fov with the real
 barrier; proposing to tune deprecated funnel params; a Phase-2 ground-truth check that passed
 13/13 while being provably non-discriminating) all came from reasoning about the CBF, or about
