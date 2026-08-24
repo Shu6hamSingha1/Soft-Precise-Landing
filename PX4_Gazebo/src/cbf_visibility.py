@@ -129,6 +129,17 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         that ``I_a[:2]`` is likewise un-capped. ``None`` on the Phase-2 fallback. The caller can build
         the desired attitude directly from this (Fix B) instead of round-tripping
         through ``I_a`` + the LPF: ``rd3 = [-Rz(yaw)@th_safe, 1]`` normalized.
+    th_desired : (2,) ndarray or None
+        The UNCONSTRAINED desired lean vector (``Rz(-yaw)@(a_xy/a_z)``, image axes),
+        i.e. ``th_safe`` before the FoV-box projection loop. ``None`` on the Phase-2
+        fallback (no projection ran, so "unmet demand" isn't a meaningful concept
+        there). 2026-08-24 (AZ VISIBILITY FILTER v2, user design): the caller uses
+        ``dtheta = th_desired - th_safe`` — how much lateral authority the
+        visibility constraint is actively suppressing right now — to drive a
+        POST-CBF descent-rate slowdown (replaces the earlier loom-margin-prediction
+        approach): when the CBF is fighting the lateral controller hard, slow
+        descent to buy the lateral loop time to converge instead of pressing on
+        blind to the conflict.
     """
     if env is None:
         env = os.environ
@@ -136,6 +147,7 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
     a_z = abs(I_a[2])
     ok = False
     th_safe = None
+    th_desired = None
     try:
         if corners is None:
             raise ValueError("no corners")
@@ -189,6 +201,9 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])                # Rz(+90deg)
         th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current image-axis tilt
         th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # theta_d = Rz(-yaw)@(a_xy/a_z)
+        th_desired = th.copy()   # UNCONSTRAINED desired tilt, before the FoV-box projection below
+                                  # mutates th -- see this function's return-value doc for dtheta=
+                                  # th_desired-th_safe (2026-08-24, AZ VISIBILITY FILTER v2)
         # --- lean-vector -> rotation-axis correction (CBF_LW_ROT) ---
         # L_w couples the body ANGULAR-RATE vector omega_rp to the feature flow
         # (cr_dot = L_w @ omega_rp), but theta here is the LEAN-direction vector
@@ -254,4 +269,4 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         a_xy_n = np.linalg.norm(I_a[:2])
         if a_xy_n > a_xy_lim and a_xy_n > 1e-9:
             I_a[:2] = a_xy_lim * I_a[:2] / a_xy_n
-    return I_a, theta_cone, ok, th_safe
+    return I_a, theta_cone, ok, th_safe, th_desired

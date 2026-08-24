@@ -403,6 +403,16 @@ class CrossMarkerPerception:
         self._bridge_anchor_cell_id = None        # _prev_flow_cell_id at that same moment (for cell_id-matched displacement)
         self._bridge_anchor_pts = None            # _prev_flow_pts at that same moment (parallel to _bridge_anchor_cell_id)
         self._bridge_streak = 0
+        # VALIDATION DIAGNOSTIC (2026-08-24): direct log of bridge activity -- previously
+        # only inferable from Center Px continuity vs Detection Status, which doesn't
+        # distinguish "genuinely fresh" from "bridged". One entry per ACCEPTED bridge:
+        # (t, n_matched_pts, displacement_px). Empty if the bridge never fires/is disabled.
+        self._bridge_diag_log = []
+        # (t, reason, n_matched_pts_or_neg1, displacement_px_or_nan) per REJECTED attempt --
+        # added 2026-08-24 after a real IC5 flight showed 34-50 genuine miss frames (adequate
+        # point counts, fresh anchors) yet the bridge fired ZERO times -- this pinpoints which
+        # guard is actually blocking it instead of guessing.
+        self._bridge_reject_log = []
 
         # Output calibration (GT = cal @ raw), same convention as img_data.py's
         # _sensor_cal_hw / _sensor_cal_s -- the cross marker's h,w come from its
@@ -1262,9 +1272,11 @@ class CrossMarkerPerception:
         the implied displacement fails the plausibility check (reject, don't clip -- same
         philosophy as the ArUco PlanarFeatureMap rescue's own gate)."""
         if self._bridge_max_frames <= 0 or self._bridge_streak >= self._bridge_max_frames:
+            self._bridge_reject_log.append((self._last_t, 'streak_budget', -1, np.nan))
             return None
         if (self._bridge_anchor_center_px is None or self._bridge_anchor_cell_id is None
                 or self._prev_flow_cell_id is None or len(self._prev_flow_cell_id) == 0):
+            self._bridge_reject_log.append((self._last_t, 'no_anchor_or_no_curr_pts', -1, np.nan))
             return None
         # Match by cell_id (persists, subsetted, across consecutive miss frames -- see
         # _compute_hw's "no mask to resample against; just advance tracking") rather than by
@@ -1273,6 +1285,7 @@ class CrossMarkerPerception:
         curr_by_cell = dict(zip(self._prev_flow_cell_id.tolist(), self._prev_flow_pts))
         common = anchor_by_cell.keys() & curr_by_cell.keys()
         if len(common) < self._bridge_min_pts:
+            self._bridge_reject_log.append((self._last_t, 'too_few_matched_pts', len(common), np.nan))
             return None
         disp = np.array([curr_by_cell[c] - anchor_by_cell[c] for c in common])
         med_disp = np.median(disp, axis=0)
@@ -1283,8 +1296,11 @@ class CrossMarkerPerception:
         if self._bridge_anchor_bbox is not None:
             half_extent = 0.5 * max(self._bridge_anchor_bbox[2], self._bridge_anchor_bbox[3])
             if half_extent > 0 and np.linalg.norm(med_disp) > self._bridge_max_jump_ratio * half_extent:
+                self._bridge_reject_log.append(
+                    (self._last_t, 'implausible_jump', len(common), float(np.linalg.norm(med_disp))))
                 return None
         self._bridge_streak += 1
+        self._bridge_diag_log.append((self._last_t, len(common), float(np.linalg.norm(med_disp))))
         bridged_center = self._bridge_anchor_center_px + med_disp
         bridged_bbox = self._bridge_anchor_bbox
         if bridged_bbox is not None:
@@ -1550,6 +1566,16 @@ class CrossMarkerPerception:
         """TEMP DIAG 2026-08-15: (t, ring_active) per _compute_hw call -- see
         __init__'s _ring_active_log comment."""
         return list(self._ring_active_log)
+
+    def get_bridge_diag_log(self):
+        """VALIDATION DIAG 2026-08-24: (t, n_matched_pts, displacement_px) per ACCEPTED
+        center-bridge -- see __init__'s _bridge_diag_log comment."""
+        return list(self._bridge_diag_log)
+
+    def get_bridge_reject_log(self):
+        """VALIDATION DIAG 2026-08-24: (t, reason, n_matched_pts, displacement_px) per
+        REJECTED bridge attempt -- see __init__'s _bridge_reject_log comment."""
+        return list(self._bridge_reject_log)
 
     def get_z_v_log(self):
         """List of min(z_v) per _getVirtualPts call (2 per flow solve: prev_pts,
@@ -1828,6 +1854,12 @@ class CrossMarkerNode(Thread):
     def get_flow_diag_log(self):
         return self._perception.get_flow_diag_log()
 
+    def get_bridge_diag_log(self):
+        return self._perception.get_bridge_diag_log()
+
+    def get_bridge_reject_log(self):
+        return self._perception.get_bridge_reject_log()
+
     def get_radial_diag_log(self):
         return self._perception.get_radial_diag_log()
 
@@ -1882,6 +1914,8 @@ class CrossMarkerNode(Thread):
             "Point Diag Log": self._perception.get_point_diag_log(),
             "Radial Diag Log": self._perception.get_radial_diag_log(),
             "Ring Active Log": self._perception.get_ring_active_log(),
+            "Bridge Diag Log": self._perception.get_bridge_diag_log(),
+            "Bridge Reject Log": self._perception.get_bridge_reject_log(),
         }
 
     def getParams(self):

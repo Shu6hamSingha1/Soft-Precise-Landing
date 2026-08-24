@@ -146,7 +146,7 @@ async def main():
                     a_xy = a_z * np.array([cz*theta_unsafe[0] - sz*theta_unsafe[1],
                                            sz*theta_unsafe[0] + cz*theta_unsafe[1]])
                     I_a = np.array([a_xy[0], a_xy[1], -a_z])
-                    _, _, ok, th_safe = cbf2_filter(I_a.copy(), R, R33, yaw, corners,
+                    _, _, ok, th_safe, _th_des = cbf2_filter(I_a.copy(), R, R33, yaw, corners,
                                                     center, focal, center/focal,
                                                     np.deg2rad(60.0), 0.0, DT, np.zeros(2), cbf_state)
                     theta_safe = th_safe if th_safe is not None else theta_unsafe

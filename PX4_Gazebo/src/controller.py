@@ -181,6 +181,21 @@ THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
 # clip [0,1] can actually deliver).
 A_CAP = THRUST_MAX_N * THRUST_MARGIN / mass
 
+# THETA_CAP_DEG_DERIVED (2026-08-23): the manuscript's theta_cap=60 deg was derived from
+# an ASSUMED 2x-hover-thrust actuator margin (theta_cap = arccos(hover/(2*hover)) is
+# EXACT at 60 deg) -- but neither the old unvalidated T_max~31.8N nor the new measured
+# T_max=33.85N actually support a 2x margin: A_CAP/g is only ~1.39x (with THRUST_MARGIN
+# applied, ~1.63x without it). At the manuscript's 60 deg, a commanded tilt near the cap
+# demands total thrust g/cos(60)=2g, which EXCEEDS the real A_CAP (1.39x g) -- i.e. the
+# deliverable-tilt-cap saturation (controller.py's own theta_cap enforcement below) could
+# request more lateral authority than the vehicle can actually deliver at hover-equivalent
+# vertical thrust, silently outside the regime the visibility CBF's forward-invariance
+# proof assumes (deliverable tilt authority dominates boundary drift). Derived here
+# (instead of hardcoded) so it stays self-consistent if THRUST_MAX_N/THRUST_MARGIN/mass
+# ever change again the way T_max already has once. Falls back to 60.0 (the old value) if
+# A_CAP <= g (degenerate/misconfigured thrust setup -- arccos would be undefined).
+THETA_CAP_DEG_DERIVED = float(np.rad2deg(np.arccos(g / A_CAP))) if A_CAP > g else 60.0
+
 # Clamp |S| < 1 - S_MARGIN to keep log-barrier finite (MATLAB uses 0.05 margin)
 S_MARGIN = 0.05
 
@@ -456,7 +471,7 @@ class Controller(Thread):
         # Log FoV / funnel env vars that can silently override behaviour and are NOT
         # covered by the per-axis checker above (e.g. THETA_FLOOR_DEG).
         _fov_vars = [
-            ("PLASMC_THETACAP_DEG",  "60.0"),
+            ("PLASMC_THETACAP_DEG",  f"{THETA_CAP_DEG_DERIVED:.1f}"),   # BAKED 2026-08-23, was "60.0"
             ("PLASMC_THETA_FLOOR_DEG", "60.0"),
             ("FLOW_FUSE_RING",       "1"),
             ("PLASMC_SEN_FUNNEL",    "1"),
@@ -541,7 +556,15 @@ class Controller(Thread):
         # ~290px). Constant rho_fov_0 = a fixed near-camera-FoV visibility limit; precision/convergence
         # is the SMC's job, not the visibility funnel's. Set PLASMC_LFOV>0 to restore the decay. (2026-06-05)
         self._l_fov     = float(os.environ.get("PLASMC_LFOV", "0.0"))
-        self._theta_cap   = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", "60.0")))
+        # BAKED 2026-08-23: default 60.0 -> THETA_CAP_DEG_DERIVED (see its top-of-file
+        # comment) -- 60 deg assumed a 2x-hover-thrust margin the measured A_CAP doesn't
+        # support (~1.39x with THRUST_MARGIN applied). PLASMC_THETACAP_DEG still overrides.
+        self._theta_cap   = np.deg2rad(float(os.environ.get("PLASMC_THETACAP_DEG", f"{THETA_CAP_DEG_DERIVED:.1f}")))
+        # Left at 60.0 (not re-derived) after the 2026-08-23 theta_cap bake: the design
+        # intent is floor>=cap so min(theta_floor, theta_cap) collapses to theta_cap,
+        # unconditionally disabling the d_min-collapsing-cone term (see the theta_cone
+        # site below) -- that still holds automatically since theta_cap dropped BELOW
+        # 60, not above it. Only revisit if theta_cap is ever pushed above 60 again.
         self._theta_floor = np.deg2rad(float(os.environ.get("PLASMC_THETA_FLOOR_DEG", "60.0")))
         self._DH_D_MAX    = float(os.environ.get("PLASMC_DH_D_MAX", "50.0"))
         # Lateral approach-velocity governor (2026-06-14). The outer PID demand
@@ -1387,14 +1410,11 @@ class Controller(Thread):
         self._rho_fov_log = []
         self._d_min_fov_log = []
         self._theta_cone_log = []
-        # AZ VISIBILITY LIFT CORRECTION diagnostics (2026-08-23): _az_violation was
-        # only ever visible indirectly via I_a[2]-I_a_raw[2], which also conflates the
-        # A_CAP magnitude-cap rescale, the upright guard, terminal-stabilization holds,
-        # and the tau_ia LPF -- not enough to confirm the correction itself is firing
-        # for the right reason. Log the raw terms directly.
-        self._az_violation_log = []
-        self._az_ddelta_log = []
-        self._az_margin_pred_log = []
+        # AZ VISIBILITY FILTER v2 diagnostic (2026-08-24): dtheta = ||th_desired-th_safe||,
+        # the lateral authority the visibility CBF is suppressing this cycle -- see the
+        # cbf2_filter call site's comment. Replaces the 2026-08-23 az_violation/az_ddelta/
+        # az_margin_pred logs (that mechanism was removed, not just superseded).
+        self._dtheta_az_log = []
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -1431,6 +1451,12 @@ class Controller(Thread):
         self._cbf_drift_off = False
         self._cbf_drift_axis = None   # (axis 0/1, sign) of the worst breach, for the pull-back
         self._cbf_drift_pullback_frac = float(os.environ.get("CBF_DRIFT_PULLBACK_FRAC", "0.4"))
+        # TEMP DIAG 2026-08-24 (cross-marker IC5 false-touchdown investigation): d_min_fov
+        # alone can't distinguish OVERFLOW (benign, spanning breach) from DRIFT_OFF (real
+        # visibility failure, one-sided breach) -- neither was logged before this. (t,
+        # overflow, drift_off, d_min_fov) per control step, so the elevated d_min_fov=0
+        # fraction seen in IC5's false-positive reps can be attributed to the right cause.
+        self._cbf_overflow_diag_log = []
         # CBF COAST-HOLD GRACE (2026-07-30, moving-target starvation investigation, default OFF
         # pending validation): the 2026-07-17 freshness gate (see FEATURE_PTS_FRESH block below)
         # made d_min_fov snap to 0.0 -- "no tilt allowed" -- the INSTANT _feature_pts goes stale,
@@ -2978,6 +3004,10 @@ class Controller(Thread):
             except (IndexError, ValueError, TypeError):
                 d_min_fov = 0.0
 
+        self._cbf_overflow_diag_log.append(
+            (float(self._t[-1]) if len(self._t) > 0 else float('nan'),
+             bool(self._cbf_overflow), bool(self._cbf_drift_off), float(d_min_fov)))
+
         # 4) Cone angle = current tilt + tilt-headroom-before-the-marker-exits, capped.
         focal_px = float(self._img_node.focal[0])
         # Visibility tilt-cone headroom = current tilt + how far we can still tilt
@@ -3008,96 +3038,6 @@ class Controller(Thread):
         # below gravity.
         if I_a[2] >= 0:
             I_a[2] = -3.0
-
-        # AZ VISIBILITY LIFT CORRECTION (2026-08-23, user design): cbf2_filter below
-        # bounds ax/ay against the marker leaving the FoV, but az has never had any
-        # visibility feedback at all -- pure descent can loom the marker out of frame
-        # even with zero lateral drift. This is a REACTIVE proportional correction,
-        # not a predictive QP like the lateral one: az->loom is relative-degree-2
-        # (az -> Vz -> Zdot -> loom), and modeling that step needs depth (Z), which
-        # this project's scale-free/depth-free hard constraint forbids. The sign is
-        # unambiguous regardless of that gap (more lift always slows the physical
-        # closing rate, hence always reduces loom-rate), so only the gain needs
-        # tuning, not the direction. dt_last hoisted here (was computed just before
-        # the cbf2_filter call below) so both this correction and cbf2_filter share
-        # one dt_last read this cycle.
-        #
-        # Uses the SAME measured loom-rate cbf_visibility.py tracks internally as
-        # state["ddelta_ref"] (delta2 = radius/focal, finite-differenced against
-        # last cycle's state["delta_prev"]) -- recomputed here, BEFORE cbf2_filter
-        # runs, from the same cbf_radius_phase2/focal/self._cbf_state inputs, so
-        # a_z (cbf2_filter's lateral scale factor, |I_a[2]|) already reflects the
-        # correction rather than being adjusted after the lateral QP already used
-        # the uncorrected value. Ordering matters here the same way it matters for
-        # A_CAP's magnitude rescale below: rd3/attitude direction is built from
-        # I_a's ratio, so whichever value of I_a[2] is "final" when direction gets
-        # computed is the one that actually governs delivered lean vs delivered lift.
-        # DETECTION-CONTINUITY GATE (2026-08-23, first live sweep): raw cbf_radius_phase2
-        # is NOT a continuous physical signal -- a fresh detection (after startup, or any
-        # gap/flicker) makes it jump discontinuously (e.g. MARKER_EXTENT_PX 10.81->56.48
-        # px in a single ~8ms tick, observed in test_data/AzLiftGain_IC1's first sweep),
-        # which a raw finite-difference misreads as an enormous "loom rate" -- same failure
-        # CLASS as the dh_d discrete-jump spikes DGATE's own 1-pole LPF exists to prevent
-        # (see this file's h_ref_eff/_dgate_g comment). That spurious spike fired a large,
-        # unwarranted lift correction right at the takeoff->descent handoff on ~20-40% of
-        # reps (I_a[2] burst to -12.2 vs hover -9.8), which then failed to ever re-engage a
-        # real descent (stalled at ~6m for the full timeout) or lost the marker shortly
-        # after -- both traced via d_min_fov staying near its ceiling for the REST of every
-        # examined flight, i.e. the correction was otherwise correctly inert; only this one
-        # startup transient caused the damage. Fix: only trust the finite-difference across
-        # two CONSECUTIVE genuine Phase-1 decodes (cbf_corners not None both this frame and
-        # last) -- any detection transition (start, resume-after-gap) contributes zero, same
-        # treatment a fully-None frame already got. Mirrors the streak-gated pattern already
-        # used for CBF_SMALL_SLOT_ON_FRAMES elsewhere in this file, not a new idiom.
-        dt_last = self._dt[-1] if len(self._dt) > 0 else None
-        _az_prev_valid = getattr(self, "_az_prev_corners_valid", False)
-        _az_curr_valid = cbf_corners is not None
-        if dt_last is not None and dt_last > 1e-6 and _az_prev_valid and _az_curr_valid:
-            _foc = np.asarray(self._img_node.focal, float)
-            _delta2_now = np.full(2, float(cbf_radius_phase2)) / _foc
-            _delta_prev = self._cbf_state.get("delta_prev")
-            _ddelta_now = (np.maximum((_delta2_now - _delta_prev) / dt_last, 0.0)
-                           if _delta_prev is not None else np.zeros(2))
-        else:
-            _ddelta_now = np.zeros(2)
-        self._az_prev_corners_valid = _az_curr_valid
-        _az_tau        = float(os.environ.get("PLASMC_AZ_TAU",        "0.3"))   # lookahead horizon (s), matches CBF_TAU's default
-        _az_margin_min = float(os.environ.get("PLASMC_AZ_MARGIN_MIN", "0.05"))  # tangent-unit safety buffer to hold at the lookahead
-        _az_lift_gain  = float(os.environ.get("PLASMC_AZ_LIFT_GAIN",  "20.0"))  # (m/s^2 of extra lift) per (tangent-unit of predicted violation); tunable, sign fixed by physics.
-        # Gain history: 20 (initial) -> 10 (2026-08-23, post detection-continuity-gate
-        # sweep) -> 20 (2026-08-23, post NO-DATA GUARD fix -- the 20->10 drop was decided
-        # on top of the still-buggy correction; test_data/AzLiftGain_IC1_fix3, the first
-        # sweep run AFTER the no-data guard, reversed the ranking entirely: gain=0 was the
-        # WORST arm (1/4 SP, one outright failed landing), gain=20 the BEST (4/5 SP, mean
-        # xy_err 0.016m, zero target_lost) vs gain=10's 2/5 SP with a catastrophic outlier
-        # (xy_err 2.23m). n=4-5 per arm -- the project's stated minimum, not a firm bar --
-        # so treat this as a direction, not a settled tune; a larger sweep would firm it up.
-        # NO-DATA GUARD (2026-08-23, real root cause -- the detection-continuity gate
-        # above did NOT fix this for MARKER_TYPE=aruco, the mode every sweep actually ran:
-        # cbf_radius_phase2 stays HARDCODED 0.0 for ArUco (only cross-marker ever sets it
-        # nonzero, see its own top-of-block comment), so _ddelta_now was ALREADY always
-        # zero regardless of that gate. The REAL trigger: d_min_fov is initialized 0.0 and
-        # only overwritten `if cbf_corners is not None` -- so on any frame the marker isn't
-        # decoded yet (pre-detection at takeoff, or a transient loss), margin_pred=0-0=0,
-        # which is BELOW margin_min=0.05 -> fires a violation from having NO DATA, not from
-        # any real close-to-the-edge measurement. At gain=50 that's 0.05*50=2.5 m/s^2 of
-        # unwarranted extra lift for the ENTIRE pre-detection window of every flight
-        # (matches the observed -12.2 vs hover -9.8 spike almost exactly: -9.8-2.5~=-12.3).
-        # "no data" must mean "don't correct", not "assume zero margin" -- skip entirely
-        # when cbf_corners is None, exactly like _ddelta_now's own None-frame treatment.
-        if cbf_corners is None:
-            _az_violation = 0.0
-            _margin_pred = None
-        else:
-            # d_min_fov is pixel-unit (theta_cone above divides it by focal_px for the
-            # same reason) -- convert to tangent units to match _ddelta_now before combining.
-            _margin_pred = d_min_fov / focal_px - float(np.max(_ddelta_now)) * _az_tau
-            _az_violation = max(0.0, _az_margin_min - _margin_pred)
-        if _az_violation > 0.0:
-            I_a[2] -= _az_lift_gain * _az_violation   # more negative I_a[2] = more lift = slower descent
-        self._az_violation_log.append(_az_violation)
-        self._az_ddelta_log.append(float(np.max(_ddelta_now)))
-        self._az_margin_pred_log.append(_margin_pred if _margin_pred is not None else float('nan'))
 
         # Low-pass the DESIRED accel BEFORE the CBF, so the QP re-imposes the hard FoV
         # bound on the FILTERED input (clean attitude, bound NOT smeared — filtering the
@@ -3137,14 +3077,39 @@ class Controller(Thread):
             _axis, _sign = self._cbf_drift_axis
             p_10_eff = self._p_10.copy()
             p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
-        # dt_last hoisted above (AZ VISIBILITY LIFT CORRECTION block, before the
-        # upright guard) so this call and that correction share one dt_last read.
+        dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
-        I_a, theta_cone, _cbf_ok, self._theta_safe = cbf2_filter(
+        I_a, theta_cone, _cbf_ok, self._theta_safe, _th_desired = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
             p_10_eff, theta_cone,
             dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2)
+        # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
+        # loom-margin-prediction approach entirely, not stacked on it). That approach used
+        # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for
+        # "is visibility at risk soon". This uses a direct one instead: dtheta =
+        # th_desired - th_safe is exactly how much LATERAL AUTHORITY the visibility CBF is
+        # suppressing RIGHT NOW (th_desired = the unconstrained tilt the SMC wanted;
+        # th_safe = what the FoV-box projection actually allowed) -- when the CBF is
+        # actively fighting the lateral controller, slow descent to buy the lateral loop
+        # time to converge instead of pressing on blind to the conflict. th_desired is
+        # None on the Phase-2 fallback (no projection ran -- "unmet demand" isn't a
+        # meaningful concept there), so dtheta=0 in that case: same "no data -> don't
+        # correct" philosophy the removed approach's no-data guard used. Scalar (norm),
+        # not per-axis, per user direction. MUST run here, right after cbf2_filter and
+        # BEFORE the theta_cap rescale below: theta_cap is a separate deliverability
+        # concern, not part of the visibility-conflict measurement dtheta captures. The
+        # adjustment lands in I_a[2] before the A_CAP magnitude-cap rescale further down,
+        # so that rescale's direction-consistency guarantee still covers the final value
+        # (see A_CAP's top-of-file comment for why an unprotected az adjustment can starve
+        # lateral authority once the combined thrust vector saturates).
+        _dtheta_gain = float(os.environ.get("PLASMC_DTHETA_AZ_GAIN", "10.0"))  # (m/s^2 of extra lift) per (rad of suppressed lateral demand); tunable, sign fixed by physics (more lift always slows descent), magnitude untuned
+        if self._theta_safe is not None and _th_desired is not None:
+            _dtheta_norm = float(np.linalg.norm(_th_desired - self._theta_safe))
+        else:
+            _dtheta_norm = 0.0
+        self._dtheta_az_log.append(_dtheta_norm)
+        I_a[2] -= _dtheta_gain * _dtheta_norm   # more negative I_a[2] = more lift = slower descent
         # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
         # it is a thrust-deliverability bound, not a visibility constraint. The CBF
         # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
@@ -3165,7 +3130,7 @@ class Controller(Thread):
         # independent of whether the resulting thrust demand is deliverable -- if
         # |thrust_vec| exceeds T_max, thrust clips downstream to T_max but attitude
         # keeps chasing the UNCLIPPED direction, silently under-delivering whichever
-        # axis that direction favored (this is exactly why the AZ LIFT CORRECTION above
+        # axis that direction favored (this is exactly why the AZ VISIBILITY FILTER above
         # is dangerous to leave unbounded: it shifts the ratio toward vertical, and
         # once saturated that steals delivered lateral accel from the visibility CBF).
         # Rescale the FULL vector (preserves direction, unlike clamping I_a[2] alone)
@@ -3483,6 +3448,7 @@ class Controller(Thread):
             "zeta(t)": self._zeta,
             "izeta(t)": self._izeta,
             "Fresh Gate Blocked N": self._fresh_gate_blocked_n,   # diag 2026-08-20, see _fresh_gate_integ
+            "CBF Overflow Diag Log": self._cbf_overflow_diag_log,  # diag 2026-08-24, see its own comment
             "G(t)": self._G,
             "theta(t)": self._theta,
             "sigma(t)": self._sigma,
@@ -3507,9 +3473,7 @@ class Controller(Thread):
             "d_min_fov(t)": self._d_min_fov_log,
             "theta_cone(t)": self._theta_cone_log,
             "theta_current(t)": self._theta_current_log,
-            "az_violation(t)": self._az_violation_log,
-            "az_ddelta(t)": self._az_ddelta_log,
-            "az_margin_pred(t)": self._az_margin_pred_log,
+            "dtheta_az(t)": self._dtheta_az_log,
         }
 
     def getImgData(self):
