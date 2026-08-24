@@ -168,20 +168,46 @@ def _cluster_line_angles(angles, max_clusters=3, merge_tol_deg=12.0):
     return clusters[:max_clusters]
 
 
-def _robust_fit_line(points, iters=3):
-    """Iterative Huber-weighted line fit through 2D points. Returns (vx, vy, x0, y0)."""
-    pts = np.asarray(points, dtype=np.float64)
-    weights = np.ones(len(pts))
+def _robust_fit_line(points, iters=3, outlier_thresh=2.5, min_keep_frac=0.3):
+    """Iterative Huber-weighted line fit through 2D points, with GENUINE
+    progressive outlier rejection. Returns (vx, vy, x0, y0, inlier_mask) where
+    inlier_mask is a bool array over the ORIGINAL `points` order.
+
+    BUGFIX (2026-08-24, robust feature-point selection): the previous version
+    computed per-point Huber weights from the residuals each iteration, then
+    immediately discarded them -- `pts = np.asarray(points, ...)` reset the
+    working set back to the FULL, unfiltered input on every pass, so the 3
+    "iterations" just refit cv2.fitLine(DIST_HUBER,...) on unchanged data 3x.
+    Any contamination admitted upstream by the angle-only cluster gate (e.g.
+    the drone's own cast shadow overlapping a marker line -- see the
+    2026-08-24 shadow-interference investigation) was never actually
+    excluded, only down-weighted WITHIN cv2.fitLine's own single-call
+    M-estimation (bounded influence, not rejection).
+
+    Now each pass genuinely refits on the surviving inlier subset: a point is
+    kept only while its perpendicular distance to the CURRENT fit is within
+    `outlier_thresh` times the median residual (a robust MAD-like scale).
+    Stops pruning (keeps the last good fit) if fewer than `min_keep_frac` of
+    the current points would survive, so a single bad iteration can't
+    collapse the fit to too few points."""
+    orig = np.asarray(points, dtype=np.float64)
+    idx = np.arange(len(orig))          # indices into `orig` still under consideration
     vx = vy = x0 = y0 = None
     for _ in range(iters):
+        pts = orig[idx]
+        if len(pts) < 2:
+            break
         line = cv2.fitLine(pts, cv2.DIST_HUBER, 0, 0.01, 0.01)
         vx, vy, x0, y0 = [float(v) for v in line]
-        # residuals: perpendicular distance from each point to the fitted line
         d = np.abs((pts[:, 0] - x0) * vy - (pts[:, 1] - y0) * vx)
         scale = np.median(d) + 1e-6
-        weights = 1.0 / (1.0 + (d / scale) ** 2)
-        pts = np.asarray(points, dtype=np.float64)
-    return vx, vy, x0, y0
+        keep = d <= outlier_thresh * scale
+        if keep.sum() < max(2, min_keep_frac * len(pts)):
+            break   # would over-prune -- keep this iteration's fit + point set as final
+        idx = idx[keep]
+    inlier_mask = np.zeros(len(orig), dtype=bool)
+    inlier_mask[idx] = True
+    return vx, vy, x0, y0, inlier_mask
 
 
 def _line_intersection(l1, l2):
@@ -463,7 +489,22 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         # unconstrained regardless of what angle it happens to land on.
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='insufficient_fit_points')
 
-    line_i, line_j = _robust_fit_line(pts_i), _robust_fit_line(pts_j)
+    vx_i, vy_i, x0_i, y0_i, mask_i = _robust_fit_line(pts_i)
+    vx_j, vy_j, x0_j, y0_j, mask_j = _robust_fit_line(pts_j)
+    line_i, line_j = (vx_i, vy_i, x0_i, y0_i), (vx_j, vy_j, x0_j, y0_j)
+    # ROBUST-SELECTED points (2026-08-24): _robust_fit_line's inlier mask drops
+    # perpendicular outliers to the converged fit -- e.g. contamination that
+    # passed the coarse angle-window gate above (_cluster_points_from_mask)
+    # but doesn't actually lie along the real marker line (the drone's own
+    # cast shadow overlapping an arm is the motivating case). These pruned
+    # points are what get stored/returned (line_points_i/j below), not the
+    # raw angle-gated set -- alpha's moment computation (cross_marker_
+    # perception.py's _unweighted_principal_angle) consumes these directly,
+    # so pruning here also protects alpha, not just the line fit/center.
+    pts_i = [p for p, keep in zip(pts_i, mask_i) if keep]
+    pts_j = [p for p, keep in zip(pts_j, mask_j) if keep]
+    if len(pts_i) < MIN_FIT_POINTS or len(pts_j) < MIN_FIT_POINTS:
+        return CrossMarkerDetection(None, None, False, bbox, fail_reason='insufficient_fit_points_post_prune')
     # POST-FIT near-parallel gate (2026-08-03): ang_i/ang_j (checked above, line ~319) is the
     # PRE-FIT Hough-segment cluster mean -- a different signal from the line _robust_fit_line
     # actually produces from the (much larger, angle-from-centroid-selected) mask-pixel set.
@@ -543,6 +584,27 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
                 pts_k = _cluster_points_from_mask(k)
                 if len(pts_k) < 2:
                     continue
+                # ROBUST-SELECTED stub points (2026-08-24): same rationale as the
+                # arm-line pruning above -- the coarse angle-window gate
+                # (_cluster_points_from_mask) only checks bearing-from-approx-
+                # center, not collinearity, so a contamination source sharing a
+                # similar bearing (e.g. the drone's own shadow falling across
+                # the stub near touchdown -- the motivating case for this fix)
+                # can leak into pts_k and, being far from center, dominates the
+                # quadratic-moment alpha computation downstream (cross_marker_
+                # perception.py's _unweighted_principal_angle). Only proceed
+                # with a candidate whose points collapse onto a single line
+                # (>=2 points survive _robust_fit_line's inlier pruning);
+                # otherwise this cluster is NOT a real stub -- try the next one
+                # instead of accepting contaminated points.
+                if len(pts_k) >= 4:   # _robust_fit_line needs >=2 pts; skip the
+                                       # refit for tiny clusters where pruning can't
+                                       # meaningfully distinguish signal from noise
+                    _, _, _, _, stub_mask = _robust_fit_line(pts_k)
+                    pts_k_pruned = [p for p, keep in zip(pts_k, stub_mask) if keep]
+                    if len(pts_k_pruned) < 2:
+                        continue
+                    pts_k = pts_k_pruned
                 pk = np.asarray(pts_k, dtype=np.float64)
                 # keep only points that do NOT sit near the already-found center
                 # (a true stub extends one-sided FROM the center, so its far endpoint
