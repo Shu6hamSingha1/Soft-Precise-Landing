@@ -1415,6 +1415,11 @@ class Controller(Thread):
         # cbf2_filter call site's comment. Replaces the 2026-08-23 az_violation/az_ddelta/
         # az_margin_pred logs (that mechanism was removed, not just superseded).
         self._dtheta_az_log = []
+        # theta_desired norm (2026-08-24 follow-up): logged separately from dtheta/theta_cone
+        # to directly compute the theta_safe/theta_desired ratio post-hoc -- see
+        # project_20260824_dtheta_az_filter_self_defeating_feedback memory, "not yet done" item.
+        # NaN when th_desired is None (Phase-2 fallback, no projection ran).
+        self._theta_desired_log = []
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -3109,6 +3114,7 @@ class Controller(Thread):
         else:
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
+        self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
         I_a[2] -= _dtheta_gain * _dtheta_norm   # more negative I_a[2] = more lift = slower descent
         # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
         # it is a thrust-deliverability bound, not a visibility constraint. The CBF
@@ -3474,6 +3480,7 @@ class Controller(Thread):
             "theta_cone(t)": self._theta_cone_log,
             "theta_current(t)": self._theta_current_log,
             "dtheta_az(t)": self._dtheta_az_log,
+            "theta_desired(t)": self._theta_desired_log,
         }
 
     def getImgData(self):
