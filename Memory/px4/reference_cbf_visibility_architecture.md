@@ -162,6 +162,24 @@ irrelevant while Phase-1 is active, which is nearly always.
      clearly-attributable margin violation. Do not consider this closed until that control fails
      as expected -- that's the acceptance criterion, not just "the nominal case passes."
 
+## `DRIFT_OFF` instrumented and confirmed live for cross-marker IC5 (2026-08-24)
+
+Added `self._cbf_overflow_diag_log` (`(t, overflow, drift_off, d_min_fov)` per control step,
+exposed as `"CBF Overflow Diag Log"` in `Control_Data.npy`) and re-ran cross-marker GT-FB IC2
+IC5 (n=3, `test_data/CrossMarkerGTFB_OverflowDiag_IC5/`). Result: **`OVERFLOW` is 0% in every
+rep -- it is genuinely `DRIFT_OFF` firing** (22-26% of control steps), not the benign
+marker-filling-frame case. This confirms the `p_10_eff` pullback (the one live path from the
+legacy `rho_fov` margin into the real barrier, see above) is actually engaging on IC5, not a
+theoretical possibility.
+
+**But `DRIFT_OFF` frequency alone does NOT separate success from failure**: the one SP rep
+(25.9% drift_off) and both FAIL reps (22.4%, 24.6% drift_off) are all in the same range --
+raw frequency isn't the discriminator. **Not yet checked, the natural next step**: whether
+`DRIFT_OFF` is active in the specific 3-frame window immediately before the false
+`h_z>0.0`-triggered touchdown latch fires in the FAIL reps (a TIMING correlation, not an
+overall-rate one) -- that would confirm vs. rule out the pullback as the proximate trigger of
+the spurious sign flip, rather than just a background condition present in both outcomes.
+
 **Why:** three architecture/methodology misreads in one session (conflating rho_fov with the real
 barrier; proposing to tune deprecated funnel params; a Phase-2 ground-truth check that passed
 13/13 while being provably non-discriminating) all came from reasoning about the CBF, or about
