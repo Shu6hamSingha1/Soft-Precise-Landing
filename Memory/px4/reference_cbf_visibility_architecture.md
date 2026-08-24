@@ -174,11 +174,36 @@ theoretical possibility.
 
 **But `DRIFT_OFF` frequency alone does NOT separate success from failure**: the one SP rep
 (25.9% drift_off) and both FAIL reps (22.4%, 24.6% drift_off) are all in the same range --
-raw frequency isn't the discriminator. **Not yet checked, the natural next step**: whether
-`DRIFT_OFF` is active in the specific 3-frame window immediately before the false
-`h_z>0.0`-triggered touchdown latch fires in the FAIL reps (a TIMING correlation, not an
-overall-rate one) -- that would confirm vs. rule out the pullback as the proximate trigger of
-the spurious sign flip, rather than just a background condition present in both outcomes.
+raw frequency isn't the discriminator.
+
+## ROOT CAUSE of `DRIFT_OFF` on IC5: it's a correct, downstream symptom of the ALREADY-KNOWN
+## unresolved lateral-convergence deficiency, not a CBF defect (2026-08-24)
+
+Correlated `drift_off=True`/`False` timestamps against `|s_e_n|` (lateral centering error) and
+`MARKER_EXTENT_PX`, same 3 reps. Identical pattern in all three:
+- `DRIFT_OFF=True`: `|s_e_n|~0.72` (far off-center -- the FoV edge is 1.0 in these units),
+  `MARKER_EXTENT_PX~211-215px`.
+- `DRIFT_OFF=False`: `|s_e_n|~0.24-0.25` (well-centered), `MARKER_EXTENT_PX~311-339px`.
+
+`DRIFT_OFF` fires exactly when the drone is badly off-center laterally -- extent is SMALLER
+during `DRIFT_OFF` (not larger), ruling out a marker-size/overflow explanation. **The CBF is
+correctly detecting a real visibility risk caused by insufficient lateral convergence, not
+misclassifying.** Onset timing is also nearly identical across all 3 reps regardless of eventual
+outcome (t~27.0s, 26.8s, 28.5s into ~35s flights) -- ruling out onset TIMING as the SP/FAIL
+discriminator too; what must differ is whether the vehicle recovers centering before a spurious
+loom sign-flip coincides with the still-off-center window, not whether/when it goes off-center.
+
+**This is the SAME lateral-convergence-rate deficiency already documented as unresolved** in
+[[project_20260813_cbf_extent_fix_followup]] / [[project_20260817_crossmarker_descent_stall_investigation]]
+("ring-sampling's limited effectiveness directly tied to the still-unsolved lateral-convergence-
+rate root cause"). IC5 (short 3m runway, fast descent) is that project's own documented "canary"
+for exactly this class of failure. `DRIFT_OFF` did not introduce a new problem -- it is a
+downstream SYMPTOM surfacing an old, still-open one.
+
+**Not yet done**: confirm the recovery-timing hypothesis directly -- check whether the SP rep's
+`|s_e_n|` actually drops back below the drift_off threshold before the loom sign-flip / touchdown
+window, while the FAIL reps' doesn't. This would close the causal chain from "known lateral-
+convergence deficiency" through "DRIFT_OFF" to "the specific false touchdown-latch event."
 
 **Why:** three architecture/methodology misreads in one session (conflating rho_fov with the real
 barrier; proposing to tune deprecated funnel params; a Phase-2 ground-truth check that passed
