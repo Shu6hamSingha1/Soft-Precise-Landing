@@ -39,7 +39,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/../run_logs"
 mkdir -p "$LOG_DIR"
 
-WORLD="rover"
+# WORLD/ROVER_MODEL overridable (2026-08-24) so this launcher can also drive a
+# stationary-or-moving rover carrying the cross-marker fiducial instead of the
+# default ArUco rover, e.g.: WORLD=rover_cross ROVER_MODEL=rover_cross MARKER_TYPE=cross
+WORLD="${WORLD:-rover}"
+ROVER_MODEL="${ROVER_MODEL:-rover_aruco}"
 
 # Pose topic: use the FULL /world/rover/pose/info (below), NOT dynamic_pose/info.
 # dynamic_pose/info only carries entities that MOVED that step, so its PoseArray
@@ -195,7 +199,7 @@ echo "[run] starting PX4 SITL rover (-i 1, airframe 4022, world $WORLD)..."
 setsid env $EXTRA_ENV_HEADLESS \
   PX4_SYS_AUTOSTART=4022 \
   PX4_GZ_MODEL_POSE="0,0" \
-  PX4_SIM_MODEL=rover_aruco \
+  PX4_SIM_MODEL="$ROVER_MODEL" \
   PX4_GZ_WORLD="$WORLD" \
   bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 1" \
   > "$LOG_DIR/px4_rover.log" 2>&1 &

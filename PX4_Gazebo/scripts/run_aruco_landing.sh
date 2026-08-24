@@ -29,6 +29,18 @@ if [ -n "$HEADLESS" ]; then
   echo "[run] HEADLESS mode: Gazebo will run server-only, QGC skipped."
 fi
 
+# CHASE_CAM=1 -> bridge the static chase camera (external view, from the
+# chase_cam sensor on the ground_plane link — see world .sdf) and start a
+# recorder that writes an mp4 to test_data/Test_Videos/chase_<ts>.mp4 for
+# RECORD_S seconds. Ported from run_rover_landing.sh's CHASE_CAM block;
+# gate/stop files are read generically by controller.py/landing_test.py.
+if [ "${CHASE_CAM:-0}" = "1" ]; then
+  export CHASE_GATE_FILE="${CHASE_GATE_FILE:-$LOG_DIR/chase_gate.flag}"
+  rm -f "$CHASE_GATE_FILE" 2>/dev/null
+  export CHASE_STOP_FILE="${CHASE_STOP_FILE:-$LOG_DIR/chase_stop.flag}"
+  rm -f "$CHASE_STOP_FILE" 2>/dev/null
+fi
+
 declare -a PIDS=()
 declare -A NAMES=()
 
@@ -150,6 +162,16 @@ start_bg bridge_pose ros2 run ros_gz_bridge parameter_bridge \
 start_bg bridge_image ros2 run ros_gz_bridge parameter_bridge \
   "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image@sensor_msgs/msg/Image@gz.msgs.Image" \
   --ros-args -r "/world/$WORLD/model/x500_mono_cam_down_0/link/camera_link/sensor/imager/image:=/image"
+
+if [ "${CHASE_CAM:-0}" = "1" ]; then
+  CHASE_TOPIC_GZ="/world/$WORLD/model/ground_plane/link/link/sensor/chase/image"
+  start_bg bridge_chase ros2 run ros_gz_bridge parameter_bridge \
+    "${CHASE_TOPIC_GZ}@sensor_msgs/msg/Image@gz.msgs.Image" \
+    --ros-args -r "${CHASE_TOPIC_GZ}:=/chase_image"
+  start_bg chase_rec bash -c "source '$VENV/bin/activate'; \
+    if [ -f \"\$HOME/ros2_ws/install/setup.bash\" ]; then set +u; source \"\$HOME/ros2_ws/install/setup.bash\"; set -u; fi; \
+    exec python3 '$SCRIPT_DIR/../apps/record_chase.py'"
+fi
 
 # 4) QGroundControl — always launch if available (its heartbeats satisfy
 # PX4's "No connection to ground control station" preflight check). QGC
