@@ -13,7 +13,6 @@ Pipeline (matches the design note, PX4_Gazebo/docs/cross_marker.pdf discussion):
   5. sub-pixel intersection of the two cross lines -> center, with ill-conditioning guards
   6. optional: identify the stub cluster (~45 deg off both cross lines, not through center) -> heading
 """
-import math
 import os
 from dataclasses import dataclass, replace
 from typing import Optional
@@ -109,18 +108,6 @@ MIN_FIT_POINTS = 20   # a fit through fewer points than this is unstable/unconst
                         # 2 only guards against an outright empty cluster, not this
 STUB_REL_ANGLE_DEG = 45.0
 STUB_REL_ANGLE_TOL_DEG = 12.0
-
-# CORNER-JOIN segment filter (2026-08-24, shadow-contamination hardening): every real
-# marker line meets ANOTHER real marker line near the marker center, at one of exactly
-# two relative angles -- 90 deg (the two cross arms) or STUB_REL_ANGLE_DEG=45 (stub to
-# either arm). The drone's own cast shadow, by contrast, produces Hough segments that
-# generally do NOT share a near-common endpoint with a real line at one of those angles
-# -- it's a separate blob merged into the same connected component, not a corner of the
-# cross. Filtering at the raw Hough-segment stage (before angle-clustering/fitting) means
-# an unpaired shadow segment never gets the chance to seed or pollute a cluster in the
-# first place, complementing (not replacing) _robust_fit_line's later per-point pruning.
-CORNER_JOIN_ANGLE_TOL_DEG = 15.0
-CORNER_JOIN_TARGET_ANGLES_DEG = (90.0, STUB_REL_ANGLE_DEG)
 MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a real line over noise
                            # (see the cross-arm pairing fix in detect() for why this exists)
 
@@ -221,34 +208,6 @@ def _robust_fit_line(points, iters=3, outlier_thresh=2.5, min_keep_frac=0.3):
     inlier_mask = np.zeros(len(orig), dtype=bool)
     inlier_mask[idx] = True
     return vx, vy, x0, y0, inlier_mask
-
-
-def _filter_segments_by_corner_join(segs, angles, max_gap_px):
-    """Keep only Hough segments that geometrically join (share a near-common
-    endpoint, within max_gap_px) with another segment at one of the marker's
-    known relative angles (CORNER_JOIN_TARGET_ANGLES_DEG). A segment with no
-    such partner is treated as likely spurious contamination (e.g. an edge of
-    the drone's own cast shadow) rather than a real marker line.
-
-    Falls back to keeping everything if the filter would leave fewer than 2
-    segments -- matching _best_pair's graceful-degradation pattern below, so
-    an overly strict corner gate can never be the SOLE reason a genuinely
-    weak-signal (but uncontaminated) frame fails."""
-    n = len(segs)
-    keep = np.zeros(n, dtype=bool)
-    endpoints = [((float(s[0]), float(s[1])), (float(s[2]), float(s[3]))) for s in segs]
-    for a in range(n):
-        for b in range(a + 1, n):
-            diff = _circ_diff(angles[a], angles[b])
-            if not any(abs(diff - t) <= CORNER_JOIN_ANGLE_TOL_DEG for t in CORNER_JOIN_TARGET_ANGLES_DEG):
-                continue
-            gap = min(math.hypot(p1[0] - p2[0], p1[1] - p2[1])
-                      for p1 in endpoints[a] for p2 in endpoints[b])
-            if gap <= max_gap_px:
-                keep[a] = keep[b] = True
-    if int(keep.sum()) < 2:
-        return np.ones(n, dtype=bool)
-    return keep
 
 
 def _line_intersection(l1, l2):
@@ -457,14 +416,6 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
 
     segs = lines[:, 0, :]
     angles = [_angle_deg(*s) for s in segs]
-    # Corner-join shadow filter (2026-08-24) -- see _filter_segments_by_corner_join
-    # docstring. Scale the join-gap tolerance to the marker's own bbox so it stays
-    # meaningful across altitude (a fixed px gap would be too loose far away, too
-    # tight up close).
-    _corner_max_gap_px = max(20.0, 0.2 * max(bbox[2], bbox[3], 1))
-    _corner_keep = _filter_segments_by_corner_join(segs, angles, _corner_max_gap_px)
-    segs = segs[_corner_keep]
-    angles = [a for a, k in zip(angles, _corner_keep) if k]
     clusters = _cluster_line_angles(angles)
     if len(clusters) < 2:
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='lt2_angle_clusters')
