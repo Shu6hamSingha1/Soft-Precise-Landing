@@ -4,6 +4,41 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **⭐ 2026-08-24 — CBF architecture reference written after THREE mistaken framings
+> this session: (1) conflating `rho_fov`/`d_min_fov` with the real barrier, (2)
+> proposing to tune deprecated `rho_fov_0`/`rho_fov_inf`, (3) building a Phase-2
+> ground-truth check that passed 13/13 while a negative control proved it had ZERO
+> discriminating power (zeroing out the `radius` input still passed clean) --
+> reverted rather than ship a false-confidence check. `tools/validate_cbf.py`
+> CONFIRMED 12/12 passing as-is (real barrier math, `CBF_LW_ROT` 90°-fix, Phase-1
+> byte-identical ArUco/cross-marker; cross-marker's `radius`-derived `delta2`
+> doesn't even affect the Phase-1 bound, so cross-marker's live barrier is exactly
+> as verified as ArUco's). Three real, STILL-OPEN gaps: (1) manuscript's
+> `δ_m=15px/f` margin inset is NOT implemented in code; (2) ArUco's own Phase-2
+> rewrite has zero automated test coverage; (3) cross-marker's Phase-2
+> `radius`-based margin has NEVER been validated against ground truth, and doing
+> so properly needs a real position/velocity rollout under bounded acceleration
+> over the `tau` horizon, not a one-shot attitude-substitution trick (that's what
+> failed the negative control). **Read
+> [[reference_cbf_visibility_architecture]] BEFORE reasoning about CBF correctness,
+> proposing any visibility-related fix, OR trusting a new correctness check without
+> running a negative control on it first.**
+
+> **⭐ 2026-08-23 — GT-feedback SP regression ROOT-CAUSED AND FIXED (ArUco AND
+> cross-marker, same bug): `PLASMC_TD_SPIKE` default 0.5 was ~16x larger than the
+> real touchdown `h_z` signal (peaks ~0.031) and could never latch, so the descent
+> never disarmed and ran into a Gazebo ODE physics-engine auto-sleep + 25s watchdog
+> abort at ~0.487m. Reverted to 0.0 (486f713's actual historical value). Confirmed
+> via n=5 TD_SPIKE sweep (hard cliff: 0/15 SP at 0.1/0.3/0.5, 5/5 at 0.0) AND a
+> wholesale `controller.py`+`cbf_visibility.py`+`img_data.py`+`gt_feedback.py`
+> revert-and-rerun to the 486f713 SP-era snapshot (5/5, identical altitude to
+> sub-mm). Post-fix: ArUco GT-FB IC1-5 = 24/25 SP, cross-marker GT-FB IC2 = 5/5 SP.
+> Fixed in `b2a0194`/`87b8896`. SUPERSEDES [[project_20260817_crossmarker_descent_stall_investigation]]'s
+> "kappa-leakage fixed-point" framing as the CAUSE (the fixed point is real, just not
+> why landings failed). Full trace + 4 other falsified hypotheses (Z_REG double-count,
+> VDS_KF_Q, TERMINAL_COMMIT, FEATURE_PTS_FRESH integrator gate):
+> [[project_20260823_td_spike_regression]].
+
 > **⭐ Standing reference: `PX4_Gazebo/px4_autopilot_overrides/` (git-tracked) is a
 > snapshot+restore point for every `~/PX4-Autopilot` file this project has modified
 > (camera/marker/world SDFs, airframe configs) — that repo is external/untracked by
@@ -843,3 +878,11 @@
 - [⭐ h-extrapolation BAKED default-ON (2026-07-07)](feedback_h_extrapolation_baked.md) — PLASMC_H_EXTRAP=1 replaces 2026-05-13 hard-zero; the old failure was 3 fixable bugs (self-reference, no decay, fit-through-clipped-samples), not extrapolation itself being unsafe. Validated: 0/3 misses vs baseline 1/5 (GT xy 2.7m). ⚠ s/_img_feature_param has the SAME unfixed self-reference bug — next target, NOT yet fixed.
 - [Dense-recovery (RANSAC homography) + failure-cause auto-tagging (2026-07-07)](project_dense_recovery_and_failure_tagging.md) — PLASMC_DENSE_RECOVER unified-staleness-gate implementation, validation MIXED (do not bake); getFailureCause()->DRIFT_OFF/OVERFLOW/UNKNOWN now auto-tags TARGET_LOST. Also: recurring SIGSEGV rc=139 is a pre-existing SITL infra flake, not a code-change symptom.
 - [⚠ _savgol_predict suspected in a 23.93m fly-away, NOT confirmed (2026-07-07)](feedback_savgol_predict_suspect_flyaway.md) — default-ON model-based h spike-reconstruction is CONTROL-AFFECTING (feeds a_u directly, not just logging); false-triggers frequently on dt-floor-amplified noise (confirmed); the specific catastrophic jump (h 0.02->1.25 in one step, invisible in raw/KF perception) not yet reproduced live. SAVGOL_PREDICT_DBG=1 available.
+- [⛔ CBF extent-fix n=5 sweep FALSIFIES the n=1 smoke-test optimism (2026-08-13), root-caused to lateral-convergence-rate NOT the CBF (2026-08-14)](../project_20260813_cbf_extent_fix_followup.md) — 0/25 precise, 1/25 soft; raw pre-CBF I_a_raw(t) direction itself degrades/reverses before the CBF binds (checked directly, CBF confirmed NOT the cause). Also: ArUco regression PASS, ring-sampling origin_ratio INCONCLUSIVE n=1, validate_cbf.py had 2 stale-oracle bugs (now fixed)
+- [CBF radius split (commit 27410ed, 2026-08-14): eliminates fly-away outliers, doesn't touch lateral-convergence root cause](../project_20260814_cbf_radius_split_and_hardware_check.md) — IC3/IC4 max xy_err 28.7m/14.8m -> 2.9m/3.4m after the split; precise/soft still 0/25,1/25. Also: Hardware confirmed ArUco-only (zero cross-marker code, extent bug N/A there); NaN bug confirmed STILL PRESENT in Hardware/scripts/controller.py; cross-session reminder file created at Hardware/docs/PENDING_NAN_FIX_PORT.md (not yet pushed)
+- [⛔ SELF-CORRECTION (2026-08-15): SP WAS achieved with GT-FB on ArUco (56-76%!), terminal 1/Z was a Z_REG=0.01 harness artifact not an unsolved control limit](../project_20260815_crossmarker_gtfb_sp_investigation.md) — see [[project_why_sp_achieved]]; I wrongly claimed the opposite earlier this session from an incomplete parameter_record.ods search. Current cross-marker defaults match most of the winning config (XIR/PR0/W_U_MAX/Z_REG); VDS_KF_Q reverted to 10 for a separate reason. n=1 cross-marker GT-FB IC2 failed (xy=1.28) but noise floor is +-5-7/25 — n=10 rerun in progress, don't trust n=1 either direction
+- [⭐ Descent-stall at alt=0.487m: marker-type-AGNOSTIC kappa-leakage fixed point, ArUco escapes it only 1/6 too (not "ArUco is fine"); numerical-noise + CBF-radius-cap hypotheses both TESTED AND FALSIFIED; VDS_KF_Q=1 still untested](../project_20260817_crossmarker_descent_stall_investigation.md) — n=10 cross-marker GT-FB sweep found a repeatable stall (4-9/10 depending on config) at the SAME altitude to 3 decimals; proved via exact-equilibrium match it's NOT numerical noise (a "fix" made it WORSE, reverted); raising CROSS_CBF_RADIUS_CAP_PX 100->130->160 had ZERO effect (falsified); ArUco hits the identical fixed point, only escaped 1/6 reps under current defaults (not 56-76% like the historical campaign) -> points at VDS_KF_Q=10 vs historical 1 as the likely gap, NOT a marker-type difference. Also: fixed a real theta(t) logging bug (was logging the inert legacy scalar under default PLASMC_THETA_PER_AXIS=1); corrected a wrong d_min_fov/rho_fov-vs-real-CBF-barrier(p_10) mental model (rho_fov is legacy, FROZEN at rho_fov_0 by default, disconnected from cbf2_filter's actual Phase-1 bound); ring-sampling's modest fix (n=5 validated, target_lost 100%->60%) traced to the SAME lateral-convergence root cause via a new Ring Active Log diagnostic (guard correctly declines when off-center). theta(t) fix + Ring Active Log + video-overlay tool UNCOMMITTED at session end. NEXT: test VDS_KF_Q=1 first
+- [⭐⭐⭐ ArUco is now COMPARISON-ONLY; active track = cross-marker + GT-feedback; next milestone = GT-ablation test, then ArUco not needed at all (2026-08-23, user directive)](project_marker_roadmap_gt_ablation.md) — stop running perception-mode ArUco test flights to chase ArUco-specific bugs (see [[feedback_aruco_perception_scope]]); any ArUco finding is informational/comparison data only
+- [Terminal kappa-ratchet/actuator blow-up traced to CBF_CORNERS_STALE's 30-frame-streak guard not tripping against detection FLICKER (2026-08-23)](project_20260823_kappa_ratchet_detection_flicker.md) — IC2 ArUco flight: raw ArUco decode froze 0.93s at touchdown (Img_Data.npy corners byte-identical), but cbf_corners flickered 0<->valid each tick (coast-hold cascade re-validating stale corners), so _cbf_corners_none_streak never reached 30 -> kappa's freshness guard never tripped -> kappa 0.78->2.07 integrating against frozen s_e_n -> a_u exploded 4 orders of magnitude. Raw-freeze trigger + specific flip-flopping cascade tier + fix NOT yet found.
+- [Cross-marker raw detection is structurally flicker-prone (Hough re-derived from scratch every frame, zero hysteresis); CBF_CORNERS_STALE windowed-fraction fix + opt-in KLT center-bridge landed 2026-08-23 (commit 0431eab)](feedback_cross_marker_detection_flicker.md) — root cause + both fixes; center-bridge default OFF pending cross-marker+GT-FB validation. DISTINCT from the offcenter_convergence_wall finding below -- don't conflate.
+- [⭐⭐ Cross-marker IC2 off-center y-axis non-convergence (xy_err 2.3-4.0m) = the SAME pre-existing, never-solved ArUco kappa-leakage/funnel wall (project_bake_and_sp_walls), NOT a cross-marker bug, NOT introduced by 2026-08-23's commits (2026-08-24)](project_20260824_crossmarker_offcenter_convergence_wall.md) — bisected via isolated git worktree at 87b8896 (pre-change): xy_err 2.27-2.40m there too, confirming pre-existing. GT-verified: ux converges+overshoots, uy stays flat/drifts away; controller's own s_e_n[1] matches GT (not a perception bug); kappa[1] DECREASES (0.50->0.27) while s_e_n[1] stays large = leakage dominating growth, same mechanism as the ArUco wall. Detection Status was 'ok' 450/450 frames this rep -- confirmed INDEPENDENT of the detection-flicker issue above. Checked: ArUco-validated levers (P/kappa_0/XI2/chi_r, camera intrinsics) are already marker-agnostic/shared -- nothing to port, the wall itself was just never solved for either marker type.

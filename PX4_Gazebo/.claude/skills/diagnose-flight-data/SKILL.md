@@ -93,12 +93,37 @@ treating it as real.
   perceived signals it computed (`h(t)`, `s(t)`), its own references/desired
   values (`h_d(t)`, `ds_d(t)`), and its outputs (`w_u(t)`, `B_T(t)`,
   `kappa(t)`, `a_u(t)`, etc.). None of this is ground truth by construction.
+  **A logged field's NAME is not proof it's the value actually driving the
+  control law** — found 2026-08-17: `"theta(t)"` was logged as the LEGACY
+  shared scalar `||Theta||_F` even though `PLASMC_THETA_PER_AXIS=1` has been
+  the DEFAULT since 2026-06-25, meaning the real per-axis `theta_ctrl` value
+  feeding each axis's kappa-ODE was never saved anywhere under default
+  config — a diagnosis built on the logged `theta(t)` was chasing a
+  quantity the control law wasn't even using that day. Before trusting a
+  logged internal-state field as "the operative value," grep the source for
+  where the field is computed vs. what's actually passed into the control
+  law a few lines later — they can silently diverge behind an env-var-gated
+  branch.
 - `Img_Data.npy` — the perception layer's own raw (pre/post-cal) logs,
   typically at the TRUE per-detect-rate (not the outer polling rate) —
   see `feedback_dt_staleness_after_detection_dropout` /
   the oversampling-artifact history in `tools/validate_cross_marker_flow.py`'s
   `prep()` docstring for why this file's own `Time` field, not GT's outer
   polling rate, is the right per-frame clock for perception-side analysis.
+
+## Watch for a stale/frozen field masquerading as live data
+
+Found 2026-08-14/15: `MARKER_EXTENT_PX` and other per-frame fields can read
+as an exact repeated constant for many consecutive samples when the
+underlying source stopped updating (a detection miss, a coast-hold, a
+stale-but-not-flagged read) while the logger keeps appending. A value that's
+suspiciously exact-identical across dozens of samples (not just close) is a
+signal to check the corresponding `Detection Status`/freshness flag for that
+window before treating it as a real physical plateau. The same applies to
+GT-side `Ground_Truth.npy` position components in a "stalled" window — verify
+independently that np.std over the window isn't near-zero for a reason other
+than genuine physical stillness (a topic-publish stall, a duplicate pose
+read) before concluding the drone itself is stuck.
 
 ## Procedure
 
