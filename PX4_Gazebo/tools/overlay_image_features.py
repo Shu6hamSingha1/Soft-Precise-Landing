@@ -84,6 +84,16 @@ def _load_cross_marker_features(d, n):
         v = np.asarray(v)
         return v[-n:] if len(v) >= n else v
 
+    def tail_ragged(key):
+        """Like tail(), but for a per-frame list of variable-length (k,2) point
+        arrays (line/stub/flow correspondences) -- np.asarray would try to stack
+        them into one rectangular array and fail/mangle, so keep it a plain list."""
+        v = d.get(key)
+        if v is None:
+            return None
+        v = list(v)
+        return v[-n:] if len(v) >= n else v
+
     out = dict(
         center_px=tail("Center Px"),
         s_v=tail("s_V"),
@@ -92,6 +102,13 @@ def _load_cross_marker_features(d, n):
         extent=tail("MARKER_EXTENT_PX"),
         status=tail("Detection Status"),
         visible=tail("FEATURE_IS_VISIBLE"),
+        # Raw pixel detection artifacts (2026-08-25+ recordings only -- None on older
+        # runs, which fall back to offline re-detection/re-tracking in annotate()).
+        line_i=tail_ragged("Line Points I"),
+        line_j=tail_ragged("Line Points J"),
+        stub=tail_ragged("Stub Points"),
+        flow_prev=tail_ragged("Flow Points Prev Px"),
+        flow_curr=tail_ragged("Flow Points Curr Px"),
     )
     return out
 
@@ -130,7 +147,8 @@ def _load_legacy_aruco_features(d, n):
             break
 
     return dict(center_px=center_px, s_v=feat, alpha=alpha, h_v=h_v6,
-                extent=None, status=None, visible=None)
+                extent=None, status=None, visible=None,
+                line_i=None, line_j=None, stub=None, flow_prev=None, flow_curr=None)
 
 
 def _fmt(v, n=3):
@@ -225,6 +243,19 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
     extent = feats["extent"]
     status = feats["status"]
     visible = feats["visible"]
+    line_i_log = feats.get("line_i")
+    line_j_log = feats.get("line_j")
+    stub_log = feats.get("stub")
+    flow_prev_log = feats.get("flow_prev")
+    flow_curr_log = feats.get("flow_curr")
+    have_logged_pts = line_i_log is not None   # all 5 raw-artifact logs are added
+                                                # together (2026-08-25+) -- one implies all
+    if not have_logged_pts:
+        print("[overlay] NOTE: this run predates raw-pixel detection-artifact logging "
+              "(Line Points I/J, Stub Points, Flow Points Prev/Curr Px) -- falling back "
+              "to offline re-detection/re-tracking on the recorded video for s/alpha/h "
+              "lines, which can disagree with the live Detection Status on some frames "
+              "(video re-encoding artifacts). Re-record to get exact per-frame parity.")
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # Visualization gains (pixels per unit) -- these are display-only scale factors,
@@ -276,15 +307,18 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
             a = float(alpha[i])
             a_held = i > 0 and np.isfinite(alpha[i - 1]) and alpha[i] == alpha[i - 1]
 
-        # Re-run the detector on this frame to recover the fitted cross-arm lines
-        # (line_points_i/j) -- Img_Data.npy only logs the FINAL s_V/Center Px, not
-        # the intermediate lines they were intersected from. Cheap: 1 full-frame
-        # detect() per overlay frame (this tool runs offline, not realtime).
+        # Prefer the REAL per-frame detection artifacts this flight logged (2026-08-25+
+        # recordings -- see cross_marker_perception.py's getLogData()) over re-deriving
+        # them offline. Offline re-detect()/re-track on the recorded (lossily
+        # re-encoded) mp4 is a FALLBACK for older runs only, and can silently disagree
+        # with what the live pipeline actually saw (confirmed: frames where the live
+        # Detection Status was 'ok' but offline re-detect failed) -- see
+        # feedback_overlay_offline_redetect_gap memory.
         det = None
         gray = None
-        if "s" in channels or "h" in channels:
+        if not have_logged_pts and ("s" in channels or "h" in channels):
             det = _cmd.detect(frame)
-        if "h" in channels:
+        if "h" in channels and not have_logged_pts:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
             # draw the PREVIOUS pair's tracked correspondences as a flow field --
@@ -319,12 +353,35 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
                     gray, maxCorners=MAX_FLOW_PTS, qualityLevel=0.01, minDistance=5,
                     mask=mask_for_lk.astype(np.uint8))
             prev_gray, prev_pts = gray, new_pts
+        elif "h" in channels and have_logged_pts:
+            # Real correspondences this flight's _solve_jacobian actually used --
+            # already-matched (prev[k] <-> curr[k]) raw-pixel pairs, no re-tracking
+            # needed. Empty on a frame with no successful/attempted solve.
+            fp = flow_prev_log[i] if i < len(flow_prev_log) else None
+            fc = flow_curr_log[i] if i < len(flow_curr_log) else None
+            if fp is not None and fc is not None and len(fp) == len(fc) and len(fp) > 0:
+                for (px, py), (qx, qy) in zip(fp, fc):
+                    dxp, dyp = qx - px, qy - py
+                    gx, gy = qx + dxp * FLOW_FIELD_GAIN, qy + dyp * FLOW_FIELD_GAIN
+                    m2 = float(np.hypot(gx - qx, gy - qy))
+                    if m2 > FLOW_FIELD_MAX:
+                        gx = qx + (gx - qx) * FLOW_FIELD_MAX / m2
+                        gy = qy + (gy - qy) * FLOW_FIELD_MAX / m2
+                    cv2.arrowedLine(frame, (int(px), int(py)), (int(gx), int(gy)),
+                                     (0, 200, 255), 1, tipLength=0.4, line_type=cv2.LINE_AA)
+                    cv2.circle(frame, (int(qx), int(qy)), 2, (0, 200, 255), -1, cv2.LINE_AA)
 
         if cx is not None:
             if "s" in channels:
                 # decoded cross-arm lines the detector fit + intersected to get s
                 # (see _robust_fit_line / _line_intersection in cross_marker_detector.py)
-                if det is not None and det.ok and det.line_points_i and det.line_points_j:
+                if have_logged_pts:
+                    li = line_i_log[i] if i < len(line_i_log) else None
+                    lj = line_j_log[i] if i < len(line_j_log) else None
+                    if li is not None and lj is not None and len(li) and len(lj):
+                        _draw_full_line(frame, li, (0, 165, 255))   # orange
+                        _draw_full_line(frame, lj, (255, 255, 0))   # cyan
+                elif det is not None and det.ok and det.line_points_i and det.line_points_j:
                     _draw_full_line(frame, det.line_points_i, (0, 165, 255))   # orange
                     _draw_full_line(frame, det.line_points_j, (255, 255, 0))   # cyan
 

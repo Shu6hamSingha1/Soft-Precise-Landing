@@ -689,6 +689,24 @@ class CrossMarkerPerception:
         self._img_feature_param_log = []  # CALIBRATED [xc,yc,1,alpha] (getImgFeatureParam() output),
                                             # as opposed to _s_log/_alpha_log which are pre-calibration
 
+        # RAW PIXEL DETECTION ARTIFACTS (2026-08-25, overlay-debugging gap-fill): the
+        # combined _feature_pts_raw_log above was never actually exposed via getLogData()
+        # (dead log) and doesn't distinguish which points belong to line i vs line j vs
+        # the stub -- can't draw the two decoded cross-arm lines separately from it.
+        # These three split that out, AND a raw-pixel (not V-frame-normalized) snapshot
+        # of the LK flow correspondences _solve_jacobian actually used, so
+        # tools/overlay_image_features.py can draw the REAL detection this flight saw
+        # instead of re-running detect()/LK on the recorded (lossily re-encoded) video --
+        # see feedback_overlay_offline_redetect_gap memory for why that reconstruction
+        # sometimes disagreed with the live Detection Status.
+        self._line_i_log = []        # raw px points fit to cross-arm line i, this frame ('s' overlay)
+        self._line_j_log = []        # raw px points fit to cross-arm line j, this frame ('s' overlay)
+        self._stub_pts_log = []      # raw px points fit to the stub line, this frame ('alpha' overlay)
+        self._flow_prev_px_log = []  # raw px points (prev frame) fed to _solve_jacobian ('h' overlay)
+        self._flow_curr_px_log = []  # raw px points (curr frame) fed to _solve_jacobian ('h' overlay)
+        self._last_flow_prev_px = None  # this call's _compute_hw snapshot, consumed by _log_frame_data
+        self._last_flow_curr_px = None
+
         # TRACKING-BASED ROI (2026-08-05): persistent state dict passed into cmd.detect()
         # every call -- see cross_marker_detector.py's TRACK_MARGIN_PX comment for the
         # full design (ported from Hardware/scripts/img_data.py's ArUco
@@ -1298,6 +1316,13 @@ class CrossMarkerPerception:
         prev_pts = self._prev_flow_pts[keep]
         curr_pts = tracked[keep]
         n_kept = len(prev_pts)
+        # raw-pixel snapshot for the overlay tool (see __init__'s comment) -- these are
+        # exactly the correspondences about to feed _solve_jacobian below (kept = tracked
+        # successfully AND, when a fresh mask exists, still on-target), NOT yet leveled
+        # into V-frame. Overwritten every call, including ones where n_kept ends up too
+        # low to actually solve -- _log_frame_data logs whatever this was last set to.
+        self._last_flow_prev_px = prev_pts.copy()
+        self._last_flow_curr_px = curr_pts.copy()
         kept_cell_id = (self._prev_flow_cell_id[keep]
                          if self._prev_flow_cell_id is not None else None)
 
@@ -1558,7 +1583,7 @@ class CrossMarkerPerception:
         self._ok = True
 
         # Log full time-series (2026-08-04, frame-by-frame debugging)
-        self._log_frame_data(t, quat_curr, hw_ok)
+        self._log_frame_data(t, quat_curr, hw_ok, det=det)
 
         return self.get_output()
 
@@ -1609,8 +1634,21 @@ class CrossMarkerPerception:
                 if det.stub_points is not None:
                     _raw_pts += list(det.stub_points)
                 self._feature_pts_raw_log.append(np.asarray(_raw_pts, dtype=np.float64))
+                self._line_i_log.append(np.asarray(det.line_points_i, dtype=np.float64))
+                self._line_j_log.append(np.asarray(det.line_points_j, dtype=np.float64))
+                self._stub_pts_log.append(
+                    np.asarray(det.stub_points, dtype=np.float64) if det.stub_points else np.zeros((0, 2)))
             else:
                 self._feature_pts_raw_log.append(np.zeros((0, 2)))
+                self._line_i_log.append(np.zeros((0, 2)))
+                self._line_j_log.append(np.zeros((0, 2)))
+                self._stub_pts_log.append(np.zeros((0, 2)))
+            self._flow_prev_px_log.append(
+                np.asarray(self._last_flow_prev_px, dtype=np.float64)
+                if self._last_flow_prev_px is not None else np.zeros((0, 2)))
+            self._flow_curr_px_log.append(
+                np.asarray(self._last_flow_curr_px, dtype=np.float64)
+                if self._last_flow_curr_px is not None else np.zeros((0, 2)))
 
             # Calibrated feature param [xc,yc,1,alpha] (getImgFeatureParam()'s own
             # output) -- distinct from _s_log/_alpha_log, which are pre-calibration.
@@ -1694,6 +1732,32 @@ class CrossMarkerPerception:
         (curr_n-prev_n)/dt. sol is the full solved [Tx,Ty,Tz,Wx,Wy,Wz] vector
         (not just Tz). Per-point-resolution follow-up to get_radial_diag_log()."""
         return list(self._point_diag_log)
+
+    def get_line_i_log(self):
+        """Raw px points fit to cross-arm line i, per frame (empty (0,2) array on a
+        detection miss) -- see __init__'s comment. For the overlay tool's 's' drawing."""
+        return list(self._line_i_log)
+
+    def get_line_j_log(self):
+        """Raw px points fit to cross-arm line j, per frame -- see get_line_i_log()."""
+        return list(self._line_j_log)
+
+    def get_stub_pts_log(self):
+        """Raw px points fit to the stub line, per frame (empty when the stub wasn't
+        found that frame, same as det.stub_points) -- for the overlay tool's 'alpha'
+        drawing."""
+        return list(self._stub_pts_log)
+
+    def get_flow_prev_px_log(self):
+        """Raw px points (prev frame of the pair), NOT V-frame-normalized, that fed
+        _solve_jacobian this frame -- see __init__'s comment. For the overlay tool's
+        'h' flow-field drawing. Empty when no solve was attempted/possible that frame."""
+        return list(self._flow_prev_px_log)
+
+    def get_flow_curr_px_log(self):
+        """Raw px points (curr frame of the pair) paired 1:1 with get_flow_prev_px_log()
+        -- see that method's docstring."""
+        return list(self._flow_curr_px_log)
 
     def get_center_px(self):
         """(2,) raw pixel [cx, cy] for the visibility CBF, or None if this frame
@@ -2023,6 +2087,16 @@ class CrossMarkerNode(Thread):
             "Ring Active Log": self._perception.get_ring_active_log(),
             "Bridge Diag Log": self._perception.get_bridge_diag_log(),
             "Bridge Reject Log": self._perception.get_bridge_reject_log(),
+            # 2026-08-25 (overlay-debugging gap-fill): raw pixel detection artifacts,
+            # exposed so tools/overlay_image_features.py can draw the REAL per-frame
+            # detection this flight saw instead of re-running detect()/LK offline on the
+            # recorded (lossily re-encoded) video, which was confirmed to sometimes
+            # disagree with the live Detection Status (see the tool's module docstring).
+            "Line Points I": self._perception.get_line_i_log(),
+            "Line Points J": self._perception.get_line_j_log(),
+            "Stub Points": self._perception.get_stub_pts_log(),
+            "Flow Points Prev Px": self._perception.get_flow_prev_px_log(),
+            "Flow Points Curr Px": self._perception.get_flow_curr_px_log(),
         }
 
     def getParams(self):
