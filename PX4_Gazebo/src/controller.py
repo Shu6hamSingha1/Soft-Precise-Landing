@@ -764,9 +764,23 @@ class Controller(Thread):
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
+        # ROLLING-WINDOW hardening (2026-08-24, secondary safety net alongside the
+        # cross-marker hw coast+freeze fix -- see _kf_update_hw in
+        # cross_marker_perception.py): a strictly-CONSECUTIVE streak is fragile to
+        # isolated perception miss frames, which cluster right in the touchdown
+        # altitude band (marker-fills-frame Hough failures). Even with h_z no longer
+        # zeroed on a miss (the coast fix), a single genuinely-noisy frame could still
+        # reset a consecutive-only streak and delay the latch. Track the last
+        # _td_window frames' spike/no-spike history instead and require _td_frames
+        # spikes WITHIN that window (not necessarily consecutive) -- strictly more
+        # permissive than the old rule when window==_td_frames (identical behavior),
+        # and only kicks in beyond that if PLASMC_TD_WINDOW is widened.
+        self._td_window = int(os.environ.get("PLASMC_TD_WINDOW", str(self._td_frames)))
+        self._td_hist = deque(maxlen=self._td_window)
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>{self._td_spike} for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
+                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -1198,9 +1212,12 @@ class Controller(Thread):
     def _touchdownDetect(self, s_e_n):
         """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
-        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames (= the vertical
-        reversal at first contact) while near-centered. Depth-free (loom ratio only), one-way
-        latch."""
+        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames within the
+        last _td_window frames (ROLLING WINDOW, not strictly consecutive -- see __init__'s
+        _td_window comment: hardens against isolated perception miss frames near touchdown
+        breaking a consecutive-only streak; identical to the old consecutive rule when
+        _td_window==_td_frames, the default) while near-centered. Depth-free (loom ratio
+        only), one-way latch."""
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -1211,14 +1228,15 @@ class Controller(Thread):
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
-        self._td_streak = self._td_streak + 1 if h_z > self._td_spike else 0
+        self._td_hist.append(h_z > self._td_spike)
+        self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
         if self._td_debug:
-            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} streak={self._td_streak} "
-                  f"|s_e_n|={_sen_mag:.4f}")
+            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
+                  f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f}")
         if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames}) "
-                  f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
+            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
+                  f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):

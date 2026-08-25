@@ -204,6 +204,45 @@ RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
 RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "20"))
 
 
+def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
+    """Generic per-channel 2-state (value, rate) constant-velocity KF step.
+    Ported verbatim (module-level, stateless -- same math, no `self`) from
+    img_data.py's `_kf_step`, so cross-marker's hw coast+freeze (see
+    CrossMarkerPerception.__init__'s _hw_kf_* comment) matches ArUco's
+    already-validated behavior exactly rather than reinventing it. Operates
+    on the passed state only. z: (C,) measurement, or None for a
+    PREDICT-ONLY step (coast on the last estimated rate, skip the
+    correction -- used during a marker-loss gap so the state neither
+    freezes (no step at all) nor gets corrected against a synthetic value
+    as if it were real data)."""
+    if not initialized:
+        if z is None:
+            return x, P, prev_t, initialized   # nothing to coast from yet
+        z = np.asarray(z, dtype=float)
+        x = np.zeros((len(z), 2)); x[:, 0] = z     # value=z, rate=0
+        P = np.tile(np.eye(2) * 1.0, (len(z), 1, 1))   # moderate prior
+        return x, P, t, True
+
+    dt = max(min(t - prev_t, 0.1), 1e-3)
+    dt_q = max(min(t - prev_t, dt_unc_max), 1e-3) if dt_unc_max is not None else dt
+    F = np.array([[1.0, dt], [0.0, 1.0]])
+    Q = q * np.array([
+        [dt_q**4 / 4.0, dt_q**3 / 2.0],
+        [dt_q**3 / 2.0, dt_q**2],
+    ])
+    x_pred = x @ F.T
+    P_pred = F @ P @ F.T + Q
+    if z is None:
+        return x_pred, P_pred, t, True         # PREDICT-ONLY: coast, no correction
+    z = np.asarray(z, dtype=float)
+    y = z - x_pred[:, 0]
+    S = P_pred[:, 0, 0] + r
+    K = P_pred[:, :, 0] / S[:, None]
+    x = x_pred + K * y[:, None]
+    P = P_pred - K[:, :, None] * P_pred[:, 0:1, :]
+    return x, P, t, True
+
+
 def _unweighted_principal_angle(pts):
     """Manuscript alpha (Sec. Image Features, eq. ~197): plain 2nd-moment
     principal angle over N>=3 non-collinear points, pi-disambiguated via the
@@ -656,6 +695,57 @@ class CrossMarkerPerception:
         # ARUCO_ROI_MARGIN_PX fast path). Owned here (not module-global) so it resets
         # cleanly per-instance/per-flight.
         self._track_state = {'last_bbox': None, 'miss_count': 0}
+
+        # HW COAST+FREEZE KF (2026-08-24, ported from img_data.py's _kf_update /
+        # _kf_step -- see feedback_kf_frozen_during_marker_loss): this module used to
+        # hard-zero self._hw (`np.zeros(6)`) on any detection/flow miss, which is the
+        # SAME bug class already found and fixed on the ArUco side over a month
+        # earlier -- a zeroed/frozen h_z makes _touchdownDetect's `h_z > _td_spike`
+        # streak condition structurally unreachable during a miss-heavy window (e.g.
+        # the marker-fills-frame Hough failures near touchdown). Fixed the same way:
+        # predict-only coast (state keeps evolving via the constant-velocity model,
+        # no correction) during a miss, then an explicit freeze (hold last state, stop
+        # drifting) once the gap outlasts _hw_kf_coast_freeze_streak frames, until a
+        # real measurement returns and resets the streak. Same (q, r, dt_unc_max)
+        # env-var names/defaults as img_data.py's corner-flow KF for parity.
+        self._hw_kf_q = float(os.environ.get("FLOW_KF_Q", "5.0"))
+        self._hw_kf_r = float(os.environ.get("FLOW_KF_R", "0.1"))
+        self._hw_kf_dt_unc_max = float(os.environ.get("KF_DT_UNC_MAX", "2.0"))
+        self._hw_kf_x = np.zeros((6, 2))        # [value, rate] per hw channel
+        self._hw_kf_P = np.tile(np.eye(2) * 1.0, (6, 1, 1))
+        self._hw_kf_prev_t = None
+        self._hw_kf_initialized = False
+        self._hw_kf_coast_streak = 0
+        self._hw_kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
+        self._hw_kf_frozen = None
+
+    def _kf_update_hw(self, z, t):
+        """hw coast+freeze KF update -- ported from img_data.py's `_kf_update`
+        (see __init__'s _hw_kf_* comment). z: (6,) raw hw measurement this
+        frame, or None if this frame had no usable observation (raw-detect
+        miss, or det.ok but the flow solve itself failed). Sets self._hw to
+        the KF's current value estimate (x[:, 0]) -- callers should read
+        self._hw after calling this, not use `z` directly."""
+        if z is not None:
+            self._hw_kf_coast_streak = 0
+            self._hw_kf_frozen = None
+            self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
+                self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, z, t,
+                self._hw_kf_q, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+        else:
+            self._hw_kf_coast_streak += 1
+            if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
+                if self._hw_kf_frozen is None:
+                    self._hw_kf_frozen = self._hw_kf_x.copy()
+                self._hw_kf_x = self._hw_kf_frozen
+            else:
+                self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
+                    self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, None, t,
+                    self._hw_kf_q, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+        # Not-yet-initialized (no real measurement ever seen): fall back to
+        # zeros, same as the pre-fix behavior -- there is nothing to coast
+        # from before the first real observation, this is not a regression.
+        self._hw = self._hw_kf_x[:, 0].copy() if self._hw_kf_initialized else np.zeros(6)
 
     @staticmethod
     def _dilate_mask(mask):
@@ -1357,8 +1447,9 @@ class CrossMarkerPerception:
             if _bridged is not None:
                 self._center_px, self._last_bbox = _bridged
                 self._center_fresh = True
-            # hold last s/alpha; hw defaults to zero (no motion info without a fix)
-            self._hw = np.zeros(6)
+            # hold last s/alpha; hw coasts (predict-only KF, then freezes after
+            # _hw_kf_coast_freeze_streak misses -- see _kf_update_hw docstring)
+            self._kf_update_hw(None, t)
             self._diag_lost_streak += 1
             # dump the frame at the START of a loss streak (streak==1) and every 30
             # frames thereafter, so a long freeze is sampled across its duration
@@ -1409,7 +1500,7 @@ class CrossMarkerPerception:
             if _bridged is not None:
                 self._center_px, self._last_bbox = _bridged
                 self._center_fresh = True
-            self._hw = np.zeros(6)
+            self._kf_update_hw(None, t)
             self._diag_lost_streak += 1
             return self.get_output()
 
@@ -1457,7 +1548,7 @@ class CrossMarkerPerception:
         mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
         hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                                       angvel_prev=angvel_prev, angvel_curr=angvel_curr)
-        self._hw = hw if hw_ok else np.zeros(6)
+        self._kf_update_hw(hw if hw_ok else None, t)
         # CENTER-BRIDGE anchor (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
         # above just updated _prev_flow_pts/_prev_flow_cell_id for this CONFIRMED-detection
         # frame -- snapshot them alongside center_px/last_bbox so a subsequent miss can bridge
