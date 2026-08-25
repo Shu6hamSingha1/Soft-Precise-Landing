@@ -1,10 +1,10 @@
 ---
 name: project_20260825_cbf_margin_reserve_fix
-description: "Implemented CBF_MARGIN_RESERVE (default 0.0 = unchanged) in cbf_visibility.py + cbf_visibility_aruco.py: Phase 1's FoV box bound was centroid-only (delta_eff=0 by design, deliberately allowing the marker to grow/overflow until decode ACTUALLY fails) -- this proactively reserves a fraction of the marker's own measured footprint (delta2) in Phase 1 too. Mechanism confirmed genuinely engaging. Extended A/B to n=3/arm at IC5: INCONCLUSIVE (reserve=0.0 2/3 TARGET_LOST, reserve=1.0 1/3 but that failure was the worst xy_err of the investigation, 22.46m) -- NOT baked. IC1/IC2 n=1 regression checks showed no obvious regression. ⚠ CONFOUND FOUND: an independent, concurrent SITL session (test_data/Rover_AB_harness/ic5_hang_chase_*) was active the ENTIRE sweep window (11:04-11:33) -- explains the repeated port-8888 launch flakes directly, and is a plausible (unprovable after the fact) source of extra noise via CPU contention on real-wall-clock-timed perception subsystems. Sweep should be re-run isolated before trusting its numbers even directionally."
+description: "Implemented CBF_MARGIN_RESERVE (default 0.0 = unchanged) in cbf_visibility.py + cbf_visibility_aruco.py: Phase 1's FoV box bound was centroid-only (delta_eff=0 by design, deliberately allowing the marker to grow/overflow until decode ACTUALLY fails) -- this proactively reserves a fraction of the marker's own measured footprint (delta2) in Phase 1 too. Mechanism confirmed genuinely engaging (real trajectory divergence, not a no-op). First A/B (n=3/arm) contaminated by a concurrent SITL session (test_data/Rover_AB_harness/ic5_hang_chase_*) -- inconclusive. CLEAN re-run (n=3/arm, confirmed no concurrent SITL): REVERSES the direction -- reserve=0.0 1/3 TARGET_LOST, reserve=1.0 2/3 TARGET_LOST. No clean evidence this fix helps at IC5. NOT baked, left at default 0.0."
 metadata: 
   node_type: memory
   type: project
-  modified: 2026-08-25T06:04:39.467Z
+  modified: 2026-08-25T07:16:44.172Z
   originSessionId: 0f9c8dc0-a837-4722-95e7-0ea102167469
 ---
 
@@ -54,6 +54,17 @@ Two distinct effects: (1) the repeated port-8888-bind-error / "not the race cond
 
 **Implication: the n=3 sweep above should be re-run once confirmed no concurrent SITL session is active, before treating its numbers as even directionally reliable.** Not retroactively fixable; a fresh, isolated sweep is the only way to get a clean signal.
 
+## CLEAN re-run (2026-08-25, confirmed no concurrent SITL before EVERY launch this time) -- REVERSES the direction
+
+`test_data/CBFMarginReserve_Clean_IC5/20260825/{reserve0,reserve1}_rep{1,2,3}`, same probe (ArUco, IC5, perception-mode, `PLASMC_DTHETA_AZ_GAIN=0`):
+
+| arm | rep1 | rep2 | rep3 | TARGET_LOST rate |
+|---|---|---|---|---|
+| reserve=0.0 | xy=1.319, no TL | xy=2.798, **TL** | xy=2.924, no TL (soft) | **1/3** |
+| reserve=1.0 | xy=2.386, **TL** | xy=1.096, **TL** | xy=1.930, no TL | **2/3** |
+
+With the confound actually removed, `reserve=1.0` shows a HIGHER TARGET_LOST rate than the unmodified baseline -- the OPPOSITE of the (contaminated) result that motivated this fix in the first place. n=3/arm is still far too small to call this a real regression, but it flatly does not support the original "reserve=1.0 avoids TARGET_LOST" claim. **Combined across both sweeps (contaminated + clean, 6 reps/arm, not statistically poolable but directionally suggestive): no clean evidence `CBF_MARGIN_RESERVE` helps at IC5.**
+
 ## Status
 
-`CBF_MARGIN_RESERVE` is a real, mechanistically-sound lever (confirmed engaging via diverging trajectories/theta_cone, not a no-op) targeting a real, correctly-diagnosed gap -- but the n=3 IC5 sweep does NOT yet support a confident claim that reserve=1.0 solves or even reliably reduces the TARGET_LOST rate; it's promising, not proven. NOT baked. Before baking: a real n>=5 IC5 sweep (ideally across {0.5, 0.7, 1.0} to also find the cheapest effective value, since 1.0 is maximally conservative and costs lateral authority even when corners were never at risk), plus IC3/IC4 regression. Left at default 0.0 (unchanged behavior) pending that.
+`CBF_MARGIN_RESERVE` is a real, mechanistically-sound lever (confirmed engaging via diverging trajectories/theta_cone, not a no-op) targeting a real, correctly-diagnosed gap (Phase 1's box bound genuinely is centroid-only, no proactive margin) -- but TWO independent n=3 IC5 sweeps (one contaminated/inconclusive, one clean and REVERSING the direction) give NO evidence that `reserve=1.0` actually helps, and a weak hint it may even cost more `TARGET_LOST` events than doing nothing. NOT baked, NOT promising in the way first reported -- the honest status is "correctly-targeted lever, unproven benefit, possible cost." Left at default 0.0 (unchanged behavior). If revisited: a real n>=5 clean sweep (confirmed no concurrent SITL) is needed before this idea can be trusted either way; worth also checking a milder reserve (e.g. 0.3-0.5) in case 1.0's maximal conservatism is itself counterproductive (over-constraining lateral authority even on approach paths where corners were never actually at risk, which could explain a WORSE outcome than doing nothing).

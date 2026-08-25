@@ -33,6 +33,24 @@
 > session's own SITL use). `model.sdf` ground-collision height is DELIBERATELY at true
 > ground contact — user directive, ongoing work, do NOT revert without new instruction.
 > Full detail + ordered next-steps: [[project_20260825_session_wrapup_touchdown_hardening]].**
+> ⚠ UPDATE: an uncommitted `HW_FROZEN` fix for exactly this false-touchdown bug now sits in
+> the working tree (`controller.py`/`cross_marker_perception.py`/`img_data.py`) as of a later
+> point the same day — excludes frozen coast+freeze-KF frames from the touchdown spike-streak
+> window. NOT committed by this entry's session; check its validation status before assuming
+> it's done.
+
+> **⭐⭐⭐ 2026-08-25 SESSION WRAP-UP (separate thread, same day) — dtheta/CBF_MARGIN_RESERVE
+> investigation. Full detail: [[project_20260825_dtheta_cbfmargin_session_wrapup]].** Traced
+> IC5 perception failures to 3 distinct causes: (1) `dtheta`'s self-defeating attitude-history
+> loop through `cbf2_filter`'s `th_curr` (confirmed, UNFIXED), (2) the uncapped-`dtheta`
+> correction fly-away (band-aid mitigated via `PLASMC_DTHETA_AZ_CAP`+`PLASMC_DTHETA_HREF`
+> together, NOT root-fixed), (3) a genuine perception FoV-margin gap — marker corners
+> physically exit frame under real perception at IC5, confirmed on BOTH marker types, absent
+> under GT-feedback. Attempted fix `CBF_MARGIN_RESERVE` (proactive Phase-1 margin reserve):
+> mechanistically sound, confirmed engaging, but a CLEAN n=3 sweep found NO evidence it helps
+> (reserve=1.0 actually showed a HIGHER TARGET_LOST rate than default). NOT baked. ⚠ that
+> result is ArUco-only (see the hard rule above — this thread violated it repeatedly) and has
+> NEVER been checked on cross-marker.
 
 > **⛔ HARD RULE (2026-08-25): check for concurrent SITL use/other active `claude` sessions
 > BEFORE launching or force-killing any PX4/Gazebo process.** Multiple `claude` sessions can
