@@ -181,7 +181,19 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # Reset Phase 2 ramp counters on every successful decode.
         state["decode_fail_n"] = 0
         state["phase2_alpha"] = 0.0
-        m2 = np.maximum(np.asarray(p_10, float), 1e-3)               # phi_max only
+        # RESERVE MARGIN (2026-08-25, IC5 FoV-exit root cause -- see
+        # project_20260824_ic5_perception_fov_margin_gap memory): Phase 1's box bound was
+        # centroid-only (delta_eff=0) by design, deliberately allowing the marker to grow
+        # and overflow the FoV edge until decode ACTUALLY fails (reactive, Phase 2 only).
+        # At tight-margin ICs (low altitude + large offset) that means the corners can
+        # genuinely exit frame before the CBF ever tightens up. CBF_MARGIN_RESERVE (0-1,
+        # default 0.0 = EXACT prior behavior, centroid-only) proactively reserves a
+        # fraction of the marker's own measured footprint (delta2) in Phase 1 too, so the
+        # box constrains theta BEFORE the corners reach the edge, not just after they've
+        # already left it. Default-off: this changes live Phase-1 QP behavior, gate behind
+        # A/B before baking.
+        _margin_reserve = float(env.get("CBF_MARGIN_RESERVE", "0.0"))
+        m2 = np.maximum(np.asarray(p_10, float) - _margin_reserve * delta2, 1e-3)
         dft = np.zeros(2)
         if dt_last is not None and dt_last > 1e-6 and state.get("cr_prev") is not None:
             d_raw = (cr2 - state["cr_prev"]) / dt_last - Lw2 @ np.asarray(w_rp, float)

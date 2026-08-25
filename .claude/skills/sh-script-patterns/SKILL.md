@@ -49,6 +49,7 @@ Need to run something repeatedly?
 - Never spawn background children without `setsid` — kill -group needs the PGID.
 - Never use system `python3` in heredocs — always `$HOME/ws/scripts/env2025/bin/python3`.
 - Never skip the empty-dir cleanup in cal loops — `record_output_calibration.py` mkdirs eagerly.
+- Never launch (or force-kill) SITL without first checking `ps -eo pid,ppid,tty,user,lstart,cmd | grep -E "px4_sitl|gz sim|landing_test.py|MicroXRCEAgent"` for a concurrent session — see reference §8 pitfall 10. A missed check has both corrupted a sweep's data (shared port 8888 + CPU contention skew perception timing) and nearly killed another session's live run.
 
 ## 2026-07-02 addendum — A/B harnesses, rover launchers, new knobs
 

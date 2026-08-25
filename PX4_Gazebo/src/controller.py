@@ -231,6 +231,36 @@ class Controller(Thread):
         self._dgate_tau  = float(os.environ.get("PLASMC_DGATE_TAU",  "0.5"))   # LPF tau on g -> rate-limit -> no dh_d transient (the 05-18 failure)
         self._dgate_g    = 1.0                                                 # filtered gate state
 
+        # AZ VISIBILITY FILTER v3 (2026-08-24 follow-up, user design): CONTINUOUS h_ref
+        # compensation keyed on dtheta (th_desired-th_safe norm, the CBF-suppressed lateral
+        # authority signal), replacing _descent_gate's stepped/thresholded (slo/shi
+        # plateau) shape for this trigger. g(dtheta) is smooth and everywhere-differentiable
+        # -- no dead zone, no flat plateau -- decaying from 1 at dtheta=0 toward g_min as
+        # dtheta grows. Acts UPSTREAM of cbf2_filter: this cycle's h_ref_eff shapes THIS
+        # cycle's theta_desired coherently, unlike the direct I_a[2] correction below (applied
+        # AFTER cbf2_filter, invisible to that cycle's QP) which is the mechanism responsible
+        # for the self-defeating attitude-history loop -- see
+        # project_20260824_dtheta_az_filter_self_defeating_feedback memory. Reads the PREVIOUS
+        # cycle's dtheta (this cycle's isn't known yet -- cbf2_filter hasn't run), same lag
+        # structure as cbf2_filter's own th_curr reference. Independent of PLASMC_DESCENT_GATE
+        # (s_e_n-gated, stepped); default-OFF.
+        self._dtheta_href = os.environ.get("PLASMC_DTHETA_HREF", "0") == "1"
+        self._dtheta_href_gmin = float(os.environ.get("PLASMC_DTHETA_HREF_GMIN", "0.15"))   # descent floor, mirrors _dgate_gmin
+        self._dtheta_scale = float(os.environ.get("PLASMC_DTHETA_SCALE", "0.18"))    # dtheta at which g has decayed to 1/e of its range; ~ mean active-frame dtheta at gain=5-10 (measured 0.16-0.23)
+        self._dtheta_href_tau = float(os.environ.get("PLASMC_DTHETA_HREF_TAU", "0.5"))   # LPF tau on g, same role/value as _dgate_tau
+        self._dtheta_href_g = 1.0
+
+        # Crossfade weight for the direct I_a[2] dtheta correction (below, at the
+        # cbf2_filter call site): full strength at onset -- covers the several-cycle lag
+        # (~0.08-0.3s, the tau_ia LPF + kappa-SMC integration) before h_ref_eff's effect on
+        # I_a actually shows up -- decaying toward 0 as the encounter persists, so the two
+        # channels don't both run at full strength indefinitely (the direct channel is the
+        # one carrying the self-defeating loop; only meant as a bridge). Tied to
+        # PLASMC_DTHETA_HREF: when that's off, the direct term behaves exactly as before
+        # (weight=1 always, unchanged/backward-compatible).
+        self._dtheta_xfade_tau = float(os.environ.get("PLASMC_DTHETA_XFADE_TAU", "0.3"))
+        self._dtheta_active_t = 0.0
+
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
         self._STAY_OPEN = True
@@ -764,9 +794,23 @@ class Controller(Thread):
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
+        # ROLLING-WINDOW hardening (2026-08-24, secondary safety net alongside the
+        # cross-marker hw coast+freeze fix -- see _kf_update_hw in
+        # cross_marker_perception.py): a strictly-CONSECUTIVE streak is fragile to
+        # isolated perception miss frames, which cluster right in the touchdown
+        # altitude band (marker-fills-frame Hough failures). Even with h_z no longer
+        # zeroed on a miss (the coast fix), a single genuinely-noisy frame could still
+        # reset a consecutive-only streak and delay the latch. Track the last
+        # _td_window frames' spike/no-spike history instead and require _td_frames
+        # spikes WITHIN that window (not necessarily consecutive) -- strictly more
+        # permissive than the old rule when window==_td_frames (identical behavior),
+        # and only kicks in beyond that if PLASMC_TD_WINDOW is widened.
+        self._td_window = int(os.environ.get("PLASMC_TD_WINDOW", str(self._td_frames)))
+        self._td_hist = deque(maxlen=self._td_window)
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>{self._td_spike} for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
+                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -1198,9 +1242,12 @@ class Controller(Thread):
     def _touchdownDetect(self, s_e_n):
         """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
-        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames (= the vertical
-        reversal at first contact) while near-centered. Depth-free (loom ratio only), one-way
-        latch."""
+        merely h_z > 0 -- see _td_spike's __init__ comment) for _td_frames frames within the
+        last _td_window frames (ROLLING WINDOW, not strictly consecutive -- see __init__'s
+        _td_window comment: hardens against isolated perception miss frames near touchdown
+        breaking a consecutive-only streak; identical to the old consecutive rule when
+        _td_window==_td_frames, the default) while near-centered. Depth-free (loom ratio
+        only), one-way latch."""
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -1211,14 +1258,15 @@ class Controller(Thread):
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
-        self._td_streak = self._td_streak + 1 if h_z > self._td_spike else 0
+        self._td_hist.append(h_z > self._td_spike)
+        self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
         if self._td_debug:
-            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} streak={self._td_streak} "
-                  f"|s_e_n|={_sen_mag:.4f}")
+            print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
+                  f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f}")
         if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames}) "
-                  f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
+            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
+                  f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):
@@ -1421,6 +1469,9 @@ class Controller(Thread):
         # project_20260824_dtheta_az_filter_self_defeating_feedback memory, "not yet done" item.
         # NaN when th_desired is None (Phase-2 fallback, no projection ran).
         self._theta_desired_log = []
+        self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
+        self._dtheta_xfade_w_log = []  # direct-term crossfade weight (v3, see __init__ note)
+        self._dtheta_correction_log = []  # final (post-crossfade, post-cap) I_a[2] correction actually applied
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -2017,6 +2068,13 @@ class Controller(Thread):
             _dt = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
             self._dgate_g += (_dt / max(self._dgate_tau, _dt)) * (g_t - self._dgate_g)
             h_ref_eff = self._h_ref * self._dgate_g
+        if self._dtheta_href:
+            _dth_prev = self._dtheta_az_log[-1] if len(self._dtheta_az_log) > 0 else 0.0
+            g_t2 = self._dtheta_href_gmin + (1.0 - self._dtheta_href_gmin) * np.exp(-_dth_prev / max(self._dtheta_scale, 1e-6))
+            _dt2 = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
+            self._dtheta_href_g += (_dt2 / max(self._dtheta_href_tau, _dt2)) * (g_t2 - self._dtheta_href_g)
+            h_ref_eff = h_ref_eff * self._dtheta_href_g
+        self._dtheta_href_g_log.append(self._dtheta_href_g)
         cross_ws = np.cross(w, self._s[-1][:3])
         if self._combined_barrier:
             # blended surface: h_d = MEASURED s_dot + transport + descent (NO back-mapped ds_d).
@@ -3116,7 +3174,38 @@ class Controller(Thread):
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
         self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
-        I_a[2] -= _dtheta_gain * _dtheta_norm   # more negative I_a[2] = more lift = slower descent
+        # Crossfade (v3, see __init__ note): only active when PLASMC_DTHETA_HREF is on --
+        # bridges the several-cycle lag before h_ref_eff's SMC/LPF-mediated slowdown takes
+        # effect, then fades toward 0 as the encounter persists so this (self-defeating-loop-
+        # carrying) direct channel doesn't run at full strength indefinitely once the coherent
+        # h_ref channel has taken over. Off (weight=1 always): unchanged/backward-compatible.
+        if self._dtheta_href:
+            _dt_now = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
+            if _dtheta_norm > 1e-3:
+                self._dtheta_active_t += _dt_now
+            else:
+                self._dtheta_active_t = 0.0
+            _xfade_w = float(np.exp(-self._dtheta_active_t / max(self._dtheta_xfade_tau, 1e-6)))
+        else:
+            _xfade_w = 1.0
+        self._dtheta_xfade_w_log.append(_xfade_w)
+        # CAP (2026-08-24, IC5 fly-away root cause -- see project_20260824_dtheta_ic5_flyaway_
+        # rootcause memory): the correction has no memory of what it already injected -- at ICs
+        # where dtheta stays active almost continuously (IC5: 65-98% of frames from t=0), the
+        # per-cycle term itself was observed GROWING (0.2->1.9 m/s^2 over 2s, gain=5) rather than
+        # settling, driving a real 3m->7-10m runaway climb + 20-28m lateral divergence within ~9s
+        # before TARGET_LOST. This is a SEPARATE defect from the th_curr self-defeating-loop
+        # (project_20260824_dtheta_az_filter_self_defeating_feedback): that one is about the QP
+        # granting LESS lateral authority over time (a slow degradation); this is about the
+        # correction's own OUTPUT being unbounded when its trigger persists (a stability/safety
+        # issue). Capping does NOT fix the self-defeating loop -- see PLASMC_DTHETA_HREF (v3) for
+        # that. This clamp is a guardrail so the correction can no longer diverge into a fly-away,
+        # nothing more.
+        _dtheta_correction = _dtheta_gain * _dtheta_norm * _xfade_w
+        _dtheta_cap = float(os.environ.get("PLASMC_DTHETA_AZ_CAP", "2.0"))   # m/s^2, max extra lift per cycle; ~median-to-p90 of the gain=10 uncapped distribution, clips the runaway tail
+        _dtheta_correction = float(np.clip(_dtheta_correction, 0.0, _dtheta_cap))
+        self._dtheta_correction_log.append(_dtheta_correction)
+        I_a[2] -= _dtheta_correction   # more negative I_a[2] = more lift = slower descent
         # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
         # it is a thrust-deliverability bound, not a visibility constraint. The CBF
         # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
@@ -3484,6 +3573,9 @@ class Controller(Thread):
             "theta_current(t)": self._theta_current_log,
             "dtheta_az(t)": self._dtheta_az_log,
             "theta_desired(t)": self._theta_desired_log,
+            "dtheta_href_g(t)": self._dtheta_href_g_log,
+            "dtheta_xfade_w(t)": self._dtheta_xfade_w_log,
+            "dtheta_correction(t)": self._dtheta_correction_log,
         }
 
     def getImgData(self):
