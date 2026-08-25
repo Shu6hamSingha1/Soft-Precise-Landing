@@ -1,0 +1,3042 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+PS C:\WINDOWS\system32> ssh shubham@10.176.60.200
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Fri Aug 21 18:11:04 2026 from fe80::2c3a:1dff:fe00:2553%wlan0
+(denv) doctor@doctor:~ $ cd ws/scripts/precise_landing/
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 live_preview.py
+[0:02:15.533317085] [1576]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:02:15.551752548] [1585]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:02:15.575537437] [1585]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:02:15.581675918] [1585]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:02:15.581740159] [1585]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:02:15.588303918] [1576]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:02:15.588736955] [1585]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 20000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 20000us, gain will auto-adjust towardmean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+Live preview running at ~4Hz refresh (full capture continues faster underneath) - press ESC in the window or Ctrl+C here to stop.
+connect 127.0.0.1 port 6000: Connection refused
+qt.qpa.xcb: could not connect to display localhost:10.0
+qt.qpa.plugin: Could not load the Qt platform plugin "xcb" in "/home/doctor/denv/lib/python3.13/site-packages/cv2/qt/plugins" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: xcb.
+
+Aborted
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ python3 live_preview.py
+[0:02:29.806820243] [1595]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:02:29.825746280] [1604]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:02:29.849086169] [1604]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:02:29.855262817] [1604]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:02:29.855327595] [1604]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:02:29.862191299] [1595]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:02:29.862607113] [1604]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 20000, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 20000us, gain will auto-adjust towardmean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+Live preview running at ~4Hz refresh (full capture continues faster underneath) - press ESC in the window or Ctrl+C here to stop.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ CAM_EXPOSURE_US=200 python3 live_preview.py
+[0:03:59.454381004] [1615]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:03:59.472794504] [1624]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:03:59.496194301] [1624]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:03:59.502245597] [1624]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:03:59.502308893] [1624]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:03:59.508908393] [1615]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:03:59.509334893] [1624]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+Live preview running at ~4Hz refresh (full capture continues faster underneath) - press ESC in the window or Ctrl+C here to stop.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QFontDatabase: Cannot find font directory /home/doctor/denv/lib/python3.13/site-packages/cv2/qt/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ hostname -I
+192.168.0.86
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:22:25
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:10:50.943979259] [1716]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:10:50.963059704] [1760]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:10:50.987011111] [1760]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:10:50.993231315] [1760]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:10:50.993296111] [1760]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:10:51.000123629] [1716]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:10:51.000550426] [1760]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (0.539, 0.625, 0.836)NED
+
+Arming and taking off to 3.00 m...
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+Status: INFO: Kill disengaged
+  is_armable + position ready after 6.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/10_34_55.ulg
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Status: CRITICAL: Failsafe activated
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+AUTO_TAKEOFF plateaued at alt=1.08m (target 2.70m) after 12s -- this is expected PX4 behavior, not an error. Will finish the climb via our own OFFBOARD position setpoint next.
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 1.13m, target 3.00m)
+Altitude reached via OFFBOARD climb: 2.71m
+PositionBody: [x_m: -0.5426526665687561, y_m: 0.7824310064315796, z_m: -2.7130749225616455]
+Takeoff complete
+Battery voltage: 23.14V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+  t=2.8s alt=1.57m visible=True
+  t=5.4s alt=0.70m visible=True
+Status: INFO: Pilot took over using sticks
+  t=7.7s alt=-1.08m visible=True
+  t=10.1s alt=-0.38m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=12.5s alt=-0.38m visible=False
+  t=14.8s alt=-0.83m visible=False
+  t=17.1s alt=-1.48m visible=False
+  t=19.3s alt=-1.42m visible=False
+  t=21.4s alt=-1.63m visible=False
+  t=23.5s alt=-2.16m visible=False
+  t=25.5s alt=-2.05m visible=False
+  t=27.7s alt=-1.43m visible=False
+  t=29.9s alt=-1.06m visible=False
+Status: CRITICAL: Failsafe activated
+  t=32.1s alt=-1.08m visible=False
+  t=34.4s alt=-1.21m visible=False
+  t=36.5s alt=-1.52m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=38.5s alt=-1.47m visible=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-23-30 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-2.18m, max=2.88m, avg=-0.90m
+Duration: 40.4s, iterations: 1794
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:26:32
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:14:58.019223519] [1792]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:14:58.042046130] [1835]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:14:58.066946445] [1835]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:14:58.073200593] [1835]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:14:58.073268538] [1835]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:14:58.080141075] [1792]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:14:58.083063482] [1835]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (0.227, 1.129, 0.414)NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+  is_armable + position ready after 38.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/10_39_34.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: CRITICAL: Failsafe activated
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+Altitude reached via AUTO_TAKEOFF
+2.761509656906128 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.8669690489768982, y_m: 0.7466719746589661, z_m: -2.9481289386749268]
+Takeoff complete
+Battery voltage: 22.71V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.1s alt=1.80m visible=False
+  t=4.0s alt=0.95m visible=False
+  t=6.1s alt=0.36m visible=False
+Status: INFO: Pilot took over using sticks
+  t=8.0s alt=-0.30m visible=False
+  t=9.8s alt=-0.14m visible=False
+  t=11.7s alt=-0.15m visible=False
+  t=13.7s alt=-0.38m visible=False
+  t=15.6s alt=-0.66m visible=False
+  t=17.5s alt=-0.82m visible=False
+Status: CRITICAL: Failsafe activated
+  t=19.4s alt=-0.84m visible=False
+  t=21.5s alt=-0.40m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=23.4s alt=-0.03m visible=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-27-49 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.88m, max=2.96m, avg=0.06m
+Duration: 23.8s, iterations: 1219
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:27:57
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:16:22.667039376] [1867]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:16:22.690023228] [1910]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:16:22.714553876] [1910]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:16:22.721127691] [1910]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:16:22.721195598] [1910]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:16:22.728343043] [1867]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:16:22.729589135] [1910]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (1.795, 0.115, -1.598) NED
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+
+Error: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 299, in _wait_armable
+    async for health in self.vehicle.telemetry.health():
+    ...<2 lines>...
+            return
+  File "/home/doctor/denv/lib/python3.13/site-packages/mavsdk/telemetry.py", line 3565, in health
+    async for response in health_stream:
+        yield Health.translate_from_rpc(response.health)
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 363, in _fetch_stream_responses
+    message = await self._read()
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 380, in _read
+    raw_response = await self._cython_call.receive_serialized_message()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/call.pyx.pxi", line 392, in receive_serialized_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 126,in _receive_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 99, in execute_batch
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 305, in arm_and_takeoff
+    await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 506, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/usr/lib/python3.13/asyncio/timeouts.py", line 116, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 705, in main
+    await system.arm_and_takeoff()
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 333, in arm_and_takeoff
+    await self.fc.arm_and_takeoff(takeoff_hgt=self.takeoff_height)
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 307, in arm_and_takeoff
+    raise RuntimeError(
+    ...<2 lines>...
+    )
+RuntimeError: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+[hardware_landing] Aborting - commanding PX4 land.
+Status: INFO: Landing at current position
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-28-58 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+No data collected
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:29:08
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:17:34.181436797] [1938]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:17:34.205521334] [1981]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:17:34.230631222] [1981]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:17:34.236886945] [1981]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:17:34.236953667] [1981]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:17:34.244770852] [1938]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:17:34.245300630] [1981]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (2.464, 0.939, -3.122) NED
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+
+Error: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 299, in _wait_armable
+    async for health in self.vehicle.telemetry.health():
+    ...<2 lines>...
+            return
+  File "/home/doctor/denv/lib/python3.13/site-packages/mavsdk/telemetry.py", line 3565, in health
+    async for response in health_stream:
+        yield Health.translate_from_rpc(response.health)
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 363, in _fetch_stream_responses
+    message = await self._read()
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 380, in _read
+    raw_response = await self._cython_call.receive_serialized_message()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/call.pyx.pxi", line 392, in receive_serialized_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 126,in _receive_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 99, in execute_batch
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 305, in arm_and_takeoff
+    await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 506, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/usr/lib/python3.13/asyncio/timeouts.py", line 116, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 705, in main
+    await system.arm_and_takeoff()
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 333, in arm_and_takeoff
+    await self.fc.arm_and_takeoff(takeoff_hgt=self.takeoff_height)
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 307, in arm_and_takeoff
+    raise RuntimeError(
+    ...<2 lines>...
+    )
+RuntimeError: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+[hardware_landing] Aborting - commanding PX4 land.
+Status: INFO: Landing at current position
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-30-10 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+No data collected
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:30:20
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:18:45.277558680] [2008]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:18:45.301107976] [2051]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:18:45.325828106] [2051]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:18:45.332140236] [2051]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:18:45.332203939] [2051]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:18:45.338960958] [2008]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:18:45.339398143] [2051]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (1.318, -0.310, -1.416) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+  is_armable + position ready after 18.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/10_43_01.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+Altitude reached via AUTO_TAKEOFF
+2.855037212371826 3.0
+Switching to OFFBOARD mode!
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 1.1387357711791992, y_m: 0.2405535876750946, z_m: -3.3408024311065674]
+Takeoff complete
+Battery voltage: 22.47V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.7s alt=2.17m visible=True
+Status: INFO: Pilot took over using sticks
+  t=5.1s alt=1.22m visible=True
+  t=7.4s alt=0.66m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=9.9s alt=-0.03m visible=False
+  t=12.1s alt=-0.79m visible=False
+  t=14.4s alt=-1.63m visible=False
+  t=16.6s alt=-2.06m visible=False
+  t=18.7s alt=-2.17m visible=False
+  t=20.9s alt=-1.88m visible=False
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+  t=23.1s alt=-1.51m visible=True
+  t=25.5s alt=-1.52m visible=True
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=28.0s alt=-1.54m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=30.5s alt=-1.73m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=32.7s alt=-1.94m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-31-22 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-2.17m, max=3.33m, avg=-0.77m
+Duration: 33.8s, iterations: 1448
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:31:32
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:19:57.272335674] [2079]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:19:57.298085674] [2122]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:19:57.322932100] [2122]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:19:57.329240285] [2122]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:19:57.329303026] [2122]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:19:57.336174915] [2079]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:19:57.339436637] [2122]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (1.717, 0.705, 3.293)NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS PDOP too high
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+
+Error: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+Traceback (most recent call last):
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 299, in _wait_armable
+    async for health in self.vehicle.telemetry.health():
+    ...<2 lines>...
+            return
+  File "/home/doctor/denv/lib/python3.13/site-packages/mavsdk/telemetry.py", line 3565, in health
+    async for response in health_stream:
+        yield Health.translate_from_rpc(response.health)
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 363, in _fetch_stream_responses
+    message = await self._read()
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/doctor/denv/lib/python3.13/site-packages/grpc/aio/_call.py", line 380, in _read
+    raw_response = await self._cython_call.receive_serialized_message()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/call.pyx.pxi", line 392, in receive_serialized_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 126,in _receive_message
+  File "src/python/grpcio/grpc/_cython/_cygrpc/aio/callback_common.pyx.pxi", line 99, in execute_batch
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 305, in arm_and_takeoff
+    await asyncio.wait_for(_wait_armable(), timeout=armable_timeout)
+  File "/usr/lib/python3.13/asyncio/tasks.py", line 506, in wait_for
+    async with timeouts.timeout(timeout):
+               ~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "/usr/lib/python3.13/asyncio/timeouts.py", line 116, in __aexit__
+    raise TimeoutError from exc_val
+TimeoutError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 705, in main
+    await system.arm_and_takeoff()
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 333, in arm_and_takeoff
+    await self.fc.arm_and_takeoff(takeoff_hgt=self.takeoff_height)
+  File "/home/doctor/ws/scripts/precise_landing/flight_controller.py", line 307, in arm_and_takeoff
+    raise RuntimeError(
+    ...<2 lines>...
+    )
+RuntimeError: is_armable + global/home position did not go True within 60.0s — PX4 lockstep race is not recovering.
+[hardware_landing] Aborting - commanding PX4 land.
+Status: INFO: Landing at current position
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-32-33 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+No data collected
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:32:53
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:21:18.820768163] [2150]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:21:18.844544033] [2193]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:21:18.869336903] [2193]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:21:18.875555977] [2193]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:21:18.875631237] [2193]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:21:18.882821200] [2150]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:21:18.883352014] [2193]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (1.677, 0.841, 1.098)NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 3.8s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/10_45_20.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+AUTO_TAKEOFF plateaued at alt=2.25m (target 2.70m) after 12s -- this is expected PX4 behavior, not an error. Will finish the climb via our own OFFBOARD position setpoint next.
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 2.23m, target 3.00m)
+Altitude reached via OFFBOARD climb: 2.71m
+PositionBody: [x_m: 1.6341615915298462, y_m: 0.7140496969223022, z_m: -2.7087485790252686]
+Takeoff complete
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Battery voltage: 21.91V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.3s alt=0.96m visible=False
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+  t=4.8s alt=-0.91m visible=True
+Status: INFO: Pilot took over using sticks
+  t=7.2s alt=-2.82m visible=True
+  t=9.5s alt=-3.12m visible=True
+  t=11.9s alt=-4.20m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=14.2s alt=-4.74m visible=False
+  t=16.4s alt=-5.15m visible=False
+  t=18.6s alt=-5.55m visible=False
+  t=20.6s alt=-5.78m visible=False
+  t=22.7s alt=-5.79m visible=False
+  t=24.8s alt=-5.88m visible=False
+  t=26.9s alt=-5.92m visible=False
+  t=29.0s alt=-6.22m visible=False
+  t=31.4s alt=-6.16m visible=False
+  t=33.4s alt=-6.26m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=35.4s alt=-6.21m visible=False
+Status: INFO: Landing detected
+  t=37.3s alt=-6.02m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-33-54 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-6.27m, max=2.81m, avg=-4.40m
+Duration: 37.8s, iterations: 1728
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-21 18:34:12
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:22:37.831139875] [2224]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:22:37.854252227] [2267]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:22:37.879335097] [2267]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:22:37.885624041] [2267]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:22:37.885688949] [2267]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media1 and ISP device /dev/media2
+[0:22:37.892695190] [2224]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:22:37.895667541] [2267]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (1.110, 1.049, 3.380)NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: height estimate not stable
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: height estimate not stable
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+  is_armable + position ready after 47.8s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/10_47_23.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+AUTO_TAKEOFF plateaued at alt=2.17m (target 2.70m) after 12s -- this is expected PX4 behavior, not an error. Will finish the climb via our own OFFBOARD position setpoint next.
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 2.17m, target 3.00m)
+Altitude reached via OFFBOARD climb: 2.70m
+PositionBody: [x_m: 1.7097893953323364, y_m: 1.715990424156189, z_m: -2.7024502754211426]
+Takeoff complete
+Battery voltage: 21.56V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.4s alt=0.25m visible=True
+Status: INFO: Pilot took over using sticks
+  t=5.0s alt=-3.97m visible=True
+  t=7.2s alt=-3.94m visible=True
+  t=9.4s alt=-3.75m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=11.6s alt=-3.78m visible=False
+  t=13.8s alt=-4.60m visible=False
+  t=15.9s alt=-5.06m visible=False
+  t=18.1s alt=-5.01m visible=False
+  t=19.8s alt=-5.12m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=21.5s alt=-4.98m visible=False
+Status: INFO: Landing detected
+  t=23.1s alt=-4.74m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Fri Aug 21 18-35-41 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-5.14m, max=2.83m, avg=-3.73m
+Duration: 23.8s, iterations: 1139
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Fri Aug 21 18:41:23 2026 from fe80::5745:46de:10d9:6091%wlan0
+(denv) doctor@doctor:~ $ sudo shutdown -h now
+(denv) doctor@doctor:~ $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh_dispatch_run_fatal: Connection to 2401:4900:c975:bffc:495f:d5d4:7290:935f port 22:Connection timed out
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Fri Aug 21 18:43:44 2026 from 2401:4900:c975:bffc:2854:2d3e:d4c4:540b
+(denv) doctor@doctor:~ $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.pyclient_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh: Could not resolve hostname doctor.local: No such host is known.
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh: Could not resolve hostname doctor.local: No such host is known.
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh: connect to host doctor.local port 22: Connection timed out
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Aug 22 11:06:31 2026 from fe80::5745:46de:10d9:6091%wlan0
+(denv) doctor@doctor:~ $ cd ws/scripts/precise_landing/
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:08:12
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:10:11.164184644] [1650]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:10:11.183306373] [1696]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:10:11.208157760] [1696]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:10:11.214311160] [1696]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:10:11.214378194] [1696]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:10:11.220963392] [1650]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:10:11.221427855] [1696]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.289, -0.843, -0.011) NED
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+Status: CRITICAL: Preflight: GPS Vertical Pos Drift too high
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+  is_armable + position ready after 14.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_08_28.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.756056785583496 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.5400517582893372, y_m: -0.8438755869865417, z_m: -3.114274501800537]
+Takeoff complete
+Battery voltage: 23.84V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.7s alt=2.61m visible=True
+  t=5.2s alt=2.31m visible=True
+  t=7.3s alt=1.49m visible=True
+Status: INFO: Pilot took over using sticks
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=9.4s alt=0.66m visible=False
+  t=11.6s alt=0.69m visible=False
+  t=13.8s alt=0.64m visible=False
+  t=15.9s alt=0.61m visible=False
+Status: CRITICAL: Failsafe activated
+  t=18.2s alt=0.62m visible=False
+  t=20.1s alt=0.63m visible=False
+  t=22.0s alt=0.57m visible=False
+  t=24.0s alt=0.53m visible=False
+  t=25.9s alt=0.53m visible=False
+  t=27.9s alt=0.50m visible=False
+  t=30.0s alt=0.46m visible=False
+  t=31.9s alt=0.47m visible=False
+
+Error: descent stall: no >0.30 m descent in 25s (alt=0.47 m) - aborting
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 706, in main
+    await system.landing_loop()
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 434, in landing_loop
+    raise RuntimeError(f"descent stall: no >{HOVER_STALL_DZ:.2f} m descent in "
+                        f"{HOVER_STALL_S:.0f}s (alt={alt:.2f} m) - aborting")
+RuntimeError: descent stall: no >0.30 m descent in 25s (alt=0.47 m) - aborting
+[hardware_landing] Aborting - commanding PX4 land.
+Status: INFO: Landing at current position
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-09-11 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=0.26m, max=3.14m, avg=0.94m
+Duration: 33.0s, iterations: 1562
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:10:14
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:12:12.877256807] [1728]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:12:12.899281012] [1771]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:12:12.923876272] [1771]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:12:12.930051058] [1771]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:12:12.930117147] [1771]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:12:12.937124397] [1728]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:12:12.939017851] [1771]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.270, -1.028, -0.013) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable + position ready after 0.9s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_10_16.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+Status: CRITICAL: Failsafe activated
+Status: INFO: Using default takeoff altitude: 3.6 m
+Altitude reached via AUTO_TAKEOFF
+3.4589574337005615 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.2558026313781738, y_m: -1.0715408325195312, z_m: -4.247986793518066]
+Takeoff complete
+Battery voltage: 23.23V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=1.9s alt=3.66m visible=False
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+  t=4.2s alt=2.49m visible=True
+  t=6.6s alt=1.55m visible=True
+  t=8.8s alt=0.92m visible=True
+Status: INFO: Pilot took over using sticks
+  t=11.0s alt=0.91m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=13.1s alt=0.89m visible=False
+  t=15.3s alt=0.81m visible=False
+  t=17.5s alt=0.04m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Landing detected
+  t=19.4s alt=0.02m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-10-47 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=0.01m, max=4.29m, avg=1.44m
+Duration: 19.8s, iterations: 919
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.pyclient_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32>
+PS C:\WINDOWS\system32>
+PS C:\WINDOWS\system32>
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Aug 22 11:07:33 2026 from fe80::5745:46de:10d9:6091%wlan0
+(denv) doctor@doctor:~ $ cd ws/scripts/precise_landing/
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.pyclient_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh: Could not resolve hostname doctor.local: No such host is known.
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh_dispatch_run_fatal: Connection to 2401:4900:c975:bffc:495f:d5d4:7290:935f port 22:Connection timed out
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh: Could not resolve hostname doctor.local: No such host is known.
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+ssh_dispatch_run_fatal: Connection to 2401:4900:c975:bffc:495f:d5d4:7290:935f port 22:Connection timed out
+PS C:\WINDOWS\system32> ssh -Y doctor@doctor.local
+Warning: No xauth data; using fake authentication data for X11 forwarding.
+Linux doctor 6.18.34+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.34-1+rpt1 (2026-06-09) aarch64
+
+The programs included with the Debian GNU/Linux system are free software;
+the exact distribution terms for each program are described in the
+individual files in /usr/share/doc/*/copyright.
+
+Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
+permitted by applicable law.
+Last login: Sat Aug 22 11:21:24 2026 from fe80::5745:46de:10d9:6091%wlan0
+(denv) doctor@doctor:~ $ cd ws/scripts/precise_landing/
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:21:53
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:23:51.022859535] [2050]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:23:51.047142164] [2093]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:23:51.071604063] [2093]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:23:51.077749143] [2093]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:23:51.077817677] [2093]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:23:51.084536009] [2050]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:23:51.085892060] [2093]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.125, -0.966, -0.007) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+Status: INFO: Kill disengaged
+  is_armable + position ready after 6.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_21_59.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.806091785430908 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.3514789938926697, y_m: -1.1744091510772705, z_m: -3.1992735862731934]
+Takeoff complete
+Battery voltage: 22.78V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.7s alt=1.77m visible=True
+  t=5.1s alt=0.89m visible=True
+Status: INFO: Pilot took over using sticks
+  t=7.3s alt=0.26m visible=True
+  t=9.3s alt=0.27m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=11.4s alt=0.37m visible=False
+  t=13.3s alt=0.21m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=15.2s alt=0.30m visible=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-22-26 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=0.02m, max=3.18m, avg=0.72m
+Duration: 16.8s, iterations: 786
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:22:47
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:24:45.280130967] [2120]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:24:45.305180081] [2163]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:24:45.329210073] [2163]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:24:45.335441538] [2163]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:24:45.335498017] [2163]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:24:45.342892542] [2120]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:24:45.343360595] [2163]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.835, -2.874, -0.008) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 5.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_22_54.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+Altitude reached via AUTO_TAKEOFF
+2.919386625289917 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.978466808795929, y_m: -3.3830254077911377, z_m: -3.1890032291412354]
+Takeoff complete
+Battery voltage: 22.54V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.1s alt=2.19m visible=False
+  t=4.1s alt=1.25m visible=False
+  t=6.1s alt=0.66m visible=False
+Status: INFO: Pilot took over using sticks
+  t=8.0s alt=0.18m visible=False
+  t=9.8s alt=0.25m visible=False
+  t=11.7s alt=0.22m visible=False
+  t=13.5s alt=0.20m visible=False
+  t=15.4s alt=0.13m visible=False
+  t=17.3s alt=0.06m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=19.2s alt=-0.17m visible=False
+  t=20.9s alt=-0.17m visible=False
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-23-25 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.19m, max=3.17m, avg=0.56m
+Duration: 21.8s, iterations: 1150
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=0.5 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:25:06
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:27:04.517615891] [2193]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:27:04.540344904] [2236]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:27:04.565300318] [2236]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:27:04.571368549] [2236]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:27:04.571435454] [2236]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:27:04.578203895] [2193]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:27:04.578621673] [2236]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (0.137, -0.576, -0.011) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+  is_armable + position ready after 1.7s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_25_09.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+Status: CRITICAL: Failsafe activated
+[FC] PX4 reports IN_AIR during takeoff -- clearing stale LANDED=True
+Status: INFO: Using default takeoff altitude: 3.6 m
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.8899941444396973 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.08796576410531998, y_m: 0.03712623566389084, z_m: -3.1520843505859375]
+Takeoff complete
+Battery voltage: 22.36V -> hover throttle 0.388 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.5s alt=1.56m visible=True
+Status: INFO: Pilot took over using sticks
+  t=4.8s alt=0.16m visible=True
+  t=7.0s alt=0.15m visible=True
+  t=8.9s alt=0.56m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=10.8s alt=0.61m visible=False
+  t=12.6s alt=0.21m visible=False
+  t=14.5s alt=-0.01m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Landing detected
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-25-34 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.01m, max=3.13m, avg=0.63m
+Duration: 15.8s, iterations: 763
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=1.0 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:26:08
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:28:06.362609440] [2265]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:28:06.387846694] [2308]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:28:06.412296056] [2308]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:28:06.418428433] [2308]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:28:06.418494356] [2308]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:28:06.425492102] [2265]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:28:06.427376537] [2308]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.325, -1.521, -0.010) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 2.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_26_12.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+No common marker in both frames. Skipping optical flow calculation.
+Altitude reached via AUTO_TAKEOFF
+2.9406864643096924 3.0
+Switching to OFFBOARD mode!
+Status: CRITICAL: Failsafe activated
+-- Starting offboard (attempt 1/5)
+Status: CRITICAL: Switching to Offboard is currently not available
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+-- Starting offboard (attempt 2/5)
+  offboard.start failed: COMMAND_DENIED — continuing to pump setpoints and retrying...
+-- Starting offboard (attempt 3/5)
+  PX4 reported flight_mode = OFFBOARD
+-- Finishing climb via OFFBOARD position setpoint (currently 2.29m, target 3.00m)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Altitude reached via OFFBOARD climb: 2.71m
+PositionBody: [x_m: -1.3768380880355835, y_m: -1.0704407691955566, z_m: -2.710874557495117]
+Takeoff complete
+Battery voltage: 22.08V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.5s alt=1.30m visible=False
+  t=4.7s alt=0.04m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=6.8s alt=0.07m visible=False
+  t=8.9s alt=0.17m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=11.0s alt=0.35m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-26-36 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=0.04m, max=2.90m, avg=0.63m
+Duration: 11.8s, iterations: 539
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=0.5 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:27:23
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+
+Error: Unable to get data from Flight Controller.
+Traceback (most recent call last):
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 704, in main
+    await system.initialize()
+  File "/home/doctor/ws/scripts/precise_landing/hardware_landing.py", line 278, in initialize
+    raise RuntimeError("Unable to get data from Flight Controller.")
+RuntimeError: Unable to get data from Flight Controller.
+[hardware_landing] Aborting - commanding PX4 land.
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: INFO: Kill disengaged
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: INFO: Kill engaged
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+No FC/controller - nothing to save.
+
+Cleaning up...
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+No data collected
+
+============================================================
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=0.5 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:27:55
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:29:54.132790318] [2383]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:29:54.157310141] [2426]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:29:54.182404327] [2426]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:29:54.188945093] [2426]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:29:54.189009757] [2426]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:29:54.195960282] [2383]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:29:54.197152711] [2426]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.827, 0.597, -0.010) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 2.8s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_27_59.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.886890172958374 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.8380612134933472, y_m: 0.7048506140708923, z_m: -3.2123687267303467]
+Takeoff complete
+Battery voltage: 22.04V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.6s alt=1.58m visible=True
+  t=4.8s alt=0.11m visible=True
+Status: INFO: Pilot took over using sticks
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=6.9s alt=0.05m visible=True
+  t=9.0s alt=-0.04m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=11.0s alt=-0.15m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=12.8s alt=-0.20m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-28-21 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.20m, max=3.22m, avg=0.52m
+Duration: 12.8s, iterations: 601
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=1.0 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:28:29
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:30:27.648602491] [2455]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:30:27.671989752] [2498]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:30:27.696289177] [2498]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:30:27.702516531] [2498]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:30:27.702580899] [2498]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:30:27.709257066] [2455]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:30:27.709691991] [2498]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.584, 0.484, -0.010) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 4.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_28_34.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.908883571624756 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.47936517000198364, y_m: 0.3165925145149231, z_m: -3.2016236782073975]
+Takeoff complete
+Battery voltage: 21.94V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.6s alt=0.80m visible=True
+Status: INFO: Pilot took over using sticks
+  t=4.9s alt=0.32m visible=True
+  t=7.0s alt=0.29m visible=True
+  t=9.1s alt=0.16m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=11.0s alt=-0.07m visible=False
+  t=12.9s alt=-0.52m visible=False
+  t=15.0s alt=-0.71m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=17.0s alt=-0.81m visible=False
+  t=18.9s alt=-0.86m visible=False
+  t=20.8s alt=-0.83m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=22.6s alt=0.01m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-29-05 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.87m, max=3.22m, avg=-0.09m
+Duration: 23.0s, iterations: 1119
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=0.5 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:29:15
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:31:13.198740250] [2526]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:31:13.222429813] [2569]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:31:13.247322730] [2569]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:31:13.253515919] [2569]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:31:13.253577879] [2569]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:31:13.260899796] [2526]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:31:13.261390904] [2569]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.785, 0.104, -0.013) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+  is_armable + position ready after 3.0s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_29_19.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+No common marker in both frames. Skipping optical flow calculation.
+Altitude reached via AUTO_TAKEOFF
+2.915964365005493 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -1.051222324371338, y_m: 0.17844203114509583, z_m: -3.224606513977051]
+Takeoff complete
+Battery voltage: 21.79V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=2.7s alt=1.17m visible=False
+Status: INFO: Pilot took over using sticks
+  t=4.9s alt=0.15m visible=False
+  t=7.2s alt=0.20m visible=False
+  t=9.6s alt=1.23m visible=False
+  t=11.5s alt=1.47m visible=False
+  t=13.6s alt=1.44m visible=False
+  t=15.6s alt=0.58m visible=False
+  t=17.6s alt=0.07m visible=False
+  t=19.6s alt=0.15m visible=False
+  t=21.5s alt=0.22m visible=False
+  t=23.4s alt=0.08m visible=False
+  t=25.4s alt=-0.17m visible=False
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=27.4s alt=-0.24m visible=False
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+  t=29.3s alt=-0.31m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=31.1s alt=-0.35m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-30-00 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.36m, max=3.21m, avg=0.49m
+Duration: 31.8s, iterations: 1532
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 PLASMC_GT_Z_REG=1.0 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:30:29
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:32:27.796535999] [2601]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:32:27.820861330] [2644]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:32:27.845077647] [2644]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:32:27.851196414] [2644]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:32:27.851263003] [2644]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:32:27.858164661] [2601]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:32:27.860311436] [2644]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.422, -0.130, -0.010) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+Status: INFO: Kill disengaged
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+  is_armable + position ready after 2.8s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_30_33.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.8908333778381348 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.5337433218955994, y_m: -0.122158482670784, z_m: -3.2339179515838623]
+Takeoff complete
+Battery voltage: 21.68V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.6s alt=0.84m visible=True
+Status: INFO: Pilot took over using sticks
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=4.9s alt=-0.00m visible=True
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+  t=7.3s alt=-0.04m visible=False
+  t=9.4s alt=-0.01m visible=False
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-30-53 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.05m, max=3.24m, avg=0.50m
+Duration: 10.8s, iterations: 467
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ PLASMC_HW_POS_FEEDBACK=1 KAPPA_MAX_X=15 KAPPA_MAX_Y=15 IMG_RECORD=1 python3 hardware_landing.py
+All modules imported successfully
+
+============================================================
+Hardware Landing System
+============================================================
+Started: 2026-08-22 11:31:33
+============================================================
+Initializing Hardware Landing System
+============================================================
+
+1. Connecting to flight controller via MAVSDK...
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+   Flight controller connected, quaternion feed live
+
+2. Starting Controller (owns its own IMG_PROCESSOR/camera)...
+   PLASMC_HW_POS_FEEDBACK=1 -- analytic EKF-position feedback armed (marker position will be snapshotted from current pose right before arming)
+[0:33:31.973342361] [2672]  INFO Camera camera_manager.cpp:340 libcamera v0.7.1+rpt20260609
+[0:33:31.997157807] [2715]  INFO RPI pipeline_base.cpp:1133 Using configuration file '/usr/share/libcamera/pipeline/rpi/vc4/rpi_apps.yaml'
+[0:33:32.021683944] [2715]  INFO IPAProxy ipa_proxy.cpp:184 Using tuning file /usr/share/libcamera/ipa/rpi/vc4/imx219.json
+[0:33:32.027792044] [2715]  INFO Camera camera_manager.cpp:223 Adding camera '/base/soc/i2c0mux/i2c@1/imx219@10' for pipeline handler rpi/vc4
+[0:33:32.027859338] [2715]  INFO RPI vc4.cpp:445 Registered camera /base/soc/i2c0mux/i2c@1/imx219@10 to Unicam device /dev/media0 and ISP device /dev/media2
+[0:33:32.034937728] [2672]  INFO Camera camera.cpp:1216 configuring streams: (0) 320x240-YUV420/SMPTE170M (1) 640x480-SBGGR10_CSI2P/RAW
+[0:33:32.035923592] [2715]  INFO RPI vc4.cpp:620 Sensor: /base/soc/i2c0mux/i2c@1/imx219@10 - Selected sensor format: 640x480-SBGGR10_1X10/RAW - Selected unicam format: 640x480-pBAA/RAW
+imgstream: controls set -> {'FrameDurationLimits': (33333, 33333), 'AeEnable': False, 'ExposureTime': 200, 'AnalogueGain': 8.0} (manual exposure ON, AEC/AGC disabled)
+imgstream: CAM_AUTO_GAIN ON -- exposure fixed at 200us, gain will auto-adjust toward mean brightness 85/255 (range [1.0, 16.0], every 15 frames)
+imgstream: CAM_AUTO_EXPOSURE ON -- exposure will step within [200, 4000]us (x2.0 per step) whenever gain is pinned at a clamp and still off-target for 3 consecutive gain updates
+Waiting for image streaming
+Starting with recording...
+[controller] PLASMC_HW_POS_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+   Video recording ENABLED (IMG_RECORD=1) -> Test_Data/Landing/Test_Videos/<timestamp>.mp4
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+   Controller thread started (not yet engaged)
+
+3. System ready for takeoff
+[hw_pos_feedback] marker position snapshotted from current pose: (-0.471, 0.472, -0.011) NED
+
+Arming and taking off to 3.00 m...
+-- CPU governor set to performance
+-- Waiting for is_armable + global/home position ready (EKF / lockstep ready)...
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+OPTIC FLOW UNAVAILABLE...
+imgstream: CAM_AUTO_EXPOSURE stepping ExposureTime 200us -> 400us (dim even at gain ceiling)
+Status: INFO: Kill disengaged
+  is_armable + position ready after 5.9s
+-- Arming
+Status: INFO: Armed by external command
+Armed!
+-- Taking off
+Status: INFO: [logger] /fs/microsd/log/2026-08-22/11_31_40.ulg
+Status: INFO: Using default takeoff altitude: 3.6 m
+Status: INFO: Takeoff detected
+[FC] PX4 reports TAKING_OFF during takeoff -- clearing stale LANDED=True
+LANDING PAD VISIBLE NOW...
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached via AUTO_TAKEOFF
+2.875988721847534 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.5189719200134277, y_m: 0.006930850446224213, z_m: -3.1908586025238037]
+Takeoff complete
+Battery voltage: 21.60V -> hover throttle 0.395 (base 0.420)
+
+============================================================
+Landing Control Loop
+============================================================
+PID warmup (100 ms - fills deques; holding position)...
+  t=2.7s alt=1.58m visible=True
+Status: INFO: Pilot took over using sticks
+Status: CRITICAL: Kill engaged
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=5.2s alt=-0.02m visible=True
+  t=8.0s alt=-0.05m visible=True
+Status: INFO: Disarmed by kill-switch
+Status: CRITICAL: Preflight Fail: Kill switch engaged
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+Status: CRITICAL: Preflight Fail: Flight termination active
+  t=10.6s alt=-0.12m visible=False
+[FC] PX4 reports ON_GROUND — LANDED=True
+Landed (PX4 LandedState or controller touchdown detect)
+Status: INFO: Landing at current position
+Land command issued post-touchdown.
+
+Flight data saved -> Test_Data/Landing/Sat Aug 22 11-32-01 2026
+
+Cleaning up...
+Video recording stopped...
+-- CPU governor set to ondemand
+Cleanup complete
+
+============================================================
+Test Summary
+============================================================
+Altitude: min=-0.12m, max=3.25m, avg=0.74m
+Duration: 10.9s, iterations: 411
+
+============================================================
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+Flight Controller is disconnected...
+(denv) doctor@doctor:~/ws/scripts/precise_landing $ client_loop: send disconnect: Connection reset
+PS C:\WINDOWS\system32>
