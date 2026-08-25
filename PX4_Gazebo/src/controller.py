@@ -1247,7 +1247,17 @@ class Controller(Thread):
         _td_window comment: hardens against isolated perception miss frames near touchdown
         breaking a consecutive-only streak; identical to the old consecutive rule when
         _td_window==_td_frames, the default) while near-centered. Depth-free (loom ratio
-        only), one-way latch."""
+        only), one-way latch.
+
+        FROZEN-FRAME EXCLUSION (2026-08-25): a perception-mode-only false trigger at 3.75m
+        altitude (nowhere near the ground) was traced to the hw coast+freeze KF
+        (cross_marker_perception.py / img_data.py's _kf_update) holding h_z bit-identical
+        across a multi-frame detection-miss streak -- once a stale frozen value happens to
+        be slightly positive, it satisfies "h_z>_td_spike x_td_frames" by repeating the
+        SAME frame, not by _td_frames independent observations. GT-feedback never hit this
+        (h_z there is exact/never frozen, bypasses the KF entirely). Fix: a frozen frame is
+        excluded from the window entirely (neither counted as a spike nor as a gap) --
+        see img_data.py/cross_marker_perception.py's HW_FROZEN."""
         if not self._touchdown_loom or self._touchdown:
             return
         h_z = float(self._h[-1][2])
@@ -1257,6 +1267,11 @@ class Controller(Thread):
                 self._td_armed = True
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
+            return
+        if self._gt_feedback is None and bool(getattr(self._img_node, 'HW_FROZEN', False)):
+            if self._td_debug:
+                print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} FROZEN -> excluded from window "
+                      f"spikes_in_window={self._td_streak}/{len(self._td_hist)} |s_e_n|={_sen_mag:.4f}")
             return
         self._td_hist.append(h_z > self._td_spike)
         self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity

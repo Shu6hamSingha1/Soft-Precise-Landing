@@ -1632,6 +1632,18 @@ class CrossMarkerPerception:
         """Uncalibrated [h1,h2,h3,w1,w2,w3] -- what the calibration recorder logs."""
         return self._hw.copy()
 
+    @property
+    def HW_FROZEN(self):
+        """True iff self._hw currently holds the coast+freeze KF's FROZEN state (bit-
+        identical to last frame, not a fresh estimate) -- see _kf_update_hw's
+        _hw_kf_frozen comment. Consumers that treat a sustained h_z condition as a
+        genuine multi-frame SIGNAL (e.g. controller.py's _touchdownDetect spike-streak)
+        must not count a frozen frame toward that streak: a frozen value repeats
+        identically for as long as the underlying detection gap lasts, which trivially
+        satisfies any small persistence-count threshold without 3 independent
+        observations ever having occurred."""
+        return self._hw_kf_frozen is not None
+
     def getImgFeatureParam(self):
         return self._sensor_cal_s @ self.getRawImgFeatureParam()
 
@@ -1932,6 +1944,10 @@ class CrossMarkerNode(Thread):
 
     def getOptFlowAngVel(self):
         return self._perception.getOptFlowAngVel()
+
+    @property
+    def HW_FROZEN(self):
+        return self._perception.HW_FROZEN
 
     def getRawImgFeatureParam(self):
         return self._perception.getRawImgFeatureParam()
