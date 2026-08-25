@@ -139,20 +139,28 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--chase", required=True)
     ap.add_argument("--drone", required=True)
+    ap.add_argument("--drone2", default=None,
+                    help="optional second PiP source (e.g. an h-overlay video), "
+                         "placed in --pip-corner2; --drone becomes the first PiP")
     ap.add_argument("--run", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--fps", type=float, default=25.0)
     ap.add_argument("--height", type=int, default=720)
     ap.add_argument("--pip-frac", type=float, default=0.28)
     ap.add_argument("--pip-corner", default="tl", choices=["tl", "tr", "bl", "br"])
+    ap.add_argument("--pip-corner2", default="bl", choices=["tl", "tr", "bl", "br"])
+    ap.add_argument("--pip-label", default="onboard")
+    ap.add_argument("--pip-label2", default="onboard2")
     ap.add_argument("--tail-s", type=float, default=1.0,
                     help="seconds of video to keep rolling AFTER touchdown (graph freezes)")
     a = ap.parse_args()
 
     chase = cv2.VideoCapture(a.chase)
     drone = cv2.VideoCapture(a.drone)
+    drone2 = cv2.VideoCapture(a.drone2) if a.drone2 else None
     cN = int(chase.get(cv2.CAP_PROP_FRAME_COUNT))
     dN = int(drone.get(cv2.CAP_PROP_FRAME_COUNT))
+    d2N = int(drone2.get(cv2.CAP_PROP_FRAME_COUNT)) if drone2 is not None else 0
     cfps = chase.get(cv2.CAP_PROP_FPS) or 30.0
     dfps = drone.get(cv2.CAP_PROP_FPS) or 30.0
     series = load_series(a.run)
@@ -163,6 +171,7 @@ def main():
     # length by a common fraction 0->1 makes START and TOUCHDOWN coincide in all three,
     # independent of frame counts / fps tags / RTF. Then a frozen --tail-s hold.
     td_c, td_d = cN - 1, dN - 1
+    td_d2 = d2N - 1 if drone2 is not None else 0
     dur = float(series["t"][-1])             # GT sim descent duration (to touchdown)
     tail = max(0.0, a.tail_s)
     # fixed 3D axis limits over the whole descent (so the view doesn't jump per frame)
@@ -182,6 +191,7 @@ def main():
 
     ccache = {"i": -1, "f": None}
     dcache = {"i": -1, "f": None}
+    d2cache = {"i": -1, "f": None}
     nd = max(1, int(dur * a.fps))           # descent output frames (GT sim duration)
     nt = int(tail * a.fps)                  # tail output frames
     nframes = nd + nt
@@ -193,11 +203,14 @@ def main():
         if f < nd:                          # DESCENT: common fraction 0->1 to each touchdown
             u = f / max(nd - 1, 1)
             ci = int(round(u * td_c)); di = int(round(u * td_d))
+            d2i = int(round(u * td_d2)) if drone2 is not None else 0
             gi = min(gN - 1, int(round(u * (gN - 1))))
         else:                               # TAIL: hold touchdown frame + graph frozen
             ci, di, gi = td_c, td_d, gN - 1
+            d2i = td_d2
         cf = grab(chase, ci, ccache)
         df = grab(drone, di, dcache)
+        df2 = grab(drone2, d2i, d2cache) if drone2 is not None else None
         if cf is None:
             break
         canvas = np.zeros((H, W, 3), np.uint8)
@@ -213,7 +226,20 @@ def main():
             y0, x0 = pos
             cv2.rectangle(canvas, (x0 - 2, y0 - 2), (x0 + pw + 2, y0 + ph + 2), (255, 255, 255), 2)
             canvas[y0:y0 + ph, x0:x0 + pw] = pip
-            cv2.putText(canvas, "onboard", (x0 + 4, y0 + ph - 6),
+            cv2.putText(canvas, a.pip_label, (x0 + 4, y0 + ph - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+        # PiP drone2 (e.g. h-overlay), separate corner
+        if df2 is not None:
+            pw2 = int(main_w * a.pip_frac)
+            ph2 = int(pw2 * df2.shape[0] / df2.shape[1])
+            pip2 = cv2.resize(df2, (pw2, ph2))
+            m = 16
+            pos2 = {"tl": (m, m), "tr": (m, main_w - pw2 - m),
+                    "bl": (H - ph2 - m, m), "br": (H - ph2 - m, main_w - pw2 - m)}[a.pip_corner2]
+            y02, x02 = pos2
+            cv2.rectangle(canvas, (x02 - 2, y02 - 2), (x02 + pw2 + 2, y02 + ph2 + 2), (255, 255, 255), 2)
+            canvas[y02:y02 + ph2, x02:x02 + pw2] = pip2
+            cv2.putText(canvas, a.pip_label2, (x02 + 4, y02 + ph2 - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
         # side plots
         canvas[:, main_w:] = fit(render_plots(series, gi, plot_w, H, lims), plot_w, H)
@@ -222,6 +248,8 @@ def main():
             print(f"[montage]  frame {f}/{nframes}", flush=True)
 
     vw.release(); chase.release(); drone.release()
+    if drone2 is not None:
+        drone2.release()
     print(f"[montage] done -> {a.out}", flush=True)
 
 

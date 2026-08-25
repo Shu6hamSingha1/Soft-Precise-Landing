@@ -292,7 +292,7 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
             held_txt = " (held)" if a_held else ""
             lines.append(f"α = {_fmt(np.degrees(a), 1) if a is not None else 'nan'}°{held_txt}")
         if "h" in channels:
-            lines.append(f"h: hx={_fmt(hx)} hy={_fmt(hy)} hz(loom)={_fmt(hz)}")
+            lines.append(f"h=({_fmt(hx)}, {_fmt(hy)}, {_fmt(hz)})")
         if draw_w:
             lines.append(f"w: wx={_fmt(wx)} wy={_fmt(wy)} wz={_fmt(wz)}")
         if lines:
