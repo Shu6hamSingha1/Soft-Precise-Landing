@@ -234,6 +234,22 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
     ALPHA_LEN = 40
     LOOM_RING_R0 = 24    # nominal loom-ring radius at h_z=0
     LOOM_RING_GAIN = 400.0
+    FLOW_FIELD_GAIN = 6.0   # per-point RAW pixel displacement magnification (small
+                             # arrows) -- NOT the same units/gain as FLOW_GAIN, which
+                             # scales the already-normalized (v/Z) summary hx/hy
+    FLOW_FIELD_MAX = 25
+    MAX_FLOW_PTS = 40
+
+    # h flow-field state: Img_Data.npy only logs the FINAL solved hx/hy/hz, not the
+    # per-point LK correspondences _solve_jacobian's lstsq fit them from -- like the
+    # s-lines above, reconstruct a best-effort version by tracking our OWN Shi-Tomasi
+    # points (re-seeded each frame inside the detected marker mask, matching the live
+    # pipeline's per-frame-pair point selection) across the recorded video with LK.
+    # Same caveat as the s re-detection: runs on the lossily-recoded mp4, not the raw
+    # frames the live solve saw, so these are illustrative correspondences, not the
+    # exact ones that produced the logged hx/hy/hz numbers.
+    prev_gray = None
+    prev_pts = None
 
     k = 0
     while True:
@@ -265,8 +281,44 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
         # the intermediate lines they were intersected from. Cheap: 1 full-frame
         # detect() per overlay frame (this tool runs offline, not realtime).
         det = None
-        if "s" in channels:
+        gray = None
+        if "s" in channels or "h" in channels:
             det = _cmd.detect(frame)
+        if "h" in channels:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+            # draw the PREVIOUS pair's tracked correspondences as a flow field --
+            # one small arrow per point, showing the per-point displacements the
+            # summary hx/hy/hz arrow+ring are aggregated FROM.
+            if prev_gray is not None and prev_pts is not None and len(prev_pts) > 0:
+                curr_pts, st, _err = cv2.calcOpticalFlowPyrLK(
+                    prev_gray, gray, prev_pts, None, winSize=(15, 15), maxLevel=2,
+                    criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03))
+                if curr_pts is not None:
+                    good_prev = prev_pts[st.flatten() == 1].reshape(-1, 2)
+                    good_curr = curr_pts[st.flatten() == 1].reshape(-1, 2)
+                    for (px, py), (qx, qy) in zip(good_prev, good_curr):
+                        dxp, dyp = qx - px, qy - py
+                        gx, gy = qx + dxp * FLOW_FIELD_GAIN, qy + dyp * FLOW_FIELD_GAIN
+                        m2 = float(np.hypot(gx - qx, gy - qy))
+                        if m2 > FLOW_FIELD_MAX:
+                            gx = qx + (gx - qx) * FLOW_FIELD_MAX / m2
+                            gy = qy + (gy - qy) * FLOW_FIELD_MAX / m2
+                        cv2.arrowedLine(frame, (int(px), int(py)), (int(gx), int(gy)),
+                                         (0, 200, 255), 1, tipLength=0.4, line_type=cv2.LINE_AA)
+                        cv2.circle(frame, (int(qx), int(qy)), 2, (0, 200, 255), -1, cv2.LINE_AA)
+
+            # re-seed points inside THIS frame's detected marker mask for the NEXT
+            # pair -- matches the live pipeline picking fresh Shi-Tomasi points per
+            # frame-pair rather than tracking one point set across the whole descent.
+            mask_for_lk = (det.isolated_mask if det is not None and det.ok
+                            and det.isolated_mask is not None else None)
+            new_pts = None
+            if mask_for_lk is not None:
+                new_pts = cv2.goodFeaturesToTrack(
+                    gray, maxCorners=MAX_FLOW_PTS, qualityLevel=0.01, minDistance=5,
+                    mask=mask_for_lk.astype(np.uint8))
+            prev_gray, prev_pts = gray, new_pts
 
         if cx is not None:
             if "s" in channels:
