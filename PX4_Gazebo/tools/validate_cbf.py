@@ -278,7 +278,7 @@ def test_parity():
             out_ref, tc_ref, ok_ref = _inline_reference(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
                 0.3, dt, w_rp, S, radius, env)
-            out_new, tc_new, ok_new, _ths = cbf2_filter(
+            out_new, tc_new, ok_new, _ths, _thd = cbf2_filter(
                 I_a.copy(), R, R33, yaw, corners, CENTER, FOCAL, P_10,
                 0.3, dt, w_rp, state, radius, env)
             d = max(np.max(np.abs(out_ref - out_new)), abs(tc_ref - tc_new))
@@ -364,7 +364,7 @@ def test_barrier_and_end_to_end():
         # desired tilt that pushes the feature further OUT (toward its own sign)
         th_des = np.sign(cr0) * RNG.uniform(0.3, 1.2, 2)
         I_a = Ia_from_tilt(th_des, yaw, a_z)
-        out, tc, ok, _ts = cbf2_filter(I_a.copy(), R0, R0[2, 2], yaw, corners,
+        out, tc, ok, _ts, _thd = cbf2_filter(I_a.copy(), R0, R0[2, 2], yaw, corners,
                                   CENTER, FOCAL, P_10, 0.3,
                                   None, np.zeros(2), {}, 0.0, FIX_ENV)
         if not ok:
@@ -415,7 +415,7 @@ def test_minimal_intervention():
         # tiny tilt that keeps the feature comfortably inside the box
         th_des = RNG.uniform(-0.05, 0.05, 2)
         I_a = Ia_from_tilt(th_des, yaw, a_z)
-        out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(th_des, yaw),
+        out, tc, ok, _ts, _thd = cbf2_filter(I_a.copy(), R_from_image_tilt(th_des, yaw),
                                   np.cos(np.linalg.norm(th_des)), yaw, corners,
                                   CENTER, FOCAL, P_10, 0.3,
                                   None, np.zeros(2), {}, 0.0, FIX_ENV)
@@ -443,7 +443,7 @@ def test_no_strangle():
         # CBF would correctly clamp — that is anti-overshoot, not strangling).
         th_des = -np.sign(edge) * RNG.uniform(0.02, 0.12, 2)
         I_a = Ia_from_tilt(th_des, yaw, a_z)
-        out, tc, ok, _ts = cbf2_filter(I_a.copy(), R_from_image_tilt(np.clip(th_des, -0.3, 0.3), yaw),
+        out, tc, ok, _ts, _thd = cbf2_filter(I_a.copy(), R_from_image_tilt(np.clip(th_des, -0.3, 0.3), yaw),
                                   np.cos(0.2), yaw, corners, CENTER, FOCAL, P_10,
                                   0.3, None, np.zeros(2), {}, 0.0, FIX_ENV)
         if not ok:

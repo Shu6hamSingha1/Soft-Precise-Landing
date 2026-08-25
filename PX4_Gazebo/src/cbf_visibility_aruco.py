@@ -163,6 +163,7 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
     a_z = abs(I_a[2])
     ok = False
     th_safe = None
+    th_desired = None
     try:
         if corners is None:
             raise ValueError("no corners")
@@ -212,6 +213,9 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])                # Rz(+90deg)
         th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current image-axis tilt
         th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # theta_d = Rz(-yaw)@(a_xy/a_z)
+        th_desired = th.copy()   # UNCONSTRAINED desired tilt, before the FoV-box projection below
+                                  # mutates th -- mirrors cbf_visibility.py's identical addition
+                                  # (2026-08-24, AZ VISIBILITY FILTER v2) -- keep both files in sync.
         # --- lean-vector -> rotation-axis correction (CBF_LW_ROT) ---
         # L_w couples the body ANGULAR-RATE vector omega_rp to the feature flow
         # (cr_dot = L_w @ omega_rp), but theta here is the LEAN-direction vector
@@ -321,4 +325,4 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # loss is owned by MARKER_LOSS_GRACE -> hold -> search-climb -> abort in the app
         # loop, which acts on POSITION rather than tilt and is the right instrument for it.
         # Set CBF_PHASE2_MAX_FRAMES huge to restore always-constrain behaviour.
-    return I_a, theta_cone, ok, th_safe
+    return I_a, theta_cone, ok, th_safe, th_desired
