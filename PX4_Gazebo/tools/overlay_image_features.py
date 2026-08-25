@@ -61,9 +61,16 @@ Usage:
 """
 import argparse
 import os
+import sys
 
 import cv2
 import numpy as np
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+import cross_marker_detector as _cmd  # noqa: E402 -- re-run detect() per frame to recover the
+                                       # fitted arm lines + their intersection for the s overlay
+                                       # (Img_Data.npy only logs the FINAL s_V/Center Px, not the
+                                       # intermediate line_points_i/j det() computed them from)
 
 
 def _load_cross_marker_features(d, n):
@@ -133,6 +140,24 @@ def _fmt(v, n=3):
 # Same default as cross_marker_perception.py's self._alpha_0 (CROSS_ALPHA_0 env,
 # default radians(90.23)) -- see that module for the calibration derivation.
 CROSS_ALPHA_0 = float(os.environ.get("CROSS_ALPHA_0", str(np.radians(90.23))))
+
+
+def _draw_full_line(frame, pts, color, thick=2):
+    """Fit a line through `pts` (same cv2.fitLine call cross_marker_detector.py's
+    _robust_fit_line uses) and draw it clipped across the whole frame, so the
+    decoded cross-arm is visible as a LINE, not just its sample points."""
+    pts_arr = np.asarray(pts, dtype=np.float32).reshape(-1, 1, 2)
+    if len(pts_arr) < 2:
+        return None
+    vx, vy, x0, y0 = cv2.fitLine(pts_arr, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
+    # extend far past the frame in both directions; cv2.line clips to the canvas
+    L = 2000
+    p1 = (int(x0 - vx * L), int(y0 - vy * L))
+    p2 = (int(x0 + vx * L), int(y0 + vy * L))
+    cv2.line(frame, p1, p2, color, thick, cv2.LINE_AA)
+    for px, py in pts:
+        cv2.circle(frame, (int(px), int(py)), 2, color, -1, cv2.LINE_AA)
+    return (float(vx), float(vy), float(x0), float(y0))
 
 
 def _alpha_to_pixel_dir(alpha):
@@ -235,11 +260,27 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
             a = float(alpha[i])
             a_held = i > 0 and np.isfinite(alpha[i - 1]) and alpha[i] == alpha[i - 1]
 
+        # Re-run the detector on this frame to recover the fitted cross-arm lines
+        # (line_points_i/j) -- Img_Data.npy only logs the FINAL s_V/Center Px, not
+        # the intermediate lines they were intersected from. Cheap: 1 full-frame
+        # detect() per overlay frame (this tool runs offline, not realtime).
+        det = None
+        if "s" in channels:
+            det = _cmd.detect(frame)
+
         if cx is not None:
             if "s" in channels:
-                # centroid crosshair (s)
+                # decoded cross-arm lines the detector fit + intersected to get s
+                # (see _robust_fit_line / _line_intersection in cross_marker_detector.py)
+                if det is not None and det.ok and det.line_points_i and det.line_points_j:
+                    _draw_full_line(frame, det.line_points_i, (0, 165, 255))   # orange
+                    _draw_full_line(frame, det.line_points_j, (255, 255, 0))   # cyan
+
+                # centroid crosshair = s, the two lines' intersection
                 cv2.drawMarker(frame, (int(cx), int(cy)), (0, 255, 0),
                                 cv2.MARKER_CROSS, 14, 2)
+                cv2.putText(frame, "s", (int(cx) + 10, int(cy) - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
 
                 # detected marker extent (context box, not a controller quantity)
                 if extent is not None and i < len(extent) and np.isfinite(extent[i]) and extent[i] > 0:
@@ -247,6 +288,16 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
                     cv2.circle(frame, (int(cx), int(cy)), r, (180, 180, 180), 1, cv2.LINE_AA)
 
             if "alpha" in channels and a is not None:
+                # alpha=0 reference direction (see _alpha_to_pixel_dir's docstring):
+                # theta = alpha + CROSS_ALPHA_0, so alpha=0 <=> theta = CROSS_ALPHA_0
+                # itself, i.e. the raw calibration-offset direction. Drawn dashed/gray
+                # so it reads as a fixed reference, not a live measurement.
+                rdx, rdy = _alpha_to_pixel_dir(0.0)
+                rex = cx + ALPHA_LEN * rdx
+                rey = cy + ALPHA_LEN * rdy
+                cv2.arrowedLine(frame, (int(cx), int(cy)), (int(rex), int(rey)),
+                                 (180, 180, 180), 1, tipLength=0.3, line_type=cv2.LINE_4)
+
                 # alpha: orientation line from centroid, mapped back to the raw
                 # pixel frame (see _alpha_to_pixel_dir) -- NOT cos(a)/sin(a)
                 # directly, alpha lives in a de-rotated + offset V-frame.
@@ -257,6 +308,15 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
                 cv2.arrowedLine(frame, (int(cx), int(cy)), (int(ex), int(ey)),
                                  col, 2, tipLength=0.3,
                                  line_type=cv2.LINE_4 if a_held else cv2.LINE_AA)
+
+                # arc + label showing alpha as the angle FROM the reference TO the
+                # live arrow (this angle, by definition, IS alpha itself)
+                ref_deg = float(np.degrees(np.arctan2(rdy, rdx)))
+                cur_deg = float(np.degrees(np.arctan2(dy, dx)))
+                cv2.ellipse(frame, (int(cx), int(cy)), (26, 26), 0,
+                            ref_deg, ref_deg + np.degrees(a), (255, 255, 255), 1, cv2.LINE_AA)
+                cv2.putText(frame, f"{np.degrees(a):+.1f} deg", (int(cx) + 30, int(cy) + 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
             if "h" in channels and hx is not None:
                 # h_xy: lateral flow arrow (red)
