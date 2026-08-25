@@ -4,6 +4,19 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> **⭐⭐⭐ 2026-08-25 SESSION WRAP-UP — READ THIS FIRST, then follow its links.**
+> Committed (`d8b06cf`, `a87ac00`): cross-marker hw coast+freeze KF + touchdown rolling
+> window + corner-join Hough filter, all validated under GT-feedback only. **First
+> perception-mode test found a NEW, unfixed bug**: `TOUCHDOWN-DETECT` false-fired at
+> **3.75m altitude** (not ground) — real perception noise can spike `h_z` positive for 3
+> frames at ANY altitude; GT-feedback validation never exercised this because GT `h_z` is
+> noise-free by construction. Same rep also hung past 180s with SITL CONFIRMED clean
+> (weakens the earlier "hang = concurrent-session contamination" theory). IC5
+> angle-clustering finding is DOWNGRADED/unconfirmed (likely contaminated by a concurrent
+> session's own SITL use). `model.sdf` ground-collision height is DELIBERATELY at true
+> ground contact — user directive, ongoing work, do NOT revert without new instruction.
+> Full detail + ordered next-steps: [[project_20260825_session_wrapup_touchdown_hardening]].**
+
 > **⛔ HARD RULE (2026-08-25): check for concurrent SITL use/other active `claude` sessions
 > BEFORE launching or force-killing any PX4/Gazebo process.** Multiple `claude` sessions can
 > run on this machine simultaneously — caught live when a kill loop during launch-flake
@@ -26,15 +39,24 @@
 > not proven. Fix NOT yet attempted (angle-cluster tolerance under high tilt, or grace-logic
 > hardening). Full trace: [[project_20260824_ic5_angle_clustering_and_hang_investigation]].**
 
-> **⭐⭐ 2026-08-24 (LATEST) — the drone's ground-collision geometry
+> **⭐⭐ 2026-08-25 (LATEST, supersedes the 08-24 entry below) — model.sdf is DELIBERATELY
+> at TRUE ground contact (`-0.2195`) as of 2026-08-25, user directive, not a leftover test
+> state to "restore."** Purpose: understand + improve the landing height itself (the
+> 0.487m-raised collision floor from 2026-08-09 was a workaround for the texture-blur
+> crossover, not a fix — this phase is about closing that gap for real, not re-hiding it).
+> **Do NOT revert to the raised version without an explicit new user directive** — earlier
+> guidance in this file ("check live state, don't assume") undersold this: it's not just
+> unknown/flip-floppy, it's the current INTENTIONAL target config. Perception-mode
+> (non-GT-feedback) cross-marker work under this config will hit the texture-blur ceiling
+> (~0.79m crossover vs ~0.34m camera-to-marker at true ground) — that's the open problem to
+> solve, not a bug to work around by re-raising the floor.
+>
+> **⭐⭐ 2026-08-24 — the drone's ground-collision geometry
 > (`~/PX4-Autopilot/.../x500_base/model.sdf`, OUTSIDE this repo) was deliberately raised
 > +0.5m on 2026-08-09 for camera standoff; this raised floor, not a control-law bug, was
 > why GT-feedback cross-marker landings appeared to "stall"/"not touch down" near 0.5m
 > alt — reverting to true ground (`model.sdf.bak_before_legext_20260809`) gave a clean
-> first-try SOFT+PRECISE GT-FB landing, min_alt=-0.01m. **CHECK model.sdf's LIVE STATE
-> before assuming either height is in effect — it was flipped back and forth multiple
-> times this session and was left at TRUE ground contact at session end**, not the
-> 0.487m-raised version most perception-mode work this session assumed. Same session:
+> first-try SOFT+PRECISE GT-FB landing, min_alt=-0.01m. Same session:
 > 3 cross-marker touchdown/perception hardening fixes, all uncommitted — Hough
 > corner-join shadow filter (`cross_marker_detector.py`), hw coast+freeze KF ported
 > from ArUco's already-validated fix (`cross_marker_perception.py`, replaces a

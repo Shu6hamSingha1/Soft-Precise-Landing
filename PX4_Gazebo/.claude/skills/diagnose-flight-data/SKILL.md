@@ -125,6 +125,24 @@ independently that np.std over the window isn't near-zero for a reason other
 than genuine physical stillness (a topic-publish stall, a duplicate pose
 read) before concluding the drone itself is stuck.
 
+## Watch for a false TOUCHDOWN-DETECT firing at altitude, not ground
+
+Found 2026-08-25 (perception-mode cross-marker IC1, first real-perception test after a
+batch of touchdown/perception hardening fixes): `_touchdownDetect` (controller.py) latched
+`h_z > _td_spike` for 3 frames and disarmed at `min_alt=3.75m` — nowhere near the ground.
+Under GT-feedback this detector had been validated extensively (always fires at true
+ground, `min_alt≈-0.01m`) — but GT-feedback substitutes an exact, noise-free `h_z`, so
+those validation runs never actually exercised the detector against REAL perception noise.
+A real, still-noisy `h_z` can apparently produce a spurious 3-frame positive spike at any
+altitude, not just near touchdown. When diagnosing an early/high-altitude disarm, check
+`Control_Data.npy`'s `h_z`/loom value at the disarm timestamp AND `Img_Data.npy`'s
+`Detection Status` in the preceding ~10 frames — a spike coinciding with a `miss`/recovery
+transition (not a sustained near-ground trend) is the signature of this false-positive
+class, not a genuine touchdown. **A fix validated only under GT-feedback has NOT been
+validated against real perception noise** — treat GT-feedback and perception-mode as
+separate validation regimes for anything gated on a raw signal magnitude/threshold, don't
+assume one generalizes to the other.
+
 ## Procedure
 
 1. Identify the altitude range in question. If it touches within ~1.5m of
