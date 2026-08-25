@@ -1432,6 +1432,7 @@ class Controller(Thread):
         # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
         # plotting; the active rate command comes from e_R, not Euler PD.
         self._euler_d = []
+        self._yaw_c_log = []  # measured-attitude yaw (compass or alpha-derived) fed into theta_d/phi_d -- see _attCtrl; added 2026-08-25, ported from Hardware, to directly validate the BODY_YAW_SOURCE=alpha / GT_FEEDBACK yaw_c bug fix
         self._e_R_log = []
         self._a_v = []
         self._a_u = []
@@ -3429,6 +3430,7 @@ class Controller(Thread):
 
         # Diagnostics: log desired-attitude decomposition + SO(3) error
         self._euler_d.append(np.array([phi_d, theta_d, self._psi_d]))
+        self._yaw_c_log.append(float(yaw_c))  # measured yaw actually used above (compass or alpha-derived, per BODY_YAW_SOURCE/_yaw_source_is_alpha)
         self._e_R_log.append(e_R.copy())
 
         self._w_u.append(w_u)
@@ -3577,6 +3579,7 @@ class Controller(Thread):
             "w_u(t)": self._w_u,
             "B_T(t)": self._B_T,
             "EA_d(t)": self._euler_d,
+            "yaw_c(t)": self._yaw_c_log,
             "e_R(t)": self._e_R_log,
             # FoV-margin cone diagnostics
             "rho_fov(t)": self._rho_fov_log,

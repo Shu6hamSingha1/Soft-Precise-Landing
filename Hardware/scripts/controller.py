@@ -572,9 +572,25 @@ class Controller(Thread):
         self._td_streak = 0
         self._td_armed  = False
         self._touchdown = False
+        # ROLLING-WINDOW hardening (2026-08-25, ported from PX4_Gazebo's d8b06cf): a strictly-
+        # CONSECUTIVE streak is fragile to isolated perception miss frames, which cluster right
+        # in the touchdown altitude band. Track the last _td_window frames' spike/no-spike
+        # history instead and require _td_frames spikes WITHIN that window (not necessarily
+        # consecutive) -- strictly more permissive than the old rule when window==_td_frames
+        # (identical behavior, the default), and only kicks in beyond that if PLASMC_TD_WINDOW
+        # is widened. Relevant on hardware specifically because TOUCHDOWN_DETECTED has never
+        # fired in any HW_POS_FEEDBACK flight test this project has run so far -- this is one
+        # candidate contributor (an isolated real-perception miss resetting a near-touchdown
+        # streak), though NOT root-caused as THE cause; a separate, still-open Gazebo finding
+        # (false TOUCHDOWN-DETECT firing at 3.75m under real perception noise) means this same
+        # loom mechanism can also be too PERMISSIVE under noise -- watch for both failure modes,
+        # this fix only helps the former.
+        self._td_window = int(os.environ.get("PLASMC_TD_WINDOW", str(self._td_frames)))
+        self._td_hist = deque(maxlen=self._td_window)
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>0 for {self._td_frames} frames + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"(h_z>0 x{self._td_frames} within a {self._td_window}-frame window "
+                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -974,10 +990,19 @@ class Controller(Thread):
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
             return
-        self._td_streak = self._td_streak + 1 if h_z > 0.0 else 0
+        # ROLLING WINDOW (2026-08-25, ported from PX4_Gazebo's d8b06cf -- see __init__'s
+        # _td_window comment): spikes within the last _td_window frames, not necessarily
+        # consecutive. Identical to the old consecutive rule when _td_window==_td_frames
+        # (the default). NOTE: this alone does not satisfy this function's 2026-07-29 disable
+        # note above (which also wants the ARM condition, not just the latch condition, gated
+        # against single-frame spikes) -- do not treat porting this as sufficient justification
+        # to remove the `return` above without addressing the arm-side gap too.
+        self._td_hist.append(h_z > 0.0)
+        self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
         if self._td_streak >= self._td_frames and float(np.max(np.abs(s_e_n))) < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x{self._td_frames}) "
+            print(f"[controller] TOUCHDOWN-DETECT: loom inverted (h_z>0 x{self._td_frames} "
+                  f"within {len(self._td_hist)}-frame window) "
                   f"|s_e_n|={float(np.max(np.abs(s_e_n))):.2f} -> LANDED (disarm before bounce)")
 
     @property
@@ -1128,6 +1153,7 @@ class Controller(Thread):
         # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
         # plotting; the active rate command comes from e_R, not Euler PD.
         self._euler_d = []
+        self._yaw_c_log = []  # measured-attitude yaw (compass or alpha-derived) fed into theta_d/phi_d -- see _attCtrl; added 2026-08-25 to directly validate the BODY_YAW_SOURCE=alpha / GT_FEEDBACK yaw_c bug fix (yaw_c itself was previously unloggable)
         self._e_R_log = []
         self._a_v = []
         self._a_u = []
@@ -2878,6 +2904,7 @@ class Controller(Thread):
 
         # Diagnostics: log desired-attitude decomposition + SO(3) error
         self._euler_d.append(np.array([phi_d, theta_d, self._psi_d]))
+        self._yaw_c_log.append(float(yaw_c))  # measured yaw actually used above (compass or alpha-derived, per BODY_YAW_SOURCE/_yaw_source_is_alpha)
         self._e_R_log.append(e_R.copy())
 
         self._w_u.append(w_u)
@@ -3024,6 +3051,7 @@ class Controller(Thread):
             "w_u(t)": self._w_u,
             "B_T(t)": self._B_T,
             "EA_d(t)": self._euler_d,
+            "yaw_c(t)": self._yaw_c_log,
             "e_R(t)": self._e_R_log,
             # FoV-margin cone diagnostics
             "rho_fov(t)": self._rho_fov_log,
