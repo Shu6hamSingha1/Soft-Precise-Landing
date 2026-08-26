@@ -4701,6 +4701,26 @@ class IMG_PROCESSOR(Thread):
         return _out
 
     @property
+    def HW_FROZEN(self):
+        """True iff getOptFlowAngVel()'s current output is the coast+freeze KF's FROZEN
+        state (bit-identical to last frame) rather than a fresh estimate -- see
+        _kf_update's _kf_frozen comment, and cross_marker_perception.py's HW_FROZEN
+        (same mechanism, ported from here). Only meaningful for the default 'kf'
+        IMG_FILTER path that this flag actually gates (FLOW_FUSE_RING's EKF and the
+        'savgol' path use different staleness mechanisms with no equivalent bit-frozen
+        state, so this returns False for those -- not a regression, just not this
+        flag's mechanism). Consumers treating a sustained h_z condition as a genuine
+        multi-frame SIGNAL (e.g. controller.py's _touchdownDetect spike-streak) must not
+        count a frozen frame toward it: a frozen value repeats identically for as long
+        as the underlying detection gap lasts, trivially satisfying any small
+        persistence-count threshold without independent observations ever occurring."""
+        if self._fuse_ring and self._ekf_init:
+            return False
+        if os.environ.get('IMG_FILTER', 'kf') == 'savgol':
+            return False
+        return self._kf_frozen is not None
+
+    @property
     def RESCUE_ACTIVE(self):
         """True iff THIS frame's s/alpha/h_z came from the PlanarFeatureMap rescue rather
         than a raw ArUco/KLT/dense-recovery decode -- see __init__ comment. apps/
