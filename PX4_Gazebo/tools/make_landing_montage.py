@@ -30,13 +30,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 
-# All plot text is white so it stays visible over the DARK marker plate/thruster
-# regions of the transparent overlay -- but the chase scene is otherwise mostly
-# light gray/white (sky, ground), where plain white text nearly vanishes (see
-# 2026-08-26 color-pass finding). A black stroke keeps every text element legible
-# regardless of what's behind it, instead of picking one color that only works
-# for half the frame.
-_TEXT_OUTLINE = [pe.withStroke(linewidth=2.2, foreground="black")]
+# MEASURED, not assumed (2026-08-26, correcting the earlier white-text pass): sampled
+# the actual chase video's right-side region (where this panel is composited) across
+# 12 frames of a real run -- median BGR (200,203,201), 5th/95th percentile luminance
+# 194/215 out of 255. That's solidly LIGHT gray, not a 50/50 light/dark mix -- white
+# text there is genuinely low-contrast (WCAG ratio ~1.6:1), which is what the user
+# caught. The correct fix is the COMPLEMENT of that measured gray -- a dark ink -- not
+# removing content or leaving it white-with-a-black-outline as a crutch:
+#   dark ink #141414 vs measured bg (200,203,201): WCAG contrast ~11.3:1 (AAA)
+#   white #ffffff vs the same bg:                  WCAG contrast ~1.6:1  (fails)
+# A small minority of pixels ARE dark (min BGR ~51 -- the drone silhouette passing
+# through), so a light outline stays as a safety net for that rare case, not as the
+# primary contrast mechanism.
+_INK = "#141414"
+_TEXT_OUTLINE = [pe.withStroke(linewidth=2.0, foreground="#f2f2f2")]
 
 
 def load_series(run_dir):
@@ -95,25 +102,29 @@ def render_plots(series, idx, width, height, lims):
     ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color=C_TARGET, s=32,
                 edgecolors="black", linewidths=0.6)
     ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
-    ax3.set_xlabel("X (m)", color="w", fontsize=7); ax3.set_ylabel("Y (m)", color="w", fontsize=7)
-    ax3.set_zlabel("Z (m)", color="w", fontsize=7)
-    ax3.tick_params(colors="#e8e8e8", labelsize=6)
-    # RECESSIVE grid/axes (dataviz skill): the default 3D pane grid is a dense gray
-    # crosshatch that visually fights the (also gray) Gazebo background it now floats
-    # over -- kill it outright rather than just re-coloring, and keep only a thin
-    # pane EDGE as the reference box.
-    ax3.grid(False)
+    ax3.set_xlabel("X (m)", color=_INK, fontsize=7); ax3.set_ylabel("Y (m)", color=_INK, fontsize=7)
+    ax3.set_zlabel("Z (m)", color=_INK, fontsize=7)
+    ax3.tick_params(colors=_INK, labelsize=6)
+    # Grid RESTORED (2026-08-26, correcting the earlier "just remove it" attempt --
+    # it's needed for reading 3D position off the axes, per user feedback): the
+    # default matplotlib grid color is a light gray meant for a WHITE page, which is
+    # why it disappeared into the also-light-gray chase background. Recolored to a
+    # dark gray at partial alpha instead -- clearly visible against the measured
+    # bg (contrast ~7:1) while still reading as a background reference, not a data
+    # line (kept lighter/thinner than the trajectory lines it supports).
+    _GRID_RGBA = (0.2, 0.2, 0.2, 0.5)
     for axis in (ax3.xaxis, ax3.yaxis, ax3.zaxis):
-        axis._axinfo["grid"]['color'] = (0, 0, 0, 0)
+        axis._axinfo["grid"]['color'] = _GRID_RGBA
+        axis._axinfo["grid"]['linewidth'] = 0.6
     for pane in (ax3.xaxis.pane, ax3.yaxis.pane, ax3.zaxis.pane):
         pane.set_alpha(0.0)
-        pane.set_edgecolor("#6a6a6a")
+        pane.set_edgecolor("#3a3a3a")
         pane.set_linewidth(0.6)
-    ax3.set_title("UAV & target (3D)", color="w", fontsize=9)
-    leg = ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#6a6a6a", labelcolor="w")
-    # Outline every text element -- white-on-light-sky and white-on-dark-drone-body
-    # both occur in the same video, a single flat color can't win both (2026-08-26
-    # color-pass finding); a black stroke keeps text legible either way.
+    ax3.set_title("UAV & target (3D)", color=_INK, fontsize=9)
+    leg = ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#3a3a3a", labelcolor=_INK)
+    # Outline every text element as a SAFETY NET only (dark ink is the real fix --
+    # see _INK's comment; the light stroke just covers the rare dark-pixel patch,
+    # e.g. the drone silhouette passing behind).
     for txt in ([ax3.xaxis.label, ax3.yaxis.label, ax3.zaxis.label, ax3.title]
                 + list(ax3.get_xticklabels()) + list(ax3.get_yticklabels())
                 + list(ax3.get_zticklabels()) + list(leg.get_texts())):
@@ -127,20 +138,20 @@ def render_plots(series, idx, width, height, lims):
         ax.plot(t, y, color=col, alpha=0.35, lw=1.4)
         ax.plot(t[:k], y[:k], color=col, lw=2.2)
         ax.plot(tnow, y[idx], "o", color=col, ms=8, markeredgecolor="black", markeredgewidth=0.8)
-        ax.axvline(tnow, color="w", alpha=0.7, lw=1.2,
-                   path_effects=[pe.withStroke(linewidth=2.5, foreground="black")])
-        ax.set_ylabel(label, color="w", fontsize=9)
-        ax.tick_params(colors="#e8e8e8", labelsize=7)
+        ax.axvline(tnow, color=_INK, alpha=0.8, lw=1.2, path_effects=_TEXT_OUTLINE)
+        ax.set_ylabel(label, color=_INK, fontsize=9)
+        ax.tick_params(colors=_INK, labelsize=7)
         # RECESSIVE axes (dataviz skill): drop the top/right box entirely (pure
         # clutter on a transparent panel with no fixed surface behind it) and keep
-        # only left+bottom as a thin reference frame, same #6a6a6a as the 3D panes.
+        # only left+bottom as a thin dark reference frame -- same #3a3a3a as the
+        # 3D panes, dark because the measured background is light (see _INK).
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#6a6a6a"); ax.spines["left"].set_linewidth(0.8)
-        ax.spines["bottom"].set_color("#6a6a6a"); ax.spines["bottom"].set_linewidth(0.8)
+        ax.spines["left"].set_color("#3a3a3a"); ax.spines["left"].set_linewidth(0.8)
+        ax.spines["bottom"].set_color("#3a3a3a"); ax.spines["bottom"].set_linewidth(0.8)
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
-            ax.set_xlabel("time since descent start (s)", color="w", fontsize=8)
+            ax.set_xlabel("time since descent start (s)", color=_INK, fontsize=8)
         for txt in ([ax.yaxis.label] + list(ax.get_xticklabels()) + list(ax.get_yticklabels())
                     + ([ax.xaxis.label] if gi == 2 else [])):
             txt.set_path_effects(_TEXT_OUTLINE)
