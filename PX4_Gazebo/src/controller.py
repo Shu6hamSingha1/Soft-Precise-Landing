@@ -807,10 +807,46 @@ class Controller(Thread):
         # and only kicks in beyond that if PLASMC_TD_WINDOW is widened.
         self._td_window = int(os.environ.get("PLASMC_TD_WINDOW", str(self._td_frames)))
         self._td_hist = deque(maxlen=self._td_window)
+        # EXTENT-FLATTENED CORROBORATION (2026-08-26): surveyed all 27 recorded true-
+        # ground-contact cross-marker flights (GT-feedback, real perception logged in
+        # parallel) -- the raw loom condition alone (h_z>_td_spike x_td_frames) false-
+        # triggers mid-descent in ~78% of them, and h_z MAGNITUDE at those false triggers
+        # (0.007-1.70) fully overlaps genuine end-of-flight h_z (0-2.32), so no threshold
+        # on h_z alone separates them. What DOES separate them: MARKER_EXTENT_PX's
+        # NORMALIZED growth rate d(ln extent)/dt. Pinhole geometry: extent ~= f*S/Z (S =
+        # marker physical size, constant) -> d(ln extent)/dt = -Z_dot/Z, the same SCALE-
+        # FREE ratio family as h_z itself (S and f cancel under the time-derivative --
+        # confirmed algebraically invariant to a marker resize, e.g. 3.0m->2.0m; only
+        # detection SNR, not the quantity itself, is size-dependent). Measured: at true
+        # touchdown this rate has flattened near zero (|rate|<0.3 in 93% of flights,
+        # since the vehicle has physically stopped closing distance); at the false loom
+        # triggers it's still large/erratic (only 19% under 0.3 -- an active or glitchy
+        # descent, not a stop). CORROBORATION, not a replacement: latch touchdown only
+        # when the loom streak AND the extent-growth-rate have BOTH gone quiet -- a
+        # spurious h_z blip (noise/freeze) has no reason to coincide with the marker's
+        # apparent size actually flattening out, whereas genuine ground contact produces
+        # both from the same physical event. Fails OPEN (does not block) until enough
+        # extent samples exist to fit a rate, so it can't deadlock the detector at the
+        # start of the armed window.
+        self._td_ext_rate_max = float(os.environ.get("PLASMC_TD_EXT_RATE_MAX", "0.3"))  # 1/s
+        self._td_ext_win = int(os.environ.get("PLASMC_TD_EXT_WIN", "6"))
+        self._td_ext_hist = deque(maxlen=self._td_ext_win)
+        # PROXIMITY REQUIREMENT (2026-08-26, added after a 27-flight replay of the
+        # flattened-rate check ALONE showed no net improvement): flattening is necessary
+        # but not sufficient -- the extent-growth-rate can also settle near zero for
+        # reasons unrelated to touchdown (an early climb/reposition transient ending,
+        # any momentary lull in closing rate), not just genuine ground contact. Require
+        # the CURRENT extent to also be near the flight's own running max (>=
+        # _td_ext_prox_frac of it) -- i.e. flat AND near-full-size, not just flat. See
+        # _extentTouchdownProximate.
+        self._td_ext_max = 0.0
+        self._td_ext_prox_frac = float(os.environ.get("PLASMC_TD_EXT_PROX_FRAC", "0.6"))
         if self._touchdown_loom:
             print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
                   f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
-                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom})")
+                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom}) "
+                  f"+ extent corroboration (growth flattened, |d(ln extent)/dt|<{self._td_ext_rate_max}/s "
+                  f"over {self._td_ext_win} samples, AND extent>={self._td_ext_prox_frac}x running max)")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -1239,6 +1275,55 @@ class Controller(Thread):
         sdot = (self._s_raw[i1][k] - self._s_raw[i0][k]) / max(float(self._t[i1]) - float(self._t[i0]), 1e-3)
         return sdot + self._s_raw[i1][k] * self._h_raw[ih][2]
 
+    def _trackExtentHistory(self, t):
+        """Append (t, MARKER_EXTENT_PX) to _td_ext_hist and update the running max
+        (_td_ext_max) -- see _extentGrowthFlattened's comment for why history starts
+        unconditionally, and _extentTouchdownProximate's comment for why the running
+        max is tracked too."""
+        ext = float(self.MARKER_EXTENT_PX)
+        self._td_ext_hist.append((t, ext))
+        if ext > self._td_ext_max:
+            self._td_ext_max = ext
+
+    def _extentGrowthFlattened(self):
+        """True iff MARKER_EXTENT_PX's normalized growth rate d(ln extent)/dt is small
+        (|rate|<_td_ext_rate_max) over the last _td_ext_win samples -- see __init__'s
+        _td_ext_rate_max comment for the derivation/justification. Reads _td_ext_hist
+        (populated by _trackExtentHistory); does not append. FAILS OPEN (returns True)
+        when extent<=0 or there aren't yet enough samples to fit a rate -- this is a
+        corroboration gate, not a primary detector, so it must not be able to deadlock
+        the latch by itself.
+
+        NOT SUFFICIENT ON ITS OWN (2026-08-26 real-flight replay finding): flattening
+        also happens for reasons OTHER than touchdown -- e.g. an early climb/reposition
+        transient ending, any moment the closing rate briefly settles. A 27-flight replay
+        of this check alone left the false-trigger rate UNCHANGED (still 21/27) because
+        several flights flattened at a SMALL, non-proximate extent (e.g. 130px against a
+        606px end-of-flight extent) purely by transient coincidence. See
+        _extentTouchdownProximate -- flattened is necessary, not sufficient; both are
+        required together."""
+        pts = [(tt, ee) for tt, ee in self._td_ext_hist if ee > 0]
+        if len(pts) < 3:
+            return True
+        ts = np.array([p[0] for p in pts])
+        les = np.log(np.array([p[1] for p in pts]))
+        if ts[-1] - ts[0] < 1e-3:
+            return True
+        rate = float(np.polyfit(ts, les, 1)[0])
+        return abs(rate) < self._td_ext_rate_max
+
+    def _extentTouchdownProximate(self):
+        """True iff the CURRENT MARKER_EXTENT_PX is close to the largest extent seen so
+        far this flight (>= _td_ext_prox_frac * running max) -- i.e. the marker isn't
+        just momentarily stable, it's stable NEAR-FULL-SIZE, the geometric signature of
+        actual proximity. Same 'large span = geometrically imminent' convention already
+        used by MARKER_EXTENT_PX's own docstring and LANDING_STALE_COMMIT_EXTENT
+        elsewhere in this file -- not a new category of quantity. FAILS OPEN (True) if
+        the running max is not yet established (avoids a startup deadlock)."""
+        if self._td_ext_max <= 0:
+            return True
+        return float(self.MARKER_EXTENT_PX) >= self._td_ext_prox_frac * self._td_ext_max
+
     def _touchdownDetect(self, s_e_n):
         """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
@@ -1257,9 +1342,18 @@ class Controller(Thread):
         SAME frame, not by _td_frames independent observations. GT-feedback never hit this
         (h_z there is exact/never frozen, bypasses the KF entirely). Fix: a frozen frame is
         excluded from the window entirely (neither counted as a spike nor as a gap) --
-        see img_data.py/cross_marker_perception.py's HW_FROZEN."""
+        see img_data.py/cross_marker_perception.py's HW_FROZEN.
+
+        EXTENT-FLATTENED CORROBORATION (2026-08-26): see __init__'s _td_ext_rate_max
+        comment. h_z magnitude alone can't separate a genuine touchdown from a mid-
+        descent false trigger (their value ranges fully overlap, measured across 27
+        real flights) -- but MARKER_EXTENT_PX's growth rate can: it flattens near zero
+        at genuine touchdown (vehicle stops closing distance) and stays large/erratic
+        at a false trigger (still actively/glitchily descending). Latching now requires
+        BOTH signals to independently agree the vehicle has stopped, not either alone."""
         if not self._touchdown_loom or self._touchdown:
             return
+        self._trackExtentHistory(self._t[-1])   # unconditional -- see its own comment
         h_z = float(self._h[-1][2])
         _sen_mag = float(np.max(np.abs(s_e_n)))
         if not self._td_armed:
@@ -1275,13 +1369,23 @@ class Controller(Thread):
             return
         self._td_hist.append(h_z > self._td_spike)
         self._td_streak = sum(self._td_hist)   # kept as _td_streak for TD_DEBUG/log continuity
+        _ext_flat = self._extentGrowthFlattened()
         if self._td_debug:
             print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
-                  f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f}")
+                  f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f} ext_flattened={_ext_flat}")
         if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
+            _ext_prox = self._extentTouchdownProximate()
+            if not (_ext_flat and _ext_prox):
+                if self._td_debug:
+                    print(f"[TD_DEBUG] t={self._t[-1]:.3f} loom+sen satisfied but extent not "
+                          f"corroborating (flattened={_ext_flat} proximate={_ext_prox}, "
+                          f"extent={float(self.MARKER_EXTENT_PX):.0f} vs running_max={self._td_ext_max:.0f}) -> HELD")
+                return
             self._touchdown = True
             print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
-                  f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
+                  f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f}, extent flattened+"
+                  f"proximate ({float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px) "
+                  f"-> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):
