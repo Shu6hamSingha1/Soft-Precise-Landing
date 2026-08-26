@@ -1139,6 +1139,7 @@ class Controller(Thread):
         self._h_d_kfree = []           # h_d minus the -k_r*zeta_r/g_r branch only (dh_d 'nokr' source, 2026-07-02)
         self._hd_rate_log = []         # DIAG (2026-06-30): the _hd_rate term of h_d (funnel-ref vs s_dot) for zeta_h-degeneracy decomposition
         self._theta = []      # ||Theta||_F
+        self._theta_ctrl_log = []   # actual per-axis theta_i=sqrt(vector_i^2+1) used by the kappa-ODE (PLASMC_THETA_PER_AXIS=1 default) -- or the broadcast scalar if per-axis is off; added 2026-08-26 so the kappa growth-vs-decay math (theta_ctrl*N*G*|sigma| - N*P*kappa) can be verified directly instead of approximated from the legacy shared-scalar theta(t)
         self._sigma = []
         self._kappa = [self._kappa_0.copy()]
 
@@ -2046,6 +2047,12 @@ class Controller(Thread):
             theta_ctrl = np.sqrt(vector ** 2 + 1.0)            # theta_i = ||row_i(Theta)|| = sqrt(vec_i^2+1)
         else:
             theta_ctrl = self._theta[-1]
+        # Log the ACTUAL value fed to the kappa-ODE below (per-axis vector, or the scalar
+        # broadcast to N_DIM for a consistent logged shape) -- distinct from self._theta
+        # above, which is always the combined 3-axis ||Theta||_F regardless of
+        # PLASMC_THETA_PER_AXIS. See theta_ctrl_log's __init__ comment.
+        self._theta_ctrl_log.append(
+            theta_ctrl.copy() if self._theta_per_axis else np.full(N_DIM, theta_ctrl))
 
         # Adaptive-gain (translational) update via RK5
         # MATLAB: dkappa/dt = Theta_norm * N * G * |sigma| - N * P * kappa
@@ -3035,6 +3042,7 @@ class Controller(Thread):
             "izeta(t)": self._izeta,
             "G(t)": self._G,
             "theta(t)": self._theta,
+            "theta_ctrl(t)": self._theta_ctrl_log,
             "sigma(t)": self._sigma,
             "kappa(t)": self._kappa,
             # Yaw SMC
