@@ -85,19 +85,32 @@ def render_plots(series, idx, width, height, lims):
     ax3.set_position([_p.x0 - 0.10, _p.y0, _p.width, _p.height])
     ax3.patch.set_alpha(0.0)
     k = idx + 1
-    ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color="#39a7ff", lw=2.0, label="UAV")
-    ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color="#ffb545", lw=2.0, label="target")
-    ax3.scatter(series["ux"][idx], series["uy"][idx], series["uz"][idx], color="#39a7ff", s=28)
-    ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color="#ffb545", s=28)
+    # Validated categorical palette (dataviz skill, references/palette.md) --
+    # slot 1 blue / slot 2 orange, in fixed order (identity, not decoration).
+    C_UAV, C_TARGET, C_RPOS, C_RVEL = "#2a78d6", "#eb6834", "#e34948", "#008300"
+    ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color=C_UAV, lw=2.0, label="UAV")
+    ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color=C_TARGET, lw=2.0, label="target")
+    ax3.scatter(series["ux"][idx], series["uy"][idx], series["uz"][idx], color=C_UAV, s=32,
+                edgecolors="black", linewidths=0.6)
+    ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color=C_TARGET, s=32,
+                edgecolors="black", linewidths=0.6)
     ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
     ax3.set_xlabel("X (m)", color="w", fontsize=7); ax3.set_ylabel("Y (m)", color="w", fontsize=7)
     ax3.set_zlabel("Z (m)", color="w", fontsize=7)
     ax3.tick_params(colors="#e8e8e8", labelsize=6)
+    # RECESSIVE grid/axes (dataviz skill): the default 3D pane grid is a dense gray
+    # crosshatch that visually fights the (also gray) Gazebo background it now floats
+    # over -- kill it outright rather than just re-coloring, and keep only a thin
+    # pane EDGE as the reference box.
+    ax3.grid(False)
+    for axis in (ax3.xaxis, ax3.yaxis, ax3.zaxis):
+        axis._axinfo["grid"]['color'] = (0, 0, 0, 0)
     for pane in (ax3.xaxis.pane, ax3.yaxis.pane, ax3.zaxis.pane):
         pane.set_alpha(0.0)
-        pane.set_edgecolor("#4a4a4a")   # darker: readable over the mostly-light chase scene
+        pane.set_edgecolor("#6a6a6a")
+        pane.set_linewidth(0.6)
     ax3.set_title("UAV & target (3D)", color="w", fontsize=9)
-    leg = ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#4a4a4a", labelcolor="w")
+    leg = ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#6a6a6a", labelcolor="w")
     # Outline every text element -- white-on-light-sky and white-on-dark-drone-body
     # both occur in the same video, a single flat color can't win both (2026-08-26
     # color-pass finding); a black stroke keeps text legible either way.
@@ -107,20 +120,24 @@ def render_plots(series, idx, width, height, lims):
         txt.set_path_effects(_TEXT_OUTLINE)
 
     # (2)/(3) norm line plots
-    for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], "#ff5c5c")),
-                                (2, ("|rel. velocity| (m/s)", series["rvel"], "#7CFC00"))]:
+    for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], C_RPOS)),
+                                (2, ("|rel. velocity| (m/s)", series["rvel"], C_RVEL))]:
         ax = fig.add_subplot(gs[gi, 1])          # narrower centre sub-column
         ax.patch.set_alpha(0.0)
         ax.plot(t, y, color=col, alpha=0.35, lw=1.4)
         ax.plot(t[:k], y[:k], color=col, lw=2.2)
-        ax.plot(tnow, y[idx], "o", color=col, ms=6,
-                path_effects=[pe.withStroke(linewidth=1.5, foreground="black")])
+        ax.plot(tnow, y[idx], "o", color=col, ms=8, markeredgecolor="black", markeredgewidth=0.8)
         ax.axvline(tnow, color="w", alpha=0.7, lw=1.2,
                    path_effects=[pe.withStroke(linewidth=2.5, foreground="black")])
         ax.set_ylabel(label, color="w", fontsize=9)
         ax.tick_params(colors="#e8e8e8", labelsize=7)
-        for s in ax.spines.values():
-            s.set_color("#4a4a4a")   # darker: readable over the mostly-light chase scene
+        # RECESSIVE axes (dataviz skill): drop the top/right box entirely (pure
+        # clutter on a transparent panel with no fixed surface behind it) and keep
+        # only left+bottom as a thin reference frame, same #6a6a6a as the 3D panes.
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#6a6a6a"); ax.spines["left"].set_linewidth(0.8)
+        ax.spines["bottom"].set_color("#6a6a6a"); ax.spines["bottom"].set_linewidth(0.8)
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
             ax.set_xlabel("time since descent start (s)", color="w", fontsize=8)
