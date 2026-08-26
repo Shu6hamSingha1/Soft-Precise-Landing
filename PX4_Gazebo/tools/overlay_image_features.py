@@ -179,17 +179,14 @@ def _draw_full_line(frame, pts, color, thick=2):
 
 
 def _outlined_arrow(frame, p1, p2, color, thick=2, tip=0.3, line_type=cv2.LINE_AA):
-    """cv2.arrowedLine with a black outline underneath -- the recorded chase/onboard
-    scenes span both near-white (sky/plate) and near-black (marker lines, shadows)
-    regions, so no single flat color stays visible everywhere; a black stroke first
-    (thicker) then the real color on top reads on both (2026-08-26 color pass)."""
-    cv2.arrowedLine(frame, p1, p2, (0, 0, 0), thick + 2, tipLength=tip, line_type=line_type)
+    """Plain cv2.arrowedLine (no border/outline stroke, 2026-08-26 user request --
+    the border read as visual clutter once a real, distinct color is chosen per
+    element). Name kept for call-site compatibility."""
     cv2.arrowedLine(frame, p1, p2, color, thick, tipLength=tip, line_type=line_type)
 
 
 def _outlined_text(frame, text, org, color, scale=0.5, thick=1):
-    """cv2.putText with a black outline underneath -- see _outlined_arrow's docstring."""
-    cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thick + 2, cv2.LINE_AA)
+    """Plain cv2.putText (no border/outline stroke -- see _outlined_arrow)."""
     cv2.putText(frame, text, org, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thick, cv2.LINE_AA)
 
 
@@ -401,7 +398,6 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
                     _draw_full_line(frame, det.line_points_j, (255, 255, 0))   # cyan
 
                 # centroid crosshair = s, the two lines' intersection
-                cv2.drawMarker(frame, (int(cx), int(cy)), (0, 0, 0), cv2.MARKER_CROSS, 16, 4)
                 cv2.drawMarker(frame, (int(cx), int(cy)), (0, 255, 0), cv2.MARKER_CROSS, 14, 2)
                 _outlined_text(frame, "s", (int(cx) + 10, int(cy) - 10), (0, 255, 0))
 
@@ -437,8 +433,6 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
                 # live arrow (this angle, by definition, IS alpha itself)
                 ref_deg = float(np.degrees(np.arctan2(rdy, rdx)))
                 cur_deg = float(np.degrees(np.arctan2(dy, dx)))
-                cv2.ellipse(frame, (int(cx), int(cy)), (26, 26), 0,
-                            ref_deg, ref_deg + np.degrees(a), (0, 0, 0), 3, cv2.LINE_AA)
                 cv2.ellipse(frame, (int(cx), int(cy)), (26, 26), 0,
                             ref_deg, ref_deg + np.degrees(a), (255, 255, 255), 1, cv2.LINE_AA)
                 _outlined_text(frame, f"{np.degrees(a):+.1f} deg",
