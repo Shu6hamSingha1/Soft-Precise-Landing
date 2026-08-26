@@ -54,11 +54,17 @@ def load_series(run_dir):
 
 
 def render_plots(series, idx, width, height, lims):
-    """Side column revealed up to GT sample `idx`: (1) 3D UAV+target tracks,
-    (2) |relative position| incl z, (3) |relative velocity|. -> BGR."""
+    """Overlay panel revealed up to GT sample `idx`: (1) 3D UAV+target tracks,
+    (2) |relative position| incl z, (3) |relative velocity|. TRANSPARENT background
+    (no facecolor on the figure or any axes/3D panes) -> RGBA, so only the lines/
+    text/axes themselves are opaque and the chase view shows through everywhere
+    else once composited -- see the caller's real per-pixel alpha blend, not a
+    flat-opacity box over a solid dark rectangle (that was the previous,
+    incorrect "transparent" attempt)."""
     t = series["t"]; tnow = t[idx]
     dpi = 100
-    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi, facecolor="#111417")
+    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+    fig.patch.set_alpha(0.0)
     # 3D spans full width (row 0); the two 2D plots are NARROWER (inset columns,
     # row 1-2 middle sub-column) per request.
     gs = fig.add_gridspec(3, 3, height_ratios=[3.0, 1, 1], width_ratios=[1, 4, 1],
@@ -68,7 +74,7 @@ def render_plots(series, idx, width, height, lims):
     ax3 = fig.add_subplot(gs[0, :], projection="3d")
     _p = ax3.get_position()
     ax3.set_position([_p.x0 - 0.10, _p.y0, _p.width, _p.height])
-    ax3.set_facecolor("#111417")
+    ax3.patch.set_alpha(0.0)
     k = idx + 1
     ax3.plot(series["ux"][:k], series["uy"][:k], series["uz"][:k], color="#39a7ff", lw=2.0, label="UAV")
     ax3.plot(series["tx"][:k], series["ty"][:k], series["tz"][:k], color="#ffb545", lw=2.0, label="target")
@@ -77,33 +83,34 @@ def render_plots(series, idx, width, height, lims):
     ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
     ax3.set_xlabel("X (m)", color="w", fontsize=7); ax3.set_ylabel("Y (m)", color="w", fontsize=7)
     ax3.set_zlabel("Z (m)", color="w", fontsize=7)
-    ax3.tick_params(colors="#9aa0a6", labelsize=6)
-    ax3.xaxis.pane.set_facecolor("#111417"); ax3.yaxis.pane.set_facecolor("#111417"); ax3.zaxis.pane.set_facecolor("#111417")
-    ax3.xaxis.pane.set_edgecolor("#3a3f44"); ax3.yaxis.pane.set_edgecolor("#3a3f44"); ax3.zaxis.pane.set_edgecolor("#3a3f44")
+    ax3.tick_params(colors="#e8e8e8", labelsize=6)
+    for pane in (ax3.xaxis.pane, ax3.yaxis.pane, ax3.zaxis.pane):
+        pane.set_alpha(0.0)
+        pane.set_edgecolor("#c8c8c8")
     ax3.set_title("UAV & target (3D)", color="w", fontsize=9)
-    ax3.legend(loc="upper right", fontsize=6, facecolor="#111417", edgecolor="#3a3f44", labelcolor="w")
+    ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#c8c8c8", labelcolor="w")
 
     # (2)/(3) norm line plots
     for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], "#ff5c5c")),
                                 (2, ("|rel. velocity| (m/s)", series["rvel"], "#7CFC00"))]:
         ax = fig.add_subplot(gs[gi, 1])          # narrower centre sub-column
-        ax.set_facecolor("#111417")
-        ax.plot(t, y, color=col, alpha=0.25, lw=1.2)
-        ax.plot(t[:k], y[:k], color=col, lw=2.0)
+        ax.patch.set_alpha(0.0)
+        ax.plot(t, y, color=col, alpha=0.35, lw=1.4)
+        ax.plot(t[:k], y[:k], color=col, lw=2.2)
         ax.plot(tnow, y[idx], "o", color=col, ms=6)
-        ax.axvline(tnow, color="w", alpha=0.35, lw=1.0)
+        ax.axvline(tnow, color="w", alpha=0.4, lw=1.0)
         ax.set_ylabel(label, color="w", fontsize=9)
-        ax.tick_params(colors="#9aa0a6", labelsize=7)
+        ax.tick_params(colors="#e8e8e8", labelsize=7)
         for s in ax.spines.values():
-            s.set_color("#3a3f44")
+            s.set_color("#c8c8c8")
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
             ax.set_xlabel("time since descent start (s)", color="w", fontsize=8)
     fig.canvas.draw()
-    buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8)
+    buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).copy()
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
     plt.close(fig)
-    return cv2.cvtColor(buf, cv2.COLOR_RGBA2BGR)
+    return buf   # RGBA -- caller composites using the alpha channel directly
 
 
 def fit(img, w, h):
@@ -157,8 +164,11 @@ def main():
                     help="where to composite the animated-plot panel, now that it's an "
                          "alpha-blended overlay on the full-width chase view instead of "
                          "its own side column (default br, clear of the tl/bl PiPs)")
-    ap.add_argument("--plot-frac", type=float, default=0.34,
-                    help="plot panel width as a fraction of the (now full-canvas) chase width")
+    ap.add_argument("--plot-frac", type=float, default=0.92,
+                    help="plot panel HEIGHT as a fraction of the canvas height H (width is "
+                         "derived from this at the SAME 0.48 aspect the original side-column "
+                         "layout used -- narrow and tall, sized for 1 big 3D plot + 2 line "
+                         "plots stacked, not a small squished box)")
     ap.add_argument("--plot-alpha", type=float, default=0.75,
                     help="opacity of the plot panel over the chase view underneath "
                          "(0=fully see-through/invisible, 1=fully opaque, old behavior)")
@@ -261,19 +271,25 @@ def main():
             canvas[y02:y02 + ph2, x02:x02 + pw2] = pip2
             cv2.putText(canvas, a.pip_label2, (x02 + 4, y02 + ph2 - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-        # plots: alpha-blended overlay panel (no longer a separate side column -- see
-        # --plot-corner/--plot-frac/--plot-alpha) so the chase view can use the FULL
-        # canvas width, freeing room for a tighter zoom on drone+target.
-        plot_pw = int(main_w * a.plot_frac)
-        plot_ph = int(plot_pw * 0.7)
-        plot_img = fit(render_plots(series, gi, plot_pw, plot_ph, lims), plot_pw, plot_ph)
+        # plots: TRANSPARENT-background overlay panel (no longer a separate side
+        # column, and no longer a solid dark box at flat opacity -- see render_plots'
+        # docstring) so the chase view can use the FULL canvas width, and shows
+        # through everywhere the plot has no content, not just faintly through a
+        # dark rectangle. Narrow+tall aspect (0.48 width:height) sized like the
+        # original side column so 1 big 3D plot + 2 line plots stay readable
+        # (a wide-short box here was the earlier, cramped/"compressed" attempt).
+        plot_ph = int(H * a.plot_frac)
+        plot_pw = int(plot_ph * 0.48)
+        plot_rgba = render_plots(series, gi, plot_pw, plot_ph, lims)
         pm = 16
         ppos = {"tl": (pm, pm), "tr": (pm, main_w - plot_pw - pm),
                 "bl": (H - plot_ph - pm, pm), "br": (H - plot_ph - pm, main_w - plot_pw - pm)}[a.plot_corner]
         py0, px0 = ppos
-        roi = canvas[py0:py0 + plot_ph, px0:px0 + plot_pw]
-        blended = cv2.addWeighted(roi, 1.0 - a.plot_alpha, plot_img, a.plot_alpha, 0)
-        canvas[py0:py0 + plot_ph, px0:px0 + plot_pw] = blended
+        alpha_ch = (plot_rgba[:, :, 3:4].astype(np.float32) / 255.0) * a.plot_alpha
+        plot_bgr = cv2.cvtColor(plot_rgba[:, :, :3], cv2.COLOR_RGB2BGR).astype(np.float32)
+        roi = canvas[py0:py0 + plot_ph, px0:px0 + plot_pw].astype(np.float32)
+        blended = alpha_ch * plot_bgr + (1.0 - alpha_ch) * roi
+        canvas[py0:py0 + plot_ph, px0:px0 + plot_pw] = blended.astype(np.uint8)
         vw.write(canvas)
         if f % 25 == 0:
             print(f"[montage]  frame {f}/{nframes}", flush=True)
