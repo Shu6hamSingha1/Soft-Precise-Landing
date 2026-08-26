@@ -269,12 +269,38 @@ def main():
             cf = cf[y0c:y0c + nh, x0c:x0c + nw]
         canvas = np.zeros((H, W, 3), np.uint8)
         canvas[:, :main_w] = fit(cf, main_w, H)
+        m = 16
+        # PiP sizing: the onboard/down-cam source is PORTRAIT (480w x 640h, not the
+        # 640x480 landscape the old --pip-frac width-based sizing assumed -- see
+        # 2026-08-26 finding), so ph = pw*(640/480) came out TALLER than pw. Two
+        # portrait PiPs stacked in the same side column (tl+bl, the only layout this
+        # tool actually uses) then silently overlapped once pip_frac grew enough --
+        # exactly the "h overlaid on s_alpha" bug. Fix: when both PiPs share a side,
+        # split the available column height EQUALLY between them first, then derive
+        # width from THAT height using each source's own aspect -- guarantees equal
+        # space and zero overlap regardless of source aspect ratio or pip_frac.
+        same_side1 = a.pip_corner[1] if df is not None else None
+        same_side2 = a.pip_corner2[1] if df2 is not None else None
+        stacked = (df is not None and df2 is not None and same_side1 == same_side2)
+
+        def _pip_size(frame, height_budget):
+            ph = int(height_budget)
+            pw = int(ph * frame.shape[1] / frame.shape[0])
+            return pw, ph
+
+        if stacked:
+            budget_h = (H - 3 * m) // 2   # top margin + middle gap + bottom margin
+        else:
+            budget_h = None   # each PiP uses its own --pip-frac-derived width instead
+
         # PiP drone
         if df is not None:
-            pw = int(main_w * a.pip_frac)
-            ph = int(pw * df.shape[0] / df.shape[1])
+            if stacked:
+                pw, ph = _pip_size(df, budget_h)
+            else:
+                pw = int(main_w * a.pip_frac)
+                ph = int(pw * df.shape[0] / df.shape[1])
             pip = cv2.resize(df, (pw, ph))
-            m = 16
             pos = {"tl": (m, m), "tr": (m, main_w - pw - m),
                    "bl": (H - ph - m, m), "br": (H - ph - m, main_w - pw - m)}[a.pip_corner]
             y0, x0 = pos
@@ -284,10 +310,12 @@ def main():
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
         # PiP drone2 (e.g. h-overlay), separate corner
         if df2 is not None:
-            pw2 = int(main_w * a.pip_frac)
-            ph2 = int(pw2 * df2.shape[0] / df2.shape[1])
+            if stacked:
+                pw2, ph2 = _pip_size(df2, budget_h)
+            else:
+                pw2 = int(main_w * a.pip_frac)
+                ph2 = int(pw2 * df2.shape[0] / df2.shape[1])
             pip2 = cv2.resize(df2, (pw2, ph2))
-            m = 16
             pos2 = {"tl": (m, m), "tr": (m, main_w - pw2 - m),
                     "bl": (H - ph2 - m, m), "br": (H - ph2 - m, main_w - pw2 - m)}[a.pip_corner2]
             y02, x02 = pos2
