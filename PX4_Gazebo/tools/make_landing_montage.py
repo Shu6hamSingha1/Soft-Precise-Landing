@@ -28,6 +28,15 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
+
+# All plot text is white so it stays visible over the DARK marker plate/thruster
+# regions of the transparent overlay -- but the chase scene is otherwise mostly
+# light gray/white (sky, ground), where plain white text nearly vanishes (see
+# 2026-08-26 color-pass finding). A black stroke keeps every text element legible
+# regardless of what's behind it, instead of picking one color that only works
+# for half the frame.
+_TEXT_OUTLINE = [pe.withStroke(linewidth=2.2, foreground="black")]
 
 
 def load_series(run_dir):
@@ -86,9 +95,16 @@ def render_plots(series, idx, width, height, lims):
     ax3.tick_params(colors="#e8e8e8", labelsize=6)
     for pane in (ax3.xaxis.pane, ax3.yaxis.pane, ax3.zaxis.pane):
         pane.set_alpha(0.0)
-        pane.set_edgecolor("#c8c8c8")
+        pane.set_edgecolor("#4a4a4a")   # darker: readable over the mostly-light chase scene
     ax3.set_title("UAV & target (3D)", color="w", fontsize=9)
-    ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#c8c8c8", labelcolor="w")
+    leg = ax3.legend(loc="upper right", fontsize=6, facecolor="none", edgecolor="#4a4a4a", labelcolor="w")
+    # Outline every text element -- white-on-light-sky and white-on-dark-drone-body
+    # both occur in the same video, a single flat color can't win both (2026-08-26
+    # color-pass finding); a black stroke keeps text legible either way.
+    for txt in ([ax3.xaxis.label, ax3.yaxis.label, ax3.zaxis.label, ax3.title]
+                + list(ax3.get_xticklabels()) + list(ax3.get_yticklabels())
+                + list(ax3.get_zticklabels()) + list(leg.get_texts())):
+        txt.set_path_effects(_TEXT_OUTLINE)
 
     # (2)/(3) norm line plots
     for gi, (label, y, col) in [(1, ("|rel. position| (m)", series["rpos"], "#ff5c5c")),
@@ -97,15 +113,20 @@ def render_plots(series, idx, width, height, lims):
         ax.patch.set_alpha(0.0)
         ax.plot(t, y, color=col, alpha=0.35, lw=1.4)
         ax.plot(t[:k], y[:k], color=col, lw=2.2)
-        ax.plot(tnow, y[idx], "o", color=col, ms=6)
-        ax.axvline(tnow, color="w", alpha=0.4, lw=1.0)
+        ax.plot(tnow, y[idx], "o", color=col, ms=6,
+                path_effects=[pe.withStroke(linewidth=1.5, foreground="black")])
+        ax.axvline(tnow, color="w", alpha=0.7, lw=1.2,
+                   path_effects=[pe.withStroke(linewidth=2.5, foreground="black")])
         ax.set_ylabel(label, color="w", fontsize=9)
         ax.tick_params(colors="#e8e8e8", labelsize=7)
         for s in ax.spines.values():
-            s.set_color("#c8c8c8")
+            s.set_color("#4a4a4a")   # darker: readable over the mostly-light chase scene
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
             ax.set_xlabel("time since descent start (s)", color="w", fontsize=8)
+        for txt in ([ax.yaxis.label] + list(ax.get_xticklabels()) + list(ax.get_yticklabels())
+                    + ([ax.xaxis.label] if gi == 2 else [])):
+            txt.set_path_effects(_TEXT_OUTLINE)
     fig.canvas.draw()
     buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).copy()
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
