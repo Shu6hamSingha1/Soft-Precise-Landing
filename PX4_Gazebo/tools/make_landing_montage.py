@@ -174,7 +174,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--fps", type=float, default=25.0)
     ap.add_argument("--height", type=int, default=720)
-    ap.add_argument("--pip-frac", type=float, default=0.28)
+    ap.add_argument("--pip-frac", type=float, default=0.34)   # bumped 0.28->0.34
+                    # (2026-08-26 clarity pass): the plot column is gone (now an
+                    # overlay), freeing width the PiPs can use -- they were small
+                    # enough that HUD text/lines were hard to read
     ap.add_argument("--pip-corner", default="tl", choices=["tl", "tr", "bl", "br"])
     ap.add_argument("--pip-corner2", default="bl", choices=["tl", "tr", "bl", "br"])
     ap.add_argument("--pip-label", default="onboard")
