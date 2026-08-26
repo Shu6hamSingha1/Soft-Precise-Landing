@@ -153,6 +153,20 @@ def main():
     ap.add_argument("--pip-label2", default="onboard2")
     ap.add_argument("--tail-s", type=float, default=1.0,
                     help="seconds of video to keep rolling AFTER touchdown (graph freezes)")
+    ap.add_argument("--plot-corner", default="br", choices=["tl", "tr", "bl", "br"],
+                    help="where to composite the animated-plot panel, now that it's an "
+                         "alpha-blended overlay on the full-width chase view instead of "
+                         "its own side column (default br, clear of the tl/bl PiPs)")
+    ap.add_argument("--plot-frac", type=float, default=0.34,
+                    help="plot panel width as a fraction of the (now full-canvas) chase width")
+    ap.add_argument("--plot-alpha", type=float, default=0.75,
+                    help="opacity of the plot panel over the chase view underneath "
+                         "(0=fully see-through/invisible, 1=fully opaque, old behavior)")
+    ap.add_argument("--chase-crop", type=float, default=1.0,
+                    help="center-crop the recorded chase frame to this fraction of its "
+                         "width/height before scaling into the main panel -- a DIGITAL "
+                         "zoom on drone+target, independent of and stacking with the "
+                         "world SDF chase-cam's own pose/FOV zoom. 1.0 = no crop.")
     a = ap.parse_args()
 
     chase = cv2.VideoCapture(a.chase)
@@ -182,9 +196,10 @@ def main():
             "z": (min(zs.min(), 0.0), zs.max() + pad)}
 
     H = a.height
-    main_w = int(H * 4 / 3)                # chase main panel (4:3-ish)
-    plot_w = int(H * 0.48)                 # graph column width (narrower -> more room for chase)
-    W = main_w + plot_w
+    main_w = int(H * 4 / 3)                # chase panel (4:3-ish) -- now the FULL canvas width;
+                                            # the plot column is gone, replaced by an alpha-blended
+                                            # overlay panel (see --plot-corner/--plot-frac/--plot-alpha)
+    W = main_w
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     vw = cv2.VideoWriter(a.out, fourcc, a.fps, (W, H))
@@ -213,6 +228,11 @@ def main():
         df2 = grab(drone2, d2i, d2cache) if drone2 is not None else None
         if cf is None:
             break
+        if a.chase_crop < 1.0:
+            ch, cw = cf.shape[:2]
+            nw, nh = max(1, int(cw * a.chase_crop)), max(1, int(ch * a.chase_crop))
+            x0c, y0c = (cw - nw) // 2, (ch - nh) // 2
+            cf = cf[y0c:y0c + nh, x0c:x0c + nw]
         canvas = np.zeros((H, W, 3), np.uint8)
         canvas[:, :main_w] = fit(cf, main_w, H)
         # PiP drone
@@ -241,8 +261,19 @@ def main():
             canvas[y02:y02 + ph2, x02:x02 + pw2] = pip2
             cv2.putText(canvas, a.pip_label2, (x02 + 4, y02 + ph2 - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-        # side plots
-        canvas[:, main_w:] = fit(render_plots(series, gi, plot_w, H, lims), plot_w, H)
+        # plots: alpha-blended overlay panel (no longer a separate side column -- see
+        # --plot-corner/--plot-frac/--plot-alpha) so the chase view can use the FULL
+        # canvas width, freeing room for a tighter zoom on drone+target.
+        plot_pw = int(main_w * a.plot_frac)
+        plot_ph = int(plot_pw * 0.7)
+        plot_img = fit(render_plots(series, gi, plot_pw, plot_ph, lims), plot_pw, plot_ph)
+        pm = 16
+        ppos = {"tl": (pm, pm), "tr": (pm, main_w - plot_pw - pm),
+                "bl": (H - plot_ph - pm, pm), "br": (H - plot_ph - pm, main_w - plot_pw - pm)}[a.plot_corner]
+        py0, px0 = ppos
+        roi = canvas[py0:py0 + plot_ph, px0:px0 + plot_pw]
+        blended = cv2.addWeighted(roi, 1.0 - a.plot_alpha, plot_img, a.plot_alpha, 0)
+        canvas[py0:py0 + plot_ph, px0:px0 + plot_pw] = blended
         vw.write(canvas)
         if f % 25 == 0:
             print(f"[montage]  frame {f}/{nframes}", flush=True)
