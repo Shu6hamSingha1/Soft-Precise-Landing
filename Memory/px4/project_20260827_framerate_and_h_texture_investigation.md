@@ -425,3 +425,84 @@ flag family (perception); `tools/validate_bgflow_corr.py`.
   adaptivity per se.
 - Old-vs-hires texture decision (near-touchdown blur mitigation) still open -- the
   perf + hybrid work helps EITHER texture, doesn't force the choice.
+
+---
+
+## 2026-08-28 (cont.) -- "why is h correlation low" dig: it mostly ISN'T + an angular-filter dead-end
+
+Committed: f6e102d (infra), following bf7af54 (perf fix).
+
+### The h correlation was never really low -- two things stacked
+
+1. **Offline-harness artifact.** `tools/validate_bgflow_corr.py` re-solves `Img_Data`'s
+   logged flow points through `_solve_jacobian`, but `Img_Data` logged NO IMU body-rate,
+   so the re-solve fell back to the rank-deficient full-6-unknown lstsq (Wy aliases Tx)
+   instead of the LIVE gyro-derotated 4-unknown solve. This alone understated h_z by
+   ~0.2-0.3 and added noise on every axis. **FIX (f6e102d): `getLogData()` now emits
+   "IMU AngVel" / "FPS" / "Stamp"** (all already accumulated per frame, just weren't
+   exposed). Re-run offline analysis with these -> pass `prev_angvel`/`curr_angvel` to
+   `_solve_jacobian`.
+
+2. **Correlate the LIVE `Img_Data['h_V']` against `Control_Data['h(t)']` directly** (no
+   re-solve) and the real picture appears: **while the marker is a normal size, h_x / h_y
+   / h_z all correlate +0.976 / +0.979 / +0.993 with GT** (ic2, `MARKER_EXTENT_PX < 200`).
+   The whole-flight Pearson is dragged down ENTIRELY by the terminal phase.
+
+### Terminal-phase collapse (the real, narrow issue)
+
+Once the marker overflows the FoV near touchdown (`MARKER_EXTENT_PX >= ~200` at 320x240):
+- `h_x` std goes 0.019 (early) -> 0.320 (terminal), a 17x jump, on a CENTERED rep where
+  true h_xy ~= 0.
+- The noise does NOT correlate with tilt or yaw-rate (`corr(|h_x|, tilt) = -0.18`) ->
+  **not a derotation error**; derotation is working.
+- It DOES scale with marker size (`corr(|h_x|, extent_px) = +0.46`) and with corner
+  starvation (`corr(|h_x|, 1/N_corners) = +0.72`).
+- Mechanism: the background-flow ROI (extent box minus lines) is reduced to thin slivers
+  at the FRAME EDGES, whose rays have small `z_v` -> perspective-divide amplification, and
+  there are few of them -> little averaging.
+- `h_z` is edge/rotation-robust and SURVIVES: ic2 terminal h_z corr stays +0.86-0.95.
+
+### DEAD END: centered angular window (`CROSS_FLOW_ANG_MAX`)
+
+Idea: drop flow points with `|x_norm|` or `|y_norm|` > 0.7 so the FoV-edge slivers are
+never sampled. **Built, GT-FB-validated, REVERTED same day.** It made the terminal regime
+WORSE: ic2 `extent>=200` h_x/h_y corr +0.23/+0.13 -> **-0.06/-0.05**, h_x std 0.28 ->
+**3.15 (10x)**. Root cause: once the marker fills the FoV the background is ONLY at the
+edges, so the window drops nearly every point and the solve runs on 4-5 near-collinear
+survivors -> unbounded Tx/Ty variance (worse than the bounded edge-point bias it removed).
+`FLOW_ANG_MAX` left in the code default-INERT (99) as an experiment knob only; do not
+re-enable without a different mechanism.
+
+### Grazing-ray guard (`CROSS_Z_V_MIN_FLOW`) -- KEPT, minimal
+
+`_solve_jacobian` now drops flow points with `z_v <= 0` (behind/at the virtual camera ->
+sign-flipped perspective-divide garbage) before the lstsq, via `_getVirtualPts(return_zv=
+True)`. Default `0.0` = that and nothing more (can't starve the solve; count-floor
+fallback keeps all points if <MIN_FLOW_POINTS_SOLVE survive). The aggressive `0.4` value
+(also drop amplified-but-not-flipped near-grazing rays) is UNTESTED in isolation -- it was
+only ever run bundled with the reverted angular window.
+
+### The real terminal fix (NOT done) + why it waits
+
+Extent-gated h_x/h_y CONFIDENCE derate: when `MARKER_EXTENT_PX` is large there is
+genuinely no valid background to measure lateral flow from, so inflate the h_x/h_y KF
+measurement noise (the drone is centered by then, h_d->0, so it barely needs them).
+Deferred because (a) it is control-path -> needs the `feedback_ic_validation` n>=5 gate,
+and (b) it is MOOT until the 320x240 sensor-cal is redone -- real perception can't be
+validated at all right now (`_sensor_cal_hw`/`_sensor_cal_s` still from 640x480/fx=270).
+
+### IC1-5 real-perception sweep (hybrid OFF, perf-fix code) -- NOT a regression
+
+Centered IC: converged (SOFT+PRECISE on the 3rd retry). All off-center ICs (2-5): FAIL /
+TARGET_LOST at xy 2-4 m -- **matches `project_20260824_crossmarker_offcenter_convergence_
+wall` exactly** (pre-existing kappa-leakage/funnel off-center wall), now also confounded by
+the stale 320x240 cal. Sweep B (hybrid ON) was skipped -- it would hit the same wall and
+tells us nothing until recal.
+
+### NEXT (ordered)
+1. 320x240 sensor recalibration (io-calibration skill) -- the blocker for ALL
+   real-perception work.
+2. THEN: extent-gated h_x/h_y confidence derate + real-perception IC validation.
+3. Re-open the `CROSS_BG_FLOW_HYBRID` default-on decision (still default OFF) once (1)+(2)
+   give a real-perception baseline; the GT-FB correlation evidence for it already stands.
+4. `Z_V_MIN_FLOW=0.4` in isolation: quick offline A/B with the now-logged IMU AngVel.
