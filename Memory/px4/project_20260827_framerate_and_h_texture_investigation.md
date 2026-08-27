@@ -263,6 +263,47 @@ similar perception-vs-control gating question comes up again.
 `multiscale_good_features()` (all validated per above) -- check whether they were
 superseded before reusing.
 
+## ⭐⭐⭐ LIVE TEXTURE FILE IDENTITY, EXPLICIT (added 2026-08-27, after a different
+session got confused because this wasn't stated plainly enough above)
+
+**As of this session's end, the LIVE `~/PX4-Autopilot/Tools/simulation/gz/models/
+cross_marker/cross_marker.png` is the ORIGINAL 1024px texture (742,542 bytes,
+mean~193.7/std~10.1 background) -- i.e. what this memory calls "old 1024px"
+throughout, NOT `cross_marker_hires.png` (3072px, 6,689,220 bytes).** Verified by
+MD5: the live file is byte-identical to `cross_marker.png.bak_before_hirestex_
+20260809`. This is EXACTLY the file the "old 1024px" GT-correlation A/B in this
+memory was run against (r=0.66-0.76, the STRONG case) -- **we are finalizing on
+the texture that already validated well, not the weak hires case.**
+
+**Known trap for anyone re-deriving this: `cross_marker.png` and
+`cross_marker.png.bak_before_hirestex_20260809` share an identical mtime
+(2026-08-09 14:09) -- this is a `cp -p` artifact (every restore in this session
+used `cp -p`, which preserves the SOURCE's timestamp), NOT evidence that
+`cross_marker.png` is a downscaled copy of the hires asset.** The hires backups
+(`cross_marker.png.bak_before_lowres_test_20260827` etc., 6,689,220 bytes) share
+their OWN distinct shared timestamp (2026-08-10 14:15, the original hires-
+generation date) for the same `cp -p` reason -- two genuinely different assets,
+each internally consistent in mtime, not one derived from the other via a fresh
+resize.
+
+**Why the live state ended up on the old texture: an unintentional leftover, not
+a deliberate final choice.** Mid-session this texture was swapped back and forth
+several times for A/B testing (plate-mask geometry check, LK-in-extent-box
+texture-resolvability check, GT-correlation check) -- the LAST swap in the
+session's texture-comparison thread landed on old/1024px and was never swapped
+back to hires afterward. **This means the live sim currently does NOT have the
+near-touchdown blur mitigation that `cross_marker_hires.png` was originally built
+for** (see the earlier "texture-resolution crossover" investigation, predating
+this memory file) -- predicted crossover for old-1024px at the CURRENT fx=135 is
+~0.396m, still slightly above the ~0.34m touchdown camera-to-marker distance, so
+near-touchdown blur is a real, still-open, unresolved cost of leaving it here.
+**This is an open decision for whoever picks this up, not something already
+settled:** keep old texture (validated background-flow correlation, real near-
+touchdown blur) vs. restore hires (no validated background-flow correlation yet
+at that grain, better near-touchdown sharpness). Don't assume either answer;
+ask the user if it matters for the immediate task, or re-run the GT-correlation
+check against whichever file is actually live if picking this up cold.
+
 ## NEXT SESSION: explicit next task (user, 2026-08-27 session end)
 
 **Improve extent-ROI + line-exclusion + multiscale GFT + `_solve_jacobian` for a
