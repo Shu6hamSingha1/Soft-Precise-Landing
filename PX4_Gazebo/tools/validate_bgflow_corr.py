@@ -353,6 +353,15 @@ def main():
               f"(diff {cd_t[0]-start:+.4f}s) -- larger than expected clock offset")
 
     fs = FrameSource(args.frames)
+    # Time-sync invariant (verified across 5 reps 2026-08-28): the IMG_RECORD video
+    # starts at CONTROLLER_READY and contains EXACTLY the post-engage Img_Data
+    # frames, so video frame i <-> Img_Data index (n_pre + i). If a record-thread
+    # drop ever broke that, every correlation below would be silently misaligned.
+    n_post = len(np.asarray(img['Time'])) - n_pre
+    if fs.is_dir and abs(n_post - fs.n) > 1:
+        raise SystemExit(
+            f"TIME-SYNC: post-engage Img_Data frames ({n_post}) != video frames "
+            f"({fs.n}); frame<->index mapping is broken, refusing to correlate.")
     p = CrossMarkerPerception(resolution=(img.get('_res_rows', 240), img.get('_res_cols', 320))
                               if isinstance(img, dict) else (240, 320))
     # honor the recording's real intrinsics if present in Img_Params.txt

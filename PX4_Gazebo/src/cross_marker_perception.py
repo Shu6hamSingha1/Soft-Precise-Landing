@@ -59,6 +59,28 @@ from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agn
 # frames observed well above this); below it, reject the frame rather than accept a
 # perspective-divide artifact -- see process_frame's centroid plausibility gate.
 Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
+# 2026-08-28: grazing-ray guard for the FLOW-point cloud that feeds h,w (the
+# centroid already has its own Z_V_MIN_CENTROID reject-the-frame gate). A ray
+# with z_v <= 0 is behind/at the virtual camera -- its perspective-divide output
+# is sign-flipped nonsense and MUST be dropped. Default 0.0 does exactly that and
+# nothing more (unambiguously correct, can't starve the solve). Raising it toward
+# ~0.4 ALSO drops "amplified but not flipped" near-grazing rays -- TESTED at 0.4
+# bundled with the (reverted) angular window and the pair regressed terminal
+# h_x/h_y badly; 0.4 in ISOLATION is untested. The count-floor fallback below
+# keeps all points if too few survive either way.
+Z_V_MIN_FLOW = float(os.environ.get("CROSS_Z_V_MIN_FLOW", "0.0"))
+# TRIED AND REVERTED (2026-08-28): a centered angular window (|x_norm|,|y_norm|
+# <= FLOW_ANG_MAX) to exclude FoV-edge slivers near touchdown. It BACKFIRED --
+# GT-FB validation showed terminal h_x/h_y corr went +0.23/+0.13 -> -0.06/-0.05
+# and h_x std 0.28 -> 3.15 (10x WORSE). Mechanism: once the marker fills the FoV
+# the background is ONLY at the edges, so the window drops nearly every point and
+# the solve runs on 4-5 near-collinear survivors -> Tx/Ty variance explodes
+# (unbounded few-point-solve noise, worse than the bounded edge-point bias it was
+# meant to remove). The real fix for the terminal regime is extent-gated
+# CONFIDENCE (down-weight h_x/h_y in the KF when there's no valid background to
+# sample), not sampling harder -- see CROSS_HXY_EXTENT_DERATE. Default here is
+# inert (99 -> never triggers); kept as a knob only for experiments.
+FLOW_ANG_MAX = float(os.environ.get("CROSS_FLOW_ANG_MAX", "99"))
 
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
@@ -1034,7 +1056,7 @@ class CrossMarkerPerception:
         merged = np.vstack([peripheral_pts, full_pts[keep]])
         return merged[:GFT_MAX_CORNERS]
 
-    def _getVirtualPts(self, pts, quat):
+    def _getVirtualPts(self, pts, quat, return_zv=False):
         """Reproject camera-frame pixels onto the virtual image plane V: a
         LEVEL frame (gravity-aligned z) that preserves the UAV's yaw heading.
         Direct port of img_data.py's _getVirtualPts (same V-frame convention
@@ -1075,7 +1097,8 @@ class CrossMarkerPerception:
             fxx, fyy = self.focal
             x = (pts[:, 0] - cx) / fxx
             y = (pts[:, 1] - cy) / fyy
-            return np.column_stack([y, -x])
+            out = np.column_stack([y, -x])
+            return (out, np.full(len(out), np.inf)) if return_zv else out
 
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
         g = R.T @ np.array([0, 0, 1])   # world-down in body/camera frame (camera=body-FRD aligned)
@@ -1115,7 +1138,8 @@ class CrossMarkerPerception:
             print(f"[Z_V_DIAG] t={self._last_t} npts={len(z_v)} min_z_v={np.min(z_v):.4f} "
                   f"tilt_deg={_tilt_deg:.1f} x,y(worst)={x[_i_worst]:.3f},{y[_i_worst]:.3f} "
                   f"max|out|={np.max(np.abs(np.column_stack([V_rays[:,0]/z_v, V_rays[:,1]/z_v]))):.3f}")
-        return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+        out = np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+        return (out, z_v) if return_zv else out
 
     def _vframe_w(self, w_body, quat):
         """Rotate a body-FRD angular velocity into the virtual (gravity-leveled) frame,
@@ -1138,8 +1162,24 @@ class CrossMarkerPerception:
         # comment on this exact point ("aruco_pts_0 belongs to frame-0 -> level with
         # quats[0], not quats[1]") warns that using the wrong quat leaves a residual
         # tilt proportional to angular rate, a source of yaw/rate leakage.
-        prev_n = self._getVirtualPts(prev_pts, prev_quat)
-        curr_n = self._getVirtualPts(curr_pts, curr_quat)
+        prev_n, zv_p = self._getVirtualPts(prev_pts, prev_quat, return_zv=True)
+        curr_n, zv_c = self._getVirtualPts(curr_pts, curr_quat, return_zv=True)
+        # GEOMETRY REJECTION (2026-08-28, h_x/h_y terminal-collapse fix -- see
+        # Z_V_MIN_FLOW / FLOW_ANG_MAX comments): drop flow points that are either
+        # (a) near-grazing (small z_v in EITHER frame -> perspective-divide
+        # amplification), or (b) outside a centered angular window (the FoV-edge
+        # slivers that are all that's left of the "background" once the marker
+        # overflows near touchdown). Both pollute the Tx/Ty (h_x/h_y) solve.
+        # Keep all points if too few survive -- a degenerate solve on the full set
+        # still beats no solve, and rel_resid will flag it.
+        _pp = np.asarray(prev_pts, dtype=float)
+        _xn = (_pp[:, 0] - self.center[0]) / self.focal[0]
+        _yn = (_pp[:, 1] - self.center[1]) / self.focal[1]
+        _geokeep = ((zv_p >= Z_V_MIN_FLOW) & (zv_c >= Z_V_MIN_FLOW)
+                    & (np.abs(_xn) <= FLOW_ANG_MAX) & (np.abs(_yn) <= FLOW_ANG_MAX))
+        if _geokeep.sum() >= MIN_FLOW_POINTS_SOLVE and _geokeep.sum() < len(_geokeep):
+            prev_n, curr_n = prev_n[_geokeep], curr_n[_geokeep]
+            prev_pts, curr_pts = _pp[_geokeep], np.asarray(curr_pts, dtype=float)[_geokeep]
         vel = (curr_n - prev_n) / dt   # (N,2) per-point normalized velocity
         A = _fill_A(prev_n)
         b = vel.reshape(-1)
@@ -2267,6 +2307,16 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
             "Center Px": self._perception._center_px_log,
+            # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
+            # (same _pending_angvel sampled synchronously with quat in
+            # Image_Node.image_callback). Already accumulated per frame; exposing
+            # it here so OFFLINE analysis can reproduce the LIVE gyro-derotated
+            # 4-unknown _solve_jacobian instead of falling back to the
+            # rank-deficient full-6 solve (h_z corr understated ~0.2-0.3 without it
+            # -- see project_20260827 memory 2026-08-28 h-correlation dig).
+            "IMU AngVel": self._perception._imu_angvel_log,
+            "FPS": self._perception._fps_log,
+            "Stamp": self._perception._stamp_log,
             # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
             # calibration/validation recorder apps exposed these via their own explicit
             # get_point_diag_log()/get_radial_diag_log() calls into Ground_Truth.npy --
