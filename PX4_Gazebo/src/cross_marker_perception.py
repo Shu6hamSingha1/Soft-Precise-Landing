@@ -230,8 +230,57 @@ RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
 # background path can't produce a result a given frame, so this can't make things
 # WORSE than the pre-2026-08-27 baseline, only better or a no-op.
 CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
+
+# HYBRID BG-FLOW (2026-08-27, follow-on -- tools/validate_bgflow_corr.py). Two
+# additions aimed at texture-SCALE robustness (real surfaces come at any grain;
+# we can't dictate the texture), both default OFF pending a fresh SITL rep +
+# harness re-check:
+#   1. det.ok path: CLAHE-normalise the ROI before GFT/LK (removes dependence on
+#      absolute contrast -- concrete/gravel/low-light all normalise), + forward-
+#      backward LK consistency rejection. On the validated old-1024px rep this
+#      lifted h_z corr 0.28->0.71 and the point-availability floor 15->44/frame;
+#      no-op on texture too fine to resolve.
+#   2. det.ok==False path: run bg-flow anyway from det.mask_bbox alone (Hough
+#      line-fit failed but the colour blob is solid -- ~70% of otherwise-
+#      discarded frames, disproportionately the near-touchdown overflow phase),
+#      via cross_marker_detector.background_mask_bboxonly_from_detection() + dense
+#      DIS flow, and inject the result into the hw KF as a real measurement
+#      (self._ok / s / alpha / visibility stay untouched -- flow-only). GATED on
+#      _solve_jacobian's rel_resid <= CROSS_BGF_RESID_GATE: on resolvable texture
+#      this recovered the descent-critical loom phase the det.ok subset misses
+#      entirely (one rep h_z 0.08->0.70); on sub-resolution grain the gate keeps
+#      it to near-zero noise instead of a confident wrong-sign h_z.
+CROSS_BG_FLOW_HYBRID = os.environ.get("CROSS_BG_FLOW_HYBRID", "0") == "1"
+_BGF_CLAHE = os.environ.get("CROSS_BGF_CLAHE", "1") == "1"
+_BGF_FB = os.environ.get("CROSS_BGF_FB", "1") == "1"
+_BGF_FB_THRESH_PX = float(os.environ.get("CROSS_BGF_FB_THRESH_PX", "0.7"))
+_BGF_RESID_GATE = float(os.environ.get("CROSS_BGF_RESID_GATE", "0.45"))
 # 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
 # re-validated at this resolution.
+
+
+_BGF_CLAHE_OP = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+
+def _bgf_clahe_pair(gp, gc):
+    return _BGF_CLAHE_OP.apply(gp), _BGF_CLAHE_OP.apply(gc)
+
+
+def _bgf_lk_fb(gp, gc, pts, fb):
+    """Forward LK; if fb, also backward-track and reject points whose round-trip
+    error exceeds _BGF_FB_THRESH_PX. Returns (prev_pts Nx2, curr_pts Nx2) or
+    (None, None) if <5 survive. pts: cv2-GFT-shaped (N,1,2) or (N,2)."""
+    p0 = np.asarray(pts, np.float32).reshape(-1, 1, 2)
+    if len(p0) < 5:
+        return None, None
+    p1, st, _ = cv2.calcOpticalFlowPyrLK(gp, gc, p0, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+    st = st.flatten().astype(bool)
+    if fb:
+        p0b, stb, _ = cv2.calcOpticalFlowPyrLK(gc, gp, p1, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+        rt = np.linalg.norm((p0b - p0).reshape(-1, 2), axis=1)
+        st &= stb.flatten().astype(bool) & (rt < _BGF_FB_THRESH_PX)
+    a, b = p0.reshape(-1, 2)[st], p1.reshape(-1, 2)[st]
+    return (a, b) if len(a) >= 5 else (None, None)
 
 
 def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
@@ -1265,21 +1314,34 @@ class CrossMarkerPerception:
         re-validating a different thing than what was actually checked against GT.
         Fails to (zeros, False) if det isn't ok, no background mask/points are
         available this frame, or too few points survive LK -- caller falls back
-        to the caller's own zero/coast handling, same contract as _compute_hw."""
+        to the caller's own zero/coast handling, same contract as _compute_hw.
+
+        HYBRID (CROSS_BG_FLOW_HYBRID=1, default off): CLAHE-normalise the ROI
+        before GFT/LK and add forward-backward LK rejection -- see the module-
+        level CROSS_BG_FLOW_HYBRID comment. Default path (hybrid off) is
+        byte-for-byte the GT-validated 2026-08-27 method."""
         if det is None or not det.ok or det.isolated_mask is None:
             return np.zeros(6), False
         bm = cmd.background_mask_from_detection(det, gray_curr.shape)
         if bm is None or not bm.any():
             return np.zeros(6), False
-        pts = cmd.multiscale_good_features(gray_prev, bm, max_corners=80,
+        gp, gc = gray_prev, gray_curr
+        if CROSS_BG_FLOW_HYBRID and _BGF_CLAHE:
+            gp, gc = _bgf_clahe_pair(gray_prev, gray_curr)
+        pts = cmd.multiscale_good_features(gp, bm, max_corners=80,
                                             quality=0.01, min_dist=4)
         if pts is None or len(pts) < 5:
             return np.zeros(6), False
-        tracked, status, _ = cv2.calcOpticalFlowPyrLK(
-            gray_prev, gray_curr, pts, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
-        status = status.flatten().astype(bool)
-        prev_pts = pts.reshape(-1, 2)[status]
-        curr_pts = tracked.reshape(-1, 2)[status]
+        if CROSS_BG_FLOW_HYBRID:
+            prev_pts, curr_pts = _bgf_lk_fb(gp, gc, pts, _BGF_FB)
+            if prev_pts is None:
+                return np.zeros(6), False
+        else:
+            tracked, status, _ = cv2.calcOpticalFlowPyrLK(
+                gp, gc, pts, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+            status = status.flatten().astype(bool)
+            prev_pts = pts.reshape(-1, 2)[status]
+            curr_pts = tracked.reshape(-1, 2)[status]
         if len(prev_pts) < 5 or dt <= 1e-6:
             return np.zeros(6), False
         self._last_flow_prev_px = prev_pts.copy()
@@ -1294,6 +1356,48 @@ class CrossMarkerPerception:
         sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
             prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr)
         return sol, True
+
+    def _compute_hw_bgflow_fallback(self, gray_prev, gray_curr, det, dt,
+                                     quat_prev=None, quat_curr=None):
+        """HYBRID-only (CROSS_BG_FLOW_HYBRID=1) det.ok==False path -- see the
+        module-level CROSS_BG_FLOW_HYBRID comment. Background flow from
+        det.mask_bbox alone (threshold-derived line exclusion) + dense DIS flow,
+        gated on _solve_jacobian's rel_resid <= _BGF_RESID_GATE. Returns
+        (sol6, ok); the caller injects sol into the hw KF as a real measurement
+        and does NOT touch self._ok / s / alpha / visibility (flow-only). Never
+        raises -- any failure returns (zeros, False) and the caller coasts hw as
+        it would have anyway."""
+        if not (CROSS_BG_FLOW and CROSS_BG_FLOW_HYBRID):
+            return np.zeros(6), False
+        if det is None or det.mask_bbox is None or not (dt > 1e-6):
+            return np.zeros(6), False
+        try:
+            bm = cmd.background_mask_bboxonly_from_detection(det, gray_curr)
+            if bm is None or not bm.any():
+                return np.zeros(6), False
+            try:
+                dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_FAST)
+            except AttributeError:
+                return np.zeros(6), False
+            flow = dis.calc(gray_prev, gray_curr, None)
+            ys, xs = np.where(bm > 0)
+            if len(xs) < 20:
+                return np.zeros(6), False
+            step = max(1, int(np.sqrt(len(xs) / 200.0)))   # ~<=200 sample points
+            xs, ys = xs[::step], ys[::step]
+            prev = np.column_stack([xs, ys]).astype(np.float32)
+            disp = flow[ys, xs]
+            keep = np.linalg.norm(disp, axis=1) < 15.0     # reject blown vectors
+            prev, curr = prev[keep], (prev + disp)[keep]
+            if len(prev) < 5:
+                return np.zeros(6), False
+            sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
+                prev, curr, dt, prev_quat=quat_prev, curr_quat=quat_curr)
+            if not np.isfinite(rel_resid) or rel_resid > _BGF_RESID_GATE:
+                return np.zeros(6), False
+            return sol, True
+        except Exception:
+            return np.zeros(6), False
 
     def _compute_hw(self, gray_prev, gray_curr, mask, dt, quat_prev=None, quat_curr=None,
                      angvel_prev=None, angvel_curr=None):
@@ -1545,7 +1649,12 @@ class CrossMarkerPerception:
                 self._center_fresh = True
             # hold last s/alpha; hw coasts (predict-only KF, then freezes after
             # _hw_kf_coast_freeze_streak misses -- see _kf_update_hw docstring)
-            self._kf_update_hw(None, t)
+            # -- UNLESS the hybrid bbox-only bg-flow path can produce a rel_resid-
+            # gated flow measurement this frame (CROSS_BG_FLOW_HYBRID; flow-only,
+            # self._ok stays False). See module-level CROSS_BG_FLOW_HYBRID comment.
+            _hw_fb, _hw_fb_ok = self._compute_hw_bgflow_fallback(
+                gray_prev, gray_curr, det, dt, quat_prev=quat_prev, quat_curr=quat_curr)
+            self._kf_update_hw(_hw_fb if _hw_fb_ok else None, t)
             self._diag_lost_streak += 1
             # dump the frame at the START of a loss streak (streak==1) and every 30
             # frames thereafter, so a long freeze is sampled across its duration

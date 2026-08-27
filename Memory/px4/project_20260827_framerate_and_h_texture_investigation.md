@@ -1,11 +1,11 @@
 ---
 name: project_20260827_framerate_and_h_texture_investigation
-description: "2026-08-27: root-caused cross-marker's low process_frame() rate (needed >=30Hz), dropped camera to 320x240 (fx=fy=270->135, matching MATLAB's native scale) to fix it (n=3 confirms ~14.7-22.6Hz -> ~37.9Hz), then found h (optical flow) never actually uses the textured background at all -- a design gap against the ORIGINAL intent (s from marker geometry, h from surface-texture flow, so the same algorithm generalizes to a cross drawn on any real-world textured surface). A first fix attempt (precise rotated 'plate mask' via cv2.minAreaRect) was rejected -- wrong geometric basis (X diagonal != plate edges) AND wrong problem (no plate/ground distinction exists in real deployment). Correct direction: extent-based ROI around the marker, not a precise plate quad, mirroring img_data.py's ArUco ring-flow design intent."
+description: "2026-08-27 + 2026-08-28 follow-on. (1) camera 640x480->320x240 (fx 270->135). (2) h optical flow never used the textured background -- fixed with extent-ROI + line-exclusion + multiscale GFT through the real _solve_jacobian, GT-validated r=0.66-0.78 on resolvable-grain texture, weak on sub-resolution grain (a resolvability wall). (3) 2026-08-28: the '37.9Hz' figure below is an OUTLIER -- real process_frame() rate was ~17.5Hz; root-caused to two marker-size-QUADRATIC hot spots (detect()'s Canny/Hough, multiscale_good_features' GFT-over-full-extent + O(n^2) dedup), NOT GPU/PBR/Python-ceiling; fixed with bbox-crop + working-resolution caps => 46.5Hz live. (4) hybrid bg-flow built (CROSS_BG_FLOW_HYBRID, default OFF): CLAHE+fwd-back-LK on det.ok path, resid-gated bbox-only dense-DIS fallback on miss frames. Reusable GT-corr harness: tools/validate_bgflow_corr.py. See the 2026-08-28 FOLLOW-ON section at the bottom."
 metadata: 
   node_type: memory
   type: project
   originSessionId: a486c0ea-32ca-4384-97c7-b0136fa1c290
-  modified: 2026-08-27T13:21:07.589Z
+  modified: 2026-08-27T17:31:53.955Z
 ---
 
 ## Frame-rate root-cause (need >=30Hz, was 14.7-23.8Hz)
@@ -324,3 +324,104 @@ line-extent ratio differs from this session's specific marker design). The
 GT-correlation methodology from this session (proper time-sync via
 `Ground_Truth['Start Time']`, real `_solve_jacobian`, not a raw-pixel proxy) is
 the validated way to check any of this -- reuse it, don't re-derive from scratch.
+
+---
+
+## 2026-08-28 FOLLOW-ON (session continuation) -- perf root-cause CORRECTED, hybrid bg-flow built, reusable harness
+
+### ⭐ The "37.9 Hz" frame-rate figure above is MISLEADING -- and the "PBR-material-cost vs ~20-25Hz-Python-ceiling, not disambiguated" question is now ANSWERED
+
+Fresh headless cross_marker GT-FB reps (default IC, `CROSS_BG_FLOW=1` live default)
+measured `process_frame()` at **17.5 Hz**, not ~38. The 2026-08-27 `20-33-35` rep
+that this file cites as the r=0.66-0.76 validation rep was ITSELF only **18.6 Hz**
+(median frame dt 20ms but p90=172ms -- hitching). The "37.6/38.3/37.8 Hz n=3 IC5"
+figure is an outlier / different conditions; ~18 Hz is this world's normal on this
+host.
+
+**Root cause (profiled, offline, on real recorded frames -- NOT GPU/render/PBR, NOT
+a Python throughput ceiling):** two marker-pixel-size-QUADRATIC hot spots that spike
+near touchdown when the marker fills the frame:
+- `cross_marker_detector.detect()` / `_detect_core`: `cv2.Canny` + `cv2.HoughLinesP`
+  + per-segment Python angle loop + `_filter_segments_by_corner_join` -- **mean 23ms,
+  p90 89ms, max 195ms**. (An earlier 2.3ms micro-benchmark was misleading -- it hit
+  the warm tracked-crop fast path on small-marker mid-descent frames only.)
+- `cross_marker_detector.multiscale_good_features()` (wired live via `_compute_hw_bgflow`
+  since the 2026-08-27 `CROSS_BG_FLOW` bake -- which was "verified no exceptions" but
+  NEVER rate-checked): `goodFeaturesToTrack(qualityLevel=0.01)` x3 scales over the
+  whole extent-box mask + an **O(n^2)** pairwise dedup -- **mean 37ms/frame** near the
+  deck (thousands of weak candidates found + sorted + dedup'd).
+Raw Gazebo down-cam publish rate measured directly (`gz topic -e`): **59.7 Hz** --
+the camera/render side was never the limit. Whole Python perception pipeline pure
+compute (detect+GFT+CLAHE+DIS) is **~7ms => ~140Hz capable**.
+
+### FIX (both default-ON -- pure speedups, no GT-correlation regression on 3 reps, detect-ok slightly UP 75->78 / 97->99 / 108->108)
+
+`cross_marker_detector.py`:
+- `multiscale_good_features()`: crop to mask bbox first -> integer-downscale so long
+  side <= `CROSS_GFT_WORK_MAX_PX` (200) -> multiscale loop on THAT -> O(n) grid-cell
+  dedup (`_grid_dedup`, replaces the O(n^2) pairwise) -> map points back (origin+scale).
+  `CROSS_GFT_QUALITY` default 0.01 -> **0.03**. Docstring's stale "NOT YET WIRED"
+  removed (it IS wired). **`_compute_hw_bgflow` 37ms -> 2.6ms**, now marker-size-
+  independent.
+- `_detect_core_capped()` + `_scale_detection()`: the **tracked-crop fast path only**
+  (acquisition full-frame path left EXACT) downscales the crop by an integer factor
+  when its long side > `CROSS_DETECT_WORK_MAX_PX` (200), runs `_detect_core`, scales
+  center/bbox/line_points/stub_points back and NEAREST-resizes `isolated_mask` back to
+  crop size before the existing `_shift_detection`. Line geometry is scale-invariant.
+  **`detect()` 23ms -> 6.5ms** (p90 89->22, max 195->40).
+
+**Live result: `process_frame()` 17.5 Hz -> 46.5 Hz** (headless, CROSS_BG_FLOW_HYBRID=1,
+detect-ok 100%, landing SOFT+PRECISE xy=0.004m). >=30Hz requirement MET with margin.
+Offline `process_frame` is ~95-125 Hz capable; p90 28ms, max 45ms.
+
+### HYBRID BG-FLOW (`CROSS_BG_FLOW_HYBRID`, default OFF pending full validation)
+
+Aimed at texture-SCALE robustness (real surfaces = any grain; can't dictate the
+texture). Built + measured via `tools/validate_bgflow_corr.py` (the 2026-08-27 ad-hoc
+GT-correlation check turned into a reusable tool -- time-sync via
+`Ground_Truth['Start Time']` plain subtraction, video index i <-> Img_Data (n_pre+i),
+real `_solve_jacobian`; 6 strategies + ok/notok correlation split).
+
+1. **`det.ok` path** (`_compute_hw_bgflow`, gated by `CROSS_BGF_CLAHE`/`CROSS_BGF_FB`):
+   CLAHE-normalise the ROI before GFT (removes absolute-contrast dependence --
+   concrete/gravel/low-light all normalise), + forward-backward LK consistency
+   rejection (`CROSS_BGF_FB_THRESH_PX` 0.7). On the validated old-1024px rep:
+   **h_z corr 0.28 -> 0.71-0.78**, point-availability floor 15 -> 44/frame. No-op /
+   near-zero-noise on texture too fine to resolve (hires 3072px stays ~0 -- the
+   resolvability wall, unchanged).
+2. **`det.ok == False` path** (`_compute_hw_bgflow_fallback`, new): run bg-flow anyway
+   from `det.mask_bbox` alone via
+   `cross_marker_detector.background_mask_bboxonly_from_detection()` (extent box minus
+   a THRESHOLD-derived near-black dilated line mask -- no dependence on
+   `det.isolated_mask`) + dense `cv2.DISOpticalFlow` PRESET_FAST, grid-sampled.
+   Injected into the hw KF as a real measurement in `process_frame`'s `not det.ok`
+   branch (the lone `_kf_update_hw(None,t)`); **`self._ok`/s/alpha/visibility stay
+   untouched -- flow-only**. GATED on `_solve_jacobian`'s `rel_resid <=
+   CROSS_BGF_RESID_GATE` (0.45): on resolvable texture recovers the near-touchdown
+   overflow/loom phase the `det.ok` subset misses ENTIRELY (one rep h_z 0.08 -> 0.70);
+   on sub-resolution grain the gate keeps it to near-zero noise instead of a confident
+   WRONG-SIGN h_z (measured: gate 0.6 -> -0.02, gate 0.4 -> +0.10, ungated -> -0.18).
+   ~70% of otherwise-discarded frames become usable.
+
+Best-so-far config per harness: `det.ok` -> CLAHE+FB sparse (or dense DIS, marginally
+better but ~2700 pts/frame), `notok` -> resid-gated bbox dense. `dense_dis` on `det.ok`
+frames gave old1024 +0.81/+0.66/+0.73.
+
+### Uncommitted-state note SUPERSEDED
+`extent_mask_from_detection` / `background_mask_from_detection` / `multiscale_good_features`
+are all COMMITTED and live-wired now. New this session: `background_mask_bboxonly_from_detection`,
+`_detect_core_capped`, `_scale_detection`, `_grid_dedup` (detector);
+`_compute_hw_bgflow_fallback`, `_bgf_clahe_pair`, `_bgf_lk_fb`, the `CROSS_BG_FLOW_HYBRID`
+flag family (perception); `tools/validate_bgflow_corr.py`.
+
+### STILL OPEN / NEXT
+- Full on/off harness comparison on a FRESH hybrid rep (recorded rep launched at
+  session end) -> then decide whether to default `CROSS_BG_FLOW_HYBRID` ON. Perception
+  fix with GT-correlation evidence can default without the n>=5 IC gate (precedent
+  already set for `CROSS_BG_FLOW`).
+- The `MULTISCALE_LEVELS` / `LINE_EXCLUDE_DILATE_PX` / `WHOLE_PLATE_SCALE` content-
+  adaptivity from the original "NEXT SESSION" note above is still untouched -- the
+  hybrid work targeted contrast + correspondence-rejection + coverage, not scale-
+  adaptivity per se.
+- Old-vs-hires texture decision (near-touchdown blur mitigation) still open -- the
+  perf + hybrid work helps EITHER texture, doesn't force the choice.

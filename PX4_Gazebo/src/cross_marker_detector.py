@@ -784,55 +784,163 @@ def background_mask_from_detection(det, frame_shape):
     return cv2.bitwise_and(ext, cv2.bitwise_not(line_dilated))
 
 
-MULTISCALE_LEVELS = [int(x) for x in os.environ.get("CROSS_MULTISCALE_LEVELS", "1,2,4").split(",")]
+LINE_EXCLUDE_BLACK_MAX_V = int(os.environ.get("CROSS_LINE_EXCLUDE_BLACK_MAX_V", "90"))
 
 
-def multiscale_good_features(gray, mask, max_corners=80, quality=0.01, min_dist=4):
-    """VISUAL-VERIFICATION-ONLY, NOT YET WIRED INTO THE LIVE FLOW SOLVE (2026-08-27).
-    Runs cv2.goodFeaturesToTrack at each downsample factor in MULTISCALE_LEVELS
-    (default 1x/2x/4x) within `mask`'s region, then maps surviving points back to
-    full-resolution coordinates and pools them (deduplicated by min_dist in the
-    ORIGINAL scale). Rationale: a single-scale detector can only resolve texture
-    whose spatial frequency happens to match its window size -- real-world
-    textures won't cooperate with one fixed scale (confirmed empirically: a
-    coarse-grain texture registered fine at 1x, but a fine-grain one needed
-    downsampling before GFT found anything at all). Pooling across scales means
-    SOME level should register real corners regardless of the surface's actual
-    grain size, without having to know or tune that grain size in advance.
-    Points found at a coarser scale carry proportionally larger position
-    uncertainty (each coarse pixel maps to an NxN block at full res) -- callers
-    should not assume scale-1 and scale-4 points have equal precision.
+def background_mask_bboxonly_from_detection(det, gray):
+    """Like background_mask_from_detection(), but derives the line-exclusion mask
+    from a plain near-black threshold on `gray` instead of det.isolated_mask --
+    so it works on frames where the Hough line-fit FAILED (det.ok is False) but
+    the colour-gated blob + det.mask_bbox are still solid. That set is ~70% of
+    otherwise-discarded frames, and it is disproportionately the near-touchdown
+    marker-overflow phase where h_z (loom) matters most for the descent axis
+    (validated 2026-08-27, tools/validate_bgflow_corr.py -- see
+    project_20260827_framerate_and_h_texture_investigation memory).
+
+    NOT a drop-in for the det.ok path: the threshold mask is coarser than the
+    shape-isolated one, and the extent box near touchdown is close to the whole
+    frame, so callers MUST gate the resulting solve on fit quality (rel_resid)
+    before committing it -- on a texture whose grain is below the camera's
+    delivered resolution this path produces near-zero noise at best and a
+    sign-flipped h_z at worst without that gate.
     """
-    h, w = gray.shape[:2]
+    if det is None or det.mask_bbox is None:
+        return None
+    ext = extent_mask_from_detection(det, gray.shape)
+    if ext is None or not ext.any():
+        return None
+    black = (gray < LINE_EXCLUDE_BLACK_MAX_V).astype(np.uint8) * 255
+    k = 2 * LINE_EXCLUDE_DILATE_PX + 1
+    black = cv2.dilate(black, np.ones((k, k), np.uint8))
+    return cv2.bitwise_and(ext, cv2.bitwise_not(black))
+
+
+MULTISCALE_LEVELS = [int(x) for x in os.environ.get("CROSS_MULTISCALE_LEVELS", "1,2,4").split(",")]
+# Performance caps (2026-08-27, process_frame >=30Hz work). goodFeaturesToTrack
+# cost scales with the searched image AREA and with how many candidate corners
+# clear qualityLevel (it sorts them all) -- both blow up when the marker fills
+# the frame near touchdown (measured: multiscale GFT 2.5ms mid-descent ->
+# 37ms/frame near the deck). GFT_WORK_MAX_PX bounds the working resolution
+# (crop to the mask bbox, then downscale so its long side fits this budget);
+# GFT_QUALITY raised 0.01->0.03 so far fewer weak candidates are found/sorted.
+GFT_WORK_MAX_PX = int(os.environ.get("CROSS_GFT_WORK_MAX_PX", "200"))
+GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.03"))
+
+
+def _grid_dedup(pts, lvls, min_dist):
+    """O(n) replacement for the old O(n^2) pairwise de-dup: bucket points into
+    min_dist-sized grid cells, keep the first (already scale-1-first ordered)
+    point per cell. Not identical to true radial de-dup at cell boundaries, but
+    close enough for flow-point seeding and vastly cheaper when GFT returns
+    hundreds-to-thousands of candidates."""
+    order = np.argsort(lvls, kind="stable")
+    seen, kept = set(), []
+    inv = 1.0 / max(1, min_dist)
+    for i in order:
+        x, y = pts[i]
+        key = (int(x * inv), int(y * inv))
+        if key not in seen:
+            seen.add(key)
+            kept.append((x, y))
+    return np.array(kept, dtype=np.float32).reshape(-1, 1, 2) if kept else None
+
+
+def multiscale_good_features(gray, mask, max_corners=80, quality=None, min_dist=4):
+    """Runs cv2.goodFeaturesToTrack at each downsample factor in MULTISCALE_LEVELS
+    (default 1x/2x/4x) within `mask`'s region, maps surviving points back to
+    full-resolution coordinates and pools them (grid-deduplicated by min_dist).
+    Rationale: a single-scale detector can only resolve texture whose spatial
+    frequency matches its window -- real surfaces won't cooperate with one fixed
+    scale (confirmed empirically: coarse grain registered at 1x, fine grain
+    needed downsampling before GFT found anything). Pooling across scales means
+    SOME level registers real corners regardless of grain size. Coarse-scale
+    points carry proportionally larger position uncertainty -- callers should not
+    treat scale-1 and scale-4 points as equally precise.
+
+    Marker-size-independent cost (2026-08-27): the work is done on the mask's
+    bounding box, downscaled so its long side is <= GFT_WORK_MAX_PX, then points
+    are mapped back (origin offset + scale). Wired live via
+    cross_marker_perception._compute_hw_bgflow.
+    """
+    if quality is None:
+        quality = GFT_QUALITY
+    ys, xs = np.nonzero(mask)
+    if len(xs) == 0:
+        return None
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    g_roi = gray[y0:y1, x0:x1]
+    m_roi = mask[y0:y1, x0:x1]
+    rh, rw = g_roi.shape[:2]
+    pre = 1
+    if max(rh, rw) > GFT_WORK_MAX_PX:
+        pre = int(np.ceil(max(rh, rw) / GFT_WORK_MAX_PX))
+        g_roi = cv2.resize(g_roi, (max(1, rw // pre), max(1, rh // pre)), interpolation=cv2.INTER_AREA)
+        m_roi = cv2.resize(m_roi, (g_roi.shape[1], g_roi.shape[0]), interpolation=cv2.INTER_NEAREST)
+    h, w = g_roi.shape[:2]
     all_pts, all_lvls = [], []
     for lvl in sorted(set(MULTISCALE_LEVELS)):
         if lvl <= 1:
-            g, m = gray, mask
+            g, m = g_roi, m_roi
         else:
-            g = cv2.resize(gray, (w // lvl, h // lvl), interpolation=cv2.INTER_AREA)
-            m = cv2.resize(mask, (w // lvl, h // lvl), interpolation=cv2.INTER_NEAREST)
+            g = cv2.resize(g_roi, (max(1, w // lvl), max(1, h // lvl)), interpolation=cv2.INTER_AREA)
+            m = cv2.resize(m_roi, (g.shape[1], g.shape[0]), interpolation=cv2.INTER_NEAREST)
         if not m.any():
             continue
         pts = cv2.goodFeaturesToTrack(g, maxCorners=max_corners, qualityLevel=quality,
                                        minDistance=max(1, min_dist // lvl), mask=m)
         if pts is None:
             continue
-        pts = pts.reshape(-1, 2) * lvl   # back to full-res coordinates
+        # map back: sub-scale -> ROI-work-scale -> ROI -> full frame
+        pts = pts.reshape(-1, 2) * lvl * pre + np.array([x0, y0], dtype=np.float32)
         all_pts.append(pts)
         all_lvls.extend([lvl] * len(pts))
     if not all_pts:
         return None
-    pooled = np.concatenate(all_pts, axis=0)
-    lvls = np.array(all_lvls)
-    # de-dup: keep points at least min_dist apart, precise (scale-1) points first so
-    # a finer-scale detection wins a tie against a coarser duplicate of the same
-    # real corner (coarser points carry more position uncertainty -- see docstring).
-    order = np.argsort(lvls, kind="stable")
-    kept = []
-    for p in pooled[order]:
-        if all(np.hypot(*(p - k)) >= min_dist for k in kept):
-            kept.append(p)
-    return np.array(kept, dtype=np.float32).reshape(-1, 1, 2) if kept else None
+    return _grid_dedup(np.concatenate(all_pts, axis=0), np.array(all_lvls), min_dist)
+
+
+DETECT_WORK_MAX_PX = int(os.environ.get("CROSS_DETECT_WORK_MAX_PX", "200"))
+
+
+def _scale_detection(det, f, crop_shape):
+    """Scale a CrossMarkerDetection computed on a frame downscaled by integer
+    factor `f` back up to `crop_shape` (h, w) coordinates. Inverse of the
+    pre-downscale in detect()'s tracked-crop fast path. isolated_mask is
+    NEAREST-resized back to crop_shape so the subsequent _shift_detection can
+    embed it into the full frame as usual."""
+    if not det.ok or f == 1:
+        return det
+    c = (det.center[0] * f, det.center[1] * f) if det.center else None
+    bb = ((det.mask_bbox[0] * f, det.mask_bbox[1] * f,
+           det.mask_bbox[2] * f, det.mask_bbox[3] * f) if det.mask_bbox else None)
+    li = tuple(map(tuple, np.asarray(det.line_points_i, float) * f)) if det.line_points_i else ()
+    lj = tuple(map(tuple, np.asarray(det.line_points_j, float) * f)) if det.line_points_j else ()
+    sp = (tuple(map(tuple, np.asarray(det.stub_points, float) * f))
+          if det.stub_points else None)
+    im = det.isolated_mask
+    if im is not None:
+        im = cv2.resize(im, (crop_shape[1], crop_shape[0]), interpolation=cv2.INTER_NEAREST)
+    return replace(det, center=c, mask_bbox=bb, line_points_i=li, line_points_j=lj,
+                   stub_points=sp, isolated_mask=im)
+
+
+def _detect_core_capped(frame, *args, work_max_px=DETECT_WORK_MAX_PX):
+    """_detect_core, but when `frame`'s long side exceeds work_max_px, run on an
+    integer-downscaled copy and scale the result back. _detect_core's cost is
+    ~quadratic in marker pixel size (mask pixels + Hough segments), which spikes
+    to 90-190ms when the marker fills the frame near touchdown (measured); the
+    line geometry it recovers is scale-invariant, so a bounded working resolution
+    keeps detect() near-constant-cost without changing what it computes. Only the
+    tracked-crop fast path uses this -- the (rarer, acquisition) full-frame path
+    is left exact."""
+    h, w = frame.shape[:2]
+    f = 1
+    if max(h, w) > work_max_px:
+        f = int(np.ceil(max(h, w) / work_max_px))
+        frame = cv2.resize(frame, (max(1, w // f), max(1, h // f)), interpolation=cv2.INTER_AREA)
+    det = _detect_core(frame, *args)
+    return _scale_detection(det, f, (h, w))
 
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
@@ -866,8 +974,8 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         y1 = min(H, by + bh + TRACK_MARGIN_PX)
         if x1 > x0 and y1 > y0:
             crop = frame_bgr[y0:y1, x0:x1]
-            det = _detect_core(crop, lower, upper, min_line_length, max_line_gap,
-                                identify_stub, roi_frac_x=1.0, roi_frac_y=1.0)   # no static
+            det = _detect_core_capped(crop, lower, upper, min_line_length, max_line_gap,
+                                identify_stub, 1.0, 1.0)   # no static
                                 # crop inside the already-small tracked window -- the tight
                                 # bbox+margin crop IS the ROI here; a second static crop on
                                 # top would risk re-truncating the marker for no benefit.
