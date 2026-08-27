@@ -576,10 +576,16 @@ class Controller(Thread):
         # every other per-axis quantity in this file (p_10, u_centered/v_centered, etc.).
         # Env var NAMES kept as U/V (still label the PHYSICAL sensor axis each controls)
         # to avoid an unrelated config-surface rename.
-        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0")),
-                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0"))])
-        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0")),
-                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0"))])
+        # 2026-08-27: halved (210/290/80 -> 105/145/40) for the 640x480->320x240
+        # camera resolution drop (see img_data.py's fx/fy comment) -- these are
+        # PIXEL-domain quantities that were themselves exactly 2x MATLAB's own
+        # 320x240-native values by design (this file's own top-of-file comment,
+        # line ~32); now that the camera matches MATLAB's resolution again, so
+        # should these.
+        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "105.0")),
+                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "145.0"))])
+        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "40.0")),
+                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "40.0"))])
         # rho_fov held CONSTANT at rho_fov_0 by default (l_fov=0 -> exp(0)=1 -> rho_fov_curr=rho_fov_0).
         # The decay to rho_fov_inf (80px) shrank the visibility funnel far inside the camera FoV,
         # firing the perception-death handoff prematurely (marker fills 80px while still visible to
@@ -841,12 +847,74 @@ class Controller(Thread):
         # _extentTouchdownProximate.
         self._td_ext_max = 0.0
         self._td_ext_prox_frac = float(os.environ.get("PLASMC_TD_EXT_PROX_FRAC", "0.6"))
+        # LOOM-INDEPENDENT PROXIMITY PATH (2026-08-26): a 27-flight replay of the loom+
+        # extent corroboration gate above found 0 false positives, but 14/28 flights
+        # never latched at all -- verified (restricting to frames where extent proves
+        # genuine near-max proximity) that in every one of those 14, the raw loom h_z
+        # simply never produces a 3-in-window positive streak at true contact, corroborated
+        # or not. Loom is not a reliable NECESSARY condition at touchdown, even though it
+        # remains a useful SUFFICIENT one when it does fire cleanly (the path above catches
+        # those faster, since it doesn't need this path's own persistence window). This
+        # second, independent path latches on flattened+proximate extent ALONE (no h_z sign
+        # requirement) sustained for _td_frames within a rolling window -- same persistence
+        # discipline as the loom path, just applied to a different signal. Both signals are
+        # still individually necessary+sufficient in their own path; this does not weaken
+        # the loom path's own requirements, it adds a second independent route to the same
+        # one-way latch.
+        self._td_ext_only_hist = deque(maxlen=self._td_window)
+        # EXTENT-ARM PRECONDITION (2026-08-26, found via the 28-flight offline replay):
+        # "flattened+proximate" is trivially true from frame 1 for any flight that STARTS
+        # close enough for the marker to already saturate the frame (confirmed via GT: 3
+        # flights starting at 3.0m altitude, where the 3.0m marker already reads
+        # MARKER_EXTENT_PX~639/640px at t=0 -- extent has nowhere to grow, so it reads as
+        # both "flat" and "at its own running max" immediately, latching LANDED while GT
+        # altitude was still ~3m). The loom path has an equivalent guard (_td_armed: a
+        # real descent must be OBSERVED via h_z before the spike condition can count) --
+        # this path had none. Mirror it on the extent signal itself: require the running
+        # max to have grown by >= _td_ext_arm_growth (x) from the SMALLEST extent seen so
+        # far before path 2 is allowed to fire -- i.e. prove the marker actually got
+        # closer during this flight, not just that it already looked close at the start.
+        self._td_ext_min = float("inf")
+        self._td_ext_arm_growth = float(os.environ.get("PLASMC_TD_EXT_ARM_GROWTH", "2.0"))
+        self._td_ext_armed = False
+        # GT-FEEDBACK TOUCHDOWN PATH (2026-08-26): both extent-corroborated paths above
+        # depend on MARKER_EXTENT_PX, a PERCEPTION quantity -- fine for perception-
+        # feedback (the thing being tested), but GT-feedback mode has no reason to
+        # inherit perception bugs into its touchdown call: a full-frame color-mask
+        # misread (mask_px==640*480) made "extent stalled near max" true almost
+        # immediately, false-latching LANDED at ~4.7m altitude (hover height, nowhere
+        # near the ground) in 9/9 reps, even though GT-feedback's CONTROL never used
+        # perception at all. Since GT-feedback already has the exact camera-to-marker
+        # relative depth (GTFeedback.last_rel_alt), it gets its own confirmation
+        # instead: record the running-MINIMUM GT depth seen since arming (this only
+        # ever shrinks during a real descent and stops changing once the gear takes
+        # weight -- i.e. it converges to the drone's actual landed height), then latch
+        # once the CURRENT depth has held within _td_gt_flat_eps of that recorded
+        # minimum for _td_frames samples in the rolling window. Perception-feedback
+        # mode (self._gt_feedback is None) is UNCHANGED -- still the extent-based
+        # paths below -- per explicit user direction to keep this GT-only.
+        self._td_gt_flat_eps = float(os.environ.get("PLASMC_TD_GT_FLAT_EPS", "0.03"))  # m
+        self._td_gt_min_depth = None
+        self._td_gt_hist = deque(maxlen=self._td_window)
+        # windowed-rate + progress-since-arm guards (see _touchdownDetect bugfix comment)
+        self._td_gt_depth_at_arm = None
+        self._td_gt_rate_max = float(os.environ.get("PLASMC_TD_GT_RATE_MAX", "0.05"))      # m/s
+        self._td_gt_progress_min = float(os.environ.get("PLASMC_TD_GT_PROGRESS_MIN", "0.3"))  # m
+        self._td_gt_rate_win = int(os.environ.get("PLASMC_TD_GT_RATE_WIN", str(self._td_ext_win)))
+        self._td_gt_rate_hist = deque(maxlen=self._td_gt_rate_win)
         if self._touchdown_loom:
-            print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
-                  f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
-                  f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom}) "
-                  f"+ extent corroboration (growth flattened, |d(ln extent)/dt|<{self._td_ext_rate_max}/s "
-                  f"over {self._td_ext_win} samples, AND extent>={self._td_ext_prox_frac}x running max)")
+            if self._gt_feedback is not None:
+                print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1 (GT-feedback): touchdown = GT "
+                      f"camera-marker depth held within {self._td_gt_flat_eps}m of its recorded "
+                      f"landed height for x{self._td_frames} within a {self._td_window}-frame "
+                      f"window + |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom} "
+                      f"(perception extent NOT used)")
+            else:
+                print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
+                      f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
+                      f"+ |s_e_n|<{self._td_sen}, armed after h_z<{self._td_arm_loom}) "
+                      f"+ extent corroboration (growth flattened, |d(ln extent)/dt|<{self._td_ext_rate_max}/s "
+                      f"over {self._td_ext_win} samples, AND extent>={self._td_ext_prox_frac}x running max)")
         # SAVGOL FORWARD-PREDICTOR (lag compensation, idea 2). The 38 ms loop delay makes the lateral
         # velocity loop under-damped near the deck -> the limit cycle. A FORWARD predictor (fit a
         # degree-D poly to the last WIN image samples, evaluate at t+LEAD) un-lags the control: it
@@ -1284,6 +1352,15 @@ class Controller(Thread):
         self._td_ext_hist.append((t, ext))
         if ext > self._td_ext_max:
             self._td_ext_max = ext
+        if ext > 0 and ext < self._td_ext_min:
+            self._td_ext_min = ext
+        if (not self._td_ext_armed and self._td_ext_min > 0
+                and self._td_ext_min < float("inf")
+                and self._td_ext_max >= self._td_ext_arm_growth * self._td_ext_min):
+            self._td_ext_armed = True
+            if self._td_debug:
+                print(f"[TD_DEBUG] t={t:.3f} EXTENT-PATH ARMED (max={self._td_ext_max:.0f}px "
+                      f">= {self._td_ext_arm_growth}x min={self._td_ext_min:.0f}px)")
 
     def _extentGrowthFlattened(self):
         """True iff MARKER_EXTENT_PX's normalized growth rate d(ln extent)/dt is small
@@ -1359,9 +1436,65 @@ class Controller(Thread):
         if not self._td_armed:
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
+                if self._gt_feedback is not None:
+                    _d0 = getattr(self._gt_feedback, "last_rel_alt", None)
+                    self._td_gt_depth_at_arm = _d0
+                    self._td_gt_min_depth = _d0
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
+
+        # GT-FEEDBACK: own confirmation path, entirely independent of perception
+        # extent (see __init__'s GT-FEEDBACK TOUCHDOWN PATH comment). Only engaged
+        # once armed above, i.e. after the landing controller has actually started
+        # descending -- not during the pre-descent hover/IC-converge phase.
+        if self._gt_feedback is not None:
+            depth = getattr(self._gt_feedback, "last_rel_alt", None)
+            if depth is None:
+                return
+            if self._td_gt_min_depth is None or depth < self._td_gt_min_depth:
+                self._td_gt_min_depth = depth       # "landed height", recorded live
+            # BUGFIX (found live, 2026-08-26): comparing CURRENT depth to the running
+            # MIN alone is trivially true almost every frame during an ordinary smooth
+            # descent (adjacent samples of a continuously-decreasing signal are always
+            # close together) -- it doesn't test that descent has STOPPED, just that it
+            # hasn't jumped. Confirmed live: latched at depth=4.395m, right after arming,
+            # nowhere near the ground. Fix, mirroring _extentGrowthFlattened's own
+            # windowed-RATE design (same problem, same fix, applied to real GT depth
+            # instead of the perception extent): require (1) the windowed slope of depth
+            # vs time to be near zero (genuinely stopped closing, not just slow-moving)
+            # and (2) real progress since arming (rules out a flat pre-descent hover
+            # blip satisfying (1) trivially before any real descent has happened).
+            self._td_gt_rate_hist.append((self._t[-1], depth))
+            _rate = None
+            if len(self._td_gt_rate_hist) >= 3:
+                _ts = np.array([p[0] for p in self._td_gt_rate_hist])
+                _ds = np.array([p[1] for p in self._td_gt_rate_hist])
+                if _ts[-1] > _ts[0]:
+                    _rate = float(np.polyfit(_ts, _ds, 1)[0])
+            _progressed = (self._td_gt_depth_at_arm is not None and
+                           (self._td_gt_depth_at_arm - self._td_gt_min_depth) >= self._td_gt_progress_min)
+            _flat_rate = _rate is not None and abs(_rate) < self._td_gt_rate_max
+            _near_min = (depth - self._td_gt_min_depth) < self._td_gt_flat_eps
+            _at_landed = _progressed and _flat_rate and _near_min
+            self._td_gt_hist.append(_at_landed)
+            _gt_streak = sum(self._td_gt_hist)
+            if self._td_debug:
+                print(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
+                      f"landed_height={self._td_gt_min_depth:.4f} rate={_rate} "
+                      f"progressed={_progressed} flat_rate={_flat_rate} near_min={_near_min} "
+                      f"at_landed={_at_landed} streak={_gt_streak}/{len(self._td_gt_hist)} "
+                      f"|s_e_n|={_sen_mag:.4f}")
+            if _gt_streak >= self._td_frames and _sen_mag < self._td_sen:
+                self._touchdown = True
+                print(f"[controller] TOUCHDOWN-DETECT (GT): depth={depth:.3f}m held within "
+                      f"{self._td_gt_flat_eps}m of recorded landed height="
+                      f"{self._td_gt_min_depth:.3f}m (rate={_rate:.4f}m/s, progressed "
+                      f"{self._td_gt_depth_at_arm - self._td_gt_min_depth:.3f}m since arming) "
+                      f"(x{self._td_frames} within {len(self._td_gt_hist)}-frame window) "
+                      f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
+            return
+
         if self._gt_feedback is None and bool(getattr(self._img_node, 'HW_FROZEN', False)):
             if self._td_debug:
                 print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} FROZEN -> excluded from window "
@@ -1373,19 +1506,37 @@ class Controller(Thread):
         if self._td_debug:
             print(f"[TD_DEBUG] t={self._t[-1]:.3f} h_z={h_z:+.4f} spikes_in_window={self._td_streak}/"
                   f"{len(self._td_hist)} |s_e_n|={_sen_mag:.4f} ext_flattened={_ext_flat}")
+        _ext_prox = self._extentTouchdownProximate()
+        _ext_ok = _ext_flat and _ext_prox and self._td_ext_armed
         if self._td_streak >= self._td_frames and _sen_mag < self._td_sen:
-            _ext_prox = self._extentTouchdownProximate()
-            if not (_ext_flat and _ext_prox):
+            if not _ext_ok:
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} loom+sen satisfied but extent not "
-                          f"corroborating (flattened={_ext_flat} proximate={_ext_prox}, "
-                          f"extent={float(self.MARKER_EXTENT_PX):.0f} vs running_max={self._td_ext_max:.0f}) -> HELD")
+                          f"corroborating (flattened={_ext_flat} proximate={_ext_prox} "
+                          f"armed={self._td_ext_armed}, extent={float(self.MARKER_EXTENT_PX):.0f} "
+                          f"vs running_max={self._td_ext_max:.0f}) -> HELD")
+            else:
+                self._touchdown = True
+                print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
+                      f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f}, extent flattened+"
+                      f"proximate ({float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px) "
+                      f"-> LANDED (disarm before bounce)")
                 return
+        # SECOND PATH -- loom-independent (see __init__'s _td_ext_only_hist comment): no
+        # requirement on h_z's sign/magnitude at all, only that extent has independently
+        # (and, per _td_ext_armed, genuinely) stalled near its own proximate max, sustained
+        # the same _td_frames-in-a-window way.
+        self._td_ext_only_hist.append(_ext_ok)
+        _ext_only_streak = sum(self._td_ext_only_hist)
+        if self._td_debug:
+            print(f"[TD_DEBUG] t={self._t[-1]:.3f} ext-only: flattened={_ext_flat} proximate={_ext_prox} "
+                  f"armed={self._td_ext_armed} streak={_ext_only_streak}/{len(self._td_ext_only_hist)}")
+        if _ext_only_streak >= self._td_frames and _sen_mag < self._td_sen:
             self._touchdown = True
-            print(f"[controller] TOUCHDOWN-DETECT: loom spiked (h_z>{self._td_spike} x{self._td_frames} "
-                  f"within {len(self._td_hist)}-frame window) |s_e_n|={_sen_mag:.2f}, extent flattened+"
-                  f"proximate ({float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px) "
-                  f"-> LANDED (disarm before bounce)")
+            print(f"[controller] TOUCHDOWN-DETECT: extent stalled near-max (loom-independent, "
+                  f"{float(self.MARKER_EXTENT_PX):.0f}px vs running_max={self._td_ext_max:.0f}px, "
+                  f"x{self._td_frames} within {len(self._td_ext_only_hist)}-frame window) "
+                  f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
 
     @property
     def TOUCHDOWN_DETECTED(self):

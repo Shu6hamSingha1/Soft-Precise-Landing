@@ -62,7 +62,9 @@ Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
 
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
-GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "6"))
+GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "3"))  # 2026-08-27: halved
+# for 640x480->320x240 (see img_data.py's fx/fy comment) -- proportional scale,
+# NOT independently re-validated at this resolution.
 # 2026-08-02 (Hx/Hy investigation): the marker's speckle texture measured at
 # ~13-18px/blob across the useful altitude range (see
 # feedback_duplicated_math_diff_check's sibling investigation), comparable to
@@ -104,7 +106,9 @@ RESAMPLE_TRIGGER = 10          # proactively top up the point pool below this co
 # instead of being frozen from one early draw. See
 # feedback_cross_marker_radial_spread_ceiling memory for the full trace.
 RESAMPLE_PERIOD_S = float(os.environ.get("CROSS_RESAMPLE_PERIOD_S", "1.0"))
-MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
+MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "2"))  # 2026-08-27: halved
+                               # for 640x480->320x240, proportional scale, NOT
+                               # independently re-validated at this resolution.
                                # dilation radius for BOTH GFT sampling bounds and the post-LK
                                # mask-membership retention check -- a fresh per-frame recomputed
                                # mask jitters by a few px frame-to-frame; a tracked point that's
@@ -154,7 +158,9 @@ MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4")
 # few LK steps (correspondence lost), so keeping them out of the candidate pool avoids
 # repeatedly proposing-then-losing the far-from-center points the bias above is trying
 # to add in the first place.
-FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "20"))
+FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "10"))
+# 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
+# re-validated at this resolution.
 
 # 2026-08-13 (ring-style sampling, user-proposed -- see origin-spread gate finding
 # in project_20260812_cross_marker_flow_architecture_investigation memory): ArUco's
@@ -201,7 +207,31 @@ RING_PTS_PER_CELL = int(os.environ.get("CROSS_RING_PTS_PER_CELL", "2"))
 # centered over the marker).
 RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
                                                str(RING_N_SECTORS // 2)))
-RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "20"))
+RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
+
+# BACKGROUND-TEXTURE FLOW (2026-08-27, BAKED ON -- see
+# project_20260827_framerate_and_h_texture_investigation memory for the full
+# validation trace). Uses cross_marker_detector.py's extent_mask_from_detection() /
+# background_mask_from_detection() / multiscale_good_features() -- an axis-aligned
+# ROI sized to the marker's own current apparent extent, with the drawn cross/stub
+# lines explicitly EXCLUDED (not just a wider search mask -- GFT still preferred
+# line-edge corners over background speckle when merely given a wider mask to
+# search, confirmed on real frames), and multi-scale GFT (pools candidates from
+# 1x/2x/4x downsamples) so texture whose grain doesn't match GFT's single-scale
+# window can still register. Validated via GT correlation on real recorded flights
+# (not just visual plausibility): r=0.66-0.76 on all 3 h axes when fed through the
+# REAL _solve_jacobian, PROVIDED the surface texture's grain survives the camera's
+# delivered resolution (weak/unreliable on texture too fine to resolve -- a
+# texture-resolvability limit, not a defect in this method). Defaulted ON per user
+# direction (2026-08-27): the n>=5 IC1-5 validation gate (feedback_ic_validation)
+# applies to control/gain tuning, NOT perception fixes -- a perception fix with
+# real correctness evidence (the GT-correlation check above) can bake to default
+# without that gate. Falls back to the line-mask solve (_compute_hw) whenever the
+# background path can't produce a result a given frame, so this can't make things
+# WORSE than the pre-2026-08-27 baseline, only better or a no-op.
+CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
+# 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
+# re-validated at this resolution.
 
 
 def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
@@ -1224,6 +1254,47 @@ class CrossMarkerPerception:
         self._point_diag = (prev_n.copy(), float(sol[2]), curr_n.copy(), float(dt), sol.copy())
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
+    def _compute_hw_bgflow(self, gray_prev, gray_curr, det, dt, quat_prev=None, quat_curr=None):
+        """OPT-IN (CROSS_BG_FLOW=1) alternative to _compute_hw -- see this module's
+        CROSS_BG_FLOW comment for the validation trace. Deliberately a SEPARATE,
+        SIMPLER method rather than a modification of _compute_hw's mature
+        persistent-tracking architecture (ring cells, resample hysteresis, paired-
+        opposite rejection): this is exactly the method that was GT-validated
+        (fresh multiscale GFT every pair, no persistent tracking across many
+        frames), and changing it to fit _compute_hw's architecture would mean
+        re-validating a different thing than what was actually checked against GT.
+        Fails to (zeros, False) if det isn't ok, no background mask/points are
+        available this frame, or too few points survive LK -- caller falls back
+        to the caller's own zero/coast handling, same contract as _compute_hw."""
+        if det is None or not det.ok or det.isolated_mask is None:
+            return np.zeros(6), False
+        bm = cmd.background_mask_from_detection(det, gray_curr.shape)
+        if bm is None or not bm.any():
+            return np.zeros(6), False
+        pts = cmd.multiscale_good_features(gray_prev, bm, max_corners=80,
+                                            quality=0.01, min_dist=4)
+        if pts is None or len(pts) < 5:
+            return np.zeros(6), False
+        tracked, status, _ = cv2.calcOpticalFlowPyrLK(
+            gray_prev, gray_curr, pts, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+        status = status.flatten().astype(bool)
+        prev_pts = pts.reshape(-1, 2)[status]
+        curr_pts = tracked.reshape(-1, 2)[status]
+        if len(prev_pts) < 5 or dt <= 1e-6:
+            return np.zeros(6), False
+        self._last_flow_prev_px = prev_pts.copy()
+        self._last_flow_curr_px = curr_pts.copy()
+        # Keep _prev_flow_pts/_prev_flow_cell_id populated (cell_id=None, matching the
+        # unconstrained-sampler convention) even though this method doesn't persist
+        # tracking across calls the way _compute_hw does -- _snapshotBridgeAnchor()
+        # and the ring-overlay diagnostic both read these attributes; leaving them
+        # stale/unset would silently degrade the miss-recovery center-bridge path.
+        self._prev_flow_pts = curr_pts.copy()
+        self._prev_flow_cell_id = None
+        sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
+            prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr)
+        return sol, True
+
     def _compute_hw(self, gray_prev, gray_curr, mask, dt, quat_prev=None, quat_curr=None,
                      angvel_prev=None, angvel_curr=None):
         """LK-track flow points from THIS call's own adjacent frame pair, solve the
@@ -1570,9 +1641,22 @@ class CrossMarkerPerception:
         self._alpha = self._last_alpha if self._alpha_valid_once else 0.0
 
         # --- h, w: image Jacobian solve over Shi-Tomasi points on the marker plate ---
-        mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
-        hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
-                                      angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+        if CROSS_BG_FLOW:
+            # Opt-in (default OFF) -- see module-level CROSS_BG_FLOW comment. Falls
+            # back to the line-mask solve below if the background path can't produce
+            # a result this frame (e.g. no background mask, too few tracked points),
+            # rather than returning a hard miss -- keeps behavior no worse than
+            # today's default when background texture isn't currently usable.
+            hw, hw_ok = self._compute_hw_bgflow(gray_prev, gray_curr, det, dt,
+                                                 quat_prev=quat_prev, quat_curr=quat_curr)
+            if not hw_ok:
+                mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
+                hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                                              angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+        else:
+            mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
+            hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                                          angvel_prev=angvel_prev, angvel_curr=angvel_curr)
         self._kf_update_hw(hw if hw_ok else None, t)
         # CENTER-BRIDGE anchor (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
         # above just updated _prev_flow_pts/_prev_flow_cell_id for this CONFIRMED-detection

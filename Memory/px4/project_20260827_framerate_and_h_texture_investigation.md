@@ -1,0 +1,285 @@
+---
+name: project_20260827_framerate_and_h_texture_investigation
+description: "2026-08-27: root-caused cross-marker's low process_frame() rate (needed >=30Hz), dropped camera to 320x240 (fx=fy=270->135, matching MATLAB's native scale) to fix it (n=3 confirms ~14.7-22.6Hz -> ~37.9Hz), then found h (optical flow) never actually uses the textured background at all -- a design gap against the ORIGINAL intent (s from marker geometry, h from surface-texture flow, so the same algorithm generalizes to a cross drawn on any real-world textured surface). A first fix attempt (precise rotated 'plate mask' via cv2.minAreaRect) was rejected -- wrong geometric basis (X diagonal != plate edges) AND wrong problem (no plate/ground distinction exists in real deployment). Correct direction: extent-based ROI around the marker, not a precise plate quad, mirroring img_data.py's ArUco ring-flow design intent."
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: a486c0ea-32ca-4384-97c7-b0136fa1c290
+  modified: 2026-08-27T13:21:07.589Z
+---
+
+## Frame-rate root-cause (need >=30Hz, was 14.7-23.8Hz)
+
+n=3 reps each, IC5, GT-feedback, `cross_marker` world, `WORLD=cross_marker MARKER_TYPE=cross`:
+
+| texture | mean process_frame() rate |
+|---|---|
+| old 1024px | 22.6 Hz (22.0/22.1/23.8) |
+| hires 3072px | 14.7 Hz (12.9/18.4/12.9) |
+
+Ruled OUT as the cause: Python-side algorithmic cost from background noise. Traced the
+exact code path -- `cv2.Canny`+`cv2.HoughLinesP` run on the ALREADY color-thresholded/
+shape-isolated BINARY mask (background zeroed out before this point), and
+`cv2.goodFeaturesToTrack` is restricted via its `mask=` param to a 2-4px dilated band
+around the same isolated line mask. Background texture structurally cannot reach either
+step -- ruled out per-frame CPU cost as texture-dependent.
+
+Most likely real cause: GPU-side rendering/texture-bandwidth cost on this host's modest
+integrated GPU (Intel UHD 630, confirmed via `/dev/dri/renderD128`, no discrete GPU) --
+a 9x larger texture asset (3072² vs 1024²) costs more to sample/mip during rendering,
+independent of what the Python pipeline later does with the fixed 640x480 output. NOT
+fully confirmed via profiling (recommended but skipped per user direction to go straight
+to the resolution fix) -- if revisited, instrument `detect()`/`process_frame()` with
+per-stage timing before assuming this is settled.
+
+Also notable: even the FASTEST condition (22.6Hz, old texture) was well below the
+documented ~62Hz raw camera feed baseline (`CLAUDE.md`, measured on the plain `aruco`
+world) -- meaning EITHER the cross-marker's full PBR metal/roughness material is
+meaningfully more expensive to render than ArUco's simpler material, or the Python
+detection pipeline itself has an inherent ~20-25Hz throughput ceiling. Not disambiguated.
+
+## Fix: dropped camera 640x480 -> 320x240 (fx=fy=270 -> 135)
+
+**This is a RESTORE, not a new resolution** -- MATLAB's own `Constants.m` already uses
+f=135 at 320x240 (img_data.py's own superseded comment said as much); PX4/Gazebo had
+deliberately DOUBLED to 640x480 for pixel-margin headroom. Files changed (all backed up
+before editing):
+- `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (OUTSIDE this repo,
+  not git-tracked) -- width/height 640/480 -> 320/240, same `horizontal_fov=1.74`.
+  Backup: `model.sdf.bak_before_320x240_20260827`.
+- `img_data.py`: `fx=fy=270` -> `135`.
+- `controller.py`: `_rho_fov_0`/`_rho_fov_inf` halved (210/290/80 -> 105/145/40) -- these
+  were themselves exactly 2x MATLAB's native values by design (file's own comment).
+- `cross_marker_perception.py`: `GFT_MIN_DIST` (6->3), `MASK_DILATE_PX` (4->2),
+  `FLOW_BOUNDARY_MARGIN_PX` (20->10), `RING_CENTER_MIN_R_PX` (20->10) -- proportional
+  scale, explicitly flagged in-code as NOT independently re-validated at this resolution.
+
+**Result (n=3, IC5, GT-feedback): 37.6/38.3/37.8 Hz, mean ~37.9Hz** -- target met, clean,
+tight spread.
+
+**But a real, measured cost**: detect-ok rate dropped (77-92% at 640x480-lowres ->
+63-65% at 320x240), and `lt2_angle_clusters`/`hough_lt2_lines`/`insufficient_fit_points`
+all rose substantially -- the predicted stroke-width-margin risk (halving resolution
+halves the marker's stroke width in pixels, the SAME axis that forced the original
+1.0m->3.0m marker resize) materialized empirically, not just theoretically.
+
+**BLOCKING before this is usable for real (non-GT-feedback) landing validation:**
+1. `sensor_cal_hw`/`sensor_cal_s` in BOTH `img_data.py` and `cross_marker_perception.py`
+   were derived from 640x480/fx=270 recordings -- NOT recalibrated for 320x240. GT-
+   feedback masked this in all testing so far (control never touches perception). See
+   the `io-calibration` skill before trusting any perception-mode flow number at this
+   resolution.
+2. Detection-reliability degradation above is unaddressed -- no detector-threshold
+   retuning attempted yet.
+
+ArUco-side pixel-domain constants in `img_data.py` were NOT touched (out of scope per
+the standing `feedback_aruco_perception_scope` rule -- ArUco is comparison-only) -- they
+are now stale for this resolution if anyone runs ArUco.
+
+## h (optical flow) does NOT use the textured background -- confirmed structurally
+
+Traced exactly: `cross_marker_detector.py::detect()` builds `mask = cv2.inRange(hsv,
+lower, upper)` (isolates ONLY the near-black cross/stub pixels), then morphology/ROI/
+shape-isolation, all still binary and background-free. `cross_marker_perception.py`'s
+`_dilate_mask()` grows it by a few px. EVERY point-sampling call --
+`_sample_flow_points_ring()` (default) and its `_sample_flow_points_unconstrained()`
+fallback -- calls `cv2.goodFeaturesToTrack(gray, mask=<that dilated line-only mask>)`.
+The Canny+Hough line-detection step also runs on the isolated BINARY mask, not the raw
+grayscale. Background speckle is structurally excluded from every step. Confirmed this
+is texture-independent (reproduced identically swapping in the old 1024px texture,
+see [[reference_finalized_montage_video_layout]]'s sibling investigation) -- the fine
+speckle background built by `make_cross_marker_hirestex.py` has had NO consumer since
+it was created; it has never actually fed any point-sampling code.
+
+**⭐ Design-intent correction from the user (2026-08-27), important for all future
+cross-marker perception work:** `s` (centroid+orientation) is meant to come from the
+printed cross geometry (decode-free, robust, precise). `h` (optical flow) is meant to
+come from optical flow across the TEXTURED SURFACE itself, not the printed lines --
+this is WHY a textured background exists at all instead of a blank one: it stands in
+for whatever natural real-world texture (concrete, grass, dirt, a rug) a real deployed
+cross-marker would be drawn on, so the SAME algorithm generalizes to the field without
+retuning. The current line-only restriction is a GAP against this intent, not a
+neutral design choice -- see `_sample_flow_points_ring`'s own docstring, which
+explicitly contrasts itself with `img_data.py`'s ArUco ring-flow design ("ArUco...
+sampling FIXED ring stations over the whole (generally-textured) background. The
+cross-marker's candidate region is instead restricted to the thin dilated-mask band...
+since fixed station positions would mostly land on UNTEXTURED background") -- that
+restriction was a workaround for the background being BLANK at the time it was
+written, not a permanent design decision. Now that real texture exists, ArUco's
+"sample broadly around the marker" approach is the right model to follow for the
+cross-marker too.
+
+## First fix attempt REJECTED: precise rotated "plate mask" (cv2.minAreaRect)
+
+Tried: `cv2.minAreaRect()` on `det.isolated_mask` (the cross-line pixels), scaled up by
+`WHOLE_PLATE_SCALE` (1.3x), to estimate the whole plate's extent for GFT sampling.
+Function `cmd.plate_mask_from_detection()` added to `cross_marker_detector.py`, gated
+by `CROSS_WHOLE_PLATE_FLOW`/`CROSS_WHOLE_PLATE_SCALE` env vars (NOT wired into the live
+solve). Visual check (per user's own "verify visually before trusting it" call) on real
+recorded frames found it BROKEN, and inconsistently so:
+- One frame: plate-mask rotated to match the X's own diagonal, badly misaligned --
+  spills off two corners onto the ground while missing real plate area on the other
+  two sides.
+- Another frame: coincidentally well-aligned.
+- Root cause: the physical plate is a SQUARE; the arms are drawn along its DIAGONALS,
+  not parallel to its edges. `minAreaRect` fits whatever rectangle tightly bounds the
+  X shape itself, which only coincidentally matches the plate's true orientation
+  sometimes (depends on which arm-tip pixels dominate that frame's fit) -- not a
+  tunable-scale problem, the geometric basis is wrong.
+- Reproduced IDENTICALLY with the old 1024px texture (see above) -- confirms this is a
+  pure line-geometry bug, unrelated to which texture file is used.
+- ALSO conceptually wrong per the design-intent correction above: there is no "plate
+  vs ground" distinction in a real deployment (a cross painted on concrete has no
+  separate bounded "plate" at all) -- fitting a precise plate quad solves a sim-only
+  problem with no real-world equivalent.
+
+## ⭐⭐ SUPERSEDES THE ABOVE "in progress" note -- extent-based approach built AND
+VALIDATED against real GT correlation (2026-08-27, same day, later in the session)
+
+`plate_mask_from_detection()` was fully REPLACED (not just supplemented) by
+`extent_mask_from_detection()` in `cross_marker_detector.py`: axis-aligned box
+centered on `det.mask_bbox`, scaled by `WHOLE_PLATE_SCALE` (1.3x) -- NOT rotated to
+the cross's fitted line angle. Visually re-verified against real frames from BOTH
+textures (including the exact frame that showed the worst 45-degree plate-mask
+misalignment): consistently close-fitting, only minor corner spillover, no more
+systematic edge-missing. `WHOLE_PLATE_FLOW`/`WHOLE_PLATE_SCALE` env vars carried over
+from the rejected attempt, same meaning.
+
+**Second empirical finding, also from real frames (not just theory): widening the
+mask alone does NOT make GFT prefer background texture over line edges.**
+`cv2.goodFeaturesToTrack` ranks by Shi-Tomasi corner strength; the printed line edges
+(~180-value jump) are a far stronger signal than background speckle (std~10)
+wherever both are eligible in the same mask, so corners kept clustering on the lines
+even inside the wider extent box. Fix: `background_mask_from_detection()` = extent
+mask MINUS a dilated (`LINE_EXCLUDE_DILATE_PX=3`) copy of `det.isolated_mask` --
+physically excludes line-adjacent pixels from candidacy, which ALSO makes GFT's
+internal quality threshold auto-adapt to whatever the background actually offers
+(no longer judged against an unbeatable line gradient in the same search space).
+
+**Third finding: single-scale GFT has a texture-grain blind spot.** A/B on old
+(1024px, coarse grain) vs current-live (3072px, fine grain) texture, same 320x240
+camera: old texture's coarser blobs registered as real GFT corners; hires texture's
+finer grain mostly didn't (too fine for GFT's window to resolve after downsampling
+to the delivered camera resolution -- NOT a texture-strength difference, both have
+the same measured background std~10; it's a SPATIAL SCALE problem). Fix:
+`multiscale_good_features()` -- runs GFT at MULTISCALE_LEVELS (default 1x/2x/4x
+downsample) within the background mask, pools + dedups results (finer-scale points
+win ties, since they carry less position uncertainty). Full-video quantitative
+check (not cherry-picked frames): mean distance-from-nearest-line-pixel ~29px for
+BOTH textures (confirms genuine background sampling, not just occasional luck);
+point AVAILABILITY differs sharply (old: mean 125/frame, min 22; hires: mean 52,
+min 4) -- texture quality affects how much there is to find, not where points land
+once the line-exclusion is in place.
+
+## ⭐⭐⭐ GT-CORRELATION VALIDATION (2026-08-27) -- the approach genuinely works,
+with a real, well-quantified limiting factor
+
+**First correlation attempt was NEGATIVE (~0 on all axes) and WRONG -- root cause was
+a time-sync bug, not a flaw in the flow approach.** Compared `Img_Data`'s per-frame
+raw flow proxy against `Control_Data.npy`'s `h(t)` (exact GT under
+`PLASMC_GT_FEEDBACK=1`) using a fractional-elapsed-time approximation, because
+`Img_Data['Time']` and `Control_Data['t']` looked like mismatched clocks (different
+apparent "durations" measured earlier in this same investigation thread, which led
+to an unnecessary two-anchor arm-to-end RESCALE technique built for the touchdown-
+detect false-positive work -- THAT rescale was solving a problem that doesn't
+actually exist, see correction below).
+
+**Root cause, found by reading `notebooks/plotter_output_calibration.ipynb` (per
+user instruction to check the established methodology before re-guessing):**
+`Ground_Truth.npy` has a `Start Time` field; the validated alignment is
+`img_t_rel = Img_Data['Time'] - gt['Start Time']`. `Control_Data['t']` is ALSO on
+this same absolute clock -- confirmed empirically, `Control_Data['t'][0] ==
+gt['Start Time']` EXACTLY. **There is no clock-RATE mismatch between these logs at
+all** -- the large apparent "duration" differences found earlier in this session
+(e.g. Img_Data spanning 31.19s vs Control_Data's 13.64s for the same run) are
+entirely explained by `Img_Data` logging starting ~17.7s earlier (thread creation,
+includes pre-engage frames) while `Control_Data`/`Ground_Truth` only start at
+`CONTROLLER_READY` -- their END points line up to within 0.12s once both are
+offset by `gt['Start Time']`. **The earlier two-anchor rescale approach (used
+ad-hoc in conversation for the touchdown-detect investigation, never written to a
+persistent memory file) was solving a problem that doesn't exist -- a plain
+subtraction is sufficient and correct.** [[feedback_imgdata_gt_clock_skew]] (shared
+memory, 2026-06-04) independently found the same kind of offset earlier and advised
+avoiding Img_Data-vs-GT comparison entirely (measuring "Δorigin≈29.8s" without
+naming/using `Start Time`) -- that avoidance advice is now SUPERSEDED for any
+recording that has `Ground_Truth['Start Time']`: a direct, validated correction
+exists and should be used instead of avoiding the comparison. See that file's own
+2026-08-27 update.
+
+**Second alignment gotcha, found empirically (assert failure caught it immediately):**
+the IMG_RECORD video does NOT contain every `Img_Data.npy` frame -- video recording
+only starts at `CONTROLLER_READY` (same gate as the pre-engage-frames issue above),
+so **video frame index `i` == `Img_Data` index `(n_pre_engage + i)`**, where
+`n_pre_engage = (img_t_rel < 0).sum()`. Confirmed exactly: 995 total Img_Data
+entries, 743 with `t<0`, 252 with `t>=0` == 252 video frames, exact match.
+
+**With BOTH fixes applied, real correlation appears --** first with a simplified
+raw-pixel radial/lateral proxy (no de-rotation): old-texture corr(raw_radial, GT
+h_z)=-0.630, corr(raw_lat_x, GT h_x)=+0.659, corr(raw_lat_y, GT h_y)=-0.632 (hires
+texture: same sign pattern, weaker, 0.24-0.30 -- consistent with the point-
+availability gap above, not a different relationship). The alternating-sign pattern
+was suspected to be a raw-pixel-vs-V-frame axis-convention artifact, not a real
+physical relationship.
+
+**Confirmed by re-running through the REAL `_solve_jacobian`** (proper V-frame
+reprojection via `_getVirtualPts` + interaction-matrix lstsq, i.e. the actual
+production de-rotation, not a proxy) on the SAME background-derived point
+correspondences: old-texture corr(h_x)=+0.664, corr(h_y)=+0.685, corr(h_z)=+0.764 --
+all positive now (confirms the sign flip WAS an axis-convention artifact of the raw
+proxy), strong, clean correlation with GT on all 3 axes. **Hires texture stayed
+weak/negative (-0.20, -0.20, +0.12) even with proper de-rotation** -- this pins the
+bottleneck precisely on point-tracking quality (garbage-in-garbage-out: de-rotation
+can't recover signal from unreliable input correspondences), not on any remaining
+math/rotation-handling defect in the approach.
+
+**Bottom line: the extent-ROI + line-exclusion + multiscale approach, fed through
+the real production interaction-matrix solve, produces a genuinely valid, GT-
+correlated `h` signal -- PROVIDED the surface texture's grain is coarse enough to
+survive the camera's delivered resolution.** That's a real, generalizable
+capability with a precisely quantified limiting factor (grain-vs-resolution
+resolvability), not an open question.
+
+**Wired into the LIVE `h` solve, BAKED ON by default**, same session:
+`cross_marker_perception.py`'s `CROSS_BG_FLOW` (default `"1"`), a new
+`_compute_hw_bgflow()` method (deliberately separate from the mature persistent-
+tracking `_compute_hw()`, so it stays faithful to exactly the method that was GT-
+validated -- fresh multiscale GFT every pair, no cross-frame point-pool tracking),
+falling back to the existing line-mask `_compute_hw()` whenever the background path
+can't produce a result that frame (no background mask, <5 tracked points, etc.) --
+can't make behavior worse than the pre-2026-08-27 baseline, only better or a no-op.
+Verified live both ways (flag on/off) with real SITL reps: no exceptions, default-
+off path unchanged.
+
+**Baked to default WITHOUT the n>=5 IC1-5 gate, per explicit user direction: that
+gate (`feedback_ic_validation`) applies to control/gain tuning, not perception
+fixes** -- a perception fix with real correctness evidence (the GT-correlation
+check above, not just an IC-landing-outcome check) can default without it. Worth
+recording as a precedent/clarification for `feedback_ic_validation` itself if a
+similar perception-vs-control gating question comes up again.
+
+## Uncommitted at various points, check current state before assuming
+
+`cross_marker_detector.py`'s `extent_mask_from_detection()`, `background_mask_from_detection()`,
+`multiscale_good_features()` (all validated per above) -- check whether they were
+superseded before reusing.
+
+## NEXT SESSION: explicit next task (user, 2026-08-27 session end)
+
+**Improve extent-ROI + line-exclusion + multiscale GFT + `_solve_jacobian` for a
+LARGER VARIETY of textures**, not just the two grain sizes tested so far (old
+1024px-native / hires 3072px-native, both synthetic speckle at the same base
+statistics). This session only established the approach works when texture grain
+survives the camera's delivered resolution and is weak when it doesn't -- it has
+NOT been tested against textures with different STATISTICAL character (not just
+grain size): e.g. structured/repetitive patterns (aliasing risk for LK
+correspondence -- the ArUco ring-flow's own multi-scale/self-similarity concerns
+apply here too), low-contrast or non-Gaussian real-world-like textures (concrete,
+grass, gravel), or textures with directional bias (wood grain, tiling). Starting
+points: `multiscale_good_features`'s `MULTISCALE_LEVELS` (currently a fixed
+1,2,4 list -- may need to be wider or content-adaptive), `LINE_EXCLUDE_DILATE_PX`
+(currently a fixed 3px margin, untested against thicker/thinner drawn lines),
+and `WHOLE_PLATE_SCALE` (1.3x, untested against markers where the true plate-to-
+line-extent ratio differs from this session's specific marker design). The
+GT-correlation methodology from this session (proper time-sync via
+`Ground_Truth['Start Time']`, real `_solve_jacobian`, not a raw-pixel proxy) is
+the validated way to check any of this -- reuse it, don't re-derive from scratch.

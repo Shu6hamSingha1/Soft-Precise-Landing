@@ -699,6 +699,142 @@ def _shift_detection(det, x0, y0, full_shape):
                    stub_points=new_stub, isolated_mask=full_mask)
 
 
+WHOLE_PLATE_FLOW = os.environ.get("CROSS_WHOLE_PLATE_FLOW", "0") == "1"
+WHOLE_PLATE_SCALE = float(os.environ.get("CROSS_WHOLE_PLATE_SCALE", "1.3"))
+
+
+def extent_mask_from_detection(det, frame_shape):
+    """VISUAL-VERIFICATION-ONLY, NOT YET WIRED INTO THE LIVE FLOW SOLVE (2026-08-27).
+    REPLACES the earlier plate_mask_from_detection() attempt (cv2.minAreaRect on the
+    isolated line mask) -- that was REJECTED after a visual check against real frames:
+    it fit a rectangle to the X shape's OWN rotation, which only coincidentally matches
+    the physical plate's true edges (the plate is a square; the arms run along its
+    DIAGONALS, not parallel to its sides), so the estimate was inconsistently
+    misaligned frame to frame -- sometimes fine, sometimes spilling off two corners
+    onto the ground while missing real plate area on the other two.
+
+    Also a DELIBERATE reframing per user correction (2026-08-27): this is not about
+    finding "the plate" at all (that's a sim-only concept -- a real cross painted on
+    concrete/grass/dirt has no separate bounded plate). It's about using the marker's
+    own CURRENT APPARENT EXTENT in this frame as an axis-aligned region to search for
+    trackable texture in, mirroring img_data.py's ArUco ring-flow design intent
+    (sample broadly around the target, scale-free, sized to its own current apparent
+    size) rather than restricting to a thin band around the drawn lines.
+
+    Approach: axis-aligned box centered on det.mask_bbox's own center, sized to
+    WHOLE_PLATE_SCALE (default 1.3) times mask_bbox's own (w,h) -- NOT rotated to the
+    cross's fitted line angle. An axis-aligned box around a rotated square is looser
+    at the corners than a precisely-oriented one, but that's a much safer failure
+    direction than the previous approach's 45-degree full misalignment: worst case it
+    admits a modest amount of extra background near its own corners, it does not
+    systematically miss real plate area on two whole sides. Still a GUESS scale, not
+    derived from the texture's known cross-to-plate ratio -- MUST be checked visually
+    against real frames (various altitudes/angles) before trusting it. Returns None if
+    mask_bbox is missing.
+    """
+    if det is None or det.mask_bbox is None:
+        return None
+    bx, by, bw, bh = det.mask_bbox
+    cx, cy = bx + bw / 2.0, by + bh / 2.0
+    hw, hh = (bw * WHOLE_PLATE_SCALE) / 2.0, (bh * WHOLE_PLATE_SCALE) / 2.0
+    fh, fw = frame_shape[:2]
+    x0 = int(np.clip(cx - hw, 0, fw))
+    x1 = int(np.clip(cx + hw, 0, fw))
+    y0 = int(np.clip(cy - hh, 0, fh))
+    y1 = int(np.clip(cy + hh, 0, fh))
+    mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+    mask[y0:y1, x0:x1] = 255
+    return mask
+
+
+LINE_EXCLUDE_DILATE_PX = int(os.environ.get("CROSS_LINE_EXCLUDE_DILATE_PX", "3"))
+
+
+def background_mask_from_detection(det, frame_shape):
+    """VISUAL-VERIFICATION-ONLY, NOT YET WIRED INTO THE LIVE FLOW SOLVE (2026-08-27).
+    extent_mask_from_detection() MINUS a dilated version of det.isolated_mask --
+    i.e. the extent box with the drawn cross/stub lines (and a small margin around
+    them) carved OUT, so cv2.goodFeaturesToTrack physically cannot propose a point
+    on or near a line edge.
+
+    WHY THIS MATTERS (found empirically, 2026-08-27): merely widening the search
+    mask to extent_mask_from_detection() did NOT make GFT prefer background texture
+    -- corners still clustered almost exactly on the line edges in real captured
+    frames, because GFT ranks candidates by Shi-Tomasi corner strength, and the
+    line edges (a sharp ~180-value jump) are a far stronger signal than background
+    speckle (std~10) wherever both are eligible. Excluding the lines entirely fixes
+    this two ways: (1) obviously, a line-adjacent point can no longer be proposed at
+    all; (2) less obviously, cv2.goodFeaturesToTrack's qualityLevel threshold is
+    relative to the STRONGEST corner found WITHIN the searched region -- once line
+    corners are excluded, that threshold auto-adapts to whatever the background
+    actually offers, instead of always being judged against an unbeatable line
+    gradient elsewhere in the same mask. This should generalize across texture
+    strength, not just the one grain size tested so far.
+
+    LINE_EXCLUDE_DILATE_PX (default 3) sets how much margin around the raw line
+    mask gets carved out, on top of MASK_DILATE_PX's own dilation already baked
+    into det.isolated_mask -- keeps candidates comfortably clear of the line's own
+    anti-aliased edge pixels, not just off the binary mask by one pixel.
+    """
+    ext = extent_mask_from_detection(det, frame_shape)
+    if ext is None or det.isolated_mask is None:
+        return ext
+    k = 2 * LINE_EXCLUDE_DILATE_PX + 1
+    line_dilated = cv2.dilate(det.isolated_mask, np.ones((k, k), np.uint8))
+    return cv2.bitwise_and(ext, cv2.bitwise_not(line_dilated))
+
+
+MULTISCALE_LEVELS = [int(x) for x in os.environ.get("CROSS_MULTISCALE_LEVELS", "1,2,4").split(",")]
+
+
+def multiscale_good_features(gray, mask, max_corners=80, quality=0.01, min_dist=4):
+    """VISUAL-VERIFICATION-ONLY, NOT YET WIRED INTO THE LIVE FLOW SOLVE (2026-08-27).
+    Runs cv2.goodFeaturesToTrack at each downsample factor in MULTISCALE_LEVELS
+    (default 1x/2x/4x) within `mask`'s region, then maps surviving points back to
+    full-resolution coordinates and pools them (deduplicated by min_dist in the
+    ORIGINAL scale). Rationale: a single-scale detector can only resolve texture
+    whose spatial frequency happens to match its window size -- real-world
+    textures won't cooperate with one fixed scale (confirmed empirically: a
+    coarse-grain texture registered fine at 1x, but a fine-grain one needed
+    downsampling before GFT found anything at all). Pooling across scales means
+    SOME level should register real corners regardless of the surface's actual
+    grain size, without having to know or tune that grain size in advance.
+    Points found at a coarser scale carry proportionally larger position
+    uncertainty (each coarse pixel maps to an NxN block at full res) -- callers
+    should not assume scale-1 and scale-4 points have equal precision.
+    """
+    h, w = gray.shape[:2]
+    all_pts, all_lvls = [], []
+    for lvl in sorted(set(MULTISCALE_LEVELS)):
+        if lvl <= 1:
+            g, m = gray, mask
+        else:
+            g = cv2.resize(gray, (w // lvl, h // lvl), interpolation=cv2.INTER_AREA)
+            m = cv2.resize(mask, (w // lvl, h // lvl), interpolation=cv2.INTER_NEAREST)
+        if not m.any():
+            continue
+        pts = cv2.goodFeaturesToTrack(g, maxCorners=max_corners, qualityLevel=quality,
+                                       minDistance=max(1, min_dist // lvl), mask=m)
+        if pts is None:
+            continue
+        pts = pts.reshape(-1, 2) * lvl   # back to full-res coordinates
+        all_pts.append(pts)
+        all_lvls.extend([lvl] * len(pts))
+    if not all_pts:
+        return None
+    pooled = np.concatenate(all_pts, axis=0)
+    lvls = np.array(all_lvls)
+    # de-dup: keep points at least min_dist apart, precise (scale-1) points first so
+    # a finer-scale detection wins a tie against a coarser duplicate of the same
+    # real corner (coarser points carry more position uncertainty -- see docstring).
+    order = np.argsort(lvls, kind="stable")
+    kept = []
+    for p in pooled[order]:
+        if all(np.hypot(*(p - k)) >= min_dist for k in kept):
+            kept.append(p)
+    return np.array(kept, dtype=np.float32).reshape(-1, 1, 2) if kept else None
+
+
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
            min_line_length=15, max_line_gap=10, identify_stub=True,
            roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0, track_state=None):
