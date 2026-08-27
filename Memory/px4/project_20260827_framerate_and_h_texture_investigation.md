@@ -506,3 +506,89 @@ tells us nothing until recal.
 3. Re-open the `CROSS_BG_FLOW_HYBRID` default-on decision (still default OFF) once (1)+(2)
    give a real-perception baseline; the GT-FB correlation evidence for it already stands.
 4. `Z_V_MIN_FLOW=0.4` in isolation: quick offline A/B with the now-logged IMU AngVel.
+
+---
+
+## 2026-08-28 (cont.) -- 320x240 sensor RECAL: excitation maneuver unusable -> landing-data diagonal cal
+
+Committed: 149cd5b.
+
+### The phased-excitation recal FAILED (all R^2 negative) -- and it is NOT a derive bug
+
+Ran 5 `apps/record_cross_marker_calibration.py` phased runs at 320x240 (defaults:
+CROSS_BG_FLOW=1, perf-fix, z_v guard) -> `tools/derive_cross_marker_cal.py`:
+  per-axis R^2 (mean): Hx=-0.79  Hy=-0.59  Hz=-143.9  Wz=-3.3  -- ALL NEGATIVE.
+
+Root-caused (per the io-calibration skill's own rule: check the RAW signal before
+blaming the fit):
+- **Raw h_z is FINE at 320x240**: +0.72-0.73 vs GT, stable across all 5 runs.
+- **The x/y excitation barely moves the drone.** During the x-phase the UAV's
+  actual x-position travel is **6 cm** (UAV-pose log, run 01-06-12) for a
+  commanded 0.35 m sinusoid -- PX4's horizontal position loop tracks only ~15% of
+  a 0.5 Hz lateral setpoint. Achieved GT h_x/h_y std ~0.007 (vs the cross-marker's
+  ~0.03 raw h_x/h_y attitude-jitter noise floor DURING that chase-an-untrackable-
+  sinusoid maneuver). The Hx/Hy rows then fit from ~4x noise and the joint 6x6
+  lstsq blows up EVERY row.
+- **`compute_gt_signals` is CORRECT** (user asked to double-check): Vz depth
+  median 5.11 m (not 30, not 1), 0 NaN, the 5% duplicate-`gt['Time']` samples are
+  correctly filtered by `valid` before `np.gradient`, and the double Savitzky-
+  Golay (win 101 then 51) is NOT the cause -- windows 101/51 vs 11/5 vs raw
+  gradient all give the same GT h_x std once dup-timestamps are filtered (my
+  scratch reimpl gave 6x more only because I skipped that filter -> divide-by-~0).
+
+### Amplitude probe -- hit a wall
+
+CALIB_AMP_XY / CALIB_FREQ_XY sweep (made both env-overridable in the recorder):
+
+| FREQ_XY | AMP_XY | phase_s | GT h_x std |
+|---|---|---|---|
+| 0.5  | 0.35 | 8  | 0.008 (default) |
+| 0.15 | 0.80 | 8  | 0.028 |
+| 0.35 | 1.60 | 12 | 0.041 |
+| 0.5  | 1.20 | 14 | 0.021 |
+
+Even 1.6 m amplitude -> ~0.24 m travel -> GT h_x std 0.041, still noise-floor.
+Longer phase made NO difference. To match the z-phase's GT std 0.22 you'd need
+~8 m lateral amplitude. **PX4 will not track lateral position sinusoids in SITL.**
+(`record_output_calibration.py` uses the IDENTICAL `send_position_ned` sinusoid --
+and is the ArUco `IMG_PROCESSOR`-only pipeline, can't record the cross-marker
+regardless. rollexc/pitchexc there are also position oscillations, not attitude
+setpoints.)
+
+### FIX: near-diagonal cal from GT-FB LANDING recordings
+
+An off-center GT-FB landing produces real sustained lateral flow (GT h_x/h_y std
+~0.05-0.08, 6-10x the maneuver). At normal marker size (MARKER_EXTENT_PX < 200),
+raw h_V vs GT h is a clean per-axis line through ~origin, NO cross-coupling.
+
+`tools/derive_cross_marker_landing_cal.py` (new): pooled MAD-trimmed slope
+through 0 per axis, leave-one-out R^2. Recorded 4 GT-FB landings to
+`calibration_data/landing_cal_cross/` (IC5 killed twice by a concurrent
+`run_kfretune_ic2_ab.sh` SSH session grabbing SITL -> only IC2/IC3/IC4 usable).
+
+  s_hx=0.730 (r .977)  s_hy=0.693 (r .900)  s_hz=0.955 (r .990)
+  s_wz=0.592 (GT w_z std 0.092 -- real, not the 0.52 fallback)
+  s_sx=0.957  s_sy=0.943
+  LOO R^2:  h_z +0.97..+0.99 on all 3 (SOLID)
+            h_x +0.79 / +0.90 / +0.24   h_y +0.91 / +0.69 / -0.56
+            -> IC4 hold-out weak: its raw h_y is ~1.6x inflated vs the other two
+               (scale mismatch, NOT a sign flip -- pooled h_y r is +0.90). IC4 is
+               the highest-start (7 m) / weakest-lateral rep, possibly concurrent-
+               SITL contaminated.
+
+**Pasted into `CrossMarkerPerception.__init__` as a PURE DIAGONAL 6x6** (Wx/Wy
+rows 0 per the level-target convention; no cross terms -- the stale 6x6 had
+Hz<-Hx -0.22 and Wz<-Hy +1.96, artifacts of the aliased excitation fit).
+`_sensor_cal_s = diag(0.957, 0.943, 1, 1)`. Prior 640x480 cal backed up:
+`cross_marker_perception.py.bak_before_320cal_20260828`.
+
+### ⚠ STILL PROVISIONAL / NEXT
+- **Hx/Hy rows are provisional.** Re-derive with 2-3 MORE clean off-center
+  landings (no concurrent SITL) + validate on a held-out landing. Hz row +
+  `_sensor_cal_s` are trustworthy now.
+- Only THEN is real-perception (GT-FB off) cross-marker IC validation meaningful
+  -- and even then the off-center kappa-leakage control wall
+  (`project_20260824_crossmarker_offcenter_convergence_wall`) is a separate
+  blocker.
+- The terminal-phase h_x/h_y collapse fix (extent-gated confidence derate) is
+  still not done -- do it after this cal is firmed up.
