@@ -29,7 +29,7 @@ def extrapolate(t, y, n=4, deg=1, default_shape=6):
         return np.mean(y, axis=0)
         
     # Fit polynomial to smoothed data
-    coeffs = np.polyfit(t[-n-1:-1], y[-n:], deg)
+    coeffs = np.polyfit(t[-n:], y[-n:], deg)
     
     # Extrapolate one step forward
     return np.polyval(coeffs, t[-1])

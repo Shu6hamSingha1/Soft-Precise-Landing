@@ -165,8 +165,19 @@ class FC():
             # ("publisher's context is invalid"). Its own isolated context shares
             # no locks with the subscribers.
             if self._cmd_transport == "dds" and self._dds is None:
-                from dds_setpoint import DDSRateSender
-                self._dds = DDSRateSender(time_keeper=self._time)
+                # dds_setpoint.py is Gazebo-only infrastructure (PX4_Gazebo/src/, tied to
+                # rclpy/gz_subscriber) -- it was never ported to Hardware/scripts, and the
+                # uXRCE-DDS transport migration was explicitly ruled out by the user for
+                # hardware (see tune-plasmc skill / project memory). CMD_TRANSPORT=dds is a
+                # real, documented env var here, so fail gracefully with a clear message and
+                # fall back to MAVSDK instead of an opaque ModuleNotFoundError mid-flight.
+                try:
+                    from dds_setpoint import DDSRateSender
+                    self._dds = DDSRateSender(time_keeper=self._time)
+                except ModuleNotFoundError:
+                    print("[flight_controller] CMD_TRANSPORT=dds requested but dds_setpoint.py "
+                          "is not available on hardware -- falling back to MAVSDK transport.")
+                    self._cmd_transport = "mavsdk"
 
             await self.vehicle.action.hold()
                 
@@ -526,10 +537,18 @@ class FC():
         """
         if self._cmd_transport == "dds":
             if self._dds is None:   # fallback (start() normally creates it eagerly)
-                from dds_setpoint import DDSRateSender
-                self._dds = DDSRateSender(time_keeper=self._time)
-            self._dds.send_rates(roll_rate, pitch_rate, yaw_rate, thrust)
-            return
+                # See start()'s matching comment: dds_setpoint.py doesn't exist on
+                # hardware -- fail gracefully rather than crash mid-flight.
+                try:
+                    from dds_setpoint import DDSRateSender
+                    self._dds = DDSRateSender(time_keeper=self._time)
+                except ModuleNotFoundError:
+                    print("[flight_controller] CMD_TRANSPORT=dds requested but dds_setpoint.py "
+                          "is not available on hardware -- falling back to MAVSDK transport.")
+                    self._cmd_transport = "mavsdk"
+            if self._dds is not None:
+                self._dds.send_rates(roll_rate, pitch_rate, yaw_rate, thrust)
+                return
         await self.vehicle.offboard.set_attitude_rate(
                 AttitudeRate(roll_rate, pitch_rate, yaw_rate, thrust))
 
