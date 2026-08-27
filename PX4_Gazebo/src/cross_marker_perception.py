@@ -62,7 +62,9 @@ Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
 
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
-GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "6"))
+GFT_MIN_DIST = float(os.environ.get("CROSS_GFT_MIN_DIST", "3"))  # 2026-08-27: halved
+# for 640x480->320x240 (see img_data.py's fx/fy comment) -- proportional scale,
+# NOT independently re-validated at this resolution.
 # 2026-08-02 (Hx/Hy investigation): the marker's speckle texture measured at
 # ~13-18px/blob across the useful altitude range (see
 # feedback_duplicated_math_diff_check's sibling investigation), comparable to
@@ -104,7 +106,9 @@ RESAMPLE_TRIGGER = 10          # proactively top up the point pool below this co
 # instead of being frozen from one early draw. See
 # feedback_cross_marker_radial_spread_ceiling memory for the full trace.
 RESAMPLE_PERIOD_S = float(os.environ.get("CROSS_RESAMPLE_PERIOD_S", "1.0"))
-MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "4"))
+MASK_DILATE_PX = int(os.environ.get("CROSS_MASK_DILATE_PX", "2"))  # 2026-08-27: halved
+                               # for 640x480->320x240, proportional scale, NOT
+                               # independently re-validated at this resolution.
                                # dilation radius for BOTH GFT sampling bounds and the post-LK
                                # mask-membership retention check -- a fresh per-frame recomputed
                                # mask jitters by a few px frame-to-frame; a tracked point that's
@@ -154,7 +158,9 @@ MIN_PERIPHERAL_POINTS = int(os.environ.get("CROSS_FLOW_MIN_PERIPHERAL_PTS", "4")
 # few LK steps (correspondence lost), so keeping them out of the candidate pool avoids
 # repeatedly proposing-then-losing the far-from-center points the bias above is trying
 # to add in the first place.
-FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "20"))
+FLOW_BOUNDARY_MARGIN_PX = int(os.environ.get("CROSS_FLOW_BOUNDARY_MARGIN_PX", "10"))
+# 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
+# re-validated at this resolution.
 
 # 2026-08-13 (ring-style sampling, user-proposed -- see origin-spread gate finding
 # in project_20260812_cross_marker_flow_architecture_investigation memory): ArUco's
@@ -201,7 +207,9 @@ RING_PTS_PER_CELL = int(os.environ.get("CROSS_RING_PTS_PER_CELL", "2"))
 # centered over the marker).
 RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
                                                str(RING_N_SECTORS // 2)))
-RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "20"))
+RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
+# 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
+# re-validated at this resolution.
 
 
 def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):

@@ -699,6 +699,44 @@ def _shift_detection(det, x0, y0, full_shape):
                    stub_points=new_stub, isolated_mask=full_mask)
 
 
+WHOLE_PLATE_FLOW = os.environ.get("CROSS_WHOLE_PLATE_FLOW", "0") == "1"
+WHOLE_PLATE_SCALE = float(os.environ.get("CROSS_WHOLE_PLATE_SCALE", "1.3"))
+
+
+def plate_mask_from_detection(det, frame_shape):
+    """VISUAL-VERIFICATION-ONLY, NOT YET WIRED INTO THE LIVE FLOW SOLVE (2026-08-27).
+    Estimates the WHOLE MARKER PLATE's extent (not just the drawn cross+stub lines)
+    from det.isolated_mask, so GFT/LK can eventually be pointed at the plate's
+    textured background instead of only the thin dilated-line band -- see the
+    make_cross_marker_hirestex.py docstring: the background speckle was built
+    for exactly this, but nothing has ever consumed it (see reference_finalized_
+    montage_video_layout / this session's h-computation investigation).
+
+    Approach: cv2.minAreaRect of the isolated line mask's nonzero pixels (the
+    ROTATED bounding rectangle, not axis-aligned -- the marker can appear at any
+    yaw), then scale it up around its own center by WHOLE_PLATE_SCALE (default
+    1.3, scale-free -- a fraction of the detected mask's own current extent, not
+    a fixed pixel margin, so it stays meaningful across altitude). The scale
+    factor is a GUESS, not derived from the texture's known cross-to-plate size
+    ratio -- MUST be checked visually against real frames (various altitudes/
+    angles) before trusting it: too large spills onto the ground beyond the
+    plate (GFT would then happily track real ground corners as if on-target,
+    corrupting h/s), too small just reproduces today's line-only band with extra
+    steps. Returns None if isolated_mask is empty/missing.
+    """
+    if det is None or det.isolated_mask is None or not det.isolated_mask.any():
+        return None
+    ys, xs = np.nonzero(det.isolated_mask)
+    pts = np.column_stack([xs, ys]).astype(np.float32)
+    rect = cv2.minAreaRect(pts)              # ((cx,cy),(w,h),angle)
+    (cx, cy), (w, h), ang = rect
+    rect_scaled = ((cx, cy), (w * WHOLE_PLATE_SCALE, h * WHOLE_PLATE_SCALE), ang)
+    box = cv2.boxPoints(rect_scaled).astype(np.int32)
+    mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+    cv2.fillConvexPoly(mask, box, 255)
+    return mask
+
+
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
            min_line_length=15, max_line_gap=10, identify_stub=True,
            roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0, track_state=None):

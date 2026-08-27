@@ -1,12 +1,181 @@
 ---
 name: project_20260824_ic5_angle_clustering_and_hang_investigation
-description: "⛔ CONFIDENCE DOWNGRADED 2026-08-25 (see correction below): IC1-5 GT-feedback sweep at true ground contact found IC5 (2,2,3 ENU) failing intermittently via TARGET_LOST/hard impact, provisionally attributed to cross_marker_detector.py's angle-clustering step failing at IC5's steep oblique viewing angle (lt2_angle_clusters dominant fail reason; alpha std during hover-settle ranged 5.4-133.3 deg across reps). BUT a concurrent session's own IC5 sweep was found running AT THE SAME TIME as several of these reps (shared MicroXRCEAgent port 8888 + competing gz sim CPU load) -- the wild variance may be contamination, not genuine viewing-angle fragility. NEEDS A CLEAN, ISOLATED RE-RUN before trusting this root cause. CBF_CORNERS_STALE (kappa-freeze) ruling-out stays valid (a code-level fact, not sim-timing-dependent)."
+description: "⭐⭐⭐⭐ 2026-08-26 ROOT CAUSE FOUND (deeper than the angle-clustering framing below, which was itself a downstream symptom): both catastrophic IC5 reps (pre-fix 2.76m AND post-fix-with-a87ac00 4.78m) are actually the ALREADY-DIAGNOSED `dtheta` az-visibility-filter defect from project_20260824_dtheta_ic5_flyaway_rootcause, NOT primarily a Hough/angle-clustering geometry bug. Confirmed via Control_Data.npy: both bad reps show 55-74 dtheta_correction cycles PINNED AT THE 2.0 m/s^2 CAP within the first 2s of flight (vs 0-16 in clean reps) -- a sustained near-continuous burst of max extra lift right at launch, BEFORE any perception failure (verified: at post-fix rep5's worst pinned burst, Detection Status was 100% 'ok'). This destabilizes the trajectory (GT descent_anomaly_cause=ASCENDING) FIRST; lt2_angle_clusters dominance follows ~4s later as a DOWNSTREAM CONSEQUENCE of the resulting bad geometry, not the initiating cause. Explains why a87ac00 only partially helps: it hardens perception (the symptom), not the dtheta control-law defect (the cause). The actual fix (PLASMC_DTHETA_HREF=1, breaks the th_curr self-defeating feedback loop) already exists in controller.py but defaults OFF, pending its own n>=5 validation (see project_20260824_dtheta_href_continuous_compensation)."
 metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-25T06:08:07.974Z
+  modified: 2026-08-26T05:08:33.045Z
 ---
+
+## ⭐⭐⭐⭐ ROOT CAUSE (2026-08-26): the catastrophic mechanism is `dtheta`'s uncapped-duration cap-pinning, NOT primarily angle-clustering
+
+Investigated why the two catastrophic reps (pre-fix rep2 xy=2.76m, post-fix-with-a87ac00 n=5
+rep5 xy=4.78m) fail so severely, since the earlier framing (angle-clustering dominates the
+fail-reason tally in both) doesn't explain WHY the geometry degrades that badly in the first
+place. `Ground_Truth.npy`'s own `descent_anomaly_cause` field for BOTH bad reps reads
+`'ASCENDING'` -- the drone climbed away rather than descending -- with `target_lost=False` in
+both cases (this is NOT the `CBF_CORNERS_STALE_ABORT`/`TARGET_LOST` open-loop-fallback path
+originally assumed; it's a genuine closed-loop instability under otherwise-normal GT-feedback
+position control).
+
+**`Control_Data.npy` has the smoking gun** (`dtheta_correction(t)`, `dtheta_az(t)`,
+`theta_cone(t)` are all logged per-cycle from the 2026-08-24/25 `dtheta` investigation's own
+instrumentation -- this data was already being recorded, just not looked at for this specific
+question):
+
+| rep | outcome | pinned-at-2.0-cap cycles in first 2s | longest pinned run (whole flight) |
+|---|---|---|---|
+| pre-fix rep2 | BAD (2.76m) | 55 | -- |
+| post-fix n5 rep5 | BAD (4.78m) | 74 | 26 (t=0.75-1.0s) |
+| post-fix n5 rep4 | good (0.015m) | 5 | 3 |
+| post-fix n3 rep1 | good (0.062m) | 0 | 0 |
+| post-fix n5 rep2 | good (0.021m) | 1 | -- |
+| post-fix n5 rep3 | good (0.047m) | 16 | -- |
+
+`dtheta_correction` is `clip(gain=10.0 * ||th_desired - th_safe||, 0, PLASMC_DTHETA_AZ_CAP=2.0)`
+(`controller.py` ~line 3345-3352) -- the per-cycle CAP is unconditionally applied by default
+(no env var needed to activate it, only to change its value), but nothing stops it from
+PINNING at that ceiling for many consecutive cycles when the CBF keeps suppressing lateral
+demand hard (which IC5's steep initial viewing angle, near the visibility cone's ~0.766 rad/44
+deg ceiling from frame 1, reliably does). A sustained 26-cycle pinned run is ~0.3-0.4s of
+continuous MAXIMUM extra-lift injection (2.0 m/s^2, over a fifth of g) right at launch.
+
+**Causality direction confirmed, not just correlated**: mapped post-fix rep5's Control_Data
+clock to its Img_Data clock (cross-correlating `MARKER_EXTENT_PX` against GT `1/z`, best-fit
+offset 27.0s, r=0.71) and checked Detection Status at the exact moment of the worst pinned
+burst (t=0.75-1.0s, control clock) -- **100% `'ok'`, zero misses**. The `lt2_angle_clusters`
+domination (239/580 misses, 41%) only appears later, mapping to roughly t=4.4-7.7s in the
+control clock -- well after the early dtheta burst. **So the sequence is: dtheta burst
+destabilizes the trajectory FIRST -> the resulting bad geometry (position/attitude excursion)
+degrades real perception SECOND -> `lt2_angle_clusters` is a downstream symptom of the crash
+already being underway, not its cause.**
+
+**This reframes the whole a87ac00 finding**: `a87ac00` hardens the Hough/angle-clustering
+PERCEPTION path -- exactly the downstream symptom -- so it plausibly reduces how often a
+`lt2_angle_clusters` cascade compounds an already-destabilized trajectory into a full crash
+(consistent with the observed ~halving of the failure rate), but it cannot touch the actual
+`dtheta` control-law defect that destabilizes the trajectory in the first place. That defect
+was already root-caused and a real fix designed on 2026-08-24/25
+([[project_20260824_dtheta_az_filter_self_defeating_feedback]],
+[[project_20260824_dtheta_href_continuous_compensation]]) -- `PLASMC_DTHETA_HREF=1` (breaks
+the `th_curr` self-defeating attitude-history feedback loop that lets the trigger persist
+instead of settling) -- but it defaults OFF pending its own n>=5 validation, so every sweep in
+this whole investigation (pre-fix AND post-fix) ran with the actual root-cause fix disabled.
+
+**Open item / real next step**: validate `PLASMC_DTHETA_HREF=1` at IC5 with n>=5 (isolated,
+no concurrent SITL, current HEAD code) -- if it suppresses the sustained-cap-pinning pattern
+(fewer/no early 50+ cycle pinned runs) and the catastrophic-failure rate drops further, that
+would be the actual fix for this IC, not further perception hardening.
+
+## ⭐⭐⭐ FINAL (2026-08-26): a87ac00 helps, does NOT fix -- n=5 confirm sweep
+
+The n=3 "apparently already resolved by a87ac00" reading directly below was itself too
+optimistic -- a small-sample false negative, same class of error as the original "falsified"
+mistake earlier this session (see the RETRACTION section further below), just less severe.
+A proper n=5 confirm sweep on current HEAD (unchanged code, same isolated-SITL discipline)
+reproduced the SAME catastrophic failure at nearly the same severity.
+
+**Combined post-fix data (2 sweeps, n=8 total, all current HEAD / a87ac00 applied):**
+
+| sweep | rep | detect-ok | `lt2_angle_clusters` share of misses | outcome | xy_err |
+|---|---|---|---|---|---|
+| n=3 run | 1 | 82% | 0% | SP | 0.062m |
+| n=3 run | 2 | 88% | 0% | landed, not SP | 0.061m |
+| n=3 run | 3 | 94% | 0% | SP | 0.032m |
+| n=5 run | 1 | 62% | 39% (65/168) | landed, not SP | 0.039m |
+| n=5 run | 2 | 82% | 0% | SP | 0.021m |
+| n=5 run | 3 | 90% | 0% | SP | 0.047m |
+| n=5 run | 4 | 93% | 0% | SP | 0.015m |
+| n=5 run | 5 | 30% | **41% (239/580)** | **PX4 Impact-detected, hard failure** | **4.78m** |
+
+Post-fix combined: **SP 5/8 (62.5%)**, `lt2_angle_clusters` present at a meaningful level in
+2/8 reps, 1/8 a genuine catastrophic hard-impact failure. Compare pre-fix (below): SP 1/3
+(33%), `lt2_angle_clusters` meaningful in 2/3 reps, 1/3 catastrophic. **Both catastrophic
+reps (pre-fix rep2 xy=2.76m, post-fix n=5 rep5 xy=4.78m) ended via PX4's raw impact detector
+(`|a|>50 m/s^2`), NOT the clean loom-inversion touchdown disarm that every good rep hit** --
+same failure signature, both before and after the fix.
+
+**Conclusion: `a87ac00` roughly halves the failure rate (and raises SP rate) but does not
+eliminate the underlying mechanism.** IC5's steep ~42deg viewing angle can still starve the
+corner-join filter of enough real segment pairs to prevent a bad angle-cluster often enough
+to cause a hard landing, at a rate on the order of 1-in-5 to 1-in-8 reps. Do not describe this
+IC as fixed. If pursuing further: either loosen `merge_tol_deg`/tune the corner-join gap
+tolerance specifically for IC5-range viewing angles, or add a grace/retry path in
+`landing_test.py` for a sustained `lt2_angle_clusters` streak specifically (distinct from the
+existing `CBF_CORNERS_STALE_ABORT`, which is a `_cbf_corners_none_streak` catch-all not
+keyed to fail-reason).
+
+## ⭐⭐ RETRACTION + CORRECTED FINDING (2026-08-26): the "falsified" entry below was premature; the bug was real and is apparently already fixed by a87ac00
+
+The FALSIFIED entry immediately below this one (also written 2026-08-26, same session) drew its
+conclusion from only ONE data point: a clean re-run on CURRENT HEAD code landing 3/3 tight. That
+re-run had an uncontrolled confound -- `cross_marker_detector.py` changed (`a87ac00`, the
+corner-join Hough-segment filter) the morning AFTER the original 2026-08-24 failing investigation,
+so "clean re-run" was actually "clean environment + different code", not a true isolation of the
+contamination variable alone. Called out by the user ("I feel you are jumping the gun here").
+
+**Proper controlled experiment**: temporarily swapped `cross_marker_detector.py` to the EXACT
+pre-fix code (`git show 686a66e:...`, the version live during the original 08-24 failing
+investigation), re-verified no concurrent SITL, ran the same isolated IC5 n=3 sweep
+(`WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1 HEADLESS=1 IC_LIST="IC5" N_REPS=3`),
+then restored current HEAD exactly (verified byte-identical via diff against the pre-swap backup).
+
+| rep | detect-ok | dominant fail reason | landing |
+|---|---|---|---|
+| 1 | 258/279 (93%) | insufficient_fit_points 13, centroid_mismatch 39 | 0.025m, clean |
+| 2 | 156/777 (20%) | **lt2_angle_clusters 370 (60% of 621 misses)** | **2.76m -- degraded** |
+| 3 | 230/400 (57%) | lt2_angle_clusters 60 (35% of 170 misses), centroid_mismatch 43 | 0.063m, mildly degraded |
+
+This directly reproduces the ORIGINAL 2026-08-24 signature -- wide detect-ok variance across
+identical-IC reps (20-93%, matching the original's 17-94% range) with `lt2_angle_clusters` as the
+dominant fail reason specifically in the bad rep -- **with zero concurrent SITL sessions running**.
+The failure-reason-to-outcome link (dominant `lt2_angle_clusters` share tracks directly with landing
+degradation across the 3 reps) is much stronger evidence than the original's outcome-only landing
+stats. **Conclusion: the angle-clustering fragility at IC5's steep oblique viewing angle is a real,
+probabilistic, code-level failure mode -- not a contamination artifact.**
+
+**Then, separately: current HEAD code (with `a87ac00` applied) was re-tested clean (n=3, see the
+now-superseded FALSIFIED section below for that data) and showed ZERO `lt2_angle_clusters`
+occurrences across all 3 reps, landing tight (0.032-0.062m).** `a87ac00`'s docstring frames itself
+purely as a "2nd shadow-contamination layer" (filtering Hough segments from the drone's own cast
+shadow before they can seed a bad angle cluster) -- it was never explicitly validated against or
+credited for fixing the IC5 angle-clustering failure mode specifically. But mechanistically it runs
+`_filter_segments_by_corner_join` BEFORE `_cluster_line_angles`, stripping exactly the kind of
+spurious/unpaired Hough segments that would otherwise seed a bad cluster -- plausible that it fixes
+BOTH the shadow-contamination case it was built for AND this steep-angle case, which may share the
+same underlying "spurious segment pollutes the cluster" mechanism even though the original framing
+(arms projecting too close to parallel) is geometrically distinct from shadow contamination.
+
+**Net assessment**: the bug was real (confirmed above), and current code most likely already fixes
+it as a side effect of an unrelated-sounding fix -- but this is n=3 vs n=3, not a large-sample
+confirm. **Recommend a real n>=5 IC5 sweep on current HEAD before fully closing this** -- the
+post-fix 3/3 clean result could still partly be luck, same as the original single "passed rep" was.
+If `merge_tol_deg=12` or the pre-cluster segment count is still occasionally marginal at IC5's ~42
+deg viewing angle, a larger sample is the only way to see it.
+
+---
+
+## ⛔⛔ SUPERSEDED (2026-08-26, was briefly the leading entry, itself retracted above): "FALSIFIED -- no angle-clustering bug at IC5"
+
+This section's own conclusion is WRONG (see the retraction above) -- kept for the process lesson
+(a same-code-family "clean" comparison isn't controlled if the code isn't actually the same) and
+because its underlying data point (current-HEAD clean sweep = 0/3 lt2_angle_clusters, tight
+landings) is still valid and now correctly re-interpreted above as "current HEAD already fixes it",
+not "there was never a bug".
+
+Isolated re-run (confirmed no concurrent SITL/claude session touching SITL beforehand),
+`WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1 HEADLESS=1 IC_LIST="IC5" N_REPS=3`
+via `run_ic_validation.sh`, on CURRENT HEAD code (post a87ac00, NOT the code live during the
+original investigation -- this is the confound that made the "falsified" conclusion premature):
+
+| rep | xy_err | rel_vel | soft | precise |
+|---|---|---|---|---|
+| 1 | 0.0615m | 0.0330 m/s | yes | yes |
+| 2 | 0.0607m | 0.0786 m/s | no | no |
+| 3 | 0.0318m | 0.0289 m/s | yes | yes |
+
+All 3 landed cleanly, tight band, no TARGET_LOST, no hard impact.
 
 ## ⛔ CORRECTION (2026-08-25, same day, discovered via a DIFFERENT session's memory write)
 

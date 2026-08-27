@@ -97,6 +97,10 @@ class GTFeedback:
         self._wx = deque(maxlen=_maxlen)        # W_x history (NED, marker - camera)
         self._ry = deque(maxlen=_maxlen)        # relative-yaw history (rad, unwrapped)
         self._last_ry = None
+        self.last_rel_alt = None                # most recent GT camera-marker relative
+                                                  # altitude (m, >=0), for GT-only touchdown
+                                                  # detection -- see controller.py's
+                                                  # _touchdownDetect GT-FEEDBACK path
         # (The 2026-07-02 target-acceleration FF / lead-pursuit estimator was
         # REMOVED per user: the "curved-translation lag" it targeted turned out
         # to be a self-sustained lateral LIMIT CYCLE, not a lag — and the FF
@@ -213,6 +217,7 @@ class GTFeedback:
 
         # --- flow h (V-frame rel velocity / depth) + w_z (rel yaw rate) ---
         zB = max(float(W_x_tu[2]), 0.0)                            # rel altitude, non-negative
+        self.last_rel_alt = zB
         h = np.zeros(3); w = np.zeros(3)
         if len(self._t) >= 3:                                      # no altitude gate: 1/(z+Z_REG) stays bounded to the deck
             ts, wx, ry_arr = self._vel_window()

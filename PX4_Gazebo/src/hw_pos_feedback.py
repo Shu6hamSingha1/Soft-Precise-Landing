@@ -116,6 +116,7 @@ class HWPosFeedback:
         self._max_speed = float(os.environ.get("PLASMC_HW_POS_MAX_SPEED_MPS", "5.0"))
         self._filt_up = None
         self._filt_up_t = None
+        self.last_rel_alt = None                # mirrors gt_feedback.GTFeedback.last_rel_alt
 
     def _vel_window(self):
         """Identical to gt_feedback.GTFeedback._vel_window."""
@@ -202,6 +203,7 @@ class HWPosFeedback:
 
         # --- flow h (V-frame rel velocity / depth) + w_z (rel yaw rate) ---
         zB = max(float(W_x_tu[2]), 0.0)
+        self.last_rel_alt = zB
         h = np.zeros(3); w = np.zeros(3)
         if len(self._t) >= 3:
             ts, wx, ry_arr = self._vel_window()

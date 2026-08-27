@@ -98,9 +98,9 @@ def render_plots(series, idx, width, height, lims):
     ax3.scatter(series["tx"][idx], series["ty"][idx], series["tz"][idx], color=C_TARGET, s=32,
                 edgecolors="black", linewidths=0.6)
     ax3.set_xlim(*lims["x"]); ax3.set_ylim(*lims["y"]); ax3.set_zlim(*lims["z"])
-    ax3.set_xlabel("X (m)", color=_INK, fontsize=10); ax3.set_ylabel("Y (m)", color=_INK, fontsize=10)
-    ax3.set_zlabel("Z (m)", color=_INK, fontsize=10)
-    ax3.tick_params(colors=_INK, labelsize=9)
+    ax3.set_xlabel("X (m)", color=_INK, fontsize=8); ax3.set_ylabel("Y (m)", color=_INK, fontsize=8)
+    ax3.set_zlabel("Z (m)", color=_INK, fontsize=8)
+    ax3.tick_params(colors=_INK, labelsize=7)
     # Grid RESTORED (2026-08-26, correcting the earlier "just remove it" attempt --
     # it's needed for reading 3D position off the axes, per user feedback): the
     # default matplotlib grid color is a light gray meant for a WHITE page, which is
@@ -116,8 +116,13 @@ def render_plots(series, idx, width, height, lims):
         pane.set_alpha(0.0)
         pane.set_edgecolor("#3a3a3a")
         pane.set_linewidth(0.6)
-    ax3.set_title("UAV & target (3D)", color=_INK, fontsize=13)
-    leg = ax3.legend(loc="upper right", fontsize=10, facecolor="none", edgecolor="#3a3a3a", labelcolor=_INK)
+    ax3.set_title("UAV & target (3D)", color=_INK, fontsize=10)
+    # SHIFTED RIGHT (2026-08-26, user request: text was overlapping) -- loc="upper
+    # right" alone sits INSIDE the 3D axes' own bbox, which after the -0.10 left-nudge
+    # above lands right on top of the z-axis tick labels/title. bbox_to_anchor pushes
+    # it further right, clear of the axes and its z-tick text.
+    leg = ax3.legend(loc="upper right", bbox_to_anchor=(1.30, 1.02), fontsize=8,
+                      facecolor="none", edgecolor="#3a3a3a", labelcolor=_INK)
     # No outline/stroke on text (2026-08-26, user request): the measured-and-validated
     # dark ink (_INK, ~11:1 contrast on the actual background) is enough on its own --
     # a stroke around every letter reads as a border/halo artifact once the base color
@@ -132,8 +137,8 @@ def render_plots(series, idx, width, height, lims):
         ax.plot(t[:k], y[:k], color=col, lw=2.2)
         ax.plot(tnow, y[idx], "o", color=col, ms=8, markeredgecolor="black", markeredgewidth=0.8)
         ax.axvline(tnow, color=_INK, alpha=0.8, lw=1.2)
-        ax.set_ylabel(label, color=_INK, fontsize=12)
-        ax.tick_params(colors=_INK, labelsize=10)
+        ax.set_ylabel(label, color=_INK, fontsize=9)
+        ax.tick_params(colors=_INK, labelsize=8)
         # RECESSIVE axes (dataviz skill): drop the top/right box entirely (pure
         # clutter on a transparent panel with no fixed surface behind it) and keep
         # only left+bottom as a thin dark reference frame -- same #3a3a3a as the
@@ -144,7 +149,7 @@ def render_plots(series, idx, width, height, lims):
         ax.spines["bottom"].set_color("#3a3a3a"); ax.spines["bottom"].set_linewidth(0.8)
         ax.set_xlim(0, t[-1]); ax.margins(y=0.15)
         if gi == 2:
-            ax.set_xlabel("time since descent start (s)", color=_INK, fontsize=11)
+            ax.set_xlabel("time since descent start (s)", color=_INK, fontsize=9)
     fig.canvas.draw()
     buf = np.frombuffer(fig.canvas.buffer_rgba(), dtype=np.uint8).copy()
     buf = buf.reshape(fig.canvas.get_width_height()[::-1] + (4,))
@@ -219,7 +224,19 @@ def main():
                          "width/height before scaling into the main panel -- a DIGITAL "
                          "zoom on drone+target, independent of and stacking with the "
                          "world SDF chase-cam's own pose/FOV zoom. 1.0 = no crop.")
+    ap.add_argument("--chase-crop-touchdown", type=float, default=None,
+                    help="if set, the chase crop fraction RAMPS from --chase-crop at "
+                         "descent-start to this tighter value by touchdown (then holds "
+                         "through the --tail-s freeze) -- makes ground contact visually "
+                         "obvious without risking the whole-video clipping a constant "
+                         "--chase-crop causes on trajectories that start far from the "
+                         "touchdown point. Default (unset) = no ramp, same as --chase-crop.")
+    ap.add_argument("--chase-crop-ramp-s", type=float, default=3.0,
+                    help="seconds before touchdown over which --chase-crop-touchdown's "
+                         "ramp runs (linear in time-to-touchdown, not output-frame index).")
     a = ap.parse_args()
+    if a.chase_crop_touchdown is None:
+        a.chase_crop_touchdown = a.chase_crop
 
     chase = cv2.VideoCapture(a.chase)
     drone = cv2.VideoCapture(a.drone)
@@ -280,9 +297,16 @@ def main():
         df2 = grab(drone2, d2i, d2cache) if drone2 is not None else None
         if cf is None:
             break
-        if a.chase_crop < 1.0:
+        if f < nd:
+            frames_to_td = nd - 1 - f
+            ramp_frames = max(1, int(round(a.chase_crop_ramp_s * a.fps)))
+            ramp_u = min(1.0, max(0.0, 1.0 - frames_to_td / ramp_frames))
+        else:
+            ramp_u = 1.0                    # tail: hold the touchdown crop
+        crop = a.chase_crop + (a.chase_crop_touchdown - a.chase_crop) * ramp_u
+        if crop < 1.0:
             ch, cw = cf.shape[:2]
-            nw, nh = max(1, int(cw * a.chase_crop)), max(1, int(ch * a.chase_crop))
+            nw, nh = max(1, int(cw * crop)), max(1, int(ch * crop))
             x0c, y0c = (cw - nw) // 2, (ch - nh) // 2
             cf = cf[y0c:y0c + nh, x0c:x0c + nw]
         canvas = np.zeros((H, W, 3), np.uint8)

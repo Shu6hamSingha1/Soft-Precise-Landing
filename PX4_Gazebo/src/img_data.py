@@ -35,11 +35,19 @@ from planar_map import PlanarFeatureMap
 CHECK_NUM = 80
 # Camera intrinsics for x500_mono_cam_down at 640x480, hfov=1.74 rad.
 # fx = (W/2) / tan(hfov/2) = 320 / tan(0.87) ≈ 270.
-# MATLAB Constants.m uses f=135 at 320x240; same hfov, so normalized image
-# coordinates and PLASMC gains are identical. Only pixel-space FoV margins
-# (rho_fov in controller.py) are scaled 2x vs MATLAB.
-fx = 270
-fy = 270
+# 2026-08-27: dropped from 640x480 (fx=fy=270) to 320x240 (fx=fy=135) to recover
+# frame rate on the cross-marker pipeline -- see mono_cam/model.sdf's own comment
+# for the measurements that motivated this. This RESTORES the original MATLAB
+# Constants.m value below (f=135 at 320x240) rather than introducing a new one --
+# same hfov, so normalized image coordinates and PLASMC gains are identical to
+# both the previous 640x480 setup AND MATLAB. Pixel-space FoV margins (rho_fov in
+# controller.py) are no longer scaled 2x vs MATLAB, since this matches it exactly.
+# STILL BLOCKING before this is usable for real landing validation (not just an
+# FPS check): sensor_cal_hw / sensor_cal_s below were derived from 640x480/fx=270
+# recordings and have NOT been recalibrated for this resolution -- see the
+# io-calibration skill.
+fx = 135
+fy = 135
 
 FILTER_WIN = int(os.environ.get("IMG_FILTER_WIN", "13"))
                       # sliding-window length for savgol on raw image-side measurements

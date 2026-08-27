@@ -4,6 +4,11 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> [Don't disable cast_shadows / move sunUTC to fix shadow-on-marker perception issues](feedback_reject_disable_cast_shadows.md) — 2026-08-25, user rejected; real drones cast real shadows, harden perception instead
+> ⛔ [Overlay tool now logs real detection artifacts, not offline reconstruction](project_20260825_overlay_detection_artifact_logging.md) — CONTRADICTED 2026-08-27: live `cross_marker_perception.py::getLogData()` does NOT expose "Line Points I/J"/"Stub Points"/"Flow Points Prev/Curr Px" as of that date — verify directly before trusting this line; every overlay checked 2026-08-26/27 used the offline re-detection fallback
+> [Chase-cam bumped to 1280x960](project_20260826_chasecam_resolution_bump.md) — fixed blurry montage video; validated no down-cam fps impact (rover_cross.sdf, outside repo)
+> [Camera dropped 640x480→320x240 (fx 270→135), frame rate + h/texture design gap](project_20260827_framerate_and_h_texture_investigation.md) — 2026-08-27: restores MATLAB-native scale, fixes <30Hz process_frame() rate (n=3: ~15-23Hz→~38Hz) but detect-rate degraded + sensor-cal NOT recalibrated (BLOCKING for real use); also found h never uses textured background at all — design-intent gap (s=geometry, h=surface-texture flow), a rejected "plate mask" fix, correct direction = extent-based ROI (in progress)
+
 > **⛔⛔ HARD RULE, RE-STATED 2026-08-25 AFTER A REPEAT VIOLATION: default every landing
 > test to `MARKER_TYPE=cross WORLD=cross_marker`. ArUco (`MARKER_TYPE=aruco`/default) is
 > COMPARISON-ONLY — use it ONLY when the user explicitly asks for an ArUco run.** This
@@ -60,19 +65,66 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
-> **⭐ 2026-08-25 — IC1-5 GT-feedback sweep at TRUE ground contact: 4/5 SOFT+PRECISE
-> (IC1-4), IC5 (2,2,3 ENU — low altitude + large lateral offset, steep viewing angle)
-> fails intermittently via TARGET_LOST/hard impact. Root-caused to
-> `cross_marker_detector.py`'s angle-CLUSTERING step (not the same failure class as the
-> near-touchdown shadow/Hough-line-COUNT issue fixed the same session) — `lt2_angle_clusters`
-> dominates fail reasons (up to 68%), hover-settle alpha std ranges 5.4-133° across
-> identical-IC reps (vs <5° for other ICs), a threshold/probabilistic effect not a hard
-> geometric wall. `CBF_CORNERS_STALE` (kappa-freeze) ruled out with certainty — hard-bypassed
-> under GT-feedback since 2026-08-19. A separate one-off "hung past 180s" rep could not be
-> reproduced after cleaning ~489 leaked `fastrtps_*` `/dev/shm` files (from repeated
-> `kill -9` SITL teardowns) — most likely an infra artifact, not a control-code bug, though
-> not proven. Fix NOT yet attempted (angle-cluster tolerance under high tilt, or grace-logic
-> hardening). Full trace: [[project_20260824_ic5_angle_clustering_and_hang_investigation]].**
+> **⭐⭐⭐⭐ 2026-08-26 — IC5 catastrophic mechanism ROOT-CAUSED: it's the ALREADY-DIAGNOSED
+> `dtheta` az-visibility-filter defect (project_20260824_dtheta_ic5_flyaway_rootcause), NOT
+> primarily the angle-clustering/Hough bug below (that's a downstream SYMPTOM). Both
+> catastrophic reps' `Ground_Truth.npy` reads `descent_anomaly_cause='ASCENDING'`,
+> `target_lost=False` — a genuine closed-loop instability, not the
+> `CBF_CORNERS_STALE_ABORT`/open-loop fallback originally assumed.
+> `Control_Data.npy`'s `dtheta_correction(t)` shows BOTH bad reps pin at the 2.0 m/s^2 cap
+> for 55-74 cycles in just the first 2s of flight (vs 0-16 in clean reps), incl. a 26-cycle
+> continuous pinned burst at t=0.75-1.0s — a sustained near-continuous maximum-extra-lift
+> injection right at launch, driven by IC5's steep initial viewing angle sitting the CBF's
+> visibility cone near its ~0.766 rad/44deg ceiling from frame 1. **Verified the causality
+> direction, not just correlation**: at post-fix rep5's worst pinned burst, cross-marker
+> Detection Status was 100% `'ok'` — the `lt2_angle_clusters` domination only appears ~4s
+> later, after the dtheta burst has already destabilized the trajectory. So: dtheta burst
+> destabilizes FIRST, perception degrades SECOND as a consequence, not a cause. **This
+> reframes why `a87ac00` only partially helps** (below): it hardens the downstream
+> perception symptom, not the upstream control-law defect. The real fix
+> (`PLASMC_DTHETA_HREF=1`, breaks the `th_curr` self-defeating feedback loop that lets the
+> correction sustain instead of settle) already exists in `controller.py` but defaults OFF
+> pending its own n>=5 validation — every sweep in this whole investigation ran with the
+> actual root-cause fix disabled. **Next real step: validate `PLASMC_DTHETA_HREF=1` at IC5,
+> n>=5, isolated** — not further perception hardening. Full trace:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐ 2026-08-26 — IC5 angle-clustering finding (the downstream-symptom half of the
+> above): real bug, `a87ac00` HELPS but does NOT fix it (n=5 confirm sweep completed; an
+> earlier n=3 "already resolved" reading, and a same-day "falsified" verdict before that,
+> were BOTH too optimistic small-sample reads — caught by the user twice, corrected same
+> session).** Chain: (1) a first clean re-run (n=3, current HEAD) landed 3/3 tight, wrongly
+> read as "no bug" — confounded, since `cross_marker_detector.py` changed (`a87ac00`,
+> corner-join Hough filter) the morning after the original failure, so "clean" meant
+> different code too, not isolated contamination. (2) Swapped in the EXACT pre-fix detector
+> code, re-ran isolated n=3 — reproduced the original signature exactly (93%/20%/57%
+> detect-ok, `lt2_angle_clusters` dominant in the bad rep 370/621=60% of misses, one 2.76m
+> hard-impact failure) — confirmed the fragility is real, not contamination. (3) Current
+> HEAD (`a87ac00` applied) then showed 0/3 `lt2_angle_clusters` failures — read as "already
+> fixed", but n=3 was too small. (4) **A proper n=5 confirm sweep on current HEAD
+> reproduced the SAME catastrophic failure**: rep5 hit 30% detect-ok, `lt2_angle_clusters`
+> 41% of misses (239/580), PX4 hard-impact landing at 4.78m — nearly identical
+> severity/signature to the pre-fix failure. **Combined post-fix (n=8 across 2 sweeps): SP
+> rate 33%→62.5% (real improvement), but `lt2_angle_clusters` recurred in 2/8 reps incl. one
+> catastrophic hard impact.** `a87ac00` roughly halves the failure rate, does not eliminate
+> the mechanism — **do not describe IC5 as fixed.** Full trace + all raw data (3 sweeps):
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section is the final
+> corrected finding; the earlier "resolved"/"falsified" sections are both superseded but
+> kept for the process lesson — small-n clean sweeps at a probabilistic/threshold failure
+> mode are systematically prone to false-negative reads, twice in this same investigation).
+>
+> **⭐ 2026-08-25 — original (now-falsified) IC1-5 GT-feedback sweep at TRUE ground contact:
+> 4/5 SOFT+PRECISE (IC1-4), IC5 (2,2,3 ENU — low altitude + large lateral offset, steep
+> viewing angle) failed intermittently via TARGET_LOST/hard impact.** Provisionally
+> root-caused to `cross_marker_detector.py`'s angle-CLUSTERING step (not the same failure
+> class as the near-touchdown shadow/Hough-line-COUNT issue fixed the same session) —
+> `lt2_angle_clusters` dominated fail reasons (up to 68%), hover-settle alpha std ranged
+> 5.4-133° across identical-IC reps (vs <5° for other ICs). `CBF_CORNERS_STALE`
+> (kappa-freeze) ruled out with certainty — hard-bypassed under GT-feedback since
+> 2026-08-19 (this ruling-out is UNAFFECTED by the falsification above). A separate one-off
+> "hung past 180s" rep could not be reproduced after cleaning ~489 leaked `fastrtps_*`
+> `/dev/shm` files (from repeated `kill -9` SITL teardowns) — most likely an infra artifact,
+> not a control-code bug, though not proven.
 
 > **⭐⭐ 2026-08-25 (LATEST, supersedes the 08-24 entry below) — model.sdf is DELIBERATELY
 > at TRUE ground contact (`-0.2195`) as of 2026-08-25, user directive, not a leftover test

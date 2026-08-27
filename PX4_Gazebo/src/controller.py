@@ -576,10 +576,16 @@ class Controller(Thread):
         # every other per-axis quantity in this file (p_10, u_centered/v_centered, etc.).
         # Env var NAMES kept as U/V (still label the PHYSICAL sensor axis each controls)
         # to avoid an unrelated config-surface rename.
-        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "210.0")),
-                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "290.0"))])
-        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "80.0")),
-                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "80.0"))])
+        # 2026-08-27: halved (210/290/80 -> 105/145/40) for the 640x480->320x240
+        # camera resolution drop (see img_data.py's fx/fy comment) -- these are
+        # PIXEL-domain quantities that were themselves exactly 2x MATLAB's own
+        # 320x240-native values by design (this file's own top-of-file comment,
+        # line ~32); now that the camera matches MATLAB's resolution again, so
+        # should these.
+        self._rho_fov_0   = np.array([float(os.environ.get("PLASMC_RHOFOV0_V",   "105.0")),
+                                      float(os.environ.get("PLASMC_RHOFOV0_U",   "145.0"))])
+        self._rho_fov_inf = np.array([float(os.environ.get("PLASMC_RHOFOVINF_V", "40.0")),
+                                      float(os.environ.get("PLASMC_RHOFOVINF_U", "40.0"))])
         # rho_fov held CONSTANT at rho_fov_0 by default (l_fov=0 -> exp(0)=1 -> rho_fov_curr=rho_fov_0).
         # The decay to rho_fov_inf (80px) shrank the visibility funnel far inside the camera FoV,
         # firing the perception-death handoff prematurely (marker fills 80px while still visible to

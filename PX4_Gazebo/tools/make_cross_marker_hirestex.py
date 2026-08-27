@@ -25,7 +25,9 @@ import os
 import numpy as np
 import cv2
 
-SRC = '/home/shubham/PX4-Autopilot/Tools/simulation/gz/models/cross_marker/cross_marker.png'
+SRC = os.environ.get(
+    "CROSS_TEXTURE_SRC",
+    '/home/shubham/PX4-Autopilot/Tools/simulation/gz/models/cross_marker/cross_marker.png.bak_before_hirestex_20260809')
 OUT = os.environ.get(
     "CROSS_TEXTURE_OUT",
     '/home/shubham/PX4-Autopilot/Tools/simulation/gz/models/cross_marker/cross_marker_hires.png')
@@ -33,6 +35,11 @@ OUT = os.environ.get(
 SCALE = int(os.environ.get("CROSS_TEX_SCALE", "3"))       # 1024 -> 3072 (3x) by default
 CROSS_THRESH = int(os.environ.get("CROSS_THRESH", "60"))   # V < this = cross/stub pixel
 SEED = int(os.environ.get("SEED", "20260809"))
+# 2026-08-26: parameterized (was hardcoded 3.0m) -- SRC's default was also changed from
+# the LIVE cross_marker.png (which is itself already the 3072px hires output as of
+# 2026-08-10, so re-running against it would double-upscale an already-upscaled mask)
+# to the true 2026-08-01 original 1024px source, so SCALE always means "x original".
+MARKER_SIZE_M = float(os.environ.get("CROSS_MARKER_SIZE_M", "3.0"))
 
 
 def main():
@@ -66,11 +73,14 @@ def main():
     out[mask_hires] = cross_val
 
     cv2.imwrite(OUT, out)
-    texel_cm = 300.0 / new_w   # 3.0m plate, cm/texel
+    texel_cm = (MARKER_SIZE_M * 100.0) / new_w
     fx = 270.0
     crossover_z = (texel_cm / 100.0) * fx
-    print(f"-> {OUT}  ({new_w}x{new_h}, {texel_cm:.4f}cm/texel, "
-          f"predicted crossover Z ~= {crossover_z:.3f}m, was ~0.79m at 1024px)")
+    orig_texel_cm = (MARKER_SIZE_M * 100.0) / w
+    orig_crossover_z = (orig_texel_cm / 100.0) * fx
+    print(f"-> {OUT}  ({new_w}x{new_h}, {texel_cm:.4f}cm/texel, marker={MARKER_SIZE_M}m, "
+          f"predicted crossover Z ~= {crossover_z:.3f}m, was ~{orig_crossover_z:.3f}m at "
+          f"{w}x{h} native")
 
 
 if __name__ == '__main__':
