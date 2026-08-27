@@ -36,8 +36,15 @@ SLEEP_TIME = 1/200
 # record_output_calibration.py (see that file's comments); kept identical so
 # the two markers' cals are derived under the same excitation regime and are
 # comparable.
-CALIB_AMP_XY = 0.35
+CALIB_AMP_XY = float(os.environ.get("CALIB_AMP_XY", "0.35"))
 CALIB_AMP_Z  = float(os.environ.get("CALIB_AMP_Z", "1.2"))
+# 2026-08-28: x/y phases can be driven at their OWN freq (default = CALIB_FREQ_HZ).
+# At 320x240 the 0.5Hz x/y position sinusoid is almost entirely attenuated by PX4's
+# position loop (achieved GT h_x/h_y std ~0.008 vs h_z ~0.22 at z's own phase) ->
+# the Hx/Hy rows of the 6x6 cal fit from ~4x noise -> whole cal blows up (all R^2
+# negative). Lower CALIB_FREQ_XY so PX4 tracks it; CALIB_AMP_XY compensates the
+# velocity loss (v = A*2*pi*f). z/yaw phases keep CALIB_FREQ_HZ untouched.
+CALIB_FREQ_XY = float(os.environ.get("CALIB_FREQ_XY", os.environ.get("CALIB_FREQ_HZ", "0.5")))
 CALIB_AMP_YAW_DEG = float(os.environ.get("CALIB_AMP_YAW_DEG", "30.0"))
 CALIB_AMP_YAW_AGG_DEG = float(os.environ.get("CALIB_AMP_YAW_AGG_DEG", "90.0"))
 CALIB_FREQ_YAW_AGG    = float(os.environ.get("CALIB_FREQ_YAW_AGG", "0.5"))
@@ -113,8 +120,8 @@ async def main(record='n'):
     cmd = []
 
     zero = lambda tau: 0.0
-    sin_x   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
-    sin_y   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
+    sin_x   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_XY * tau)
+    sin_y   = lambda tau: CALIB_AMP_XY * np.sin(2*np.pi*CALIB_FREQ_XY * tau)
     sin_z   = lambda tau: CALIB_AMP_Z  * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw = lambda tau: CALIB_AMP_YAW_DEG * np.sin(2*np.pi*CALIB_FREQ_HZ * tau)
     sin_yaw_agg = lambda tau: CALIB_AMP_YAW_AGG_DEG * np.sin(2*np.pi*CALIB_FREQ_YAW_AGG * tau)

@@ -705,14 +705,40 @@ class CrossMarkerPerception:
         # hi-res-texture flights (5 runs, CALIB_LOW_ALT=0.7), just fit on the clean
         # (higher-altitude) phases only. Wx/Wy rows stay forced 0 (level-target
         # convention, unchanged).
+        # 2026-08-28 RECAL for 320x240/fx=135 + the CROSS_BG_FLOW=1 sampling path.
+        # NEAR-DIAGONAL, derived from GT-feedback LANDING recordings
+        # (tools/derive_cross_marker_landing_cal.py, 3 runs: IC2/IC3/IC4), NOT the
+        # phased-excitation 6x6 (derive_cross_marker_cal.py). Reason: at 320x240
+        # PX4's horizontal position loop tracks only ~15% of the phased x/y
+        # sinusoid -> the drone moves ~6cm -> achieved GT h_x/h_y std ~0.007 (at
+        # the raw-noise floor) -> the joint 6x6 lstsq fits Hx/Hy from noise and
+        # blows up EVERY row (all per-axis R^2 came out NEGATIVE, verified).
+        # `compute_gt_signals` was checked and is correct; the UAV-pose log
+        # directly confirms the 6cm travel. An off-center GT-FB landing instead
+        # produces real sustained lateral flow (GT h_x/h_y std ~0.05-0.08).
+        # Full trace: project_20260827_framerate_and_h_texture_investigation memory
+        # (2026-08-28 recal section).
+        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px):
+        #     s_hx=0.730 (r 0.977)  s_hy=0.693 (r 0.900)  s_hz=0.955 (r 0.990)
+        #     s_wz=0.592 (GT w_z std 0.092)   s_sx=0.957  s_sy=0.943
+        #   leave-one-out R^2:  h_z +0.97..+0.99 on all 3 (SOLID).
+        #     h_x +0.79/+0.90/+0.24 ; h_y +0.91/+0.69/-0.56  -- the IC4 hold-out
+        #     is weak (its raw h_y is ~1.6x inflated vs the other two; IC4 is the
+        #     highest-start / weakest-lateral-signal rep and may be concurrent-
+        #     SITL contaminated). ⚠ Hx/Hy rows are PROVISIONAL: re-derive with
+        #     2-3 more clean off-center landings when SITL frees up, then validate
+        #     on a held-out landing. Hz row + _sensor_cal_s are trustworthy.
+        # Wx/Wy rows forced 0 (level-target convention, unchanged). No cross-
+        # coupling terms -- the landing fit showed the h-block is cleanly diagonal
+        # at this resolution (unlike the old 6x6 which had Hz<-Hx -0.22, Wz<-Hy +1.96).
         self._sensor_cal_hw = np.array([
-            [+0.1335, +0.0099, +0.0013, +0.0000, +0.0000, -0.0015],
-            [-0.0104, +0.1719, +0.0010, +0.0000, +0.0000, -0.0071],
-            [-0.2212, +0.0532, +0.4331, +0.0000, +0.0000, -0.0214],
+            [+0.7298, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.6927, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.9553, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0195, +1.9644, -0.0426, +0.0000, +0.0000, +0.5201]])
-        self._sensor_cal_s = np.diag([1.0320, 0.9984, 1.0, 1.0])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5924]])
+        self._sensor_cal_s = np.diag([0.9569, 0.9428, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
