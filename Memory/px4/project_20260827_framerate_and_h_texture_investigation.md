@@ -237,12 +237,49 @@ the real production interaction-matrix solve, produces a genuinely valid, GT-
 correlated `h` signal -- PROVIDED the surface texture's grain is coarse enough to
 survive the camera's delivered resolution.** That's a real, generalizable
 capability with a precisely quantified limiting factor (grain-vs-resolution
-resolvability), not an open question. Not yet wired into the LIVE `h` solve as of
-this memory -- check current controller.py/cross_marker_perception.py state before
-assuming it still isn't (this was the explicit next step requested).
+resolvability), not an open question.
+
+**Wired into the LIVE `h` solve, BAKED ON by default**, same session:
+`cross_marker_perception.py`'s `CROSS_BG_FLOW` (default `"1"`), a new
+`_compute_hw_bgflow()` method (deliberately separate from the mature persistent-
+tracking `_compute_hw()`, so it stays faithful to exactly the method that was GT-
+validated -- fresh multiscale GFT every pair, no cross-frame point-pool tracking),
+falling back to the existing line-mask `_compute_hw()` whenever the background path
+can't produce a result that frame (no background mask, <5 tracked points, etc.) --
+can't make behavior worse than the pre-2026-08-27 baseline, only better or a no-op.
+Verified live both ways (flag on/off) with real SITL reps: no exceptions, default-
+off path unchanged.
+
+**Baked to default WITHOUT the n>=5 IC1-5 gate, per explicit user direction: that
+gate (`feedback_ic_validation`) applies to control/gain tuning, not perception
+fixes** -- a perception fix with real correctness evidence (the GT-correlation
+check above, not just an IC-landing-outcome check) can default without it. Worth
+recording as a precedent/clarification for `feedback_ic_validation` itself if a
+similar perception-vs-control gating question comes up again.
 
 ## Uncommitted at various points, check current state before assuming
 
 `cross_marker_detector.py`'s `extent_mask_from_detection()`, `background_mask_from_detection()`,
 `multiscale_good_features()` (all validated per above) -- check whether they were
 superseded before reusing.
+
+## NEXT SESSION: explicit next task (user, 2026-08-27 session end)
+
+**Improve extent-ROI + line-exclusion + multiscale GFT + `_solve_jacobian` for a
+LARGER VARIETY of textures**, not just the two grain sizes tested so far (old
+1024px-native / hires 3072px-native, both synthetic speckle at the same base
+statistics). This session only established the approach works when texture grain
+survives the camera's delivered resolution and is weak when it doesn't -- it has
+NOT been tested against textures with different STATISTICAL character (not just
+grain size): e.g. structured/repetitive patterns (aliasing risk for LK
+correspondence -- the ArUco ring-flow's own multi-scale/self-similarity concerns
+apply here too), low-contrast or non-Gaussian real-world-like textures (concrete,
+grass, gravel), or textures with directional bias (wood grain, tiling). Starting
+points: `multiscale_good_features`'s `MULTISCALE_LEVELS` (currently a fixed
+1,2,4 list -- may need to be wider or content-adaptive), `LINE_EXCLUDE_DILATE_PX`
+(currently a fixed 3px margin, untested against thicker/thinner drawn lines),
+and `WHOLE_PLATE_SCALE` (1.3x, untested against markers where the true plate-to-
+line-extent ratio differs from this session's specific marker design). The
+GT-correlation methodology from this session (proper time-sync via
+`Ground_Truth['Start Time']`, real `_solve_jacobian`, not a raw-pixel proxy) is
+the validated way to check any of this -- reuse it, don't re-derive from scratch.

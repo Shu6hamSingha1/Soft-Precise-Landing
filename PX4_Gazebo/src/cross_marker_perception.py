@@ -209,7 +209,7 @@ RING_MIN_COVERED_SECTORS = int(os.environ.get("CROSS_RING_MIN_COVERED_SECTORS",
                                                str(RING_N_SECTORS // 2)))
 RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
 
-# BACKGROUND-TEXTURE FLOW (2026-08-27, opt-in, default OFF -- see
+# BACKGROUND-TEXTURE FLOW (2026-08-27, BAKED ON -- see
 # project_20260827_framerate_and_h_texture_investigation memory for the full
 # validation trace). Uses cross_marker_detector.py's extent_mask_from_detection() /
 # background_mask_from_detection() / multiscale_good_features() -- an axis-aligned
@@ -222,10 +222,14 @@ RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
 # (not just visual plausibility): r=0.66-0.76 on all 3 h axes when fed through the
 # REAL _solve_jacobian, PROVIDED the surface texture's grain survives the camera's
 # delivered resolution (weak/unreliable on texture too fine to resolve -- a
-# texture-resolvability limit, not a defect in this method). Default OFF because
-# it hasn't been through this project's usual n>=5 IC1-5 validation gate yet, only
-# the GT-correlation check above -- see feedback_ic_validation.
-CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "0") == "1"
+# texture-resolvability limit, not a defect in this method). Defaulted ON per user
+# direction (2026-08-27): the n>=5 IC1-5 validation gate (feedback_ic_validation)
+# applies to control/gain tuning, NOT perception fixes -- a perception fix with
+# real correctness evidence (the GT-correlation check above) can bake to default
+# without that gate. Falls back to the line-mask solve (_compute_hw) whenever the
+# background path can't produce a result a given frame, so this can't make things
+# WORSE than the pre-2026-08-27 baseline, only better or a no-op.
+CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
 # 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
 # re-validated at this resolution.
 
