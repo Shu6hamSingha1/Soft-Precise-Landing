@@ -592,3 +592,30 @@ Hz<-Hx -0.22 and Wz<-Hy +1.96, artifacts of the aliased excitation fit).
   blocker.
 - The terminal-phase h_x/h_y collapse fix (extent-gated confidence derate) is
   still not done -- do it after this cal is firmed up.
+
+### RECAL FINALIZED (5-run fit) -- commit 534b78c
+
+Recorded 4 more GT-FB off-center landings + re-derived on 7, then on 5.
+
+**Adopted (LIVE): 5-run IC2(x3)/IC3(x2) fit** --
+  s_hx=0.796 (r .989)  s_hy=0.782 (r .976)  s_hz=0.950 (r .995)
+  s_wz=0.590 (GT w_z std .097)   s_sx=0.959  s_sy=0.947
+  leave-one-out R^2 on ALL 5: h_x +0.83..+0.94  h_y +0.81..+0.94  h_z +0.97..+0.99
+  -- clean, no anomalies. `_sensor_cal_hw` is pure diagonal (no cross terms).
+
+**IC4 anomaly RESOLVED = real altitude effect, NOT contamination.** IC4 (ENU 2,2,7,
+~7m start) recorded TWICE; both reproduce the weak hold-out (h_x +0.31/+0.48, h_y
+-0.25/+0.21) + degraded detection (~84% ok, hough_lt2_lines -- stroke width thins
+at 7m). The h-block scale is altitude-dependent. IC4 runs moved to
+`calibration_data/landing_cal_cross_highalt_excluded/`. **This cal is trustworthy
+for a nominal ~5m descent; degraded h_x/h_y above ~6m.** A height-scheduled cal
+M(altitude) is a separate future effort (cf. io-calibration skill's multisine mode).
+
+7-run pooled fit (for reference, incl. both IC4): s_hx=0.745 s_hy=0.717 s_hz=0.945
+-- IC4's inclusion drags r_hy 0.976->0.930 and adds the 2 bad hold-outs. Not used.
+
+**Cal status now: usable for GT-FB-OFF cross-marker landing from ~5m.** Remaining
+before trusting a real-perception IC sweep: (a) a fresh held-out validation landing
+(the LOO already covers this statistically), (b) the separate off-center kappa
+control wall (project_20260824_crossmarker_offcenter_convergence_wall) still blocks
+off-center real-perception convergence regardless of cal quality.
