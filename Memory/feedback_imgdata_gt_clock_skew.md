@@ -35,6 +35,28 @@ suspect — audit them.
 re-checking on the GT clock. Yaw (alpha + wz) is observable and clean; only roll/pitch is unobservable (OVERTURNED 2026-06-07 — wx/wy ARE observable w/ the spread board; zeroing is a level-target choice; [[wxy-unobservable-imu-fusion-deferred]]).
 See [[yaw-calibration-pending]] (corrected), [[per-axis-tuning]], [[compass-yaw-drift]].
 
+**⭐ CORRECTION/REFINEMENT (2026-08-27): a validated direct fix exists now -- don't
+just avoid the comparison, use it.** `Ground_Truth.npy` has a `Start Time` field
+(the recordings' own shared absolute-clock reference); `notebooks/
+plotter_output_calibration.ipynb` establishes (and this session independently
+confirmed empirically on a landing-test recording, not just output-calibration)
+that `img_t_rel = Img_Data['Time'] - gt['Start Time']` correctly aligns Img_Data
+onto Ground_Truth's own clock -- this IS the "Δorigin" this memory measured back in
+2026-06-04, just not named/used as a per-recording field at the time. Also
+confirmed: `Control_Data.npy`'s `t` is on this SAME absolute clock
+(`Control_Data['t'][0] == gt['Start Time']` exactly) -- so Control_Data can be
+aligned the same way, no separate rescale needed. A SEPARATE gotcha specific to
+IMG_RECORD videos: the video only starts at `CONTROLLER_READY`, so video frame
+index `i` == `Img_Data` index `(n_pre_engage + i)` where
+`n_pre_engage = (img_t_rel < 0).sum()` -- not related to clock skew, a recording-
+gate offset, but easy to conflate with it. See
+[[project_20260827_framerate_and_h_texture_investigation]] for the full re-
+derivation and a case where getting this wrong produced a false "no correlation"
+result that a corrected alignment reversed into a strong, real one (r=0.66-0.76).
+The original advice below (use GT's own co-sampled fields) is still a perfectly
+good SIMPLER alternative when those fields exist for what you need -- this update
+just adds that direct Img_Data alignment is ALSO valid, not forbidden.
+
 **AUDIT (2026-06-04): production tooling is CLEAN — the bug was confined to ad-hoc scripts + one memory
 conclusion.** Swept tools/, apps/, src/ for cross-clock index-correlation:
 - **Cal derivation is SAFE.** `aggregate_calibration_phased.py`, `aggregate_calibration.py`,

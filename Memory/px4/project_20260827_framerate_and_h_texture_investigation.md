@@ -133,17 +133,116 @@ recorded frames found it BROKEN, and inconsistently so:
   separate bounded "plate" at all) -- fitting a precise plate quad solves a sim-only
   problem with no real-world equivalent.
 
-**Correct direction (in progress, not yet implemented as of this memory):** extent-
-based ROI around the marker's own detected size in the CURRENT frame -- not a precisely
-oriented plate quad, not a fixed pixel margin. Mirrors ArUco's own ring-flow design
-(scale-free, sized to the target's own apparent extent). Apply LK/GFT within that
-extent-sized region, feeding the SAME existing ring-band/sector + interaction-matrix
-solve machinery already built -- no changes needed to `_fill_A`/the lstsq solve itself,
-it's already generic to point positions/velocities regardless of source region.
+## ⭐⭐ SUPERSEDES THE ABOVE "in progress" note -- extent-based approach built AND
+VALIDATED against real GT correlation (2026-08-27, same day, later in the session)
+
+`plate_mask_from_detection()` was fully REPLACED (not just supplemented) by
+`extent_mask_from_detection()` in `cross_marker_detector.py`: axis-aligned box
+centered on `det.mask_bbox`, scaled by `WHOLE_PLATE_SCALE` (1.3x) -- NOT rotated to
+the cross's fitted line angle. Visually re-verified against real frames from BOTH
+textures (including the exact frame that showed the worst 45-degree plate-mask
+misalignment): consistently close-fitting, only minor corner spillover, no more
+systematic edge-missing. `WHOLE_PLATE_FLOW`/`WHOLE_PLATE_SCALE` env vars carried over
+from the rejected attempt, same meaning.
+
+**Second empirical finding, also from real frames (not just theory): widening the
+mask alone does NOT make GFT prefer background texture over line edges.**
+`cv2.goodFeaturesToTrack` ranks by Shi-Tomasi corner strength; the printed line edges
+(~180-value jump) are a far stronger signal than background speckle (std~10)
+wherever both are eligible in the same mask, so corners kept clustering on the lines
+even inside the wider extent box. Fix: `background_mask_from_detection()` = extent
+mask MINUS a dilated (`LINE_EXCLUDE_DILATE_PX=3`) copy of `det.isolated_mask` --
+physically excludes line-adjacent pixels from candidacy, which ALSO makes GFT's
+internal quality threshold auto-adapt to whatever the background actually offers
+(no longer judged against an unbeatable line gradient in the same search space).
+
+**Third finding: single-scale GFT has a texture-grain blind spot.** A/B on old
+(1024px, coarse grain) vs current-live (3072px, fine grain) texture, same 320x240
+camera: old texture's coarser blobs registered as real GFT corners; hires texture's
+finer grain mostly didn't (too fine for GFT's window to resolve after downsampling
+to the delivered camera resolution -- NOT a texture-strength difference, both have
+the same measured background std~10; it's a SPATIAL SCALE problem). Fix:
+`multiscale_good_features()` -- runs GFT at MULTISCALE_LEVELS (default 1x/2x/4x
+downsample) within the background mask, pools + dedups results (finer-scale points
+win ties, since they carry less position uncertainty). Full-video quantitative
+check (not cherry-picked frames): mean distance-from-nearest-line-pixel ~29px for
+BOTH textures (confirms genuine background sampling, not just occasional luck);
+point AVAILABILITY differs sharply (old: mean 125/frame, min 22; hires: mean 52,
+min 4) -- texture quality affects how much there is to find, not where points land
+once the line-exclusion is in place.
+
+## ⭐⭐⭐ GT-CORRELATION VALIDATION (2026-08-27) -- the approach genuinely works,
+with a real, well-quantified limiting factor
+
+**First correlation attempt was NEGATIVE (~0 on all axes) and WRONG -- root cause was
+a time-sync bug, not a flaw in the flow approach.** Compared `Img_Data`'s per-frame
+raw flow proxy against `Control_Data.npy`'s `h(t)` (exact GT under
+`PLASMC_GT_FEEDBACK=1`) using a fractional-elapsed-time approximation, because
+`Img_Data['Time']` and `Control_Data['t']` looked like mismatched clocks (different
+apparent "durations" measured earlier in this same investigation thread, which led
+to an unnecessary two-anchor arm-to-end RESCALE technique built for the touchdown-
+detect false-positive work -- THAT rescale was solving a problem that doesn't
+actually exist, see correction below).
+
+**Root cause, found by reading `notebooks/plotter_output_calibration.ipynb` (per
+user instruction to check the established methodology before re-guessing):**
+`Ground_Truth.npy` has a `Start Time` field; the validated alignment is
+`img_t_rel = Img_Data['Time'] - gt['Start Time']`. `Control_Data['t']` is ALSO on
+this same absolute clock -- confirmed empirically, `Control_Data['t'][0] ==
+gt['Start Time']` EXACTLY. **There is no clock-RATE mismatch between these logs at
+all** -- the large apparent "duration" differences found earlier in this session
+(e.g. Img_Data spanning 31.19s vs Control_Data's 13.64s for the same run) are
+entirely explained by `Img_Data` logging starting ~17.7s earlier (thread creation,
+includes pre-engage frames) while `Control_Data`/`Ground_Truth` only start at
+`CONTROLLER_READY` -- their END points line up to within 0.12s once both are
+offset by `gt['Start Time']`. **The earlier two-anchor rescale approach (used
+ad-hoc in conversation for the touchdown-detect investigation, never written to a
+persistent memory file) was solving a problem that doesn't exist -- a plain
+subtraction is sufficient and correct.** [[feedback_imgdata_gt_clock_skew]] (shared
+memory, 2026-06-04) independently found the same kind of offset earlier and advised
+avoiding Img_Data-vs-GT comparison entirely (measuring "Δorigin≈29.8s" without
+naming/using `Start Time`) -- that avoidance advice is now SUPERSEDED for any
+recording that has `Ground_Truth['Start Time']`: a direct, validated correction
+exists and should be used instead of avoiding the comparison. See that file's own
+2026-08-27 update.
+
+**Second alignment gotcha, found empirically (assert failure caught it immediately):**
+the IMG_RECORD video does NOT contain every `Img_Data.npy` frame -- video recording
+only starts at `CONTROLLER_READY` (same gate as the pre-engage-frames issue above),
+so **video frame index `i` == `Img_Data` index `(n_pre_engage + i)`**, where
+`n_pre_engage = (img_t_rel < 0).sum()`. Confirmed exactly: 995 total Img_Data
+entries, 743 with `t<0`, 252 with `t>=0` == 252 video frames, exact match.
+
+**With BOTH fixes applied, real correlation appears --** first with a simplified
+raw-pixel radial/lateral proxy (no de-rotation): old-texture corr(raw_radial, GT
+h_z)=-0.630, corr(raw_lat_x, GT h_x)=+0.659, corr(raw_lat_y, GT h_y)=-0.632 (hires
+texture: same sign pattern, weaker, 0.24-0.30 -- consistent with the point-
+availability gap above, not a different relationship). The alternating-sign pattern
+was suspected to be a raw-pixel-vs-V-frame axis-convention artifact, not a real
+physical relationship.
+
+**Confirmed by re-running through the REAL `_solve_jacobian`** (proper V-frame
+reprojection via `_getVirtualPts` + interaction-matrix lstsq, i.e. the actual
+production de-rotation, not a proxy) on the SAME background-derived point
+correspondences: old-texture corr(h_x)=+0.664, corr(h_y)=+0.685, corr(h_z)=+0.764 --
+all positive now (confirms the sign flip WAS an axis-convention artifact of the raw
+proxy), strong, clean correlation with GT on all 3 axes. **Hires texture stayed
+weak/negative (-0.20, -0.20, +0.12) even with proper de-rotation** -- this pins the
+bottleneck precisely on point-tracking quality (garbage-in-garbage-out: de-rotation
+can't recover signal from unreliable input correspondences), not on any remaining
+math/rotation-handling defect in the approach.
+
+**Bottom line: the extent-ROI + line-exclusion + multiscale approach, fed through
+the real production interaction-matrix solve, produces a genuinely valid, GT-
+correlated `h` signal -- PROVIDED the surface texture's grain is coarse enough to
+survive the camera's delivered resolution.** That's a real, generalizable
+capability with a precisely quantified limiting factor (grain-vs-resolution
+resolvability), not an open question. Not yet wired into the LIVE `h` solve as of
+this memory -- check current controller.py/cross_marker_perception.py state before
+assuming it still isn't (this was the explicit next step requested).
 
 ## Uncommitted at various points, check current state before assuming
 
-`cross_marker_detector.py`'s `plate_mask_from_detection()`/`WHOLE_PLATE_FLOW`/
-`WHOLE_PLATE_SCALE` are dead code (unused by the live solve) if the extent-based
-rewrite replaces rather than builds on them -- check whether they were removed or
+`cross_marker_detector.py`'s `extent_mask_from_detection()`, `background_mask_from_detection()`,
+`multiscale_good_features()` (all validated per above) -- check whether they were
 superseded before reusing.
