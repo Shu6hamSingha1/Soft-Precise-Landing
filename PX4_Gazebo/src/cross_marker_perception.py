@@ -707,38 +707,42 @@ class CrossMarkerPerception:
         # convention, unchanged).
         # 2026-08-28 RECAL for 320x240/fx=135 + the CROSS_BG_FLOW=1 sampling path.
         # NEAR-DIAGONAL, derived from GT-feedback LANDING recordings
-        # (tools/derive_cross_marker_landing_cal.py, 3 runs: IC2/IC3/IC4), NOT the
-        # phased-excitation 6x6 (derive_cross_marker_cal.py). Reason: at 320x240
-        # PX4's horizontal position loop tracks only ~15% of the phased x/y
-        # sinusoid -> the drone moves ~6cm -> achieved GT h_x/h_y std ~0.007 (at
-        # the raw-noise floor) -> the joint 6x6 lstsq fits Hx/Hy from noise and
+        # (tools/derive_cross_marker_landing_cal.py, 5 runs: IC2 x3 + IC3 x2), NOT
+        # the phased-excitation 6x6 (derive_cross_marker_cal.py). Reason: at
+        # 320x240 PX4's horizontal position loop tracks only ~15% of the phased
+        # x/y sinusoid -> the drone moves ~6cm -> achieved GT h_x/h_y std ~0.007
+        # (at the raw-noise floor) -> the joint 6x6 lstsq fits Hx/Hy from noise and
         # blows up EVERY row (all per-axis R^2 came out NEGATIVE, verified).
         # `compute_gt_signals` was checked and is correct; the UAV-pose log
         # directly confirms the 6cm travel. An off-center GT-FB landing instead
         # produces real sustained lateral flow (GT h_x/h_y std ~0.05-0.08).
         # Full trace: project_20260827_framerate_and_h_texture_investigation memory
         # (2026-08-28 recal section).
-        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px):
-        #     s_hx=0.730 (r 0.977)  s_hy=0.693 (r 0.900)  s_hz=0.955 (r 0.990)
-        #     s_wz=0.592 (GT w_z std 0.092)   s_sx=0.957  s_sy=0.943
-        #   leave-one-out R^2:  h_z +0.97..+0.99 on all 3 (SOLID).
-        #     h_x +0.79/+0.90/+0.24 ; h_y +0.91/+0.69/-0.56  -- the IC4 hold-out
-        #     is weak (its raw h_y is ~1.6x inflated vs the other two; IC4 is the
-        #     highest-start / weakest-lateral-signal rep and may be concurrent-
-        #     SITL contaminated). ⚠ Hx/Hy rows are PROVISIONAL: re-derive with
-        #     2-3 more clean off-center landings when SITL frees up, then validate
-        #     on a held-out landing. Hz row + _sensor_cal_s are trustworthy.
+        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px), n=5:
+        #     s_hx=0.796 (r 0.989)  s_hy=0.782 (r 0.976)  s_hz=0.950 (r 0.995)
+        #     s_wz=0.590 (GT w_z std 0.097)   s_sx=0.959  s_sy=0.947
+        #   leave-one-out R^2 (all 5 runs): h_x +0.83..+0.94  h_y +0.81..+0.94
+        #     h_z +0.97..+0.99  -- clean, no anomalies. This is a TIGHT, validated
+        #     fit for the ~5-6 m descent regime.
+        # ⚠ KNOWN GAP -- high altitude: IC4 (ENU 2,2,7, ~7 m start) was recorded
+        #   TWICE and BOTH reproduce a weak hold-out (h_x +0.31/+0.48, h_y
+        #   -0.25/+0.21) + degraded detection (~84% ok, hough_lt2_lines -- stroke
+        #   width thins at 7 m). The h-block scale is NOT constant with altitude;
+        #   a height-scheduled cal is a separate effort. IC4 recordings moved to
+        #   calibration_data/landing_cal_cross_highalt_excluded/ (out of the derive
+        #   scan). This cal is trustworthy for a nominal ~5 m descent; expect
+        #   degraded h_x/h_y accuracy above ~6 m.
         # Wx/Wy rows forced 0 (level-target convention, unchanged). No cross-
         # coupling terms -- the landing fit showed the h-block is cleanly diagonal
         # at this resolution (unlike the old 6x6 which had Hz<-Hx -0.22, Wz<-Hy +1.96).
         self._sensor_cal_hw = np.array([
-            [+0.7298, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.6927, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.9553, +0.0000, +0.0000, +0.0000],
+            [+0.7959, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.7819, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.9503, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5924]])
-        self._sensor_cal_s = np.diag([0.9569, 0.9428, 1.0, 1.0])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5904]])
+        self._sensor_cal_s = np.diag([0.9594, 0.9470, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
