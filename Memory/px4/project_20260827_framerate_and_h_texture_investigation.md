@@ -705,3 +705,18 @@ actually rises in the terminal phase (early terminal-resolve diag showed
 median 0.79 / p90 0.96 but that was the no-angvel worse solve); tune
 `CROSS_HTC_RESID_LO/HI` if the live gyro-derotated solve's terminal rel_resid
 sits lower.
+
+### LIVE-VALIDATED (fresh GT-FB IC2 rep, new code) -- gate works, no retune needed
+
+Landing SOFT+PRECISE (xy 0.018), 44.8 Hz, detect-ok 100%, no exceptions.
+  rel_resid  SMALL(ext<200): med 0.19 p90 0.38   BIG(ext>=200): med 0.95 p90 0.99 max 0.997
+  blend frac SMALL 0.02 (6% of frames)            BIG 0.80 (90% of frames)  max 1.00
+  n_pts ~160 in BOTH regimes -- confirms point QUALITY (grazing edge slivers), not
+    starvation, is the terminal failure; rel_resid is the load-bearing gate term.
+  h_V vs GT corr: SMALL h_x/h_y 0.99/0.99 (untouched) | BIG h_x/h_y 0.60/0.81
+    (pre-fix: ~0 / negative), std tamed 0.8/1.3 -> 0.056/0.055. h_z BIG 0.55 (not derated).
+The CROSS_HTC_RESID_LO/HI = 0.50/0.90 window sits cleanly between the 0.19 healthy
+and 0.95 terminal medians -- NO retune. Live terminal rel_resid is HIGHER than the
+earlier no-angvel offline estimate (0.79/0.96), so the gate is if anything more
+decisive on the real gyro-derotated solve. **Terminal h_x/h_y fix: DONE + shipped
+default-on.**
