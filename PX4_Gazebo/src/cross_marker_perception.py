@@ -707,8 +707,9 @@ class CrossMarkerPerception:
         # convention, unchanged).
         # 2026-08-28 RECAL for 320x240/fx=135 + the CROSS_BG_FLOW=1 sampling path.
         # NEAR-DIAGONAL, derived from GT-feedback LANDING recordings
-        # (tools/derive_cross_marker_landing_cal.py, 5 runs: IC2 x3 + IC3 x2), NOT
-        # the phased-excitation 6x6 (derive_cross_marker_cal.py). Reason: at
+        # (tools/derive_cross_marker_landing_cal.py, 6 runs: IC2 x3, IC3 x2, +1
+        # held-out (2,-2,5) folded in after it validated), NOT the phased-
+        # excitation 6x6 (derive_cross_marker_cal.py). Reason: at
         # 320x240 PX4's horizontal position loop tracks only ~15% of the phased
         # x/y sinusoid -> the drone moves ~6cm -> achieved GT h_x/h_y std ~0.007
         # (at the raw-noise floor) -> the joint 6x6 lstsq fits Hx/Hy from noise and
@@ -718,12 +719,15 @@ class CrossMarkerPerception:
         # produces real sustained lateral flow (GT h_x/h_y std ~0.05-0.08).
         # Full trace: project_20260827_framerate_and_h_texture_investigation memory
         # (2026-08-28 recal section).
-        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px), n=5:
-        #     s_hx=0.796 (r 0.989)  s_hy=0.782 (r 0.976)  s_hz=0.950 (r 0.995)
-        #     s_wz=0.590 (GT w_z std 0.097)   s_sx=0.959  s_sy=0.947
-        #   leave-one-out R^2 (all 5 runs): h_x +0.83..+0.94  h_y +0.81..+0.94
-        #     h_z +0.97..+0.99  -- clean, no anomalies. This is a TIGHT, validated
-        #     fit for the ~5-6 m descent regime.
+        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px), n=6:
+        #     s_hx=0.787 (r 0.988)  s_hy=0.794 (r 0.982)  s_hz=0.951 (r 0.994)
+        #     s_wz=0.587 (GT w_z std 0.097)   s_sx=0.957  s_sy=0.950
+        #   leave-one-out R^2: h_z +0.95..+0.99 all 6 (SOLID).  h_x/h_y +0.85..+0.94
+        #     on the 5 IC2/IC3-quadrant runs; +0.77/+0.77 on the (2,-2,5) held-out
+        #     rep (different quadrant, 81% detect-ok -- r there is still +0.965/
+        #     +0.971, so the relationship generalizes; the ~0.15 R^2 gap is a mild
+        #     per-quadrant scale residual, calibrated h_x/h_y ~1.15-1.35x hot on
+        #     that rep). TIGHT validated fit for the ~5-6 m descent regime.
         # ⚠ KNOWN GAP -- high altitude: IC4 (ENU 2,2,7, ~7 m start) was recorded
         #   TWICE and BOTH reproduce a weak hold-out (h_x +0.31/+0.48, h_y
         #   -0.25/+0.21) + degraded detection (~84% ok, hough_lt2_lines -- stroke
@@ -736,13 +740,13 @@ class CrossMarkerPerception:
         # coupling terms -- the landing fit showed the h-block is cleanly diagonal
         # at this resolution (unlike the old 6x6 which had Hz<-Hx -0.22, Wz<-Hy +1.96).
         self._sensor_cal_hw = np.array([
-            [+0.7959, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.7819, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.9503, +0.0000, +0.0000, +0.0000],
+            [+0.7868, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.7937, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.9513, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5904]])
-        self._sensor_cal_s = np.diag([0.9594, 0.9470, 1.0, 1.0])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5869]])
+        self._sensor_cal_s = np.diag([0.9574, 0.9503, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
