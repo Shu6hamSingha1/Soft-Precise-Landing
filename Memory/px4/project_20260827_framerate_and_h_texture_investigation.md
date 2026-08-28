@@ -779,3 +779,17 @@ already flagged h_x/h_y ~1.15-1.35x hot). Pre-existing, NOT session-caused. Need
 (a) cal tightened further, (b) off-center kappa control wall. GT-FB stays the dev
 track (project_20260824_crossmarker_offcenter_convergence_wall,
 feedback_aruco_perception_scope).
+
+### 320x240 oblique-low detector retune VALIDATED (commit 6b69c7b)
+
+GT-FB IC5 (ENU 2,2,3) + IMG_RECORD: 365 frames, 131 at >=25deg off-nadir (max 43,
+alt 2.8-3.3m -- the regime that gave 0% detect-ok post-engage under real perception).
+Offline A/B old vs new detector params on those frames:
+  OLD (thr 25 / minLen 15 / gap 10 / no dilate / aspect 2.5):  oblique 65%  near-nadir 100%  ALL 87%
+  NEW (thr 16 / minLen 10 / gap 16 / dilate 1 / aspect 3.2):   oblique 79%  near-nadir 100%  ALL 92%
+=> +14pt on the oblique regime, ZERO regression near-nadir. Retune stands (default).
+Not a full fix (79% not 100%) but a real recovery from the 65%/0% collapse.
+NOTE: earlier watcher-run attempts to get this rep failed 6x on SITL-infra flakes
+(gz-world timeout / px4 killed / hung) during a machine-busy window -- a plain
+single run after a thorough process cleanup completed fine. SITL was transiently
+unstable, not the retune.
