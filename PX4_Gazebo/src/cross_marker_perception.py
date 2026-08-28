@@ -78,7 +78,7 @@ Z_V_MIN_FLOW = float(os.environ.get("CROSS_Z_V_MIN_FLOW", "0.0"))
 # (unbounded few-point-solve noise, worse than the bounded edge-point bias it was
 # meant to remove). The real fix for the terminal regime is extent-gated
 # CONFIDENCE (down-weight h_x/h_y in the KF when there's no valid background to
-# sample), not sampling harder -- see CROSS_HXY_EXTENT_DERATE. Default here is
+# sample), not sampling harder -- see CROSS_HXY_TERMINAL_CENTROID. Default here is
 # inert (99 -> never triggers); kept as a knob only for experiments.
 FLOW_ANG_MAX = float(os.environ.get("CROSS_FLOW_ANG_MAX", "99"))
 
@@ -871,32 +871,50 @@ class CrossMarkerPerception:
         self._hw_kf_coast_streak = 0
         self._hw_kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
         self._hw_kf_frozen = None
-        # EXTENT-GATED h_x/h_y CONFIDENCE DERATE (2026-08-28, default OFF pending
-        # the feedback_ic_validation n>=5 gate -- this is a CONTROL-path change).
-        # Root-cause (project_20260827 memory 2026-08-28 h-correlation dig): once
-        # the marker overflows the FoV near touchdown, the background-flow ROI is
-        # reduced to FoV-edge slivers -> h_x/h_y noise triples (h_x std 0.019
-        # early -> 0.320 terminal on a centered rep; corr(|h_x|,1/N_corners)=+0.72;
-        # NOT derotation error). h_z (loom) is edge-robust and survives. So instead
-        # of sampling harder (the angular-window filter tried that and made it 10x
-        # WORSE -- collinear few-point solve), just inflate the h_x/h_y KF
-        # measurement noise as MARKER_EXTENT_PX grows, so the controller
-        # down-weights them near touchdown. Safe there: the drone is centered by
-        # then and h_d->0. h_z / w channels untouched. INERT under GT-FB (h is
-        # substituted). Ramp R x1 -> xMAX linearly over [START, FULL] px.
-        self._hxy_derate_on = os.environ.get("CROSS_HXY_EXTENT_DERATE", "0") == "1"
-        self._hxy_derate_start = float(os.environ.get("CROSS_HXY_DERATE_EXTENT_START", "200"))
-        self._hxy_derate_full = float(os.environ.get("CROSS_HXY_DERATE_EXTENT_FULL", "300"))
-        self._hxy_derate_max = float(os.environ.get("CROSS_HXY_DERATE_MAX", "300.0"))
-        # R inflation alone can't stop the KF's rate state coasting a std~1 terminal
-        # measurement (constant-velocity model). Above this derate fraction, also
-        # bleed the h_x/h_y RATE state toward 0 (factor per step) and hard-clamp the
-        # h_x/h_y VALUE output -- the drone is centered by then (h_d->0), so holding
-        # h_x/h_y near their healthy magnitude is exactly right.
-        self._hxy_derate_rate_frac = float(os.environ.get("CROSS_HXY_DERATE_RATE_FRAC", "0.5"))
-        self._hxy_derate_rate_bleed = float(os.environ.get("CROSS_HXY_DERATE_RATE_BLEED", "0.5"))
-        self._hxy_derate_clamp = float(os.environ.get("CROSS_HXY_DERATE_CLAMP", "0.20"))
-        self._hxy_derate_log = []   # per-frame applied R multiplier on h_x/h_y (1.0 = no derate)
+        # TERMINAL h_x/h_y via CENTROID-RATE (2026-08-28, DEFAULT ON -- perception
+        # change: changes how h is COMPUTED, not the control law). Root-cause
+        # (project_20260827 memory 2026-08-28 h-correlation dig): near touchdown
+        # the background-flow ROI degrades to FoV-edge slivers / too few corners
+        # -> h_x/h_y noise triples (terminal std ~1.0-1.3 vs ~0.07 healthy; NOT
+        # derotation error). h_z (moment-loom) is edge-robust and survives.
+        # Sampling harder made it WORSE (reverted angular window). FIX: when the
+        # background-flow solve is UNHEALTHY, blend h_x/h_y toward a KF-smoothed,
+        # de-loomed CENTROID-RATE:  h_xy_c = d(s_V)/dt + h_z_est * s_V
+        # (all normalized-image quantities -- NO depth/metric; see _stepCentroidKf).
+        # The cross-line intersection stays large/sharp/in-frame (bridged through
+        # detection flicker) -- the most reliable feature exactly when background
+        # texture is gone. Physically IS h_x/h_y, and h_z*s makes it correct
+        # off-center -> MOTION-AGNOSTIC (works for a moving target).
+        #
+        # GATE = background-flow HEALTH, not MARKER_EXTENT_PX (per user, 2026-08-28
+        # -- keeps the switch a pure signal-quality decision, no proximity proxy):
+        #   frac = max( ramp(rel_resid, LO..HI),  ramp(NPTS_HI-n_pts, ..) )
+        # i.e. blend to centroid when the tracked points disagree on a global flow
+        # (rel_resid high) OR the pool is starved (n_pts low). Offline A/B on 5
+        # landing reps (extent-gated variant): terminal corr ~0 -> +0.55..+0.96 on
+        # 4/5; the 5th (a divergent rep) +0.64/+0.75 with the clamp backstop.
+        # Mild R bump + value clamp on top. INERT under GT-FB. h_z / w untouched.
+        self._htc_on = os.environ.get("CROSS_HXY_TERMINAL_CENTROID", "1") == "1"
+        self._htc_resid_lo = float(os.environ.get("CROSS_HTC_RESID_LO", "0.50"))
+        self._htc_resid_hi = float(os.environ.get("CROSS_HTC_RESID_HI", "0.90"))
+        self._htc_npts_hi = float(os.environ.get("CROSS_HTC_NPTS_HI", "16"))
+        self._htc_npts_lo = float(os.environ.get("CROSS_HTC_NPTS_LO", "6"))
+        self._htc_r_max = float(os.environ.get("CROSS_HTC_R_MAX", "8.0"))
+        self._htc_clamp = float(os.environ.get("CROSS_HTC_CLAMP", "0.20"))
+        self._htc_clamp_frac = float(os.environ.get("CROSS_HTC_CLAMP_FRAC", "0.5"))
+        self._bgflow_health = (0.0, 999)   # (rel_resid, n_pts) of the last flow solve this frame
+        self._hxy_derate_log = []          # per-frame blend fraction to centroid-rate (0 = pure bg-flow)
+        self._bgflow_health_log = []       # per-frame (rel_resid, n_pts) -- for gate tuning/validation
+        # 2-state (value, rate) KF on the V-frame centroid s_V -- fed the current
+        # _center_px (fresh OR bridged) every frame by _stepCentroidKf. Its rate
+        # state, de-loomed, is the terminal h_x/h_y source above. Tuned offline
+        # (q=2.0 / r=0.02 gave the best terminal corr).
+        self._scen_kf_q = float(os.environ.get("CROSS_SCEN_KF_Q", "2.0"))
+        self._scen_kf_r = float(os.environ.get("CROSS_SCEN_KF_R", "0.02"))
+        self._scen_kf_x = np.zeros((2, 2))
+        self._scen_kf_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
+        self._scen_kf_prev_t = None
+        self._scen_kf_init = False
 
     def _kf_update_hw(self, z, t):
         """hw coast+freeze KF update -- ported from img_data.py's `_kf_update`
@@ -908,31 +926,43 @@ class CrossMarkerPerception:
         if z is not None:
             self._hw_kf_coast_streak = 0
             self._hw_kf_frozen = None
-            # extent-gated h_x/h_y R inflation (see __init__'s _hxy_derate_* comment).
+            # TERMINAL h_x/h_y via centroid-rate (see __init__'s _scen_kf_* comment).
+            # As MARKER_EXTENT_PX grows, blend z[0:2] toward the KF-smoothed,
+            # de-loomed centroid rate; small R bump + value clamp on top.
             # _kf_step's `S = P_pred[:,0,0] + r` broadcasts a (6,) r fine.
             r = self._hw_kf_r
-            mult = 1.0
             _frac = 0.0
-            if self._hxy_derate_on and self._last_bbox is not None:
-                ext = float(max(self._last_bbox[2], self._last_bbox[3]))
-                _frac = float(np.clip((ext - self._hxy_derate_start)
-                                      / max(self._hxy_derate_full - self._hxy_derate_start, 1e-6), 0.0, 1.0))
-                mult = 1.0 + _frac * (self._hxy_derate_max - 1.0)
-                if mult > 1.0:
+            if self._htc_on and self._scen_kf_init:
+                rr, npts = self._bgflow_health
+                f_rr = np.clip((rr - self._htc_resid_lo)
+                               / max(self._htc_resid_hi - self._htc_resid_lo, 1e-6), 0.0, 1.0)
+                f_np = np.clip((self._htc_npts_hi - npts)
+                               / max(self._htc_npts_hi - self._htc_npts_lo, 1e-6), 0.0, 1.0)
+                _frac = float(max(f_rr, f_np))
+                if _frac > 0.0:
+                    hz_est = self._hw_kf_x[2, 0] if self._hw_kf_initialized else 0.0
+                    hxy_c0 = self._scen_kf_x[0, 1] + hz_est * self._scen_kf_x[0, 0]
+                    hxy_c1 = self._scen_kf_x[1, 1] + hz_est * self._scen_kf_x[1, 0]
+                    z = np.asarray(z, dtype=float).copy()
+                    z[0] = (1.0 - _frac) * z[0] + _frac * hxy_c0
+                    z[1] = (1.0 - _frac) * z[1] + _frac * hxy_c1
+                    mult = 1.0 + _frac * (self._htc_r_max - 1.0)
                     r = np.full(6, self._hw_kf_r)
                     r[0] *= mult; r[1] *= mult
-            self._hxy_derate_log.append(float(mult))
+            self._hxy_derate_log.append(float(_frac))
+            self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, z, t,
                 self._hw_kf_q, r, dt_unc_max=self._hw_kf_dt_unc_max)
-            if _frac >= self._hxy_derate_rate_frac and self._hw_kf_initialized:
-                # bleed the h_x/h_y rate state toward 0 so R-inflation isn't
-                # undone by constant-velocity coasting; hard-clamp the value.
-                self._hw_kf_x[0:2, 1] *= self._hxy_derate_rate_bleed
+            if _frac >= self._htc_clamp_frac and self._hw_kf_initialized:
+                # backstop for the jumpy-centroid case (e.g. a divergent rep):
+                # clamp the h_x/h_y VALUE. Rate left to the hw-KF (fed a real
+                # estimate now, not suppressed).
                 self._hw_kf_x[0:2, 0] = np.clip(self._hw_kf_x[0:2, 0],
-                                                -self._hxy_derate_clamp, self._hxy_derate_clamp)
+                                                -self._htc_clamp, self._htc_clamp)
         else:
-            self._hxy_derate_log.append(1.0)
+            self._hxy_derate_log.append(0.0)
+            self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_coast_streak += 1
             if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
                 if self._hw_kf_frozen is None:
@@ -946,6 +976,24 @@ class CrossMarkerPerception:
         # zeros, same as the pre-fix behavior -- there is nothing to coast
         # from before the first real observation, this is not a regression.
         self._hw = self._hw_kf_x[:, 0].copy() if self._hw_kf_initialized else np.zeros(6)
+
+    def _stepCentroidKf(self, t, quat):
+        """Step the 2-state (value, rate) KF on the V-frame centroid s_V, fed the
+        current _center_px (fresh OR bridged). Its rate state is the terminal
+        h_x/h_y source (see __init__'s _scen_kf_* comment). ALL quantities are
+        normalized image coords -- no depth/metric. Call once per frame BEFORE
+        _kf_update_hw. log_zv=False so this extra _getVirtualPts call doesn't skew
+        _z_v_log's documented 'N per flow solve' cadence."""
+        z = None
+        if self._center_px is not None and quat is not None:
+            try:
+                z = self._getVirtualPts(np.asarray(self._center_px, float)[None, :],
+                                        quat, log_zv=False)[0]
+            except Exception:
+                z = None
+        self._scen_kf_x, self._scen_kf_P, self._scen_kf_prev_t, self._scen_kf_init = _kf_step(
+            self._scen_kf_x, self._scen_kf_P, self._scen_kf_prev_t, self._scen_kf_init,
+            z, t, self._scen_kf_q, self._scen_kf_r)
 
     @staticmethod
     def _dilate_mask(mask):
@@ -1137,7 +1185,7 @@ class CrossMarkerPerception:
         merged = np.vstack([peripheral_pts, full_pts[keep]])
         return merged[:GFT_MAX_CORNERS]
 
-    def _getVirtualPts(self, pts, quat, return_zv=False):
+    def _getVirtualPts(self, pts, quat, return_zv=False, log_zv=True):
         """Reproject camera-frame pixels onto the virtual image plane V: a
         LEVEL frame (gravity-aligned z) that preserves the UAV's yaw heading.
         Direct port of img_data.py's _getVirtualPts (same V-frame convention
@@ -1206,12 +1254,13 @@ class CrossMarkerPerception:
         # noise/garbage without tripping any of the existing n_kept/cond/rel_resid
         # diagnostics (those check the LSTSQ fit, not the per-point projection that
         # feeds it).
-        self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
+        if log_zv:
+            self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
         # TEMP DIAG (2026-08-03, s_e_n/h_y single-frame-spike investigation): confirm/deny
         # the near-zero-z_v perspective-divide-blowup mechanism the comment above already
         # theorizes. Fires on ANY ray this close to grazing, npts distinguishes the
         # centroid call (npts=1, feeds s) from the flow-point call (npts=N, feeds h).
-        if len(z_v) and np.min(z_v) < 0.5:
+        if log_zv and len(z_v) and np.min(z_v) < 0.5:
             # tilt-from-vertical computed from this SAME quat/DCM -- self-contained, no
             # cross-clock lookup needed (2026-08-03, "is 60deg cap enough?" follow-up).
             _tilt_deg = float(np.degrees(np.arccos(np.clip(R[2, 2], -1.0, 1.0))))
@@ -1476,6 +1525,7 @@ class CrossMarkerPerception:
         self._prev_flow_cell_id = None
         sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
             prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr)
+        self._bgflow_health = (float(rel_resid), int(len(prev_pts)))
         return sol, True
 
     def _compute_hw_bgflow_fallback(self, gray_prev, gray_curr, det, dt,
@@ -1516,6 +1566,7 @@ class CrossMarkerPerception:
                 prev, curr, dt, prev_quat=quat_prev, curr_quat=quat_curr)
             if not np.isfinite(rel_resid) or rel_resid > _BGF_RESID_GATE:
                 return np.zeros(6), False
+            self._bgflow_health = (float(rel_resid), int(len(prev)))
             return sol, True
         except Exception:
             return np.zeros(6), False
@@ -1659,6 +1710,7 @@ class CrossMarkerPerception:
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         self._point_diag_log.append((self._last_t,) + self._point_diag)
+        self._bgflow_health = (float(rel_resid), int(n_kept))
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
     def _snapshotBridgeAnchor(self):
@@ -1732,6 +1784,10 @@ class CrossMarkerPerception:
         # _flow_diag_log entries etc.)
         self._last_t = t
         dt = 1.0 / fps if (isinstance(fps, (int, float)) and fps > 1) else np.nan
+        # reset bg-flow health -- a solve method overwrites it if it runs this
+        # frame; if none does, (inf, 0) => _kf_update_hw's centroid blend treats
+        # it as fully unhealthy (correct: there was no usable bg-flow this frame).
+        self._bgflow_health = (float('inf'), 0)
 
         # EXTENT-ADAPTIVE ROI (2026-08-04): decided INSIDE detect() itself now, from the
         # blobby-stage mask's own largest-component extent (see cross_marker_detector's
@@ -1775,6 +1831,7 @@ class CrossMarkerPerception:
             # self._ok stays False). See module-level CROSS_BG_FLOW_HYBRID comment.
             _hw_fb, _hw_fb_ok = self._compute_hw_bgflow_fallback(
                 gray_prev, gray_curr, det, dt, quat_prev=quat_prev, quat_curr=quat_curr)
+            self._stepCentroidKf(t, quat_curr)   # centroid KF: feed bridged center too
             self._kf_update_hw(_hw_fb if _hw_fb_ok else None, t)
             self._diag_lost_streak += 1
             # dump the frame at the START of a loss streak (streak==1) and every 30
@@ -1826,6 +1883,7 @@ class CrossMarkerPerception:
             if _bridged is not None:
                 self._center_px, self._last_bbox = _bridged
                 self._center_fresh = True
+            self._stepCentroidKf(t, quat_curr)
             self._kf_update_hw(None, t)
             self._diag_lost_streak += 1
             return self.get_output()
@@ -1887,6 +1945,7 @@ class CrossMarkerPerception:
             mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
             hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                                           angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+        self._stepCentroidKf(t, quat_curr)
         self._kf_update_hw(hw if hw_ok else None, t)
         # CENTER-BRIDGE anchor (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
         # above just updated _prev_flow_pts/_prev_flow_cell_id for this CONFIRMED-detection
@@ -2396,7 +2455,8 @@ class CrossMarkerNode(Thread):
             # rank-deficient full-6 solve (h_z corr understated ~0.2-0.3 without it
             # -- see project_20260827 memory 2026-08-28 h-correlation dig).
             "IMU AngVel": self._perception._imu_angvel_log,
-            "HxHy Derate Mult": self._perception._hxy_derate_log,  # 2026-08-28: extent-gated h_x/h_y R multiplier (1.0 = off)
+            "HxHy Centroid Blend": self._perception._hxy_derate_log,  # 2026-08-28: blend fraction bg-flow h_x/h_y -> centroid-rate (0 = pure bg-flow)
+            "BgFlow Health": self._perception._bgflow_health_log,  # 2026-08-28: (rel_resid, n_pts) of the flow solve per frame
             "FPS": self._perception._fps_log,
             "Stamp": self._perception._stamp_log,
             # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
