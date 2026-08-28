@@ -5,7 +5,77 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-29T02:30:00.000Z
+  modified: 2026-08-29T03:15:00.000Z
+---
+
+## ⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day): TWO DISTINCT TRIGGERS for the IC3/IC5
+## kappa-ratchet, not one -- the IC5_rep4-vs-rep5 ignition discriminator is a genuine,
+## sustained CBF Phase-2 detection outage, INDEPENDENT of DTHETA_HREF/h_ref entirely
+
+Traced why `IC5_rep4` (n=5 `CBF_HZ_AWARE_DRIFT=1` confirm sweep, `DTHETA_HREF` NOT set) hit a
+large outlier `dtheta_az` spike (11.15 rad, 6 events) yet landed clean, while `IC5_rep5`
+(same config) ignited the ratchet. **This sweep ran entirely without `PLASMC_DTHETA_HREF`
+set** -- so the `dtheta_href_g`/`h_ref` leak mechanism described above CANNOT be what
+happened in rep5; it's a structurally different trigger for the same downstream symptom
+(kappa ratcheting, `a_u` exploding).
+
+**The two reps track nearly identically through t~2.0s** (`s_e_n_y`/`kappa_y` both converging
+normally, near-identical trajectories) **then bifurcate**: rep4's `s_e_n_y` continues
+converging (0.60->0.38 by t=4.8); rep5's reverses and diverges (0.60->1.14 by t=4.8) -- well
+BEFORE any dtheta outlier appears in rep5 (its spike doesn't occur until t~5.75-5.81, long
+after the divergence is already well underway) and while `kappa_y` is still behaving almost
+identically in both reps at the bifurcation point.
+
+**Root cause of the bifurcation, confirmed via `theta_cone`/`theta_desired` (`Control_Data.npy`):**
+`cbf2_filter` fell into its Phase-2 fallback (`corners=None`, decode failed) in BOTH reps, but
+with very different character:
+
+| | rep4 (no ignition) | rep5 (ignites) |
+|---|---|---|
+| Total time in Phase-2 | 28.6% | **88.0%** |
+| Longest continuous Phase-2 run | 234 frames (~2s) | **554 frames (~5s, t=0.72-5.74)** |
+| `theta_cone` during that run | 0.766 (near-ceiling, healthy) | **0.0 for 99.3% of it** |
+
+Phase-2's `theta_tight` computation (`cbf_visibility.py:264-278`,
+`effective_margin = max(m2_p2 - |cr_ref+dft_ref|, 0)`) freezes `theta_cone` at EXACTLY 0 --
+i.e. ZERO lateral authority -- whenever the marker's LAST KNOWN position before a decode-fail
+streak was already near the FoV edge. This is the CBF working exactly as designed
+(conservative: "don't know where the marker is, last saw it somewhere risky, so no lateral
+authority until I know more") -- **not a CBF defect**. The actual problem is upstream:
+IC5_rep5 hit a genuine, ~5-second, near-total cross-marker DETECTION OUTAGE (88% Phase-2)
+starting almost immediately (t=0.72) from an already-marginal last-known position, freezing
+the vehicle level with zero lateral correction authority while badly off-center -- `s_e_n_y`
+has nowhere to go but grow for that whole window, and by the time detection recovers the
+error has grown large enough that kappa's growth term dominates and the ratchet ignites once
+authority returns. The later `dtheta_az` outlier spike (t~5.75) is a LATE SYMPTOM of the
+divergence already being severe, not its cause -- confirms/extends the earlier finding (same
+day, IC5_rep2 post-fix analysis) that dtheta outliers are downstream symptoms, generalizing
+it to a SECOND, DTHETA_HREF-independent root cause.
+
+**This connects back to the detection-reliability thread** (`lt2_angle_clusters`,
+oblique-viewing-angle fragility at IC5's steep initial geometry -- see the FALSIFIED/CONFIRMED
+sections in this same file's history) rather than being a CBF-design or `dtheta`/`h_ref`
+issue. The joint `a_z`-in-QP redesign scoped above would NOT have prevented this specific
+rep's failure -- it only addresses the `dtheta`-driven trigger, not this
+detection-outage-driven one.
+
+**Candidate mitigation, NOT YET IMPLEMENTED**: Phase-2's `theta_tight` currently allows a hard
+freeze to EXACTLY 0 with no floor. A modest minimum-authority floor (e.g. never let
+`theta_cone` drop below some small epsilon even on a fully-exhausted margin) would trade a
+little visibility conservatism for avoiding the total lateral deadlock that lets `s_e_n` grow
+unbounded during a long outage -- worth prototyping and A/B-ing similarly to the drift-model
+fix, but is a genuinely different lever from anything scoped so far (Phase-2 fallback policy,
+not the Phase-1 QP's drift model or a joint `a_z` constraint).
+
+**Updated overall picture**: the IC3/IC5 kappa-ratchet has (at least) TWO independent
+triggers -- (1) `DTHETA_HREF`'s `dtheta_href_g`/`h_ref` leak (only when that flag is set,
+original finding above) and (2) a sustained CBF Phase-2 detection-outage freeze (occurs
+regardless of `DTHETA_HREF`, this finding). The `h_z`-aware drift fix helps with (2)
+indirectly (better drift-awareness reduces how often/how badly the marker is lost near the
+edge in the first place, explaining IC3's full recovery and IC5's rate improvement) but
+doesn't structurally prevent a genuine multi-second detection outage from still occasionally
+occurring and freezing authority. Both triggers need their own fix; neither is fully closed.
+
 ---
 
 ## ⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day) — `CBF_HZ_AWARE_DRIFT` PROTOTYPE: substantially reduces (not fully eliminates) the IC3/IC5 ratchet, WITHOUT `DTHETA_HREF`

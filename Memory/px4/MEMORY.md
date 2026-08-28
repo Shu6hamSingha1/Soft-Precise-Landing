@@ -68,6 +68,27 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
+> **⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still) — TWO INDEPENDENT triggers for the IC3/IC5
+> kappa-ratchet, not one.** Traced `IC5_rep4` (large `dtheta_az` outlier, 11.15 rad, but
+> landed clean) vs `IC5_rep5` (ignited) from the `CBF_HZ_AWARE_DRIFT` confirm sweep — run
+> WITHOUT `DTHETA_HREF`, so the `h_ref` leak mechanism below can't be the cause here. Real
+> discriminator: both reps track identically to t~2.0s then bifurcate — rep5's `s_e_n_y`
+> diverges well BEFORE its dtheta spike even appears (the spike is a late SYMPTOM, not the
+> trigger). Root cause: `cbf2_filter` fell into Phase-2 (decode failed) in both, but rep5 hit
+> a genuine ~5s (88% of flight!) near-total detection outage from an already-marginal
+> last-known position, freezing `theta_cone` at EXACTLY 0 for 99.3% of that window (Phase-2's
+> `effective_margin` clamped to 0 — the CBF working AS DESIGNED, conservative, not a defect).
+> Zero lateral authority for 5s while off-center → `s_e_n` grows unbounded → ratchets once
+> authority returns. Rep4's outage was short (2s) from a healthy last-known position
+> (`theta_cone` stayed near-ceiling, 0.766). **This connects to the detection-reliability
+> thread (`lt2_angle_clusters`/oblique fragility), NOT a CBF-design or `dtheta`/`h_ref`
+> issue — the joint `a_z`-QP redesign (below) would NOT have prevented this specific
+> failure.** Candidate mitigation, not yet built: a minimum-authority floor on `theta_cone`
+> during Phase-2 (never let it hit exactly 0), trading a little conservatism for avoiding a
+> total lateral deadlock — a different lever from the drift-model fix or the joint-`a_z`
+> work. Net: TWO real, independent, still-open triggers for the same ratchet symptom. Full
+> data: [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
 > **⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day) — `CBF_HZ_AWARE_DRIFT` prototype (default off):
 > fixing the CBF's own drift model (constant-velocity `dft=tau*d` → closing-rate-aware
 > exponential, driven by the scale-free `h_z` loom proxy, `cbf_visibility.py`) substantially
