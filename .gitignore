@@ -77,3 +77,4 @@ PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/*
 # Phase 1 sentinel files (transient; do not commit)
 MATLAB/Datasets/Phase1/done.flag
 .edit_backups/
+PX4_Gazebo/test_data/Obsolete_ArUco_Montages/*.mp4
