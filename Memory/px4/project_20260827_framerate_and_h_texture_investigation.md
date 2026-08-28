@@ -619,3 +619,25 @@ before trusting a real-perception IC sweep: (a) a fresh held-out validation land
 (the LOO already covers this statistically), (b) the separate off-center kappa
 control wall (project_20260824_crossmarker_offcenter_convergence_wall) still blocks
 off-center real-perception convergence regardless of cal quality.
+
+### HELD-OUT VALIDATION + 6-run re-fit -- commit d56c0be (FINAL for this pass)
+
+Fresh GT-FB landing at ENU (2,-2,5) -- a quadrant NOT in the IC2/IC3 training set.
+Applied the LIVE cal to its raw h_V vs GT:
+  h_x R^2 +0.768 (r +0.965)   h_y R^2 +0.767 (r +0.971)   h_z R^2 +0.945 (r +0.972)
+=> PASS. h_z scale exact. h_x/h_y: relationship generalizes (r ~0.97) but
+calibrated output is ~1.15-1.35x hot on that quadrant -- a mild per-quadrant scale
+residual (the R^2/r^2 gap), not a structural miss. Consistent with the codebase's
+known image-x-hotter-than-y asymmetry + training being all +y-quadrant.
+
+Folded that rep in -> **6-run LIVE cal (d56c0be)**:
+  _sensor_cal_hw = diag(0.7868, 0.7937, 0.9513, 0, 0, 0.5869)
+  _sensor_cal_s  = diag(0.9574, 0.9503, 1, 1)
+  Barely moved from the 5-run fit -- the fit is stable. LOO R^2: h_z +0.95..+0.99
+  all 6; h_x/h_y +0.85..+0.94 on the 5 IC2/IC3 runs, +0.77 held-out quadrant.
+
+**CAL DONE for the ~5 m descent regime.** Remaining known gaps (not cal-fixable
+here): (1) high-altitude >6 m -- see the IC4 note above; (2) the terminal-phase
+h_x/h_y collapse (extent-gated confidence derate, still not implemented);
+(3) off-center kappa control wall blocks real-perception off-center convergence
+regardless of cal.
