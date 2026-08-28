@@ -760,3 +760,22 @@ IC1-5 GT-FB sweep, hybrid ON + terminal-centroid ON + 320x240 cal + perf fix:
 than hybrid-OFF (84/86/89 vs 81/84/70). Small xy/rel_vel wiggles are GT-FB n=1
 noise; hybrid is INERT under GT-FB -> no-regression pass. Both perception flags
 (CROSS_BG_FLOW_HYBRID, CROSS_HXY_TERMINAL_CENTROID) now DEFAULT ON.
+
+### Real-perception verification of the hybrid fallback (commit 643b75c)
+
+Added `_bgflow_fallback_fires` counter (node diag line, printed when >0).
+
+GT-FB OFF, hybrid + terminal-centroid default ON:
+- **IC5 (ENU 2,2,3): 695 fallback fires** across 852 detection misses (detect-ok
+  only 30% -- a real-perception detection-collapse spiral), 51.9 Hz, no crash.
+  => `_compute_hw_bgflow_fallback` engages HEAVILY and cleanly on real miss frames.
+  Landing: TARGET_LOST xy 3.76m.
+- IC1 centered: 0 fires (100% detect-ok). Landing: FAIL xy 0.29m rel_vel 1.2m/s.
+
+**Hybrid fallback question ANSWERED: it exercises, doesn't crash, runs at rate.**
+Real-perception cross-marker landing quality still poor (IC5 detection collapse
+under closed loop; IC1 ~30cm miss from diagonal-cal accuracy -- the held-out check
+already flagged h_x/h_y ~1.15-1.35x hot). Pre-existing, NOT session-caused. Needs:
+(a) cal tightened further, (b) off-center kappa control wall. GT-FB stays the dev
+track (project_20260824_crossmarker_offcenter_convergence_wall,
+feedback_aruco_perception_scope).
