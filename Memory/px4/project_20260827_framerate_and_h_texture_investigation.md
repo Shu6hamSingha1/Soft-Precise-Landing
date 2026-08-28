@@ -737,3 +737,26 @@ coexist with NO GT-FB landing-quality regression across IC1-5. detect-ok 70-84% 
 IC3-5 is the pre-existing 320x240 stroke-width degradation, ridden through fine.
 (Terminal blend is INERT under GT-FB -> this is a no-regression gate, not a benefit
 test; benefit was shown live on the perception signal, prior rep.)
+
+### CROSS_BG_FLOW_HYBRID defaulted ON (commit aa8d0ee) + IC1-5 GT-FB re-sweep -- 5/5 SP
+
+Scale-free/depth-free re-audit of ALL session runtime changes: CLEAN. Every quantity
+is a normalized image coord (s_V), a rate of one (1/s: h_x/h_y/h_z, scen_rate), a
+dimensionless ratio (rel_resid, cal scale factors, blend frac), a pixel count/factor
+(n_pts, WORK_MAX_PX), or a body rate (rad/s). NO Z/altitude/metric/marker-real-size
+in the control path. MARKER_EXTENT_PX was removed from the terminal-h_x/h_y gate (now
+rel_resid + n_pts only) -- grep-confirmed zero refs in _kf_update_hw / _scen_kf / _htc_*.
+GT/depth confined to gt_feedback.py (scaffold) + cal-derivation tools (both allowed).
+
+IC1-5 GT-FB sweep, hybrid ON + terminal-centroid ON + 320x240 cal + perf fix:
+| IC | class | xy_err | rel_vel | rate | detect-ok |
+|----|-------|--------|---------|------|-----------|
+| IC1 | SP | 0.002 | 0.016 | 44.1 | 100% |
+| IC2 | SP | 0.017 | 0.038 | 43.5 | 100% |
+| IC3 | SP | 0.027 | 0.024 | 42.2 | 84% |
+| IC4 | SP | 0.020 | 0.031 | 44.1 | 86% |
+| IC5 | SP | 0.017 | 0.073 | 41.2 | 89% |
+5/5 SOFT+PRECISE, all >=41 Hz, no exceptions. detect-ok on IC3-5 slightly BETTER
+than hybrid-OFF (84/86/89 vs 81/84/70). Small xy/rel_vel wiggles are GT-FB n=1
+noise; hybrid is INERT under GT-FB -> no-regression pass. Both perception flags
+(CROSS_BG_FLOW_HYBRID, CROSS_HXY_TERMINAL_CENTROID) now DEFAULT ON.
