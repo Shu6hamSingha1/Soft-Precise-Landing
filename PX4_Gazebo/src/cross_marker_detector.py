@@ -53,6 +53,22 @@ DEFAULT_LOWER = np.array([0, 0, 0])
 _COLOR_GATE_V_MAX = int(os.environ.get("CROSS_COLOR_GATE_V_MAX", "100"))
 DEFAULT_UPPER = np.array([180, 255, _COLOR_GATE_V_MAX])  # low-V gate: marker is dark, background is light
 
+# 2026-08-28: 320x240 OBLIQUE-LOW retune. At a steep off-nadir view + low altitude
+# (IC5 real-perception: ~3m alt, ~2.8m lateral -> ~43deg oblique) one cross diagonal
+# is heavily foreshortened -- short, and its anti-aliased stroke is patchy -- so the
+# old HoughLinesP(threshold=25, minLineLength=15, maxLineGap=10) on Canny(binary mask)
+# frequently found <2 line segments or only segments along the ONE unforeshortened
+# arm (fail histogram on that rep: hough_lt2_lines 224, lt2_angle_clusters 313 --
+# both dominant). These loosen the line extraction; the downstream _robust_fit_line
+# / _filter_segments_by_corner_join / squareness / centroid_mismatch gates still
+# reject spurious fits. All env-overridable to revert.
+HOUGH_THRESHOLD   = int(os.environ.get("CROSS_HOUGH_THRESHOLD", "16"))    # was 25
+HOUGH_MIN_LINE_LEN = int(os.environ.get("CROSS_HOUGH_MIN_LINE_LEN", "10"))  # was 15
+HOUGH_MAX_LINE_GAP = int(os.environ.get("CROSS_HOUGH_MAX_LINE_GAP", "16"))  # was 10
+HOUGH_MASK_DILATE_PX = int(os.environ.get("CROSS_HOUGH_MASK_DILATE_PX", "1"))  # thicken the patchy foreshortened stroke before Canny; 0 = off
+ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  # was 2.5 -- a foreshortened cross bbox isn't 1:1
+ANGLE_MERGE_TOL_DEG = float(os.environ.get("CROSS_ANGLE_MERGE_TOL_DEG", "12.0"))
+
 # 2026-08-04 CORRECTED: earlier same-day investigation (a "single-loss-event root cause"
 # analysis, near-touchdown ROI-crop-truncation narrative) was run against the WRONG
 # Gazebo world (run_aruco_landing.sh's hardcoded PX4_GZ_WORLD=aruco, not the dedicated
@@ -162,9 +178,10 @@ def _circ_diff(a, b):
     return min(d, 180.0 - d)
 
 
-def _cluster_line_angles(angles, max_clusters=3, merge_tol_deg=12.0):
+def _cluster_line_angles(angles, max_clusters=3, merge_tol_deg=None):
     """Greedy angle clustering on a 0-180 deg circle -- rotation-invariant:
     operates on relative spacing between detected angles, not fixed buckets."""
+    if merge_tol_deg is None: merge_tol_deg = ANGLE_MERGE_TOL_DEG
     if len(angles) == 0:
         return []
     angles = sorted(angles)
@@ -368,7 +385,7 @@ def _isolate_marker_by_shape(mask, min_area=15):
         if area < min_area:
             continue
         aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
-        if aspect > 2.5:   # propeller arms are typically >4:1; a cross's bbox is near 1:1
+        if aspect > ISOLATE_MAX_ASPECT:   # propeller arms are typically >4:1; a (foreshortened) cross's bbox up to ~3:1
             continue
         # among square-ish candidates, prefer the larger one (more of the true
         # marker vs. a small square-ish clutter fleck)
@@ -381,7 +398,7 @@ def _isolate_marker_by_shape(mask, min_area=15):
 
 
 def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
-                  min_line_length=15, max_line_gap=10, identify_stub=True,
+                  min_line_length=None, max_line_gap=None, identify_stub=True,
                   roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
     """Run the full detection pipeline on one BGR frame. Returns CrossMarkerDetection.
 
@@ -397,6 +414,8 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     ROI wrapper (mirrors Hardware/scripts/img_data.py's ARUCO_ROI_MARGIN_PX fast
     path) that calls this on either a crop or the full frame and owns the
     coordinate-offset bookkeeping."""
+    if min_line_length is None: min_line_length = HOUGH_MIN_LINE_LEN
+    if max_line_gap is None: max_line_gap = HOUGH_MAX_LINE_GAP
     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, lower, upper)
     _px_raw = int(np.sum(mask > 0))
@@ -438,8 +457,12 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         return CrossMarkerDetection(None, None, False, fail_reason='color_gate_empty')
     bbox = (int(xs.min()), int(ys.min()), int(xs.max() - xs.min()), int(ys.max() - ys.min()))
 
-    edges = cv2.Canny(mask, 50, 150, apertureSize=3)
-    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=25,
+    _hough_in = mask
+    if HOUGH_MASK_DILATE_PX > 0:
+        _k = 2 * HOUGH_MASK_DILATE_PX + 1
+        _hough_in = cv2.dilate(mask, np.ones((_k, _k), np.uint8))
+    edges = cv2.Canny(_hough_in, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=HOUGH_THRESHOLD,
                              minLineLength=min_line_length, maxLineGap=max_line_gap)
     if lines is None or len(lines) < 2:
         # DIAG (2026-08-04, hough_lt2_lines root-cause investigation): hough_lt2_lines is
@@ -944,7 +967,7 @@ def _detect_core_capped(frame, *args, work_max_px=DETECT_WORK_MAX_PX):
 
 
 def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
-           min_line_length=15, max_line_gap=10, identify_stub=True,
+           min_line_length=None, max_line_gap=None, identify_stub=True,
            roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0, track_state=None):
     """Tracking-based-ROI wrapper around _detect_core (see TRACK_MARGIN_PX's module-level
     comment for the full design rationale -- ported from Hardware/scripts/img_data.py's
