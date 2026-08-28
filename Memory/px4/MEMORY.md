@@ -68,6 +68,35 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
+> **⭐⭐⭐⭐⭐ 2026-08-28 — IC1-5 GATE for `PLASMC_DTHETA_HREF=1`: target mechanism CONFIRMED
+> fixed, ZERO regression at IC1/IC2/IC4, but IC5 STILL FAILS via a different, unfixed
+> lateral-drift mechanism — do not describe IC5 as solved.** Full 25-rep gate (n=5/IC): IC1
+> 5/5 SP (0.003m), IC2 5/5 SP (0.019m), IC4 5/5 SP (0.023m) — all clean, no regression. IC3
+> 4/5 SP (1 miss, 1.99m). **IC5 only 3/5 SP, worst miss 5.46m — the largest xy_err of the
+> whole investigation.** Checked all 3 misses (IC5×2, IC3×1): **zero show the `ASCENDING`
+> cap-pinning signature** (`descent_anomaly_cause='N/A'` in all 3, pinned-run max 12 cycles
+> vs the 55-74 catastrophic threshold) — so the fix is doing exactly what it targets. IC5's
+> 5.46m miss instead traced to a genuinely different mechanism: GT altitude descends cleanly
+> the WHOLE flight (no climb), but a rapid LATERAL drift starts ~t=7s (y: +0.07m→-4.55m by
+> t=11s, ~1.1 m/s sustained divergence) — unrelated to `dtheta_az` (pinning stayed mild).
+> **Net: `PLASMC_DTHETA_HREF=1` is safe to bake re: IC1/IC2/IC4 regression and does fix its
+> target mechanism, but IC5 (and now IC3) has a real, still-unsolved terminal lateral-drift
+> failure this investigation hasn't root-caused yet — combined IC5 data across all
+> DTHETA_HREF testing is 8/12 SP (67%), 0/12 ASCENDING events, but real tail risk up to
+> 5.46m remains.** Next step: root-cause the lateral-drift mechanism (check against
+> [[feedback_terminal_root_lateral_zeta_r]] / [[feedback_terminal_smc_actuator_wall]] for a
+> possible shared cause) before considering IC5 closed. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐ 2026-08-28 (earlier same day, IC5-only isolated sweep) — `PLASMC_DTHETA_HREF=1`
+> confirmed to eliminate the catastrophic dtheta cap-pinning mechanism at IC5 in isolation**
+> (n=7 combined: 0/7 `ASCENDING` anomalies vs 2/8 without the fix, max pinned-cycle count 8
+> vs 55-74). Superseded/extended by the IC1-5 gate entry above, which adds the IC1-4
+> regression check and reveals IC5's remaining lateral-drift problem. Two of three sweep
+> attempts that day hit contamination from a concurrent session's `kr_rp.sh` IC-sweep
+> (port/gRPC launch collisions, not flight-data corruption) before a clean run succeeded —
+> see [[feedback_check_concurrent_sitl_before_launch]].
+>
 > **⭐⭐⭐⭐ 2026-08-26 — IC5 catastrophic mechanism ROOT-CAUSED: it's the ALREADY-DIAGNOSED
 > `dtheta` az-visibility-filter defect (project_20260824_dtheta_ic5_flyaway_rootcause), NOT
 > primarily the angle-clustering/Hough bug below (that's a downstream SYMPTOM). Both

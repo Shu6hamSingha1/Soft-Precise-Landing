@@ -1,11 +1,93 @@
 ---
 name: project_20260824_ic5_angle_clustering_and_hang_investigation
-description: "⭐⭐⭐⭐ 2026-08-26 ROOT CAUSE FOUND (deeper than the angle-clustering framing below, which was itself a downstream symptom): both catastrophic IC5 reps (pre-fix 2.76m AND post-fix-with-a87ac00 4.78m) are actually the ALREADY-DIAGNOSED `dtheta` az-visibility-filter defect from project_20260824_dtheta_ic5_flyaway_rootcause, NOT primarily a Hough/angle-clustering geometry bug. Confirmed via Control_Data.npy: both bad reps show 55-74 dtheta_correction cycles PINNED AT THE 2.0 m/s^2 CAP within the first 2s of flight (vs 0-16 in clean reps) -- a sustained near-continuous burst of max extra lift right at launch, BEFORE any perception failure (verified: at post-fix rep5's worst pinned burst, Detection Status was 100% 'ok'). This destabilizes the trajectory (GT descent_anomaly_cause=ASCENDING) FIRST; lt2_angle_clusters dominance follows ~4s later as a DOWNSTREAM CONSEQUENCE of the resulting bad geometry, not the initiating cause. Explains why a87ac00 only partially helps: it hardens perception (the symptom), not the dtheta control-law defect (the cause). The actual fix (PLASMC_DTHETA_HREF=1, breaks the th_curr self-defeating feedback loop) already exists in controller.py but defaults OFF, pending its own n>=5 validation (see project_20260824_dtheta_href_continuous_compensation)."
+description: "⭐⭐⭐⭐⭐ 2026-08-28 IC1-5 GATE RUN: `PLASMC_DTHETA_HREF=1` CONFIRMED to eliminate the ASCENDING/dtheta-cap-pinning mechanism (0 occurrences across the full 25-rep gate, incl. all 3 misses checked -- max pinned-run 12 cycles vs the 55-74 catastrophic signature) with NO regression at IC1/IC2/IC4 (all 5/5 SP, clean). BUT IC5 is still NOT clean (3/5 SP, one miss xy=5.46m -- worse in absolute terms than any prior catastrophic case) via a DIFFERENT, newly-prominent failure: a rapid LATERAL DRIFT in the final ~4s of descent (GT y: +0.07m@t=7s -> -4.55m@t=11s), unrelated to dtheta_az entirely (anomaly='N/A', mild pinning). IC3 also showed a new miss (1/5, xy=1.99m) with no anomaly flag. NOT YET ROOT-CAUSED -- this residual lateral-drift failure needs its own investigation before considering IC5 solved or baking DTHETA_HREF as unconditionally safe. DTHETA_HREF itself is validated for its target mechanism and safe re: IC1/IC2/IC4 regression; IC5 (and now IC3) still has open issues."
 metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-26T05:08:33.045Z
+  modified: 2026-08-28T12:30:57.654Z
+---
+
+## ⭐⭐⭐⭐⭐ IC1-5 GATE (2026-08-28): DTHETA_HREF's target mechanism confirmed fixed + no IC1/2/4 regression, but IC5 still fails via a DIFFERENT residual lateral-drift issue
+
+Full IC1-5 gate, n=5/IC (25 reps), `WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1
+PLASMC_DTHETA_HREF=1 HEADLESS=1`, isolated (verified no concurrent SITL before launch):
+
+| IC | SP | mean xy | max xy | notes |
+|---|---|---|---|---|
+| IC1 | 5/5 | 0.003m | 0.005m | clean, no regression |
+| IC2 | 5/5 | 0.019m | 0.022m | clean, no regression |
+| IC3 | 4/5 | 0.413m | 1.990m | 1 miss, `anomaly='N/A'` -- not checked in depth |
+| IC4 | 5/5 | 0.023m | 0.025m | clean, no regression |
+| IC5 | 3/5 | 1.458m | **5.463m** | 2 misses, see below |
+
+**The ASCENDING/dtheta-cap-pinning mechanism did NOT recur anywhere in this 25-rep gate** --
+checked all 3 misses (IC5_rep2 xy=5.46m, IC5_rep4 xy=1.77m/target_lost, IC3_rep3 xy=1.99m):
+all show `descent_anomaly_cause='N/A'` and mild `dtheta_correction` pinning (longest
+consecutive pinned run 7-12 cycles, nowhere near the 55-74-cycle catastrophic signature).
+**So `PLASMC_DTHETA_HREF=1` continues to do exactly what it was designed to do, and shows
+zero regression at IC1/IC2/IC4** (all 5/5 SP, tight).
+
+**But IC5 has a DIFFERENT, previously-undercharacterized failure mode.** IC5_rep2 (5.46m, the
+worst xy_err of the whole investigation) traced via GT trajectory: altitude descends cleanly
+and monotonically the entire flight (3.0m -> ~0m, NO climb/ASCENDING event) -- the failure is
+a rapid LATERAL drift-away starting around t=7s (already at ~0.6-0.8m altitude): GT y goes
+from +0.07m at t=7s to -4.55m by t=11s, a ~1.1 m/s sustained lateral divergence in the final
+descent phase. Nothing to do with `dtheta_az` (pinning stayed mild throughout, 46/1247 total
+cycles, longest run 10).
+
+**Net assessment**: `PLASMC_DTHETA_HREF=1` is validated for what it targets (ASCENDING
+cap-pinning fly-away) and safe re: IC1/IC2/IC4 regression. IC5 is NOT solved -- it now fails
+via a different, unfixed lateral-drift mechanism near touchdown that this investigation has
+not yet root-caused. **Do not describe IC5 as fixed even with this bake.** Combining this
+gate's IC5 data with the earlier isolated n=7 (SP 5/7): IC5 across all DTHETA_HREF=1 testing
+is now 8/12 SP (67%), 0/12 ASCENDING events, but the tail risk (up to 5.46m) via the
+lateral-drift mechanism is real and unaddressed.
+
+**Open item / real next step**: root-cause the terminal lateral-drift mechanism seen at
+IC5_rep2 (and possibly IC3_rep3) -- check whether it's the same class of issue as the
+already-known `feedback_terminal_root_lateral_zeta_r` / `feedback_terminal_smc_actuator_wall`
+lateral-wall findings, or something new specific to the late-descent phase at these ICs.
+
+---
+
+## ⭐⭐⭐⭐⭐ FIX VALIDATED (2026-08-28): `PLASMC_DTHETA_HREF=1` eliminates the catastrophic mechanism
+
+Isolated n=5 IC5 sweep (verified no concurrent SITL after two prior attempts got contaminated by
+a different session's `kr_rp.sh` IC-sweep script -- one attempt lost 3/5 reps to launch-level
+port/gRPC collisions with that concurrent sweep, a second attempt failed to even launch due to a
+`cd` mistake in the background shell; third attempt clean), `WORLD=cross_marker MARKER_TYPE=cross
+PLASMC_GT_FEEDBACK=1 PLASMC_DTHETA_HREF=1 HEADLESS=1 IC_LIST="IC5" N_REPS=5`:
+
+| rep | pinned cycles (first 2s) | pinned total | longest pinned run | outcome |
+|---|---|---|---|---|
+| 1 | 0 | 3/919 | 2 | SP, xy=0.018m |
+| 2 | 6 | 14/638 | 7 | miss, xy=1.80m, `target_lost=True`, `descent_anomaly='N/A'` |
+| 3 | 0 | 2/916 | 2 | SP, xy=0.018m |
+| 4 | 0 | 7/902 | 5 | SP, xy=0.025m |
+| 5 | 0 | 0/875 | 0 | SP, xy=0.018m |
+
+Combined with an earlier partial 2-rep run (same env, contaminated to n=2 by the concurrent
+sweep -- rep A: 0.019m SP, 0 early-pinned; rep B: 0.57m miss/`target_lost`, 8 early-pinned):
+**n=7 total, SP 5/7 (71%), ZERO `ASCENDING` descent anomalies, max pinned-cycle count ever
+observed = 8** (vs the no-fix baseline's 55-74 in both catastrophic reps). The mechanism
+root-caused below (sustained near-continuous dtheta-correction saturation at the 2.0 m/s^2 cap,
+destabilizing the trajectory before any perception failure) did not recur even once with the fix
+on.
+
+**The one remaining miss (rep2, 1.80m) is NOT the same failure** -- `descent_anomaly_cause`
+reads `'N/A'` (no ASCENDING event), it's a genuine `target_lost=True` with only 6/14 pinned
+cycles, well below the 55+ threshold that characterized the catastrophic mechanism. A milder,
+different failure mode, out of scope for this fix.
+
+**Recommendation: bake `PLASMC_DTHETA_HREF=1` as a new default** -- it is validated at IC5
+(where the mechanism was found and is most severe) and directly targets the root cause (breaks
+the `th_curr` self-defeating attitude-history feedback loop that let `dtheta_correction` sustain
+at its cap instead of settling). NOT yet checked: IC1-4 regression (does turning this on change
+anything at the ICs where dtheta rarely engages?) -- per [[feedback_ic_validation]], any
+gain/control-law default change needs the full IC1-5 gate before baking, not just the IC where
+the bug was found. This validation covers IC5 only.
+
 ---
 
 ## ⭐⭐⭐⭐ ROOT CAUSE (2026-08-26): the catastrophic mechanism is `dtheta`'s uncapped-duration cap-pinning, NOT primarily angle-clustering
