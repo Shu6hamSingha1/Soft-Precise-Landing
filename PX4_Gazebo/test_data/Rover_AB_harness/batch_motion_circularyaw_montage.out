@@ -1,0 +1,10 @@
+[montage] 198 frames (173 descent + 25 tail)  960x720@25.0  (chase 140f td@139, drone 248f td@247, GT 1141samp, 6.9s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_circularyaw_final.mp4
+[montage]  frame 0/198
+[montage]  frame 25/198
+[montage]  frame 50/198
+[montage]  frame 75/198
+[montage]  frame 100/198
+[montage]  frame 125/198
+[montage]  frame 150/198
+[montage]  frame 175/198
+[montage] done -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_circularyaw_final.mp4

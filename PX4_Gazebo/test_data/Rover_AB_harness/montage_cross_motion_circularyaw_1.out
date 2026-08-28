@@ -1,0 +1,123 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover_cross)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching bridge_chase (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_chase.log)
+[run] launching chase_rec (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/chase_rec.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ... ready after 6s.
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting with recording...
+[controller] PLASMC_GT_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1 (GT-feedback): touchdown = GT camera-marker depth held within 0.03m of its recorded landed height for x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1 (perception extent NOT used)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.3s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.696910381317139 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.0295071043074131, y_m: 0.015675000846385956, z_m: -5.139500617980957]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.98s (pos_err=0.126 m, speed=0.088 m/s, yaw_err=3.58°, tilt=0.48°)
+[landing_test] board alpha (settled) = -84.5° std=13.4°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[controller] TOUCHDOWN-DETECT (GT): depth=0.731m held within 0.03m of recorded landed height=0.731m (rate=-0.0149m/s, progressed 3.581m since arming) (x3 within 3-frame window) |s_e_n|=0.09 -> LANDED (disarm before bounce)
+[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming
+[landing_test] descent loop exited: FC_node.LANDED=True EC_node.is_alive()=True (2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death vs impact-spike as the exit cause)
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.114 m [≤0.1], rel_vel=0.575 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.107 m, rel_vel=0.479 m/s, min_alt=1.10 m (endpoint xy=0.114 m is post-kick if it ballooned)
+[landing_test] IMG_RECORD: capturing 0 s post-touchdown video tail…
+[CrossMarkerNode] diag: 1205 process_frame() calls over 22.72s (mean call rate 53.0 Hz), detect ok 653/1205 (54%), fail reasons: {'hough_lt2_lines': 381, 'lt2_angle_clusters': 139, 'insufficient_fit_points': 10, 'centroid_mismatch': 20, 'near_parallel_fit': 1, 'insufficient_fit_points_post_prune': 1}, bgflow-fallback fires: 489
+[CrossMarkerNode] HOUGH_DIAG (381 hough_lt2_lines events): mask_px min/med/max=66000/76800/76800, bbox_extent min/med/max=274/319/319
+    extent 200-300px:    9 events -- stage_px med: raw=68880 close=68880 blobby=68880 roi=68880 shape=68880
+    extent 300-500px:  372 events -- stage_px med: raw=76800 close=76800 blobby=76800 roi=76800 shape=76800
+    11 DISTINCT (bbox, mask_px) patterns out of 381 events (top 5 by count): [(((0, 0, 239, 319), 76800), 368), (((0, 0, 239, 314), 75600), 2), (((0, 0, 239, 286), 68880), 2), (((0, 0, 239, 274), 66000), 2), (((0, 0, 239, 306), 73680), 1)]
+    time range of ALL hough_lt2_lines events: 14.63s-20.80s (over the 22.7s run)
+    381 events before t=26.0s (active-tracking half), 0 after (likely open-loop tail)
+    active-half, GHOST-FILTERED: 381 genuine events (vs 381 raw, 0 were ghost)
+      extent min/med/max=274/319/319, mask_px min/med/max=66000/76800/76800
+      top 5 active-half non-ghost patterns: [(((0, 0, 239, 319), 76800), 368), (((0, 0, 239, 314), 75600), 2), (((0, 0, 239, 286), 68880), 2), (((0, 0, 239, 274), 66000), 2), (((0, 0, 239, 306), 73680), 1)]
+[CrossMarkerNode] IMG_RECORD: stitched 248 frames -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/Fri Aug 28 12-06-00 2026.mp4
+image_subscriber closed
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+Saved to CSV!
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2049374 + group)
+[run]   killing px4_rover (pid 2049405 + group)
+[run]   killing px4_sitl (pid 2049867 + group)
+[run]   killing bridge_clock (pid 2050557 + group)
+[run]   killing bridge_pose (pid 2050596 + group)
+[run]   killing bridge_image (pid 2050616 + group)
+[run]   killing bridge_chase (pid 2050658 + group)
+[run]   killing qgc (pid 2050703 + group)
+[run]   killing rover_drive (pid 2051021 + group)
+[run] done.
+[retry] SUCCESS after attempt 1

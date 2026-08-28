@@ -1,0 +1,2 @@
+arm	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+cbf_old	1	YES	16.6988	10.5664	10.8	0	0	1	rep1

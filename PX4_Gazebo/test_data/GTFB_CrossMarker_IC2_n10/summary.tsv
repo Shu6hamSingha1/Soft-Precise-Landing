@@ -1,0 +1,11 @@
+rep	landed	xy_err_m	rel_vel_mps	precise	soft	target_lost	result_dir
+1	YES	1.2915	9.6575	0	0	0	rep1
+2	YES	0.0000	0.0000	0	0	0	rep2
+3	NO	-	-	-	-	-	-
+4	YES	0.0000	0.0000	0	0	0	rep4
+5	YES	0.0000	0.0000	0	0	0	rep5
+6	NO	-	-	-	-	-	-
+7	NO	-	-	-	-	-	-
+8	NO	-	-	-	-	-	-
+9	YES	0.7381	4.5348	0	0	0	rep9
+10	YES	0.0000	0.0000	0	0	0	rep10

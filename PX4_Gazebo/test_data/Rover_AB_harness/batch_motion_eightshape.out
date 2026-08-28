@@ -1,0 +1,7 @@
+----- montage_cross motion_eightshape try 1/6 -----
+  result: NO 0.302 alt=1.644 | run=Fri Aug 28 12-10-43 2026 chase=chase_2026-08-28_12-09-49.mp4 drone=Fri Aug 28 12-10-33 2026.mp4
+----- montage_cross motion_eightshape try 2/6 -----
+  result: ON 0.126 alt=0.571 | run=Fri Aug 28 12-12-04 2026 chase=chase_2026-08-28_12-11-02.mp4 drone=Fri Aug 28 12-11-46 2026.mp4
+[montage] 279 frames (254 descent + 25 tail)  960x720@25.0  (chase 204f td@203, drone 283f td@282, GT 1719samp, 10.2s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_eightshape_cross.mp4
+[montage]  frame 0/279
+MONTAGE_motion_eightshape -> test_data/Test_Videos/montage_motion_eightshape_cross.mp4 (ON 0.126 alt=0.571)

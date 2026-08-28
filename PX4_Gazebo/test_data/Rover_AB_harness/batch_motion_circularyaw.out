@@ -1,0 +1,5 @@
+----- montage_cross motion_circularyaw try 1/6 -----
+  result: ON 0.107 alt=1.101 | run=Fri Aug 28 12-06-11 2026 chase=chase_2026-08-28_12-05-16.mp4 drone=Fri Aug 28 12-06-00 2026.mp4
+[montage] 198 frames (173 descent + 25 tail)  960x720@25.0  (chase 140f td@139, drone 248f td@247, GT 1141samp, 6.9s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_circularyaw_cross.mp4
+[montage]  frame 0/198
+MONTAGE_motion_circularyaw -> test_data/Test_Videos/montage_motion_circularyaw_cross.mp4 (ON 0.107 alt=1.101)

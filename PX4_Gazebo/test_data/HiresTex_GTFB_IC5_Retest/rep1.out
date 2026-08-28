@@ -1,0 +1,952 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear .... ready after 8s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1 (GT-feedback): touchdown = GT camera-marker depth held within 0.03m of its recorded landed height for x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1 (perception extent NOT used)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.8s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 3.6 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-2.967271566390991 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: -0.07147982716560364, y_m: 0.01109771616756916, z_m: -3.1000189781188965]
+[landing_test] Hover to MATLAB-IC ENU (2.0,2.0,3.0)  (+ tilt check)
+[landing_test] IC converged at t=6.72s (pos_err=0.051 m, speed=0.036 m/s, yaw_err=0.80°, tilt=0.28°)
+[landing_test] board alpha (settled) = -107.1° std=3.2°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[TD_DEBUG] t=34.112 ARMED h_z=-0.1023
+[TD_DEBUG] t=34.120 GT depth=3.0541 landed_height=3.0541 rate=None progressed=False flat_rate=False near_min=True at_landed=False streak=0/1 |s_e_n|=0.6549
+[TD_DEBUG] t=34.136 GT depth=3.0541 landed_height=3.0541 rate=None progressed=False flat_rate=False near_min=True at_landed=False streak=0/2 |s_e_n|=0.6549
+[TD_DEBUG] t=34.144 GT depth=3.0466 landed_height=3.0466 rate=-0.2673632230318768 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6536
+[TD_DEBUG] t=34.152 GT depth=3.0466 landed_height=3.0466 rate=-0.2673632230321275 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6536
+[TD_DEBUG] t=34.156 GT depth=3.0466 landed_height=3.0466 rate=-0.2485642464125832 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6536
+[TD_DEBUG] t=34.168 GT depth=3.0405 landed_height=3.0405 rate=-0.28865649029761004 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6525
+[TD_DEBUG] t=34.176 GT depth=3.0327 landed_height=3.0327 rate=-0.4631095438913315 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6511
+[TD_DEBUG] t=34.188 GT depth=3.0327 landed_height=3.0327 rate=-0.3912220524297592 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6511
+[TD_DEBUG] t=34.196 GT depth=3.0247 landed_height=3.0247 rate=-0.48933307574894047 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6498
+[TD_DEBUG] t=34.204 GT depth=3.0247 landed_height=3.0247 rate=-0.46549625324130833 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6498
+[TD_DEBUG] t=34.212 GT depth=3.0182 landed_height=3.0182 rate=-0.45431135386882765 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6487
+[TD_DEBUG] t=34.220 GT depth=3.0182 landed_height=3.0182 rate=-0.3814684870026378 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6487
+[TD_DEBUG] t=34.232 GT depth=3.0182 landed_height=3.0182 rate=-0.31857490766073376 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6487
+[TD_DEBUG] t=34.244 GT depth=3.0099 landed_height=3.0099 rate=-0.2822460947218748 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6474
+[TD_DEBUG] t=34.252 GT depth=3.0015 landed_height=3.0015 rate=-0.40311430628884015 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6462
+[TD_DEBUG] t=34.260 GT depth=3.0015 landed_height=3.0015 rate=-0.40597163037575784 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6462
+[TD_DEBUG] t=34.268 GT depth=2.9946 landed_height=2.9946 rate=-0.5253370366989326 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6451
+[TD_DEBUG] t=34.280 GT depth=2.9946 landed_height=2.9946 rate=-0.5090666500757861 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6451
+[TD_DEBUG] t=34.288 GT depth=2.9859 landed_height=2.9859 rate=-0.4665520395315107 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6439
+[TD_DEBUG] t=34.300 GT depth=2.9859 landed_height=2.9859 rate=-0.36580039234805417 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6439
+[TD_DEBUG] t=34.304 GT depth=2.9859 landed_height=2.9859 rate=-0.3467093824160163 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6439
+[TD_DEBUG] t=34.312 GT depth=2.9771 landed_height=2.9771 rate=-0.3652835493112182 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6427
+[TD_DEBUG] t=34.324 GT depth=2.9771 landed_height=2.9771 rate=-0.3791768602747782 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6427
+[TD_DEBUG] t=34.332 GT depth=2.9681 landed_height=2.9681 rate=-0.4102155225824588 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6415
+[TD_DEBUG] t=34.344 GT depth=2.9681 landed_height=2.9681 rate=-0.4427678592017987 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6415
+[TD_DEBUG] t=34.356 GT depth=2.9589 landed_height=2.9589 rate=-0.46440915476908196 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6403
+[TD_DEBUG] t=34.368 GT depth=2.9496 landed_height=2.9496 rate=-0.49381410001621673 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6391
+[TD_DEBUG] t=34.380 GT depth=2.9496 landed_height=2.9496 rate=-0.5011891295218689 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6391
+[TD_DEBUG] t=34.388 GT depth=2.9402 landed_height=2.9402 rate=-0.5063861708407302 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6380
+[TD_DEBUG] t=34.400 GT depth=2.9402 landed_height=2.9402 rate=-0.503180281530779 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6380
+[TD_DEBUG] t=34.408 GT depth=2.9306 landed_height=2.9306 rate=-0.48562988310348104 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6369
+[TD_DEBUG] t=34.416 GT depth=2.9306 landed_height=2.9306 rate=-0.44497217503218633 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6369
+[TD_DEBUG] t=34.428 GT depth=2.9209 landed_height=2.9209 rate=-0.5442522620650512 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6358
+[TD_DEBUG] t=34.436 GT depth=2.9209 landed_height=2.9209 rate=-0.4627678515086794 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6358
+[TD_DEBUG] t=34.444 GT depth=2.9209 landed_height=2.9209 rate=-0.4312072042791301 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6358
+[TD_DEBUG] t=34.456 GT depth=2.9111 landed_height=2.9111 rate=-0.39021141620045136 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6348
+[TD_DEBUG] t=34.464 GT depth=2.9111 landed_height=2.9111 rate=-0.3913339923988645 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6348
+[TD_DEBUG] t=34.468 GT depth=2.9012 landed_height=2.9012 rate=-0.4556947619712462 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6338
+[TD_DEBUG] t=34.484 GT depth=2.9012 landed_height=2.9012 rate=-0.47634252331799914 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6338
+[TD_DEBUG] t=34.496 GT depth=2.8911 landed_height=2.8911 rate=-0.527219851295382 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6328
+[TD_DEBUG] t=34.504 GT depth=2.8911 landed_height=2.8911 rate=-0.44151005115944203 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6328
+[TD_DEBUG] t=34.516 GT depth=2.8809 landed_height=2.8809 rate=-0.49047137604997754 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6319
+[TD_DEBUG] t=34.524 GT depth=2.8809 landed_height=2.8809 rate=-0.41746096145306966 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6319
+[TD_DEBUG] t=34.532 GT depth=2.8706 landed_height=2.8706 rate=-0.5774610954246844 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6310
+[TD_DEBUG] t=34.548 GT depth=2.8706 landed_height=2.8706 rate=-0.45705991896618475 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6310
+[TD_DEBUG] t=34.552 GT depth=2.8602 landed_height=2.8602 rate=-0.5513702939891725 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6301
+[TD_DEBUG] t=34.560 GT depth=2.8539 landed_height=2.8539 rate=-0.5890777273075688 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6296
+[TD_DEBUG] t=34.572 GT depth=2.8539 landed_height=2.8539 rate=-0.5678259519876777 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6296
+[TD_DEBUG] t=34.580 GT depth=2.8433 landed_height=2.8433 rate=-0.5712282007547891 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6287
+[TD_DEBUG] t=34.588 GT depth=2.8433 landed_height=2.8433 rate=-0.607856483322456 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6287
+[TD_DEBUG] t=34.600 GT depth=2.8326 landed_height=2.8326 rate=-0.541272904419594 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6279
+[TD_DEBUG] t=34.608 GT depth=2.8326 landed_height=2.8326 rate=-0.5117975741562625 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6279
+[TD_DEBUG] t=34.612 GT depth=2.8262 landed_height=2.8262 rate=-0.6105242110002737 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6275
+[TD_DEBUG] t=34.624 GT depth=2.8262 landed_height=2.8262 rate=-0.45436253914169716 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6275
+[TD_DEBUG] t=34.632 GT depth=2.8153 landed_height=2.8153 rate=-0.5574793484401525 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6267
+[TD_DEBUG] t=34.640 GT depth=2.8153 landed_height=2.8153 rate=-0.4813756367120018 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6267
+[TD_DEBUG] t=34.648 GT depth=2.8153 landed_height=2.8153 rate=-0.4379061641788028 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6267
+[TD_DEBUG] t=34.656 GT depth=2.8043 landed_height=2.8043 rate=-0.46676884223259746 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6260
+[TD_DEBUG] t=34.664 GT depth=2.8043 landed_height=2.8043 rate=-0.5076522005890469 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6260
+[TD_DEBUG] t=34.680 GT depth=2.7955 landed_height=2.7955 rate=-0.45184864612398196 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6255
+[TD_DEBUG] t=34.688 GT depth=2.7843 landed_height=2.7843 rate=-0.6225810374813564 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6248
+[TD_DEBUG] t=34.696 GT depth=2.7843 landed_height=2.7843 rate=-0.6324831330364896 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6248
+[TD_DEBUG] t=34.704 GT depth=2.7843 landed_height=2.7843 rate=-0.5051159528210553 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6248
+[TD_DEBUG] t=34.712 GT depth=2.7731 landed_height=2.7731 rate=-0.5967827438948027 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6242
+[TD_DEBUG] t=34.720 GT depth=2.7731 landed_height=2.7731 rate=-0.5196693682706169 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6242
+[TD_DEBUG] t=34.728 GT depth=2.7618 landed_height=2.7618 rate=-0.5629740560457581 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6236
+[TD_DEBUG] t=34.736 GT depth=2.7618 landed_height=2.7618 rate=-0.6441332812629312 progressed=False flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6236
+[TD_DEBUG] t=34.748 GT depth=2.7504 landed_height=2.7504 rate=-0.7177160300538491 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6231
+[TD_DEBUG] t=34.756 GT depth=2.7504 landed_height=2.7504 rate=-0.5855320732669523 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6231
+[TD_DEBUG] t=34.768 GT depth=2.7389 landed_height=2.7389 rate=-0.647381597383424 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6226
+[TD_DEBUG] t=34.780 GT depth=2.7389 landed_height=2.7389 rate=-0.5059189394994956 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6226
+[TD_DEBUG] t=34.788 GT depth=2.7273 landed_height=2.7273 rate=-0.5920203498095283 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6221
+[TD_DEBUG] t=34.796 GT depth=2.7273 landed_height=2.7273 rate=-0.5300016292263667 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6221
+[TD_DEBUG] t=34.808 GT depth=2.7156 landed_height=2.7156 rate=-0.6240005687922912 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6216
+[TD_DEBUG] t=34.816 GT depth=2.7156 landed_height=2.7156 rate=-0.5585983509678523 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6216
+[TD_DEBUG] t=34.828 GT depth=2.7039 landed_height=2.7039 rate=-0.6618753246584024 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6212
+[TD_DEBUG] t=34.836 GT depth=2.7039 landed_height=2.7039 rate=-0.5519869766005865 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6212
+[TD_DEBUG] t=34.844 GT depth=2.7039 landed_height=2.7039 rate=-0.5008672786540785 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6212
+[TD_DEBUG] t=34.856 GT depth=2.6921 landed_height=2.6921 rate=-0.4714141561261831 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6209
+[TD_DEBUG] t=34.864 GT depth=2.6921 landed_height=2.6921 rate=-0.4720841442709592 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6209
+[TD_DEBUG] t=34.872 GT depth=2.6802 landed_height=2.6802 rate=-0.5292561953467793 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6205
+[TD_DEBUG] t=34.884 GT depth=2.6730 landed_height=2.6730 rate=-0.6814892786928269 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6203
+[TD_DEBUG] t=34.892 GT depth=2.6730 landed_height=2.6730 rate=-0.675431479432141 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6203
+[TD_DEBUG] t=34.900 GT depth=2.6610 landed_height=2.6610 rate=-0.6936178554575191 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6201
+[TD_DEBUG] t=34.912 GT depth=2.6610 landed_height=2.6610 rate=-0.6341622683019394 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6201
+[TD_DEBUG] t=34.920 GT depth=2.6489 landed_height=2.6489 rate=-0.6088449633901398 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6198
+[TD_DEBUG] t=34.932 GT depth=2.6489 landed_height=2.6489 rate=-0.5644037079712686 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6198
+[TD_DEBUG] t=34.940 GT depth=2.6368 landed_height=2.6368 rate=-0.6550054878466133 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6196
+[TD_DEBUG] t=34.948 GT depth=2.6368 landed_height=2.6368 rate=-0.5676186863170103 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6196
+[TD_DEBUG] t=34.956 GT depth=2.6368 landed_height=2.6368 rate=-0.5435209529119899 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6196
+[TD_DEBUG] t=34.968 GT depth=2.6270 landed_height=2.6270 rate=-0.4562116823398975 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6195
+[TD_DEBUG] t=34.976 GT depth=2.6270 landed_height=2.6270 rate=-0.44629230496879246 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6195
+[TD_DEBUG] t=34.988 GT depth=2.6148 landed_height=2.6148 rate=-0.45664488509697515 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=34.996 GT depth=2.6024 landed_height=2.6024 rate=-0.6940749440629392 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6192
+[TD_DEBUG] t=35.000 GT depth=2.6024 landed_height=2.6024 rate=-0.8143265388995075 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6192
+[TD_DEBUG] t=35.008 GT depth=2.5950 landed_height=2.5950 rate=-0.8829834985142092 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.012 GT depth=2.5950 landed_height=2.5950 rate=-0.9269855118614038 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.020 GT depth=2.5876 landed_height=2.5876 rate=-0.7804674070619215 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.028 GT depth=2.5876 landed_height=2.5876 rate=-0.5333306831795974 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.036 GT depth=2.5876 landed_height=2.5876 rate=-0.4147041014325455 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.044 GT depth=2.5751 landed_height=2.5751 rate=-0.4720892102506387 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.052 GT depth=2.5751 landed_height=2.5751 rate=-0.4891453266890793 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.056 GT depth=2.5751 landed_height=2.5751 rate=-0.4353814396429324 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.064 GT depth=2.5626 landed_height=2.5626 rate=-0.6581146371612805 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.072 GT depth=2.5626 landed_height=2.5626 rate=-0.6716815690533215 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.080 GT depth=2.5500 landed_height=2.5500 rate=-0.7177755910747897 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.088 GT depth=2.5500 landed_height=2.5500 rate=-0.7736353950273813 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.096 GT depth=2.5500 landed_height=2.5500 rate=-0.6278690284938281 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6191
+[TD_DEBUG] t=35.108 GT depth=2.5374 landed_height=2.5374 rate=-0.5519877656116928 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6192
+[TD_DEBUG] t=35.116 GT depth=2.5272 landed_height=2.5272 rate=-0.6938689145116355 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=35.124 GT depth=2.5272 landed_height=2.5272 rate=-0.6252488210672074 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=35.132 GT depth=2.5272 landed_height=2.5272 rate=-0.6276055113232138 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=35.144 GT depth=2.5145 landed_height=2.5145 rate=-0.6611391478712579 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6194
+[TD_DEBUG] t=35.152 GT depth=2.5145 landed_height=2.5145 rate=-0.4944815198075409 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6194
+[TD_DEBUG] t=35.164 GT depth=2.5018 landed_height=2.5018 rate=-0.5444468772183977 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6195
+[TD_DEBUG] t=35.172 GT depth=2.5018 landed_height=2.5018 rate=-0.6008452213833541 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6195
+[TD_DEBUG] t=35.184 GT depth=2.4889 landed_height=2.4889 rate=-0.6886334068881166 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6197
+[TD_DEBUG] t=35.196 GT depth=2.4761 landed_height=2.4761 rate=-0.7495448448729902 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6200
+[TD_DEBUG] t=35.204 GT depth=2.4761 landed_height=2.4761 rate=-0.7743790232534654 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6200
+[TD_DEBUG] t=35.216 GT depth=2.4632 landed_height=2.4632 rate=-0.7763442321589425 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6203
+[TD_DEBUG] t=35.224 GT depth=2.4632 landed_height=2.4632 rate=-0.7528226301833505 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6203
+[TD_DEBUG] t=35.232 GT depth=2.4632 landed_height=2.4632 rate=-0.550753917308828 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6203
+[TD_DEBUG] t=35.244 GT depth=2.4503 landed_height=2.4503 rate=-0.5171143758355982 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6206
+[TD_DEBUG] t=35.252 GT depth=2.4503 landed_height=2.4503 rate=-0.5174870493021071 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6206
+[TD_DEBUG] t=35.264 GT depth=2.4373 landed_height=2.4373 rate=-0.5538564357348278 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6209
+[TD_DEBUG] t=35.272 GT depth=2.4269 landed_height=2.4269 rate=-0.7584694050410293 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6212
+[TD_DEBUG] t=35.284 GT depth=2.4269 landed_height=2.4269 rate=-0.7431922849557097 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6212
+[TD_DEBUG] t=35.296 GT depth=2.4138 landed_height=2.4138 rate=-0.7214099591789787 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6216
+[TD_DEBUG] t=35.304 GT depth=2.4138 landed_height=2.4138 rate=-0.6864961614970243 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6216
+[TD_DEBUG] t=35.316 GT depth=2.4008 landed_height=2.4008 rate=-0.6378978240597412 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6220
+[TD_DEBUG] t=35.324 GT depth=2.4008 landed_height=2.4008 rate=-0.5769173808640162 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6220
+[TD_DEBUG] t=35.336 GT depth=2.3877 landed_height=2.3877 rate=-0.7055966753779712 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6225
+[TD_DEBUG] t=35.344 GT depth=2.3877 landed_height=2.3877 rate=-0.6175271454247089 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6225
+[TD_DEBUG] t=35.352 GT depth=2.3745 landed_height=2.3745 rate=-0.7436938443188307 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6230
+[TD_DEBUG] t=35.360 GT depth=2.3745 landed_height=2.3745 rate=-0.676145184523572 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6230
+[TD_DEBUG] t=35.368 GT depth=2.3666 landed_height=2.3666 rate=-0.7486652473511825 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6234
+[TD_DEBUG] t=35.376 GT depth=2.3666 landed_height=2.3666 rate=-0.6009742062779111 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6234
+[TD_DEBUG] t=35.384 GT depth=2.3534 landed_height=2.3534 rate=-0.72378906772356 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6239
+[TD_DEBUG] t=35.392 GT depth=2.3534 landed_height=2.3534 rate=-0.6022091866970848 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6239
+[TD_DEBUG] t=35.400 GT depth=2.3534 landed_height=2.3534 rate=-0.56468312349171 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6239
+[TD_DEBUG] t=35.404 GT depth=2.3402 landed_height=2.3402 rate=-0.6413871470053849 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6245
+[TD_DEBUG] t=35.416 GT depth=2.3402 landed_height=2.3402 rate=-0.6190327698210143 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6245
+[TD_DEBUG] t=35.424 GT depth=2.3271 landed_height=2.3271 rate=-0.6547920217811714 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6252
+[TD_DEBUG] t=35.432 GT depth=2.3271 landed_height=2.3271 rate=-0.7242360712173549 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6252
+[TD_DEBUG] t=35.440 GT depth=2.3271 landed_height=2.3271 rate=-0.6148079459282847 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6252
+[TD_DEBUG] t=35.452 GT depth=2.3140 landed_height=2.3140 rate=-0.5358503047998611 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6260
+[TD_DEBUG] t=35.456 GT depth=2.3140 landed_height=2.3140 rate=-0.5910655296262058 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6260
+[TD_DEBUG] t=35.468 GT depth=2.3035 landed_height=2.3035 rate=-0.5707816556079806 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6266
+[TD_DEBUG] t=35.480 GT depth=2.2905 landed_height=2.2905 rate=-0.7852708646028613 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6273
+[TD_DEBUG] t=35.488 GT depth=2.2905 landed_height=2.2905 rate=-0.793357991093409 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6273
+[TD_DEBUG] t=35.500 GT depth=2.2775 landed_height=2.2775 rate=-0.7728978230919704 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6281
+[TD_DEBUG] t=35.508 GT depth=2.2775 landed_height=2.2775 rate=-0.7245163845673499 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6281
+[TD_DEBUG] t=35.512 GT depth=2.2671 landed_height=2.2671 rate=-0.7341819568723562 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6287
+[TD_DEBUG] t=35.528 GT depth=2.2671 landed_height=2.2671 rate=-0.5654662871543831 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6287
+[TD_DEBUG] t=35.536 GT depth=2.2542 landed_height=2.2542 rate=-0.661720554441615 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6294
+[TD_DEBUG] t=35.544 GT depth=2.2542 landed_height=2.2542 rate=-0.5647448476589564 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6294
+[TD_DEBUG] t=35.552 GT depth=2.2542 landed_height=2.2542 rate=-0.5055040220761438 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6294
+[TD_DEBUG] t=35.568 GT depth=2.2412 landed_height=2.2412 rate=-0.4665527662205996 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6302
+[TD_DEBUG] t=35.576 GT depth=2.2283 landed_height=2.2283 rate=-0.6837238142632548 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6309
+[TD_DEBUG] t=35.588 GT depth=2.2283 landed_height=2.2283 rate=-0.6007371627238229 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6309
+[TD_DEBUG] t=35.596 GT depth=2.2153 landed_height=2.2153 rate=-0.7541618656777958 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6316
+[TD_DEBUG] t=35.608 GT depth=2.2153 landed_height=2.2153 rate=-0.7202492059889913 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6316
+[TD_DEBUG] t=35.616 GT depth=2.2024 landed_height=2.2024 rate=-0.7023527429143334 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6323
+[TD_DEBUG] t=35.628 GT depth=2.2024 landed_height=2.2024 rate=-0.5704197650519378 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6323
+[TD_DEBUG] t=35.640 GT depth=2.1894 landed_height=2.1894 rate=-0.6675404902229264 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6330
+[TD_DEBUG] t=35.648 GT depth=2.1894 landed_height=2.1894 rate=-0.5604895733371174 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6330
+[TD_DEBUG] t=35.656 GT depth=2.1765 landed_height=2.1765 rate=-0.6994659513337157 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=35.664 GT depth=2.1765 landed_height=2.1765 rate=-0.6187615414961596 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=35.672 GT depth=2.1765 landed_height=2.1765 rate=-0.6147328121837015 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=35.684 GT depth=2.1635 landed_height=2.1635 rate=-0.568328663331363 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6342
+[TD_DEBUG] t=35.692 GT depth=2.1635 landed_height=2.1635 rate=-0.5447033116308863 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6342
+[TD_DEBUG] t=35.704 GT depth=2.1505 landed_height=2.1505 rate=-0.5545534018841309 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6347
+[TD_DEBUG] t=35.716 GT depth=2.1377 landed_height=2.1377 rate=-0.7572629917804422 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6351
+[TD_DEBUG] t=35.724 GT depth=2.1377 landed_height=2.1377 rate=-0.780565964551905 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6351
+[TD_DEBUG] t=35.732 GT depth=2.1377 landed_height=2.1377 rate=-0.6464609425853353 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6351
+[TD_DEBUG] t=35.740 GT depth=2.1250 landed_height=2.1250 rate=-0.7090342128593581 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6354
+[TD_DEBUG] t=35.752 GT depth=2.1250 landed_height=2.1250 rate=-0.5190473889068472 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6354
+[TD_DEBUG] t=35.760 GT depth=2.1125 landed_height=2.1125 rate=-0.5656772449045295 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6356
+[TD_DEBUG] t=35.764 GT depth=2.1125 landed_height=2.1125 rate=-0.6747052965492536 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6356
+[TD_DEBUG] t=35.772 GT depth=2.1026 landed_height=2.1026 rate=-0.7941081006408178 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6358
+[TD_DEBUG] t=35.780 GT depth=2.1026 landed_height=2.1026 rate=-0.6664184882817397 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6358
+[TD_DEBUG] t=35.792 GT depth=2.0902 landed_height=2.0902 rate=-0.7962409496592837 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6360
+[TD_DEBUG] t=35.800 GT depth=2.0902 landed_height=2.0902 rate=-0.6144683782983329 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6360
+[TD_DEBUG] t=35.804 GT depth=2.0902 landed_height=2.0902 rate=-0.5556691909722903 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6360
+[TD_DEBUG] t=35.812 GT depth=2.0804 landed_height=2.0804 rate=-0.5352491801885253 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6361
+[TD_DEBUG] t=35.824 GT depth=2.0804 landed_height=2.0804 rate=-0.49791752048942234 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6361
+[TD_DEBUG] t=35.836 GT depth=2.0682 landed_height=2.0682 rate=-0.5089278948454441 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6362
+[TD_DEBUG] t=35.844 GT depth=2.0682 landed_height=2.0682 rate=-0.5371396942551357 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6362
+[TD_DEBUG] t=35.852 GT depth=2.0560 landed_height=2.0560 rate=-0.624925534256838 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.856 GT depth=2.0560 landed_height=2.0560 rate=-0.6143412065378182 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.868 GT depth=2.0488 landed_height=2.0488 rate=-0.722058218000338 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.876 GT depth=2.0488 landed_height=2.0488 rate=-0.559134722428582 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.884 GT depth=2.0367 landed_height=2.0367 rate=-0.653898717574766 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6364
+[TD_DEBUG] t=35.892 GT depth=2.0367 landed_height=2.0367 rate=-0.5334733201744238 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6364
+[TD_DEBUG] t=35.904 GT depth=2.0246 landed_height=2.0246 rate=-0.6445035806776702 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.908 GT depth=2.0246 landed_height=2.0246 rate=-0.6687625926327395 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.916 GT depth=2.0173 landed_height=2.0173 rate=-0.7285364311395651 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.924 GT depth=2.0173 landed_height=2.0173 rate=-0.5670399204441449 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6363
+[TD_DEBUG] t=35.936 GT depth=2.0053 landed_height=2.0053 rate=-0.6565483299223526 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6362
+[TD_DEBUG] t=35.944 GT depth=2.0053 landed_height=2.0053 rate=-0.5366674135953071 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6362
+[TD_DEBUG] t=35.952 GT depth=1.9932 landed_height=1.9932 rate=-0.6497323746677913 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6361
+[TD_DEBUG] t=35.964 GT depth=1.9932 landed_height=1.9932 rate=-0.5790863801660472 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6361
+[TD_DEBUG] t=35.972 GT depth=1.9812 landed_height=1.9812 rate=-0.685626874020481 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6359
+[TD_DEBUG] t=35.984 GT depth=1.9812 landed_height=1.9812 rate=-0.5645694244427768 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6359
+[TD_DEBUG] t=35.992 GT depth=1.9812 landed_height=1.9812 rate=-0.48288497158172006 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6359
+[TD_DEBUG] t=36.000 GT depth=1.9692 landed_height=1.9692 rate=-0.4555393825367148 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6356
+[TD_DEBUG] t=36.012 GT depth=1.9692 landed_height=1.9692 rate=-0.4619717242605222 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6356
+[TD_DEBUG] t=36.024 GT depth=1.9571 landed_height=1.9571 rate=-0.47768148147121725 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6353
+[TD_DEBUG] t=36.036 GT depth=1.9451 landed_height=1.9451 rate=-0.6909024588176105 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6350
+[TD_DEBUG] t=36.044 GT depth=1.9451 landed_height=1.9451 rate=-0.6973880496056533 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6350
+[TD_DEBUG] t=36.052 GT depth=1.9330 landed_height=1.9330 rate=-0.7156321604613832 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6346
+[TD_DEBUG] t=36.060 GT depth=1.9330 landed_height=1.9330 rate=-0.7715903127549784 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6346
+[TD_DEBUG] t=36.072 GT depth=1.9330 landed_height=1.9330 rate=-0.52364403968222 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6346
+[TD_DEBUG] t=36.084 GT depth=1.9210 landed_height=1.9210 rate=-0.46917293255657416 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6341
+[TD_DEBUG] t=36.092 GT depth=1.9089 landed_height=1.9089 rate=-0.6182347134994983 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=36.100 GT depth=1.9089 landed_height=1.9089 rate=-0.5860745364091806 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=36.108 GT depth=1.9089 landed_height=1.9089 rate=-0.6208798761397871 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6336
+[TD_DEBUG] t=36.120 GT depth=1.8969 landed_height=1.8969 rate=-0.6880798410945822 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6331
+[TD_DEBUG] t=36.132 GT depth=1.8848 landed_height=1.8848 rate=-0.666937362906494 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6324
+[TD_DEBUG] t=36.140 GT depth=1.8848 landed_height=1.8848 rate=-0.6052823342367156 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6324
+[TD_DEBUG] t=36.148 GT depth=1.8848 landed_height=1.8848 rate=-0.6053017699747516 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6324
+[TD_DEBUG] t=36.160 GT depth=1.8727 landed_height=1.8727 rate=-0.632507887237992 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6317
+[TD_DEBUG] t=36.168 GT depth=1.8655 landed_height=1.8655 rate=-0.5905878704323054 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6312
+[TD_DEBUG] t=36.176 GT depth=1.8655 landed_height=1.8655 rate=-0.5364491966367168 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6312
+[TD_DEBUG] t=36.188 GT depth=1.8534 landed_height=1.8534 rate=-0.6762726437203513 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6304
+[TD_DEBUG] t=36.196 GT depth=1.8534 landed_height=1.8534 rate=-0.6549081134357001 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6304
+[TD_DEBUG] t=36.200 GT depth=1.8534 landed_height=1.8534 rate=-0.5025068430251762 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6304
+[TD_DEBUG] t=36.216 GT depth=1.8413 landed_height=1.8413 rate=-0.5069450440233587 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6295
+[TD_DEBUG] t=36.224 GT depth=1.8292 landed_height=1.8292 rate=-0.6779313667600949 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6285
+[TD_DEBUG] t=36.236 GT depth=1.8292 landed_height=1.8292 rate=-0.6153918121346033 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6285
+[TD_DEBUG] t=36.244 GT depth=1.8171 landed_height=1.8171 rate=-0.7449998003326677 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6275
+[TD_DEBUG] t=36.252 GT depth=1.8171 landed_height=1.8171 rate=-0.7142804769606956 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6275
+[TD_DEBUG] t=36.256 GT depth=1.8171 landed_height=1.8171 rate=-0.5842975881472027 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6275
+[TD_DEBUG] t=36.264 GT depth=1.8075 landed_height=1.8075 rate=-0.5345217371592377 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6266
+[TD_DEBUG] t=36.276 GT depth=1.8075 landed_height=1.8075 rate=-0.5146294780911695 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6266
+[TD_DEBUG] t=36.284 GT depth=1.7954 landed_height=1.7954 rate=-0.530048868164955 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6255
+[TD_DEBUG] t=36.292 GT depth=1.7954 landed_height=1.7954 rate=-0.5830351659281928 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6255
+[TD_DEBUG] t=36.300 GT depth=1.7834 landed_height=1.7834 rate=-0.6860210263957137 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6242
+[TD_DEBUG] t=36.304 GT depth=1.7834 landed_height=1.7834 rate=-0.6762563753737292 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6242
+[TD_DEBUG] t=36.312 GT depth=1.7761 landed_height=1.7761 rate=-0.8316272270149657 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6235
+[TD_DEBUG] t=36.324 GT depth=1.7761 landed_height=1.7761 rate=-0.5677384809667203 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6235
+[TD_DEBUG] t=36.332 GT depth=1.7641 landed_height=1.7641 rate=-0.650191912171411 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6221
+[TD_DEBUG] t=36.340 GT depth=1.7641 landed_height=1.7641 rate=-0.5186051110107658 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6221
+[TD_DEBUG] t=36.348 GT depth=1.7641 landed_height=1.7641 rate=-0.4618668241830001 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6221
+[TD_DEBUG] t=36.364 GT depth=1.7521 landed_height=1.7521 rate=-0.4638971897135178 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6207
+[TD_DEBUG] t=36.372 GT depth=1.7401 landed_height=1.7401 rate=-0.6347955956323634 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=36.384 GT depth=1.7401 landed_height=1.7401 rate=-0.5575554411327045 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6193
+[TD_DEBUG] t=36.392 GT depth=1.7281 landed_height=1.7281 rate=-0.6996091799412095 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6177
+[TD_DEBUG] t=36.404 GT depth=1.7281 landed_height=1.7281 rate=-0.6679092036960871 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6177
+[TD_DEBUG] t=36.412 GT depth=1.7161 landed_height=1.7161 rate=-0.6504616879248767 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6161
+[TD_DEBUG] t=36.420 GT depth=1.7161 landed_height=1.7161 rate=-0.5616687896727348 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6161
+[TD_DEBUG] t=36.428 GT depth=1.7161 landed_height=1.7161 rate=-0.5372505027362127 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6161
+[TD_DEBUG] t=36.440 GT depth=1.7042 landed_height=1.7042 rate=-0.4877059292223893 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6145
+[TD_DEBUG] t=36.448 GT depth=1.7042 landed_height=1.7042 rate=-0.5021562372065812 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6145
+[TD_DEBUG] t=36.460 GT depth=1.6922 landed_height=1.6922 rate=-0.5108470575474195 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6128
+[TD_DEBUG] t=36.468 GT depth=1.6922 landed_height=1.6922 rate=-0.563360099300636 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6128
+[TD_DEBUG] t=36.476 GT depth=1.6803 landed_height=1.6803 rate=-0.6771455525510554 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6110
+[TD_DEBUG] t=36.484 GT depth=1.6803 landed_height=1.6803 rate=-0.614348109859247 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6110
+[TD_DEBUG] t=36.496 GT depth=1.6684 landed_height=1.6684 rate=-0.7121146173038093 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6092
+[TD_DEBUG] t=36.504 GT depth=1.6684 landed_height=1.6684 rate=-0.6131980904295176 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6092
+[TD_DEBUG] t=36.512 GT depth=1.6566 landed_height=1.6566 rate=-0.7140664027718485 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6074
+[TD_DEBUG] t=36.520 GT depth=1.6566 landed_height=1.6566 rate=-0.6121110913816441 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6074
+[TD_DEBUG] t=36.532 GT depth=1.6447 landed_height=1.6447 rate=-0.7095141452635153 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6055
+[TD_DEBUG] t=36.540 GT depth=1.6447 landed_height=1.6447 rate=-0.6109508014247179 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6055
+[TD_DEBUG] t=36.548 GT depth=1.6447 landed_height=1.6447 rate=-0.5297882947567437 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6055
+[TD_DEBUG] t=36.556 GT depth=1.6329 landed_height=1.6329 rate=-0.49704421399422927 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6035
+[TD_DEBUG] t=36.564 GT depth=1.6329 landed_height=1.6329 rate=-0.5184905670932702 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6035
+[TD_DEBUG] t=36.572 GT depth=1.6234 landed_height=1.6234 rate=-0.5486803710768203 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6019
+[TD_DEBUG] t=36.584 GT depth=1.6234 landed_height=1.6234 rate=-0.5578331343088129 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.6019
+[TD_DEBUG] t=36.592 GT depth=1.6117 landed_height=1.6117 rate=-0.6418126999905769 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5998
+[TD_DEBUG] t=36.600 GT depth=1.6117 landed_height=1.6117 rate=-0.5333806747014456 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5998
+[TD_DEBUG] t=36.608 GT depth=1.6023 landed_height=1.6023 rate=-0.6337013162803071 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5981
+[TD_DEBUG] t=36.624 GT depth=1.5905 landed_height=1.5905 rate=-0.6696445808168686 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5959
+[TD_DEBUG] t=36.632 GT depth=1.5905 landed_height=1.5905 rate=-0.687276543156898 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5959
+[TD_DEBUG] t=36.640 GT depth=1.5905 landed_height=1.5905 rate=-0.5235912283676165 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5959
+[TD_DEBUG] t=36.648 GT depth=1.5789 landed_height=1.5789 rate=-0.583906526804502 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5937
+[TD_DEBUG] t=36.656 GT depth=1.5789 landed_height=1.5789 rate=-0.4804182128122084 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5937
+[TD_DEBUG] t=36.660 GT depth=1.5695 landed_height=1.5695 rate=-0.5677026327177663 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5919
+[TD_DEBUG] t=36.672 GT depth=1.5695 landed_height=1.5695 rate=-0.6089633134698993 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5919
+[TD_DEBUG] t=36.680 GT depth=1.5579 landed_height=1.5579 rate=-0.7109299760060633 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5895
+[TD_DEBUG] t=36.688 GT depth=1.5579 landed_height=1.5579 rate=-0.5777238822624325 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5895
+[TD_DEBUG] t=36.700 GT depth=1.5463 landed_height=1.5463 rate=-0.6600194585925818 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5871
+[TD_DEBUG] t=36.712 GT depth=1.5463 landed_height=1.5463 rate=-0.5210548740381022 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5871
+[TD_DEBUG] t=36.720 GT depth=1.5348 landed_height=1.5348 rate=-0.6252802314363247 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5847
+[TD_DEBUG] t=36.732 GT depth=1.5348 landed_height=1.5348 rate=-0.5004109763655709 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5847
+[TD_DEBUG] t=36.740 GT depth=1.5233 landed_height=1.5233 rate=-0.5951021098847674 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5822
+[TD_DEBUG] t=36.748 GT depth=1.5233 landed_height=1.5233 rate=-0.5402377886163511 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5822
+[TD_DEBUG] t=36.760 GT depth=1.5118 landed_height=1.5118 rate=-0.6546884587700664 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5796
+[TD_DEBUG] t=36.768 GT depth=1.5118 landed_height=1.5118 rate=-0.5518548366519721 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5796
+[TD_DEBUG] t=36.776 GT depth=1.5027 landed_height=1.5027 rate=-0.6532790005990009 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5775
+[TD_DEBUG] t=36.788 GT depth=1.5027 landed_height=1.5027 rate=-0.49597648988861187 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5775
+[TD_DEBUG] t=36.796 GT depth=1.4913 landed_height=1.4913 rate=-0.5894014718993477 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5749
+[TD_DEBUG] t=36.808 GT depth=1.4913 landed_height=1.4913 rate=-0.4818204543778506 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5749
+[TD_DEBUG] t=36.816 GT depth=1.4800 landed_height=1.4800 rate=-0.584958584975869 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5721
+[TD_DEBUG] t=36.824 GT depth=1.4800 landed_height=1.4800 rate=-0.5324153547011944 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5721
+[TD_DEBUG] t=36.832 GT depth=1.4800 landed_height=1.4800 rate=-0.5090797484576742 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5721
+[TD_DEBUG] t=36.840 GT depth=1.4687 landed_height=1.4687 rate=-0.48418223878850336 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5693
+[TD_DEBUG] t=36.848 GT depth=1.4687 landed_height=1.4687 rate=-0.5249030492254319 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5693
+[TD_DEBUG] t=36.856 GT depth=1.4574 landed_height=1.4574 rate=-0.5635023544430565 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5665
+[TD_DEBUG] t=36.864 GT depth=1.4574 landed_height=1.4574 rate=-0.6436052400828876 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5665
+[TD_DEBUG] t=36.876 GT depth=1.4485 landed_height=1.4485 rate=-0.6721593350715269 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5642
+[TD_DEBUG] t=36.884 GT depth=1.4485 landed_height=1.4485 rate=-0.5181139584313895 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5642
+[TD_DEBUG] t=36.892 GT depth=1.4374 landed_height=1.4374 rate=-0.6060830624181328 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5613
+[TD_DEBUG] t=36.900 GT depth=1.4374 landed_height=1.4374 rate=-0.515003863490063 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5613
+[TD_DEBUG] t=36.912 GT depth=1.4264 landed_height=1.4264 rate=-0.6263354041915861 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5584
+[TD_DEBUG] t=36.920 GT depth=1.4264 landed_height=1.4264 rate=-0.567914137759224 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5584
+[TD_DEBUG] t=36.928 GT depth=1.4264 landed_height=1.4264 rate=-0.4915038016291843 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5584
+[TD_DEBUG] t=36.940 GT depth=1.4157 landed_height=1.4157 rate=-0.43535323436256046 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5555
+[TD_DEBUG] t=36.948 GT depth=1.4157 landed_height=1.4157 rate=-0.43384027048385954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5555
+[TD_DEBUG] t=36.960 EXTENT-PATH ARMED (max=398px >= 2.0x min=191px)
+[TD_DEBUG] t=36.960 GT depth=1.4050 landed_height=1.4050 rate=-0.45826362218797967 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5523
+[TD_DEBUG] t=36.964 GT depth=1.3987 landed_height=1.3987 rate=-0.622035549118656 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5503
+[TD_DEBUG] t=36.972 GT depth=1.3987 landed_height=1.3987 rate=-0.6591917072854439 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5503
+[TD_DEBUG] t=36.984 GT depth=1.3883 landed_height=1.3883 rate=-0.6564458297000069 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5469
+[TD_DEBUG] t=36.992 GT depth=1.3883 landed_height=1.3883 rate=-0.6232796793381079 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5469
+[TD_DEBUG] t=37.008 GT depth=1.3779 landed_height=1.3779 rate=-0.5270645233390354 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5434
+[TD_DEBUG] t=37.012 GT depth=1.3779 landed_height=1.3779 rate=-0.476105385811778 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5434
+[TD_DEBUG] t=37.024 GT depth=1.3717 landed_height=1.3717 rate=-0.49714859315058463 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5412
+[TD_DEBUG] t=37.036 GT depth=1.3615 landed_height=1.3615 rate=-0.5173337019640248 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5374
+[TD_DEBUG] t=37.044 GT depth=1.3615 landed_height=1.3615 rate=-0.5395346517286539 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5374
+[TD_DEBUG] t=37.056 GT depth=1.3514 landed_height=1.3514 rate=-0.5599150352702036 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5338
+[TD_DEBUG] t=37.060 GT depth=1.3514 landed_height=1.3514 rate=-0.5698134804341494 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5338
+[TD_DEBUG] t=37.068 GT depth=1.3454 landed_height=1.3454 rate=-0.5719232245537123 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5315
+[TD_DEBUG] t=37.076 GT depth=1.3454 landed_height=1.3454 rate=-0.47128493374353125 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5315
+[TD_DEBUG] t=37.088 GT depth=1.3357 landed_height=1.3357 rate=-0.5401206057370864 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5276
+[TD_DEBUG] t=37.096 GT depth=1.3357 landed_height=1.3357 rate=-0.4371721584691853 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5276
+[TD_DEBUG] t=37.104 GT depth=1.3357 landed_height=1.3357 rate=-0.37788438796560186 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5276
+[TD_DEBUG] t=37.112 GT depth=1.3261 landed_height=1.3261 rate=-0.4074664322098721 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5235
+[TD_DEBUG] t=37.124 GT depth=1.3261 landed_height=1.3261 rate=-0.39400972365190257 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5235
+[TD_DEBUG] t=37.136 GT depth=1.3147 landed_height=1.3147 rate=-0.43857718307418814 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5182
+[TD_DEBUG] t=37.148 GT depth=1.3147 landed_height=1.3147 rate=-0.4524746875669146 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5182
+[TD_DEBUG] t=37.156 GT depth=1.3054 landed_height=1.3054 rate=-0.511350294007068 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5135
+[TD_DEBUG] t=37.164 GT depth=1.3054 landed_height=1.3054 rate=-0.44696158899637817 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5135
+[TD_DEBUG] t=37.176 GT depth=1.2961 landed_height=1.2961 rate=-0.5317057843664357 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5087
+[TD_DEBUG] t=37.184 GT depth=1.2961 landed_height=1.2961 rate=-0.4461732111177118 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5087
+[TD_DEBUG] t=37.192 GT depth=1.2961 landed_height=1.2961 rate=-0.4142815493188297 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5087
+[TD_DEBUG] t=37.204 GT depth=1.2870 landed_height=1.2870 rate=-0.36873235330529264 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.5037
+[TD_DEBUG] t=37.212 GT depth=1.2779 landed_height=1.2779 rate=-0.5022473966726398 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4986
+[TD_DEBUG] t=37.220 GT depth=1.2779 landed_height=1.2779 rate=-0.49728473669512074 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4986
+[TD_DEBUG] t=37.232 GT depth=1.2779 landed_height=1.2779 rate=-0.46552622764795937 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4986
+[TD_DEBUG] t=37.240 GT depth=1.2688 landed_height=1.2688 rate=-0.4910038928815931 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4933
+[TD_DEBUG] t=37.248 GT depth=1.2688 landed_height=1.2688 rate=-0.3670230055947937 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4933
+[TD_DEBUG] t=37.256 GT depth=1.2598 landed_height=1.2598 rate=-0.3961339917623016 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4879
+[TD_DEBUG] t=37.268 GT depth=1.2598 landed_height=1.2598 rate=-0.4410911093202988 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4879
+[TD_DEBUG] t=37.276 GT depth=1.2509 landed_height=1.2509 rate=-0.5407301439294211 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4824
+[TD_DEBUG] t=37.288 GT depth=1.2509 landed_height=1.2509 rate=-0.4206129380213498 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4824
+[TD_DEBUG] t=37.296 GT depth=1.2420 landed_height=1.2420 rate=-0.4856728715671756 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4768
+[TD_DEBUG] t=37.304 GT depth=1.2420 landed_height=1.2420 rate=-0.41875151259647214 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4768
+[TD_DEBUG] t=37.312 GT depth=1.2331 landed_height=1.2331 rate=-0.5359224590400404 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4711
+[TD_DEBUG] t=37.324 GT depth=1.2331 landed_height=1.2331 rate=-0.4351195801174188 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4711
+[TD_DEBUG] t=37.336 GT depth=1.2243 landed_height=1.2243 rate=-0.5018431157403805 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4653
+[TD_DEBUG] t=37.344 GT depth=1.2243 landed_height=1.2243 rate=-0.40707842126918775 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4653
+[TD_DEBUG] t=37.356 GT depth=1.2154 landed_height=1.2154 rate=-0.4555952420275929 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4594
+[TD_DEBUG] t=37.360 GT depth=1.2154 landed_height=1.2154 rate=-0.41130386182949635 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4594
+[TD_DEBUG] t=37.372 GT depth=1.2084 landed_height=1.2084 rate=-0.4957909121896917 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4546
+[TD_DEBUG] t=37.380 GT depth=1.2084 landed_height=1.2084 rate=-0.41684610785855936 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4546
+[TD_DEBUG] t=37.388 GT depth=1.1997 landed_height=1.1997 rate=-0.5007082182961814 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4486
+[TD_DEBUG] t=37.400 GT depth=1.1997 landed_height=1.1997 rate=-0.40350982267673496 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4486
+[TD_DEBUG] t=37.408 GT depth=1.1927 landed_height=1.1927 rate=-0.44512302990091357 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4437
+[TD_DEBUG] t=37.412 GT depth=1.1927 landed_height=1.1927 rate=-0.42238475621947275 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4437
+[TD_DEBUG] t=37.420 GT depth=1.1875 landed_height=1.1875 rate=-0.46918353044339967 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4400
+[TD_DEBUG] t=37.432 GT depth=1.1875 landed_height=1.1875 rate=-0.3319975773370512 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4400
+[TD_DEBUG] t=37.440 GT depth=1.1788 landed_height=1.1788 rate=-0.44099722853136986 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4339
+[TD_DEBUG] t=37.448 GT depth=1.1788 landed_height=1.1788 rate=-0.37404225714907585 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4339
+[TD_DEBUG] t=37.456 GT depth=1.1701 landed_height=1.1701 rate=-0.4649989038250175 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4277
+[TD_DEBUG] t=37.468 GT depth=1.1701 landed_height=1.1701 rate=-0.4235630078193116 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4277
+[TD_DEBUG] t=37.476 GT depth=1.1616 landed_height=1.1616 rate=-0.5190386046670026 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4214
+[TD_DEBUG] t=37.484 GT depth=1.1616 landed_height=1.1616 rate=-0.432962677624161 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4214
+[TD_DEBUG] t=37.492 GT depth=1.1616 landed_height=1.1616 rate=-0.3857841046133869 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4214
+[TD_DEBUG] t=37.500 GT depth=1.1533 landed_height=1.1533 rate=-0.36269450839769896 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4150
+[TD_DEBUG] t=37.504 GT depth=1.1533 landed_height=1.1533 rate=-0.42076503573755175 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4150
+[TD_DEBUG] t=37.508 GT depth=1.1485 landed_height=1.1485 rate=-0.4159818106370798 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4110
+[TD_DEBUG] t=37.516 GT depth=1.1485 landed_height=1.1485 rate=-0.4879628221121053 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4110
+[TD_DEBUG] t=37.524 GT depth=1.1485 landed_height=1.1485 rate=-0.3851921638282724 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4110
+[TD_DEBUG] t=37.536 GT depth=1.1410 landed_height=1.1410 rate=-0.3065847429209441 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4043
+[TD_DEBUG] t=37.544 GT depth=1.1410 landed_height=1.1410 rate=-0.2873327669447539 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.4043
+[TD_DEBUG] t=37.552 GT depth=1.1339 landed_height=1.1339 rate=-0.3282063214132108 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3976
+[TD_DEBUG] t=37.564 GT depth=1.1339 landed_height=1.1339 rate=-0.34956833047725155 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3976
+[TD_DEBUG] t=37.572 GT depth=1.1273 landed_height=1.1273 rate=-0.4021488631233463 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3908
+[TD_DEBUG] t=37.580 GT depth=1.1273 landed_height=1.1273 rate=-0.3442354219626209 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3908
+[TD_DEBUG] t=37.588 GT depth=1.1209 landed_height=1.1209 rate=-0.40218425415859554 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3840
+[TD_DEBUG] t=37.600 GT depth=1.1209 landed_height=1.1209 rate=-0.3189951634698924 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3840
+[TD_DEBUG] t=37.608 GT depth=1.1147 landed_height=1.1147 rate=-0.3846055753111293 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3772
+[TD_DEBUG] t=37.616 GT depth=1.1147 landed_height=1.1147 rate=-0.3157523018311372 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3772
+[TD_DEBUG] t=37.628 GT depth=1.1087 landed_height=1.1087 rate=-0.3522087853365742 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3704
+[TD_DEBUG] t=37.636 GT depth=1.1087 landed_height=1.1087 rate=-0.29313349192690763 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3704
+[TD_DEBUG] t=37.648 GT depth=1.1028 landed_height=1.1028 rate=-0.3420306622734015 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3636
+[TD_DEBUG] t=37.656 GT depth=1.1028 landed_height=1.1028 rate=-0.28122983064684376 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3636
+[TD_DEBUG] t=37.668 GT depth=1.0970 landed_height=1.0970 rate=-0.31802988387659803 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3569
+[TD_DEBUG] t=37.680 GT depth=1.0970 landed_height=1.0970 rate=-0.2573099061719144 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3569
+[TD_DEBUG] t=37.688 GT depth=1.0970 landed_height=1.0970 rate=-0.22322305116965002 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3569
+[TD_DEBUG] t=37.696 GT depth=1.0916 landed_height=1.0916 rate=-0.20981861061338422 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3503
+[TD_DEBUG] t=37.704 GT depth=1.0916 landed_height=1.0916 rate=-0.21766679459030264 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3503
+[TD_DEBUG] t=37.716 GT depth=1.0864 landed_height=1.0864 rate=-0.2323196256886327 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3436
+[TD_DEBUG] t=37.724 GT depth=1.0864 landed_height=1.0864 rate=-0.272767543319504 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3436
+[TD_DEBUG] t=37.736 GT depth=1.0816 landed_height=1.0816 rate=-0.2916302649129269 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3369
+[TD_DEBUG] t=37.744 GT depth=1.0816 landed_height=1.0816 rate=-0.23560076968375263 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3369
+[TD_DEBUG] t=37.752 GT depth=1.0769 landed_height=1.0769 rate=-0.2773594102418252 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3303
+[TD_DEBUG] t=37.756 GT depth=1.0742 landed_height=1.0742 rate=-0.30141986391094094 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3263
+[TD_DEBUG] t=37.764 GT depth=1.0742 landed_height=1.0742 rate=-0.32671629799115004 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3263
+[TD_DEBUG] t=37.776 GT depth=1.0706 landed_height=1.0706 rate=-0.2973600585640514 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3211
+[TD_DEBUG] t=37.784 GT depth=1.0706 landed_height=1.0706 rate=-0.25599341120831254 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3211
+[TD_DEBUG] t=37.792 GT depth=1.0706 landed_height=1.0706 rate=-0.15361207294194762 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3211
+[TD_DEBUG] t=37.800 GT depth=1.0661 landed_height=1.0661 rate=-0.1639112027016194 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3147
+[TD_DEBUG] t=37.808 GT depth=1.0661 landed_height=1.0661 rate=-0.17935387851197224 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3147
+[TD_DEBUG] t=37.812 GT depth=1.0626 landed_height=1.0626 rate=-0.21551362140795893 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3095
+[TD_DEBUG] t=37.820 GT depth=1.0626 landed_height=1.0626 rate=-0.25336384222837344 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3095
+[TD_DEBUG] t=37.828 GT depth=1.0626 landed_height=1.0626 rate=-0.21698476924334664 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3095
+[TD_DEBUG] t=37.844 GT depth=1.0582 landed_height=1.0582 rate=-0.17361356992280907 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.3032
+[TD_DEBUG] t=37.856 GT depth=1.0538 landed_height=1.0538 rate=-0.21994386921244055 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2970
+[TD_DEBUG] t=37.860 GT depth=1.0538 landed_height=1.0538 rate=-0.21074663048313194 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2970
+[TD_DEBUG] t=37.868 GT depth=1.0512 landed_height=1.0512 rate=-0.2544329682589179 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2934
+[TD_DEBUG] t=37.880 GT depth=1.0512 landed_height=1.0512 rate=-0.23690484412698098 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2934
+[TD_DEBUG] t=37.888 GT depth=1.0467 landed_height=1.0467 rate=-0.22592437418143954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2873
+[TD_DEBUG] t=37.896 GT depth=1.0467 landed_height=1.0467 rate=-0.190306532741998 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2873
+[TD_DEBUG] t=37.904 GT depth=1.0423 landed_height=1.0423 rate=-0.23762099022344124 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2814
+[TD_DEBUG] t=37.912 GT depth=1.0423 landed_height=1.0423 rate=-0.23348451842702056 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2814
+[TD_DEBUG] t=37.920 GT depth=1.0423 landed_height=1.0423 rate=-0.22228055050037415 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2814
+[TD_DEBUG] t=37.940 GT depth=1.0378 landed_height=1.0378 rate=-0.17172898732940275 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2756
+[TD_DEBUG] t=37.948 GT depth=1.0332 landed_height=1.0332 rate=-0.21640524103051084 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=37.960 GT depth=1.0332 landed_height=1.0332 rate=-0.1916251770089268 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=37.968 GT depth=1.0286 landed_height=1.0286 rate=-0.24236947494387184 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2645
+[TD_DEBUG] t=37.976 GT depth=1.0286 landed_height=1.0286 rate=-0.25377172389969643 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2645
+[TD_DEBUG] t=37.984 GT depth=1.0240 landed_height=1.0240 rate=-0.276412023454469 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2591
+[TD_DEBUG] t=37.992 GT depth=1.0240 landed_height=1.0240 rate=-0.24319563823932533 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2591
+[TD_DEBUG] t=38.000 GT depth=1.0240 landed_height=1.0240 rate=-0.2317028159501282 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2591
+[TD_DEBUG] t=38.012 GT depth=1.0193 landed_height=1.0193 rate=-0.2049966854887628 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2538
+[TD_DEBUG] t=38.020 GT depth=1.0193 landed_height=1.0193 rate=-0.19700027644609627 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2538
+[TD_DEBUG] t=38.028 GT depth=1.0145 landed_height=1.0145 rate=-0.21163482975678286 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2487
+[TD_DEBUG] t=38.036 GT depth=1.0145 landed_height=1.0145 rate=-0.24443737593346837 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2487
+[TD_DEBUG] t=38.040 GT depth=1.0097 landed_height=1.0097 rate=-0.31776695234971 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2437
+[TD_DEBUG] t=38.060 GT depth=1.0048 landed_height=1.0048 rate=-0.3243605539097368 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2388
+[TD_DEBUG] t=38.076 GT depth=1.0048 landed_height=1.0048 rate=-0.2630948521189742 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2388
+[TD_DEBUG] t=38.084 GT depth=0.9998 landed_height=0.9998 rate=-0.24711433212236475 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2340
+[TD_DEBUG] t=38.096 GT depth=0.9998 landed_height=0.9998 rate=-0.22336006636235858 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2340
+[TD_DEBUG] t=38.104 GT depth=0.9948 landed_height=0.9948 rate=-0.2093726990740005 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2294
+[TD_DEBUG] t=38.112 GT depth=0.9948 landed_height=0.9948 rate=-0.21768427546795896 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2294
+[TD_DEBUG] t=38.116 GT depth=0.9948 landed_height=0.9948 rate=-0.24236849251012055 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2294
+[TD_DEBUG] t=38.128 GT depth=0.9907 landed_height=0.9907 rate=-0.21120762284945982 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2258
+[TD_DEBUG] t=38.136 GT depth=0.9907 landed_height=0.9907 rate=-0.2115376122310727 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2258
+[TD_DEBUG] t=38.144 GT depth=0.9855 landed_height=0.9855 rate=-0.22395626927672851 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2214
+[TD_DEBUG] t=38.152 GT depth=0.9855 landed_height=0.9855 rate=-0.25425768950048994 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2214
+[TD_DEBUG] t=38.156 GT depth=0.9814 landed_height=0.9814 rate=-0.3062271658682114 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2180
+[TD_DEBUG] t=38.176 GT depth=0.9814 landed_height=0.9814 rate=-0.22204142151846645 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2180
+[TD_DEBUG] t=38.188 GT depth=0.9761 landed_height=0.9761 rate=-0.23362266929665168 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2139
+[TD_DEBUG] t=38.196 GT depth=0.9708 landed_height=0.9708 rate=-0.2529828878907709 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2099
+[TD_DEBUG] t=38.204 GT depth=0.9708 landed_height=0.9708 rate=-0.2699166394197498 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2099
+[TD_DEBUG] t=38.212 GT depth=0.9665 landed_height=0.9665 rate=-0.2824595303903102 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2068
+[TD_DEBUG] t=38.220 GT depth=0.9665 landed_height=0.9665 rate=-0.3475215483656461 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2068
+[TD_DEBUG] t=38.228 GT depth=0.9665 landed_height=0.9665 rate=-0.23262365471350802 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2068
+[TD_DEBUG] t=38.236 GT depth=0.9611 landed_height=0.9611 rate=-0.21913746035244386 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2031
+[TD_DEBUG] t=38.244 GT depth=0.9611 landed_height=0.9611 rate=-0.23116564904018952 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.2031
+[TD_DEBUG] t=38.252 GT depth=0.9557 landed_height=0.9557 rate=-0.27150464147080866 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1995
+[TD_DEBUG] t=38.256 GT depth=0.9557 landed_height=0.9557 rate=-0.3351719739399303 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1995
+[TD_DEBUG] t=38.264 GT depth=0.9524 landed_height=0.9524 rate=-0.37630003461624667 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1973
+[TD_DEBUG] t=38.276 GT depth=0.9524 landed_height=0.9524 rate=-0.2581906896355644 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1973
+[TD_DEBUG] t=38.300 GT depth=0.9412 landed_height=0.9412 rate=-0.3181654408299734 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1906
+[TD_DEBUG] t=38.308 GT depth=0.9412 landed_height=0.9412 rate=-0.28283439489939416 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1906
+[TD_DEBUG] t=38.320 GT depth=0.9367 landed_height=0.9367 rate=-0.2979885814009416 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1881
+[TD_DEBUG] t=38.332 GT depth=0.9367 landed_height=0.9367 rate=-0.26872740909055787 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1881
+[TD_DEBUG] t=38.340 GT depth=0.9310 landed_height=0.9310 rate=-0.29875894632012717 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1850
+[TD_DEBUG] t=38.348 GT depth=0.9310 landed_height=0.9310 rate=-0.23299342223364414 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1850
+[TD_DEBUG] t=38.356 GT depth=0.9310 landed_height=0.9310 rate=-0.22330610959395025 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1850
+[TD_DEBUG] t=38.368 GT depth=0.9253 landed_height=0.9253 rate=-0.23187165604744875 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1820
+[TD_DEBUG] t=38.376 GT depth=0.9253 landed_height=0.9253 rate=-0.23920792121574505 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1820
+[TD_DEBUG] t=38.384 GT depth=0.9196 landed_height=0.9196 rate=-0.25577327593684046 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1792
+[TD_DEBUG] t=38.392 GT depth=0.9196 landed_height=0.9196 rate=-0.2951255430783359 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1792
+[TD_DEBUG] t=38.400 GT depth=0.9138 landed_height=0.9138 rate=-0.3641570883380588 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1764
+[TD_DEBUG] t=38.408 GT depth=0.9138 landed_height=0.9138 rate=-0.3292117145996837 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1764
+[TD_DEBUG] t=38.420 GT depth=0.9080 landed_height=0.9080 rate=-0.366329674442544 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1738
+[TD_DEBUG] t=38.436 GT depth=0.8963 landed_height=0.8963 rate=-0.44501170321267053 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1690
+[TD_DEBUG] t=38.492 GT depth=0.8904 landed_height=0.8904 rate=-0.291845042318735 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1667
+[TD_DEBUG] t=38.516 GT depth=0.8845 landed_height=0.8845 rate=-0.2517007349764253 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1646
+[TD_DEBUG] t=38.528 GT depth=0.8785 landed_height=0.8785 rate=-0.2537200833697909 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1625
+[TD_DEBUG] t=38.536 GT depth=0.8785 landed_height=0.8785 rate=-0.22585283021904554 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1625
+[TD_DEBUG] t=38.544 GT depth=0.8725 landed_height=0.8725 rate=-0.20787891552848253 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1605
+[TD_DEBUG] t=38.556 GT depth=0.8677 landed_height=0.8677 rate=-0.35331970715104954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1591
+[TD_DEBUG] t=38.568 GT depth=0.8677 landed_height=0.8677 rate=-0.34376801054587514 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1591
+[TD_DEBUG] t=38.576 GT depth=0.8617 landed_height=0.8617 rate=-0.34461836308778876 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1573
+[TD_DEBUG] t=38.588 GT depth=0.8617 landed_height=0.8617 rate=-0.3114069883748844 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1573
+[TD_DEBUG] t=38.596 GT depth=0.8557 landed_height=0.8557 rate=-0.2925889435548211 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1556
+[TD_DEBUG] t=38.600 GT depth=0.8557 landed_height=0.8557 rate=-0.29824368037049287 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1556
+[TD_DEBUG] t=38.608 GT depth=0.8520 landed_height=0.8520 rate=-0.3618793652841048 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1547
+[TD_DEBUG] t=38.616 GT depth=0.8520 landed_height=0.8520 rate=-0.2874940995625032 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1547
+[TD_DEBUG] t=38.628 GT depth=0.8460 landed_height=0.8460 rate=-0.3483548247617678 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1532
+[TD_DEBUG] t=38.636 GT depth=0.8460 landed_height=0.8460 rate=-0.26938883060162055 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1532
+[TD_DEBUG] t=38.656 GT depth=0.8399 landed_height=0.8399 rate=-0.2748552451850328 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1517
+[TD_DEBUG] t=38.668 GT depth=0.8363 landed_height=0.8363 rate=-0.271528429231771 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1509
+[TD_DEBUG] t=38.680 GT depth=0.8302 landed_height=0.8302 rate=-0.31370065358104887 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1496
+[TD_DEBUG] t=38.688 GT depth=0.8302 landed_height=0.8302 rate=-0.29416854481787 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1496
+[TD_DEBUG] t=38.700 GT depth=0.8242 landed_height=0.8242 rate=-0.3371168402243479 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1484
+[TD_DEBUG] t=38.704 GT depth=0.8242 landed_height=0.8242 rate=-0.33895967803725646 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1484
+[TD_DEBUG] t=38.720 GT depth=0.8181 landed_height=0.8181 rate=-0.33880359920831826 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1472
+[TD_DEBUG] t=38.728 GT depth=0.8181 landed_height=0.8181 rate=-0.2889612621770738 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1472
+[TD_DEBUG] t=38.740 GT depth=0.8121 landed_height=0.8121 rate=-0.32255231665036127 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1462
+[TD_DEBUG] t=38.748 GT depth=0.8121 landed_height=0.8121 rate=-0.2767044553975884 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1462
+[TD_DEBUG] t=38.756 GT depth=0.8121 landed_height=0.8121 rate=-0.24592463321202984 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1462
+[TD_DEBUG] t=38.768 GT depth=0.8060 landed_height=0.8060 rate=-0.242122442824146 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1452
+[TD_DEBUG] t=38.776 GT depth=0.8060 landed_height=0.8060 rate=-0.24204447430799497 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1452
+[TD_DEBUG] t=38.788 GT depth=0.8000 landed_height=0.8000 rate=-0.2581169440773825 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1443
+[TD_DEBUG] t=38.796 GT depth=0.8000 landed_height=0.8000 rate=-0.28464457172029056 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1443
+[TD_DEBUG] t=38.808 GT depth=0.7940 landed_height=0.7940 rate=-0.3253259975101251 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1434
+[TD_DEBUG] t=38.816 GT depth=0.7940 landed_height=0.7940 rate=-0.28408307738391175 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1434
+[TD_DEBUG] t=38.844 GT depth=0.7820 landed_height=0.7820 rate=-0.33886213092229417 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1420
+[TD_DEBUG] t=38.856 GT depth=0.7820 landed_height=0.7820 rate=-0.2995204013024244 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1420
+[TD_DEBUG] t=38.868 GT depth=0.7760 landed_height=0.7760 rate=-0.3186748232067535 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1413
+[TD_DEBUG] t=38.876 GT depth=0.7760 landed_height=0.7760 rate=-0.2907042810945658 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1413
+[TD_DEBUG] t=38.884 GT depth=0.7700 landed_height=0.7700 rate=-0.32346109381077454 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1408
+[TD_DEBUG] t=38.892 GT depth=0.7700 landed_height=0.7700 rate=-0.28540629411468726 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1408
+[TD_DEBUG] t=38.904 GT depth=0.7641 landed_height=0.7641 rate=-0.35711228623499003 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1402
+[TD_DEBUG] t=38.912 GT depth=0.7641 landed_height=0.7641 rate=-0.30754330187970264 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1402
+[TD_DEBUG] t=38.916 GT depth=0.7641 landed_height=0.7641 rate=-0.288334816023541 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1402
+[TD_DEBUG] t=38.924 GT depth=0.7581 landed_height=0.7581 rate=-0.2784617619698028 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1397
+[TD_DEBUG] t=38.932 GT depth=0.7581 landed_height=0.7581 rate=-0.29780019072400854 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1397
+[TD_DEBUG] t=38.944 GT depth=0.7522 landed_height=0.7522 rate=-0.3176044722435885 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1393
+[TD_DEBUG] t=38.952 GT depth=0.7522 landed_height=0.7522 rate=-0.32582122435166927 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1393
+[TD_DEBUG] t=38.960 GT depth=0.7474 landed_height=0.7474 rate=-0.338157832419406 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1390
+[TD_DEBUG] t=38.964 GT depth=0.7474 landed_height=0.7474 rate=-0.2944058061335105 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1390
+[TD_DEBUG] t=38.968 GT depth=0.7474 landed_height=0.7474 rate=-0.30309373947198726 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1390
+[TD_DEBUG] t=38.988 GT depth=0.7427 landed_height=0.7427 rate=-0.22639375412843266 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1387
+[TD_DEBUG] t=39.008 GT depth=0.7368 landed_height=0.7368 rate=-0.2482595076350496 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1384
+[TD_DEBUG] t=39.012 GT depth=0.7310 landed_height=0.7310 rate=-0.2897890979608189 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1381
+[TD_DEBUG] t=39.024 GT depth=0.7310 landed_height=0.7310 rate=-0.3000180068317746 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1381
+[TD_DEBUG] t=39.032 GT depth=0.7310 landed_height=0.7310 rate=-0.28583604289196685 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1381
+[TD_DEBUG] t=39.040 GT depth=0.7252 landed_height=0.7252 rate=-0.303424179119473 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1379
+[TD_DEBUG] t=39.048 GT depth=0.7252 landed_height=0.7252 rate=-0.2500213171012273 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1379
+[TD_DEBUG] t=39.056 GT depth=0.7194 landed_height=0.7194 rate=-0.2638616821207399 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1376
+[TD_DEBUG] t=39.064 GT depth=0.7194 landed_height=0.7194 rate=-0.33217529835929904 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1376
+[TD_DEBUG] t=39.076 GT depth=0.7147 landed_height=0.7147 rate=-0.3468886145707961 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1375
+[TD_DEBUG] t=39.084 GT depth=0.7147 landed_height=0.7147 rate=-0.2673688761645618 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1375
+[TD_DEBUG] t=39.096 GT depth=0.7090 landed_height=0.7090 rate=-0.29642226982876424 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1373
+[TD_DEBUG] t=39.104 GT depth=0.7090 landed_height=0.7090 rate=-0.24472255205812407 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1373
+[TD_DEBUG] t=39.112 GT depth=0.7033 landed_height=0.7033 rate=-0.30848009017247346 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1372
+[TD_DEBUG] t=39.120 GT depth=0.7033 landed_height=0.7033 rate=-0.2958894363767963 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1372
+[TD_DEBUG] t=39.128 GT depth=0.6976 landed_height=0.6976 rate=-0.36328034809157744 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1371
+[TD_DEBUG] t=39.140 GT depth=0.6976 landed_height=0.6976 rate=-0.30051583747858623 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1371
+[TD_DEBUG] t=39.168 GT depth=0.6862 landed_height=0.6862 rate=-0.33048118844537866 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1369
+[TD_DEBUG] t=39.176 GT depth=0.6862 landed_height=0.6862 rate=-0.29087552083903473 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1369
+[TD_DEBUG] t=39.204 GT depth=0.6806 landed_height=0.6806 rate=-0.26621134434528493 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1368
+[TD_DEBUG] t=39.212 GT depth=0.6750 landed_height=0.6750 rate=-0.2642544958999905 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1368
+[TD_DEBUG] t=39.220 GT depth=0.6750 landed_height=0.6750 rate=-0.27311464399051344 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1368
+[TD_DEBUG] t=39.228 GT depth=0.6695 landed_height=0.6695 rate=-0.2690589748176272 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.236 GT depth=0.6695 landed_height=0.6695 rate=-0.29855826220391257 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.252 GT depth=0.6640 landed_height=0.6640 rate=-0.32622096630347 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.260 GT depth=0.6640 landed_height=0.6640 rate=-0.2570276067616733 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.268 GT depth=0.6640 landed_height=0.6640 rate=-0.22147388234556262 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.276 GT depth=0.6585 landed_height=0.6585 rate=-0.2086956424579144 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.284 GT depth=0.6585 landed_height=0.6585 rate=-0.22496225340064357 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1367
+[TD_DEBUG] t=39.296 GT depth=0.6531 landed_height=0.6531 rate=-0.2582663154209229 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.304 GT depth=0.6531 landed_height=0.6531 rate=-0.28034377698915686 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.312 GT depth=0.6477 landed_height=0.6477 rate=-0.32563891104316317 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.316 GT depth=0.6477 landed_height=0.6477 rate=-0.29635951027346735 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.324 GT depth=0.6445 landed_height=0.6445 rate=-0.3436814928680836 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.336 GT depth=0.6445 landed_height=0.6445 rate=-0.2530888123633637 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1366
+[TD_DEBUG] t=39.348 GT depth=0.6392 landed_height=0.6392 rate=-0.2698223210346954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1365
+[TD_DEBUG] t=39.356 GT depth=0.6350 landed_height=0.6350 rate=-0.2745524201307533 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1365
+[TD_DEBUG] t=39.360 GT depth=0.6318 landed_height=0.6318 rate=-0.3363594268559531 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1364
+[TD_DEBUG] t=39.392 GT depth=0.6265 landed_height=0.6265 rate=-0.2954729595220145 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1364
+[TD_DEBUG] t=39.400 GT depth=0.6265 landed_height=0.6265 rate=-0.26754480314170237 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1364
+[TD_DEBUG] t=39.416 GT depth=0.6224 landed_height=0.6224 rate=-0.21745316570131001 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1363
+[TD_DEBUG] t=39.424 GT depth=0.6182 landed_height=0.6182 rate=-0.2102450709359994 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1363
+[TD_DEBUG] t=39.436 GT depth=0.6182 landed_height=0.6182 rate=-0.19228672000477598 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1363
+[TD_DEBUG] t=39.448 GT depth=0.6131 landed_height=0.6131 rate=-0.24436469270232464 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1362
+[TD_DEBUG] t=39.460 GT depth=0.6131 landed_height=0.6131 rate=-0.23323892224322607 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1362
+[TD_DEBUG] t=39.472 GT depth=0.6079 landed_height=0.6079 rate=-0.2307966006277702 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1360
+[TD_DEBUG] t=39.480 GT depth=0.6029 landed_height=0.6029 rate=-0.2652396132585195 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1359
+[TD_DEBUG] t=39.488 GT depth=0.6029 landed_height=0.6029 rate=-0.30395873829331427 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1359
+[TD_DEBUG] t=39.496 GT depth=0.6029 landed_height=0.6029 rate=-0.26259727494003 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1359
+[TD_DEBUG] t=39.504 GT depth=0.5978 landed_height=0.5978 rate=-0.30903042302335154 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1358
+[TD_DEBUG] t=39.508 GT depth=0.5978 landed_height=0.5978 rate=-0.2527968840772448 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1358
+[TD_DEBUG] t=39.516 GT depth=0.5938 landed_height=0.5938 rate=-0.26072137390449857 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1356
+[TD_DEBUG] t=39.524 GT depth=0.5938 landed_height=0.5938 rate=-0.2960685917651587 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1356
+[TD_DEBUG] t=39.532 GT depth=0.5938 landed_height=0.5938 rate=-0.24363988031112072 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1356
+[TD_DEBUG] t=39.540 GT depth=0.5888 landed_height=0.5888 rate=-0.21989244072104389 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1354
+[TD_DEBUG] t=39.552 GT depth=0.5888 landed_height=0.5888 rate=-0.19772925251159193 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1354
+[TD_DEBUG] t=39.560 GT depth=0.5839 landed_height=0.5839 rate=-0.22312855811377844 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1352
+[TD_DEBUG] t=39.568 GT depth=0.5839 landed_height=0.5839 rate=-0.24994457959076385 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1352
+[TD_DEBUG] t=39.576 GT depth=0.5789 landed_height=0.5789 rate=-0.29794007412395096 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1350
+[TD_DEBUG] t=39.588 GT depth=0.5789 landed_height=0.5789 rate=-0.2416475955622399 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1350
+[TD_DEBUG] t=39.596 GT depth=0.5741 landed_height=0.5741 rate=-0.2959675907556809 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1348
+[TD_DEBUG] t=39.612 GT depth=0.5692 landed_height=0.5692 rate=-0.2894138763846193 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1345
+[TD_DEBUG] t=39.644 GT depth=0.5644 landed_height=0.5644 rate=-0.2529745927521876 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1342
+[TD_DEBUG] t=39.656 GT depth=0.5596 landed_height=0.5596 rate=-0.24357421693115333 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1338
+[TD_DEBUG] t=39.664 GT depth=0.5596 landed_height=0.5596 rate=-0.24006556867966536 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1338
+[TD_DEBUG] t=39.672 GT depth=0.5596 landed_height=0.5596 rate=-0.19725938808904428 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1338
+[TD_DEBUG] t=39.684 GT depth=0.5548 landed_height=0.5548 rate=-0.19065429061120504 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1335
+[TD_DEBUG] t=39.696 GT depth=0.5548 landed_height=0.5548 rate=-0.17820599829467018 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1335
+[TD_DEBUG] t=39.704 GT depth=0.5501 landed_height=0.5501 rate=-0.19209133678616042 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1331
+[TD_DEBUG] t=39.712 GT depth=0.5501 landed_height=0.5501 rate=-0.2172125279215395 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1331
+[TD_DEBUG] t=39.724 GT depth=0.5455 landed_height=0.5455 rate=-0.2536916854401875 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1326
+[TD_DEBUG] t=39.732 GT depth=0.5455 landed_height=0.5455 rate=-0.22521267157844962 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1326
+[TD_DEBUG] t=39.744 GT depth=0.5408 landed_height=0.5408 rate=-0.2647129829992824 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1322
+[TD_DEBUG] t=39.752 GT depth=0.5408 landed_height=0.5408 rate=-0.21915511894352954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1322
+[TD_DEBUG] t=39.760 GT depth=0.5363 landed_height=0.5363 rate=-0.262650844048593 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1317
+[TD_DEBUG] t=39.764 GT depth=0.5363 landed_height=0.5363 rate=-0.2528168902928094 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1317
+[TD_DEBUG] t=39.776 GT depth=0.5335 landed_height=0.5335 rate=-0.2726472612783262 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1314
+[TD_DEBUG] t=39.800 GT depth=0.5290 landed_height=0.5290 rate=-0.2228738127041307 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1309
+[TD_DEBUG] t=39.808 GT depth=0.5253 landed_height=0.5253 rate=-0.24211433394111592 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1304
+[TD_DEBUG] t=39.812 GT depth=0.5253 landed_height=0.5253 rate=-0.2206756959608905 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1304
+[TD_DEBUG] t=39.820 GT depth=0.5226 landed_height=0.5226 rate=-0.23861274041188685 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1301
+[TD_DEBUG] t=39.832 GT depth=0.5226 landed_height=0.5226 rate=-0.21241189109050562 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1301
+[TD_DEBUG] t=39.840 GT depth=0.5182 landed_height=0.5182 rate=-0.22821270050319836 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1295
+[TD_DEBUG] t=39.852 GT depth=0.5182 landed_height=0.5182 rate=-0.17963037203478566 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1295
+[TD_DEBUG] t=39.856 GT depth=0.5137 landed_height=0.5137 rate=-0.22630640419373285 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1288
+[TD_DEBUG] t=39.868 GT depth=0.5111 landed_height=0.5111 rate=-0.2528865490657729 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1284
+[TD_DEBUG] t=39.876 GT depth=0.5111 landed_height=0.5111 rate=-0.26568596089541285 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1284
+[TD_DEBUG] t=39.888 GT depth=0.5067 landed_height=0.5067 rate=-0.2467680074646557 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1278
+[TD_DEBUG] t=39.896 GT depth=0.5067 landed_height=0.5067 rate=-0.23810003276622688 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1278
+[TD_DEBUG] t=39.904 GT depth=0.5067 landed_height=0.5067 rate=-0.16087807273842572 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1278
+[TD_DEBUG] t=39.912 GT depth=0.5023 landed_height=0.5023 rate=-0.18415332487248115 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1271
+[TD_DEBUG] t=39.920 GT depth=0.5023 landed_height=0.5023 rate=-0.19183478093149622 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1271
+[TD_DEBUG] t=39.928 GT depth=0.4980 landed_height=0.4980 rate=-0.21756432351862295 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1263
+[TD_DEBUG] t=39.940 GT depth=0.4980 landed_height=0.4980 rate=-0.22849428686750178 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1263
+[TD_DEBUG] t=39.944 GT depth=0.4980 landed_height=0.4980 rate=-0.20716172215065815 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1263
+[TD_DEBUG] t=39.956 GT depth=0.4937 landed_height=0.4937 rate=-0.1855072096337709 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1256
+[TD_DEBUG] t=39.964 GT depth=0.4937 landed_height=0.4937 rate=-0.18256153268061331 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1256
+[TD_DEBUG] t=39.972 GT depth=0.4894 landed_height=0.4894 rate=-0.19686696546145596 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1248
+[TD_DEBUG] t=39.984 GT depth=0.4894 landed_height=0.4894 rate=-0.21857091831512898 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1248
+[TD_DEBUG] t=39.992 GT depth=0.4852 landed_height=0.4852 rate=-0.24230829649720156 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1240
+[TD_DEBUG] t=40.000 GT depth=0.4852 landed_height=0.4852 rate=-0.21316026737603874 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1240
+[TD_DEBUG] t=40.032 GT depth=0.4768 landed_height=0.4768 rate=-0.2337965350557924 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1223
+[TD_DEBUG] t=40.052 GT depth=0.4727 landed_height=0.4727 rate=-0.2223148469170412 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1214
+[TD_DEBUG] t=40.076 GT depth=0.4686 landed_height=0.4686 rate=-0.2214002363274842 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1205
+[TD_DEBUG] t=40.088 GT depth=0.4645 landed_height=0.4645 rate=-0.2169155401301981 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1196
+[TD_DEBUG] t=40.104 GT depth=0.4645 landed_height=0.4645 rate=-0.20577133749250381 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1196
+[TD_DEBUG] t=40.112 GT depth=0.4605 landed_height=0.4605 rate=-0.1930220387790974 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1187
+[TD_DEBUG] t=40.120 GT depth=0.4605 landed_height=0.4605 rate=-0.18358215596864644 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1187
+[TD_DEBUG] t=40.128 GT depth=0.4564 landed_height=0.4564 rate=-0.2055206591615489 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1178
+[TD_DEBUG] t=40.136 GT depth=0.4564 landed_height=0.4564 rate=-0.1947216659258649 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1178
+[TD_DEBUG] t=40.152 GT depth=0.4524 landed_height=0.4524 rate=-0.2368953101854433 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1168
+[TD_DEBUG] t=40.156 GT depth=0.4524 landed_height=0.4524 rate=-0.1992055965348983 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1168
+[TD_DEBUG] t=40.168 GT depth=0.4501 landed_height=0.4501 rate=-0.20033517779763765 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1163
+[TD_DEBUG] t=40.176 GT depth=0.4501 landed_height=0.4501 rate=-0.1531286194570986 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1163
+[TD_DEBUG] t=40.188 GT depth=0.4461 landed_height=0.4461 rate=-0.18096065121144936 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1153
+[TD_DEBUG] t=40.200 GT depth=0.4461 landed_height=0.4461 rate=-0.14831191698482457 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1153
+[TD_DEBUG] t=40.208 GT depth=0.4422 landed_height=0.4422 rate=-0.18101559674461054 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1144
+[TD_DEBUG] t=40.212 GT depth=0.4422 landed_height=0.4422 rate=-0.19016727515946785 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1144
+[TD_DEBUG] t=40.224 GT depth=0.4391 landed_height=0.4391 rate=-0.21860303125858954 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1136
+[TD_DEBUG] t=40.232 GT depth=0.4391 landed_height=0.4391 rate=-0.18742549138910788 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1136
+[TD_DEBUG] t=40.244 GT depth=0.4353 landed_height=0.4353 rate=-0.21944525765277675 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1126
+[TD_DEBUG] t=40.252 GT depth=0.4353 landed_height=0.4353 rate=-0.17469518923575178 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1126
+[TD_DEBUG] t=40.260 GT depth=0.4314 landed_height=0.4314 rate=-0.20676317212010545 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1117
+[TD_DEBUG] t=40.272 GT depth=0.4314 landed_height=0.4314 rate=-0.1847763009760096 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1117
+[TD_DEBUG] t=40.280 GT depth=0.4276 landed_height=0.4276 rate=-0.21812837676436245 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1107
+[TD_DEBUG] t=40.288 GT depth=0.4276 landed_height=0.4276 rate=-0.19206658770905186 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1107
+[TD_DEBUG] t=40.296 GT depth=0.4238 landed_height=0.4238 rate=-0.22898729195618772 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1098
+[TD_DEBUG] t=40.304 GT depth=0.4238 landed_height=0.4238 rate=-0.19967914233212805 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1098
+[TD_DEBUG] t=40.308 GT depth=0.4216 landed_height=0.4216 rate=-0.2466651935944647 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1092
+[TD_DEBUG] t=40.316 GT depth=0.4216 landed_height=0.4216 rate=-0.19361250397991323 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1092
+[TD_DEBUG] t=40.328 GT depth=0.4216 landed_height=0.4216 rate=-0.14119904948120418 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1092
+[TD_DEBUG] t=40.336 GT depth=0.4178 landed_height=0.4178 rate=-0.1282694716806669 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1082
+[TD_DEBUG] t=40.344 GT depth=0.4178 landed_height=0.4178 rate=-0.13573521672169866 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1082
+[TD_DEBUG] t=40.372 GT depth=0.4141 landed_height=0.4141 rate=-0.12740862843701303 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1073
+[TD_DEBUG] t=40.404 GT depth=0.4067 landed_height=0.4067 rate=-0.16911826270824273 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1054
+[TD_DEBUG] t=40.416 GT depth=0.4031 landed_height=0.4031 rate=-0.19205512371233058 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1045
+[TD_DEBUG] t=40.424 GT depth=0.4031 landed_height=0.4031 rate=-0.1838592509976608 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1045
+[TD_DEBUG] t=40.436 GT depth=0.3995 landed_height=0.3995 rate=-0.20342730299597667 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1036
+[TD_DEBUG] t=40.444 GT depth=0.3995 landed_height=0.3995 rate=-0.21107496692251143 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1036
+[TD_DEBUG] t=40.456 GT depth=0.3959 landed_height=0.3959 rate=-0.19540682671485218 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1027
+[TD_DEBUG] t=40.464 GT depth=0.3959 landed_height=0.3959 rate=-0.17021413616277625 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1027
+[TD_DEBUG] t=40.476 GT depth=0.3923 landed_height=0.3923 rate=-0.19418226588354714 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1018
+[TD_DEBUG] t=40.484 GT depth=0.3923 landed_height=0.3923 rate=-0.16924284804193016 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1018
+[TD_DEBUG] t=40.492 GT depth=0.3887 landed_height=0.3887 rate=-0.20310814000387248 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1010
+[TD_DEBUG] t=40.504 GT depth=0.3887 landed_height=0.3887 rate=-0.17157578491495412 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1010
+[TD_DEBUG] t=40.512 GT depth=0.3852 landed_height=0.3852 rate=-0.20261290743600208 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1002
+[TD_DEBUG] t=40.524 GT depth=0.3852 landed_height=0.3852 rate=-0.166382554857503 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.1002
+[TD_DEBUG] t=40.532 GT depth=0.3817 landed_height=0.3817 rate=-0.19189983977125907 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0993
+[TD_DEBUG] t=40.544 GT depth=0.3817 landed_height=0.3817 rate=-0.15531506547585583 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0993
+[TD_DEBUG] t=40.552 GT depth=0.3782 landed_height=0.3782 rate=-0.19052128815314384 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0986
+[TD_DEBUG] t=40.560 GT depth=0.3782 landed_height=0.3782 rate=-0.16401901189044654 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0986
+[TD_DEBUG] t=40.584 GT depth=0.3720 landed_height=0.3720 rate=-0.20545152352134013 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0972
+[TD_DEBUG] t=40.596 GT depth=0.3720 landed_height=0.3720 rate=-0.1747009888765771 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0972
+[TD_DEBUG] t=40.600 GT depth=0.3720 landed_height=0.3720 rate=-0.17115247568717443 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0972
+[TD_DEBUG] t=40.608 GT depth=0.3686 landed_height=0.3686 rate=-0.16430405267961115 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0965
+[TD_DEBUG] t=40.624 GT depth=0.3659 landed_height=0.3659 rate=-0.18353793007415595 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0959
+[TD_DEBUG] t=40.628 GT depth=0.3659 landed_height=0.3659 rate=-0.16825528132540962 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0959
+[TD_DEBUG] t=40.648 GT depth=0.3625 landed_height=0.3625 rate=-0.18740474786422373 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=40.656 GT depth=0.3625 landed_height=0.3625 rate=-0.1613144238440337 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=40.660 GT depth=0.3592 landed_height=0.3592 rate=-0.15630569529096444 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0947
+[TD_DEBUG] t=40.668 GT depth=0.3592 landed_height=0.3592 rate=-0.16023357151936135 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0947
+[TD_DEBUG] t=40.676 GT depth=0.3592 landed_height=0.3592 rate=-0.15137043982155962 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0947
+[TD_DEBUG] t=40.684 GT depth=0.3559 landed_height=0.3559 rate=-0.16917291145607377 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0941
+[TD_DEBUG] t=40.696 GT depth=0.3559 landed_height=0.3559 rate=-0.14632732645685273 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0941
+[TD_DEBUG] t=40.704 GT depth=0.3527 landed_height=0.3527 rate=-0.14686710206782283 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0935
+[TD_DEBUG] t=40.712 GT depth=0.3527 landed_height=0.3527 rate=-0.16444863664467105 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0935
+[TD_DEBUG] t=40.720 GT depth=0.3494 landed_height=0.3494 rate=-0.19577556411283042 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0930
+[TD_DEBUG] t=40.728 GT depth=0.3494 landed_height=0.3494 rate=-0.1704575666405722 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0930
+[TD_DEBUG] t=40.736 GT depth=0.3494 landed_height=0.3494 rate=-0.1618875792410103 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0930
+[TD_DEBUG] t=40.748 GT depth=0.3462 landed_height=0.3462 rate=-0.14095671813269137 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0925
+[TD_DEBUG] t=40.760 GT depth=0.3431 landed_height=0.3431 rate=-0.17695737237433326 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0920
+[TD_DEBUG] t=40.772 GT depth=0.3431 landed_height=0.3431 rate=-0.15037142623515318 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0920
+[TD_DEBUG] t=40.780 GT depth=0.3399 landed_height=0.3399 rate=-0.18427163956476592 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=40.788 GT depth=0.3399 landed_height=0.3399 rate=-0.1822127294879252 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=40.796 GT depth=0.3399 landed_height=0.3399 rate=-0.1351320705762556 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=40.808 GT depth=0.3368 landed_height=0.3368 rate=-0.12822155069637856 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0913
+[TD_DEBUG] t=40.816 GT depth=0.3368 landed_height=0.3368 rate=-0.1318445021827488 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0913
+[TD_DEBUG] t=40.824 GT depth=0.3337 landed_height=0.3337 rate=-0.13963099196274337 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0909
+[TD_DEBUG] t=40.832 GT depth=0.3337 landed_height=0.3337 rate=-0.16082228885407923 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0909
+[TD_DEBUG] t=40.844 GT depth=0.3306 landed_height=0.3306 rate=-0.1858806556202553 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0906
+[TD_DEBUG] t=40.852 GT depth=0.3306 landed_height=0.3306 rate=-0.1596003324459338 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0906
+[TD_DEBUG] t=40.860 GT depth=0.3275 landed_height=0.3275 rate=-0.18536209831106445 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0904
+[TD_DEBUG] t=40.868 GT depth=0.3275 landed_height=0.3275 rate=-0.15847200314919138 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0904
+[TD_DEBUG] t=40.880 GT depth=0.3245 landed_height=0.3245 rate=-0.1831943885765357 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=40.888 GT depth=0.3245 landed_height=0.3245 rate=-0.15731724238422531 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=40.896 GT depth=0.3245 landed_height=0.3245 rate=-0.13632319370938656 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=40.908 GT depth=0.3215 landed_height=0.3215 rate=-0.12156115347186036 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0900
+[TD_DEBUG] t=40.916 GT depth=0.3215 landed_height=0.3215 rate=-0.12138310643027762 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0900
+[TD_DEBUG] t=40.924 GT depth=0.3185 landed_height=0.3185 rate=-0.1348007647548389 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0898
+[TD_DEBUG] t=40.932 GT depth=0.3185 landed_height=0.3185 rate=-0.15527394275292974 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0898
+[TD_DEBUG] t=40.940 GT depth=0.3155 landed_height=0.3155 rate=-0.1904528859124289 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0897
+[TD_DEBUG] t=41.016 GT depth=0.3049 landed_height=0.3049 rate=-0.15657941644412463 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0894
+[TD_DEBUG] t=41.024 GT depth=0.3049 landed_height=0.3049 rate=-0.1490002877958433 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0894
+[TD_DEBUG] t=41.052 GT depth=0.2997 landed_height=0.2997 rate=-0.1455021952826719 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0895
+[TD_DEBUG] t=41.056 GT depth=0.2986 landed_height=0.2986 rate=-0.1497032453141144 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0895
+[TD_DEBUG] t=41.060 GT depth=0.2980 landed_height=0.2980 rate=-0.1445206987068243 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0895
+[TD_DEBUG] t=41.072 GT depth=0.2980 landed_height=0.2980 rate=-0.14772944307522706 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0895
+[TD_DEBUG] t=41.080 GT depth=0.2952 landed_height=0.2952 rate=-0.1617551117789059 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0896
+[TD_DEBUG] t=41.092 GT depth=0.2952 landed_height=0.2952 rate=-0.11177750337760936 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0896
+[TD_DEBUG] t=41.104 GT depth=0.2924 landed_height=0.2924 rate=-0.12321387935185761 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0896
+[TD_DEBUG] t=41.112 GT depth=0.2924 landed_height=0.2924 rate=-0.12200801698122005 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0896
+[TD_DEBUG] t=41.120 GT depth=0.2907 landed_height=0.2907 rate=-0.13675434343478865 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0897
+[TD_DEBUG] t=41.128 GT depth=0.2907 landed_height=0.2907 rate=-0.10846516114461381 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0897
+[TD_DEBUG] t=41.140 GT depth=0.2879 landed_height=0.2879 rate=-0.13659600966773805 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0898
+[TD_DEBUG] t=41.148 GT depth=0.2879 landed_height=0.2879 rate=-0.11574664865698245 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0898
+[TD_DEBUG] t=41.156 GT depth=0.2852 landed_height=0.2852 rate=-0.14955002180014496 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0899
+[TD_DEBUG] t=41.160 GT depth=0.2852 landed_height=0.2852 rate=-0.15179132491573222 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0899
+[TD_DEBUG] t=41.192 GT depth=0.2797 landed_height=0.2797 rate=-0.17017199330971752 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=41.200 GT depth=0.2797 landed_height=0.2797 rate=-0.15153443442835043 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=41.208 GT depth=0.2797 landed_height=0.2797 rate=-0.1379108712401804 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0902
+[TD_DEBUG] t=41.220 GT depth=0.2770 landed_height=0.2770 rate=-0.1260866974728331 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0904
+[TD_DEBUG] t=41.228 GT depth=0.2770 landed_height=0.2770 rate=-0.12044433468805149 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0904
+[TD_DEBUG] t=41.252 GT depth=0.2716 landed_height=0.2716 rate=-0.13910048170860526 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0907
+[TD_DEBUG] t=41.264 GT depth=0.2716 landed_height=0.2716 rate=-0.14468605350945687 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0907
+[TD_DEBUG] t=41.276 GT depth=0.2689 landed_height=0.2689 rate=-0.15418752745756123 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0909
+[TD_DEBUG] t=41.284 GT depth=0.2689 landed_height=0.2689 rate=-0.13964954346898661 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0909
+[TD_DEBUG] t=41.292 GT depth=0.2662 landed_height=0.2662 rate=-0.15289489540222084 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0911
+[TD_DEBUG] t=41.300 GT depth=0.2662 landed_height=0.2662 rate=-0.12775654246934348 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0911
+[TD_DEBUG] t=41.308 GT depth=0.2662 landed_height=0.2662 rate=-0.1268157376019442 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0911
+[TD_DEBUG] t=41.320 GT depth=0.2636 landed_height=0.2636 rate=-0.11668262640427679 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0912
+[TD_DEBUG] t=41.328 GT depth=0.2636 landed_height=0.2636 rate=-0.11167668042454 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0912
+[TD_DEBUG] t=41.340 GT depth=0.2609 landed_height=0.2609 rate=-0.11330509742894682 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0913
+[TD_DEBUG] t=41.348 GT depth=0.2609 landed_height=0.2609 rate=-0.12489056971535886 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0913
+[TD_DEBUG] t=41.356 GT depth=0.2583 landed_height=0.2583 rate=-0.14986085427309184 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0915
+[TD_DEBUG] t=41.368 GT depth=0.2583 landed_height=0.2583 rate=-0.12657611645882935 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0915
+[TD_DEBUG] t=41.380 GT depth=0.2557 landed_height=0.2557 rate=-0.14153578053384036 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=41.388 GT depth=0.2557 landed_height=0.2557 rate=-0.1203292400976982 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=41.396 GT depth=0.2531 landed_height=0.2531 rate=-0.1410201450025759 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0917
+[TD_DEBUG] t=41.404 GT depth=0.2531 landed_height=0.2531 rate=-0.12437469259804425 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0917
+[TD_DEBUG] t=41.412 GT depth=0.2505 landed_height=0.2505 rate=-0.1647469076171794 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0918
+[TD_DEBUG] t=41.424 GT depth=0.2505 landed_height=0.2505 rate=-0.1362208965464204 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0918
+[TD_DEBUG] t=41.432 GT depth=0.2479 landed_height=0.2479 rate=-0.1553679931106996 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.444 GT depth=0.2479 landed_height=0.2479 rate=-0.12085943342947916 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.452 GT depth=0.2454 landed_height=0.2454 rate=-0.13955511761749692 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.464 GT depth=0.2454 landed_height=0.2454 rate=-0.11307849385408977 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.472 GT depth=0.2454 landed_height=0.2454 rate=-0.10285140142151612 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.480 GT depth=0.2428 landed_height=0.2428 rate=-0.09672255041363566 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.492 GT depth=0.2403 landed_height=0.2403 rate=-0.1375052860006025 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.500 GT depth=0.2403 landed_height=0.2403 rate=-0.12966993139694852 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.504 GT depth=0.2403 landed_height=0.2403 rate=-0.14947650676222476 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.516 GT depth=0.2383 landed_height=0.2383 rate=-0.14696118377621012 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.524 GT depth=0.2383 landed_height=0.2383 rate=-0.10028031077948688 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0919
+[TD_DEBUG] t=41.536 GT depth=0.2358 landed_height=0.2358 rate=-0.10467524177006397 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0918
+[TD_DEBUG] t=41.540 GT depth=0.2358 landed_height=0.2358 rate=-0.12103184061315529 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0918
+[TD_DEBUG] t=41.552 GT depth=0.2333 landed_height=0.2333 rate=-0.14029500150031676 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0917
+[TD_DEBUG] t=41.560 GT depth=0.2333 landed_height=0.2333 rate=-0.13132208339697543 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0917
+[TD_DEBUG] t=41.568 GT depth=0.2308 landed_height=0.2308 rate=-0.15669650723366882 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=41.580 GT depth=0.2308 landed_height=0.2308 rate=-0.12675810365550944 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0916
+[TD_DEBUG] t=41.588 GT depth=0.2284 landed_height=0.2284 rate=-0.14065745235430674 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0915
+[TD_DEBUG] t=41.596 GT depth=0.2284 landed_height=0.2284 rate=-0.1238634014818011 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0915
+[TD_DEBUG] t=41.604 GT depth=0.2284 landed_height=0.2284 rate=-0.11038872020675537 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0915
+[TD_DEBUG] t=41.620 GT depth=0.2259 landed_height=0.2259 rate=-0.09445872851922109 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0913
+[TD_DEBUG] t=41.628 GT depth=0.2235 landed_height=0.2235 rate=-0.12889066716867442 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0910
+[TD_DEBUG] t=41.636 GT depth=0.2235 landed_height=0.2235 rate=-0.11958726147328952 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0910
+[TD_DEBUG] t=41.648 GT depth=0.2211 landed_height=0.2211 rate=-0.1473752863463374 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0908
+[TD_DEBUG] t=41.652 GT depth=0.2211 landed_height=0.2211 rate=-0.15533534377069166 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0908
+[TD_DEBUG] t=41.728 GT depth=0.2093 landed_height=0.2093 rate=-0.1500509072899909 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0890
+[TD_DEBUG] t=41.776 GT depth=0.2074 landed_height=0.2074 rate=-0.11971661358895393 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0886
+[TD_DEBUG] t=41.792 GT depth=0.2051 landed_height=0.2051 rate=-0.11599973424753734 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0881
+[TD_DEBUG] t=41.800 GT depth=0.2051 landed_height=0.2051 rate=-0.10808327914282699 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0881
+[TD_DEBUG] t=41.804 GT depth=0.2029 landed_height=0.2029 rate=-0.10799097602426293 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0876
+[TD_DEBUG] t=41.808 GT depth=0.2029 landed_height=0.2029 rate=-0.0780980185302918 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0876
+[TD_DEBUG] t=41.820 GT depth=0.2015 landed_height=0.2015 rate=-0.1377743726715809 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0873
+[TD_DEBUG] t=41.832 GT depth=0.2015 landed_height=0.2015 rate=-0.10057970053061457 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0873
+[TD_DEBUG] t=41.844 GT depth=0.1993 landed_height=0.1993 rate=-0.10350184164926587 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0867
+[TD_DEBUG] t=41.852 GT depth=0.1980 landed_height=0.1980 rate=-0.09786806211412637 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0864
+[TD_DEBUG] t=41.856 GT depth=0.1980 landed_height=0.1980 rate=-0.10614693738294956 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0864
+[TD_DEBUG] t=41.860 GT depth=0.1967 landed_height=0.1967 rate=-0.1256378046053609 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0860
+[TD_DEBUG] t=41.868 GT depth=0.1967 landed_height=0.1967 rate=-0.14154685977391782 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0860
+[TD_DEBUG] t=41.880 GT depth=0.1967 landed_height=0.1967 rate=-0.07281377573009068 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0860
+[TD_DEBUG] t=41.888 GT depth=0.1945 landed_height=0.1945 rate=-0.08044095647320203 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0854
+[TD_DEBUG] t=41.900 GT depth=0.1945 landed_height=0.1945 rate=-0.07426261368150401 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0854
+[TD_DEBUG] t=41.908 GT depth=0.1923 landed_height=0.1923 rate=-0.0884884539334739 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0848
+[TD_DEBUG] t=41.940 GT depth=0.1878 landed_height=0.1878 rate=-0.12840393790691407 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0834
+[TD_DEBUG] t=41.948 GT depth=0.1878 landed_height=0.1878 rate=-0.13160871920120745 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0834
+[TD_DEBUG] t=41.960 GT depth=0.1856 landed_height=0.1856 rate=-0.1288610311118456 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0827
+[TD_DEBUG] t=41.972 GT depth=0.1856 landed_height=0.1856 rate=-0.12443324701654619 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0827
+[TD_DEBUG] t=41.984 GT depth=0.1834 landed_height=0.1834 rate=-0.1110935444623886 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0820
+[TD_DEBUG] t=41.992 GT depth=0.1834 landed_height=0.1834 rate=-0.09393818206476638 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0820
+[TD_DEBUG] t=42.000 GT depth=0.1812 landed_height=0.1812 rate=-0.11326286364238447 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0813
+[TD_DEBUG] t=42.012 GT depth=0.1812 landed_height=0.1812 rate=-0.09924616917518365 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0813
+[TD_DEBUG] t=42.020 GT depth=0.1790 landed_height=0.1790 rate=-0.12564106783186263 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0806
+[TD_DEBUG] t=42.028 GT depth=0.1790 landed_height=0.1790 rate=-0.11087959233257597 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0806
+[TD_DEBUG] t=42.036 GT depth=0.1790 landed_height=0.1790 rate=-0.0988608031372494 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0806
+[TD_DEBUG] t=42.048 GT depth=0.1768 landed_height=0.1768 rate=-0.08959978799223753 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0799
+[TD_DEBUG] t=42.064 GT depth=0.1746 landed_height=0.1746 rate=-0.11437414386739732 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0791
+[TD_DEBUG] t=42.072 GT depth=0.1746 landed_height=0.1746 rate=-0.1009622213440202 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0791
+[TD_DEBUG] t=42.080 GT depth=0.1725 landed_height=0.1725 rate=-0.12544429813019597 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0784
+[TD_DEBUG] t=42.092 GT depth=0.1725 landed_height=0.1725 rate=-0.11979672183232701 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0784
+[TD_DEBUG] t=42.100 GT depth=0.1703 landed_height=0.1703 rate=-0.1160721352714272 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0777
+[TD_DEBUG] t=42.108 GT depth=0.1703 landed_height=0.1703 rate=-0.10856521556378061 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0777
+[TD_DEBUG] t=42.120 GT depth=0.1682 landed_height=0.1682 rate=-0.12251340100996014 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0769
+[TD_DEBUG] t=42.128 GT depth=0.1682 landed_height=0.1682 rate=-0.10314824201559386 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0769
+[TD_DEBUG] t=42.136 GT depth=0.1682 landed_height=0.1682 rate=-0.09583837920448349 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0769
+[TD_DEBUG] t=42.148 GT depth=0.1660 landed_height=0.1660 rate=-0.08552304639577195 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0762
+[TD_DEBUG] t=42.156 GT depth=0.1660 landed_height=0.1660 rate=-0.08541489304606803 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0762
+[TD_DEBUG] t=42.168 GT depth=0.1643 landed_height=0.1643 rate=-0.08417687300102114 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0757
+[TD_DEBUG] t=42.176 GT depth=0.1622 landed_height=0.1622 rate=-0.11978053200920066 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0750
+[TD_DEBUG] t=42.184 GT depth=0.1622 landed_height=0.1622 rate=-0.12748083887095005 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0750
+[TD_DEBUG] t=42.196 GT depth=0.1602 landed_height=0.1602 rate=-0.1295809862473296 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0744
+[TD_DEBUG] t=42.204 GT depth=0.1602 landed_height=0.1602 rate=-0.12684441488153234 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0744
+[TD_DEBUG] t=42.216 GT depth=0.1585 landed_height=0.1585 rate=-0.11168564904419584 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0739
+[TD_DEBUG] t=42.224 GT depth=0.1585 landed_height=0.1585 rate=-0.08811007115945012 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0739
+[TD_DEBUG] t=42.236 GT depth=0.1561 landed_height=0.1561 rate=-0.1069570548864986 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0732
+[TD_DEBUG] t=42.244 GT depth=0.1561 landed_height=0.1561 rate=-0.0970834451807713 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0732
+[TD_DEBUG] t=42.252 GT depth=0.1561 landed_height=0.1561 rate=-0.09266837289300595 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0732
+[TD_DEBUG] t=42.256 GT depth=0.1540 landed_height=0.1540 rate=-0.10102260139085327 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0726
+[TD_DEBUG] t=42.260 GT depth=0.1528 landed_height=0.1528 rate=-0.1328378774542186 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0723
+[TD_DEBUG] t=42.280 GT depth=0.1528 landed_height=0.1528 rate=-0.08962274114689055 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0723
+[TD_DEBUG] t=42.288 GT depth=0.1528 landed_height=0.1528 rate=-0.07463499814174426 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0723
+[TD_DEBUG] t=42.296 GT depth=0.1508 landed_height=0.1508 rate=-0.07813173597495307 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0719
+[TD_DEBUG] t=42.300 GT depth=0.1508 landed_height=0.1508 rate=-0.05976120561020785 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0719
+[TD_DEBUG] t=42.304 GT depth=0.1492 landed_height=0.1492 rate=-0.07449234713111454 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0715
+[TD_DEBUG] t=42.308 GT depth=0.1492 landed_height=0.1492 rate=-0.14709676584471532 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0715
+[TD_DEBUG] t=42.320 GT depth=0.1484 landed_height=0.1484 rate=-0.13625516435687396 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0713
+[TD_DEBUG] t=42.328 GT depth=0.1484 landed_height=0.1484 rate=-0.07834867091304971 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0713
+[TD_DEBUG] t=42.336 GT depth=0.1464 landed_height=0.1464 rate=-0.09119606933552475 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0710
+[TD_DEBUG] t=42.344 GT depth=0.1464 landed_height=0.1464 rate=-0.07573472831930773 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0710
+[TD_DEBUG] t=42.352 GT depth=0.1445 landed_height=0.1445 rate=-0.1033845674075749 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0706
+[TD_DEBUG] t=42.360 GT depth=0.1445 landed_height=0.1445 rate=-0.11211068896505208 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0706
+[TD_DEBUG] t=42.372 GT depth=0.1425 landed_height=0.1425 rate=-0.123919499280933 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0703
+[TD_DEBUG] t=42.380 GT depth=0.1425 landed_height=0.1425 rate=-0.10035775633989989 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0703
+[TD_DEBUG] t=42.392 GT depth=0.1406 landed_height=0.1406 rate=-0.11015656382901136 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0701
+[TD_DEBUG] t=42.400 GT depth=0.1406 landed_height=0.1406 rate=-0.09129158267164193 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0701
+[TD_DEBUG] t=42.408 GT depth=0.1406 landed_height=0.1406 rate=-0.08269537632120946 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0701
+[TD_DEBUG] t=42.420 GT depth=0.1387 landed_height=0.1387 rate=-0.07710171278520637 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0699
+[TD_DEBUG] t=42.428 GT depth=0.1387 landed_height=0.1387 rate=-0.07700174942735208 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0699
+[TD_DEBUG] t=42.440 GT depth=0.1368 landed_height=0.1368 rate=-0.08181937884851107 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0698
+[TD_DEBUG] t=42.448 GT depth=0.1368 landed_height=0.1368 rate=-0.0901655430280813 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0698
+[TD_DEBUG] t=42.456 GT depth=0.1361 landed_height=0.1361 rate=-0.0920207579991366 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0685
+[TD_DEBUG] t=42.464 GT depth=0.1361 landed_height=0.1361 rate=-0.06926891512422852 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0685
+[TD_DEBUG] t=42.472 GT depth=0.1362 landed_height=0.1361 rate=-0.05402055291766438 progressed=True flat_rate=False near_min=True at_landed=False streak=0/3 |s_e_n|=0.0673
+[TD_DEBUG] t=42.480 GT depth=0.1362 landed_height=0.1361 rate=-0.017393933684424615 progressed=True flat_rate=True near_min=True at_landed=True streak=1/3 |s_e_n|=0.0673
+[TD_DEBUG] t=42.488 GT depth=0.1362 landed_height=0.1361 rate=-0.008986144186183535 progressed=True flat_rate=True near_min=True at_landed=True streak=2/3 |s_e_n|=0.0673
+[TD_DEBUG] t=42.496 GT depth=0.1365 landed_height=0.1361 rate=0.009780057197815223 progressed=True flat_rate=True near_min=True at_landed=True streak=3/3 |s_e_n|=0.0659
+[controller] TOUCHDOWN-DETECT (GT): depth=0.137m held within 0.03m of recorded landed height=0.136m (rate=0.0098m/s, progressed 2.924m since arming) (x3 within 3-frame window) |s_e_n|=0.07 -> LANDED (disarm before bounce)
+[landing_test] Loom-inversion touchdown (controller) — LANDED, disarming
+[landing_test] descent loop exited: FC_node.LANDED=True EC_node.is_alive()=True (2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death vs impact-spike as the exit cause)
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: SOFT+PRECISE  (xy_err=0.019 m [≤0.1], rel_vel=0.014 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.020 m, rel_vel=0.050 m/s, min_alt=-0.01 m (endpoint xy=0.019 m is post-kick if it ballooned)
+[CrossMarkerNode] diag: 492 process_frame() calls over 26.62s (mean call rate 18.4 Hz), detect ok 320/492 (65%), fail reasons: {'centroid_mismatch': 93, 'insufficient_fit_points': 19, 'insufficient_fit_points_post_prune': 1, 'lt2_angle_clusters': 59}
+image_subscriber closed
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+Saved to CSV!
+Flight Controller is disconnected...
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 42818 + group)
+[run]   killing px4_sitl (pid 42827 + group)
+[run]   killing bridge_clock (pid 43152 + group)
+[run]   killing bridge_pose (pid 43173 + group)
+[run]   killing bridge_image (pid 43193 + group)
+[run]   killing qgc (pid 43221 + group)
+[run] done.

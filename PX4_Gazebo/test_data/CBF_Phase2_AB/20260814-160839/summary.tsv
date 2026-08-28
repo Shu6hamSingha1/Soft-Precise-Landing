@@ -1,0 +1,11 @@
+arm	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+p2_old	1	YES	0.1123	0.1030	6.7	0	1	0	rep1
+p2_fixed	1	YES	0.7750	1.0244	6.0	0	0	0	rep1
+p2_old	2	YES	0.1591	0.0851	6.4	0	1	0	rep2
+p2_fixed	2	YES	0.1102	0.3724	5.6	0	0	0	rep2
+p2_old	3	YES	0.9803	1.3298	5.6	0	0	0	rep3
+p2_fixed	3	NO	-	-	-	-	-	-	-
+p2_old	4	NO	-	-	-	-	-	-	-
+p2_fixed	4	NO	-	-	-	-	-	-	-
+p2_old	5	NO	-	-	-	-	-	-	-
+p2_fixed	5	NO	-	-	-	-	-	-	-

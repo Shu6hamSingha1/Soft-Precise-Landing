@@ -1,0 +1,97 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear .... ready after 8s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0.0 x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.2s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 3.6 m	
+Status: INFO: Takeoff detected	
+Altitude reached
+-2.8530421257019043 3.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  (couldn't read flight_mode: )
+PositionBody: [x_m: -0.47835439443588257, y_m: -0.07795234024524689, z_m: -3.0429980754852295]
+[landing_test] Hover to MATLAB-IC ENU (2.0,2.0,3.0)  (+ tilt check)
+[landing_test] IC converged at t=6.78s (pos_err=0.388 m, speed=0.208 m/s, yaw_err=0.73°, tilt=1.70°)
+[landing_test] board alpha (settled) = -163.5° std=133.3°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[cbf_corners] src=cross_center FEATURE_PTS_FRESH=None corners_is_none=False none_streak=0
+[cbf_corners] src=cross_center FEATURE_PTS_FRESH=None corners_is_none=False none_streak=0
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=7
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=22
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=37
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=52
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=67
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=82
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=97
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=112
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=127
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=142
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=157
+[cbf_corners] src=none FEATURE_PTS_FRESH=None corners_is_none=True none_streak=172
+scripts/run_aruco_landing.sh: line 244: 1327024 Killed                  setsid "$@" > "$logfile" 2>&1
+scripts/run_aruco_landing.sh: line 244: 1327065 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+Terminated
+
+[run] Shutting down background processes...
+[run]   killing bridge_clock (pid 1327523 + group)
+[run]   killing bridge_pose (pid 1327544 + group)
+[run]   killing bridge_image (pid 1327585 + group)
+[run] done.
+[run] DETECTED: landing_test.py hung past 180s wall-clock — treating as failure.
+
+[run] Shutting down background processes...
+[run] done.

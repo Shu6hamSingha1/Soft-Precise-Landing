@@ -1,0 +1,41 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover_cross)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching bridge_chase (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_chase.log)
+[run] launching chase_rec (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/chase_rec.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ... ready after 6s.
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Traceback (most recent call last):
+  File "/home/shubham/Soft-Precise-Landing/PX4_Gazebo/apps/../src/controller.py", line 1954, in run
+    self._updateOptFlow(opt_flow_ang_vel[:3])
+RuntimeError: Object of type <class 'numpy.ndarray'> appears to be C subclassed NumPy array, void scalar, or allocated in a non-standard way.NumPy reserves the right to change the size of these structures. Projects are required to take this into account by either recompiling against a specific NumPy version or padding the struct and enforcing a maximum NumPy version.
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 1980365 + group)
+[run]   killing px4_rover (pid 1980409 + group)
+[run]   killing px4_sitl (pid 1980866 + group)
+[run]   killing bridge_clock (pid 1981559 + group)
+[run]   killing bridge_pose (pid 1981591 + group)
+[run]   killing bridge_image (pid 1981620 + group)
+[run]   killing bridge_chase (pid 1981640 + group)
+[run]   killing chase_rec (pid 1981660 + group)
+[run]   killing qgc (pid 1981704 + group)
+[run]   killing rover_drive (pid 1982008 + group)
+[run] done.
+[retry] Attempt 1 exited rc=139 (not a retriable flake); giving up.

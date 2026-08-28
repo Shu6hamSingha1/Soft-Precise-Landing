@@ -1,0 +1,1 @@
+{'Capture Rate':60, 'resolution':(480, 640)}

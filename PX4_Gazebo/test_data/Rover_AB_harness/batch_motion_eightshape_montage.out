@@ -1,0 +1,14 @@
+[montage] 279 frames (254 descent + 25 tail)  960x720@25.0  (chase 204f td@203, drone 283f td@282, GT 1719samp, 10.2s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_eightshape_final.mp4
+[montage]  frame 0/279
+[montage]  frame 25/279
+[montage]  frame 50/279
+[montage]  frame 75/279
+[montage]  frame 100/279
+[montage]  frame 125/279
+[montage]  frame 150/279
+[montage]  frame 175/279
+[montage]  frame 200/279
+[montage]  frame 225/279
+[montage]  frame 250/279
+[montage]  frame 275/279
+[montage] done -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_eightshape_final.mp4

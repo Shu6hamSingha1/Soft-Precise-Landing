@@ -1,0 +1,19 @@
+{
+  "//": "Exclude churning SITL output dirs from VS Code's file watcher / indexer / search. These dirs (px4/gz logs, calibration recordings, sweep outputs) change at high frequency during SITL runs; watching them drives the extension-host + renderer CPU high enough to starve PX4 SITL lockstep timing (recal arming failures, 2026-07-03).",
+  "files.watcherExclude": {
+    "**/run_logs/**": true,
+    "**/calibration_data/**": true,
+    "**/test_data/**": true,
+    "**/.git/**": true,
+    "**/*.log": true
+  },
+  "search.exclude": {
+    "**/run_logs": true,
+    "**/calibration_data": true,
+    "**/test_data": true,
+    "**/*.log": true
+  },
+  "files.exclude": {
+    "**/run_logs": true
+  }
+}

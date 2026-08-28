@@ -1,0 +1,41 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up ................scripts/run_aruco_landing.sh: line 150: 2327875 Killed                  setsid "$@" > "$logfile" 2>&1
+scripts/run_aruco_landing.sh: line 150: 2327923 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+............................................. timed out!
+[run] PX4 SITL did not bring up Gazebo's /world/cross_marker/clock in 60s.
+[run] Last PX4 SITL log lines:
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_local_position data writer, topic id: 265
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_odometry data writer, topic id: 270
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_status_v1 data writer, topic id: 275
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/home_position data writer, topic id: 121
+INFO  [uxrce_dds_client] time sync converged
+INFO  [mavlink] partner IP: 127.0.0.1
+INFO  [commander] Armed by external command	
+INFO  [tone_alarm] arming warning
+INFO  [navigator] Using default takeoff altitude: 3.6 m	
+INFO  [commander] Takeoff detected	
+WARN  [timesync] time jump detected. Resetting time synchroniser.
+WARN  [uxrce_dds_client] time sync no longer converged
+INFO  [uxrce_dds_client] time sync converged
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/mode_completed data writer, topic id: 148
+WARN  [timesync] time jump detected. Resetting time synchroniser.
+WARN  [uxrce_dds_client] time sync no longer converged
+INFO  [uxrce_dds_client] time sync converged
+WARN  [failsafe] Failsafe activated	
+INFO  [tone_alarm] battery warning (fast)
+ERROR [flight_mode_manager] Matching flight task was not able to run, Nav state: 2, Task: 1
+INFO  [commander] Landing detected	
+INFO  [commander] Disarmed by landing	
+INFO  [tone_alarm] notify neutral
+INFO  [logger] closed logfile, bytes written: 11208671
+WARN  [timesync] time jump detected. Resetting time synchroniser.
+WARN  [uxrce_dds_client] time sync no longer converged
+INFO  [uxrce_dds_client] time sync converged
+WARN  [timesync] time jump detected. Resetting time synchroniser.
+WARN  [uxrce_dds_client] time sync no longer converged
+INFO  [uxrce_dds_client] time sync converged
+
+[run] Shutting down background processes...
+[run] done.

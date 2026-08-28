@@ -1,0 +1,5 @@
+----- montage_cross recordfix_test try 1/2 -----
+  result: ON 0.275 alt=0.761 | run=Wed Aug 26 07-13-17 2026 chase=chase_2026-08-26_07-12-19.mp4 drone=Wed Aug 26 07-13-00 2026.mp4
+[montage] 248 frames (223 descent + 25 tail)  960x720@25.0  (chase 182f td@181, drone 143f td@142, GT 1613samp, 8.9s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_recordfix_test_cross.mp4
+[montage]  frame 0/248
+MONTAGE_recordfix_test -> test_data/Test_Videos/montage_recordfix_test_cross.mp4 (ON 0.275 alt=0.761)

@@ -1,0 +1,6 @@
+knob	val	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+RING_LOOM_NCORN	12	1	YES	2.4433	3.1749	25.8	0	0	1	rep1
+RING_LOOM_NCORN	12	2	YES	0.5443	0.2194	14.6	0	0	0	rep2
+RING_LOOM_NCORN	12	3	YES	6.5140	6.4355	16.7	0	0	0	rep3
+RING_LOOM_NCORN	12	4	YES	23.0138	13.7071	20.7	0	0	1	rep4
+RING_LOOM_NCORN	12	5	YES	21.8546	8.6309	23.0	0	0	1	rep5

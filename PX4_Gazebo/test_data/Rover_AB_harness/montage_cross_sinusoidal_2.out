@@ -1,0 +1,50 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover_cross)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 110538 Killed                  setsid "$@" > "$logfile" 2>&1
+/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 110579 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4022 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL="$ROVER_MODEL" PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 1" > "$LOG_DIR/px4_rover.log" 2>&1
+/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 111043 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_GZ_STANDALONE=1 PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="1,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+... up after 3s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching bridge_chase (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_chase.log)
+[run] launching chase_rec (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/chase_rec.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+[run] DETECTED: landing_test.py hung past 180s wall-clock — treating as failure.
+
+[run] Shutting down background processes...
+[run]   killing bridge_clock (pid 112196 + group)
+[run]   killing bridge_pose (pid 112240 + group)
+[run]   killing bridge_image (pid 112272 + group)
+[run]   killing bridge_chase (pid 112292 + group)
+[run]   killing rover_drive (pid 113318 + group)
+[run] done.
+[retry] Attempt 1 hit a PX4 SITL startup flake (lockstep race /
+[retry]   IC non-settle); rebooting the stack after 10 s...
+=================================================================
+[retry] Attempt 2 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] microxrce died immediately; last lines:
+[35m[1787553089.719369][m error    | [34mUDPv4AgentLinux.cpp[m | [37minit                    [m | [31mbind error[m             | port: 8888, errno: 98
+Error while starting IPvX agent!
+[35m[1787553089.719425][m info     | [34mUDPv4AgentLinux.cpp[m | [37mfini                    [m | [32mserver stopped[m         | port: 8888
+
+[run] Shutting down background processes...
+[run] done.
+[retry] Attempt 2 exited rc=1 (not a retriable flake); giving up.

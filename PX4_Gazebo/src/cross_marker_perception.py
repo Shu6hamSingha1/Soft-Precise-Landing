@@ -59,6 +59,28 @@ from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agn
 # frames observed well above this); below it, reject the frame rather than accept a
 # perspective-divide artifact -- see process_frame's centroid plausibility gate.
 Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
+# 2026-08-28: grazing-ray guard for the FLOW-point cloud that feeds h,w (the
+# centroid already has its own Z_V_MIN_CENTROID reject-the-frame gate). A ray
+# with z_v <= 0 is behind/at the virtual camera -- its perspective-divide output
+# is sign-flipped nonsense and MUST be dropped. Default 0.0 does exactly that and
+# nothing more (unambiguously correct, can't starve the solve). Raising it toward
+# ~0.4 ALSO drops "amplified but not flipped" near-grazing rays -- TESTED at 0.4
+# bundled with the (reverted) angular window and the pair regressed terminal
+# h_x/h_y badly; 0.4 in ISOLATION is untested. The count-floor fallback below
+# keeps all points if too few survive either way.
+Z_V_MIN_FLOW = float(os.environ.get("CROSS_Z_V_MIN_FLOW", "0.0"))
+# TRIED AND REVERTED (2026-08-28): a centered angular window (|x_norm|,|y_norm|
+# <= FLOW_ANG_MAX) to exclude FoV-edge slivers near touchdown. It BACKFIRED --
+# GT-FB validation showed terminal h_x/h_y corr went +0.23/+0.13 -> -0.06/-0.05
+# and h_x std 0.28 -> 3.15 (10x WORSE). Mechanism: once the marker fills the FoV
+# the background is ONLY at the edges, so the window drops nearly every point and
+# the solve runs on 4-5 near-collinear survivors -> Tx/Ty variance explodes
+# (unbounded few-point-solve noise, worse than the bounded edge-point bias it was
+# meant to remove). The real fix for the terminal regime is extent-gated
+# CONFIDENCE (down-weight h_x/h_y in the KF when there's no valid background to
+# sample), not sampling harder -- see CROSS_HXY_TERMINAL_CENTROID. Default here is
+# inert (99 -> never triggers); kept as a knob only for experiments.
+FLOW_ANG_MAX = float(os.environ.get("CROSS_FLOW_ANG_MAX", "99"))
 
 GFT_MAX_CORNERS = int(os.environ.get("CROSS_GFT_MAX_CORNERS", "60"))
 GFT_QUALITY = float(os.environ.get("CROSS_GFT_QUALITY", "0.02"))
@@ -230,8 +252,57 @@ RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
 # background path can't produce a result a given frame, so this can't make things
 # WORSE than the pre-2026-08-27 baseline, only better or a no-op.
 CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
+
+# HYBRID BG-FLOW (2026-08-27, follow-on -- tools/validate_bgflow_corr.py). Two
+# additions aimed at texture-SCALE robustness (real surfaces come at any grain;
+# we can't dictate the texture), both default OFF pending a fresh SITL rep +
+# harness re-check:
+#   1. det.ok path: CLAHE-normalise the ROI before GFT/LK (removes dependence on
+#      absolute contrast -- concrete/gravel/low-light all normalise), + forward-
+#      backward LK consistency rejection. On the validated old-1024px rep this
+#      lifted h_z corr 0.28->0.71 and the point-availability floor 15->44/frame;
+#      no-op on texture too fine to resolve.
+#   2. det.ok==False path: run bg-flow anyway from det.mask_bbox alone (Hough
+#      line-fit failed but the colour blob is solid -- ~70% of otherwise-
+#      discarded frames, disproportionately the near-touchdown overflow phase),
+#      via cross_marker_detector.background_mask_bboxonly_from_detection() + dense
+#      DIS flow, and inject the result into the hw KF as a real measurement
+#      (self._ok / s / alpha / visibility stay untouched -- flow-only). GATED on
+#      _solve_jacobian's rel_resid <= CROSS_BGF_RESID_GATE: on resolvable texture
+#      this recovered the descent-critical loom phase the det.ok subset misses
+#      entirely (one rep h_z 0.08->0.70); on sub-resolution grain the gate keeps
+#      it to near-zero noise instead of a confident wrong-sign h_z.
+CROSS_BG_FLOW_HYBRID = os.environ.get("CROSS_BG_FLOW_HYBRID", "1") == "1"  # 2026-08-28: default ON (perception change) -- CLAHE+FB on det.ok path, resid-gated bbox-dense fallback on miss
+_BGF_CLAHE = os.environ.get("CROSS_BGF_CLAHE", "1") == "1"
+_BGF_FB = os.environ.get("CROSS_BGF_FB", "1") == "1"
+_BGF_FB_THRESH_PX = float(os.environ.get("CROSS_BGF_FB_THRESH_PX", "0.7"))
+_BGF_RESID_GATE = float(os.environ.get("CROSS_BGF_RESID_GATE", "0.45"))
 # 2026-08-27: halved for 640x480->320x240, proportional scale, NOT independently
 # re-validated at this resolution.
+
+
+_BGF_CLAHE_OP = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+
+def _bgf_clahe_pair(gp, gc):
+    return _BGF_CLAHE_OP.apply(gp), _BGF_CLAHE_OP.apply(gc)
+
+
+def _bgf_lk_fb(gp, gc, pts, fb):
+    """Forward LK; if fb, also backward-track and reject points whose round-trip
+    error exceeds _BGF_FB_THRESH_PX. Returns (prev_pts Nx2, curr_pts Nx2) or
+    (None, None) if <5 survive. pts: cv2-GFT-shaped (N,1,2) or (N,2)."""
+    p0 = np.asarray(pts, np.float32).reshape(-1, 1, 2)
+    if len(p0) < 5:
+        return None, None
+    p1, st, _ = cv2.calcOpticalFlowPyrLK(gp, gc, p0, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+    st = st.flatten().astype(bool)
+    if fb:
+        p0b, stb, _ = cv2.calcOpticalFlowPyrLK(gc, gp, p1, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+        rt = np.linalg.norm((p0b - p0).reshape(-1, 2), axis=1)
+        st &= stb.flatten().astype(bool) & (rt < _BGF_FB_THRESH_PX)
+    a, b = p0.reshape(-1, 2)[st], p1.reshape(-1, 2)[st]
+    return (a, b) if len(a) >= 5 else (None, None)
 
 
 def _kf_step(x, P, prev_t, initialized, z, t, q, r, dt_unc_max=None):
@@ -634,14 +705,48 @@ class CrossMarkerPerception:
         # hi-res-texture flights (5 runs, CALIB_LOW_ALT=0.7), just fit on the clean
         # (higher-altitude) phases only. Wx/Wy rows stay forced 0 (level-target
         # convention, unchanged).
+        # 2026-08-28 RECAL for 320x240/fx=135 + the CROSS_BG_FLOW=1 sampling path.
+        # NEAR-DIAGONAL, derived from GT-feedback LANDING recordings
+        # (tools/derive_cross_marker_landing_cal.py, 6 runs: IC2 x3, IC3 x2, +1
+        # held-out (2,-2,5) folded in after it validated), NOT the phased-
+        # excitation 6x6 (derive_cross_marker_cal.py). Reason: at
+        # 320x240 PX4's horizontal position loop tracks only ~15% of the phased
+        # x/y sinusoid -> the drone moves ~6cm -> achieved GT h_x/h_y std ~0.007
+        # (at the raw-noise floor) -> the joint 6x6 lstsq fits Hx/Hy from noise and
+        # blows up EVERY row (all per-axis R^2 came out NEGATIVE, verified).
+        # `compute_gt_signals` was checked and is correct; the UAV-pose log
+        # directly confirms the 6cm travel. An off-center GT-FB landing instead
+        # produces real sustained lateral flow (GT h_x/h_y std ~0.05-0.08).
+        # Full trace: project_20260827_framerate_and_h_texture_investigation memory
+        # (2026-08-28 recal section).
+        #   pooled slope (GT h_k = s_k * raw h_k, through 0, extent<200px), n=6:
+        #     s_hx=0.787 (r 0.988)  s_hy=0.794 (r 0.982)  s_hz=0.951 (r 0.994)
+        #     s_wz=0.587 (GT w_z std 0.097)   s_sx=0.957  s_sy=0.950
+        #   leave-one-out R^2: h_z +0.95..+0.99 all 6 (SOLID).  h_x/h_y +0.85..+0.94
+        #     on the 5 IC2/IC3-quadrant runs; +0.77/+0.77 on the (2,-2,5) held-out
+        #     rep (different quadrant, 81% detect-ok -- r there is still +0.965/
+        #     +0.971, so the relationship generalizes; the ~0.15 R^2 gap is a mild
+        #     per-quadrant scale residual, calibrated h_x/h_y ~1.15-1.35x hot on
+        #     that rep). TIGHT validated fit for the ~5-6 m descent regime.
+        # ⚠ KNOWN GAP -- high altitude: IC4 (ENU 2,2,7, ~7 m start) was recorded
+        #   TWICE and BOTH reproduce a weak hold-out (h_x +0.31/+0.48, h_y
+        #   -0.25/+0.21) + degraded detection (~84% ok, hough_lt2_lines -- stroke
+        #   width thins at 7 m). The h-block scale is NOT constant with altitude;
+        #   a height-scheduled cal is a separate effort. IC4 recordings moved to
+        #   calibration_data/landing_cal_cross_highalt_excluded/ (out of the derive
+        #   scan). This cal is trustworthy for a nominal ~5 m descent; expect
+        #   degraded h_x/h_y accuracy above ~6 m.
+        # Wx/Wy rows forced 0 (level-target convention, unchanged). No cross-
+        # coupling terms -- the landing fit showed the h-block is cleanly diagonal
+        # at this resolution (unlike the old 6x6 which had Hz<-Hx -0.22, Wz<-Hy +1.96).
         self._sensor_cal_hw = np.array([
-            [+0.1335, +0.0099, +0.0013, +0.0000, +0.0000, -0.0015],
-            [-0.0104, +0.1719, +0.0010, +0.0000, +0.0000, -0.0071],
-            [-0.2212, +0.0532, +0.4331, +0.0000, +0.0000, -0.0214],
+            [+0.7868, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.7937, +0.0000, +0.0000, +0.0000, +0.0000],
+            [+0.0000, +0.0000, +0.9513, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
             [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.0000],
-            [+0.0195, +1.9644, -0.0426, +0.0000, +0.0000, +0.5201]])
-        self._sensor_cal_s = np.diag([1.0320, 0.9984, 1.0, 1.0])
+            [+0.0000, +0.0000, +0.0000, +0.0000, +0.0000, +0.5869]])
+        self._sensor_cal_s = np.diag([0.9574, 0.9503, 1.0, 1.0])
 
         # Diagnostic instrumentation (2026-08-01, point-starvation/centroid-instability
         # investigation): per-frame (t, ok, fail_reason, bbox_area) log, always cheap
@@ -766,6 +871,51 @@ class CrossMarkerPerception:
         self._hw_kf_coast_streak = 0
         self._hw_kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
         self._hw_kf_frozen = None
+        # TERMINAL h_x/h_y via CENTROID-RATE (2026-08-28, DEFAULT ON -- perception
+        # change: changes how h is COMPUTED, not the control law). Root-cause
+        # (project_20260827 memory 2026-08-28 h-correlation dig): near touchdown
+        # the background-flow ROI degrades to FoV-edge slivers / too few corners
+        # -> h_x/h_y noise triples (terminal std ~1.0-1.3 vs ~0.07 healthy; NOT
+        # derotation error). h_z (moment-loom) is edge-robust and survives.
+        # Sampling harder made it WORSE (reverted angular window). FIX: when the
+        # background-flow solve is UNHEALTHY, blend h_x/h_y toward a KF-smoothed,
+        # de-loomed CENTROID-RATE:  h_xy_c = d(s_V)/dt + h_z_est * s_V
+        # (all normalized-image quantities -- NO depth/metric; see _stepCentroidKf).
+        # The cross-line intersection stays large/sharp/in-frame (bridged through
+        # detection flicker) -- the most reliable feature exactly when background
+        # texture is gone. Physically IS h_x/h_y, and h_z*s makes it correct
+        # off-center -> MOTION-AGNOSTIC (works for a moving target).
+        #
+        # GATE = background-flow HEALTH, not MARKER_EXTENT_PX (per user, 2026-08-28
+        # -- keeps the switch a pure signal-quality decision, no proximity proxy):
+        #   frac = max( ramp(rel_resid, LO..HI),  ramp(NPTS_HI-n_pts, ..) )
+        # i.e. blend to centroid when the tracked points disagree on a global flow
+        # (rel_resid high) OR the pool is starved (n_pts low). Offline A/B on 5
+        # landing reps (extent-gated variant): terminal corr ~0 -> +0.55..+0.96 on
+        # 4/5; the 5th (a divergent rep) +0.64/+0.75 with the clamp backstop.
+        # Mild R bump + value clamp on top. INERT under GT-FB. h_z / w untouched.
+        self._htc_on = os.environ.get("CROSS_HXY_TERMINAL_CENTROID", "1") == "1"
+        self._htc_resid_lo = float(os.environ.get("CROSS_HTC_RESID_LO", "0.50"))
+        self._htc_resid_hi = float(os.environ.get("CROSS_HTC_RESID_HI", "0.90"))
+        self._htc_npts_hi = float(os.environ.get("CROSS_HTC_NPTS_HI", "16"))
+        self._htc_npts_lo = float(os.environ.get("CROSS_HTC_NPTS_LO", "6"))
+        self._htc_r_max = float(os.environ.get("CROSS_HTC_R_MAX", "8.0"))
+        self._htc_clamp = float(os.environ.get("CROSS_HTC_CLAMP", "0.20"))
+        self._htc_clamp_frac = float(os.environ.get("CROSS_HTC_CLAMP_FRAC", "0.5"))
+        self._bgflow_health = (0.0, 999)   # (rel_resid, n_pts) of the last flow solve this frame
+        self._hxy_derate_log = []          # per-frame blend fraction to centroid-rate (0 = pure bg-flow)
+        self._bgflow_health_log = []       # per-frame (rel_resid, n_pts) -- for gate tuning/validation
+        self._bgflow_fallback_fires = 0    # count of _compute_hw_bgflow_fallback successes (miss-frame bbox-dense flow)
+        # 2-state (value, rate) KF on the V-frame centroid s_V -- fed the current
+        # _center_px (fresh OR bridged) every frame by _stepCentroidKf. Its rate
+        # state, de-loomed, is the terminal h_x/h_y source above. Tuned offline
+        # (q=2.0 / r=0.02 gave the best terminal corr).
+        self._scen_kf_q = float(os.environ.get("CROSS_SCEN_KF_Q", "2.0"))
+        self._scen_kf_r = float(os.environ.get("CROSS_SCEN_KF_R", "0.02"))
+        self._scen_kf_x = np.zeros((2, 2))
+        self._scen_kf_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
+        self._scen_kf_prev_t = None
+        self._scen_kf_init = False
 
     def _kf_update_hw(self, z, t):
         """hw coast+freeze KF update -- ported from img_data.py's `_kf_update`
@@ -777,10 +927,44 @@ class CrossMarkerPerception:
         if z is not None:
             self._hw_kf_coast_streak = 0
             self._hw_kf_frozen = None
+            # TERMINAL h_x/h_y via centroid-rate (see __init__'s _scen_kf_* comment).
+            # When the background-flow solve is UNHEALTHY (rel_resid high / n_pts
+            # low -- pure signal-quality, NO proximity proxy), blend z[0:2] toward
+            # the KF-smoothed, de-loomed centroid rate; small R bump + value clamp.
+            # _kf_step's `S = P_pred[:,0,0] + r` broadcasts a (6,) r fine.
+            r = self._hw_kf_r
+            _frac = 0.0
+            if self._htc_on and self._scen_kf_init:
+                rr, npts = self._bgflow_health
+                f_rr = np.clip((rr - self._htc_resid_lo)
+                               / max(self._htc_resid_hi - self._htc_resid_lo, 1e-6), 0.0, 1.0)
+                f_np = np.clip((self._htc_npts_hi - npts)
+                               / max(self._htc_npts_hi - self._htc_npts_lo, 1e-6), 0.0, 1.0)
+                _frac = float(max(f_rr, f_np))
+                if _frac > 0.0:
+                    hz_est = self._hw_kf_x[2, 0] if self._hw_kf_initialized else 0.0
+                    hxy_c0 = self._scen_kf_x[0, 1] + hz_est * self._scen_kf_x[0, 0]
+                    hxy_c1 = self._scen_kf_x[1, 1] + hz_est * self._scen_kf_x[1, 0]
+                    z = np.asarray(z, dtype=float).copy()
+                    z[0] = (1.0 - _frac) * z[0] + _frac * hxy_c0
+                    z[1] = (1.0 - _frac) * z[1] + _frac * hxy_c1
+                    mult = 1.0 + _frac * (self._htc_r_max - 1.0)
+                    r = np.full(6, self._hw_kf_r)
+                    r[0] *= mult; r[1] *= mult
+            self._hxy_derate_log.append(float(_frac))
+            self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, z, t,
-                self._hw_kf_q, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+                self._hw_kf_q, r, dt_unc_max=self._hw_kf_dt_unc_max)
+            if _frac >= self._htc_clamp_frac and self._hw_kf_initialized:
+                # backstop for the jumpy-centroid case (e.g. a divergent rep):
+                # clamp the h_x/h_y VALUE. Rate left to the hw-KF (fed a real
+                # estimate now, not suppressed).
+                self._hw_kf_x[0:2, 0] = np.clip(self._hw_kf_x[0:2, 0],
+                                                -self._htc_clamp, self._htc_clamp)
         else:
+            self._hxy_derate_log.append(0.0)
+            self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_coast_streak += 1
             if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
                 if self._hw_kf_frozen is None:
@@ -794,6 +978,24 @@ class CrossMarkerPerception:
         # zeros, same as the pre-fix behavior -- there is nothing to coast
         # from before the first real observation, this is not a regression.
         self._hw = self._hw_kf_x[:, 0].copy() if self._hw_kf_initialized else np.zeros(6)
+
+    def _stepCentroidKf(self, t, quat):
+        """Step the 2-state (value, rate) KF on the V-frame centroid s_V, fed the
+        current _center_px (fresh OR bridged). Its rate state is the terminal
+        h_x/h_y source (see __init__'s _scen_kf_* comment). ALL quantities are
+        normalized image coords -- no depth/metric. Call once per frame BEFORE
+        _kf_update_hw. log_zv=False so this extra _getVirtualPts call doesn't skew
+        _z_v_log's documented 'N per flow solve' cadence."""
+        z = None
+        if self._center_px is not None and quat is not None:
+            try:
+                z = self._getVirtualPts(np.asarray(self._center_px, float)[None, :],
+                                        quat, log_zv=False)[0]
+            except Exception:
+                z = None
+        self._scen_kf_x, self._scen_kf_P, self._scen_kf_prev_t, self._scen_kf_init = _kf_step(
+            self._scen_kf_x, self._scen_kf_P, self._scen_kf_prev_t, self._scen_kf_init,
+            z, t, self._scen_kf_q, self._scen_kf_r)
 
     @staticmethod
     def _dilate_mask(mask):
@@ -985,7 +1187,7 @@ class CrossMarkerPerception:
         merged = np.vstack([peripheral_pts, full_pts[keep]])
         return merged[:GFT_MAX_CORNERS]
 
-    def _getVirtualPts(self, pts, quat):
+    def _getVirtualPts(self, pts, quat, return_zv=False, log_zv=True):
         """Reproject camera-frame pixels onto the virtual image plane V: a
         LEVEL frame (gravity-aligned z) that preserves the UAV's yaw heading.
         Direct port of img_data.py's _getVirtualPts (same V-frame convention
@@ -1026,7 +1228,8 @@ class CrossMarkerPerception:
             fxx, fyy = self.focal
             x = (pts[:, 0] - cx) / fxx
             y = (pts[:, 1] - cy) / fyy
-            return np.column_stack([y, -x])
+            out = np.column_stack([y, -x])
+            return (out, np.full(len(out), np.inf)) if return_zv else out
 
         R = Quaternion([quat.w, quat.x, quat.y, quat.z]).to_DCM()
         g = R.T @ np.array([0, 0, 1])   # world-down in body/camera frame (camera=body-FRD aligned)
@@ -1053,12 +1256,13 @@ class CrossMarkerPerception:
         # noise/garbage without tripping any of the existing n_kept/cond/rel_resid
         # diagnostics (those check the LSTSQ fit, not the per-point projection that
         # feeds it).
-        self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
+        if log_zv:
+            self._z_v_log.append(float(np.min(z_v)) if len(z_v) else np.nan)
         # TEMP DIAG (2026-08-03, s_e_n/h_y single-frame-spike investigation): confirm/deny
         # the near-zero-z_v perspective-divide-blowup mechanism the comment above already
         # theorizes. Fires on ANY ray this close to grazing, npts distinguishes the
         # centroid call (npts=1, feeds s) from the flow-point call (npts=N, feeds h).
-        if len(z_v) and np.min(z_v) < 0.5:
+        if log_zv and len(z_v) and np.min(z_v) < 0.5:
             # tilt-from-vertical computed from this SAME quat/DCM -- self-contained, no
             # cross-clock lookup needed (2026-08-03, "is 60deg cap enough?" follow-up).
             _tilt_deg = float(np.degrees(np.arccos(np.clip(R[2, 2], -1.0, 1.0))))
@@ -1066,7 +1270,8 @@ class CrossMarkerPerception:
             print(f"[Z_V_DIAG] t={self._last_t} npts={len(z_v)} min_z_v={np.min(z_v):.4f} "
                   f"tilt_deg={_tilt_deg:.1f} x,y(worst)={x[_i_worst]:.3f},{y[_i_worst]:.3f} "
                   f"max|out|={np.max(np.abs(np.column_stack([V_rays[:,0]/z_v, V_rays[:,1]/z_v]))):.3f}")
-        return np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+        out = np.column_stack([V_rays[:, 0] / z_v, V_rays[:, 1] / z_v])
+        return (out, z_v) if return_zv else out
 
     def _vframe_w(self, w_body, quat):
         """Rotate a body-FRD angular velocity into the virtual (gravity-leveled) frame,
@@ -1089,8 +1294,24 @@ class CrossMarkerPerception:
         # comment on this exact point ("aruco_pts_0 belongs to frame-0 -> level with
         # quats[0], not quats[1]") warns that using the wrong quat leaves a residual
         # tilt proportional to angular rate, a source of yaw/rate leakage.
-        prev_n = self._getVirtualPts(prev_pts, prev_quat)
-        curr_n = self._getVirtualPts(curr_pts, curr_quat)
+        prev_n, zv_p = self._getVirtualPts(prev_pts, prev_quat, return_zv=True)
+        curr_n, zv_c = self._getVirtualPts(curr_pts, curr_quat, return_zv=True)
+        # GEOMETRY REJECTION (2026-08-28, h_x/h_y terminal-collapse fix -- see
+        # Z_V_MIN_FLOW / FLOW_ANG_MAX comments): drop flow points that are either
+        # (a) near-grazing (small z_v in EITHER frame -> perspective-divide
+        # amplification), or (b) outside a centered angular window (the FoV-edge
+        # slivers that are all that's left of the "background" once the marker
+        # overflows near touchdown). Both pollute the Tx/Ty (h_x/h_y) solve.
+        # Keep all points if too few survive -- a degenerate solve on the full set
+        # still beats no solve, and rel_resid will flag it.
+        _pp = np.asarray(prev_pts, dtype=float)
+        _xn = (_pp[:, 0] - self.center[0]) / self.focal[0]
+        _yn = (_pp[:, 1] - self.center[1]) / self.focal[1]
+        _geokeep = ((zv_p >= Z_V_MIN_FLOW) & (zv_c >= Z_V_MIN_FLOW)
+                    & (np.abs(_xn) <= FLOW_ANG_MAX) & (np.abs(_yn) <= FLOW_ANG_MAX))
+        if _geokeep.sum() >= MIN_FLOW_POINTS_SOLVE and _geokeep.sum() < len(_geokeep):
+            prev_n, curr_n = prev_n[_geokeep], curr_n[_geokeep]
+            prev_pts, curr_pts = _pp[_geokeep], np.asarray(curr_pts, dtype=float)[_geokeep]
         vel = (curr_n - prev_n) / dt   # (N,2) per-point normalized velocity
         A = _fill_A(prev_n)
         b = vel.reshape(-1)
@@ -1265,21 +1486,34 @@ class CrossMarkerPerception:
         re-validating a different thing than what was actually checked against GT.
         Fails to (zeros, False) if det isn't ok, no background mask/points are
         available this frame, or too few points survive LK -- caller falls back
-        to the caller's own zero/coast handling, same contract as _compute_hw."""
+        to the caller's own zero/coast handling, same contract as _compute_hw.
+
+        HYBRID (CROSS_BG_FLOW_HYBRID=1, default off): CLAHE-normalise the ROI
+        before GFT/LK and add forward-backward LK rejection -- see the module-
+        level CROSS_BG_FLOW_HYBRID comment. Default path (hybrid off) is
+        byte-for-byte the GT-validated 2026-08-27 method."""
         if det is None or not det.ok or det.isolated_mask is None:
             return np.zeros(6), False
         bm = cmd.background_mask_from_detection(det, gray_curr.shape)
         if bm is None or not bm.any():
             return np.zeros(6), False
-        pts = cmd.multiscale_good_features(gray_prev, bm, max_corners=80,
+        gp, gc = gray_prev, gray_curr
+        if CROSS_BG_FLOW_HYBRID and _BGF_CLAHE:
+            gp, gc = _bgf_clahe_pair(gray_prev, gray_curr)
+        pts = cmd.multiscale_good_features(gp, bm, max_corners=80,
                                             quality=0.01, min_dist=4)
         if pts is None or len(pts) < 5:
             return np.zeros(6), False
-        tracked, status, _ = cv2.calcOpticalFlowPyrLK(
-            gray_prev, gray_curr, pts, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
-        status = status.flatten().astype(bool)
-        prev_pts = pts.reshape(-1, 2)[status]
-        curr_pts = tracked.reshape(-1, 2)[status]
+        if CROSS_BG_FLOW_HYBRID:
+            prev_pts, curr_pts = _bgf_lk_fb(gp, gc, pts, _BGF_FB)
+            if prev_pts is None:
+                return np.zeros(6), False
+        else:
+            tracked, status, _ = cv2.calcOpticalFlowPyrLK(
+                gp, gc, pts, None, winSize=LK_WIN, maxLevel=LK_MAX_LEVEL)
+            status = status.flatten().astype(bool)
+            prev_pts = pts.reshape(-1, 2)[status]
+            curr_pts = tracked.reshape(-1, 2)[status]
         if len(prev_pts) < 5 or dt <= 1e-6:
             return np.zeros(6), False
         self._last_flow_prev_px = prev_pts.copy()
@@ -1293,7 +1527,52 @@ class CrossMarkerPerception:
         self._prev_flow_cell_id = None
         sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
             prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr)
+        self._bgflow_health = (float(rel_resid), int(len(prev_pts)))
         return sol, True
+
+    def _compute_hw_bgflow_fallback(self, gray_prev, gray_curr, det, dt,
+                                     quat_prev=None, quat_curr=None):
+        """HYBRID-only (CROSS_BG_FLOW_HYBRID=1) det.ok==False path -- see the
+        module-level CROSS_BG_FLOW_HYBRID comment. Background flow from
+        det.mask_bbox alone (threshold-derived line exclusion) + dense DIS flow,
+        gated on _solve_jacobian's rel_resid <= _BGF_RESID_GATE. Returns
+        (sol6, ok); the caller injects sol into the hw KF as a real measurement
+        and does NOT touch self._ok / s / alpha / visibility (flow-only). Never
+        raises -- any failure returns (zeros, False) and the caller coasts hw as
+        it would have anyway."""
+        if not (CROSS_BG_FLOW and CROSS_BG_FLOW_HYBRID):
+            return np.zeros(6), False
+        if det is None or det.mask_bbox is None or not (dt > 1e-6):
+            return np.zeros(6), False
+        try:
+            bm = cmd.background_mask_bboxonly_from_detection(det, gray_curr)
+            if bm is None or not bm.any():
+                return np.zeros(6), False
+            try:
+                dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_FAST)
+            except AttributeError:
+                return np.zeros(6), False
+            flow = dis.calc(gray_prev, gray_curr, None)
+            ys, xs = np.where(bm > 0)
+            if len(xs) < 20:
+                return np.zeros(6), False
+            step = max(1, int(np.sqrt(len(xs) / 200.0)))   # ~<=200 sample points
+            xs, ys = xs[::step], ys[::step]
+            prev = np.column_stack([xs, ys]).astype(np.float32)
+            disp = flow[ys, xs]
+            keep = np.linalg.norm(disp, axis=1) < 15.0     # reject blown vectors
+            prev, curr = prev[keep], (prev + disp)[keep]
+            if len(prev) < 5:
+                return np.zeros(6), False
+            sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
+                prev, curr, dt, prev_quat=quat_prev, curr_quat=quat_curr)
+            if not np.isfinite(rel_resid) or rel_resid > _BGF_RESID_GATE:
+                return np.zeros(6), False
+            self._bgflow_health = (float(rel_resid), int(len(prev)))
+            self._bgflow_fallback_fires += 1
+            return sol, True
+        except Exception:
+            return np.zeros(6), False
 
     def _compute_hw(self, gray_prev, gray_curr, mask, dt, quat_prev=None, quat_curr=None,
                      angvel_prev=None, angvel_curr=None):
@@ -1434,6 +1713,7 @@ class CrossMarkerPerception:
         self._flow_diag_log.append((self._last_t, n_kept, cond, True, rel_resid, px_disp_med, px_disp_std))
         self._radial_diag_log.append((self._last_t,) + self._radial_diag)
         self._point_diag_log.append((self._last_t,) + self._point_diag)
+        self._bgflow_health = (float(rel_resid), int(n_kept))
         return sol, True   # [h1,h2,h3,w1,w2,w3]
 
     def _snapshotBridgeAnchor(self):
@@ -1507,6 +1787,10 @@ class CrossMarkerPerception:
         # _flow_diag_log entries etc.)
         self._last_t = t
         dt = 1.0 / fps if (isinstance(fps, (int, float)) and fps > 1) else np.nan
+        # reset bg-flow health -- a solve method overwrites it if it runs this
+        # frame; if none does, (inf, 0) => _kf_update_hw's centroid blend treats
+        # it as fully unhealthy (correct: there was no usable bg-flow this frame).
+        self._bgflow_health = (float('inf'), 0)
 
         # EXTENT-ADAPTIVE ROI (2026-08-04): decided INSIDE detect() itself now, from the
         # blobby-stage mask's own largest-component extent (see cross_marker_detector's
@@ -1545,7 +1829,13 @@ class CrossMarkerPerception:
                 self._center_fresh = True
             # hold last s/alpha; hw coasts (predict-only KF, then freezes after
             # _hw_kf_coast_freeze_streak misses -- see _kf_update_hw docstring)
-            self._kf_update_hw(None, t)
+            # -- UNLESS the hybrid bbox-only bg-flow path can produce a rel_resid-
+            # gated flow measurement this frame (CROSS_BG_FLOW_HYBRID; flow-only,
+            # self._ok stays False). See module-level CROSS_BG_FLOW_HYBRID comment.
+            _hw_fb, _hw_fb_ok = self._compute_hw_bgflow_fallback(
+                gray_prev, gray_curr, det, dt, quat_prev=quat_prev, quat_curr=quat_curr)
+            self._stepCentroidKf(t, quat_curr)   # centroid KF: feed bridged center too
+            self._kf_update_hw(_hw_fb if _hw_fb_ok else None, t)
             self._diag_lost_streak += 1
             # dump the frame at the START of a loss streak (streak==1) and every 30
             # frames thereafter, so a long freeze is sampled across its duration
@@ -1596,6 +1886,7 @@ class CrossMarkerPerception:
             if _bridged is not None:
                 self._center_px, self._last_bbox = _bridged
                 self._center_fresh = True
+            self._stepCentroidKf(t, quat_curr)
             self._kf_update_hw(None, t)
             self._diag_lost_streak += 1
             return self.get_output()
@@ -1657,6 +1948,7 @@ class CrossMarkerPerception:
             mask = det.isolated_mask if det.isolated_mask is not None else np.zeros(gray_curr.shape, np.uint8)
             hw, hw_ok = self._compute_hw(gray_prev, gray_curr, mask, dt, quat_prev=quat_prev, quat_curr=quat_curr,
                                           angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+        self._stepCentroidKf(t, quat_curr)
         self._kf_update_hw(hw if hw_ok else None, t)
         # CENTER-BRIDGE anchor (see CROSS_CENTER_BRIDGE_FRAMES's __init__ comment): _compute_hw
         # above just updated _prev_flow_pts/_prev_flow_cell_id for this CONFIRMED-detection
@@ -2158,6 +2450,18 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
             "Center Px": self._perception._center_px_log,
+            # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
+            # (same _pending_angvel sampled synchronously with quat in
+            # Image_Node.image_callback). Already accumulated per frame; exposing
+            # it here so OFFLINE analysis can reproduce the LIVE gyro-derotated
+            # 4-unknown _solve_jacobian instead of falling back to the
+            # rank-deficient full-6 solve (h_z corr understated ~0.2-0.3 without it
+            # -- see project_20260827 memory 2026-08-28 h-correlation dig).
+            "IMU AngVel": self._perception._imu_angvel_log,
+            "HxHy Centroid Blend": self._perception._hxy_derate_log,  # 2026-08-28: blend fraction bg-flow h_x/h_y -> centroid-rate (0 = pure bg-flow)
+            "BgFlow Health": self._perception._bgflow_health_log,  # 2026-08-28: (rel_resid, n_pts) of the flow solve per frame
+            "FPS": self._perception._fps_log,
+            "Stamp": self._perception._stamp_log,
             # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
             # calibration/validation recorder apps exposed these via their own explicit
             # get_point_diag_log()/get_radial_diag_log() calls into Ground_Truth.npy --
@@ -2238,7 +2542,9 @@ class CrossMarkerNode(Thread):
         print(f"[CrossMarkerNode] diag: {len(log)} process_frame() calls over "
               f"{ts[-1]-ts[0]:.2f}s (mean call rate {call_hz:.1f} Hz), "
               f"detect ok {oks.sum()}/{len(oks)} ({100*oks.mean():.0f}%)"
-              + (f", fail reasons: {dict(fails)}" if fails else ""))
+              + (f", fail reasons: {dict(fails)}" if fails else "")
+              + (f", bgflow-fallback fires: {self._perception._bgflow_fallback_fires}"
+                 if getattr(self._perception, '_bgflow_fallback_fires', 0) else ""))
 
         # 2026-08-04: hough_lt2_lines root-cause breakdown -- see cross_marker_detector's
         # HOUGH_DIAG_LOG (populated on every hough_lt2_lines occurrence, not just a sample).
