@@ -905,6 +905,7 @@ class CrossMarkerPerception:
         self._bgflow_health = (0.0, 999)   # (rel_resid, n_pts) of the last flow solve this frame
         self._hxy_derate_log = []          # per-frame blend fraction to centroid-rate (0 = pure bg-flow)
         self._bgflow_health_log = []       # per-frame (rel_resid, n_pts) -- for gate tuning/validation
+        self._bgflow_fallback_fires = 0    # count of _compute_hw_bgflow_fallback successes (miss-frame bbox-dense flow)
         # 2-state (value, rate) KF on the V-frame centroid s_V -- fed the current
         # _center_px (fresh OR bridged) every frame by _stepCentroidKf. Its rate
         # state, de-loomed, is the terminal h_x/h_y source above. Tuned offline
@@ -1568,6 +1569,7 @@ class CrossMarkerPerception:
             if not np.isfinite(rel_resid) or rel_resid > _BGF_RESID_GATE:
                 return np.zeros(6), False
             self._bgflow_health = (float(rel_resid), int(len(prev)))
+            self._bgflow_fallback_fires += 1
             return sol, True
         except Exception:
             return np.zeros(6), False
@@ -2540,7 +2542,9 @@ class CrossMarkerNode(Thread):
         print(f"[CrossMarkerNode] diag: {len(log)} process_frame() calls over "
               f"{ts[-1]-ts[0]:.2f}s (mean call rate {call_hz:.1f} Hz), "
               f"detect ok {oks.sum()}/{len(oks)} ({100*oks.mean():.0f}%)"
-              + (f", fail reasons: {dict(fails)}" if fails else ""))
+              + (f", fail reasons: {dict(fails)}" if fails else "")
+              + (f", bgflow-fallback fires: {self._perception._bgflow_fallback_fires}"
+                 if getattr(self._perception, '_bgflow_fallback_fires', 0) else ""))
 
         # 2026-08-04: hough_lt2_lines root-cause breakdown -- see cross_marker_detector's
         # HOUGH_DIAG_LOG (populated on every hough_lt2_lines occurrence, not just a sample).
