@@ -871,6 +871,32 @@ class CrossMarkerPerception:
         self._hw_kf_coast_streak = 0
         self._hw_kf_coast_freeze_streak = int(os.environ.get("PLASMC_KF_COAST_FREEZE_STREAK", "3"))
         self._hw_kf_frozen = None
+        # EXTENT-GATED h_x/h_y CONFIDENCE DERATE (2026-08-28, default OFF pending
+        # the feedback_ic_validation n>=5 gate -- this is a CONTROL-path change).
+        # Root-cause (project_20260827 memory 2026-08-28 h-correlation dig): once
+        # the marker overflows the FoV near touchdown, the background-flow ROI is
+        # reduced to FoV-edge slivers -> h_x/h_y noise triples (h_x std 0.019
+        # early -> 0.320 terminal on a centered rep; corr(|h_x|,1/N_corners)=+0.72;
+        # NOT derotation error). h_z (loom) is edge-robust and survives. So instead
+        # of sampling harder (the angular-window filter tried that and made it 10x
+        # WORSE -- collinear few-point solve), just inflate the h_x/h_y KF
+        # measurement noise as MARKER_EXTENT_PX grows, so the controller
+        # down-weights them near touchdown. Safe there: the drone is centered by
+        # then and h_d->0. h_z / w channels untouched. INERT under GT-FB (h is
+        # substituted). Ramp R x1 -> xMAX linearly over [START, FULL] px.
+        self._hxy_derate_on = os.environ.get("CROSS_HXY_EXTENT_DERATE", "0") == "1"
+        self._hxy_derate_start = float(os.environ.get("CROSS_HXY_DERATE_EXTENT_START", "200"))
+        self._hxy_derate_full = float(os.environ.get("CROSS_HXY_DERATE_EXTENT_FULL", "300"))
+        self._hxy_derate_max = float(os.environ.get("CROSS_HXY_DERATE_MAX", "300.0"))
+        # R inflation alone can't stop the KF's rate state coasting a std~1 terminal
+        # measurement (constant-velocity model). Above this derate fraction, also
+        # bleed the h_x/h_y RATE state toward 0 (factor per step) and hard-clamp the
+        # h_x/h_y VALUE output -- the drone is centered by then (h_d->0), so holding
+        # h_x/h_y near their healthy magnitude is exactly right.
+        self._hxy_derate_rate_frac = float(os.environ.get("CROSS_HXY_DERATE_RATE_FRAC", "0.5"))
+        self._hxy_derate_rate_bleed = float(os.environ.get("CROSS_HXY_DERATE_RATE_BLEED", "0.5"))
+        self._hxy_derate_clamp = float(os.environ.get("CROSS_HXY_DERATE_CLAMP", "0.20"))
+        self._hxy_derate_log = []   # per-frame applied R multiplier on h_x/h_y (1.0 = no derate)
 
     def _kf_update_hw(self, z, t):
         """hw coast+freeze KF update -- ported from img_data.py's `_kf_update`
@@ -882,10 +908,31 @@ class CrossMarkerPerception:
         if z is not None:
             self._hw_kf_coast_streak = 0
             self._hw_kf_frozen = None
+            # extent-gated h_x/h_y R inflation (see __init__'s _hxy_derate_* comment).
+            # _kf_step's `S = P_pred[:,0,0] + r` broadcasts a (6,) r fine.
+            r = self._hw_kf_r
+            mult = 1.0
+            _frac = 0.0
+            if self._hxy_derate_on and self._last_bbox is not None:
+                ext = float(max(self._last_bbox[2], self._last_bbox[3]))
+                _frac = float(np.clip((ext - self._hxy_derate_start)
+                                      / max(self._hxy_derate_full - self._hxy_derate_start, 1e-6), 0.0, 1.0))
+                mult = 1.0 + _frac * (self._hxy_derate_max - 1.0)
+                if mult > 1.0:
+                    r = np.full(6, self._hw_kf_r)
+                    r[0] *= mult; r[1] *= mult
+            self._hxy_derate_log.append(float(mult))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
                 self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized, z, t,
-                self._hw_kf_q, self._hw_kf_r, dt_unc_max=self._hw_kf_dt_unc_max)
+                self._hw_kf_q, r, dt_unc_max=self._hw_kf_dt_unc_max)
+            if _frac >= self._hxy_derate_rate_frac and self._hw_kf_initialized:
+                # bleed the h_x/h_y rate state toward 0 so R-inflation isn't
+                # undone by constant-velocity coasting; hard-clamp the value.
+                self._hw_kf_x[0:2, 1] *= self._hxy_derate_rate_bleed
+                self._hw_kf_x[0:2, 0] = np.clip(self._hw_kf_x[0:2, 0],
+                                                -self._hxy_derate_clamp, self._hxy_derate_clamp)
         else:
+            self._hxy_derate_log.append(1.0)
             self._hw_kf_coast_streak += 1
             if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
                 if self._hw_kf_frozen is None:
@@ -2349,6 +2396,7 @@ class CrossMarkerNode(Thread):
             # rank-deficient full-6 solve (h_z corr understated ~0.2-0.3 without it
             # -- see project_20260827 memory 2026-08-28 h-correlation dig).
             "IMU AngVel": self._perception._imu_angvel_log,
+            "HxHy Derate Mult": self._perception._hxy_derate_log,  # 2026-08-28: extent-gated h_x/h_y R multiplier (1.0 = off)
             "FPS": self._perception._fps_log,
             "Stamp": self._perception._stamp_log,
             # 2026-08-12 (hard-landing sign-flip reconstruction): previously only the
