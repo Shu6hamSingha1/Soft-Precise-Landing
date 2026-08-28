@@ -641,3 +641,26 @@ here): (1) high-altitude >6 m -- see the IC4 note above; (2) the terminal-phase
 h_x/h_y collapse (extent-gated confidence derate, still not implemented);
 (3) off-center kappa control wall blocks real-perception off-center convergence
 regardless of cal.
+
+### Terminal-phase h_x/h_y confidence derate -- IMPLEMENTED (commit 680f4a1, default OFF)
+
+`CROSS_HXY_EXTENT_DERATE` (default "0"). In `_kf_update_hw`, on a real measurement:
+- inflate the h_x/h_y KF R by a factor ramping 1x -> `CROSS_HXY_DERATE_MAX` (300)
+  linearly over `[CROSS_HXY_DERATE_EXTENT_START, _FULL]` px (200..300);
+- above `CROSS_HXY_DERATE_RATE_FRAC` (0.5): also bleed the h_x/h_y RATE state x0.5/
+  step (R-inflation alone is undone by the KF's constant-velocity coasting of a
+  std~1 terminal measurement) and hard-clamp the h_x/h_y VALUE to
+  +-`CROSS_HXY_DERATE_CLAMP` (0.20).
+- h_z / w channels untouched. INERT under GT-FB (h substituted).
+- `_kf_step` already broadcasts a (6,) r -- no change there. New "HxHy Derate
+  Mult" logged in Img_Data.
+
+Offline A/B on 3 landing_cal_cross reps: terminal (ext>=200) h_x/h_y std
+0.80/1.35 -> 0.076/0.037 (IC2), 0.36/1.02 -> 0.075/0.077 (IC3c_heldout, corr
++0.30 -> +0.72). small-marker regime + h_z bit-identical. It tames terminal
+garbage to the healthy small-marker magnitude -- not an accuracy fix (impossible
+with no background there), a "stop injecting noise into control" fix.
+
+⚠ DEFAULT OFF -- control-path -> needs the `feedback_ic_validation` n>=5 IC1-5
+sweep (GT-FB-off, once the 320x240 cal + the off-center kappa wall allow a
+meaningful real-perception sweep) before baking on.
