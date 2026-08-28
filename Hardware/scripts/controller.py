@@ -294,8 +294,8 @@ class Controller(Thread):
         # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
         # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
-            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 1.0   # KEPT 1.0 2026-06-30: A/B at {h_rd=-0.30,XIR=0.15} (IC2/IC4/IC5 n=3) REVERSED the old 1.5 claim — P2INF=1.0 best (7/9 SP, rel_vel med 0.026, 0 fly) vs 1.5 (5/9, 0.144, 1 fly) vs 2.0 (5/9, 0.172). The old "1.5 un-saturates zeta_h" benefit is LOST at this config (h_e spikes saturate zeta_h even at 1.5); smaller p_2 = steeper zeta_h = more velocity damping at the terminal. (Briefly baked 1.5 then reverted.)
-            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # KEPT 1.0 2026-06-30 (A/B: 1.0 > 1.5/2.0)
+            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 2.5   # REBAKED 2026-08-28 (was 1.0, KEPT 2026-06-30 under a different base config {h_rd=-0.30,XIR=0.15}): Gazebo IC2 GT-FB n=5 A/B directly traced P2INF_XY=0.5/1.0 as the MECHANICAL TRIGGER for the funnel-breach/Singhal-containment/dh_d-leak/a_u-thrash chain (project_pi_08_26_lateral_kappa_runaway + same-day Gazebo follow-up) -- s_e_n was small and still CONVERGING right up to the moment p(t) hit its floor; the funnel getting tight, not the tracking error growing, triggered every observed breach. 2.5 (the original un-auto-aligned table default) gave 5/5 CLEAN runs (kappa_xy_max<=0.18, a_u_xy_max<=4.4, zero containment events) vs 0.5 giving 2/4 severe (a_u to 162) and repeated catastrophic outliers (a_u to 1e6, 9e3) once AU_LEAD/KF-retune were layered on top trying to patch the consequences. This supersedes the 2026-06-30 A/B's modest SP-rate finding -- avoiding a full breach event is worth far more than that A/B's marginal rel_vel gain, and that A/B's own base config differs from the GT-FB/HW_POS_FEEDBACK combined-barrier config this was validated against.
+            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 2.5   # REBAKED 2026-08-28, see PLASMC_P2INF_X comment above -- same finding, same fix.
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
             if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
                 self._Gma = np.diag([0.25, 0.25, 0.75])                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
@@ -617,32 +617,51 @@ class Controller(Thread):
         # touchdown call. Since HWPosFeedback already has the exact camera-to-marker relative
         # depth (last_rel_alt), it gets its own confirmation instead.
         #
-        # BUG FOUND 2026-08-26 in the PX4_Gazebo original (Ubuntu, still uncommitted there):
-        # that version updated `_td_gt_min_depth` to the CURRENT depth on every tick where
-        # depth was still decreasing, so `depth - _td_gt_min_depth == 0` (i.e. "at landed
-        # height") was trivially true on almost EVERY tick of a normal, smooth, monotonic
-        # descent -- not just at genuine ground contact. Confirmed on the Pi 2026-08-26: every
-        # one of ~46 hardware landing tests that day false-triggered TOUCHDOWN-DETECT
-        # (analytic-feedback) at depth 2.4-3.1m (hover altitude, nowhere near the ground),
-        # handing the last ~3m of every descent off to PX4's native LAND mode instead of
-        # PLASMC. hardware_landing.py's post-touchdown action.land() (not a raw disarm) meant
-        # this was not a safety incident, but it silently invalidated every terminal-approach/
-        # touchdown-softness measurement taken that day.
+        # BUG FOUND 2026-08-26, independently on BOTH the Pi and Ubuntu/Gazebo the same day:
+        # comparing CURRENT depth to the running MIN alone is trivially true almost every
+        # frame during an ordinary smooth descent (adjacent samples of a continuously-
+        # decreasing signal are always close together) -- it doesn't test that descent has
+        # STOPPED, just that it hasn't jumped. Confirmed live on the Pi: ~46 hardware landing
+        # tests that day false-triggered TOUCHDOWN-DETECT (analytic-feedback) at depth
+        # 2.4-3.1m (hover altitude, nowhere near the ground), 3 ticks (57ms) after arming
+        # every time -- handing the last ~3m of every descent off to PX4's native LAND mode
+        # instead of PLASMC. hardware_landing.py's post-touchdown action.land() (not a raw
+        # disarm) meant this was not a safety incident, but it silently invalidated every
+        # terminal-approach/touchdown-softness measurement taken that day.
         #
-        # FIX: only update the recorded minimum on a genuine >eps drop (clearing the rolling
-        # window when it does, since that's real forward progress), then require depth to
-        # stay within eps of that now-STABLE minimum for _td_frames samples within the window
-        # -- a real plateau detector, not a "distance from a min that updates every tick"
-        # check that's zero by construction during ordinary descent.
+        # RECONCILED FIX (2026-08-27): Ubuntu/Gazebo independently fixed the SAME bug the
+        # same day via a windowed-RATE check (mirrors _extentGrowthFlattened's own design,
+        # applied to real GT depth instead of perception extent) plus a "genuine progress
+        # since arming" gate (rules out a flat pre-descent hover blip trivially satisfying a
+        # near-zero rate before any real descent has happened) -- more robust than this
+        # file's original simpler eps-threshold-only fix, so adopted here instead.
         self._td_gt_flat_eps = float(os.environ.get("PLASMC_TD_GT_FLAT_EPS", "0.03"))  # m
         self._td_gt_min_depth = None
         self._td_gt_hist = deque(maxlen=self._td_window)
+        self._td_gt_depth_at_arm = None
+        self._td_gt_rate_max = float(os.environ.get("PLASMC_TD_GT_RATE_MAX", "0.05"))      # m/s
+        self._td_gt_progress_min = float(os.environ.get("PLASMC_TD_GT_PROGRESS_MIN", "0.3"))  # m
+        self._td_gt_rate_win = int(os.environ.get("PLASMC_TD_GT_RATE_WIN", str(self._td_ext_win)))
+        self._td_gt_rate_hist = deque(maxlen=self._td_gt_rate_win)
+        # SEN GATE, RELAXED FOR THIS PATH ONLY (found + fixed on hardware 2026-08-26, NOT
+        # (yet) mirrored on Ubuntu/Gazebo): the original |s_e_n|<_td_sen (0.6) gate exists to
+        # reject a PERCEPTION glitch masquerading as centered -- doesn't carry over to the
+        # analytic-feedback depth signal, which isn't perception-derived and already has its
+        # own persistence/plateau/rate gate above. A genuine hard, far-off-center landing
+        # (confirmed via independent rangefinder+EKF cross-check, not a numerical artifact)
+        # pinned |s_e_n| at ~32.25 because PLASMC_HW_S_MAX (8.0, bounds raw s) is much larger
+        # than p_10 (~0.23-0.31) once s_e_n=s_e/p_10 divides it down -- physical ceiling
+        # ~8.0/min(p_10)~34.3. Sized above that ceiling with margin; anything beyond it would
+        # mean corruption (NaN/Inf), not a legitimate reading.
+        self._td_gt_sen_max = float(os.environ.get("PLASMC_TD_GT_SEN_MAX", "40.0"))
         if self._touchdown_loom:
             if self._gt_feedback is not None:
                 print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1 (analytic-feedback/HW_POS): touchdown = "
-                      f"camera-marker depth PLATEAUED within {self._td_gt_flat_eps}m for x{self._td_frames} "
-                      f"within a {self._td_window}-frame window + |s_e_n|<{self._td_sen}, armed after "
-                      f"h_z<{self._td_arm_loom} (perception extent NOT used)")
+                      f"camera-marker depth held within {self._td_gt_flat_eps}m of its recorded landed "
+                      f"height (rate<{self._td_gt_rate_max}m/s, progressed>={self._td_gt_progress_min}m "
+                      f"since arm) for x{self._td_frames} within a {self._td_window}-frame window + "
+                      f"|s_e_n|<{self._td_gt_sen_max}, armed after h_z<{self._td_arm_loom} "
+                      f"(perception extent NOT used)")
             else:
                 print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect "
                       f"(h_z>{self._td_spike} x{self._td_frames} within a {self._td_window}-frame window "
@@ -1095,6 +1114,10 @@ class Controller(Thread):
         if not self._td_armed:
             if h_z < self._td_arm_loom:      # a real descent has been seen -> arm
                 self._td_armed = True
+                if self._gt_feedback is not None:
+                    _d0 = getattr(self._gt_feedback, "last_rel_alt", None)
+                    self._td_gt_depth_at_arm = _d0
+                    self._td_gt_min_depth = _d0
                 if self._td_debug:
                     print(f"[TD_DEBUG] t={self._t[-1]:.3f} ARMED h_z={h_z:+.4f}")
             return
@@ -1105,51 +1128,53 @@ class Controller(Thread):
             depth = getattr(self._gt_feedback, "last_rel_alt", None)
             if depth is None:
                 return
-            # Only record a NEW minimum -- and reset the plateau window -- on a genuine
-            # >eps drop. Sub-eps noise/continued-but-tiny descent does not reset the window,
-            # so a real plateau (depth staying within eps of a now-STABLE minimum) can
-            # actually accumulate a streak, unlike the buggy "distance from an
-            # every-tick-updating min" check this replaces.
-            if self._td_gt_min_depth is None or depth < self._td_gt_min_depth - self._td_gt_flat_eps:
-                self._td_gt_min_depth = depth
-                self._td_gt_hist.clear()
-            _at_landed = depth < self._td_gt_min_depth + self._td_gt_flat_eps
+            if self._td_gt_min_depth is None or depth < self._td_gt_min_depth:
+                self._td_gt_min_depth = depth       # "landed height", recorded live
+            # RATE + PROGRESS guards (reconciled from Ubuntu/Gazebo's independent 2026-08-26
+            # fix for the same bug -- see __init__'s comment): comparing depth to a running
+            # min alone is trivially true almost every tick of an ordinary descent. Require
+            # (1) the windowed slope of depth vs time to be near zero (genuinely stopped
+            # closing, not just slow-moving) and (2) real progress since arming (rules out a
+            # flat pre-descent hover blip trivially satisfying (1) before any real descent).
+            self._td_gt_rate_hist.append((self._t[-1], depth))
+            _rate = None
+            if len(self._td_gt_rate_hist) >= 3:
+                _ts = np.array([p[0] for p in self._td_gt_rate_hist])
+                _ds = np.array([p[1] for p in self._td_gt_rate_hist])
+                if _ts[-1] > _ts[0]:
+                    _rate = float(np.polyfit(_ts, _ds, 1)[0])
+            _progressed = (self._td_gt_depth_at_arm is not None and
+                           (self._td_gt_depth_at_arm - self._td_gt_min_depth) >= self._td_gt_progress_min)
+            _flat_rate = _rate is not None and abs(_rate) < self._td_gt_rate_max
+            _near_min = (depth - self._td_gt_min_depth) < self._td_gt_flat_eps
+            _at_landed = _progressed and _flat_rate and _near_min
             self._td_gt_hist.append(_at_landed)
             _gt_streak = sum(self._td_gt_hist)
             if self._td_debug:
-                print(f"[TD_DEBUG] t={self._t[-1]:.3f} depth={depth:.4f} "
-                      f"stable_min={self._td_gt_min_depth:.4f} at_landed={_at_landed} "
-                      f"streak={_gt_streak}/{len(self._td_gt_hist)} |s_e_n|={_sen_mag:.4f}")
-            # SEN GATE, RELAXED FOR THIS PATH (found + fixed 2026-08-27): the original
-            # |s_e_n|<_td_sen (0.6) gate exists to reject a PERCEPTION glitch (a bad
-            # frame) masquerading as a centered touchdown -- that justification doesn't
-            # carry over to the analytic-feedback depth signal, which is not
-            # perception-derived and already has its own persistence/plateau gate
+                print(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
+                      f"landed_height={self._td_gt_min_depth:.4f} rate={_rate} "
+                      f"progressed={_progressed} flat_rate={_flat_rate} near_min={_near_min} "
+                      f"at_landed={_at_landed} streak={_gt_streak}/{len(self._td_gt_hist)} "
+                      f"|s_e_n|={_sen_mag:.4f}")
+            # SEN GATE, RELAXED FOR THIS PATH (found + fixed on hardware 2026-08-26; not yet
+            # mirrored on Ubuntu/Gazebo, still uses the tight 0.6 there): the original
+            # |s_e_n|<_td_sen (0.6) gate exists to reject a PERCEPTION glitch masquerading as
+            # centered -- doesn't carry over to the analytic-feedback depth signal, which is
+            # not perception-derived and already has its own rate/progress/plateau gate
             # above. Confirmed on 2026-08-26 hardware data (14-01-52 run): a genuine
-            # ground-level touchdown (depth plateaued at 0.00m) pinned |s_e_n| at
-            # ~32.25 for 30+ consecutive ticks because PLASMC_HW_S_MAX (8.0, bounds raw
-            # s) is much larger than p_10 (~0.23-0.31 here) once s_e_n=s_e/p_10 divides
-            # it down -- a hard, far-off-center landing, not a numerical artifact. Under
-            # the original 0.6 gate this NEVER latches: the vehicle would keep
-            # commanding large lateral corrections while physically on the ground
-            # (motor strain / tip-over risk) until PX4's own onboard landed-state
-            # detection eventually caught it as a backup. Use a much looser sanity
-            # bound instead -- still rejects true garbage (NaN/Inf, a corrupted EKF
-            # sample) without blocking a genuine off-center hard landing. Sized above
-            # the signal's own physical ceiling: s is clamped to PLASMC_HW_S_MAX (8.0)
-            # upstream in hw_pos_feedback.py, so s_e_n=s_e/p_10 can reach at most
-            # ~8.0/min(p_10) -- observed p_10~[0.23,0.31] here gives a ceiling of
-            # ~34.3, which is exactly the 32.25 case above. 40.0 covers that ceiling
-            # with margin; anything beyond it really would mean corruption (NaN/Inf,
-            # or p_10 itself computed wrong), not a legitimate reading.
-            _gt_sen_max = float(os.environ.get("PLASMC_TD_GT_SEN_MAX", "40.0"))
-            if _gt_streak >= self._td_frames and _sen_mag < _gt_sen_max:
+            # ground-level touchdown pinned |s_e_n| at ~32.25 because PLASMC_HW_S_MAX (8.0,
+            # bounds raw s) is much larger than p_10 (~0.23-0.31 here) once s_e_n=s_e/p_10
+            # divides it down -- a hard, far-off-center landing, not a numerical artifact.
+            # Under the original 0.6 gate this NEVER latches. Sized above the signal's own
+            # physical ceiling (~8.0/min(p_10) ~ 34.3) with margin.
+            if _gt_streak >= self._td_frames and _sen_mag < self._td_gt_sen_max:
                 self._touchdown = True
-                print(f"[controller] TOUCHDOWN-DETECT (analytic-feedback): depth={depth:.3f}m "
-                      f"plateaued within {self._td_gt_flat_eps}m of stable minimum="
-                      f"{self._td_gt_min_depth:.3f}m (x{self._td_frames} within "
-                      f"{len(self._td_gt_hist)}-frame window) |s_e_n|={_sen_mag:.2f} -> LANDED "
-                      f"(disarm before bounce)")
+                print(f"[controller] TOUCHDOWN-DETECT (analytic-feedback): depth={depth:.3f}m held "
+                      f"within {self._td_gt_flat_eps}m of recorded landed height="
+                      f"{self._td_gt_min_depth:.3f}m (rate={_rate:.4f}m/s, progressed "
+                      f"{self._td_gt_depth_at_arm - self._td_gt_min_depth:.3f}m since arming) "
+                      f"(x{self._td_frames} within {len(self._td_gt_hist)}-frame window) "
+                      f"|s_e_n|={_sen_mag:.2f} -> LANDED (disarm before bounce)")
             return
 
         if self._gt_feedback is None and bool(getattr(self._img_node, 'HW_FROZEN', False)):
