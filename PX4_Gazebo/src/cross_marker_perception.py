@@ -272,7 +272,7 @@ CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
 #      this recovered the descent-critical loom phase the det.ok subset misses
 #      entirely (one rep h_z 0.08->0.70); on sub-resolution grain the gate keeps
 #      it to near-zero noise instead of a confident wrong-sign h_z.
-CROSS_BG_FLOW_HYBRID = os.environ.get("CROSS_BG_FLOW_HYBRID", "0") == "1"
+CROSS_BG_FLOW_HYBRID = os.environ.get("CROSS_BG_FLOW_HYBRID", "1") == "1"  # 2026-08-28: default ON (perception change) -- CLAHE+FB on det.ok path, resid-gated bbox-dense fallback on miss
 _BGF_CLAHE = os.environ.get("CROSS_BGF_CLAHE", "1") == "1"
 _BGF_FB = os.environ.get("CROSS_BGF_FB", "1") == "1"
 _BGF_FB_THRESH_PX = float(os.environ.get("CROSS_BGF_FB_THRESH_PX", "0.7"))
@@ -927,8 +927,9 @@ class CrossMarkerPerception:
             self._hw_kf_coast_streak = 0
             self._hw_kf_frozen = None
             # TERMINAL h_x/h_y via centroid-rate (see __init__'s _scen_kf_* comment).
-            # As MARKER_EXTENT_PX grows, blend z[0:2] toward the KF-smoothed,
-            # de-loomed centroid rate; small R bump + value clamp on top.
+            # When the background-flow solve is UNHEALTHY (rel_resid high / n_pts
+            # low -- pure signal-quality, NO proximity proxy), blend z[0:2] toward
+            # the KF-smoothed, de-loomed centroid rate; small R bump + value clamp.
             # _kf_step's `S = P_pred[:,0,0] + r` broadcasts a (6,) r fine.
             r = self._hw_kf_r
             _frac = 0.0
