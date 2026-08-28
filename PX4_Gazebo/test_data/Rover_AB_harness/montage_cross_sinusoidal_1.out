@@ -1,0 +1,44 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover_cross)...
+[run] waiting for Gazebo (rover) to come up .../home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 223: 103724 Killed                  setsid "$@" > "$logfile" 2>&1
+/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 223: 103781 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4022 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL="$ROVER_MODEL" PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 1" > "$LOG_DIR/px4_rover.log" 2>&1
+.......................................................... timed out!
+[run] PX4 rover did not bring up /world/rover_cross/clock in 60s.
+INFO  [param] selected parameter backup file parameters_backup.bson
+  SYS_AUTOCONFIG: curr: 0 -> new: 1
+  MAV_SYS_ID: curr: 1 -> new: 2
+  UXRCE_DDS_KEY: curr: 1 -> new: 2
+  SYS_AUTOSTART: curr: 0 -> new: 4022
+  CAL_ACC0_ID: curr: 0 -> new: 1310988
+  CAL_GYRO0_ID: curr: 0 -> new: 1310988
+  CAL_ACC1_ID: curr: 0 -> new: 1310996
+  CAL_GYRO1_ID: curr: 0 -> new: 1310996
+  CAL_ACC2_ID: curr: 0 -> new: 1311004
+  CAL_GYRO2_ID: curr: 0 -> new: 1311004
+  CAL_MAG0_ID: curr: 0 -> new: 197388
+  CAL_MAG0_PRIO: curr: -1 -> new: 50
+  CAL_MAG1_ID: curr: 0 -> new: 197644
+  CAL_MAG1_PRIO: curr: -1 -> new: 50
+  SENS_BOARD_X_OFF: curr: 0.0000 -> new: 0.0000
+  SENS_DPRES_OFF: curr: 0.0000 -> new: 0.0010
+INFO  [dataman] data manager file './dataman' size is 1208528 bytes
+INFO  [init] Gazebo simulator
+INFO  [init] gazebo already running world: cross_marker
+INFO  [init] Waiting for Gazebo world...
+INFO  [init] Waiting for Gazebo world...
+INFO  [init] Waiting for Gazebo world...
+INFO  [init] Waiting for Gazebo world...
+INFO  [init] Waiting for Gazebo world...
+INFO  [init] Gazebo world is ready
+INFO  [init] Spawning model at position: 0 0 0
+INFO  [init] Spawning model
+ERROR [px4] PX4 server not running
+ERROR [init] gz_bridge failed to start and spawn model
+
+[run] Shutting down background processes...
+[run] done.
+[retry] Attempt 1 exited rc=1 (not a retriable flake); giving up.

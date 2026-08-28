@@ -1,0 +1,5 @@
+----- montage_cross chasehz1920_test try 1/2 -----
+  result: ON 0.047 alt=0.507 | run=Wed Aug 26 06-17-47 2026 chase=chase_2026-08-26_06-16-41.mp4 drone=Wed Aug 26 06-17-26 2026.mp4
+[montage] 290 frames (265 descent + 25 tail)  960x720@25.0  (chase 156f td@155, drone 126f td@125, GT 2024samp, 10.6s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_chasehz1920_test_cross.mp4
+[montage]  frame 0/290
+MONTAGE_chasehz1920_test -> test_data/Test_Videos/montage_chasehz1920_test_cross.mp4 (ON 0.047 alt=0.507)

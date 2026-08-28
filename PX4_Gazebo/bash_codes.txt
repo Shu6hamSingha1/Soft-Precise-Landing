@@ -1,0 +1,27 @@
+cd /home/shubham/Soft-Precise-Landing/PX4_Gazebo                                                                                                                                                      
+CROSS_ALT=10.0 PY_SCRIPT=apps/cross_marker_altitude_test.py timeout 180 bash scripts/run_cross_marker_altitude_test.sh > /tmp/test_10m_2.log 2>&1                                                          
+echo "exit=$?"                                                                                                                                                                                             
+grep -E "detection rate|jitter|taking off|idx" /tmp/test_10m_2.log                                                                                                                                         
+tail -30 /tmp/test_10m_2.log
+
+
+cd /home/shubham/Soft-Precise-Landing/PX4_Gazebo                                                                                                                                                      
+for alt in 2.5 5.0 10.0; do                                                                                                                                                                                
+  echo "=== CROSS_ALT=$alt ==="                                                                                                                                                                            
+  CROSS_ALT=$alt PY_SCRIPT=apps/cross_marker_altitude_test.py timeout 150 bash scripts/run_cross_marker_altitude_test.sh > /tmp/final_validation_${alt}.log 2>&1                                           
+  ec=$?                                                                                                                                                                                                    
+  echo "exit=$ec"                                                                                                                                                                                          
+  grep -E "detection rate|jitter" /tmp/final_validation_${alt}.log                                                                                                                                         
+  done
+  
+
+
+  
+cd ~/Soft-Precise-Landing/PX4_Gazebo
+bash scripts/run_cross_marker_altitude_test.sh
+
+
+
+cd ~/Soft-Precise-Landing/PX4_Gazebo
+PY_SCRIPT=apps/record_cross_marker_validation.py VALIDATION_PROFILE=landing bash scripts/run_cross_marker_altitude_test.sh
+

@@ -1,0 +1,5 @@
+----- montage_cross motion_sinusoidal try 1/6 -----
+  result: ON 0.050 alt=0.694 | run=Fri Aug 28 12-08-21 2026 chase=chase_2026-08-28_12-07-22.mp4 drone=Fri Aug 28 12-08-06 2026.mp4
+[montage] 254 frames (229 descent + 25 tail)  960x720@25.0  (chase 188f td@187, drone 262f td@261, GT 1453samp, 9.2s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_sinusoidal_cross.mp4
+[montage]  frame 0/254
+MONTAGE_motion_sinusoidal -> test_data/Test_Videos/montage_motion_sinusoidal_cross.mp4 (ON 0.050 alt=0.694)

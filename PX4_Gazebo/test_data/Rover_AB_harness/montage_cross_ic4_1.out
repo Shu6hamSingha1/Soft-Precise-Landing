@@ -1,0 +1,13 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] microxrce died immediately; last lines:
+[35m[1787897686.618389][m error    | [34mUDPv4AgentLinux.cpp[m | [37minit                    [m | [31mbind error[m             | port: 8888, errno: 98
+Error while starting IPvX agent!
+[35m[1787897686.618457][m info     | [34mUDPv4AgentLinux.cpp[m | [37mfini                    [m | [32mserver stopped[m         | port: 8888
+
+[run] Shutting down background processes...
+[run] done.
+[retry] Attempt 1 exited rc=1 (not a retriable flake); giving up.

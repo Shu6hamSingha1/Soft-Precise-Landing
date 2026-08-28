@@ -1,0 +1,5 @@
+----- montage_cross motion_lissajous try 1/6 -----
+  result: ON 0.262 alt=0.760 | run=Fri Aug 28 12-14-32 2026 chase=chase_2026-08-28_12-13-35.mp4 drone=Fri Aug 28 12-14-19 2026.mp4
+[montage] 232 frames (207 descent + 25 tail)  960x720@25.0  (chase 167f td@166, drone 251f td@250, GT 1267samp, 8.3s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_lissajous_cross.mp4
+[montage]  frame 0/232
+MONTAGE_motion_lissajous -> test_data/Test_Videos/montage_motion_lissajous_cross.mp4 (ON 0.262 alt=0.760)

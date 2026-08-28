@@ -1,0 +1,11 @@
+[montage] 210 frames (185 descent + 25 tail)  960x720@25.0  (chase 150f td@149, drone 286f td@285, GT 1625samp, 7.4s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_ic3_final.mp4
+[montage]  frame 0/210
+[montage]  frame 25/210
+[montage]  frame 50/210
+[montage]  frame 75/210
+[montage]  frame 100/210
+[montage]  frame 125/210
+[montage]  frame 150/210
+[montage]  frame 175/210
+[montage]  frame 200/210
+[montage] done -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_ic3_final.mp4

@@ -1,0 +1,2041 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Landing-Test Plotter (project copy)\n",
+    "\n",
+    "Restructured 2026-06-11 from `~/ws/scripts/soft_precise_landing/plotter_landing_test.ipynb` (the\n",
+    "working-baseline original is untouched). Data paths point at THIS project's `test_data/`.\n",
+    "\n",
+    "**Sections**\n",
+    "1. Run selection & loading \u2014 latest run, or any `Landing_Test`/sweep-rep dir via `RUN_DIR`\n",
+    "2. Outcome & validity summary \u2014 \u26a0 run this before trusting anything (rejects truncated/empty-GT runs)\n",
+    "3. Data pre-processing \u2014 image / control / telemetry / IMU / ground-truth frames\n",
+    "4. Performance plots \u2014 relative position & velocity\n",
+    "5. State plots \u2014 position, velocity, acceleration, Euler angles\n",
+    "6. Output plots \u2014 image-parameter error, optic-flow error\n",
+    "7. Control parameters \u2014 S, \u03b6, \u222b\u03b6, \u03ba, G, \u03b8, \u03c3, a_v, \u1e23_d, h_d, s_e\n",
+    "8. Calibration plots \u2014 body rates, thrust, optic flow\n",
+    "9. Numerical scratchpad \u2014 ad-hoc single-value checks (grouped from scattered cells)\n",
+    "10. Test plots\n"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 1. Run selection & loading"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "metadata": {},
+   "execution_count": null,
+   "outputs": [],
+   "source": [
+    "# **************************************************************************\n",
+    "# Landing-Test plotter \u2014 project copy (PX4_Gazebo/notebooks)\n",
+    "# Original: ~/ws/scripts/soft_precise_landing/plotter_landing_test.ipynb\n",
+    "# **************************************************************************\n",
+    "import os\n",
+    "import glob\n",
+    "import ast\n",
+    "\n",
+    "import matplotlib.pyplot as plt \n",
+    "import numpy as np\n",
+    "from ahrs import Quaternion, DCM, RAD2DEG\n",
+    "from scipy.signal import savgol_filter as sgf\n",
+    "from scipy.ndimage import uniform_filter1d"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def get_latest_folder(directory):\n",
+    "    # Get all subdirectories in the specified directory\n",
+    "    subdirs = [d for d in glob.glob(os.path.join(directory, '*')) if os.path.isdir(d)]\n",
+    "    \n",
+    "    # If there are no subdirectories, return None\n",
+    "    if not subdirs:\n",
+    "        return None\n",
+    "    \n",
+    "    # Get the latest subdirectory based on modification time\n",
+    "    latest_subdir = max(subdirs, key=os.path.getmtime)\n",
+    "    \n",
+    "    return latest_subdir"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "metadata": {},
+   "execution_count": null,
+   "outputs": [],
+   "source": [
+    "# \u2500\u2500 Run picker \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "# Default: the LATEST run in this project's Landing_Test. To analyze a specific\n",
+    "# run or a sweep rep, set RUN_DIR to any directory containing the .npy files, e.g.:\n",
+    "#   RUN_DIR = f\"{BASE}/Landing_Test/Thu Jun 11 15-46-08 2026\"\n",
+    "#   RUN_DIR = f\"{BASE}/RingLoomFix_IC1/20260611-171732/RING_LOOM_NCORN=12/rep3\"\n",
+    "#   # 2026-06-20 session runs (lateral-wall command-bounding + loom/CV-KF):\n",
+    "#   RUN_DIR = f\"{BASE}/CapSweep_IC1_cap08/<run>\"      # command-bounding WIN (var collapse, td<2.4m)\n",
+    "#   RUN_DIR = f\"{BASE}/CapSweep_IC1_baseline/<run>\"   # baseline fly-aways (compare)\n",
+    "#   RUN_DIR = f\"{BASE}/CapGate_IC2_cap08/<run>\"       # IC2-5 gate (off-center, FAILED)\n",
+    "#   RUN_DIR = f\"{BASE}/Loom_IC1_loomdec/<run>\"        # FLOW_LOOM_DECOUPLE moment-loom\n",
+    "BASE = \"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data\"\n",
+    "RUN_DIR = None                      # None -> latest in Landing_Test\n",
+    "\n",
+    "def get_latest_run(base):\n",
+    "    # GLOBALLY-latest run dir across ALL of test_data (session A/Bs go to\n",
+    "    # CapSweep_IC1_*, CapGate_*, etc. -- NOT just Landing_Test). Pick the most\n",
+    "    # recently-modified dir that actually holds a Ground_Truth.npy.\n",
+    "    cands = [os.path.dirname(g) for g in glob.glob(f\"{base}/**/Ground_Truth.npy\", recursive=True)]\n",
+    "    return max(cands, key=os.path.getmtime) if cands else None\n",
+    "\n",
+    "latest_folder = RUN_DIR or get_latest_run(BASE)\n",
+    "print(f\"Run: {latest_folder}\")\n",
+    "\n",
+    "file_names = [\"Img_Data\", \"Telemetry_Data\", \"Control_Data\", \"Control_Params\", \"Ground_Truth\"]\n",
+    "data = {name: np.load(f\"{latest_folder}/{name}.npy\", allow_pickle=True)[()] for name in file_names}\n",
+    "\n",
+    "print(\"=== Data Keys ===\")\n",
+    "for name in file_names:\n",
+    "    print(f\"For {name.replace('_', ' ')}: {list(data[name].keys())}\")\n",
+    "\n",
+    "with open(f\"{latest_folder}/Img_Params.txt\", 'r') as f_logs:\n",
+    "    img_params = f_logs.readlines()[-1]\n",
+    "data['Img_Params'] = ast.literal_eval(img_params)\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "end_time = data[\"Img_Data\"]['Time'][-1] - data[\"Ground_Truth\"]['Start Time']\n",
+    "end_time"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 2. Outcome & validity summary\n",
+    "\n",
+    "\u26a0 **Eval rule (2026-06-11):** a run is only trustworthy if the GT trajectory is NON-EMPTY and ends at\n",
+    "deck altitude. A crashed controller thread ends the main loop instantly \u2192 empty GT + the landing\n",
+    "classified while still hovering (fake \"SOFT\" at 5 m). Check this BEFORE reading any plot below."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "metadata": {},
+   "execution_count": null,
+   "outputs": [],
+   "source": [
+    "# \u2500\u2500 Outcome & validity \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "_gt = data[\"Ground_Truth\"]\n",
+    "_up = np.array([[q.position.x, q.position.y, q.position.z] for q in _gt[\"UAV Pose\"]])\n",
+    "_tp = np.array([[q.position.x, q.position.y, q.position.z] for q in _gt[\"Target Pose\"]])\n",
+    "_m = min(len(_up), len(_tp))\n",
+    "if _m == 0:\n",
+    "    print(\"\u2717 INVALID RUN: empty GT trajectory (controller thread died before/at loop entry).\")\n",
+    "else:\n",
+    "    _xy  = np.linalg.norm(_up[:_m, :2] - _tp[:_m, :2], axis=1)\n",
+    "    _alt = np.abs(_up[:_m, 2] - _tp[:_m, 2])\n",
+    "    print(f\"GT frames: {_m} | final alt: {_alt[-1]:.2f} m | final xy: {_xy[-1]:.2f} m | min xy: {_xy.min():.2f} m\")\n",
+    "    print(\"VALID \u2713 (trajectory reaches the deck)\" if _alt[-1] < 0.25 else\n",
+    "          f\"\u26a0 TRUNCATED: trajectory ends at {_alt[-1]:.2f} m \u2014 classification was MID-AIR; do not trust outcome numbers\")\n",
+    "    # touchdown hops: local minima below 0.3 m followed by a >5 cm re-climb\n",
+    "    _hops = [(_alt[i], _alt[i:min(_m, i+80)].max() - _alt[i]) for i in range(10, _m-10)\n",
+    "             if _alt[i] < 0.3 and _alt[i] == _alt[max(0, i-12):i+12].min()\n",
+    "             and _alt[i:min(_m, i+80)].max() - _alt[i] > 0.05]\n",
+    "    print(f\"touchdown hops (<0.3 m, re-climb >5 cm): {[(f'{a:.2f}m +{r:.2f}m') for a, r in _hops[:5]] or 'NONE'}\")\n",
+    "    if \"SoftPrecise\" in _gt: print(f\"SoftPrecise record: {_gt['SoftPrecise']}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 3. Data pre-processing"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### From Image Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Find the index where the timestamp is greater than the start time\n",
+    "start_idx = np.searchsorted(data[\"Img_Data\"]['Time'], data[\"Ground_Truth\"]['Start Time'])\n",
+    "\n",
+    "# Find the index where the timestamp is lesser than the end time\n",
+    "end_idx = np.searchsorted(data[\"Img_Data\"]['Time'], data[\"Ground_Truth\"]['Start Time'] + end_time)\n",
+    "\n",
+    "# Compute time relative to the start time\n",
+    "t_i = np.array(data[\"Img_Data\"]['Time'][start_idx:]) - data[\"Ground_Truth\"]['Start Time']\n",
+    "\n",
+    "# Extract and smooth optical flow and angular velocity data together\n",
+    "y_i, w_i = np.split(np.array(data[\"Img_Data\"]['Opt Flow Ang Vel'])[start_idx:end_idx], [3], axis=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# \u2500\u2500 Control-data preprocessing (schema-aware, project version) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "# This project's controller logs a DIFFERENT key set than the old ~/ws baseline:\n",
+    "# 'ds_e(t)' and the outer-funnel arrays ('p_v','dp_v','S_v','zeta_v','dzeta_v','G_v')\n",
+    "# are NOT logged. They are reconstructed below from logged signals + Control_Params\n",
+    "# using controller.py's own formulas (sen-funnel, controller.py:546-565).\n",
+    "start_idx = np.searchsorted(data['Control_Data']['t'], data[\"Ground_Truth\"]['Start Time'])\n",
+    "N = len(data['Control_Data']['t'])\n",
+    "N1 = N - start_idx\n",
+    "\n",
+    "t_c = np.array(data['Control_Data']['t'][-N1:]) - data[\"Ground_Truth\"]['Start Time']\n",
+    "\n",
+    "w    = np.array(data['Control_Data']['w(t)'][-N1:])\n",
+    "h_d  = np.array(data['Control_Data']['h_d(t)'][-N1:])\n",
+    "dh_d = np.array(data['Control_Data']['dh_d(t)'][-N1:])\n",
+    "h    = np.array(data['Control_Data']['h(t)'][-N1:])\n",
+    "h_e  = h - h_d\n",
+    "\n",
+    "s     = np.array(data['Control_Data']['s(t)'][-N1:])\n",
+    "s_e   = np.array(data['Control_Data']['s_e(t)'][-N1:])\n",
+    "s_e_n = np.array(data['Control_Data']['s_e_n(t)'][-N1:])\n",
+    "ds_d  = np.array(data['Control_Data']['ds_d(t)'][-N1:])\n",
+    "ds_e  = np.gradient(s_e, t_c, axis=0)          # not logged -> numerical derivative of s_e\n",
+    "\n",
+    "# \u2500\u2500 Outer (sen) funnel reconstruction, xy only \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "# p_s(t) = (p_s0 - p_sinf)\u00b7exp(-gamma_s\u00b7t) + p_sinf  (verified: p_s(4s)=0.837 @ defaults)\n",
+    "_cp = data['Control_Params']\n",
+    "def _diag2(x):                       # params may be logged as 2x2 diag matrices or vectors\n",
+    "    a = np.array(x, dtype=float)\n",
+    "    return (np.diag(a) if a.ndim == 2 else np.atleast_1d(a))[:2]\n",
+    "_gs, _ps0, _psinf = _diag2(_cp['gamma_s']), _diag2(_cp['p_s_0']), _diag2(_cp['p_s_inf'])\n",
+    "_S_MARGIN = 0.05\n",
+    "# FUNNEL CLOCK: the controller restarts p_s at ITS OWN (re-)initialization \u2014 a mid-flight\n",
+    "# visibility loss re-inits the controller and WIPES its logs, so Control_Data may hold only\n",
+    "# the last segment (e.g. 1.9 s of a 32 s flight) with t starting well after GT start.\n",
+    "# Evaluate the funnel on time since the FIRST CONTROL FRAME, not since GT start.\n",
+    "t_funnel = t_c - t_c[0]\n",
+    "p_v  = (_ps0 - _psinf) * np.exp(-_gs * t_funnel[:, None]) + _psinf       # (N,2)\n",
+    "dp_v = -_gs * (_ps0 - _psinf) * np.exp(-_gs * t_funnel[:, None])         # (N,2)\n",
+    "_r       = np.clip(s_e_n / p_v, -1.0 + _S_MARGIN, 1.0 - _S_MARGIN)\n",
+    "zeta_v   = np.log((1 + _r) / (1 - _r))                                    # (N,2)\n",
+    "dzeta_v  = np.gradient(zeta_v, t_c, axis=0)\n",
+    "S_v      = np.einsum('ij,jk->ijk', _r, np.eye(2))                         # diag(r)        (N,2,2)\n",
+    "G_v      = np.einsum('ij,jk->ijk',\n",
+    "                     (np.exp(zeta_v) + 1) ** 2 / (2 * np.exp(zeta_v) * p_v),\n",
+    "                     np.eye(2))                                            # (N,2,2)\n",
+    "\n",
+    "# \u2500\u2500 Middle (optic-flow) funnel: logged directly \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "p     = np.array(data['Control_Data']['p(t)'][-N1:])\n",
+    "dp    = np.array(data['Control_Data']['dp(t)'][-N1:])\n",
+    "S     = np.array(data['Control_Data']['S(t)'][-N1:])\n",
+    "zeta  = np.array(data['Control_Data']['zeta(t)'][-N1:])\n",
+    "izeta = np.array(data['Control_Data']['izeta(t)'][-N1:])\n",
+    "kappa = np.array(data['Control_Data']['kappa(t)'][-N1:])\n",
+    "G     = np.array(data['Control_Data']['G(t)'][-N1:])\n",
+    "theta = np.array(data['Control_Data']['theta(t)'][-N1:])\n",
+    "sigma = np.array(data['Control_Data']['sigma(t)'][-N1:])\n",
+    "a_v   = np.array(data['Control_Data']['a_v(t)'][-N1:])\n",
+    "a_u   = np.array(data['Control_Data']['a_u(t)'][-N1:])\n",
+    "EA_d  = np.array(data['Control_Data']['EA_d(t)'][-N1:])\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "idx = 0\n",
+    "dim = 2\n",
+    "print(f'p(t) = {p[idx][dim]} \\nS(t) = {S[idx][idx][dim]} \\nzeta(t) = {zeta[idx][dim]} \\nkappa(t) = {kappa[idx][dim]} \\\n",
+    "      \\nG(t) = {G[idx][idx][dim]} \\ntheta(t) = {theta[idx]} \\nsigma(t) = {sigma[idx][dim]} \\na_v(t) = {a_v[idx][dim]} \\\n",
+    "      \\na_u(t) = {a_u[idx][dim]}')\n",
+    "# print(f'\\np_v(t) = {p_v[idx][dim]} \\ndp_v(t) = {dp_v[idx][dim]} \\nS_v(t) = {S_v[idx][dim][dim]} \\\n",
+    "#       \\nzeta_v(t) = {zeta_v[idx][dim]} \\nG_v(t) = {G_v[idx][dim][dim]}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "s_d = np.array(data['Control_Params']['Des Img Feature Param'])\n",
+    "print(f\"s_d = {s_d}\")\n",
+    "gamma = np.array(data['Control_Params']['gamma'])\n",
+    "print(f\"gamma = {gamma}\")\n",
+    "p_0 = np.array(data['Control_Params']['p_0'])\n",
+    "print(f\"p_0 = {p_0}\")\n",
+    "p_inf = np.array(data['Control_Params']['p_inf'])\n",
+    "print(f\"p_inf = {p_inf}\")\n",
+    "Omega = np.array(data['Control_Params']['Omega'])\n",
+    "print(f\"Omega = {Omega}\")\n",
+    "Gamma = np.array(data['Control_Params']['Gamma'])\n",
+    "print(f\"Gamma = {Gamma}\")\n",
+    "# Project key names differ from the old ~/ws baseline: epsilon->E (boundary layer),\n",
+    "# rho->P (kappa-ODE leakage), eta_c->N (kappa-ODE growth). Old variable names kept\n",
+    "# so downstream cells (sat(sigma/epsilon) etc.) work unchanged.\n",
+    "epsilon = np.diag(np.atleast_2d(np.array(data['Control_Params']['E'])))   # vector (diag)\n",
+    "print(f\"epsilon (E) = {epsilon}\")\n",
+    "rho = np.diag(np.atleast_2d(np.array(data['Control_Params']['P'])))\n",
+    "print(f\"rho (P) = {rho}\")\n",
+    "eta_c = np.diag(np.atleast_2d(np.array(data['Control_Params']['N'])))\n",
+    "print(f\"eta_c (N) = {eta_c}\")\n",
+    "kappa_0 = np.array(data['Control_Params']['kappa_0'])\n",
+    "print(f\"kappa_0 = {kappa_0}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### From Telemetry Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Find the starting index where the timestamp is greater than the start time\n",
+    "start_idx = np.searchsorted(data[\"Telemetry_Data\"]['Odometry Timestamp'], data[\"Ground_Truth\"]['Start Time'])\n",
+    "\n",
+    "# Extract relevant slices of data starting from the calculated index\n",
+    "positions = data[\"Telemetry_Data\"][\"Position Body\"][start_idx:]  # Keep as a list or array of objects\n",
+    "quaternions = data[\"Telemetry_Data\"][\"Quaternion\"][start_idx:]  # Keep as a list or array of objects\n",
+    "velocities = data[\"Telemetry_Data\"][\"Velocity Body\"][start_idx:]  # Keep as a list or array of objects\n",
+    "ang_velocities = data[\"Telemetry_Data\"][\"Angular Velocity Body\"][start_idx:]  # Keep as a list or array of objects\n",
+    "\n",
+    "# Compute time relative to the start time\n",
+    "t_o = np.array(data[\"Telemetry_Data\"][\"Odometry Timestamp\"][start_idx:]) - data[\"Ground_Truth\"]['Start Time']\n",
+    "\n",
+    "\n",
+    "# Compute the UAV position in the body frame from the odometry data\n",
+    "B_x_ut = np.zeros((len(positions), 3))\n",
+    "EA_t = np.zeros((len(positions), 3))\n",
+    "I_R_B = np.zeros((len(positions), 3, 3))\n",
+    "for i, (pos, quaternion) in enumerate(zip(positions, quaternions)):\n",
+    "    I_x_u = np.array([pos.x_m, pos.y_m, pos.z_m])\n",
+    "    I_R_B[i] = Quaternion([quaternion.w, quaternion.x, quaternion.y, quaternion.z]).to_DCM()\n",
+    "    EA_t[i] = Quaternion([quaternion.w, quaternion.x, quaternion.y, quaternion.z]).to_angles()\n",
+    "    B_x_ut[i] = np.linalg.inv(I_R_B[i]) @ I_x_u\n",
+    "\n",
+    "# Compute the UAV linear velocity in the body frame from the odometry data\n",
+    "B_v_ut = np.zeros((len(positions), 3))  # Initialize linear velocity array\n",
+    "B_w_ut = np.zeros((len(positions), 3))  # Initialize angular velocity array\n",
+    "for i, (R, vel, ang_vel) in enumerate(zip(I_R_B, velocities, ang_velocities)):\n",
+    "    B_v_ut[i] = (np.linalg.inv(R) @ np.array([[vel.x_m_s, vel.y_m_s, vel.z_m_s]]).T).T\n",
+    "    B_w_ut[i] = np.array([ang_vel.roll_rad_s, ang_vel.pitch_rad_s, ang_vel.yaw_rad_s])\n",
+    "\n",
+    "\n",
+    "# Compute optical flow from the telemetry data\n",
+    "B_y_t_raw = -B_v_ut / B_x_ut[:, 2][:, np.newaxis]  # Divide by z (broadcasting)\n",
+    "B_y_t = B_y_t_raw\n",
+    "# B_y_t = sgf(B_y_t_raw, 51, 2, axis=0)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### From IMU Data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Find the starting index where the timestamp is greater than the start time\n",
+    "start_idx = np.searchsorted(data[\"Telemetry_Data\"]['IMU Timestamp'], data[\"Ground_Truth\"]['Start Time'])\n",
+    "\n",
+    "# Compute time relative to the start time\n",
+    "t_a = np.array(data[\"Telemetry_Data\"][\"IMU Timestamp\"][start_idx:]) - data[\"Ground_Truth\"]['Start Time']\n",
+    "mass = 2.114 # in kg\n",
+    "\n",
+    "# Extract position and velocity components in NED format and store them in vectors in FRD format\n",
+    "# Convert NED to FRD format\n",
+    "a_t = np.array([[a.forward_m_s2, a.right_m_s2, a.down_m_s2] for a in data[\"Telemetry_Data\"][\"Acceleration\"][start_idx:]])\n",
+    "w_t = np.array([[w.forward_rad_s, w.right_rad_s, w.down_rad_s] for w in data[\"Telemetry_Data\"][\"Angular Velocity FRD\"][start_idx:]])\n",
+    "\n",
+    "T_t = mass * a_t[:,2]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "#### From Ground Truth"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "\"W\" - World Frame   &emsp;    Gazebo World Frame"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Position & Velocity in Body Frame"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# FRD to FLU frame configuration\n",
+    "FRD_2_FLU = np.array(DCM(x=180))\n",
+    "\n",
+    "# Compute time relative to the start time\n",
+    "t_g = np.array(data[\"Ground_Truth\"]['Time'], dtype=float)\n",
+    "# Project GT lists can differ in length (Time vs poses) \u2014 truncate to the common length\n",
+    "# BEFORE building the valid mask, else the boolean index mismatches.\n",
+    "_n_g = min(len(t_g), len(data[\"Ground_Truth\"][\"UAV Pose\"]), len(data[\"Ground_Truth\"][\"Target Pose\"]))\n",
+    "t_g = t_g[:_n_g]\n",
+    "\n",
+    "dt = np.diff(t_g)\n",
+    "valid = np.hstack(([True], dt > 1e-6))\n",
+    "\n",
+    "t_g = t_g[valid]\n",
+    "\n",
+    "pose0 = data[\"Ground_Truth\"][\"Start Pose\"]\n",
+    "EA_g0 = Quaternion([pose0.orientation.w, pose0.orientation.x, pose0.orientation.y, pose0.orientation.z]).to_angles()\n",
+    "\n",
+    "# Compute the UAV position in the GAZEBO world frame\n",
+    "UAV_poses = np.array(data[\"Ground_Truth\"][\"UAV Pose\"][:_n_g])[valid]\n",
+    "target_poses = np.array(data[\"Ground_Truth\"][\"Target Pose\"][:_n_g])[valid]\n",
+    "W_R_B = np.zeros((len(UAV_poses), 3, 3))\n",
+    "W_R_Bz = np.zeros((len(UAV_poses), 3, 3))\n",
+    "W_x_u = np.zeros((len(UAV_poses), 3))\n",
+    "EA_g = np.zeros((len(UAV_poses), 3))\n",
+    "W_x_tu = np.zeros((len(UAV_poses), 3))\n",
+    "B_x_tu = np.zeros((len(UAV_poses), 3))\n",
+    "V_x_tu = np.zeros((len(UAV_poses), 3))\n",
+    "W_R_T = np.zeros((len(target_poses), 3, 3))\n",
+    "for i, (uav_pose, target_pose) in enumerate(zip(UAV_poses, target_poses)):\n",
+    "    W_R_B[i] = Quaternion([uav_pose.orientation.w, uav_pose.orientation.x, uav_pose.orientation.y, uav_pose.orientation.z]).to_DCM() @ FRD_2_FLU\n",
+    "    W_x_u[i] = np.array([uav_pose.position.x, uav_pose.position.y, uav_pose.position.z])\n",
+    "    EA_g[i] = np.linalg.inv(FRD_2_FLU) @ (Quaternion([uav_pose.orientation.w, uav_pose.orientation.x, uav_pose.orientation.y, uav_pose.orientation.z]).to_angles() - EA_g0)\n",
+    "    EA_g[i,2] -= EA_g0[2] - EA_t[0,2]\n",
+    "    W_R_Bz[i] = FRD_2_FLU @ np.array(DCM(z=EA_g[i,2]*RAD2DEG))\n",
+    "    \n",
+    "    W_R_T[i] = Quaternion([target_pose.orientation.w, target_pose.orientation.x, target_pose.orientation.y, target_pose.orientation.z]).to_DCM()\n",
+    "    W_x_t = np.array([target_pose.position.x, target_pose.position.y, target_pose.position.z])\n",
+    "    \n",
+    "    W_x_tu[i] = W_x_t - W_x_u[i]\n",
+    "    B_x_tu[i] = np.linalg.inv(W_R_B[i]) @ W_x_tu[i]\n",
+    "    V_x_tu[i] = np.linalg.inv(W_R_Bz[i]) @ W_x_tu[i]\n",
+    "\n",
+    "\n",
+    "# Compute the UAV velocity in the GAZEBO world frame\n",
+    "# W_x_u_filtered = sgf(W_x_u, 101, 5, axis=0)\n",
+    "# W_x_u_filtered = uniform_filter1d(W_x_u, size=101, axis=0)\n",
+    "W_x_u_filtered = W_x_u\n",
+    "W_v_u = np.gradient(W_x_u_filtered, t_g, axis=0)  # Time derivative of position\n",
+    "# W_v_u = finite_diff(W_x_u_filtered, t_g)  # Time derivative of position\n",
+    "\n",
+    "W_a_u = np.gradient(W_v_u, t_g, axis=0)  # Time derivative of velocity\n",
+    "\n",
+    "# # Find the indices of valid and NaN values\n",
+    "# nans, x = np.isnan(W_v_u), lambda z: z.nonzero()[0]\n",
+    "# # Use numpy.interp to fill the NaNs\n",
+    "# W_v_u[nans] = np.interp(x(nans), x(~nans), W_v_u[~nans])\n",
+    "\n",
+    "# # Remove any NaN values that may have been introduced\n",
+    "# W_v_u = np.nan_to_num(W_v_u, nan=0.0)\n",
+    "\n",
+    "\n",
+    "# # Find the indices of valid and NaN values\n",
+    "# nans, x = np.isnan(W_a_u), lambda z: z.nonzero()[0]\n",
+    "# # Use numpy.interp to fill the NaNs\n",
+    "# W_a_u[nans] = np.interp(x(nans), x(~nans), W_a_u[~nans])\n",
+    "\n",
+    "\n",
+    "# Compute the UAV position & velocity in the body frame\n",
+    "B_x_ug_raw = np.zeros((len(UAV_poses), 3))  # Initialize position array\n",
+    "B_v_ug_raw = np.zeros((len(UAV_poses), 3))  # Initialize velocity array\n",
+    "B_a_ug_raw = np.zeros((len(UAV_poses), 3))  # Initialize acceleration array\n",
+    "for i, (W_R_Bi, W_x_ui, W_v_ui, W_a_ui) in enumerate(zip(W_R_B, W_x_u, W_v_u, W_a_u)):\n",
+    "    B_x_ug_raw[i] = np.linalg.inv(W_R_Bi) @ W_x_ui  # Transforming position from world frame to body frame\n",
+    "    B_v_ug_raw[i] = np.linalg.inv(W_R_Bi) @ W_v_ui  # Transforming velocity from world frame to body frame\n",
+    "    B_a_ug_raw[i] = np.linalg.inv(W_R_Bi) @ W_a_ui  # Transforming velocity from world frame to body frame\n",
+    "\n",
+    "# B_v_ug = B_v_ug_raw\n",
+    "B_x_ug = B_x_ug_raw\n",
+    "# B_x_ug = sgf(B_x_ug_raw, 51, 2, axis=0)\n",
+    "# B_v_ug = uniform_filter1d(B_v_ug_raw, size=2, axis=0)\n",
+    "B_v_ug = sgf(B_v_ug_raw, 101, 2, axis=0)\n",
+    "B_a_ug = B_a_ug_raw\n",
+    "# B_a_ug = sgf(B_a_ug_raw, 301, 2, axis=0)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Compute optical flow wrt image plane\n",
+    "B_s_g = B_x_tu / B_x_tu[:, 2][:, np.newaxis]  # Divide by z (broadcasting)\n",
+    "B_s_g[:, 2] = - EA_g[:, 2]  # Set orientation component\n",
+    "\n",
+    "# Compute optical flow wrt virtual image plane\n",
+    "V_s_g = V_x_tu / V_x_tu[:, 2][:, np.newaxis]  # Divide by z (broadcasting)\n",
+    "V_s_g[:, 2] = - EA_g[:, 2]  # Set orientation component"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Optical Flow and Angular Velocity of Target wrt UAV"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Compute the target velocity wrt UAV in the world frame\n",
+    "# W_x_tu_filtered = sgf(W_x_tu, 101, 5, axis=0)\n",
+    "# W_x_tu_filtered = uniform_filter1d(W_x_tu, size=101, axis=0)\n",
+    "W_x_tu_filtered = W_x_tu\n",
+    "W_v_tu = np.gradient(W_x_tu_filtered, t_g, axis=0)  # Time derivative of position\n",
+    "# W_v_tu = finite_diff(W_x_tu_filtered, t_g)  # Time derivative of position\n",
+    "\n",
+    "# Find the indices of valid and NaN values\n",
+    "# nans, x = np.isnan(W_v_tu), lambda z: z.nonzero()[0]\n",
+    "# # Use numpy.interp to fill the NaNs\n",
+    "# W_v_tu[nans] = np.interp(x(nans), x(~nans), W_v_tu[~nans])\n",
+    "\n",
+    "# Compute the target velocity wrt UAV in the body frame\n",
+    "B_v_tu = np.zeros((len(UAV_poses), 3))  # Initialize velocity array\n",
+    "V_v_tu = np.zeros((len(UAV_poses), 3))  # Initialize velocity array\n",
+    "for i, (R, Rz, v) in enumerate(zip(W_R_B, W_R_Bz, W_v_tu)):\n",
+    "    B_v_tu[i] = np.linalg.inv(R) @ v  # Transforming velocity from inertial frame to body frame\n",
+    "    V_v_tu[i] = np.linalg.inv(Rz) @ v\n",
+    "\n",
+    "B_v_tu = sgf(B_v_tu, 51, 5, axis=0)\n",
+    "\n",
+    "\n",
+    "# Compute optical flow directly\n",
+    "B_y_g_raw = B_v_tu / (B_x_tu[:, 2][:, np.newaxis]+0.1)  # Divide by z (broadcasting)\n",
+    "B_y_g = B_y_g_raw\n",
+    "# B_y_g = sgf(B_y_g_raw, 51, 2, axis=0)\n",
+    "\n",
+    "# Compute optical flow directly\n",
+    "V_y_g_raw = V_v_tu / V_x_tu[:, 2][:, np.newaxis]  # Divide by z (broadcasting)\n",
+    "V_y_g = V_y_g_raw\n",
+    "# V_y_g = sgf(V_y_g_raw, 51, 2, axis=0)\n",
+    "\n",
+    "\n",
+    "# Compute the UAV angular velocity in the body frame\n",
+    "W_dR_B = np.gradient(W_R_B, t_g, axis=0)  # Time derivative of rotation matrices\n",
+    "B_w_ug = np.zeros((len(W_R_B), 3))  # Initialize angular velocity array\n",
+    "for i, (W_R_Bi, W_dR_Bi) in enumerate(zip(W_R_B, W_dR_B)):\n",
+    "    # skew_symmetric = R_dot[i] @ R[i].T  # Compute skew-symmetric matrix\n",
+    "    skew_symmetric = W_R_Bi.T @ W_dR_Bi  # Compute skew-symmetric matrix\n",
+    "    B_w_ug[i] = (np.array([[\n",
+    "        skew_symmetric[2, 1],  # \u03c9_x = (R_dot * R^T)[2, 1]\n",
+    "        skew_symmetric[0, 2],  # \u03c9_y = (R_dot * R^T)[0, 2]\n",
+    "        skew_symmetric[1, 0]   # \u03c9_z = (R_dot * R^T)[1, 0]\n",
+    "    ]]).T).T\n",
+    "\n",
+    "\n",
+    "# Compute the target angular velocity in the body frame\n",
+    "W_dR_T = np.gradient(W_R_T, t_g, axis=0)  # Time derivative of rotation matrices\n",
+    "B_w_tg = np.zeros((len(W_R_T), 3))  # Initialize angular velocity array\n",
+    "for i, (W_R_Ti, W_dR_Ti) in enumerate(zip(W_R_T, W_dR_T)):\n",
+    "    # skew_symmetric = R_dot[i] @ R[i].T  # Compute skew-symmetric matrix\n",
+    "    skew_symmetric = W_R_Ti.T @ W_dR_Ti  # Compute skew-symmetric matrix\n",
+    "    B_w_tg[i] = (np.array([[\n",
+    "        skew_symmetric[2, 1],  # \u03c9_x = (R_dot * R^T)[2, 1]\n",
+    "        skew_symmetric[0, 2],  # \u03c9_y = (R_dot * R^T)[0, 2]\n",
+    "        skew_symmetric[1, 0]   # \u03c9_z = (R_dot * R^T)[1, 0]\n",
+    "    ]]).T).T\n",
+    "\n",
+    "# Compute the target angular velocity wrt UAV in the body frame\n",
+    "B_w_tug = B_w_tg - B_w_ug"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Compute time relative to the start time\n",
+    "cmd = np.array(data[\"Ground_Truth\"][\"Command\"])\n",
+    "mask = valid\n",
+    "# If lengths mismatch, align by truncating to the smaller length\n",
+    "if valid.shape[0] != cmd.shape[0]:\n",
+    "    L = min(mask.shape[0], cmd.shape[0])\n",
+    "    mask = mask[:L]\n",
+    "    cmd = cmd[:L]\n",
+    "# Apply boolean mask to commands\n",
+    "w_u = cmd[mask][:,:3]\n",
+    "T_u = cmd[mask][:,3]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 4. Performance plots"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Relative Position ($^Br_{tu}$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Position in $x$-direction ($x$)',\n",
+    "    r'Position in $y$-direction ($y$)',\n",
+    "    r'Position in $z$-direction ($z$)'\n",
+    "]\n",
+    "y_labels = [r'$x$ (m)', r'$y$ (m)', r'$z$ (m)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_g, B_x_tu[:, i], label='Ground Truth')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Relative Velocity ($^Bv_{tu}$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Linear Velocity in $x$-direction ($v_x$)',\n",
+    "    r'Linear Velocity in $y$-direction ($v_y$)',\n",
+    "    r'Linear Velocity in $z$-direction ($v_z$)'\n",
+    "]\n",
+    "y_labels = [r'$v_x$ (m/s)', r'$v_y$ (m/s)', r'$v_z$ (m/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_g, B_v_tu[:, i], label='Ground Truth')\n",
+    "    # ax.plot(t_g[:len(v_u)], v_u[:, i], label='Input Command')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 5. State plots"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Position ($^Br_u$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Position in $x$-direction ($x$)',\n",
+    "    r'Position in $y$-direction ($y$)',\n",
+    "    r'Position in $z$-direction ($z$)'\n",
+    "]\n",
+    "y_labels = [r'$x$ (m)', r'$y$ (m)', r'$z$ (m)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_o,B_x_ut[:, i], label='Telemetry')\n",
+    "    ax.plot(t_g, B_x_ug[:, i], label='Ground Truth')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Body-Fixed Linear Velocity ($^Bv$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Linear Velocity in $x$-direction ($v_x$)',\n",
+    "    r'Linear Velocity in $y$-direction ($v_y$)',\n",
+    "    r'Linear Velocity in $z$-direction ($v_z$)'\n",
+    "]\n",
+    "y_labels = [r'$v_x$ (m/s)', r'$v_y$ (m/s)', r'$v_z$ (m/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_o, B_v_ut[:, i], label='Telemetry Body Frame')\n",
+    "    ax.plot(t_g, B_v_ug[:, i], label='Ground Truth')\n",
+    "    # ax.plot(t_g[:len(v_u)], v_u[:, i], label='Input Command')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Body-Fixed Linear Acceleration ($^Ba$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Linear Acceleration in $x$-direction ($a_x$)',\n",
+    "    r'Linear Acceleration in $y$-direction ($a_y$)',\n",
+    "    r'Linear Acceleration in $z$-direction ($a_z$)'\n",
+    "]\n",
+    "y_labels = [r'$a_x$ (m/s$^2$)', r'$a_y$ (m/s$^2$)', r'$a_z$ (m/s$^2$)']\n",
+    "g = [0,0,9.8]\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_a, a_t[:, i] + g[i]*0, label='Telemetry Body')\n",
+    "    if i==2:\n",
+    "        ax.plot(t_g[:len(T_u[1:])], T_u[1:]/mass, label='Input Command')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-10.0, -9.0)\n",
+    "    # ax.set_ylim(-5.0, 5.0)\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Euler Angles ($^B\\Phi$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Linear Acceleration in $x$-direction ($a_x$)',\n",
+    "    r'Linear Acceleration in $y$-direction ($a_y$)',\n",
+    "    r'Linear Acceleration in $z$-direction ($a_z$)'\n",
+    "]\n",
+    "y_labels = [r'$a_x$ (m/s$^2$)', r'$a_y$ (m/s$^2$)', r'$a_z$ (m/s$^2$)']\n",
+    "g = [0,0,9.8]\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_a, a_t[:, i] + g[i], label='Telemetry Body')\n",
+    "    ax.plot(t_c, a_u[:, i], label='Input Command')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-10.0, -9.0)\n",
+    "    # ax.set_ylim(-5.0, 5.0)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Roll angle ($\\phi$)',\n",
+    "    r'Pitch angle ($\\theta$)',\n",
+    "    r'Yaw angle ($\\psi$)'\n",
+    "]\n",
+    "y_labels = [r'$\\phi$ (rad)', r'$\\theta$ (rad)', r'$\\psi$ (rad)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_o,EA_t[:, i], label='Telemetry')\n",
+    "    ax.plot(t_g, EA_g[:, i], label='Ground Truth')\n",
+    "    ax.plot(t_c, EA_d[:, i], label='Desired')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 6. Output plots"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Image Parameter Error ($s_{e}$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 2, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Image Parameter Error in $x$-direction ($s_{ex}$)',\n",
+    "    r'Image Parameter Error in $y$-direction ($s_{ey}$)',\n",
+    "    r'Image Parameter Error in $z$-direction ($s_{ez}$)'\n",
+    "]\n",
+    "y_labels = [r'$s_{ex}$ (rad)', r'$s_{ey}$ (rad)', r'$s_{ez}$ (rad)']  \n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, s[:, i])\n",
+    "    ax.plot(t_c, p_v[:, i], ':r')\n",
+    "    ax.plot(t_c, -p_v[:, i], ':r')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_ylim(0.2, 0.5)\n",
+    "    # ax.set_xlim(1, 2)\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $s_e$ vs GROUND TRUTH \u2014 full trajectory (re-init aware)\n",
+    "\n",
+    "The Control_Data log is WIPED on a mid-flight controller re-initialization (full visibility loss \u2192\n",
+    "re-acquire), so the cells above may only show the final segment. This plot reconstructs the WHOLE\n",
+    "flight: the GT-derived geometric centroid (via `compute_gt_signals`, the canonical V-frame GT source)\n",
+    "vs the measured Img feature, with the funnel clock restarting at the re-init.\n",
+    "Reading guide: flat stretches in the MEASURED trace are held/extrapolated phantoms (can be\n",
+    "sign-opposed to truth); where genuine, measured \u2248 GT almost exactly."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "metadata": {},
+   "execution_count": null,
+   "outputs": [],
+   "source": [
+    "# \u2500\u2500 s_e vs GROUND TRUTH, full trajectory \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n",
+    "import sys as _sys\n",
+    "_sys.path.insert(0, \"/home/shubham/Soft-Precise-Landing/PX4_Gazebo/tools\")\n",
+    "from aggregate_calibration_phased import compute_gt_signals as _cgs\n",
+    "\n",
+    "_gtd = data[\"Ground_Truth\"]\n",
+    "if len(_gtd[\"UAV Pose\"]) == 0:\n",
+    "    print(\"\u2717 empty GT \u2014 skip\")\n",
+    "else:\n",
+    "    _t0 = _gtd[\"Start Time\"]\n",
+    "    _tg_raw, _Vh, _Vw, _Vxc, _Vyc, _vmask, _Vz = _cgs(_gtd)\n",
+    "    _traw = np.asarray(_gtd[\"Time\"], dtype=float)\n",
+    "    _ng = min(len(_traw), len(_vmask))\n",
+    "    _tgt = _traw[:_ng][_vmask[:_ng]]                  # GT 'Time' is ALREADY relative to start\n",
+    "    _gt_s = {0: _Vxc[:len(_tgt)], 1: _Vyc[:len(_tgt)]}\n",
+    "\n",
+    "    _ti = np.array(data[\"Img_Data\"][\"Time\"], dtype=float) - _t0\n",
+    "    _fp = np.array(data[\"Img_Data\"][\"Feature Params\"], dtype=float)\n",
+    "    _mi = _ti >= 0\n",
+    "    _treinit = float(np.asarray(data[\"Control_Data\"][\"t\"], dtype=float)[0]) - _t0  # ~0 if no re-init\n",
+    "\n",
+    "    def _ps(t, g, ps0, psinf):\n",
+    "        tt = np.where(t < _treinit, t, t - _treinit) if _treinit > 0.5 else t\n",
+    "        return (ps0 - psinf) * np.exp(-g * tt) + psinf\n",
+    "\n",
+    "    plt.rcParams[\"font.family\"] = \"Times New Roman\"; plt.rcParams[\"font.size\"] = \"16\"\n",
+    "    _fig, _axes = plt.subplots(2, 1, figsize=(18, 12), constrained_layout=True)\n",
+    "    for _i, (_ax, _lab) in enumerate(zip(_axes, [\"x\", \"y\"])):\n",
+    "        _ax.plot(_tgt, _gt_s[_i], \"g-\", lw=1.8, label=f\"$s_{{e{_lab}}}$ GROUND TRUTH (geometric)\")\n",
+    "        _ax.plot(_ti[_mi], _fp[_mi][:, _i], \"b-\", lw=1.0, alpha=0.7, label=f\"$s_{{e{_lab}}}$ MEASURED\")\n",
+    "        _pv = _ps(_ti[_mi], _gs[_i], _ps0[_i], _psinf[_i])\n",
+    "        _ax.plot(_ti[_mi], _pv, \"r:\", lw=1.2); _ax.plot(_ti[_mi], -_pv, \"r:\", lw=1.2, label=\"$\\\\pm p_s(t)$\")\n",
+    "        if _treinit > 0.5:\n",
+    "            _ax.axvline(_treinit, color=\"gray\", ls=\"--\", lw=1, label=f\"controller RE-INIT @ {_treinit:.1f}s\")\n",
+    "        _ax.set_title(f\"$s_{{e{_lab}}}$ \u2014 GT vs measured, full trajectory\")\n",
+    "        _ax.set_xlabel(\"t (s)\"); _ax.set_ylabel(f\"$s_{{e{_lab}}}$ (rad)\"); _ax.grid(True)\n",
+    "        _ax.legend(loc=\"lower left\", fontsize=12)\n",
+    "    plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Combined-barrier position funnel ($s_{e,n}$ vs $p_r$) \u2014 convergence & terminal 1/Z\n",
+    "\n",
+    "Uses the **directly-logged** combined-barrier position funnel `p_r(t)` / `zeta_r(t)` (the surface term $\\chi_r\\zeta_r$ acts on $\\bar r_e=s_{e,n}$), not the reconstructed back-mapped sen-funnel `p_v`. Convergence/precision is governed by whether the funnel forces the error toward its steep edge ($|S_r|=|s_{e,n}|/p_r\\to1$). The terminal 1/Z spike in $|\\bar r_e|=\\mathrm{lat}/(Z\\varphi)$ breaches iff $p_r$ has collapsed (fast $\\xi_r$) and can't absorb it; a wide terminal $p_r$ (large PR0 + slow XIR + $p_{r\\infty}\\ge1$) absorbs it."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# \u2500\u2500 Combined-barrier position funnel: s_e_n vs p_r, residency S_r, terminal 1/Z \u2500\u2500\n",
+    "# Self-contained: reuses t_c, N1, s_e_n from the control-data preprocessing cell.\n",
+    "_cd = data['Control_Data']\n",
+    "if 'p_r(t)' in _cd:\n",
+    "    p_r     = np.array(_cd['p_r(t)'][-N1:])                 # (N,2) position funnel half-width (FoV units)\n",
+    "    sen_xy  = s_e_n[:, :2]\n",
+    "    S_r     = sen_xy / p_r                                   # signed residency\n",
+    "    S_r_mag = np.max(np.abs(S_r), axis=1)                    # worst-axis |S_r|\n",
+    "    rbar    = np.linalg.norm(sen_xy, axis=1)                 # |r_bar_e| = |s_e_n|\n",
+    "\n",
+    "    plt.rcParams['font.family'] = 'Times New Roman'; plt.rcParams['font.size'] = '18'\n",
+    "    fig, ax = plt.subplots(2, 2, figsize=(22, 13), constrained_layout=True)\n",
+    "\n",
+    "    for j, nm in enumerate(('x', 'y')):\n",
+    "        a = ax[0, j]\n",
+    "        a.plot(t_c, sen_xy[:, j], label=r'$s_{e,n}$')\n",
+    "        a.plot(t_c,  p_r[:, j], ':r', label=r'$\\pm p_r$'); a.plot(t_c, -p_r[:, j], ':r')\n",
+    "        a.set_title(f'Position funnel \u2014 {nm}-axis'); a.set_xlabel(r'$t$ (s)')\n",
+    "        a.set_ylabel(r'$s_{e,n}$ (FoV units)'); a.grid(); a.legend(loc='upper right')\n",
+    "\n",
+    "    a = ax[1, 0]\n",
+    "    a.plot(t_c, np.abs(S_r[:, 0]), label=r'$|S_{r,x}|$')\n",
+    "    a.plot(t_c, np.abs(S_r[:, 1]), label=r'$|S_{r,y}|$')\n",
+    "    a.axhline(1.0, color='r', ls='--', label='breach $|S_r|=1$')\n",
+    "    a.axhline(0.648, color='orange', ls=':', label='edge onset 0.648')\n",
+    "    a.set_title(r'Funnel residency $|S_r|=|s_{e,n}|/p_r$'); a.set_xlabel(r'$t$ (s)')\n",
+    "    a.set_ylabel(r'$|S_r|$'); a.grid(); a.legend(loc='upper left')\n",
+    "    a.set_ylim(0, min(5.0, float(np.nanmax(S_r_mag)) * 1.1 + 0.1))\n",
+    "\n",
+    "    a = ax[1, 1]\n",
+    "    a.plot(t_c, p_r[:, 0], 'g-', label=r'$p_{r,x}$'); a.plot(t_c, p_r[:, 1], 'g--', label=r'$p_{r,y}$')\n",
+    "    a.set_xlabel(r'$t$ (s)'); a.set_ylabel(r'$p_r$ (FoV units)', color='g')\n",
+    "    a.tick_params(axis='y', labelcolor='g'); a.grid()\n",
+    "    a2 = a.twinx(); a2.plot(t_c, rbar, 'b-', label=r'$|\\bar r_e|=|s_{e,n}|$')\n",
+    "    a2.set_ylabel(r'$|\\bar r_e|$', color='b'); a2.tick_params(axis='y', labelcolor='b')\n",
+    "    a.set_title('Funnel width vs error (terminal 1/Z)')\n",
+    "    h1, l1 = a.get_legend_handles_labels(); h2, l2 = a2.get_legend_handles_labels()\n",
+    "    a.legend(h1 + h2, l1 + l2, loc='upper right')\n",
+    "    plt.show()\n",
+    "\n",
+    "    # numeric summary (matches the by-hand funnel-shape A/B)\n",
+    "    n = len(t_c); s0 = int(n * 0.1)\n",
+    "    _idx = np.where(S_r_mag[s0:] >= 1.0)[0]\n",
+    "    _breach = round((t_c[s0 + _idx[0]] - t_c[0]) / (t_c[-1] - t_c[0]), 2) if len(_idx) else None\n",
+    "    print(f'maxSr={S_r_mag.max():.2f} | breach@{_breach} of flight | '\n",
+    "          f'terminal p_r(T)={np.linalg.norm(p_r[-1]) / np.sqrt(2):.2f} | '\n",
+    "          f'terminal |s_e_n|={rbar[-max(1, int(n * 0.05)):].mean():.2f} | min|s_e_n|={rbar.min():.3f}')\n",
+    "else:\n",
+    "    print(\"No 'p_r(t)' in Control_Data \u2014 this run used the back-mapped (non-combined) surface; see the s_e plot above.\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Optic Flow Error ($h_{e}$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Optic Flow Error in $x$-direction ($h_{ex}$)',\n",
+    "    r'Optic Flow Error in $y$-direction ($h_{ey}$)',\n",
+    "    r'Optic Flow Error in $z$-direction ($h_{ez}$)'\n",
+    "]\n",
+    "y_labels = [r'$h_{ex}$ (rad/s)', r'$h_{ey}$ (rad/s)', r'$h_{ez}$ (rad/s)']  \n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, h_e[:, i], label='Image')\n",
+    "    # ax.plot(t_i, y_e[:, i], label='Image Estimated')\n",
+    "    ax.plot(t_c, p[:, i], ':r')\n",
+    "    ax.plot(t_c, -p[:, i], ':r')\n",
+    "    # ax.plot(t_pv, y_t[:,i], label='Telemetry')\n",
+    "    # ax.plot(t_o, B_y_t[:, i], label='Telemetry Body')\n",
+    "    # ax.plot(t_g, B_y_g[:, i], label='Ground Truth')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-10.0, 10.0)\n",
+    "    # ax.set_ylim(-1, 1)\n",
+    "    ax.legend()\n",
+    "    ax.grid()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 7. Control parameters"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $S(t)$ Plot\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$S_{x}$ Plot', r'$S_{y}$ Plot', r'$S_{z}$ Plot']\n",
+    "y_labels = [r'$S_{x}$ (rad/s)', r'$S_{y}$ (rad/s)', r'$S_{z}$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, S[:, i, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\zeta(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$\\zeta_{x}$ Plot', r'$\\zeta_{y}$ Plot', r'$\\zeta_{z}$ Plot']\n",
+    "y_labels = [r'$\\zeta_{x}$ (rad/s)', r'$\\zeta_{y}$ (rad/s)', r'$\\zeta_{z}$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, zeta[:, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\int\\zeta(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$\\int\\zeta_{x}$ Plot', r'$\\int\\zeta_{y}$ Plot', r'$\\int\\zeta_{z}$ Plot']\n",
+    "y_labels = [r'$\\int\\zeta_{x}$ (rad/s)', r'$\\int\\zeta_{y}$ (rad/s)', r'$\\int\\zeta_{z}$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, izeta[:, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\kappa(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$\\kappa_{x}$ Plot', r'$\\kappa_{y}$ Plot', r'$\\kappa_{z}$ Plot']\n",
+    "y_labels = [r'$\\kappa_{x}$', r'$\\kappa_{y}$', r'$\\kappa_{z}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c[:-2], kappa[:-2, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $G(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$g_{x}$ Plot',  r'$g_{y}$ Plot',  r'$g_{z}$ Plot']\n",
+    "y_labels = [r'$g_{x}$', r'$g_{y}$', r'$g_{z}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, G[:, i, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\theta(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "plt.figure(figsize=(20, 6), constrained_layout=True)\n",
+    "\n",
+    "plt.plot(t_c, theta)\n",
+    "plt.title(r'$\\theta(t)$')\n",
+    "plt.xlabel(r'$t$ (s)')\n",
+    "# plt.ylabel(r'$T$ (N)')\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\sigma(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$\\sigma_{x}$ Plot', r'$\\sigma_{y}$ Plot', r'$\\sigma_{z}$ Plot']\n",
+    "y_labels = [r'$\\sigma_{x}$ (rad/s)', r'$\\sigma_{y}$ (rad/s)', r'$\\sigma_{z}$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, sigma[:, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $a_v(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$a_{vx}$ Plot',  r'$a_{vy}$ Plot',  r'$a_{vz}$ Plot']\n",
+    "y_labels = [r'$a_{vx}$', r'$a_{vy}$', r'$a_{vz}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, a_v[:, i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $\\dot{h}_d(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dds_e_filtered = sgf(np.gradient(ds_e, t_c, axis=0), 51, 2, axis=0)\n",
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 2, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$\\dot{h}_{dx}$ Plot',  r'$\\dot{h}_{dy}$ Plot',  r'$\\dot{h}_{dz}$ Plot']\n",
+    "y_labels = [r'$\\dot{h}_{dx}$', r'$\\dot{h}_{dy}$', r'$\\dot{h}_{dz}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, dh_d[:, i], label='$\\dot{h}_d$')\n",
+    "    ax.plot(t_c, dds_e_filtered[:, i]*10, label='$\\ddot{s}_e$')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $h_d(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "T1 = np.einsum('ijk,ik->ij',S_v,dp_v)\n",
+    "T2 = np.einsum('ijk,ik->ij',G_v,dzeta_v)\n",
+    "\n",
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 2, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$h_{dx}$ Plot',  r'$h_{dy}$ Plot',  r'$h_{dz}$ Plot']\n",
+    "y_labels = [r'$h_{dx}$', r'$h_{dy}$', r'$h_{dz}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, h_d[:, i], label='$h_d$')\n",
+    "    ax.plot(t_c, ds_e[:, i], label='$\\dot{s}_e$')\n",
+    "    # ax.plot(t_c, T1[:, i], label='$S_v \\dot{p}_v$')\n",
+    "    # ax.plot(t_c, T2[:, i], label='$G_v \\dot{\\zeta}_v$')\n",
+    "    ax.plot(t_c, dzeta_v[:, i]/50, label='$\\dot{\\zeta}_v$')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### $s_e(t)$ Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 2, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$s_{ex}$ Plot',  r'$s_{ey}$ Plot',  r'$s_{ez}$ Plot']\n",
+    "y_labels = [r'$s_{ex}$', r'$s_{ey}$', r'$s_{ez}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    # ax.plot(t_c, dh_d[:, i], label='$dh_d')\n",
+    "    # ax.plot(t_c, dds_e_filtered[:, i], label='ds_e')\n",
+    "    ax.plot(t_c, s[:, i] - s_d[i], label='$s_e$')\n",
+    "    ax.plot(t_c, zeta_v[:, i], label='$\\zeta_v$')\n",
+    "    # ax.plot(t_c, p_v[:, i])\n",
+    "    # ax.plot(t_c, S_v[:, i,i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 8. Calibration plots"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<h2>Input Calibration<h2>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Body-Fixed Angular velocity ($^B\\omega$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Angular Velocity in $x$-direction ($w_x$)',\n",
+    "    r'Angular Velocity in $y$-direction ($w_y$)',\n",
+    "    r'Angular Velocity in $z$-direction ($w_z$)'\n",
+    "]\n",
+    "y_labels = [r'$w_x$ (rad/s)', r'$w_y$ (rad/s)', r'$w_z$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    # ax.plot(t_i[:len(w_i)], w_i[:, i], label='Image')\n",
+    "    # ax.plot(t_o, B_w_ut[:,i], label='Telemetry')\n",
+    "    ax.plot(t_a, w_t[:,i], label='Telemetry IMU')\n",
+    "    # ax.plot(t_g, B_w_ug[:,i], label='Ground Truth')\n",
+    "    ax.plot(t_g[:len(w_u)], w_u[:,i], label='Command')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    # ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-0.02, 0.02)\n",
+    "    # ax.set_ylim(-1.0, 1.0)\n",
+    "    # ax.set_ylim(-5.0, 5.0)\n",
+    "    # ax.set_ylim(-0.5, 0.5)\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Body-Fixed Thrust ($^BT$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "plt.figure(figsize=(20, 6), constrained_layout=True)\n",
+    "\n",
+    "plt.plot(t_a, T_t, label='Telemetry Body')\n",
+    "plt.plot(t_g[:len(T_u)], T_u, label='Input Command')\n",
+    "plt.title(r'Body Thrust ($T$)')\n",
+    "plt.xlabel(r'$t$ (s)')\n",
+    "plt.ylabel(r'$T$ (N)')\n",
+    "# plt.xlim(t_g[0],t_g[-1])\n",
+    "# plt.ylim(-50.0, 50.0)\n",
+    "# plt.ylim(-1.0, 1.0)\n",
+    "# plt.ylim(-1.0, 30.0)\n",
+    "plt.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "<h2>Output Calibration<h2>"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Optic Flow ($h$) Plot"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "fig, axes = plt.subplots(3, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "# fig, axes = plt.subplots(1, 3, figsize=(20, 7), constrained_layout=True)\n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [\n",
+    "    r'Optic Flow in $x$-direction ($h_x$)',\n",
+    "    r'Optic Flow in $y$-direction ($h_y$)',\n",
+    "    r'Optic Flow in $z$-direction ($h_z$)'\n",
+    "]\n",
+    "y_labels = [r'$h_x$ (rad/s)', r'$h_y$ (rad/s)', r'$h_z$ (rad/s)']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_i[:len(y_i[:, i])], y_i[:, i], label='Image')\n",
+    "    # ax.plot(t_i, y_e[:, i], label='Image Estimated')\n",
+    "    # ax.plot(t_pv, y_t[:,i], label='Telemetry')\n",
+    "    # ax.plot(t_o, B_y_t[:, i], label='Telemetry Body')\n",
+    "    ax.plot(t_g, B_y_g[:, i], label='Ground Truth')\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    ax.set_xlim(t_g[0],t_g[-1])\n",
+    "    # ax.set_ylim(-2.0, 2.0)\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 9. Numerical scratchpad\n",
+    "Ad-hoc single-value checks (grouped here from cells that were scattered through the original)."
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Numerical Analysis of control input"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "idx = -1\n",
+    "dim = 0\n",
+    "print(f'Time = {t_c[idx]} s')\n",
+    "print(f'p(t) = {p[idx][dim]} \\nS(t) = {S[idx][idx][dim]} \\nzeta(t) = {zeta[idx][dim]} \\nkappa(t) = {kappa[idx][dim]} \\\n",
+    "      \\nG(t) = {G[idx][idx][dim]} \\ntheta(t) = {theta[idx]} \\nsigma(t) = {sigma[idx][dim]} \\na_v(t) = {a_v[idx][dim]} \\\n",
+    "      \\na_u(t) = {a_u[idx][dim]}')\n",
+    "# print(f'\\np_v(t) = {p_v[idx][dim]} \\ndp_v(t) = {dp_v[idx][dim]} \\nS_v(t) = {S_v[idx][dim][dim]} \\\n",
+    "#       \\nzeta_v(t) = {zeta_v[idx][dim]} \\nG_v(t) = {G_v[idx][dim][dim]}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dh_d[idx]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "h_d[idx-1:]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "(h_d[idx]-h_d[idx-1]) / (t_c[idx] - t_c[idx-1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "e3 = np.eye(3)[:,2]\n",
+    "\n",
+    "dw = (w[idx]-w[idx-1])/(t_c[idx]-t_c[idx-1])\n",
+    "\n",
+    "c = np.cross(dw, s[idx][:3]) + np.cross(w[idx], np.cross(w[idx], s[idx][:3])) + 2*np.cross(w[idx], h[idx]) \\\n",
+    "        -(h[idx][2] + np.dot(np.cross(w[idx], s[idx][:3]), e3)) * h[-1] - dh_d[idx]\n",
+    "\n",
+    "T1 = - Gamma[dim][dim] * sigma[idx][dim] / G[idx][dim][dim]\n",
+    "T2 = - kappa[idx][dim] * theta[idx] * np.clip(sigma[idx][dim]/epsilon[dim], a_min=-1, a_max=1)\n",
+    "T3 = - c[dim] + S[idx][dim][dim] * dp[idx][dim]\n",
+    "T4 = - Omega[dim][dim] * zeta[idx][dim] / G[idx][dim][dim]\n",
+    "print(f'Term 1 = {T1}')\n",
+    "print(f'Term 2 = {T2}')\n",
+    "print(f'Term 3 = {T3}')\n",
+    "print(f'Term 4 = {T4}')\n",
+    "print(f'Total = {T1 + T2 + T3 + T4}')\n",
+    "print(f'c(t) = {c}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "theta[idx] * np.clip(sigma[idx][dim]/epsilon[dim], a_min=-1, a_max=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "kappa[idx][dim]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "kappa[idx][dim] * theta[idx] * np.clip(sigma[idx][dim]/epsilon[dim], a_min=-1, a_max=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.clip(sigma[idx][dim]/epsilon[dim], a_min=-1, a_max=1)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "vec = - c + S[idx] @ dp[idx] - np.linalg.inv(G[idx]) @ Omega @ zeta[idx]\n",
+    "print(f'vec = {vec}')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.linalg.norm(np.hstack([vec.reshape(-1, 1), np.eye(3)]))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "theta[idx]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "kappa[idx]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.argmax(EA_d[:,1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "t_c[np.argmax(EA_d[:,1])]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.argmax(a_u[:,1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "a_u[np.argmax(a_u[:,1])]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.clip(a_u[np.argmax(a_u[:,1])], a_min=-5, a_max=5)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "min(EA_d[:, 1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "np.pi - max(EA_d[:, 1])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "abs(abs(max(EA_d[:, 1])) - np.pi) < 1e-2"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## 10. Test plots"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Test Plots"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "dds_e_filtered = sgf(np.gradient(-ds_e, t_c, axis=0), 11, 2, axis=0)\n",
+    "# Configure global plot settings\n",
+    "plt.rcParams[\"font.family\"] = \"Times New Roman\"\n",
+    "plt.rcParams[\"font.size\"] = \"20\"\n",
+    "\n",
+    "# Create the figure and subplots\n",
+    "# fig, axes = plt.subplots(2, 1, figsize=(20, 20), constrained_layout=True)\n",
+    "fig, axes = plt.subplots(1, 2, figsize=(20, 7), constrained_layout=True)\n",
+    "# fig.suptitle(metadata_str)  \n",
+    "\n",
+    "# Titles, labels, and data for each subplot\n",
+    "titles = [r'$a_{vx}$ Plot',  r'$a_{vy}$ Plot',  r'$a_{vz}$ Plot']\n",
+    "y_labels = [r'$a_{vx}$', r'$a_{vy}$', r'$a_{vz}$']\n",
+    "\n",
+    "# Loop through each axis and plot the data\n",
+    "for i, ax in enumerate(axes):\n",
+    "    ax.plot(t_c, s[:, i] - s_d[i], label='$h_d$')\n",
+    "    ax.plot(t_c, zeta_v[:, i], label='$ds_e$')\n",
+    "    # ax.plot(t_c, p_v[:, i])\n",
+    "    # ax.plot(t_c, S_v[:, i,i])\n",
+    "    ax.set_title(titles[i])\n",
+    "    ax.set_xlabel(r'$t$ (s)')\n",
+    "    ax.set_ylabel(y_labels[i])\n",
+    "    ax.legend()\n",
+    "\n",
+    "# Show the plot\n",
+    "plt.show()"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "env2025 (3.10.12)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.10.12"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}

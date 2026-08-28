@@ -894,6 +894,32 @@ class Controller(Thread):
         # mode (self._gt_feedback is None) is UNCHANGED -- still the extent-based
         # paths below -- per explicit user direction to keep this GT-only.
         self._td_gt_flat_eps = float(os.environ.get("PLASMC_TD_GT_FLAT_EPS", "0.03"))  # m
+        # SEN GATE, RELAXED FOR THIS PATH (found + fixed on hardware 2026-08-26, mirrored
+        # here 2026-08-27): the original |s_e_n|<_td_sen (0.6) gate exists to reject a
+        # PERCEPTION glitch masquerading as centered -- doesn't carry over to the
+        # analytic-feedback depth signal, which isn't perception-derived and already has
+        # its own rate/progress/plateau gate above. Confirmed on 2026-08-26 hardware data: a
+        # genuine ground-level touchdown pinned |s_e_n| at ~32.25 because PLASMC_HW_S_MAX
+        # (8.0, bounds raw s) is much larger than p_10 (~0.23-0.31) once s_e_n=s_e/p_10
+        # divides it down -- a hard, far-off-center landing, not a numerical artifact. Under
+        # the original 0.6 gate this NEVER latches. Sized above the signal's own physical
+        # ceiling (~8.0/min(p_10) ~ 34.3) with margin.
+        self._td_gt_sen_max = float(os.environ.get("PLASMC_TD_GT_SEN_MAX", "40.0"))
+        # ABSOLUTE DEPTH CEILING (bugfix, found live 2026-08-28 on an 11-run IC/motion
+        # batch): the rate+progress+near-min gate above catches "trivially close to
+        # adjacent samples" but has NO requirement that depth is actually near the
+        # ground -- an ORDINARY mid-descent deceleration (e.g. the vertical closure
+        # rate transiently flattening while the controller corrects a lateral
+        # overshoot) satisfies "flat + progressed since arming" at ANY altitude.
+        # Confirmed catastrophically: every one of 11 runs in that batch (not just the
+        # 4 the harness's own altitude check happened to reject) false-triggered at
+        # depths from 0.3m to 3.3m -- the "successes" only passed the harness's loose
+        # accept band by coincidence, not genuine ground contact. Real touchdown depth
+        # (camera-to-marker) is documented elsewhere in this file/gt_feedback.py as
+        # ~0.1-0.15m (gear gt_feedback.py's Z_REG derivation: median min z=0.096m).
+        # Require depth to actually be near that floor before the other signals are
+        # trusted -- generous margin (still well below every false trigger observed).
+        self._td_gt_max_depth = float(os.environ.get("PLASMC_TD_GT_MAX_DEPTH", "0.25"))  # m
         self._td_gt_min_depth = None
         self._td_gt_hist = deque(maxlen=self._td_window)
         # windowed-rate + progress-since-arm guards (see _touchdownDetect bugfix comment)
@@ -1476,19 +1502,20 @@ class Controller(Thread):
                            (self._td_gt_depth_at_arm - self._td_gt_min_depth) >= self._td_gt_progress_min)
             _flat_rate = _rate is not None and abs(_rate) < self._td_gt_rate_max
             _near_min = (depth - self._td_gt_min_depth) < self._td_gt_flat_eps
-            _at_landed = _progressed and _flat_rate and _near_min
+            _near_ground = depth < self._td_gt_max_depth
+            _at_landed = _progressed and _flat_rate and _near_min and _near_ground
             self._td_gt_hist.append(_at_landed)
             _gt_streak = sum(self._td_gt_hist)
             if self._td_debug:
                 print(f"[TD_DEBUG] t={self._t[-1]:.3f} GT depth={depth:.4f} "
                       f"landed_height={self._td_gt_min_depth:.4f} rate={_rate} "
                       f"progressed={_progressed} flat_rate={_flat_rate} near_min={_near_min} "
-                      f"at_landed={_at_landed} streak={_gt_streak}/{len(self._td_gt_hist)} "
-                      f"|s_e_n|={_sen_mag:.4f}")
-            if _gt_streak >= self._td_frames and _sen_mag < self._td_sen:
+                      f"near_ground={_near_ground} at_landed={_at_landed} "
+                      f"streak={_gt_streak}/{len(self._td_gt_hist)} |s_e_n|={_sen_mag:.4f}")
+            if _gt_streak >= self._td_frames and _sen_mag < self._td_gt_sen_max:
                 self._touchdown = True
-                print(f"[controller] TOUCHDOWN-DETECT (GT): depth={depth:.3f}m held within "
-                      f"{self._td_gt_flat_eps}m of recorded landed height="
+                print(f"[controller] TOUCHDOWN-DETECT (GT): depth={depth:.3f}m (<{self._td_gt_max_depth}m "
+                      f"ground ceiling) held within {self._td_gt_flat_eps}m of recorded landed height="
                       f"{self._td_gt_min_depth:.3f}m (rate={_rate:.4f}m/s, progressed "
                       f"{self._td_gt_depth_at_arm - self._td_gt_min_depth:.3f}m since arming) "
                       f"(x{self._td_frames} within {len(self._td_gt_hist)}-frame window) "

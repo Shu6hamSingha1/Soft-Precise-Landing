@@ -1,0 +1,315 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear .... ready after 8s.
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting without recording...!
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0.0 x3 within a 3-frame window + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 1.4s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+Status: INFO: Takeoff detected	
+Altitude reached
+-4.640401363372803 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.006390376016497612, y_m: 0.01673862710595131, z_m: -5.1041717529296875]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.96s (pos_err=0.010 m, speed=0.007 m/s, yaw_err=0.32°, tilt=0.03°)
+[landing_test] board alpha (settled) = -85.4° std=3.5°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+[TD_DEBUG] t=34.920 ARMED h_z=-0.1220
+[TD_DEBUG] t=34.928 h_z=-0.1220 spikes_in_window=0/1 |s_e_n|=0.0456
+[TD_DEBUG] t=34.944 h_z=-0.1220 spikes_in_window=0/2 |s_e_n|=0.0455
+[TD_DEBUG] t=34.952 h_z=-0.1220 spikes_in_window=0/3 |s_e_n|=0.0455
+[TD_DEBUG] t=34.956 h_z=-0.1150 spikes_in_window=0/3 |s_e_n|=0.0455
+[TD_DEBUG] t=34.960 h_z=-0.1150 spikes_in_window=0/3 |s_e_n|=0.0455
+[TD_DEBUG] t=34.964 h_z=-0.1150 spikes_in_window=0/3 |s_e_n|=0.0455
+[TD_DEBUG] t=34.980 h_z=-0.1150 spikes_in_window=0/3 |s_e_n|=0.0447
+[TD_DEBUG] t=34.992 h_z=-0.1293 spikes_in_window=0/3 |s_e_n|=0.0447
+[TD_DEBUG] t=35.000 h_z=-0.1293 spikes_in_window=0/3 |s_e_n|=0.0447
+[TD_DEBUG] t=35.004 h_z=-0.1293 spikes_in_window=0/3 |s_e_n|=0.0447
+[TD_DEBUG] t=35.008 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.016 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.024 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.032 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.044 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.052 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.056 h_z=-0.1319 spikes_in_window=0/3 |s_e_n|=0.0441
+[TD_DEBUG] t=35.060 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0437
+[TD_DEBUG] t=35.072 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0437
+[TD_DEBUG] t=35.076 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0437
+[TD_DEBUG] t=35.088 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0437
+[TD_DEBUG] t=35.100 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0437
+[TD_DEBUG] t=35.104 h_z=-0.1241 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.108 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.120 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.132 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.140 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.148 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0427
+[TD_DEBUG] t=35.156 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.168 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.172 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.176 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.184 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.188 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.200 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.208 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.220 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.224 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.236 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.248 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.252 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.264 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.268 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.272 h_z=-0.1130 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.280 h_z=-0.0728 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.292 h_z=-0.0728 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.300 h_z=-0.0728 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.308 h_z=-0.0728 spikes_in_window=0/3 |s_e_n|=0.0464
+[TD_DEBUG] t=35.316 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.320 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.332 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.340 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.348 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.360 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0601
+[TD_DEBUG] t=35.364 h_z=-0.0922 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.376 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.384 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.392 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.400 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.408 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.416 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0633
+[TD_DEBUG] t=35.424 h_z=-0.0910 spikes_in_window=0/3 |s_e_n|=0.0697
+[TD_DEBUG] t=35.436 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0697
+[TD_DEBUG] t=35.444 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0697
+[TD_DEBUG] t=35.452 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0697
+[TD_DEBUG] t=35.460 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0697
+[TD_DEBUG] t=35.468 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.480 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.488 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.496 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.504 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.512 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.524 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.536 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.544 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.556 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.568 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.572 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.576 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.588 h_z=-0.1274 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.600 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.608 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.620 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.624 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.628 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0759
+[TD_DEBUG] t=35.636 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.644 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.652 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.664 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.668 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.672 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.684 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.692 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.700 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.708 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.716 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.724 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.732 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.736 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.748 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.752 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.756 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.760 h_z=-0.1368 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.764 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.772 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.780 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.796 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.800 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.808 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.812 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.0953
+[TD_DEBUG] t=35.824 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.832 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.844 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.852 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.856 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.864 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.872 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.880 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.888 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.900 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.904 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.908 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.916 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.924 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.936 h_z=-0.4269 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.944 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.952 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.964 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.972 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.976 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=35.988 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.000 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.008 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.016 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.020 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.028 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1195
+[TD_DEBUG] t=36.040 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.052 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.060 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.068 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.076 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.088 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.096 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.104 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.112 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.120 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.132 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.140 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.148 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.156 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.168 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.176 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.184 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.196 h_z=-0.3734 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.200 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.208 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.212 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.224 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.232 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.240 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.248 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.252 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.256 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.264 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.272 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.280 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.284 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.1479
+[TD_DEBUG] t=36.304 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.308 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.316 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.328 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.336 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.344 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.352 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.356 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.364 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.372 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.380 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.388 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.396 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.404 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.412 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.424 h_z=-0.3899 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.432 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.448 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.456 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.468 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.476 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.484 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.492 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.500 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.512 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.516 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2013
+[TD_DEBUG] t=36.520 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2045
+[TD_DEBUG] t=36.532 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.540 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.548 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.552 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.560 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.564 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.572 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.580 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.592 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.600 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.604 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.612 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.620 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.632 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.640 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.652 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.656 h_z=-0.3119 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.660 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.672 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.680 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.692 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.700 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.704 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.708 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.720 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[TD_DEBUG] t=36.728 h_z=-0.3167 spikes_in_window=0/3 |s_e_n|=0.2700
+[FC] Impact detected (|a|=116.0 m/s² > 50.0) — LANDED=True
+[landing_test] descent loop exited: FC_node.LANDED=True EC_node.is_alive()=True (2026-08-03 diag: distinguishing PX4-landed-state vs img-thread-death vs impact-spike as the exit cause)
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.406 m [≤0.1], rel_vel=0.201 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.408 m, rel_vel=1.300 m/s, min_alt=0.01 m (endpoint xy=0.406 m is post-kick if it ballooned)
+[CrossMarkerNode] diag: 659 process_frame() calls over 24.10s (mean call rate 27.3 Hz), detect ok 647/659 (98%), fail reasons: {'insufficient_fit_points': 5, 'near_parallel_fit': 4, 'centroid_mismatch': 3}
+image_subscriber closed
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+Saved to CSV!
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 2764386 + group)
+[run]   killing px4_sitl (pid 2764417 + group)
+[run]   killing bridge_clock (pid 2764879 + group)
+[run]   killing bridge_pose (pid 2764901 + group)
+[run]   killing bridge_image (pid 2764921 + group)
+[run]   killing qgc (pid 2764960 + group)
+[run] done.

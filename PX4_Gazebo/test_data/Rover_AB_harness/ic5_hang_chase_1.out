@@ -1,0 +1,29 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for PX4 preflight to clear ..scripts/run_aruco_landing.sh: line 202: 2320264 Killed                  setsid "$@" > "$logfile" 2>&1
+scripts/run_aruco_landing.sh: line 202: 2320326 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+............. (timeout, proceeding anyway)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Unexpected error: Main Thread: Unable to get simulation time.
+
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+[landing_test] Exiting with code 1: an exception occurred during the run (see 'Unexpected error'/'RuntimeError' output above).
+
+[run] Shutting down background processes...
+[run]   killing bridge_clock (pid 2320750 + group)
+[run]   killing bridge_pose (pid 2320808 + group)
+[run]   killing bridge_image (pid 2320839 + group)
+[run] done.

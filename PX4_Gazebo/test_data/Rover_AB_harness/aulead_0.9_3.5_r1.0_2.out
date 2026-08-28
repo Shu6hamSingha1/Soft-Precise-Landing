@@ -1,0 +1,118 @@
+=================================================================
+[retry] Attempt 1 / 5
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic . up after 1s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+[img_data] board layout loaded: 13 markers from /home/shubham/Soft-Precise-Landing/PX4_Gazebo/src/../Images/aruco_board_layout.npy
+Waiting for image streaming
+Starting without recording...!
+[controller] PLASMC_GT_FEEDBACK=1 — feeding GT V-frame s/h (perception bypassed)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 0.7  (default 0.2)
+  XI2_Y = 0.7  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 1.5  (default 5)
+  P_Y = 1.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+-- Waiting for is_armable (EKF / lockstep ready)...
+OPTIC FLOW UNAVAILABLE...
+FEATURE_IS_STALE = True  (3 consec misses)
+  is_armable after 0.5s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Armed by external command	
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Status: INFO: Takeoff detected	
+LANDING PAD VISIBLE NOW...
+LANDING PAD RE-ACQUIRED (stale → fresh)
+OPTIC FLOW AVAILABLE NOW...
+Altitude reached
+-4.641544342041016 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 0.03686869889497757, y_m: 0.01174489501863718, z_m: -5.069610118865967]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+[landing_test] IC converged at t=6.80s (pos_err=0.009 m, speed=0.031 m/s, yaw_err=0.78°, tilt=0.24°)
+[landing_test] board alpha (settled) = 4.4° std=3.1°; using fixed DES_ALPHA_DEG s_d[3]=0.0°
+[FC] PX4 param EKF2_MAG_TYPE = 5 (requested 5)
+[landing_test] COMPASS_FREE_VALIDATE: EKF2 mag fusion OFF at engage (EKF2_MAG_TYPE=5); descent is magnetometer-free (mag logs only)
+[landing_test] PID warmup (100 ms — fills deques only)…
+ArUco lost — KLT fallback active (cap 20 frames)
+FEATURE_IS_STALE = True  (3 consec misses)
+LANDING PAD NOT VISIBLE...
+OPTIC FLOW UNAVAILABLE...
+[FC] Impact detected (|a|=106.5 m/s² > 50.0) — LANDED=True
+Landed (PX4 LandedState or impact spike)
+Status: CRITICAL: Disarming denied: not landed	
+[landing_test] Disarm failed (probably already disarmed by PX4): COMMAND_DENIED: 'Command Denied'; origin: disarm(); params: ()
+[landing_test] Landing classification: FAIL  (xy_err=0.163 m [≤0.1], rel_vel=0.850 m/s [≤0.2])
+[landing_test] Honest precision @ min-alt: xy=0.150 m, rel_vel=1.077 m/s, min_alt=0.59 m (endpoint xy=0.163 m is post-kick if it ballooned)
+image_subscriber closed
+Video recording stopped...
+model_pose_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+Flow Streamer thread is deleted...
+image_subscriber deleted...
+Flight Controller is disconnected...
+Saved to CSV!
+
+[run] Shutting down background processes...
+[run]   killing microxrce (pid 505512 + group)
+[run]   killing px4_rover (pid 505555 + group)
+[run]   killing px4_sitl (pid 506013 + group)
+[run]   killing bridge_clock (pid 506721 + group)
+[run]   killing bridge_pose (pid 506741 + group)
+[run]   killing bridge_image (pid 506761 + group)
+[run]   killing rover_drive (pid 507680 + group)
+[run] done.
+[retry] SUCCESS after attempt 1

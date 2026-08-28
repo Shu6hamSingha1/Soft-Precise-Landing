@@ -1,0 +1,2 @@
+[overlay] using cross-marker (MARKER_TYPE=cross) schema
+[overlay] 251 frames -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/overlay_motion_lissajous_s_alpha.mp4

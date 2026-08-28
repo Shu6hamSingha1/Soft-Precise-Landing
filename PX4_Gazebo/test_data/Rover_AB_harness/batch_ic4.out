@@ -1,0 +1,13 @@
+----- montage_cross ic4 try 1/6 -----
+  NO RUN
+----- montage_cross ic4 try 2/6 -----
+  result: NO 2.446 alt=3.640 | run=Fri Aug 28 11-46-04 2026 chase=chase_2026-08-28_11-45-05.mp4 drone=Fri Aug 28 11-45-52 2026.mp4
+----- montage_cross ic4 try 3/6 -----
+  result: NO 1.994 alt=3.137 | run=Fri Aug 28 11-47-23 2026 chase=chase_2026-08-28_11-46-24.mp4 drone=Fri Aug 28 11-47-10 2026.mp4
+----- montage_cross ic4 try 4/6 -----
+  NO DRONE VIDEO
+----- montage_cross ic4 try 5/6 -----
+  result: NO 1.967 alt=3.149 | run=Fri Aug 28 11-53-48 2026 chase=chase_2026-08-28_11-52-49.mp4 drone=Fri Aug 28 11-53-36 2026.mp4
+----- montage_cross ic4 try 6/6 -----
+  result: NO 2.060 alt=3.291 | run=Fri Aug 28 11-55-07 2026 chase=chase_2026-08-28_11-54-08.mp4 drone=Fri Aug 28 11-54-55 2026.mp4
+MONTAGE_ic4_FAILED (no on-platform landing in 6 tries)

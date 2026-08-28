@@ -1,0 +1,6 @@
+ic_idx	repeat	ic_enu	result_dir	landed	xy_err_m	rel_vel_mps	precise	soft
+1	1	0.0,0.0,5.0	IC_1_rep_1	YES	0	0	0	0
+2	1	2.0,2.0,5.0	IC_2_rep_1	YES	3.8190	0.2159	0	0
+3	1	-2.0,2.0,5.0	IC_3_rep_1	YES	2.6246	1.0998	0	0
+4	1	2.0,2.0,7.0	IC_4_rep_1	YES	1.9088	2.2740	0	0
+5	1	2.0,2.0,3.0	IC_5_rep_1	YES	2.9312	0.0809	0	0

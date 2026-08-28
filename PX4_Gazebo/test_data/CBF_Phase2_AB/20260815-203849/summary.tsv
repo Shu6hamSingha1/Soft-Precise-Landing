@@ -1,0 +1,11 @@
+arm	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+p2_old	1	NO	-	-	-	-	-	-	-
+p2_fixed	1	NO	-	-	-	-	-	-	-
+p2_old	2	NO	-	-	-	-	-	-	-
+p2_fixed	2	NO	-	-	-	-	-	-	-
+p2_old	3	NO	-	-	-	-	-	-	-
+p2_fixed	3	NO	-	-	-	-	-	-	-
+p2_old	4	NO	-	-	-	-	-	-	-
+p2_fixed	4	NO	-	-	-	-	-	-	-
+p2_old	5	NO	-	-	-	-	-	-	-
+p2_fixed	5	NO	-	-	-	-	-	-	-

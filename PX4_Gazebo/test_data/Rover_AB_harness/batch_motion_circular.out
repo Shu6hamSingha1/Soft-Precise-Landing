@@ -1,0 +1,5 @@
+----- montage_cross motion_circular try 1/6 -----
+  result: ON 0.224 alt=0.967 | run=Fri Aug 28 12-03-58 2026 chase=chase_2026-08-28_12-02-59.mp4 drone=Fri Aug 28 12-03-45 2026.mp4
+[montage] 222 frames (197 descent + 25 tail)  960x720@25.0  (chase 159f td@158, drone 288f td@287, GT 1364samp, 7.9s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_circular_cross.mp4
+[montage]  frame 0/222
+MONTAGE_motion_circular -> test_data/Test_Videos/montage_motion_circular_cross.mp4 (ON 0.224 alt=0.967)

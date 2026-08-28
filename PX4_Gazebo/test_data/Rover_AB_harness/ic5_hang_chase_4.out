@@ -1,0 +1,41 @@
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL (Gazebo Harmonic with Qt offscreen platform)...
+[run] waiting for Gazebo to come up .scripts/run_aruco_landing.sh: line 150: 2335579 Killed                  setsid "$@" > "$logfile" 2>&1
+scripts/run_aruco_landing.sh: line 150: 2335631 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+............................................................ timed out!
+[run] PX4 SITL did not bring up Gazebo's /world/cross_marker/clock in 60s.
+[run] Last PX4 SITL log lines:
+ERROR [vehicle_imu] 0 - gyro 1310988 timestamp error timestamp_sample: 0, previous timestamp_sample: 0
+ERROR [vehicle_imu] 0 - accel 1310988 timestamp error timestamp_sample: 0, previous timestamp_sample: 0
+[1;31m[Err] [GstCameraSystem.cpp:285] [0m[1;31mNVIDIA H.264 encoder not available, falling back to software encoder[0m[1;31m[0m
+
+(aruco.sdf:2343288): GLib-GObject-CRITICAL **: 11:12:50.253: g_object_set: assertion 'G_IS_OBJECT (object)' failed
+[1;31m[Err] [GstCameraSystem.cpp:338] [0m[1;31mFailed to create one or more GStreamer elements[0m[1;31m[0m
+WARN  [health_and_arming_checks] Preflight Fail: ekf2 missing data
+WARN  [health_and_arming_checks] Preflight Fail: No connection to the ground control station	
+INFO  [tone_alarm] home set
+WARN  [health_and_arming_checks] Preflight Fail: No connection to the ground control station	
+INFO  [commander] [32mReady for takeoff![0m
+INFO  [uxrce_dds_client] synchronized with time offset 1787636567077634us
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/battery_status data writer, topic id: 19
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/estimator_status_flags data writer, topic id: 83
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/failsafe_flags data writer, topic id: 89
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/manual_control_setpoint data writer, topic id: 139
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/position_setpoint_triplet data writer, topic id: 183
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/sensor_combined data writer, topic id: 214
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/timesync_status data writer, topic id: 237
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_land_detected data writer, topic id: 264
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_attitude data writer, topic id: 251
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_control_mode data writer, topic id: 258
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_command_ack data writer, topic id: 255
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_global_position data writer, topic id: 259
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_gps_position data writer, topic id: 261
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_local_position data writer, topic id: 265
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_odometry data writer, topic id: 270
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/vehicle_status_v1 data writer, topic id: 275
+INFO  [uxrce_dds_client] successfully created rt/fmu/out/home_position data writer, topic id: 121
+INFO  [uxrce_dds_client] time sync converged
+
+[run] Shutting down background processes...
+[run] done.

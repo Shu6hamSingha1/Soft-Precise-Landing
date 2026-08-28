@@ -1,0 +1,13 @@
+[montage] 254 frames (229 descent + 25 tail)  960x720@25.0  (chase 188f td@187, drone 262f td@261, GT 1453samp, 9.2s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_sinusoidal_final.mp4
+[montage]  frame 0/254
+[montage]  frame 25/254
+[montage]  frame 50/254
+[montage]  frame 75/254
+[montage]  frame 100/254
+[montage]  frame 125/254
+[montage]  frame 150/254
+[montage]  frame 175/254
+[montage]  frame 200/254
+[montage]  frame 225/254
+[montage]  frame 250/254
+[montage] done -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_motion_sinusoidal_final.mp4

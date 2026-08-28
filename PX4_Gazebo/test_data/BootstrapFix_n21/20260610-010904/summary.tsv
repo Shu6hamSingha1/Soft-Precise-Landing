@@ -1,0 +1,22 @@
+knob	val	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+baseline	__baseline__	1	YES	0.9567	0.5586	16.5	0	0	0	rep1
+baseline	__baseline__	2	YES	9.1718	3.3714	30.1	0	0	1	rep2
+baseline	__baseline__	3	YES	0.8954	1.3467	20.2	0	0	0	rep3
+baseline	__baseline__	4	YES	0.8189	0.7261	24.9	0	0	0	rep4
+baseline	__baseline__	5	YES	0.3891	0.2562	19.1	0	0	0	rep5
+baseline	__baseline__	6	YES	0.0000	0.1337	29.0	0	0	0	rep6	FALSE_SP frozen-GT: pose stuck at IC 25s then reset to origin @frame1517; xy_err=5.7e-21 spurious; drone never descended. Orig flags were precise=1 soft=1 (see FALSE_SP.md).
+baseline	__baseline__	7	YES	0.9695	0.2939	21.4	0	0	0	rep7
+baseline	__baseline__	8	YES	8.0048	7.9698	25.0	0	0	1	rep8
+baseline	__baseline__	9	YES	0.6040	0.5706	24.1	0	0	0	rep9
+baseline	__baseline__	10	YES	2.0586	1.6114	15.9	0	0	1	rep10
+baseline	__baseline__	11	YES	0.7483	1.0730	18.6	0	0	0	rep11
+baseline	__baseline__	12	YES	1.2855	1.4218	21.2	0	0	0	rep12
+baseline	__baseline__	13	YES	0.4441	0.6823	17.1	0	0	0	rep13
+baseline	__baseline__	14	YES	1.5374	2.2578	18.0	0	0	0	rep14
+baseline	__baseline__	15	YES	6.1151	5.2490	20.2	0	0	0	rep15
+baseline	__baseline__	16	YES	0.5843	2.5857	22.7	0	0	1	rep16
+baseline	__baseline__	17	YES	4.9106	2.7521	14.1	0	0	0	rep17
+baseline	__baseline__	18	YES	2.6559	1.4787	25.0	0	0	1	rep18
+baseline	__baseline__	19	YES	2.3401	1.0180	18.7	0	0	0	rep19
+baseline	__baseline__	20	YES	0.6501	0.2949	16.7	0	0	0	rep20
+baseline	__baseline__	21	YES	0.6317	0.6639	19.8	0	0	0	rep21

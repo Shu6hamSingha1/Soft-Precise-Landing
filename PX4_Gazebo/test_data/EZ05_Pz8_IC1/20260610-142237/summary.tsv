@@ -1,0 +1,6 @@
+knob	val	rep	landed	xy_err	rel_vel	flight_s	precise	soft	target_lost	result_dir
+baseline	__baseline__	1	YES	2.9164	0.3288	11.2	0	0	0	rep1
+baseline	__baseline__	2	YES	3.1054	2.4866	12.6	0	0	0	rep2
+baseline	__baseline__	3	YES	21.2127	11.9805	23.9	0	0	1	rep3
+baseline	__baseline__	4	YES	1.5484	0.3434	12.8	0	0	0	rep4
+baseline	__baseline__	5	YES	10.0809	7.5206	17.6	0	0	0	rep5

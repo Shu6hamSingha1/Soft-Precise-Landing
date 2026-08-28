@@ -1,0 +1,109 @@
+=================================================================
+[retry] Attempt 1 / 4
+=================================================================
+[run] HEADLESS mode: Gazebo will run server-only, QGC skipped.
+[run] launching microxrce (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/microxrce.log)
+[run] starting PX4 SITL rover (-i 1, airframe 4022, world rover_cross)...
+[run] waiting for Gazebo (rover) to come up . up after 1s.
+[run] starting PX4 SITL UAV (-i 0, airframe 4014, standalone)...
+[run] waiting for UAV camera topic /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 86677 Killed                  setsid "$@" > "$logfile" 2>&1
+/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 86740 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_SYS_AUTOSTART=4022 PX4_GZ_MODEL_POSE="0,0" PX4_SIM_MODEL="$ROVER_MODEL" PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 1" > "$LOG_DIR/px4_rover.log" 2>&1
+/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/run_rover_landing.sh: line 255: 87178 Killed                  setsid env $EXTRA_ENV_HEADLESS PX4_GZ_STANDALONE=1 PX4_SYS_AUTOSTART=4014 PX4_GZ_MODEL_POSE="1,0" PX4_SIM_MODEL=x500_mono_cam_down PX4_GZ_WORLD="$WORLD" bash -c "cd '$PX4_DIR' && exec ./build/px4_sitl_default/bin/px4 $PX4_DAEMON -i 0" > "$LOG_DIR/px4_sitl.log" 2>&1
+... up after 3s.
+[run] launching bridge_clock (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_clock.log)
+[run] launching bridge_pose (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_pose.log)
+[run] launching bridge_image (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_image.log)
+[run] launching bridge_chase (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/bridge_chase.log)
+[run] launching chase_rec (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/chase_rec.log)
+[run] launching qgc (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/qgc.log) — non-fatal
+[run] waiting for UAV preflight to clear ............... (timeout, proceeding anyway)
+[run] starting rover motion source: '/home/shubham/ws/scripts/env2025/bin/python3' '/home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../apps/rover_drive.py'
+[run] launching rover_drive (log: /home/shubham/Soft-Precise-Landing/PX4_Gazebo/scripts/../run_logs/rover_drive.log)
+[run] short settle (5s) before launching landing_test (arm() polls is_armable)...
+
+[run] All background processes up. Starting landing_test.py...
+[run] Press Ctrl+C to abort and clean everything up.
+
+Waiting for Flight Controller to connect...
+-- Connected to Flight Controller!
+Starting with recording...
+[controller] PLASMC_GT_FEEDBACK=1 — GT channels: all (perception for the rest)
+[PLASMC] per-axis theta ON (decoupled switching + kappa-ODE; PLASMC_THETA_PER_AXIS=0 for legacy scalar)
+[PLASMC] non-default parameters:
+  XI2_X = 1  (default 0.2)
+  XI2_Y = 1  (default 0.2)
+  XI2_Z = 1  (default 0.2)
+  P20_X = 15  (default 25)
+  P20_Y = 15  (default 25)
+  P20_Z = 10  (default 4)
+  P2INF_X = 1  (default 2.5)
+  P2INF_Y = 1  (default 2.5)
+  OMEGA_X = 0.1  (default 0.05)
+  OMEGA_Y = 0.1  (default 0.05)
+  OMEGA_Z = 0.1  (default 0.025)
+  GAMMA_X = 0.25  (default 0.4375)
+  GAMMA_Y = 0.25  (default 1)
+  E_X = 1  (default 1.5)
+  E_Y = 1  (default 1.5)
+  E_Z = 0.5  (default 1)
+  N_X = 0.1  (default 0.02)
+  N_Y = 0.1  (default 0.02)
+  N_Z = 0.1  (default 0.02)
+  P_X = 2.5  (default 5)
+  P_Y = 2.5  (default 5)
+  KAPPA0_X = 0.5  (default 0.15625)
+  KAPPA0_Y = 0.5  (default 0.15625)
+  KAPPA0_Z = 0.25  (default 0.3125)
+[controller] PLASMC_TOUCHDOWN_LOOM=1: loom-inversion touchdown detect (h_z>0.0 for 3 frames + |s_e_n|<0.6, armed after h_z<-0.1)
+[controller] PLASMC_SAVGOL_PREDICT=1: PER-AXIS rate-gated predictor MODE=model (lead=0.04s; gate |dh|>[10. 10. 12.] |ds_n|>[5. 5.]; raw-buffer, no feedback)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+[controller] PLASMC_HD_FUNNEL_REF=1: h_d x/y rate = S_r*dp_r (funnel ref); zeta_h un-degenerated (moving-target candidate)
+[controller] PLASMC_HD_KR=0.5: h_d carries back-map convergence term -k_r*zeta_r/g_r
+[controller] PLASMC_AU_LEAD=1: lateral lead (1+s/0.9)/(1+s/3.5) on I_a xy (+35 deg @1.4 rad/s, HF x3.9)
+-- Waiting for is_armable (EKF / lockstep ready)...
+  is_armable after 0.1s
+-- Arming
+Armed!
+-- Taking off
+Status: INFO: Using default takeoff altitude: 6.0 m	
+Altitude reached
+-5.077853679656982 5.0
+Switching to OFFBOARD mode!
+-- Starting offboard (attempt 1/5)
+  PX4 reported flight_mode = OFFBOARD
+PositionBody: [x_m: 2.003840684890747, y_m: 1.9314621686935425, z_m: -5.561079025268555]
+[landing_test] Hover to MATLAB-IC ENU (0.0,0.0,5.0)  (+ tilt check)
+Status: CRITICAL: Disarming denied: not landed	
+gRPC error during odometry retrieval: recvmsg:Connection reset by peer
+gRPC error during landed_state retrieval: recvmsg:Connection reset by peer
+gRPC error during acceleration retrieval: recvmsg:Connection reset by peer
+gRPC error during status text retrieval: recvmsg:Connection reset by peer
+Unexpected error: Main Thread: <AioRpcError of RPC that terminated with:
+	status = StatusCode.UNAVAILABLE
+	details = "recvmsg:Connection reset by peer"
+	debug_error_string = "UNKNOWN:Error received from peer  {grpc_message:"recvmsg:Connection reset by peer", grpc_status:14, created_time:"2026-08-24T11:47:39.553411234+05:30"}"
+>
+
+[CrossMarkerNode] diag: 105 process_frame() calls over 3.90s (mean call rate 26.7 Hz), detect ok 105/105 (100%)
+model_pose_subscriber closed
+image_subscriber closed
+model_clock_subscriber closed
+model_clock_subscriber deleted...
+model_pose_subscriber deleted...
+Controller thread is deleted...
+image_subscriber deleted...
+[landing_test] Exiting with code 1: an exception occurred during the run (see 'Unexpected error'/'RuntimeError' output above).
+Flight Controller is disconnected...
+
+[run] Shutting down background processes...
+[run]   killing bridge_clock (pid 88230 + group)
+[run]   killing bridge_pose (pid 88253 + group)
+[run]   killing bridge_image (pid 88273 + group)
+[run]   killing bridge_chase (pid 88321 + group)
+[run]   killing chase_rec (pid 88354 + group)
+[run]   killing qgc (pid 88381 + group)
+[run]   killing rover_drive (pid 89856 + group)
+[run] done.
+[retry] Attempt 1 exited rc=1 (not a retriable flake); giving up.

@@ -1,0 +1,5 @@
+----- montage_cross ic1 try 1/6 -----
+  result: ON 0.172 alt=0.671 | run=Fri Aug 28 11-26-17 2026 chase=chase_2026-08-28_11-25-13.mp4 drone=Fri Aug 28 11-25-58 2026.mp4
+[montage] 269 frames (244 descent + 25 tail)  960x720@25.0  (chase 197f td@196, drone 325f td@324, GT 1820samp, 9.8s)  -> /home/shubham/Soft-Precise-Landing/PX4_Gazebo/test_data/Test_Videos/montage_ic1_cross.mp4
+[montage]  frame 0/269
+MONTAGE_ic1 -> test_data/Test_Videos/montage_ic1_cross.mp4 (ON 0.172 alt=0.671)
