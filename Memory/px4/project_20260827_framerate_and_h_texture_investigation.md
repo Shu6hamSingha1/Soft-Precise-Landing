@@ -720,3 +720,20 @@ and 0.95 terminal medians -- NO retune. Live terminal rel_resid is HIGHER than t
 earlier no-angvel offline estimate (0.79/0.96), so the gate is if anything more
 decisive on the real gyro-derotated solve. **Terminal h_x/h_y fix: DONE + shipped
 default-on.**
+
+### IC1-5 GT-FB regression sweep with the terminal h_x/h_y fix -- 5/5 SP, CLEAN
+
+| IC | class | xy_err | rel_vel | rate | detect-ok |
+|----|-------|--------|---------|------|-----------|
+| IC1 | SOFT+PRECISE | 0.002 | 0.014 | 46.1 Hz | 100% |
+| IC2 | SOFT+PRECISE | 0.017 | 0.031 | 45.1 Hz | 100% |
+| IC3 | SOFT+PRECISE | 0.018 | 0.010 | 44.6 Hz | 81% |
+| IC4 | SOFT+PRECISE | 0.016 | 0.012 | 45.6 Hz | 84% |
+| IC5 | SOFT+PRECISE | 0.017 | 0.012 | 44.2 Hz | 70% |
+
+All the session's changes (terminal h_x/h_y centroid-rate + `_scen_kf` + `_bgflow_health`
+gate + `_getVirtualPts(log_zv=)`, 320x240 diagonal cal, `process_frame` perf fix)
+coexist with NO GT-FB landing-quality regression across IC1-5. detect-ok 70-84% on
+IC3-5 is the pre-existing 320x240 stroke-width degradation, ridden through fine.
+(Terminal blend is INERT under GT-FB -> this is a no-regression gate, not a benefit
+test; benefit was shown live on the perception signal, prior rep.)
