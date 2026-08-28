@@ -664,3 +664,44 @@ with no background there), a "stop injecting noise into control" fix.
 ⚠ DEFAULT OFF -- control-path -> needs the `feedback_ic_validation` n>=5 IC1-5
 sweep (GT-FB-off, once the 320x240 cal + the off-center kappa wall allow a
 meaningful real-perception sweep) before baking on.
+
+### Terminal h_x/h_y: REDESIGNED -- centroid-rate, bg-flow-health gated (commit 47333a0, DEFAULT ON)
+
+The 680f4a1 extent-gated derate ("suppress h_x/h_y to ~0 near touchdown") was
+replaced -- it assumed a centered STATIONARY touchdown and would hurt a moving
+target (true terminal h_x/h_y != 0 there; h_d != 0). New approach COMPUTES a
+reliable h_x/h_y instead of suppressing:
+
+  h_xy_centroid = d(s_V)/dt + h_z_est * s_V     (image-Jacobian identity, de-loom)
+
+- `_scen_kf_*`: 2-state KF on the V-frame centroid s_V, fed `_center_px` (fresh OR
+  BRIDGED -- survives the terminal detection flicker) every frame via
+  `_stepCentroidKf()`, called in all 3 process_frame paths before `_kf_update_hw`.
+  q=2.0/r=0.02 (offline-tuned). `_getVirtualPts(log_zv=False)` so the extra
+  projection doesn't skew `_z_v_log`.
+- **Scale-free**: s_V normalized-image, d/dt = 1/s, h_z = moment-loom ratio. NO
+  depth/altitude/metric (user-audited). h_z*s makes it correct off-center ->
+  MOTION-AGNOSTIC.
+- **GATE = background-flow HEALTH, not MARKER_EXTENT_PX** (user directive: keep the
+  switch a pure signal-quality decision, no proximity proxy):
+    frac = max( ramp(rel_resid, 0.50..0.90), ramp(16 - n_pts, ..6) )
+  ⚠ `N Flow Corners` stays ~160 even at touchdown -- the terminal failure is point
+  QUALITY (grazing rays on FoV-edge slivers), NOT starvation -- so `rel_resid` is
+  the load-bearing term. `_bgflow_health` (rel_resid, n_pts) set by
+  `_compute_hw`/`_compute_hw_bgflow`/`_compute_hw_bgflow_fallback`, reset (inf,0)
+  each frame. New Img_Data logs: "HxHy Centroid Blend" (frac), "BgFlow Health".
+- Blend + mild R bump (x8) + value clamp (+-0.20 backstop for a divergent rep).
+- DEFAULT ON (`CROSS_HXY_TERMINAL_CENTROID=1`). Perception change, not control-law
+  -> no n>=5 IC gate (per user 2026-08-28: that gate is for CONTROL changes only).
+  Safe: no-op if rel_resid stays low near touchdown. INERT under GT-FB.
+
+Offline A/B (extent-gated precursor, same centroid-rate mechanism), 5 landing
+reps, terminal (ext>=200) h_x/h_y corr: ~0 -> +0.55..+0.96 on 4/5; +0.64/+0.75
+on the 5th (a divergent rep, clamp backstops). Unit-tested: healthy solve ->
+frac 0 passthrough; rel_resid 0.95 -> frac 1, garbage bg-flow rejected/clamped.
+
+**PENDING (next free SITL):** fresh GT-FB rep -> confirm `BgFlow Health` rel_resid
+actually rises in the terminal phase (early terminal-resolve diag showed
+median 0.79 / p90 0.96 but that was the no-angvel worse solve); tune
+`CROSS_HTC_RESID_LO/HI` if the live gyro-derotated solve's terminal rel_resid
+sits lower.
