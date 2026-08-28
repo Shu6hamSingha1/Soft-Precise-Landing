@@ -5,9 +5,69 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-29T03:15:00.000Z
+  modified: 2026-08-29T03:20:00.000Z
 ---
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still): `PLASMC_AZ_JOINT` implemented, a real bug caught
+## and fixed pre-merge, validated SAFE but LOW PRACTICAL IMPACT at IC3/IC5
+
+Implemented the joint `a_z`-in-QP design scoped earlier this session, per explicit user
+direction ("complete the joint CBF approach... irrespective of where we are"). `controller.py`
+only (`cbf_visibility.py` untouched -- `tools/validate_cbf.py` stayed 12/12 throughout).
+
+**First draft had a real bug, caught in offline review before SITL**: raised `a_z` alone
+without rescaling `I_a[:2]`, which SHRINKS the realized lean instead of preserving it (exactly
+backwards). Rewritten to defer to the codebase's own ALREADY-EXISTING, unconditional
+thrust-magnitude sphere cap (`|I_a+g*e3|<=A_CAP`, `controller.py` "DELIVERABLE-THRUST-
+MAGNITUDE CAP", 2026-08-23) rather than duplicating it -- numerically verified this existing
+mechanism correctly preserves direction under saturation.
+
+**First SITL smoke test (n=3, IC5) FAILED: 0/3 SP.** Root cause: the simplified version fully
+SKIPPED the fixed-angle `theta_cap` clip, not realizing that clip does DOUBLE DUTY -- it's
+both a deliverability bound AND the ONLY thing preventing a pathological/degenerate QP output
+(`theta_desired = I_a[:2]/a_z` can blow up) from reaching Fix B's `rd3` (attitude direction)
+undamped. Observed live: `theta_cone` hit **21.68 rad (~1240deg)**, nonsensical, driving the
+attitude command directly. The thrust-magnitude sphere cap only bounds MAGNITUDE -- a garbage
+DIRECTION with correct magnitude is still garbage.
+
+**Fixed**: never fully skip the angle clip. Instead make its BOUND `a_z`-aware --
+`arccos(a_z_current/A_CAP)` (the true max deliverable angle AT THE CURRENT `a_z`, using the
+same boundary/max-achievable-lean derivation as the existing hover-based constant) instead of
+the fixed `arccos(g/A_CAP)`. Always finite (0 to pi/2 rad), reduces to the EXACT original
+constant at `a_z=g` (hover), correctly tightens as `a_z` moves away from hover -- addresses
+the real "assumes hovering" gap without ever removing the safety bound. `PLASMC_AZ_JOINT=0`
+preserves the exact original behavior byte-for-byte.
+
+**Re-test (n=3, IC5, corrected version): 2/3 SP, worst miss 1.73m -- no catastrophic
+failures, `theta_cone` confirmed bounded (max 0.766, well under pi/2) throughout all 3
+reps.** Comparable to the drift-fix-only baseline's performance at this IC.
+
+**Honest assessment: correct and safe, but LOW PRACTICAL IMPACT here.** The joint deliverability
+check (`az_joint_delta(t)`, newly logged) engaged in only 0-1 frames per rep (out of 600-1400) --
+`a_z` never comes anywhere near `A_CAP` in these reps, so the constraint essentially never
+binds. This is CONSISTENT with the mid-session physics correction: the empirically-observed
+ratchet mechanism doesn't involve thrust saturation (dtheta_correction tops out ~2 m/s^2 on
+top of hover ~9.81, vs A_CAP~13.6 -- nowhere near the ceiling), so a saturation-only joint
+constraint has little to contribute to THIS specific failure. The one remaining IC5 miss
+(rep2, 1.73m) still shows the ratchet (`kappa` to 3.91, `dtheta_az` outlier to 29.48,
+`TARGET_LOST`-contained) -- neither `CBF_HZ_AWARE_DRIFT` nor `PLASMC_AZ_JOINT` fixes it.
+
+**Conclusion**: `PLASMC_AZ_JOINT` is implemented, validated safe (no regression, always
+bounded), and correctly does what it was designed to do (an exact, non-heuristic
+deliverability bound) -- but it's not, on its own, the fix for the failures this investigation
+has been chasing, since those don't appear to involve thrust saturation. It remains a
+legitimate, principled replacement for the old hover-assumed cap (worth keeping/baking on
+its own correctness merits, e.g. it would matter more at genuinely aggressive/high-`a_z`
+maneuvers), but the REMAINING IC3/IC5 gap is still open, and per the earlier finding in this
+file (IC5_rep4-vs-rep5), likely needs EITHER the `th_curr` self-defeating-loop fix (unrelated
+to `a_z`/thrust budget) OR the Phase-2 detection-outage mitigation (a minimum-authority floor
+on `theta_cone` during a decode-fail streak) -- not further `a_z`-budget work.
+
+**n=3 only** -- not yet a proper n>=5 confirm; given the low practical impact found, a larger
+sample is lower priority than pursuing the two mechanisms actually implicated in the
+remaining failures.
+
+---
 ## ⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day): TWO DISTINCT TRIGGERS for the IC3/IC5
 ## kappa-ratchet, not one -- the IC5_rep4-vs-rep5 ignition discriminator is a genuine,
 ## sustained CBF Phase-2 detection outage, INDEPENDENT of DTHETA_HREF/h_ref entirely

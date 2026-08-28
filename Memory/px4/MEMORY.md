@@ -68,6 +68,23 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented) — `PLASMC_AZ_JOINT`: a real bug caught+fixed
+> pre-merge, validated SAFE but LOW PRACTICAL IMPACT.** First draft fully skipped the
+> hover-assumed `theta_cap` angle clip, not realizing it does double duty (deliverability
+> bound AND the only thing preventing a degenerate QP output from reaching the attitude
+> command undamped) — SITL smoke test hit `theta_cone=21.68 rad` (nonsensical) and 0/3 SP.
+> **Fixed**: never skip the angle clip; make its bound `a_z`-aware instead
+> (`arccos(a_z_current/A_CAP)`, always finite 0..pi/2, exactly matches the old constant at
+> hover, tightens correctly as `a_z` moves away from hover). Re-test: 2/3 SP, no
+> catastrophic failures, `theta_cone` confirmed bounded throughout. **But the joint
+> constraint barely engages (0-1/600-1400 frames per rep) — `a_z` never nears `A_CAP` in
+> these failures, consistent with the earlier physics correction (the ratchet isn't a
+> saturation effect).** Implemented, safe, principled (worth keeping on its own
+> correctness merits), but NOT the fix for the remaining IC3/IC5 gap — that likely needs
+> either the `th_curr` self-defeating-loop fix or a Phase-2 minimum-authority floor (see
+> the detection-outage finding below), not more `a_z`-budget work. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
 > **⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still) — TWO INDEPENDENT triggers for the IC3/IC5
 > kappa-ratchet, not one.** Traced `IC5_rep4` (large `dtheta_az` outlier, 11.15 rad, but
 > landed clean) vs `IC5_rep5` (ignited) from the `CBF_HZ_AWARE_DRIFT` confirm sweep — run

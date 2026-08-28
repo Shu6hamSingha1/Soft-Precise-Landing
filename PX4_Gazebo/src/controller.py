@@ -1769,6 +1769,7 @@ class Controller(Thread):
         self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
         self._dtheta_xfade_w_log = []  # direct-term crossfade weight (v3, see __init__ note)
         self._dtheta_correction_log = []  # final (post-crossfade, post-cap) I_a[2] correction actually applied
+        self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -3509,14 +3510,32 @@ class Controller(Thread):
         _dtheta_correction = float(np.clip(_dtheta_correction, 0.0, _dtheta_cap))
         self._dtheta_correction_log.append(_dtheta_correction)
         I_a[2] -= _dtheta_correction   # more negative I_a[2] = more lift = slower descent
-        # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
-        # it is a thrust-deliverability bound, not a visibility constraint. The CBF
-        # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
-        # single scale clips both consistently (|I_a[:2]| = a_z·|th_safe|).
+        # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
+        # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
+        # of this fully SKIPPED the angle clip below, relying only on the downstream
+        # thrust-magnitude sphere cap. That's wrong -- the angle clip does double duty:
+        # it's both a deliverability bound AND the ONLY thing preventing a pathological/
+        # degenerate QP output (theta_desired = I_a[:2]/a_z can blow up, observed live up
+        # to 21.68 rad -- ~1240deg, nonsensical) from reaching Fix B's `rd3` (attitude
+        # direction) undamped. The thrust-magnitude sphere cap bounds MAGNITUDE only; a
+        # garbage DIRECTION with correct magnitude is still garbage. Fix: NEVER fully skip
+        # the angle clip -- instead make its BOUND az-aware (arccos(a_z_current/A_CAP),
+        # the true deliverable angle AT THE CURRENT a_z) instead of the fixed hover-
+        # assumed constant (arccos(g/A_CAP)) the non-joint path uses. This addresses the
+        # actual "assumes hovering" gap (uses REAL a_z, not hover g) while keeping the
+        # same always-active sanity bound. `PLASMC_AZ_JOINT` OFF preserves the exact
+        # original behavior (fixed hover-based cap) for backward compatibility.
+        _az_joint = os.environ.get("PLASMC_AZ_JOINT", "0") == "1"
+        self._az_joint_log.append(0.0)   # populated for real below, once the downstream cap's effect is known
         if self._theta_safe is not None:
+            if _az_joint:
+                _az_now = abs(float(I_a[2]))
+                _cap_eff = float(np.arccos(np.clip(_az_now / A_CAP, -1.0, 1.0))) if A_CAP > 0 else self._theta_cap
+            else:
+                _cap_eff = self._theta_cap
             _tn = float(np.linalg.norm(self._theta_safe))
-            if _tn > self._theta_cap:
-                _scl = self._theta_cap / _tn
+            if _tn > _cap_eff:
+                _scl = _cap_eff / _tn
                 self._theta_safe = self._theta_safe * _scl
                 I_a[:2] = I_a[:2] * _scl
             theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
@@ -3536,9 +3555,11 @@ class Controller(Thread):
         # so attitude and deliverable thrust stay consistent.
         _thrust_vec = I_a + np.array([0.0, 0.0, g])
         _thrust_mag = float(np.linalg.norm(_thrust_vec))
+        _az_before_cap = float(I_a[2])
         if _thrust_mag > A_CAP > 0.0:
             _thrust_vec *= A_CAP / _thrust_mag
             I_a = _thrust_vec - np.array([0.0, 0.0, g])
+        self._az_joint_log[-1] = float(I_a[2] - _az_before_cap)   # how much this cap actually moved a_z this cycle (0 when it didn't bind)
 
         # log FoV diagnostics
         self._rho_fov_log.append(rho_fov_curr.copy())
@@ -3879,6 +3900,7 @@ class Controller(Thread):
             "dtheta_href_g(t)": self._dtheta_href_g_log,
             "dtheta_xfade_w(t)": self._dtheta_xfade_w_log,
             "dtheta_correction(t)": self._dtheta_correction_log,
+            "az_joint_delta(t)": self._az_joint_log,
         }
 
     def getImgData(self):
