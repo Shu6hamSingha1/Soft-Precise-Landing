@@ -1,11 +1,177 @@
 ---
 name: project_20260824_ic5_angle_clustering_and_hang_investigation
-description: "⭐⭐⭐⭐⭐ 2026-08-28 IC1-5 GATE RUN: `PLASMC_DTHETA_HREF=1` CONFIRMED to eliminate the ASCENDING/dtheta-cap-pinning mechanism (0 occurrences across the full 25-rep gate, incl. all 3 misses checked -- max pinned-run 12 cycles vs the 55-74 catastrophic signature) with NO regression at IC1/IC2/IC4 (all 5/5 SP, clean). BUT IC5 is still NOT clean (3/5 SP, one miss xy=5.46m -- worse in absolute terms than any prior catastrophic case) via a DIFFERENT, newly-prominent failure: a rapid LATERAL DRIFT in the final ~4s of descent (GT y: +0.07m@t=7s -> -4.55m@t=11s), unrelated to dtheta_az entirely (anomaly='N/A', mild pinning). IC3 also showed a new miss (1/5, xy=1.99m) with no anomaly flag. NOT YET ROOT-CAUSED -- this residual lateral-drift failure needs its own investigation before considering IC5 solved or baking DTHETA_HREF as unconditionally safe. DTHETA_HREF itself is validated for its target mechanism and safe re: IC1/IC2/IC4 regression; IC5 (and now IC3) still has open issues."
+description: "⭐⭐⭐⭐⭐⭐ 2026-08-29 ROOT-CAUSED (CORRECTED 2026-08-29, same day): the IC3/IC5 'lateral-drift' failure from the 2026-08-28 gate is NOT a new mechanism -- it's the kappa-ratchet (failure mode 11, previously confirmed RESOLVED by project_20260828_kappa_ratchet_campaign, but that campaign never tested with PLASMC_DTHETA_HREF=1 on). Confirmed via Control_Data.npy: kappa_y 0.17->4.3 (IC5_rep2) / 0.08->10.8 (IC3_rep3), sigma_y diverging past -9, a_u_y to -152/+378 -- the classic ratchet signature, not a new drift. TRIGGER MECHANISM (CORRECTED): h_ref_eff has ALWAYS multiplied the full s[:3] vector in h_d_ff -- this is the original, correct MATLAB-ported PLASMC design (visualControl_IBVS_adaptive.m:665-666, `V_h_d = ... + (h_rd - dot(...))*V_s(1:3)`, present in the Python port since 2026-06-01, ~3 months before PLASMC_DTHETA_HREF existed) -- NOT an oversight or bug, and NOT something DTHETA_HREF introduced. What IS new (2026-08-24) is DTHETA_HREF modulating this pre-existing, correctly-coupled term with a NEW time-varying gain (dtheta_href_g, 0.15-1.0) driven by dtheta_az -- a signal that is itself UNCAPPED (only the gain-scaled dtheta_correction is capped at 2.0) and can spike to outlier magnitudes (measured 8.175 rad) right at the geometrically hardest moment (near the FoV edge, where s_x/s_y are already large -- IC3/IC5-specific geometry). That spike collapses dtheta_href_g transiently, injecting a lateral h_d perturbation through the PRE-EXISTING (correct) s[:3] coupling at exactly the moment sigma is most vulnerable -- coincides with sigma_y's acceleration into the diverging regime that then ratchets kappa. NOT YET FIXED. Candidate fix: cap/smooth dtheta_az itself (or gate dtheta_href_g's rate of change) before it drives the exponential -- do NOT restrict h_ref_eff to s[2] only, that would break the intentional MATLAB-matched coupling for every OTHER caller of h_ref_eff, not just DTHETA_HREF. DTHETA_HREF remains validated + safe for IC1/IC2/IC4; IC3/IC5 need a fix before it can be considered unconditionally safe to bake."
 metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-28T12:30:57.654Z
+  modified: 2026-08-29T02:30:00.000Z
+---
+
+## ⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day) — `CBF_HZ_AWARE_DRIFT` PROTOTYPE: substantially reduces (not fully eliminates) the IC3/IC5 ratchet, WITHOUT `DTHETA_HREF`
+
+User's counter-proposal (in-session): rather than freeze `h_ref` and patch around the ratchet
+downstream, fix the CBF's own drift model at the source. `cbf2_filter`'s Phase-1 drift term
+`dft = tau*state["d"]` (`cbf_visibility.py`) assumes the currently-measured feature drift
+rate holds CONSTANT over the lookahead horizon `tau` -- but under continued descent with any
+lateral offset, translational drift scales with `1/Z`, so it actually ACCELERATES as Z
+shrinks. The constant-velocity model systematically undershoots near-touchdown drift, making
+the QP reactive (only tightens after drift has ramped up) instead of proactive -- independently
+corroborates `reference_cbf_visibility_architecture`'s already-flagged Gap #1 (missing `δ_m`
+linearization-residual margin).
+
+**Prototype implemented** (`cbf_visibility.py`, gated `CBF_HZ_AWARE_DRIFT`, default off,
+scale-free): passes `h_z` (`self._h[-1][2]`, the already-computed loom/closing-rate proxy,
+`~= -Zdot/Z`) into `cbf2_filter`. When enabled, `dft` becomes an exponential extrapolation
+`state["d"] * (expm1(closing_rate*tau)/closing_rate)` (`closing_rate = max(-h_z, 0)`) instead
+of the linear `tau*d` -- reduces EXACTLY to the old formula at `h_z=0` (verified numerically,
+also `tools/validate_cbf.py` still 12/12). `cbf_visibility_aruco.py` accepts-but-ignores `h_z`
+for call-site compatibility only (ArUco untouched, out of scope). No Z/altitude used anywhere
+-- fully scale-free per the project's hard constraint.
+
+**n=5 IC3+IC5 confirm (GT-FB, `CBF_HZ_AWARE_DRIFT=1`, `DTHETA_HREF` NOT set -- tests the fix
+alone):**
+
+| IC | no-fix baseline | with h_z-aware drift |
+|---|---|---|
+| IC3 | 4/5 SP (1 miss, 1.99m) | **5/5 SP** |
+| IC5 | 3/5 SP (1 miss, **5.46m catastrophic**) | 4/5 SP (1 miss, **1.71m**) |
+| Combined | 7/10 SP | **9/10 SP** |
+
+Both failure RATE and SEVERITY improved substantially with zero regression on the other 9/10
+reps, and this required NO `DTHETA_HREF` at all -- supports the hypothesis that fixing the
+QP's own drift model at the source reduces the need for the downstream reactive
+suppression/slowdown layer, rather than just patching around it.
+
+**NOT a complete fix.** The one remaining IC5 miss (rep5) still shows the ratchet signature
+(`kappa_y` 0.5->3.3, `dtheta_az` spiked to 15.1 rad with 5 outlier events >2rad) -- milder
+than before (`a_u_y` peaked at 72, vs -152/+378 pre-fix) and caught by `TARGET_LOST`'s
+open-loop fallback before full divergence (1.71m vs 5.46m), but the underlying mechanism
+(uncapped `dtheta_az` -> ratchet) is only reduced in frequency, not eliminated.
+
+**User's parallel proposal, not yet implemented**: rather than only clip `a_x`/`a_y` in the
+QP (current design), also bring `a_z` into the SAME constrained optimization -- since
+`theta_max_deliverable = arccos(a_z/A_CAP)` (`THETA_CAP_DEG_DERIVED`, `controller.py:197`,
+already correctly derived from measured thrust margin), growing `a_z` (the current dtheta/
+`h_ref` "extra lift" approach) PHYSICALLY SHRINKS the max deliverable lean at the SAME fixed
+thrust ceiling -- it was never going to reliably help, independent of the `th_curr`
+feedback-loop bug. A properly joint QP could correctly weigh the `a_z`/lean tradeoff instead
+of blindly growing `a_z`. Scoped as the next step if the drift-model fix alone (once
+`DTHETA_HREF`'s original `ASCENDING`-fix role is separately re-checked) doesn't fully close
+the remaining gap.
+
+**Per-rep confirmation (2026-08-29, later same day): outlier `dtheta_az` spikes are necessary
+but NOT sufficient for the ratchet to ignite.** Full per-rep `dtheta_az`/`kappa`/`a_u` check
+across all 10 IC3+IC5 reps:
+
+| rep | outcome | dtheta max | outlier spikes (>2rad) | kappa max | a_u max |
+|---|---|---|---|---|---|
+| IC3 rep1-5 | all SP (0.019-0.034m) | 0.6-1.4 | **0/5 reps** | 0.50 (pinned) | <=1.43 |
+| IC5 rep1-3 | SP (0.013-0.018m) | 0.07-0.74 | 0 | 0.50 (pinned) | <=1.89 |
+| IC5 rep4 | SP (0.017m), clean | **11.15** | **6** | 0.50 (pinned, NO ratchet) | 1.62 |
+| IC5 rep5 | miss (1.71m) | 15.11 | 5 | 3.30 (ratchet) | 72.24 |
+
+IC3 is now completely clean (zero outlier spikes across all 5 reps). IC5_rep4 is the key new
+data point: it hit a comparably large/numerous outlier spike run (11.15 rad, 6 events) to the
+failing rep5 (15.11 rad, 5 events), yet `kappa` never left its 0.50 init and the rep landed
+clean -- confirming the fix reduces BOTH how often outlier spikes occur (still 2/5 at IC5,
+down from the implied near-universal rate pre-fix) AND, independently, the vehicle's
+vulnerability to a given spike actually cascading into the ratchet (now only 1/5 spike-bearing
+reps ignites, vs the pre-fix baseline where every observed bad rep ignited). Two separate,
+still-open sub-problems, not one: (a) why outlier `dtheta_az` spikes still occur at all under
+the improved drift model, and (b) what precisely differs between a spike that ignites (rep5)
+vs one that doesn't (rep4) -- worth a direct rep4-vs-rep5 trace comparison before the joint
+`a_z`-QP work, since it may reveal a cheaper interim mitigation (e.g. a rate-limit on
+`dtheta_href_g`, if `DTHETA_HREF` is ever re-enabled) independent of the larger redesign.
+
+**Next steps, in order**:
+1. Check whether `CBF_HZ_AWARE_DRIFT=1` alone (still without `DTHETA_HREF`) also prevents the
+   original `ASCENDING` fly-away pattern under real (non-GT-feedback) perception -- this
+   smoke test was GT-feedback only, which may not exercise that failure mode the same way.
+2. Trace IC5_rep4 vs IC5_rep5 directly (both hit large outlier dtheta_az spikes; only rep5
+   ignited) to understand the ignition-vs-non-ignition discriminator before committing to the
+   full joint-QP redesign -- may reveal a cheaper interim fix.
+3. If a residual gap remains after (1)/(2), scope+implement the joint `a_z`-in-QP design
+   (scoped 2026-08-29, see the design-scope conversation this session: replace the current
+   hover-assumed `theta_cap = arccos(g/A_CAP)` with the true spherical deliverability
+   constraint `|I_a+g*e3|<=A_CAP`, jointly optimized with the visibility box via a 3rd
+   sphere-projection step added to the existing alternating-projection QP; requires
+   re-deriving the forward-invariance theorem under the joint constraint before it can be
+   trusted the way the current barrier is -- bigger, multi-session task, not a quick add).
+4. Full IC1-5 regression gate with `CBF_HZ_AWARE_DRIFT=1` (currently only IC3/IC5 tested;
+   IC1/IC2/IC4 not yet re-checked with this change, though it's a no-op there whenever
+   `h_z>=0`/not closing).
+
+---
+
+## ⭐⭐⭐⭐⭐⭐ ROOT CAUSE (2026-08-29, CORRECTED same day): the IC3/IC5 gate failures are the kappa-ratchet, reignited by DTHETA_HREF modulating a pre-existing (correct) h_ref->lateral coupling
+
+The "lateral-drift" failure flagged in the 2026-08-28 IC1-5 gate entry below was a
+MISDIAGNOSIS -- closer inspection of `Control_Data.npy` shows it's the exact
+kappa-ratchet signature (failure mode 11) that `project_20260828_kappa_ratchet_campaign`
+confirmed resolved in the current baked config -- **but that campaign never tested with
+`PLASMC_DTHETA_HREF=1` set**, and this gate did.
+
+**Confirmed ratchet data:**
+- IC5_rep2 (xy=5.46m): `kappa_y` 0.17 (t=6s) -> 4.3 (t=11.5s), `sigma_y` diverges past
+  -9 (E=1 bound), `a_u_y` explodes to -152.
+- IC3_rep3 (xy=1.99m): `kappa_y` (later, x too) 0.08 -> 10.8, `a_u_y` to +378.
+- Both: `s_e_n` grows monotonically instead of converging, matching every prior
+  documented ratchet trace in this codebase.
+
+**⛔ CORRECTION (same day, caught by user): the original write-up below mischaracterized
+`h_d_ff = (h_ref_eff - dot(cross_ws,e3)) * self._s[-1][:3]` (`controller.py:2390`) as an
+"oversight" leaking `h_ref_eff` into the lateral channel. It is NOT a bug and NOT new.**
+Verified via `git log` + the MATLAB reference:
+- This exact formula has existed in the Python port since the earliest recoverable
+  commit (`4e3b6ed2`, 2026-06-01) -- ~3 months before `PLASMC_DTHETA_HREF` was added
+  (2026-08-24). `git log -S` on the term confirms no intervening change to this
+  multiplication.
+- It is a direct, intentional port of `visualControl_IBVS_adaptive.m:665-666`:
+  `V_h_d(:,idx) = V_ds_d + cross(V_w, V_s(1:3)) + (h_rd - dot(cross(V_w, V_s(1:3)), e3))*V_s(1:3)`
+  -- MATLAB's own `h_rd` (same role as `h_ref_eff`) multiplies the FULL `V_s(1:3)`, byte-
+  for-byte matching the Python. The code's own comment even cites this ("MATLAB
+  visualControl_IBVS_adaptive.m:369-370 EXACTLY").
+- This is correct IBVS kinematics: `s` is the full 3D normalized bearing/position vector;
+  a scalar desired closing-rate naturally projects through it into all 3 axes of the
+  feedforward `h_d`. Not a wiring mistake.
+
+**Trigger mechanism, corrected: the risk is entirely in what DTHETA_HREF adds (2026-08-24), not in the pre-existing s[:3] coupling itself.**
+1. `PLASMC_DTHETA_HREF`'s `dtheta_href_g` is a NEW, time-varying gain (0.15-1.0) that
+   multiplies `h_ref_eff` before it flows through the (correct, pre-existing) `* s[:3]`
+   coupling.
+2. `dtheta_href_g`'s driver, `dtheta_az` (the raw, UNCAPPED suppressed-demand norm --
+   only the gain-scaled `dtheta_correction` is capped at 2.0), can spike to outlier
+   magnitudes (measured: 8.175 rad, ~4x typical) right at the geometrically hardest
+   moment -- when `s_x`/`s_y` are already large (near the FoV edge), which is exactly
+   when IC3/IC5's specific geometry (IC5: steep low-altitude viewing angle; IC3:
+   opposite-quadrant `-2,2,5` spawn) makes the CBF suppress hardest.
+3. That spike collapses `dtheta_href_g` transiently (measured: 0.95 -> 0.77), and because
+   `h_ref_eff` legitimately couples into the lateral channel (see above), this transient
+   propagates into `h_d`'s x/y feedforward at precisely the moment `sigma` is most
+   vulnerable -- coincides with `sigma_y` accelerating from a normal ~-0.3/cycle step
+   into a sustained divergent trajectory, after which `kappa`'s growth term dominates
+   its leakage term and ratchets.
+
+**Why IC1/IC2/IC4 don't show it**: they share IC3/IC5's lateral-offset magnitude but at
+gentler viewing geometry (IC2/IC4 are higher-altitude, same offset; IC1 is centered), so
+`dtheta_az` rarely produces an outlier-magnitude spike there.
+
+**NOT YET FIXED. Candidate fix, corrected**: the earlier proposal ("restrict
+`dtheta_href_g`'s scaling to `s[2]` only") is WRONG -- `h_ref_eff` is shared by every
+other caller too (the `_descent_gate`/`_dgate_g` path, the non-`DTHETA_HREF` baseline),
+and none of them are broken; special-casing `s[:3]` only for the `DTHETA_HREF` path would
+diverge from the validated MATLAB coupling for no justified reason. The actual fix target
+is `dtheta_az` (or `dtheta_href_g`'s rate of change) being unbounded per-cycle: either cap
+`dtheta_az` itself before it drives the exponential (mirroring `dtheta_correction`'s
+existing 2.0 cap), or rate-limit `dtheta_href_g` so a single-cycle outlier can't collapse
+it that fast. Neither implemented or tested yet.
+
+**Recommendation**: do NOT bake `PLASMC_DTHETA_HREF=1` as an unconditional default yet.
+It is validated + safe for IC1/IC2/IC4, but IC3/IC5 need a fix (cap/rate-limit the
+`dtheta_az`->`dtheta_href_g` path, NOT touch the `s[:3]` coupling) + re-validation before
+it's safe everywhere.
+
 ---
 
 ## ⭐⭐⭐⭐⭐ IC1-5 GATE (2026-08-28): DTHETA_HREF's target mechanism confirmed fixed + no IC1/2/4 regression, but IC5 still fails via a DIFFERENT residual lateral-drift issue

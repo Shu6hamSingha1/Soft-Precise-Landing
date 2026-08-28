@@ -68,7 +68,50 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
-> **⭐⭐⭐⭐⭐ 2026-08-28 — IC1-5 GATE for `PLASMC_DTHETA_HREF=1`: target mechanism CONFIRMED
+> **⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day) — `CBF_HZ_AWARE_DRIFT` prototype (default off):
+> fixing the CBF's own drift model (constant-velocity `dft=tau*d` → closing-rate-aware
+> exponential, driven by the scale-free `h_z` loom proxy, `cbf_visibility.py`) substantially
+> reduces the IC3/IC5 ratchet WITHOUT `DTHETA_HREF` at all.** n=5 IC3+IC5 confirm (GT-FB):
+> IC3 4/5→**5/5 SP**, IC5 3/5(worst 5.46m catastrophic)→4/5(worst **1.71m**, `TARGET_LOST`
+> fallback catches it, no hard impact). Combined 7/10→9/10 SP, zero regression, `tools/
+> validate_cbf.py` still 12/12, exact backward-compat at `h_z=0`. **NOT fully fixed** — the
+> one remaining IC5 miss still shows the ratchet (milder: `a_u_y` to 72 vs -152/+378).
+> User's parallel proposal (not yet built): bring `a_z` into the SAME constrained QP as
+> `a_x`/`a_y`, since `theta_max = arccos(a_z/A_CAP)` means growing `a_z` (the old dtheta/
+> `h_ref` "extra lift" approach) physically SHRINKS deliverable lean at a fixed thrust
+> ceiling — it was never reliably going to help. Full data + next steps:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐ 2026-08-29 (CORRECTED same day) — IC3/IC5 gate failure ROOT-CAUSED: NOT a new
+> lateral-drift bug, it's the kappa-RATCHET (failure mode 11) reignited by
+> `PLASMC_DTHETA_HREF=1` modulating a PRE-EXISTING, CORRECT `h_ref`→lateral coupling.**
+> `project_20260828_kappa_ratchet_campaign` confirmed the ratchet resolved in the current
+> baked config — but never tested with `DTHETA_HREF=1` on. Confirmed via `Control_Data.npy`:
+> `kappa_y` 0.17→4.3 (IC5) / 0.08→10.8 (IC3), `sigma_y` diverging past -9, `a_u_y` to
+> -152/+378 — the classic ratchet signature. **Mechanism, corrected after user pushback**:
+> `controller.py:2390`'s `h_d_ff = (h_ref_eff - dot(cross_ws,e3)) * s[:3]` — multiplying
+> `h_ref_eff` into the FULL `s[:3]`, not just z — is NOT a bug; it's the exact, intentional
+> MATLAB-ported design (`visualControl_IBVS_adaptive.m:665-666`, `h_rd` also multiplies the
+> full `V_s(1:3)`), present since 2026-06-01, ~3 months before `DTHETA_HREF` existed. What's
+> actually new (2026-08-24) and risky is `DTHETA_HREF`'s `dtheta_href_g` — a NEW time-varying
+> gain on `h_ref_eff`, driven by `dtheta_az`, which is itself UNCAPPED (only the gain-scaled
+> `dtheta_correction` is capped at 2.0) and can spike to outlier magnitudes (8.175 rad
+> measured) right at the FoV edge (IC3/IC5-specific geometry) — collapsing `dtheta_href_g`
+> transiently and injecting a lateral perturbation, THROUGH the correct pre-existing
+> coupling, at exactly the moment `sigma` is most vulnerable, igniting the ratchet. IC1/IC2/
+> IC4 don't trigger it — gentler viewing geometry, `dtheta_az` rarely spikes that hard there.
+> **NOT YET FIXED — fix target is `dtheta_az`/`dtheta_href_g`'s per-cycle bound (cap or
+> rate-limit), NOT the `s[:3]` coupling** (an earlier draft of this finding wrongly proposed
+> restricting `h_ref_eff` to `s[2]` only — that would break the validated MATLAB coupling for
+> every other caller, not just this one). **Do NOT bake `PLASMC_DTHETA_HREF=1`
+> unconditionally** — safe at IC1/IC2/IC4, unsafe at IC3/IC5 until a fix lands.
+> Cross-referenced into both `project_20260828_kappa_ratchet_campaign` (caveat added) and
+> `project_20260824_crossmarker_offcenter_convergence_wall` (distinguished — that one is
+> kappa leaking DOWN/bounded, this is kappa RATCHETING UP/unbounded, don't conflate). Full
+> mechanism: [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐ 2026-08-28 (superseded misdiagnosis, kept for history) — IC1-5 GATE for
+> `PLASMC_DTHETA_HREF=1`: target mechanism CONFIRMED
 > fixed, ZERO regression at IC1/IC2/IC4, but IC5 STILL FAILS via a different, unfixed
 > lateral-drift mechanism — do not describe IC5 as solved.** Full 25-rep gate (n=5/IC): IC1
 > 5/5 SP (0.003m), IC2 5/5 SP (0.019m), IC4 5/5 SP (0.023m) — all clean, no regression. IC3

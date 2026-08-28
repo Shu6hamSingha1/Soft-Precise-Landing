@@ -40,7 +40,7 @@ import numpy as np
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, radius, env=None):
+                p_10, theta_cone, dt_last, w_rp, state, radius, env=None, h_z=0.0):
     """Constrain the lateral accel command for target visibility (cbf2).
 
     2026-08-13 (user, cross-marker/ArUco split): this module is now the
@@ -111,7 +111,25 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         sentinel.
     env : mapping, optional
         Environment overrides (defaults to ``os.environ``). Reads
-        ``CBF_TAU, CBF_DMIN_EMA, CBF_PHASE2_HYSTERESIS, CBF_PHASE2_RAMP_FRAMES``.
+        ``CBF_TAU, CBF_DMIN_EMA, CBF_PHASE2_HYSTERESIS, CBF_PHASE2_RAMP_FRAMES,
+        CBF_HZ_AWARE_DRIFT``.
+    h_z : float, optional
+        Scale-free loom/closing-rate proxy (``self._h[-1][2]``, ``~= -Zdot/Z``,
+        negative while closing/descending -- see the codebase's touchdown-detect
+        sign convention). Default 0.0 (fully backward compatible: with h_z=0 the
+        drift extrapolation below is byte-identical to the pre-2026-08-29
+        constant-velocity formula). 2026-08-29 (user design): the drift term's
+        constant-velocity extrapolation (``dft = tau*d``) assumes the CURRENT
+        measured drift rate ``d`` holds steady over the lookahead horizon
+        ``tau`` -- but under continued descent with any lateral offset, the
+        normalized/tangent-space feature position scales roughly as
+        ``offset/Z``, so translational drift itself ACCELERATES as Z shrinks
+        (the same closing-rate factor h_z measures). The constant-velocity
+        model systematically undershoots true near-touchdown drift, making the
+        QP reactive (only tightens after drift has already ramped up) instead
+        of proactive. Gated behind ``CBF_HZ_AWARE_DRIFT`` (default "0") pending
+        IC3/IC5 validation -- see the accelerating-extrapolation derivation at
+        the ``dft`` computation below.
 
     Returns
     -------
@@ -199,7 +217,28 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             d_raw = (cr2 - state["cr_prev"]) / dt_last - Lw2 @ np.asarray(w_rp, float)
             ema = float(env.get("CBF_DMIN_EMA", "0.3"))
             state["d"] = (1 - ema) * state.get("d", np.zeros(2)) + ema * d_raw
-            dft = tau * state["d"]
+            # HZ-AWARE ACCELERATING DRIFT (2026-08-29, user design, gated behind
+            # CBF_HZ_AWARE_DRIFT, default off): the plain `tau*d` extrapolation
+            # below assumes the measured drift rate `d` holds CONSTANT over the
+            # lookahead horizon `tau`. Under continued descent it doesn't --
+            # translational drift scales with 1/Z, so as Z keeps shrinking during
+            # that same horizon the true drift rate keeps growing. Model d(s) ~
+            # d(0)*exp(closing_rate*s) for s in [0,tau] (closing_rate = max(-h_z,
+            # 0), only amplified while actually closing -- h_z<0 -- never while
+            # climbing/hovering) and integrate: displacement = d(0) *
+            # (exp(closing_rate*tau)-1)/closing_rate. Reduces EXACTLY to the
+            # original tau*d as closing_rate->0 (backward-compatible at hover/
+            # h_z=0, verified via the Taylor limit below), grows super-linearly
+            # as closing_rate increases -- makes the QP anticipate near-touchdown
+            # drift instead of only reacting after it's already ramped up.
+            if env.get("CBF_HZ_AWARE_DRIFT", "0") == "1":
+                _closing_rate = max(-float(h_z), 0.0)
+                if _closing_rate * tau > 1e-6:
+                    dft = state["d"] * (np.expm1(_closing_rate * tau) / _closing_rate)
+                else:
+                    dft = tau * state["d"]   # Taylor limit as closing_rate*tau->0
+            else:
+                dft = tau * state["d"]
         state["cr_prev"] = cr2.copy()
         state["Lw2_prev"] = Lw2.copy()                               # stash for Phase 2 headroom calc
         cz, sz = np.cos(yaw_c), np.sin(yaw_c)

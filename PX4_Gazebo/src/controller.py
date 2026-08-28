@@ -3440,11 +3440,17 @@ class Controller(Thread):
             p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+        # h_z (2026-08-29, CBF_HZ_AWARE_DRIFT prototype): pass the scale-free
+        # loom/closing-rate proxy so the QP's drift extrapolation can account
+        # for descent-driven acceleration of feature drift. See cbf2_filter's
+        # own h_z docstring for the derivation. Default-off (CBF_HZ_AWARE_DRIFT
+        # env var), so passing this is a no-op until explicitly enabled.
+        _cbf_h_z = float(self._h[-1][2]) if len(self._h) > 0 else 0.0
         I_a, theta_cone, _cbf_ok, self._theta_safe, _th_desired = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
             p_10_eff, theta_cone,
-            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2)
+            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z)
         # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
         # loom-margin-prediction approach entirely, not stacked on it). That approach used
         # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for

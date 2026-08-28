@@ -1,6 +1,6 @@
 ---
 name: project_20260824_crossmarker_offcenter_convergence_wall
-description: "Cross-marker perception-mode IC2 (off-center) shows a severe y-axis lateral non-convergence (xy_err 2.3-4.0m) — GT-verified as the SAME pre-existing ArUco kappa-leakage/funnel \"off-center wall\" (project_bake_and_sp_walls), not a cross-marker-specific bug; confirmed independent of the separate raw-detection-flicker issue"
+description: "Cross-marker perception-mode IC2 (off-center) shows a severe y-axis lateral non-convergence (xy_err 2.3-4.0m) — GT-verified as the SAME pre-existing ArUco kappa-leakage/funnel \"off-center wall\" (project_bake_and_sp_walls), not a cross-marker-specific bug; confirmed independent of the separate raw-detection-flicker issue. ⚠ DISTINGUISH from [[project_20260824_ic5_angle_clustering_and_hang_investigation]]'s 2026-08-29 IC3/IC5 kappa-RATCHET finding (added for cross-reference, 2026-08-29): superficially similar (both show s_e_n failing to converge while kappa moves), but mechanistically opposite -- THIS wall is kappa LEAKING DOWN while error persists (growth term never dominates, no blowup, bounded a_u); that one is kappa RATCHETING UP (growth term dominates, a_u to -152/+378), only occurs with PLASMC_DTHETA_HREF=1 set, and is GT-feedback (not perception-mode). Don't conflate the two when diagnosing a future non-convergence case -- check whether kappa is rising or falling and whether DTHETA_HREF is set."
 metadata: 
   node_type: memory
   type: project
