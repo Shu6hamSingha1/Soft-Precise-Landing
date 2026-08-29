@@ -905,6 +905,40 @@ indirect proxy). `CROSS_CENTER_BRIDGE_FRAMES` validation (enable + re-test wheth
 recovers `lt2_angle_clusters`-heavy stretches) is the other still-untried lever from the
 2026-08-24 memory.
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29: `CROSS_ANGLE_MERGE_TOL_DEG` loosened (12->20) A/B'd at IC5 --
+## FIRST n=5 looked like a fix (5/5 SP), SECOND n=5 confirm sweep REPRODUCES baseline exactly
+## (3/5 SP) -- do NOT bake, this is the SAME small-n false-positive pattern as 2026-08-26
+
+Tried loosening `_cluster_line_angles`'s merge tolerance (`cross_marker_detector.py`,
+`CROSS_ANGLE_MERGE_TOL_DEG`, default `12.0`) per this file's own "natural next step" note.
+Mechanism hypothesis (untested, plausible): `lt2_angle_clusters` may be driven less by two
+DIFFERENT arms bridging into one cluster (which a smaller tolerance would fix) and more by a
+SINGLE arm's own Hough segments scattering internally under oblique-view noise and
+fragmenting past the tolerance -- a WIDER tolerance would then help by keeping each arm's own
+noisy segments correctly merged, a prerequisite for resolving the true 2-cluster (~90 deg
+apart) pair.
+
+**Run 1 (n=5, `CROSS_ANGLE_MERGE_TOL_DEG=20`): 5/5 SP** -- best IC5 result in this entire
+investigation, `lt2_angle_clusters` tightly clustered 8.8-11.4% across all 5 reps (no
+outlier spike, unlike baseline's 6.1-20.4% range). Looked like a genuine fix.
+
+**Run 2 (n=5, SAME config, independent confirm sweep): 3/5 SP (2 misses)** --
+`lt2_angle_clusters` hit 14.9% and **24.7%** (the two misses) vs 9.4-10.5% (the 3 SP reps) --
+the EXACT SAME outcome-tracking signature as baseline, with a spike magnitude (24.7%) that
+matches or exceeds baseline's own worst rep (20.4%).
+
+**Combined n=10 at `merge_tol=20`: 8/10 SP (80%) -- IDENTICAL to baseline `merge_tol=12`'s
+own combined n=10 (8/10, 80%, two separate n=5 sweeps).** No detectable improvement once
+properly confirmed. **This is the THIRD time this exact investigation has produced a
+misleading clean small-n IC5 read** (2026-08-26's section above documents the first two,
+n=3 then n=5, both later reproduced-as-failing on a second sweep) -- reinforces this file's
+own standing lesson: IC5's `lt2_angle_clusters` failure is probabilistic/threshold in
+nature, and ANY single n<=5 clean sweep at this IC should be treated as inconclusive by
+default, not as a fix, regardless of how clean it looks. **`CROSS_ANGLE_MERGE_TOL_DEG`
+stays at its default `12.0` -- do NOT bake `20`.** Recorded as tested-and-inconclusive, not
+as a negative result (the mechanism hypothesis above is untested and could still be right;
+this A/B just didn't show a large enough real effect to distinguish it from noise at n=10).
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
