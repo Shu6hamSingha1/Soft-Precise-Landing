@@ -939,6 +939,41 @@ stays at its default `12.0` -- do NOT bake `20`.** Recorded as tested-and-inconc
 as a negative result (the mechanism hypothesis above is untested and could still be right;
 this A/B just didn't show a large enough real effect to distinguish it from noise at n=10).
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29: `CROSS_CENTER_BRIDGE_FRAMES` first validation attempt --
+## BLOCKED by a real interaction bug, not a bridge-design failure: `CROSS_BG_FLOW_HYBRID`
+## (default on since 2026-08-28) clobbers the cell IDs the bridge (default off since
+## 2026-08-24) needs, so the bridge has NEVER actually been able to engage under this
+## codebase's real defaults
+
+First-ever flight test of `CROSS_CENTER_BRIDGE_FRAMES` (n=5, IC5, `=10`, default
+`merge_tol=12`, `PLASMC_GT_FEEDBACK=1 PLASMC_DTHETA_HREF=1 CBF_HZ_AWARE_DRIFT=1`): **2/5 SP
+-- worse than the 4/5 baseline**, not neutral. Root cause found before drawing any
+conclusion about the bridge's own merit: `Bridge Diag Log` showed **0 bridges accepted
+across all 5 reps** (380-428 reject events per rep, **100% `no_anchor_or_no_curr_pts`**).
+
+**Mechanism**: `CROSS_BG_FLOW_HYBRID` (`cross_marker_perception.py`, default `"1"` since
+2026-08-28) is the flow-solve path used on every successful detection frame now (gated
+behind `CROSS_BG_FLOW`, also default `"1"`). Inside `_compute_hw_bgflow`'s CLAHE+FB solve
+(the path actually exercised whenever `CROSS_BG_FLOW_HYBRID=1`), a successful solve
+unconditionally sets `self._prev_flow_cell_id = None` ("cell_id=None, matching the
+unconstrained-sampler convention" -- correct for THAT method's own callers, e.g. the ring
+overlay diagnostic, but not accounted for against `_snapshotBridgeAnchor()`, added a
+different day for a different feature). `_snapshotBridgeAnchor()` runs immediately after
+every successful frame and copies `_prev_flow_cell_id` as the bridge's anchor -- always
+`None` under real defaults. `_tryCenterBridge()`'s cell-ID matching then rejects with
+`no_anchor_or_no_curr_pts` on literally every subsequent miss, regardless of streak length,
+IC, or anything else -- **the bridge has never had a chance to engage under this
+codebase's actual running defaults since `CROSS_BG_FLOW_HYBRID` shipped**, independent of
+whether the bridge's own design/gating logic is sound.
+
+This is a genuine cross-feature interaction bug between two independently-built mechanisms
+from different dates (bridge: 2026-08-24, cell-ID-based; hybrid flow: 2026-08-28, silently
+drops cell IDs) -- neither author would have seen this without running both together, and
+nobody had until this test. **Not yet fixed** (three options considered: disable
+`CROSS_BG_FLOW_HYBRID` for a decoupled bridge test; make `_compute_hw_bgflow`
+preserve/restore `_prev_flow_cell_id` so both can coexist at their real defaults; or stop
+and just record the bug -- user chose the decoupled-test path, see below for that result).
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
