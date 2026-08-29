@@ -974,6 +974,46 @@ nobody had until this test. **Not yet fixed** (three options considered: disable
 preserve/restore `_prev_flow_cell_id` so both can coexist at their real defaults; or stop
 and just record the bug -- user chose the decoupled-test path, see below for that result).
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (properly controlled): `CROSS_CENTER_BRIDGE_FRAMES` shows
+## NO measurable benefit at IC5 once it actually engages -- do NOT bake
+
+Continuing from the interaction-bug section above. Root cause of the 0-accept blockage was
+narrower than first guessed: it's not `CROSS_BG_FLOW_HYBRID` specifically -- `_compute_hw_bgflow`
+itself (used whenever `CROSS_BG_FLOW=1`, default, regardless of the HYBRID sub-flag) always
+sets `_prev_flow_cell_id = None` after a successful solve, since that method does fresh GFT
+sampling per frame pair with no cell-ID bookkeeping at all (unlike `_compute_hw`'s persistent
+ring-cell tracking). Confirmed: re-test with `CROSS_BG_FLOW_HYBRID=0` alone (leaving
+`CROSS_BG_FLOW=1`) still showed **0 bridges accepted** (5/5 SP -- ANOTHER small-n lucky
+draw, same pattern as `merge_tol=20`'s first run). Only disabling `CROSS_BG_FLOW=0` entirely
+routes the success path through `_compute_hw`'s cell-ID tracking and lets the bridge engage.
+
+**Properly controlled A/B (n=5 each, `CROSS_BG_FLOW=0` in BOTH arms to isolate the bridge's
+own marginal effect from the flow-method swap):**
+- `CROSS_CENTER_BRIDGE_FRAMES=10` (bridge ON, confirmed engaging: 5-15 bridges accepted per
+  rep via `Bridge Diag Log`, median displacement 2.6-9.7px): **4/5 SP**.
+- `CROSS_CENTER_BRIDGE_FRAMES=0` (bridge OFF, same `CROSS_BG_FLOW=0`, otherwise identical
+  config): **4/5 SP** -- IDENTICAL rate.
+
+**Conclusion: the bridge makes NO measurable difference once it's actually able to engage.**
+The apparent earlier "fix" signals (0-accept 5/5 run, and even the working-bridge 4/5 run in
+isolation) were both within IC5's normal probabilistic variance for this failure mode --
+consistent with every other single-n=5 read in this file's history. **Do NOT bake
+`CROSS_CENTER_BRIDGE_FRAMES` off the basis of any run in this investigation.**
+
+**Separately, real (unfixed) findings from this exercise, independent of the bridge's own
+merit:**
+1. `_compute_hw_bgflow`'s cell-ID reset is a genuine bug relative to
+   `_snapshotBridgeAnchor()`'s expectations -- `CROSS_CENTER_BRIDGE_FRAMES` cannot function
+   AT ALL under this codebase's real defaults (`CROSS_BG_FLOW=1`) until this is fixed (e.g.
+   make `_compute_hw_bgflow` preserve/restore `_prev_flow_cell_id`, or give the bridge its
+   own anchor mechanism independent of cell IDs). Not fixed this session.
+2. `_compute_hw_bgflow`'s own docstring says "HYBRID (`CROSS_BG_FLOW_HYBRID=1`, default
+   off)" -- this is STALE; the module-level flag default is actually `"1"` (on, since
+   2026-08-28). Doc/code mismatch, not yet corrected.
+3. `CROSS_BG_FLOW=0` (used only as a diagnostic isolator here, not a recommendation) departs
+   from the 2026-08-27 GT-validated default method -- do not carry this env var forward into
+   any other test without re-deriving why.
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
