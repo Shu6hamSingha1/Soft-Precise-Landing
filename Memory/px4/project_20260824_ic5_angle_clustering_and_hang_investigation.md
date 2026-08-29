@@ -1014,10 +1014,19 @@ merit:**
    from the 2026-08-27 GT-validated default method -- do not carry this env var forward into
    any other test without re-deriving why.
 
-## Open item / natural next step
+## Open item / natural next step (updated 2026-08-29 -- see sections above for what WAS tried)
 
-The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
-`merge_tol_deg=12` (or another parameter in that path) likely needs to be less brittle
-under high viewing-angle tilt, OR `landing_test.py`'s grace/abort logic needs to tolerate
-IC5-class steep-angle noise better. Neither attempted this session; this memory documents
-the confirmed root cause only, not a fix.
+The angle-clustering fragility itself is still NOT fixed. Tried and REJECTED this session
+(both properly n=10-controlled, do not re-attempt without a new idea): loosening
+`CROSS_ANGLE_MERGE_TOL_DEG` 12->20 (no real effect vs baseline), and
+`CROSS_CENTER_BRIDGE_FRAMES` center-bridge recovery (no measurable effect once actually
+engaging). Untried candidates: (a) `landing_test.py`'s grace/abort logic tolerating
+IC5-class steep-angle noise better (a policy fix, not a perception fix); (b) fixing the
+`_compute_hw_bgflow` cell-ID-clobbering bug so `CROSS_CENTER_BRIDGE_FRAMES` can even be
+correctly evaluated under real (`CROSS_BG_FLOW=1`) defaults -- the two prior tests only
+ever ran with `CROSS_BG_FLOW=0`, an unvalidated deviation, so the bridge's true default-path
+behavior remains genuinely unknown, not just negative; (c) a Hough-stage fix upstream of
+clustering (e.g. line detection itself, not the angle-merge tolerance downstream of it) --
+not explored at all this session. `lt2_angle_clusters` is now permanently logged
+(`Img_Data.npy`'s `"Fail Reason"`), so any future attempt at (a)/(b)/(c) has a direct,
+quantifiable metric to A/B against without re-deriving instrumentation.
