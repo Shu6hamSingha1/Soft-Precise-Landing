@@ -113,6 +113,15 @@
 > `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross`) a prior result used before
 > treating a new number as a regression.
 >
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (GATED) — full IC1-5 n=5 confirm of the
+> `CBF_JOINT_QP` default: IC1-4 perfect (5/5 SP each, sub-3cm), IC5 4/5 SP (best full-gate
+> IC5 result to date, single 1.81m miss).** Config: `PLASMC_GT_FEEDBACK=1
+> PLASMC_DTHETA_HREF=1 CBF_HZ_AWARE_DRIFT=1`, `CBF_JOINT_QP` at its new default (unset->on),
+> via `run_ic_validation.sh IC_LIST="IC1 IC2 IC3 IC4 IC5" N_REPS=5`. Zero regression outside
+> IC5; IC5 itself improved over every prior isolated n=3 test this thread. This combination
+> is now the strongest validated full-gate config. Full table:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]].
+>
 > **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented, superseded by CBF_JOINT_QP above) —
 > `PLASMC_AZ_JOINT`: a real bug caught+fixed
 > pre-merge, validated SAFE but LOW PRACTICAL IMPACT.** First draft fully skipped the

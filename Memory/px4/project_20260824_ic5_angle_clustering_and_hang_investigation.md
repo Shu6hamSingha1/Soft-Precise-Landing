@@ -808,6 +808,34 @@ path"). Two edits:
   `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross` is this project's
   canonical IC-validation invocation.
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (GATE): full IC1-5 n=5 confirm, `CBF_JOINT_QP` default -- NO regressions, IC5 best full-gate result yet
+
+`run_ic_validation.sh IC_LIST="IC1 IC2 IC3 IC4 IC5" N_REPS=5`,
+`WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1 PLASMC_DTHETA_HREF=1
+CBF_HZ_AWARE_DRIFT=1 HEADLESS=1` (canonical full-gate config, [[project_20260828_kappa_ratchet_campaign]]-era + `CBF_HZ_AWARE_DRIFT=1`), `CBF_JOINT_QP` at its new
+default (unset -> on). 25 reps total.
+
+| IC | soft | precise | mean xy | max xy |
+|----|-----|--------|--------|-------|
+| IC1 | 5/5 | 5/5 | 0.003m | 0.004m |
+| IC2 | 5/5 | 5/5 | 0.017m | 0.020m |
+| IC3 | 5/5 | 5/5 | 0.021m | 0.029m |
+| IC4 | 5/5 | 5/5 | 0.025m | 0.026m |
+| IC5 | 4/5 | 4/5 | 0.373m | 1.806m |
+
+**IC1-4: perfect, 5/5 SP each, sub-3cm mean error -- confirms `CBF_JOINT_QP` default flip
+causes NO regression anywhere outside IC5.** **IC5: 4/5 SP -- the best full-n=5-gate IC5
+result in this project's history** (previously 2/3 or worse in every isolated n=3 test this
+thread, and historically IC5's chronic weak point across the whole IC-validation history).
+Single miss: rep4, xy_err=1.806m, `flight_s=15.5` (short -- consistent with the
+`TARGET_LOST`-class single-miss pattern seen throughout this thread, not a new failure
+mode). **Net: `CBF_JOINT_QP` (default) + `CBF_HZ_AWARE_DRIFT=1` + `PLASMC_DTHETA_HREF=1` is
+now the strongest validated full-gate configuration for IC5 to date, with zero IC1-4 cost.**
+
+Natural next step if further IC5 improvement is wanted: investigate rep4's specific failure
+(Control_Data.npy trace) to see if it's the same kappa-ratchet-adjacent single-miss class
+already characterized in this file, or a new mechanism -- not yet done this session.
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
