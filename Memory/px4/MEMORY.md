@@ -113,6 +113,19 @@
 > `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross`) a prior result used before
 > treating a new number as a regression.
 >
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 — `lt2_angle_clusters` fail_reason breakdown now
+> PERMANENTLY logged** (`cross_marker_perception.py`'s `_fail_reason_log`, exposed as
+> `"Fail Reason"` in `Img_Data.npy` — previously only derivable via one-off scripts reading
+> `get_diag_log()` per investigation, per [[feedback_cross_marker_detection_flicker]]'s "Not
+> done" item). Re-confirms (does NOT newly discover) the 2026-08-25/26 finding:
+> `lt2_angle_clusters` dominates every IC5 rep's misses and is the ONLY fail_reason that
+> scales with outcome (6.1% best rep → 20.4% the one miss, this n=5 batch; up to 68% in the
+> worst historical reps) — every other reason stays flat regardless of outcome. Also found:
+> the z_v-rejection miss branch (`process_frame`) never calls `_log_frame_data` at all, so
+> those frames are invisible to EVERY log in the class, not just this new one — not fixed,
+> real gap if that fraction turns out material. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
 > **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (GATED) — full IC1-5 n=5 confirm of the
 > `CBF_JOINT_QP` default: IC1-4 perfect (5/5 SP each, sub-3cm), IC5 4/5 SP (best full-gate
 > IC5 result to date, single 1.81m miss).** Config: `PLASMC_GT_FEEDBACK=1

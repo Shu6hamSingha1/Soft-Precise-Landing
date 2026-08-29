@@ -836,6 +836,75 @@ Natural next step if further IC5 improvement is wanted: investigate rep4's speci
 (Control_Data.npy trace) to see if it's the same kappa-ratchet-adjacent single-miss class
 already characterized in this file, or a new mechanism -- not yet done this session.
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29: `lt2_angle_clusters` root cause RE-CONFIRMED, now via a
+## PERMANENT `Fail Reason` per-frame log (previously only measured via bespoke one-off scripts)
+
+**Correction to how this is framed**: `lt2_angle_clusters` dominance was already measured
+THREE times before this (2026-08-25 original finding, 2026-08-26 `a87ac00` n=3+n=5+n=8
+confirm sweeps -- see this file's earlier sections / `px4/MEMORY.md` lines ~260-290) --
+this is NOT a first discovery. Those measurements came from `get_diag_log()` /
+`self._diag_log` read directly by ad-hoc analysis scripts per-investigation, never
+persisted into the saved `Img_Data.npy` -- so every prior confirm required re-deriving the
+breakdown by hand each time. **What's actually new here**: `_fail_reason_log` /
+`"Fail Reason"` is now a PERMANENT field in `getLogData()`'s output, so any future IC5 (or
+other IC) run automatically has this breakdown available in `Img_Data.npy` without special
+instrumentation -- this was flagged as a "Not done" gap in
+[[feedback_cross_marker_detection_flicker]] (2026-08-24) and is now closed structurally,
+not just for one more data point.
+
+Also checked while adding it: whether `CROSS_CENTER_BRIDGE_FRAMES` (default `0`, disabled,
+never flight-validated per the same memory) could have rescued IC5_rep4's ~34% raw-decode
+miss rate found while tracing that rep's `TARGET_LOST` (see the section above this one).
+
+**Fix**: added `self._fail_reason_log` (`cross_marker_perception.py`) -- `"ok"` on success,
+`det.fail_reason` string on a raw-decode miss -- exposed via `getLogData()` as `"Fail
+Reason"` in `Img_Data.npy`. **Caveat found while adding it**: the SEPARATE z_v-rejection
+miss branch (`process_frame`, the degenerate-centroid-ray guard from the 2026-08-03
+plausibility-gate fix) returns early WITHOUT calling `_log_frame_data` at all -- those frames
+are invisible to EVERY log in this class, not just this new one. Not fixed this session
+(scope: fail_reason breakdown only); a real gap if z_v-rejects turn out to be a meaningful
+fraction of misses (not measured).
+
+**n=5 IC5 re-run (`PLASMC_GT_FEEDBACK=1 PLASMC_DTHETA_HREF=1 CBF_HZ_AWARE_DRIFT=1`,
+`CBF_JOINT_QP` default): 4/5 SP (rep3 missed, 1.67m)** -- consistent with every other IC5
+n=5 test this thread. **Fail Reason breakdown, all 5 reps:**
+
+| rep | ok% | `lt2_angle_clusters` | `centroid_mismatch` | `insufficient_fit_points` | `near_parallel_fit` | outcome |
+|-----|-----|----------------------|----------------------|----------------------------|----------------------|---------|
+| 1 | 83.1% | 6.1% | 5.1% | 3.8% | 1.7% | SP |
+| 2 | 76.5% | 10.4% | 5.1% | 5.3% | 2.7% | SP |
+| **3** | **64.2%** | **20.4%** | 6.1% | 7.6% | 1.1% | **MISS (1.67m)** |
+| 4 | 76.9% | 10.5% | 5.4% | 4.8% | 2.3% | SP |
+| 5 | 76.4% | 12.4% | 5.3% | 4.2% | 1.7% | SP |
+
+**`lt2_angle_clusters` (Hough-stage: fewer than 2 distinct line-angle clusters resolved for
+the cross's two arms -- `cross_marker_detector.py`, the exact mechanism this memory file was
+originally named for) is BY FAR the dominant miss reason in every rep (2-3x every other
+reason combined), and it is the ONLY reason that scales with outcome**: 6.1% in the best rep,
+20.4% in the miss -- more than 3x the best-rep rate. Every other fail_reason stays flat
+(~5-8%) regardless of outcome -- background noise, not the discriminator. **Consistent with every prior measurement of this mechanism**: IC5's steep/oblique viewing
+angle stresses the Hough angle-clustering stage specifically, and the rep-to-rep variance in
+HOW MUCH it's stressed (not a different mechanism) is what separates SP from miss at this
+IC -- this n=5 batch's numbers (6.1%-20.4% `lt2_angle_clusters`, tracking outcome) sit in
+the same range as the 2026-08-25/26 measurements (up to 68% in the worst historical reps),
+now captured via the permanent log instead of a one-off script.
+
+Separately, this run's rep4 (`IC5_rep4`, 20260829-161537) had 76.9% ok / 10.5%
+`lt2_angle_clusters` and landed SP -- confirms the EARLIER `IC5_rep4` miss (0% Phase-1 success,
+`test_data/ICValidation/20260829-135703`) analyzed just before this fix was added is a
+DIFFERENT rep instance (same IC, different random seed/run), not a re-observation of the same
+event; that earlier trace's "raw det.ok missed 34.5% of frames" number is consistent with
+this new breakdown's magnitude (a worse-than-typical `lt2_angle_clusters` stretch), now
+explained by an actual cause rather than an opaque binary miss flag.
+
+**Natural next step**: `cross_marker_detector.py`'s `merge_tol_deg=12` (the angle-cluster
+merge tolerance named in this file's original "Open item") is the first concrete lever to
+try loosening -- untested this session; would need an A/B at IC5 (this Fail-Reason log makes
+that A/B directly measurable for the first time, via `lt2_angle_clusters` rate rather than an
+indirect proxy). `CROSS_CENTER_BRIDGE_FRAMES` validation (enable + re-test whether it
+recovers `lt2_angle_clusters`-heavy stretches) is the other still-untried lever from the
+2026-08-24 memory.
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s

@@ -802,7 +802,9 @@ class CrossMarkerPerception:
         self._alpha_log = []     # scalar per frame — marker orientation
         self._n_flow_corners_log = []  # per-frame KLT corner count
         self._feature_visibility_log = []  # True if detection succeeded
-        self._detection_reason_log = []  # fail_reason when det.ok=False
+        self._detection_reason_log = []  # binary "ok"/"miss" per frame
+        self._fail_reason_log = []  # 2026-08-29: granular det.fail_reason ("ok" on success) --
+                                     # see _log_frame_data's comment for the z_v-reject gap
         self._marker_extent_log = []  # MARKER_EXTENT_PX per frame
         self._center_px_log = []  # raw pixel center (for CBF use)
 
@@ -1979,6 +1981,17 @@ class CrossMarkerPerception:
             self._n_flow_corners_log.append(int(len(self._prev_flow_pts)) if self._prev_flow_pts is not None else 0)
             self._feature_visibility_log.append(bool(self._ok))
             self._detection_reason_log.append("ok" if self._ok else "miss")
+            # GRANULAR fail_reason (2026-08-29, cross-marker miss root-cause investigation --
+            # feedback_cross_marker_detection_flicker.md's "Not done" item: det.fail_reason was
+            # captured in self._diag_log but never exposed via getLogData(), so no real flight's
+            # miss frames had ever been broken down by CAUSE, only by the binary ok/miss above).
+            # "ok" on success, det.fail_reason string on a raw-decode miss. NOTE: `det` is always
+            # the real object at both of this method's two call sites (never None) -- the SEPARATE
+            # z_v-rejection miss (process_frame's post-det.ok centroid-ray-degenerate branch)
+            # returns early WITHOUT calling _log_frame_data at all, so those frames are already
+            # invisible to every log in this method, not just this one -- a distinct, pre-existing
+            # gap this fail_reason addition does NOT fix (see that branch for the missing call).
+            self._fail_reason_log.append("ok" if self._ok else str(getattr(det, "fail_reason", "unknown")))
             # Marker extent from bbox (scale-free proximity proxy)
             if self._last_bbox is not None:
                 extent = float(max(self._last_bbox[2], self._last_bbox[3]))  # max(w, h)
@@ -2448,6 +2461,7 @@ class CrossMarkerNode(Thread):
             "N Flow Corners": self._perception._n_flow_corners_log,
             "FEATURE_IS_VISIBLE": self._perception._feature_visibility_log,
             "Detection Status": self._perception._detection_reason_log,
+            "Fail Reason": self._perception._fail_reason_log,  # 2026-08-29: granular det.fail_reason per miss (see _log_frame_data)
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
