@@ -118,8 +118,10 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         Vehicle's max achievable thrust/mass (``controller.py``'s module-level
         ``A_CAP``). Default ``None`` disables ``CBF_JOINT_QP`` regardless of the
         env var (an extra safety net so callers that don't pass it can't
-        accidentally enable the joint solve). 2026-08-29 (user design): with
-        ``CBF_JOINT_QP=1``, solves the FoV visibility box directly for the full
+        accidentally enable the joint solve; ``controller.py`` itself always
+        passes it, so the joint path is what actually runs there).
+        2026-08-29 (user design, DEFAULT ON as of 2026-08-29): with
+        ``CBF_JOINT_QP`` unset or ``=1``, solves the FoV visibility box directly for the full
         ``I_a`` (lateral AND vertical), interleaved with a projection onto the
         true thrust-deliverability sphere ``|I_a+g*e3|<=A_CAP``, rather than
         treating ``a_z`` as a fixed given and patching it separately downstream
@@ -287,7 +289,7 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         if env.get("CBF_LW_ROT", "1") == "1":
             Lw2 = Lw2 @ np.array([[0.0, 1.0], [-1.0, 0.0]])         # L_w @ M (M orthogonal -> row norms unchanged)
         anchor = cr2 - Lw2 @ th_curr + dft                          # f = cr + L_w@(theta-theta_curr) + tau*d
-        # CBF_JOINT_QP (2026-08-29, user design, default off): solve the visibility box
+        # CBF_JOINT_QP (2026-08-29, user design, DEFAULT ON as of 2026-08-29): solve the visibility box
         # DIRECTLY for I_a (lateral AND vertical) instead of the theta-normalized lean
         # vector, interleaved with a projection onto the true deliverability sphere
         # |I_a+g*e3|<=A_CAP. Derivation: theta = P@I_a[:2]/a_z where P = Rz_p90b@Rzm (the
@@ -298,7 +300,7 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # the SAME iteration (outer loop) rather than a fixed input reconstructed
         # downstream (the PLASMC_AZ_JOINT controller.py-level approach). Requires A_CAP
         # (falls through to the theta-based path if not provided, e.g. old callers/tests).
-        _joint_qp = env.get("CBF_JOINT_QP", "0") == "1" and A_CAP is not None and A_CAP > 0
+        _joint_qp = env.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
         if _joint_qp:
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel

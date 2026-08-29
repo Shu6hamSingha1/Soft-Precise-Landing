@@ -3526,9 +3526,17 @@ class Controller(Thread):
         # actual "assumes hovering" gap (uses REAL a_z, not hover g) while keeping the
         # same always-active sanity bound. `PLASMC_AZ_JOINT` OFF preserves the exact
         # original behavior (fixed hover-based cap) for backward compatibility.
+        # CBF_JOINT_QP (default on, see cbf_visibility.py) already interleaves its OWN
+        # az-aware angle clip (arccos(a_z_final/A_CAP)) into the QP itself, so th_safe/
+        # I_a[:2] coming back here are already envelope-consistent -- reapplying a SECOND
+        # clip below using the fixed hover-assumed self._theta_cap would fight that (either
+        # redundant or, when a_z sits below hover, wrongly TIGHTER than the true deliverable
+        # angle at the actual a_z). Skip this block's clip whenever the joint QP ran; keep
+        # it (PLASMC_AZ_JOINT / fixed-cap fallback) only for CBF_JOINT_QP=0 A/B comparisons.
+        _cbf_joint_active = os.environ.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
         _az_joint = os.environ.get("PLASMC_AZ_JOINT", "0") == "1"
         self._az_joint_log.append(0.0)   # populated for real below, once the downstream cap's effect is known
-        if self._theta_safe is not None:
+        if self._theta_safe is not None and not _cbf_joint_active:
             if _az_joint:
                 _az_now = abs(float(I_a[2]))
                 _cap_eff = float(np.arccos(np.clip(_az_now / A_CAP, -1.0, 1.0))) if A_CAP > 0 else self._theta_cap
@@ -3540,6 +3548,8 @@ class Controller(Thread):
                 self._theta_safe = self._theta_safe * _scl
                 I_a[:2] = I_a[:2] * _scl
             theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
+        elif self._theta_safe is not None:
+            theta_cone = float(np.linalg.norm(self._theta_safe))   # joint QP already capped; just refresh the log value
         # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
         # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
         # just above only bounds LEAN ANGLE; nothing previously bounded the FULL thrust
