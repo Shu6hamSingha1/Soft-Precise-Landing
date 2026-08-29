@@ -40,7 +40,8 @@ import numpy as np
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, radius, env=None, h_z=0.0):
+                p_10, theta_cone, dt_last, w_rp, state, radius, env=None, h_z=0.0,
+                A_CAP=None, g=9.81):
     """Constrain the lateral accel command for target visibility (cbf2).
 
     2026-08-13 (user, cross-marker/ArUco split): this module is now the
@@ -112,7 +113,26 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
     env : mapping, optional
         Environment overrides (defaults to ``os.environ``). Reads
         ``CBF_TAU, CBF_DMIN_EMA, CBF_PHASE2_HYSTERESIS, CBF_PHASE2_RAMP_FRAMES,
-        CBF_HZ_AWARE_DRIFT``.
+        CBF_HZ_AWARE_DRIFT, CBF_JOINT_QP``.
+    A_CAP : float, optional
+        Vehicle's max achievable thrust/mass (``controller.py``'s module-level
+        ``A_CAP``). Default ``None`` disables ``CBF_JOINT_QP`` regardless of the
+        env var (an extra safety net so callers that don't pass it can't
+        accidentally enable the joint solve). 2026-08-29 (user design): with
+        ``CBF_JOINT_QP=1``, solves the FoV visibility box directly for the full
+        ``I_a`` (lateral AND vertical), interleaved with a projection onto the
+        true thrust-deliverability sphere ``|I_a+g*e3|<=A_CAP``, rather than
+        treating ``a_z`` as a fixed given and patching it separately downstream
+        (the ``PLASMC_AZ_JOINT`` controller.py-level approach). See the
+        ``CBF_JOINT_QP`` block below for the derivation (solving directly in
+        ``I_a`` units via ``M = Lw2@P/a_z`` instead of the theta-normalized
+        ``Lw2@theta``, per the user's own "why does theta need to exist at all"
+        question this session).
+    g : float, optional
+        Gravity (m/s^2), used only by the ``CBF_JOINT_QP`` sphere projection to
+        build the gravity-shifted thrust vector, same convention as
+        controller.py's own ``I_a + g*e3``. Default 9.81 (unused unless
+        ``CBF_JOINT_QP`` engages).
     h_z : float, optional
         Scale-free loom/closing-rate proxy (``self._h[-1][2]``, ``~= -Zdot/Z``,
         negative while closing/descending -- see the codebase's touchdown-detect
@@ -267,24 +287,75 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         if env.get("CBF_LW_ROT", "1") == "1":
             Lw2 = Lw2 @ np.array([[0.0, 1.0], [-1.0, 0.0]])         # L_w @ M (M orthogonal -> row norms unchanged)
         anchor = cr2 - Lw2 @ th_curr + dft                          # f = cr + L_w@(theta-theta_curr) + tau*d
-        for _ in range(10):                                         # project onto FoV box only
-            f = anchor + Lw2 @ th
-            for k in range(2):
-                if f[k] > m2[k]:
-                    r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-                elif f[k] < -m2[k]:
-                    r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
-        # NOTE: the deliverability tilt cap (theta_cap saturation) is intentionally NOT
-        # applied here — it is a thrust-DELIVERABILITY concern, not a visibility constraint.
-        # The CALLER applies it post-CBF (controller.py), so this function stays a pure
-        # visibility QP whose ONLY constraint is the FoV box projection above.
-        th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
-        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): image -> body/inertial applies
-        # the FORWARD transform directly (Rz(-90deg), same direction as _getVirtualPts),
-        # BEFORE the existing Rz(yaw) inertial-yaw-alignment step.
-        Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])              # Rz(-90deg)
-        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz(-90deg)@theta*
-        theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
+        # CBF_JOINT_QP (2026-08-29, user design, default off): solve the visibility box
+        # DIRECTLY for I_a (lateral AND vertical) instead of the theta-normalized lean
+        # vector, interleaved with a projection onto the true deliverability sphere
+        # |I_a+g*e3|<=A_CAP. Derivation: theta = P@I_a[:2]/a_z where P = Rz_p90b@Rzm (the
+        # SAME forward rotation used to build `th` above), so Lw2@theta =
+        # (Lw2@P/a_z)@I_a[:2] -- the box constraint's Jacobian w.r.t. I_a[:2] directly is
+        # M = Lw2@P/a_z. Solving in I_a units removes the theta round-trip (compute I_a ->
+        # normalize by a_z -> solve -> un-normalize) entirely; a_z itself becomes part of
+        # the SAME iteration (outer loop) rather than a fixed input reconstructed
+        # downstream (the PLASMC_AZ_JOINT controller.py-level approach). Requires A_CAP
+        # (falls through to the theta-based path if not provided, e.g. old callers/tests).
+        _joint_qp = env.get("CBF_JOINT_QP", "0") == "1" and A_CAP is not None and A_CAP > 0
+        if _joint_qp:
+            P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
+            Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel
+            Ia_z = float(I_a[2])
+            for _outer in range(6):
+                _az_now = max(abs(Ia_z), 1e-6)
+                M = (Lw2 @ P) / _az_now                              # box-constraint Jacobian w.r.t. I_a[:2] at the CURRENT a_z estimate
+                for _inner in range(5):                              # box projection (same alternating-projection algorithm, on I_a directly)
+                    f = anchor + M @ Ia_lat
+                    for k in range(2):
+                        if f[k] > m2[k]:
+                            r = M[k]; Ia_lat = Ia_lat - (f[k] - m2[k]) / (r @ r + 1e-12) * r
+                        elif f[k] < -m2[k]:
+                            r = M[k]; Ia_lat = Ia_lat - (f[k] + m2[k]) / (r @ r + 1e-12) * r
+                # deliverability sphere projection, FULL gravity-shifted thrust vector
+                thrust_vec = np.array([Ia_lat[0], Ia_lat[1], Ia_z + g])
+                _T = float(np.linalg.norm(thrust_vec))
+                if _T > A_CAP and _T > 1e-9:
+                    thrust_vec = thrust_vec * (A_CAP / _T)
+                    Ia_lat = thrust_vec[:2].copy()
+                    Ia_z = float(thrust_vec[2] - g)
+            _az_final = max(abs(Ia_z), 1e-6)
+            th_safe = P @ (Ia_lat / _az_final)                        # derived, for Fix B / dtheta consumers -- not the QP's own variable here
+            # SANITY CLIP (2026-08-29, caught in offline stress-testing before SITL): the
+            # sphere projection above bounds THRUST MAGNITUDE, not the derived angle
+            # RATIO -- if Ia_z ends up small while Ia_lat stays large, th_safe can still
+            # blow up non-physically (observed: 3.52 rad, >200deg, in a 500-trial extreme-
+            # input sweep). Same class of bug as the first PLASMC_AZ_JOINT draft. Clip to
+            # the SAME a_z-aware bound (arccos(a_z/A_CAP), always finite 0..pi/2) validated
+            # there, and keep I_a[:2] consistent with the (possibly-clipped) th_safe.
+            _cap_eff_j = float(np.arccos(np.clip(_az_final / A_CAP, -1.0, 1.0)))
+            _tn_j = float(np.linalg.norm(th_safe))
+            if _tn_j > _cap_eff_j:
+                th_safe = th_safe * (_cap_eff_j / max(_tn_j, 1e-9))
+                Ia_lat = _az_final * (P.T @ th_safe)                  # P orthogonal -> P.T == P^-1; keep I_a[:2]/az ratio == clipped th_safe exactly
+            I_a[:2] = Ia_lat
+            I_a[2] = Ia_z                                             # NOTE: unlike the theta-based path, this branch CAN modify I_a[2]
+            theta_cone = float(np.linalg.norm(th_safe))
+        else:
+            for _ in range(10):                                         # project onto FoV box only
+                f = anchor + Lw2 @ th
+                for k in range(2):
+                    if f[k] > m2[k]:
+                        r = Lw2[k]; th = th - (f[k] - m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
+                    elif f[k] < -m2[k]:
+                        r = Lw2[k]; th = th - (f[k] + m2[k]) / (r @ r + 1e-12) * r; f = anchor + Lw2 @ th
+            # NOTE: the deliverability tilt cap (theta_cap saturation) is intentionally NOT
+            # applied here — it is a thrust-DELIVERABILITY concern, not a visibility constraint.
+            # The CALLER applies it post-CBF (controller.py), so this function stays a pure
+            # visibility QP whose ONLY constraint is the FoV box projection above.
+            th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
+            # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): image -> body/inertial applies
+            # the FORWARD transform directly (Rz(-90deg), same direction as _getVirtualPts),
+            # BEFORE the existing Rz(yaw) inertial-yaw-alignment step.
+            Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])              # Rz(-90deg)
+            I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz(-90deg)@theta*
+            theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
         ok = True
     except (IndexError, AttributeError, ValueError, TypeError):
         ok = False

@@ -92,13 +92,15 @@ def _project_box(th, anchor, Lw, m, iters=10):
 
 
 def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
-                p_10, theta_cone, dt_last, w_rp, state, radius=0.0, env=None, h_z=0.0):
-    # `radius` (2026-08-13) / `h_z` (2026-08-29): call-site compatibility with
-    # cbf_visibility.py's (cross-marker's) signature, both accepted-but-unused
-    # here -- this file's own drift term is unchanged; the h_z-aware
-    # accelerating extrapolation is a cross-marker-only prototype pending
-    # validation, not ported here (ArUco is comparison-only per
-    # feedback_aruco_perception_scope).
+                p_10, theta_cone, dt_last, w_rp, state, radius=0.0, env=None, h_z=0.0,
+                A_CAP=None, g=9.81):
+    # `radius` (2026-08-13) / `h_z` (2026-08-29) / `A_CAP`,`g` (2026-08-29): call-site
+    # compatibility with cbf_visibility.py's (cross-marker's) signature, all
+    # accepted-but-unused here -- this file's own drift term and QP are unchanged;
+    # the h_z-aware drift extrapolation and CBF_JOINT_QP joint solve are
+    # cross-marker-only prototypes pending validation, not ported here (ArUco is
+    # comparison-only per feedback_aruco_perception_scope).
+    del A_CAP, g
     del h_z
     # `radius` (2026-08-13): call-site compatibility with cbf_visibility.py's
     # now-mandatory cross-marker `radius` param (controller.py calls

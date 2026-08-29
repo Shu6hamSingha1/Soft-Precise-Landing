@@ -5,9 +5,68 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 4d44a921-8d4d-4924-a38e-243fbd1cb835
-  modified: 2026-08-29T03:20:00.000Z
+  modified: 2026-08-29T04:00:00.000Z
 ---
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still): `CBF_JOINT_QP` implemented INSIDE cbf2_filter --
+## solves directly for I_a (not theta), a second blowup bug caught+fixed offline, then
+## validated clean in SITL
+
+Per user follow-up question ("can we replace theta with I_a[:2]/a_z since now we are
+optimizing I_a not theta") -- extended the `PLASMC_AZ_JOINT` idea (a post-hoc downstream
+patch) into a genuinely joint solve INSIDE `cbf2_filter` itself (`cbf_visibility.py`,
+`CBF_JOINT_QP` env flag, default off, requires `A_CAP`/`g` now threaded in from
+`controller.py`).
+
+**Derivation**: `theta = P@I_a[:2]/a_z` where `P = Rz_p90b@Rzm` (the same forward rotation
+already used to build `th`). So `Lw2@theta = (Lw2@P/a_z)@I_a[:2]` -- the box constraint's
+Jacobian w.r.t. `I_a[:2]` directly is `M = Lw2@P/a_z`. The alternating-projection algorithm
+runs UNCHANGED, just on `I_a[:2]` with `M` instead of `theta` with `Lw2`. Interleaved (6
+outer x 5 inner iterations) with a projection onto the deliverability sphere
+`|I_a+g*e3|<=A_CAP` (full 3-vector, `a_z` re-estimated each outer pass from the CURRENT
+iterate) -- a genuine coupled fixed-point solve, not a sequential lateral-then-vertical patch.
+
+**Offline validation (before any SITL time), all via a standalone script, not
+`tools/validate_cbf.py` (not yet extended to cover this path)**:
+- 200 random trials: sphere constraint held in EVERY case, 0 violations.
+- 200 non-saturating trials: `CBF_JOINT_QP=1` output matches `CBF_JOINT_QP=0` (theta-based)
+  output to MACHINE PRECISION (max diff 9.16e-16) -- confirms the derivation is exactly
+  equivalent when not saturating, not just approximately similar.
+- **Extreme-input stress test (500 trials) caught a SECOND instance of the exact same bug
+  class found in `PLASMC_AZ_JOINT`'s first draft**: `theta_cone` hit 3.52 rad (>200deg,
+  nonsensical) -- the sphere projection bounds thrust MAGNITUDE, not the derived angle
+  RATIO; if `a_z` ends up small while lateral stays large after the sphere projection,
+  `th_safe = P@(Ia_lat/az_final)` can still blow up. **Fixed the same way as before**: added
+  the SAME `a_z`-aware sanity clip (`arccos(a_z_final/A_CAP)`, always finite 0..pi/2),
+  keeping `I_a[:2]` consistent with the (possibly-clipped) `th_safe` via the inverse
+  rotation. Re-tested: 1000 extreme trials, max `theta_cone`=1.563 (bounded, vs pi/2=1.571),
+  sphere constraint still 0 violations, non-saturating equivalence still exact
+  (9.16e-16) -- the clip is a true no-op away from the pathological regime.
+- `tools/validate_cbf.py` 12/12 throughout (tests the default/off path only, unaffected).
+
+**SITL smoke test (n=3, IC5, `CBF_HZ_AWARE_DRIFT=1 CBF_JOINT_QP=1`): 2/3 SP, worst miss
+1.22m -- the mildest result of ANY variant tested this session.** `theta_cone` confirmed
+bounded [0, 0.766] throughout all 3 reps (no blowup). The downstream sphere cap never
+engaged (0 frames in all 3 reps -- `a_z` still doesn't approach `A_CAP` at this IC, expected
+per the earlier physics correction). **No `dtheta_az` outliers this run** (max 1.31, vs the
+2.0+ threshold that previously flagged catastrophic events) -- the one miss (rep2, 1.22m,
+`TARGET_LOST`) shows only a MILD `kappa` rise to 1.42, not a full ratchet (prior ratchet
+events hit 3.3-10.8). This is the cleanest single-rep-miss severity seen across every
+mechanism tested this session (drift fix alone, `PLASMC_AZ_JOINT`, and now `CBF_JOINT_QP`).
+
+**n=3 only -- not yet a proper n>=5 confirm.** Given this is the best single-test result so
+far AND a structurally more principled implementation (joint solve inside the barrier itself,
+not a downstream patch), this is the strongest current candidate for further validation.
+
+**Two hard-won process lessons, now doubly confirmed**: (1) ANY a_z/thrust-deliverability
+mechanism in this codebase needs its own explicit angle-sanity bound -- bounding thrust
+MAGNITUDE alone is not sufficient, the derived lean RATIO can still blow up independently.
+Check for this pattern before trusting any future variant. (2) Offline stress-testing with
+EXTREME/edge-case inputs (not just realistic-flight-range values) caught both blowup bugs
+before they reached SITL -- the realistic-range tests alone (first equivalence check) would
+have missed both.
+
+---
 ## ⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still): `PLASMC_AZ_JOINT` implemented, a real bug caught
 ## and fixed pre-merge, validated SAFE but LOW PRACTICAL IMPACT at IC3/IC5
 

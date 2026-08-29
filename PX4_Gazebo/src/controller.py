@@ -3451,7 +3451,8 @@ class Controller(Thread):
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
             p_10_eff, theta_cone,
-            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z)
+            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z,
+            A_CAP=A_CAP, g=g)
         # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
         # loom-margin-prediction approach entirely, not stacked on it). That approach used
         # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for

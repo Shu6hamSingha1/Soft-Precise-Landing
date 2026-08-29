@@ -68,7 +68,33 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
-> **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented) — `PLASMC_AZ_JOINT`: a real bug caught+fixed
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented) — `CBF_JOINT_QP`: solves the visibility box
+> DIRECTLY for I_a (not theta) INSIDE `cbf2_filter` itself, superseding `PLASMC_AZ_JOINT`'s
+> downstream-patch approach.** Derivation: `theta = P@I_a[:2]/a_z` (`P` = the same forward
+> rotation already used), so the box's Jacobian w.r.t. `I_a[:2]` directly is `M=Lw2@P/a_z` --
+> the SAME alternating-projection algorithm runs unchanged, just on `I_a[:2]`, interleaved
+> with a sphere projection (`|I_a+g*e3|<=A_CAP`, full 3-vector) each outer iteration, so
+> `a_z` and lateral are genuinely solved TOGETHER, not sequentially. **Offline: 200 trials
+> confirmed MACHINE-PRECISION (9.16e-16) equivalence to the theta-based path when not
+> saturating; 0 sphere violations in 200+ trials.** **Caught a SECOND instance of the exact
+> same blowup bug class found in `PLASMC_AZ_JOINT`'s first draft** (500-trial extreme-input
+> stress test hit `theta_cone=3.52 rad`) — the sphere bounds thrust MAGNITUDE, not the
+> derived angle RATIO. Fixed with the same `a_z`-aware sanity clip
+> (`arccos(a_z_final/A_CAP)`) validated before, re-confirmed bounded (max 1.563 vs pi/2)
+> across 1000 extreme trials with equivalence still exact. `tools/validate_cbf.py` 12/12
+> throughout (default path unaffected). **SITL smoke test (n=3, IC5): 2/3 SP, worst miss
+> 1.22m — the mildest result of ANY variant tested this session**, no dtheta outliers, only
+> a mild kappa rise (1.42, not a ratchet) on the one miss. n=3 only, not yet n>=5 confirmed,
+> but the strongest current candidate given both the result AND the more principled
+> architecture (joint solve in the barrier itself, not a patch). **Process lesson (now
+> doubly confirmed): any a_z/deliverability mechanism in this codebase needs its OWN
+> explicit angle-sanity bound — bounding thrust magnitude alone is not sufficient — and
+> extreme/edge-case offline stress-testing (not just realistic-range checks) is what
+> catches this class of bug before SITL.** Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented, superseded by CBF_JOINT_QP above) —
+> `PLASMC_AZ_JOINT`: a real bug caught+fixed
 > pre-merge, validated SAFE but LOW PRACTICAL IMPACT.** First draft fully skipped the
 > hover-assumed `theta_cap` angle clip, not realizing it does double duty (deliverability
 > bound AND the only thing preventing a degenerate QP output from reaching the attitude
