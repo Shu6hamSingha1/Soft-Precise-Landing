@@ -93,6 +93,26 @@
 > catches this class of bug before SITL.** Full data:
 > [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
 >
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (BAKED) — `CBF_JOINT_QP` is now the DEFAULT
+> (env default flipped 0->1 in `cbf_visibility.py`; still requires `A_CAP`, which
+> `controller.py` always passes, so this is what actually runs there now).**
+> `controller.py`'s downstream fixed-hover `theta_cap` re-clip (the old `PLASMC_AZ_JOINT`
+> block) is now SKIPPED whenever the joint QP ran (gated on the same `CBF_JOINT_QP` env,
+> default true) — that block's fixed-cap re-clip would otherwise fight the joint QP's own
+> `a_z`-aware clip (redundant, or wrongly tighter when `a_z` sits below hover).
+> `PLASMC_AZ_JOINT`/fixed-cap path stays available for `CBF_JOINT_QP=0` A/B. **Re-validated
+> post-flip: `tools/validate_cbf.py` 12/12 (no `A_CAP` in that harness -> exercises the old
+> path, unaffected). SITL (`run_ic_validation.sh IC_LIST=IC5 N_REPS=3`,
+> `PLASMC_GT_FEEDBACK=1 CBF_HZ_AWARE_DRIFT=1`, `CBF_JOINT_QP` now the unset/default-on
+> path): 2/3 SP, xy_err 0.018/0.018/1.574 — matches the pre-flip validated number exactly.**
+> Process note: two earlier "regression" smoke tests this session were false alarms — one
+> ran the ArUco pipeline (`cbf_visibility_aruco.py`, a SEPARATE untouched copy; MARKER_TYPE
+> defaults to `aruco`, not `cross` — `CBF_JOINT_QP` only lives in the cross-marker file), the
+> other ran the right pipeline but omitted `PLASMC_GT_FEEDBACK=1` (the standard IC-validation
+> harness config) — always match the exact env/launcher (`run_ic_validation.sh` +
+> `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross`) a prior result used before
+> treating a new number as a regression.
+>
 > **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented, superseded by CBF_JOINT_QP above) —
 > `PLASMC_AZ_JOINT`: a real bug caught+fixed
 > pre-merge, validated SAFE but LOW PRACTICAL IMPACT.** First draft fully skipped the

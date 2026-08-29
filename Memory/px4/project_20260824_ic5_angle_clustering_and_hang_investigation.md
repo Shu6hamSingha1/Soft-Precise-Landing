@@ -760,6 +760,54 @@ also linked from the px4/MEMORY.md banner) for the full checklist -- apply this 
 any future SITL launch or kill-loop cleanup in this project, not just when troubleshooting
 flakiness (that's exactly when the temptation to skip the check is highest).
 
+## ⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (BAKED): `CBF_JOINT_QP` flipped to the default path
+
+Per explicit user direction ("implement CBF_JOINT_QP into controller.py as the default
+path"). Two edits:
+- `cbf_visibility.py`: `_joint_qp = env.get("CBF_JOINT_QP", "0"...)` -> default `"1"`. Still
+  gated on `A_CAP is not None and A_CAP > 0`; `controller.py`'s `cbf2_filter` call always
+  passes `A_CAP=A_CAP, g=g` unconditionally, so this is what actually runs there now.
+  `CBF_JOINT_QP=0` still available for A/B.
+- `controller.py`: the downstream `PLASMC_AZ_JOINT` block's fixed-hover `theta_cap` re-clip
+  (`_cap_eff = arccos(a_z_current/A_CAP)` when `PLASMC_AZ_JOINT=1`, else the fixed
+  `self._theta_cap`) is now SKIPPED entirely whenever the joint QP ran (new
+  `_cbf_joint_active` gate, same `CBF_JOINT_QP` env default). Reason: the joint QP already
+  applies its OWN `a_z`-aware angle clip internally (see the CBF_JOINT_QP section above) --
+  a second clip with the fixed hover-assumed `theta_cap` afterward would fight it (redundant
+  at best, wrongly TIGHTER than the true deliverable angle when `a_z` sits below hover at
+  worst). `PLASMC_AZ_JOINT`/fixed-cap path is preserved for `CBF_JOINT_QP=0` comparisons.
+
+**Re-validation after the flip:**
+- `tools/validate_cbf.py`: 12/12 (that harness never passes `A_CAP`, so it always exercises
+  the pre-joint theta-based path — unaffected by the default flip, as expected).
+- **Process lesson (2 false-alarm "regressions" caught and resolved this session):**
+  1. First smoke test used `run_aruco_landing_retry.sh` with no `MARKER_TYPE`/`WORLD` env
+     override -> defaults to `MARKER_TYPE=aruco`, which imports `cbf_visibility_aruco.py`
+     (a SEPARATE, untouched copy per the project's "ArUco stays comparison-only" rule) --
+     `CBF_JOINT_QP` only exists in `cbf_visibility.py` (cross-marker). Result (0/3 SP,
+     `theta_cone` up to 2.47 rad) reflected the UNCHANGED ArUco path, not the joint QP at
+     all. Fix: `WORLD=cross_marker MARKER_TYPE=cross`.
+  2. Second smoke test (correct pipeline) still didn't match the previously-documented 2/3
+     SP number (still 0/3, xy_err ~2.7-2.9m) because it omitted `PLASMC_GT_FEEDBACK=1` --
+     the standard config every prior IC5 validation in this file used
+     (`run_ic_validation.sh IC_LIST="IC5" N_REPS=3 PLASMC_GT_FEEDBACK=1
+     WORLD=cross_marker MARKER_TYPE=cross`, sometimes + `CBF_HZ_AWARE_DRIFT=1`) --  a hand-
+     rolled `INITIAL_DRONE_ENU=...` loop around `run_aruco_landing_retry.sh` is NOT
+     equivalent to that harness.
+  3. **Third smoke test, matching the exact prior harness**
+     (`HEADLESS=1 WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1
+     CBF_HZ_AWARE_DRIFT=1 IC_LIST="IC5" N_REPS=3 bash scripts/run_ic_validation.sh`,
+     `CBF_JOINT_QP` now unset/default-on): **2/3 SP, xy_err 0.018 / 0.018 / 1.574m** --
+     matches the pre-flip validated result (rep1/rep3 land essentially on-target, rep2 the
+     same ~1.2-1.6m single miss class seen throughout this thread). Confirms the default
+     flip is behavior-preserving relative to the explicitly-enabled config.
+- **Takeaway for future comparisons in this codebase**: always reproduce the EXACT
+  launcher + env combination a prior number was measured with
+  ([[feedback_check_concurrent_sitl_before_launch]]-adjacent lesson: mismatched harnesses
+  looks exactly like a regression). `run_ic_validation.sh` (not a hand-rolled loop) +
+  `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross` is this project's
+  canonical IC-validation invocation.
+
 ## Open item / natural next step
 
 The angle-clustering fragility itself is NOT fixed -- `_cluster_line_angles`'s
