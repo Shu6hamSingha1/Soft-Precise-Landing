@@ -249,17 +249,10 @@ class Controller(Thread):
         self._dtheta_scale = float(os.environ.get("PLASMC_DTHETA_SCALE", "0.18"))    # dtheta at which g has decayed to 1/e of its range; ~ mean active-frame dtheta at gain=5-10 (measured 0.16-0.23)
         self._dtheta_href_tau = float(os.environ.get("PLASMC_DTHETA_HREF_TAU", "0.5"))   # LPF tau on g, same role/value as _dgate_tau
         self._dtheta_href_g = 1.0
-
-        # Crossfade weight for the direct I_a[2] dtheta correction (below, at the
-        # cbf2_filter call site): full strength at onset -- covers the several-cycle lag
-        # (~0.08-0.3s, the tau_ia LPF + kappa-SMC integration) before h_ref_eff's effect on
-        # I_a actually shows up -- decaying toward 0 as the encounter persists, so the two
-        # channels don't both run at full strength indefinitely (the direct channel is the
-        # one carrying the self-defeating loop; only meant as a bridge). Tied to
-        # PLASMC_DTHETA_HREF: when that's off, the direct term behaves exactly as before
-        # (weight=1 always, unchanged/backward-compatible).
-        self._dtheta_xfade_tau = float(os.environ.get("PLASMC_DTHETA_XFADE_TAU", "0.3"))
-        self._dtheta_active_t = 0.0
+        # NB the former direct I_a[2] "dtheta correction" (a downstream bolt-on, with a
+        # crossfade-weight bridge) was REMOVED 2026-08-31 -- the descent-rate / lateral-
+        # margin trade now lives inside the joint QP (cbf_visibility.py CBF_AZ_COST_GAIN).
+        # PLASMC_DTHETA_HREF still gates the SEPARATE upstream h_ref_eff shaping below.
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -2012,8 +2005,6 @@ class Controller(Thread):
         # NaN when th_desired is None (Phase-2 fallback, no projection ran).
         self._theta_desired_log = []
         self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
-        self._dtheta_xfade_w_log = []  # direct-term crossfade weight (v3, see __init__ note)
-        self._dtheta_correction_log = []  # final (post-crossfade, post-cap) I_a[2] correction actually applied
         self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
@@ -3723,8 +3714,6 @@ class Controller(Thread):
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
         self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
-        self._dtheta_xfade_w_log.append(1.0)     # retained for log-schema stability (crossfade gone)
-        self._dtheta_correction_log.append(0.0)  # retained for log-schema stability (bolt-on removed)
         # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
         # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
         # of this fully SKIPPED the angle clip below, relying only on the downstream
@@ -4127,8 +4116,6 @@ class Controller(Thread):
             "dtheta_az(t)": self._dtheta_az_log,
             "theta_desired(t)": self._theta_desired_log,
             "dtheta_href_g(t)": self._dtheta_href_g_log,
-            "dtheta_xfade_w(t)": self._dtheta_xfade_w_log,
-            "dtheta_correction(t)": self._dtheta_correction_log,
             "az_joint_delta(t)": self._az_joint_log,
         }
 

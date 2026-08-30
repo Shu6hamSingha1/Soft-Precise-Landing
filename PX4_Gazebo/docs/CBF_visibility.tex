@@ -11,7 +11,7 @@
 and Thrust Deliverability}\\[4pt]
 \large A camera-plane QP over the commanded inertial acceleration}
 \author{Soft--Precise--Landing}
-\date{29 August 2026}
+\date{31 August 2026}
 
 \begin{document}
 \maketitle
@@ -45,6 +45,7 @@ $\theta_\text{cap}$ & deliverable-tilt cap, $\|\boldsymbol{y}\|\le\tan\theta_\te
 $\boldsymbol{d}_i$ & exogenous (translation) feature drift, $\boldsymbol{d}_i=\dot{\tilde{\boldsymbol{r}}}_{i,\text{obs}}-L_\omega\boldsymbol\omega_{\rm rp}^{\rm curr}$ \\
 $\mathcal{R},f$ & resolution, focal (px); $\boldsymbol\varphi_\text{max}=\mathcal{R}/(2f)$ half-FoV (tangent), the FoV edge \\
 $\tau,g$ & drift look-ahead; gravitational acceleration \\
+$\kappa_{az}$ & descent-rate relief gain (\S\ref{sec:relief}), acceleration per unit suppressed lean \\
 \bottomrule
 \end{tabular}
 
@@ -137,7 +138,45 @@ satisfies the sphere constraint, the resulting acceleration ratio
 $\boldsymbol{y}^\star=R_z(-\psi_\text{b})\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star/a_z^\star$ satisfies
 $\|\boldsymbol{y}^\star\|\le\tan\theta_\text{cap}$ at the solved $a_z^\star$ automatically; no separate cap
 application is needed.
+\item \textbf{Descent-rate aware} (\S\ref{sec:relief}) --- while the box actively suppresses lateral
+authority, the vertical component is relaxed toward hover, in proportion to that suppression and clamped so
+it can only \emph{slow} a descent, never reverse it; the trade lives inside \eqref{eq:qp} so the output
+stays box- and sphere-consistent.
 \end{itemize}
+
+\subsection{Descent-rate relief under an active box}\label{sec:relief}
+When the FoV box is binding it removes lateral acceleration the outer loop asked for: the realized
+lean $\boldsymbol{y}^\star$ falls short of the desired $\boldsymbol{y}^{0}=R_z(-\psi_\text{b})(\,^\Iframe\boldsymbol{a}_{\text{d},xy}^{0}/\,^\Iframe a_{\text{d},z}^{0})$
+by
+\begin{equation}\label{eq:dtheta}
+\Delta_\theta \;=\; \big\|\boldsymbol{y}^{0}-\boldsymbol{y}^\star\big\|,
+\end{equation}
+the magnitude of lean the box could not grant this step. Pressing on at the full commanded closing rate
+while $\Delta_\theta>0$ spends the remaining descent budget without the lateral error being corrected ---
+the marker leaves the FoV, or touchdown arrives, before convergence. The projection therefore spends part
+of that budget on time instead: the vertical component is pulled toward the hover value in proportion to
+$\Delta_\theta$,
+\begin{equation}\label{eq:relief}
+\boxed{\;\,^\Iframe a_{\text{d},z}^{\star}
+\;=\;\min\!\Big(\,^\Iframe a_{\text{d},z},\;
+\max\big(\,^\Iframe a_{\text{d},z}^{0}-\kappa_{az}\,\Delta_\theta,\;-g\big)\Big)
+\quad\text{when }\,^\Iframe a_{\text{d},z}^{0}>-g\;}
+\end{equation}
+and left unchanged otherwise. The interpretation is exact per axis of \eqref{eq:qp}: an $A_\text{cap}$
+budget spent laterally is not available vertically and vice versa; \eqref{eq:relief} makes the vertical
+side of that trade explicit whenever the box has forced the lateral side. Two bounds make it safe as a
+one-way relief:
+\begin{itemize}
+\item the inner $\max(\cdot,-g)$ clamps the result at the hover acceleration $-g$, so this term alone can
+bring a commanded descent toward zero closing rate but \emph{never} past it into a commanded climb;
+\item the outer $\min(\,^\Iframe a_{\text{d},z},\cdot)$ keeps any lift the deliverability sphere or the
+outer loop already commanded ($\,^\Iframe a_{\text{d},z}<-g$): the relief only ever adds toward-hover, it
+never removes lift.
+\end{itemize}
+The relief is recomputed from the unconstrained $\,^\Iframe a_{\text{d},z}^{0}$ each outer iterate, so it
+does not accumulate across iterates, and it re-enters $N_i(a_z)$ on the next iterate --- the lateral box
+and the vertical relief converge together, not one after the other. $\kappa_{az}=0$ disables it and
+recovers \eqref{eq:qp} unchanged.
 
 \section{Feasibility}
 The box constraint alone is \textbf{infeasible} iff $\varphi_{\text{max},k}<0$ for some $k$ (the marker
