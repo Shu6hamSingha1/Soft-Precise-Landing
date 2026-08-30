@@ -736,9 +736,12 @@ class Controller(Thread):
         # code with the manuscript formula. NOTE: this is a FORMULATION correction; it does NOT fix
         # the terminal deck fly-away (a separate Task-2/optic-flow limit-cycle: h_e=v_rel/Z diverges
         # at the deck when v_rel doesn't reach 0 -- see feedback_terminal_launch_flow_loop + the
-        # SP/limit-cycle analysis). psi_dot_b sign still SITL-unverified (PLASMC_CH_PSIDOT_SIGN knob).
+        # SP/limit-cycle analysis). psi_dot_b sign CONFIRMED (2026-06-25, feedback_gtfb_wz_sign_bug):
+        # the GT-FB w_z investigation validated w_z=-psi_dot_b against real IMU body yaw rate
+        # (lstsq correlation -0.91) -- default sign (+1, no flip) is correct. PLASMC_CH_PSIDOT_SIGN
+        # kept as a diagnostic knob, not because the default is in doubt.
         self._CH_CLEAN = os.environ.get("PLASMC_CH_CLEAN", "1") == "1"
-        self._ch_psidot_sign = float(os.environ.get("PLASMC_CH_PSIDOT_SIGN", "1.0"))  # flip transport-term yaw rate (clean c-term); -1 retests the regressed sign
+        self._ch_psidot_sign = float(os.environ.get("PLASMC_CH_PSIDOT_SIGN", "1.0"))  # diagnostic flip of transport-term yaw rate; default +1 confirmed correct, see above
 
         # Low-pass filter on inertial accel (MATLAB: tau_ia = 0.08 s)
         self._tau_ia = 0.08
@@ -2220,17 +2223,14 @@ class Controller(Thread):
             # NO ẇ×s / w×(w×s) / 2w×h — the noisy V_w/V_dw cross-products the old form transplanted
             # from camera-frame static-target kinematics). Paired with the w×s drop in h_d above.
             # ψ̇_b = ZYX yaw Euler rate from the body rate (transport term collapses to ψ̇ ê3×h in the
-            # gravity-leveled V-frame). ⚠ ψ̇_b sign/convention is SITL-unverified — if the A/B regresses,
-            # flip the _r sign first. MATLAB C_SIMPLE (partial) regressed nominal SP 9->2 (the w-terms do
-            # real FF work) — this consistent form is the fair test; DEFAULT-OFF, A/B before trusting.
+            # gravity-leveled V-frame). ψ̇_b sign CONFIRMED (2026-06-25, feedback_gtfb_wz_sign_bug):
+            # GT-FB w_z validated against real IMU body yaw rate (lstsq corr -0.91) as w_z=-psi_dot_b,
+            # consistent with this transport term's default (+1, no flip). Baked default-ON since 2026-06-25.
             _eul = Quaternion(self._quat[-1]).to_angles()        # [roll, pitch, yaw]
             _phi, _th = float(_eul[0]), float(_eul[1])
             _r = -float(self._w[-1][2])                          # true FRD yaw rate (self._w stores -down)
-            # PLASMC_CH_PSIDOT_SIGN flips the transport-term yaw rate (default +1). The clean-form
-            # A/B regressed (IC2 58m, diverges earlier+harder = ANTI-RESTORING, not lost FF) — the
-            # psi_dot_b sign in -psi_dot_b*(e3 x h) is SITL-unverified (memory flag) and the GT-FB
-            # w_z is itself +psidot_b vs the manuscript -psidot_b, so the transport term likely pushes
-            # the wrong way. Set =-1 to flip and retest (the memory's "flip the _r sign first" remedy).
+            # PLASMC_CH_PSIDOT_SIGN flips the transport-term yaw rate (default +1, confirmed correct —
+            # see above). Kept as a diagnostic knob for future A/B work, not because the sign is in doubt.
             psi_dot_b = self._ch_psidot_sign * (float(self._w[-1][1]) * np.sin(_phi) + _r * np.cos(_phi)) / max(abs(np.cos(_th)), 0.2)
             c = (- psi_dot_b * np.cross(e3, self._h[-1])
                  - self._cterm_loom_scale * np.dot(self._h[-1], e3) * self._h[-1]
