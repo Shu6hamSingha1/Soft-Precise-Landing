@@ -1561,10 +1561,12 @@ class Controller(Thread):
                            never collapses cleanly.
           (c) FLOW-FREEZE  background median per-frame pixel displacement makes a
                            high(>ff_hi) -> low(<ff_lo) transition within ~1.2 s, with
-                           >= ff_minpts points. 3-in-6. POSITION-INDEPENDENT: catches a
-                           soft OFF-marker settle (marker out of FoV) that (a)/(b) can't
-                           see. Runs even pre-arm. Hard/sliding off-marker contacts are
-                           the IMU accel-spike detector's job (flight_controller.py).
+                           >= ff_minpts points. 3-in-6. POSITION-INDEPENDENT (no marker
+                           needed) but gated on _td_ext_armed so a real descent must
+                           have run first -- catches a soft OFF-marker settle (marker
+                           out of FoV) that (a)/(b) can't see. Hard/sliding off-marker
+                           contacts are the IMU accel-spike detector's job
+                           (flight_controller.py).
 
         Returns True iff a path latched this call (and sets self._touchdown)."""
         if self._touchdown:
@@ -1621,9 +1623,15 @@ class Controller(Thread):
                         and sd is not None and sd < self._tdv2_sdot_back)
         self._tdv2_bk_h.append(bool(backstop))
 
-        # ── (c) FLOW-FREEZE (position-independent; may fire pre-arm) ──
+        # ── (c) FLOW-FREEZE (position-independent, but a REAL descent must have run) ──
+        # Gated on _td_ext_armed (extent has grown >=2x from its minimum -> the marker
+        # was approached, then lost) so the "was-moving -> now-frozen" pattern can't be
+        # satisfied by the IC-convergence reposition-then-settle before descent even
+        # starts (observed: false-fired at 4.87 m on the very first perception run,
+        # 2026-08-31). For a genuine marker-gone settle the marker always grew a lot on
+        # the way down before leaving the FoV, so this costs nothing there.
         freeze = False
-        if (ff_disp is not None and ff_n >= self._tdv2_ff_minpts
+        if (self._td_ext_armed and ff_disp is not None and ff_n >= self._tdv2_ff_minpts
                 and ff_disp < self._tdv2_ff_lo):
             recent = [d for (tt, d, npt) in self._tdv2_ff_hist if tt >= t - self._tdv2_ff_recent]
             if recent and max(recent) > self._tdv2_ff_hi:

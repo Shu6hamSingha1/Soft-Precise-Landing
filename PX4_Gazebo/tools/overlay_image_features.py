@@ -467,14 +467,16 @@ def annotate(video_path, feats, out_path, channels=CHANNELS, draw_w=False):
         if "s" in channels:
             sx = _fmt(s_v[i, 0]) if s_v is not None and i < len(s_v) else "nan"
             sy = _fmt(s_v[i, 1]) if s_v is not None and i < len(s_v) else "nan"
-            lines.append(f"s = ({sx}, {sy})")
+            # s is the homogeneous image-moment feature [xc, yc, 1] the controller
+            # consumes -- show the fixed 3rd component so the vector isn't misread as 2D.
+            lines.append(f"s = ({sx}, {sy}, 1)")
         if "alpha" in channels:
             held_txt = " (held)" if a_held else ""
             lines.append(f"α = {_fmt(np.degrees(a), 1) if a is not None else 'nan'}°{held_txt}")
         if "h" in channels:
             lines.append(f"h=({_fmt(hx)}, {_fmt(hy)}, {_fmt(hz)})")
         if draw_w:
-            lines.append(f"w: wx={_fmt(wx)} wy={_fmt(wy)} wz={_fmt(wz)}")
+            lines.append(f"w=({_fmt(wx)}, {_fmt(wy)}, {_fmt(wz)})")
         if lines:
             _draw_hud(frame, lines)
 
@@ -526,8 +528,11 @@ def main():
         stem, ext = os.path.splitext(args.out)
         for group in SPLIT_GROUPS:
             out_grp = f"{stem}_{'_'.join(group)}{ext}"
+            # the h group always carries w=(wx,wy,wz) -- it comes from the SAME
+            # corner-pair lstsq solve as h, so showing them together is the honest
+            # read of what that solve produced. --draw-w only adds w in combined mode.
             annotate(args.video, feats, out_grp, channels=group,
-                     draw_w=(args.draw_w and "h" in group))
+                     draw_w=("h" in group))
     else:
         channels = tuple(c.strip() for c in args.channels.split(",") if c.strip())
         annotate(args.video, feats, args.out, channels=channels, draw_w=args.draw_w)
