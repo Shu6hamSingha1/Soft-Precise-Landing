@@ -1120,3 +1120,68 @@ of the bridge.
 **RECOMMENDATION (ready to bake, pending user go-ahead): (1) land the `_prev_flow_uid`
 correctness fix; (2) flip `CROSS_CENTER_BRIDGE_FRAMES` default 0 -> 10 in
 `cross_marker_perception.py`.** Both changes uncommitted as of this entry.
+
+## 2026-08-30 -- IC5 non-SP DEEP ROOT CAUSE + kappa-funnel-gate lever REJECTED (counterproductive)
+
+Full IC1-5 n=5 at defaults (bridge default-on, commit e86c798a): IC1 5/5, IC2 5/5,
+IC3 4/5, IC4 4/5, **IC5 3/5** (rep1 miss 1.06m, rep4 miss 1.88m). So the two clean IC5
+n=5 sweeps that justified the bridge bake were the small-n IC5 variance the file's own
+history warns about -- pooled bridge-on IC5 is ~13/15, not 20/20.
+
+**ROOT CAUSE of the IC5 non-SPs (rep1/rep4), triangulated from GT + Control_Data:**
+- The split is decided at the TOP of the descent (~2m altitude), NOT the terminal. All 5
+  reps arrive at 2m ~1.4m laterally off. The 3 SP reps' lateral loop closes that to
+  ~0.15m by 1m alt (s_e_n: 0.67->0.08, funnel ratio r=|s_e_n|/p_s: 0.77->0.12). The 2
+  miss reps close ~nothing -- they ENTER the 2m gate already at r ~= 0.9-1.2 (at/past the
+  funnel edge) and s_e_n DIVERGES from there (r -> 1.5-2.3 by 1m alt).
+- Mechanism: past r~1 the lateral loop has NO restoring authority. Reaching term
+  `-Gamma_xy*sigma` is throttled (Gamma_xy=0.25, cut from 2.0 in 2026-06-29 for terminal
+  softness). Switching term `-Theta*sat(sigma/E)*G*kappa_xy` SHRINKS as r->1 because G
+  (back-mapped barrier gain) collapses past its r~0.65 peak, and kappa_xy sits ~0.2
+  (adaptation-rate-limited: tau_kappa = 1/(N_xy*P_xy) = 1/(0.1*2.5) = 4s > the IC5 ~2s
+  3->1m window; note P_xy 1.5->2.5 in 2026-07-22 HALVED kappa_0 persistence vs when
+  [[feedback_kappa0_unfreezes_lateral]] was written). Fresh-Gate-Blocked-N = 0 -- kappa is
+  NOT frozen by the staleness gate; the gain is just structurally too low.
+- The 234-272 frame detection blackout (`lt2_angle_clusters` dominant) and the
+  `dtheta_correction` pinning at its 2.0 cap are DOWNSTREAM consequences of descending
+  through 1m still 1-1.7m off-center (marker at frame edge, oblique) -- not causes. SP
+  reps have 100% detection below 1m.
+
+**CBF reaction in the non-SPs:** fully INACTIVE during the decisive 2m->0.8m window
+(theta_cone=0, dtheta=0). Wakes only at the terminal AFTER s_e_n already diverged;
+`dtheta_correction` pins at PLASMC_DTHETA_AZ_CAP=2.0 in both misses (the documented
+unfixed self-defeating dtheta loop) -- amplifies the fly-away magnitude slightly, does not
+initiate it. Effect on final miss distance ~0.01-0.02m. **CBF is a bystander; do NOT
+disable it to "fix" IC5.**
+
+**Clamp/limit audit (vs miss-rep timeseries):** NO hard np.clip chokes the approach.
+`A_CAP`~14 (cmd ~10), `W_U_MAX`=2.0 (|w_u|~0.02), `KAPPA_MAX_XY`=30 (kappa~0.2),
+`DSD_LAT_MAX`=100, `DH_D_MAX`=50, izeta/iV clamps -- none binding until the terminal
+blowup. The restriction is STRUCTURAL UNDER-GAIN in both lateral authority paths
+simultaneously (Gamma_xy=0.25 + kappa_xy~0.2 adaptation-limited), plus P2INF_xy=2.5
+(raised 2026-08-28 for anti-breach) leaving no funnel margin at the 2m entry. All three
+were set for TERMINAL behavior at the cost of APPROACH convergence speed.
+
+**LEVER TRIED + REJECTED -- `PLASMC_KAPPA_FUNNEL_GATE` (kappa_xy floor while r in a
+divergence band, scale-free, xy-only, hand-off at r>1.8):** IC5 n=5 A/B, gate=1.5 vs off.
+Gate OFF: 5/5 (lucky draw). Gate=1.5: **4/5 + a 7.6m catastrophic fly-away** (rep2, 34s,
+never lands). Traced: the gate fired on the y-axis at r_y~1.0, pinned kappa_y to 1.5 (7x
+natural) IN THE COLLAPSED-BARRIER REGIME -> the boosted switching term OVERSHOOTS (r_y
+keeps growing 1.0->2.4 despite the boost) -> by the r>1.8 hand-off kappa_y is already at
+1.5 and the kappa-ODE SUSTAINS then RATCHETS it (tau=4s decay too slow; then sigma grows
+and the ODE growth term takes over) -> both axes runaway, a_u_xy 3->126. **This is the
+exact terminal kappa-ratchet/actuator-wall failure the project has hit repeatedly (N_xy=0.2
+etc.). Confirmed: the lateral loop cannot be given more kappa authority once r >= ~0.9 --
+it seeds the ratchet.** Code REVERTED (was 30 uncommitted lines this session).
+
+**Why no funnel/kappa-layer fix can work:** the misses arrive at 2m ALREADY breached
+(r~0.9-1.2). There is no healthy-barrier window at/below 2m to catch them -- a sub-edge
+gate (r in 0.5-0.85) would fire only on the SP reps (which ARE in that band at 2m) and
+never on the misses. And kappa can't help PRE-breach either: miss and SP kappa_xy are
+similar at 2m; the difference is the ERROR, not the gain. **The lever must act on the
+3m->2m centering phase (outer loop / trajectory), not the funnel/kappa layer.** Untried
+candidates: PLASMC_PS0_MARGIN wider (more pre-breach margin, adds NO authority -- safest),
+PLASMC_KP_X/Y up (faster early closing, with the known 2026-06-14 overshoot tension).
+Given every lateral-authority lever hits the same ratchet wall and the bridge already gets
+IC5 to ~13/15 pooled with IC1-4 clean, IC5 3/5-> may be near the structural ceiling for a
+3m descent at these terminal-safety gains -- diminishing returns likely.
