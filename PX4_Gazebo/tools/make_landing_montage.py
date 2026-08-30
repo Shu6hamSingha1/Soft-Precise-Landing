@@ -301,11 +301,17 @@ def main():
     nd = max(1, int(dur * a.fps))           # descent output frames (GT sim duration)
     nt = int(tail * a.fps)                  # tail output frames
     nframes = nd + nt
-    cfps_eff = cfps if cfps and cfps > 1 else 30.0
+    # Chase: record_chase.py gates on CHASE_GATE_FILE (descent start) and stops on
+    # CHASE_STOP_FILE (touchdown), so the chase video ALWAYS spans exactly
+    # [descent-start, touchdown]. Its mp4 FPS tag (CHASE_FPS, default 30) is a
+    # container label, NOT the capture rate (the chase sensor's own update_rate, e.g.
+    # 20 Hz) -- trusting it made the chase run ~1.5x fast then freeze. Map the chase by
+    # descent-fraction instead (effective rate = cN/dur), independent of the tag.
+    cfps_eff = max(cN - 1, 1) / max(dur, 1e-6)
     tG_rel = np.asarray(series["t"], float)   # 0-based GT sample times (already trimmed to touchdown)
     print(f"[montage] {nframes} frames ({nd} descent + {nt} tail)  {W}x{H}@{a.fps}  sync={_sync}  "
-          f"(chase {cN}f@{cfps_eff:.0f} = {cN/cfps_eff:.1f}s, drone {dN}f td@{td_d} (+{dN-1-td_d}f tail), "
-          f"GT {gN}samp, descent {dur:.1f}s)  -> {a.out}", flush=True)
+          f"(chase {cN}f, eff {cfps_eff:.1f}fps over the {dur:.1f}s descent (tag says {cfps:.0f}); "
+          f"drone {dN}f td@{td_d} (+{dN-1-td_d}f tail); GT {gN}samp)  -> {a.out}", flush=True)
 
     for f in range(nframes):
         if f < nd:                          # DESCENT
