@@ -453,6 +453,16 @@ class CrossMarkerPerception:
         # (else None). Lets _compute_hw find a lost point's diametric partner (opposite
         # sector, same band) and drop it too -- mirrors img_data.py's PLASMC_RING_PAIRED.
         self._prev_flow_cell_id = None
+        # 2026-08-29: parallel (N,) array of STABLE per-point unique ids, kept in lockstep
+        # with _prev_flow_pts by BOTH flow methods (_compute_hw AND _compute_hw_bgflow) --
+        # unlike _prev_flow_cell_id it is NEVER None on any live tracking path. Exists
+        # because the center-bridge (CROSS_CENTER_BRIDGE_FRAMES) matched points across a
+        # miss streak by cell_id, which the default CROSS_BG_FLOW=1 path (_compute_hw_bgflow,
+        # fresh GFT every pair, no cell bookkeeping) leaves permanently None -- so the bridge
+        # could never engage under real defaults. uid is assigned fresh on every (re)sample
+        # and subsetted (never renumbered) exactly like _prev_flow_pts through LK drops.
+        self._prev_flow_uid = None
+        self._flow_uid_next = 0       # monotonic id allocator (ids never reused across resamples)
         self._last_resample_t = None  # timestamp of the last _sample_flow_points() call (2026-08-07
                                        # periodic-refresh fix -- see RESAMPLE_PERIOD_S's comment)
         self._z_v_log = []           # min(z_v) per _getVirtualPts call -- degeneracy diagnostic
@@ -531,17 +541,22 @@ class CrossMarkerPerception:
         # detection. Bounded + plausibility-gated (short horizon, minimum surviving point count,
         # max displacement vs. last known marker size) -- same "reject implausible, don't clip"
         # philosophy as the ArUco PlanarFeatureMap rescue's own plausibility gate.
-        # Default OFF (CROSS_CENTER_BRIDGE_FRAMES=0) until validated against real cross-marker
-        # flight data -- this is a NEW perception mechanism, not yet flight-tested; see
-        # feedback_aruco_perception_scope.md / project_marker_roadmap_gt_ablation.md for why
-        # that validation happens on the cross-marker+GT-feedback track, not via ArUco testing.
-        self._bridge_max_frames = int(os.environ.get("CROSS_CENTER_BRIDGE_FRAMES", "0"))
+        # Default ON (CROSS_CENTER_BRIDGE_FRAMES=10) since 2026-08-30 -- validated on the
+        # cross-marker + GT-feedback track once the cell-ID bug was fixed (see _prev_flow_uid):
+        # IC5 20/20 SP across two independent n=5 sweeps vs 12/18 with the bridge off (the
+        # off-arm misses each coincide with an lt2_angle_clusters spike the bridge catches);
+        # IC1/2/4 9/9 SP, IC3 4/5 vs 4/5 (neutral) -- no regression anywhere. Set to 0 to
+        # disable. See feedback_aruco_perception_scope.md / project_marker_roadmap_gt_ablation.md
+        # for why validation runs on the cross-marker+GT track, not via ArUco testing, and
+        # project_20260824_ic5_angle_clustering_and_hang_investigation.md for the full A/B.
+        self._bridge_max_frames = int(os.environ.get("CROSS_CENTER_BRIDGE_FRAMES", "10"))
         self._bridge_min_pts = int(os.environ.get("CROSS_CENTER_BRIDGE_MIN_PTS", "6"))
         self._bridge_max_jump_ratio = float(os.environ.get("CROSS_CENTER_BRIDGE_MAX_JUMP_RATIO", "1.5"))
         self._bridge_anchor_center_px = None      # center_px at the last confirmed detection
         self._bridge_anchor_bbox = None           # last_bbox at that same moment (translated, not resized, while bridging)
-        self._bridge_anchor_cell_id = None        # _prev_flow_cell_id at that same moment (for cell_id-matched displacement)
-        self._bridge_anchor_pts = None            # _prev_flow_pts at that same moment (parallel to _bridge_anchor_cell_id)
+        self._bridge_anchor_cell_id = None        # _prev_flow_cell_id at that same moment (legacy; may be None on the default flow path)
+        self._bridge_anchor_uid = None            # _prev_flow_uid at that same moment (cell-id-independent match key -- see _prev_flow_uid)
+        self._bridge_anchor_pts = None            # _prev_flow_pts at that same moment (parallel to _bridge_anchor_uid)
         self._bridge_streak = 0
         # VALIDATION DIAGNOSTIC (2026-08-24): direct log of bridge activity -- previously
         # only inferable from Center Px continuity vs Detection Status, which doesn't
@@ -1477,6 +1492,14 @@ class CrossMarkerPerception:
         self._point_diag = (prev_n.copy(), float(sol[2]), curr_n.copy(), float(dt), sol.copy())
         return sol, cond, rel_resid, float(np.median(px_disp)), float(np.std(px_disp))
 
+    def _allocFlowUids(self, n):
+        """Allocate n fresh, never-reused stable point ids for _prev_flow_uid (see its
+        __init__ comment). Monotonic so an anchor snapshot taken before a resample can
+        never spuriously match a post-resample point that happens to share an index."""
+        u = np.arange(self._flow_uid_next, self._flow_uid_next + n, dtype=np.int64)
+        self._flow_uid_next += n
+        return u
+
     def _compute_hw_bgflow(self, gray_prev, gray_curr, det, dt, quat_prev=None, quat_curr=None):
         """OPT-IN (CROSS_BG_FLOW=1) alternative to _compute_hw -- see this module's
         CROSS_BG_FLOW comment for the validation trace. Deliberately a SEPARATE,
@@ -1490,7 +1513,7 @@ class CrossMarkerPerception:
         available this frame, or too few points survive LK -- caller falls back
         to the caller's own zero/coast handling, same contract as _compute_hw.
 
-        HYBRID (CROSS_BG_FLOW_HYBRID=1, default off): CLAHE-normalise the ROI
+        HYBRID (CROSS_BG_FLOW_HYBRID=1, default ON since 2026-08-28): CLAHE-normalise the ROI
         before GFT/LK and add forward-backward LK rejection -- see the module-
         level CROSS_BG_FLOW_HYBRID comment. Default path (hybrid off) is
         byte-for-byte the GT-validated 2026-08-27 method."""
@@ -1527,6 +1550,9 @@ class CrossMarkerPerception:
         # stale/unset would silently degrade the miss-recovery center-bridge path.
         self._prev_flow_pts = curr_pts.copy()
         self._prev_flow_cell_id = None
+        # uid IS maintained here (unlike cell_id) so the center-bridge can match these
+        # fresh-sampled points across a subsequent miss streak -- see _prev_flow_uid.
+        self._prev_flow_uid = self._allocFlowUids(len(curr_pts))
         sol, cond, rel_resid, _pxm, _pxs = self._solve_jacobian(
             prev_pts, curr_pts, dt, prev_quat=quat_prev, curr_quat=quat_curr)
         self._bgflow_health = (float(rel_resid), int(len(prev_pts)))
@@ -1620,6 +1646,7 @@ class CrossMarkerPerception:
             if dilated_mask is None:
                 return np.zeros(6), False
             self._prev_flow_pts, self._prev_flow_cell_id = self._sample_flow_points(gray_curr, dilated_mask)
+            self._prev_flow_uid = self._allocFlowUids(len(self._prev_flow_pts))
             self._last_resample_t = self._last_t
             return np.zeros(6), False
 
@@ -1677,6 +1704,9 @@ class CrossMarkerPerception:
         self._last_flow_curr_px = curr_pts.copy()
         kept_cell_id = (self._prev_flow_cell_id[keep]
                          if self._prev_flow_cell_id is not None else None)
+        kept_uid = (self._prev_flow_uid[keep]
+                     if (self._prev_flow_uid is not None
+                         and len(self._prev_flow_uid) == len(keep)) else None)
 
         if dilated_mask is not None:
             # 2026-08-07: force a periodic refresh even when the pool is healthy, not just
@@ -1695,13 +1725,17 @@ class CrossMarkerPerception:
                 self._last_resample_t = self._last_t
                 if len(fresh) > n_kept:
                     self._prev_flow_pts, self._prev_flow_cell_id = fresh, fresh_cell_id
+                    self._prev_flow_uid = self._allocFlowUids(len(fresh))
                 else:
                     self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
+                    self._prev_flow_uid = kept_uid
             else:
                 self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
+                self._prev_flow_uid = kept_uid
         else:
             # no mask to resample against; just advance tracking
             self._prev_flow_pts, self._prev_flow_cell_id = curr_pts, kept_cell_id
+            self._prev_flow_uid = kept_uid
 
         self._ring_active_log.append((self._last_t, self._prev_flow_cell_id is not None))
 
@@ -1727,6 +1761,8 @@ class CrossMarkerPerception:
         self._bridge_anchor_bbox = self._last_bbox
         self._bridge_anchor_cell_id = (self._prev_flow_cell_id.copy()
                                         if self._prev_flow_cell_id is not None else None)
+        self._bridge_anchor_uid = (self._prev_flow_uid.copy()
+                                    if self._prev_flow_uid is not None else None)
         self._bridge_anchor_pts = (self._prev_flow_pts.copy()
                                     if self._prev_flow_pts is not None else None)
         self._bridge_streak = 0
@@ -1742,20 +1778,24 @@ class CrossMarkerPerception:
         if self._bridge_max_frames <= 0 or self._bridge_streak >= self._bridge_max_frames:
             self._bridge_reject_log.append((self._last_t, 'streak_budget', -1, np.nan))
             return None
-        if (self._bridge_anchor_center_px is None or self._bridge_anchor_cell_id is None
-                or self._prev_flow_cell_id is None or len(self._prev_flow_cell_id) == 0):
+        if (self._bridge_anchor_center_px is None
+                or self._bridge_anchor_uid is None or self._bridge_anchor_pts is None
+                or self._prev_flow_uid is None or self._prev_flow_pts is None
+                or len(self._prev_flow_uid) == 0
+                or len(self._bridge_anchor_uid) != len(self._bridge_anchor_pts)
+                or len(self._prev_flow_uid) != len(self._prev_flow_pts)):
             self._bridge_reject_log.append((self._last_t, 'no_anchor_or_no_curr_pts', -1, np.nan))
             return None
-        # Match by cell_id (persists, subsetted, across consecutive miss frames -- see
-        # _compute_hw's "no mask to resample against; just advance tracking") rather than by
+        # Match by uid (stable per-point id, subsetted -- never renumbered -- across
+        # consecutive miss frames by both flow methods; see _prev_flow_uid) rather than by
         # array index, which is NOT stable once points have been dropped by failed LK/masking.
-        anchor_by_cell = dict(zip(self._bridge_anchor_cell_id.tolist(), self._bridge_anchor_pts))
-        curr_by_cell = dict(zip(self._prev_flow_cell_id.tolist(), self._prev_flow_pts))
-        common = anchor_by_cell.keys() & curr_by_cell.keys()
+        anchor_by_uid = dict(zip(self._bridge_anchor_uid.tolist(), self._bridge_anchor_pts))
+        curr_by_uid = dict(zip(self._prev_flow_uid.tolist(), self._prev_flow_pts))
+        common = anchor_by_uid.keys() & curr_by_uid.keys()
         if len(common) < self._bridge_min_pts:
             self._bridge_reject_log.append((self._last_t, 'too_few_matched_pts', len(common), np.nan))
             return None
-        disp = np.array([curr_by_cell[c] - anchor_by_cell[c] for c in common])
+        disp = np.array([curr_by_uid[c] - anchor_by_uid[c] for c in common])
         med_disp = np.median(disp, axis=0)
         # Plausibility gate: reject a displacement implausibly large relative to the marker's
         # last known size (same "reject implausible, don't clip" pattern the ArUco rescue
