@@ -2224,9 +2224,18 @@ class Controller(Thread):
                 if not self.TARGET_IS_VISIBLE:
                     # Archive the current log segment BEFORE the re-init wipes it, so the
                     # record runs continuously up to (and through) the controller failure.
+                    # NB _buildLogDict carries a few bare SCALAR diagnostics (e.g.
+                    # "Fresh Gate Blocked N", an int) alongside the per-step sequences --
+                    # pass those through, only list()-copy the iterables. (Pre-2026-08-30
+                    # this did list(v) unconditionally and crashed the controller thread
+                    # with "'int' object is not iterable" the first time the marker was
+                    # lost mid-flight -- which under real perception happens on nearly
+                    # every landing near touchdown; GT-feedback never hit it because the
+                    # gt path keeps TARGET_IS_VISIBLE latched.)
                     if len(self._t) > 0:
                         self._log_segments.append(
-                            {k: list(v) for k, v in self._buildLogDict().items()})
+                            {k: (list(v) if not isinstance(v, (int, float, np.integer, np.floating)) else v)
+                             for k, v in self._buildLogDict().items()})
                     self._initialize_controller()
                     self.TARGET_IS_VISIBLE = True
 
@@ -4078,9 +4087,13 @@ class Controller(Thread):
             return cur
         merged = {}
         for k in cur:
+            if isinstance(cur[k], (int, float, np.integer, np.floating)):
+                merged[k] = cur[k]          # bare scalar diagnostic — not a per-step sequence
+                continue
             vals = []
             for seg in self._log_segments:
-                vals.extend(seg.get(k, []))
+                sv = seg.get(k, [])
+                vals.extend(sv if not isinstance(sv, (int, float, np.integer, np.floating)) else [sv])
             vals.extend(cur[k])
             merged[k] = vals
         return merged
