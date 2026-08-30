@@ -527,32 +527,69 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     if _circ_diff(ang_i, ang_j) < MIN_INTER_LINE_ANGLE_DEG:
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='near_parallel_pair')
 
-    # Approximate center (mask bbox center) used only to select full-mask pixels by
-    # angle-from-center; NOT used as the final answer. Using only Hough segment
-    # endpoints here biases the fit toward whichever edge of the stroke Hough happens
-    # to sample -- a thick line's two edges aren't sampled symmetrically by
-    # HoughLinesP, so an endpoints-only fit is systematically off-center. Selecting
-    # from the full binary mask by angle is symmetric about the true centerline.
+    # ─── ORIGIN-FREE arm-pixel selection (2026-08-31) ──────────────────────────────
+    # PREVIOUS approach (removed): selected each arm's mask pixels by their ANGULAR
+    # BEARING FROM THE BBOX CENTRE, keeping pixels within +/-10 deg of the cluster's
+    # Hough angle. That is circular -- it uses a guessed centre (bbox centre) to find
+    # the pixels whose line fit produces the real centre -- and bbox centre is a poor
+    # junction estimate whenever the cross is asymmetric (the stub), partly clipped,
+    # perspective-skewed, or (fatally) overfilling the frame: the arm pixels then fan
+    # out over a wide bearing range from the wrong origin, the +/-10 deg gate discards
+    # most of them, and detect() bailed with insufficient_fit_points even with two
+    # clean full arms in view (traced on a real perception-mode landing at alt 0.73 m:
+    # `s` froze -> ~0.5 m of blind lateral drift -> 1.75 m miss).
+    #
+    # NEW: "which pixels lie on this arm" is a PERPENDICULAR-DISTANCE question and needs
+    # no reference point. Per angle cluster, build a representative line straight from
+    # that cluster's own Hough segments (total-least-squares fit of their endpoints ->
+    # direction + offset), then select full-mask pixels within a perpendicular band of
+    # that line. Origin-free, still symmetric about the true centreline (the property
+    # the old angle-from-centre selection was reaching for), and identical whether the
+    # true junction is on- or off-frame -- which is exactly what feeds the existing
+    # off-frame (`in_fov=False`) extrapolation path below.
     bx0, by0, bw0, bh0 = bbox
-    approx_cx, approx_cy = bx0 + bw0 / 2.0, by0 + bh0 / 2.0
-    min_radius = 0.12 * max(bw0, bh0, 1)  # exclude the arm-overlap region near the true center
+    _band = float(np.clip(0.05 * max(bw0, bh0, 1), 5.0, 35.0))   # perp half-width; _robust_fit_line prunes residual outliers
+    _cluster_means = [float(np.mean(c)) for c in clusters]
+    # assign every surviving Hough segment to its nearest angle cluster
+    _seg_of_cluster = [[] for _ in clusters]
+    for _m, _a in enumerate(angles):
+        _k = int(np.argmin([_circ_diff(_a, cm) for cm in _cluster_means]))
+        _seg_of_cluster[_k].append(segs[_m])
 
-    dx_all = xs.astype(np.float64) - approx_cx
-    dy_all = ys.astype(np.float64) - approx_cy
-    r_all = np.hypot(dx_all, dy_all)
-    pt_angle_all = np.degrees(np.arctan2(dy_all, dx_all)) % 180.0
+    def _rep_line(cluster_idx):
+        """(vx, vy, x0, y0): the cluster's representative line. DIRECTION comes from
+        the cluster-mean Hough angle -- an average over every Hough re-detection of
+        that arm, so it is stable even when only a few short segments survive. The
+        POINT is the centroid of the member segments' endpoints, which sits on/near
+        the arm centreline (any residual half-stroke bias is well inside the
+        selection band, and _robust_fit_line converges to the true centreline from
+        the banded pixels anyway). Origin-free -- no junction guess."""
+        _th = np.radians(_cluster_means[cluster_idx] if cluster_idx < len(_cluster_means) else 0.0)
+        _ss = _seg_of_cluster[cluster_idx] if cluster_idx < len(_seg_of_cluster) else []
+        if _ss:
+            _ep = np.asarray([[s[0], s[1]] for s in _ss] + [[s[2], s[3]] for s in _ss], dtype=np.float64)
+            _c = _ep.mean(axis=0)
+        else:
+            _c = np.array([bx0 + bw0 / 2.0, by0 + bh0 / 2.0])
+        return float(np.cos(_th)), float(np.sin(_th)), float(_c[0]), float(_c[1])
 
-    def _circ_diff_vec(a, b):
-        d = np.abs(a - b) % 180.0
-        return np.minimum(d, 180.0 - d)
+    _rep = {i: _rep_line(i), j: _rep_line(j)}
+    # provisional junction from the two representative lines -- used ONLY to carve out
+    # the arm-overlap blob (a pixel there is within-band of BOTH arms and would bias
+    # both fits toward the crossing). No effect on the final answer.
+    _prov = _line_intersection(_rep[i], _rep[j])
+    _min_radius = 0.10 * max(bw0, bh0, 1)
+    _xs_f = xs.astype(np.float64)
+    _ys_f = ys.astype(np.float64)
 
-    def _cluster_points_from_mask(cluster_idx, tol_deg=10.0):
-        target = clusters[cluster_idx]
-        keep = r_all > min_radius
-        match = np.zeros(len(xs), dtype=bool)
-        for t in target:
-            match |= _circ_diff_vec(pt_angle_all, t) <= tol_deg
-        sel = keep & match
+    def _cluster_points_from_mask(cluster_idx):
+        vx, vy, x0, y0 = _rep.get(cluster_idx) or _rep_line(cluster_idx)
+        _n = np.hypot(vx, vy) or 1.0
+        vx, vy = vx / _n, vy / _n
+        perp = np.abs((_xs_f - x0) * vy - (_ys_f - y0) * vx)   # signed-free perp distance to the line
+        sel = perp <= _band
+        if _prov is not None:
+            sel &= np.hypot(_xs_f - _prov[0], _ys_f - _prov[1]) > _min_radius
         return list(zip(xs[sel].tolist(), ys[sel].tolist()))
 
     pts_i, pts_j = _cluster_points_from_mask(i), _cluster_points_from_mask(j)
@@ -566,7 +603,7 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     line_i, line_j = (vx_i, vy_i, x0_i, y0_i), (vx_j, vy_j, x0_j, y0_j)
     # ROBUST-SELECTED points (2026-08-24): _robust_fit_line's inlier mask drops
     # perpendicular outliers to the converged fit -- e.g. contamination that
-    # passed the coarse angle-window gate above (_cluster_points_from_mask)
+    # passed the coarse perpendicular-band gate above (_cluster_points_from_mask)
     # but doesn't actually lie along the real marker line (the drone's own
     # cast shadow overlapping an arm is the motivating case). These pruned
     # points are what get stored/returned (line_points_i/j below), not the
@@ -627,7 +664,17 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())
         centroid_err = np.hypot(center[0] - centroid_x, center[1] - centroid_y)
-        max_centroid_err = 0.12 * max(bw, bh, 1)   # tight: true crossing point should sit very close to centroid
+        # The visible-pixel centroid is only a valid junction proxy while the WHOLE
+        # cross is in frame. Once the marker overfills (arms clipped by the edges,
+        # stub making it asymmetric) the centroid drifts off the true junction, so a
+        # correct off-centre intersection would be rejected here for no good reason --
+        # the same wrong assumption the old angle-from-bbox-centre pixel selection
+        # made (2026-08-31). Ramp the tolerance from tight (0.12) toward the bbox-
+        # margin check as the marker fills the frame; the two robust line fits already
+        # cleared MIN_FIT_POINTS + the near-parallel gates, so support is not in doubt.
+        _fill = max(bw, bh, 1) / max(min(frame_h, frame_w), 1)
+        _centroid_tol_frac = 0.12 + 0.60 * float(np.clip((_fill - 0.6) / 0.4, 0.0, 1.0))
+        max_centroid_err = _centroid_tol_frac * max(bw, bh, 1)
         if centroid_err > max_centroid_err:
             return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
         margin = 0.25 * max(bw, bh, 1)
@@ -657,12 +704,13 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
                 if len(pts_k) < 2:
                     continue
                 # ROBUST-SELECTED stub points (2026-08-24): same rationale as the
-                # arm-line pruning above -- the coarse angle-window gate
-                # (_cluster_points_from_mask) only checks bearing-from-approx-
-                # center, not collinearity, so a contamination source sharing a
-                # similar bearing (e.g. the drone's own shadow falling across
-                # the stub near touchdown -- the motivating case for this fix)
-                # can leak into pts_k and, being far from center, dominates the
+                # arm-line pruning above -- the coarse perpendicular-band gate
+                # (_cluster_points_from_mask) only checks distance to the cluster's
+                # representative line, not that the points form a single coherent
+                # stroke, so a contamination source lying near that line (e.g. the
+                # drone's own shadow falling across the stub near touchdown -- the
+                # motivating case for this fix) can leak into pts_k and, being far
+                # from center, dominates the
                 # quadratic-moment alpha computation downstream (cross_marker_
                 # perception.py's _unweighted_principal_angle). Only proceed
                 # with a candidate whose points collapse onto a single line

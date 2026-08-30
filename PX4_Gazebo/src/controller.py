@@ -470,8 +470,8 @@ class Controller(Thread):
         # to MATLAB/VDF_ASMC/vdf_params() (manuscript-validated 25/25 SP) in combined mode, each
         # only if not explicitly overridden by env.  2026-06-20 parity fix.
         if self._combined_barrier:
-            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 1.0   # KEPT 1.0 2026-06-30: A/B at {h_rd=-0.30,XIR=0.15} (IC2/IC4/IC5 n=3) REVERSED the old 1.5 claim — P2INF=1.0 best (7/9 SP, rel_vel med 0.026, 0 fly) vs 1.5 (5/9, 0.144, 1 fly) vs 2.0 (5/9, 0.172). The old "1.5 un-saturates zeta_h" benefit is LOST at this config (h_e spikes saturate zeta_h even at 1.5); smaller p_2 = steeper zeta_h = more velocity damping at the terminal. (Briefly baked 1.5 then reverted.)
-            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 1.0   # KEPT 1.0 2026-06-30 (A/B: 1.0 > 1.5/2.0)
+            if "PLASMC_P2INF_X" not in os.environ: self._p_inf[0] = 2.5   # REBAKED 2026-08-28 (was 1.0, KEPT 2026-06-30 under a different base config {h_rd=-0.30,XIR=0.15}): IC2 GT-FB n=5 A/B directly traced P2INF_XY=0.5/1.0 as the MECHANICAL TRIGGER for the funnel-breach/Singhal-containment/dh_d-leak/a_u-thrash chain -- s_e_n was small and still CONVERGING right up to the moment p(t) hit its floor; the funnel getting tight, not the tracking error growing, triggered every observed breach. 2.5 gave 5/5 CLEAN runs (kappa_xy_max<=0.18, a_u_xy_max<=4.4, zero containment events) vs 0.5 giving 2/4 severe (a_u to 162) and repeated catastrophic outliers (a_u to 1e6, 9e3) once AU_LEAD/KF-retune were layered on top trying to patch the consequences. This supersedes the 2026-06-30 A/B's modest SP-rate finding -- avoiding a full breach event is worth far more than that A/B's marginal rel_vel gain, and that A/B's own base config differs from this one.
+            if "PLASMC_P2INF_Y" not in os.environ: self._p_inf[1] = 2.5   # REBAKED 2026-08-28, see PLASMC_P2INF_X comment above -- same finding, same fix.
             if "PLASMC_P2INF_Z" not in os.environ: self._p_inf[2] = 1.5      # vdf p_hinf z
             if not any(f"PLASMC_GAMMA_{a}" in os.environ for a in "XYZ"):
                 self._Gma = np.diag([0.25, 0.25, 0.75])                      # GAMMA_xy 0.4375/0.5->0.25 BAKED 2026-06-29 (symmetric): reaching gain a_u=-Gamma*sigma is the terminal-limit-cycle FORCING amplitude (sigma rings in the boundary layer terminally); lower Gamma shrinks the cycle -> softer + more precise. GT-FB sweep {0.25,0.5,1.0} @ PR0=10/PRINF=0.8/XIR=0.10: 0.25 best (xy 0.087 3/4 precise, rel_vel 0.38, vlat_term 0.23 vs 0.31/0.63). Symmetric (GT-FB has no hot axis; x 1.39x is a perception/cal asymmetry -> re-check per-axis under perception-ON). Z=0.75 (VDF, descent) unchanged. (was vdf 0.4375/0.5; pre-vdf bare default 2/2/1)
@@ -862,6 +862,18 @@ class Controller(Thread):
         # the loom path's own requirements, it adds a second independent route to the same
         # one-way latch.
         self._td_ext_only_hist = deque(maxlen=self._td_window)
+        # PLASMC_TD_EXT_ONLY (2026-08-30): gate for the loom-independent second path
+        # below. Default ON (back-compat). Set 0 to require the loom+extent FIRST path.
+        # Rationale for the switch existing: the second path's proximity gate
+        # (_extentTouchdownProximate = current >= 0.6*RUNNING-max) carries ~no proximity
+        # information during a monotone descent (current==running_max almost every frame),
+        # so the path collapses to "extent-growth briefly flattened + roughly centered" --
+        # which fires mid-descent at a centered IC (IC1 perception-mode: all 5 reps
+        # false-latched LANDED at 2.4-3.4m altitude, 2026-08-30). GT-feedback never hit
+        # this (its own GT-depth path returns before reaching here). Until
+        # _extentTouchdownProximate is re-based on frame size rather than running max,
+        # perception-mode sweeps should run with this = 0.
+        self._td_ext_only = os.environ.get("PLASMC_TD_EXT_ONLY", "1") == "1"
         # EXTENT-ARM PRECONDITION (2026-08-26, found via the 28-flight offline replay):
         # "flattened+proximate" is trivially true from frame 1 for any flight that STARTS
         # close enough for the marker to already saturate the frame (confirmed via GT: 3
@@ -928,6 +940,49 @@ class Controller(Thread):
         self._td_gt_progress_min = float(os.environ.get("PLASMC_TD_GT_PROGRESS_MIN", "0.3"))  # m
         self._td_gt_rate_win = int(os.environ.get("PLASMC_TD_GT_RATE_WIN", str(self._td_ext_win)))
         self._td_gt_rate_hist = deque(maxlen=self._td_gt_rate_win)
+
+        # ─── V2 PERCEPTION TOUCHDOWN DETECTOR (2026-08-30, replay-designed on 205 GT-feedback
+        #     landings; replaces the loom-spike + loom-independent-extent perception paths).
+        #     Precision-INDEPENDENT (NO |s_e_n| gate -- an off-target ground contact is still a
+        #     touchdown and must disarm; precision is the SP scorer's job). Cross-marker only
+        #     (needs self._img_node._perception); ArUco perception keeps the legacy paths.
+        #     Three one-way latch paths -- see _touchdownDetectV2's docstring:
+        #       (a) OVERFILL   N_flow_corners collapse while extent still fills the frame  (2-in-5)
+        #       (b) BACKSTOP   extent pinned at its own saturated max + extent&centroid frozen ~3s (3-in-6)
+        #       (c) FLOW-FREEZE background median px-displacement high->low transition        (3-in-6)
+        #     IMU accel-spike (_impactDetector) + PX4 LandedState remain the backstops for
+        #     hard/sliding contact and very-soft settles.
+        self._tdv2_on          = os.environ.get("PLASMC_TD_V2", "1") == "1"
+        self._tdv2_frame_min   = float(2.0 * min(np.asarray(self._img_node.center, dtype=float)))
+        self._tdv2_arm_frac    = float(os.environ.get("PLASMC_TDV2_ARM_FRAC",   "0.50"))  # extent>=frac*W to arm
+        self._tdv2_grow_arm    = float(os.environ.get("PLASMC_TDV2_GROW_ARM",   "0.15"))  # |d(lnE)/dt| over 1s
+        self._tdv2_grow_arm_win= float(os.environ.get("PLASMC_TDV2_GROW_ARM_WIN","1.0"))
+        self._tdv2_nc_frac     = float(os.environ.get("PLASMC_TDV2_NC_FRAC",    "0.65"))  # N_corn < frac*airborne-median
+        self._tdv2_nc_ext_frac = float(os.environ.get("PLASMC_TDV2_NC_EXT_FRAC","0.55"))  # ...while extent>=frac*W (rules out fly-away tracking-loss)
+        self._tdv2_sat_frac    = float(os.environ.get("PLASMC_TDV2_SAT_FRAC",   "0.62"))  # running-max must be >=frac*W
+        self._tdv2_sat_nearmax = float(os.environ.get("PLASMC_TDV2_SAT_NEARMAX","0.95"))  # current within 5% of running-max
+        self._tdv2_grow_back   = float(os.environ.get("PLASMC_TDV2_GROW_BACK",  "0.02"))  # |d(lnE)/dt| over back_win
+        self._tdv2_sdot_back   = float(os.environ.get("PLASMC_TDV2_SDOT_BACK",  "0.03"))  # |d centroid_px/dt| over back_win
+        self._tdv2_back_win    = float(os.environ.get("PLASMC_TDV2_BACK_WIN",   "3.0"))
+        self._tdv2_arm_dwell   = float(os.environ.get("PLASMC_TDV2_ARM_DWELL",  "2.5"))   # min s since arm for the backstop
+        self._tdv2_ff_hi       = float(os.environ.get("PLASMC_TDV2_FF_HI",      "2.0"))   # px/frame -- "was moving"
+        self._tdv2_ff_lo       = float(os.environ.get("PLASMC_TDV2_FF_LO",      "0.45"))  # px/frame -- "now frozen"
+        self._tdv2_ff_recent   = float(os.environ.get("PLASMC_TDV2_FF_RECENT",  "1.2"))   # s lookback for the "was moving" test
+        self._tdv2_ff_minpts   = int(os.environ.get("PLASMC_TDV2_FF_MINPTS",    "5"))
+        self._tdv2_armed = False
+        self._tdv2_t_arm = None
+        self._tdv2_nc_pre = []                       # airborne N_flow_corners samples (pre-arm reference)
+        self._tdv2_ext_hist = deque(maxlen=400)      # (t, extent_px)
+        self._tdv2_cen_hist = deque(maxlen=400)      # (t, cx_px, cy_px)
+        self._tdv2_ff_hist  = deque(maxlen=400)      # (t, med_flow_disp_px, n_pts)
+        self._tdv2_arm_h = deque(maxlen=6)
+        self._tdv2_nc_h  = deque(maxlen=5)
+        self._tdv2_bk_h  = deque(maxlen=6)
+        self._tdv2_ff_h  = deque(maxlen=6)
+        if self._tdv2_on:
+            print(f"[controller] PLASMC_TD_V2=1: perception touchdown detector v2 "
+                  f"(frame_min={self._tdv2_frame_min:.0f}px; overfill/backstop/flow-freeze; no |s_e_n| gate)")
+
         if self._touchdown_loom:
             if self._gt_feedback is not None:
                 print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1 (GT-feedback): touchdown = GT "
@@ -1430,6 +1485,179 @@ class Controller(Thread):
             return True
         return float(self.MARKER_EXTENT_PX) >= self._td_ext_prox_frac * self._td_ext_max
 
+    @staticmethod
+    def _tdV2_slope(hist, win, islog=False):
+        """Trailing-window least-squares slope of a (t, value[, ...]) sequence over the
+        last `win` seconds. Returns None if <5 usable samples or the span is <40% of
+        `win` (not enough history yet). islog: fit log(value) instead (for a
+        multiplicative/normalised growth rate). FAILS to None, never raises."""
+        try:
+            if not hist:
+                return None
+            t_now = hist[-1][0]
+            ts = []; vs = []
+            for row in hist:
+                t = row[0]; v = row[1]
+                if t < t_now - win:
+                    continue
+                if islog and not (v > 0):
+                    continue
+                ts.append(t); vs.append(v)
+            if len(ts) < 5:
+                return None
+            ts = np.asarray(ts, float); vs = np.asarray(vs, float)
+            if ts[-1] - ts[0] < win * 0.4:
+                return None
+            return float(np.polyfit(ts, np.log(vs) if islog else vs, 1)[0])
+        except Exception:
+            return None
+
+    def _tdV2_perceptionSignals(self):
+        """Current-frame perception signals for the V2 touchdown detector, read
+        defensively straight off the cross-marker perception object (mirrors
+        MARKER_EXTENT_PX's own _feature_pts reach-in). Any signal that isn't
+        available -> None/0, and the latch path that needs it simply won't fire.
+        Returns (extent_px, n_flow_corners|None, (cx,cy)|None, med_flow_disp_px|None, n_flow_pts)."""
+        ext = float(self.MARKER_EXTENT_PX)
+        n_corn = None; cen = None; ff_disp = None; ff_n = 0
+        perc = getattr(self._img_node, "_perception", None)
+        try:
+            ncl = getattr(perc, "_n_flow_corners_log", None)
+            if ncl:
+                n_corn = float(ncl[-1])
+        except Exception:
+            pass
+        try:
+            c = self._img_node.get_center_px()
+            if c is not None and len(c) == 2 and np.all(np.isfinite(c)):
+                cen = (float(c[0]), float(c[1]))
+        except Exception:
+            pass
+        try:
+            p0 = getattr(perc, "_last_flow_prev_px", None)
+            p1 = getattr(perc, "_last_flow_curr_px", None)
+            if p0 is not None and p1 is not None:
+                a = np.asarray(p0, float); b = np.asarray(p1, float)
+                if a.ndim == 2 and a.shape == b.shape and len(a) >= 3:
+                    ff_disp = float(np.median(np.linalg.norm(b - a, axis=1)))
+                    ff_n = int(len(a))
+        except Exception:
+            pass
+        return ext, n_corn, cen, ff_disp, ff_n
+
+    def _touchdownDetectV2(self, s_e_n):
+        """Replay-designed perception touchdown detector (2026-08-30; see __init__'s
+        V2 block). Cross-marker perception mode only. Precision-INDEPENDENT -- there is
+        NO |s_e_n| gate: a touchdown is a mechanical event, and an off-target ground
+        contact is still a touchdown that must disarm (the SP scorer, not this
+        detector, judges precision). One-way latch on any of three independent paths:
+
+          (a) OVERFILL     N_flow_corners collapses (< nc_frac * airborne median) while
+                           the marker STILL fills the frame (extent >= nc_ext_frac*W).
+                           The marker overfills the FoV at contact and LK loses its
+                           corners; requiring large extent rules out a fly-away where
+                           corners vanish from tracking-loss, not overfill. 2-in-5.
+                           Fires ~0.05 m -- primary, most altitude-accurate path.
+          (b) BACKSTOP     extent pinned within 5% of its running max (which is itself
+                           >= sat_frac*W) AND extent+centroid BOTH frozen over ~3 s AND
+                           >= arm_dwell s since arm. 3-in-6. For soft settles where (a)
+                           never collapses cleanly.
+          (c) FLOW-FREEZE  background median per-frame pixel displacement makes a
+                           high(>ff_hi) -> low(<ff_lo) transition within ~1.2 s, with
+                           >= ff_minpts points. 3-in-6. POSITION-INDEPENDENT (no marker
+                           needed) but gated on _td_ext_armed so a real descent must
+                           have run first -- catches a soft OFF-marker settle (marker
+                           out of FoV) that (a)/(b) can't see. Hard/sliding off-marker
+                           contacts are the IMU accel-spike detector's job
+                           (flight_controller.py).
+
+        Returns True iff a path latched this call (and sets self._touchdown)."""
+        if self._touchdown:
+            return True
+        try:
+            t = float(self._t[-1])
+        except (IndexError, TypeError):
+            return False
+        ext, n_corn, cen, ff_disp, ff_n = self._tdV2_perceptionSignals()
+        if ext > 0:
+            self._tdv2_ext_hist.append((t, ext))
+        if cen is not None:
+            self._tdv2_cen_hist.append((t, cen[0], cen[1]))
+        if ff_disp is not None:
+            self._tdv2_ff_hist.append((t, ff_disp, ff_n))
+        W = self._tdv2_frame_min
+
+        # ── ARM: a real close approach (marker fills >=half the frame AND has stopped
+        #    closing fast). No centering requirement. ──
+        if not self._tdv2_armed:
+            if n_corn is not None:
+                self._tdv2_nc_pre.append(n_corn)
+                if len(self._tdv2_nc_pre) > 4000:
+                    self._tdv2_nc_pre = self._tdv2_nc_pre[-2000:]
+            ge = self._tdV2_slope(self._tdv2_ext_hist, self._tdv2_grow_arm_win, islog=True)
+            arm_ok = (self._td_ext_armed
+                      and ext >= self._tdv2_arm_frac * W
+                      and ge is not None and abs(ge) < self._tdv2_grow_arm)
+            self._tdv2_arm_h.append(bool(arm_ok))
+            if sum(self._tdv2_arm_h) >= 3:
+                self._tdv2_armed = True
+                self._tdv2_t_arm = t
+
+        nc_ref = float(np.median(self._tdv2_nc_pre)) if len(self._tdv2_nc_pre) >= 5 else 150.0
+
+        # ── (a) OVERFILL ──
+        overfill = (self._tdv2_armed and n_corn is not None
+                    and n_corn < self._tdv2_nc_frac * nc_ref
+                    and ext >= self._tdv2_nc_ext_frac * W)
+        self._tdv2_nc_h.append(bool(overfill))
+
+        # ── (b) BACKSTOP ──
+        backstop = False
+        if (self._tdv2_armed and self._tdv2_t_arm is not None
+                and (t - self._tdv2_t_arm) >= self._tdv2_arm_dwell):
+            ext_max = float(self._td_ext_max)
+            gb = self._tdV2_slope(self._tdv2_ext_hist, self._tdv2_back_win, islog=True)
+            sdx = self._tdV2_slope([(r[0], r[1]) for r in self._tdv2_cen_hist], self._tdv2_back_win)
+            sdy = self._tdV2_slope([(r[0], r[2]) for r in self._tdv2_cen_hist], self._tdv2_back_win)
+            sd = float(np.hypot(sdx, sdy)) if (sdx is not None and sdy is not None) else None
+            backstop = (ext_max >= self._tdv2_sat_frac * W
+                        and ext >= self._tdv2_sat_nearmax * ext_max
+                        and gb is not None and abs(gb) < self._tdv2_grow_back
+                        and sd is not None and sd < self._tdv2_sdot_back)
+        self._tdv2_bk_h.append(bool(backstop))
+
+        # ── (c) FLOW-FREEZE (position-independent, but a REAL descent must have run) ──
+        # Gated on _td_ext_armed (extent has grown >=2x from its minimum -> the marker
+        # was approached, then lost) so the "was-moving -> now-frozen" pattern can't be
+        # satisfied by the IC-convergence reposition-then-settle before descent even
+        # starts (observed: false-fired at 4.87 m on the very first perception run,
+        # 2026-08-31). For a genuine marker-gone settle the marker always grew a lot on
+        # the way down before leaving the FoV, so this costs nothing there.
+        freeze = False
+        if (self._td_ext_armed and ff_disp is not None and ff_n >= self._tdv2_ff_minpts
+                and ff_disp < self._tdv2_ff_lo):
+            recent = [d for (tt, d, npt) in self._tdv2_ff_hist if tt >= t - self._tdv2_ff_recent]
+            if recent and max(recent) > self._tdv2_ff_hi:
+                freeze = True
+        self._tdv2_ff_h.append(bool(freeze))
+
+        # ── LATCH ──
+        if sum(self._tdv2_nc_h) >= 2:
+            path = "overfill"
+        elif sum(self._tdv2_bk_h) >= 3:
+            path = "backstop"
+        elif sum(self._tdv2_ff_h) >= 3:
+            path = "flow-freeze"
+        else:
+            return False
+        self._touchdown = True
+        _sen = float(np.max(np.abs(s_e_n))) if s_e_n is not None else float("nan")
+        print(f"[controller] TOUCHDOWN-DETECT v2 [{path}]: extent={ext:.0f}/{W:.0f}px  "
+              f"n_corn={(n_corn if n_corn is not None else -1):.0f} (airborne ref {nc_ref:.0f})  "
+              f"flow_disp={(ff_disp if ff_disp is not None else -1):.2f}px  |s_e_n|={_sen:.2f} "
+              f"-> LANDED (disarm before bounce)")
+        return True
+
     def _touchdownDetect(self, s_e_n):
         """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
@@ -1460,6 +1688,18 @@ class Controller(Thread):
         if not self._touchdown_loom or self._touchdown:
             return
         self._trackExtentHistory(self._t[-1])   # unconditional -- see its own comment
+
+        # V2 perception touchdown detector (2026-08-30). Cross-marker perception mode
+        # only -- ArUco perception and GT-feedback keep their existing paths below.
+        # Runs BEFORE the loom-arm gate so the position-independent flow-freeze path
+        # can fire on an off-marker settle that never produced a loom arm. When on
+        # (default), V2 OWNS the perception touchdown decision -- the legacy loom-spike
+        # / loom-independent-extent paths are skipped entirely.
+        if (self._tdv2_on and self._gt_feedback is None
+                and hasattr(self._img_node, "_perception")):
+            self._touchdownDetectV2(s_e_n)
+            return
+
         h_z = float(self._h[-1][2])
         _sen_mag = float(np.max(np.abs(s_e_n)))
         if not self._td_armed:
@@ -1556,6 +1796,8 @@ class Controller(Thread):
         # requirement on h_z's sign/magnitude at all, only that extent has independently
         # (and, per _td_ext_armed, genuinely) stalled near its own proximate max, sustained
         # the same _td_frames-in-a-window way.
+        if not self._td_ext_only:
+            return
         self._td_ext_only_hist.append(_ext_ok)
         _ext_only_streak = sum(self._td_ext_only_hist)
         if self._td_debug:
@@ -1772,6 +2014,7 @@ class Controller(Thread):
         self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
         self._dtheta_xfade_w_log = []  # direct-term crossfade weight (v3, see __init__ note)
         self._dtheta_correction_log = []  # final (post-crossfade, post-cap) I_a[2] correction actually applied
+        self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
         self._theta_safe = None    # cbf2 Phase-1 safe lean vector (Fix B: direct->rd3)
@@ -1992,9 +2235,18 @@ class Controller(Thread):
                 if not self.TARGET_IS_VISIBLE:
                     # Archive the current log segment BEFORE the re-init wipes it, so the
                     # record runs continuously up to (and through) the controller failure.
+                    # NB _buildLogDict carries a few bare SCALAR diagnostics (e.g.
+                    # "Fresh Gate Blocked N", an int) alongside the per-step sequences --
+                    # pass those through, only list()-copy the iterables. (Pre-2026-08-30
+                    # this did list(v) unconditionally and crashed the controller thread
+                    # with "'int' object is not iterable" the first time the marker was
+                    # lost mid-flight -- which under real perception happens on nearly
+                    # every landing near touchdown; GT-feedback never hit it because the
+                    # gt path keeps TARGET_IS_VISIBLE latched.)
                     if len(self._t) > 0:
                         self._log_segments.append(
-                            {k: list(v) for k, v in self._buildLogDict().items()})
+                            {k: (list(v) if not isinstance(v, (int, float, np.integer, np.floating)) else v)
+                             for k, v in self._buildLogDict().items()})
                     self._initialize_controller()
                     self.TARGET_IS_VISIBLE = True
 
@@ -3440,11 +3692,18 @@ class Controller(Thread):
             p_10_eff[_axis] *= (1.0 - self._cbf_drift_pullback_frac)
         dt_last = self._dt[-1] if len(self._dt) > 0 else None
         w_rp = np.asarray(self._w[-1][:2], float) if len(self._w) > 0 else np.zeros(2)
+        # h_z (2026-08-29, CBF_HZ_AWARE_DRIFT prototype): pass the scale-free
+        # loom/closing-rate proxy so the QP's drift extrapolation can account
+        # for descent-driven acceleration of feature drift. See cbf2_filter's
+        # own h_z docstring for the derivation. Default-off (CBF_HZ_AWARE_DRIFT
+        # env var), so passing this is a no-op until explicitly enabled.
+        _cbf_h_z = float(self._h[-1][2]) if len(self._h) > 0 else 0.0
         I_a, theta_cone, _cbf_ok, self._theta_safe, _th_desired = cbf2_filter(
             I_a, R, R33, yaw_c, corners,
             self._img_node.center, self._img_node.focal,
             p_10_eff, theta_cone,
-            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2)
+            dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z,
+            A_CAP=A_CAP, g=g)
         # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
         # loom-margin-prediction approach entirely, not stacked on it). That approach used
         # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for
@@ -3503,17 +3762,45 @@ class Controller(Thread):
         _dtheta_correction = float(np.clip(_dtheta_correction, 0.0, _dtheta_cap))
         self._dtheta_correction_log.append(_dtheta_correction)
         I_a[2] -= _dtheta_correction   # more negative I_a[2] = more lift = slower descent
-        # Deliverable-tilt cap (theta_cap saturation) — applied HERE, not in the CBF:
-        # it is a thrust-deliverability bound, not a visibility constraint. The CBF
-        # returns the un-capped safe lean th_safe (and I_a[:2]=a_z·Rz@th_safe), so a
-        # single scale clips both consistently (|I_a[:2]| = a_z·|th_safe|).
-        if self._theta_safe is not None:
+        # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
+        # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
+        # of this fully SKIPPED the angle clip below, relying only on the downstream
+        # thrust-magnitude sphere cap. That's wrong -- the angle clip does double duty:
+        # it's both a deliverability bound AND the ONLY thing preventing a pathological/
+        # degenerate QP output (theta_desired = I_a[:2]/a_z can blow up, observed live up
+        # to 21.68 rad -- ~1240deg, nonsensical) from reaching Fix B's `rd3` (attitude
+        # direction) undamped. The thrust-magnitude sphere cap bounds MAGNITUDE only; a
+        # garbage DIRECTION with correct magnitude is still garbage. Fix: NEVER fully skip
+        # the angle clip -- instead make its BOUND az-aware (arccos(a_z_current/A_CAP),
+        # the true deliverable angle AT THE CURRENT a_z) instead of the fixed hover-
+        # assumed constant (arccos(g/A_CAP)) the non-joint path uses. This addresses the
+        # actual "assumes hovering" gap (uses REAL a_z, not hover g) while keeping the
+        # same always-active sanity bound. `PLASMC_AZ_JOINT` OFF preserves the exact
+        # original behavior (fixed hover-based cap) for backward compatibility.
+        # CBF_JOINT_QP (default on, see cbf_visibility.py) already interleaves its OWN
+        # az-aware angle clip (arccos(a_z_final/A_CAP)) into the QP itself, so th_safe/
+        # I_a[:2] coming back here are already envelope-consistent -- reapplying a SECOND
+        # clip below using the fixed hover-assumed self._theta_cap would fight that (either
+        # redundant or, when a_z sits below hover, wrongly TIGHTER than the true deliverable
+        # angle at the actual a_z). Skip this block's clip whenever the joint QP ran; keep
+        # it (PLASMC_AZ_JOINT / fixed-cap fallback) only for CBF_JOINT_QP=0 A/B comparisons.
+        _cbf_joint_active = os.environ.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
+        _az_joint = os.environ.get("PLASMC_AZ_JOINT", "0") == "1"
+        self._az_joint_log.append(0.0)   # populated for real below, once the downstream cap's effect is known
+        if self._theta_safe is not None and not _cbf_joint_active:
+            if _az_joint:
+                _az_now = abs(float(I_a[2]))
+                _cap_eff = float(np.arccos(np.clip(_az_now / A_CAP, -1.0, 1.0))) if A_CAP > 0 else self._theta_cap
+            else:
+                _cap_eff = self._theta_cap
             _tn = float(np.linalg.norm(self._theta_safe))
-            if _tn > self._theta_cap:
-                _scl = self._theta_cap / _tn
+            if _tn > _cap_eff:
+                _scl = _cap_eff / _tn
                 self._theta_safe = self._theta_safe * _scl
                 I_a[:2] = I_a[:2] * _scl
             theta_cone = float(np.linalg.norm(self._theta_safe))   # log the capped commanded tilt
+        elif self._theta_safe is not None:
+            theta_cone = float(np.linalg.norm(self._theta_safe))   # joint QP already capped; just refresh the log value
         # DELIVERABLE-THRUST-MAGNITUDE CAP (2026-08-23, replaces the old, unvalidated
         # I_a[2]=max(I_a[2],-50.0) floor -- see A_CAP's top-of-file comment). theta_cap
         # just above only bounds LEAN ANGLE; nothing previously bounded the FULL thrust
@@ -3530,9 +3817,11 @@ class Controller(Thread):
         # so attitude and deliverable thrust stay consistent.
         _thrust_vec = I_a + np.array([0.0, 0.0, g])
         _thrust_mag = float(np.linalg.norm(_thrust_vec))
+        _az_before_cap = float(I_a[2])
         if _thrust_mag > A_CAP > 0.0:
             _thrust_vec *= A_CAP / _thrust_mag
             I_a = _thrust_vec - np.array([0.0, 0.0, g])
+        self._az_joint_log[-1] = float(I_a[2] - _az_before_cap)   # how much this cap actually moved a_z this cycle (0 when it didn't bind)
 
         # log FoV diagnostics
         self._rho_fov_log.append(rho_fov_curr.copy())
@@ -3806,9 +4095,13 @@ class Controller(Thread):
             return cur
         merged = {}
         for k in cur:
+            if isinstance(cur[k], (int, float, np.integer, np.floating)):
+                merged[k] = cur[k]          # bare scalar diagnostic — not a per-step sequence
+                continue
             vals = []
             for seg in self._log_segments:
-                vals.extend(seg.get(k, []))
+                sv = seg.get(k, [])
+                vals.extend(sv if not isinstance(sv, (int, float, np.integer, np.floating)) else [sv])
             vals.extend(cur[k])
             merged[k] = vals
         return merged
@@ -3873,6 +4166,7 @@ class Controller(Thread):
             "dtheta_href_g(t)": self._dtheta_href_g_log,
             "dtheta_xfade_w(t)": self._dtheta_xfade_w_log,
             "dtheta_correction(t)": self._dtheta_correction_log,
+            "az_joint_delta(t)": self._az_joint_log,
         }
 
     def getImgData(self):

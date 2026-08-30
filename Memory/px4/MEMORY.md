@@ -4,6 +4,9 @@
 > entries here (../MEMORY.md is the slim auto-loaded CORE — cross-cutting rules only; shrunk 2026-07-02). Topic files for new PX4 work live in this
 > folder. Cross-cutting findings go in ../shared/. MATLAB work -> ../matlab/.
 
+> [Perception touchdown-detect V2 IMPLEMENTED](project_20260830_perception_touchdown_detect_broken.md) — 2026-08-30: `_touchdownDetectV2` in controller.py, cross-marker perception only, `PLASMC_TD_V2=1` default (`=0` reverts). No `|s_e_n|` gate. 3 paths: overfill (N_corn collapse+extent), backstop (extent+centroid frozen 3s), flow-freeze (bg px-disp high→low, catches off-marker settles). Unit-tested 3/3, NOT SITL-validated. IMU `_impactDetector` (|a|>50) + PX4 LandedState remain the hard-contact backstops.
+> ⛔ [Perception-mode touchdown-detect is BROKEN — blocks perception-mode landing](project_20260830_perception_touchdown_detect_broken.md) — 2026-08-30: both paths in `_touchdownDetect` unvalidated (GT-FB bypasses via `_td_gt_*`). Replay on 25 clean GT-FB landings: loom-independent 2nd path (`_td_ext_only`) FALSE-FIRES at altitude in 23/25 (`_extentTouchdownProximate` uses running-max, ~always true on a monotone descent); loom-spike 1st path never fires in 22/25. Added `PLASMC_TD_EXT_ONLY` env (default on) to gate the 2nd path; with it off, nothing latches touchdown at all. Fix = re-base proximity on frame size + loosen flattened window; revisit 1st-path h_z criterion.
+> [Cell-ID bug FIXED + IC5-VALIDATED — center-bridge now engages on the real `CROSS_BG_FLOW=1` default](project_20260824_ic5_angle_clustering_and_hang_investigation.md) — 2026-08-29: added a cell-ID-independent `_prev_flow_uid` match key in `cross_marker_perception.py`; `_tryCenterBridge` matches by uid not cell_id. A/B at real defaults: IC5 **20/20 SP (2×n=5) with bridge=10 vs 12/18 bridge=0** — FIRST candidate in this investigation to survive a confirm sweep, with a mechanism (37-70 bridge accepts/rep, `lt2_angle_clusters` spike suppression). IC1/2/4 bridge=10 = 9/9 SP clean. **IC3 n=5 A/B (re-run clean): 4/5 vs 4/5 bridge-off — NEUTRAL, no regression** (the earlier 1/3 + 16.5m fly-away did NOT reproduce — infra flake). IC2-5 gate effectively CLEARED. Code UNCOMMITTED. **Recommendation: land the uid fix AND flip `CROSS_CENTER_BRIDGE_FRAMES` default 0→10** (pending user go-ahead).
 > ⛔⛔ [GT touchdown detector false-fired at altitude in an entire 11-run IC/motion batch; fixed + exposed a real kappa-ratchet](project_20260828_ic_motion_batch_gt_touchdown_and_kappa_ratchet.md) — 2026-08-28: don't trust ANY "on-platform" GT-feedback result from 2026-08-26/27 (the touchdown fix era) without re-checking against the depth-ceiling fix (`PLASMC_TD_GT_MAX_DEPTH`, default 0.25m); IC1 rover_cross now shows a real w_u-saturation→kappa-ratchet divergence (tune-plasmc mode 11), unexplored for this gain set — video batch BLOCKED on this
 > [A relative-flatness check alone never proves a terminal state; pair with an absolute-value gate](feedback_relative_flatness_needs_absolute_gate.md) — general lesson from 2 consecutive GT-touchdown-detector bugs (2026-08-26, 2026-08-28)
 > [Don't disable cast_shadows / move sunUTC to fix shadow-on-marker perception issues](feedback_reject_disable_cast_shadows.md) — 2026-08-25, user rejected; real drones cast real shadows, harden perception instead
@@ -68,6 +71,184 @@
 > from the launcher scripts' own `stray_clean` pattern). See
 > [[feedback_check_concurrent_sitl_before_launch]] for the full checklist.**
 
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented) — `CBF_JOINT_QP`: solves the visibility box
+> DIRECTLY for I_a (not theta) INSIDE `cbf2_filter` itself, superseding `PLASMC_AZ_JOINT`'s
+> downstream-patch approach.** Derivation: `theta = P@I_a[:2]/a_z` (`P` = the same forward
+> rotation already used), so the box's Jacobian w.r.t. `I_a[:2]` directly is `M=Lw2@P/a_z` --
+> the SAME alternating-projection algorithm runs unchanged, just on `I_a[:2]`, interleaved
+> with a sphere projection (`|I_a+g*e3|<=A_CAP`, full 3-vector) each outer iteration, so
+> `a_z` and lateral are genuinely solved TOGETHER, not sequentially. **Offline: 200 trials
+> confirmed MACHINE-PRECISION (9.16e-16) equivalence to the theta-based path when not
+> saturating; 0 sphere violations in 200+ trials.** **Caught a SECOND instance of the exact
+> same blowup bug class found in `PLASMC_AZ_JOINT`'s first draft** (500-trial extreme-input
+> stress test hit `theta_cone=3.52 rad`) — the sphere bounds thrust MAGNITUDE, not the
+> derived angle RATIO. Fixed with the same `a_z`-aware sanity clip
+> (`arccos(a_z_final/A_CAP)`) validated before, re-confirmed bounded (max 1.563 vs pi/2)
+> across 1000 extreme trials with equivalence still exact. `tools/validate_cbf.py` 12/12
+> throughout (default path unaffected). **SITL smoke test (n=3, IC5): 2/3 SP, worst miss
+> 1.22m — the mildest result of ANY variant tested this session**, no dtheta outliers, only
+> a mild kappa rise (1.42, not a ratchet) on the one miss. n=3 only, not yet n>=5 confirmed,
+> but the strongest current candidate given both the result AND the more principled
+> architecture (joint solve in the barrier itself, not a patch). **Process lesson (now
+> doubly confirmed): any a_z/deliverability mechanism in this codebase needs its OWN
+> explicit angle-sanity bound — bounding thrust magnitude alone is not sufficient — and
+> extreme/edge-case offline stress-testing (not just realistic-range checks) is what
+> catches this class of bug before SITL.** Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (BAKED) — `CBF_JOINT_QP` is now the DEFAULT
+> (env default flipped 0->1 in `cbf_visibility.py`; still requires `A_CAP`, which
+> `controller.py` always passes, so this is what actually runs there now).**
+> `controller.py`'s downstream fixed-hover `theta_cap` re-clip (the old `PLASMC_AZ_JOINT`
+> block) is now SKIPPED whenever the joint QP ran (gated on the same `CBF_JOINT_QP` env,
+> default true) — that block's fixed-cap re-clip would otherwise fight the joint QP's own
+> `a_z`-aware clip (redundant, or wrongly tighter when `a_z` sits below hover).
+> `PLASMC_AZ_JOINT`/fixed-cap path stays available for `CBF_JOINT_QP=0` A/B. **Re-validated
+> post-flip: `tools/validate_cbf.py` 12/12 (no `A_CAP` in that harness -> exercises the old
+> path, unaffected). SITL (`run_ic_validation.sh IC_LIST=IC5 N_REPS=3`,
+> `PLASMC_GT_FEEDBACK=1 CBF_HZ_AWARE_DRIFT=1`, `CBF_JOINT_QP` now the unset/default-on
+> path): 2/3 SP, xy_err 0.018/0.018/1.574 — matches the pre-flip validated number exactly.**
+> Process note: two earlier "regression" smoke tests this session were false alarms — one
+> ran the ArUco pipeline (`cbf_visibility_aruco.py`, a SEPARATE untouched copy; MARKER_TYPE
+> defaults to `aruco`, not `cross` — `CBF_JOINT_QP` only lives in the cross-marker file), the
+> other ran the right pipeline but omitted `PLASMC_GT_FEEDBACK=1` (the standard IC-validation
+> harness config) — always match the exact env/launcher (`run_ic_validation.sh` +
+> `PLASMC_GT_FEEDBACK=1` + `WORLD=cross_marker MARKER_TYPE=cross`) a prior result used before
+> treating a new number as a regression.
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 — `lt2_angle_clusters` fail_reason breakdown now
+> PERMANENTLY logged** (`cross_marker_perception.py`'s `_fail_reason_log`, exposed as
+> `"Fail Reason"` in `Img_Data.npy` — previously only derivable via one-off scripts reading
+> `get_diag_log()` per investigation, per [[feedback_cross_marker_detection_flicker]]'s "Not
+> done" item). Re-confirms (does NOT newly discover) the 2026-08-25/26 finding:
+> `lt2_angle_clusters` dominates every IC5 rep's misses and is the ONLY fail_reason that
+> scales with outcome (6.1% best rep → 20.4% the one miss, this n=5 batch; up to 68% in the
+> worst historical reps) — every other reason stays flat regardless of outcome. Also found:
+> the z_v-rejection miss branch (`process_frame`) never calls `_log_frame_data` at all, so
+> those frames are invisible to EVERY log in the class, not just this new one — not fixed,
+> real gap if that fraction turns out material. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (GATED) — full IC1-5 n=5 confirm of the
+> `CBF_JOINT_QP` default: IC1-4 perfect (5/5 SP each, sub-3cm), IC5 4/5 SP (best full-gate
+> IC5 result to date, single 1.81m miss).** Config: `PLASMC_GT_FEEDBACK=1
+> PLASMC_DTHETA_HREF=1 CBF_HZ_AWARE_DRIFT=1`, `CBF_JOINT_QP` at its new default (unset->on),
+> via `run_ic_validation.sh IC_LIST="IC1 IC2 IC3 IC4 IC5" N_REPS=5`. Zero regression outside
+> IC5; IC5 itself improved over every prior isolated n=3 test this thread. This combination
+> is now the strongest validated full-gate config. Full table:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]].
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (implemented, superseded by CBF_JOINT_QP above) —
+> `PLASMC_AZ_JOINT`: a real bug caught+fixed
+> pre-merge, validated SAFE but LOW PRACTICAL IMPACT.** First draft fully skipped the
+> hover-assumed `theta_cap` angle clip, not realizing it does double duty (deliverability
+> bound AND the only thing preventing a degenerate QP output from reaching the attitude
+> command undamped) — SITL smoke test hit `theta_cone=21.68 rad` (nonsensical) and 0/3 SP.
+> **Fixed**: never skip the angle clip; make its bound `a_z`-aware instead
+> (`arccos(a_z_current/A_CAP)`, always finite 0..pi/2, exactly matches the old constant at
+> hover, tightens correctly as `a_z` moves away from hover). Re-test: 2/3 SP, no
+> catastrophic failures, `theta_cone` confirmed bounded throughout. **But the joint
+> constraint barely engages (0-1/600-1400 frames per rep) — `a_z` never nears `A_CAP` in
+> these failures, consistent with the earlier physics correction (the ratchet isn't a
+> saturation effect).** Implemented, safe, principled (worth keeping on its own
+> correctness merits), but NOT the fix for the remaining IC3/IC5 gap — that likely needs
+> either the `th_curr` self-defeating-loop fix or a Phase-2 minimum-authority floor (see
+> the detection-outage finding below), not more `a_z`-budget work. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later still) — TWO INDEPENDENT triggers for the IC3/IC5
+> kappa-ratchet, not one.** Traced `IC5_rep4` (large `dtheta_az` outlier, 11.15 rad, but
+> landed clean) vs `IC5_rep5` (ignited) from the `CBF_HZ_AWARE_DRIFT` confirm sweep — run
+> WITHOUT `DTHETA_HREF`, so the `h_ref` leak mechanism below can't be the cause here. Real
+> discriminator: both reps track identically to t~2.0s then bifurcate — rep5's `s_e_n_y`
+> diverges well BEFORE its dtheta spike even appears (the spike is a late SYMPTOM, not the
+> trigger). Root cause: `cbf2_filter` fell into Phase-2 (decode failed) in both, but rep5 hit
+> a genuine ~5s (88% of flight!) near-total detection outage from an already-marginal
+> last-known position, freezing `theta_cone` at EXACTLY 0 for 99.3% of that window (Phase-2's
+> `effective_margin` clamped to 0 — the CBF working AS DESIGNED, conservative, not a defect).
+> Zero lateral authority for 5s while off-center → `s_e_n` grows unbounded → ratchets once
+> authority returns. Rep4's outage was short (2s) from a healthy last-known position
+> (`theta_cone` stayed near-ceiling, 0.766). **This connects to the detection-reliability
+> thread (`lt2_angle_clusters`/oblique fragility), NOT a CBF-design or `dtheta`/`h_ref`
+> issue — the joint `a_z`-QP redesign (below) would NOT have prevented this specific
+> failure.** Candidate mitigation, not yet built: a minimum-authority floor on `theta_cone`
+> during Phase-2 (never let it hit exactly 0), trading a little conservatism for avoiding a
+> total lateral deadlock — a different lever from the drift-model fix or the joint-`a_z`
+> work. Net: TWO real, independent, still-open triggers for the same ratchet symptom. Full
+> data: [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐⭐ 2026-08-29 (later same day) — `CBF_HZ_AWARE_DRIFT` prototype (default off):
+> fixing the CBF's own drift model (constant-velocity `dft=tau*d` → closing-rate-aware
+> exponential, driven by the scale-free `h_z` loom proxy, `cbf_visibility.py`) substantially
+> reduces the IC3/IC5 ratchet WITHOUT `DTHETA_HREF` at all.** n=5 IC3+IC5 confirm (GT-FB):
+> IC3 4/5→**5/5 SP**, IC5 3/5(worst 5.46m catastrophic)→4/5(worst **1.71m**, `TARGET_LOST`
+> fallback catches it, no hard impact). Combined 7/10→9/10 SP, zero regression, `tools/
+> validate_cbf.py` still 12/12, exact backward-compat at `h_z=0`. **NOT fully fixed** — the
+> one remaining IC5 miss still shows the ratchet (milder: `a_u_y` to 72 vs -152/+378).
+> User's parallel proposal (not yet built): bring `a_z` into the SAME constrained QP as
+> `a_x`/`a_y`, since `theta_max = arccos(a_z/A_CAP)` means growing `a_z` (the old dtheta/
+> `h_ref` "extra lift" approach) physically SHRINKS deliverable lean at a fixed thrust
+> ceiling — it was never reliably going to help. Full data + next steps:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐⭐ 2026-08-29 (CORRECTED same day) — IC3/IC5 gate failure ROOT-CAUSED: NOT a new
+> lateral-drift bug, it's the kappa-RATCHET (failure mode 11) reignited by
+> `PLASMC_DTHETA_HREF=1` modulating a PRE-EXISTING, CORRECT `h_ref`→lateral coupling.**
+> `project_20260828_kappa_ratchet_campaign` confirmed the ratchet resolved in the current
+> baked config — but never tested with `DTHETA_HREF=1` on. Confirmed via `Control_Data.npy`:
+> `kappa_y` 0.17→4.3 (IC5) / 0.08→10.8 (IC3), `sigma_y` diverging past -9, `a_u_y` to
+> -152/+378 — the classic ratchet signature. **Mechanism, corrected after user pushback**:
+> `controller.py:2390`'s `h_d_ff = (h_ref_eff - dot(cross_ws,e3)) * s[:3]` — multiplying
+> `h_ref_eff` into the FULL `s[:3]`, not just z — is NOT a bug; it's the exact, intentional
+> MATLAB-ported design (`visualControl_IBVS_adaptive.m:665-666`, `h_rd` also multiplies the
+> full `V_s(1:3)`), present since 2026-06-01, ~3 months before `DTHETA_HREF` existed. What's
+> actually new (2026-08-24) and risky is `DTHETA_HREF`'s `dtheta_href_g` — a NEW time-varying
+> gain on `h_ref_eff`, driven by `dtheta_az`, which is itself UNCAPPED (only the gain-scaled
+> `dtheta_correction` is capped at 2.0) and can spike to outlier magnitudes (8.175 rad
+> measured) right at the FoV edge (IC3/IC5-specific geometry) — collapsing `dtheta_href_g`
+> transiently and injecting a lateral perturbation, THROUGH the correct pre-existing
+> coupling, at exactly the moment `sigma` is most vulnerable, igniting the ratchet. IC1/IC2/
+> IC4 don't trigger it — gentler viewing geometry, `dtheta_az` rarely spikes that hard there.
+> **NOT YET FIXED — fix target is `dtheta_az`/`dtheta_href_g`'s per-cycle bound (cap or
+> rate-limit), NOT the `s[:3]` coupling** (an earlier draft of this finding wrongly proposed
+> restricting `h_ref_eff` to `s[2]` only — that would break the validated MATLAB coupling for
+> every other caller, not just this one). **Do NOT bake `PLASMC_DTHETA_HREF=1`
+> unconditionally** — safe at IC1/IC2/IC4, unsafe at IC3/IC5 until a fix lands.
+> Cross-referenced into both `project_20260828_kappa_ratchet_campaign` (caveat added) and
+> `project_20260824_crossmarker_offcenter_convergence_wall` (distinguished — that one is
+> kappa leaking DOWN/bounded, this is kappa RATCHETING UP/unbounded, don't conflate). Full
+> mechanism: [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐ 2026-08-28 (superseded misdiagnosis, kept for history) — IC1-5 GATE for
+> `PLASMC_DTHETA_HREF=1`: target mechanism CONFIRMED
+> fixed, ZERO regression at IC1/IC2/IC4, but IC5 STILL FAILS via a different, unfixed
+> lateral-drift mechanism — do not describe IC5 as solved.** Full 25-rep gate (n=5/IC): IC1
+> 5/5 SP (0.003m), IC2 5/5 SP (0.019m), IC4 5/5 SP (0.023m) — all clean, no regression. IC3
+> 4/5 SP (1 miss, 1.99m). **IC5 only 3/5 SP, worst miss 5.46m — the largest xy_err of the
+> whole investigation.** Checked all 3 misses (IC5×2, IC3×1): **zero show the `ASCENDING`
+> cap-pinning signature** (`descent_anomaly_cause='N/A'` in all 3, pinned-run max 12 cycles
+> vs the 55-74 catastrophic threshold) — so the fix is doing exactly what it targets. IC5's
+> 5.46m miss instead traced to a genuinely different mechanism: GT altitude descends cleanly
+> the WHOLE flight (no climb), but a rapid LATERAL drift starts ~t=7s (y: +0.07m→-4.55m by
+> t=11s, ~1.1 m/s sustained divergence) — unrelated to `dtheta_az` (pinning stayed mild).
+> **Net: `PLASMC_DTHETA_HREF=1` is safe to bake re: IC1/IC2/IC4 regression and does fix its
+> target mechanism, but IC5 (and now IC3) has a real, still-unsolved terminal lateral-drift
+> failure this investigation hasn't root-caused yet — combined IC5 data across all
+> DTHETA_HREF testing is 8/12 SP (67%), 0/12 ASCENDING events, but real tail risk up to
+> 5.46m remains.** Next step: root-cause the lateral-drift mechanism (check against
+> [[feedback_terminal_root_lateral_zeta_r]] / [[feedback_terminal_smc_actuator_wall]] for a
+> possible shared cause) before considering IC5 closed. Full data:
+> [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
+>
+> **⭐⭐⭐⭐⭐ 2026-08-28 (earlier same day, IC5-only isolated sweep) — `PLASMC_DTHETA_HREF=1`
+> confirmed to eliminate the catastrophic dtheta cap-pinning mechanism at IC5 in isolation**
+> (n=7 combined: 0/7 `ASCENDING` anomalies vs 2/8 without the fix, max pinned-cycle count 8
+> vs 55-74). Superseded/extended by the IC1-5 gate entry above, which adds the IC1-4
+> regression check and reveals IC5's remaining lateral-drift problem. Two of three sweep
+> attempts that day hit contamination from a concurrent session's `kr_rp.sh` IC-sweep
+> (port/gRPC launch collisions, not flight-data corruption) before a clean run succeeded —
+> see [[feedback_check_concurrent_sitl_before_launch]].
+>
 > **⭐⭐⭐⭐ 2026-08-26 — IC5 catastrophic mechanism ROOT-CAUSED: it's the ALREADY-DIAGNOSED
 > `dtheta` az-visibility-filter defect (project_20260824_dtheta_ic5_flyaway_rootcause), NOT
 > primarily the angle-clustering/Hough bug below (that's a downstream SYMPTOM). Both
@@ -1060,3 +1241,5 @@
 - [⭐⭐⭐ dtheta az-visibility-filter is SELF-DEFEATING via an attitude-history feedback loop through cbf2_filter's th_curr -- CONFIRMED (2026-08-24) with the direct theta_safe/theta_desired ratio (1.25->0.95, gain 5->40); not a gain-tuning problem, A_CAP saturation ruled out with hard data](project_20260824_dtheta_az_filter_self_defeating_feedback.md) — PLASMC_DTHETA_AZ_GAIN sweep {5,10,20,40} n=3 IC5 cross-marker: correction magnitude scales correctly with gain (4x range, I_a[2] shift -0.6->-2.75) and dtheta fires 65-98% of frames, but xy_err/rel_vel show NO improving trend. Root cause: BOTH dtheta and theta_cone (CBF's own solved lean magnitude) shrink monotonically with gain (12.08->6.69deg) -- extra lift changes realized attitude history, which feeds back into cbf2_filter's th_curr (current-tilt) reference next cycle, shrinking the QP's own solved theta_safe. Follow-up same day: logged `theta_desired(t)` to Control_Data, reran IC5 gain 5 vs 40 -- theta_safe/theta_desired ratio shrinks 1.25->0.95 confirming the QP delivers a shrinking FRACTION of an already-shrunk ask as gain rises (not just a smaller ask). The mechanism undermines the exact lateral authority it exists to protect. Fix needs to break the loop (anchor th_curr against DESIRED not realized attitude, or decouple) -- NOT YET IMPLEMENTED. `PLASMC_DTHETA_AZ_GAIN` left at placeholder default (10.0). IC2's earlier positive A/B trade-off (better xy_err, worse rel_vel vs the old loom-margin approach) likely reflects IC2's much rarer dtheta firing (~20% vs IC5's ~65-98%) limiting how much this loop bites there. Whether the OLD loom-margin approach shares this vulnerability is still unverified. **Same-day follow-up implemented: [[project_20260824_dtheta_href_continuous_compensation]]** — `PLASMC_DTHETA_HREF` adds a continuous (exponential, no dead-zone) `h_ref` compensation upstream of `cbf2_filter` + a crossfaded direct `I_a[2]` term (bridges the several-cycle `h_ref` propagation lag, then fades). Mechanism confirmed firing correctly; `theta_safe/theta_desired` ratio moved toward/above 1 (1.25→1.70 low-gain, 0.95→1.03 high-gain) — less over-suppression. NOT yet validated at n>=5. Default-OFF.
 
 > ⛔ **CORRECTION same day: the IC5 smoke-test failures are NOT the off-center wall** — [[project_20260824_dtheta_ic5_flyaway_rootcause]] traced the actual trajectories: a genuine catastrophic fly-away (3m→7-10m altitude runaway climb + 20-28m lateral divergence in ~9s), caused by `dtheta`'s near-continuous (65-98%) engagement at IC5 injecting an UNCAPPED, cumulatively-growing extra-lift correction every cycle (measured: correction magnitude itself grows 0.2→1.5-1.9 m/s² over the first 2s) — an integral-windup-shaped defect in the raw `dtheta` correction, independent of and NOT introduced by the v3 `PLASMC_DTHETA_HREF` work (identical fly-away confirmed present in the pure pre-v3 baseline). IC2 comparison (gain=10, baseline vs v3): `dtheta` duty cycle only 8-20% there (vs IC5's 65-98%), `href_g` stays ~1.0 (barely engages), NO fly-away (zmax flat ~5.0m), both land with the real off-center-wall-level `xy_err` (~2.0-2.3m) — confirms the wall is real and IC2-visible, just not what caused the IC5 failures. Not yet fixed: needs a cap on `dtheta`'s cumulative/rate contribution to `I_a[2]`, separate from the `th_curr` self-defeating-loop fix. **Band-aid implemented + tested (NOT a root fix — user-corrected same day): [[project_20260824_dtheta_cap_flyaway_fix]]** — `PLASMC_DTHETA_AZ_CAP` (default 2.0 m/s², clamps the final per-cycle correction). Cap ALONE insufficient (still ASCENDING, peak alt 5.9m — reduced severity, not fixed; a bounded-but-nonzero bias sustained 89% of frames for 5+s still integrates into real climb). Cap + v3 crossfade (`PLASMC_DTHETA_HREF=1`) TOGETHER suppress the visible ASCENDING symptom (`descent_anomaly=False`, monotonic 3.0m→0.49m descent) by clamping+fading the correction's OUTPUT — but do NOT address why `dtheta` runs chronically high in the first place; per [[feedback_clamps_during_tuning]] this is a band-aid, not a fix. Landing STILL fails at IC5 (`target_lost=True`, `xy_err≈9.4`, drift to -6.3/+6.7m). **Traced (same day): this residual failure shows the same signature as the IC2 case** ([[project_20260824_crossmarker_offcenter_convergence_wall]], now CONFIRMED at IC5 too, not IC2-specific) — `kappa[xy]` decays 0.50→0.33/0.31 while `s_e_n` never converges (0.86 pinned, then grows past the ~1.0 funnel bound right before TARGET_LOST). ⛔ RETRACTED same day: this is NOT the old "never-solved" kappa-leakage wall (that's already fixed, baked, and confirmed clean under GT-FB on this exact IC/config) — it's a perception-mode-specific gap; see the correction on the IC2 entry above.
+- [Kappa-ratchet campaign 2026-08-28: baseline pass IC1-5 clean, ratchet already resolved](project_20260828_kappa_ratchet_campaign.md) — 25/25 SP GT-FB, kappa_xy frozen at 0.5, 0% breach; no knob sweep needed
+- [⭐ Guaranteed SP across IC1-5 (GT-FB) — synthesis: why every prior failure, cumulative fixes](px4/project_20260828_guaranteed_sp_synthesis.md) — 25/25 SP n=5/IC; ⚠ GT-FB only, real-perception still open (cal accuracy + oblique-low detection + off-center convergence wall)

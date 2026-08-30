@@ -1,207 +1,178 @@
 \documentclass[11pt]{article}
-\usepackage{amsmath,amssymb,booktabs,geometry,array,bm}
+\usepackage{amsmath,amssymb,booktabs,geometry,array}
 \geometry{margin=1in}
 \setlength{\parskip}{4pt}
 \renewcommand{\arraystretch}{1.3}
 \newcommand{\Cframe}{\mathcal{C}}
-\newcommand{\rhat}{\hat{\bm r}}
+\newcommand{\Iframe}{\mathcal{I}}
 \newcommand{\Lw}{L_\omega}
 
-\title{\textbf{Tilt-Based Control Barrier Function for Target Visibility}\\[4pt]
-\large A camera-plane QP over the body tilt via the rotational interaction matrix}
+\title{\textbf{Joint Control Barrier Function for Target Visibility
+and Thrust Deliverability}\\[4pt]
+\large A camera-plane QP over the commanded inertial acceleration}
 \author{Soft--Precise--Landing}
-\date{14 June 2026}
+\date{29 August 2026}
 
 \begin{document}
 \maketitle
 
-\noindent\emph{Scope.} Visibility is an \emph{attitude} constraint --- the body tilt moves the field of
-view --- so we guarantee it with a small QP (a clamp) on the desired tilt, on the \emph{real} camera
-plane. The coupling between tilt and feature is the \textbf{rotational part of the IBVS interaction
-matrix}, $\Lw$, evaluated at the measured image point: it is exact, \emph{depth-independent}, and needs
-no de-rotation / virtual frame. The barrier uses image features only --- scale- and depth-free (no
-$\beta$, no optic flow, no disturbance term). Notation follows the manuscript.
+\noindent\emph{Scope.} Visibility is fundamentally an \emph{attitude} constraint (the body tilt shifts
+the field of view), but the attitude actually commanded is a byproduct of the desired inertial
+acceleration $\,^\Iframe\boldsymbol{a}_\text{d}$ an outer control loop produces. Rather than constraining
+a separately-defined tilt variable and then separately deciding how much vertical thrust to spend, this
+note poses one projection directly over $\,^\Iframe\boldsymbol{a}_\text{d}$ that jointly enforces
+(i)~a field-of-view barrier condition and (ii)~a thrust-deliverability bound, as a single constrained
+problem. The coupling between a commanded acceleration and the resulting feature motion is the
+\textbf{rotational part of the IBVS interaction matrix}, $L_\omega$, evaluated at the measured image
+point --- exact, \emph{depth-independent}, no de-rotation or virtual frame required.
 
 \section*{Notation}
 \begin{tabular}{@{}l l@{}}
 \toprule
 Symbol & Meaning \\
 \midrule
-$\,^\Cframe\rhat_i,\ \,^\Cframe\rhat=(x,y)$ & camera image feature points / centroid, tangent units, per axis $k$ \\
-$\Lw(\,^\Cframe\rhat)$ & rotational interaction matrix (roll/pitch columns), $\partial\,^\Cframe\dot{\rhat}/\partial\bm\omega_{\rm rp}$ \\
-$\bm\omega_{\rm rp}=[\omega_\phi,\omega_\theta]$ & body roll/pitch rate (the \emph{rotation-axis} vector) \\
-$\bm\theta,\theta_d,\theta^\star$ & body tilt = \emph{lean-direction} vector ($\bm\theta_d=R_z(-\psi)\,{}^\mathcal I\!a_{xy}/a_z$); desired, safe \\
-$M=\left[\begin{smallmatrix}0&1\\-1&0\end{smallmatrix}\right]$ & lean$\to$rotation map: $\bm\omega=M\bm\theta$ (lean $+x$ is a rotation about $+y$) \\
-$\widetilde\Lw=\Lw M$ & effective tilt coupling (orthogonal $M$, so row norms are preserved) \\
-$\bm d$ & exogenous (translation) feature drift, $\bm d=\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega_{\rm rp}^{\rm curr}$ \\
-$\mathcal R,f$ & resolution, focal (px); $\bm\varphi_{\max}=\mathcal R/(2f)$ half-FoV (tangent), the FoV edge \\
-$\delta,\dot\delta$ & primary-marker half-spread (loom rate) \\
-$\theta_{\rm cap}$ & deliverable tilt cap ($60^\circ$); $\tau$ drift look-ahead; $h$ barrier \\
+$\tilde{\boldsymbol{r}}_i,\ \tilde r_{i,k}$ & measured camera-frame feature point $i$, tangent units, per axis $k$ \\
+$L_\omega(\tilde{\boldsymbol{r}}_i)$ & rotational interaction matrix (roll/pitch columns), $\partial\dot{\tilde{\boldsymbol{r}}}_i/\partial\boldsymbol\omega_{\rm rp}$ \\
+$\boldsymbol\omega_{\rm rp}=[\omega_\phi,\omega_\theta]$ & body roll/pitch rate (the \emph{rotation-axis} vector) \\
+$M=\left[\begin{smallmatrix}0&1\\-1&0\end{smallmatrix}\right]$ & lean$\to$rotation map: a lean in direction $\boldsymbol{y}$ rotates about $M\boldsymbol{y}$ \\
+$\tilde{L}_{\omega,i}=L_\omega M$ & effective coupling from acceleration-ratio direction to feature velocity \\
+$\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial acceleration; this projection's decision variable \\
+$\,^\Iframe a_{\text{d},z}$ & desired vertical acceleration component ($a_z\equiv|\,^\Iframe a_{\text{d},z}|$) \\
+$\boldsymbol{y}=R_z(-\psi_\text{b})(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/\,^\Iframe a_{\text{d},z})$ & lateral-to-vertical acceleration ratio, expressed in image-axis coordinates \\
+$\boldsymbol{y}_\text{curr}$ & the same ratio, evaluated at the current realized attitude \\
+$A_\text{cap}$ & vehicle's maximum achievable thrust-to-mass ratio \\
+$\theta_\text{cap}$ & deliverable-tilt cap, $\|\boldsymbol{y}\|\le\tan\theta_\text{cap}$ \\
+$\boldsymbol{d}_i$ & exogenous (translation) feature drift, $\boldsymbol{d}_i=\dot{\tilde{\boldsymbol{r}}}_{i,\text{obs}}-L_\omega\boldsymbol\omega_{\rm rp}^{\rm curr}$ \\
+$\mathcal{R},f$ & resolution, focal (px); $\boldsymbol\varphi_\text{max}=\mathcal{R}/(2f)$ half-FoV (tangent), the FoV edge \\
+$\tau,g$ & drift look-ahead; gravitational acceleration \\
 \bottomrule
 \end{tabular}
 
 \section{Barrier on the real camera plane}
-Per image axis $k$,
+Per image axis $k$, for feature point $i$,
 \begin{equation}\label{eq:barrier}
-\boxed{\,h_k=\varphi_{\max,k}-|\,^\Cframe\hat r_k|-\delta_k\,}.
+\boxed{\,h_{i,k}=\varphi_{\text{max},k}-|\tilde r_{i,k}|\,}.
 \end{equation}
-$h_k\ge0\iff$ the marker (outermost feature point) is on the sensor. $\,^\Cframe\rhat$ is the
-\emph{measured} camera image point --- nothing is de-rotated.
+$h_{i,k}\ge0\iff$ feature point $i$ is on the sensor on axis $k$. $\tilde{\boldsymbol{r}}_i$ is the
+\emph{measured} camera-frame feature point --- nothing is de-rotated.
 
-\section{Tilt$\to$feature coupling: the rotational interaction matrix}
+\section{Tilt$\to$feature coupling, expressed in acceleration units}
 A camera rotation moves a feature point by the rotational part of the IBVS interaction matrix, a standard
-and \textbf{depth-independent} object evaluated at the measured point $\,^\Cframe\rhat=(x,y)$:
+and \textbf{depth-independent} object evaluated at the measured point:
 \begin{equation}\label{eq:Lw}
-\,^\Cframe\dot{\rhat}=\Lw(\,^\Cframe\rhat)\,\bm\omega_{\rm rp}+\bm d,\qquad
-\Lw=\begin{bmatrix} xy & -(1+x^2)\\ 1+y^2 & -xy\end{bmatrix},
+\dot{\tilde{\boldsymbol{r}}}_i=L_\omega(\tilde{\boldsymbol{r}}_i)\,\boldsymbol\omega_{\rm rp}+\boldsymbol{d}_i,\qquad
+L_\omega=\begin{bmatrix} xy & -(1+x^2)\\ 1+y^2 & -xy\end{bmatrix}_{(x,y)=\tilde{\boldsymbol r}_i}.
 \end{equation}
-where $\bm\omega_{\rm rp}=[\omega_\phi,\omega_\theta]$ is the body roll/pitch \emph{rate} and $\bm d$ is the
-exogenous (translation / target) drift. $\Lw$ contains \textbf{no depth} --- the tilt coupling needs no
-$\beta$ and no virtual frame. The drift is measured directly by stripping the rotational term from the
-observed feature velocity, $\bm d=\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega_{\rm rp}^{\rm curr}$ (using
-the true gyro rate $\bm\omega^{\rm curr}$), so it carries only the genuine target motion, not our own
-tilting.
+$L_\omega$ contains \textbf{no depth}. The drift is measured directly by stripping the rotational term
+from the observed feature velocity, $\boldsymbol{d}_i=\dot{\tilde{\boldsymbol{r}}}_{i,\text{obs}}-L_\omega\boldsymbol\omega_{\rm rp}^{\rm curr}$
+(using the true gyro rate), so it carries only genuine target motion, not our own tilting.
 
-\paragraph{Lean vector vs.\ rotation axis.}
-The QP variable $\bm\theta$ is the \emph{lean-direction} vector --- the horizontal direction of the
-desired thrust/acceleration, $\bm\theta_d=R_z(-\psi)\,{}^\mathcal I\!a_{xy}/a_z$ --- not the body
-angular-rate vector that drives \eqref{eq:Lw}. A lean toward $+x$ is produced by a rotation about the
-$+y$ axis, so the two differ by a fixed $90^\circ$ rotation,
-\begin{equation}\label{eq:M}
-\bm\omega \;=\; M\,\bm\theta,\qquad M=\begin{bmatrix}0&1\\-1&0\end{bmatrix}.
+$L_\omega$ couples to a body \emph{rotation rate} $\boldsymbol\omega_{\rm rp}$, but the quantity a
+lateral-acceleration command directly determines is not a rotation rate --- it is the underactuated
+quadrotor's \emph{lean}, the ratio of lateral to vertical thrust acceleration,
+$\,^\Iframe\boldsymbol{a}_{\text{d},xy}/\,^\Iframe a_{\text{d},z}$. Producing a steady lean in a given
+direction requires a rotation about the perpendicular axis; writing $\boldsymbol{y}$ for the acceleration
+ratio expressed in image-axis coordinates (a rotation by $R_z(-\psi_\text{b})$ aligns the inertial
+$x$-$y$ axes with the image axes),
+\begin{equation}\label{eq:y-def}
+\boldsymbol{y}=R_z(-\psi_\text{b})\Big(\frac{\,^\Iframe\boldsymbol{a}_{\text{d},xy}}{\,^\Iframe a_{\text{d},z}}\Big),
+\qquad
+\boldsymbol\omega_{\rm rp}=M\boldsymbol{y},\quad M=\begin{bmatrix}0&1\\-1&0\end{bmatrix}.
 \end{equation}
-The feature therefore moves with the \emph{effective} coupling $\widetilde\Lw\equiv\Lw M$ (validated
-against an independent pinhole$+$attitude camera model: $<8\%$ over the near-hover envelope). For a
-finite tilt change the exact map is the rotation homography of the measured point; the first-order form
+$\boldsymbol{y}$ carries no information beyond the acceleration ratio itself --- it is not a separate
+physical variable, only that ratio written in the coordinate frame $L_\omega$ is defined in. Substituting
+\eqref{eq:y-def} into \eqref{eq:Lw} gives the feature velocity directly as a function of the acceleration
+command:
+\begin{equation}\label{eq:N-def}
+\tilde{L}_{\omega,i}\boldsymbol{y}=\underbrace{\Big(\frac{\tilde{L}_{\omega,i}\,R_z(-\psi_\text{b})}{a_z}\Big)}_{\textstyle N_i(a_z)}\,^\Iframe\boldsymbol{a}_{\text{d},xy},
+\qquad \tilde{L}_{\omega,i}=L_\omega M.
+\end{equation}
+$N_i(a_z)=\tilde{L}_{\omega,i}R_z(-\psi_\text{b})/a_z$ is the barrier's Jacobian with respect to the
+lateral acceleration directly. It depends on $a_z$ --- the same quantity the joint projection below also
+solves for --- which is exactly the coupling that projection is built to resolve, rather than treating
+$a_z$ as an external given. For a finite acceleration change the exact map is the rotation homography of
+the measured point; the first-order form
 \begin{equation}\label{eq:lin}
-\,^\Cframe\rhat(\bm\theta)\approx\,^\Cframe\rhat+\widetilde\Lw\,(\bm\theta-\bm\theta_{\rm curr})
-=\,^\Cframe\rhat+\Lw\,M\,(\bm\theta-\bm\theta_{\rm curr})
+\tilde{\boldsymbol{r}}_i(\,^\Iframe\boldsymbol{a}_{\text{d},xy})\approx\tilde{\boldsymbol{r}}_i+N_i(a_z)\,^\Iframe\boldsymbol{a}_{\text{d},xy}-\tilde{L}_{\omega,i}\boldsymbol{y}_\text{curr}
 \end{equation}
-is the local linearization, accurate over one control step. (The drift term keeps $\Lw\bm\omega^{\rm
-curr}$ unchanged --- $\bm\omega^{\rm curr}$ is a measured \emph{rate}, already in the rotation-axis frame,
-so no $M$ is applied there.)
+is the local linearization, accurate over one control step. $\boldsymbol{y}_\text{curr}$ is read directly
+from the realized attitude (not from $\,^\Iframe\boldsymbol{a}_\text{d}$), so it needs no rotation from
+acceleration units.
 
-\section{The visibility filter: a QP over the body tilt}
-With $m_k$ the predicted margin (see Sect.~\ref{sec:twophase}),
+\section{The visibility--deliverability projection}\label{sec:qp}
+Two physical constraints bind the same variable $\,^\Iframe\boldsymbol{a}_\text{d}$: the barrier condition
+of \eqref{eq:barrier} along the feature response \eqref{eq:Lw}--\eqref{eq:N-def}, and the requirement that
+the commanded thrust vector be one the vehicle can actually deliver. Writing
+$\,^\Iframe\boldsymbol{a}_\text{d}^\star$ for the conditioned output,
 \begin{equation}\label{eq:qp}
-\boxed{\;\bm\theta^\star=\arg\min_{\bm\theta}\ \|\bm\theta-\bm\theta_d\|^2
-\ \ \text{s.t.}\ \ \big|\,^\Cframe\hat r_k+[\widetilde\Lw(\bm\theta-\bm\theta_{\rm curr})]_k+\tau d_k\big|\le m_k\;},
-\qquad \widetilde\Lw=\Lw M
+\boxed{\begin{aligned}
+\,^\Iframe\boldsymbol{a}_\text{d}^\star=\arg\min_{\,^\Iframe\boldsymbol{a}_\text{d}}\ &\|\,^\Iframe\boldsymbol{a}_\text{d}-\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}\|^2 \\[2pt]
+\text{s.t.}\ \
+\big|\tilde{\boldsymbol{r}}_i+N_i(a_z)\,^\Iframe\boldsymbol{a}_{\text{d},xy}&-\tilde{L}_{\omega,i}\boldsymbol{y}_\text{curr}+\tau\boldsymbol{d}_i\big|\preceq\boldsymbol\varphi_\text{max},
+\qquad \big\|\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3\big\|\le A_\text{cap}
+\end{aligned}}
 \end{equation}
-A small 2-variable QP (the two tilt axes), with $\le2$ binding rows, solved by a few projection
-iterations onto the rows of $\widetilde\Lw$. $\widetilde\Lw=\Lw M$ is near-diagonal for a centred marker
-(at $\,^\Cframe\rhat=0$, $\Lw=\left[\begin{smallmatrix}0&-1\\1&0\end{smallmatrix}\right]=M^{-1}$, so
-$\widetilde\Lw=I$ --- a clean per-axis clamp, closed-form there); the off-diagonal carries the genuine
-roll$\leftrightarrow$pitch cross-coupling near the FoV edge, which the iterations resolve.
+where $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$ is the unconstrained desired acceleration, the target this
+projection stays closest to. The first constraint is the per-feature FoV box, written directly on
+$\,^\Iframe\boldsymbol{a}_{\text{d},xy}$; the second is the true thrust-deliverability sphere in
+gravity-shifted acceleration space (the vehicle's total thrust vector is
+$m(\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3)$, and
+$\|\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3\|\le A_\text{cap}$ is exactly the statement that
+this stays within the vehicle's maximum). Both are convex for a fixed $a_z$; since $N_i(a_z)$ itself
+depends on $a_z$, the two constraints are resolved jointly rather than sequentially: the lateral
+acceleration satisfying the box and the vertical acceleration satisfying the sphere are solved for
+together, not one after the other. $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ then defines the desired
+attitude and thrust magnitude for the inner attitude-tracking loop.
+
 \begin{itemize}
-\item \textbf{Directional} --- only the outward binding row is active; inward (recovery) and tangential
-tilts are free. No strangling.
-\item \textbf{Input-aware} --- after the box projection converges, apply the radial saturation
-$\bm\theta^\star\leftarrow\bm\theta^\star\cdot\min\!\big(1,\,\theta_{\rm cap}/\|\bm\theta^\star\|\big)$
-so the commanded tilt is always within what the SO(3) inner loop can hold. Applying the cap
-\emph{inside} the projection loop would interfere with the box constraint's convergence; the
-post-solution saturation preserves the deliverability bound without creating infeasibility.
-\item \textbf{Forward-invariant} --- the look-ahead shifts the anchor by $\tau\bm d$, so the QP accounts
-for centroid drift over the next $\tau$\,s in both phases.
-In \textbf{Phase~2}, the predicted margin is additionally shrunk by $\tau\dot\delta_{\rm eff}$, forcing
-the inward tilt before the fill rate consumes the remaining headroom ($\dot h\ge-\alpha(h)$).
-In \textbf{Phase~1} ($m_k=\varphi_{\max}$), the $\tau\dot\delta$ term is excluded by design: the marker
-is allowed to grow, so only the centroid-drift look-ahead $\tau\bm d$ is active.
-$\tau=0$ gives the static clamp.
+\item \textbf{Directional} --- only the outward-binding box row is active; inward (recovery) and
+tangential accelerations are free. No strangling.
+\item \textbf{Envelope-aware} --- the deliverability side of \eqref{eq:qp} is the vehicle's actual maximum
+thrust-to-mass ratio $A_\text{cap}$, not a fixed angular cap applied \emph{as if} $a_z$ were fixed at
+hover; it tightens or loosens correctly as $a_z$ moves away from hover.
+\item \textbf{Forward-invariant} --- the look-ahead shifts the box anchor by $\tau\boldsymbol{d}_i$, so the
+projection accounts for centroid drift over the next $\tau$\,s.
+\item \textbf{Bounded by construction} --- because $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ always
+satisfies the sphere constraint, the resulting acceleration ratio
+$\boldsymbol{y}^\star=R_z(-\psi_\text{b})\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star/a_z^\star$ satisfies
+$\|\boldsymbol{y}^\star\|\le\tan\theta_\text{cap}$ at the solved $a_z^\star$ automatically; no separate cap
+application is needed.
 \end{itemize}
 
-\section{Two-phase $\delta$ (central-marker convention)}\label{sec:twophase}
-The designated \emph{central} marker is the target. The predicted margin $m_k$ is phase-dependent:
+\section{Feasibility}
+The box constraint alone is \textbf{infeasible} iff $\varphi_{\text{max},k}<0$ for some $k$ (the marker
+subtends the full FoV). The sphere constraint is always feasible by construction (it is satisfied by
+$\,^\Iframe\boldsymbol{a}_\text{d}=\boldsymbol{0}$). Genuine joint infeasibility --- the box demanding more
+lateral acceleration than $A_\text{cap}$ can deliver at any achievable $a_z$ --- reduces to
+\begin{equation}\label{eq:feasibility}
+\sigma_{\min}(\tilde{L}_{\omega,i})\,(\tan\theta_\text{cap}-\|\boldsymbol{y}_\text{curr}\|)\ \ge\ \max_{i,k}\big(|\tilde r_{i,k}|-\varphi_{\text{max},k}\big)_+ + \bar{d}\quad\forall i,
+\end{equation}
+evaluated at the solved $a_z^\star$ rather than at a fixed hover-assumed $\theta_\text{cap}$: joint
+feasibility holds whenever some achievable $a_z$ satisfies \eqref{eq:feasibility}, a weaker requirement
+than demanding it hold at the hover value of $a_z$ alone.
 
-\medskip
-\noindent\textbf{Phase 1 --- central marker decodes.}
-$\delta_k=0$, so $m_k=\varphi_{\max,k}$ (full half-FoV).
-The barrier is centroid-only: the QP box spans the entire image plane, and only fires if the
-\emph{centroid} drifts toward the edge. The central marker is deliberately allowed to grow and
-overflow as the UAV closes in --- its visibility \emph{is} the guarantee; using its large half-extent
-would fire the barrier early. $\dot\delta$ is tracked but excluded from $m_k$ in Phase~1.
-
-\medskip
-\noindent\textbf{Phase 2 --- central marker overflows} (decode-fail, hysteresis-gated against flicker
-$\Rightarrow$ touchdown range). $\delta_{\rm eff}$ \textbf{ramps in} over a few frames from the
-visible-\emph{set} half-extent ($\tfrac12\mathrm{ptp}_k$ over ALL visible markers' corners, so
-$|\,^\Cframe\rhat|+\delta_{\rm eff}$ is the true outermost feature --- not one marker):
-\[
-  m_k = \varphi_{\max,k} - \delta_{{\rm eff},k} - \tau\dot\delta_{{\rm eff},k}.
-\]
-The ramp (not a step) keeps $h$ from dropping discontinuously at engagement, but clamp the ramp
-gain so $\delta_{\rm eff}$ never \emph{lags} the measured $\tfrac12\mathrm{ptp}$ --- a ramp slower
-than the fill under-protects. Within Phase~2 the visible markers themselves leave (a mild inner
-sawtooth); $\dot\delta$ is reset across those switches.
-
-\medskip
-\noindent\emph{Implementation:} hysteresis threshold~$=3$ consecutive decode-fails before Phase~2
-activates; ramp completes over~$5$ control cycles (${\approx}120$\,ms at 42\,Hz).
-Both $\delta_{\rm eff}=\alpha\,\delta_{\rm ref}$ and $\dot\delta_{\rm eff}=\alpha\,\dot\delta_{\rm ref}$
-are scaled by the same ramp factor~$\alpha\in[0,1]$, where $\delta_{\rm ref}$ and $\dot\delta_{\rm ref}$
-are the half-extent and loom rate measured at the last successful decode.
-
-\section{Feasibility floor and hand-off}
-With $\theta_{\rm cap}$ applied outside the QP, the box constraint \eqref{eq:qp} is \textbf{infeasible} iff
-$m_k<0$ for some~$k$ (the marker fills the frame within $\tau$). In Phase~1, $m_k=\varphi_{\max,k}>0$
-always, so the QP is \textbf{always feasible} while the central marker decodes.
-
-The perception-floor hand-off is therefore triggered by \emph{central-marker overflow} (Phase~2
-activation, hysteresis-gated), not by QP infeasibility. On Phase~2 entry, or if $m_k<0$ under
-Phase~2 margins, raise the perception-floor flag and hand off to the texture-free ring flow.
-
-\section{Assumptions (and the practical challenge each carries)}
+\section{Assumptions}
 \begin{enumerate}
-\item \textbf{The coupling $\widetilde\Lw=\Lw M$ and its sign convention are calibrated.} The QP variable
-is the lean vector $\bm\theta$, but $\Lw$ couples the rotation-axis rate; the fixed $90^\circ$ map
-$\bm\omega=M\bm\theta$ \eqref{eq:M} bridges them, so the QP uses $\widetilde\Lw=\Lw M$. Any residual
-mount-dependent sign of $\Lw$ is a one-time check: command a small tilt and confirm
-$\Delta\,^\Cframe\rhat$ matches $\widetilde\Lw$ in sign before trusting the barrier.
-\item \textbf{The filtered tilt is realized} (SO(3) loop tracks $\bm\theta^\star$). \emph{Challenge:}
-attitude bandwidth $\Rightarrow$ lag; $\theta_{\rm cap}$ bounds magnitude, not delay.
-\item \textbf{The drift $\bm d$ is the translation part} ($\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega^{\rm
-curr}$) and $\dot\delta$ the loom. \emph{Challenge:} finite differences $\Rightarrow$ filter + binding-axis
-hysteresis; the disturbance enters as \emph{measured} motion --- no separate $\bm d_h$ term. The homography
-centroid (hence $\,^\Cframe\dot{\rhat}_{\rm obs}$) must stay \emph{smooth across marker-set changes} (the
-homography re-fits on a different visible subset) or $\bm d$ spikes --- filter / hold a stable subset across a switch.
-\item \textbf{First-order $\Lw$ over the cycle.} Exact is the rotation homography of $\,^\Cframe\rhat$; the
-$\Lw(\bm\theta-\bm\theta_{\rm curr})$ linearization is accurate over one control step. At $\theta_{\rm
-cap}=60^\circ$ the integral (homography) is the safe choice for the boundary $\bm\theta$.
-\item \textbf{$\theta_{\rm cap}$ is the true deliverable tilt} (thrust unsaturated).
+\item \textbf{The coupling $\tilde{L}_{\omega,i}=L_\omega M$ and its sign convention are calibrated.} The
+fixed $90^\circ$ map $\boldsymbol\omega_{\rm rp}=M\boldsymbol{y}$ bridges the acceleration-ratio direction
+and the rotation-axis rate that $L_\omega$ couples to.
+\item \textbf{The conditioned acceleration is realized}: the inner attitude loop tracks the attitude built
+from $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ on a timescale fast relative to the outer loop.
+\item \textbf{The drift $\boldsymbol{d}_i$ is the translation part} of the observed feature velocity,
+$\dot{\tilde{\boldsymbol{r}}}_{i,\text{obs}}-L_\omega\boldsymbol\omega^{\rm curr}$, entering as
+\emph{measured} motion --- no separate disturbance term is introduced.
+\item \textbf{First-order $L_\omega$ over the cycle.} Exact is the rotation homography of
+$\tilde{\boldsymbol{r}}_i$; the linearization \eqref{eq:lin} is accurate over one control step.
+\item \textbf{$A_\text{cap}$ is the vehicle's true achievable thrust-to-mass ratio}, used directly rather
+than a fixed angular margin computed from it at hover.
 \end{enumerate}
 
 \section{Scale-freeness and depth-freeness}
-The barrier \eqref{eq:barrier}, the coupling \eqref{eq:Lw}, and the box \eqref{eq:qp} contain only the
-measured image point $\,^\Cframe\rhat$, $\delta$, $\bm\varphi_{\max}=\mathcal R/(2f)$, the body rate, and
-the tilt. \textbf{$\Lw$ is depth-independent by construction} (no $\mathcal V z_\mathrm{t}$, no $\beta$),
-so the whole formulation is manifestly scale- and depth-free. The only metric quantity upstream is the
-geometric tracker's $R_d$ (a controller output).
-
-\section{Implementation (per control cycle)}
-\begin{enumerate}
-\item \emph{(once)} Calibrate $\Lw$'s sign / axis convention (Assumption 1).
-\item Measure $\,^\Cframe\rhat$ (board centroid, homography). Advance the two-phase $\delta$ state:
-if central marker decodes, reset Phase~2 counters and set $\delta_{\rm eff}=0$; otherwise increment
-the decode-fail counter, and once the hysteresis threshold is reached, ramp $\delta_{\rm eff}$ toward
-the visible markers' $\tfrac12\mathrm{ptp}$.
-\item Evaluate $\Lw(\,^\Cframe\rhat)$; form the drift $\bm d=\,^\Cframe\dot{\rhat}_{\rm obs}-\Lw\bm\omega^{\rm
-curr}$ and $\dot\delta_{\rm eff}$ (filtered; zero in Phase~1).
-\item Two-phase predicted margin: Phase~1: $m_k=\varphi_{\max,k}$; Phase~2:
-$m_k=\varphi_{\max,k}-\delta_{{\rm eff},k}-\tau\dot\delta_{{\rm eff},k}$.
-If $m_k\le0$ for any $k$, raise the perception-floor flag and hand off to the ring estimator.
-Otherwise build the FoV-constraint QP \eqref{eq:qp}.
-\item $\bm\theta_d=R_z(-\psi)\,{}^\mathcal I\!a_{d,xy}/a_z$ (the lean vector from the desired lateral accel);
-solve \eqref{eq:qp} with $\widetilde\Lw=\Lw M$ $\to\bm\theta^\star$ (pure FoV-box alternating projection,
-always converges when $m_k>0$). Apply post-QP deliverability cap:
-$\bm\theta^\star\leftarrow\bm\theta^\star\cdot\min\!\big(1,\theta_{\rm cap}/\|\bm\theta^\star\|\big)$.
-\item \textbf{Apply $\bm\theta^\star$ directly as the desired attitude.} Build the desired body-$z$ axis
-from the safe tilt, $\bm r_{d3}=\big[-R_z(\psi)\bm\theta^\star,\,1\big]/\big\|[\,\cdot\,,1]\big\|$, and
-pass $R_d$ to the SO(3) inner loop, taking the thrust \emph{magnitude} from the descent loop. This avoids
-re-encoding $\bm\theta^\star$ as $a_{xy}=a_z R_z(\psi)\bm\theta^\star$ and low-pass-filtering it: $a_z$
-cancels in $-\,{}^\mathcal I\!a/\|{}^\mathcal I\!a\|$, so the direction is identical, but the accel-path
-LPF (time constant $\tau_{ia}$) would smear the barrier's hard bound by several frames --- the
-guarantee would then not land on the commanded attitude. The direct map makes the deliverable-tilt
-guarantee exact.
-\end{enumerate}
+The barrier \eqref{eq:barrier}, the coupling \eqref{eq:Lw}, and the projection \eqref{eq:qp} contain only
+the measured image point $\tilde{\boldsymbol{r}}_i$, $\boldsymbol\varphi_\text{max}=\mathcal{R}/(2f)$, the
+body rate, the commanded acceleration, and the vehicle's own $A_\text{cap}$ and $g$. \textbf{$L_\omega$ is
+depth-independent by construction}, and $A_\text{cap}$, $g$ are fixed vehicle/physical constants, not
+measurements of target depth or altitude --- the whole formulation remains manifestly scale- and
+depth-free.
 
 \end{document}

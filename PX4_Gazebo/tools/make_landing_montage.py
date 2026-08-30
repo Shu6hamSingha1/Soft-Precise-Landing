@@ -248,15 +248,37 @@ def main():
     dfps = drone.get(cv2.CAP_PROP_FPS) or 30.0
     series = load_series(a.run)
     gN = len(series["t"])
-    # FULL-LENGTH SYNC. With CHASE_STOP_FILE + IMG_RECORD_TAIL_S=0 both videos END at
-    # touchdown (recorders stop there), and GT is trimmed to touchdown (argmin alt). So
-    # every source spans EXACTLY [descent-start, touchdown]; mapping each over its full
-    # length by a common fraction 0->1 makes START and TOUCHDOWN coincide in all three,
-    # independent of frame counts / fps tags / RTF. Then a frozen --tail-s hold.
+    dur = float(series["t"][-1])             # GT sim descent duration (descent-start -> touchdown)
+    tail = max(0.0, a.tail_s)
+
+    # ── SYNC. The old scheme mapped every source over its FULL frame range by a common
+    # fraction 0->1, which is only correct when each source spans EXACTLY
+    # [descent-start, touchdown]. It usually doesn't: the IMG_RECORD down-cam video
+    # carries an IMG_RECORD_TAIL_S post-touchdown tail (default 5 s), and the chase
+    # recorder runs a fixed wall-clock duration. Result: the onboard PiP ran ~1.3x
+    # ahead of the chase/plots mid-descent and the chase played in slow-motion.
+    #
+    # New: sync by SIM-TIME. Ground_Truth.Time is 0-based (descent start); Img_Data.Time
+    # is the same sim clock offset by Start Time, and the overlay tool aligns the video
+    # 1:1 with the LAST dN Img_Data rows -- so those rows' times are the per-video-frame
+    # times. For output time t_out we pick the drone frame whose stamp is nearest t_out,
+    # the GT sample nearest t_out, and (chase has no per-frame log -> assume its
+    # CHASE_GATE_FILE start == descent start) chase frame round(t_out*cfps). Falls back
+    # to the old frame-fraction scheme if Img_Data.Time is unavailable.
     td_c, td_d = cN - 1, dN - 1
     td_d2 = d2N - 1 if drone2 is not None else 0
-    dur = float(series["t"][-1])             # GT sim descent duration (to touchdown)
-    tail = max(0.0, a.tail_s)
+    drone_t = None
+    try:
+        _im = np.load(os.path.join(a.run, "Img_Data.npy"), allow_pickle=True).item()
+        _gt = np.load(os.path.join(a.run, "Ground_Truth.npy"), allow_pickle=True).item()
+        _ti = np.asarray(_im["Time"], float) - float(_gt["Start Time"])
+        if _ti.ndim == 1 and len(_ti) >= dN:
+            drone_t = _ti[-dN:]                       # descent-start-relative time of each of the dN video frames
+            td_d = int(np.argmin(np.abs(drone_t - dur)))   # real touchdown frame in the down-cam video
+            td_d2 = td_d if (drone2 is not None and d2N == dN) else td_d2
+    except Exception:
+        drone_t = None
+    _sync = "sim-time" if drone_t is not None else "frame-fraction (fallback)"
     # fixed 3D axis limits over the whole descent (so the view doesn't jump per frame)
     pad = 0.5
     xs = np.concatenate([series["ux"], series["tx"]]); ys = np.concatenate([series["uy"], series["ty"]])
@@ -279,16 +301,26 @@ def main():
     nd = max(1, int(dur * a.fps))           # descent output frames (GT sim duration)
     nt = int(tail * a.fps)                  # tail output frames
     nframes = nd + nt
-    print(f"[montage] {nframes} frames ({nd} descent + {nt} tail)  {W}x{H}@{a.fps}  "
-          f"(chase {cN}f td@{td_c}, drone {dN}f td@{td_d}, GT {gN}samp, {dur:.1f}s)  -> {a.out}",
-          flush=True)
+    cfps_eff = cfps if cfps and cfps > 1 else 30.0
+    tG_rel = np.asarray(series["t"], float)   # 0-based GT sample times (already trimmed to touchdown)
+    print(f"[montage] {nframes} frames ({nd} descent + {nt} tail)  {W}x{H}@{a.fps}  sync={_sync}  "
+          f"(chase {cN}f@{cfps_eff:.0f} = {cN/cfps_eff:.1f}s, drone {dN}f td@{td_d} (+{dN-1-td_d}f tail), "
+          f"GT {gN}samp, descent {dur:.1f}s)  -> {a.out}", flush=True)
 
     for f in range(nframes):
-        if f < nd:                          # DESCENT: common fraction 0->1 to each touchdown
-            u = f / max(nd - 1, 1)
-            ci = int(round(u * td_c)); di = int(round(u * td_d))
-            d2i = int(round(u * td_d2)) if drone2 is not None else 0
-            gi = min(gN - 1, int(round(u * (gN - 1))))
+        if f < nd:                          # DESCENT
+            if drone_t is not None:
+                t_out = f / a.fps           # elapsed sim-seconds since descent start
+                di = int(np.argmin(np.abs(drone_t - t_out)))
+                d2i = di if (drone2 is not None and d2N == dN) else (
+                    int(round((t_out / max(dur, 1e-6)) * td_d2)) if drone2 is not None else 0)
+                ci = int(np.clip(round(t_out * cfps_eff), 0, td_c))
+                gi = int(np.clip(np.searchsorted(tG_rel, t_out), 0, gN - 1))
+            else:                           # frame-fraction fallback
+                u = f / max(nd - 1, 1)
+                ci = int(round(u * td_c)); di = int(round(u * td_d))
+                d2i = int(round(u * td_d2)) if drone2 is not None else 0
+                gi = min(gN - 1, int(round(u * (gN - 1))))
         else:                               # TAIL: hold touchdown frame + graph frozen
             ci, di, gi = td_c, td_d, gN - 1
             d2i = td_d2
