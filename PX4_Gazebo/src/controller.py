@@ -862,6 +862,18 @@ class Controller(Thread):
         # the loom path's own requirements, it adds a second independent route to the same
         # one-way latch.
         self._td_ext_only_hist = deque(maxlen=self._td_window)
+        # PLASMC_TD_EXT_ONLY (2026-08-30): gate for the loom-independent second path
+        # below. Default ON (back-compat). Set 0 to require the loom+extent FIRST path.
+        # Rationale for the switch existing: the second path's proximity gate
+        # (_extentTouchdownProximate = current >= 0.6*RUNNING-max) carries ~no proximity
+        # information during a monotone descent (current==running_max almost every frame),
+        # so the path collapses to "extent-growth briefly flattened + roughly centered" --
+        # which fires mid-descent at a centered IC (IC1 perception-mode: all 5 reps
+        # false-latched LANDED at 2.4-3.4m altitude, 2026-08-30). GT-feedback never hit
+        # this (its own GT-depth path returns before reaching here). Until
+        # _extentTouchdownProximate is re-based on frame size rather than running max,
+        # perception-mode sweeps should run with this = 0.
+        self._td_ext_only = os.environ.get("PLASMC_TD_EXT_ONLY", "1") == "1"
         # EXTENT-ARM PRECONDITION (2026-08-26, found via the 28-flight offline replay):
         # "flattened+proximate" is trivially true from frame 1 for any flight that STARTS
         # close enough for the marker to already saturate the frame (confirmed via GT: 3
@@ -928,6 +940,49 @@ class Controller(Thread):
         self._td_gt_progress_min = float(os.environ.get("PLASMC_TD_GT_PROGRESS_MIN", "0.3"))  # m
         self._td_gt_rate_win = int(os.environ.get("PLASMC_TD_GT_RATE_WIN", str(self._td_ext_win)))
         self._td_gt_rate_hist = deque(maxlen=self._td_gt_rate_win)
+
+        # ─── V2 PERCEPTION TOUCHDOWN DETECTOR (2026-08-30, replay-designed on 205 GT-feedback
+        #     landings; replaces the loom-spike + loom-independent-extent perception paths).
+        #     Precision-INDEPENDENT (NO |s_e_n| gate -- an off-target ground contact is still a
+        #     touchdown and must disarm; precision is the SP scorer's job). Cross-marker only
+        #     (needs self._img_node._perception); ArUco perception keeps the legacy paths.
+        #     Three one-way latch paths -- see _touchdownDetectV2's docstring:
+        #       (a) OVERFILL   N_flow_corners collapse while extent still fills the frame  (2-in-5)
+        #       (b) BACKSTOP   extent pinned at its own saturated max + extent&centroid frozen ~3s (3-in-6)
+        #       (c) FLOW-FREEZE background median px-displacement high->low transition        (3-in-6)
+        #     IMU accel-spike (_impactDetector) + PX4 LandedState remain the backstops for
+        #     hard/sliding contact and very-soft settles.
+        self._tdv2_on          = os.environ.get("PLASMC_TD_V2", "1") == "1"
+        self._tdv2_frame_min   = float(2.0 * min(np.asarray(self._img_node.center, dtype=float)))
+        self._tdv2_arm_frac    = float(os.environ.get("PLASMC_TDV2_ARM_FRAC",   "0.50"))  # extent>=frac*W to arm
+        self._tdv2_grow_arm    = float(os.environ.get("PLASMC_TDV2_GROW_ARM",   "0.15"))  # |d(lnE)/dt| over 1s
+        self._tdv2_grow_arm_win= float(os.environ.get("PLASMC_TDV2_GROW_ARM_WIN","1.0"))
+        self._tdv2_nc_frac     = float(os.environ.get("PLASMC_TDV2_NC_FRAC",    "0.65"))  # N_corn < frac*airborne-median
+        self._tdv2_nc_ext_frac = float(os.environ.get("PLASMC_TDV2_NC_EXT_FRAC","0.55"))  # ...while extent>=frac*W (rules out fly-away tracking-loss)
+        self._tdv2_sat_frac    = float(os.environ.get("PLASMC_TDV2_SAT_FRAC",   "0.62"))  # running-max must be >=frac*W
+        self._tdv2_sat_nearmax = float(os.environ.get("PLASMC_TDV2_SAT_NEARMAX","0.95"))  # current within 5% of running-max
+        self._tdv2_grow_back   = float(os.environ.get("PLASMC_TDV2_GROW_BACK",  "0.02"))  # |d(lnE)/dt| over back_win
+        self._tdv2_sdot_back   = float(os.environ.get("PLASMC_TDV2_SDOT_BACK",  "0.03"))  # |d centroid_px/dt| over back_win
+        self._tdv2_back_win    = float(os.environ.get("PLASMC_TDV2_BACK_WIN",   "3.0"))
+        self._tdv2_arm_dwell   = float(os.environ.get("PLASMC_TDV2_ARM_DWELL",  "2.5"))   # min s since arm for the backstop
+        self._tdv2_ff_hi       = float(os.environ.get("PLASMC_TDV2_FF_HI",      "2.0"))   # px/frame -- "was moving"
+        self._tdv2_ff_lo       = float(os.environ.get("PLASMC_TDV2_FF_LO",      "0.45"))  # px/frame -- "now frozen"
+        self._tdv2_ff_recent   = float(os.environ.get("PLASMC_TDV2_FF_RECENT",  "1.2"))   # s lookback for the "was moving" test
+        self._tdv2_ff_minpts   = int(os.environ.get("PLASMC_TDV2_FF_MINPTS",    "5"))
+        self._tdv2_armed = False
+        self._tdv2_t_arm = None
+        self._tdv2_nc_pre = []                       # airborne N_flow_corners samples (pre-arm reference)
+        self._tdv2_ext_hist = deque(maxlen=400)      # (t, extent_px)
+        self._tdv2_cen_hist = deque(maxlen=400)      # (t, cx_px, cy_px)
+        self._tdv2_ff_hist  = deque(maxlen=400)      # (t, med_flow_disp_px, n_pts)
+        self._tdv2_arm_h = deque(maxlen=6)
+        self._tdv2_nc_h  = deque(maxlen=5)
+        self._tdv2_bk_h  = deque(maxlen=6)
+        self._tdv2_ff_h  = deque(maxlen=6)
+        if self._tdv2_on:
+            print(f"[controller] PLASMC_TD_V2=1: perception touchdown detector v2 "
+                  f"(frame_min={self._tdv2_frame_min:.0f}px; overfill/backstop/flow-freeze; no |s_e_n| gate)")
+
         if self._touchdown_loom:
             if self._gt_feedback is not None:
                 print(f"[controller] PLASMC_TOUCHDOWN_LOOM=1 (GT-feedback): touchdown = GT "
@@ -1427,6 +1482,171 @@ class Controller(Thread):
             return True
         return float(self.MARKER_EXTENT_PX) >= self._td_ext_prox_frac * self._td_ext_max
 
+    @staticmethod
+    def _tdV2_slope(hist, win, islog=False):
+        """Trailing-window least-squares slope of a (t, value[, ...]) sequence over the
+        last `win` seconds. Returns None if <5 usable samples or the span is <40% of
+        `win` (not enough history yet). islog: fit log(value) instead (for a
+        multiplicative/normalised growth rate). FAILS to None, never raises."""
+        try:
+            if not hist:
+                return None
+            t_now = hist[-1][0]
+            ts = []; vs = []
+            for row in hist:
+                t = row[0]; v = row[1]
+                if t < t_now - win:
+                    continue
+                if islog and not (v > 0):
+                    continue
+                ts.append(t); vs.append(v)
+            if len(ts) < 5:
+                return None
+            ts = np.asarray(ts, float); vs = np.asarray(vs, float)
+            if ts[-1] - ts[0] < win * 0.4:
+                return None
+            return float(np.polyfit(ts, np.log(vs) if islog else vs, 1)[0])
+        except Exception:
+            return None
+
+    def _tdV2_perceptionSignals(self):
+        """Current-frame perception signals for the V2 touchdown detector, read
+        defensively straight off the cross-marker perception object (mirrors
+        MARKER_EXTENT_PX's own _feature_pts reach-in). Any signal that isn't
+        available -> None/0, and the latch path that needs it simply won't fire.
+        Returns (extent_px, n_flow_corners|None, (cx,cy)|None, med_flow_disp_px|None, n_flow_pts)."""
+        ext = float(self.MARKER_EXTENT_PX)
+        n_corn = None; cen = None; ff_disp = None; ff_n = 0
+        perc = getattr(self._img_node, "_perception", None)
+        try:
+            ncl = getattr(perc, "_n_flow_corners_log", None)
+            if ncl:
+                n_corn = float(ncl[-1])
+        except Exception:
+            pass
+        try:
+            c = self._img_node.get_center_px()
+            if c is not None and len(c) == 2 and np.all(np.isfinite(c)):
+                cen = (float(c[0]), float(c[1]))
+        except Exception:
+            pass
+        try:
+            p0 = getattr(perc, "_last_flow_prev_px", None)
+            p1 = getattr(perc, "_last_flow_curr_px", None)
+            if p0 is not None and p1 is not None:
+                a = np.asarray(p0, float); b = np.asarray(p1, float)
+                if a.ndim == 2 and a.shape == b.shape and len(a) >= 3:
+                    ff_disp = float(np.median(np.linalg.norm(b - a, axis=1)))
+                    ff_n = int(len(a))
+        except Exception:
+            pass
+        return ext, n_corn, cen, ff_disp, ff_n
+
+    def _touchdownDetectV2(self, s_e_n):
+        """Replay-designed perception touchdown detector (2026-08-30; see __init__'s
+        V2 block). Cross-marker perception mode only. Precision-INDEPENDENT -- there is
+        NO |s_e_n| gate: a touchdown is a mechanical event, and an off-target ground
+        contact is still a touchdown that must disarm (the SP scorer, not this
+        detector, judges precision). One-way latch on any of three independent paths:
+
+          (a) OVERFILL     N_flow_corners collapses (< nc_frac * airborne median) while
+                           the marker STILL fills the frame (extent >= nc_ext_frac*W).
+                           The marker overfills the FoV at contact and LK loses its
+                           corners; requiring large extent rules out a fly-away where
+                           corners vanish from tracking-loss, not overfill. 2-in-5.
+                           Fires ~0.05 m -- primary, most altitude-accurate path.
+          (b) BACKSTOP     extent pinned within 5% of its running max (which is itself
+                           >= sat_frac*W) AND extent+centroid BOTH frozen over ~3 s AND
+                           >= arm_dwell s since arm. 3-in-6. For soft settles where (a)
+                           never collapses cleanly.
+          (c) FLOW-FREEZE  background median per-frame pixel displacement makes a
+                           high(>ff_hi) -> low(<ff_lo) transition within ~1.2 s, with
+                           >= ff_minpts points. 3-in-6. POSITION-INDEPENDENT: catches a
+                           soft OFF-marker settle (marker out of FoV) that (a)/(b) can't
+                           see. Runs even pre-arm. Hard/sliding off-marker contacts are
+                           the IMU accel-spike detector's job (flight_controller.py).
+
+        Returns True iff a path latched this call (and sets self._touchdown)."""
+        if self._touchdown:
+            return True
+        try:
+            t = float(self._t[-1])
+        except (IndexError, TypeError):
+            return False
+        ext, n_corn, cen, ff_disp, ff_n = self._tdV2_perceptionSignals()
+        if ext > 0:
+            self._tdv2_ext_hist.append((t, ext))
+        if cen is not None:
+            self._tdv2_cen_hist.append((t, cen[0], cen[1]))
+        if ff_disp is not None:
+            self._tdv2_ff_hist.append((t, ff_disp, ff_n))
+        W = self._tdv2_frame_min
+
+        # ── ARM: a real close approach (marker fills >=half the frame AND has stopped
+        #    closing fast). No centering requirement. ──
+        if not self._tdv2_armed:
+            if n_corn is not None:
+                self._tdv2_nc_pre.append(n_corn)
+                if len(self._tdv2_nc_pre) > 4000:
+                    self._tdv2_nc_pre = self._tdv2_nc_pre[-2000:]
+            ge = self._tdV2_slope(self._tdv2_ext_hist, self._tdv2_grow_arm_win, islog=True)
+            arm_ok = (self._td_ext_armed
+                      and ext >= self._tdv2_arm_frac * W
+                      and ge is not None and abs(ge) < self._tdv2_grow_arm)
+            self._tdv2_arm_h.append(bool(arm_ok))
+            if sum(self._tdv2_arm_h) >= 3:
+                self._tdv2_armed = True
+                self._tdv2_t_arm = t
+
+        nc_ref = float(np.median(self._tdv2_nc_pre)) if len(self._tdv2_nc_pre) >= 5 else 150.0
+
+        # ── (a) OVERFILL ──
+        overfill = (self._tdv2_armed and n_corn is not None
+                    and n_corn < self._tdv2_nc_frac * nc_ref
+                    and ext >= self._tdv2_nc_ext_frac * W)
+        self._tdv2_nc_h.append(bool(overfill))
+
+        # ── (b) BACKSTOP ──
+        backstop = False
+        if (self._tdv2_armed and self._tdv2_t_arm is not None
+                and (t - self._tdv2_t_arm) >= self._tdv2_arm_dwell):
+            ext_max = float(self._td_ext_max)
+            gb = self._tdV2_slope(self._tdv2_ext_hist, self._tdv2_back_win, islog=True)
+            sdx = self._tdV2_slope([(r[0], r[1]) for r in self._tdv2_cen_hist], self._tdv2_back_win)
+            sdy = self._tdV2_slope([(r[0], r[2]) for r in self._tdv2_cen_hist], self._tdv2_back_win)
+            sd = float(np.hypot(sdx, sdy)) if (sdx is not None and sdy is not None) else None
+            backstop = (ext_max >= self._tdv2_sat_frac * W
+                        and ext >= self._tdv2_sat_nearmax * ext_max
+                        and gb is not None and abs(gb) < self._tdv2_grow_back
+                        and sd is not None and sd < self._tdv2_sdot_back)
+        self._tdv2_bk_h.append(bool(backstop))
+
+        # ── (c) FLOW-FREEZE (position-independent; may fire pre-arm) ──
+        freeze = False
+        if (ff_disp is not None and ff_n >= self._tdv2_ff_minpts
+                and ff_disp < self._tdv2_ff_lo):
+            recent = [d for (tt, d, npt) in self._tdv2_ff_hist if tt >= t - self._tdv2_ff_recent]
+            if recent and max(recent) > self._tdv2_ff_hi:
+                freeze = True
+        self._tdv2_ff_h.append(bool(freeze))
+
+        # ── LATCH ──
+        if sum(self._tdv2_nc_h) >= 2:
+            path = "overfill"
+        elif sum(self._tdv2_bk_h) >= 3:
+            path = "backstop"
+        elif sum(self._tdv2_ff_h) >= 3:
+            path = "flow-freeze"
+        else:
+            return False
+        self._touchdown = True
+        _sen = float(np.max(np.abs(s_e_n))) if s_e_n is not None else float("nan")
+        print(f"[controller] TOUCHDOWN-DETECT v2 [{path}]: extent={ext:.0f}/{W:.0f}px  "
+              f"n_corn={(n_corn if n_corn is not None else -1):.0f} (airborne ref {nc_ref:.0f})  "
+              f"flow_disp={(ff_disp if ff_disp is not None else -1):.2f}px  |s_e_n|={_sen:.2f} "
+              f"-> LANDED (disarm before bounce)")
+        return True
+
     def _touchdownDetect(self, s_e_n):
         """Loom-SPIKE soft-touchdown detector. Arms once a descent is established (h_z < arm),
         then latches LANDED when the loom holds a genuine POSITIVE SPIKE (h_z > _td_spike, not
@@ -1457,6 +1677,18 @@ class Controller(Thread):
         if not self._touchdown_loom or self._touchdown:
             return
         self._trackExtentHistory(self._t[-1])   # unconditional -- see its own comment
+
+        # V2 perception touchdown detector (2026-08-30). Cross-marker perception mode
+        # only -- ArUco perception and GT-feedback keep their existing paths below.
+        # Runs BEFORE the loom-arm gate so the position-independent flow-freeze path
+        # can fire on an off-marker settle that never produced a loom arm. When on
+        # (default), V2 OWNS the perception touchdown decision -- the legacy loom-spike
+        # / loom-independent-extent paths are skipped entirely.
+        if (self._tdv2_on and self._gt_feedback is None
+                and hasattr(self._img_node, "_perception")):
+            self._touchdownDetectV2(s_e_n)
+            return
+
         h_z = float(self._h[-1][2])
         _sen_mag = float(np.max(np.abs(s_e_n)))
         if not self._td_armed:
@@ -1553,6 +1785,8 @@ class Controller(Thread):
         # requirement on h_z's sign/magnitude at all, only that extent has independently
         # (and, per _td_ext_armed, genuinely) stalled near its own proximate max, sustained
         # the same _td_frames-in-a-window way.
+        if not self._td_ext_only:
+            return
         self._td_ext_only_hist.append(_ext_ok)
         _ext_only_streak = sum(self._td_ext_only_hist)
         if self._td_debug:

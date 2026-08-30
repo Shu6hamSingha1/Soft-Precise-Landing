@@ -89,3 +89,45 @@ firing, **there is no perception-only touchdown detector at all**.
 the loom-independent 2nd path. Diagnostic lever; NOT a fix (nothing lands with it off).
 `_prev_flow_uid` cell-ID fix + `CROSS_CENTER_BRIDGE_FRAMES=10` (commit e86c798a) are
 unaffected and still in.
+
+## 2026-08-30 (later) — V2 perception touchdown detector IMPLEMENTED in controller.py
+
+`_touchdownDetectV2()` + helpers `_tdV2_slope`, `_tdV2_perceptionSignals`, ~234 lines,
+fully additive (legacy loom-spike / loom-independent-extent paths untouched, just
+unreachable in cross-marker perception mode while `PLASMC_TD_V2=1`, the default;
+`PLASMC_TD_V2=0` restores exact old behavior). GT-feedback path and ArUco perception path
+unchanged. Wired in `_touchdownDetect` right after `_trackExtentHistory`, BEFORE the
+loom-arm gate (so flow-freeze can fire pre-arm).
+
+**Precision-INDEPENDENT — NO `|s_e_n|` gate anywhere** (the design correction: an
+off-target ground contact is still a touchdown that must disarm; the SP scorer judges
+precision). Three one-way latch paths:
+- **(a) OVERFILL** — `N_flow_corners < 0.65*airborne_median` AND `extent >= 0.55*frame_min`
+  (the extent floor rules out a fly-away's tracking-loss corner drop). 2-in-5. Primary;
+  replay fire median ~0.05 m.
+- **(b) BACKSTOP** — `extent` within 5% of running-max (itself `>= 0.62*frame_min`) AND
+  `|d(lnE)/dt|<0.02` AND `|d centroid_px/dt|<0.03` over 3 s AND `>=2.5 s` since arm. 3-in-6.
+- **(c) FLOW-FREEZE** — background median per-frame pixel displacement makes a
+  high(`>2.0 px`)→low(`<0.45 px`) transition within 1.2 s, `>=5` points. 3-in-6.
+  Position-independent; catches soft OFF-marker settles. Replay: signature present in
+  15/29 marker-gone landings, this logic fires ~9/29.
+
+All thresholds env-overridable (`PLASMC_TDV2_*`). `frame_min = 2*min(img_node.center)` = 480.
+
+Signals read defensively off `self._img_node._perception` (`_n_flow_corners_log`,
+`_last_flow_prev_px/_curr_px`) + `get_center_px()` + `MARKER_EXTENT_PX` — any missing →
+that path just doesn't fire.
+
+**Verification:** `py_compile` clean; unit test (`scratchpad/test_tdv2.py`, synthetic
+streams) passes 3/3 — (1) on-marker soft descent → OVERFILL latches @ ~0.08 m; (2) 1.2 s
+mid-descent hesitation at 2 m → does NOT fire; (3) off-marker settle, marker at frame edge,
+background flow drops → FLOW-FREEZE latches @ ~0.19 m. NOT yet SITL-validated in a live
+perception-mode flight.
+
+**Backstops unchanged and still required:** IMU accel-spike `_impactDetector` (|a|>50,
+flight_controller.py — replay: 28/29 marker-gone hard contacts, 0/176 clean false) + PX4
+LandedState. V2 covers the soft on-marker + soft off-marker settle cases those are too
+slow / can't-see for.
+
+Uncommitted alongside: `PLASMC_TD_EXT_ONLY` flag (added earlier same day; dead when
+`PLASMC_TD_V2=1`).
