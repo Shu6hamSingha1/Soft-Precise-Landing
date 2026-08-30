@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0c94ab6a-894a-4d39-9867-91dec8322965
-  modified: 2026-08-30T23:36:39.892Z
+  modified: 2026-08-30T23:49:49.593Z
 ---
 
 # Perception-mode landing — 2026-08-31 session
@@ -126,10 +126,35 @@ montage `test_data/Test_Videos/montage_perc_20260831_0503.mp4`.
   blind. No ascent through any of it. CrossMarkerNode diag: detect ok 1516/1535 (99%)
   overall but the failures cluster in the last metre (`centroid_mismatch` ×10,
   `hough_lt2_lines` ×4, `color_gate_empty` ×2).
-- **IC1 n=5 / IC2–5 NOT warranted yet** — this is not a converging landing. Per
-  reject-on-single-failure, the binding constraint is now the terminal overfill
-  hand-off, not gains and not the CBF. That's a design decision (see "Still open" below),
-  needs a user call on direction before more runs.
+### 2026-08-31 (later still) — IC2–5 n=1 perception-mode: ALL FAIL, off-center lateral divergence
+
+At user request ran IC2–5 n=1 (same env, cross-marker, no GT-FB). Bundles/montages:
+- IC2 `2,2,5` — `test_data/Landing_Test/Mon Aug 31 05-14-32 2026/`, `montage_perc_20260831_IC2.mp4`
+- IC3 `-2,2,5` — `…05-15-27 2026/`, `montage_perc_20260831_IC3.mp4` (no chase cam that run)
+- IC4 `2,2,7` — `…05-16-52 2026/`, `montage_perc_20260831_IC4.mp4`
+- IC5 `2,2,3` — `…05-17-45 2026/`, `montage_perc_20260831_IC5.mp4`
+
+**All four: `TARGET_LOST` mid-flight, hard IMU-impact disarm, huge miss** — IC2 4.9 m,
+IC3 3.2 m, IC4 4.0 m, **IC5 10.3 m** (rel_vel 4.3–4.7 m/s at min-alt on every one).
+
+**Mechanism = off-center lateral OVERSHOOT / anti-restoring divergence (NOT the CBF, NOT
+`_dtheta_correction`).** GT trajectory, IC2: start (1.9,2.0,5) → flies toward marker in
+x, crosses x=0 at ~45–50% of descent → **keeps going**, overshoots to x=−4.7, y drifts
+−1.1, ends 4.8 m off. IC5 identical shape but worse: crosses origin ~40%, runs away to
+(−7.8,+6.6). `|s_e_n|` never converges (sits 0.5–0.8, peaks 0.9–1.4). As the marker
+crosses to the far side of the FOV the centroid pins to the frame edge (`Center Px x`
+goes negative / caps ~215 of 480) → detector collapses (`centroid_mismatch`,
+`lt2_angle_clusters`, `color_gate_empty` pile up) → TARGET_LOST → ballistic to impact.
+
+IC1 "works" (monotone descent) ONLY because it starts dead-centered with ~zero lateral
+error; the lateral loop is not asked to null a real off-center error. This is the
+long-known off-center lateral wall / anti-restoring `a_u` behaviour
+([[feedback_lateral_wall_anti_restoring_au]], [[feedback_ic2_lateral_gain_chain]]),
+re-confirmed here in real perception mode. **Perception-mode landing is IC1-only until
+the off-center lateral loop is stabilized** — that is now the binding constraint, ahead
+of the terminal-overfill hand-off.
+
+- **IC1 n=5 NOT run yet** — not a converging landing even at IC1 (0.59 m terminal miss).
 - **Still open (flagged, not fixed):** the whole-cross detector still can't detect below
   ~0.4 m (marker overfills) → below there the loop is on last-good `s` + `h` + IMU. The
   real terminal fixes remain: (a) commit / hand off to flow once the marker overfills, or
