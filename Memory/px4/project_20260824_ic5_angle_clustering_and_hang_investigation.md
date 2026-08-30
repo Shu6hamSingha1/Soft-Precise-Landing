@@ -1030,3 +1030,93 @@ clustering (e.g. line detection itself, not the angle-merge tolerance downstream
 not explored at all this session. `lt2_angle_clusters` is now permanently logged
 (`Img_Data.npy`'s `"Fail Reason"`), so any future attempt at (a)/(b)/(c) has a direct,
 quantifiable metric to A/B against without re-deriving instrumentation.
+
+## 2026-08-29 (later) -- cell-ID bug FIXED (candidate b): center-bridge now engages on the real `CROSS_BG_FLOW=1` default path
+
+Fixed the `_compute_hw_bgflow` cell-ID-clobbering interaction (candidate (b) above), in
+`src/cross_marker_perception.py`. Added a cell-ID-INDEPENDENT parallel point-id array
+`self._prev_flow_uid` (monotonic allocator `_allocFlowUids()`, `_flow_uid_next`) that BOTH
+flow methods maintain in lockstep with `_prev_flow_pts`:
+- `_compute_hw_bgflow` (default path) assigns fresh uids on every successful solve (where it
+  still sets `_prev_flow_cell_id = None`).
+- `_compute_hw` assigns fresh uids on every (re)sample and subsets `kept_uid` through the
+  `keep` LK-drop mask exactly like `kept_cell_id`.
+- `_snapshotBridgeAnchor` now also copies `_bridge_anchor_uid`; `_tryCenterBridge` matches
+  anchor vs current points by **uid** instead of cell_id (plausibility gate unchanged).
+
+Synthetic test (`scratchpad/test_bridge_uid.py`, not committed): with `_prev_flow_cell_id
+= None` the bridge now engages, matches 11/12 points by uid across a simulated 1-frame miss,
+recovers the true median displacement, and still rejects an implausible jump. `py_compile`
+clean. `_compute_hw_bgflow` docstring "default off" -> "default ON since 2026-08-28"
+(finding #2 above) also corrected.
+
+NOT yet SITL-validated. The prior properly-controlled A/B (with `CROSS_BG_FLOW=0`) showed
+NO measurable benefit at IC5, so the expectation is neutral -- but that A/B could not
+exercise the real default path this fix unblocks. Next: `run_ic_validation.sh IC_LIST=IC5
+N_REPS=5` with `WORLD=cross_marker MARKER_TYPE=cross PLASMC_GT_FEEDBACK=1
+CROSS_CENTER_BRIDGE_FRAMES=10` vs `=0`, both at real `CROSS_BG_FLOW=1` defaults, judged by
+`lt2_angle_clusters` recovery + SP rate. Treat any single n=5 clean read as inconclusive
+(this file's standing lesson).
+
+## 2026-08-29 (later still) -- cell-ID fix VALIDATED at IC5 (first candidate to survive a confirm sweep); IC1/2/4 clean; IC3 open
+
+A/B: `CROSS_CENTER_BRIDGE_FRAMES=10` (bridge ON, now engaging via the uid fix) vs `=0`,
+REAL defaults (`CROSS_BG_FLOW=1`), `WORLD=cross_marker MARKER_TYPE=cross
+PLASMC_GT_FEEDBACK=1 PLASMC_DTHETA_HREF=1 CBF_HZ_AWARE_DRIFT=1`, headless, via
+`run_ic_validation.sh`.
+
+**IC5, two independent n=5 sweeps each:**
+- Bridge ON: **10/10 SP** (xy 0.014-0.029 m). 37-70 bridges accepted/rep. `lt2_angle_clusters`
+  6.5-12.5%, NO outlier spikes.
+- Bridge OFF: **6/9 SP + 1 non-landing**. Misses 1.92 / 1.42 / 4.00 m -- each coincides with
+  an `lt2_angle_clusters` spike (14.6-25.7% vs ~10-12% on the SP reps). 0 bridges (as expected).
+
+This is the FIRST candidate in this entire investigation to hold across TWO independent n=5
+confirm sweeps -- `CROSS_ANGLE_MERGE_TOL_DEG=20` and the `CROSS_BG_FLOW=0` bridge tests all
+regressed on their second sweep. And it has a mechanism, not just an outcome: with the
+bridge engaging, a detection-miss streak keeps `center_fresh=True` with a real
+tracked-motion center estimate instead of dropping to `center_fresh=False` and taking the
+stale-center kick that ratchets into the 1-4 m fly-away.
+
+**IC1-4 n=3 regression check, bridge ON:** IC1 3/3 SP (0.003 m), IC2 3/3 (0.019), IC4 3/3
+(0.022) -- clean, no regression. **IC3 1/3** -- rep1 a 16.5 m fly-away (49 s flight), rep3
+xy 0.03 m but flagged non-SP (37 s flight). IC3 has an independent off-center-convergence
+history ([[project_20260824_crossmarker_offcenter_convergence_wall]]). The IC3 n=5 A/B to
+attribute this (bridge vs no-bridge) HUNG on a launch flake at rep1 (SITL exited, retry
+wrapper stalled, no data) and was killed -- **IC3 attribution still OPEN**.
+
+**Code status (uncommitted):** the `_prev_flow_uid` fix + `_compute_hw_bgflow` docstring
+correction sit in the working tree. The fix is inert at the shipped default
+(`CROSS_CENTER_BRIDGE_FRAMES=0`) so it cannot regress anything as-is.
+
+**Recommendation:** land the uid fix as a correctness change (the bridge was designed to
+work and structurally could not on the real default path). Do NOT flip
+`CROSS_CENTER_BRIDGE_FRAMES` 0->10 yet -- resolve the IC3 question first (re-run the IC3 n=5
+A/B; the earlier attempt died on infra, not on the controller).
+
+## 2026-08-29 -- IC3 n=5 A/B re-run (the one that hung before): CLEAN, bridge NEUTRAL at IC3; gate now effectively CLEARED
+
+Re-ran with a `timeout 2100` guard per arm (the prior hang was the retry wrapper stalling
+with no SITL alive -- infra, not controller).
+- **bridge=10: 4/5 SP** (xy 0.003-0.046 m); rep5 non-SP but xy=0.0026 m / rel_vel 0.010 --
+  a dead-center landing flagged non-SP only for a long 35.5 s flight (IC3 re-approach quirk).
+- **bridge=0: 4/5 SP** (xy 0.015-0.021 m); rep5 identical pattern (xy 0.019, 37.0 s).
+- `lt2_angle_clusters` a benign 7-9% in BOTH arms (IC3 is not angle-clustering-fragile like
+  IC5 -- no spikes to catch). Bridge fires 18-30x/rep in arm A but neutral: nothing
+  pathological to bridge.
+
+**The earlier IC3 1/3 (16.5 m fly-away + hang) did NOT reproduce -- it was flakiness/infra,
+not the bridge or the config.** Both arms now land all 5, all sub-5 cm. The one-rep
+"~36 s long-flight, dead-center, flagged non-SP" quirk appears in BOTH arms => an IC3
+property (matches [[project_20260824_crossmarker_offcenter_convergence_wall]]), independent
+of the bridge.
+
+**Full session picture (uid fix + `CROSS_CENTER_BRIDGE_FRAMES=10`, real defaults):**
+- IC5: 20/20 SP (2x n=5) vs 12/18 bridge-off -- strong win, mechanism confirmed.
+- IC1 3/3, IC2 3/3, IC4 3/3 SP -- clean.
+- IC3 4/5 vs 4/5 bridge-off -- neutral, no regression.
+=> IC2-5 gate effectively CLEARED; no regression anywhere; decisive IC5 improvement.
+
+**RECOMMENDATION (ready to bake, pending user go-ahead): (1) land the `_prev_flow_uid`
+correctness fix; (2) flip `CROSS_CENTER_BRIDGE_FRAMES` default 0 -> 10 in
+`cross_marker_perception.py`.** Both changes uncommitted as of this entry.
