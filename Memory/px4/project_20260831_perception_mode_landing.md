@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0c94ab6a-894a-4d39-9867-91dec8322965
-  modified: 2026-08-30T23:23:46.979Z
+  modified: 2026-08-30T23:36:39.892Z
 ---
 
 # Perception-mode landing — 2026-08-31 session
@@ -101,15 +101,35 @@ GT-ablation of the recorded perception landing (`gt_optical_flow.py` Z_REG tool)
 
 ## STATE / next steps
 
-- **Perception-mode landing does NOT yet work end-to-end.** Last full run (BEFORE the
-  `CBF_AZ_COST_GAIN` change): min_alt 0.34 m at 0.40 m off, then fly-away to 3.06 m,
-  "ASCENDING", IMU-impact disarm. tdV2 flow-freeze DID fire correctly on that run
-  (marker-gone settle).
-- **Not yet SITL-validated:** `CBF_AZ_COST_GAIN` (the whole point of the fix), the
-  origin-free detector, tdV2 in a completing landing.
-- **Next:** re-run perception-mode IC1 (`run_aruco_landing.sh` HEADLESS=1, cross-marker,
-  no GT-FB, `IMG_RECORD=1 CHASE_CAM=1`), check the drone actually descends through the
-  0.4 m band without the CBF-driven ascent and lands. Then IC2-5.
+### 2026-08-31 (later) — FIX SITL-VALIDATED: fly-away gone, terminal now purely lateral-blind
+
+First perception-mode IC1 run after the `_dtheta_correction` removal
+(`HEADLESS=1 WORLD=cross_marker MARKER_TYPE=cross`, no GT-FB, IC1 `0,0,5`).
+Bundle: `test_data/Landing_Test/Mon Aug 31 05-03-03 2026/`;
+montage `test_data/Test_Videos/montage_perc_20260831_0503.mp4`.
+
+- **Fly-away is GONE.** Descent is **perfectly monotone** — 0.0 m total upward travel
+  over the whole descent (vs the prior run's climb to 3.06 m). Confirms the fly-away was
+  `_dtheta_correction` and nothing else. This is the SITL validation of the removal.
+- **`CBF_AZ_COST_GAIN` relief never engaged** — `az_joint_delta(t) ≡ 0` for all 1496
+  samples (box never bound hard enough). So the relief term is validated only as
+  "inert / no regression", not as an active mechanism yet. `dtheta_az(t)` peaked 5.5
+  (conflict signal was live) but with `_dtheta_correction` gone it now only feeds the
+  `h_ref_eff` channel.
+- **Still a precision FAIL.** tdV2 `[overfill]` path fired and disarmed at alt 0.23 m,
+  **0.59 m off** (honest @ min-alt), 1.07 m/s. Endpoint xy 0.83 m.
+- **Root cause of the miss = terminal overfill blindness, exactly as flagged.** Trace:
+  `|s_e_n|` grows monotonically once `MARKER_EXTENT_PX` crosses ~270 px (t≈37.8 s):
+  0.16→0.27 (ext 318)→0.50→0.54, then at ext-collapse (ext 319→84, t≈41.9 s) a single
+  `|a_u|` transient to 13.7 + `I_a_z` spike to −20.4 (brief, non-sustained) + `kappa`
+  ratchet 0.12→0.50; ext then frozen at last-good 168 and `|s_e_n|` drifts 0.63→1.02
+  blind. No ascent through any of it. CrossMarkerNode diag: detect ok 1516/1535 (99%)
+  overall but the failures cluster in the last metre (`centroid_mismatch` ×10,
+  `hough_lt2_lines` ×4, `color_gate_empty` ×2).
+- **IC1 n=5 / IC2–5 NOT warranted yet** — this is not a converging landing. Per
+  reject-on-single-failure, the binding constraint is now the terminal overfill
+  hand-off, not gains and not the CBF. That's a design decision (see "Still open" below),
+  needs a user call on direction before more runs.
 - **Still open (flagged, not fixed):** the whole-cross detector still can't detect below
   ~0.4 m (marker overfills) → below there the loop is on last-good `s` + `h` + IMU. The
   real terminal fixes remain: (a) commit / hand off to flow once the marker overfills, or
