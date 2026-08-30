@@ -301,6 +301,7 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # downstream (the PLASMC_AZ_JOINT controller.py-level approach). Requires A_CAP
         # (falls through to the theta-based path if not provided, e.g. old callers/tests).
         _joint_qp = env.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
+        _az_cost_gain = float(env.get("CBF_AZ_COST_GAIN", "5.0"))   # m/s^2 descent-rate relief per rad of box-suppressed tilt; 0 disables
         if _joint_qp:
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel
@@ -315,6 +316,23 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                             r = M[k]; Ia_lat = Ia_lat - (f[k] - m2[k]) / (r @ r + 1e-12) * r
                         elif f[k] < -m2[k]:
                             r = M[k]; Ia_lat = Ia_lat - (f[k] + m2[k]) / (r @ r + 1e-12) * r
+                # a_z SOFT COST (CBF_AZ_COST_GAIN, default on). Folds in what
+                # controller.py's downstream _dtheta_correction used to do -- "if the FoV
+                # box just had to suppress lateral demand, slow the descent so the lateral
+                # loop gets more time" -- but INSIDE this constrained solve, so the output
+                # I_a stays self-consistent (the old bolt-on modified I_a[2] AFTER the QP,
+                # outside its constraint set, and could pile unbounded lift on top of the
+                # z-SMC -> the terminal climb-away). Weight = ||th_desired - th_safe||, the
+                # radians of tilt the box suppressed this cycle. HARD SAFETY: the relief
+                # can bring the descent-accel command toward hover (-g) but NEVER past it,
+                # so this term alone can only slow a descent, never reverse it into a
+                # climb. Only engages while the z-SMC is itself commanding a descent
+                # (I_a[2] > -g); if the SMC or the sphere already command lift, leave it.
+                if _az_cost_gain > 0.0 and float(I_a[2]) > -g:
+                    _th_safe_now = P @ (Ia_lat / _az_now)
+                    _lat_supp = float(np.linalg.norm(th_desired - _th_safe_now))
+                    _az_relieved = float(I_a[2]) - _az_cost_gain * _lat_supp   # more negative = more lift = slower descent
+                    Ia_z = min(Ia_z, max(_az_relieved, -g))                    # min: deliverability/SMC lift wins; max(-g): relief can't command a climb
                 # deliverability sphere projection, FULL gravity-shifted thrust vector
                 thrust_vec = np.array([Ia_lat[0], Ia_lat[1], Ia_z + g])
                 _T = float(np.linalg.norm(thrust_vec))

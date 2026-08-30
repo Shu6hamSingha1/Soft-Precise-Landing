@@ -3704,64 +3704,27 @@ class Controller(Thread):
             p_10_eff, theta_cone,
             dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z,
             A_CAP=A_CAP, g=g)
-        # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
-        # loom-margin-prediction approach entirely, not stacked on it). That approach used
-        # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for
-        # "is visibility at risk soon". This uses a direct one instead: dtheta =
-        # th_desired - th_safe is exactly how much LATERAL AUTHORITY the visibility CBF is
-        # suppressing RIGHT NOW (th_desired = the unconstrained tilt the SMC wanted;
-        # th_safe = what the FoV-box projection actually allowed) -- when the CBF is
-        # actively fighting the lateral controller, slow descent to buy the lateral loop
-        # time to converge instead of pressing on blind to the conflict. th_desired is
-        # None on the Phase-2 fallback (no projection ran -- "unmet demand" isn't a
-        # meaningful concept there), so dtheta=0 in that case: same "no data -> don't
-        # correct" philosophy the removed approach's no-data guard used. Scalar (norm),
-        # not per-axis, per user direction. MUST run here, right after cbf2_filter and
-        # BEFORE the theta_cap rescale below: theta_cap is a separate deliverability
-        # concern, not part of the visibility-conflict measurement dtheta captures. The
-        # adjustment lands in I_a[2] before the A_CAP magnitude-cap rescale further down,
-        # so that rescale's direction-consistency guarantee still covers the final value
-        # (see A_CAP's top-of-file comment for why an unprotected az adjustment can starve
-        # lateral authority once the combined thrust vector saturates).
-        _dtheta_gain = float(os.environ.get("PLASMC_DTHETA_AZ_GAIN", "10.0"))  # (m/s^2 of extra lift) per (rad of suppressed lateral demand); tunable, sign fixed by physics (more lift always slows descent), magnitude untuned
+        # AZ VISIBILITY FILTER -- REMOVED 2026-08-31. This was a downstream bolt-on:
+        # after cbf2_filter, it measured dtheta = ||th_desired - th_safe|| (the lateral
+        # tilt the FoV box had just suppressed) and did `I_a[2] -= gain*dtheta` to slow
+        # the descent "to buy the lateral loop time." Two problems: (1) it modified
+        # I_a[2] OUTSIDE the QP's own constraint set, so the final vector was no longer
+        # guaranteed FoV- or sphere-consistent; (2) it could pile unbounded lift on top
+        # of the loom-tracking z-SMC -> the terminal climb-away / fly-away (traced on a
+        # perception-mode landing 2026-08-31; earlier IC5 fly-aways too). The joint QP
+        # (CBF_JOINT_QP, default on) already solves for the full I_a including I_a[2],
+        # so the same "trade descent rate for lateral margin" now lives INSIDE that
+        # constrained solve as CBF_AZ_COST_GAIN (cbf_visibility.py) -- self-consistent
+        # output, and hard-clamped so it can only slow a descent toward hover, never
+        # reverse it into a climb. th_desired / dtheta stay logged as diagnostics.
         if self._theta_safe is not None and _th_desired is not None:
             _dtheta_norm = float(np.linalg.norm(_th_desired - self._theta_safe))
         else:
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
         self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
-        # Crossfade (v3, see __init__ note): only active when PLASMC_DTHETA_HREF is on --
-        # bridges the several-cycle lag before h_ref_eff's SMC/LPF-mediated slowdown takes
-        # effect, then fades toward 0 as the encounter persists so this (self-defeating-loop-
-        # carrying) direct channel doesn't run at full strength indefinitely once the coherent
-        # h_ref channel has taken over. Off (weight=1 always): unchanged/backward-compatible.
-        if self._dtheta_href:
-            _dt_now = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
-            if _dtheta_norm > 1e-3:
-                self._dtheta_active_t += _dt_now
-            else:
-                self._dtheta_active_t = 0.0
-            _xfade_w = float(np.exp(-self._dtheta_active_t / max(self._dtheta_xfade_tau, 1e-6)))
-        else:
-            _xfade_w = 1.0
-        self._dtheta_xfade_w_log.append(_xfade_w)
-        # CAP (2026-08-24, IC5 fly-away root cause -- see project_20260824_dtheta_ic5_flyaway_
-        # rootcause memory): the correction has no memory of what it already injected -- at ICs
-        # where dtheta stays active almost continuously (IC5: 65-98% of frames from t=0), the
-        # per-cycle term itself was observed GROWING (0.2->1.9 m/s^2 over 2s, gain=5) rather than
-        # settling, driving a real 3m->7-10m runaway climb + 20-28m lateral divergence within ~9s
-        # before TARGET_LOST. This is a SEPARATE defect from the th_curr self-defeating-loop
-        # (project_20260824_dtheta_az_filter_self_defeating_feedback): that one is about the QP
-        # granting LESS lateral authority over time (a slow degradation); this is about the
-        # correction's own OUTPUT being unbounded when its trigger persists (a stability/safety
-        # issue). Capping does NOT fix the self-defeating loop -- see PLASMC_DTHETA_HREF (v3) for
-        # that. This clamp is a guardrail so the correction can no longer diverge into a fly-away,
-        # nothing more.
-        _dtheta_correction = _dtheta_gain * _dtheta_norm * _xfade_w
-        _dtheta_cap = float(os.environ.get("PLASMC_DTHETA_AZ_CAP", "2.0"))   # m/s^2, max extra lift per cycle; ~median-to-p90 of the gain=10 uncapped distribution, clips the runaway tail
-        _dtheta_correction = float(np.clip(_dtheta_correction, 0.0, _dtheta_cap))
-        self._dtheta_correction_log.append(_dtheta_correction)
-        I_a[2] -= _dtheta_correction   # more negative I_a[2] = more lift = slower descent
+        self._dtheta_xfade_w_log.append(1.0)     # retained for log-schema stability (crossfade gone)
+        self._dtheta_correction_log.append(0.0)  # retained for log-schema stability (bolt-on removed)
         # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
         # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
         # of this fully SKIPPED the angle clip below, relying only on the downstream
