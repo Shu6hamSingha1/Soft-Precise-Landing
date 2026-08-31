@@ -516,3 +516,41 @@ IC2 is now a *converging* landing that needs tightening, not a diverging one.
 **Next:** full **IC1–5 n=5 gate** (`run_ic_validation.sh`, perception mode) — mandatory
 now that a control-path (alpha) default changed. Then revisit the open list (funnel #1,
 terminal overfill #4) against the new baseline.
+
+### 2026-08-31 — IC1-5 n=5 perception-mode GATE (post CROSS_ALPHA_0 fix): off-center DECISIVELY fixed
+
+`run_ic_validation.sh` N_REPS=5, `WORLD=cross_marker MARKER_TYPE=cross`, no GT-FB.
+Bundle `test_data/ICValidation/20260831-144626/`.
+
+| IC | prec/5 | mean xy | max xy | mean vel | read |
+|----|--------|---------|--------|----------|------|
+| IC1 | 1/5 | 1.12 | 5.36 | 0.20 | 2 good (0.069 P, 0.169); 1 terminal ASCENT (rep1, deck-clean at 0.06 m then loom→z-SMC climb to 7 m, →5.4 m); **2 test-rig IC-convergence FALSE-POSITIVE** (rep3/4: "IC converged t=0.40s pos_err=0.404 m" + alpha std 29° → descent-stall hover-abort at 6 m, `SP={}`) |
+| IC2 | 3/5 | **0.110** | 0.188 | 0.50 | **all 5 landed 0.06–0.19 m** (was 100 % TARGET_LOST 4.9 m) |
+| IC3 | 3/5 | **0.100** | 0.165 | 0.39 | **all 5 landed 0.03–0.17 m** (was 100 % TARGET_LOST 3.2 m) |
+| IC4 | 3/5 | **0.101** | 0.218 | 0.36 | **all 5 landed 0.01–0.22 m** (was 100 % TARGET_LOST 4.0 m) |
+| IC5 | 3/5 | 0.406 | 1.65 | 1.24 | 4 good (0.06–0.14 m); 1 hard bounce (rep1: deck at 0.23 m, then rel_vel 4.2 m/s, →1.6 m — fast 3 m descent, tdV2 timing) |
+
+**VERDICT: CROSS_ALPHA_0 90.23°→0.58° is decisively validated.** IC2/IC3/IC4 — every
+single one a 3–5 m TARGET_LOST fly-off before — now land at **mean xy ~0.10 m, max ~0.2 m,
+soft, 3/5 precise each**. First working off-center perception-mode landing, ever.
+
+**Remaining failures are PRE-EXISTING, not regressions:**
+- **IC1 rep3/4 (2/5): test-rig IC-convergence false-positive** ("converged" at t=0.40 s /
+  0.40 m err, alpha std 29°) → drone not actually at the IC → descent-stall hover-abort.
+  Class of [[feedback_yaw_compass_drift_ic_start]]; intermittent; NOT alpha_0, NOT PLASMC.
+  Needs the IC rig's convergence gate hardened (min settle time + tighter pos/alpha-std bar).
+- **IC1 rep1 + IC5 rep1 (terminal): the overfill blocker** (open item #4). IC1 rep1 is the
+  intermittent loom→z-SMC ascent (~1/10 seen in the A/B) — now exposed because the drone
+  reaches the deck *centered* (0.06 m). IC5 rep1 is a fast-descent hard bounce.
+
+**Open list, re-ranked against the new baseline:**
+1. **Terminal overfill** (was #4, now #1) — the whole-cross detector dies as the marker
+   overfills; below there the loop coasts on last-good s/h/IMU → loom inversion → z-SMC
+   ascent (IC1 rep1) or hard bounce (IC5 rep1). Real fix: commit/hand-off to flow at
+   overfill, or a bounded-size X-junction / dual-scale fiducial. This now gates the last
+   ~0.1 m on the ICs that otherwise land clean.
+2. **Test-rig IC-convergence gate** — false "converged" at 0.4 s. Harden it (rig only).
+3. **Wall-clock `p_s` funnel + re-arm** — still a live amplifier (IC2 terminal `|a_u|` ~75,
+   `angle(h,h_d)` 38° not 0); matters more now that landings converge.
+4. `alpha` residual at oblique/overfill (`e_R_yaw` 0.55 not 0) — smaller now, revisit later.
+5. `s_dot_meas` broadband floor — still deprioritised.
