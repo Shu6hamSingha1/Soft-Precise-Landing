@@ -908,3 +908,44 @@ off-center drift into a fly-off. Two coupled fixes needed: (1) make the CBF tilt
 consistent with the `Rz(−90°)` `[y,−x]` convention used by `_getVirtualPts`/`cr2`
 (rework `Rz_p90b`+`CBF_LW_ROT` together, re-validate `Lw2` fidelity); (2) cap/rate-limit
 `dft`.
+
+---
+
+## 2026-08-31 — CBF Rz_p90b 90° frame inconsistency FIXED + validated (commit ebb8093c, main repo)
+
+**The fix is one line in spirit, applied at 5 sites.** `Rz_p90b = Rz(+90°) → identity`
+(gated by `CBF_MOUNT_ROT` env; `CBF_MOUNT_ROT=1` restores the old broken convention for
+A/B). `Rz_m90b = Rz_p90b.T` everywhere. Sites: `cbf_visibility.py` ×2 (joint-QP `th_curr`/`th`
+build ~L274 + non-joint branch ~L386); `cbf_visibility_aruco.py` ×3 (Phase-1 ~L234,
+Phase-1 non-joint ~L267, Phase-2 ~L326). `validate_cbf.py` oracle updated in lockstep
+(`_RZ_P90B`/`_RZ_M90B`/`_inline_reference`). Backups in `Obsolete/src/*_v_pre_rzp90b_fix_20260831.py`.
+
+**Corrected root-cause vs the prior memory entry:** it is NOT "masked by a compensating
+`CBF_LW_ROT` so the fix must be a coupled rework". `Rz_p90b = Rz(+90°) = M90⁻¹` *exactly*
+cancels `CBF_LW_ROT`'s `M90` inside `Lw2 @ th` → live code computes `L_ω @ lean` (the
+215%-wrong case, `validate_cbf.py` test 1b) instead of `L_ω @ M90 @ lean = L_ω @ ω`.
+Setting `Rz_p90b = identity` leaves `Lw2 @ th = L_ω @ M90 @ th` = the correct rotation-axis
+mapping. Analytic: `L_ω(s_V) @ M90 @ (−s_V) = −(1+|s_V|²)·s_V` (radial inward). Identity used:
+`L_ω(u,v) @ [Rz(+90°)(u,v)] = −(1+u²+v²)(u,v)`. No `CBF_LW_ROT` change, no corner-swap change.
+
+**Why it caused the IC5 fly-off:** for a restoring SMC command the old box model predicted a
+90°-*tangential* feature move → FoV-box projection "corrected" perpendicular to the recovery
+direction → off-center drift → marker exits frame. Leaked in via `dft` (measured in the `cr2`
+`Rz(−90°)` frame): `dft`-triggered box violations were rotated 33–77° (∝ `CBF_TAU`).
+
+**Validation (done before SITL, per user "check the impact so we can validate the fix correctly"):**
+- `validate_cbf.py`: **13/13** (was 10/12). test 1 `L_ω@M90` fidelity 6.27%; test 1b identity-is-WRONG
+  215.6% (guards against regression); test 2 predicted-feature 4e-16; test 3 TRUE-feature `|cr|<0.95`
+  **0.0** overshoot; test 3b FoV-edge linearization **0.143** (characterized-only — the `(1+x²)`
+  Jacobian moves fast over the tilt step at `|cr|≈1`; old code masked this via compensating errors;
+  CBF re-solves every frame so it still converges inward); test 5 no-strangle 0.0%.
+- `tools/validate_cbf_frame.py` (NEW regression guard, rewritten this session — the earlier
+  inter-frame-drift version was invalid, translation-dominated real drift vs tilt-counterfactual
+  model): (A) `angle(th_desired, −cr2) = 0.0°` all cases (**was 90° exactly**); (B) restoring `I_a`
+  at/past FoV edge with `dft=0` passes through `angle(in,out)=0°`; (C) `dft`-toward-edge box
+  corrections stay radial `out·(−cr2_hat) = +4.00` (**was 33–77° tangential**). Pre-fix
+  (`CBF_MOUNT_ROT=1`) the same script FAILs (A) all + (B) 19–23° edge + (C) collapses to +0.96.
+
+**Status: COMMITTED + PUSHED (ebb8093c). SITL re-run NOT yet done** — next step is perception-mode
+IC1-2 headless, then the IC1-5 n=5 gate, to confirm the IC5 fly-off is gone. `CBF_MOUNT_ROT=1`
+available for an A/B if the SITL result is ambiguous.
