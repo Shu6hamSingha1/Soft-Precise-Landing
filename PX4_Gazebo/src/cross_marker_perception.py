@@ -490,18 +490,32 @@ class CrossMarkerPerception:
         # theoretically EXACT result for this alpha formula: Jabbari Asl, Yoon & Tosunoglu
         # (2014), eq. (21)-(22), derive alpha_dot = -psi_dot for the identical plain
         # 2nd-moment principal angle in the leveled/virtual image plane (see
-        # _unweighted_principal_angle's docstring). Across 5 independent phased-excitation
-        # flights (yaw+-30deg and
-        # yawagg+-90deg phases; calibration_data/output_cross/2026-08-08 runs, recorded
-        # with CROSS_ALPHA_0=0 to log the pre-offset angle), per-run alpha_0 = 90.11,
-        # 90.39, 89.98, 90.48, 90.18 deg -- circular mean 90.23deg, inter-run std ONLY
-        # 0.18deg, R^2 0.974-0.995 (mean 0.988). That tightness is itself confirmation
-        # slope=-1 is the correct model (an unstable/wrong model wouldn't reproduce this
-        # consistently across independent flights). Supersedes the 2026-08-08 single-flight
-        # 88.70deg estimate. Suspiciously close to exactly 90deg -- plausibly a direct
-        # consequence of the 90deg camera-mount yaw rotation -- but pasted as the fitted
-        # value, not hand-rounded, per project convention (see img_data.py's alpha_0).
-        self._alpha_0 = float(os.environ.get("CROSS_ALPHA_0", str(np.radians(90.23))))
+        # _unweighted_principal_angle's docstring).
+        #
+        # ⚠ RE-DERIVED 2026-08-31 (tools/derive_cross_alpha0.py, 5 fresh phased flights
+        # calibration_data/output_cross_alpha0_20260831/, CROSS_ALPHA_0=0, 500-676
+        # yaw-excited samples/run). TWO corrections to the 2026-08-08 value above:
+        #   (1) The slope is +1, NOT -1. An UNCONSTRAINED (slope,offset) fit on the
+        #       yaw-excited samples gives slope +0.99/+1.00/+0.98/+0.96/+0.98
+        #       (mean +0.98, R^2 0.90-0.94) -- a clean line. Forcing slope=-1 (the
+        #       2026-08-08 Jabbari-Asl assumption) gives R^2 = -2.8 (garbage). The
+        #       raw disambiguated principal angle tracks GT ENU relative yaw
+        #       DIRECTLY (alpha ~= +psi_ENU), exactly like img_data.py's ArUco alpha
+        #       -- so BODY_YAW_ALPHA_K=-1 (cross) is already the right sign to map it
+        #       to yaw_c ~= -psi_ENU (NED), matching the compass path; K unchanged.
+        #   (2) The offset is ~0.5deg, NOT 90.23deg. Per-run alpha_0 (slope +1) =
+        #       0.29/0.60/0.46/0.61/0.94 deg -- circular mean 0.58deg, inter-run std
+        #       0.22deg. The 2026-08-08 ~90deg baked in the camera-mount yaw rotation;
+        #       since then _getVirtualPts's [y,-x] swap took that over ("REPLACED
+        #       here, not stacked" -- see the alpha block ~line 1970) + a [y,-x]<->[x,y]
+        #       convention was churned 2026-08-10, so alpha_0 should now be ~0 and was
+        #       never updated. Symptom: perception alpha read ~-82deg at aligned IC
+        #       hover (should be ~0) -> yaw_c wrong -> V-frame lateral command rotated
+        #       ~90deg -> off-center s_e_n never converged. See
+        #       project_20260831_perception_mode_landing.
+        # 2026-08-08 history kept above for the derivation-method notes (the fit
+        # machinery is right; the slope assumption and the resulting value were not).
+        self._alpha_0 = float(os.environ.get("CROSS_ALPHA_0", str(np.radians(0.58))))
 
         # last computed outputs, for the getter interface
         self._s = np.array([0.0, 0.0, 1.0])
