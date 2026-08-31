@@ -301,3 +301,56 @@ lag — a gate can't fix a floor), (ii) the wall-clock `p_s` funnel breakout + r
 the anti-restoring y `a_u`, (iv) the broken `alpha`/yaw channel (→ move `w_z` to gyro,
 keep `w_x=w_y=0`), (v) perception dropout at alt ~2.6 m. Gate stays in as a cheap,
 lag-free spike guard; it is not the off-center fix.
+
+### 2026-08-31 — s_dot_meas NOISE FLOOR root-caused; sub-pixel junction refine tried, doesn't help
+
+The gate (prev section) clips spikes, not the floor. Traced the floor on the gated IC2
+run (clean approach, det_ok, alt 2.7–4.9 m; `gt_optical_flow` for GT):
+
+| stage | HF noise (poly-detrended) | corr |
+|---|---|---|
+| raw pixel centroid `Center Px` | **0.69 px (x) / 0.41 px (y)** | — |
+| calibrated V-centroid `s_V` | 0.0026 / 0.0049 u | **raw-px same-axis 0.78 / 0.50**; quat only 0.22–0.24 |
+| implied `s_dot` from px jitter alone | **~0.13 u/s** | (measured `s_dot_meas` std 0.16–0.22; GT-FB 0.04) |
+
+**→ ~70–80 % of the `s_dot_meas` floor is raw pixel-centroid jitter differentiated at
+62 Hz.** Attitude/reprojection is minor (corr 0.22). And the jitter **grows with marker
+fill**: alt 4–4.9 m (ext 87 px) 0.23/0.19 px → 3–4 m (ext 108) 0.69/0.46 → 2–3 m
+(ext 118) **1.33/0.58** → dead below 2 m.
+
+**Mechanism:** the cross center is `_line_intersection(line_i, line_j)` — analytic
+intersection of two per-frame Huber line fits, **no sub-pixel junction refine, no
+temporal filter**. As the arms reach the frame edges the mask-pixel selection grabs
+off-line pixels (interior/opposite-arm/edge-aliasing — point counts balloon and go
+lop-sided, seen 155 vs 523) → the two line SLOPES wobble frame-to-frame → the
+intersection walks. GT-FB has zero jitter so the floor never appears there.
+
+**Tried: sub-pixel junction refine** (`_refine_junction_subpix`, commit on main,
+`CROSS_SUBPIX_JUNCTION`, **default OFF**). Local quadratic fit to the greyscale window
+at the junction (X-junction of two dark strokes = intensity minimum → +def Hessian),
+guarded shift cap, runs `in_fov` only, flows through the existing centroid_mismatch
+checks. **Apples-to-apples offline replay (recorded IC2, same frames): NO jitter
+reduction** from this OR `cv2.cornerSubPix`, at any shift guard (baseline 2.05/1.68 px
+on the 2× half-res mp4; every variant within ±0.05; cornerSubPix made a clean ~0.9 px
+sub-pixel correction and the jitter still didn't move). Confirms the jitter is line-SLOPE
+noise, not junction localisation — a junction-region intensity fit has no leverage on it.
+Kept as a knob (offline replay is on the downscaled H.264 IMG_RECORD mp4, not the live
+raw-frame path) — needs a live `CROSS_SUBPIX_JUNCTION=1` A/B to fully rule out.
+
+**Real levers for the floor (next):**
+1. **Intensity-weighted sub-pixel line-centerline fit** — per scanline across each arm,
+   take the intensity-weighted centroid of the dark band → sub-pixel centerline sample;
+   fit the line to those instead of binary mask pixels. Attacks slope noise directly,
+   ~zero lag.
+2. **Temporal accumulation** — motion-compensate recent frames' mask/edge points by the
+   KF velocity, fit each arm line once over the pooled set (√N slope-noise reduction),
+   ~2–3 frames (40 ms) lag.
+3. **Conditioning-aware KF R** — feed the line-fit condition number / inter-line angle /
+   point-count imbalance into the VDS + `_kf_feat` measurement noise per frame instead
+   of fixed `R=1e-3`. Zero lag.
+4. **VDS KF `q` 10→~3** — now that the floor is known to be white px jitter (not model
+   mismatch), more smoothing helps; q=1 was too far (110 ms, stalled off-center), q≈3
+   with the gate is an A/B.
+5. **Bounded-size fiducial** (X-junction / dual-scale) — the jitter blows up because the
+   whole-cross overfills; a constant-size feature holds constant fit geometry to
+   touchdown. The real terminal answer.
