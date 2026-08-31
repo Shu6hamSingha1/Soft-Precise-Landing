@@ -639,3 +639,43 @@ starved), pushed to its extreme. There is already a partial mitigation
 3. **Or a pairwise-distance loom** on robustly-tracked cross features (junction ↔ arm
    tip), immune to one arm being clipped.
 None need a marker change. (2) is the cheapest; (1)/(3) keep a real loom.
+
+### 2026-08-31 — IC5 montage-run fly-off diagnosed: terminal LATERAL overshoot, NOT overfill
+
+Bundle `test_data/Landing_Test/Mon Aug 31 19-19-48 2026/`; montage
+`montage_IC5_alpha0_20260831.mp4`; onboard `Mon Aug 31 19-19-34 2026.mp4`. n=1 IC5
+(2,2,3), post-α₀. TARGET_LOST, endpoint 6.4 m @ 7.8 m/s.
+
+**It is a terminal lateral-tracking loss, not the h_z overfill spike.** Evidence:
+- **GT: crosses the target then drifts away, monotonically.** pos (+2.1,+1.8) → (−0.1,+0.7)
+  xy 0.76 m at alt 1.87 m (~converged) → (−0.6,+0.6) → (−0.8,+0.4) → (−1.1,−0.4) xy 1.18 m
+  at alt 0.63 m → runs off in −y to (+0.5,−6.3). Never re-converges after the crossing.
+- **Raw pixel centroid slides off the frame BOTTOM:** `Center Px` (rotated 240×320, centre
+  (120,160)) y = 233 @ alt 1.5 m → 265 @ 1.1 m → 289 @ 0.8 m → (203,324) off-bottom @
+  0.6 m → (257,333) fully off-frame @ 0.5 m (extrapolated `in_fov=False`).
+- **Onboard frame @ alt 0.8 m = EMPTY** — uniform grey + the two leg "ghost" shapes at the
+  side edges; no cross marker anywhere. Camera has fully drifted off the target.
+- `MARKER_EXTENT_PX` only ~238 (NOT the 318 full-overfill) — the marker didn't overfill,
+  it walked out of frame.
+- `|s_e_n|` never nulls terminally: ~0.40 @ alt 2 m → 0.6 @ 0.9 m → 0.8 → 1.05 → 1.17 →
+  **1.51** @ 0.59 m; `|a_u lat|` tracks it up 0.9 → 7.1 (wall-clock `p_s` funnel breakout).
+- THEN: junction off-frame → `lt2_angle_clusters`/`centroid_mismatch` → `det=miss` @ alt
+  0.55 m, `s_e_n` frozen ~1.2; `n_flow_corners` 125→50→14→0; `h_z` LK-Jacobian spike to
+  +1.5; frozen-large `s_e_n` + up-loom → fly-off. (The h_z spike is real but it is
+  *finishing an already-lost approach*, not initiating it — unlike IC1 rep1 which reached
+  the deck centred at 0.06 m then ascended on a pure loom spike.)
+- Descent was also aggressive for the 3 m budget: `h_d_z` pinned −0.30, achieved `vz`
+  ~−1 to −1.5 m/s at alt 1–1.5 m (a GT `vz` −2.2 spike likely bridge jitter) — eats the
+  altitude before the lateral residual closes.
+
+**Root cause (IC5-specific severity):** the off-center lateral loop closes ~90 % of the
+error (α₀ fix) but **does not null the terminal residual (~0.4 → diverges)**, and IC5's
+3 m start compresses the descent so there is no recovery time — the drone lands onto
+empty ground ~1.2 m off, marker exits frame, detection collapses, fly-off. Same wall-clock
+`p_s` funnel + terminal-lateral-authority problem as open item #3, just most exposed at
+IC5. NOT a new mechanism; NOT the α₀ fix; the h_z overfill spike (#1) is a downstream
+compounding factor here, not the trigger.
+
+**Implication for the fix order:** the terminal `p_s` funnel / lateral-authority fix
+(#3) matters as much as the h_z hand-off (#1) — IC5 (and IC3's 0.30 m endpoint, IC2's
+38° h/h_d angle) are all the un-nulled terminal residual, not overfill.
