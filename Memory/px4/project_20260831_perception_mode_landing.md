@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0c94ab6a-894a-4d39-9867-91dec8322965
-  modified: 2026-08-31T00:14:35.954Z
+  modified: 2026-08-31T00:30:24.524Z
 ---
 
 # Perception-mode landing — 2026-08-31 session
@@ -221,6 +221,42 @@ it can't outrun the loop; (b) kill/limit the wall-clock funnel re-arm (one re-ar
 freeze width on marker-loss instead of resetting); (c) raise off-center lateral authority
 / fix the anti-restoring `a_u` sign on y; (d) hold-last vs. widen-funnel on detection
 loss rather than freezing `s_V` outright. (a)+(b) are the cheapest test.
+
+### 2026-08-31 — WHY perception IC2 diverges but GT-FB IC2 lands (0.017 m)
+
+Compared clean-phase (T<4 s, before detection death) of perc-IC2
+(`…05-14-32 2026`) vs a GT-FB IC2 (`test_data/Multi_IC/20260828-110310/IC_2_rep_1`,
+GT channels = all, 5/5 precise+soft). **Same control law, same params** (only `p_inf`
+1.0 vs 2.5, a middle-funnel floor, differs). Both are in **combined/blended mode**
+(`ds_d(t)≡0` in BOTH) → `h_d` lateral rate is built from **`s_dot_meas`**, the
+**time-derivative of the centroid feature**, in both cases. So the position feature `s_V`
+matching GT to <0.02 (which it does) is NOT what the lateral loop consumes. The two
+perception defects that GT-FB doesn't have:
+
+1. **`s_dot_meas` is 7–12× noisier under perception.** absmax x,y: GT-FB 0.12/0.10 vs
+   perc **0.86/1.20**; std 4–6×; raw d/dt(logged `s`) 10–15× noisier
+   (std 0.09 → 0.85). Differentiating even the savgol'd ~62 Hz centroid (sub-pixel
+   quantization + V-frame reprojection jitter) injects large spurious feature-velocity.
+   The blended surface feeds it straight into `h_d` → middle SMC chases a noise-corrupted
+   flow target → `|a_u lat|` mean 0.48→**1.18**, max 1.5→**3.9** → attitude buffeting
+   (`|e_R|` 3–7×). The marginal, ~0.45-capped y restoring demand can never net a
+   convergence against that; and the buffet blurs/edges the marker → detection death at
+   alt 2.6 m (GT-FB never "loses" its marker).
+2. **The yaw feature `alpha` (= `s[3]`) is broken under perception for off-center ICs.**
+   perc `alpha` mean **−1.26 rad (−72°)**, range −1.84..−0.81; GT-FB `alpha` mean 0.02
+   rad. Drives a real yaw attitude error `e_R_z` → **1.0 rad** (GT-FB 0.14). A 72°-wrong
+   yaw estimate rotates the controller's V-frame x/y ~72° from truth → the "restoring"
+   push on `s_e_n` goes largely along the wrong axis → x still looks like it converges
+   while **y diverges**. Likely cause: IC1 views the cross axis-aligned & fully in frame
+   (clean stub); IC2 views it obliquely from 2.83 m off → stub intermittently not found →
+   `cross_marker_perception.py` holds/recomputes `alpha` from bad points.
+
+**Net:** perception-mode off-center failure is NOT bad centroid position — it's (i) the
+blended surface consuming a 10×-noisier **differentiated** perception signal, (ii) a
+genuinely **broken yaw/alpha** channel off-center, and (iii) perception **dropout** at
+alt ~2.6 m where GT never drops. Any fix has to address the `s_dot_meas` noise path
+(filter / use back-mapped analytic `ds_d` instead of measured derivative off-center) and
+the `alpha` robustness, not just the `p_s` funnel.
 - **Still open (flagged, not fixed):** the whole-cross detector still can't detect below
   ~0.4 m (marker overfills) → below there the loop is on last-good `s` + `h` + IMU. The
   real terminal fixes remain: (a) commit / hand off to flow once the marker overfills, or
