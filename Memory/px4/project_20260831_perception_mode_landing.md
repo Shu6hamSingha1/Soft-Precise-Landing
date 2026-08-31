@@ -733,3 +733,51 @@ blowup — i.e. the "one knob one job" P-vs-E / velocity-damping direction
 ([[feedback_dont_conclude_lag_floor]], [[feedback_terminal_smc_actuator_wall]]) has to be
 revisited for the perception regime, not just GT-FB. This is the same family as open #3
 (terminal lateral authority); the CBF and the funnels are NOT the blocker here.
+
+### 2026-08-31 — IC5 CBF analysis CORRECTED + a_u component that fell short
+
+**Earlier CBF read ("cone engages but delivers what's demanded") was WRONG.** Compared
+`I_a_raw[:2]` (pre-`cbf2_filter`) vs `I_a[:2]` (post) — magnitude AND direction — for the
+PERC IC5 fly-off (`Mon Aug 31 19-19-48 2026`) vs GT-FB IC5.
+
+| alt | `\|Iar_xy\|` | `\|Ia_xy\|` | angle(Iar, Ia) | `dtheta_az` (rad) | `theta_safe` |
+|---|---|---|---|---|---|
+| **PERC**, 1.2 m | 0.63 | 1.23 | 14° | 0.71 | 43° |
+| **PERC**, 1.0 m | 0.64 | 1.73 | **83°** | 0.15 | 8.5° |
+| **PERC**, 0.97 m | 1.51 | 1.68 | **179°** | 0.01 | 7.9° |
+| **PERC**, 0.9–0.6 m | 1.5–6.0 | 3.5–6.2 | **90–138°** | 0.36→0.85 | 19–38° |
+| **GT-FB**, all alts | 0.2–0.47 | ≈same | **<10°** | ≈0 | 0.1–2.6° |
+
+**The CBF joint QP does NOT merely cap the tilt — once `s_e_n` grows past ~0.5 and the
+marker nears the FoV box (alt ~1.2 m), it ROTATES the lateral acceleration 90–180° away
+from the SMC's restoring direction (to a keep-visible direction) and AMPLIFIES it 2–4×.**
+The `I_a[:2]` actually delivered to the drone (magnitude 3–6) therefore does NOT reduce
+`s_e_n` — it points the wrong way → `s_e_n` grows → CBF redirects harder (`dtheta_az`
+0.7→0.85 rad = 40→49°) → runaway. A visibility-conflict feedback loop. In GT-FB the
+CBF is inert (marker stays centred, `angle(Iar,Ia)` <10°, `dtheta_az` ≈0) — there is no
+conflict to trigger it.
+
+**Which a_u component fell short** (`AU_DECOMP_DBG=1` re-run of PERC IC5;
+`a_u = reach + switch + equiv + drift`):
+
+| phase (`\|s_e_n\|`) | reach (Γσ) | switch (κ) | equiv (c−Sṗ) | drift (Ωζ) | κ_xy |
+|---|---|---|---|---|---|
+| approach 0.59 | 0.6 | 0.2 | 0.6 | 0.2 | 0.70 |
+| terminal 0.57–0.76 | 0.4 (flat) | 0.3 → **2.1** | 1.0 → **5.4** | 0.3 → 2.8 | 0.24 → 0.44 |
+| GT-FB (s_e_n ≤0.35) | ~0.005 | ~0.005 | small | small | 0.2 (idle) |
+
+- **`switch` (adaptive-κ switching) is the term that should grow to reject a disturbance
+  — it stayed small (0.2 → 2.1)** because `κ_xy` never ramped (0.24 → 0.44 over the whole
+  descent; max is 30). Root cause is the κ-ODE tuning from the prior entry
+  (τ_κ≈4 s > IC5 descent, P_xy=2.5 leakage, p_inf_xy=2.5 loose funnel).
+- **`reach` (fixed Γ_xy = 0.25 proportional) is structurally too small (~0.4)** to carry
+  the restoring load alone once `switch` is starved.
+- **`equiv` (feed-forward: loom, ḣ_d, cross(w,s)) ballooned to 5.4** — the *dominant*
+  terminal component — but that is a SYMPTOM, not authority: `s_e_n` diverging → `hd_rate`
+  thrashes → `dh_d`/`c` large → `equiv` large. It amplifies the instability.
+
+**Net:** the error-driven feedback authority `reach + switch ≈ 0.4 + 1–2` was inadequate
+to null a perception-scale `s_e_n`, because the one component that scales with a
+disturbance (`switch`, via κ) is rate-/leakage-limited. Then the CBF QP took that
+inadequate command and rotated it 90–180° off the restoring axis. GT-FB never exercises
+either failure because `s_e_n` stays <0.35 and every term stays ~0.
