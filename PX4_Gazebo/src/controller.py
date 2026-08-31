@@ -618,6 +618,23 @@ class Controller(Thread):
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
         self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))  # process (accel) noise PSD. RE-BAKED 1.0->10.0 (2026-07-04, user): the 06-30 lowering to 1.0 was to damp the terminal 1/Z² s_dot osc, but PR0=10 (06-29 funnel-shape fix) ALREADY absorbs the terminal 1/Z (A/B: termosc stays 0.009-0.012 even at q=10). The low q's only remaining effect was DRIFT-TERM-NOISE damping that masked a DIFFERENT root: the fly-aways are a TERMINAL-DECK event (drone reaches deck clean @~0.05m, marker Ncorn->0 from 1/Z fill, drone still armed -> reacts to the perc spike -> climbs+flies; q=10 makes it worse, q=1 milder — but q is a severity band-aid, NOT the fix). q=10 restores low-lag off-center velocity; the real fix is the terminal commit/disarm. ⚠ WITHOUT that fix q=10 shows 7-31m deck fly-aways.
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
+        # Glitch gate on the VDS CV-KF correct-step (2026-08-31). The "can't lower q" constraint
+        # (q=10 restores low-lag off-center velocity, see above) leaves the KF ~K=1 → every centroid
+        # sample, jitter and all, is differentiated straight into the velocity state → s_dot_meas is
+        # 7–12× noisier under real perception than GT-FB (project_20260831_perception_mode_landing).
+        # This is the ONLY outlier rejection in the s_dot_meas path — everything upstream
+        # (FLOW_DS_MAX ds-hold, conf-scaled _kf_feat_r) acts on centroid POSITION, never the rate,
+        # and _vdsKFStep had no gate at all (unlike _yawKFStep). Mechanism: see _vdsKFStep — a
+        # per-axis test on the raw inter-measurement step (z−z_prev)/dt, NOT the KF innovation
+        # (with q this high the χ²-vs-S gate goes blind). Within-band frames are bit-identical to
+        # the pre-gate filter → ZERO added lag; only glitch spikes get R∝d²/gate. It does NOT
+        # lower the broadband noise floor — that needs a better upstream signal or smoothing lag.
+        self._vds_kf_gate = float(os.environ.get("PLASMC_VDS_KF_GATE", "9.0"))  # d² trip threshold (~3σ on gate_rate); 0 = off
+        self._vds_kf_gate_rate = float(os.environ.get("PLASMC_VDS_KF_GATE_RATE", "2.0"))  # genuine centroid step-rate 1σ (norm units/s); trip at √gate·this ≈ 6 u/s vs the measured 5–7 u/s glitch spikes and ~0.85 u/s clean std
+        self._vds_z_prev = None            # last centroid measurement (glitch-gate reference)
+        self._vds_gate_hits = 0            # DIAG: count of gated (down-weighted) axis-frames
+        self._vds_gate_calls = 0          # DIAG: total axis-frames tested (run() spins ~1.4 kHz, not frame rate → ratio matters, not raw count)
+        self._vds_d2_max = 0.0            # DIAG: largest d² seen (glitch severity)
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
         # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
         # h_e=h-h_d carries _sensor_cal_hw — a DIFFERENT cal. So V_ds and h are on mismatched scales
@@ -1906,6 +1923,10 @@ class Controller(Thread):
         self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.5"))  # BAKED 0.5 2026-06-29
         if self._hd_kr != 0.0:
             print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
+        if self._vds_kf and self._vds_kf_gate > 0.0:
+            print(f"[controller] PLASMC_VDS_KF_GATE={self._vds_kf_gate} (rate 1σ={self._vds_kf_gate_rate} u/s "
+                  f"→ trip ≈{(self._vds_kf_gate**0.5)*self._vds_kf_gate_rate:.1f} u/s): per-axis inter-step glitch "
+                  f"gate on the s_dot_meas CV-KF (q={self._vds_kf_q} kept; spike frames get R∝d²/gate, clean bit-identical)")
         # PLASMC_DHD_SRC (2026-07-02): WHICH h_d list feeds dh_d (-> c3 = -dh_d) in combined+funnel-ref
         # mode. The 06-27 "differentiate the FULL h_d honestly" call was premised on the rate term being
         # SMOOTH — true for S_r*dp_r, NOT for the -k_r*zeta_r/g_r branch baked 06-29 (barrier-inflated,
@@ -3181,6 +3202,7 @@ class Controller(Thread):
         if self._vds_x is None:                       # lazy init at the first measurement
             self._vds_x = np.array([z[0], z[1], 0.0, 0.0])
             self._vds_P = np.diag([1e-2, 1e-2, 1.0, 1.0])
+            self._vds_z_prev = z.copy()
             return np.zeros(2)
         F = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], float)
         q = self._vds_kf_q
@@ -3188,10 +3210,33 @@ class Controller(Thread):
         Q = q * np.array([[dt**3/3, 0, dt**2/2, 0], [0, dt**3/3, 0, dt**2/2],
                           [dt**2/2, 0, dt, 0], [0, dt**2/2, 0, dt]], float)
         H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], float)
-        R = self._vds_kf_r * np.eye(2)
         x = F @ self._vds_x
         P = F @ self._vds_P @ F.T + Q
-        S = H @ P @ H.T + R
+        # --- per-axis glitch gate on the INTER-MEASUREMENT step (not the KF innovation) ---
+        # A textbook Mahalanobis gate (nu²/S, like _yawKFStep) goes BLIND here: q is kept high
+        # (=10, for low off-center lag — can't lower it), so S inflates until even a big jump
+        # scores d²<1, AND with q that high the filter's OWN predicted position is noisy enough
+        # that gating a fixed reference against nu clips normal frames. So gate the raw measured
+        # step instead: raw_rate = (z − z_prev)/dt is pure sensor motion, no filter-state
+        # contamination. |raw_rate| beyond √gate·gate_rate (gate_rate in normalized-centroid
+        # units/s, scale-free — no Z) is a detection/LK glitch → inflate that axis' R ∝ d²/gate
+        # so K→0 for the frame; a within-band frame is bit-identical to the pre-gate filter →
+        # zero added lag. Companion to the upstream FLOW_DS_MAX position ds-hold (which never
+        # touches the rate the KF differentiates). NB: this rejects glitch SPIKES only; the
+        # ~8× broadband s_dot_meas noise floor under real perception is a separate problem that
+        # a gate cannot fix (needs a better upstream signal or accepted smoothing lag).
+        r_eff = np.array([self._vds_kf_r, self._vds_kf_r], float)
+        if self._vds_z_prev is not None and dt > 1e-6 and self._vds_kf_gate > 0.0:
+            raw_rate = (z - self._vds_z_prev) / dt
+            for _j in range(2):
+                d2 = (raw_rate[_j] / max(self._vds_kf_gate_rate, 1e-6)) ** 2
+                self._vds_gate_calls += 1
+                self._vds_d2_max = max(self._vds_d2_max, d2)
+                if d2 > self._vds_kf_gate:
+                    r_eff[_j] = self._vds_kf_r * (d2 / self._vds_kf_gate)   # inflate R → K→0 for the spike
+                    self._vds_gate_hits += 1
+        self._vds_z_prev = z.copy()
+        S = H @ P @ H.T + np.diag(r_eff)
         K = P @ H.T @ np.linalg.inv(S)
         x = x + K @ (z - H @ x)
         P = (np.eye(4) - K @ H) @ P
@@ -4087,6 +4132,9 @@ class Controller(Thread):
             "zeta(t)": self._zeta,
             "izeta(t)": self._izeta,
             "Fresh Gate Blocked N": self._fresh_gate_blocked_n,   # diag 2026-08-20, see _fresh_gate_integ
+            "VDS Gate Hits N": self._vds_gate_hits,               # diag 2026-08-31, VDS KF glitch gate: axis-frames down-weighted
+            "VDS Gate Calls N": self._vds_gate_calls,             # diag 2026-08-31, total axis-frames tested (hits/calls = glitch rate)
+            "VDS d2 Max": self._vds_d2_max,                       # diag 2026-08-31, worst inter-step centroid-rate d² (glitch severity)
             "CBF Overflow Diag Log": self._cbf_overflow_diag_log,  # diag 2026-08-24, see its own comment
             "G(t)": self._G,
             "theta(t)": self._theta,
