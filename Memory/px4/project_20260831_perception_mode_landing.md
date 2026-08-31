@@ -264,3 +264,40 @@ the `alpha` robustness, not just the `p_s` funnel.
 - Recordings from this session (gitignored): `test_data/Test_Videos/montage_percfix_20260831.mp4`,
   `overlay_percfix_20260831_0259_{s_alpha,h}.mp4`, `Mon Aug 31 02-59-19 2026.mp4` +
   bundle `test_data/Landing_Test/Mon Aug 31 02-59-38 2026/`.
+
+### 2026-08-31 — VDS s_dot_meas glitch gate applied; helps at the margin, doesn't fix off-center
+
+`_vdsKFStep` had NO outlier rejection (unlike `_yawKFStep`). Added a per-axis gate on the
+**raw inter-measurement step** `(z−z_prev)/dt` — NOT the KF innovation (with `q=10` kept,
+the χ²-vs-S gate goes blind: S inflates until any jump scores d²<1; and gating a fixed
+ref against the innovation clips normal frames because the q=10 filter's own predicted
+position is noisy). `|raw_rate|` beyond `√gate·gate_rate` (≈6 u/s vs measured ~0.85 u/s
+clean std, 5–7 u/s glitch spikes) inflates that axis' R by d²/gate → K→0 for the frame.
+Within-band frame = bit-identical to pre-gate (verified `max|Δvx|` gate-on vs off on an
+identical clean stream = 0 → zero added lag). Env `PLASMC_VDS_KF_GATE` (d², default 9;
+0=off), `PLASMC_VDS_KF_GATE_RATE` (rate 1σ, default 2.0). Diag scalars `VDS Gate Hits N`
+/ `VDS Gate Calls N` / `VDS d2 Max`. Commit on main.
+
+**SITL results (perception mode, cross_marker, no GT-FB, n=1 each):**
+- **IC1**: no regression — monotone descent, min_alt 0.20 m, no ascent. Two runs:
+  honest xy 0.38 m / 0.77 m (n=1 variance; the earlier ungated IC1 was 0.59 m).
+- **IC2** (`Mon Aug 31 11-25-08 2026`): **still TARGET_LOST**, but milder. Gate fired
+  51/1848 axis-calls, d²max 2.9e4 (severe glitches caught).
+  | metric | ungated IC2 | gated IC2 |
+  |---|---|---|
+  | s_dot_meas absmax x,y (T<5s) | 0.86 / 1.20 | 0.73 / **0.80** |
+  | s_dot_meas std x,y | 0.217 / 0.184 | 0.219 / **0.162** |
+  | final xy_err | **4.8 m** | **2.9 m** |
+  | GT x overshoot | +1.9 → −4.7 (runaway) | +1.9 → −2.5 (milder) |
+  | \|s_e_n\| end@5s | 0.86 | 0.90 (still diverging) |
+
+**Verdict:** the gate does exactly what it was scoped to — clips the rate SPIKES (y absmax
+1.20→0.80, worst d² 2.9e4 rejected) — and the IC2 miss roughly halved (n=1, partly noise).
+But it does **not** touch the broadband `s_dot_meas` noise FLOOR (std only 0.184→0.162,
+~12%), and the off-center failure MECHANISM is unchanged: y `s_e_n` still diverges
+0.5→0.9, crosses origin ~50% then overshoots, TARGET_LOST. The dominant remaining terms
+are (i) the broadband noise floor (needs a better upstream signal or accepted smoothing
+lag — a gate can't fix a floor), (ii) the wall-clock `p_s` funnel breakout + re-arm, (iii)
+the anti-restoring y `a_u`, (iv) the broken `alpha`/yaw channel (→ move `w_z` to gyro,
+keep `w_x=w_y=0`), (v) perception dropout at alt ~2.6 m. Gate stays in as a cheap,
+lag-free spike guard; it is not the off-center fix.
