@@ -142,6 +142,39 @@ MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a rea
 
 HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
 
+# SUB-PIXEL JUNCTION REFINE (2026-08-31, s_dot_meas noise-floor investigation).
+# `center` is the analytic intersection of two per-frame Huber line fits
+# (_line_intersection) -- no refinement against the actual image and no temporal
+# filter, so frame-to-frame anti-aliased-edge / mask-boundary noise on the two line
+# SLOPES walks the intersection point. Measured on a real perception landing: ~0.2 px
+# centroid jitter at altitude, growing to ~1.3 px as the marker fills the frame ->
+# differentiated at ~62 Hz that is the bulk of the s_dot_meas noise floor
+# (~0.13 u/s vs GT-FB ~0.04). See project_20260831_perception_mode_landing.
+# Attempted fix: fit a local quadratic to the GREYSCALE in a small window at the
+# intersection and take its stationary point. The X-junction of two dark strokes on a
+# light plate is a local intensity MINIMUM (both strokes overlap there -> darkest,
+# most-covered point), so a valid refine has a positive-definite fitted Hessian. Uses
+# every pixel in the window rather than two fragile slopes -> ZERO added lag. Guarded:
+# the analytic center is kept if the Hessian isn't a clean minimum, the window is flat
+# (saturated black blob near touchdown), or the shift exceeds CROSS_SUBPIX_MAX_SHIFT_FRAC
+# * marker_extent (locked onto other structure).
+#
+# ⚠ DEFAULT OFF (2026-08-31): an apples-to-apples offline replay (recorded IC2 landing,
+# same frames) showed NO jitter reduction from either this quadratic fit OR
+# cv2.cornerSubPix, at any shift guard -- baseline 2.05/1.68 px, every variant within
+# ±0.05 px (cornerSubPix even made a clean ~0.9 px mean sub-pixel correction, and the
+# jitter still didn't move). Conclusion: the centroid jitter is NOT in the junction
+# localization -- it's in the two line SLOPES feeding _line_intersection (which mask
+# pixels pass the anti-aliased / re-compressed edge each frame -> fit direction wobbles
+# -> the intersection walks). A junction-region intensity fit has no independent
+# leverage on slope noise. The real levers are temporal (motion-compensated multi-frame
+# line fit) or intensity-weighted sub-pixel line-centerline fitting. Kept as a knob
+# because the offline replay is on the 2x-downscaled + H.264 IMG_RECORD mp4, not the
+# live raw-frame path -- set CROSS_SUBPIX_JUNCTION=1 for a live SITL A/B before trusting.
+_SUBPIX_JUNCTION = os.environ.get("CROSS_SUBPIX_JUNCTION", "0") == "1"
+_SUBPIX_MAX_SHIFT_FRAC = float(os.environ.get("CROSS_SUBPIX_MAX_SHIFT_FRAC", "0.10"))
+SUBPIX_STATS = {"applied": 0, "rej_no_fit": 0, "rej_shift": 0, "shift_sum": 0.0}
+
 
 @dataclass
 class CrossMarkerDetection:
@@ -277,6 +310,43 @@ def _line_intersection(l1, l2):
         return None
     t = ((x02 - x01) * vy2 - (y02 - y01) * vx2) / denom
     return (x01 + t * vx1, y01 + t * vy1)
+
+
+def _refine_junction_subpix(gray, cx, cy, half_win):
+    """Refine (cx, cy) to sub-pixel via a local quadratic fit to `gray` (2-D array,
+    same pixel coords as cx, cy). Returns (rx, ry), or None so the caller keeps the
+    analytic intersection. The junction of two dark strokes on a light plate is a
+    local intensity MINIMUM -> require a positive-definite fitted Hessian; also bail
+    on a flat window (saturated black blob) or a stationary point outside the window.
+    See the SUBPIX_JUNCTION block at module top for why."""
+    h = int(half_win)
+    if h < 3:
+        return None
+    x0, y0 = int(round(cx)), int(round(cy))
+    H, W = gray.shape[:2]
+    if x0 - h < 0 or y0 - h < 0 or x0 + h >= W or y0 + h >= H:
+        return None
+    win = gray[y0 - h:y0 + h + 1, x0 - h:x0 + h + 1].astype(np.float64)
+    if float(win.max() - win.min()) < 1.0:
+        return None                                    # flat -> nothing to localize
+    win = cv2.GaussianBlur(win, (3, 3), 0)
+    ax = np.arange(-h, h + 1, dtype=np.float64)
+    X, Y = np.meshgrid(ax, ax)
+    xf, yf, zf = X.ravel(), Y.ravel(), win.ravel()
+    # z = a x^2 + b xy + c y^2 + d x + e y + f   (local coords, origin at x0,y0)
+    A = np.column_stack([xf * xf, xf * yf, yf * yf, xf, yf, np.ones_like(xf)])
+    coef, _res, _rank, _sv = np.linalg.lstsq(A, zf, rcond=None)
+    a, b, c, d, e, _f = coef
+    if not (a > 0.0 and (4.0 * a * c - b * b) > 1e-9):
+        return None                                    # not a clean local minimum
+    try:
+        dxy = np.linalg.solve(np.array([[2.0 * a, b], [b, 2.0 * c]]),
+                              np.array([-d, -e]))
+    except np.linalg.LinAlgError:
+        return None
+    if not np.all(np.isfinite(dxy)) or float(np.hypot(dxy[0], dxy[1])) > h:
+        return None                                    # stationary point outside the window
+    return (x0 + float(dxy[0]), y0 + float(dxy[1]))
 
 
 def _restrict_to_center_roi(mask, roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
@@ -660,6 +730,25 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     frame_h, frame_w = mask.shape
     bx, by, bw, bh = bbox
     in_fov = (0 <= center[0] < frame_w) and (0 <= center[1] < frame_h)
+
+    # SUB-PIXEL JUNCTION REFINE (see module top). Only when the junction is actually
+    # in the frame; the refined center then flows through the centroid_mismatch /
+    # bbox-margin sanity checks below, so a bad refine can only be rejected, never
+    # sneak a worse center through.
+    if _SUBPIX_JUNCTION and in_fov:
+        _hw = int(np.clip(round(0.15 * max(bw, bh)), 4, 15))
+        _ref = _refine_junction_subpix(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY),
+                                        center[0], center[1], _hw)
+        if _ref is None:
+            SUBPIX_STATS["rej_no_fit"] += 1
+        else:
+            _sh = float(np.hypot(_ref[0] - center[0], _ref[1] - center[1]))
+            if _sh <= _SUBPIX_MAX_SHIFT_FRAC * max(bw, bh, 1):
+                center = _ref
+                SUBPIX_STATS["applied"] += 1
+                SUBPIX_STATS["shift_sum"] += _sh
+            else:
+                SUBPIX_STATS["rej_shift"] += 1
 
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())
