@@ -781,3 +781,49 @@ to null a perception-scale `s_e_n`, because the one component that scales with a
 disturbance (`switch`, via κ) is rate-/leakage-limited. Then the CBF QP took that
 inadequate command and rotated it 90–180° off the restoring axis. GT-FB never exercises
 either failure because `s_e_n` stays <0.35 and every term stays ~0.
+
+### 2026-08-31 — CBF frame conventions validated: axes OK, but un-leveled cr2 + dft/L_ω regime is the fault
+
+Checked the CBF (`cbf_visibility.py::cbf2_filter`) frame handling against
+`_getVirtualPts` and the corrected α₀, on the IC5 fly-off state.
+
+**1. Axis convention — CONSISTENT (no rotation/sign bug).** Computed `_getVirtualPts`'s
+`s_V` and the CBF's `cr2` on the SAME raw centroid pixels through the IC5 descent. Both
+use the `[y,−x]` swap; at altitude they agree to ~0.07 (`s_V` (+0.41,+0.18) vs `cr2`
+(+0.48,+0.12) at alt 1.5 m). No 90° rotation, no mirror. `yaw_c` (from α₀, now correct)
+feeds the CBF's `Rzm` consistently. `validate_cbf.py` 12/12, incl. test 6 "conventions
+(Rz round-trip)".
+
+**2. The CBF is UN-LEVELED; the SMC / `m2` are LEVELED — they disagree on the off-center
+distance at high tilt.** `_getVirtualPts` applies `C_R_V` (removes roll/pitch); the CBF's
+`cr2` is the raw `[y,−x]` centroid, un-leveled (by design — "real camera plane" FoV). At
+5° tilt `s_V ≈ cr2`. At 24° tilt (IC5 terminal) **`s_V_y = −1.10` (leveled, what `s_e_n`
+sees) vs `cr2_y = −0.55` (un-leveled, what the CBF sees)** — the CBF reads ~HALF the
+off-center distance. Meanwhile `m2` (the FoV half-extent it compares against) IS the
+leveled `p_10`. So the CBF constrains an un-leveled position against a leveled bound
+while the SMC acts on a leveled error — three-way inconsistent once the drone tilts hard.
+
+**3. `dft` (drift look-ahead) is what fires the QP; `L_ω` geometry is what rotates it.**
+`anchor = cr2 − Lw2@th_curr + dft`, `dft = CBF_TAU(0.3) · EMA(d)`, `d` = centroid drift
+rate. In the terminal the marker drifts fast (`Center Px` y 251→323 in ~0.6 s) → `d`
+large → `dft_y ≈ −0.3+` → `f_y` pushed past `−m2_y` even though `cr2_y` alone is still
+inside the frame. Once the box is "violated", the projection moves `Ia_lat` along
+`M[k]` = k-th row of `L_ω@M_rot@P`; with the centroid at `x2 ≈ 1.0–1.2` the `−(1+x2²)`
+term dominates `L_ω[0]` (norm 1.0 centred → ~3 here) → `M[0]` points ~85° off the radial
+restoring direction and its large norm makes the projection OVERSHOOT and flip the
+command sign (measured `angle(Iar, Ia)` 90–179°, `|Ia|` 2–4× `|Iar|`). Self-reinforcing:
+flipped `Ia` → more drift → bigger `dft` → QP fires harder.
+
+**4. The validator does NOT cover this regime.** `test_no_strangle` uses `th_des` = 1–7°
+(IC5: 24–35°), `dt=None` → `dft ≡ 0` (IC5: large `dft`), single-step (no EMA `d` built
+up), `R` clipped to 17° tilt. `test_lw_fidelity` is explicitly "near-hover tilt"
+(±4.6°). So "12/12 pass" says nothing about off-center + high-tilt + drifting — exactly
+where the CBF misbehaves.
+
+**Verdict:** no clean frame/sign bug — the axes and `yaw_c` check out. But the CBF (a) is
+frame-inconsistent with the SMC once the drone tilts (un-leveled `cr2` vs leveled
+`s_e_n`/`m2`), and (b) in the off-center + fast-drift regime its `dft` + `L_ω`-geometry
+combine to produce a ~90°-rotated, magnitude-amplifying "correction" that fights the
+restoring command instead of gracefully degrading. Root cause is still upstream (marker
+should never drift that far — the middle κ), but the CBF actively worsens it once there,
+and its passing validator is misleadingly scoped.
