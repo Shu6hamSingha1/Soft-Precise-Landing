@@ -2600,6 +2600,20 @@ class CrossMarkerNode(Thread):
               + (f", bgflow-fallback fires: {self._perception._bgflow_fallback_fires}"
                  if getattr(self._perception, '_bgflow_fallback_fires', 0) else ""))
 
+        # 2026-08-31: sub-pixel refine activity (see cross_marker_detector module top).
+        _sp = getattr(cmd, "SUBPIX_STATS", None)
+        _cl = getattr(cmd, "CENTERLINE_STATS", None)
+        if _sp and (_sp["applied"] or _sp["rej_no_fit"] or _sp["rej_shift"]):
+            _n = max(_sp["applied"], 1)
+            print(f"[CrossMarkerNode] SUBPIX junction: applied {_sp['applied']}, "
+                  f"rej_no_fit {_sp['rej_no_fit']}, rej_shift {_sp['rej_shift']}, "
+                  f"mean shift {_sp['shift_sum']/_n:.2f}px")
+        if _cl and (_cl["applied"] or _cl["fallback"]):
+            _tot = _cl["applied"] + _cl["fallback"]
+            print(f"[CrossMarkerNode] SUBPIX centerline: applied {_cl['applied']}/{_tot} "
+                  f"({100*_cl['applied']/max(_tot,1):.0f}%), "
+                  f"{_cl['stations_used']/max(_cl['applied'],1):.0f} stations/fit")
+
         # 2026-08-04: hough_lt2_lines root-cause breakdown -- see cross_marker_detector's
         # HOUGH_DIAG_LOG (populated on every hough_lt2_lines occurrence, not just a sample).
         hlog = [e for e in cmd.HOUGH_DIAG_LOG if e.get('bbox') is not None]

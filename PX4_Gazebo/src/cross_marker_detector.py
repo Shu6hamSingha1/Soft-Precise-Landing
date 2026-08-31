@@ -175,6 +175,22 @@ _SUBPIX_JUNCTION = os.environ.get("CROSS_SUBPIX_JUNCTION", "0") == "1"
 _SUBPIX_MAX_SHIFT_FRAC = float(os.environ.get("CROSS_SUBPIX_MAX_SHIFT_FRAC", "0.10"))
 SUBPIX_STATS = {"applied": 0, "rej_no_fit": 0, "rej_shift": 0, "shift_sum": 0.0}
 
+# INTENSITY-WEIGHTED SUB-PIXEL CENTERLINE FIT (2026-08-31, s_dot_meas noise-floor lever).
+# The junction refine above failed because it re-reads the same content: the jitter is
+# in the two arm-line SLOPES, and those wobble because _robust_fit_line runs on BINARY
+# mask pixels -- whichever anti-aliased edge pixels clear the colour gate that frame ->
+# whole rows of the arm toggle in/out -> the fitted direction walks. This attacks it at
+# the source: march along each arm and, at every station, take the INTENSITY-WEIGHTED
+# centroid of the dark band in the perpendicular strip -> one sub-pixel centerline
+# sample whose response to a half-pixel edge shift is a fraction of a pixel (continuous
+# greyscale ramp), not a toggled row. TLS-fit the line through the stations. Falls back
+# to the _robust_fit_line result if it can't get enough clean stations.
+_SUBPIX_CENTERLINE = os.environ.get("CROSS_SUBPIX_CENTERLINE", "0") == "1"   # default OFF pending live A/B
+_CENTERLINE_STEP_PX = float(os.environ.get("CROSS_CENTERLINE_STEP_PX", "2.0"))
+_CENTERLINE_MIN_STATIONS = int(os.environ.get("CROSS_CENTERLINE_MIN_STATIONS", "8"))
+_CENTERLINE_MIN_DARKNESS = float(os.environ.get("CROSS_CENTERLINE_MIN_DARKNESS", "20.0"))  # grey levels below local bg
+CENTERLINE_STATS = {"applied": 0, "fallback": 0, "stations_used": 0}
+
 
 @dataclass
 class CrossMarkerDetection:
@@ -347,6 +363,95 @@ def _refine_junction_subpix(gray, cx, cy, half_win):
     if not np.all(np.isfinite(dxy)) or float(np.hypot(dxy[0], dxy[1])) > h:
         return None                                    # stationary point outside the window
     return (x0 + float(dxy[0]), y0 + float(dxy[1]))
+
+
+def _sample_bilinear(img, x, y):
+    """Bilinear sample of a 2-D array at (x, y). None if outside the interpolable range."""
+    hh, ww = img.shape[:2]
+    if x < 0.0 or y < 0.0 or x >= ww - 1 or y >= hh - 1:
+        return None
+    ix, iy = int(x), int(y)
+    fx, fy = x - ix, y - iy
+    a = float(img[iy, ix]);         b = float(img[iy, ix + 1])
+    c = float(img[iy + 1, ix]);     d = float(img[iy + 1, ix + 1])
+    return (a * (1.0 - fx) + b * fx) * (1.0 - fy) + (c * (1.0 - fx) + d * fx) * fy
+
+
+def _fit_arm_centerline_subpix(gray, pts, prelim_line, step=None,
+                               min_stations=None, min_darkness=None):
+    """Re-fit one cross arm to sub-pixel precision by sampling its centerline.
+
+    gray        : 2-D greyscale, same pixel coords as `pts` / `prelim_line`.
+    pts         : the arm's cluster points (bound the arc-length extent + perp spread).
+    prelim_line : (vx, vy, x0, y0) from _robust_fit_line -- seed direction + point.
+
+    March along the seed direction; at each station take the intensity-weighted
+    centroid of the dark band in the perpendicular strip -> a sub-pixel centerline
+    sample. TLS-fit through the samples. Returns (vx, vy, x0, y0) or None (caller keeps
+    the _robust_fit_line result). See the SUBPIX_CENTERLINE block at module top."""
+    if step is None:            step = _CENTERLINE_STEP_PX
+    if min_stations is None:    min_stations = _CENTERLINE_MIN_STATIONS
+    if min_darkness is None:    min_darkness = _CENTERLINE_MIN_DARKNESS
+    P = np.asarray(pts, dtype=np.float64)
+    if P.ndim != 2 or len(P) < min_stations:
+        return None
+    vx, vy, lx, ly = prelim_line
+    d = np.array([vx, vy], dtype=np.float64)
+    nd = np.linalg.norm(d)
+    if nd < 1e-9:
+        return None
+    d /= nd
+    n = np.array([-d[1], d[0]])
+    p0 = np.array([lx, ly], dtype=np.float64)
+    s = (P - p0) @ d
+    u = (P - p0) @ n
+    s_lo, s_hi = float(s.min()), float(s.max())
+    if s_hi - s_lo < 2.0 * step:
+        return None
+    half_band = float(np.clip(2.5 * (np.median(np.abs(u - np.median(u))) + 1e-6), 3.0, 12.0))
+    n_off = int(round(half_band))
+    offs = np.arange(-n_off, n_off + 1, dtype=np.float64)
+    st = max(float(step), 0.5)
+    samples = []
+    k = 0
+    while True:
+        sc = s_lo + k * st
+        k += 1
+        if sc > s_hi:
+            break
+        base = p0 + sc * d
+        prof = np.empty(len(offs))
+        ok = True
+        for m, uo in enumerate(offs):
+            g = _sample_bilinear(gray, base[0] + uo * n[0], base[1] + uo * n[1])
+            if g is None:
+                ok = False
+                break
+            prof[m] = g
+        if not ok:
+            continue
+        bg = float(prof.max())                       # brightest pixel in the strip = local background
+        wgt = np.clip(bg - prof, 0.0, None)
+        if float(wgt.max()) < min_darkness:          # no real dark stroke here (off arm end, or filled-black plateau)
+            continue
+        wsum = float(wgt.sum())
+        if wsum < 1e-6:
+            continue
+        u_star = float((wgt * offs).sum() / wsum)
+        if abs(u_star) > half_band - 0.5:            # band centroid pinned to the strip edge -> unreliable
+            continue
+        samples.append(base + u_star * n)
+    if len(samples) < min_stations:
+        return None
+    S = np.asarray(samples)
+    mean = S.mean(axis=0)
+    cov = np.cov((S - mean).T)
+    if not np.all(np.isfinite(cov)):
+        return None
+    evals, evecs = np.linalg.eigh(cov)
+    dvec = evecs[:, int(np.argmax(evals))]
+    CENTERLINE_STATS["stations_used"] += len(samples)
+    return (float(dvec[0]), float(dvec[1]), float(mean[0]), float(mean[1]))
 
 
 def _restrict_to_center_roi(mask, roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
@@ -671,6 +776,20 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     vx_i, vy_i, x0_i, y0_i, mask_i = _robust_fit_line(pts_i)
     vx_j, vy_j, x0_j, y0_j, mask_j = _robust_fit_line(pts_j)
     line_i, line_j = (vx_i, vy_i, x0_i, y0_i), (vx_j, vy_j, x0_j, y0_j)
+    # INTENSITY-WEIGHTED SUB-PIXEL CENTERLINE RE-FIT (see module top). Replaces the two
+    # binary-mask Huber fits with greyscale centerline fits so a half-pixel edge shift
+    # moves each arm's SLOPE a fraction of a pixel instead of toggling whole rows. Both
+    # arms must succeed, else keep the _robust_fit_line pair (the pruning + near-parallel
+    # + centroid_mismatch gates below all still run on whatever pair is chosen).
+    if _SUBPIX_CENTERLINE:
+        _g_cl = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        _cl_i = _fit_arm_centerline_subpix(_g_cl, pts_i, line_i)
+        _cl_j = _fit_arm_centerline_subpix(_g_cl, pts_j, line_j)
+        if _cl_i is not None and _cl_j is not None:
+            line_i, line_j = _cl_i, _cl_j
+            CENTERLINE_STATS["applied"] += 1
+        else:
+            CENTERLINE_STATS["fallback"] += 1
     # ROBUST-SELECTED points (2026-08-24): _robust_fit_line's inlier mask drops
     # perpendicular outliers to the converged fit -- e.g. contamination that
     # passed the coarse perpendicular-band gate above (_cluster_points_from_mask)
