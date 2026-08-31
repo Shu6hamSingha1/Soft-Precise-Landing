@@ -600,3 +600,42 @@ pulled to frame center by clipped arms) but no wild spike until detection fully 
   measured `h` damp residual drift — the existing `_terminal_commit` machinery.
 - i.e. **at overfill: stop closing the vertical loop on vision; commit descent +
   flow-damp lateral to touchdown.** Bounded-size fiducial remains the cleaner long-term fix.
+
+### 2026-08-31 — CORRECTION + user design-rationale: the CENTROID is fine; the loom is the failure
+
+(Amends the entry above — "moment-loom" wording was imprecise, and a nested-fiducial
+suggestion was WRONG.)
+
+**User (design rationale, agreed):** the cross+stub was chosen SO THAT even if the marker
+drifts near touchdown and only *partial* segments of two arms are visible, their
+intersection still gives the image centroid (incl. the off-frame `in_fov=False`
+extrapolation path). A nested / dual-scale fiducial does NOT have that property — it
+needs a whole sub-marker in view. **Do not propose replacing the cross marker.**
+
+**The data confirms this:** perception `s_V` (centroid) degraded GRACEFULLY through the
+whole terminal — biased toward 0 below ~0.15 m (clipped arms pull the LS line fit toward
+frame center) but NO spike, tracking GT within ~0.1 until detection fully collapsed
+(which the ascent itself caused). The cross's partial-intersection design did its job.
+
+**The failure is the loom `h_z`** — and it is NOT a `d(ln area)/dt` moment loom; it's the
+**LK image-Jacobian least-squares solve** (`_fill_A` Tz column, `_solve_jacobian`).
+`_fill_A`'s Tz/Wz columns are POSITION-WEIGHTED (`[-x,-y]` / `[-y,x]`), so they need
+tracked points spread across a range of radial positions. At overfill the points
+cluster + `n_flow_corners` collapses (165→27 here) → the Tz column is ill-conditioned →
+the lstsq `h_z` becomes a large-variance garbage number → the +5 spike (GT +0.6). Same
+root cause as the documented Hz/Wz cal weakness (position-weighted columns, radial-spread
+starved), pushed to its extreme. There is already a partial mitigation
+(`CROSS_RING_SAMPLING`, `CROSS_MOMENT_LOOM_MIN_PTS=6`, 2026-08-14) that targeted the
+`ext≈210-220 px` regime; it is not enough at `ext=318` (full overfill).
+
+**Fixes that KEEP the cross marker:**
+1. **Robust loom terminally** — replace/blend `h_z` at overfill with the MEDIAN radial
+   expansion ratio of the tracked cloud (`−½·median(r_curr/r_prev)/dt`), which is robust
+   to the conditioning collapse: hand-computed here it stayed +0.75 (vs lstsq +5) through
+   the spike. Noisy ±0.3 and ~3× under-reading at altitude, so terminal-only.
+2. **Or open-loop commit descent** at `ext`-saturation (`MARKER_EXTENT_PX >= frame_min`
+   sustained), skip the vertical vision loop for the last ~0.3 m — drone is centered,
+   ~0.6 m up, ~0.15 m/s commit lands in ~4 s, tdV2 catches touchdown.
+3. **Or a pairwise-distance loom** on robustly-tracked cross features (junction ↔ arm
+   tip), immune to one arm being clipped.
+None need a marker change. (2) is the cheapest; (1)/(3) keep a real loom.
