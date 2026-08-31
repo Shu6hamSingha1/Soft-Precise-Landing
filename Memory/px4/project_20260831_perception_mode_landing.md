@@ -827,3 +827,41 @@ combine to produce a ~90°-rotated, magnitude-amplifying "correction" that fight
 restoring command instead of gracefully degrading. Root cause is still upstream (marker
 should never drift that far — the middle κ), but the CBF actively worsens it once there,
 and its passing validator is misleadingly scoped.
+
+### 2026-08-31 — CBF: `dft` drift-lookahead is the term that flips the command (isolated re-run)
+
+User clarification accepted: SMC on the VIRTUAL (leveled) plane, CBF on the ACTUAL image
+plane — by design, not a bug; the two planes are meant to differ under tilt. Re-ran
+`cbf2_filter` in isolation on the reconstructed IC5 fly-off state, with real `dft` vs
+`dft` forced to 0 (`CBF_TAU=0`):
+
+| alt | `dft` (x,y) | `I_a` in | `I_a` out (real dft) | angle | `I_a` out (**dft=0**) | angle |
+|---|---|---|---|---|---|---|
+| 1.49–1.30 | ~0 | (0.3, 0.6) | ≈ unchanged | **0°** | ≈ unchanged | **0°** |
+| 1.20 | **(+0.63, +0.17)** | (−0.12, +0.62) | (−1.17, +1.28) | **31°** | (−0.12, +0.62) | **0°** |
+| 1.11 | (+0.57, +0.35) | (+0.42, +0.51) | (−0.62, +1.67) | **60°** | unchanged | **0°** |
+| 0.96 | (+0.72, +0.22) | (+0.21, −1.82) | (−2.79, +1.64) | **127°** | (−0.01, −1.58) | **7°** |
+| 0.85 | (+0.65, −0.11) | (+0.81, −0.27) | (−1.75, +2.76) | **141°** | (+0.52, +0.09) | 28° |
+| 0.64 | (+0.80, **−2.34**) | (+4.57, −1.23) | (+3.12, +6.44) | 79° | (+2.83, +3.01) | 62° |
+
+**`dft` is the primary cause of the CBF flipping the restoring command.** With `dft=0`
+the CBF is a clean **passthrough (angle 0°) down to alt ~1 m** — the no-strangle property
+holds, the QP + `L_ω` handling is fine for a restoring command. Only in the DEEP terminal
+(alt <0.9 m, centroid genuinely at the FoV edge) does it rotate 20–60° — that residual is
+the `(1+x²)` `L_ω`-geometry effect, and it's mild.
+
+**Why `dft` breaks it:** `dft = CBF_TAU(0.3 s) · EMA(d)`, `d` = measured centroid drift
+rate (de-rotated). As `s_e_n` diverges the drift rate grows to several units/s → `dft`
+components reach 0.6–2.3, which ALONE exceed `p_10 ≈ [1.19, 0.89]` → the box is
+"violated no matter what `I_a` does" → the QP does a maximal projection along the skewed
+`L_ω` gradient `M[k]` → overshoots and flips the command. The flipped command increases
+the drift → `d` bigger → `dft` bigger → **positive feedback**. `dft` linearly
+extrapolates a drift rate that (a) the CBF's own action is supposed to reduce but instead
+increases, and (b) is actually accelerating. (`CBF_HZ_AWARE_DRIFT`, default off, makes
+`dft` LARGER — do not enable it here.)
+
+**Fix candidates (CBF side):** cap `|dft|` at a fraction of `p_10`; clamp/rate-limit the
+`d` estimate; shrink `CBF_TAU` terminally; or gate `dft` on "drift toward edge AND
+`s_e_n` small" (trust the look-ahead only when the loop is otherwise healthy). Root cause
+still upstream (middle κ lets the marker drift there), but `dft` converts a recoverable
+drift into an unrecoverable fly-off.
