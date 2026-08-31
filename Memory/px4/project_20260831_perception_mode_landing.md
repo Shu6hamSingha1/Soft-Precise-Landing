@@ -354,3 +354,38 @@ raw-frame path) — needs a live `CROSS_SUBPIX_JUNCTION=1` A/B to fully rule out
 5. **Bounded-size fiducial** (X-junction / dual-scale) — the jitter blows up because the
    whole-cross overfills; a constant-size feature holds constant fit geometry to
    touchdown. The real terminal answer.
+
+### 2026-08-31 — intensity-weighted sub-pixel arm-centerline fit: HALVES raw centroid jitter (live)
+
+Implemented `_fit_arm_centerline_subpix` in `cross_marker_detector.py` (commit on main,
+`CROSS_SUBPIX_CENTERLINE`, **default OFF**). Instead of `_robust_fit_line` on binary
+mask pixels (whole anti-aliased rows toggle in/out of the colour gate each frame →
+slope wobble), it marches along each arm and at every station takes the
+intensity-weighted centroid of the dark band in the perpendicular greyscale strip → a
+sub-pixel centerline sample (continuous response to a ½-px edge shift, not a toggled
+row); TLS-fit through the stations. Both arms must succeed or it keeps the
+`_robust_fit_line` pair. All downstream gates unchanged. Env knobs
+`CROSS_CENTERLINE_STEP_PX` / `_MIN_STATIONS` / `_MIN_DARKNESS`. Diag `CENTERLINE_STATS`
+printed by CrossMarkerNode at shutdown.
+
+**Offline replay (recorded IC2 mp4): ~neutral** (2.05/1.68 → 2.04/1.61 px, y −4%) —
+useless as a verdict because the IMG_RECORD mp4 is 2×-downscaled + H.264, which destroys
+the anti-aliasing ramp this method reads. **LIVE SITL is where it works:**
+
+| IC1 perception run | raw `Center Px` HF jitter x,y (alt 2.5–4.9 m) | `s_dot_meas` std x,y (T<6 s) |
+|---|---|---|
+| gate off (older, 05-03) | 0.686 / 0.847 px | 0.094 / 0.090 |
+| gate on baseline (11-21) | 0.723 / 0.581 px | 0.061 / 0.083 |
+| **centerline ON (12-04)** | **0.360 / 0.441 px** | 0.070 / 0.075 |
+
+**Raw centroid jitter ~halved** (0.72/0.58 → 0.36/0.44 px) — the direct measurement of
+what the method targets. `s_dot_meas` std stays ~flat because the `q=10` VDS KF + the
+glitch gate already dominate that stage and n=1 run variance is ~this size; the win is a
+**cleaner input**, which should matter more once VDS `q` is relaxed (lever #4). No
+landing regression (honest 0.58 m, min_alt 0.25 m, no ascent).
+
+**Next:** n≥5 IC1 A/B (`CROSS_SUBPIX_CENTERLINE=1` vs 0) per sweep methodology; if the
+jitter win holds, flip the default AND drop VDS `q` 10→~3 (now safe — the floor is
+px-jitter, and the input is now half as noisy). Then re-check IC2 off-center: cleaner
+`s_dot_meas` reduces the buffeting that the funnel breakout + anti-restoring `a_u`
+amplify — necessary but not sufficient (funnel + yaw/alpha still open).
