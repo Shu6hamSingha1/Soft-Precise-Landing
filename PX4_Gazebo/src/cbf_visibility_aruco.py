@@ -225,15 +225,19 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         state["Lw2_prev"] = Lw2.copy()                               # stash for Phase 2 headroom calc
         cz, sz = np.cos(yaw_c), np.sin(yaw_c)
         Rzm = np.array([[cz, sz], [-sz, cz]])                        # Rz(-yaw): inertial -> image
-        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): Rzm alone converts
-        # inertial->BODY-aligned image axes (the OLD "camera=body-FRD aligned"
-        # assumption); now needs an additional Rz(+90deg) to correctly land in the NEW
-        # (post camera-yaw) image axes -- forward is ray_body = Rz(-90deg) @ ray_image
-        # (corrected sign, see _getVirtualPts's comment for the empirical evidence),
-        # so converting body/inertial -> image needs the inverse, Rz(+90deg).
-        Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])                # Rz(+90deg)
-        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current image-axis tilt
-        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # theta_d = Rz(-yaw)@(a_xy/a_z)
+        # CAMERA-MOUNT TILT ROTATION -- CORRECTED 2026-08-31 (Rz_p90b -> identity),
+        # in lockstep with cbf_visibility.py (cross-marker copy) -- see that file's full
+        # comment. In brief: `cr2` already carries the camera mount via the `[y,-x]`
+        # pixel swap (body-FRD axes), so `Rzm @ (I_a/a_z)` (de-yawed lean) is already in
+        # `cr2`'s frame; the old Rz(+90deg) rotated `th` 90deg out AND cancelled the
+        # CBF_LW_ROT M90 in `Lw2@th` -> L_omega fed the lean not the rotation axis
+        # (215%-wrong, validate_cbf.py test 1b). CBF_MOUNT_ROT=1 restores the old form.
+        if env.get("CBF_MOUNT_ROT", "0") == "1":
+            Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])           # Rz(+90deg) -- OLD, broken
+        else:
+            Rz_p90b = np.eye(2)                                     # identity -- th stays in cr2's body-FRD frame
+        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current lean, body-FRD
+        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # desired lean, body-FRD
         th_desired = th.copy()   # UNCONSTRAINED desired tilt, before the FoV-box projection below
                                   # mutates th -- mirrors cbf_visibility.py's identical addition
                                   # (2026-08-24, AZ VISIBILITY FILTER v2) -- keep both files in sync.
@@ -260,12 +264,10 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # applied here — it is a thrust-DELIVERABILITY concern, not a visibility constraint.
         # The CALLER applies it post-CBF (controller.py), so this function stays a pure
         # visibility QP whose ONLY constraint is the FoV box projection above.
-        th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
-        # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): image -> body/inertial applies
-        # the FORWARD transform directly (Rz(-90deg), same direction as _getVirtualPts),
-        # BEFORE the existing Rz(yaw) inertial-yaw-alignment step.
-        Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])              # Rz(-90deg)
-        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz(-90deg)@theta*
+        th_safe = th.copy()                                        # safe LEAN vector (body-FRD, UN-capped) for direct->rd3 (Fix B)
+        # body -> inertial: inverse of the (now-identity) Rz_p90b above, then Rz(yaw).
+        Rz_m90b = Rz_p90b.T                                        # inverse of the mount-tilt rotation (identity unless CBF_MOUNT_ROT=1)
+        I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz_m90b@theta*
         theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
         ok = True
     except (IndexError, AttributeError, ValueError, TypeError):
@@ -322,9 +324,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             # the (working, validated) Phase-1 path is left byte-identical. th_curr comes
             # from ATTITUDE, not the camera -- it is fully available during a decode gap.
             cz, sz = np.cos(yaw_c), np.sin(yaw_c)
-            Rzm = np.array([[cz, sz], [-sz, cz]])                 # Rz(-yaw): inertial -> image
-            Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])         # Rz(+90deg) camera-mount
-            Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])         # Rz(-90deg) camera-mount
+            Rzm = np.array([[cz, sz], [-sz, cz]])                 # Rz(-yaw): inertial -> body-FRD
+            # camera-mount tilt rotation -- CORRECTED 2026-08-31 (identity), see Phase-1.
+            Rz_p90b = (np.array([[0.0, -1.0], [1.0, 0.0]]) if env.get("CBF_MOUNT_ROT", "0") == "1"
+                       else np.eye(2))
+            Rz_m90b = Rz_p90b.T
             th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))
             th_p2 = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))
             cr_ref = np.asarray(state.get("cr_prev", np.zeros(2)), float)

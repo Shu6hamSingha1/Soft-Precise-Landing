@@ -267,13 +267,26 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         Rzm = np.array([[cz, sz], [-sz, cz]])                        # Rz(-yaw): inertial -> image
         # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): Rzm alone converts
         # inertial->BODY-aligned image axes (the OLD "camera=body-FRD aligned"
-        # assumption); now needs an additional Rz(+90deg) to correctly land in the NEW
-        # (post camera-yaw) image axes -- forward is ray_body = Rz(-90deg) @ ray_image
-        # (corrected sign, see _getVirtualPts's comment for the empirical evidence),
-        # so converting body/inertial -> image needs the inverse, Rz(+90deg).
-        Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])                # Rz(+90deg)
-        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current image-axis tilt
-        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # theta_d = Rz(-yaw)@(a_xy/a_z)
+        # CAMERA-MOUNT TILT ROTATION -- CORRECTED 2026-08-31 (Rz_p90b -> identity).
+        # The prior `Rz_p90b = Rz(+90deg)` was WRONG: `cr2` above already carries the
+        # camera-mount encoding via the `[y,-x]` = Rz(-90deg) pixel swap (matching
+        # _getVirtualPts / gt_feedback's geometric s), so `cr2` is the marker bearing in
+        # BODY-FRD axes. `Rzm @ (I_a/a_z)` (de-yawed lean) is ALSO body-FRD. The extra
+        # Rz(+90deg) rotated `th` 90deg out of `cr2`'s frame AND -- since Rz(+90) = M90^-1
+        # -- exactly CANCELLED the CBF_LW_ROT `M90` below in the `Lw2@th` product, so the
+        # live box math fed L_omega the LEAN direction instead of the ROTATION AXIS (the
+        # 215%-wrong case validate_cbf.py test 1b flags). Net effect: for a restoring
+        # command the box model predicted a 90deg-TANGENTIAL feature move, so the FoV-box
+        # projection "corrected" perpendicular to the recovery direction -> off-center
+        # drift -> fly-off (IC5, project_20260831_perception_mode_landing). Analytic +
+        # test-1: `L_omega(cr2) @ M90 @ (-s_V)` is radial-inward (re-centering). Set
+        # CBF_MOUNT_ROT=1 to restore the old (broken) Rz(+-90) for A/B.
+        if env.get("CBF_MOUNT_ROT", "0") == "1":
+            Rz_p90b = np.array([[0.0, -1.0], [1.0, 0.0]])           # Rz(+90deg) -- OLD, broken
+        else:
+            Rz_p90b = np.eye(2)                                     # identity -- th stays in cr2's body-FRD frame
+        th_curr = Rz_p90b @ (Rzm @ (-np.asarray(R[:2, 2], float) / max(abs(R33), 1e-3)))   # current lean, body-FRD
+        th = Rz_p90b @ (Rzm @ (np.asarray(I_a[:2], float) / max(a_z, 1e-6)))     # desired lean, body-FRD = Rz(-yaw)@(a_xy/a_z)
         th_desired = th.copy()   # UNCONSTRAINED desired tilt, before the FoV-box projection below
                                   # mutates th -- see this function's return-value doc for dtheta=
                                   # th_desired-th_safe (2026-08-24, AZ VISIBILITY FILTER v2)
@@ -369,12 +382,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
             # applied here — it is a thrust-DELIVERABILITY concern, not a visibility constraint.
             # The CALLER applies it post-CBF (controller.py), so this function stays a pure
             # visibility QP whose ONLY constraint is the FoV box projection above.
-            th_safe = th.copy()                                        # safe LEAN vector (image axes, UN-capped) for direct->rd3 (Fix B)
-            # CAMERA-MOUNT YAW FIX (2026-08-04, CORRECTED): image -> body/inertial applies
-            # the FORWARD transform directly (Rz(-90deg), same direction as _getVirtualPts),
-            # BEFORE the existing Rz(yaw) inertial-yaw-alignment step.
-            Rz_m90b = np.array([[0.0, 1.0], [-1.0, 0.0]])              # Rz(-90deg)
-            I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz(-90deg)@theta*
+            th_safe = th.copy()                                        # safe LEAN vector (body-FRD, UN-capped) for direct->rd3 (Fix B)
+            # image/body -> inertial: the inverse of the (now-identity) Rz_p90b above,
+            # then Rz(yaw). CORRECTED 2026-08-31 alongside Rz_p90b (see its comment).
+            Rz_m90b = Rz_p90b.T                                        # inverse of the mount-tilt rotation (identity unless CBF_MOUNT_ROT=1)
+            I_a[:2] = a_z * (np.array([[cz, -sz], [sz, cz]]) @ (Rz_m90b @ th))      # a_xy* = a_z*Rz(yaw)@Rz_m90b@theta*
             theta_cone = float(np.linalg.norm(th))                      # log the commanded tilt magnitude
         ok = True
     except (IndexError, AttributeError, ValueError, TypeError):
