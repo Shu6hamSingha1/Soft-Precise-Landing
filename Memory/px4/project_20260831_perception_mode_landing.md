@@ -481,3 +481,38 @@ loop drives an ~80° phantom correction → V-frame lateral command rotates ~90�
 the compass path) — **K stays −1, only the offset changes.** Then re-run perception IC1
 + IC2 (compass-yaw A/B no longer needed — this IS the yaw fix); if `s_e_n` converges
 off-center, run the full IC1-5 gate.
+
+### 2026-08-31 — CROSS_ALPHA_0 90.23°→0.58° APPLIED + SITL-VALIDATED: off-center blocker cleared
+
+Final n=5 derive (`tools/derive_cross_alpha0.py`, `output_cross_alpha0_20260831/`):
+unconstrained slope +0.96..+1.00 (mean **+0.98**, R² 0.90–0.94), offset per-run
+0.29/0.60/0.46/0.61/0.94° → **circ mean 0.58°, std 0.22°**. Applied to
+`cross_marker_perception.py:504` (`radians(90.23)` → `radians(0.58)`); comment rewritten;
+`BODY_YAW_ALPHA_K=-1` unchanged (correct for a slope-+1 alpha). Backup:
+`Obsolete/src/cross_marker_perception_v_pre_alpha0_rederive_20260831.py`. Commit `b963e207`.
+
+**SITL (perception mode, cross_marker, no GT-FB, n=1 each) — dramatic:**
+| | broken (α₀=90.23) | FIXED (α₀=0.58) |
+|---|---|---|
+| aligned-hover `board alpha` | **−82°** | **+3.7° / +8.4°** ✓ |
+| IC1 | FAIL, honest 0.38–0.77 m | **PRECISE-only** — endpoint 0.090 m, **honest xy 0.017 m**, 0.094 m/s |
+| IC2 | **TARGET_LOST, 4.9 m, fly-off** | **FAIL but LANDED** — endpoint 0.242 m, honest 0.237 m, 0.60 m/s, min_alt 0.07 m |
+| IC2 perc α early | −71° | **−2°** |
+| IC2 `\|s_e_n\|` start→4 s | 0.49 → **0.86 (diverging)** | 0.49 → **0.27 (converging)** |
+| IC2 `angle(h_xy, h_d_xy)` T<4 s | 84° (⊥) | **38°** |
+| IC2 `e_R_yaw` max T<4 s | 1.00 rad | **0.55 rad** |
+
+**The re-derived `alpha_0` was THE primary off-center blocker**, exactly as the GT-FB vs
+perception comparison predicted: alpha −72° → −2° → `yaw_c` correct → V-frame lateral
+command no longer rotated ~90° → achieved flow tracks the demand → `s_e_n` converges.
+**First PRECISE perception-mode cross-marker landing (IC1 0.017 m).** IC2 went from a
+4.9 m fly-off to a controlled 0.24 m landing.
+
+**Residual (not zero):** IC2 `angle(h_xy,h_d_xy)` 38° not 0, `e_R_yaw` 0.55 not 0,
+terminal `|a_u|` still spikes to 75 — alpha still degrades somewhat at oblique view /
+near overfill, and the wall-clock `p_s` funnel + its re-arm are still live amplifiers.
+IC2 is now a *converging* landing that needs tightening, not a diverging one.
+
+**Next:** full **IC1–5 n=5 gate** (`run_ic_validation.sh`, perception mode) — mandatory
+now that a control-path (alpha) default changed. Then revisit the open list (funnel #1,
+terminal overfill #4) against the new baseline.
