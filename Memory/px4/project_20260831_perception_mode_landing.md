@@ -389,3 +389,63 @@ jitter win holds, flip the default AND drop VDS `q` 10→~3 (now safe — the fl
 px-jitter, and the input is now half as noisy). Then re-check IC2 off-center: cleaner
 `s_dot_meas` reduces the buffeting that the funnel breakout + anti-restoring `a_u`
 amplify — necessary but not sufficient (funnel + yaw/alpha still open).
+
+### 2026-08-31 — n=5 IC1 A/B: centerline fit does NOT hold up; single-run halving was a fluke
+
+Ran 10 headless IC1 perception landings interleaved (`CROSS_SUBPIX_CENTERLINE` 1 vs 0).
+Manifest + per-run metrics computed from each bundle (Center Px HF jitter, alt 2.5–4.9 m
+band; `s_dot_meas` std T<6 s).
+
+| arm | raw Center Px HF jitter x / y (px) | `s_dot_meas` std x / y |
+|---|---|---|
+| OFF baseline (n=5, one bundle unreadable) | 0.88 ± 0.13 / 0.70 ± 0.22 | 0.064 / 0.077 |
+| ON centerline (n=5) | 1.85 ± 2.21 / 2.55 ± 3.93 (one blowup run 6.3/10.4) | 0.068 / 0.083 |
+| ON centerline, blowup run dropped (n=4) | ~0.75 / ~0.59 | — |
+
+**Verdict: the 2026-08-31 single-run "0.72→0.36 px halving" did NOT replicate.** With
+n=5 the centerline fit is **~10–15 % on jitter at best** (0.88/0.70 → 0.75/0.59 with the
+blowup excluded), well inside the run-to-run scatter (±0.22 on y), and **zero effect on
+`s_dot_meas` std** (0.064/0.077 → 0.068/0.083 — the `q=10` VDS KF + glitch gate fully
+dominate that stage). **Leave `CROSS_SUBPIX_CENTERLINE=0`. It is not the floor fix.**
+
+Meta-finding: **IC1 perception mode is not a stable baseline for a perception A/B** — of
+the 10 runs, endpoint xy_err ranged 0.5–23 m and 2 flagged `ASCENDING`; the 4 "clean"
+runs per arm sat at 0.47–0.78 m honest @ min-alt. A ~15 % perception-jitter change is
+far below this noise. Any future perception A/B needs either a replay harness on RAW
+frames (not the lossy mp4) or a much larger n.
+
+**Intermittent terminal ASCENT is back (1 genuine in 10).** OFF-baseline rep1: 0.87 m of
+upward travel, onset ~76 % of run at alt 0.56 m, endpoint 23 m. NOT the old
+`_dtheta_correction` (removed) — `dtheta_az`=0 at onset, `az_joint_delta` never fired,
+`kappa_z` flat at 0.03. `h_z` (loom) swung −2.95 → +3.78: looks like the terminal
+loom-inversion driving the z-SMC to climb once the marker overfills at ~0.5 m. The other
+"ASCENDING" flag (ON rep2) was a mislabel — GT shows 0.00 m upward travel, it was a 9.8 m
+lateral TARGET_LOST. So: ~1/10 genuine terminal loom-driven ascent, distinct root from
+the 2026-08-30 dtheta fly-away.
+
+---
+
+## SESSION FIXES — CONSOLIDATED (2026-08-31)
+
+All committed + pushed to main. Two land-on-by-default, two knobs-default-off.
+
+| # | change | file(s) | env / default | status |
+|---|---|---|---|---|
+| 1 | **`_dtheta_correction` removed**; descent-rate/lateral-margin trade folded into the joint CBF QP as `CBF_AZ_COST_GAIN` (clamped at −g, can only slow a descent) | `cbf_visibility.py`, `controller.py`, `docs/CBF_visibility.{tex,pdf}` | `CBF_AZ_COST_GAIN=5.0` (on) | **SITL-validated**: IC1 fly-away gone, descent monotone (0.0 m upward). `az_joint_delta` mostly never engages (box rarely binds hard). ⚠ intermittent terminal ASCENT still ~1/10 via a *different* root (terminal loom → z-SMC), see above. |
+| 2 | **VDS `s_dot_meas` KF glitch gate** — per-axis test on the raw inter-measurement step `(z−z_prev)/dt` (χ²-vs-S goes blind at `q=10`); spike frames get `R∝d²/gate` → K→0, clean frames bit-identical (zero lag) | `controller.py` `_vdsKFStep` | `PLASMC_VDS_KF_GATE=9` (on), `PLASMC_VDS_KF_GATE_RATE=2.0` | **Applied, on by default.** Clips rate SPIKES (IC2 y absmax 1.20→0.80, worst d²≈2.9e4 rejected; IC2 miss 4.8→2.9 m n=1). Does NOT lower the broadband noise floor (a gate can't). No regression IC1. |
+| 3 | **Sub-pixel junction refine** — local quadratic intensity fit at `_line_intersection`, +def-Hessian + shift guards | `cross_marker_detector.py` `_refine_junction_subpix` | `CROSS_SUBPIX_JUNCTION=0` (**off**) | **Doesn't help** — apples-to-apples offline: no jitter change vs analytic OR `cv2.cornerSubPix` at any guard. The jitter is line-SLOPE noise, not junction localisation. Kept as a knob only. |
+| 4 | **Intensity-weighted sub-pixel arm-centerline fit** — per-station intensity-weighted dark-band centroid → TLS line fit, replaces the two `_robust_fit_line` binary-mask fits | `cross_marker_detector.py` `_fit_arm_centerline_subpix`, `_sample_bilinear` | `CROSS_SUBPIX_CENTERLINE=0` (**off**), `CROSS_CENTERLINE_STEP_PX=2.0`, `_MIN_STATIONS=8`, `_MIN_DARKNESS=20` | **Marginal / didn't replicate** — n=5 A/B: ~10–15 % jitter reduction at best (within scatter), zero `s_dot_meas` effect. Leave off. |
+| 5 | **CrossMarkerNode shutdown diag** for `SUBPIX_STATS` / `CENTERLINE_STATS` | `cross_marker_perception.py` | — | cosmetic |
+
+### Analysis findings recorded this session (no code)
+- **`s_dot_meas` noise floor root cause** = raw pixel-centroid jitter (0.2 px at altitude → 1.3 px as the whole-cross overfills; line-SLOPE noise from which anti-aliased edge pixels clear the colour gate each frame), differentiated at 62 Hz → ~0.13 u/s. GT-FB has none.
+- **Why GT-FB IC2 lands (0.017 m) but perception IC2 diverges**: SAME control law, both in blended/combined mode (`ds_d≡0`) → `h_d` lateral rate is built from **`s_dot_meas`** (the centroid *derivative*), which is 7–12× noisier under perception (+ `alpha` 75–100° wrong off-center, + perception dropout at alt ~2.6 m). Centroid POSITION `s_V` matches GT to <0.02.
+- **IC3/IC4/IC5 = the same failure as IC2**, one mechanism four instances: off-center lateral loop crosses the target and diverges (GT-real, perception faithful) → wall-clock `p_s` funnel squeezes past the un-converged error → PPC transform → `\|a_u lat\|` 60–156 → wall-clock funnel RE-ARM limit cycle → ballistic fly-off; `alpha` 75–100° wrong on every off-center IC. **IC5 worst (10 m)** because its 3 m start = 43° initial bearing → `\|s_e_n\|` starts at 0.81, immediate funnel breakout, zero recovery window.
+- **"w_z from gyro" is already the default** (`W_XY_DEROT=zero` + `PLASMC_CH_CLEAN=1`): the `ṡ`/`h_d`/`c` de-rotation already uses gyro `psi_dot_b`, not image `w`. The broken thing is the **`alpha` orientation feature** (relative heading, perception-side), which can't be gyro-sourced.
+
+### Open, ranked (off-center is the wall; the floor is NOT the binding constraint)
+1. **Wall-clock `p_s` outer funnel** — make it convergence-coupled / slow `gamma_s`; kill the wall-clock RE-ARM (one re-arm, or freeze width on marker-loss). Cheapest, attacks amplifiers 2+3.
+2. **Anti-restoring / under-authority lateral `a_u` off-center** — the primary. `s_e_n` diverges with perfect vision.
+3. **`alpha` off-center** — 75–100° bias at oblique view; perception fix in `cross_marker_perception.py` (`_getVirtualPts` / `CROSS_ALPHA_0` geometry dependence).
+4. **Terminal overfill** — whole-cross detector dies below ~0.4–2.6 m (alt depends on offset); real fix = commit/hand-off to flow, or a bounded-size X-junction / dual-scale fiducial. Also the intermittent terminal loom→ascent (1/10) lives here.
+5. **`s_dot_meas` broadband floor** — deprioritised: neither IC1 (terminal) nor IC2–5 (off-center funnel) is primarily driven by it. If revisited: VDS `q` 10→~3 with the gate, or conditioning-aware `R`.
