@@ -449,3 +449,35 @@ All committed + pushed to main. Two land-on-by-default, two knobs-default-off.
 3. **`alpha` off-center** — 75–100° bias at oblique view; perception fix in `cross_marker_perception.py` (`_getVirtualPts` / `CROSS_ALPHA_0` geometry dependence).
 4. **Terminal overfill** — whole-cross detector dies below ~0.4–2.6 m (alt depends on offset); real fix = commit/hand-off to flow, or a bounded-size X-junction / dual-scale fiducial. Also the intermittent terminal loom→ascent (1/10) lives here.
 5. **`s_dot_meas` broadband floor** — deprioritised: neither IC1 (terminal) nor IC2–5 (off-center funnel) is primarily driven by it. If revisited: VDS `q` 10→~3 with the gate, or conditioning-aware `R`.
+
+### 2026-08-31 — CROSS_ALPHA_0 re-derivation: it's ~0°, not 90.23° — AND the slope flipped +1
+
+Wrote `tools/derive_cross_alpha0.py` (commit). Recorded fresh phased cross-marker cal
+flights with `CROSS_ALPHA_0=0` → `calibration_data/output_cross_alpha0_20260831/`
+(99% detect-ok, full yaw+yawagg excitation, 500–615 yaw-excited samples/run).
+
+**n=3 (n≥5 pending), extremely consistent:**
+- raw disambiguated principal angle vs GT ENU relative yaw: **UNCONSTRAINED slope = +0.99 /
+  +1.00 / +0.98, R² = 0.92–0.94**.
+- slope **+1** offset (`alpha_0`): 0.29 / 0.60 / 0.46° → **mean 0.45°, inter-run std 0.13°**.
+- slope **−1** (the 2026-08-08 assumption) offset: 2–7°, std 1.9°, **R² = −2.8** (garbage).
+
+**So the deployed `CROSS_ALPHA_0 = radians(90.23)` is wrong two ways:** (1) it was derived
+2026-08-08 by *forcing* `alpha_dot = −psi_dot` (slope −1, Jabbari Asl) — the current
+pipeline tracks **slope +1**; (2) the offset is **~0.45°**, not 90.23°. Coherent story:
+the 08-08 value baked in the 90° camera-mount yaw rotation (skill note: "suspiciously
+close to exactly 90deg… plausibly a direct consequence of the 90deg camera-mount yaw"),
+and since then the `[y,−x]` swap in `_getVirtualPts` took over that rotation ("REPLACED
+here, not stacked" comment) + a `[y,−x]↔[x,y]` convention was churned 2026-08-10 (io-cal
+skill) — `alpha_0` should now be ~0 and was never updated. This is exactly the ~−87°
+staleness the landing analysis measured (perception alpha −82° at aligned hover; the yaw
+loop drives an ~80° phantom correction → V-frame lateral command rotates ~90° → off-center
+`s_e_n` never converges).
+
+**Proposed fix (NOT yet applied — load-bearing, IC1-5 gate):**
+`cross_marker_perception.py:504` → `CROSS_ALPHA_0` default `radians(90.23)` → **`radians(~0.5)`**
+(final value after n≥5). With slope +1 (`alpha ≈ +psi_ENU`, the ArUco convention),
+`BODY_YAW_ALPHA_K = −1.0` already maps it correctly to `yaw_c ≈ −psi_ENU` (NED, matching
+the compass path) — **K stays −1, only the offset changes.** Then re-run perception IC1
++ IC2 (compass-yaw A/B no longer needed — this IS the yaw fix); if `s_e_n` converges
+off-center, run the full IC1-5 gate.

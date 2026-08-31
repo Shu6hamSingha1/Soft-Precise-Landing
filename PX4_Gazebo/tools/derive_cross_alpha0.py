@@ -104,47 +104,62 @@ def main():
         if n_base < MIN_SAMPLES:
             print(f"  {os.path.basename(d):32s}  SKIP (only {n_base} detection-ok samples)")
             continue
-        # slope=-1 model:  a_raw = -psi + off   ->   off = circ_mean(a_raw + psi).
-        # Fit the offset over ALL detection-ok samples (slope is fixed, so every sample
-        # with a known GT relative yaw constrains it); use the yaw-EXCITED subset only to
-        # score the model (R^2 needs psi spread).
-        off = _circ_mean(a_raw + psi_rel)
         e = excited if excited.sum() >= 20 else np.ones_like(excited)
         ae, pe = a_raw[e], psi_rel[e]
-        resid = np.arctan2(np.sin(ae + pe - off), np.cos(ae + pe - off))
-        pred = -pe + off
-        ss_res = float(np.sum(np.arctan2(np.sin(ae - pred), np.cos(ae - pred)) ** 2))
-        ss_tot = float(np.sum((np.unwrap(ae) - np.mean(np.unwrap(ae))) ** 2))
-        r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-9 else float("nan")
-        A = np.column_stack([np.unwrap(pe), np.ones_like(pe)])
-        (slope_u, _o), *_ = np.linalg.lstsq(A, np.unwrap(ae), rcond=None)
-        per_run.append((os.path.basename(d), np.degrees(off), np.degrees(_circ_std(resid)),
-                        r2, slope_u, n_base, int(excited.sum())))
-        print(f"  {os.path.basename(d):32s}  off={np.degrees(off):7.2f} deg  "
-              f"resid_std={np.degrees(_circ_std(resid)):5.2f} deg  R2(slope=-1)={r2:6.3f}  "
-              f"[uncon slope={slope_u:+.2f}]  n_ok={n_base}  n_yawexc={int(excited.sum())}")
+        # UNCONSTRAINED fit first -- the 2026-08-08 derivation FORCED slope=-1 (Jabbari
+        # Asl); let the data speak. Fit on unwrapped angles (yaw excitation spans <2pi).
+        aeu, peu = np.unwrap(ae), np.unwrap(pe)
+        A = np.column_stack([peu, np.ones_like(peu)])
+        (slope_u, off_u), *_ = np.linalg.lstsq(A, aeu, rcond=None)
+        r2_u = 1.0 - np.sum((aeu - A @ [slope_u, off_u]) ** 2) / np.sum((aeu - aeu.mean()) ** 2)
+        # offset for each sign convention:  a_raw = s*psi + off  ->  off = circ_mean(a_raw - s*psi)
+        off_p1 = _circ_mean(ae - pe)     # slope +1 (ArUco-like:  alpha ~ +psi)
+        off_m1 = _circ_mean(ae + pe)     # slope -1 (the 2026-08-08 assumption)
+        def _r2(sl, of):
+            pr = sl * pe + of
+            return 1.0 - np.sum(np.arctan2(np.sin(ae - pr), np.cos(ae - pr)) ** 2) \
+                       / np.sum((aeu - aeu.mean()) ** 2)
+        r2_p1, r2_m1 = _r2(1.0, off_p1), _r2(-1.0, off_m1)
+        # the deployed pipeline consumes  alpha = wrap(a_raw - alpha_0)  then
+        # yaw_c = BODY_YAW_ALPHA_K * alpha  (K=-1 for cross). For yaw_c to track NED yaw
+        # (= -psi_ENU) the same way the compass path does, alpha must track +psi_ENU
+        # (slope +1), so alpha_0 = off_p1.
+        alpha0 = off_p1
+        per_run.append((os.path.basename(d), np.degrees(alpha0), np.degrees(off_m1),
+                        slope_u, r2_u, r2_p1, r2_m1, n_base, int(excited.sum())))
+        print(f"  {os.path.basename(d):30s}  slope={slope_u:+.2f} (R2 {r2_u:.3f}) | "
+              f"alpha_0(+1)={np.degrees(off_p1):7.2f} (R2 {r2_p1:.3f})  "
+              f"alt(-1)={np.degrees(off_m1):7.2f} (R2 {r2_m1:.3f})  "
+              f"n_yawexc={int(excited.sum())}")
 
     if len(per_run) < 3:
         sys.exit(f"\nonly {len(per_run)} usable runs -- need >=5 (>=3 to print a value); record more.")
 
-    offs = np.radians([r[1] for r in per_run])
-    mean_off = _circ_mean(offs)
-    inter_std = np.degrees(np.std(np.arctan2(np.sin(offs - mean_off), np.cos(offs - mean_off))))
-    r2s = [r[3] for r in per_run]
-    print("\n" + "=" * 68)
-    print(f"  n runs used           : {len(per_run)}")
-    print(f"  per-run offset (deg)  : {[round(r[1], 2) for r in per_run]}")
-    print(f"  CIRCULAR MEAN         : {np.degrees(mean_off):.2f} deg   ({mean_off:.4f} rad)")
-    print(f"  inter-run std         : {inter_std:.2f} deg")
-    print(f"  R2(slope=-1) per run  : {[round(x, 3) for x in r2s]}   mean {np.mean(r2s):.3f}")
-    print(f"  unconstrained slopes  : {[round(r[4], 2) for r in per_run]}  "
-          f"(should cluster near -1 if the model holds)")
-    print("=" * 68)
-    print(f"\n  -> set in cross_marker_perception.py:\n"
-          f"     self._alpha_0 = float(os.environ.get(\"CROSS_ALPHA_0\", "
-          f"str(np.radians({np.degrees(mean_off):.2f}))))")
-    print(f"\n  (previous value: np.radians(90.23) = 1.5748 rad; "
-          f"delta = {np.degrees(mean_off) - 90.23:+.2f} deg)")
+    def _cm_std(vals_deg):
+        r = np.radians(vals_deg); m = _circ_mean(r)
+        return np.degrees(m), np.degrees(np.std(np.arctan2(np.sin(r - m), np.cos(r - m))))
+
+    a0_p1, a0_p1_std = _cm_std([r[1] for r in per_run])
+    a0_m1, a0_m1_std = _cm_std([r[2] for r in per_run])
+    slopes = [r[3] for r in per_run]
+    print("\n" + "=" * 72)
+    print(f"  n runs used            : {len(per_run)}")
+    print(f"  UNCONSTRAINED slope    : {[round(s, 2) for s in slopes]}   "
+          f"mean {np.mean(slopes):+.2f}   (R2 {[round(r[4],3) for r in per_run]})")
+    print(f"    -> the 2026-08-08 derivation forced slope=-1; the data says "
+          f"{'+1' if np.mean(slopes) > 0 else '-1'}.")
+    print(f"  alpha_0  (slope +1)    : per-run {[round(r[1],2) for r in per_run]}  "
+          f"-> {a0_p1:.2f} deg  (std {a0_p1_std:.2f}, R2 {[round(r[5],3) for r in per_run]})")
+    print(f"  alt      (slope -1)    : per-run {[round(r[2],2) for r in per_run]}  "
+          f"-> {a0_m1:.2f} deg  (std {a0_m1_std:.2f}, R2 {[round(r[6],3) for r in per_run]})")
+    print("=" * 72)
+    best = a0_p1 if np.mean(slopes) > 0 else a0_m1
+    print(f"\n  RECOMMENDED (matches the measured slope, ArUco convention K=-1 expects +psi):")
+    print(f"     self._alpha_0 = float(os.environ.get(\"CROSS_ALPHA_0\", "
+          f"str(np.radians({best:.2f}))))")
+    print(f"\n  deployed: np.radians(90.23); delta = {best - 90.23:+.2f} deg. "
+          f"⚠ If slope flipped +1<->-1 since 2026-08-08, BODY_YAW_ALPHA_K sign may also\n"
+          f"    need review -- IC1-5 validate before merge.")
 
 
 if __name__ == "__main__":
