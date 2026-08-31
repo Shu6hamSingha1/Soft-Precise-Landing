@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0c94ab6a-894a-4d39-9867-91dec8322965
-  modified: 2026-08-30T23:49:49.593Z
+  modified: 2026-08-31T00:14:35.954Z
 ---
 
 # Perception-mode landing — 2026-08-31 session
@@ -155,6 +155,72 @@ the off-center lateral loop is stabilized** — that is now the binding constrai
 of the terminal-overfill hand-off.
 
 - **IC1 n=5 NOT run yet** — not a converging landing even at IC1 (0.59 m terminal miss).
+
+### 2026-08-31 — IC2 deep-dive root cause (data + GT + PPC)
+
+Bundle `test_data/Landing_Test/Mon Aug 31 05-14-32 2026/`; figure
+`test_data/Test_Videos/IC2_rootcause.png`; montage `montage_perc_20260831_IC2.mp4`.
+Run is in **combined/blended-surface mode** (`PLASMC_HD_FUNNEL_REF=1` in the banner) →
+outer PID `V_ds_d` is unused (`ds_d(t)≡0` is expected, not a bug); lateral demand flows
+`s_e_n → funnel-ref backmap (p_r,zeta_r,S_r,dp_s) → h_d lat-rate → middle SMC → a_v →
+a_u=−G⁻¹a_v → I_a`.
+
+**Timeline (t = s since descent start; GT descent phase is only ~5.5 s):**
+- **t 0–3.5 s, alt 5.0→2.9 m — perception PERFECT, y-axis diverges anyway.** `s_V` vs GT
+  `V_s_g`: |err| < 0.02 on both axes the whole time; flow `h_V` tracks GT within ~0.1.
+  `s_e_n_x` converges 0.35→0 cleanly. **`s_e_n_y` GROWS 0.35→0.85** — and GT `V_s_g_y`
+  grows the same 0.35→0.76, so the divergence is REAL vehicle motion, not a perception
+  error. The funnel-ref lateral demand `hd_rate_y` is correctly signed (opposes the
+  error) but **capped at ≈0.45** (scale-free v/Z) and cannot null a 2.83 m offset in the
+  ~3.5 s before the marker leaves frame, while Z (hence metric authority) shrinks.
+  `a_u_y` is intermittently **anti-restoring** (same sign as `s_e_n_y`), partly
+  cancelling the demand ([[feedback_lateral_wall_anti_restoring_au]]).
+- **t ≈ 3.5 s — `|s_e_n_y|`≈0.85 breaks out of the `p_s` funnel (≈0.49).** `p_s` is
+  **purely wall-clock**: `p_s(t) = (1.2−0.35)·e^{−0.5 t} + 0.35` to within 0.002, zero
+  coupling to convergence. It squeezes to ~0.49 by 3.5 s regardless of error. Once
+  outside, the PPC transform amplifies → `a_u` starts climbing (2→2.8→…).
+- **t ≈ 3.7 s, alt 2.6 m — detection dies** (`det=ok`→`--`; `lt2_angle_clusters`,
+  `centroid_mismatch`, `color_gate_empty`). Marker is oblique + near frame edge
+  (`s_V_y`≈0.8) + motion-blurred by the `a_u` kick. `MARKER_EXTENT_PX`≈120 — **NOT
+  overfill** (overfill ≈240); this is an off-axis/edge loss, a different failure from
+  IC1's terminal overfill. `s_V` then **freezes at (0.144, 0.798) for the entire
+  remaining ~2 s** while true GT bearing swings to (+32, −20). Controller flies the rest
+  blind on a 2-s-stale centroid.
+- **t 3.7–5.8 s — ~2 s control-log gap** (controller thread stalled / marker-lost log
+  branch), drone kicked hard; resumes with `s_e_n` sign-flipped and `|a_u|`≈43.
+- **t 5.8–8.5 s — funnel-reset limit cycle.** `p_s` is **re-armed to 1.2 every
+  ~0.3–0.7 s** (7 resets logged) on the frozen/violating error; each re-squeeze
+  re-violates → repeated `|a_u|` spikes 10–43. These kicks (not a kappa ratchet — `kappa`
+  x/y sit at the 0.5 floor all run; the spikes come from the `−G⁻¹a_v` / zeta transform)
+  throw the drone ballistically off. → `TARGET_LOST`, 4.9 m miss, 4.7 m/s IMU impact.
+
+**PPC scorecard:**
+- **`s_e_n` vs `p_s` (outer funnel): FAILS.** x stays inside; **y exits at t≈3.5 s** and
+  is outside ~9 % of the run; the exit + the wall-clock re-arm cycle is the proximate
+  explosion trigger. `p_s` shrink rate (`gamma_s=0.5`, ~2 s) is far faster than the
+  loop's real y-convergence → funnel width is acting as a divergent gain.
+- **`h_e` vs `p` (middle/flow funnel): OK.** `frac_outside ≈ 0` on all 3 axes; brief
+  spikes to 13–17 but `|zeta|` peaks ~3.7 and ends ~0.25. The flow PPC is not the
+  problem; the **outer `s_e_n` PPC + the lateral authority under it are.**
+
+**Root-cause ranking for IC2:**
+1. **Off-center y lateral loop has insufficient (and partly anti-restoring) authority** —
+   diverges 0.35→0.85 with perfect vision. Binding constraint.
+2. **`p_s` outer funnel is open-loop wall-clock** — squeezes past the un-converged error
+   at ~3.5 s and the PPC transform turns the residual into an `a_u` spike; funnel width
+   here = gain.
+3. **Funnel wall-clock RE-ARM creates a limit cycle** of 10–43-magnitude `a_u` kicks once
+   the error is stuck outside → the actual fly-off driver.
+4. **Perception loss at alt ~2.6 m is a consequence** (off-axis + edge + kick-blur), then
+   `s_V` frozen-hold for the last 2 s makes recovery impossible. NOT overfill (≠IC1).
+5. Yaw/`alpha` perception is wrong all run (`aP`≈−1.1 rad vs GT swinging ±0.5) — secondary
+   (rotates body lat axes), didn't corrupt `s_V`.
+
+Fix directions (not yet chosen): (a) make `p_s` convergence-coupled or slow `gamma_s` so
+it can't outrun the loop; (b) kill/limit the wall-clock funnel re-arm (one re-arm, or
+freeze width on marker-loss instead of resetting); (c) raise off-center lateral authority
+/ fix the anti-restoring `a_u` sign on y; (d) hold-last vs. widen-funnel on detection
+loss rather than freezing `s_V` outright. (a)+(b) are the cheapest test.
 - **Still open (flagged, not fixed):** the whole-cross detector still can't detect below
   ~0.4 m (marker overfills) → below there the loop is on last-good `s` + `h` + IMU. The
   real terminal fixes remain: (a) commit / hand off to flow once the marker overfills, or
