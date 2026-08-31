@@ -679,3 +679,57 @@ compounding factor here, not the trigger.
 **Implication for the fix order:** the terminal `p_s` funnel / lateral-authority fix
 (#3) matters as much as the h_z hand-off (#1) — IC5 (and IC3's 0.30 m endpoint, IC2's
 38° h/h_d angle) are all the un-nulled terminal residual, not overfill.
+
+### 2026-08-31 — IC5 perception vs GT-FB: s_e_n diverges because the middle SMC gain κ_xy can't ramp
+
+Compared PERC IC5 (`Mon Aug 31 19-19-48 2026`, fly-off) vs GT-FB IC5
+(`Multi_IC/20260828-110310/IC_5_rep_1`, lands 0.017 m). Same lateral/CBF/funnel machinery
+(GT-FB bundle is pre-`_dtheta_correction`-removal — minor).
+
+| signal (alt 1.85 → 0.6 m) | GT-FB IC5 | PERC IC5 |
+|---|---|---|
+| `\|s_e_n\|` | 0.35 → 0.06, monotone | 0.38 → rebounds → **1.36** |
+| `\|h_e\|` (flow error `h−h_d`) | 0.03–0.20 | 0.29 → **2.4** |
+| measured `h_x` vs GT `h_x` | exact (injected) | ~matches GT (+0.3 vs +0.4) — **NOT ⊥ anymore**, α₀ fix worked |
+| demand `h_d_x` | small, matched | −0.25 restoring, **correct but not delivered** |
+| `kappa_xy` | ~0.2 (never needs to ramp) | **~0.2, DECLINING to 0.16** (can't ramp) |
+| `theta_current` (tilt) | 2° → 0.1° | 3° → **24.5°** |
+| CBF `theta_cone` | 1–2° (inactive) | 4° → 38° (engaging, not hard-clamping) |
+| `theta_desired` vs `theta_current` | — | ≈ equal (~28°) — drone gets the tilt it asks |
+| `az_joint_delta` (CBF_AZ relief) | — | **0.00, never engaged** |
+| `S_r = s_e_n/p_r` | 0.01 | **0.16** (`p_r`≈10, never binds; `S_MARGIN` clip nowhere near) |
+
+**Reason for `s_e_n` divergence:** the drone has a real ~+0.3 lateral optical flow that
+needs reversing; `h_d` correctly demands −0.25; `h_e ≈ 0.55` and GROWING. Rejecting that
+needs the middle adaptive-SMC gain `κ_xy` to ramp. **It doesn't** — it sits at ~0.2 (near
+`κ_0`) the whole descent. Three reasons, all in the κ-ODE `dκ/dt = Θ·N·G·|σ| − N·P·κ`:
+1. `τ_κ = 1/(N·P) = 1/(0.1·2.5) ≈ 4 s` vs IC5's ~4–5 s descent → **adaptation-rate-limited**
+   (the controller.py:406 comment's own concern, for the 3 m profile).
+2. `P_xy = 2.5` leakage (baked up 1.5→2.5, 2026-07-22) bounds `κ_eq = Θ·G·|σ|/P` LOW.
+3. `p_inf_xy = 2.5` (middle funnel floor, rebaked 2026-08-28 from 1.0) keeps `zeta_h`
+   small → weak κ growth drive. That rebake's comment says it was traced on an **IC2
+   GT-FB n=5 A/B** — "s_e_n was small and still CONVERGING... the funnel getting tight,
+   not the error growing, triggered every breach. 2.5 gave 5/5 CLEAN."
+
+**So the middle SMC is deliberately detuned (slow N, high leakage P, loose funnel) to
+avoid the terminal κ-ratchet / actuator-wall blowup — and that detuning was validated
+under GT-FEEDBACK, where the lateral disturbance `h_e` is ~0.05 and κ never needs to
+ramp.** Under perception `h_e` is ~0.5 (perception `h`/`s_dot_meas` noise + a sluggish
+outer loop leaving a residual `s_e_n`≈0.38), and the detuned κ can't reject it in the IC5
+time budget → `s_e_n` runs away → position-barrier transform blows `a_u` to 6+ too late →
+marker off-frame → fly-off.
+
+**Clamps/limits checked — what is NOT stopping convergence:** `kappa_max=30` (κ never
+approaches it), `S_MARGIN=0.05` clip on `S_r`/`S_s` (`p_r`≈10, funnel never binds),
+`PLASMC_DSD_LAT_MAX=100` (off), the CBF FoV cone (`theta_cone` engages but
+`theta_current`≈`theta_desired`, ~28° delivered — not hard-clamped), `az_joint_delta`
+(never fired), `PLASMC_AU_MAX_XY` (a_u reaches ~6, not near a cap). **What IS limiting:**
+the κ-ODE leakage/rate tuning itself — a soft, structural limit on the adaptive gain,
+not a hard clip.
+
+**Implication:** the perception-mode terminal needs the middle κ-loop to be able to
+develop lateral authority against a perception-scale `h_e` WITHOUT the terminal ratchet
+blowup — i.e. the "one knob one job" P-vs-E / velocity-damping direction
+([[feedback_dont_conclude_lag_floor]], [[feedback_terminal_smc_actuator_wall]]) has to be
+revisited for the perception regime, not just GT-FB. This is the same family as open #3
+(terminal lateral authority); the CBF and the funnels are NOT the blocker here.
