@@ -554,3 +554,49 @@ soft, 3/5 precise each**. First working off-center perception-mode landing, ever
    `angle(h,h_d)` 38° not 0); matters more now that landings converge.
 4. `alpha` residual at oblique/overfill (`e_R_yaw` 0.55 not 0) — smaller now, revisit later.
 5. `s_dot_meas` broadband floor — still deprioritised.
+
+### 2026-08-31 — terminal-overfill perception failure, characterized (GT-FB + perception-mode data)
+
+Traced perception `s_V` / moment-loom `h_V[2]` / a hand-computed flow-divergence loom vs
+GT, through the terminal, on 3 bundles:
+- `Multi_IC/20260828-110310/IC_2_rep_1` — **GT-FB**, lands 0.017 m (reaches deck clean).
+- `ICValidation/20260831-144626/IC1_rep2` — perception mode, **PRECISE 0.069 m**.
+- `ICValidation/20260831-144626/IC1_rep1` — perception mode, deck-clean @ 0.06 m then **ASCENT**.
+
+**The moment-loom `h_V[2]` is the single point of failure, and it fails at the
+`MARKER_EXTENT_PX` DE-saturation boundary — not at first overfill.**
+
+- **alt 1.6→0.2 m** (`ext` ramps to 318 = frame_min by ~0.6 m, then pinned): moment-loom
+  is merely BIASED — reads ~−0.3 to −0.4 vs GT ~−0.45 to −0.55 (~30 % under-read), right
+  sign. Survivable: **IC1 rep2 landed PRECISE with exactly this biased loom.** GT-FB IC2's
+  OWN moment-loom is identically pinned (~−0.4 flat, never tracks the terminal
+  acceleration) — it lands 0.017 m *only* because it consumes GT loom, not perception.
+- **alt ~0.18 m**: real `vz` briefly crosses zero (terminal float); GT loom → +0.1..+0.25;
+  both perception looms follow correctly. Not the problem.
+- **alt ~0.35 m, `ext` collapses 318→238→155**: **moment-loom SPIKES +1.1 → +3.6 → +5.6**
+  while GT loom is only +0.6 — an ~8× over-read the instant the arms start leaving the
+  frame edges and the visible area changes fast/discontinuously (`d(ln area)/dt` blows
+  up). z-SMC (already fighting a real +0.7 ascent) sees +5 → slams up-thrust → runaway.
+- Then `ext`→76, LK `npts` 165→27, detection `--`, `s_V` HELD, fly-off to 3–4 m.
+
+**Flow-divergence loom (hand-computed from `Flow Points Prev/Curr Px`, median radial
+expansion rate) is BETTER but not clean:** stays sane through the spike (~+0.75 vs
+moment +5), but under-reads ~3× at altitude (~−0.15 vs GT −0.5), is noisy ±0.3
+frame-to-frame, and also goes garbage once `npts` < ~40. Not a drop-in loom replacement.
+
+**Centroid `s_V` degrades GRACEFULLY** — biased toward 0 below ~0.15 m (line-intersection
+pulled to frame center by clipped arms) but no wild spike until detection fully collapses
+(which the ascent itself triggers). Lateral can coast on last-good `s_e_n` + commit.
+
+**Hand-off design, now data-grounded:**
+- **Trigger:** `MARKER_EXTENT_PX >= frame_min` sustained ~N frames. Fires ~alt 0.6 m,
+  ~1.5 s before the loom spike. Scale-free (frame fraction, no Z).
+- **z-axis:** on trigger, STOP closing the vertical loop on vision (neither moment nor
+  flow-div loom is reliable). Commit a **fixed gentle open-loop descent** (`h_z_d` =
+  small negative const ≈ funnel-floor rate) for the last ~0.3 m — drone is centered
+  (`s_e_n` ~0.05) and ~0.6 m up; ~0.15 m/s lands in ~4 s with no loom feedback. tdV2
+  OVERFILL / FLOW-FREEZE catches touchdown.
+- **lateral:** freeze/commit `s_e_n` (already ~0), let `sigma_xy = zeta_h(h_e)` on
+  measured `h` damp residual drift — the existing `_terminal_commit` machinery.
+- i.e. **at overfill: stop closing the vertical loop on vision; commit descent +
+  flow-damp lateral to touchdown.** Bounded-size fiducial remains the cleaner long-term fix.
