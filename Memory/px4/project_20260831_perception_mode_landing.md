@@ -949,3 +949,59 @@ direction → off-center drift → marker exits frame. Leaked in via `dft` (meas
 **Status: COMMITTED + PUSHED (ebb8093c). SITL re-run NOT yet done** — next step is perception-mode
 IC1-2 headless, then the IC1-5 n=5 gate, to confirm the IC5 fly-off is gone. `CBF_MOUNT_ROT=1`
 available for an A/B if the SITL result is ambiguous.
+
+---
+
+## 2026-09-01 — CBF Rz_p90b fix (ebb8093c) REVERTED — it was a board-wide regression
+
+**Reverted in 4d7bc210.** `git revert ebb8093c`; `cbf_visibility.py` / `cbf_visibility_aruco.py`
+/ `validate_cbf.py` are now byte-identical to the pre-fix state (`Rz_p90b = Rz(+90deg)`
+restored), `validate_cbf.py` back to 12/12. `tools/validate_cbf_frame.py` deleted (it
+encoded the wrong expectation).
+
+**Clean A/B (only variable = ebb8093c; alpha_0 b963e207 + VDS gate 04b324b7 were already
+in the baseline).** Baseline = `test_data/ICValidation/20260831-144626/` (IC1-5 n=5,
+this afternoon). Post-fix = `test_data/Multi_IC/ic5_cbffix_20260831-233034` (IC5 n=5) +
+`ic1to4_cbffix_20260831-235736` (IC1-4 n=1).
+
+| IC | PRE-fix xy_err (m)                     | POST-fix |
+|----|---------------------------------------|----------|
+| IC2| 0.06*, 0.10*, 0.19, 0.10*, 0.11 (5/5) | 11.09 |
+| IC5| 1.64, 0.06*, 0.14, 0.10*, 0.09* (4/5) | 7.68, 1.32, 6.30, 12.21, 5.77 (0/5) |
+| IC3| all <=0.17 (5/5)                      | 0.73 |
+| IC4| all <=0.22 (5/5)                      | 1.56 |
+
+**Mechanism, measured in closed loop on BOTH sides** (angle between CBF-filtered lateral
+cmd `I_a[:2]` and SMC lateral cmd `a_u[:2]`, restricted to `d_min_fov < 1e-6` = marker on
+the FoV-box boundary):
+
+| | % flight at edge | median angle(I_a,a_u) at edge | sign-flip at edge | ctrl dur |
+|--|--|--|--|--|
+| PRE-fix IC5 n=5 | 88-93% | **8-13 deg** | **0.5-6%** | 8-9.5 s -> touchdown |
+| POST-fix IC5 n=5| 100%   | **55-108 deg**| **44-54%**  | 2.7-3.1 s -> marker lost |
+| PRE-fix IC2 n=5 | 38-50% | 15-22 deg     | 3-14%       | 11 s |
+| POST-fix IC2 n=1| 64%    | **122 deg**   | **70%**     | 5.7 s |
+
+**Kills the earlier "IC5 geometry trap" hypothesis:** pre-fix IC5 spends the SAME ~90%
+of its flight at `d_min_fov=0` and lands 0.06-0.09 m. The pre-fix CBF handles that regime
+by design (~10 deg tangential trim of the restoring command). ebb8093c converted that
+into a 55-120 deg rotation / ~50% outright sign reversal of the lateral restoring command
+whenever the marker is at the box boundary = all of IC5 + the terminal phase of every
+off-center IC. Hence the board-wide regression.
+
+**Why validate_cbf.py 13/13 + the isolation test were misleading:** they check the
+`th`-based box-model fidelity in isolation (idealized `R=I`, synthetic `cr2`); the
+deployed joint-QP closed loop was tuned around the old convention. The pre-existing notes
+(aea47440 / c7838ad1: "coupled Rz_p90b/CBF_LW_ROT rework... masked in box math by
+compensating CBF_LW_ROT... validator doesn't test this regime") were correct and should
+have been trusted over the synthetic pass.
+
+**Standing rule reinforced:** a closed-loop controller change (esp. anything feeding the
+joint QP) is NOT validated by synthetic/isolated checks. It needs a SITL A/B against a
+matched baseline before it can be called validated or committed as a fix.
+
+**90 deg convention question: still open, DO NOT retouch** without a coupled
+`Rz_p90b` + `CBF_LW_ROT` + joint-QP rework validated in SITL.
+
+**IC5 perception status: back to the 20260831-144626 baseline** (4/5 <=0.14 m, 3/5
+precise). Re-confirming with IC5 n=2 + IC2 n=2 post-revert.
