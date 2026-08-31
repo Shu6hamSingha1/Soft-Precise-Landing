@@ -865,3 +865,46 @@ increases, and (b) is actually accelerating. (`CBF_HZ_AWARE_DRIFT`, default off,
 `s_e_n` small" (trust the look-ahead only when the loop is otherwise healthy). Root cause
 still upstream (middle κ lets the marker drift there), but `dft` converts a recoverable
 drift into an unrecoverable fly-off.
+
+### 2026-08-31 — CONFIRMED: 90° frame inconsistency between SMC and CBF (Rz_p90b)
+
+The user was right. Validated with clean synthetic tests (level drone, yaw_c=0).
+
+**SMC / `_getVirtualPts` frame:** raw pixel `(x,y)` → `[y,−x]` swap = **`Rz(−90°)`** →
+gravity-leveled V. `s_e_n`, `a_u`, `I_a` all inherit this `Rz(−90°)`-swapped leveled
+frame. The `[y,−x]` swap is validated (marker world-yaw=0; `s_e_n` diverged with the
+`[−y,x]` version).
+
+**CBF centroid `cr2`:** `ct = (x,y)` → `[ct[1], −ct[0]]` = `[y,−x]` = **`Rz(−90°)`** —
+MATCHES the SMC.
+
+**CBF tilt `th` / `th_desired`:** `I_a` → `Rzm` (de-yaw) → `Rz_p90b =
+[[0,−1],[1,0]] =` **`Rz(+90°)`** — OPPOSITE rotational sense to the centroid swap.
+Empirically **`angle(th_desired, −cr2) = 90°` EXACTLY** for every marker offset — the
+CBF's tilt reading of the SMC's restoring `I_a` is 90° off from the direction that
+re-centers the marker.
+
+**Why the validator misses it:** the 90° largely CANCELS inside the box math —
+`CBF_LW_ROT` right-multiplies `L_ω` by `[[0,1],[−1,0]] = Rz(−90°)`, undoing the `Rz(+90°)`
+in `th`, so `Lw2@th` is ~correct (`validate_cbf.py` test 1 = 6.27% near-hover). `test 6
+"conventions"` only checks `Rz(yaw)∘Rz(−yaw)=I`, never `th` vs `cr2`. So with `dft=0` the
+CBF is a clean passthrough of a restoring command (synthetic test: ≤23° rotation even
+with the marker past the edge — that residual is the `(1+x²)` `L_ω` geometry).
+
+**Where the 90° leaks out: `dft`.** `dft = CBF_TAU·d` is measured/added in the `cr2`
+(`Rz(−90°)`) frame; it enters `f = anchor + Lw2@Ia_lat` whose Jacobian carries the
+mismatched-frame `L_ω`, so a `dft`-triggered box violation gets corrected ~90° off.
+Confirmed: rotation scales linearly with `CBF_TAU` (0.0→0°, 0.15→17–34°, 0.3→42–77°).
+Flipping `Rz_p90b`→`Rz(−90°)` roughly halves the rotation for diagonal markers
+(33°→0°, 34°→4° at tau=0.15) — but not axis-aligned (breaks the `Lw2@th` cancellation:
+`Rz(−90°)∘Rz(−90°) = Rz(−180°)` = sign flip on the coupling). So the fix is a COUPLED
+convention rework (`Rz_p90b` + `CBF_LW_ROT` + possibly the `[y,−x]` corner swap in
+lockstep), not a one-line flip, PLUS the `dft` over-aggression cap.
+
+**Net:** genuine 90° SMC↔CBF frame inconsistency in `cbf_visibility.py`'s `Rz_p90b`,
+masked in the box math by a compensating `CBF_LW_ROT` rotation (so validator-clean and
+`dft=0`-clean), surfacing as the `dft`-triggered lateral-command rotation that turns an
+off-center drift into a fly-off. Two coupled fixes needed: (1) make the CBF tilt frame
+consistent with the `Rz(−90°)` `[y,−x]` convention used by `_getVirtualPts`/`cr2`
+(rework `Rz_p90b`+`CBF_LW_ROT` together, re-validate `Lw2` fidelity); (2) cap/rate-limit
+`dft`.
