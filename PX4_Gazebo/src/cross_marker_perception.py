@@ -59,6 +59,28 @@ from gz_subscriber import GZ_Subscriber, Image_Node   # Image_Node is decode-agn
 # frames observed well above this); below it, reject the frame rather than accept a
 # perspective-divide artifact -- see process_frame's centroid plausibility gate.
 Z_V_MIN_CENTROID = float(os.environ.get("CROSS_Z_V_MIN_CENTROID", "0.5"))
+# CENTROID SINGLE-FRAME JUMP-OUTLIER GATE (2026-09-01, moving-platform terminal
+# stall investigation). Once MARKER_EXTENT_PX saturates the frame the Hough/
+# centroid fit emits one-frame outliers (leveled s_x seen jumping 0.16 -> 0.91
+# -> 0.16, recurring ~every 0.3 s). Each one propagates dh_d -> theta_norm ->
+# a_u -> a ~90 deg theta_desired -> the CBF FoV box clips it -> the joint-QP
+# az-cost (CBF_AZ_COST_GAIN) folds ~5 m/s^2 of upward relief into I_a[2] -> the
+# descent stalls (traced on the 2026-09-01 rover_cross perception run). Reject a
+# leveled centroid that jumps more than CROSS_S_JUMP_GATE (normalized V-frame
+# units) from the median of the last few ACCEPTED centroids and treat the frame
+# as a miss -- identical single-frame-miss handling to the z_v-degenerate gate
+# just below (hold-last s/alpha, coast the hw/centroid KFs, try a center-bridge).
+# Bounded by CROSS_S_JUMP_MAX_REJECT consecutive rejects: a genuine sustained
+# move (drone really displaced / marker really off-centre) is NOT a glitch, so
+# after the budget the value is accepted and the history re-seeded. Set
+# CROSS_S_JUMP_GATE huge (e.g. 1e9) to disable.
+# MARKER_EXTENT_PX from the RANSAC-inlier cross-arm pixels instead of the raw
+# color-gate mask bbox (2026-09-01) -- keeps the extent scale stable across
+# detector front-ends (legacy inRange vs CROSS_ADAPT_GATE). 0 = revert to bbox.
+_EXTENT_FROM_LINES = os.environ.get("CROSS_EXTENT_FROM_LINES", "0") == "1"
+CROSS_S_JUMP_GATE       = float(os.environ.get("CROSS_S_JUMP_GATE", "0.35"))
+CROSS_S_JUMP_MAX_REJECT = int(os.environ.get("CROSS_S_JUMP_MAX_REJECT", "2"))
+CROSS_S_JUMP_MIN_HIST   = int(os.environ.get("CROSS_S_JUMP_MIN_HIST", "3"))
 # 2026-08-28: grazing-ray guard for the FLOW-point cloud that feeds h,w (the
 # centroid already has its own Z_V_MIN_CENTROID reject-the-frame gate). A ray
 # with z_v <= 0 is behind/at the virtual camera -- its perspective-divide output
@@ -519,6 +541,9 @@ class CrossMarkerPerception:
 
         # last computed outputs, for the getter interface
         self._s = np.array([0.0, 0.0, 1.0])
+        self._s_recent = deque(maxlen=5)   # last ACCEPTED leveled centroids (x, y) -- feeds the single-frame jump-outlier gate (see CROSS_S_JUMP_GATE)
+        self._s_jump_reject_streak = 0
+        self._diag_s_jump_reject_count = 0
         self._center_px = None   # (2,) raw pixel [cx, cy] of the last successful detection,
                                   # for the visibility CBF (cbf_visibility.cbf2_filter takes
                                   # raw pixels and normalizes internally -- self._s is already
@@ -534,6 +559,7 @@ class CrossMarkerPerception:
         # hold-last-good convention as _s/_alpha -- MARKER_EXTENT_PX returning 0.0 is meant
         # for "never detected yet", not "lost this exact frame".
         self._last_bbox = None
+        self._last_extent_bbox = None   # cross-arm-inlier bbox; feeds MARKER_EXTENT_PX / get_marker_radius_px (see _EXTENT_FROM_LINES)
 
         # CENTER-BRIDGE via KLT (2026-08-23): cross_marker_detector.detect() is a from-scratch
         # Hough-line geometric detector re-run every frame with ZERO temporal memory (color-gate
@@ -1947,11 +1973,64 @@ class CrossMarkerPerception:
             self._diag_lost_streak += 1
             return self.get_output()
 
+        # SINGLE-FRAME CENTROID JUMP-OUTLIER GATE (see CROSS_S_JUMP_GATE comment at
+        # module top). s_xy is already leveled + z_v-plausible here; reject a lone
+        # frame whose centroid leaps away from the recent accepted median, treating
+        # it exactly like the z_v-degenerate single-frame miss above.
+        if len(self._s_recent) >= CROSS_S_JUMP_MIN_HIST:
+            _s_med = np.median(np.asarray(self._s_recent, dtype=float), axis=0)
+            _s_jump = float(np.hypot(s_xy[0] - _s_med[0], s_xy[1] - _s_med[1]))
+            if _s_jump > CROSS_S_JUMP_GATE and self._s_jump_reject_streak < CROSS_S_JUMP_MAX_REJECT:
+                self._s_jump_reject_streak += 1
+                self._diag_s_jump_reject_count += 1
+                self._ok = False
+                self._center_fresh = False
+                # 2026-08-12 LK-continuity rationale (same as the not-det.ok / z_v
+                # branches): keep the flow tracker current, don't resample.
+                self._compute_hw(gray_prev, gray_curr, None, dt, quat_prev=quat_prev, quat_curr=quat_curr,
+                                  angvel_prev=angvel_prev, angvel_curr=angvel_curr)
+                _bridged = self._tryCenterBridge()
+                if _bridged is not None:
+                    self._center_px, self._last_bbox = _bridged
+                    self._center_fresh = True
+                self._stepCentroidKf(t, quat_curr)
+                self._kf_update_hw(None, t)
+                self._diag_lost_streak += 1
+                self._log_frame_data(t, quat_curr, hw_ok=False, det=det)
+                return self.get_output()
+            if _s_jump > CROSS_S_JUMP_GATE:
+                # reject budget spent -> this is a real sustained move, not a
+                # glitch: accept it and re-seed the history so the gate recentres.
+                self._s_recent.clear()
+        self._s_jump_reject_streak = 0
+
         self._center_px = np.array([cx, cy])
         self._center_fresh = True
         if det.mask_bbox is not None:
             self._last_bbox = det.mask_bbox
+        # MARKER_EXTENT_PX / get_marker_radius_px source (2026-09-01). Historically
+        # = max(mask_bbox w,h) -- the raw color-gate blob's bbox. With the adaptive
+        # contrast gate (CROSS_ADAPT_GATE) that blob admits more real edge pixels
+        # than the old near-black inRange, so its bbox runs ~20-30px larger at the
+        # same range, shifting everything downstream that was tuned to the old
+        # scale (touchdown-detect v2 overfill/backstop, terminal commit/handover,
+        # ring-fusion). Take the extent from the RANSAC-inlier cross-arm pixels
+        # (det.line_points_i/j) instead -- that's the span the line fit actually
+        # converged on, front-end-independent. Falls back to mask_bbox when line
+        # points are unavailable. CROSS_EXTENT_FROM_LINES=0 reverts.
+        _ext_bbox = det.mask_bbox
+        if _EXTENT_FROM_LINES:
+            _lp = list(det.line_points_i) + list(det.line_points_j)
+            if det.stub_points is not None:
+                _lp += list(det.stub_points)
+            if len(_lp) >= 4:
+                _lp = np.asarray(_lp, dtype=float)
+                _ext_bbox = (float(_lp[:, 0].min()), float(_lp[:, 1].min()),
+                             float(_lp[:, 0].max() - _lp[:, 0].min()),
+                             float(_lp[:, 1].max() - _lp[:, 1].min()))
+        self._last_extent_bbox = _ext_bbox
         self._s = np.array([s_xy[0], s_xy[1], 1.0])
+        self._s_recent.append((float(s_xy[0]), float(s_xy[1])))
 
         # --- alpha: unweighted moment over REAL detected arm/stub pixels ---
         pts_for_alpha = list(det.line_points_i) + list(det.line_points_j)
@@ -2046,9 +2125,11 @@ class CrossMarkerPerception:
             # invisible to every log in this method, not just this one -- a distinct, pre-existing
             # gap this fail_reason addition does NOT fix (see that branch for the missing call).
             self._fail_reason_log.append("ok" if self._ok else str(getattr(det, "fail_reason", "unknown")))
-            # Marker extent from bbox (scale-free proximity proxy)
-            if self._last_bbox is not None:
-                extent = float(max(self._last_bbox[2], self._last_bbox[3]))  # max(w, h)
+            # Marker extent (scale-free proximity proxy) -- from the cross-arm
+            # inlier bbox when available (front-end-stable), else the mask bbox.
+            _eb = self._last_extent_bbox if self._last_extent_bbox is not None else self._last_bbox
+            if _eb is not None:
+                extent = float(max(_eb[2], _eb[3]))  # max(w, h)
             else:
                 extent = 0.0
             self._marker_extent_log.append(extent)
@@ -2240,7 +2321,8 @@ class CrossMarkerPerception:
         "must stay in frame" requirement on the circle points themselves."""
         if not self._center_fresh or self._last_bbox is None:
             return None
-        return 0.5 * max(self._last_bbox[2], self._last_bbox[3])
+        _eb = self._last_extent_bbox if self._last_extent_bbox is not None else self._last_bbox
+        return 0.5 * max(_eb[2], _eb[3])
 
     def get_bbox_corners(self):
         """4 corner points (4,2) of the last successful color-gated mask bbox, in the
@@ -2612,7 +2694,9 @@ class CrossMarkerNode(Thread):
               f"detect ok {oks.sum()}/{len(oks)} ({100*oks.mean():.0f}%)"
               + (f", fail reasons: {dict(fails)}" if fails else "")
               + (f", bgflow-fallback fires: {self._perception._bgflow_fallback_fires}"
-                 if getattr(self._perception, '_bgflow_fallback_fires', 0) else ""))
+                 if getattr(self._perception, '_bgflow_fallback_fires', 0) else "")
+              + (f", centroid jump-outlier rejects: {self._perception._diag_s_jump_reject_count}"
+                 if getattr(self._perception, '_diag_s_jump_reject_count', 0) else ""))
 
         # 2026-08-31: sub-pixel refine activity (see cross_marker_detector module top).
         _sp = getattr(cmd, "SUBPIX_STATS", None)

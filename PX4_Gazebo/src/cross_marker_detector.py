@@ -53,6 +53,59 @@ DEFAULT_LOWER = np.array([0, 0, 0])
 _COLOR_GATE_V_MAX = int(os.environ.get("CROSS_COLOR_GATE_V_MAX", "100"))
 DEFAULT_UPPER = np.array([180, 255, _COLOR_GATE_V_MAX])  # low-V gate: marker is dark, background is light
 
+# ADAPTIVE CONTRAST GATE (2026-09-01). The fixed absolute-V gate above (inRange
+# V<=100) assumes "dark marker strokes, bright everything else". It breaks
+# whenever global illumination drops (the plate itself falls below the cutoff), a
+# large dark object enters view (landing-platform wall, rover body, deep shadow),
+# or the feed is a flat frame (two-instance camera warm-up on rover_cross: whole
+# frame V~=90 -> the gate returns all 76800 px -> every downstream stage fails).
+# Replace it with CLAHE + adaptiveThreshold, which keys on LOCAL contrast ("dark
+# relative to its neighbourhood") -- illumination-invariant, and ~empty on a
+# uniform region. CLAHE params match tools/validate_bgflow_corr.py's
+# GT-validated _clahe (clip 2.0, tile 8). CROSS_ADAPT_GATE=0 -> legacy inRange.
+_ADAPT_GATE       = os.environ.get("CROSS_ADAPT_GATE", "0") == "1"
+_ADAPT_CLAHE_CLIP = float(os.environ.get("CROSS_ADAPT_CLAHE_CLIP", "2.0"))
+_ADAPT_CLAHE_TILE = int(os.environ.get("CROSS_ADAPT_CLAHE_TILE", "8"))
+_ADAPT_BLOCK      = int(os.environ.get("CROSS_ADAPT_BLOCK", "51"))       # local window (forced odd); > stroke width
+_ADAPT_C          = float(os.environ.get("CROSS_ADAPT_C", "8"))          # bias: higher -> fewer pixels kept
+_ADAPT_V_CEIL     = int(os.environ.get("CROSS_ADAPT_V_CEIL", "255"))     # optional loose absolute sanity bound; 255 = off. Lower (~160) trims bright textured ground from the mask (cheaper Hough) but also eats CLAHE-brightened thin strokes -> hurts far detection; off by default.
+_ADAPT_ERODE      = int(os.environ.get("CROSS_ADAPT_ERODE", "0"))        # optional Nx N erode to kill speckle; 0 = off. Eats thin foreshortened strokes -> off by default.
+_ADAPT_MIN_STD    = float(os.environ.get("CROSS_ADAPT_MIN_STD", "6.0"))  # frame gray-std floor; below -> structureless feed
+_ADAPT_MAX_FILL   = float(os.environ.get("CROSS_ADAPT_MAX_FILL", "0.55"))  # mask fill ceiling; above -> degenerate threshold
+_SEG_CAP          = int(os.environ.get("CROSS_SEG_CAP", "120"))         # keep only the N longest Hough segments (bounds the angle loop + pairwise corner-join)
+
+
+def _adaptive_gate_mask(frame_bgr):
+    """CLAHE + adaptive-threshold marker-stroke mask (see _ADAPT_GATE comment).
+    Returns (mask, reason). reason is None on success, else a short tag the caller
+    maps to a fail_reason:
+      'adapt_lowstd'  -- frame is structureless (dead feed / uniform shadow); no
+                         perception algorithm can recover a marker from it.
+      (no other reason is returned: an over-full adaptive mask is NOT rejected,
+      it falls back to a global Otsu split on the CLAHE image -- still contrast-
+      relative and lighting-robust, but global so it can't speckle.)"""
+    v = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)[:, :, 2]
+    if float(v.std()) < _ADAPT_MIN_STD:
+        return np.zeros(v.shape, np.uint8), 'adapt_lowstd'
+    ve = cv2.createCLAHE(clipLimit=_ADAPT_CLAHE_CLIP,
+                         tileGridSize=(_ADAPT_CLAHE_TILE, _ADAPT_CLAHE_TILE)).apply(v)
+    mask = cv2.adaptiveThreshold(ve, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, _ADAPT_BLOCK | 1, _ADAPT_C)  # dark -> 255
+    if _ADAPT_V_CEIL < 255:
+        mask &= (v < _ADAPT_V_CEIL).astype(np.uint8) * 255
+    if _ADAPT_ERODE > 0:
+        mask = cv2.erode(mask, np.ones((_ADAPT_ERODE, _ADAPT_ERODE), np.uint8))
+    if float(mask.mean()) > _ADAPT_MAX_FILL * 255:
+        # adaptive threshold degenerated (very low local contrast everywhere, e.g.
+        # a small oblique low-contrast marker at an offset IC) -> global Otsu on
+        # the CLAHE image instead of rejecting the frame.
+        _t, mask = cv2.threshold(ve, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        if _ADAPT_V_CEIL < 255:
+            mask &= (v < _ADAPT_V_CEIL).astype(np.uint8) * 255
+        if float(mask.mean()) > _ADAPT_MAX_FILL * 255:
+            return mask, 'adapt_lowstd'   # even Otsu can't split -> genuinely no marker
+    return mask, None
+
 # 2026-08-28: 320x240 OBLIQUE-LOW retune. At a steep off-nadir view + low altitude
 # (IC5 real-perception: ~3m alt, ~2.8m lateral -> ~43deg oblique) one cross diagonal
 # is heavily foreshortened -- short, and its anti-aliased stroke is patchy -- so the
@@ -591,8 +644,17 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     coordinate-offset bookkeeping."""
     if min_line_length is None: min_line_length = HOUGH_MIN_LINE_LEN
     if max_line_gap is None: max_line_gap = HOUGH_MAX_LINE_GAP
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, lower, upper)
+    if _ADAPT_GATE:
+        mask, _adapt_reason = _adaptive_gate_mask(frame_bgr)
+        if _adapt_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({
+                'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                'stage_px': (_pxd, _pxd, _pxd, _pxd, _pxd), 'reason': _adapt_reason,
+            })
+            return CrossMarkerDetection(None, None, False, fail_reason=_adapt_reason)
+    else:
+        mask = cv2.inRange(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV), lower, upper)
     _px_raw = int(np.sum(mask > 0))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     _px_close = int(np.sum(mask > 0))
@@ -654,6 +716,15 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='hough_lt2_lines')
 
     segs = lines[:, 0, :]
+    # SEGMENT CAP (2026-09-01): the adaptive contrast gate admits more real edge
+    # structure (ground texture near the marker) than the old near-black inRange,
+    # which inflates the O(n) angle loop + the pairwise corner-join below. The
+    # cross arms are always among the LONGEST segments; short texture slivers are
+    # not -- keep the longest CROSS_SEG_CAP and bound the cost. Generous default
+    # (a real cross yields <~30 segments); only bites on pathological frames.
+    if len(segs) > _SEG_CAP:
+        _slen = (segs[:, 0] - segs[:, 2]) ** 2 + (segs[:, 1] - segs[:, 3]) ** 2
+        segs = segs[np.argsort(_slen)[::-1][:_SEG_CAP]]
     angles = [_angle_deg(*s) for s in segs]
     # Corner-join shadow filter (2026-08-24) -- see _filter_segments_by_corner_join
     # docstring. Scale the join-gap tolerance to the marker's own bbox so it stays
@@ -1266,8 +1337,18 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
             track_state['miss_count'] = track_state.get('miss_count', 0) + 1
 
     # Full-frame path: first lock, tracked-crop miss this call, or lock presumed stale.
-    det = _detect_core(frame_bgr, lower, upper, min_line_length, max_line_gap,
-                        identify_stub, roi_frac_x=roi_frac_x, roi_frac_y=roi_frac_y)
+    # With the adaptive contrast gate (_ADAPT_GATE), the acquisition path's mask is
+    # denser (more real edges admitted) -> Canny/Hough cost ~1.5x the legacy inRange.
+    # Route it through the same bounded-working-resolution wrapper the tracked-crop
+    # path already uses (line geometry is scale-invariant) so full-frame acquisition
+    # stays comfortably above the 30 Hz process_frame floor. Legacy gate -> exact old
+    # path unchanged.
+    if _ADAPT_GATE:
+        det = _detect_core_capped(frame_bgr, lower, upper, min_line_length, max_line_gap,
+                                  identify_stub, roi_frac_x, roi_frac_y)
+    else:
+        det = _detect_core(frame_bgr, lower, upper, min_line_length, max_line_gap,
+                            identify_stub, roi_frac_x=roi_frac_x, roi_frac_y=roi_frac_y)
     if track_state is not None:
         if det.ok:
             track_state['last_bbox'] = det.mask_bbox
