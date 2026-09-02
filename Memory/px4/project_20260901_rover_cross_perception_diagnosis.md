@@ -134,7 +134,16 @@ The gated moving reps (GT-FB not; perception, Linear @0.47 m/s) descend clean+ce
   / geometry-first discriminant first.
 - **`CROSS_EXTENT_FROM_LINES` (DEFAULT OFF)** — `MARKER_EXTENT_PX` / `get_marker_radius_px`
   from RANSAC cross-arm inliers instead of the mask bbox (front-end-stable scale).
-- **`tools/validate_detector_gt.py`** — offline GT-scored detector harness (analogue of
+- **`_isolate_marker_by_shape` fill-ratio band** (committed `ee858086`, DEFAULT ON) --
+  user-measured root cause of Cluster A's `lt2_angle_clusters`: the selector's
+  `score=-area` kept the largest square-ish component, and a diagonal platform-
+  shadow-bar slice (fill 0.35, aspect 2.6) out-areas the thin cross (fill 0.07) ->
+  cross discarded, 78/128 acquisition frames wrong (= the observed rate; 0/123
+  flat). Now gated on fill `[0.02, 0.25]`. Eval set: flat unchanged, rover_IC4
+  detOK 78->88 % (`lt2_angle_clusters` 102->33), rover_IC2 45->59 %; **clutter
+  unchanged** -- box+shadow+cross MERGE into one component after the Hough dilate
+  (`centroid_mismatch`), separate fix still open.
+- **`tools/validate_detector_gt.py --set` + `test_data/DetectorFrameset/`** — offline GT-scored detector harness (analogue of
   `validate_bgflow_corr.py`): per recorded frame, run a candidate detector, compare
   leveled `det.center` to GT V-frame bearing (`gt_optical_flow.compute_gt_flow`), report
   detOK% + per-altitude-band, centroid-err median-px + within-0.15 hit-rate, top fails.
@@ -151,7 +160,10 @@ The gated moving reps (GT-FB not; perception, Linear @0.47 m/s) descend clean+ce
 
 ## NEXT
 
-1. **Front-end robustness** (the real work, its own multi-session thread): contrast-based,
+1. **Front-end robustness** (real work). The `_isolate_marker_by_shape` fill-band fix
+   (`ee858086`) handles the separate-clutter-component case; still to do: the
+   merged-component case (Hough dilate joins box+shadow+cross -> `centroid_mismatch`),
+   then the contrast-based / polarity-agnostic / stroke-profile front end. Contrast-based,
    polarity-agnostic segmentation + perpendicular-profile stroke validation + geometry-
    first confirm. Validate on `tools/validate_detector_gt.py` across {flat clean, clutter,
    rover_cross} — must-not-regress-clean, fix-the-rest — then n≥5 SITL. Record fresh

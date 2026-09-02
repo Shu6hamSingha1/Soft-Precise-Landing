@@ -36,6 +36,39 @@ detector that lands IC1-5 cleanly on the truly-empty world.** Result: **IC2 detO
 Test world kept as `~/PX4-Autopilot/Tools/simulation/gz/worlds/cross_marker_clutter.sdf`
 (own world name) for developing the fix.
 
+## Refinement 2026-09-02 (user, measured): the FIRST rover_cross break is NOT the gate
+
+The V<=100 gate is fragile (proof above stands), but on `rover_cross` the cross is
+**in the mask on every frame** -- it's lost one stage later, at
+`_isolate_marker_by_shape` (`cross_marker_detector.py`). That selector scored
+`-area` -> kept the LARGEST aspect-passing connected component. Measured over 128
+acquisition frames (alt 4-6 m):
+
+| component            | area     | bbox aspect | fill = area/(bw*bh) |
+|----------------------|----------|-------------|---------------------|
+| cross marker         | 246-416  | 1.02-1.19   | **0.070-0.083**     |
+| platform shadow bar  | 818-1224 | 2.57-2.71   | **0.35-0.375**      |
+
+The shadow bar is diagonal, so its axis-aligned bbox is square-ish (aspect 2.6 <
+`ISOLATE_MAX_ASPECT`=3.2); it then wins on area and the cross is discarded ->
+downstream sees one bar -> `lt2_angle_clusters`. Wrong on **100/128 (78 %)** = the
+observed 78 % `lt2_angle_clusters` rate; **0/123 on flat-clean**. The two fill
+populations are cleanly bimodal, 4x gap, no overlap.
+
+**FIX (committed `ee858086`):** `_isolate_marker_by_shape` restricts the pick to
+fill in `[CROSS_ISOLATE_FILL_LO=0.02, CROSS_ISOLATE_FILL_HI=0.25]` (a thin X vs a
+solid slice), max-area within the band, falls back to the old behaviour if none
+qualify (marker-fills-frame). `CROSS_ISOLATE_FILL_HI=1.0` reverts.
+
+**Eval-set result (`validate_detector_gt.py --set`, `baseline`):** flat IC1/IC2
+unchanged (100 % detOK -- NO regression); **rover_IC4 detOK 78->88 %**
+(`lt2_angle_clusters` 102->33); **rover_IC2 45->59 %**. **clutter IC1 unchanged
+(63 %)** -- a DIFFERENT mechanism there: the solid box (fill ~1, already dropped
+by `_reject_blobby_components`) plus its cast shadow plus the cross MERGE into one
+connected component after the Hough dilate -> `_isolate_marker_by_shape` keeps the
+merged blob -> mixed cross/box line fit -> `centroid_mismatch`. Fix = tighter
+`CROSS_HOUGH_MASK_DILATE_PX` or split merged components. STILL OPEN.
+
 ## The right invariant (user)
 
 > "Relying on black colour is wrong. We can't always guarantee black cross-marker. But
