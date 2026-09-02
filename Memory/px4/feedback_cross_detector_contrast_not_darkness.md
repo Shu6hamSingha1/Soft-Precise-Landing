@@ -130,3 +130,22 @@ detector + one line each here. Score across {flat clean, `cross_marker_clutter`,
 
 Change the SIM marker to a **contrasting non-black colour** (saturated hue, or light-on-
 dark) so development can't silently lean on darkness again.
+
+## ⚠ Before scoring ANY contrast variant on the frameset (2026-09-02)
+
+The recorded frames carry a **debug overlay** (`CROSS_RING_OVERLAY_DBG`, default ON):
+~3-5 % of pixels are drawn flow points. The LIVE detection path is unaffected (the
+overlay is applied to the recording copy only) but **offline replay is contaminated**,
+and it hits contrast-based gates ~20x harder than the legacy dark gate --
+**15.5-20.9 % of the `CROSS_ADAPT_GATE` mask is overlay halo, vs 0.8-3.7 % of the legacy
+mask**. Any gradient/stroke-profile front end will key on it harder still.
+
+Measured, so it is not a reason to dismiss the adapt result: with the overlay inpainted
+away, adapt's within-0.15 STILL sits ~7-8 pts below baseline wherever baseline works
+(flat_IC1 87.6 vs 94.8, flat_IC2 65.1 vs 72.9, rover_IC4 84.8 vs 92.5). **The accuracy
+deficit is real and is the line-pair fitter, exactly as this file's design section says.**
+Overlay removal does shift absolutes ~3-8 pts, so read the numbers above with a ~+/-5 pt band.
+
+**Re-record the eval set with `CROSS_RING_OVERLAY_DBG=0` before the front-end work.**
+Full detail + two more offline-scoring gotchas (post-touchdown ground frames inflating
+detOK; clamped-GT tails on hand-paired dirs): [[feedback_detector_offline_replay_gotchas]].
