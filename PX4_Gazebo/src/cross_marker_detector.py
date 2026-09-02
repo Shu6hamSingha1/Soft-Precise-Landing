@@ -155,6 +155,21 @@ ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  #
 # arms' INLIER-point centroid makes it WORSE (rover 28.5%->11.0%) -- unequal inlier
 # counts / asymmetric spans put that mean systematically off the junction.
 CENTROID_SPAN_RESCUE = os.environ.get("CROSS_CENTROID_SPAN_RESCUE", "0") == "1"
+# Diag: how often the legacy centroid check FAILED (so the rescue was consulted) and
+# how often the rescue then admitted the frame. Reported per-run by CrossMarkerNode.
+SPAN_RESCUE_STATS = {"consulted": 0, "rescued": 0, "consulted_lowalt": 0, "rescued_lowalt": 0}
+# FILL CEILING (2026-09-02, added after the first SITL gate). The rescue is an
+# ACQUISITION fix and must NOT fire at overfill: the legacy tolerance already ramps
+# 0.12 -> 0.72 as the marker fills the frame, precisely because the mask centroid
+# legitimately drifts off the junction there, so a frame failing even that loosened
+# check is badly wrong -- and admitting it at touchdown is where a bad centroid hurts
+# most. Evidence (SITL, this session): flat IC2 n=5, the ONE fly-away (27.8 m,
+# TARGET_LOST) was the ONLY run with overfill rescues (2); its approach was healthy
+# (lateral 2.87->0.11 m, centroid err 2-20 mm) until alt<0.3 m where the error
+# exploded 0.077->0.86 in <1 s. clutter n=5: 13-41 overfill rescues/run and outcomes
+# WORSE than off (median xy ~1.9 -> ~5.6 m, two 12 m fly-aways) despite detOK
+# 5-7% -> 22-73%. Set >= 1.0 to disable the ceiling.
+CENTROID_SPAN_FILL_MAX = float(os.environ.get("CROSS_CENTROID_SPAN_FILL_MAX", "0.6"))
 CENTROID_SPAN_MARGIN = float(os.environ.get("CROSS_CENTROID_SPAN_MARGIN", "0.25"))
 ISOLATE_FILL_LO = float(os.environ.get("CROSS_ISOLATE_FILL_LO", "0.02"))
 ISOLATE_FILL_HI = float(os.environ.get("CROSS_ISOLATE_FILL_HI", "0.25"))
@@ -1005,7 +1020,11 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
             # instead whether the intersection lies ON both fitted arms. Only reached
             # when the legacy check has already failed -> clean scenes are unaffected.
             _rescued = False
-            if CENTROID_SPAN_RESCUE:
+            SPAN_RESCUE_STATS["consulted"] += 1
+            _big = _fill >= CENTROID_SPAN_FILL_MAX   # overfilling -> terminal regime
+            if _big:
+                SPAN_RESCUE_STATS["consulted_lowalt"] += 1
+            if CENTROID_SPAN_RESCUE and not _big:
                 _rescued = True
                 for _p, _ln in ((np.asarray(pts_i, float), line_i),
                                 (np.asarray(pts_j, float), line_j)):
@@ -1021,7 +1040,11 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
                     _mar = CENTROID_SPAN_MARGIN * (_hi - _lo)   # junction may sit near an arm end
                     if not (_lo - _mar <= _tc <= _hi + _mar):
                         _rescued = False
-            if not _rescued:
+            if _rescued:
+                SPAN_RESCUE_STATS["rescued"] += 1
+                if _big:
+                    SPAN_RESCUE_STATS["rescued_lowalt"] += 1
+            else:
                 return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
         margin = 0.25 * max(bw, bh, 1)
         if not (bx - margin <= center[0] <= bx + bw + margin and

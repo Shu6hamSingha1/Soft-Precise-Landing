@@ -2699,6 +2699,13 @@ class CrossMarkerNode(Thread):
                  if getattr(self._perception, '_diag_s_jump_reject_count', 0) else ""))
 
         # 2026-08-31: sub-pixel refine activity (see cross_marker_detector module top).
+        _sr = getattr(cmd, "SPAN_RESCUE_STATS", None)
+        if _sr and _sr.get("consulted"):
+            print(f"[CrossMarkerNode] SPAN RESCUE: legacy centroid check failed "
+                  f"{_sr['consulted']}x -> rescued {_sr['rescued']} "
+                  f"({100*_sr['rescued']/max(_sr['consulted'],1):.0f}%); "
+                  f"of those, OVERFILL(fill>=0.6) consulted {_sr['consulted_lowalt']} "
+                  f"rescued {_sr['rescued_lowalt']}")
         _sp = getattr(cmd, "SUBPIX_STATS", None)
         _cl = getattr(cmd, "CENTERLINE_STATS", None)
         if _sp and (_sp["applied"] or _sp["rej_no_fit"] or _sp["rej_shift"]):
