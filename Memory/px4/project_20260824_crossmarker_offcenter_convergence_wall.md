@@ -8,6 +8,16 @@ metadata:
   modified: 2026-08-24T16:23:38.055Z
 ---
 
+> ⛔⛔ **OBSOLETE MECHANISM (stamped 2026-09-03).** `_dtheta_correction` was REMOVED from
+> `controller.py` in `e110b8a7` (2026-08-31); the descent-rate/lateral-margin trade now lives
+> INSIDE the joint QP as `cbf_visibility.py::CBF_AZ_COST_GAIN` (`controller.py:254`).
+> `grep -c _dtheta_correction src/controller.py` == 0. Anything in this file that diagnoses
+> `_dtheta_correction` or proposes validating `PLASMC_DTHETA_HREF` is testing a mechanism that
+> no longer exists — that env survives (`:247`, default 0) but now gates only the SEPARATE
+> upstream `h_ref_eff` shaping. Findings about CAUSALITY (control destabilises first,
+> perception second) may still hold; the named fixes and next-steps do not. Current mechanism:
+> `CBF_JOINT_QP` (baked default-on) + `CBF_AZ_COST_GAIN`.
+
 Found 2026-08-24 while regression-checking the az-visibility-CBF + CBF_CORNERS_STALE-flicker-fix commits (fe071cc/36318e1/0431eab) on cross-marker. GT-verified per the diagnose-flight-data skill.
 
 **Symptom:** `WORLD=cross_marker MARKER_TYPE=cross`, IC2 (off-center spawn, ENU 2,2,5), perception-mode (no GT-feedback): `xy_err` 2.3-4.0m across every rep tested — essentially missing the target, not a precision shortfall.

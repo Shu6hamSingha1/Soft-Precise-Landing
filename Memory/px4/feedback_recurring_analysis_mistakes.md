@@ -139,6 +139,29 @@ injected block. Memories reflect what was true when written.
 result; pin the control arm by explicit revert env; echo the live constant per arm. **A null
 result is the trigger to re-verify the baseline, not to conclude the mechanism was wrong.**
 
+## 9. Acting on a memory entry a LATER code change killed
+
+Memory is append-mostly: when a mechanism is removed from the code, a NEW entry gets written
+and the OLD one is usually left standing. Read in isolation, the old entry still reads like a
+live instruction.
+
+- **2026-09-03 instance:** `px4/MEMORY.md` line ~284 said *"Next real step: validate
+  `PLASMC_DTHETA_HREF=1` at IC5, n>=5, isolated"* (a verified 2026-08-26 causality finding:
+  dtheta destabilised first, perception degraded second). I recommended exactly that. But
+  `_dtheta_correction` had been REMOVED on 2026-08-31 (`e110b8a7`) and folded into the joint QP
+  as `CBF_AZ_COST_GAIN` — `grep -c _dtheta_correction src/controller.py` == 0. **Both facts were
+  in the same index file**, the newer one 277 lines above the older, and only the newer said so.
+  The user caught it. (Same session, same shape: `p_s`/`ζ_s` cited as live when the design had
+  moved authority into `ζ_r`; `PRINF` questioned when the code comment says it is inert by design.)
+
+**CHECK:** before acting on any memory recommendation naming a symbol, `grep` that symbol in the
+source FIRST. If it is gone or default-off for a different reason, the entry is stale.
+
+**AND WHEN YOU FIND ONE: stamp the OLD entry, don't just add a new one.** An unstamped superseded
+entry will produce the same wrong recommendation for the next session. Historical findings
+(causality, mechanism) can stay valuable while the named fix and next-step are dead — say which
+is which in the stamp.
+
 ## Also worth screening for
 
 - 2026-09-02: the recorded `_raw`/frames PNGs carry a **drawn debug overlay**

@@ -281,8 +281,23 @@
 > (`PLASMC_DTHETA_HREF=1`, breaks the `th_curr` self-defeating feedback loop that lets the
 > correction sustain instead of settle) already exists in `controller.py` but defaults OFF
 > pending its own n>=5 validation — every sweep in this whole investigation ran with the
-> actual root-cause fix disabled. **Next real step: validate `PLASMC_DTHETA_HREF=1` at IC5,
-> n>=5, isolated** — not further perception hardening. Full trace:
+> actual root-cause fix disabled. ~~**Next real step: validate `PLASMC_DTHETA_HREF=1` at IC5,
+> n>=5, isolated**~~ ⛔⛔ **THIS NEXT-STEP IS OBSOLETE (stamped 2026-09-03).** `_dtheta_correction`
+> was REMOVED from `controller.py` in `e110b8a7` (2026-08-31) — the descent-rate/lateral-margin
+> trade now lives INSIDE the joint QP as `cbf_visibility.py::CBF_AZ_COST_GAIN` (see
+> `controller.py:254`, and the ⭐⭐ 2026-08-31→09-01 banner at the top of this file).
+> `grep -c _dtheta_correction src/controller.py` == 0. So the mechanism this whole entry
+> diagnoses NO LONGER EXISTS, and validating `PLASMC_DTHETA_HREF` would not test it:
+> that env still exists (`:247`, default 0) but `:255` says it now gates only the SEPARATE
+> upstream `h_ref_eff` shaping. **The causality FINDING below is still historically valuable
+> (control destabilised first, perception degraded second — verified, not assumed), but the
+> named fix and next-step are dead. Current mechanism = `CBF_JOINT_QP` (baked default-on) +
+> `CBF_AZ_COST_GAIN`; the open cheap test there is a `CBF_AZ_COST_GAIN=0` A/B
+> ([[project_20260901_rover_cross_perception_diagnosis]]).**
+> ⚠ META: this entry and the 08-31 banner BOTH sit in this file, the newer one supersedes the
+> older, and until now only the newer said so — reading this entry in isolation produced a
+> concrete wrong recommendation on 2026-09-03. **When a code change kills a mechanism, stamp
+> the OLD entry, don't just add a new one.** Full trace:
 > [[project_20260824_ic5_angle_clustering_and_hang_investigation]] (top section).
 >
 > **⭐⭐⭐ 2026-08-26 — IC5 angle-clustering finding (the downstream-symptom half of the

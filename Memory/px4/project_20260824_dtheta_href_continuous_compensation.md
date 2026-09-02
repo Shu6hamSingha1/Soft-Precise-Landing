@@ -8,6 +8,16 @@ metadata:
   originSessionId: 0f9c8dc0-a837-4722-95e7-0ea102167469
 ---
 
+> ⛔⛔ **OBSOLETE MECHANISM (stamped 2026-09-03).** `_dtheta_correction` was REMOVED from
+> `controller.py` in `e110b8a7` (2026-08-31); the descent-rate/lateral-margin trade now lives
+> INSIDE the joint QP as `cbf_visibility.py::CBF_AZ_COST_GAIN` (`controller.py:254`).
+> `grep -c _dtheta_correction src/controller.py` == 0. Anything in this file that diagnoses
+> `_dtheta_correction` or proposes validating `PLASMC_DTHETA_HREF` is testing a mechanism that
+> no longer exists — that env survives (`:247`, default 0) but now gates only the SEPARATE
+> upstream `h_ref_eff` shaping. Findings about CAUSALITY (control destabilises first,
+> perception second) may still hold; the named fixes and next-steps do not. Current mechanism:
+> `CBF_JOINT_QP` (baked default-on) + `CBF_AZ_COST_GAIN`.
+
 Same-day follow-up to [[project_20260824_dtheta_az_filter_self_defeating_feedback]], per user design discussion: (1) the direct `I_a[2]` `dtheta` correction is instantaneous but is exactly the mechanism carrying the self-defeating attitude-history loop (applied AFTER `cbf2_filter`, invisible to that cycle's QP solve); (2) gating `h_ref` (the descent reference `_h_ref = -0.30`) instead acts UPSTREAM of `cbf2_filter` -- same-cycle coherent, avoids the one-cycle-blind-spot -- but is SLOW to bite (propagates through the kappa-SMC + the `tau_ia=0.08s` LPF, ~0.08-0.3s / several cycles before it shows up in real `I_a`); (3) user asked to combine both (direct term bridges the lag, `h_ref` gate takes over as it ramps in) with the direct term crossfaded down over time so the two channels don't both run at full strength forever; (4) user asked for the `h_ref` compensation itself to be a SMOOTH CONTINUOUS function of `dtheta`, not the existing `_descent_gate`'s stepped/thresholded (`slo`/`shi` plateau) shape.
 
 ## Implementation (`controller.py`)
