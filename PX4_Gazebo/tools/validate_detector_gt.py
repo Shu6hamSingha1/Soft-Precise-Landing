@@ -22,6 +22,11 @@ etc. at import; the harness reloads the module per variant). For a code-level
 variant, gate it behind a new env flag in cross_marker_detector.py and add it here.
 
 USAGE
+  # curated eval set (each <tag>/ holds Ground_Truth.npy + Img_Data.npy +
+  # Img_Params.txt + frames/f*.png -- see test_data/DetectorFrameset/MANIFEST.md):
+  python3 tools/validate_detector_gt.py --set test_data/DetectorFrameset --all
+
+  # ad-hoc pair(s):
   python3 tools/validate_detector_gt.py RUN[,RUN...] --frames RAW[,RAW...] [--variant N | --all] [--label TAG]
     RUN  = a Landing_Test/<ts> dir (Ground_Truth.npy + Img_Data.npy + Img_Params.txt)
     RAW  = its matching Test_Videos/<ts>_raw dir of f*.png   (paired positionally with RUN)
@@ -141,15 +146,25 @@ def _agg(rows, focal):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("runs", help="comma-separated Landing_Test/<ts> dirs")
-    ap.add_argument("--frames", required=True, help="comma-separated matching <ts>_raw dirs")
+    ap.add_argument("runs", nargs="?", default=None, help="comma-separated Landing_Test/<ts> dirs")
+    ap.add_argument("--frames", default=None, help="comma-separated matching <ts>_raw dirs")
+    ap.add_argument("--set", dest="setdir", default=None,
+                    help="curated frameset dir; each subdir holds *.npy + Img_Params.txt + frames/")
     ap.add_argument("--variant", default=None, choices=list(VARIANTS))
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--label", default="")
     args = ap.parse_args()
 
-    runs = [r.strip() for r in args.runs.split(",")]
-    raws = [r.strip() for r in args.frames.split(",")]
+    if args.setdir:
+        subs = sorted(d for d in glob.glob(os.path.join(args.setdir, "*"))
+                      if os.path.isdir(os.path.join(d, "frames"))
+                      and os.path.isfile(os.path.join(d, "Ground_Truth.npy")))
+        runs = subs
+        raws = [os.path.join(d, "frames") for d in subs]
+    else:
+        assert args.runs and args.frames, "give --set DIR, or RUNS + --frames"
+        runs = [r.strip() for r in args.runs.split(",")]
+        raws = [r.strip() for r in args.frames.split(",")]
     assert len(runs) == len(raws), "runs and --frames must pair 1:1"
     names = [args.variant] if args.variant else (list(VARIANTS) if args.all else ["baseline"])
 

@@ -78,3 +78,8 @@ PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/*
 MATLAB/Datasets/Phase1/done.flag
 .edit_backups/
 PX4_Gazebo/test_data/Obsolete_ArUco_Montages/*.mp4
+
+# DetectorFrameset: curated detector-robustness eval set -- bulk npy+frames
+# ignored (regenerable, ~230MB), only the manifest is tracked.
+PX4_Gazebo/test_data/DetectorFrameset/**
+!PX4_Gazebo/test_data/DetectorFrameset/MANIFEST.md
