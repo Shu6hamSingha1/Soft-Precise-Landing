@@ -70,6 +70,19 @@ So the front end must be:
   FLOW-point path — the DETECTOR gate was explicitly left as future work
   ([[project_20260827_framerate_and_h_texture_investigation]]).
 
+## Curated eval set (2026-09-02)
+
+`test_data/DetectorFrameset/` (gitignored data + tracked `MANIFEST.md`) -- 6 IMG_RECORD
+paired sets: flat IC1/IC2 (100% baseline detOK, MUST-NOT-REGRESS), cross_marker_clutter
+IC1/IC2 (one dark box near marker -> baseline 63%), rover_cross IC2/IC4. Run:
+`validate_detector_gt.py --set test_data/DetectorFrameset --all`.
+
+**Baseline vs `adapt` (2026-09-02):** adapt lifts detOK where baseline fails (clutter
+63->94%, rover_IC2 45->86%), detection-neutral where baseline works (flat, rover_IC4),
+BUT drops within-0.15 centroid hit-rate ~15-20 pts in EVERY scenario incl. clean flat
+(80->66%). Tuning C/block doesn't fix it. => the next variant (gradient / stroke_profile)
+must keep the detection recovery AND restore accuracy.
+
 ## The harness (built this session)
 
 `tools/validate_detector_gt.py` — GT-scored, offline, per recorded frame: run a candidate
