@@ -160,6 +160,10 @@ with the median centroid error flat-to-better. The gate validates the fitted int
 against the MASK PIXEL CENTROID, which merged platform structure corrupts.
 
 So the stroke-profile / contrast work in this file is still right for segmentation, but the
-cheapest available win is fixing what the intersection is validated AGAINST -- proposed:
-the inlier line points of the two fitted arms. Full data:
+cheapest available win is fixing what the intersection is validated AGAINST. **LANDED
+`f49f567f` as `CROSS_CENTROID_SPAN_RESCUE` (DEFAULT OFF, pending a SITL gate):** legacy check
+first, and only on failure ask whether the intersection lies ON both fitted arms' inlier spans
+-- rover_IC2 28.5->94.8 %, clutter_IC2 50->87.7 %, flat bit-identical. ⛔ The obvious-looking
+alternative (validate against the arms' inlier CENTROID) was tried and is WORSE
+(rover 28.5->11.0 %): unequal inlier counts put that mean off the junction. Full data:
 [[project_20260901_rover_cross_perception_diagnosis]].

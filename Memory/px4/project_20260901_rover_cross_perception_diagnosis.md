@@ -167,9 +167,36 @@ This is why neither existing fix helps: the `_isolate_marker_by_shape` fill band
 and the compact-blob strip both key on the contaminant being a separate, COMPACT component.
 On `rover_cross` it is an **elongated bar (aspect 3.9-5.1)** fused to the cross.
 
-**PROPOSED FIX (untested at time of writing):** validate the intersection against the
-**INLIER LINE POINTS of the two fitted arms**, not against all mask pixels -- contamination-
-immune by construction. Score on {flat, clutter, rover} with the same harness.
+### FIX PROTOTYPED + LANDED `f49f567f` -- `CROSS_CENTROID_SPAN_RESCUE` (DEFAULT OFF)
+
+Four variants scored on DetectorFrameset (descent band alt > 1 m, ground frames excluded):
+
+| variant | rover_IC2 | clutter_IC2 | flat_IC2 |
+|---|---|---|---|
+| A legacy (baseline) | 28.5 % | 50.0 % | 100 % |
+| **B vs the two arms' INLIER-point centroid** | **11.0 %** ⛔ | 47.1 % ⛔ | 100 % |
+| C span test REPLACING legacy | 87.2 % | 76.6 % | **92.9 %** ⛔ regresses clean |
+| **D legacy OR span-rescue  <- LANDED** | **94.8 %** | **87.7 %** | **100 %** ✅ |
+| (plain disable, reference) | 95.9 % | 97.5 % | 100 % |
+
+**⛔ B was my predicted fix and it FAILED** -- more than halving rover detection. The two arms
+have unequal inlier counts and asymmetric spans, so their pooled mean sits *systematically*
+off the junction: a biased reference, not merely a cleaner one. High precision (survivors 100 %
+within-0.15), terrible recall. **Do not re-try it.**
+
+**D is what shipped:** keep the legacy check as the FAST PATH; only when it fails, ask
+"does the intersection project INSIDE both fitted arms' own inlier spans?" Clean scenes pass
+legacy and never reach the rescue -> cannot regress (verified: flat_IC2 bit-identical, and with
+the flag OFF the whole eval set reproduces legacy exactly). Median centroid error also improves
+(rover 0.065->0.054, clutter 0.304->0.034).
+
+**⚠ DEFAULT OFF -- it buys RECALL, not accuracy.** rover within-0.15 drops 95.9 % -> 75.9 %.
+Per 100 descent frames: ~27 good/~1 bad -> ~72 good/~23 bad. Against a **0 % live baseline**
+that is very likely the better trade, but it is a SITL question, and `CROSS_S_JUMP_GATE`
+(default on) is the outlier defence that must absorb the bad ones. Note plain disabling still
+beats D on clutter (97.5 vs 87.7); D's advantage is being principled and provably inert on
+clean scenes rather than removing a safety check wholesale. **NEXT: n>=5 SITL gate on
+`rover_cross` IC2/IC5 with `CROSS_CENTROID_SPAN_RESCUE=1`.**
 
 ### ⛔ Corrections to earlier statements in this same session
 
