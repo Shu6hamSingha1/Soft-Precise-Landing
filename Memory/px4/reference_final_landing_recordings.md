@@ -34,6 +34,19 @@ perception feedback (NO `PLASMC_GT_FEEDBACK`), `MARKER_TYPE=cross`,
 | IC4 | 2,2,7   | 0.113 m | 0.394 | No  | Landing_Test/`Mon Aug 31 19-18-26 2026` |
 | IC5 | 2,2,3   | 0.058 m | 0.505 | **Yes** | Landing_Test/`Tue Sep  1 08-44-32 2026` (re-recorded 2026-09-01) |
 
+**⛔ CORRECTION 2026-09-02 — IC5's "PRECISE 0.058 m" is NOT a verified landing.** Its
+dataset ends with the drone at **0.422 m above the marker plane, still descending
+(-0.065 m/s)**, `B_T` collapsed to +0.030 (IC2 at the same point: -1.197), `MARKER_EXTENT_PX`
+saturated at 318 — the terminal-overfill signature. All five GT logs stop 4.4-4.8 s before
+their control logs (post-touchdown tail), so GT end = the touchdown latch; IC1-4 latch at
+0.04-0.14 m moving UPWARD (post-contact bounce), IC5 latched 0.42 m up mid-descent. The
+`precise` flag is computed on that mid-air sample. **Final is 1/5 verified precise (IC2), not
+2/5** — and IC5's "attempt 8/8 landed precise" selection was made on the same unguarded
+metric. Also: IC4's initial ENU is off spec by **0.276 m** (1.751,1.882,7.014 vs 2,2,7),
+outside the "<=0.25 m" pairing bound claimed below. Everything else verifies clean (all 5
+SoftPrecise values match MANIFEST exactly; 25/25 videos decode; 56 files tracked).
+See [[project_20260902_archive_rescore_false_precise]].
+
 **Caveats:**
 - IC1/IC3/IC4 are misses (rel_vel / xy over gate) — they are `IMG_RECORD=1` runs and
   IMG_RECORD perturbs touchdown (only ~2/16 precise across two recording batches; the
