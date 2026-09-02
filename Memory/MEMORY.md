@@ -16,6 +16,7 @@
 > stamped in the files). Live truth: `px4/MEMORY.md` top banner.
 
 ## Hard rules & cross-cutting methodology
+- [⚠ PRE-FLIGHT CHECKLIST — analysis mistakes Claude repeats here](px4/feedback_recurring_analysis_mistakes.md) — run the checks BEFORE concluding: log↔log time alignment; confirm pairings by mtime, not names; rover `uav.z−target.z≈0.49` MEANS LANDED; a catch rate needs its false-positive rate and a log line its base rate; re-check the baseline (concurrent sessions). ~85/200 memories are corrections — recording a trap does NOT prevent repeating it.
 - [Always use default params](feedback_use_defaults.md) — ask before any non-default env var; stale comments (e.g. REF_RAD=-0.70) may not apply under current cal
 - [Sim platform: MATLAB done, PX4/Gazebo active](project_simulation_platform.md) — disambiguate "the simulation" between the two
 - [Dual-platform development](user_platform.md) — user works from Ubuntu AND Windows; verify live env before assuming paths
