@@ -64,3 +64,58 @@ colour, and the last one made clutter flight WORSE
 
 **Build the eval set BEFORE the front end.** Otherwise there is no way to tell a robustness gain
 from a scene-specific fit.
+
+## ✅ EVAL SET BUILT + BASELINED 2026-09-03 — and it RESHAPES the target
+
+`test_data/RobustnessFrameset/` (7 variants, 2743 frames, IC2, flat `cross_marker` geometry;
+bulk gitignored, `MANIFEST.md` tracked). Assets: `tools/make_robustness_eval_assets.py`;
+recording: `test_data/Rover_AB_harness/record_robustness_set.sh`. Recorded under
+**`PLASMC_GT_FEEDBACK=1`** (the detector under test must NOT gate the flight, else the blind
+variants never take off — and every variant gets the SAME trajectory so scores compare across
+scenes) and **`CROSS_RING_OVERLAY_DBG=0`** (verified 0.00 % drawn pixels).
+
+**Baseline, current detector @ `a53a5f63`:**
+
+| variant | detOK | err med | within-0.15 | |
+|---|---|---|---|---|
+| base | 100.0 % | 0.019 | 78 % | reference |
+| dim (sun 0.30) | 100.0 % | 0.017 | 81 % | robust |
+| bright (sun 2.50) | 96.0 % | 0.013 | 96 % | robust |
+| lowsun (grazing) | 100.0 % | 0.014 | 97 % | robust |
+| darkbg (0.18) | 99.7 % | 0.017 | 76 % | robust |
+| **col** (chromatic, iso-V 150/150) | **66.5 %** | 0.013 | 83 % | 95 % @4-6 m -> **5 % @0.7-1.3 m** |
+| **inv** (polarity flip) | 82.3 % | **0.399 = 53.9 px** | **23 %** | **CONFIDENTLY WRONG** |
+
+### ⭐ LIGHTING IS NOT THE WEAKNESS — this was NOT predicted
+
+An 8x sun-intensity range (0.30-2.50), a grazing sun and a dark background all hold 96-100 %
+detOK with accuracy EQUAL TO OR BETTER THAN base. The "different lighting conditions" half of
+the requirement is, on this evidence, **already met**. Do not spend effort there without new
+evidence. (I expected `inRange(V<=100)` to break under dim light; it does not — Gazebo's
+auto-exposed render keeps plate/cross V separation roughly intact across intensity.)
+
+### ⭐ COLOUR IS THE WEAKNESS — in two DIFFERENT ways
+
+Measured on the textures alone, before any flight, what the legacy gate retains:
+base 5.2 % (the cross) / **inv 94.8 % (the PLATE)** / **col 0.0 % (empty)**.
+
+1. **`inv` (polarity) is the DANGEROUS one — high detOK, wrong answers.** 82.3 % detOK but
+   53.9 px centroid error and only 23 % usable. The detector is NOT failing; it is
+   confidently returning WRONG centroids, because the gate keeps the whole plate and Hough
+   fits PLATE EDGES instead of cross strokes. **A detector that reports garbage confidently is
+   worse than one that reports nothing** — the same lesson
+   [[project_20260902_spanrescue_sitl_gate]] reached from the opposite direction.
+2. **`col` degrades with RANGE**, 95 % -> 5 % as the marker fills the frame: the V gate keeps
+   0 % by construction, so every detection comes from the ROI/shape fallback, which loses the
+   marker up close.
+
+### PASS CRITERIA for the front-end work (use these, not detOK)
+
+- **`inv` within-0.15 must rise from 23 %** — hard pass/fail, the confidently-wrong case.
+- **`col` 0.7-1.3 m band must rise from 5 %** — graded.
+- **base/dim/bright/lowsun/darkbg must NOT regress.**
+- Score on **within-0.15 AND flight outcome**, never detOK alone.
+
+⚠ n=1 per variant, single IC/trajectory, SYNTHETIC textures (`col` is an adversarial
+construction, not a photo of a real marker). Direction-of-effect only. Bulk is gitignored so
+the set is NOT reproducible from git alone — regenerate + re-record if lost.
