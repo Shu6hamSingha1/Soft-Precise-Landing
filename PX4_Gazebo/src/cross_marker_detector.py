@@ -131,6 +131,31 @@ ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  #
 # take max area within it; fall back to the old behaviour if none qualify (the
 # marker-fills-frame regime, where the cross's own fill climbs as arms clip the
 # edges). CROSS_ISOLATE_FILL_HI huge (e.g. 1.0) reverts.
+# CENTROID-GATE SPAN RESCUE (2026-09-02, DEFAULT OFF -- needs a SITL gate).
+# `centroid_mismatch` validates the fitted intersection against the MASK PIXEL
+# CENTROID. When foreign structure merges into the SAME connected component (the
+# rover_cross platform edge fuses to a cross arm) that centroid is dragged off the
+# junction: the FIT is right, the REFERENCE is contaminated. Measured on the 9
+# static-offset perception rover_cross runs: the detector returns ZERO detections
+# from 5 m down to 1 m and `centroid_mismatch` is 79% of all failures (1298/~1640),
+# so the controller flies open-loop the whole descent.
+# This rescue keeps the legacy check as the FAST PATH and, only when it fails, asks a
+# contamination-immune question instead: does the intersection project INSIDE both
+# fitted arms' own inlier spans? Clean scenes pass legacy and never reach the rescue,
+# so they cannot regress -- verified bit-identical on flat_IC2.
+# Offline eval (DetectorFrameset, descent band alt>1 m), detOK:
+#   flat_IC2   100%  -> 100%   (identical; err 0.012, within-0.15 100%)
+#   rover_IC2  28.5% -> 94.8%  (err med 0.065->0.054)
+#   clutter_IC2 50%  -> 87.7%  (err med 0.304->0.034)
+# ⚠ It buys RECALL, not accuracy: rover within-0.15 drops 95.9%->75.9%. Per 100
+# descent frames that is ~27 good/~1 bad -> ~72 good/~23 bad. Against a 0% live
+# baseline that is very likely the better trade, but it is a SITL question --
+# CROSS_S_JUMP_GATE (default on) is the outlier defence that must absorb the bad ones.
+# ⛔ REJECTED alternative, do not re-try: replacing the mask centroid with the two
+# arms' INLIER-point centroid makes it WORSE (rover 28.5%->11.0%) -- unequal inlier
+# counts / asymmetric spans put that mean systematically off the junction.
+CENTROID_SPAN_RESCUE = os.environ.get("CROSS_CENTROID_SPAN_RESCUE", "0") == "1"
+CENTROID_SPAN_MARGIN = float(os.environ.get("CROSS_CENTROID_SPAN_MARGIN", "0.25"))
 ISOLATE_FILL_LO = float(os.environ.get("CROSS_ISOLATE_FILL_LO", "0.02"))
 ISOLATE_FILL_HI = float(os.environ.get("CROSS_ISOLATE_FILL_HI", "0.25"))
 ANGLE_MERGE_TOL_DEG = float(os.environ.get("CROSS_ANGLE_MERGE_TOL_DEG", "12.0"))
@@ -975,7 +1000,29 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         _centroid_tol_frac = 0.12 + 0.60 * float(np.clip((_fill - 0.6) / 0.4, 0.0, 1.0))
         max_centroid_err = _centroid_tol_frac * max(bw, bh, 1)
         if centroid_err > max_centroid_err:
-            return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
+            # SPAN RESCUE (see CENTROID_SPAN_RESCUE at module top): the mask centroid
+            # can be contaminated by structure fused into the same component, so ask
+            # instead whether the intersection lies ON both fitted arms. Only reached
+            # when the legacy check has already failed -> clean scenes are unaffected.
+            _rescued = False
+            if CENTROID_SPAN_RESCUE:
+                _rescued = True
+                for _p, _ln in ((np.asarray(pts_i, float), line_i),
+                                (np.asarray(pts_j, float), line_j)):
+                    _v = np.array([_ln[0], _ln[1]], float)
+                    _nv = float(np.linalg.norm(_v))
+                    if _nv < 1e-9 or len(_p) < 4:
+                        continue          # too few points to bound a span; don't veto on it
+                    _v = _v / _nv
+                    _mu = _p.mean(axis=0)
+                    _t = (_p - _mu) @ _v
+                    _tc = float((np.asarray(center, float) - _mu) @ _v)
+                    _lo, _hi = float(_t.min()), float(_t.max())
+                    _mar = CENTROID_SPAN_MARGIN * (_hi - _lo)   # junction may sit near an arm end
+                    if not (_lo - _mar <= _tc <= _hi + _mar):
+                        _rescued = False
+            if not _rescued:
+                return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
         margin = 0.25 * max(bw, bh, 1)
         if not (bx - margin <= center[0] <= bx + bw + margin and
                 by - margin <= center[1] <= by + bh + margin):
