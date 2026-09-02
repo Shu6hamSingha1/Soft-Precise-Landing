@@ -27,7 +27,10 @@ directly above the marker (`xy_err`~0 at t=0, 21 runs), and (b) a GT log that st
 mid-descent scores its last airborne sample as a touchdown (138 runs, 112 still descending,
 median last altitude 0.486 m). Concentrated in two eras (Jul 19-23, Aug 22-24); the Aug 28-31
 headline gates are clean. `test_data/Final/IC5` is the published example — "PRECISE 0.058 m"
-scored at 0.422 m altitude. Full audit, per-dataset impact and the fix:
-[[project_20260902_archive_rescore_false_precise]].
+scored at 0.422 m altitude. **FIXED `d6610ea7`** — `landing_test.py` now gates precise/soft
+on a verified terminal state (lowest altitude above the LANDING SURFACE <= 0.20 m, surface
+from `PLASMC_GT_MARKER_DZ`) and records `not_landed_reason`; `tools/rescore_softprecise.py`
+re-scores archived runs non-destructively. Full audit, per-dataset impact, the rejected
+candidates and what is still open: [[project_20260902_archive_rescore_false_precise]].
 
 **How to apply:** before trusting any SP, sanity-check its trajectory — did the drone actually **descend** (min alt → ~0)? Is `xy_err` a **physical** number (~0.02–0.06 m), not ~1e-21? Is the GT pose **non-frozen** (position std > 0 over the flight) and not origin-reset (`|final xy| > 1e-6`)? A scan over `Ground_Truth.npy` `UAV Pose` flags these.
