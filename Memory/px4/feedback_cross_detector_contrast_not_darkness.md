@@ -149,3 +149,17 @@ Overlay removal does shift absolutes ~3-8 pts, so read the numbers above with a 
 **Re-record the eval set with `CROSS_RING_OVERLAY_DBG=0` before the front-end work.**
 Full detail + two more offline-scoring gotchas (post-touchdown ground frames inflating
 detOK; clamped-GT tails on hand-paired dirs): [[feedback_detector_offline_replay_gotchas]].
+
+## ⭐ The dominant failure is a GATE, not the segmentation (2026-09-02)
+
+On `rover_cross` the front end is not mainly failing to FIND the cross -- it is finding it and
+then rejecting it. `centroid_mismatch` is **79 % of all failures** across the 9 static-offset
+perception runs, which detect at **0.0 % from 5 m down to 1 m** (live `Detection Status`).
+Disabling only that gate: rover_IC2 28.5 -> 95.9 %, clutter_IC2 50 -> 97.5 %, flat unchanged,
+with the median centroid error flat-to-better. The gate validates the fitted intersection
+against the MASK PIXEL CENTROID, which merged platform structure corrupts.
+
+So the stroke-profile / contrast work in this file is still right for segmentation, but the
+cheapest available win is fixing what the intersection is validated AGAINST -- proposed:
+the inlier line points of the two fitted arms. Full data:
+[[project_20260901_rover_cross_perception_diagnosis]].

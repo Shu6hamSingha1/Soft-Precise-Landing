@@ -115,6 +115,75 @@ at -0.32 m/s with `B_T=-0.36`, terminated by `Impact detected (|a|=65.6)` and sc
 It is simply not the run the montage was built from. **So GT-FB static rover_cross is 3 of 3
 genuine landings, not 2 of 3.**
 
+## ⭐⭐ CLUSTER A ROOT CAUSE FOUND (2026-09-02): `centroid_mismatch` is 79 % of all failures
+
+Traced the 9 STATIC + OFFSET perception-mode `rover_cross` runs (Sep 1-2, the "blind dive"
+class) using the LIVE per-frame `Img_Data['Detection Status'] / ['Fail Reason']` — what the
+pipeline actually produced, not an offline re-detection.
+
+**The detector produces ZERO detections through the entire descent:**
+
+| height above pad | frames | detOK |
+|---|---|---|
+| 3-5 m | 981 | **0.0 %** |
+| 2-3 m | 365 | **0.0 %** |
+| 1-2 m | 154 | **0.0 %** |
+| 0-1 m | 107 | 13.1 % |
+| below pad (on ground) | 256 | 55.5 % |
+
+`FEATURE_IS_VISIBLE` tracks detOK exactly, so **the controller flies OPEN-LOOP the whole way
+down**. That is why lateral never closes (2.9 -> 2.3 m) and the drone drops at 0.8-1.5 m/s
+onto the ground BESIDE the pad. All 9 are honest `target_lost=True` aborts.
+
+**Fail-reason histogram (pooled):** `centroid_mismatch` **1298**, `insufficient_fit_points`
+219, `near_parallel_fit` 54, `lt2_angle_clusters` 20. One gate is 79 % of the problem.
+
+### The gate is rejecting mostly-GOOD fits
+
+Disabling ONLY the `centroid_mismatch` rejection (scratch copy of the module, descent band
+alt > 1 m, ground frames excluded):
+
+| set | detOK normal -> disabled | err med | within-0.15 |
+|---|---|---|---|
+| `rover_IC2` | **28.5 % -> 95.9 %** | 0.065 -> 0.055 | 95.9 % -> 76.2 % |
+| `clutter_IC2` | **50.0 % -> 97.5 %** | 0.304 -> **0.034** | 46.7 % -> 59.7 % |
+| `flat_IC2` | 100 % -> 100 % | 0.012 (identical) | 100 % -> 100 % |
+
+- Detection triples while the MEDIAN centroid error barely moves (rover 0.065 -> 0.055) --
+  the line fits underneath were fine; the gate threw them away.
+- **Inert on clean scenes** (flat bit-identical) -- must-not-regress-clean holds.
+- ⚠ **NOT free:** rover within-0.15 drops 95.9 -> 76.2 %, so ~24 % of recovered detections are
+  >0.15 off. Do NOT simply disable the gate. But 0 % availability is worse than 76 % accuracy,
+  because 0 % means open-loop.
+
+### Mechanism, and why the two committed fixes miss it
+
+`_detect_core` checks the fitted line intersection against the **MASK PIXEL CENTROID**
+(`xs.mean(), ys.mean()`, tolerance `0.12 * max(bw,bh)` at small fill). When platform structure
+merges into the SAME connected component, that centroid is dragged off the junction -- the fit
+is right, the REFERENCE it is checked against is contaminated.
+
+This is why neither existing fix helps: the `_isolate_marker_by_shape` fill band (`ee858086`)
+and the compact-blob strip both key on the contaminant being a separate, COMPACT component.
+On `rover_cross` it is an **elongated bar (aspect 3.9-5.1)** fused to the cross.
+
+**PROPOSED FIX (untested at time of writing):** validate the intersection against the
+**INLIER LINE POINTS of the two fitted arms**, not against all mask pixels -- contamination-
+immune by construction. Score on {flat, clutter, rover} with the same harness.
+
+### ⛔ Corrections to earlier statements in this same session
+
+- "static offset reaches the platform 11/18" was WRONG. `h_min ~ -0.53` with 2.3 m lateral
+  means it descended PAST the pad to the GROUND beside it. Re-classified with a footprint test
+  (|lat| < 0.30 m at the lowest point): **0 of 18 static-offset runs landed on the pad.**
+  Modes: 11 blind-dive-to-ground (this section), 2 stall centred above the pad, 5 stall-high /
+  fly-away. Altitude alone never proves a landing on a raised pad -- check the FOOTPRINT too.
+- The Mode-B stall (2 runs, 0.44/0.62 m above the pad, lateral closed to 3-10 cm) is **NOT a
+  perception failure**: measured loom tracks the run's OWN GT at corr **+0.756 / +0.806** and
+  slightly OVER-reports at the terminal, and the GT loom itself decays. Control-side; the
+  commit-gate knobs (`PLASMC_COMMIT_*`) were all default 0 = OFF in those runs. See
+  [[feedback_loom_commit_gate]].
+
 ## Three scene causes (rover_cross-specific, world/infra — NOT our source)
 
 1. **Two-PX4-instance camera warm-up.** ~7 s frozen uniform-grey feed at start (byte-
