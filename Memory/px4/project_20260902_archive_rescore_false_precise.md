@@ -86,15 +86,50 @@ false positives.
 
 ## THE FIX (not yet implemented)
 
-`SoftPrecise` in `apps/landing_test.py` evaluates at the lowest logged sample with **no
-absolute altitude floor and no terminal-state check**, so a log that stops mid-descent scores
-as a touchdown. It needs BOTH halves of
-[[feedback_relative_flatness_needs_absolute_gate]]:
+**⚠ CORRECTED 2026-09-02 (same session, after validating the candidates against all 4446
+runs). An earlier version of this file recommended a `|dz/dt|` terminal-rest check and cited
+its CATCH rate without ever measuring its FALSE-POSITIVE rate. That recommendation was
+WRONG — see "rejected candidates" below.**
 
-1. an **absolute floor** on altitude above the LANDING SURFACE (not the target-pose origin);
-2. a **terminal-state check** -- `|dz/dt|` small at the last sample. This alone would have
-   caught **112 of the 138** truncated runs.
+**The real defect is WHEN `xy_err` is sampled.** `apps/landing_test.py:835` takes it from
+`pose_node.getPose()` at **whatever instant the control loop exits**. The comment there
+asserts "Evaluated at touchdown (PX4 reports LANDED here)", but nothing enforces that — any
+other exit (touchdown-detect latch, timeout, abort) scores whatever pose the drone happened
+to be in. The file ALREADY tracks `_min_alt` / `_min_alt_xy` / `_min_alt_relvel` with a
+ballooning-freeze latch (lines 558-592) but uses them only as diagnostics; they gate nothing.
 
-Reproduce: walk `**/Ground_Truth.npy`, compute `uav.z - target.z`, its min, and the
-trailing-0.25 s slope; flag `precise=True` with `alt_min > floor(world)`. ~0.2 min for the
-whole archive.
+### Gates VALIDATED against the archive (159 unsupported vs 1033 legit precise runs)
+
+1. **Absolute floor on altitude above the LANDING SURFACE** — the actual fix.
+   `alt_above_surface = uav.z - target.z - LANDING_SURFACE_DZ <= 0.20 m`.
+   Supply `LANDING_SURFACE_DZ` **explicitly per world** (0.0 flat, ~0.45 `rover_cross`) —
+   do NOT infer it; inference is exactly what produced the wrong 193-vs-159 first pass.
+   `landing_test.py` already knows `WORLD`. Catches all 159 by construction, 0 false positives.
+2. **Descent-completed backstop** — surface-agnostic, free insurance if (1) is misconfigured:
+   `min_alt > 0.15 * alt_start` (each run's OWN start altitude) => not a landing.
+   **Measured: catches 45/159, rejects 0/1033 legit (0.00 %).** Catches the whole ABORTED
+   class. At `0.10 *` it catches 59 but costs 4 legit (0.39 %).
+3. Record a **reason**, don't silently flip flags: add `terminal_state_ok` + a reason string
+   and set `precise/soft=False` with a tag, mirroring the existing `target_lost` /
+   `descent_anomaly` branches (same shape, fits the file's pattern, keeps old comparisons
+   interpretable).
+
+### REJECTED candidates — measured, do not re-try
+
+- **`|dz/dt|` terminal-rest gate: UNUSABLE.** Catches 152/159 at a 0.05 m/s threshold but
+  **rejects 600/1033 (58 %) of LEGITIMATE landings**; at 0.03 it is 65.7 %. Real touchdowns
+  still carry vertical motion in their last 0.3 s (settling, bounce, log ending at contact).
+  A high catch rate here is meaningless without the false-positive rate.
+- **IMU contact-spike gate: NO SEPARATION.** max|a| over each run's final 15 %:
+  **27.0 %** of unsupported runs exceed 50 m/s² vs **26.7 %** of legit ones. Medians 41.3 vs
+  21.1 but the distributions overlap almost completely. An accel spike does not distinguish
+  a touchdown from a mid-descent cut in this data.
+
+### Also needed
+
+`tools/rescore_softprecise.py` for the 4446 historical runs (they cannot be re-flown) —
+emit the corrected verdict + reason alongside the stored one.
+
+Reproduce the audit: walk `**/Ground_Truth.npy`, compute `uav.z - target.z`, its min, the
+run's start value, and the trailing-0.3 s slope; flag `precise=True` with
+`alt_min > floor(world)`. ~0.2 min for the whole archive.

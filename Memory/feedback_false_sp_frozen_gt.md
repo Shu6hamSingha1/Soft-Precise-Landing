@@ -20,8 +20,9 @@ A landing's `SoftPrecise{precise,soft}` flag (in `Ground_Truth.npy`, computed by
 **⬆ SUPERSEDED IN SCOPE 2026-09-02 — this file's "1 found" is one mechanism, not the
 population.** An archive-wide re-score of all 4446 saved runs found **159 of 1192 `precise`
 verdicts (13.4 %) computed on a MID-AIR sample**, via a SECOND mechanism: `SoftPrecise`
-evaluates the lowest logged sample with **no absolute altitude floor and no terminal-state
-check**, so (a) a run that aborts at altitude scores precise because a CENTERED IC starts
+evaluates the pose at **whatever instant the control loop exits** (`landing_test.py:835`;
+its "PX4 reports LANDED here" comment is not enforced), with **no floor on altitude above the
+landing surface**, so (a) a run that aborts at altitude scores precise because a CENTERED IC starts
 directly above the marker (`xy_err`~0 at t=0, 21 runs), and (b) a GT log that stops
 mid-descent scores its last airborne sample as a touchdown (138 runs, 112 still descending,
 median last altitude 0.486 m). Concentrated in two eras (Jul 19-23, Aug 22-24); the Aug 28-31
