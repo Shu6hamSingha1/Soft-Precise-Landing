@@ -94,7 +94,10 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
                                  grep tools/ for anything not below rather than assuming this list is exhaustive:
     Calibration (derive/aggregate/validate):
       aggregate_calibration_phased.py — canonical phased-excitation aggregator
-      aggregate_calibration.py   — legacy aggregator (mixed/untagged recordings)
+      (aggregate_calibration.py — legacy aggregator, MOVED to Obsolete/tools/ 2026-09-03:
+       superseded by derive_board_cal.py, and using it to refresh a cal is a known dead-end
+       — 7-10x wrong, methodology mismatch. Note aggregate_calibration_PHASED.py above is the
+       canonical one and is imported by 9 tools — do not confuse the two.)
       aggregate_input_calibration.py, aggregate_sensitivity.py, aggregate_big_sensitivity.py
       analyze_calibration.py     — ports plotter_output cell-38 LSTSQ validation
       derive_board_cal.py, derive_reduced_lat_cal.py, derive_ring_cal.py — per-cal-regime derivation
@@ -121,7 +124,9 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     Test-record / cleanup (see reference_test_record_system memory):
       build_test_record.py, build_landing_test_manifest.py, build_obsolete_manifest.py
       execute_landing_test_cleanup.py, execute_obsolete_cleanup.py
-      refresh_scan_sheets.py, restructure_parameter_record.py, log_param_record.py
+      refresh_scan_sheets.py, log_param_record.py
+      (restructure_parameter_record.py — one-shot restructure, already performed; superseded by
+       refresh_scan_sheets.py; MOVED to Obsolete/tools/ 2026-09-03)
   scripts/                     — bash launchers (canonical patterns in docs/SH_REFERENCE.md — READ before
                                  authoring a new .sh); ~60 scripts as of 2026-07-09:
     Core launchers:

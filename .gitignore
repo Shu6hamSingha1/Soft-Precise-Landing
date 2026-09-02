@@ -83,3 +83,10 @@ PX4_Gazebo/test_data/Obsolete_ArUco_Montages/*.mp4
 # ignored (regenerable, ~230MB), only the manifest is tracked.
 PX4_Gazebo/test_data/DetectorFrameset/**
 !PX4_Gazebo/test_data/DetectorFrameset/MANIFEST.md
+
+# RobustnessFrameset: lighting/polarity/colour/texture scene variants recorded by
+# test_data/Rover_AB_harness/record_robustness_set.sh (assets from
+# tools/make_robustness_eval_assets.py). Same policy as DetectorFrameset above --
+# bulk npy+frames ignored (regenerable, ~263MB), only a manifest is tracked.
+PX4_Gazebo/test_data/RobustnessFrameset/**
+!PX4_Gazebo/test_data/RobustnessFrameset/MANIFEST.md
