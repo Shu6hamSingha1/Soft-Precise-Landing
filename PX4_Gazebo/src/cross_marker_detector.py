@@ -154,7 +154,17 @@ ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  #
 # ⛔ REJECTED alternative, do not re-try: replacing the mask centroid with the two
 # arms' INLIER-point centroid makes it WORSE (rover 28.5%->11.0%) -- unequal inlier
 # counts / asymmetric spans put that mean systematically off the junction.
-CENTROID_SPAN_RESCUE = os.environ.get("CROSS_CENTROID_SPAN_RESCUE", "0") == "1"
+# DEFAULT FLIPPED 0 -> 1 on 2026-09-03 after an interleaved n=5/arm SITL gate on
+# flat + clutter (zero launch flakes), with the fill ceiling in place:
+#   flat    : PRECISE 0/5 -> 3/5 (xy median 0.143 -> 0.046); detOK 100% both arms, so
+#             the gain is in the LATE APPROACH -- 1-3 rescues/run recover frames after
+#             the mask centroid starts drifting but before the ceiling cuts in.
+#   clutter : TARGET_LOST 5/5 -> 1/5; detOK median ~11% -> ~53%. The failure MODE
+#             changes from diving blind to the ground 0.8-2.7 m off, to holding station.
+#   overfill rescues: 0 in EVERY run of both worlds (24-120 consulted, all refused) --
+#             the ceiling holds, and the pre-ceiling 12.3/12.6 m clutter fly-aways are gone.
+# Set CROSS_CENTROID_SPAN_RESCUE=0 to revert.
+CENTROID_SPAN_RESCUE = os.environ.get("CROSS_CENTROID_SPAN_RESCUE", "1") == "1"
 # Diag: how often the legacy centroid check FAILED (so the rescue was consulted) and
 # how often the rescue then admitted the frame. Reported per-run by CrossMarkerNode.
 SPAN_RESCUE_STATS = {"consulted": 0, "rescued": 0, "consulted_lowalt": 0, "rescued_lowalt": 0}

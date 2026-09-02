@@ -1,0 +1,4 @@
+arm	rep	xy_err	class	min_h_pad	lat_end	detOK_desc	rescue	rec
+off	1	2.674	TARGET_LOST	-0.015	2.674	6.8	602|0|31|0	Thu Sep  3 01-22-56 2026
+on	1	3.535	TARGET_LOST	0.039	3.103	34.4	722|318|35|0	Thu Sep  3 01-23-52 2026
+SPANRESCUE_DONE

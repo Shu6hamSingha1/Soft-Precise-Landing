@@ -48,7 +48,12 @@ for rep in $(seq 1 "$N"); do
     v=0; [ "$arm" = on ] && v=1
     ko
     L0=$(ls -td "$SD/test_data/Landing_Test/"*/ 2>/dev/null|head -1)
-    env HEADLESS=1 $WORLD_ENV LANDING_AUTOSAVE=1 MAX_ATTEMPTS=4 \
+    # Qt5 WORKAROUND (2026-09-03): system libqt5gui5 (esm3) does not export
+    # QDoubleValidator::validate that libqt5quick5 (esm1) needs, so `gz sim` aborts and
+    # PX4 can never bring up a world. Preload the PyQt5-bundled Qt5Gui, which does export
+    # it. This is a WORKAROUND, not a repair -- the real fix is aligning the apt packages.
+    env LD_PRELOAD="${QT_PRELOAD:-/home/shubham/cvenv/lib/python3.8/site-packages/PyQt5/Qt5/lib/libQt5Gui.so.5}" \
+        HEADLESS=1 $WORLD_ENV LANDING_AUTOSAVE=1 MAX_ATTEMPTS=4 \
         INITIAL_DRONE_ENU="$IC" CROSS_CENTROID_SPAN_RESCUE="$v" \
         timeout 260 bash "$SD/$LAUNCH" \
         > "$SD/run_logs/spanrescue_${TAG}_${arm}_${rep}.out" 2>&1
