@@ -25,12 +25,13 @@ fi
 RES="$SD/run_logs/spanrescue_${TAG}.tsv"
 printf "arm\trep\txy_err\tclass\tmin_h_pad\tlat_end\tdetOK_desc\trescue\trec\n" > "$RES"
 ko(){
-  # WORLD-SWITCH HARDENING (2026-09-02): switching between the rover (two-instance,
-  # -i 1) and flat/clutter (single-instance) launchers left a gz server holding the
-  # OLD world, so PX4 then sat in "Waiting for Gazebo world..." and the launcher timed
-  # out on /world/<new>/clock. Measured: flat-after-flat 3/10 launch failures,
-  # flat-after-rover 7/9. Kill every gz-sim variant (the server is NOT matched by the
-  # 'gz sim' CLI pattern) and WAIT until no /clock topic is advertised.
+  # Kill every gz-sim variant (the server is NOT matched by the 'gz sim' CLI pattern)
+  # and WAIT until no /clock topic is advertised. ⛔ NOTE: this was written to fix an
+  # apparent stale-server-on-world-switch bug (flat-after-flat 3/10 launch failures vs
+  # flat-after-rover 7/9). That theory was WRONG -- this did not fix it, and a rover
+  # probe afterwards failed identically, so the breakage was GLOBAL (SITL down from
+  # ~21:41 on 2026-09-02) and the pattern was just ORDERING. Kept because it is
+  # harmless and stricter, NOT because it fixes anything observed.
   for r in 1 2 3; do
     pids=$(ps -eo pid,args|grep -aE 'px4_sitl_default/bin/px4|gz sim|gz-sim|ign gazebo|MicroXRCEAgent|parameter_bridge|mavsdk_server|QGroundControl|/opt/ros/humble|landing_test'|grep -av grep|awk '{print $1}')
     [ -z "$pids" ]&&break; for p in $pids; do kill -9 "$p" 2>/dev/null; done; sleep 2
