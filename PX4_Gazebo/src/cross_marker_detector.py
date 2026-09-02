@@ -75,6 +75,118 @@ _ADAPT_MAX_FILL   = float(os.environ.get("CROSS_ADAPT_MAX_FILL", "0.55"))  # mas
 _SEG_CAP          = int(os.environ.get("CROSS_SEG_CAP", "120"))         # keep only the N longest Hough segments (bounds the angle loop + pairwise corner-join)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# POLARITY-AGNOSTIC CONTRAST GATE (2026-09-03).  CROSS_GATE_MODE=contrast
+#
+# WHY. Both existing gates encode "the marker is DARK": `inRange(V<=100)` absolutely,
+# and CROSS_ADAPT_GATE's THRESH_BINARY_INV relatively. Measured on the robustness eval
+# set (test_data/RobustnessFrameset), what inRange retains is
+#   base  5.2% (the cross)  |  inv  94.8% (the PLATE)  |  col  0.0% (empty)
+# -> on a polarity flip the detector stays at 82% detOK while returning centroids 53.9 px
+# off (only 23% within-0.15): CONFIDENTLY WRONG, because Hough then fits plate edges.
+# On a chromatic iso-V marker the mask is empty by construction.
+#
+# THE INVARIANT (user, 2026-09-01): we cannot guarantee a BLACK marker, but we can
+# guarantee a marker that CONTRASTS with its background. So segment on *deviation from
+# the local background*, with no sign and no absolute level:
+#
+#   D(p) = || Lab(p) - blur(Lab)(p) ||      (Lab: L = luminance, a/b = chroma)
+#
+# - POLARITY-AGNOSTIC: it is a magnitude, so dark-on-light and light-on-dark are identical.
+# - CHROMA-AWARE: a/b carry the signal when luminance is matched (the `col` case, V 150/150).
+# - ILLUMINATION-RELATIVE: the local mean is subtracted, so scene brightness cancels; the
+#   threshold is a percentile of D within the ROI, not a fixed level.
+# BG_KSIZE must exceed the stroke width (so a stroke deviates from its own neighbourhood)
+# and stay below the marker extent (so the whole marker is not its own background).
+_GATE_MODE      = os.environ.get("CROSS_GATE_MODE", "legacy")     # legacy | contrast
+_CG_BG_KSIZE    = int(os.environ.get("CROSS_CG_BG_KSIZE", "41"))  # local-background box (odd)
+_CG_CHROMA_GAIN = float(os.environ.get("CROSS_CG_CHROMA_GAIN", "2.0"))  # weight on a/b vs L
+_CG_PCT         = float(os.environ.get("CROSS_CG_PCT", "92.0"))   # keep the top (100-PCT)% of D
+_CG_MIN_D       = float(os.environ.get("CROSS_CG_MIN_D", "6.0"))  # absolute floor: reject flat frames
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STROKE-PROFILE VALIDATION (2026-09-03).  CROSS_STROKE_VALIDATE=1
+#
+# WHY (measured, not assumed). A contrast gate alone REGRESSES: base 100->89 % detOK,
+# dim 100->67 %, and `inv` within-0.15 only 23->29 %. Reason: the PLATE BOUNDARY is a
+# genuine high-contrast feature, so contrast segmentation admits it exactly as strongly as
+# the cross strokes, and Hough still fits plate edges. That is the whole point of the
+# locked 3-stage design -- segmentation cannot do this job alone.
+#
+# THE DISCRIMINANT is profile SHAPE across a segment, which is polarity- and colour-blind:
+#   a marker STROKE  -> RIDGE or VALLEY: background | extremum | background,
+#                       so the two OUTER shoulders match each other and differ from the core.
+#   a plate/shadow EDGE -> STEP: monotonic, the two shoulders differ from EACH OTHER.
+# Test per segment (sampled at several points along it, perpendicular):
+#   step_ness  = |mean(outer_left) - mean(outer_right)|
+#   stroke_ness= |mean(core) - mean(both outers)|
+# keep iff stroke_ness > STROKE_MIN_AMP and step_ness < STROKE_MAX_STEP * stroke_ness.
+# Uses |.| throughout -> identical for dark-on-light and light-on-dark.
+_STROKE_VALIDATE = os.environ.get("CROSS_STROKE_VALIDATE", "0") == "1"
+_SV_HALF     = int(os.environ.get("CROSS_SV_HALF", "7"))       # perpendicular half-length (px)
+_SV_CORE     = int(os.environ.get("CROSS_SV_CORE", "2"))       # +/- core half-width (px)
+_SV_SAMPLES  = int(os.environ.get("CROSS_SV_SAMPLES", "5"))    # sample points along the segment
+_SV_MIN_AMP  = float(os.environ.get("CROSS_SV_MIN_AMP", "8.0"))    # min |core-shoulder|
+_SV_MAX_STEP = float(os.environ.get("CROSS_SV_MAX_STEP", "0.8"))   # step/stroke ratio ceiling
+
+
+def _validate_stroke_segments(gray, segs):
+    """Keep only segments whose perpendicular profile is a RIDGE/VALLEY, not a STEP.
+    Returns a bool keep-mask over `segs`. Polarity-agnostic (magnitudes only)."""
+    H, W = gray.shape[:2]
+    keep = np.zeros(len(segs), dtype=bool)
+    g = gray.astype(np.float32)
+    for si, (x1, y1, x2, y2) in enumerate(segs):
+        dx, dy = float(x2 - x1), float(y2 - y1)
+        L = math.hypot(dx, dy)
+        if L < 4.0:
+            continue
+        ux, uy = dx / L, dy / L
+        nx, ny = -uy, ux                      # unit normal
+        votes = 0; tried = 0
+        for k in range(_SV_SAMPLES):
+            f = (k + 0.5) / _SV_SAMPLES
+            cx, cy = x1 + dx * f, y1 + dy * f
+            core, oL, oR = [], [], []
+            for t in range(-_SV_HALF, _SV_HALF + 1):
+                px, py = int(round(cx + nx * t)), int(round(cy + ny * t))
+                if not (0 <= px < W and 0 <= py < H):
+                    core = []; break
+                v = g[py, px]
+                if abs(t) <= _SV_CORE:            core.append(v)
+                elif t > _SV_HALF - 4:            oR.append(v)
+                elif t < -(_SV_HALF - 4):         oL.append(v)
+            if not core or len(oL) < 2 or len(oR) < 2:
+                continue
+            tried += 1
+            mL, mR, mC = float(np.mean(oL)), float(np.mean(oR)), float(np.mean(core))
+            step   = abs(mL - mR)
+            stroke = abs(mC - 0.5 * (mL + mR))
+            if stroke >= _SV_MIN_AMP and step <= _SV_MAX_STEP * stroke:
+                votes += 1
+        if tried and votes >= max(1, tried // 2):     # majority of sampled points agree
+            keep[si] = True
+    return keep
+
+
+def _contrast_gate_mask(frame_bgr):
+    """Polarity-agnostic, chroma-aware marker-stroke mask. See _GATE_MODE comment.
+    Returns (mask, reason) with reason='color_gate_empty' on a structureless frame."""
+    lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    k = _CG_BG_KSIZE | 1
+    bg = cv2.blur(lab, (k, k))                       # local background estimate
+    d = lab - bg
+    d[:, :, 1] *= _CG_CHROMA_GAIN                    # chroma carries the iso-luminant case
+    d[:, :, 2] *= _CG_CHROMA_GAIN
+    D = cv2.magnitude(cv2.magnitude(d[:, :, 0], d[:, :, 1]), d[:, :, 2])
+    thr = float(np.percentile(D, _CG_PCT))
+    if thr < _CG_MIN_D:                              # nothing deviates -> no structure
+        return np.zeros(D.shape, np.uint8), 'color_gate_empty'
+    mask = (D >= thr).astype(np.uint8) * 255
+    return mask, None
+
+
 def _adaptive_gate_mask(frame_bgr):
     """CLAHE + adaptive-threshold marker-stroke mask (see _ADAPT_GATE comment).
     Returns (mask, reason). reason is None on success, else a short tag the caller
@@ -714,7 +826,14 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     coordinate-offset bookkeeping."""
     if min_line_length is None: min_line_length = HOUGH_MIN_LINE_LEN
     if max_line_gap is None: max_line_gap = HOUGH_MAX_LINE_GAP
-    if _ADAPT_GATE:
+    if _GATE_MODE == "contrast":
+        mask, _adapt_reason = _contrast_gate_mask(frame_bgr)
+        if _adapt_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                                   'stage_px': (_pxd,)*5, 'reason': _adapt_reason})
+            return CrossMarkerDetection(None, None, False, fail_reason=_adapt_reason)
+    elif _ADAPT_GATE:
         mask, _adapt_reason = _adaptive_gate_mask(frame_bgr)
         if _adapt_reason is not None:
             _pxd = int(np.sum(mask > 0))
@@ -786,6 +905,14 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='hough_lt2_lines')
 
     segs = lines[:, 0, :]
+    if _STROKE_VALIDATE:
+        # Reject plate/shadow EDGES (steps) before they can be clustered as cross arms.
+        _gray_sv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        _sv_keep = _validate_stroke_segments(_gray_sv, segs)
+        if _sv_keep.any():
+            segs = segs[_sv_keep]
+        # if NOTHING survives, fall through with the unfiltered set rather than dying --
+        # the downstream geometry gates still have to agree.
     # SEGMENT CAP (2026-09-01): the adaptive contrast gate admits more real edge
     # structure (ground texture near the marker) than the old near-black inRange,
     # which inflates the O(n) angle loop + the pairwise corner-join below. The
