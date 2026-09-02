@@ -94,34 +94,98 @@ batch after. Classic confounding-of-time-with-condition; the fix is to interleav
 which would have exposed it immediately. (The hardened `ko()` is harmless and worth keeping,
 but it is not the fix for anything observed.)
 
-## DECISION: flip to DEFAULT ON is AGREED IN PRINCIPLE, but HELD (user, 2026-09-02)
+## ✅ RESOLVED 2026-09-03 — DEFAULT FLIPPED TO **ON** (`a53a5f63`), SITL-gated
 
-User's standing reasoning, which is correct and applies generally:
+Interleaved n=5/arm gate on flat + clutter WITH the fill ceiling, zero launch flakes
+(worlds interleaved so a world-specific failure shows immediately -- the ordering lesson):
 
-> "Fixing one problem may reveal another prominent problem, which doesn't mean that the current
-> fix is wrong. So if you are sure that the rescue is not causing the new problem, keep it
-> default ON."
+| world | metric | off | on |
+|---|---|---|---|
+| flat | PRECISE | **0/5** | **3/5** |
+| flat | xy median | 0.143 | **0.046** |
+| clutter | TARGET_LOST | **5/5** | **1/5** |
+| clutter | detOK median | ~11 % | **~53 %** |
+| rover (earlier) | detOK median / TARGET_LOST | 48 % / 3-5 | **98 % / 0-5** |
 
-Where the evidence stands:
-- **VERIFIED, the rescue does its job on the scene it targets** — rover_cross detOK median
-  48->98 %, `TARGET_LOST` 3/5->0/5, and the failure mode changes from blind-diving to the ground
-  BESIDE the pad into tracking and holding ABOVE it. The residual stall is the CONTROL-side
-  terminal problem traced independently (loom faithful to its own GT at +0.76/+0.81,
-  `PLASMC_COMMIT_*` all off). That is a revealed second bottleneck, not damage.
-- **The one harm signal is now structurally blocked** — clutter's two 12 m fly-aways were
-  measured WITHOUT the ceiling, when 13-41 overfill rescues fired per run; with the ceiling that
-  is 0 everywhere, and on clean scenes the rescue is consulted only 0-6x/run and cannot fire at
-  overfill at all.
-- **NOT certain** — flat + clutter WITH the ceiling are unmeasured, and rover still had one
-  49.8 m fly-away with ZERO overfill rescues, so the fly-away class is unexplained. The `off`
-  arm also fails (3/5 `TARGET_LOST`), so the rescue is not obviously the cause — but that is
-  reasoning, not measurement.
+**Overfill rescues: 0 in EVERY run of both worlds** (24-120 consulted, all refused). The
+ceiling holds, and the pre-ceiling clutter fly-aways (12.308 / 12.601 m) did not recur.
 
-**HELD at the user's direction: do not flip until SITL is restored and the flat + clutter
-confirmation runs land, so the default change ships WITH its evidence.** The flip itself is
-one line: `CROSS_CENTROID_SPAN_RESCUE` default `"0"` -> `"1"` in `cross_marker_detector.py`.
+Raw data preserved: `test_data/SpanRescue_Gate/`. Revert: `CROSS_CENTROID_SPAN_RESCUE=0`.
 
-### The exact runs to do when SITL is back
-1. `WORLD_KIND=flat N=5` and `WORLD_KIND=clutter N=5` with the ceiling — the missing cells.
-2. **INTERLEAVE the worlds** rather than running blocks (see the retraction above).
-3. Judge on flight outcome + `within-0.15`, NOT detOK (see the headline result at the top).
+### ⭐ MECHANISM (the part worth carrying forward)
+
+**The rescue does not improve the fit -- it stops DISCARDING good fits.** The chain:
+
+1. `centroid_mismatch` validates the fitted line intersection against the MASK PIXEL
+   CENTROID. Foreign structure fused into the SAME connected component (rover platform edge,
+   the clutter box) drags that centroid off the junction -- the fit is right, the REFERENCE
+   is contaminated.
+2. Rejecting the frame leaves the controller with **no measurement**: `FEATURE_IS_VISIBLE`
+   goes false, `s` goes stale, lateral error cannot close.
+3. The drone then either declares `TARGET_LOST` or drifts on a stale centroid. **The
+   "fly-aways" were never control instability -- they were the controller flying BLIND.**
+   (Mode A: 0 % detection 5 m -> 1 m, lateral frozen 2.9 -> 2.3 m, 0.8-1.5 m/s drop onto the
+   ground BESIDE the pad.)
+4. Restoring those frames restores closed-loop feedback -> the blind dive becomes a held
+   station.
+
+**The ceiling covers the OPPOSITE failure.** At overfill the mask centroid legitimately
+drifts (which is why the legacy tolerance already ramps 0.12 -> 0.72), so a frame failing even
+that loosened check is badly wrong, and admitting it AT TOUCHDOWN is worst-case. Hence:
+rescue = restore feedback during acquisition/approach; ceiling = refuse to inject garbage at
+touchdown. Two halves, opposite jobs.
+
+### ⭐ The unexpected result: it helps on CLEAN scenes too
+
+flat has **100 % detOK in BOTH arms**, yet PRECISE goes 0/5 -> 3/5. Since detOK (measured
+above 1 m) is identical, the gain is BELOW that band -- in the LATE APPROACH, after the marker
+grows enough that the mask centroid starts drifting but before the ceiling cuts in. Only 1-3
+rescues/run, and that is enough to keep lateral feedback live through final approach. So this
+was never a rover-only fix.
+
+### ⛔ NOT explained by either mechanism (open)
+
+- The rover **49.8 m fly-away occurred with ZERO overfill rescues** -- unaccounted for.
+- **Clutter is NOT fixed**: neither arm lands. `on` holds station at min_h 1.3-4.9 m instead
+  of diving blind. Better failure MODE, not a success. Detection is still intermittent
+  (34-65 %).
+- This gate says NOTHING about [[feedback_cross_detector_robustness_requirement]] -- one
+  lighting condition, one polarity, one texture.
+
+## ⛔⛔ SITL was down 2026-09-02 -> restored 2026-09-03 by a Qt5 LD_PRELOAD WORKAROUND
+
+Every launch failed with PX4 `Timed out waiting for Gazebo world`; PX4's own log showed the
+cause -- it spawns Gazebo via the `gz sim` CLI, which aborts:
+
+```
+libgz-sim8-gz.so.8.15.0: /lib/x86_64-linux-gnu/libQt5Quick.so.5:
+undefined symbol: _ZNK16QDoubleValidator8validateER7QStringRi, version Qt_5
+```
+
+System `libqt5gui5` is `5.15.3+dfsg-2ubuntu0.2+esm3`; `libqt5quick5` is
+`5.15.3+dfsg-1ubuntu0.1~esm1` -- a split ESM stream, so qtdeclarative references a symbol
+qtbase no longer exports. **`apt install --only-upgrade` CANNOT fix it** (qtdeclarative is
+already newest at esm1). Real fix = downgrade qtbase to match, or wait for an ESM
+qtdeclarative rebuild.
+
+**WORKAROUND (in the harness):** preload the PyQt5-bundled Qt5Gui, which DOES export the
+symbol:
+
+```
+LD_PRELOAD=/home/shubham/cvenv/lib/python3.8/site-packages/PyQt5/Qt5/lib/libQt5Gui.so.5
+```
+
+⚠ **Anything launching SITL outside `spanrescue_ab.sh` still needs this preload** until the
+packages are fixed.
+
+### ⛔ Two of my own diagnoses here were WRONG -- recorded so they are not reused
+
+1. **"stale gz server on world switch"** -- from flat-after-flat 3/10 launch failures vs
+   flat-after-rover 7/9. A hardened `ko()` did not fix it and a rover probe then failed
+   identically, so the failure was GLOBAL. The pattern was pure ORDERING (rover ran before the
+   breakage, flat after) = time confounded with condition. **Interleave conditions.**
+2. **"it broke at ~21:41"** -- wrong in mechanism. `dpkg.log` shows NO package activity that
+   day and the libs date from Feb/May, so nothing broke; an accidental workaround (a PyQt5 Qt5
+   path on the loader path) most likely stopped being present. Also: the user's "maybe it
+   worked headless" hypothesis was tested directly and REFUTED -- `QT_QPA_PLATFORM=offscreen`
+   gives the identical error.
