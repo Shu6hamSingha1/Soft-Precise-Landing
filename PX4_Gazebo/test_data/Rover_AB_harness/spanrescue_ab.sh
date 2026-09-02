@@ -20,7 +20,13 @@ elif [ "$WORLD_KIND" = "clutter" ]; then
   WORLD_ENV="WORLD=cross_marker_clutter MARKER_TYPE=cross"
 else
   LAUNCH="scripts/run_rover_landing_retry.sh"; SURF=0.50
-  WORLD_ENV="WORLD=rover_cross ROVER_MODEL=rover_cross MARKER_TYPE=cross ROVER_MOTION=0"
+  # ROVER_MOTION/TRAJ/SPEED_MULT overridable so the same harness covers the STATIC
+  # and MOVING cases. Moving A/B (2026-09-03): Linear at SPEED_MULT tuned to the band
+  # where landings were historically achievable (~0.5 m/s) -- 8/52 archived moving runs
+  # landed on the pad and every one had detOK >= 80%, so detection is the discriminator.
+  WORLD_ENV="WORLD=rover_cross ROVER_MODEL=rover_cross MARKER_TYPE=cross \
+             ROVER_MOTION=${ROVER_MOTION:-0} ROVER_TRAJ=${ROVER_TRAJ:-Linear} \
+             ROVER_SPEED_MULT=${ROVER_SPEED_MULT:-1.0}"
 fi
 RES="$SD/run_logs/spanrescue_${TAG}.tsv"
 printf "arm\trep\txy_err\tclass\tmin_h_pad\tlat_end\tdetOK_desc\trescue\trec\n" > "$RES"
