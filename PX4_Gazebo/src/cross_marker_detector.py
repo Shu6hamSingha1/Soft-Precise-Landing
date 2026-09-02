@@ -120,6 +120,19 @@ HOUGH_MIN_LINE_LEN = int(os.environ.get("CROSS_HOUGH_MIN_LINE_LEN", "10"))  # wa
 HOUGH_MAX_LINE_GAP = int(os.environ.get("CROSS_HOUGH_MAX_LINE_GAP", "16"))  # was 10
 HOUGH_MASK_DILATE_PX = int(os.environ.get("CROSS_HOUGH_MASK_DILATE_PX", "1"))  # thicken the patchy foreshortened stroke before Canny; 0 = off
 ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  # was 2.5 -- a foreshortened cross bbox isn't 1:1
+# FILL-RATIO BAND for _isolate_marker_by_shape's component pick (2026-09-02).
+# The old score=-area picked the LARGEST aspect-passing component. On rover_cross
+# a diagonal slice of the platform's shadowed side wall has a square-ish
+# axis-aligned bbox (aspect 2.6, clears 3.2) and ~3x the cross's area -> it wins
+# and the cross is discarded (measured: wrong on 100/128 acquisition frames =
+# the 78% lt2_angle_clusters rate; 0/123 on flat-clean). The two fill ratios are
+# cleanly bimodal with a 4x gap: a cross-in-square is ~0.07-0.12 filled (thin X),
+# a wall/blob chunk 0.3+. Restrict the pick to a cross-plausible fill band, then
+# take max area within it; fall back to the old behaviour if none qualify (the
+# marker-fills-frame regime, where the cross's own fill climbs as arms clip the
+# edges). CROSS_ISOLATE_FILL_HI huge (e.g. 1.0) reverts.
+ISOLATE_FILL_LO = float(os.environ.get("CROSS_ISOLATE_FILL_LO", "0.02"))
+ISOLATE_FILL_HI = float(os.environ.get("CROSS_ISOLATE_FILL_HI", "0.25"))
 ANGLE_MERGE_TOL_DEG = float(os.environ.get("CROSS_ANGLE_MERGE_TOL_DEG", "12.0"))
 
 # 2026-08-04 CORRECTED: earlier same-day investigation (a "single-loss-event root cause"
@@ -615,8 +628,15 @@ def _isolate_marker_by_shape(mask, min_area=15):
         aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
         if aspect > ISOLATE_MAX_ASPECT:   # propeller arms are typically >4:1; a (foreshortened) cross's bbox up to ~3:1
             continue
-        # among square-ish candidates, prefer the larger one (more of the true
-        # marker vs. a small square-ish clutter fleck)
+        # SHAPE, not just size: a cross-in-square is a thin X (~0.07-0.12 of its
+        # own bbox filled); a wall slice / blob chunk is 0.3+. Reject anything
+        # outside the cross-plausible fill band so a bigger-but-solid clutter
+        # component can't out-area the real cross (see ISOLATE_FILL_* comment).
+        fill = area / max(bw * bh, 1)
+        if not (ISOLATE_FILL_LO <= fill <= ISOLATE_FILL_HI):
+            continue
+        # among the cross-shaped candidates, prefer the larger one (more of the
+        # true marker vs. a small square-ish clutter fleck)
         score = -area
         if score < best_squareness:
             best_squareness, best_label = score, lbl
