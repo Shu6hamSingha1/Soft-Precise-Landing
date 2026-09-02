@@ -60,3 +60,24 @@ the traces. **Snapshot the record first; do not blindly re-scan.**
 
 Optional extra ~0.56 GiB: 29 uncited `diag_*` calibration dirs are kept only by the August date
 rule (one-off cross-marker diagnostics, not cal provenance) — user's call whether they count as spent.
+
+## "Should we delete the artifact-chasing phase's data?" — ALREADY DONE (checked 2026-09-03)
+
+Asked and answered; don't re-investigate. The cal-contaminated era is precisely **2026-05-12 →
+06-01** (the May-12 cal, `h_z` under-read **13.2×**, lateral 3.8-4.7×, controller at 0.08-0.21× design
+— [[feedback_historical_cal_confound]]), and the June 2026 cleanup already archived 101 config dirs
++ 843 Landing_Test reps from it. **Only 2 May reps survive on disk.**
+
+What remains from before the 2026-06-21 gain-parity fix is **209 reps / 1.16 GiB**, and it is the
+deliberately PROTECTED set, not the artifact bulk: `SPCampaign` 131 reps/876 MiB (the 06-03 campaign
+that PROVED the fix — 28% SP @ 10 cm, 1.8 cm best precision, an order of magnitude past the supposed
+floor), `ICValidation` 71 reps (06-12/14 gate baselines), `DhdClampSweep` 5, `CoordDescent` 2
+(genuine SP). **User decided 2026-09-03: keep it.**
+
+⚠ Keep the two staleness kinds distinct when reasoning about deletion — conflating them is what makes
+Tier 2 look bigger than it is:
+- **artifact-contaminated** (pre-06-01) — the numbers are WRONG (gain-starved controller). Deleted.
+- **regime-superseded** (06-21 → 08-26) — the numbers are CORRECT FOR THEIR REGIME but not comparable
+  to current runs (camera fx 270→135, ArUco→cross). This is the Tier 2 set, and its remaining value
+  is not the metrics at all: 114 of those runs are cited as PROVENANCE for guards still running
+  (`ICValidation/20260716-211434` is *why* a fly-away guard rejects rather than clips).
