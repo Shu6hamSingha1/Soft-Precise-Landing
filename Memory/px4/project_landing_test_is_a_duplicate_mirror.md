@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: d5ea67ff-56f9-4c30-84f2-28d7d6cfab7d
-  modified: 2026-09-02T04:02:06.282Z
+  modified: 2026-09-02T09:46:11.563Z
 ---
 
 `apps/landing_test.py` autosaves EVERY run into `test_data/Landing_Test/<ctime-style timestamp>/`,
@@ -35,3 +35,28 @@ so it must precede any pruning of old ICValidation gates.
 
 Executed in `1f0b6cab` (21.8 GiB freed, 60 GB -> 39 GB). Cleanup convention and prior phases:
 [[project_obsolete_cleanup]] / `docs/OBSOLETE_CLEANUP_HANDOFF.md`.
+
+## Tier 2 — investigated 2026-09-02, DEFERRED by the user ("we will do it later")
+
+Don't re-derive this. Manifest is built and committed: `test_data/TIER2_MANIFEST.tsv`
+(regenerate with `tools/build_tier2_manifest.py`), commit `6c9bb2bf`. **7.57 GiB** reclaimable:
+139 ICValidation runs + 582 Landing_Test reps + 6 calibration dirs.
+
+A naive "drop June+July" cut (~17 GB) was investigated and **REJECTED** — it would have:
+- orphaned **114 cited ICValidation runs**, 6+ of them cited from LIVE SOURCE as the provenance
+  for guards still running (`img_data.py:3436` "fly-away (ICValidation/20260716-211434). Fix:
+  REJECT (not clip)", `planar_map.py:203`, and 7 memory topic files);
+- destroyed the raw traces behind **581 of 938 genuine SP reps (62%)**;
+- deleted `calibration_data/output_cross_stale_pre20260805`, which `cross_marker_perception.py`
+  explicitly records as "moved ... **not deleted**".
+
+Keep rule that replaced it: keep if 2026-08+ **or** cited anywhere **or** contains a genuine SP rep.
+
+⚠ **SEQUENCING TRAP when this is finally executed:** `test_record_runs.json` / `test_record.tsv` /
+`TEST_RECORD.md` are the ONLY surviving record of the dropped reps (they carry per-rep
+`xy_err`/`rel_vel`). Re-running `build_test_record.py` afterwards — the documented post-cleanup
+step, so easy to do by reflex — would drop those rows and destroy the aggregate history on top of
+the traces. **Snapshot the record first; do not blindly re-scan.**
+
+Optional extra ~0.56 GiB: 29 uncited `diag_*` calibration dirs are kept only by the August date
+rule (one-off cross-marker diagnostics, not cal provenance) — user's call whether they count as spent.
