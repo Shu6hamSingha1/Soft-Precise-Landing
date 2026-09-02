@@ -51,6 +51,7 @@ VARIANTS = {
     "adapt_c12":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_C": "12"},            # stricter local-contrast demand
     "adapt_b71":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_BLOCK": "71"},        # larger local window
 }
+_GT_STRICT = os.environ.get("CROSS_GT_WINDOW_STRICT", "1") == "1"
 ALT_BANDS = [(4.0, 6.0), (3.0, 4.0), (2.0, 3.0), (1.3, 2.0), (0.7, 1.3)]
 
 # --------------------------------------------------------------- gt reference --
@@ -84,12 +85,24 @@ def _score(run_dir, raw_dir, perc):
     N = len(fs)
     off = M - N                                       # recorded = tail N frames
     ts = {"last_bbox": None, "miss_count": 0}
+    n_outside = [0]
     rows = []
     for i, fp in enumerate(fs):
         j = off + i
         if j < 0 or j >= M:
             continue
         t = it[j] - St
+        # ⛔ GT-WINDOW GUARD (2026-09-03). np.interp CLAMPS outside t_g instead of
+        # rejecting, so frames recorded after the GT log ends were being scored against
+        # FROZEN touchdown values. Measured on RobustnessFrameset: 16-42% of frames per
+        # variant fall past t_g[-1] (inv worst, 42%), which inflated inv within-0.15 to
+        # 23% when the GT-valid truth is 0%, and DEFLATED base from ~100% to 78%.
+        # Same trap as feedback_detector_offline_replay_gotchas §1 -- now enforced here
+        # rather than left to each caller. CROSS_GT_WINDOW_STRICT=0 restores the old
+        # (unsafe) behaviour for comparison only.
+        if _GT_STRICT and not (tg[0] <= t <= tg[-1]):
+            n_outside[0] += 1
+            continue
         q = iq[j]
         qn = None
         if q is not None and np.all(np.isfinite(np.asarray(q, float))):
@@ -114,6 +127,9 @@ def _score(run_dir, raw_dir, perc):
             except Exception:
                 pass
         rows.append((t, alt, bool(det.ok), err, det.fail_reason or ""))
+    if n_outside[0]:
+        print(f"      [gt-window] dropped {n_outside[0]} frame(s) outside the GT log window "
+              f"({100.0*n_outside[0]/max(len(rows)+n_outside[0],1):.0f}% of recorded)")
     return rows
 
 

@@ -50,38 +50,46 @@ retains:
 | **inv** | 25.0 | 235.0 | **94.8 % — keeps the PLATE, misses the cross** |
 | **col** | 150.0 | 150.0 | **0.0 % — mask entirely empty** |
 
-## BASELINE (current detector @ `a53a5f63`, span rescue default ON), 2026-09-03
+## BASELINE (current detector @ `a53a5f63`, span rescue ON) — CORRECTED 2026-09-03
 
-| variant | detOK | centroid err (med) | within-0.15 | verdict |
+⛔ **The first baseline published here was CONTAMINATED and has been replaced.**
+`validate_detector_gt.py` scored frames recorded AFTER the GT log ends against
+`np.interp`-CLAMPED (frozen touchdown) values. 16-42 % of frames per variant fall outside
+that window. Fixed by a hard GT-window guard in the scorer (`CROSS_GT_WINDOW_STRICT`,
+default on) — it now DROPS those frames and prints how many. Corrected figures:
+
+| variant | detOK | centroid err (med) | within-0.15 | frames dropped |
 |---|---|---|---|---|
-| base | 100.0 % | 0.019 | 78 % | reference |
-| dim | 100.0 % | 0.017 | 81 % | **robust** |
-| bright | 96.0 % | 0.013 | 96 % | **robust** |
-| lowsun | 100.0 % | 0.014 | 97 % | **robust** |
-| darkbg | 99.7 % | 0.017 | 76 % | **robust** |
-| **col** | **66.5 %** | 0.013 | 83 % | **fails with range**: 95 % @4-6 m -> **5 % @0.7-1.3 m** |
-| **inv** | 82.3 % | **0.399 (53.9 px)** | **23 %** | **CONFIDENTLY WRONG** |
+| base | 100.0 % | 0.014 (1.8 px) | **97 %** | 20 % |
+| dim | 100.0 % | 0.017 (2.3 px) | 81 % | 24 % |
+| bright | 95.0 % | 0.013 (1.8 px) | 96 % | 19 % |
+| lowsun | 100.0 % | 0.014 (1.9 px) | 97 % | 19 % |
+| darkbg | 99.6 % | 0.013 (1.8 px) | **94 %** | 20 % |
+| **col** | **62.4 %** | 0.013 (1.8 px) | 83 % | 16 % |
+| **inv** | **99.1 %** | **0.814 = 109.9 px** | **0 %** | 42 % |
 
-**⭐ LIGHTING IS NOT THE WEAKNESS.** An 8x sun-intensity range (0.30-2.50), a grazing sun and
-a dark background all hold 96-100 % detOK with accuracy equal to or BETTER than base. That
-half of the requirement is already met.
+(For the record, the contaminated version said base 78 %, darkbg 76 %, inv 23 % — clean
+scenes were DEFLATED and `inv` was FLATTERED. Both directions wrong.)
 
-**⭐ COLOUR IS, in two different ways:**
-- **`inv` is the dangerous one.** detOK stays HIGH (82.3 %) while the centroid is 53.9 px off
-  and only 23 % of detections are usable. The detector is not failing — it is confidently
-  returning WRONG answers, because the gate keeps the whole plate and Hough fits PLATE EDGES
-  instead of cross strokes. **This is why detOK alone must never be the score**
-  ([[project_20260902_spanrescue_sitl_gate]] made the same point from the other direction).
-- **`col` degrades with RANGE**, 95 % -> 5 % as the marker fills the frame. The V gate keeps
-  0 % by construction, so every detection comes from the ROI/shape fallback, which loses the
-  marker up close.
+**⭐ LIGHTING IS NOT THE WEAKNESS.** 8x sun-intensity range, grazing sun, dark ground: all
+95-100 % detOK at 81-97 % within-0.15. That half of the requirement is already met.
+
+**⭐ `inv` IS THE HEADLINE FAILURE, and it is SILENT.** 99.1 % detOK — the detector reports a
+detection on essentially every frame — and **0 % of them are usable**, 109.9 px off, at every
+altitude band. `inRange(V<=100)` keeps 94.8 % of pixels (the PLATE, not the cross), so the mask
+becomes the plate with the cross as HOLES; Canny/Hough still find arm-like edges, so nothing
+downstream objects. **A detector that fails loudly is recoverable; this one lies.** Any
+health metric based on detect-rate would score this scene as perfect.
+
+**`col` fails by RANGE**, 62.4 % detOK, but is ACCURATE when it fires (83 % within-0.15) — the
+V gate keeps 0.0 % of pixels by construction, so detections come from the ROI/shape fallback.
 
 ## Using it as the gate for front-end work
 
 Target = polarity-agnostic, chroma-aware segmentation
 ([[feedback_cross_detector_contrast_not_darkness]]). Pass criteria:
-- **`inv` within-0.15 must rise from 23 %** (hard pass/fail — the confidently-wrong case).
-- **`col` low-altitude band must rise from 5 %** (graded).
+- **`inv` within-0.15 must rise from 0 %** (hard pass/fail — the silent-lying case).
+- **`col` detOK must rise from 62.4 %** while keeping within-0.15 >= 83 % (graded).
 - **base/dim/bright/lowsun/darkbg must NOT regress** (must-not-regress-clean).
 - Score on **within-0.15 AND flight outcome**, never detOK alone.
 
