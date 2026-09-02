@@ -122,7 +122,8 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
       make_aruco_board.py, make_coarse_textured_marker.py, make_fineline_textured_board.py,
       make_multiscale_marker.py, make_landing_montage.py
     Test-record / cleanup (see reference_test_record_system memory):
-      build_test_record.py, build_landing_test_manifest.py, build_obsolete_manifest.py
+      build_test_record.py, build_test_index.py, build_landing_test_manifest.py,
+      build_obsolete_manifest.py
       execute_landing_test_cleanup.py, execute_obsolete_cleanup.py
       refresh_scan_sheets.py, log_param_record.py
       (restructure_parameter_record.py — one-shot restructure, already performed; superseded by
@@ -175,7 +176,10 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     TERMINAL_KICK_COMMIT_DESIGN.md — terminal-kick approach+commit design spec
     HANDOFF_combined_barrier.md / HANDOFF_velocity_damping.md — dated handoff notes for those specific threads
     OBSOLETE_CLEANUP_HANDOFF.md — test-data cleanup plan/history
-    TEST_RECORD.md              — companion doc for tools/build_test_record.py's scan output
+    TEST_RECORD.md              — companion doc for tools/build_test_record.py's scan output.
+                                  ⚠ 88 KB / ~23k tokens — do NOT read it whole. Use
+                                  test_data/INDEX.tsv first (below); come here only for the
+                                  per-rep drill-down INDEX.tsv deliberately omits.
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 

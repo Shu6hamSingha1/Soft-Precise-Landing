@@ -43,12 +43,26 @@
   `DetectorFrameset` eval set). Latest fix: fill-ratio band on `_isolate_marker_by_shape`
   (`ee858086`). → [[feedback_cross_detector_contrast_not_darkness]]
 
+### Looking up a past campaign — grep, don't read
+`test_data/INDEX.tsv` (12 KB) is the entry point: one row per campaign with date, era, n, SP, TL,
+median xy, a status flag, and the memory files that explain it.
+```
+grep -i ic5 test_data/INDEX.tsv          # campaigns touching IC5
+awk -F'\t' '$8=="LIVE"' test_data/INDEX.tsv   # current-era only
+```
+Then open ONLY the backlink file named in the last column. `docs/TEST_RECORD.md` is 88 KB
+(~23k tokens) — go there just for the per-rep drill-down. Status flags: **LIVE** (current era),
+**SUPERSEDED** (pre-2026-08-27 camera change — metrics not comparable to current runs),
+**UNEXPLAINED** (11 campaigns whose metrics survive but whose intent/verdict was never written
+down — do not guess intent from the directory name). Regenerate with `tools/build_test_record.py`
+then `tools/build_test_index.py`.
+
 ### Standing facts (verify in-file before relying on any of these)
 - **Platform:** PX4 SITL + Gazebo Harmonic, `x500_mono_cam_down`. **Down-cam is 320×240,
   fx=fy=135, hfov=1.74** (dropped from 640×480/fx=270 on 2026-08-27 to recover frame rate; same
   hfov, so normalized coords and PLASMC gains are unchanged and now match MATLAB `Constants.m`
   exactly). Verified live in `mono_cam/model.sdf` + `img_data.py:49` on 2026-09-02.
-  ⚠ **`CLAUDE.md` still says 640×480/fx=270 in 3 places — that is stale.**
+  (`CLAUDE.md` asserted the old 640×480/fx=270 in 3 places until 2026-09-02; corrected in `c60eabc3`.)
 - **⚠ TWO perception paths with SEPARATE calibrations — do not mix them up:**
   - **cross-marker** (`src/cross_marker_perception.py:797`) — **RECALIBRATED for 320×240 on
     2026-08-28** from GT-FB landing recordings. Near-diagonal; trustworthy for a nominal ~5-6 m

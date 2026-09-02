@@ -1,0 +1,117 @@
+# test_data/INDEX.tsv — grep this, don't read it whole. Regenerate: tools/build_test_index.py (after build_test_record.py)
+# status: LIVE=current era | SUPERSEDED=pre-2026-08-27 camera change, metrics not comparable | UNEXPLAINED=no memory records what it concluded
+config	date	era	n	SP	TL	xy_med	status	backlinks
+P2inf25_IC2_baseline	2026-08-28	cross-320	5	2	0	0.076	UNEXPLAINED	-
+KappaRatchet_IC5_realperc	2026-08-28	cross-320	5	0	4	2.814	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC5_base	2026-08-28	cross-320	5	5	0	0.019	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC4_realperc	2026-08-28	cross-320	5	0	0	2.591	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC4_base	2026-08-28	cross-320	5	5	0	0.025	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC3_realperc	2026-08-28	cross-320	5	1	4	2.698	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC3_base	2026-08-28	cross-320	5	5	0	0.016	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC2_realperc	2026-08-28	cross-320	5	0	1	2.158	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC2_base	2026-08-28	cross-320	5	5	0	0.02	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC1_realperc	2026-08-28	cross-320	5	0	0	0.251	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KappaRatchet_IC1_base	2026-08-28	cross-320	5	5	0	0.002	LIVE	project_20260828_kappa_ratchet_campaign.md,project_landing_test_is_a_duplicate_mirror.md
+KFretune_IC2_kfretune	2026-08-28	cross-320	5	0	0	0.196	UNEXPLAINED	-
+KFretune_IC2_baseline	2026-08-28	cross-320	4	0	0	0.749	LIVE	project_20260827_framerate_and_h_texture_investigation.md
+KFAuLead_IC2_combined	2026-08-28	cross-320	5	0	0	0.285	UNEXPLAINED	-
+AuLead_IC2_aulead	2026-08-28	cross-320	5	0	0	0.262	UNEXPLAINED	-
+Res320x240_FpsCheck	2026-08-27	cross-320	3	3	0	0.016	UNEXPLAINED	-
+Multi_IC	2026-08-27	cross-320	34	10	14	1.054	LIVE	project_20260831_perception_mode_landing.md
+FpsVerify_LowRes_IC5	2026-08-27	cross-320	3	3	0	0.02	UNEXPLAINED	-
+FpsVerify_Hires_IC5	2026-08-27	cross-320	3	2	0	0.02	UNEXPLAINED	-
+BgFlow_LiveWire_Check	2026-08-27	cross-320	2	2	0	0.021	UNEXPLAINED	-
+Landing_Test_Cross_Perception	2026-08-25	aruco-pre320	1	0	0	0.235	SUPERSEDED	project_20260825_session_wrapup_touchdown_hardening.md
+PerceptionVsGT_IC5	2026-08-24	aruco-pre320	13	1	7	1.559	SUPERSEDED	project_20260824_ic5_perception_fov_margin_gap.md,project_20260825_cbf_margin_reserve_fix.md
+Landing_Test_Cross	2026-08-24	aruco-pre320	76	12	3	0.314	SUPERSEDED	project_20260825_session_wrapup_touchdown_hardening.md
+KappaWall_IC5	2026-08-24	aruco-pre320	1	1	0	0.066	SUPERSEDED	project_20260824_ic5_perception_fov_margin_gap.md
+DthetaHref_IC5	2026-08-24	aruco-pre320	2	0	2	26.312	SUPERSEDED	project_20260824_dtheta_href_continuous_compensation.md
+DthetaHref_IC2	2026-08-24	aruco-pre320	2	0	0	2.168	SUPERSEDED	project_20260824_dtheta_ic5_flyaway_rootcause.md
+DthetaGain_IC5	2026-08-24	aruco-pre320	12	0	1	2.569	SUPERSEDED	project_20260824_dtheta_az_filter_self_defeating_feedback.md,project_20260824_dtheta_ic5_flyaway_rootcause.md
+DthetaDesired_IC5	2026-08-24	aruco-pre320	2	0	1	16.942	SUPERSEDED	project_20260824_dtheta_az_filter_self_defeating_feedback.md,project_20260824_dtheta_href_continuous_compensation.md,project_20260824_dtheta_ic5_flyaway_rootcause.md
+DthetaCap_IC5	2026-08-24	aruco-pre320	2	0	2	11.614	SUPERSEDED	project_20260824_crossmarker_offcenter_convergence_wall.md,project_20260824_dtheta_cap_flyaway_fix.md
+Cross_Marker_Montage_Rover	2026-08-24	aruco-pre320	1	1	0	0.019	SUPERSEDED	feedback_recurring_analysis_mistakes.md,project_20260901_rover_cross_perception_diagnosis.md
+Cross_Marker_Montage	2026-08-24	aruco-pre320	1	1	0	0.009	SUPERSEDED	feedback_cross_marker_alpha_not_pixel_frame.md,feedback_cross_marker_texture_history.md,feedback_recurring_analysis_mistakes.md,feedback_reject_disable_cast_shadows.md
+CrossMarkerGTFB_OverflowDiag_IC5	2026-08-24	aruco-pre320	3	0	0	0.082	SUPERSEDED	reference_cbf_visibility_architecture.md
+TdSpikeGTFB_IC2_td050	2026-08-23	aruco-pre320	1	0	0	0.678	SUPERSEDED	-
+TdSpikeGTFB_IC2_td030	2026-08-23	aruco-pre320	2	0	1	0.42	SUPERSEDED	-
+TdSpikeGTFB_IC2_td010	2026-08-23	aruco-pre320	1	0	0	0.836	SUPERSEDED	-
+TdSpikeGTFB_IC2_td000	2026-08-23	aruco-pre320	5	5	0	0.061	SUPERSEDED	-
+TdSpikeDefaultConfirm	2026-08-23	aruco-pre320	1	1	0	0.057	SUPERSEDED	-
+CrossMarkerGTFB_TdSpikeFix_IC5	2026-08-23	aruco-pre320	5	2	0	0.065	SUPERSEDED	-
+CrossMarkerGTFB_TdSpikeFix_IC4	2026-08-23	aruco-pre320	5	5	0	0.062	SUPERSEDED	-
+CrossMarkerGTFB_TdSpikeFix_IC3	2026-08-23	aruco-pre320	5	5	0	0.057	SUPERSEDED	-
+CrossMarkerGTFB_TdSpikeFix_IC2	2026-08-23	aruco-pre320	5	5	0	0.054	SUPERSEDED	-
+CrossMarkerGTFB_TdSpikeFix_IC1	2026-08-23	aruco-pre320	3	3	0	0.008	SUPERSEDED	-
+AzLiftGain_IC1_fix3	2026-08-23	aruco-pre320	16	10	3	0.012	SUPERSEDED	project_20260902_archive_rescore_false_precise.md,project_landing_test_is_a_duplicate_mirror.md
+AzLiftGain_IC1_fix2	2026-08-23	aruco-pre320	15	9	1	0.013	SUPERSEDED	project_20260902_archive_rescore_false_precise.md,project_landing_test_is_a_duplicate_mirror.md
+AzLiftGain_IC1	2026-08-23	aruco-pre320	15	6	7	0.017	SUPERSEDED	project_20260902_archive_rescore_false_precise.md
+AzLiftGain_Cross_IC1	2026-08-23	aruco-pre320	16	0	0	0.062	SUPERSEDED	-
+Revert486f713_probe	2026-08-22	aruco-pre320	1	1	0	0.038	SUPERSEDED	-
+Revert486f713_multi	2026-08-22	aruco-pre320	4	4	0	0.045	SUPERSEDED	-
+PoseFreezeProbe3	2026-08-21	aruco-pre320	1	0	0	0.737	SUPERSEDED	-
+PoseFreezeProbe2	2026-08-21	aruco-pre320	1	0	0	0.772	SUPERSEDED	-
+FreshGateGTFB_IC2_gate1	2026-08-21	aruco-pre320	1	0	0	0.882	SUPERSEDED	-
+ZregGTFB_IC2_z020	2026-08-20	aruco-pre320	1	0	0	0.773	SUPERSEDED	-
+ZregGTFB_IC2_z005	2026-08-20	aruco-pre320	1	0	1	0.015	SUPERSEDED	-
+VdsKfqGTFB_IC2_cross_q1	2026-08-20	aruco-pre320	2	0	0	1.454	SUPERSEDED	-
+VdsKfqGTFB_IC2_aruco_q10	2026-08-20	aruco-pre320	2	0	0	0.78	SUPERSEDED	-
+VdsKfqGTFB_IC2_aruco_q1	2026-08-20	aruco-pre320	2	0	0	0.833	SUPERSEDED	-
+TerminalCommitGTFB_IC2_aruco_commit1	2026-08-20	aruco-pre320	3	0	0	0.845	SUPERSEDED	-
+TerminalCommitGTFB_IC2_aruco_commit0	2026-08-20	aruco-pre320	1	0	0	0.986	SUPERSEDED	-
+CBF_Phase2_AB	2026-08-14	aruco-pre320	12	1	3	0.141	SUPERSEDED	project_landing_test_is_a_duplicate_mirror.md
+Rover_VelFF	2026-07-02	aruco-pre320	1	0	0	2.135	SUPERSEDED	project_rover_turning_open.md
+Rover_Turning	2026-07-02	aruco-pre320	64	4	0	1.324	SUPERSEDED	project_rover_turning_open.md
+Rover_SpeedSweep	2026-07-02	aruco-pre320	9	0	0	0.106	SUPERSEDED	feedback_concurrent_session_lanes.md,project_rover_speed_sweep.md
+Rover_CompassFree	2026-07-02	aruco-pre320	3	2	0	0.017	SUPERSEDED	feedback_compass_free_validation.md
+Rover_AB_rover_platform	2026-07-02	aruco-pre320	1	1	0	0.047	SUPERSEDED	-
+Rover_AB_rover	2026-07-02	aruco-pre320	1	0	0	0.083	SUPERSEDED	reference_test_record_system.md
+Rover_AB_aruco	2026-07-02	aruco-pre320	3	1	0	0.192	SUPERSEDED	-
+Landing_Test	2026-06-23	aruco-pre320	985	177	220	0.379	SUPERSEDED	CONTROLLER_PARITY.md,HANDOFF_cbf_lockout_planarmap_2026-07-30.md,HANDOVER_cross_marker_headless_flight_testing_20260811.md,MOVING_TARGET_PREP.md
+CentroidRate_IC2_observer	2026-06-23	aruco-pre320	5	0	1	2.482	SUPERSEDED	-
+CentroidRate_IC2_baseline	2026-06-23	aruco-pre320	5	0	2	0.887	SUPERSEDED	FUNNEL_CBF_DESIGN.md,feedback_backstep_tried_clamps_are_lever.md,feedback_combined_surface_divergence.md,feedback_loom_commit_gate.md
+Dgate_IC2_gate	2026-06-22	aruco-pre320	15	0	4	1.999	SUPERSEDED	feedback_hd_funnel_ref_zeta_h_degenerate.md,project_20260824_dtheta_href_continuous_compensation.md,project_20260824_ic5_angle_clustering_and_hang_investigation.md,project_residual_cycle_wumax_bake.md
+Dgate_IC2_baseline	2026-06-22	aruco-pre320	15	0	3	1.33	SUPERSEDED	feedback_hd_funnel_ref_zeta_h_degenerate.md,project_20260824_dtheta_href_continuous_compensation.md,project_20260824_ic5_angle_clustering_and_hang_investigation.md,project_residual_cycle_wumax_bake.md
+Commit_IC2_gatecommit	2026-06-22	aruco-pre320	15	0	4	1.92	SUPERSEDED	-
+Commit_IC2_gate	2026-06-22	aruco-pre320	15	0	4	1.459	SUPERSEDED	CBF_SEN_MATLAB_PORT.md,CONTROLLER_PARITY.md,HANDOFF_cbf_lockout_planarmap_2026-07-30.md,HANDOFF_combined_barrier.md
+CommitSen_IC2_gatecommit_sen	2026-06-22	aruco-pre320	15	0	2	1.749	SUPERSEDED	-
+CommitSen_IC2_gate	2026-06-22	aruco-pre320	15	0	4	1.599	SUPERSEDED	-
+ChClean_IC2	2026-06-15	aruco-pre320	10	0	9	6.298	SUPERSEDED	project_20260812_cross_marker_flow_architecture_investigation.md
+CentroidRate_IC2	2026-06-15	aruco-pre320	15	0	13	6.146	SUPERSEDED	FUNNEL_CBF_DESIGN.md,feedback_backstep_tried_clamps_are_lever.md,feedback_combined_surface_divergence.md,feedback_loom_commit_gate.md
+BothPillars_IC2	2026-06-15	aruco-pre320	10	0	4	6.838	SUPERSEDED	project_current_state.md
+DsdGov_IC2	2026-06-14	aruco-pre320	15	0	13	6.942	SUPERSEDED	-
+DsdGovBaseline_IC2	2026-06-14	aruco-pre320	5	0	5	10.479	SUPERSEDED	-
+CBF_AB	2026-06-14	aruco-pre320	21	0	17	14.137	SUPERSEDED	-
+E05_GAM10_XI2Z06_IC2	2026-06-13	aruco-pre320	1	0	1	5.893	SUPERSEDED	-
+BakedEz5_IC2	2026-06-13	aruco-pre320	5	0	4	20.183	SUPERSEDED	-
+ICValidation	2026-06-12	aruco-pre320	2353	612	454	0.216	SUPERSEDED	PLASMC_TUNING_GUIDE.md,feedback_krp_pz_ic2to5_regression.md,project_20260730_five_fixes_ic_validation.md,project_20260811_aruco_ic1to5_comparison_baseline.md
+ComboKDXIKP_IC2	2026-06-12	aruco-pre320	5	0	1	3.343	SUPERSEDED	feedback_ic2_lateral_gain_chain.md,feedback_plasmc_two_task_framework.md
+ComboKDXIKP_IC1	2026-06-12	aruco-pre320	5	0	1	2.762	SUPERSEDED	feedback_plasmc_two_task_framework.md
+BakedStack_IC2	2026-06-12	aruco-pre320	5	0	1	10.143	SUPERSEDED	feedback_ic2_lateral_gain_chain.md,project_current_state.md
+BakedStack_IC1	2026-06-12	aruco-pre320	5	0	1	4.01	SUPERSEDED	feedback_ic2_lateral_gain_chain.md,project_current_state.md
+DutyStale_IC1	2026-06-11	aruco-pre320	5	0	3	6.514	SUPERSEDED	-
+CommitGate_IC1	2026-06-11	aruco-pre320	5	0	0	0.327	SUPERSEDED	feedback_terminal_descent_loom_overreport.md
+EZsweep_kfreeze_IC1	2026-06-10	aruco-pre320	10	0	2	1.684	SUPERSEDED	-
+EZ05_Pz8_IC1	2026-06-10	aruco-pre320	5	0	1	3.105	SUPERSEDED	-
+DescentEZ05_kfreeze_IC1	2026-06-10	aruco-pre320	5	0	0	2.093	SUPERSEDED	-
+DescentEZ05_dwfix_IC1	2026-06-10	aruco-pre320	5	0	1	9.1	SUPERSEDED	-
+DescentEZ05_IC1	2026-06-10	aruco-pre320	5	0	1	1.283	SUPERSEDED	-
+Bootstrap_k0z1_n5	2026-06-10	aruco-pre320	5	0	0	2.673	SUPERSEDED	-
+Bootstrap_k0z05_n3	2026-06-10	aruco-pre320	3	0	1	6.273	SUPERSEDED	-
+BootstrapFix_n21	2026-06-10	aruco-pre320	21	1	5	0.957	SUPERSEDED	PARAMETER_ANALYSIS.md,PLASMC_TUNING_GUIDE.md,feedback_false_sp_frozen_gt.md
+ExtentHold_sweep	2026-06-08	aruco-pre320	4	0	0	5.128	SUPERSEDED	-
+ExtentCapture	2026-06-08	aruco-pre320	2	0	0	7.391	SUPERSEDED	-
+CondInteg_n6	2026-06-08	aruco-pre320	5	0	2	7.708	SUPERSEDED	project_20260828_guaranteed_sp_synthesis.md
+SPCampaign	2026-06-03	aruco-pre320	131	14	12	0.603	SUPERSEDED	OBSOLETE_CLEANUP_HANDOFF.md,feedback_fov_cone_clamp_deadlock.md,project_obsolete_cleanup.md,reference_test_record_system.md
+DhdClampSweep	2026-06-02	aruco-pre320	5	0	2	1.098	SUPERSEDED	-
+CoordDescent	2026-05-25	aruco-pre320	2	2	0	0.059	SUPERSEDED	feedback_coord_descent_sp_lucky_ic.md
+RingSampling_n5_AB		unknown	10	0	8	3.36	LIVE	project_20260817_crossmarker_descent_stall_investigation.md
+RingSampling_AB		unknown	2	0	2	3.392	LIVE	project_20260812_cross_marker_flow_architecture_investigation.md,project_20260813_cbf_extent_fix_followup.md
+RingOverlayScan		unknown	4	0	2	2.248	UNEXPLAINED	-
+RadiusCap_Sweep		unknown	12	0	10	2.394	LIVE	project_20260817_crossmarker_descent_stall_investigation.md
+GTFB_HoldLastFix_n10		unknown	1	0	0	1.334	UNEXPLAINED	-
+GTFB_CrossMarker_IC2_n10		unknown	2	0	0	1.015	LIVE	project_20260815_crossmarker_gtfb_sp_investigation.md,project_20260817_crossmarker_descent_stall_investigation.md
+GTFB_ArUco_IC2_check		unknown	3	0	0	0.857	UNEXPLAINED	-
+Final		unknown	5	0	0	0.113	LIVE	PLASMC_TUNING_GUIDE.md,feedback_false_sp_frozen_gt.md,project_20260902_archive_rescore_false_precise.md,reference_final_landing_recordings.md
+DetectorFrameset		unknown	6	3	1	0.082	LIVE	feedback_ab_baseline_verify_concurrent_commits.md,feedback_cross_detector_contrast_not_darkness.md,feedback_cross_detector_robustness_requirement.md,feedback_detector_offline_replay_gotchas.md
+CBFMarginReserve_Clean_IC5		unknown	6	0	3	2.158	LIVE	project_20260825_cbf_margin_reserve_fix.md
