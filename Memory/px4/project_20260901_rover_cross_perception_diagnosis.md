@@ -57,7 +57,8 @@ Ran the clean discriminator: `PLASMC_GT_FEEDBACK=1` on static `rover_cross` (air
 |---|---|---|---|
 | `Rover_Static_IC1_Montage/rep1` | 0.51 | **0.01 m** | genuine landing, xy 0.007 |
 | `Rover_Static_IC1_Montage/oldtex_rep1` | 0.51 | **0.01 m** | genuine landing, xy 0.010 |
-| `Cross_Marker_Montage_Rover/Mon Aug 24 11-24-19` | 0.99 | 0.49 m | FALSE latch, see below |
+| `Cross_Marker_Montage_Rover/Mon Aug 24 11-24-19` | 0.99 | 0.49 m | FALSE latch (`Impact detected`), see below |
+| `Landing_Test/Thu Aug 27 00-21-14` (= `Rover_Static_IC1_Montage/rep1`) | 0.487 | **0.00 m** | genuine landing, xy 0.007 |
 
 **With perfect state the rover platform is landable, dead-centred.** So the perception-mode
 failure is the DETECTOR (already isolated by the flat-vs-clutter comparison: identical world
@@ -70,7 +71,7 @@ under GT-FB the loom comes from truth so overfill CANNOT bite. Whatever stalls p
 `rover_IC4` is therefore downstream of the detector, not an independent terminal-overfill
 blocker. Treat the Cluster B attribution below as UNCONFIRMED.
 
-⚠ Sample is 3 GT-FB static runs, all centred/IC1-ish. Enough to show the platform is landable;
+⚠ Sample is 4 GT-FB static runs (3 genuine landings, 1 false latch), all centred/IC1-ish. Enough to show the platform is landable;
 NOT enough for offset ICs -- which is exactly where the perception failure lives. A GT-FB
 sweep at IC2/IC3/IC5 on `rover_cross` would close that gap and is cheap. **Not yet run.**
 
@@ -85,18 +86,34 @@ rover drone reads `uav.z - target.z ~ 0.49`, NOT ~0 -- the target pose is the ro
 flag 34 genuine platform landings as failures; see
 [[project_20260902_archive_rescore_false_precise]].
 
-### ⛔ The curated rover montage videos are MISLABELLED
+### ✅ The rover montage videos ARE correct (a retraction)
 
-`test_data/Test_Videos/montage_rover_static_ic1.mp4` and
-`montage_final_rover_static_ic1_touchdowncrop.mp4` are built from the
-`Cross_Marker_Montage_Rover` run -- the one that **never landed** (ended 0.49 m above the
-platform, still descending at -0.32 m/s, `B_T=-0.36` still commanding descent). The chase
-frame shows the drone visibly above the plate and the `|rel. position|` trace ending near 0.5
-instead of reaching the platform. Its log reads `Landing classification: SOFT+PRECISE
-(xy_err=0.019 m, rel_vel=0.180 m/s)`. Same class as `test_data/Final/IC5`; both are products
-of the missing terminal-state gate, fixed in `d6610ea7`. **Do not use these clips as evidence
-of a rover touchdown.** The two `Rover_Static_IC1_Montage` runs ARE genuine landings and are
-the ones worth filming.
+An earlier version of this section claimed `test_data/Test_Videos/montage_rover_static_ic1.mp4`
+and `..._touchdowncrop.mp4` were mislabelled and showed a non-landing. **That was WRONG —
+retracted (user challenge, 2026-09-02).**
+
+They are built from `Landing_Test/Thu Aug 27 00-21-14 2026` (= `Rover_Static_IC1_Montage/rep1`),
+which is a **genuine landing**: 10.3 s, rel-z 4.98 -> 0.49, `min_alt` **0.487 = 0.00 m above the
+0.50 m platform**, xy 0.007, rel_vel 0.066, SOFT+PRECISE. Pairing confirmed by file times — the
+montage was written 00:22:17, 61 s after `rep1.out` finished 00:21:16 — and by the montage's own
+plot (x-axis to ~10 s, `|rel. position|` ending ~0.5), which matches this run and NOT the
+`Cross_Marker_Montage_Rover` run (7.1 s, ending 0.99).
+
+**Two mistakes worth not repeating:**
+1. **Never assume a video<->run pairing from directory names.** I saw a rover montage, found a
+   rover montage *directory*, and assumed — without checking file mtimes or matching the
+   plotted trace against the data. The filename `rover_static_ic1` named the correct dir all along.
+2. **⛔ On the rover, `|rel. position| ~ 0.5` MEANS LANDED**, not airborne — the trace is
+   measured to the rover BASE and the platform is 0.50 m tall. This is the exact trap recorded
+   two sections above (settled rover landings rest at rel-z 0.487, n=12); I wrote it down and
+   then fell into it an hour later while reading a chart. When a rover plot bottoms out near
+   0.5, that is the success case.
+
+Separately and still true: the `Cross_Marker_Montage_Rover/Mon Aug 24 11-24-19` RUN is a false
+latch — 7.1 s, monotonic 5.004 -> 0.990 rel-z, ending 0.49 m above the platform still descending
+at -0.32 m/s with `B_T=-0.36`, terminated by `Impact detected (|a|=65.6)` and scored SOFT+PRECISE.
+It is simply not the run the montage was built from. **So GT-FB static rover_cross is 3 of 3
+genuine landings, not 2 of 3.**
 
 ## Three scene causes (rover_cross-specific, world/infra — NOT our source)
 
