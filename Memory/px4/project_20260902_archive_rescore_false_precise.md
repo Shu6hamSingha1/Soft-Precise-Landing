@@ -52,7 +52,12 @@ rescues **34** genuine platform landings. Discriminate with `median(target.z) > 
 **starts directly above the marker**, so `xy_err` ~ 0 at t=0. Median duration 1.29 s, median
 `alt_min` 4.84 m, median xy 0.028 m. Worst never got below 5.78 m.
 
-**Class TRUNCATED** median last altitude **0.486 m**; profiles show a steady descent that
+**Class TRUNCATED** — two confirmed latch mechanisms end the descent loop early: the
+touchdown detector false-firing at altitude, and **the IMU impact detector** (`|a|>50` ->
+`FC_node.LANDED=True`), which fires in **26.6 %** of runs that end airborne and is
+**mode-independent** (a GT-feedback rover run latched on `|a|=65.6` while 0.49 m up, still
+descending). ⛔ `Disarming denied: not landed` is NOT corroboration of either — it appears in
+97.4 % of genuine landings (2396 paired runs). Median last altitude **0.486 m**; profiles show a steady descent that
 simply stops (`AzLiftGain_IC1/20260823`: 2.85 -> 0.49 m at ~0.7 m/s, then log ends) versus a
 clean control (`ICValidation/20260829`) descending smoothly to -0.01 m. Cause is almost
 certainly a touchdown detector false-latching at altitude (the documented bug class --

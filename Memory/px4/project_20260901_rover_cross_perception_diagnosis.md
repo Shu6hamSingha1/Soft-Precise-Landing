@@ -48,6 +48,56 @@ detector-independent. Same mechanism as the stationary #1 open blocker
 ([[project_20260831_perception_mode_landing]] banner), just triggered ~0.6 m higher by
 the platform so there's descent left to complete.
 
+## ⭐ GT-FEEDBACK ABLATION (2026-09-02) — static rover_cross DOES land; the detector is the blocker
+
+Ran the clean discriminator: `PLASMC_GT_FEEDBACK=1` on static `rover_cross` (airframe 4022,
+`world rover_cross`) bypasses perception entirely.
+
+| run | `min_alt` (rel-z) | above platform | verdict |
+|---|---|---|---|
+| `Rover_Static_IC1_Montage/rep1` | 0.51 | **0.01 m** | genuine landing, xy 0.007 |
+| `Rover_Static_IC1_Montage/oldtex_rep1` | 0.51 | **0.01 m** | genuine landing, xy 0.010 |
+| `Cross_Marker_Montage_Rover/Mon Aug 24 11-24-19` | 0.99 | 0.49 m | FALSE latch, see below |
+
+**With perfect state the rover platform is landable, dead-centred.** So the perception-mode
+failure is the DETECTOR (already isolated by the flat-vs-clutter comparison: identical world
++ one dark box drops detOK 100%->60% at matched 20-30 deg obliquity), not the platform, not
+the controller, and not the rover being a rover (this is the STATIC case).
+
+**⛔ CORRECTION to "Cluster B = terminal overfill".** This file attributes the IC1/IC4 ~1.1 m
+stalls to terminal marker-overfill loom collapse. GT-FB reaches 0.51 m with no trouble, and
+under GT-FB the loom comes from truth so overfill CANNOT bite. Whatever stalls perception-mode
+`rover_IC4` is therefore downstream of the detector, not an independent terminal-overfill
+blocker. Treat the Cluster B attribution below as UNCONFIRMED.
+
+⚠ Sample is 3 GT-FB static runs, all centred/IC1-ish. Enough to show the platform is landable;
+NOT enough for offset ICs -- which is exactly where the perception failure lives. A GT-FB
+sweep at IC2/IC3/IC5 on `rover_cross` would close that gap and is cheap. **Not yet run.**
+
+### Platform geometry — verified, use this constant
+
+`rover_cross/model.sdf`: platform box 0.6x0.6x0.4 at pose z=0.30 -> **top at 0.50 m**, marker
+plane at 0.501 (unchanged since before 2026-09-01, per the `.bak_before_platformcolor_20260901`
+backup). Confirmed EMPIRICALLY, not just from the SDF: across the whole archive, rover runs
+that genuinely settle (`|dz/dt| < 0.02`) rest at **rel-z 0.487, mode 0.5, n=12**. So a landed
+rover drone reads `uav.z - target.z ~ 0.49`, NOT ~0 -- the target pose is the rover BASE
+(z~0.02), not the landing surface. This is the same trap that made a first-pass archive audit
+flag 34 genuine platform landings as failures; see
+[[project_20260902_archive_rescore_false_precise]].
+
+### ⛔ The curated rover montage videos are MISLABELLED
+
+`test_data/Test_Videos/montage_rover_static_ic1.mp4` and
+`montage_final_rover_static_ic1_touchdowncrop.mp4` are built from the
+`Cross_Marker_Montage_Rover` run -- the one that **never landed** (ended 0.49 m above the
+platform, still descending at -0.32 m/s, `B_T=-0.36` still commanding descent). The chase
+frame shows the drone visibly above the plate and the `|rel. position|` trace ending near 0.5
+instead of reaching the platform. Its log reads `Landing classification: SOFT+PRECISE
+(xy_err=0.019 m, rel_vel=0.180 m/s)`. Same class as `test_data/Final/IC5`; both are products
+of the missing terminal-state gate, fixed in `d6610ea7`. **Do not use these clips as evidence
+of a rover touchdown.** The two `Rover_Static_IC1_Montage` runs ARE genuine landings and are
+the ones worth filming.
+
 ## Three scene causes (rover_cross-specific, world/infra — NOT our source)
 
 1. **Two-PX4-instance camera warm-up.** ~7 s frozen uniform-grey feed at start (byte-

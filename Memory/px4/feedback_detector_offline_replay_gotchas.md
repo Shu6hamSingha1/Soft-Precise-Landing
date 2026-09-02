@@ -85,3 +85,28 @@ its detOK from a true 18 % to a reported 49 %.
 
 **Prefer `--set test_data/DetectorFrameset`** (curated, coverage checked) over hand-pairing.
 If you must hand-pair, filter to `t_g[0] <= t <= t_g[-1]` before believing any aggregate.
+
+## 4. Run-log messages: which ones actually mean anything (2026-09-02)
+
+Per-rep logs live NEXT TO the rep dir, not inside it: `ICValidation/<ts>/IC3_rep2.log`
+alongside `ICValidation/<ts>/IC3_rep2/Ground_Truth.npy`. Pair them by that name to correlate
+log text with measured outcome. Done over **2396 paired runs** (landed = lowest altitude
+above the LANDING SURFACE <= 0.20 m):
+
+| log line | in LANDED runs | in AIRBORNE-ending runs | verdict |
+|---|---|---|---|
+| `Disarming denied: not landed` | **97.4 %** | 87.3 % | ⛔ ROUTINE NOISE — means nothing |
+| `Impact detected (\|a\|>50)` | 55.9 % | **26.6 %** | real signal, but fires spuriously |
+
+**⛔ Do not read `Disarming denied: not landed` as PX4 contradicting a touchdown.** It appears
+in ~97 % of genuine landings too. (I briefly cited it as evidence that PX4 disagreed with an
+impact latch — wrong, retracted.)
+
+**`Impact detected` IS a spurious-latch source.** It ends the descent loop
+(`FC_node.LANDED=True`) and fires in 26.6 % of runs that end airborne. Confirmed case: a
+GT-feedback static `rover_cross` run latched on `|a|=65.6 m/s²` while 0.49 m above the
+platform, still descending at -0.32 m/s with `B_T=-0.36` still commanding descent, and was
+then scored SOFT+PRECISE. This is a THIRD truncation mechanism alongside the touchdown-detect
+latches -- and it is mode-independent (fires under GT-feedback too). See
+[[project_20260902_archive_rescore_false_precise]] and
+[[project_20260901_rover_cross_perception_diagnosis]].
