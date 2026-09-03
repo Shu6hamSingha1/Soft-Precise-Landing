@@ -96,9 +96,36 @@ Ran via `matlab -batch`, not the full 50-run gate (see below for why). Pre-port
    Diagnostic aid added: `Constants.m` gained `T_MAX_OVERRIDE` (mirrors the existing
    `H_RD_OVERRIDE` pattern) so `T_max` can be swept without editing the file.
 
-**Not yet done:** which specific combination of the ~16 ported constants causes the IC5
-Lissajous/Circular failure (isolation stopped at "not any single one" — a joint/pairwise
-sweep is needed, not more one-at-a-time tests). The full 50-run gate was deliberately NOT run
+**RESOLVED 2026-09-04 (grouped + pairwise sweep on IC5 Circular, confirmed on Lissajous):**
+the cause is the interaction of `Xi_h` (optic-flow funnel contraction, ported 0.2→**1.0**, 5×
+faster) and `Xi_r` (position funnel contraction, ported 0.3→**0.10**, 3× slower) TOGETHER.
+No single constant reproduces the failure or the fix alone:
+
+| reverted | IC5 Circular result |
+|---|---|
+| `Xi_h` alone | still fails (xy=1.56) |
+| `Xi_r` alone | still fails (xy=1.24) |
+| `chi_r` alone | still fails (xy=1.80) |
+| `Xi_h`+`Xi_r` (chi_r left at ported 1.5) | **clean** (xy=0.0128) |
+| `Xi_h`+`chi_r` (Xi_r left at ported 0.10) | marginal fail (xy=0.090, just over precise/soft) |
+| `Xi_r`+`chi_r` (Xi_h left at ported 1.0) | still fails (xy=1.06) |
+| ALL 6 groups (A–F) reverted | clean (xy=0.0072) — superset, consistent |
+
+**`Xi_h`+`Xi_r` reverted alone, with EVERYTHING else (including `chi_r`, the full joint-QP,
+HD_KR, kappa_max) left at PX4's ported value, fixes all 4 originally-failing cells** (IC5 ×
+{Lissajous,Circular} × {noiseless,realistic}) to `success=1 precise=1 soft=1`.
+
+Mechanism (plausible, not yet proven): the position funnel (`p_r`) now contracts 3× *slower*
+while the optic-flow funnel (`p_h`) contracts 5× *faster* — on a fast-moving target (Lissajous/
+Circular only; Static/Linear/Sinusoidal IC5 are unaffected) that timing mismatch between the
+two funnels, not either rate alone, is what breaks tracking. Not yet root-caused further.
+
+**Recommendation:** given this isolates to exactly 2 of the ~16 ported constants, and PX4's
+own values for `Xi_h`/`Xi_r` are unlikely to be wrong (well-tested on real hardware), the more
+likely target for retuning is the *other* side of the pairing — MATLAB may need a different
+`Xi_h`/`Xi_r` combination than PX4's, rather than importing PX4's values verbatim. Needs a
+small 2D sweep around PX4's values (e.g. `Xi_h` ∈ {0.4,0.6,0.8,1.0}, `Xi_r` ∈ {0.10,0.15,0.20,
+0.30}) on the full IC5×trajectory set before picking a value, not a binary port/no-port choice. The full 50-run gate was deliberately NOT run
 given (3) already shows a real, non-trivial regression needing a re-tune first — running the
 full sweep now would just enumerate more instances of the same root cause.
 
