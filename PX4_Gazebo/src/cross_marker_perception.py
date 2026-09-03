@@ -959,6 +959,63 @@ class CrossMarkerPerception:
         self._htc_r_max = float(os.environ.get("CROSS_HTC_R_MAX", "8.0"))
         self._htc_clamp = float(os.environ.get("CROSS_HTC_CLAMP", "0.20"))
         self._htc_clamp_frac = float(os.environ.get("CROSS_HTC_CLAMP_FRAC", "0.5"))
+        # ── LOOM (h_z) MEASUREMENT-NOISE SCHEDULE vs MARKER_EXTENT_PX ──────────────
+        # (2026-09-03, DEFAULT OFF.) The loom's accuracy is a U-shaped function of
+        # marker extent, measured on 3093 frames / 11 runs / 2 sessions (flat
+        # cross_marker, post-touchdown frames excluded), scoring the pinv Tz against
+        # gt_optical_flow's V_h_g[2]:
+        #
+        #   median extent px   r(h_z,GT)   std(meas-GT)   variance vs best     n
+        #          51            +0.698       0.0656            3.18x           496
+        #          68            +0.915       0.0368            1.00x          1045   <- sweet spot
+        #          88            +0.749       0.0424            1.33x           374
+        #         108            +0.656       0.0552            2.25x           233
+        #         128            +0.517       0.0660            3.21x           181
+        #         154            +0.406       0.0670            3.32x           192
+        #         182            +0.383       0.0740            4.04x           147
+        #         218            +0.188       0.0735            3.98x           153
+        #         264            +0.048       0.0741            4.05x           272
+        #
+        # Degrades on BOTH sides: overfill above (background squeezed to FoV-edge
+        # slivers) and thin strokes / the known >6 m cal gap below. So this is a
+        # U-shaped multiplier on r[2], NOT a one-sided gate.
+        #
+        # ⚠ WHY A SCHEDULE AND NOT A GATE. Extent was tested as a per-frame
+        # DISCRIMINATOR and is worse than useless: against a strict label (sign flip
+        # or >50% relative error, 18.3% base rate) every threshold catches 0.4-1.4%
+        # of bad frames while suppressing 10-61% of good ones (lift ~0.02).
+        # rel_resid is no better (lift 0.78-1.83 ~ random). The terminal loom is not
+        # grossly wrong in magnitude (|err| 0.025 -> 0.105) -- it is DECORRELATED
+        # with ~3x excess variance, i.e. the right ballpark buried in noise. Gating
+        # would discard the ballpark with the noise, which is the under-braking
+        # measured in [[feedback_pinv_tol_loom_scaling]] (terminal vz 0.74 -> 1.06
+        # m/s). A KF does not need per-frame detection -- it needs the correct R.
+        # This makes the loom's UNCERTAINTY honest; it does NOT recover lost signal.
+        #
+        # ⚠ CONFLICTS WITH A STANDING DIRECTIVE -- read before enabling. The
+        # _htc_* gate above deliberately uses background-flow HEALTH and NOT
+        # MARKER_EXTENT_PX, per an explicit user decision on 2026-08-28 ("keeps the
+        # switch a pure signal-quality decision, no proximity proxy"). This schedule
+        # DOES key on extent, at user request (2026-09-03) and because the measured
+        # relationship above is with extent, not with health. Default OFF; the
+        # health-keyed alternative is a one-line swap of `_loomrExtent()` for
+        # self._bgflow_health[0] if that directive is reaffirmed.
+        # Scale-free: extent is an image-plane pixel quantity, no depth/metric.
+        self._loomr_on      = os.environ.get("CROSS_LOOM_R_SCHEDULE", "0") == "1"
+        # Defaults are a least-squares fit of the linear-in-variance ramp to the bin
+        # MEDIANS above (not bin centres): upper branch slope 0.0310/px -> unity at
+        # 70 px, saturating at 167 px. The minimum is sharp, so the "unity band" is
+        # ~a single point (lo 68 / hi 70) rather than a plateau.
+        self._loomr_lo_px   = float(os.environ.get("CROSS_LOOM_R_LO_PX", "68"))    # unity band, lower edge
+        self._loomr_hi_px   = float(os.environ.get("CROSS_LOOM_R_HI_PX", "70"))    # unity band, upper edge
+        # ⚠ The lower branch rests on TWO bins only (median 51 px -> 3.18x, 68 px ->
+        # 1.00x); far_px is an extrapolated saturation point, not a measured one.
+        # Treat the small-extent side as provisional -- it is also the >6 m regime
+        # the sensor cal already flags as degraded, so the two effects are confounded.
+        self._loomr_far_px  = float(os.environ.get("CROSS_LOOM_R_FAR_PX", "45"))   # small-extent saturation
+        self._loomr_near_px = float(os.environ.get("CROSS_LOOM_R_NEAR_PX", "167")) # overfill saturation
+        self._loomr_max     = float(os.environ.get("CROSS_LOOM_R_MAX", "4.0"))     # measured variance ratio at both ends
+        self._loomr_log     = []           # per-frame applied r[2] multiplier (1.0 = unscheduled)
         self._bgflow_health = (0.0, 999)   # (rel_resid, n_pts) of the last flow solve this frame
         self._hxy_derate_log = []          # per-frame blend fraction to centroid-rate (0 = pure bg-flow)
         self._bgflow_health_log = []       # per-frame (rel_resid, n_pts) -- for gate tuning/validation
@@ -973,6 +1030,37 @@ class CrossMarkerPerception:
         self._scen_kf_P = np.tile(np.eye(2) * 1.0, (2, 1, 1))
         self._scen_kf_prev_t = None
         self._scen_kf_init = False
+
+    def _currentExtentPx(self):
+        """MARKER_EXTENT_PX as the logger computes it -- cross-arm inlier bbox when
+        available, else the mask bbox, max(w,h). Single definition shared by
+        _log_frame_data, get_marker_radius_px and the loom-R schedule so the three
+        cannot drift apart. Returns 0.0 when nothing has been detected yet (the
+        same hold-last-good / zero convention _marker_extent_log already uses)."""
+        _eb = self._last_extent_bbox if self._last_extent_bbox is not None else self._last_bbox
+        return float(max(_eb[2], _eb[3])) if _eb is not None else 0.0
+
+    def _loomRMult(self):
+        """U-shaped r[2] multiplier from MARKER_EXTENT_PX -- see __init__'s
+        _loomr_* block for the measured table this is fitted to. 1.0 inside the
+        [lo_px, hi_px] sweet spot, ramping LINEARLY IN VARIANCE to _loomr_max at
+        _loomr_far_px (below) and _loomr_near_px (above), saturating outside.
+        Returns 1.0 when the schedule is off or extent is unavailable, so the
+        flag-off path is bit-identical to the previous behaviour."""
+        if not self._loomr_on:
+            return 1.0
+        e = self._currentExtentPx()
+        if not (e > 0.0):
+            return 1.0          # no detection yet -> no basis to re-weight
+        if e < self._loomr_lo_px:
+            span = max(self._loomr_lo_px - self._loomr_far_px, 1e-6)
+            f = np.clip((self._loomr_lo_px - e) / span, 0.0, 1.0)
+        elif e > self._loomr_hi_px:
+            span = max(self._loomr_near_px - self._loomr_hi_px, 1e-6)
+            f = np.clip((e - self._loomr_hi_px) / span, 0.0, 1.0)
+        else:
+            f = 0.0
+        return float(1.0 + f * (self._loomr_max - 1.0))
 
     def _kf_update_hw(self, z, t):
         """hw coast+freeze KF update -- ported from img_data.py's `_kf_update`
@@ -1008,6 +1096,17 @@ class CrossMarkerPerception:
                     mult = 1.0 + _frac * (self._htc_r_max - 1.0)
                     r = np.full(6, self._hw_kf_r)
                     r[0] *= mult; r[1] *= mult
+            # LOOM R SCHEDULE (see __init__'s _loomr_* block). Applied AFTER the
+            # h_x/h_y htc block so the two are independent: htc may already have
+            # promoted `r` to a (6,) array and scaled r[0]/r[1]; this only ever
+            # touches r[2]. Multiplier is 1.0 when the flag is off, so that path
+            # stays bit-identical.
+            _lr = self._loomRMult()
+            self._loomr_log.append(_lr)
+            if _lr != 1.0:
+                if np.ndim(r) == 0:          # np.isscalar() is False for np.float64 -- use ndim
+                    r = np.full(6, float(r))
+                r[2] *= _lr
             self._hxy_derate_log.append(float(_frac))
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_x, self._hw_kf_P, self._hw_kf_prev_t, self._hw_kf_initialized = _kf_step(
@@ -1021,6 +1120,7 @@ class CrossMarkerPerception:
                                                 -self._htc_clamp, self._htc_clamp)
         else:
             self._hxy_derate_log.append(0.0)
+            self._loomr_log.append(1.0)        # no measurement this frame -> R unused; keep the log frame-aligned
             self._bgflow_health_log.append((float(self._bgflow_health[0]), int(self._bgflow_health[1])))
             self._hw_kf_coast_streak += 1
             if self._hw_kf_coast_streak >= self._hw_kf_coast_freeze_streak:
@@ -2127,12 +2227,7 @@ class CrossMarkerPerception:
             self._fail_reason_log.append("ok" if self._ok else str(getattr(det, "fail_reason", "unknown")))
             # Marker extent (scale-free proximity proxy) -- from the cross-arm
             # inlier bbox when available (front-end-stable), else the mask bbox.
-            _eb = self._last_extent_bbox if self._last_extent_bbox is not None else self._last_bbox
-            if _eb is not None:
-                extent = float(max(_eb[2], _eb[3]))  # max(w, h)
-            else:
-                extent = 0.0
-            self._marker_extent_log.append(extent)
+            self._marker_extent_log.append(self._currentExtentPx())
             # Center px as simple tuple
             if self._center_px is not None:
                 self._center_px_log.append(tuple(float(x) for x in self._center_px))
@@ -2321,8 +2416,7 @@ class CrossMarkerPerception:
         "must stay in frame" requirement on the circle points themselves."""
         if not self._center_fresh or self._last_bbox is None:
             return None
-        _eb = self._last_extent_bbox if self._last_extent_bbox is not None else self._last_bbox
-        return 0.5 * max(_eb[2], _eb[3])
+        return 0.5 * self._currentExtentPx()
 
     def get_bbox_corners(self):
         """4 corner points (4,2) of the last successful color-gated mask bbox, in the
@@ -2599,6 +2693,7 @@ class CrossMarkerNode(Thread):
             "Detection Status": self._perception._detection_reason_log,
             "Fail Reason": self._perception._fail_reason_log,  # 2026-08-29: granular det.fail_reason per miss (see _log_frame_data)
             "MARKER_EXTENT_PX": self._perception._marker_extent_log,
+            "Loom R Mult": self._perception._loomr_log,   # 2026-09-03: applied r[2] multiplier (1.0 = schedule off/inert)
             "Center Px": self._perception._center_px_log,
             # 2026-08-28: IMU body-rate (FRD [fwd,right,down] rad/s), frame-paired
             # (same _pending_angvel sampled synchronously with quat in
