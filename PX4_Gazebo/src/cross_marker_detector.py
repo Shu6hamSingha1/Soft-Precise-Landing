@@ -366,6 +366,140 @@ STUB_REL_ANGLE_TOL_DEG = 12.0
 CORNER_JOIN_ANGLE_TOL_DEG = 15.0
 CORNER_JOIN_TARGET_ANGLES_DEG = (90.0, STUB_REL_ANGLE_DEG)
 MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a real line over noise
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 3 — GEOMETRY-FIRST CONFIRM (2026-09-03).  CROSS_GEOM_CONFIRM=0|1|2
+#
+# The locked design's third stage. Everything upstream is NEGATIVE: gates that
+# reject pixels/segments that look wrong. Nothing ever asks the POSITIVE question
+# "are these two accepted strokes actually a cross?", so any two long, roughly
+# non-parallel edges that survive become a detection -- which is exactly how `inv`
+# produces a confident 110 px error with every gate passing.
+#
+# This asks it, using ONLY the two arms' own fitted geometry -- no mask centroid,
+# no absolute intensity, no polarity, no scale:
+#   1. PERPENDICULAR   a cross's arms meet near 90 deg. MIN_FIT_INTER_LINE_ANGLE_DEG
+#      =15 is a LOWER BOUND only, so a 20 deg pair -- impossible for a cross --
+#      passes today. Perspective skew widens the true band, hence a generous default.
+#   2. JUNCTION ON BOTH ARMS   the intersection must lie inside each arm's own inlier
+#      span (+margin). Same computation CROSS_CENTROID_SPAN_RESCUE already performs,
+#      promoted from last-resort rescue to a primary positive test.
+#   3. COMPARABLE STROKE WIDTH   both arms are the same painted stroke, so their
+#      robust perpendicular thickness should agree within a factor. A stroke paired
+#      with a plate edge fails this -- an edge has no consistent width.
+#   4. COMPARABLE LENGTH   loose sanity bound only; clipping and foreshortening make
+#      genuine arm lengths quite unequal, so this is not a discriminator.
+#
+# MODES: 0 = off (default). 1 = confirm runs IN ADDITION to the legacy
+# centroid_mismatch proxy (conservative). 2 = confirm REPLACES that proxy, which is
+# the actual point of the locked design -- it removes the "marker is the only thing
+# in the mask" assumption instead of patching it a fourth time. Measured separately.
+#
+# ⛔⛔ MEASURED 2026-09-03 AND IT DOES NOT WORK. Kept in-tree, DEFAULT OFF, with the
+# numbers, because the design memo listed stage 3 as the obvious untried next step
+# and someone will otherwise re-derive it. It is a DEAD END for THIS marker:
+#
+#   RobustnessFrameset, geom1/geom2:  base detOK 100.0% -> 80.1% (55 rejects, all
+#   'geom_not_perpendicular'), while base within-0.15 stayed 97% -- i.e. it rejects
+#   ACCURATE detections. inv within-0.15 stayed 0% in every mode. ens_geom2 (both
+#   stages) drove inv detOK to 32.2%, still 0% usable.
+#
+#   ROOT CAUSE -- test 1 is FALSE BY DESIGN here. |fitted angle - 90| on clean `base`
+#   is strictly BIMODAL: 63% below 15 deg, and 36% in a 35-55 deg band centred on
+#   STUB_REL_ANGLE_DEG = 45. This marker is a 3-armed cross WITH A 45 deg STUB, and
+#   in over a third of CORRECT detections _best_pair legitimately selects a
+#   stub+arm pair -- which still yields the right junction, because the stub also
+#   passes through the centre. "The two accepted strokes are mutually perpendicular"
+#   is simply not true of this marker.
+#
+#   ⚠ AND IT IS NOT A FRAME-CONVENTION BUG (user hypothesis, tested 2026-09-03):
+#   the arms of a physically-90 deg cross DO skew in the RAW image plane when the
+#   drone is tilted, so the check arguably belongs in the gravity-levelled VIRTUAL
+#   plane. Measured both, re-fitting det.line_points_i/j through
+#   CrossMarkerPerception._getVirtualPts with each frame's own quaternion:
+#       base  raw  p50 1.0  p75 44.9  <15deg 58%  35-55deg 41%
+#       base  VIRT p50 1.0  p75 44.8  <15deg 58%  35-55deg 41%
+#       inv   raw  p50 6.9  <15deg 64%   |   inv VIRT p50 8.1  <15deg 62%
+#   De-rotation moves the distribution by ~0.1 deg and the bimodality is untouched
+#   (tilt is only ~21-29 deg here, and that barely rotates a line DIRECTION near the
+#   image centre). So the 45 deg mode is the stub, not perspective skew.
+#
+#   AND IT DOES NOT SEPARATE ANYWAY: on `inv` (every detection wrong) 62-67% of
+#   frames are within 15 deg of perpendicular -- MORE cross-like than base's correct
+#   ones (58%).
+#   Width ratio overlaps too (base p90 2.41 vs inv p90 2.49). So the wrong structure
+#   `inv` locks onto is geometrically a better cross than the real thing, and NO
+#   self-consistency test on the two lines' relative geometry can separate them --
+#   the distinguishing information is not present in that comparison.
+#
+#   Test 2 (junction inside both arms' spans) is the only sub-test that is sound,
+#   and CROSS_CENTROID_SPAN_RESCUE already implements it.
+#
+#   IMPLICATION: `inv` is not a segmentation failure (the ensemble already picks the
+#   right channel/polarity on 60% of its frames) and not a geometry-confirm failure.
+#   The next hypothesis has to come from OUTSIDE the two-line model.
+GEOM_CONFIRM = int(os.environ.get("CROSS_GEOM_CONFIRM", "0"))
+GEOM_PERP_TOL_DEG = float(os.environ.get("CROSS_GEOM_PERP_TOL_DEG", "35.0"))
+GEOM_SPAN_MARGIN = float(os.environ.get("CROSS_GEOM_SPAN_MARGIN", "0.25"))
+GEOM_WIDTH_RATIO_MAX = float(os.environ.get("CROSS_GEOM_WIDTH_RATIO_MAX", "3.0"))
+GEOM_LEN_RATIO_MAX = float(os.environ.get("CROSS_GEOM_LEN_RATIO_MAX", "6.0"))
+GEOM_CONFIRM_DIAG = []   # (perp_err_deg, width_ratio, len_i, len_j) per checked frame
+GEOM_CONFIRM_STATS = {"checked": 0, "pass": 0,
+                      "rej_perp": 0, "rej_span": 0, "rej_width": 0, "rej_len": 0}
+
+
+def _arm_geometry(pts, line):
+    """One arm described in its own along/across frame. width is a ROBUST (MAD)
+    perpendicular thickness so a few stray inliers cannot inflate it. Scale-free
+    and polarity-blind by construction. None if there is too little to judge."""
+    p = np.asarray(pts, dtype=float)
+    v = np.array([line[0], line[1]], dtype=float)
+    nv = float(np.linalg.norm(v))
+    if nv < 1e-9 or len(p) < 4:
+        return None
+    v = v / nv
+    nrm = np.array([-v[1], v[0]])
+    mu = p.mean(axis=0)
+    t = (p - mu) @ v
+    w = (p - mu) @ nrm
+    return dict(lo=float(t.min()), hi=float(t.max()),
+                length=float(t.max() - t.min()),
+                width=2.0 * 1.4826 * float(np.median(np.abs(w - np.median(w)))),
+                mu=mu, v=v)
+
+
+def _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center):
+    """Positive test that the two fitted strokes ARE a cross. -> (ok, reason)."""
+    gi = _arm_geometry(pts_i, line_i)
+    gj = _arm_geometry(pts_j, line_j)
+    if gi is None or gj is None:
+        return True, None          # too little to judge -- don't veto on ignorance
+    GEOM_CONFIRM_STATS["checked"] += 1
+    ai = np.degrees(np.arctan2(line_i[1], line_i[0])) % 180.0
+    aj = np.degrees(np.arctan2(line_j[1], line_j[0])) % 180.0
+    _perp_err = abs(_circ_diff(ai, aj) - 90.0)
+    _wr = (max(gi['width'], gj['width']) / max(min(gi['width'], gj['width']), 1e-6))
+    GEOM_CONFIRM_DIAG.append((_perp_err, _wr, gi['length'], gj['length']))
+    if _perp_err > GEOM_PERP_TOL_DEG:
+        GEOM_CONFIRM_STATS["rej_perp"] += 1
+        return False, 'geom_not_perpendicular'
+    c = np.asarray(center, dtype=float)
+    for g in (gi, gj):
+        tc = float((c - g['mu']) @ g['v'])
+        m = GEOM_SPAN_MARGIN * max(g['length'], 1e-9)
+        if not (g['lo'] - m <= tc <= g['hi'] + m):
+            GEOM_CONFIRM_STATS["rej_span"] += 1
+            return False, 'geom_junction_off_arm'
+    wi, wj = gi['width'], gj['width']
+    if min(wi, wj) > 1e-6 and max(wi, wj) / min(wi, wj) > GEOM_WIDTH_RATIO_MAX:
+        GEOM_CONFIRM_STATS["rej_width"] += 1
+        return False, 'geom_width_mismatch'
+    li, lj = gi['length'], gj['length']
+    if min(li, lj) > 1e-6 and max(li, lj) / min(li, lj) > GEOM_LEN_RATIO_MAX:
+        GEOM_CONFIRM_STATS["rej_len"] += 1
+        return False, 'geom_length_mismatch'
+    GEOM_CONFIRM_STATS["pass"] += 1
+    return True, None
                            # (see the cross-arm pairing fix in detect() for why this exists)
 
 HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
@@ -1259,6 +1393,13 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
             else:
                 SUBPIX_STATS["rej_shift"] += 1
 
+    # STAGE 3 (see GEOM_CONFIRM at module top) -- on the FINAL center, so the
+    # sub-pixel refine above is included in what gets confirmed.
+    if GEOM_CONFIRM:
+        _g_ok, _g_reason = _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center)
+        if not _g_ok:
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_g_reason)
+
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())
         centroid_err = np.hypot(center[0] - centroid_x, center[1] - centroid_y)
@@ -1273,6 +1414,11 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         _fill = max(bw, bh, 1) / max(min(frame_h, frame_w), 1)
         _centroid_tol_frac = 0.12 + 0.60 * float(np.clip((_fill - 0.6) / 0.4, 0.0, 1.0))
         max_centroid_err = _centroid_tol_frac * max(bw, bh, 1)
+        if GEOM_CONFIRM == 2:
+            # Stage 3 REPLACES this proxy (mode 2). Neutralise it here rather than
+            # skipping the branch, so the bbox-margin check below and the off-frame
+            # `else` path keep running untouched.
+            max_centroid_err = float('inf')
         if centroid_err > max_centroid_err:
             # SPAN RESCUE (see CENTROID_SPAN_RESCUE at module top): the mask centroid
             # can be contaminated by structure fused into the same component, so ask
