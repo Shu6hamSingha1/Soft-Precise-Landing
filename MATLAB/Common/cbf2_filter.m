@@ -164,13 +164,24 @@ if valid
         Ia_lat = I_a(1:2);          % start from the UNCONSTRAINED lateral command
         Ia_z   = I_a(3);            % thrust accel, hover = -g (same convention as PX4)
         Ia_z0  = I_a(3);            % unconditioned a_z, for the relief (no accumulation)
+        % CONVERGENCE DIAGNOSTIC (added 2026-09-04, does not change any output). The fixed
+        % 6-outer x 5-inner iteration budget was ported as-is from PX4 with NO residual check
+        % -- an independent PX4 session the same day found this loop genuinely fails to
+        % converge near touchdown (Memory/px4/project_joint_qp_nonconvergence_kappa_ratchet.md:
+        % theta_cone chatters frame-to-frame, I_a swings, kappa ratchets, a_u detonates to
+        % 1274 m/s^2). This tracks ||Ia_lat_new - Ia_lat_prev|| per outer iterate so a caller
+        % CAN check state.jqp_converged after the fact; it does not itself change behavior --
+        % the loop still runs the same fixed budget either way. See PX4_PARITY_PORT_SPEC.md.
+        jqp_resid = zeros(1,6);
         for outer = 1:6
+            Ia_lat_prev = Ia_lat;
             az_now = max(abs(Ia_z), 1e-6);
             M_c = zeros(2, 2, Ncp);
             for i = 1:Ncp
                 M_c(:,:,i) = Lw_c(:,:,i) * Rzm / az_now;   % d(f_i)/d(I_a(1:2))
             end
             Ia_lat = project_box_Ia(Ia_lat, anchor_c, M_c, m2, Ncp);
+            jqp_resid(outer) = norm(Ia_lat - Ia_lat_prev);
 
             % descent-rate relief: if the box suppressed lean, spend budget on TIME.
             % One-way by construction: max(.,-g) can bring a descent toward hover but
@@ -193,6 +204,11 @@ if valid
             end
         end
         th = Rzm * (Ia_lat / max(abs(Ia_z), 1e-6));   % derived lean, for th_safe consumers
+        % A converged solve makes the last outer iterate's residual small relative to the
+        % first (the box/relief/sphere have stopped moving Ia_lat materially). Threshold is
+        % a diagnostic choice, not load-bearing -- this NEVER feeds back into I_a/th/theta_cone.
+        state.jqp_residual  = jqp_resid;
+        state.jqp_converged = jqp_resid(end) < max(1e-3, 0.05 * jqp_resid(1));
     else
         th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % LEGACY alternating projection
     end
