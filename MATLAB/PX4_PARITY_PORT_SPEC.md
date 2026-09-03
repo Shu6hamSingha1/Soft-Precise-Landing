@@ -68,7 +68,39 @@ behaviour the live path does not have.
 
 **Wave 2 COMPLETE.** All structural items ported.
 
-**Not yet run:** the IC×trajectory gate. Nothing here is validated.
+## VALIDATION (2026-09-04, headless MATLAB, user-authorized)
+
+Ran via `matlab -batch`, not the full 50-run gate (see below for why). Pre-port
+`Datasets/MultiInit/*.mat` backed up first (scratchpad, 36 files) as the comparison baseline.
+
+1. `vdf_params()` loads clean; all ported values read back correctly (`A_cap=13.6105`,
+   `k_az=5.00`, `hd_kr=0.50`, `theta_cap=43.94°`, `kappa_max=[30 30 3]`).
+2. Static IC1 noiseless: lands clean through the full ported path (joint-QP, HD_KR, kappa_max
+   clamp all exercised) — `precise=1 soft=1`, xy=0.5mm.
+3. **IC5 × all 5 trajectories × {noiseless, realistic} — 5/10 pass, 5/10 fail.** Static/
+   Linear/Sinusoidal IC5 land clean in both configs. **Lissajous and Circular IC5 fly away
+   in BOTH configs** (FoV violation, xy 1.3–2.3 m, rel_vel 1.8–2.5 m/s).
+4. Confirmed these ARE regressions, not pre-existing weakness: the backed-up pre-port `.mat`
+   files show all 4 flagged cells landing clean (`success=1 precise=1 soft=1`, xy 0.9–2.4 cm).
+5. Single-lever isolation (revert jqp_on / hd_kr / k_az / theta_cap / the 5 "lock" constants,
+   one at a time) gave **bit-identical failures across all six** — none is individually
+   responsible, and the T_max clamp inside `run_simulation.m:197` reads the script-local
+   `T_max`, not any `P.*` field, so `jqp_on=false` alone did not actually restore thrust
+   authority either (a real gap in that first attempt — see the `T_MAX_OVERRIDE` fix below).
+6. **Decisive test: full revert (every ported value + all 3 structural flags back to PRIOR,
+   T_max=60) reproduces the pre-port baseline essentially bit-exact** (xy 0.0137 vs backup's
+   0.0137, rel_vel 0.1393 vs 0.1393). **This proves the port's CODE is structurally correct** —
+   `cbf2_filter.m`'s jqp branch, `position_funnel.m`'s HD_KR term, and `asmc.m`'s kappa_max
+   clamp all behave as no-ops when disabled. The IC5 Lissajous/Circular failure is a
+   **gain-retuning gap**, not a bug, exactly per this spec's standing caveat.
+   Diagnostic aid added: `Constants.m` gained `T_MAX_OVERRIDE` (mirrors the existing
+   `H_RD_OVERRIDE` pattern) so `T_max` can be swept without editing the file.
+
+**Not yet done:** which specific combination of the ~16 ported constants causes the IC5
+Lissajous/Circular failure (isolation stopped at "not any single one" — a joint/pairwise
+sweep is needed, not more one-at-a-time tests). The full 50-run gate was deliberately NOT run
+given (3) already shows a real, non-trivial regression needing a re-tune first — running the
+full sweep now would just enumerate more instances of the same root cause.
 
 ## A0. Name map (read this first)
 

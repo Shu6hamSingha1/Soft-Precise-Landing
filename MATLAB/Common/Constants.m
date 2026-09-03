@@ -31,6 +31,8 @@ w_max = [4.0;4.0;4.0];   % rad/s (roll, pitch, yaw)
 % it applies to ALL FIVE controllers (PLASMC + the four baselines all clamp T against it), so the
 % full comparison must be regenerated. Revert to 60.0 to restore the pre-port airframe.
 T_max = 28.7725; T_min = 0.00;   % N
+global T_MAX_OVERRIDE;   % diagnostic override for the parity-port validation, 2026-09-04
+if ~isempty(T_MAX_OVERRIDE); T_max = T_MAX_OVERRIDE; end
 
 tau_xy_max = 1.85;   % N·m
 tau_z_max  = 1.0;    % N·m
