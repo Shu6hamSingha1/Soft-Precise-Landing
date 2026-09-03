@@ -73,6 +73,14 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     rerun_circular.m, rerun_other4.m, rerun_lissajous_plasmc.m, rerun_all_traj.m
     inspect_comparison.m, dump_comparison.m
     (results -> MATLAB/Datasets/Comparison/)
+  VDF_ASMC/                  — ⭐ AUTHORITATIVE locked-gain source for the MANUSCRIPT
+    vdf_params.m             — the paper's Table `sup:control params` values live HERE.
+                               ⚠ NOT the inline `K_ctrl.*` assignments in
+                               Multi_init_cond/visualControl_IBVS_adaptive.m — those are
+                               PRE-RE-BAKE and disagree with the paper on ~9 rows. Reading
+                               them as "MATLAB's locked values" produces a full page of
+                               phantom manuscript errors (done 2026-09-03, retracted).
+    simulate_landing.m, verify_vs_canonical.m, +blocks/
   Sweeps/
     (parameter sweep scripts; results -> MATLAB/Datasets/Sweeps/)
 
