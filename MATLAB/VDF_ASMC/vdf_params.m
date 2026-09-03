@@ -35,11 +35,18 @@ P.p_rinf = [0.8; 0.8];                  % p_{r,inf} terminal floor. PORTED (PRIO
                                         % 1.0->0.85 2026-06-26 for ~15% precision, multi-init worst xy
                                         % 0.013->0.011). PX4 PLASMC_PRINF_{X,Y}. NB both <1 dip below
                                         % Standing Cond 1 (proof caveat); proof-clean alt = 1.0.
-P.Xi_r   = diag([0.10, 0.10]);          % Xi_r funnel contraction rate. PORTED (PRIOR 0.3, which was
-                                        % itself LOCKED 0.10->0.3 for faster position contraction) --
-                                        % PX4 PLASMC_XIR_{X,Y}=0.10 REVERTS that bake. Slower
-                                        % contraction; re-check the engR<0.65 / no-overtake margin that
-                                        % motivated 0.3, since it pairs with p_rinf.
+P.Xi_r   = diag([0.30, 0.30]);          % Xi_r funnel contraction rate.
+                                        % ⚠ 2026-09-04 RETUNED, NOT ported as PX4's raw value. PX4's
+                                        % PLASMC_XIR_{X,Y}=0.10 was tried and root-caused (isolation +
+                                        % 16-point Xi_h x Xi_r grid, MATLAB/PX4_PARITY_PORT_SPEC.md) as
+                                        % the DOMINANT cause of an IC5 Lissajous/Circular fly-away (0/4
+                                        % clean at Xi_r in {0.10,0.15} regardless of Xi_h; worst_xy up to
+                                        % 2.3m). Xi_r=0.30 is the ONLY grid column reaching 4/4 clean
+                                        % (worst_xy=0.07, worst_v=0.12) -- this is unchanged from the
+                                        % PRE-PORT MATLAB value (itself LOCKED 0.10->0.3 for faster
+                                        % position contraction, 2026-06-20-era). PX4's 0.10 does not
+                                        % transfer to MATLAB's plant; do not re-port it without a fresh
+                                        % IC5-Lissajous/Circular check.
 
 % ---- Optic-flow funnel  (tex eq. PPC on h_e; p_h(t)) ---------------------------
 P.p_h0   = [15.0; 15.0; 10.0];          % p_{h0} initial half-width (code p_20; PX4 PLASMC_P20_{X,Y,Z}).
@@ -53,10 +60,23 @@ P.p_hinf = [2.5;  2.5;  1.5];           % p_{h,inf} terminal floor (PX4 PLASMC_P
                                         % PRIOR rationale (lateral 0.5->1.0 baked 2026-06-25): looser
                                         % funnel cut terminal y-chase-lag on the fast Lissajous axis,
                                         % paired with chi_r 2.0 -> Liss 1.4x xy 0.0758->0.0654, 45/45.
-P.Xi_h   = diag([1.0, 1.0, 1.0]);       % Xi_h contraction rate (code gamma_2; PX4 PLASMC_XI2_{X,Y,Z}).
-                                        % PORTED (PRIOR 0.2 x3) -- 5x faster funnel contraction. NB in
-                                        % PX4 this is set in the combined-barrier rebake block, NOT the
-                                        % pa("XI2",...) default, which it overrides.
+P.Xi_h   = diag([0.2, 0.2, 0.2]);       % Xi_h contraction rate (code gamma_2; PX4 PLASMC_XI2_{X,Y,Z}).
+                                        % ⚠ 2026-09-04: NOT PORTED -- kept at the PRE-PORT MATLAB value.
+                                        % PX4's 1.0 (5x this) paired with the fixed Xi_r=0.30 reaches
+                                        % only 3/4 clean on the IC5 Lissajous/Circular grid (worst_xy=
+                                        % 1.24m, a real fly-away). An intermediate 0.4 (first tried, also
+                                        % paired with Xi_r=0.30) reached 4/4 on that SAME 4-cell IC5
+                                        % probe but then FAILED the broader IC2/IC3/IC4 Circular cells
+                                        % (noiseless, xy up to 1.23m) that the IC5-only probe never
+                                        % covered -- i.e. it looked safe on a narrow test and wasn't.
+                                        % 0.2 (unchanged) passes ALL of IC1-5 x Circular AND the IC5
+                                        % Lissajous/Circular grid (both are the literal pre-port MATLAB
+                                        % config, whose bit-exactness was independently confirmed by the
+                                        % full-revert test). CONCLUSION: PX4's faster Xi_h does not
+                                        % transfer to MATLAB's plant at all, not even partially; only
+                                        % Xi_r needed retuning. See MATLAB/PX4_PARITY_PORT_SPEC.md.
+                                        % NB in PX4 this is set in the combined-barrier rebake block, NOT
+                                        % the pa("XI2",...) default, which it overrides.
 
 % ---- Combined sliding surface  sigma = zeta_h + chi*zeta_aug  (tex eq. sliding) -
 P.chi_r = [1.5; 1.5];                   % lateral surface gain (PD: zeta_h + chi_r*zeta_r).

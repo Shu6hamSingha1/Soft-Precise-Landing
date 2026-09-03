@@ -21,6 +21,21 @@ Direction of travel: `PX4_Gazebo/src/controller.py` (+ `cbf_visibility.py`) → 
 
 ---
 
+## STATUS (2026-09-04): FULL GATE PASSES 50/50
+
+`vdf_params.m` now bakes `Xi_h=0.2` (kept at pre-port MATLAB, PX4's faster value doesn't
+transfer) + `Xi_r=0.30` (retuned away from PX4's 0.10, which fails everywhere it's tried) on
+top of the rest of the port (joint-QP CBF, HD_KR, kappa_max, T_max, and the other ~14
+constants). The full 5-trajectory × 5-IC × 2-config gate (50 cells) — via
+`run_simulation()`'s baked defaults, no overrides — passes **50/50** fully soft-precise. See
+the `Xi_h`/`Xi_r` section below for the full grid + the methodology lesson from a
+first-attempt value that passed a narrow probe but failed the full gate.
+
+**Still not done:** the 4-controller comparison study has NOT been regenerated (the `T_max`
+plant change affects it too — see Wave 0), and the joint-QP's fixed-iteration
+non-convergence defect (found independently on PX4, ported faithfully into
+`cbf2_filter.m`) has not been given a residual/convergence check.
+
 ## STATUS (2026-09-03)
 
 **Wave 0 + Wave 1 APPLIED.** Files touched:
@@ -120,12 +135,40 @@ while the optic-flow funnel (`p_h`) contracts 5× *faster* — on a fast-moving 
 Circular only; Static/Linear/Sinusoidal IC5 are unaffected) that timing mismatch between the
 two funnels, not either rate alone, is what breaks tracking. Not yet root-caused further.
 
-**Recommendation:** given this isolates to exactly 2 of the ~16 ported constants, and PX4's
-own values for `Xi_h`/`Xi_r` are unlikely to be wrong (well-tested on real hardware), the more
-likely target for retuning is the *other* side of the pairing — MATLAB may need a different
-`Xi_h`/`Xi_r` combination than PX4's, rather than importing PX4's values verbatim. Needs a
-small 2D sweep around PX4's values (e.g. `Xi_h` ∈ {0.4,0.6,0.8,1.0}, `Xi_r` ∈ {0.10,0.15,0.20,
-0.30}) on the full IC5×trajectory set before picking a value, not a binary port/no-port choice. The full 50-run gate was deliberately NOT run
+**RESOLVED via a 16-point `Xi_h`×`Xi_r` grid (scored on the 4 failing cells), then corrected
+against the FULL 50-cell gate.**
+
+Grid on the 4 failing cells only (IC5 × {Lissajous,Circular} × {noiseless,realistic}):
+
+| Xi_h \ Xi_r | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|
+| 1.0 (PX4) | 0/4 (xy 2.28) | 0/4 (2.04) | 1/4 (1.95) | 3/4 (1.24) |
+| 0.8 | 0/4 (2.28) | 0/4 (1.95) | 1/4 (1.80) | 3/4 (1.13) |
+| 0.6 | 0/4 (2.24) | 0/4 (1.95) | 3/4 (1.51) | 3/4 (0.14) |
+| 0.4 | 0/4 (2.08) | 2/4 (1.58) | 3/4 (0.09) | **4/4 (0.07)** |
+
+`Xi_r` is the dominant lever — 0.10/0.15 fail regardless of `Xi_h` (PX4's own `Xi_r=0.10` sits
+in the worst-performing column throughout). Only `Xi_r=0.30` reaches a clean 4/4, and only
+paired with `Xi_h≤0.4`.
+
+**First attempt (WRONG, caught by the full gate, not the 4-cell probe):** baked
+`Xi_h=0.4, Xi_r=0.30` — the fastest `Xi_h` reaching 4/4 on the grid, read as "a partial move
+toward PX4's faster contraction, still safe." Running the full 50-cell gate (5 traj × 5 IC ×
+2 configs) with this value: **47/50** — the original 4 cells were fixed, but 3 NEW failures
+appeared (noiseless Circular IC2/IC3/IC4, xy 1.02–1.23m) that the narrow 4-cell probe never
+covered. The grid's own 4/4 result was true but insufficient evidence — it was scored on a
+test set that happened not to contain the case `Xi_h=0.4` broke.
+
+**Corrected: `Xi_h=0.2` (fully unchanged from pre-port MATLAB, no partial move at all),
+`Xi_r=0.30`.** Confirmed this exact value fixes the 3 new IC2-4 failures
+(`success=1 precise=1 soft=1` on all three), then **re-ran the full 50-cell gate: 50/50
+fully soft-precise.** `PX4's faster Xi_h does not transfer to MATLAB's plant at all — not
+even partially. Only `Xi_r` needed retuning (0.10 → 0.30, i.e. reverting PX4's bake rather
+than porting it). BAKED in `vdf_params.m` (2026-09-04).
+
+**Methodology lesson:** a passing grid on a narrow probe set is not sufficient evidence for a
+gain change — always confirm against the full gate before baking, even when the narrow probe
+looks unambiguous (4/4 with good margin still hid a regression elsewhere). The full 50-run gate was deliberately NOT run
 given (3) already shows a real, non-trivial regression needing a re-tune first — running the
 full sweep now would just enumerate more instances of the same root cause.
 
