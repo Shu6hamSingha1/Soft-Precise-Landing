@@ -102,6 +102,18 @@ sweep is needed, not more one-at-a-time tests). The full 50-run gate was deliber
 given (3) already shows a real, non-trivial regression needing a re-tune first — running the
 full sweep now would just enumerate more instances of the same root cause.
 
+**Cross-reference, checked and RULED OUT as the cause here:** `Memory/px4/
+project_joint_qp_nonconvergence_kappa_ratchet.md` (2026-09-04, independent PX4 session) found
+the joint-QP's fixed 6×5 iteration genuinely fails to converge near touchdown on real PX4 data
+— `theta_cone` chatters, `I_a_xy` swings, `kappa` ratchets, `a_u` detonates to 1274 m/s².
+This is the Q5 concern ("no convergence test, no residual logged") CONFIRMED as a live bug,
+not just a theoretical gap — and `project_box_Ia` in `cbf2_filter.m` was ported with the same
+fixed-iteration structure, so it carries the same latent defect. **But it is not what's
+failing IC5 Lissajous/Circular here**: `jqp_on=false` (bypassing the joint-QP entirely, back
+to the legacy theta-QP) still fails at IC5 Circular (isolate2.m, xy=1.7872). So this is a
+second, independent, real defect worth fixing in the joint-QP branch (add a residual/
+convergence check) — just not the explanation for the current regression.
+
 ## A0. Name map (read this first)
 
 Source: `PX4_Gazebo/docs/CONTROLLER_PARITY.md` §7.1 (2026-06-15 — **names** reliable, **values** stale),
