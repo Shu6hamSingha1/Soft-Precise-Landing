@@ -123,7 +123,10 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         2026-08-29 (user design, DEFAULT ON as of 2026-08-29): with
         ``CBF_JOINT_QP`` unset or ``=1``, solves the FoV visibility box directly for the full
         ``I_a`` (lateral AND vertical), interleaved with a projection onto the
-        true thrust-deliverability sphere ``|I_a+g*e3|<=A_CAP``, rather than
+        deliverability sphere -- ``|I_a|<=A_CAP`` with ``CBF_SPHERE_TRUE_THRUST=1``, or the
+        legacy default ``|I_a+g*e3|<=A_CAP`` which despite its name bounds VEHICLE
+        acceleration (zero at hover), not thrust; see the warning block at the projection --
+        rather than
         treating ``a_z`` as a fixed given and patching it separately downstream
         (the ``PLASMC_AZ_JOINT`` controller.py-level approach). See the
         ``CBF_JOINT_QP`` block below for the derivation (solving directly in
@@ -291,8 +294,9 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         anchor = cr2 - Lw2 @ th_curr + dft                          # f = cr + L_w@(theta-theta_curr) + tau*d
         # CBF_JOINT_QP (2026-08-29, user design, DEFAULT ON as of 2026-08-29): solve the visibility box
         # DIRECTLY for I_a (lateral AND vertical) instead of the theta-normalized lean
-        # vector, interleaved with a projection onto the true deliverability sphere
-        # |I_a+g*e3|<=A_CAP. Derivation: theta = P@I_a[:2]/a_z where P = Rz_p90b@Rzm (the
+        # vector, interleaved with a projection onto a deliverability sphere (see the
+        # WRONG-QUANTITY warning at that projection; CBF_SPHERE_TRUE_THRUST selects the
+        # correct |I_a|<=A_CAP form). Derivation: theta = P@I_a[:2]/a_z where P = Rz_p90b@Rzm (the
         # SAME forward rotation used to build `th` above), so Lw2@theta =
         # (Lw2@P/a_z)@I_a[:2] -- the box constraint's Jacobian w.r.t. I_a[:2] directly is
         # M = Lw2@P/a_z. Solving in I_a units removes the theta round-trip (compute I_a ->
@@ -302,6 +306,11 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # (falls through to the theta-based path if not provided, e.g. old callers/tests).
         _joint_qp = env.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
         _az_cost_gain = float(env.get("CBF_AZ_COST_GAIN", "5.0"))   # m/s^2 descent-rate relief per rad of box-suppressed tilt; 0 disables
+        # CBF_SPHERE_TRUE_THRUST (2026-09-03): 1 = bound the ACTUAL thrust |I_a| <= A_CAP;
+        # 0 (default, legacy) = the gravity-shifted |I_a+g*e3| <= A_CAP, which bounds vehicle
+        # acceleration instead. See the block comment at the projection below for why the
+        # legacy form is wrong and why the fix is not defaulted on yet (needs the IC2-5 gate).
+        _true_thrust_sphere = env.get("CBF_SPHERE_TRUE_THRUST", "0") == "1"
         if _joint_qp:
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel
@@ -333,13 +342,46 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     _lat_supp = float(np.linalg.norm(th_desired - _th_safe_now))
                     _az_relieved = float(I_a[2]) - _az_cost_gain * _lat_supp   # more negative = more lift = slower descent
                     Ia_z = min(Ia_z, max(_az_relieved, -g))                    # min: deliverability/SMC lift wins; max(-g): relief can't command a climb
-                # deliverability sphere projection, FULL gravity-shifted thrust vector
-                thrust_vec = np.array([Ia_lat[0], Ia_lat[1], Ia_z + g])
-                _T = float(np.linalg.norm(thrust_vec))
-                if _T > A_CAP and _T > 1e-9:
-                    thrust_vec = thrust_vec * (A_CAP / _T)
-                    Ia_lat = thrust_vec[:2].copy()
-                    Ia_z = float(thrust_vec[2] - g)
+                # DELIVERABILITY SPHERE.
+                #
+                # ⚠ 2026-09-03 -- the legacy form below (`|I_a + g*e3| <= A_CAP`, kept as the
+                # default until an IC2-5 gate clears the fix) DOES NOT BOUND THRUST. `I_a` is
+                # THRUST acceleration in NED with hover at `I_a[2] = -g` (controller.py:3682-3689,
+                # and the B_T mapping at controller.py:4008-4012 depends on exactly that), so
+                #     I_a + g*e3 == a_vehicle
+                # and the legacy sphere bounds the VEHICLE's acceleration -- zero at hover --
+                # not the thrust the rotors must produce. Consequences, measured:
+                #   * at zero lateral it admits I_a[2] in [-23.41, +3.81] m/s^2, i.e. thrust accel
+                #     up to 2.39 g when A_CAP is 1.389 g -- a 72% over-permit;
+                #   * a 2 g commanded climb (I_a=[0,0,-2g], |I_a|=19.60 > A_CAP=13.61) passes,
+                #     because its DEVIATION from hover is only g=9.80 < A_CAP;
+                #   * it is inconsistent with THETA_CAP_DEG_DERIVED = arccos(g/A_CAP)
+                #     (controller.py:197) and with the arccos(a_z/A_CAP) sanity clip below, BOTH
+                #     of which are written in total-thrust semantics.
+                # Note the shift is not merely mis-signed: under the opposite reading (I_a as
+                # vehicle accel) the thrust vector would be `I_a - g*e3`. Neither convention
+                # yields `+g`, so there is no interpretation under which the legacy form is right.
+                #
+                # In 6 recent reps (5010 samples) the legacy sphere peaked at 4.32-7.70 vs the
+                # 13.61 cap in clean flight (never binding), while the CORRECT bound sits at
+                # 10.94-12.50 (~92% of cap) -- so this is not a cosmetic fix: enabling it makes
+                # the constraint start regulating in normal descent. Hence env-gated + default
+                # OFF pending the mandatory IC2-5 gate, per feedback_ic_validation and the
+                # Rz_p90b precedent (a synthetic-validated CBF "fix" that regressed every IC).
+                if _true_thrust_sphere:
+                    thrust_vec = np.array([Ia_lat[0], Ia_lat[1], Ia_z])       # I_a IS the thrust accel
+                    _T = float(np.linalg.norm(thrust_vec))
+                    if _T > A_CAP and _T > 1e-9:
+                        thrust_vec = thrust_vec * (A_CAP / _T)
+                        Ia_lat = thrust_vec[:2].copy()
+                        Ia_z = float(thrust_vec[2])
+                else:
+                    thrust_vec = np.array([Ia_lat[0], Ia_lat[1], Ia_z + g])   # LEGACY: bounds a_vehicle
+                    _T = float(np.linalg.norm(thrust_vec))
+                    if _T > A_CAP and _T > 1e-9:
+                        thrust_vec = thrust_vec * (A_CAP / _T)
+                        Ia_lat = thrust_vec[:2].copy()
+                        Ia_z = float(thrust_vec[2] - g)
             _az_final = max(abs(Ia_z), 1e-6)
             th_safe = P @ (Ia_lat / _az_final)                        # derived, for Fix B / dtheta consumers -- not the QP's own variable here
             # SANITY CLIP (2026-08-29, caught in offline stress-testing before SITL): the

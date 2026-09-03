@@ -14,7 +14,11 @@
 #   4. R_d construction:               -I_a + a_h(psi_d) -> Gram-Schmidt    §III-B2
 #   5. SO(3) attitude error:            e_R = ½ vee(R_d^T R - R^T R_d)      §III-B2
 #   6. Body-rate setpoint:              w_u = -K_R · e_R    (rate-mode P)
-#   7. Thrust scalar:                   B_T = m · |I_a[2] + g|
+#   7. Thrust scalar:                   B_T = m · (I_a[2] + g) / (cosφ cosθ)
+#      NOTE (2026-09-03): SIGNED, not |·| as this line previously read — B_T < 0 is a
+#      climb command and the sign is load-bearing. Also note B_T is a hover-referenced
+#      thrust DEFICIT (0 at hover), matched to convert_2_sys_cmd's affine map
+#      thrust_norm = 0.738 - B_T/45 — NOT the manuscript's total thrust T_u = m|a_d,z|/R33.
 #
 # Rate-mode caveat: we keep PX4's body-rate + thrust interface (MAVSDK
 # set_attitude_rate), so the inner SO(3) law is reduced to its proportional
