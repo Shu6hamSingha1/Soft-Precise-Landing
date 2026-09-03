@@ -10,11 +10,15 @@ Convention (controller.py:3682-3689, and the B_T mapping at controller.py:4008-4
 |I_a + g*e3| is the VEHICLE's acceleration -- zero at hover. The legacy sphere bounds the
 latter, which is not a thrust limit.
 
-⚠ THIS IS NOT VALIDATION. It shows the constraint now bounds the right quantity; it says
-NOTHING about landing behaviour. Enabling the fix makes the sphere start binding in normal
-descent (~92% of cap vs ~57% for the legacy form), so it needs the mandatory IC2-5 SITL gate
-before defaulting -- see feedback_ic_validation, and the Rz_p90b precedent where a
-synthetic-validated CBF "fix" (validate_cbf.py 13/13) regressed every IC in SITL.
+STATUS 2026-09-03: BAKED DEFAULT-ON after a matched IC2-5 SITL A/B
+(test_data/ICValidation/20260903-110221 legacy vs -110618 fixed): 17 over-cap command samples
+in the legacy arm (peaks 159.6%/180.5% of cap) vs ZERO with the fix, never binding in normal
+flight (81-97% of cap). Landing outcomes corroborate at n=1: precise 0/4 -> 4/4.
+NOTE the fix needed BOTH sites -- cbf_visibility.py's sphere AND controller.py's downstream
+cap; with only the first, controller.py still passed a 15.14 m/s^2 command (111% of cap).
+
+⚠ This offline check ALONE is not validation -- it shows the constraint bounds the right
+quantity, nothing about flight. The SITL evidence above is what justified the bake.
 
     ~/ws/scripts/env2025/bin/python3 tools/validate_thrust_sphere.py
 """
@@ -88,7 +92,7 @@ def main() -> int:
 
     ok = bad_fix == 0 and bad_leg > 0
     print("\nRESULT:", "PASS — fix bounds thrust, legacy does not" if ok else "UNEXPECTED — inspect")
-    print("⚠ Not a landing validation. IC2-5 SITL gate still required before defaulting.")
+    print("⚠ Offline property check only — the SITL A/B above is what validated the bake.")
     return 0 if ok else 1
 
 

@@ -306,11 +306,15 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
         # (falls through to the theta-based path if not provided, e.g. old callers/tests).
         _joint_qp = env.get("CBF_JOINT_QP", "1") == "1" and A_CAP is not None and A_CAP > 0
         _az_cost_gain = float(env.get("CBF_AZ_COST_GAIN", "5.0"))   # m/s^2 descent-rate relief per rad of box-suppressed tilt; 0 disables
-        # CBF_SPHERE_TRUE_THRUST (2026-09-03): 1 = bound the ACTUAL thrust |I_a| <= A_CAP;
-        # 0 (default, legacy) = the gravity-shifted |I_a+g*e3| <= A_CAP, which bounds vehicle
-        # acceleration instead. See the block comment at the projection below for why the
-        # legacy form is wrong and why the fix is not defaulted on yet (needs the IC2-5 gate).
-        _true_thrust_sphere = env.get("CBF_SPHERE_TRUE_THRUST", "0") == "1"
+        # CBF_SPHERE_TRUE_THRUST — BAKED DEFAULT-ON 2026-09-03. 1 = bound the ACTUAL thrust
+        # |I_a| <= A_CAP; 0 = the legacy gravity-shifted |I_a+g*e3| <= A_CAP, which bounds
+        # VEHICLE acceleration (zero at hover) and is simply wrong — kept only as an A/B
+        # escape hatch. Validated as an INVARIANT, not a tuning win: matched IC2-5 A/B
+        # (test_data/ICValidation/20260903-110221 vs -110618) gave 17 over-cap command
+        # samples in the legacy arm (peaks 159.6% and 180.5% of cap) and **0** with the fix,
+        # while never binding in normal flight (81-97% of cap). Landing outcomes corroborate
+        # at n=1: precise 0/4 -> 4/4, xy 0.157-0.188 -> 0.086-0.093.
+        _true_thrust_sphere = env.get("CBF_SPHERE_TRUE_THRUST", "1") == "1"
         if _joint_qp:
             P = Rz_p90b @ Rzm                                        # forward inertial->image rotation (pre a_z-scale)
             Ia_lat = np.asarray(I_a[:2], float).copy()                # start from the UNCONSTRAINED desired lateral accel

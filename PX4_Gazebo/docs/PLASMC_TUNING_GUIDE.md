@@ -104,6 +104,13 @@ then `tools/build_test_index.py`.
   exempt); tune **per-axis**; reject on a SINGLE failed landing.
 
 ### Recent bakes / reverts (one line each — details in the linked memories)
+- **(09-03) `CBF_SPHERE_TRUE_THRUST` BAKED default-ON** — the deliverability bound was
+  `|I_a + g·e3| ≤ A_CAP`, which bounds VEHICLE accel (zero at hover), not thrust; it admitted
+  2.39 g on a 1.389 g vehicle. Fixed at BOTH sites (`cbf_visibility.py` sphere +
+  `controller.py`'s downstream cap — fixing only the first left a 15.14 m/s² command, 111% of
+  cap, passing through). Matched IC2-5 A/B: **17 over-cap command samples → 0**, never binding
+  in normal flight (81-97% of cap); n=1 landing corroboration precise 0/4 → 4/4.
+  `=0` reverts. Also: `Control_Params.npy` now records the resolved env config.
 - `ee858086` (09-02) fill-ratio band on `_isolate_marker_by_shape`; `8ed004ad` (09-01) detector
   robustness scaffolding + `tools/validate_detector_gt.py`.
 - `b963e207` (08-31) `CROSS_ALPHA_0` re-derive — the fix that made perception-mode landing work.

@@ -174,8 +174,12 @@ g = 9.80      # m/s^2 (matches Gazebo aruco.sdf <gravity>0 0 -9.8</gravity>;
 # real margin below the converged estimate rather than trusting its edge.
 THRUST_MAX_N = float(os.environ.get("PLASMC_THRUST_MAX_N", "33.85"))
 THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
-# A_CAP: real ceiling on total specific thrust-accel magnitude
-# (|I_a + g*e3|, i.e. |thrust_vec|/mass) -- ~13.61 m/s^2 at defaults. This
+# A_CAP: real ceiling on total specific thrust-accel magnitude, |I_a| (I_a IS the thrust
+# acceleration: hover is I_a[2] = -g) -- ~13.61 m/s^2 at defaults.
+# ⚠ 2026-09-03: this comment previously read "|I_a + g*e3|, i.e. |thrust_vec|/mass", which is
+# WRONG and was the spec the two cap sites were written against. I_a + g*e3 is the VEHICLE's
+# acceleration (zero at hover), not thrust. Both sites are corrected behind
+# CBF_SPHERE_TRUE_THRUST (default off pending validation); see cbf_visibility.py's sphere. This
 # replaces the previous I_a[2] = max(I_a[2], -50.0) floor, which was an
 # arbitrary safety catch never derived from the vehicle's actual deliverable
 # thrust (see the -50.0 removal site below for why a per-axis floor is
@@ -184,6 +188,12 @@ THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
 # attitude loop chases can silently exceed what thrust_norm's downstream
 # clip [0,1] can actually deliver).
 A_CAP = THRUST_MAX_N * THRUST_MARGIN / mass
+# Shared with cbf_visibility.py's sphere -- ONE env var gates both deliverability sites so a
+# future edit cannot fix one and leave the other bounding the wrong quantity.
+# BAKED DEFAULT-ON 2026-09-03 (=0 reverts to the legacy gravity-shifted form). The two sites
+# had to be fixed together: with only the CBF corrected, THIS one still passed a 15.14 m/s^2
+# command (111% of cap) because |I_a+g*e3|=11.44 sailed under its threshold.
+_TRUE_THRUST_SPHERE = os.environ.get("CBF_SPHERE_TRUE_THRUST", "1") == "1"
 
 # THETA_CAP_DEG_DERIVED (2026-08-23): the manuscript's theta_cap=60 deg was derived from
 # an ASSUMED 2x-hover-thrust actuator margin (theta_cap = arccos(hover/(2*hover)) is
@@ -3819,7 +3829,22 @@ class Controller(Thread):
         _thrust_vec = I_a + np.array([0.0, 0.0, g])
         _thrust_mag = float(np.linalg.norm(_thrust_vec))
         _az_before_cap = float(I_a[2])
-        if _thrust_mag > A_CAP > 0.0:
+        if _TRUE_THRUST_SPHERE:
+            # CORRECT: I_a IS the thrust acceleration (hover I_a[2] = -g, see the
+            # z-upright guard above and the B_T mapping below), so the deliverable-thrust
+            # bound is |I_a| <= A_CAP. The legacy branch below shifts by +g and therefore
+            # bounds |a_vehicle| -- zero at hover -- which is not a thrust limit at all.
+            # This is the SAME bug as cbf_visibility.py's sphere and is gated on the SAME
+            # env var so the two can never diverge: fixing only the CBF leaves THIS site
+            # as the last gate before the command is used, and it is the one that matters
+            # most when the CBF is bypassed (Phase-2 decode-fail at touchdown, where every
+            # breach in the 2026-09-03 A/B occurred). Measured there: IC4 emitted
+            # I_a=[-2.85,11.08,-9.92], |I_a|=15.14 (11% over the 13.61 cap) while
+            # |I_a+g*e3|=11.44 sailed under the legacy threshold unclipped.
+            _true_mag = float(np.linalg.norm(I_a))
+            if _true_mag > A_CAP > 0.0:
+                I_a = I_a * (A_CAP / _true_mag)
+        elif _thrust_mag > A_CAP > 0.0:
             _thrust_vec *= A_CAP / _thrust_mag
             I_a = _thrust_vec - np.array([0.0, 0.0, g])
         self._az_joint_log[-1] = float(I_a[2] - _az_before_cap)   # how much this cap actually moved a_z this cycle (0 when it didn't bind)
@@ -4038,8 +4063,45 @@ class Controller(Thread):
     def getControlInput(self):
         return self._u[-1] if len(self._u) > 0 else np.zeros(N_DIM + 1)
 
+    # Env prefixes whose vars can change control behaviour. Used by getParams() so a saved
+    # rep records its own configuration (2026-09-03, user request): Control_Params.npy held
+    # only the 35 Table-1 gains, so every knob baked since ~June (HD_KR, CBF_AZ_COST_GAIN,
+    # CBF_JOINT_QP, CBF_SPHERE_TRUE_THRUST, ...) was invisible and a result could only be tied
+    # to its config via console banners in run_logs/ -- which are not kept per-rep.
+    _ENV_PREFIXES = ("PLASMC_", "CBF_", "CROSS_", "FLOW_", "MARKER_", "IMG_", "LANDING_",
+                     "DH_D_", "RING_", "VDS_", "CENTROID_", "WORLD", "MARKER_TYPE")
+
+    def _resolvedConfig(self):
+        """Everything needed to reproduce this rep's configuration, split by provenance.
+
+        `overrides` = what was explicitly set in the environment (non-default by definition).
+        `resolved`  = EFFECTIVE values actually in force, including ones left at their default,
+                      read from the live module constants / instance attributes rather than
+                      re-deriving the defaults here (which would silently drift).
+        """
+        overrides = {k: v for k, v in os.environ.items() if k.startswith(self._ENV_PREFIXES)}
+        resolved = {
+            # deliverability / attitude envelope
+            "A_CAP": A_CAP, "THRUST_MAX_N": THRUST_MAX_N, "THRUST_MARGIN": THRUST_MARGIN,
+            "mass": mass, "g": g,
+            "CBF_SPHERE_TRUE_THRUST": _TRUE_THRUST_SPHERE,
+            "THETA_CAP_DEG_DERIVED": THETA_CAP_DEG_DERIVED,
+            "theta_cap": float(self._theta_cap), "theta_floor": float(self._theta_floor),
+            # h_d construction
+            "HD_KR": float(self._hd_kr),
+            "HD_FUNNEL_REF": bool(self._hd_funnel_ref),
+            "HD_PASSIVE": bool(self._hd_passive),
+            # CBF knobs read inside cbf_visibility at call time -- mirrored here with the SAME
+            # defaults so the rep records them even when unset.
+            "CBF_JOINT_QP": os.environ.get("CBF_JOINT_QP", "1") == "1",
+            "CBF_AZ_COST_GAIN": float(os.environ.get("CBF_AZ_COST_GAIN", "5.0")),
+            "CBF_TAU": float(os.environ.get("CBF_TAU", "0.3")),
+        }
+        return {"overrides": overrides, "resolved": resolved}
+
     def getParams(self):
         return {
+            "Config": self._resolvedConfig(),
             "Des Img Feature Param": self._s_d,
             # Outer PID
             "p_10": self._p_10,
