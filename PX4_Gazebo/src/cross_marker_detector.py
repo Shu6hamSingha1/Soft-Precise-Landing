@@ -98,7 +98,7 @@ _SEG_CAP          = int(os.environ.get("CROSS_SEG_CAP", "120"))         # keep o
 #   threshold is a percentile of D within the ROI, not a fixed level.
 # BG_KSIZE must exceed the stroke width (so a stroke deviates from its own neighbourhood)
 # and stay below the marker extent (so the whole marker is not its own background).
-_GATE_MODE      = os.environ.get("CROSS_GATE_MODE", "legacy")     # legacy | contrast
+_GATE_MODE      = os.environ.get("CROSS_GATE_MODE", "legacy")     # legacy | contrast | ensemble
 _CG_BG_KSIZE    = int(os.environ.get("CROSS_CG_BG_KSIZE", "41"))  # local-background box (odd)
 _CG_CHROMA_GAIN = float(os.environ.get("CROSS_CG_CHROMA_GAIN", "2.0"))  # weight on a/b vs L
 _CG_PCT         = float(os.environ.get("CROSS_CG_PCT", "92.0"))   # keep the top (100-PCT)% of D
@@ -769,6 +769,39 @@ def _reject_blobby_components(mask, max_extent=GHOST_MAX_EXTENT, min_area=15):
     return out
 
 
+def _best_cross_component(mask, min_area=15):
+    """Pick the most cross-plausible connected component of `mask`.
+
+    Returns (labels_img, best_label, best_area); best_label is None when NOTHING
+    in the mask is cross-shaped. Extracted from _isolate_marker_by_shape (2026-09-03)
+    so the candidate-mask ensemble can ask the SAME question of several masks and
+    compare the answers -- the selection rule is therefore identical whether it runs
+    once (legacy) or K times (ensemble), by construction rather than by convention.
+
+    The criteria are unchanged: bbox aspect below ISOLATE_MAX_ASPECT (propeller arms
+    are >4:1, a foreshortened cross up to ~3:1) and fill inside
+    [ISOLATE_FILL_LO, ISOLATE_FILL_HI] (a cross-in-square is a thin X filling
+    ~0.07-0.12 of its own bbox; a wall slice or a solid plate is 0.3+), preferring
+    the largest survivor."""
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if n <= 1:
+        return labels, None, 0
+    best_label, best_area = None, -1
+    for lbl in range(1, n):
+        x, y, bw, bh, area = stats[lbl]
+        if area < min_area:
+            continue
+        aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
+        if aspect > ISOLATE_MAX_ASPECT:
+            continue
+        fill = area / max(bw * bh, 1)
+        if not (ISOLATE_FILL_LO <= fill <= ISOLATE_FILL_HI):
+            continue
+        if area > best_area:
+            best_area, best_label = area, lbl
+    return labels, best_label, max(best_area, 0)
+
+
 def _isolate_marker_by_shape(mask, min_area=15):
     """The drone's own airframe (propeller blades/tips) is also near-black and
     survives the center-ROI crop whenever the drone has any lateral offset
@@ -779,32 +812,114 @@ def _isolate_marker_by_shape(mask, min_area=15):
     only the most "square" sufficiently-large connected component. Falls back
     to the unfiltered mask if nothing qualifies (e.g. marker fills the frame
     at very close range, where its own bbox may not be square either)."""
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    if n <= 1:
-        return mask
-    best_label, best_squareness = None, 1e18
-    for lbl in range(1, n):
-        x, y, bw, bh, area = stats[lbl]
-        if area < min_area:
-            continue
-        aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
-        if aspect > ISOLATE_MAX_ASPECT:   # propeller arms are typically >4:1; a (foreshortened) cross's bbox up to ~3:1
-            continue
-        # SHAPE, not just size: a cross-in-square is a thin X (~0.07-0.12 of its
-        # own bbox filled); a wall slice / blob chunk is 0.3+. Reject anything
-        # outside the cross-plausible fill band so a bigger-but-solid clutter
-        # component can't out-area the real cross (see ISOLATE_FILL_* comment).
-        fill = area / max(bw * bh, 1)
-        if not (ISOLATE_FILL_LO <= fill <= ISOLATE_FILL_HI):
-            continue
-        # among the cross-shaped candidates, prefer the larger one (more of the
-        # true marker vs. a small square-ish clutter fleck)
-        score = -area
-        if score < best_squareness:
-            best_squareness, best_label = score, lbl
+    labels, best_label, _area = _best_cross_component(mask, min_area)
     if best_label is None:
         return mask
     return np.where(labels == best_label, 255, 0).astype(np.uint8)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CANDIDATE-MASK ENSEMBLE (2026-09-03).  CROSS_GATE_MODE=ensemble
+#
+# WHY, and why this is not a third thresholding rule. The two prior front-end
+# attempts (CROSS_GATE_MODE=contrast, CROSS_STROKE_VALIDATE=1) both changed the
+# RULE that decides which PIXELS are marker, and both failed for the same reason:
+# the plate boundary is genuine high-contrast structure, so no single pixel-level
+# criterion separates it from the strokes. This changes the SELECTION instead --
+# generate several plausible segmentations and let the existing cross-SHAPE test
+# (_best_cross_component) say which one actually contains a cross. The shape test
+# already works on clean scenes; it was simply never given a second candidate.
+#
+# The two headline failures on test_data/RobustnessFrameset are both single-
+# candidate failures, not shape-test failures:
+#   inv (polarity flip): inRange(V<=100) keeps the PLATE (94.8% of pixels at low
+#     altitude), so the mask is the plate with the cross as HOLES. _isolate_marker_
+#     by_shape's fill band CORRECTLY rejects that blob (fill ~1.0) -- and then the
+#     function returns the UNFILTERED mask anyway, so Hough fits plate structure and
+#     nothing downstream objects. 99.1% detOK, 0% within-0.15: it LIES.
+#   col (chromatic, iso-V): the V gate keeps ~0.7% of pixels by construction; every
+#     detection comes from the ROI/shape fallback. 62.4% detOK.
+# Both are recoverable if the SAME shape test is offered a mask built on a channel
+# and polarity that actually separate marker from plate.
+#
+# LEGACY-FIRST, by design. If the legacy V-gate already yields a cross-shaped
+# component, that candidate is returned unchanged and no other candidate is even
+# scored. So on every scene where the current detector works (base/dim/bright/
+# lowsun/darkbg -- 95-100% detOK) this mode is INERT BY CONSTRUCTION, not by
+# tuning. Same shape as CROSS_CENTROID_SPAN_RESCUE (legacy check as the fast path,
+# alternatives consulted only on failure), which is the pattern that survived its
+# SITL gate. Cost on clean scenes is therefore one extra connectedComponents call.
+#
+# ⚠ NOT a fix for terminal overfill. At overfill the marker legitimately fills the
+# frame and no candidate is cross-shaped; the ensemble then falls back to the
+# legacy mask exactly as today, PRESERVING the documented close-range behaviour
+# (_isolate_marker_by_shape's own "marker fills the frame" fallback). The loud
+# failure below fires only for the degenerate case the fallback was never meant to
+# cover: a SOLID mask, which cannot be a cross at any scale or distance.
+_ENS_SOLID_FILL_MAX = float(os.environ.get("CROSS_ENSEMBLE_SOLID_FILL_MAX", "0.50"))
+_ENS_MIN_AREA       = int(os.environ.get("CROSS_ENSEMBLE_MIN_AREA", "15"))
+ENSEMBLE_STATS = {"legacy_ok": 0, "rescued": 0, "no_cross": 0, "by_channel": {}}
+
+
+def _ensemble_candidates(frame_bgr, lower, upper):
+    """(name, raw_mask) candidates. Legacy FIRST so the caller can short-circuit.
+
+    Otsu is per-frame and per-channel, so it is illumination-adaptive (dim/bright)
+    without an absolute level; taking BOTH polarities of each channel removes the
+    dark-marker assumption (inv); including a and b makes it chroma-aware, which is
+    the only way to see an iso-luminance marker (col). Lab rather than HSV because
+    hue is unstable at low saturation and wraps."""
+    out = [("legacy", cv2.inRange(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV), lower, upper))]
+    lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
+    for ci, cn in ((0, "L"), (1, "a"), (2, "b")):
+        _, m_lo = cv2.threshold(lab[:, :, ci], 0, 255,
+                                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        out.append((cn + "-", m_lo))                    # marker darker than plate
+        out.append((cn + "+", cv2.bitwise_not(m_lo)))   # marker brighter than plate
+    return out
+
+
+def _ensemble_gate_mask(frame_bgr, lower, upper):
+    """Returns (raw_mask, fail_reason). Preprocesses each candidate the same way
+    _detect_core's own chain does up to the shape stage (morph-close, then
+    _reject_blobby_components) so the scores are comparable to what the main path
+    will actually see, then returns the RAW winning mask for that chain to redo.
+    fail_reason is not None only for the solid-mask case described above."""
+    cands = _ensemble_candidates(frame_bgr, lower, upper)
+    k3 = np.ones((3, 3), np.uint8)
+    legacy_raw = cands[0][1]
+    best = (None, None, -1)   # (name, raw_mask, area)
+    for name, raw in cands:
+        m = cv2.morphologyEx(raw, cv2.MORPH_CLOSE, k3)
+        m = _reject_blobby_components(m)
+        _, lbl, area = _best_cross_component(m, _ENS_MIN_AREA)
+        if lbl is None:
+            continue
+        if name == "legacy":
+            ENSEMBLE_STATS["legacy_ok"] += 1
+            return raw, None            # short-circuit: provably inert where legacy works
+        if area > best[2]:
+            best = (name, raw, area)
+    if best[1] is not None:
+        ENSEMBLE_STATS["rescued"] += 1
+        ENSEMBLE_STATS["by_channel"][best[0]] = ENSEMBLE_STATS["by_channel"].get(best[0], 0) + 1
+        return best[1], None
+    # Nothing anywhere is cross-shaped. Distinguish the two reasons that can happen:
+    #   (a) overfill/close range -- the cross is real but its own bbox is no longer
+    #       cross-shaped. The legacy mask is still the right input; keep today's
+    #       behaviour (fall through, _isolate_marker_by_shape will pass it unfiltered).
+    #   (b) the mask is a SOLID region (the inv plate). That cannot be a marker at any
+    #       scale, and passing it on is what makes inv fail SILENTLY. Fail loudly.
+    ENSEMBLE_STATS["no_cross"] += 1
+    m = _reject_blobby_components(cv2.morphologyEx(legacy_raw, cv2.MORPH_CLOSE, k3))
+    n, _lbl, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    if n > 1:
+        areas = st[1:, cv2.CC_STAT_AREA]
+        b = 1 + int(np.argmax(areas))
+        fill = st[b, cv2.CC_STAT_AREA] / max(st[b, cv2.CC_STAT_WIDTH] * st[b, cv2.CC_STAT_HEIGHT], 1)
+        if fill > _ENS_SOLID_FILL_MAX:
+            return legacy_raw, 'no_cross_shaped_component'
+    return legacy_raw, None
 
 
 def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
@@ -826,7 +941,14 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     coordinate-offset bookkeeping."""
     if min_line_length is None: min_line_length = HOUGH_MIN_LINE_LEN
     if max_line_gap is None: max_line_gap = HOUGH_MAX_LINE_GAP
-    if _GATE_MODE == "contrast":
+    if _GATE_MODE == "ensemble":
+        mask, _ens_reason = _ensemble_gate_mask(frame_bgr, lower, upper)
+        if _ens_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                                   'stage_px': (_pxd,)*5, 'reason': _ens_reason})
+            return CrossMarkerDetection(None, None, False, fail_reason=_ens_reason)
+    elif _GATE_MODE == "contrast":
         mask, _adapt_reason = _contrast_gate_mask(frame_bgr)
         if _adapt_reason is not None:
             _pxd = int(np.sum(mask > 0))

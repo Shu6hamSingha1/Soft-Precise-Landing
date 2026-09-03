@@ -50,6 +50,10 @@ VARIANTS = {
     "adapt":      {"CROSS_ADAPT_GATE": "1"},                                   # CLAHE + adaptiveThreshold (+ Otsu fallback)
     "adapt_c12":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_C": "12"},            # stricter local-contrast demand
     "adapt_b71":  {"CROSS_ADAPT_GATE": "1", "CROSS_ADAPT_BLOCK": "71"},        # larger local window
+    # 2026-09-03: candidate-mask ensemble -- legacy V-gate first, and only if that
+    # yields no cross-shaped component, Otsu on L/a/b in both polarities scored by
+    # the SAME shape test. Inert by construction wherever legacy already works.
+    "ensemble":   {"CROSS_GATE_MODE": "ensemble"},
 }
 _GT_STRICT = os.environ.get("CROSS_GT_WINDOW_STRICT", "1") == "1"
 ALT_BANDS = [(4.0, 6.0), (3.0, 4.0), (2.0, 3.0), (1.3, 2.0), (0.7, 1.3)]
@@ -189,8 +193,8 @@ def main():
 
     for nm in names:
         for k in list(os.environ):
-            if k.startswith("CROSS_ADAPT"):
-                del os.environ[k]
+            if k.startswith("CROSS_ADAPT") or k == "CROSS_GATE_MODE":
+                del os.environ[k]   # GATE_MODE too, else it leaks into later variants
         os.environ.update(VARIANTS[nm])
         importlib.reload(cmd)
         tag = f"{nm}" + (f" [{args.label}]" if args.label else "")

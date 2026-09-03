@@ -15,6 +15,21 @@ SD=/home/shubham/Soft-Precise-Landing/PX4_Gazebo; cd "$SD"
 IC="${IC:-2.0,2.0,5.0}"; N="${N:-5}"; TAG="${TAG:-ic2}"
 LAUNCH="scripts/run_aruco_landing_retry.sh"; SURF=0.0
 WORLD_ENV="WORLD=cross_marker MARKER_TYPE=cross"     # HARD RULE: never bare ArUco
+# ⛔ CONCURRENT-SESSION GUARD (added 2026-09-03 after a live near-miss: another chat
+# had SITL up on cross_marker while this harness was in the working set). ko() below
+# does an unconditional kill -9 on every px4/gz/MicroXRCEAgent process, so running
+# this while someone else is flying KILLS THEIR RUN and silently corrupts both
+# datasets (shared port 8888 + CPU contention skew perception timing).
+# docs/SH_REFERENCE.md §8 pitfall 10. Override only if you are certain: FORCE=1.
+if [ "${FORCE:-0}" != "1" ]; then
+  _busy=$(ps -eo args | grep -aE 'px4_sitl_default/bin/px4|gz-sim|MicroXRCEAgent|landing_test\.py' | grep -av grep | head -3)
+  if [ -n "$_busy" ]; then
+    echo "REFUSING TO START: SITL is already running (another session?):" >&2
+    echo "$_busy" | cut -c1-100 >&2
+    echo "Wait for it to finish, or re-run with FORCE=1 if you are certain it is yours." >&2
+    exit 3
+  fi
+fi
 RES="$SD/run_logs/loomr_${TAG}.tsv"
 printf "arm\trep\txy_err\tclass\tmin_h\tvz_term\tballoon\tdetOK\tloommult\trec\n" > "$RES"
 ko(){
