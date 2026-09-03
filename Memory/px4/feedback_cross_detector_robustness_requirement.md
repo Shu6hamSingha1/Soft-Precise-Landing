@@ -303,3 +303,49 @@ default to flying if ever turned on.**
 detOK, dim/lowsun accuracy up) needs its own SITL gate on the `cm_inv`/`cm_dim`/`cm_lowsun`
 Gazebo world variants (they exist, `~/PX4-Autopilot/Tools/simulation/gz/worlds/cm_inv.sdf`
 confirmed present) — NOT yet run. Still DEFAULT OFF pending that.
+
+## ✅ SITL FLIGHT TEST ON `cm_inv`, PERCEPTION MODE (2026-09-04, n=5/arm)
+
+Not the must-not-regress gate above — this flies the ACTUAL polarity-flip scene, detector
+in the loop (unlike RobustnessFrameset, which was recorded under `PLASMC_GT_FEEDBACK=1` and
+never let the detector control anything). `test_data/CmInv_AB_harness/cminv_ab.sh`, IC2
+(2,2,5), `WORLD=cm_inv MARKER_TYPE=cross`, interleaved, default legacy gate vs
+`CROSS_GATE_MODE=ensemble CROSS_RING_CONFIRM=1`.
+
+**⚠ INFRA: 10 of 20 launches lost across two attempts** to a stale-process race after a
+world-switch ("gazebo already running world: cross_marker" when `cm_inv` was requested,
+traced to a `gz_bridge "Task already running"` failure whose leftover process desynced
+MicroXRCEAgent's UDP port 8888 and cascaded through subsequent launches). `ko()`'s existing
+`/clock`-topic check does not verify the port itself is released. **Fixed**: a `fuser -k
+8888/udp` hard backstop added to `ko()`, confirmed working on the clean second pass. Not
+proven fully robust from one clean run — watch for recurrence on future world-switching
+harnesses.
+
+**RESULT (8 valid reps of 10 flown, min_h = lowest altitude above the surface reached):**
+
+| arm | min_h per rep | pattern |
+|---|---|---|
+| off (baseline) | 5.024, 5.062, 5.021, 5.039, 5.048 | **5/5 — never leave the ~5 m start altitude, σ≈0.01m** |
+| on (ens_ring) | 3.155, 3.206, 0.116, 0.031, **5.005** | 4/5 make real descent progress (2 nearly touch down); 1/5 reproduces baseline exactly |
+
+⭐ **Baseline is unambiguous: 5/5 reps get confidently-wrong plate-corner detections that
+hold the aircraft at a stable-but-WRONG setpoint — it never even starts descending.** This is
+the live confirmation of the offline root-cause finding (99.1% detOK, 0% usable): the wrong
+detection isn't noisy, it's a STABLE wrong answer, so the controller settles on it rather
+than diverging.
+
+⭐ **`ens_ring` breaks that floor in 4/5 reps** — a qualitatively different outcome from
+every single baseline rep, not a marginal shift. ⚠ It does NOT eliminate the mechanism:
+`on/5` reproduced baseline's exact failure (min_h 5.005), so this reduces how often the
+plate-corner lock-on happens, it does not close off the possibility.
+
+⛔ **Neither arm actually LANDED** in any of the 10 reps (`DESCENT_ANOMALY` / `FAIL` /
+`TARGET_LOST` throughout). This does NOT demonstrate `cm_inv` landing works — it demonstrates
+the specific mechanism the ring test targets is real, reproducible, and mostly (not fully)
+fixed by it. n=5/arm, one IC, one session — direction is solid, the ~80% break-out rate is
+not a precise number.
+
+Still DEFAULT OFF. What would make this bakeable: (a) re-run at higher n to firm up the 4/5
+rate and characterize the `on/5`-type residual failure, (b) an actual landing attempt (this
+test's IC/timeout wasn't tuned for descent-to-touchdown, only for "does it start descending"),
+(c) the same test on `cm_dim`/`cm_lowsun`/`cm_col`.
