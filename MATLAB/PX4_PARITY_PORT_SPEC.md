@@ -31,10 +31,31 @@ constants). The full 5-trajectory × 5-IC × 2-config gate (50 cells) — via
 the `Xi_h`/`Xi_r` section below for the full grid + the methodology lesson from a
 first-attempt value that passed a narrow probe but failed the full gate.
 
-**Still not done:** the 4-controller comparison study has NOT been regenerated (the `T_max`
-plant change affects it too — see Wave 0), and the joint-QP's fixed-iteration
-non-convergence defect (found independently on PX4, ported faithfully into
-`cbf2_filter.m`) has not been given a residual/convergence check.
+**Comparison-study spot-check (2026-09-04):** the 4-controller comparison study has NOT been
+regenerated in full, but a same-conditions check found no evidence the `T_max` plant change
+(60→28.77N, shared by all 5 controllers) breaks the baselines. Two direct pre/post-port
+comparisons on `visualControl_comparison` (Lin 2022, the only baseline both backups happened
+to cover):
+
+| cell | pre-port | post-port |
+|---|---|---|
+| Static, ctrl 2 (Lin 2022) | idx=687, xy=2.4519, rel_vel=0.2590 | idx=687, xy=2.4509, rel_vel=0.2590 |
+| Circular, ctrl 2 (Lin 2022) | idx=522, xy=2.5744, rel_vel=0.4086 | idx=522, xy=2.5749, rel_vel=0.4072 |
+
+Both essentially identical (same failure step, xy differs by <1mm) — Lin 2022 already fails
+on both trajectories pre-port (expected; the comparison's premise is that baselines
+underperform PLASMC), and `T_max` has no material effect on when/how it fails. Live spot
+checks of Zhang 2026 / Lin 2023 / Cho 2022 on Static ran without crashing (landed=1/0/0
+respectively, consistent with mixed baseline performance) but had no matching same-conditions
+backup to diff against (the backed-up `Static_comparison.mat` only had controller 2
+populated — an incomplete file, not a live-run problem).
+
+**Not done:** full regeneration of the comparison datasets (needed eventually — `run_comparison_all.m`
++ `run_monte_carlo.m` + `multi_speed_comparison.m`), and the joint-QP's fixed-iteration
+non-convergence defect (found independently on PX4, ported faithfully into `cbf2_filter.m`)
+still has no residual/convergence check. A MATLAB batch-mode crash (`std::terminate()`,
+unrelated to any script content — happened after a script's own output had already printed)
+was observed once during this session; noted in case it recurs, not otherwise investigated.
 
 ## STATUS (2026-09-03)
 
