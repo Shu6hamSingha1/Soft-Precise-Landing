@@ -296,6 +296,21 @@ PY
 8. **Missing `timeout`** — `run_output_calibration.sh` and `landing_test.py` both have hang modes. Wrap any sweep in `timeout 220 bash ...`.
 9. **Non-rep files in `Landing_Test/`** — `parameter_record.ods` lives inside `test_data/Landing_Test/`, so the §4 `ls -t | head -1` rep-detection picks it up if anything touches it mid-sweep (bit the 2026-06-02 DH_D_MAX sweep: a rep "result" resolved to the .ods). Use `ls -td .../Landing_Test/*/ | head -1` (directories only) and never edit the .ods while a sweep is running.
 10. **Concurrent SITL from another session** (found 2026-08-25) — multiple Claude Code sessions (or the user directly) can be using PX4/Gazebo SITL on this machine at the same time. Before launching ANY `.sh` here, check `ps -eo pid,ppid,tty,user,lstart,cmd | grep -E "px4_sitl|gz sim|landing_test.py|MicroXRCEAgent"`. Two concrete failure modes if you skip this: (a) `MicroXRCEAgent` binds a single global port (8888) — a concurrent session directly explains repeated `bind error: port 8888, errno 98` launch flakes that otherwise look like generic SITL flakiness; (b) two simultaneous `gz sim` stacks compete for CPU — sim TIME stays deterministic (lockstep), but real-wall-clock-dependent subsystems (image capture rate, OpenCV decode timing, thread scheduling) do NOT, silently corrupting any perception-timing-sensitive sweep result without an error. **A sweep that comes back noisier than the mechanism predicts may be contaminated data, not a real negative result** — it needs a clean, isolated re-run, not a deeper dive into the (possibly nonexistent) code-level cause. Also apply the SAME `grep -qa claude /proc/$p/cmdline`-style ownership guard already used for `gz sim` kills (§2) to EVERY process type in a cleanup loop, not just `gz sim` — an unguarded `pkill -f landing_test.py`/`px4_sitl`/`MicroXRCEAgent` can kill another session's legitimate run. See `feedback_check_concurrent_sitl_before_launch` memory for the full incident writeup.
+11. **`before`/`latest` dir-diff mis-attributes a rep to a CONCURRENT session** (found
+    2026-09-04) — a third failure mode of #10, distinct from the port-8888 and CPU-contention
+    ones: if another session's `landing_test.py` saves into `Landing_Test/` in the window between
+    your `before=$(ls -td .../*/ | head -1)` and your post-run `latest=...`, `latest` silently
+    resolves to THEIR rep, not yours — no error, no flake message, just a wrong-config rep copied
+    into your output dir. Bit a Q8 yaw A/B: 3 of 6 "reps" turned out to belong to a concurrent
+    detector-robustness session (foreign `WORLD`/`CROSS_GATE_MODE` in their `Control_Params.npy`),
+    which would have produced a confidently-wrong A/B comparison. **Fix: after copying the
+    candidate rep, verify its OWN `Control_Params.npy` → `Config.overrides` actually contains the
+    env vars THIS run set** (present-with-value for what you exported, `!KEY`-absent for what you
+    deliberately didn't) before accepting it; reject + retry (bounded, `MAXLAUNCH`) otherwise —
+    don't just accept whatever `latest` resolves to. Requires the resolved-config dump in
+    `Control_Params.npy` (`controller.py`'s `getParams()`/`_resolvedConfig()`, added 2026-09-03) —
+    without it there is nothing to verify against. Reference implementation:
+    `test_data/Q8_SpinFF/q8_probe_omegaff.sh`'s `verify_attribution()`.
 
 ---
 
