@@ -209,6 +209,16 @@ if valid
         % a diagnostic choice, not load-bearing -- this NEVER feeds back into I_a/th/theta_cone.
         state.jqp_residual  = jqp_resid;
         state.jqp_converged = jqp_resid(end) < max(1e-3, 0.05 * jqp_resid(1));
+        % Persistent counter (threaded through state like decode_fail_n): the FINAL
+        % cbf_state snapshot only shows the last call, which is typically converged
+        % (near-rest at touchdown) even on a run with real mid-flight non-convergence.
+        % This accumulates across every call so a caller can see if it EVER happened.
+        if ~isfield(state, 'jqp_nonconv_count') || isempty(state.jqp_nonconv_count)
+            state.jqp_nonconv_count = 0;
+        end
+        if ~state.jqp_converged
+            state.jqp_nonconv_count = state.jqp_nonconv_count + 1;
+        end
     else
         th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % LEGACY alternating projection
     end

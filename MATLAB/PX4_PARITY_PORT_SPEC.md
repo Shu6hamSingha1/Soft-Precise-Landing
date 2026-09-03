@@ -66,10 +66,26 @@ budget regardless. Confirmed behavior-neutral: a spot check (IC5 Circular noisel
 
 This directly answers the gap `project_joint_qp_nonconvergence_kappa_ratchet.md` flagged as
 "the natural next step, not yet done" — a caller can now check `cs.cbf_state.jqp_converged`
-after any call. **Not yet done:** actually using it — checking whether it ever reports
-non-convergence on MATLAB's runs (the PX4 defect may or may not be reachable under MATLAB's
-idealized perception/plant), and whether non-convergence correlates with any of the harder
-IC×trajectory cells. That's the natural follow-up, not performed this session.
+after any call.
+
+**Follow-up DONE: checked whether it ever fires on MATLAB's runs.** Added a second field,
+`state.jqp_nonconv_count`, threaded through `cbf_state` like the existing `decode_fail_n`
+counter (the final-step snapshot alone is uninformative — the vehicle is near-rest at
+touchdown, so the LAST call is trivially converged even on a run with real mid-flight
+non-convergence; the counter accumulates across every call instead). Ran IC5 × all 5
+trajectories × {noiseless, realistic}:
+
+**Result: 0 non-convergent joint-QP solves out of 12,827 total steps.** The PX4 defect
+(theta_cone chatter from `MARKER_EXTENT_PX` saturating as a frame-filling marker approaches
+touchdown) does not manifest on MATLAB's hardest confirmed cells, in either config. Plausible
+reading: MATLAB's synthetic corner geometry doesn't reproduce the real-camera frame-filling
+scenario that triggered it on PX4 — the box constraint may simply not bind as tightly under
+MATLAB's idealized perception. Not proven, just the leading hypothesis; the diagnostic now
+exists to re-check this if MATLAB's perception model is ever made less idealized, or on
+cells beyond IC5 (not swept).
+
+Confirmed non-breaking throughout: every `xy`/`rel_vel` value from these runs matched the
+pre-diagnostic 50/50-gate values exactly.
 
 ## STATUS (2026-09-03)
 
