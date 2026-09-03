@@ -279,3 +279,27 @@ refused", so the controller is not fed poisoned measurements and TARGET_LOST eng
 3. `CROSS_GATE_MODE=ensemble` -- PARTIAL, `inv` 99.1/0 -> 42.6/0; picks the right channel/polarity on 60% of `inv` frames, so segmentation is NO LONGER the constraint there.
 4. `CROSS_GEOM_CONFIRM=1|2` -- DEAD END, false by design (45 deg stub) and non-discriminative anyway.
 5. `CROSS_RING_CONFIRM=1` -- BEST SO FAR, real asymmetric separation, but fixes the failure MODE only.
+
+## ✅ SITL FLIGHT-OUTCOME GATE: `ens_ring` does NOT regress the ordinary scene (2026-09-04, n=5)
+
+Must-not-regress check (offline eval already showed `base`/`darkbg` bit-unchanged; this asks
+the same question live, since flight outcome — not detOK — is the actual pass criterion).
+`test_data/EnsRing_AB_harness/ensring_ab.sh`, interleaved per rep, `HEADLESS=1
+WORLD=cross_marker MARKER_TYPE=cross` (standing hard rule), IC2 (2,2,5), default legacy gate
+vs `CROSS_GATE_MODE=ensemble CROSS_RING_CONFIRM=1`.
+
+| arm | precise | median xy | detOK |
+|---|---|---|---|
+| off (default) | 4/5 | 0.086 | 100.0% (5/5) |
+| on (ens_ring) | 3/5 | 0.077 | 100.0% (4/5), 99.6% (1/5) |
+
+Both arms failed once at comparable magnitude (off 0.245; on 0.258, 0.701) — no directional
+signal, consistent with this platform's known lateral stochasticity rather than anything
+ensemble/ring-specific. detOK cost is negligible (one rep at 99.6%). **n=5 is too small to
+prove equivalence, but there is no regression signal to chase, on the world this mode will
+default to flying if ever turned on.**
+
+⚠ This tests ONLY the must-not-regress arm. The actual claimed benefit (inv 99.1→42.2%
+detOK, dim/lowsun accuracy up) needs its own SITL gate on the `cm_inv`/`cm_dim`/`cm_lowsun`
+Gazebo world variants (they exist, `~/PX4-Autopilot/Tools/simulation/gz/worlds/cm_inv.sdf`
+confirmed present) — NOT yet run. Still DEFAULT OFF pending that.
