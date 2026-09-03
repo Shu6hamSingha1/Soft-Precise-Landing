@@ -54,7 +54,15 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     kappa_a_Solver.m           — ASMC adaptive-gain ODE (yaw)
     smooth4.m, sat.m, moment.m, centered_moment.m, skew.m, init_robustness.m
   Multi_init_cond/
-    visualControl_IBVS_adaptive.m       — main PLASMC single-run (CANONICAL)
+    visualControl_IBVS_adaptive.m       — ⚠️ STALE (last touched 2026-06-25). Self-contained older
+                                          single-run; its inline `K_ctrl` gains and its
+                                          `h_d = s_dot_meas` are SUPERSEDED. Do NOT cite it as the
+                                          MATLAB source of truth (doing so produced a false
+                                          "manuscript disagrees with MATLAB" report, 2026-09-03).
+    run_simulation.m                    — ⭐ CANONICAL manuscript driver. Wraps MATLAB/VDF_ASMC/+blocks/*
+                                          and calls vdf_params() for ALL gains; packages the struct the
+                                          manuscript plotters read. Use THIS (+ vdf_params.m + the
+                                          blocks) whenever comparing the paper against MATLAB.
     visualControl_IBVS_adaptive_loop.m  — Monte-Carlo / parameter sweep
     InitVar.m, InitVar_loop.m           — local overrides
     multi_Init_Var.m, multi_speed_cond.m, Adapt_Control_Params.m, probe_lateCrash.m
@@ -80,7 +88,21 @@ MATLAB/                        — Phase 1: numerical simulation (done)
                                PRE-RE-BAKE and disagree with the paper on ~9 rows. Reading
                                them as "MATLAB's locked values" produces a full page of
                                phantom manuscript errors (done 2026-09-03, retracted).
-    simulate_landing.m, verify_vs_canonical.m, +blocks/
+                               ⚠ As of the PX4-parity port (2026-09-03, MATLAB/PX4_PARITY_PORT_SPEC.md)
+                               these values are PX4's, NOT the paper's — the table is now stale in
+                               ~16 rows and the port is UNVALIDATED (no gate run). Ported lines keep
+                               their pre-port value as `PRIOR` in-comment.
+    simulate_landing.m, verify_vs_canonical.m
+    +blocks/                 — the control logic run by run_simulation.m AND Comparison ctrl-1:
+      flow_surface.m         — h_d (funnel-prescribed s_dot_presc + transport + descent) = tex eq.
+                               `h_d final`; optic-flow funnel/barrier; sliding surface; c-term
+      position_funnel.m      — image-feature funnel, zeta_r, s_dot_presc; carries the ported
+                               HD_KR back-map term -k_r*G_r^-1*zeta_r (P.hd_kr)
+      cbf_visibility.m       — passes P.jqp_on/A_cap/k_az into Common/cbf2_filter.m, which since the
+                               port runs the PX4 JOINT-I_a QP + true-thrust sphere + a_z relief
+                               (13-arg call / jqp=[] restores the legacy theta-QP bit-identically)
+      asmc.m                 — leakage ASMC; carries the ported P.kappa_max clamp
+      yaw_asmc.m, so3_tracker.m, image_features.m
   Sweeps/
     (parameter sweep scripts; results -> MATLAB/Datasets/Sweeps/)
 

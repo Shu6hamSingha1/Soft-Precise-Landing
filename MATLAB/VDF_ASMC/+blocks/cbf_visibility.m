@@ -9,9 +9,17 @@ function [I_a_cd_filt, th_safe, theta_cone, cbf_ok, R33, cs] = cbf_visibility(I_
     R33 = max(min(I_R_C(3,3), 1), -1);                                   % measured tilt cosine
     refresh = (mod(cs.k-1, P.ZOH) == 0);
     dt_img  = P.ZOH*P.dt;
+    % CBF_JOINT_QP (PX4 parity port 2026-09-03): pass the joint-solve config so the QP
+    % solves for the full I_a (lateral AND vertical) with the descent-rate relief and the
+    % true-thrust sphere |I_a| <= A_cap. Passing [] restores the legacy theta-QP exactly.
+    if isfield(P, 'jqp_on') && P.jqp_on
+        jqp = struct('A_cap', P.A_cap, 'k_az', P.k_az, 'g', norm(P.g));
+    else
+        jqp = [];
+    end
     [cs.I_a_cd_filt, theta_cone, cbf_ok, th_safe, cs.cbf_state] = cbf2_filter( ...
         cs.I_a_cd_filt, I_R_C, R33, yaw, C_nP, P.f, P.phi_max_cbf, ...
-        P.theta_cap, P.theta_cap, dt_img, refresh, B_w_c(1:2), cs.cbf_state);
+        P.theta_cap, P.theta_cap, dt_img, refresh, B_w_c(1:2), cs.cbf_state, jqp);
     cs.I_a_cd_filt(3) = max(cs.I_a_cd_filt(3), P.a_floor);
     I_a_cd_filt = cs.I_a_cd_filt;
 end

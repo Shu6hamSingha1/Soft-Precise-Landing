@@ -1,6 +1,12 @@
 function [I_a, theta_cone, ok, th_safe, state] = ...
     cbf2_filter(I_a, R, R33, yaw_c, C_nP, f, phi_max, theta_cap, ...
-                theta_cone, dt_last, refresh, w_rp, state)
+                theta_cone, dt_last, refresh, w_rp, state, jqp)
+% JQP (optional 14th arg) — PX4 PARITY PORT 2026-09-03. Struct with fields:
+%   .A_cap  deliverable specific-thrust ceiling |I_a| <= A_cap  [m/s^2]
+%   .k_az   descent-rate relief gain (PX4 CBF_AZ_COST_GAIN)     [m/s^2 per rad]
+%   .g      gravity magnitude (hover is I_a(3) = -g)            [m/s^2]
+% Omit it (13-arg call) or pass [] to keep the LEGACY theta-QP path, which is
+% bit-identical to the pre-port behaviour. See the CBF_JOINT_QP block below.
 % CBF2_FILTER  Target-visibility control barrier function (camera-plane theta-QP).
 %
 % MATLAB port of PX4_Gazebo/src/cbf_visibility.cbf2_filter (validated offline
@@ -68,6 +74,10 @@ a_z      = abs(I_a(3));
 ok       = false;
 th_safe  = [];
 M90      = [0, 1; -1, 0];                 % omega = M90 * theta_lean
+% CBF_JOINT_QP gate (PX4 parity port 2026-09-03). Defined HERE, at function scope, so
+% every branch (incl. the Phase-2 cone fallback) can test it; 13-arg callers and jqp=[]
+% keep the legacy theta-QP path bit-identical.
+jqp_on = (nargin >= 14) && ~isempty(jqp);
 
 valid = ~isempty(C_nP) && all(isfinite(C_nP(:)));
 if valid
@@ -138,7 +148,54 @@ if valid
         Lw_c(:,:,i)   = Lwi;
         anchor_c(:,i) = ct(:,i) - Lwi * th_curr + dft;          % f_i = cr_i + L_wi*(th-th_curr) + tau*d
     end
-    th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % alternating projection onto FoV box
+    % ---- CBF_JOINT_QP (PX4 parity port 2026-09-03) --------------------------------
+    % PX4 solves the FoV box directly for the FULL I_a (lateral AND vertical),
+    % interleaved with the descent-rate relief and a projection onto the TRUE-thrust
+    % deliverability sphere |I_a| <= A_cap. That removes the theta round-trip (compute
+    % I_a -> normalise by a_z -> project -> un-normalise) and, crucially, makes a_z part
+    % of the SAME iteration instead of a fixed input patched downstream. Mirrors
+    % PX4_Gazebo/src/cbf_visibility.py (_joint_qp block), 6 outer x 5 inner passes.
+    %
+    % Frame note: PX4 folds the +90 deg into P = Rz_p90b*Rzm; MATLAB folds it into
+    % Lw_c (Lwi = [..]*M90). Both give the same Lw*th product, and since M90 is a
+    % rotation the relief weight ||th_desired - th_safe|| is invariant to which
+    % convention is used -- so k_az transfers from PX4 unchanged.
+    if jqp_on                       % gate defined at function scope, see top
+        Ia_lat = I_a(1:2);          % start from the UNCONSTRAINED lateral command
+        Ia_z   = I_a(3);            % thrust accel, hover = -g (same convention as PX4)
+        Ia_z0  = I_a(3);            % unconditioned a_z, for the relief (no accumulation)
+        for outer = 1:6
+            az_now = max(abs(Ia_z), 1e-6);
+            M_c = zeros(2, 2, Ncp);
+            for i = 1:Ncp
+                M_c(:,:,i) = Lw_c(:,:,i) * Rzm / az_now;   % d(f_i)/d(I_a(1:2))
+            end
+            Ia_lat = project_box_Ia(Ia_lat, anchor_c, M_c, m2, Ncp);
+
+            % descent-rate relief: if the box suppressed lean, spend budget on TIME.
+            % One-way by construction: max(.,-g) can bring a descent toward hover but
+            % never past it into a climb; min(.) keeps lift already commanded.
+            if jqp.k_az > 0 && Ia_z0 > -jqp.g
+                th_safe_now = Rzm * (Ia_lat / az_now);
+                lat_supp    = norm(th_d_dbg - th_safe_now);
+                az_relieved = Ia_z0 - jqp.k_az * lat_supp;   % more negative = more lift
+                Ia_z        = min(Ia_z, max(az_relieved, -jqp.g));
+            end
+
+            % TRUE-thrust deliverability sphere. I_a IS the thrust acceleration, so the
+            % bound is |I_a| <= A_cap. (PX4's legacy |I_a + g*e3| bounded VEHICLE accel --
+            % zero at hover, a ~72% over-permit -- fixed there 2026-09-03, commit 937db5a9.)
+            T = norm([Ia_lat(:); Ia_z]);
+            if T > jqp.A_cap && T > 1e-9
+                sc     = jqp.A_cap / T;
+                Ia_lat = Ia_lat * sc;
+                Ia_z   = Ia_z   * sc;
+            end
+        end
+        th = Rzm * (Ia_lat / max(abs(Ia_z), 1e-6));   % derived lean, for th_safe consumers
+    else
+        th = project_box(th, anchor_c, Lw_c, m2, Ncp);   % LEGACY alternating projection
+    end
 
     th_qp_dbg = th;                       % (debug) lean after QP projection
     % NOTE: the post-QP deliverable-tilt cap (theta_cap) has been MOVED OUT of the
@@ -154,7 +211,7 @@ if valid
     % toward the FoV edge, so the re-centering lean is delivered. Self-targeting:
     % only the reversal case (seed-6-like) triggers it; good seeds keep the inset.
     global DIR_INSET_RELAX;
-    if ~isempty(DIR_INSET_RELAX) && DIR_INSET_RELAX > 0
+    if ~isempty(DIR_INSET_RELAX) && DIR_INSET_RELAX > 0 && ~jqp_on   % legacy-path only
         Rzy_d   = [cz, -sz; sz, cz];                 % Rz(yaw): lean -> inertial
         axy_des = a_z * Rzy_d * th_d_dbg;
         axy_sf  = a_z * Rzy_d * th_safe;
@@ -173,7 +230,7 @@ if valid
     % Good seeds (-Y survives, strip~0) -> ~no relax; seed 6 (-Y stripped/
     % reversed, strip~1) -> full relax. Self-targets the seed-6 flip only.
     global DRIFT_GATED;
-    if ~isempty(DRIFT_GATED) && DRIFT_GATED > 0
+    if ~isempty(DRIFT_GATED) && DRIFT_GATED > 0 && ~jqp_on           % legacy-path only
         Rzg     = [cz, -sz; sz, cz];
         axy_des = a_z * Rzg * th_d_dbg;                  % desired inertial a_xy
         axy_tgt = a_z * Rzg * th_safe;                   % tight-projection result
@@ -199,7 +256,7 @@ if valid
     % instead hold that axis at 0 (no inward push, but no runaway). Self-targeting
     % -- only fires when the projection actually reversed an axis.
     global CBF_NO_REVERSE;
-    if ~isempty(CBF_NO_REVERSE) && CBF_NO_REVERSE
+    if ~isempty(CBF_NO_REVERSE) && CBF_NO_REVERSE && ~jqp_on         % legacy-path only
         Rzy_nr = [cz, -sz; sz, cz];                 % Rz(yaw): lean -> inertial
         axy_des = a_z * Rzy_nr * th_d_dbg;          % desired inertial a_xy
         axy_sf  = a_z * Rzy_nr * th_safe;           % CBF-safe inertial a_xy
@@ -243,7 +300,13 @@ if valid
         justified = sign(negY_sens) * sign(bf);   % +1 -Y pushes binding OUT; -1 toward centre
         CBF_DBG_LOG(:, end+1) = [axy_d_y; axy_qp_y; mc; md; mq; bf; m2(bk); negY_sens; justified];
     end
-    I_a(1:2) = a_z * ([cz, -sz; sz, cz] * th);   % a_xy* = a_z*Rz(yaw)*theta*
+    if jqp_on
+        % Joint solve returns BOTH channels; a_z is an output here, not an input.
+        I_a(1:2) = Ia_lat;
+        I_a(3)   = Ia_z;
+    else
+        I_a(1:2) = a_z * ([cz, -sz; sz, cz] * th);   % a_xy* = a_z*Rz(yaw)*theta*
+    end
     theta_cone = norm(th);                % commanded tilt magnitude
     ok = true;
 end
@@ -276,6 +339,30 @@ if ~ok
     a_xy_n   = norm(I_a(1:2));
     if a_xy_n > a_xy_lim && a_xy_n > 1e-9
         I_a(1:2) = a_xy_lim * I_a(1:2) / a_xy_n;
+    end
+end
+end
+
+function Ia = project_box_Ia(Ia, anchor_c, M_c, m2, Ncp)
+% Alternating projection of the LATERAL COMMAND Ia onto the per-corner FoV box
+% |f_i| <= m2, with f_i = anchor_i + M_i*Ia. Same algorithm as project_box but in
+% I_a units (M_i = Lw_i*Rz(-yaw)/a_z), so a_z can vary between outer iterates.
+% PX4 parity: cbf_visibility.py runs 5 inner passes per outer iterate.
+for it = 1:5
+    for i = 1:Ncp
+        Mi = M_c(:,:,i);
+        ff = anchor_c(:,i) + Mi * Ia;
+        for k = 1:2
+            if ff(k) > m2(k)
+                r  = Mi(k,:)';
+                Ia = Ia - (ff(k) - m2(k)) / (r'*r + 1e-12) * r;
+                ff = anchor_c(:,i) + Mi * Ia;
+            elseif ff(k) < -m2(k)
+                r  = Mi(k,:)';
+                Ia = Ia - (ff(k) + m2(k)) / (r'*r + 1e-12) * r;
+                ff = anchor_c(:,i) + Mi * Ia;
+            end
+        end
     end
 end
 end
