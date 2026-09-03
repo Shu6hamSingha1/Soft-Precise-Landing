@@ -6,6 +6,7 @@
 
 ## Current (2026-06-26 → 07-03 controller campaign — code+datasets COMMITTED through 625fc84)
 
+- ⛔⭐ **[vdf_params.m is the manuscript's authoritative gain source](reference_vdf_params_is_authoritative.md)** — 2026-09-03: the paper's Table `sup:control params` comes from `MATLAB/VDF_ASMC/vdf_params.m`, NOT the inline `K_ctrl.*` in `visualControl_IBVS_adaptive.m` (PRE-RE-BAKE, ~9 phantom mismatches, retracted). Also settles θ_cap=60° + its 2×-hover-thrust justification as CORRECT.
 - ⭐ **[MATLAB↔PX4 parity audit 2026-07-03](project_matlab_px4_parity_audit.md)** — control law IDENTICAL layer-by-layer (funnel/σ/c-term/Θ/a_u/κ-ODE); funnel-ref h_d + DHD_SRC=full + 2π orientation CONVERGED; ⚑ PX4 HD_KR=0.5 = the contraction law user rejected in MATLAB (Ubuntu decision pending); ⚑ PX4 ψ̇_b sign flagged SITL-unverified (their comment); divergences documented (CBF corner-vs-centroid, inner loop, terminal machinery, gains regime)
 
 - ⭐ **[Prescribed-rate h_d — RESOLVED](project_prescribed_rate_hd.md)** — s_dot_meas → phi_max·S_r·dp_r in h_d, s̈-drop removed; 25/25+25/25 gate, A/B breach benefit (engR .76 vs 1.16); formula COMPLETE as a definition: h_e,xy = p_10·ζ̇_r/g_r (S_r varying IS the signal; a prescribed Ṡ_r law was the WRONG approach — funnel must stay a constraint, not become the convergence driver); finite-diff dh_d kept per user; code final at 016855e
