@@ -7,6 +7,17 @@ metadata:
 
 **Q8 step 2 result: the existing (default-OFF) `PLASMC_YAW_OMEGA_D_FF` knob fixes the
 turning-rover ceiling ramp-windup.** Re-tested rather than newly built — see
+
+⚠ **NAMING CORRECTION (2026-09-04, user question "how are we getting omega_t for
+feedforward?"): this is NOT an ω_t feedforward.** `_ua_psid_ff = clip(u_a, ...)` —
+`u_a = Γ_a·σ_a + sat(σ_a/E_a)·κ_a + Ω_a·e_a` is a pure function of the MEASURED `e_a`; `ω_t`
+never enters this computation. It only enters implicitly as the disturbance `d_α = l_α^T ω_t`
+that the feedback loop is already reacting to. The mechanism is: reuse the outer loop's own
+already-computed correction (`u_a`) on a second path to the actuator that skips the
+`-K_R_yaw·sin(Δψ)` round-trip — NOT better knowledge of the disturbance. No `ω_t`/`w_z`
+estimate is needed or used. Contrast with the task spec's original proposal (regulate measured
+`w_z` toward `α̇_des`), which WOULD need `ω_t`/`w_z` and has not been built —
+`OMEGA_D_FF` sidesteps that need entirely.
 [[project_q8_yaw_ff_dead_sin_ceiling]] and [[project_q8_yaw_ff_harmful_with_headroom]] for why the
 naive additive-feedforward approaches were ruled out first.
 
