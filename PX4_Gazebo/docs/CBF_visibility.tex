@@ -36,7 +36,10 @@ $L_\omega(\tilde{\boldsymbol{r}}_i)$ & rotational interaction matrix (roll/pitch
 $\boldsymbol\omega_{\rm rp}=[\omega_\phi,\omega_\theta]$ & body roll/pitch rate (the \emph{rotation-axis} vector) \\
 $M=\left[\begin{smallmatrix}0&1\\-1&0\end{smallmatrix}\right]$ & lean$\to$rotation map: a lean in direction $\boldsymbol{y}$ rotates about $M\boldsymbol{y}$ \\
 $\tilde{L}_{\omega,i}=L_\omega M$ & effective coupling from acceleration-ratio direction to feature velocity \\
-$\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial acceleration; this projection's decision variable \\
+$\,^\Iframe\boldsymbol{a}_\text{d}$ & desired inertial \emph{specific thrust} (thrust/mass), NED; this
+projection's decision variable. \textbf{Hover is $\,^\Iframe\boldsymbol{a}_\text{d}=-g\boldsymbol{e}_3$},
+not $\boldsymbol{0}$: gravity is already subtracted, so $\|\,^\Iframe\boldsymbol{a}_\text{d}\|$ \emph{is}
+the thrust magnitude per unit mass. The implementation's \texttt{I\_a} uses this same convention \\
 $\,^\Iframe a_{\text{d},z}$ & desired vertical acceleration component ($a_z\equiv|\,^\Iframe a_{\text{d},z}|$) \\
 $\boldsymbol{y}=R_z(-\psi_\text{b})(\,^\Iframe\boldsymbol{a}_{\text{d},xy}/\,^\Iframe a_{\text{d},z})$ & lateral-to-vertical acceleration ratio, expressed in image-axis coordinates \\
 $\boldsymbol{y}_\text{curr}$ & the same ratio, evaluated at the current realized attitude \\
@@ -110,16 +113,22 @@ $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ for the conditioned output,
 \,^\Iframe\boldsymbol{a}_\text{d}^\star=\arg\min_{\,^\Iframe\boldsymbol{a}_\text{d}}\ &\|\,^\Iframe\boldsymbol{a}_\text{d}-\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}\|^2 \\[2pt]
 \text{s.t.}\ \
 \big|\tilde{\boldsymbol{r}}_i+N_i(a_z)\,^\Iframe\boldsymbol{a}_{\text{d},xy}&-\tilde{L}_{\omega,i}\boldsymbol{y}_\text{curr}+\tau\boldsymbol{d}_i\big|\preceq\boldsymbol\varphi_\text{max},
-\qquad \big\|\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3\big\|\le A_\text{cap}
+\qquad \big\|\,^\Iframe\boldsymbol{a}_\text{d}\big\|\le A_\text{cap}
 \end{aligned}}
 \end{equation}
 where $\,^\Iframe\boldsymbol{a}_\text{d}^{\,0}$ is the unconstrained desired acceleration, the target this
 projection stays closest to. The first constraint is the per-feature FoV box, written directly on
-$\,^\Iframe\boldsymbol{a}_{\text{d},xy}$; the second is the true thrust-deliverability sphere in
-gravity-shifted acceleration space (the vehicle's total thrust vector is
-$m(\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3)$, and
-$\|\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3\|\le A_\text{cap}$ is exactly the statement that
-this stays within the vehicle's maximum). Both are convex for a fixed $a_z$; since $N_i(a_z)$ itself
+$\,^\Iframe\boldsymbol{a}_{\text{d},xy}$; the second is the thrust-deliverability sphere. Because
+$\,^\Iframe\boldsymbol{a}_\text{d}$ is already the specific thrust, the vehicle's thrust vector is
+$m\,^\Iframe\boldsymbol{a}_\text{d}$ and the bound is simply
+$\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$; no gravity shift enters.
+\emph{Correction, 2026-09-03:} earlier revisions of this note wrote this constraint as
+$\|\,^\Iframe\boldsymbol{a}_\text{d}+g\boldsymbol{e}_3\|\le A_\text{cap}$ and called it the ``true''
+deliverability sphere. That expression is the \emph{vehicle's} acceleration, which is
+$\boldsymbol{0}$ at hover, so it bounded deviation from hover rather than thrust --- at zero lateral
+demand it admitted $2.39\,g$ on a vehicle capable of $1.389\,g$. The implementation inherited the
+error from this note (in two places) and is corrected behind
+\texttt{CBF\_SPHERE\_TRUE\_THRUST}, default on. Both are convex for a fixed $a_z$; since $N_i(a_z)$ itself
 depends on $a_z$, the two constraints are resolved jointly rather than sequentially: the lateral
 acceleration satisfying the box and the vertical acceleration satisfying the sphere are solved for
 together, not one after the other. $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ then defines the desired
@@ -136,8 +145,12 @@ projection accounts for centroid drift over the next $\tau$\,s.
 \item \textbf{Bounded by construction} --- because $\,^\Iframe\boldsymbol{a}_\text{d}^\star$ always
 satisfies the sphere constraint, the resulting acceleration ratio
 $\boldsymbol{y}^\star=R_z(-\psi_\text{b})\,^\Iframe\boldsymbol{a}_{\text{d},xy}^\star/a_z^\star$ satisfies
-$\|\boldsymbol{y}^\star\|\le\tan\theta_\text{cap}$ at the solved $a_z^\star$ automatically; no separate cap
-application is needed.
+$\|\boldsymbol{y}^\star\|\le\tan\big(\arccos(a_z^\star/A_\text{cap})\big)$ at the solved $a_z^\star$
+automatically. Note this is an $a_z$-\emph{dependent} bound: it equals $\tan\theta_\text{cap}$ only at
+$a_z^\star=g$, and is looser below hover / tighter above it ($a_z=6.0$: $2.04$ vs $0.96$; $a_z=12.0$:
+$0.54$). An earlier revision claimed a fixed $\tan\theta_\text{cap}$ came free here, which is why the
+implementation needed a post-projection clip on the derived ratio; that clip computes exactly
+$\arccos(a_z/A_\text{cap})$ and is the principled bound, not a workaround.
 \item \textbf{Descent-rate aware} (\S\ref{sec:relief}) --- while the box actively suppresses lateral
 authority, the vertical component is relaxed toward hover, in proportion to that suppression and clamped so
 it can only \emph{slow} a descent, never reverse it; the trade lives inside \eqref{eq:qp} so the output
@@ -189,6 +202,17 @@ lateral acceleration than $A_\text{cap}$ can deliver at any achievable $a_z$ ---
 evaluated at the solved $a_z^\star$ rather than at a fixed hover-assumed $\theta_\text{cap}$: joint
 feasibility holds whenever some achievable $a_z$ satisfies \eqref{eq:feasibility}, a weaker requirement
 than demanding it hold at the hover value of $a_z$ alone.
+
+\medskip\noindent\emph{Open, flagged 2026-09-03.} \eqref{eq:feasibility} is written purely in tilt terms.
+With the deliverability constraint corrected to $\|\,^\Iframe\boldsymbol{a}_\text{d}\|\le A_\text{cap}$
+\emph{and} $a_z$ a solved variable, a tilt-only inequality is no longer a sufficient condition on its own:
+it needs a thrust conjunct, and the substitution $\theta_\text{cap}\to\arccos(a_z^\star/A_\text{cap})$
+alone has not been shown to close it. A second coupling is unaddressed --- the descent-rate relief of
+\S\ref{sec:relief} shrinks $|a_z|$, which \emph{inflates} $N_i(a_z)$ and so tightens the box in
+$\,^\Iframe\boldsymbol{a}_\text{d}$ units, meaning relief and box can fight across outer iterates. The
+solver also runs a fixed iterate budget with no convergence test and no residual logged, so convergence
+is currently unobserved either way. Deriving the corrected condition is deliberately left open here
+rather than guessed at.
 
 \section{Assumptions}
 \begin{enumerate}
