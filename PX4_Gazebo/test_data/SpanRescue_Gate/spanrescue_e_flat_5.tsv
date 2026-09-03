@@ -1,0 +1,4 @@
+arm	rep	xy_err	class	min_h_pad	lat_end	detOK_desc	rescue	rec
+off	1	0.143	FAIL	0.021	0.103	100.0	2|0|0|0	Thu Sep  3 01-26-17 2026
+on	1	0.245	FAIL	0.079	0.166	99.5	2|2|0|0	Thu Sep  3 01-27-19 2026
+SPANRESCUE_DONE

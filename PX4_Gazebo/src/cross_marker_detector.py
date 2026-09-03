@@ -53,6 +53,171 @@ DEFAULT_LOWER = np.array([0, 0, 0])
 _COLOR_GATE_V_MAX = int(os.environ.get("CROSS_COLOR_GATE_V_MAX", "100"))
 DEFAULT_UPPER = np.array([180, 255, _COLOR_GATE_V_MAX])  # low-V gate: marker is dark, background is light
 
+# ADAPTIVE CONTRAST GATE (2026-09-01). The fixed absolute-V gate above (inRange
+# V<=100) assumes "dark marker strokes, bright everything else". It breaks
+# whenever global illumination drops (the plate itself falls below the cutoff), a
+# large dark object enters view (landing-platform wall, rover body, deep shadow),
+# or the feed is a flat frame (two-instance camera warm-up on rover_cross: whole
+# frame V~=90 -> the gate returns all 76800 px -> every downstream stage fails).
+# Replace it with CLAHE + adaptiveThreshold, which keys on LOCAL contrast ("dark
+# relative to its neighbourhood") -- illumination-invariant, and ~empty on a
+# uniform region. CLAHE params match tools/validate_bgflow_corr.py's
+# GT-validated _clahe (clip 2.0, tile 8). CROSS_ADAPT_GATE=0 -> legacy inRange.
+_ADAPT_GATE       = os.environ.get("CROSS_ADAPT_GATE", "0") == "1"
+_ADAPT_CLAHE_CLIP = float(os.environ.get("CROSS_ADAPT_CLAHE_CLIP", "2.0"))
+_ADAPT_CLAHE_TILE = int(os.environ.get("CROSS_ADAPT_CLAHE_TILE", "8"))
+_ADAPT_BLOCK      = int(os.environ.get("CROSS_ADAPT_BLOCK", "51"))       # local window (forced odd); > stroke width
+_ADAPT_C          = float(os.environ.get("CROSS_ADAPT_C", "8"))          # bias: higher -> fewer pixels kept
+_ADAPT_V_CEIL     = int(os.environ.get("CROSS_ADAPT_V_CEIL", "255"))     # optional loose absolute sanity bound; 255 = off. Lower (~160) trims bright textured ground from the mask (cheaper Hough) but also eats CLAHE-brightened thin strokes -> hurts far detection; off by default.
+_ADAPT_ERODE      = int(os.environ.get("CROSS_ADAPT_ERODE", "0"))        # optional Nx N erode to kill speckle; 0 = off. Eats thin foreshortened strokes -> off by default.
+_ADAPT_MIN_STD    = float(os.environ.get("CROSS_ADAPT_MIN_STD", "6.0"))  # frame gray-std floor; below -> structureless feed
+_ADAPT_MAX_FILL   = float(os.environ.get("CROSS_ADAPT_MAX_FILL", "0.55"))  # mask fill ceiling; above -> degenerate threshold
+_SEG_CAP          = int(os.environ.get("CROSS_SEG_CAP", "120"))         # keep only the N longest Hough segments (bounds the angle loop + pairwise corner-join)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POLARITY-AGNOSTIC CONTRAST GATE (2026-09-03).  CROSS_GATE_MODE=contrast
+#
+# WHY. Both existing gates encode "the marker is DARK": `inRange(V<=100)` absolutely,
+# and CROSS_ADAPT_GATE's THRESH_BINARY_INV relatively. Measured on the robustness eval
+# set (test_data/RobustnessFrameset), what inRange retains is
+#   base  5.2% (the cross)  |  inv  94.8% (the PLATE)  |  col  0.0% (empty)
+# -> on a polarity flip the detector stays at 82% detOK while returning centroids 53.9 px
+# off (only 23% within-0.15): CONFIDENTLY WRONG, because Hough then fits plate edges.
+# On a chromatic iso-V marker the mask is empty by construction.
+#
+# THE INVARIANT (user, 2026-09-01): we cannot guarantee a BLACK marker, but we can
+# guarantee a marker that CONTRASTS with its background. So segment on *deviation from
+# the local background*, with no sign and no absolute level:
+#
+#   D(p) = || Lab(p) - blur(Lab)(p) ||      (Lab: L = luminance, a/b = chroma)
+#
+# - POLARITY-AGNOSTIC: it is a magnitude, so dark-on-light and light-on-dark are identical.
+# - CHROMA-AWARE: a/b carry the signal when luminance is matched (the `col` case, V 150/150).
+# - ILLUMINATION-RELATIVE: the local mean is subtracted, so scene brightness cancels; the
+#   threshold is a percentile of D within the ROI, not a fixed level.
+# BG_KSIZE must exceed the stroke width (so a stroke deviates from its own neighbourhood)
+# and stay below the marker extent (so the whole marker is not its own background).
+_GATE_MODE      = os.environ.get("CROSS_GATE_MODE", "legacy")     # legacy | contrast | ensemble
+_CG_BG_KSIZE    = int(os.environ.get("CROSS_CG_BG_KSIZE", "41"))  # local-background box (odd)
+_CG_CHROMA_GAIN = float(os.environ.get("CROSS_CG_CHROMA_GAIN", "2.0"))  # weight on a/b vs L
+_CG_PCT         = float(os.environ.get("CROSS_CG_PCT", "92.0"))   # keep the top (100-PCT)% of D
+_CG_MIN_D       = float(os.environ.get("CROSS_CG_MIN_D", "6.0"))  # absolute floor: reject flat frames
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STROKE-PROFILE VALIDATION (2026-09-03).  CROSS_STROKE_VALIDATE=1
+#
+# WHY (measured, not assumed). A contrast gate alone REGRESSES: base 100->89 % detOK,
+# dim 100->67 %, and `inv` within-0.15 only 23->29 %. Reason: the PLATE BOUNDARY is a
+# genuine high-contrast feature, so contrast segmentation admits it exactly as strongly as
+# the cross strokes, and Hough still fits plate edges. That is the whole point of the
+# locked 3-stage design -- segmentation cannot do this job alone.
+#
+# THE DISCRIMINANT is profile SHAPE across a segment, which is polarity- and colour-blind:
+#   a marker STROKE  -> RIDGE or VALLEY: background | extremum | background,
+#                       so the two OUTER shoulders match each other and differ from the core.
+#   a plate/shadow EDGE -> STEP: monotonic, the two shoulders differ from EACH OTHER.
+# Test per segment (sampled at several points along it, perpendicular):
+#   step_ness  = |mean(outer_left) - mean(outer_right)|
+#   stroke_ness= |mean(core) - mean(both outers)|
+# keep iff stroke_ness > STROKE_MIN_AMP and step_ness < STROKE_MAX_STEP * stroke_ness.
+# Uses |.| throughout -> identical for dark-on-light and light-on-dark.
+_STROKE_VALIDATE = os.environ.get("CROSS_STROKE_VALIDATE", "0") == "1"
+_SV_HALF     = int(os.environ.get("CROSS_SV_HALF", "7"))       # perpendicular half-length (px)
+_SV_CORE     = int(os.environ.get("CROSS_SV_CORE", "2"))       # +/- core half-width (px)
+_SV_SAMPLES  = int(os.environ.get("CROSS_SV_SAMPLES", "5"))    # sample points along the segment
+_SV_MIN_AMP  = float(os.environ.get("CROSS_SV_MIN_AMP", "8.0"))    # min |core-shoulder|
+_SV_MAX_STEP = float(os.environ.get("CROSS_SV_MAX_STEP", "0.8"))   # step/stroke ratio ceiling
+
+
+def _validate_stroke_segments(gray, segs):
+    """Keep only segments whose perpendicular profile is a RIDGE/VALLEY, not a STEP.
+    Returns a bool keep-mask over `segs`. Polarity-agnostic (magnitudes only)."""
+    H, W = gray.shape[:2]
+    keep = np.zeros(len(segs), dtype=bool)
+    g = gray.astype(np.float32)
+    for si, (x1, y1, x2, y2) in enumerate(segs):
+        dx, dy = float(x2 - x1), float(y2 - y1)
+        L = math.hypot(dx, dy)
+        if L < 4.0:
+            continue
+        ux, uy = dx / L, dy / L
+        nx, ny = -uy, ux                      # unit normal
+        votes = 0; tried = 0
+        for k in range(_SV_SAMPLES):
+            f = (k + 0.5) / _SV_SAMPLES
+            cx, cy = x1 + dx * f, y1 + dy * f
+            core, oL, oR = [], [], []
+            for t in range(-_SV_HALF, _SV_HALF + 1):
+                px, py = int(round(cx + nx * t)), int(round(cy + ny * t))
+                if not (0 <= px < W and 0 <= py < H):
+                    core = []; break
+                v = g[py, px]
+                if abs(t) <= _SV_CORE:            core.append(v)
+                elif t > _SV_HALF - 4:            oR.append(v)
+                elif t < -(_SV_HALF - 4):         oL.append(v)
+            if not core or len(oL) < 2 or len(oR) < 2:
+                continue
+            tried += 1
+            mL, mR, mC = float(np.mean(oL)), float(np.mean(oR)), float(np.mean(core))
+            step   = abs(mL - mR)
+            stroke = abs(mC - 0.5 * (mL + mR))
+            if stroke >= _SV_MIN_AMP and step <= _SV_MAX_STEP * stroke:
+                votes += 1
+        if tried and votes >= max(1, tried // 2):     # majority of sampled points agree
+            keep[si] = True
+    return keep
+
+
+def _contrast_gate_mask(frame_bgr):
+    """Polarity-agnostic, chroma-aware marker-stroke mask. See _GATE_MODE comment.
+    Returns (mask, reason) with reason='color_gate_empty' on a structureless frame."""
+    lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    k = _CG_BG_KSIZE | 1
+    bg = cv2.blur(lab, (k, k))                       # local background estimate
+    d = lab - bg
+    d[:, :, 1] *= _CG_CHROMA_GAIN                    # chroma carries the iso-luminant case
+    d[:, :, 2] *= _CG_CHROMA_GAIN
+    D = cv2.magnitude(cv2.magnitude(d[:, :, 0], d[:, :, 1]), d[:, :, 2])
+    thr = float(np.percentile(D, _CG_PCT))
+    if thr < _CG_MIN_D:                              # nothing deviates -> no structure
+        return np.zeros(D.shape, np.uint8), 'color_gate_empty'
+    mask = (D >= thr).astype(np.uint8) * 255
+    return mask, None
+
+
+def _adaptive_gate_mask(frame_bgr):
+    """CLAHE + adaptive-threshold marker-stroke mask (see _ADAPT_GATE comment).
+    Returns (mask, reason). reason is None on success, else a short tag the caller
+    maps to a fail_reason:
+      'adapt_lowstd'  -- frame is structureless (dead feed / uniform shadow); no
+                         perception algorithm can recover a marker from it.
+      (no other reason is returned: an over-full adaptive mask is NOT rejected,
+      it falls back to a global Otsu split on the CLAHE image -- still contrast-
+      relative and lighting-robust, but global so it can't speckle.)"""
+    v = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)[:, :, 2]
+    if float(v.std()) < _ADAPT_MIN_STD:
+        return np.zeros(v.shape, np.uint8), 'adapt_lowstd'
+    ve = cv2.createCLAHE(clipLimit=_ADAPT_CLAHE_CLIP,
+                         tileGridSize=(_ADAPT_CLAHE_TILE, _ADAPT_CLAHE_TILE)).apply(v)
+    mask = cv2.adaptiveThreshold(ve, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv2.THRESH_BINARY_INV, _ADAPT_BLOCK | 1, _ADAPT_C)  # dark -> 255
+    if _ADAPT_V_CEIL < 255:
+        mask &= (v < _ADAPT_V_CEIL).astype(np.uint8) * 255
+    if _ADAPT_ERODE > 0:
+        mask = cv2.erode(mask, np.ones((_ADAPT_ERODE, _ADAPT_ERODE), np.uint8))
+    if float(mask.mean()) > _ADAPT_MAX_FILL * 255:
+        # adaptive threshold degenerated (very low local contrast everywhere, e.g.
+        # a small oblique low-contrast marker at an offset IC) -> global Otsu on
+        # the CLAHE image instead of rejecting the frame.
+        _t, mask = cv2.threshold(ve, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        if _ADAPT_V_CEIL < 255:
+            mask &= (v < _ADAPT_V_CEIL).astype(np.uint8) * 255
+        if float(mask.mean()) > _ADAPT_MAX_FILL * 255:
+            return mask, 'adapt_lowstd'   # even Otsu can't split -> genuinely no marker
+    return mask, None
+
 # 2026-08-28: 320x240 OBLIQUE-LOW retune. At a steep off-nadir view + low altitude
 # (IC5 real-perception: ~3m alt, ~2.8m lateral -> ~43deg oblique) one cross diagonal
 # is heavily foreshortened -- short, and its anti-aliased stroke is patchy -- so the
@@ -67,6 +232,69 @@ HOUGH_MIN_LINE_LEN = int(os.environ.get("CROSS_HOUGH_MIN_LINE_LEN", "10"))  # wa
 HOUGH_MAX_LINE_GAP = int(os.environ.get("CROSS_HOUGH_MAX_LINE_GAP", "16"))  # was 10
 HOUGH_MASK_DILATE_PX = int(os.environ.get("CROSS_HOUGH_MASK_DILATE_PX", "1"))  # thicken the patchy foreshortened stroke before Canny; 0 = off
 ISOLATE_MAX_ASPECT = float(os.environ.get("CROSS_ISOLATE_MAX_ASPECT", "3.2"))  # was 2.5 -- a foreshortened cross bbox isn't 1:1
+# FILL-RATIO BAND for _isolate_marker_by_shape's component pick (2026-09-02).
+# The old score=-area picked the LARGEST aspect-passing component. On rover_cross
+# a diagonal slice of the platform's shadowed side wall has a square-ish
+# axis-aligned bbox (aspect 2.6, clears 3.2) and ~3x the cross's area -> it wins
+# and the cross is discarded (measured: wrong on 100/128 acquisition frames =
+# the 78% lt2_angle_clusters rate; 0/123 on flat-clean). The two fill ratios are
+# cleanly bimodal with a 4x gap: a cross-in-square is ~0.07-0.12 filled (thin X),
+# a wall/blob chunk 0.3+. Restrict the pick to a cross-plausible fill band, then
+# take max area within it; fall back to the old behaviour if none qualify (the
+# marker-fills-frame regime, where the cross's own fill climbs as arms clip the
+# edges). CROSS_ISOLATE_FILL_HI huge (e.g. 1.0) reverts.
+# CENTROID-GATE SPAN RESCUE (2026-09-02, DEFAULT OFF -- needs a SITL gate).
+# `centroid_mismatch` validates the fitted intersection against the MASK PIXEL
+# CENTROID. When foreign structure merges into the SAME connected component (the
+# rover_cross platform edge fuses to a cross arm) that centroid is dragged off the
+# junction: the FIT is right, the REFERENCE is contaminated. Measured on the 9
+# static-offset perception rover_cross runs: the detector returns ZERO detections
+# from 5 m down to 1 m and `centroid_mismatch` is 79% of all failures (1298/~1640),
+# so the controller flies open-loop the whole descent.
+# This rescue keeps the legacy check as the FAST PATH and, only when it fails, asks a
+# contamination-immune question instead: does the intersection project INSIDE both
+# fitted arms' own inlier spans? Clean scenes pass legacy and never reach the rescue,
+# so they cannot regress -- verified bit-identical on flat_IC2.
+# Offline eval (DetectorFrameset, descent band alt>1 m), detOK:
+#   flat_IC2   100%  -> 100%   (identical; err 0.012, within-0.15 100%)
+#   rover_IC2  28.5% -> 94.8%  (err med 0.065->0.054)
+#   clutter_IC2 50%  -> 87.7%  (err med 0.304->0.034)
+# ⚠ It buys RECALL, not accuracy: rover within-0.15 drops 95.9%->75.9%. Per 100
+# descent frames that is ~27 good/~1 bad -> ~72 good/~23 bad. Against a 0% live
+# baseline that is very likely the better trade, but it is a SITL question --
+# CROSS_S_JUMP_GATE (default on) is the outlier defence that must absorb the bad ones.
+# ⛔ REJECTED alternative, do not re-try: replacing the mask centroid with the two
+# arms' INLIER-point centroid makes it WORSE (rover 28.5%->11.0%) -- unequal inlier
+# counts / asymmetric spans put that mean systematically off the junction.
+# DEFAULT FLIPPED 0 -> 1 on 2026-09-03 after an interleaved n=5/arm SITL gate on
+# flat + clutter (zero launch flakes), with the fill ceiling in place:
+#   flat    : PRECISE 0/5 -> 3/5 (xy median 0.143 -> 0.046); detOK 100% both arms, so
+#             the gain is in the LATE APPROACH -- 1-3 rescues/run recover frames after
+#             the mask centroid starts drifting but before the ceiling cuts in.
+#   clutter : TARGET_LOST 5/5 -> 1/5; detOK median ~11% -> ~53%. The failure MODE
+#             changes from diving blind to the ground 0.8-2.7 m off, to holding station.
+#   overfill rescues: 0 in EVERY run of both worlds (24-120 consulted, all refused) --
+#             the ceiling holds, and the pre-ceiling 12.3/12.6 m clutter fly-aways are gone.
+# Set CROSS_CENTROID_SPAN_RESCUE=0 to revert.
+CENTROID_SPAN_RESCUE = os.environ.get("CROSS_CENTROID_SPAN_RESCUE", "1") == "1"
+# Diag: how often the legacy centroid check FAILED (so the rescue was consulted) and
+# how often the rescue then admitted the frame. Reported per-run by CrossMarkerNode.
+SPAN_RESCUE_STATS = {"consulted": 0, "rescued": 0, "consulted_lowalt": 0, "rescued_lowalt": 0}
+# FILL CEILING (2026-09-02, added after the first SITL gate). The rescue is an
+# ACQUISITION fix and must NOT fire at overfill: the legacy tolerance already ramps
+# 0.12 -> 0.72 as the marker fills the frame, precisely because the mask centroid
+# legitimately drifts off the junction there, so a frame failing even that loosened
+# check is badly wrong -- and admitting it at touchdown is where a bad centroid hurts
+# most. Evidence (SITL, this session): flat IC2 n=5, the ONE fly-away (27.8 m,
+# TARGET_LOST) was the ONLY run with overfill rescues (2); its approach was healthy
+# (lateral 2.87->0.11 m, centroid err 2-20 mm) until alt<0.3 m where the error
+# exploded 0.077->0.86 in <1 s. clutter n=5: 13-41 overfill rescues/run and outcomes
+# WORSE than off (median xy ~1.9 -> ~5.6 m, two 12 m fly-aways) despite detOK
+# 5-7% -> 22-73%. Set >= 1.0 to disable the ceiling.
+CENTROID_SPAN_FILL_MAX = float(os.environ.get("CROSS_CENTROID_SPAN_FILL_MAX", "0.6"))
+CENTROID_SPAN_MARGIN = float(os.environ.get("CROSS_CENTROID_SPAN_MARGIN", "0.25"))
+ISOLATE_FILL_LO = float(os.environ.get("CROSS_ISOLATE_FILL_LO", "0.02"))
+ISOLATE_FILL_HI = float(os.environ.get("CROSS_ISOLATE_FILL_HI", "0.25"))
 ANGLE_MERGE_TOL_DEG = float(os.environ.get("CROSS_ANGLE_MERGE_TOL_DEG", "12.0"))
 
 # 2026-08-04 CORRECTED: earlier same-day investigation (a "single-loss-event root cause"
@@ -138,9 +366,278 @@ STUB_REL_ANGLE_TOL_DEG = 12.0
 CORNER_JOIN_ANGLE_TOL_DEG = 15.0
 CORNER_JOIN_TARGET_ANGLES_DEG = (90.0, STUB_REL_ANGLE_DEG)
 MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a real line over noise
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STAGE 3 — GEOMETRY-FIRST CONFIRM (2026-09-03).  CROSS_GEOM_CONFIRM=0|1|2
+#
+# The locked design's third stage. Everything upstream is NEGATIVE: gates that
+# reject pixels/segments that look wrong. Nothing ever asks the POSITIVE question
+# "are these two accepted strokes actually a cross?", so any two long, roughly
+# non-parallel edges that survive become a detection -- which is exactly how `inv`
+# produces a confident 110 px error with every gate passing.
+#
+# This asks it, using ONLY the two arms' own fitted geometry -- no mask centroid,
+# no absolute intensity, no polarity, no scale:
+#   1. PERPENDICULAR   a cross's arms meet near 90 deg. MIN_FIT_INTER_LINE_ANGLE_DEG
+#      =15 is a LOWER BOUND only, so a 20 deg pair -- impossible for a cross --
+#      passes today. Perspective skew widens the true band, hence a generous default.
+#   2. JUNCTION ON BOTH ARMS   the intersection must lie inside each arm's own inlier
+#      span (+margin). Same computation CROSS_CENTROID_SPAN_RESCUE already performs,
+#      promoted from last-resort rescue to a primary positive test.
+#   3. COMPARABLE STROKE WIDTH   both arms are the same painted stroke, so their
+#      robust perpendicular thickness should agree within a factor. A stroke paired
+#      with a plate edge fails this -- an edge has no consistent width.
+#   4. COMPARABLE LENGTH   loose sanity bound only; clipping and foreshortening make
+#      genuine arm lengths quite unequal, so this is not a discriminator.
+#
+# MODES: 0 = off (default). 1 = confirm runs IN ADDITION to the legacy
+# centroid_mismatch proxy (conservative). 2 = confirm REPLACES that proxy, which is
+# the actual point of the locked design -- it removes the "marker is the only thing
+# in the mask" assumption instead of patching it a fourth time. Measured separately.
+#
+# ⛔⛔ MEASURED 2026-09-03 AND IT DOES NOT WORK. Kept in-tree, DEFAULT OFF, with the
+# numbers, because the design memo listed stage 3 as the obvious untried next step
+# and someone will otherwise re-derive it. It is a DEAD END for THIS marker:
+#
+#   RobustnessFrameset, geom1/geom2:  base detOK 100.0% -> 80.1% (55 rejects, all
+#   'geom_not_perpendicular'), while base within-0.15 stayed 97% -- i.e. it rejects
+#   ACCURATE detections. inv within-0.15 stayed 0% in every mode. ens_geom2 (both
+#   stages) drove inv detOK to 32.2%, still 0% usable.
+#
+#   ROOT CAUSE -- test 1 is FALSE BY DESIGN here. |fitted angle - 90| on clean `base`
+#   is strictly BIMODAL: 63% below 15 deg, and 36% in a 35-55 deg band centred on
+#   STUB_REL_ANGLE_DEG = 45. This marker is a 3-armed cross WITH A 45 deg STUB, and
+#   in over a third of CORRECT detections _best_pair legitimately selects a
+#   stub+arm pair -- which still yields the right junction, because the stub also
+#   passes through the centre. "The two accepted strokes are mutually perpendicular"
+#   is simply not true of this marker.
+#
+#   ⚠ AND IT IS NOT A FRAME-CONVENTION BUG (user hypothesis, tested 2026-09-03):
+#   the arms of a physically-90 deg cross DO skew in the RAW image plane when the
+#   drone is tilted, so the check arguably belongs in the gravity-levelled VIRTUAL
+#   plane. Measured both, re-fitting det.line_points_i/j through
+#   CrossMarkerPerception._getVirtualPts with each frame's own quaternion:
+#       base  raw  p50 1.0  p75 44.9  <15deg 58%  35-55deg 41%
+#       base  VIRT p50 1.0  p75 44.8  <15deg 58%  35-55deg 41%
+#       inv   raw  p50 6.9  <15deg 64%   |   inv VIRT p50 8.1  <15deg 62%
+#   De-rotation moves the distribution by ~0.1 deg and the bimodality is untouched
+#   (tilt is only ~21-29 deg here, and that barely rotates a line DIRECTION near the
+#   image centre). So the 45 deg mode is the stub, not perspective skew.
+#
+#   AND IT DOES NOT SEPARATE ANYWAY: on `inv` (every detection wrong) 62-67% of
+#   frames are within 15 deg of perpendicular -- MORE cross-like than base's correct
+#   ones (58%).
+#   Width ratio overlaps too (base p90 2.41 vs inv p90 2.49). So the wrong structure
+#   `inv` locks onto is geometrically a better cross than the real thing, and NO
+#   self-consistency test on the two lines' relative geometry can separate them --
+#   the distinguishing information is not present in that comparison.
+#
+#   Test 2 (junction inside both arms' spans) is the only sub-test that is sound,
+#   and CROSS_CENTROID_SPAN_RESCUE already implements it.
+#
+#   IMPLICATION: `inv` is not a segmentation failure (the ensemble already picks the
+#   right channel/polarity on 60% of its frames) and not a geometry-confirm failure.
+#   The next hypothesis has to come from OUTSIDE the two-line model.
+# ─────────────────────────────────────────────────────────────────────────────
+# RING-TRANSITION CONFIRM (2026-09-03).  CROSS_RING_CONFIRM=1
+#
+# The test that stage 3 should have been. Visualising what `inv` actually locks
+# onto (Memory/px4/feedback_cross_detector_robustness_requirement.md) showed the
+# detector fits the PLATE'S OUTER EDGES and returns a plate CORNER as the junction:
+# on a polarity-flipped scene inRange(V<=100) keeps the whole plate, Canny/Hough
+# find its outline, and two adjacent plate edges meet at a clean right angle.
+#
+# That is why every stage-3 sub-test failed. A rectangle's corner is EXACTLY 90 deg;
+# its two edges are mask boundaries of IDENTICAL width; and the corner lies INSIDE
+# both edges' spans. All four geometry criteria pass on a corner by construction.
+# The distinguishing information is not in the two lines' relative geometry at all --
+# it is in the NEIGHBOURHOOD of the junction:
+#
+#     a cross junction has arms RADIATING from it;  a corner has two edges MEETING.
+#
+# So: sample a ring around the candidate junction and count mask transitions.
+# A real junction crosses every stroke twice (this marker: 4 arms + stub = ~10);
+# a plate corner gives 2 (one contiguous inside-arc). Polarity-agnostic (counts
+# BOUNDARIES, not levels), scale-free (radius is a fraction of marker extent),
+# and needs no intensity threshold of its own.
+#
+# MEASURED on test_data/RobustnessFrameset (reject when transitions < T):
+#     T    base  bright  darkbg    dim  lowsun    col  ||   inv
+#     4    0.0%    1.2%    0.0%   0.3%    0.0%   1.7%  ||  45.8%
+#     6    0.0%    5.2%    1.0%   4.2%    0.0%  10.4%  ||  72.0%
+#          <-------- false-positive cost -------->     ||  catch
+# `base` never falls below 6 (min 6, mode 10 = 5 strokes x 2 edges); 46% of `inv`
+# sits at <=2. Default T=6: 72% of the wrong detections caught at 0% cost on
+# base/lowsun. For contrast, every stage-3 sub-test had a lift of ~0.02.
+#
+# ⚠ WHAT THIS DOES AND DOES NOT DO. It REJECTS wrong detections; it does not make
+# them right. `inv` within-0.15 stays 0% -- the survivors are still corners. The
+# gain is converting `inv` from "99.1% detOK, silently wrong" into "mostly refused",
+# so the controller is not fed poisoned measurements and TARGET_LOST engages
+# honestly. A failure-mode fix, not a detection fix. Judge it on that.
+#
+# Uses the CLOSE-STAGE mask deliberately (before blobby-reject / ROI / shape
+# isolation): the ring test NEEDS the surrounding context -- the plate boundary is
+# precisely the structure that reveals a corner -- and the isolated mask has had it
+# stripped out. Skips (never vetoes) when the ring falls outside the frame, which is
+# the overfill regime; "don't veto on ignorance" matches the rest of this module.
+RING_CONFIRM = os.environ.get("CROSS_RING_CONFIRM", "0") == "1"
+RING_MIN_TRANSITIONS = int(os.environ.get("CROSS_RING_MIN_TRANSITIONS", "6"))
+RING_R_FRAC = float(os.environ.get("CROSS_RING_R_FRAC", "0.30"))
+RING_NSAMP = int(os.environ.get("CROSS_RING_NSAMP", "180"))
+RING_MIN_COVER = float(os.environ.get("CROSS_RING_MIN_COVER", "0.75"))
+RING_CONFIRM_STATS = {"checked": 0, "pass": 0, "rejected": 0, "skipped_offframe": 0}
+
+
+def _ring_transitions(mask, cx, cy, R, nsamp=None):
+    """Mask boundary crossings around a ring at (cx, cy). None if too much of the
+    ring falls outside the frame to judge; 0 for an all-inside or all-outside ring."""
+    if nsamp is None:
+        nsamp = RING_NSAMP
+    th = np.linspace(0.0, 2.0 * np.pi, nsamp, endpoint=False)
+    xs = cx + R * np.cos(th)
+    ys = cy + R * np.sin(th)
+    h, w = mask.shape
+    ok = (xs >= 0) & (xs < w - 1) & (ys >= 0) & (ys < h - 1)
+    if ok.sum() < nsamp * RING_MIN_COVER:
+        return None
+    b = (mask[np.clip(ys.astype(int), 0, h - 1),
+              np.clip(xs.astype(int), 0, w - 1)] > 0).astype(np.int8)[ok]
+    if b.all() or not b.any():
+        return 0
+    return int(np.sum(b != np.roll(b, 1)))
+
+
+def _confirm_ring(mask_close, center, bbox):
+    """(ok, reason, n_transitions). See RING_CONFIRM at module top."""
+    bw, bh = bbox[2], bbox[3]
+    R = RING_R_FRAC * max(bw, bh, 1)
+    n = _ring_transitions(mask_close, float(center[0]), float(center[1]), R)
+    if n is None:
+        RING_CONFIRM_STATS["skipped_offframe"] += 1
+        return True, None, None
+    RING_CONFIRM_STATS["checked"] += 1
+    if n < RING_MIN_TRANSITIONS:
+        RING_CONFIRM_STATS["rejected"] += 1
+        return False, 'ring_not_a_junction', n
+    RING_CONFIRM_STATS["pass"] += 1
+    return True, None, n
+
+
+GEOM_CONFIRM = int(os.environ.get("CROSS_GEOM_CONFIRM", "0"))
+GEOM_PERP_TOL_DEG = float(os.environ.get("CROSS_GEOM_PERP_TOL_DEG", "35.0"))
+GEOM_SPAN_MARGIN = float(os.environ.get("CROSS_GEOM_SPAN_MARGIN", "0.25"))
+GEOM_WIDTH_RATIO_MAX = float(os.environ.get("CROSS_GEOM_WIDTH_RATIO_MAX", "3.0"))
+GEOM_LEN_RATIO_MAX = float(os.environ.get("CROSS_GEOM_LEN_RATIO_MAX", "6.0"))
+GEOM_CONFIRM_DIAG = []   # (perp_err_deg, width_ratio, len_i, len_j) per checked frame
+GEOM_CONFIRM_STATS = {"checked": 0, "pass": 0,
+                      "rej_perp": 0, "rej_span": 0, "rej_width": 0, "rej_len": 0}
+
+
+def _arm_geometry(pts, line):
+    """One arm described in its own along/across frame. width is a ROBUST (MAD)
+    perpendicular thickness so a few stray inliers cannot inflate it. Scale-free
+    and polarity-blind by construction. None if there is too little to judge."""
+    p = np.asarray(pts, dtype=float)
+    v = np.array([line[0], line[1]], dtype=float)
+    nv = float(np.linalg.norm(v))
+    if nv < 1e-9 or len(p) < 4:
+        return None
+    v = v / nv
+    nrm = np.array([-v[1], v[0]])
+    mu = p.mean(axis=0)
+    t = (p - mu) @ v
+    w = (p - mu) @ nrm
+    return dict(lo=float(t.min()), hi=float(t.max()),
+                length=float(t.max() - t.min()),
+                width=2.0 * 1.4826 * float(np.median(np.abs(w - np.median(w)))),
+                mu=mu, v=v)
+
+
+def _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center):
+    """Positive test that the two fitted strokes ARE a cross. -> (ok, reason)."""
+    gi = _arm_geometry(pts_i, line_i)
+    gj = _arm_geometry(pts_j, line_j)
+    if gi is None or gj is None:
+        return True, None          # too little to judge -- don't veto on ignorance
+    GEOM_CONFIRM_STATS["checked"] += 1
+    ai = np.degrees(np.arctan2(line_i[1], line_i[0])) % 180.0
+    aj = np.degrees(np.arctan2(line_j[1], line_j[0])) % 180.0
+    _perp_err = abs(_circ_diff(ai, aj) - 90.0)
+    _wr = (max(gi['width'], gj['width']) / max(min(gi['width'], gj['width']), 1e-6))
+    GEOM_CONFIRM_DIAG.append((_perp_err, _wr, gi['length'], gj['length']))
+    if _perp_err > GEOM_PERP_TOL_DEG:
+        GEOM_CONFIRM_STATS["rej_perp"] += 1
+        return False, 'geom_not_perpendicular'
+    c = np.asarray(center, dtype=float)
+    for g in (gi, gj):
+        tc = float((c - g['mu']) @ g['v'])
+        m = GEOM_SPAN_MARGIN * max(g['length'], 1e-9)
+        if not (g['lo'] - m <= tc <= g['hi'] + m):
+            GEOM_CONFIRM_STATS["rej_span"] += 1
+            return False, 'geom_junction_off_arm'
+    wi, wj = gi['width'], gj['width']
+    if min(wi, wj) > 1e-6 and max(wi, wj) / min(wi, wj) > GEOM_WIDTH_RATIO_MAX:
+        GEOM_CONFIRM_STATS["rej_width"] += 1
+        return False, 'geom_width_mismatch'
+    li, lj = gi['length'], gj['length']
+    if min(li, lj) > 1e-6 and max(li, lj) / min(li, lj) > GEOM_LEN_RATIO_MAX:
+        GEOM_CONFIRM_STATS["rej_len"] += 1
+        return False, 'geom_length_mismatch'
+    GEOM_CONFIRM_STATS["pass"] += 1
+    return True, None
                            # (see the cross-arm pairing fix in detect() for why this exists)
 
 HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
+
+# SUB-PIXEL JUNCTION REFINE (2026-08-31, s_dot_meas noise-floor investigation).
+# `center` is the analytic intersection of two per-frame Huber line fits
+# (_line_intersection) -- no refinement against the actual image and no temporal
+# filter, so frame-to-frame anti-aliased-edge / mask-boundary noise on the two line
+# SLOPES walks the intersection point. Measured on a real perception landing: ~0.2 px
+# centroid jitter at altitude, growing to ~1.3 px as the marker fills the frame ->
+# differentiated at ~62 Hz that is the bulk of the s_dot_meas noise floor
+# (~0.13 u/s vs GT-FB ~0.04). See project_20260831_perception_mode_landing.
+# Attempted fix: fit a local quadratic to the GREYSCALE in a small window at the
+# intersection and take its stationary point. The X-junction of two dark strokes on a
+# light plate is a local intensity MINIMUM (both strokes overlap there -> darkest,
+# most-covered point), so a valid refine has a positive-definite fitted Hessian. Uses
+# every pixel in the window rather than two fragile slopes -> ZERO added lag. Guarded:
+# the analytic center is kept if the Hessian isn't a clean minimum, the window is flat
+# (saturated black blob near touchdown), or the shift exceeds CROSS_SUBPIX_MAX_SHIFT_FRAC
+# * marker_extent (locked onto other structure).
+#
+# ⚠ DEFAULT OFF (2026-08-31): an apples-to-apples offline replay (recorded IC2 landing,
+# same frames) showed NO jitter reduction from either this quadratic fit OR
+# cv2.cornerSubPix, at any shift guard -- baseline 2.05/1.68 px, every variant within
+# ±0.05 px (cornerSubPix even made a clean ~0.9 px mean sub-pixel correction, and the
+# jitter still didn't move). Conclusion: the centroid jitter is NOT in the junction
+# localization -- it's in the two line SLOPES feeding _line_intersection (which mask
+# pixels pass the anti-aliased / re-compressed edge each frame -> fit direction wobbles
+# -> the intersection walks). A junction-region intensity fit has no independent
+# leverage on slope noise. The real levers are temporal (motion-compensated multi-frame
+# line fit) or intensity-weighted sub-pixel line-centerline fitting. Kept as a knob
+# because the offline replay is on the 2x-downscaled + H.264 IMG_RECORD mp4, not the
+# live raw-frame path -- set CROSS_SUBPIX_JUNCTION=1 for a live SITL A/B before trusting.
+_SUBPIX_JUNCTION = os.environ.get("CROSS_SUBPIX_JUNCTION", "0") == "1"
+_SUBPIX_MAX_SHIFT_FRAC = float(os.environ.get("CROSS_SUBPIX_MAX_SHIFT_FRAC", "0.10"))
+SUBPIX_STATS = {"applied": 0, "rej_no_fit": 0, "rej_shift": 0, "shift_sum": 0.0}
+
+# INTENSITY-WEIGHTED SUB-PIXEL CENTERLINE FIT (2026-08-31, s_dot_meas noise-floor lever).
+# The junction refine above failed because it re-reads the same content: the jitter is
+# in the two arm-line SLOPES, and those wobble because _robust_fit_line runs on BINARY
+# mask pixels -- whichever anti-aliased edge pixels clear the colour gate that frame ->
+# whole rows of the arm toggle in/out -> the fitted direction walks. This attacks it at
+# the source: march along each arm and, at every station, take the INTENSITY-WEIGHTED
+# centroid of the dark band in the perpendicular strip -> one sub-pixel centerline
+# sample whose response to a half-pixel edge shift is a fraction of a pixel (continuous
+# greyscale ramp), not a toggled row. TLS-fit the line through the stations. Falls back
+# to the _robust_fit_line result if it can't get enough clean stations.
+_SUBPIX_CENTERLINE = os.environ.get("CROSS_SUBPIX_CENTERLINE", "0") == "1"   # default OFF pending live A/B
+_CENTERLINE_STEP_PX = float(os.environ.get("CROSS_CENTERLINE_STEP_PX", "2.0"))
+_CENTERLINE_MIN_STATIONS = int(os.environ.get("CROSS_CENTERLINE_MIN_STATIONS", "8"))
+_CENTERLINE_MIN_DARKNESS = float(os.environ.get("CROSS_CENTERLINE_MIN_DARKNESS", "20.0"))  # grey levels below local bg
+CENTERLINE_STATS = {"applied": 0, "fallback": 0, "stations_used": 0}
 
 
 @dataclass
@@ -279,6 +776,132 @@ def _line_intersection(l1, l2):
     return (x01 + t * vx1, y01 + t * vy1)
 
 
+def _refine_junction_subpix(gray, cx, cy, half_win):
+    """Refine (cx, cy) to sub-pixel via a local quadratic fit to `gray` (2-D array,
+    same pixel coords as cx, cy). Returns (rx, ry), or None so the caller keeps the
+    analytic intersection. The junction of two dark strokes on a light plate is a
+    local intensity MINIMUM -> require a positive-definite fitted Hessian; also bail
+    on a flat window (saturated black blob) or a stationary point outside the window.
+    See the SUBPIX_JUNCTION block at module top for why."""
+    h = int(half_win)
+    if h < 3:
+        return None
+    x0, y0 = int(round(cx)), int(round(cy))
+    H, W = gray.shape[:2]
+    if x0 - h < 0 or y0 - h < 0 or x0 + h >= W or y0 + h >= H:
+        return None
+    win = gray[y0 - h:y0 + h + 1, x0 - h:x0 + h + 1].astype(np.float64)
+    if float(win.max() - win.min()) < 1.0:
+        return None                                    # flat -> nothing to localize
+    win = cv2.GaussianBlur(win, (3, 3), 0)
+    ax = np.arange(-h, h + 1, dtype=np.float64)
+    X, Y = np.meshgrid(ax, ax)
+    xf, yf, zf = X.ravel(), Y.ravel(), win.ravel()
+    # z = a x^2 + b xy + c y^2 + d x + e y + f   (local coords, origin at x0,y0)
+    A = np.column_stack([xf * xf, xf * yf, yf * yf, xf, yf, np.ones_like(xf)])
+    coef, _res, _rank, _sv = np.linalg.lstsq(A, zf, rcond=None)
+    a, b, c, d, e, _f = coef
+    if not (a > 0.0 and (4.0 * a * c - b * b) > 1e-9):
+        return None                                    # not a clean local minimum
+    try:
+        dxy = np.linalg.solve(np.array([[2.0 * a, b], [b, 2.0 * c]]),
+                              np.array([-d, -e]))
+    except np.linalg.LinAlgError:
+        return None
+    if not np.all(np.isfinite(dxy)) or float(np.hypot(dxy[0], dxy[1])) > h:
+        return None                                    # stationary point outside the window
+    return (x0 + float(dxy[0]), y0 + float(dxy[1]))
+
+
+def _sample_bilinear(img, x, y):
+    """Bilinear sample of a 2-D array at (x, y). None if outside the interpolable range."""
+    hh, ww = img.shape[:2]
+    if x < 0.0 or y < 0.0 or x >= ww - 1 or y >= hh - 1:
+        return None
+    ix, iy = int(x), int(y)
+    fx, fy = x - ix, y - iy
+    a = float(img[iy, ix]);         b = float(img[iy, ix + 1])
+    c = float(img[iy + 1, ix]);     d = float(img[iy + 1, ix + 1])
+    return (a * (1.0 - fx) + b * fx) * (1.0 - fy) + (c * (1.0 - fx) + d * fx) * fy
+
+
+def _fit_arm_centerline_subpix(gray, pts, prelim_line, step=None,
+                               min_stations=None, min_darkness=None):
+    """Re-fit one cross arm to sub-pixel precision by sampling its centerline.
+
+    gray        : 2-D greyscale, same pixel coords as `pts` / `prelim_line`.
+    pts         : the arm's cluster points (bound the arc-length extent + perp spread).
+    prelim_line : (vx, vy, x0, y0) from _robust_fit_line -- seed direction + point.
+
+    March along the seed direction; at each station take the intensity-weighted
+    centroid of the dark band in the perpendicular strip -> a sub-pixel centerline
+    sample. TLS-fit through the samples. Returns (vx, vy, x0, y0) or None (caller keeps
+    the _robust_fit_line result). See the SUBPIX_CENTERLINE block at module top."""
+    if step is None:            step = _CENTERLINE_STEP_PX
+    if min_stations is None:    min_stations = _CENTERLINE_MIN_STATIONS
+    if min_darkness is None:    min_darkness = _CENTERLINE_MIN_DARKNESS
+    P = np.asarray(pts, dtype=np.float64)
+    if P.ndim != 2 or len(P) < min_stations:
+        return None
+    vx, vy, lx, ly = prelim_line
+    d = np.array([vx, vy], dtype=np.float64)
+    nd = np.linalg.norm(d)
+    if nd < 1e-9:
+        return None
+    d /= nd
+    n = np.array([-d[1], d[0]])
+    p0 = np.array([lx, ly], dtype=np.float64)
+    s = (P - p0) @ d
+    u = (P - p0) @ n
+    s_lo, s_hi = float(s.min()), float(s.max())
+    if s_hi - s_lo < 2.0 * step:
+        return None
+    half_band = float(np.clip(2.5 * (np.median(np.abs(u - np.median(u))) + 1e-6), 3.0, 12.0))
+    n_off = int(round(half_band))
+    offs = np.arange(-n_off, n_off + 1, dtype=np.float64)
+    st = max(float(step), 0.5)
+    samples = []
+    k = 0
+    while True:
+        sc = s_lo + k * st
+        k += 1
+        if sc > s_hi:
+            break
+        base = p0 + sc * d
+        prof = np.empty(len(offs))
+        ok = True
+        for m, uo in enumerate(offs):
+            g = _sample_bilinear(gray, base[0] + uo * n[0], base[1] + uo * n[1])
+            if g is None:
+                ok = False
+                break
+            prof[m] = g
+        if not ok:
+            continue
+        bg = float(prof.max())                       # brightest pixel in the strip = local background
+        wgt = np.clip(bg - prof, 0.0, None)
+        if float(wgt.max()) < min_darkness:          # no real dark stroke here (off arm end, or filled-black plateau)
+            continue
+        wsum = float(wgt.sum())
+        if wsum < 1e-6:
+            continue
+        u_star = float((wgt * offs).sum() / wsum)
+        if abs(u_star) > half_band - 0.5:            # band centroid pinned to the strip edge -> unreliable
+            continue
+        samples.append(base + u_star * n)
+    if len(samples) < min_stations:
+        return None
+    S = np.asarray(samples)
+    mean = S.mean(axis=0)
+    cov = np.cov((S - mean).T)
+    if not np.all(np.isfinite(cov)):
+        return None
+    evals, evecs = np.linalg.eigh(cov)
+    dvec = evecs[:, int(np.argmax(evals))]
+    CENTERLINE_STATS["stations_used"] += len(samples)
+    return (float(dvec[0]), float(dvec[1]), float(mean[0]), float(mean[1]))
+
+
 def _restrict_to_center_roi(mask, roi_frac_x=ROI_FRAC_X_DEFAULT, roi_frac_y=1.0):
     """First-pass clutter reduction: the downward camera is mounted centrally
     and the perception/CBF stack's whole job is to keep the marker near
@@ -366,6 +989,39 @@ def _reject_blobby_components(mask, max_extent=GHOST_MAX_EXTENT, min_area=15):
     return out
 
 
+def _best_cross_component(mask, min_area=15):
+    """Pick the most cross-plausible connected component of `mask`.
+
+    Returns (labels_img, best_label, best_area); best_label is None when NOTHING
+    in the mask is cross-shaped. Extracted from _isolate_marker_by_shape (2026-09-03)
+    so the candidate-mask ensemble can ask the SAME question of several masks and
+    compare the answers -- the selection rule is therefore identical whether it runs
+    once (legacy) or K times (ensemble), by construction rather than by convention.
+
+    The criteria are unchanged: bbox aspect below ISOLATE_MAX_ASPECT (propeller arms
+    are >4:1, a foreshortened cross up to ~3:1) and fill inside
+    [ISOLATE_FILL_LO, ISOLATE_FILL_HI] (a cross-in-square is a thin X filling
+    ~0.07-0.12 of its own bbox; a wall slice or a solid plate is 0.3+), preferring
+    the largest survivor."""
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if n <= 1:
+        return labels, None, 0
+    best_label, best_area = None, -1
+    for lbl in range(1, n):
+        x, y, bw, bh, area = stats[lbl]
+        if area < min_area:
+            continue
+        aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
+        if aspect > ISOLATE_MAX_ASPECT:
+            continue
+        fill = area / max(bw * bh, 1)
+        if not (ISOLATE_FILL_LO <= fill <= ISOLATE_FILL_HI):
+            continue
+        if area > best_area:
+            best_area, best_label = area, lbl
+    return labels, best_label, max(best_area, 0)
+
+
 def _isolate_marker_by_shape(mask, min_area=15):
     """The drone's own airframe (propeller blades/tips) is also near-black and
     survives the center-ROI crop whenever the drone has any lateral offset
@@ -376,25 +1032,114 @@ def _isolate_marker_by_shape(mask, min_area=15):
     only the most "square" sufficiently-large connected component. Falls back
     to the unfiltered mask if nothing qualifies (e.g. marker fills the frame
     at very close range, where its own bbox may not be square either)."""
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    if n <= 1:
-        return mask
-    best_label, best_squareness = None, 1e18
-    for lbl in range(1, n):
-        x, y, bw, bh, area = stats[lbl]
-        if area < min_area:
-            continue
-        aspect = max(bw, bh) / max(min(bw, bh), 1)  # 1.0 = perfectly square bbox
-        if aspect > ISOLATE_MAX_ASPECT:   # propeller arms are typically >4:1; a (foreshortened) cross's bbox up to ~3:1
-            continue
-        # among square-ish candidates, prefer the larger one (more of the true
-        # marker vs. a small square-ish clutter fleck)
-        score = -area
-        if score < best_squareness:
-            best_squareness, best_label = score, lbl
+    labels, best_label, _area = _best_cross_component(mask, min_area)
     if best_label is None:
         return mask
     return np.where(labels == best_label, 255, 0).astype(np.uint8)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CANDIDATE-MASK ENSEMBLE (2026-09-03).  CROSS_GATE_MODE=ensemble
+#
+# WHY, and why this is not a third thresholding rule. The two prior front-end
+# attempts (CROSS_GATE_MODE=contrast, CROSS_STROKE_VALIDATE=1) both changed the
+# RULE that decides which PIXELS are marker, and both failed for the same reason:
+# the plate boundary is genuine high-contrast structure, so no single pixel-level
+# criterion separates it from the strokes. This changes the SELECTION instead --
+# generate several plausible segmentations and let the existing cross-SHAPE test
+# (_best_cross_component) say which one actually contains a cross. The shape test
+# already works on clean scenes; it was simply never given a second candidate.
+#
+# The two headline failures on test_data/RobustnessFrameset are both single-
+# candidate failures, not shape-test failures:
+#   inv (polarity flip): inRange(V<=100) keeps the PLATE (94.8% of pixels at low
+#     altitude), so the mask is the plate with the cross as HOLES. _isolate_marker_
+#     by_shape's fill band CORRECTLY rejects that blob (fill ~1.0) -- and then the
+#     function returns the UNFILTERED mask anyway, so Hough fits plate structure and
+#     nothing downstream objects. 99.1% detOK, 0% within-0.15: it LIES.
+#   col (chromatic, iso-V): the V gate keeps ~0.7% of pixels by construction; every
+#     detection comes from the ROI/shape fallback. 62.4% detOK.
+# Both are recoverable if the SAME shape test is offered a mask built on a channel
+# and polarity that actually separate marker from plate.
+#
+# LEGACY-FIRST, by design. If the legacy V-gate already yields a cross-shaped
+# component, that candidate is returned unchanged and no other candidate is even
+# scored. So on every scene where the current detector works (base/dim/bright/
+# lowsun/darkbg -- 95-100% detOK) this mode is INERT BY CONSTRUCTION, not by
+# tuning. Same shape as CROSS_CENTROID_SPAN_RESCUE (legacy check as the fast path,
+# alternatives consulted only on failure), which is the pattern that survived its
+# SITL gate. Cost on clean scenes is therefore one extra connectedComponents call.
+#
+# ⚠ NOT a fix for terminal overfill. At overfill the marker legitimately fills the
+# frame and no candidate is cross-shaped; the ensemble then falls back to the
+# legacy mask exactly as today, PRESERVING the documented close-range behaviour
+# (_isolate_marker_by_shape's own "marker fills the frame" fallback). The loud
+# failure below fires only for the degenerate case the fallback was never meant to
+# cover: a SOLID mask, which cannot be a cross at any scale or distance.
+_ENS_SOLID_FILL_MAX = float(os.environ.get("CROSS_ENSEMBLE_SOLID_FILL_MAX", "0.50"))
+_ENS_MIN_AREA       = int(os.environ.get("CROSS_ENSEMBLE_MIN_AREA", "15"))
+ENSEMBLE_STATS = {"legacy_ok": 0, "rescued": 0, "no_cross": 0, "by_channel": {}}
+
+
+def _ensemble_candidates(frame_bgr, lower, upper):
+    """(name, raw_mask) candidates. Legacy FIRST so the caller can short-circuit.
+
+    Otsu is per-frame and per-channel, so it is illumination-adaptive (dim/bright)
+    without an absolute level; taking BOTH polarities of each channel removes the
+    dark-marker assumption (inv); including a and b makes it chroma-aware, which is
+    the only way to see an iso-luminance marker (col). Lab rather than HSV because
+    hue is unstable at low saturation and wraps."""
+    out = [("legacy", cv2.inRange(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV), lower, upper))]
+    lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
+    for ci, cn in ((0, "L"), (1, "a"), (2, "b")):
+        _, m_lo = cv2.threshold(lab[:, :, ci], 0, 255,
+                                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        out.append((cn + "-", m_lo))                    # marker darker than plate
+        out.append((cn + "+", cv2.bitwise_not(m_lo)))   # marker brighter than plate
+    return out
+
+
+def _ensemble_gate_mask(frame_bgr, lower, upper):
+    """Returns (raw_mask, fail_reason). Preprocesses each candidate the same way
+    _detect_core's own chain does up to the shape stage (morph-close, then
+    _reject_blobby_components) so the scores are comparable to what the main path
+    will actually see, then returns the RAW winning mask for that chain to redo.
+    fail_reason is not None only for the solid-mask case described above."""
+    cands = _ensemble_candidates(frame_bgr, lower, upper)
+    k3 = np.ones((3, 3), np.uint8)
+    legacy_raw = cands[0][1]
+    best = (None, None, -1)   # (name, raw_mask, area)
+    for name, raw in cands:
+        m = cv2.morphologyEx(raw, cv2.MORPH_CLOSE, k3)
+        m = _reject_blobby_components(m)
+        _, lbl, area = _best_cross_component(m, _ENS_MIN_AREA)
+        if lbl is None:
+            continue
+        if name == "legacy":
+            ENSEMBLE_STATS["legacy_ok"] += 1
+            return raw, None            # short-circuit: provably inert where legacy works
+        if area > best[2]:
+            best = (name, raw, area)
+    if best[1] is not None:
+        ENSEMBLE_STATS["rescued"] += 1
+        ENSEMBLE_STATS["by_channel"][best[0]] = ENSEMBLE_STATS["by_channel"].get(best[0], 0) + 1
+        return best[1], None
+    # Nothing anywhere is cross-shaped. Distinguish the two reasons that can happen:
+    #   (a) overfill/close range -- the cross is real but its own bbox is no longer
+    #       cross-shaped. The legacy mask is still the right input; keep today's
+    #       behaviour (fall through, _isolate_marker_by_shape will pass it unfiltered).
+    #   (b) the mask is a SOLID region (the inv plate). That cannot be a marker at any
+    #       scale, and passing it on is what makes inv fail SILENTLY. Fail loudly.
+    ENSEMBLE_STATS["no_cross"] += 1
+    m = _reject_blobby_components(cv2.morphologyEx(legacy_raw, cv2.MORPH_CLOSE, k3))
+    n, _lbl, st, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    if n > 1:
+        areas = st[1:, cv2.CC_STAT_AREA]
+        b = 1 + int(np.argmax(areas))
+        fill = st[b, cv2.CC_STAT_AREA] / max(st[b, cv2.CC_STAT_WIDTH] * st[b, cv2.CC_STAT_HEIGHT], 1)
+        if fill > _ENS_SOLID_FILL_MAX:
+            return legacy_raw, 'no_cross_shaped_component'
+    return legacy_raw, None
 
 
 def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
@@ -416,11 +1161,36 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     coordinate-offset bookkeeping."""
     if min_line_length is None: min_line_length = HOUGH_MIN_LINE_LEN
     if max_line_gap is None: max_line_gap = HOUGH_MAX_LINE_GAP
-    hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, lower, upper)
+    if _GATE_MODE == "ensemble":
+        mask, _ens_reason = _ensemble_gate_mask(frame_bgr, lower, upper)
+        if _ens_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                                   'stage_px': (_pxd,)*5, 'reason': _ens_reason})
+            return CrossMarkerDetection(None, None, False, fail_reason=_ens_reason)
+    elif _GATE_MODE == "contrast":
+        mask, _adapt_reason = _contrast_gate_mask(frame_bgr)
+        if _adapt_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                                   'stage_px': (_pxd,)*5, 'reason': _adapt_reason})
+            return CrossMarkerDetection(None, None, False, fail_reason=_adapt_reason)
+    elif _ADAPT_GATE:
+        mask, _adapt_reason = _adaptive_gate_mask(frame_bgr)
+        if _adapt_reason is not None:
+            _pxd = int(np.sum(mask > 0))
+            HOUGH_DIAG_LOG.append({
+                'mask_px': _pxd, 'bbox': None, 'n_edge_px': 0, 'n_lines': 0,
+                'stage_px': (_pxd, _pxd, _pxd, _pxd, _pxd), 'reason': _adapt_reason,
+            })
+            return CrossMarkerDetection(None, None, False, fail_reason=_adapt_reason)
+    else:
+        mask = cv2.inRange(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV), lower, upper)
     _px_raw = int(np.sum(mask > 0))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     _px_close = int(np.sum(mask > 0))
+    # Snapshot for the ring confirm, which needs the context the next stages strip.
+    _mask_close = mask.copy() if RING_CONFIRM else None
     mask = _reject_blobby_components(mask)
     _px_blobby = int(np.sum(mask > 0))
 
@@ -479,6 +1249,23 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='hough_lt2_lines')
 
     segs = lines[:, 0, :]
+    if _STROKE_VALIDATE:
+        # Reject plate/shadow EDGES (steps) before they can be clustered as cross arms.
+        _gray_sv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        _sv_keep = _validate_stroke_segments(_gray_sv, segs)
+        if _sv_keep.any():
+            segs = segs[_sv_keep]
+        # if NOTHING survives, fall through with the unfiltered set rather than dying --
+        # the downstream geometry gates still have to agree.
+    # SEGMENT CAP (2026-09-01): the adaptive contrast gate admits more real edge
+    # structure (ground texture near the marker) than the old near-black inRange,
+    # which inflates the O(n) angle loop + the pairwise corner-join below. The
+    # cross arms are always among the LONGEST segments; short texture slivers are
+    # not -- keep the longest CROSS_SEG_CAP and bound the cost. Generous default
+    # (a real cross yields <~30 segments); only bites on pathological frames.
+    if len(segs) > _SEG_CAP:
+        _slen = (segs[:, 0] - segs[:, 2]) ** 2 + (segs[:, 1] - segs[:, 3]) ** 2
+        segs = segs[np.argsort(_slen)[::-1][:_SEG_CAP]]
     angles = [_angle_deg(*s) for s in segs]
     # Corner-join shadow filter (2026-08-24) -- see _filter_segments_by_corner_join
     # docstring. Scale the join-gap tolerance to the marker's own bbox so it stays
@@ -601,6 +1388,20 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     vx_i, vy_i, x0_i, y0_i, mask_i = _robust_fit_line(pts_i)
     vx_j, vy_j, x0_j, y0_j, mask_j = _robust_fit_line(pts_j)
     line_i, line_j = (vx_i, vy_i, x0_i, y0_i), (vx_j, vy_j, x0_j, y0_j)
+    # INTENSITY-WEIGHTED SUB-PIXEL CENTERLINE RE-FIT (see module top). Replaces the two
+    # binary-mask Huber fits with greyscale centerline fits so a half-pixel edge shift
+    # moves each arm's SLOPE a fraction of a pixel instead of toggling whole rows. Both
+    # arms must succeed, else keep the _robust_fit_line pair (the pruning + near-parallel
+    # + centroid_mismatch gates below all still run on whatever pair is chosen).
+    if _SUBPIX_CENTERLINE:
+        _g_cl = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        _cl_i = _fit_arm_centerline_subpix(_g_cl, pts_i, line_i)
+        _cl_j = _fit_arm_centerline_subpix(_g_cl, pts_j, line_j)
+        if _cl_i is not None and _cl_j is not None:
+            line_i, line_j = _cl_i, _cl_j
+            CENTERLINE_STATS["applied"] += 1
+        else:
+            CENTERLINE_STATS["fallback"] += 1
     # ROBUST-SELECTED points (2026-08-24): _robust_fit_line's inlier mask drops
     # perpendicular outliers to the converged fit -- e.g. contamination that
     # passed the coarse perpendicular-band gate above (_cluster_points_from_mask)
@@ -661,6 +1462,37 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     bx, by, bw, bh = bbox
     in_fov = (0 <= center[0] < frame_w) and (0 <= center[1] < frame_h)
 
+    # SUB-PIXEL JUNCTION REFINE (see module top). Only when the junction is actually
+    # in the frame; the refined center then flows through the centroid_mismatch /
+    # bbox-margin sanity checks below, so a bad refine can only be rejected, never
+    # sneak a worse center through.
+    if _SUBPIX_JUNCTION and in_fov:
+        _hw = int(np.clip(round(0.15 * max(bw, bh)), 4, 15))
+        _ref = _refine_junction_subpix(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY),
+                                        center[0], center[1], _hw)
+        if _ref is None:
+            SUBPIX_STATS["rej_no_fit"] += 1
+        else:
+            _sh = float(np.hypot(_ref[0] - center[0], _ref[1] - center[1]))
+            if _sh <= _SUBPIX_MAX_SHIFT_FRAC * max(bw, bh, 1):
+                center = _ref
+                SUBPIX_STATS["applied"] += 1
+                SUBPIX_STATS["shift_sum"] += _sh
+            else:
+                SUBPIX_STATS["rej_shift"] += 1
+
+    # STAGE 3 (see GEOM_CONFIRM at module top) -- on the FINAL center, so the
+    # sub-pixel refine above is included in what gets confirmed.
+    if GEOM_CONFIRM:
+        _g_ok, _g_reason = _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center)
+        if not _g_ok:
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_g_reason)
+
+    if RING_CONFIRM and _mask_close is not None:
+        _r_ok, _r_reason, _r_n = _confirm_ring(_mask_close, center, bbox)
+        if not _r_ok:
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_r_reason)
+
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())
         centroid_err = np.hypot(center[0] - centroid_x, center[1] - centroid_y)
@@ -675,8 +1507,43 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         _fill = max(bw, bh, 1) / max(min(frame_h, frame_w), 1)
         _centroid_tol_frac = 0.12 + 0.60 * float(np.clip((_fill - 0.6) / 0.4, 0.0, 1.0))
         max_centroid_err = _centroid_tol_frac * max(bw, bh, 1)
+        if GEOM_CONFIRM == 2:
+            # Stage 3 REPLACES this proxy (mode 2). Neutralise it here rather than
+            # skipping the branch, so the bbox-margin check below and the off-frame
+            # `else` path keep running untouched.
+            max_centroid_err = float('inf')
         if centroid_err > max_centroid_err:
-            return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
+            # SPAN RESCUE (see CENTROID_SPAN_RESCUE at module top): the mask centroid
+            # can be contaminated by structure fused into the same component, so ask
+            # instead whether the intersection lies ON both fitted arms. Only reached
+            # when the legacy check has already failed -> clean scenes are unaffected.
+            _rescued = False
+            SPAN_RESCUE_STATS["consulted"] += 1
+            _big = _fill >= CENTROID_SPAN_FILL_MAX   # overfilling -> terminal regime
+            if _big:
+                SPAN_RESCUE_STATS["consulted_lowalt"] += 1
+            if CENTROID_SPAN_RESCUE and not _big:
+                _rescued = True
+                for _p, _ln in ((np.asarray(pts_i, float), line_i),
+                                (np.asarray(pts_j, float), line_j)):
+                    _v = np.array([_ln[0], _ln[1]], float)
+                    _nv = float(np.linalg.norm(_v))
+                    if _nv < 1e-9 or len(_p) < 4:
+                        continue          # too few points to bound a span; don't veto on it
+                    _v = _v / _nv
+                    _mu = _p.mean(axis=0)
+                    _t = (_p - _mu) @ _v
+                    _tc = float((np.asarray(center, float) - _mu) @ _v)
+                    _lo, _hi = float(_t.min()), float(_t.max())
+                    _mar = CENTROID_SPAN_MARGIN * (_hi - _lo)   # junction may sit near an arm end
+                    if not (_lo - _mar <= _tc <= _hi + _mar):
+                        _rescued = False
+            if _rescued:
+                SPAN_RESCUE_STATS["rescued"] += 1
+                if _big:
+                    SPAN_RESCUE_STATS["rescued_lowalt"] += 1
+            else:
+                return CrossMarkerDetection(None, None, False, bbox, fail_reason='centroid_mismatch')
         margin = 0.25 * max(bw, bh, 1)
         if not (bx - margin <= center[0] <= bx + bw + margin and
                 by - margin <= center[1] <= by + bh + margin):
@@ -1058,8 +1925,18 @@ def detect(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
             track_state['miss_count'] = track_state.get('miss_count', 0) + 1
 
     # Full-frame path: first lock, tracked-crop miss this call, or lock presumed stale.
-    det = _detect_core(frame_bgr, lower, upper, min_line_length, max_line_gap,
-                        identify_stub, roi_frac_x=roi_frac_x, roi_frac_y=roi_frac_y)
+    # With the adaptive contrast gate (_ADAPT_GATE), the acquisition path's mask is
+    # denser (more real edges admitted) -> Canny/Hough cost ~1.5x the legacy inRange.
+    # Route it through the same bounded-working-resolution wrapper the tracked-crop
+    # path already uses (line geometry is scale-invariant) so full-frame acquisition
+    # stays comfortably above the 30 Hz process_frame floor. Legacy gate -> exact old
+    # path unchanged.
+    if _ADAPT_GATE:
+        det = _detect_core_capped(frame_bgr, lower, upper, min_line_length, max_line_gap,
+                                  identify_stub, roi_frac_x, roi_frac_y)
+    else:
+        det = _detect_core(frame_bgr, lower, upper, min_line_length, max_line_gap,
+                            identify_stub, roi_frac_x=roi_frac_x, roi_frac_y=roi_frac_y)
     if track_state is not None:
         if det.ok:
             track_state['last_bbox'] = det.mask_bbox

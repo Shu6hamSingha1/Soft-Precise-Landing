@@ -842,6 +842,66 @@ async def main(record = 'n'):
             # numbers are still recorded for diagnostics.
             # Precision tolerance raised 0.08 -> 0.10 m per user (2026-06-03).
             PRECISE_TOL = float(os.environ.get("LANDING_PRECISE_TOL", "0.10"))
+            # ── TERMINAL-STATE GATE (2026-09-02) ───────────────────────────
+            # xy_err above is read from the pose at WHATEVER INSTANT THIS LOOP
+            # EXITED. The old comment claimed "PX4 reports LANDED here", but
+            # nothing enforced it -- a touchdown-detect latch, a timeout or an
+            # abort all exit the loop too, and the drone's mid-air pose was then
+            # scored as a landing. Archive audit 2026-09-02: 159 of 1192
+            # `precise` verdicts (13.4%) were computed on a MID-AIR sample --
+            # 21 that never descended at all (a CENTERED IC starts directly
+            # above the marker, so xy_err~0 at t=0 is degenerate) and 138 whose
+            # log stopped mid-descent (median 0.486 m up, still falling).
+            # See Memory/px4/project_20260902_archive_rescore_false_precise.md.
+            #
+            # Two gates, both validated against all 4446 archived runs
+            # (159 unsupported vs 1033 legitimate `precise`):
+            #  (a) altitude above the LANDING SURFACE at evaluation <= 0.20 m.
+            #      LANDING_SURFACE_DZ is the surface's height above the TARGET
+            #      POSE ORIGIN, taken from PLASMC_GT_MARKER_DZ (0.0 flat, 0.5
+            #      rover_cross, whose raised platform means a real landing
+            #      sits ~0.48 m above the rover's own pose origin). Do NOT try to
+            #      infer it -- inferring it is what produced a wrong first pass.
+            #      Catches all 159, 0 false positives.
+            #  (b) surface-agnostic backstop: the run must actually have
+            #      descended, min_alt <= 0.15 * start_alt. Catches 45/159 with
+            #      0/1033 false positives, and still fires if (a) is
+            #      misconfigured for a new world.
+            # REJECTED after measuring (do not re-add): a |dz/dt| terminal-rest
+            # check catches 152/159 but rejects 58% of LEGITIMATE landings (real
+            # touchdowns still move vertically in their last 0.3 s); an IMU
+            # contact-spike gate does not separate at all (27.0% vs 26.7%).
+            # The landing SURFACE height above the target-pose origin is already a
+            # world-specific quantity in this codebase: PLASMC_GT_MARKER_DZ (0.0 for
+            # flat-marker worlds, 0.5 for the rover, set by scripts/run_rover_landing.sh
+            # -- see src/gt_feedback.py:45-50). Reuse it rather than introducing a second
+            # name for the same number; LANDING_SURFACE_DZ overrides if they ever differ.
+            LANDING_SURFACE_DZ = float(os.environ.get(
+                "LANDING_SURFACE_DZ", os.environ.get("PLASMC_GT_MARKER_DZ", "0.0")))
+            TOUCHDOWN_ALT_MAX  = float(os.environ.get("LANDING_TOUCHDOWN_ALT_MAX", "0.20"))
+            DESCENT_FRAC_MAX   = float(os.environ.get("LANDING_DESCENT_FRAC_MAX", "0.15"))
+            not_landed_reason = None
+            try:
+                _alt_end = (drone_enu.z - target_enu.z) - LANDING_SURFACE_DZ
+                _alt_0   = ((UAV_pose[0].position.z - target_pose[0].position.z)
+                            - LANDING_SURFACE_DZ) if UAV_pose and target_pose else float("nan")
+                _alt_lo  = ((_min_alt - target_enu.z) - LANDING_SURFACE_DZ
+                            ) if _min_alt is not None else _alt_end
+                # Gate on the LOWEST altitude reached, not the endpoint: a run that
+                # touches at 0.05 m then balloons to 0.5 m DID land (its endpoint xy
+                # is post-kick -- the pre-existing issue `min_alt_xy` already covers).
+                # alt_min is also what the 0-false-positive thresholds were validated on.
+                if _alt_lo > TOUCHDOWN_ALT_MAX:
+                    not_landed_reason = (f"never reached surface: min {_alt_lo:.2f} m "
+                                         f"above it (max {TOUCHDOWN_ALT_MAX:.2f})")
+                elif (_alt_0 == _alt_0) and _alt_0 > 0 and _alt_lo > DESCENT_FRAC_MAX * _alt_0:
+                    not_landed_reason = (f"never descended: min {_alt_lo:.2f} m of "
+                                         f"{_alt_0:.2f} m start (>{DESCENT_FRAC_MAX:.0%})")
+            except Exception as _e:
+                # Never let the gate itself fail a run; record that it could not run.
+                not_landed_reason = None
+                _alt_end = _alt_lo = float("nan")
+                print(f"[landing_test] terminal-state gate skipped: {_e}")
             # Descent anomaly (oscillation/ascending instead of smooth descent) is a
             # failure on its own, same standing as target_lost -- see the detector above.
             descent_anomaly = ascending_detected or oscillation_detected
@@ -853,6 +913,12 @@ async def main(record = 'n'):
                 precise = False
                 soft    = False
                 tag = f"DESCENT_ANOMALY [{descent_anomaly_cause}]"
+            elif not_landed_reason:
+                # Same standing as target_lost / descent_anomaly: no verified
+                # terminal state => not a landing, so it cannot be precise/soft.
+                precise = False
+                soft    = False
+                tag = f"NOT_LANDED [{not_landed_reason}]"
             else:
                 precise = xy_err  <= PRECISE_TOL
                 soft    = rel_vel <= 0.2
@@ -873,7 +939,15 @@ async def main(record = 'n'):
                                 # (before any terminal balloon) — see tracker above.
                                 min_alt=_min_alt,
                                 min_alt_xy=_min_alt_xy,
-                                min_alt_rel_vel=_min_alt_relvel)
+                                min_alt_rel_vel=_min_alt_relvel,
+                                # Terminal-state gate (2026-09-02). A silently
+                                # flipped flag is how the mid-air scoring went
+                                # unnoticed for two months -- always record WHY.
+                                terminal_state_ok=(not_landed_reason is None),
+                                not_landed_reason=not_landed_reason,
+                                alt_above_surface_end=_alt_end,
+                                alt_above_surface_min=_alt_lo,
+                                landing_surface_dz=LANDING_SURFACE_DZ)
             _ma_xy = f"{_min_alt_xy:.3f}" if _min_alt_xy is not None else "n/a"
             _ma_z  = f"{_min_alt:.2f}"    if _min_alt    is not None else "n/a"
             _ma_v  = f"{_min_alt_relvel:.3f}" if _min_alt_relvel is not None else "n/a"
@@ -881,7 +955,8 @@ async def main(record = 'n'):
                   f"(xy_err={xy_err:.3f} m [≤{PRECISE_TOL}], "
                   f"rel_vel={rel_vel:.3f} m/s [≤0.2]"
                   f"{', target lost mid-flight' if target_lost else ''}"
-                  f"{', descent anomaly: ' + descent_anomaly_cause if descent_anomaly else ''})")
+                  f"{', descent anomaly: ' + descent_anomaly_cause if descent_anomaly else ''}"
+                  f"{', NOT LANDED: ' + not_landed_reason if not_landed_reason else ''})")
             print(f"[landing_test] Honest precision @ min-alt: "
                   f"xy={_ma_xy} m, rel_vel={_ma_v} m/s, min_alt={_ma_z} m "
                   f"(endpoint xy={xy_err:.3f} m is post-kick if it ballooned)")

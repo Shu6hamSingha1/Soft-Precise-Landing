@@ -1,40 +1,11 @@
 #!/usr/bin/env bash
-# Retry-wrapper around run_aruco_landing.sh. Some PX4 SITL launches lose a
-# startup race (gz_bridge subscribes to IMU before lockstep scheduler is
-# synced to the Gazebo clock → timestamp=0 → permanently denied arming).
-# The inner launcher detects this and exits with code 42 so we can restart.
-# See discuss.px4.io/t/px4-sitl-multi-vehicle-gazebo-imu-timing-errors/33268.
+# DEPRECATED NAME — kept as a compatibility shim (2026-09-03).
 #
-# Forwards all env vars (HEADLESS, LANDING_AUTOSAVE, etc.) and arguments.
-# Usage: HEADLESS=1 LANDING_AUTOSAVE=1 ./run_aruco_landing_retry.sh
-
-set -u
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MAX_ATTEMPTS="${MAX_ATTEMPTS:-5}"
-
-for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
-  echo "================================================================="
-  echo "[retry] Attempt $attempt / $MAX_ATTEMPTS"
-  echo "================================================================="
-
-  bash "$SCRIPT_DIR/run_aruco_landing.sh"
-  rc=$?
-
-  if [ "$rc" -eq 0 ]; then
-    echo "[retry] SUCCESS after attempt $attempt"
-    exit 0
-  fi
-  if [ "$rc" -eq 42 ]; then
-    echo "[retry] Attempt $attempt lost the gz_bridge/lockstep race; retrying after 10 s..."
-    sleep 10
-    continue
-  fi
-  # Any other non-zero exit (timeout, abort, real error) — don't retry.
-  echo "[retry] Attempt $attempt exited rc=$rc (not the race condition); giving up."
-  exit "$rc"
-done
-
-echo "[retry] All $MAX_ATTEMPTS attempts hit the gz_bridge/lockstep race."
-echo "[retry] Apply the upstream GZBridge::imuCallback timestamp guard if this persists."
-exit 1
+# Renamed to run_landing_retry.sh. The "aruco" in the old name was misleading: WORLD and
+# MARKER_TYPE are env-driven, so this launcher flies the cross marker whenever it is told
+# to — which it is, by the standing rule (WORLD=cross_marker MARKER_TYPE=cross). The name
+# caused a real "are you running ArUco?" doubt during a cross-marker-only session.
+#
+# 184 references across code, docs, memory and ~50 committed A/B harnesses point at the old
+# name, so it stays as this shim rather than being deleted. USE run_landing_retry.sh IN NEW WORK.
+exec "$(dirname "${BASH_SOURCE[0]}")/run_landing_retry.sh" "$@"

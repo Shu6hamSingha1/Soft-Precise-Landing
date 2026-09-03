@@ -78,3 +78,20 @@ PX4_Gazebo/test_data/HybridFlow_AB/20260529-133034/*
 MATLAB/Datasets/Phase1/done.flag
 .edit_backups/
 PX4_Gazebo/test_data/Obsolete_ArUco_Montages/*.mp4
+
+# DetectorFrameset: curated detector-robustness eval set -- bulk npy+frames
+# ignored (regenerable, ~230MB), only the manifest is tracked.
+PX4_Gazebo/test_data/DetectorFrameset/**
+!PX4_Gazebo/test_data/DetectorFrameset/MANIFEST.md
+
+# RobustnessFrameset: lighting/polarity/colour/texture scene variants recorded by
+# test_data/Rover_AB_harness/record_robustness_set.sh (assets from
+# tools/make_robustness_eval_assets.py). Same policy as DetectorFrameset above --
+# bulk npy+frames ignored (regenerable, ~263MB), only a manifest is tracked.
+PX4_Gazebo/test_data/RobustnessFrameset/**
+!PX4_Gazebo/test_data/RobustnessFrameset/MANIFEST.md
+
+# Q8_SpinFF (2026-09-03 perfect-ω_t-feedforward falsification): the finding lives in
+# Control_Data (e_R, w_u, u_a, e_a) + Ground_Truth + Control_Params; the 47 MB of Img_Data
+# frames are irrelevant to it. Same policy as DetectorFrameset -- bulk ignored, evidence tracked.
+PX4_Gazebo/test_data/Q8_SpinFF/*/Img_Data.npy

@@ -94,6 +94,14 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     rerun_circular.m, rerun_other4.m, rerun_lissajous_plasmc.m, rerun_all_traj.m
     inspect_comparison.m, dump_comparison.m
     (results -> MATLAB/Datasets/Comparison/)
+  VDF_ASMC/                  — ⭐ AUTHORITATIVE locked-gain source for the MANUSCRIPT
+    vdf_params.m             — the paper's Table `sup:control params` values live HERE.
+                               ⚠ NOT the inline `K_ctrl.*` assignments in
+                               Multi_init_cond/visualControl_IBVS_adaptive.m — those are
+                               PRE-RE-BAKE and disagree with the paper on ~9 rows. Reading
+                               them as "MATLAB's locked values" produces a full page of
+                               phantom manuscript errors (done 2026-09-03, retracted).
+    simulate_landing.m, verify_vs_canonical.m, +blocks/
   Sweeps/
     (parameter sweep scripts; results -> MATLAB/Datasets/Sweeps/)
 
@@ -115,7 +123,10 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
                                  grep tools/ for anything not below rather than assuming this list is exhaustive:
     Calibration (derive/aggregate/validate):
       aggregate_calibration_phased.py — canonical phased-excitation aggregator
-      aggregate_calibration.py   — legacy aggregator (mixed/untagged recordings)
+      (aggregate_calibration.py — legacy aggregator, MOVED to Obsolete/tools/ 2026-09-03:
+       superseded by derive_board_cal.py, and using it to refresh a cal is a known dead-end
+       — 7-10x wrong, methodology mismatch. Note aggregate_calibration_PHASED.py above is the
+       canonical one and is imported by 9 tools — do not confuse the two.)
       aggregate_input_calibration.py, aggregate_sensitivity.py, aggregate_big_sensitivity.py
       analyze_calibration.py     — ports plotter_output cell-38 LSTSQ validation
       derive_board_cal.py, derive_reduced_lat_cal.py, derive_ring_cal.py — per-cal-regime derivation
@@ -140,9 +151,12 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
       make_aruco_board.py, make_coarse_textured_marker.py, make_fineline_textured_board.py,
       make_multiscale_marker.py, make_landing_montage.py
     Test-record / cleanup (see reference_test_record_system memory):
-      build_test_record.py, build_landing_test_manifest.py, build_obsolete_manifest.py
+      build_test_record.py, build_test_index.py, build_landing_test_manifest.py,
+      build_obsolete_manifest.py
       execute_landing_test_cleanup.py, execute_obsolete_cleanup.py
-      refresh_scan_sheets.py, restructure_parameter_record.py, log_param_record.py
+      refresh_scan_sheets.py, log_param_record.py
+      (restructure_parameter_record.py — one-shot restructure, already performed; superseded by
+       refresh_scan_sheets.py; MOVED to Obsolete/tools/ 2026-09-03)
   scripts/                     — bash launchers (canonical patterns in docs/SH_REFERENCE.md — READ before
                                  authoring a new .sh); ~60 scripts as of 2026-07-09:
     Core launchers:
@@ -191,14 +205,17 @@ PX4_Gazebo/                    — Phase 2: PX4 SITL + Gazebo Harmonic (active)
     TERMINAL_KICK_COMMIT_DESIGN.md — terminal-kick approach+commit design spec
     HANDOFF_combined_barrier.md / HANDOFF_velocity_damping.md — dated handoff notes for those specific threads
     OBSOLETE_CLEANUP_HANDOFF.md — test-data cleanup plan/history
-    TEST_RECORD.md              — companion doc for tools/build_test_record.py's scan output
+    TEST_RECORD.md              — companion doc for tools/build_test_record.py's scan output.
+                                  ⚠ 88 KB / ~23k tokens — do NOT read it whole. Use
+                                  test_data/INDEX.tsv first (below); come here only for the
+                                  per-rep drill-down INDEX.tsv deliberately omits.
   tips.txt                     — manual launch sequence (ArUco + rover)
 ```
 
 ## PX4/Gazebo Phase — Quick Reference
 
 **Stack:** PX4 SITL + Gazebo Harmonic + ROS 2 (`ros_gz_bridge`) + uXRCE-DDS (`MicroXRCEAgent`)
-**Drone:** `x500_mono_cam_down` (airframe 4014); downward camera 640×480 @ fx=fy=270 px, hfov=1.74 rad (1280×960 was tested and rejected — see Camera section below)
+**Drone:** `x500_mono_cam_down` (airframe 4014); downward camera 320×240 @ fx=fy=135 px, hfov=1.74 rad (dropped from 640×480 on 2026-08-27; 1280×960 tested and rejected — see Camera section below)
 **Scenarios:** `aruco` world (stationary target), `rover` world (moving rover with marker, airframe 4022)
 **Interface:** MAVSDK over UDP (`udp://:14540`); body-rate + thrust setpoints
 
@@ -213,11 +230,15 @@ HEADLESS=1 bash scripts/run_aruco_landing.sh       # offscreen Qt, no visible wi
 - QGC is launched (offscreen in HEADLESS mode) to satisfy PX4's "No connection to GCS" preflight check.
 - See `tips.txt` for the manual 7-pane launch (and the rover/moving-target variant).
 
-**Camera (640×480 @ fx=fy=270, hfov=1.74 rad).** Edited in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf`. Image feed validated at ~62 Hz steady. Higher resolutions tested and rejected:
-- 1280×960 → Gazebo native renderer drops to 21 Hz with 92 ms ROS-bridge outliers.
-- Same hfov as MATLAB → PLASMC gain tuning is invariant.
+**Camera (320×240 @ fx=fy=135, hfov=1.74 rad).** Edited in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf`. Verified live in the SDF + `src/img_data.py:49` on 2026-09-02.
+- **2026-08-27: dropped 640×480 (fx=fy=270) → 320×240 (fx=fy=135)** to recover `process_frame()` rate on the cross-marker pipeline (~15-23 Hz → ~38 Hz). Same hfov, so normalized image coords and PLASMC gains are unchanged — and this restores the original MATLAB `Constants.m` value (f=135 at 320×240) rather than introducing a new one, so `rho_fov` is no longer scaled 2× vs MATLAB.
+- 1280×960 → Gazebo native renderer drops to 21 Hz with 92 ms ROS-bridge outliers (tested and rejected).
+- Same hfov as MATLAB → PLASMC gain tuning is invariant across all of these.
 
-**Sensor-cal:** `_sensor_cal_hw` / `_sensor_cal_s` in `src/img_data.py` (~line 130) have been re-derived many times since the original 2026-05-12 fix (13-run board recal, single-marker recal, reduced-lat-solve recal, observer cal — most recently 2026-07-03, now a full 6×6 matrix, not a simple diagonal). **Don't rely on a value pasted here — it will be stale; read the live block in img_data.py, which carries inline provenance comments for every revision.** The original point stands as history: legacy `diag(1,1,1,1/3,1/3,1)` / `diag(1/6,1/6,1,1)` were ~10× off on optical flow — likely cause of the earliest PLASMC `a_u` blow-ups.
+**Sensor-cal — ⚠ TWO paths, TWO separate calibrations. Don't mix them up** (verified 2026-09-02):
+- **Cross-marker (the default path):** `_sensor_cal_hw` / `_sensor_cal_s` in `src/cross_marker_perception.py` (~line 797). **Recalibrated for 320×240/fx=135 on 2026-08-28** from GT-feedback *landing* recordings (not phased excitation — at 320×240 PX4's position loop tracks only ~15% of the phased sinusoid, so the joint 6×6 lstsq fits from noise and every per-axis R² came out negative). Near-diagonal; solid for a nominal ~5-6 m descent. **KNOWN GAP: degrades above ~6 m** — the h-block scale is not altitude-constant.
+- **ArUco (comparison-only path):** `_sensor_cal_hw` / `_sensor_cal_s` in `src/img_data.py` (~line 186), full 6×6, most recently re-derived **2026-07-17 at the OLD 640×480/fx=270**. ⚠ **NOT recalibrated for 320×240** — the file's own comment calls this "STILL BLOCKING before this is usable for real landing validation". Any ArUco run today is on a stale cal. **KNOWN AND ACCEPTED — user declined the recal 2026-09-03.** ArUco is comparison-only, so nothing in the live cross-marker/rover thread touches it; don't re-raise this as an open task. It only matters if ArUco comparison numbers are ever used for the paper — re-derive first in that case, and note the 0.5 Hz phased excitation is what produced all-negative R² on the cross-marker side at this resolution (`CALIB_FREQ_HZ` is the lever, `CALIB_AMP_XY` is hardcoded).
+- **Don't rely on any value pasted here — read the live block in the relevant file**, each carries inline provenance comments for every revision. History: legacy `diag(1,1,1,1/3,1/3,1)` / `diag(1/6,1/6,1,1)` were ~10× off on optical flow — likely cause of the earliest PLASMC `a_u` blow-ups.
 
 **Runtime savgol filter (applied 2026-05-13):**
 ```python
@@ -261,7 +282,7 @@ Calibration data goes to timestamped folders under `calibration_data/`; gitignor
   - The `~/ws/scripts/soft_precise_landing/` files are the **working baseline**; never edit in place.
   - `PX4_Gazebo/` in this repo holds the MATLAB-aligned, git-tracked Python.
   - `img_data.py`'s `_sensor_cal_s` / `_sensor_cal_hw` are Gazebo-tuned (re-derived from real SITL calibration recordings) — always read the current values + inline provenance comments in the file itself, don't assume a value quoted elsewhere in docs/memory is current.
-  - Camera intrinsics live in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (hfov=1.74, 640×480 → fx=fy=270; verified live in the SDF 2026-07-09). Note: `_resolution` is stored as `(msg.height, msg.width)` = `(480, 640)` in `img_data.py` because ArUco detection runs on the image AFTER a `cv2.ROTATE_90_CW` — so the working detection frame is 480 wide × 640 tall, and `self.center = (240, 320)` is correct for THAT rotated frame, not the raw 640×480 sensor frame. Don't "fix" this pairing without re-deriving both together (img_data.py:69-85 has the full derivation).
+  - Camera intrinsics live in `~/PX4-Autopilot/Tools/simulation/gz/models/mono_cam/model.sdf` (hfov=1.74, **320×240 → fx=fy=135**; verified live in the SDF 2026-09-02). Note: `_resolution` is stored as `(msg.height, msg.width)` = `(240, 320)` in `img_data.py` because detection runs on the image AFTER a `cv2.ROTATE_90_CW` — so the working detection frame is 240 wide × 320 tall, and `self.center` = `_resolution/2` = `(120, 160)` is correct for THAT rotated frame, not the raw sensor frame. `center` is computed from `_resolution` at runtime, so it followed the resolution change automatically. Don't "fix" this pairing without re-deriving both together (img_data.py has the full derivation). ⚠ The inline comment at `img_data.py:103` still cites the old `(240, 320)` center — stale comment, correct code.
 - **Don't run things for the user:**
   - MATLAB sims: user runs them; check `.mat` result files instead. Don't invoke `matlab -batch`.
   - Gazebo SITL: GUI-bound. Default is still that the user runs `bash scripts/run_aruco_landing.sh`

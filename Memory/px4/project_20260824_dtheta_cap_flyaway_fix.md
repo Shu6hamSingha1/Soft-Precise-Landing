@@ -8,6 +8,16 @@ metadata:
   originSessionId: 0f9c8dc0-a837-4722-95e7-0ea102167469
 ---
 
+> ⛔⛔ **OBSOLETE MECHANISM (stamped 2026-09-03).** `_dtheta_correction` was REMOVED from
+> `controller.py` in `e110b8a7` (2026-08-31); the descent-rate/lateral-margin trade now lives
+> INSIDE the joint QP as `cbf_visibility.py::CBF_AZ_COST_GAIN` (`controller.py:254`).
+> `grep -c _dtheta_correction src/controller.py` == 0. Anything in this file that diagnoses
+> `_dtheta_correction` or proposes validating `PLASMC_DTHETA_HREF` is testing a mechanism that
+> no longer exists — that env survives (`:247`, default 0) but now gates only the SEPARATE
+> upstream `h_ref_eff` shaping. Findings about CAUSALITY (control destabilises first,
+> perception second) may still hold; the named fixes and next-steps do not. Current mechanism:
+> `CBF_JOINT_QP` (baked default-on) + `CBF_AZ_COST_GAIN`.
+
 Same-day follow-up to [[project_20260824_dtheta_ic5_flyaway_rootcause]]. User agreed the fly-away needed a cap but flagged (correctly, confirmed by this data) that capping wouldn't resolve "the main issue" -- distinguished the two independent defects: (1) the uncapped-correction fly-away (stability/safety), (2) the `th_curr` self-defeating attitude-history loop (functional, [[project_20260824_dtheta_az_filter_self_defeating_feedback]]). This entry covers implementing and testing fix (1).
 
 ## Implementation (`controller.py`, at the `cbf2_filter` call site, ~line 3168-3204)

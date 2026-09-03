@@ -1,0 +1,5 @@
+ic	rep	result_dir	landed	xy_err_m	rel_vel_mps	precise	soft
+5	1	IC5_rep1	YES	0.1472	0.2996	0	0
+5	2	IC5_rep2	YES	0.0605	0.5545	1	0
+2	1	IC2_rep1	YES	0.6367	1.9265	0	0
+2	2	IC2_rep2	YES	0.1281	0.4809	0	0

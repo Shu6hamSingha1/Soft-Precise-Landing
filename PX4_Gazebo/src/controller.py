@@ -14,7 +14,11 @@
 #   4. R_d construction:               -I_a + a_h(psi_d) -> Gram-Schmidt    §III-B2
 #   5. SO(3) attitude error:            e_R = ½ vee(R_d^T R - R^T R_d)      §III-B2
 #   6. Body-rate setpoint:              w_u = -K_R · e_R    (rate-mode P)
-#   7. Thrust scalar:                   B_T = m · |I_a[2] + g|
+#   7. Thrust scalar:                   B_T = m · (I_a[2] + g) / (cosφ cosθ)
+#      NOTE (2026-09-03): SIGNED, not |·| as this line previously read — B_T < 0 is a
+#      climb command and the sign is load-bearing. Also note B_T is a hover-referenced
+#      thrust DEFICIT (0 at hover), matched to convert_2_sys_cmd's affine map
+#      thrust_norm = 0.738 - B_T/45 — NOT the manuscript's total thrust T_u = m|a_d,z|/R33.
 #
 # Rate-mode caveat: we keep PX4's body-rate + thrust interface (MAVSDK
 # set_attitude_rate), so the inner SO(3) law is reduced to its proportional
@@ -170,8 +174,12 @@ g = 9.80      # m/s^2 (matches Gazebo aruco.sdf <gravity>0 0 -9.8</gravity>;
 # real margin below the converged estimate rather than trusting its edge.
 THRUST_MAX_N = float(os.environ.get("PLASMC_THRUST_MAX_N", "33.85"))
 THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
-# A_CAP: real ceiling on total specific thrust-accel magnitude
-# (|I_a + g*e3|, i.e. |thrust_vec|/mass) -- ~13.61 m/s^2 at defaults. This
+# A_CAP: real ceiling on total specific thrust-accel magnitude, |I_a| (I_a IS the thrust
+# acceleration: hover is I_a[2] = -g) -- ~13.61 m/s^2 at defaults.
+# ⚠ 2026-09-03: this comment previously read "|I_a + g*e3|, i.e. |thrust_vec|/mass", which is
+# WRONG and was the spec the two cap sites were written against. I_a + g*e3 is the VEHICLE's
+# acceleration (zero at hover), not thrust. Both sites are corrected behind
+# CBF_SPHERE_TRUE_THRUST (default off pending validation); see cbf_visibility.py's sphere. This
 # replaces the previous I_a[2] = max(I_a[2], -50.0) floor, which was an
 # arbitrary safety catch never derived from the vehicle's actual deliverable
 # thrust (see the -50.0 removal site below for why a per-axis floor is
@@ -180,6 +188,12 @@ THRUST_MARGIN = float(os.environ.get("PLASMC_THRUST_MARGIN", "0.85"))
 # attitude loop chases can silently exceed what thrust_norm's downstream
 # clip [0,1] can actually deliver).
 A_CAP = THRUST_MAX_N * THRUST_MARGIN / mass
+# Shared with cbf_visibility.py's sphere -- ONE env var gates both deliverability sites so a
+# future edit cannot fix one and leave the other bounding the wrong quantity.
+# BAKED DEFAULT-ON 2026-09-03 (=0 reverts to the legacy gravity-shifted form). The two sites
+# had to be fixed together: with only the CBF corrected, THIS one still passed a 15.14 m/s^2
+# command (111% of cap) because |I_a+g*e3|=11.44 sailed under its threshold.
+_TRUE_THRUST_SPHERE = os.environ.get("CBF_SPHERE_TRUE_THRUST", "1") == "1"
 
 # THETA_CAP_DEG_DERIVED (2026-08-23): the manuscript's theta_cap=60 deg was derived from
 # an ASSUMED 2x-hover-thrust actuator margin (theta_cap = arccos(hover/(2*hover)) is
@@ -249,17 +263,10 @@ class Controller(Thread):
         self._dtheta_scale = float(os.environ.get("PLASMC_DTHETA_SCALE", "0.18"))    # dtheta at which g has decayed to 1/e of its range; ~ mean active-frame dtheta at gain=5-10 (measured 0.16-0.23)
         self._dtheta_href_tau = float(os.environ.get("PLASMC_DTHETA_HREF_TAU", "0.5"))   # LPF tau on g, same role/value as _dgate_tau
         self._dtheta_href_g = 1.0
-
-        # Crossfade weight for the direct I_a[2] dtheta correction (below, at the
-        # cbf2_filter call site): full strength at onset -- covers the several-cycle lag
-        # (~0.08-0.3s, the tau_ia LPF + kappa-SMC integration) before h_ref_eff's effect on
-        # I_a actually shows up -- decaying toward 0 as the encounter persists, so the two
-        # channels don't both run at full strength indefinitely (the direct channel is the
-        # one carrying the self-defeating loop; only meant as a bridge). Tied to
-        # PLASMC_DTHETA_HREF: when that's off, the direct term behaves exactly as before
-        # (weight=1 always, unchanged/backward-compatible).
-        self._dtheta_xfade_tau = float(os.environ.get("PLASMC_DTHETA_XFADE_TAU", "0.3"))
-        self._dtheta_active_t = 0.0
+        # NB the former direct I_a[2] "dtheta correction" (a downstream bolt-on, with a
+        # crossfade-weight bridge) was REMOVED 2026-08-31 -- the descent-rate / lateral-
+        # margin trade now lives inside the joint QP (cbf_visibility.py CBF_AZ_COST_GAIN).
+        # PLASMC_DTHETA_HREF still gates the SEPARATE upstream h_ref_eff shaping below.
 
         self._CONTROLLER_READY = False
         self._warmup_remaining = 0           # set by startController()
@@ -535,6 +542,14 @@ class Controller(Thread):
         # divergence (cf chi_r=0.5, N_z=0.1). RULED OUT: K_R_YAW^ (worse), E_a v (no help
         # at Omega_a=0.5). Env PLASMC_YAW_OMEGA still overrides.
         self._Omega_a   = float(os.environ.get("PLASMC_YAW_OMEGA",  "0.1"))
+        # Gamma_a = 0.5 is the PX4 BASELINE (user decision 2026-09-03). MATLAB/the manuscript
+        # use 0.25 (vdf_params.m P.Gamma_a). Unlike Omega_a above, no PX4-lag derivation was ever
+        # recorded for this divergence -- it was flagged as "unjustified" during the 2026-09-03
+        # audit and the user resolved it by DECLARING the SITL value the reference rather than
+        # reconciling to MATLAB. So: do NOT "sync" this to 0.25, and do not treat the gap as a
+        # defect to explain. It remains a legitimate tuning target on its own merits (it has
+        # never been swept), and it is in the loop the Q8 turning-rover yaw work touches --
+        # any change there should A/B against 0.5, not against MATLAB.
         self._Gma_a     = float(os.environ.get("PLASMC_YAW_GAMMA",  "0.5"))
         self._n_a       = float(os.environ.get("PLASMC_YAW_N",      "1.0"))
         self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))
@@ -625,6 +640,23 @@ class Controller(Thread):
         self._vds_kf = os.environ.get("PLASMC_VDS_KF", "1") == "1"   # RE-BAKED 2026-06-20 with combined (validated V_ds estimator)
         self._vds_kf_q = float(os.environ.get("PLASMC_VDS_KF_Q", "10.0"))  # process (accel) noise PSD. RE-BAKED 1.0->10.0 (2026-07-04, user): the 06-30 lowering to 1.0 was to damp the terminal 1/Z² s_dot osc, but PR0=10 (06-29 funnel-shape fix) ALREADY absorbs the terminal 1/Z (A/B: termosc stays 0.009-0.012 even at q=10). The low q's only remaining effect was DRIFT-TERM-NOISE damping that masked a DIFFERENT root: the fly-aways are a TERMINAL-DECK event (drone reaches deck clean @~0.05m, marker Ncorn->0 from 1/Z fill, drone still armed -> reacts to the perc spike -> climbs+flies; q=10 makes it worse, q=1 milder — but q is a severity band-aid, NOT the fix). q=10 restores low-lag off-center velocity; the real fix is the terminal commit/disarm. ⚠ WITHOUT that fix q=10 shows 7-31m deck fly-aways.
         self._vds_kf_r = float(os.environ.get("PLASMC_VDS_KF_R", "1e-3"))   # measurement (centroid) noise var
+        # Glitch gate on the VDS CV-KF correct-step (2026-08-31). The "can't lower q" constraint
+        # (q=10 restores low-lag off-center velocity, see above) leaves the KF ~K=1 → every centroid
+        # sample, jitter and all, is differentiated straight into the velocity state → s_dot_meas is
+        # 7–12× noisier under real perception than GT-FB (project_20260831_perception_mode_landing).
+        # This is the ONLY outlier rejection in the s_dot_meas path — everything upstream
+        # (FLOW_DS_MAX ds-hold, conf-scaled _kf_feat_r) acts on centroid POSITION, never the rate,
+        # and _vdsKFStep had no gate at all (unlike _yawKFStep). Mechanism: see _vdsKFStep — a
+        # per-axis test on the raw inter-measurement step (z−z_prev)/dt, NOT the KF innovation
+        # (with q this high the χ²-vs-S gate goes blind). Within-band frames are bit-identical to
+        # the pre-gate filter → ZERO added lag; only glitch spikes get R∝d²/gate. It does NOT
+        # lower the broadband noise floor — that needs a better upstream signal or smoothing lag.
+        self._vds_kf_gate = float(os.environ.get("PLASMC_VDS_KF_GATE", "9.0"))  # d² trip threshold (~3σ on gate_rate); 0 = off
+        self._vds_kf_gate_rate = float(os.environ.get("PLASMC_VDS_KF_GATE_RATE", "2.0"))  # genuine centroid step-rate 1σ (norm units/s); trip at √gate·this ≈ 6 u/s vs the measured 5–7 u/s glitch spikes and ~0.85 u/s clean std
+        self._vds_z_prev = None            # last centroid measurement (glitch-gate reference)
+        self._vds_gate_hits = 0            # DIAG: count of gated (down-weighted) axis-frames
+        self._vds_gate_calls = 0          # DIAG: total axis-frames tested (run() spins ~1.4 kHz, not frame rate → ratio matters, not raw count)
+        self._vds_d2_max = 0.0            # DIAG: largest d² seen (glitch severity)
         # RESCALE (sensor-cal CONSISTENCY, not GT): V_ds=d(s_e)/dt is built from the centroid, which
         # carries _sensor_cal_s (~1.16x lateral), whereas the flow h it is differenced against in
         # h_e=h-h_d carries _sensor_cal_hw — a DIFFERENT cal. So V_ds and h are on mismatched scales
@@ -1913,6 +1945,10 @@ class Controller(Thread):
         self._hd_kr = float(os.environ.get("PLASMC_HD_KR", "0.5"))  # BAKED 0.5 2026-06-29
         if self._hd_kr != 0.0:
             print(f"[controller] PLASMC_HD_KR={self._hd_kr}: h_d carries back-map convergence term -k_r*zeta_r/g_r")
+        if self._vds_kf and self._vds_kf_gate > 0.0:
+            print(f"[controller] PLASMC_VDS_KF_GATE={self._vds_kf_gate} (rate 1σ={self._vds_kf_gate_rate} u/s "
+                  f"→ trip ≈{(self._vds_kf_gate**0.5)*self._vds_kf_gate_rate:.1f} u/s): per-axis inter-step glitch "
+                  f"gate on the s_dot_meas CV-KF (q={self._vds_kf_q} kept; spike frames get R∝d²/gate, clean bit-identical)")
         # PLASMC_DHD_SRC (2026-07-02): WHICH h_d list feeds dh_d (-> c3 = -dh_d) in combined+funnel-ref
         # mode. The 06-27 "differentiate the FULL h_d honestly" call was premised on the rate term being
         # SMOOTH — true for S_r*dp_r, NOT for the -k_r*zeta_r/g_r branch baked 06-29 (barrier-inflated,
@@ -2012,8 +2048,6 @@ class Controller(Thread):
         # NaN when th_desired is None (Phase-2 fallback, no projection ran).
         self._theta_desired_log = []
         self._dtheta_href_g_log = []   # continuous h_ref compensation gate state (v3, see __init__ note)
-        self._dtheta_xfade_w_log = []  # direct-term crossfade weight (v3, see __init__ note)
-        self._dtheta_correction_log = []  # final (post-crossfade, post-cap) I_a[2] correction actually applied
         self._az_joint_log = []  # PLASMC_AZ_JOINT (2026-08-29): I_a[2] delta applied by the (always-active) thrust-magnitude sphere cap this cycle -- 0.0 when it didn't bind; logged regardless of the flag so the two paths (fixed-angle clip active vs skipped) are directly comparable
         self._theta_current_log = []
         self._cbf_state = {}       # persistent cbf2 state (former _lw_*); see cbf_visibility.cbf2_filter
@@ -3164,6 +3198,20 @@ class Controller(Thread):
         _w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))   # BAKED 1.0->2.0 2026-06-30 (see body-rate cap note below; same env)
         _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
+        # ── Q8 PERFECT-KNOWLEDGE PROBE (PLASMC_YAW_WT_FF, rad/s, default 0.0 = exact no-op) ──
+        # Target yaw-rate FEEDFORWARD on the psi_d advance rate: psi_d_dot = w_t,z + u_a_ASMC.
+        # Deliberately applied to _ua_psid (the rate psi_d integrates at) and NOT to u_a, so it
+        # stays OUT of sigma_a / the kappa_a adaptation -- alpha is relative degree 1 w.r.t.
+        # psi_b_dot, so the existing surface is structurally right and adding a rate term to it
+        # would make kappa_a fight an acceleration.
+        # This knob is a DIAGNOSTIC: it hands the loop the exact injected PLASMC_GT_SPIN_WZ so
+        # we learn whether PERFECT knowledge of w_t,z even fixes the turning-rover ramp-windup
+        # ([[project_rover_turning_open]] mechanism 1) before building any estimator. If it does
+        # not, the whole measured-w_z line dies cheaply and the cause is more likely
+        # integrator/wrap/saturation. Replace with the measured-w_z path only after it passes.
+        _wt_ff = float(os.environ.get("PLASMC_YAW_WT_FF", "0.0"))
+        if _wt_ff != 0.0:
+            _ua_psid = float(np.clip(_ua_psid + _wt_ff, -_psid_rate, _psid_rate))
         # Store the rate psi_d actually advances at, for the optional inner-loop
         # yaw-rate feedforward Omega_d=[0;0;u_a] in _attCtrl (PLASMC_YAW_OMEGA_D_FF).
         # Zeroed during yaw-hold below (psi_d frozen -> no reference rate to track).
@@ -3190,6 +3238,7 @@ class Controller(Thread):
         if self._vds_x is None:                       # lazy init at the first measurement
             self._vds_x = np.array([z[0], z[1], 0.0, 0.0])
             self._vds_P = np.diag([1e-2, 1e-2, 1.0, 1.0])
+            self._vds_z_prev = z.copy()
             return np.zeros(2)
         F = np.array([[1, 0, dt, 0], [0, 1, 0, dt], [0, 0, 1, 0], [0, 0, 0, 1]], float)
         q = self._vds_kf_q
@@ -3197,10 +3246,33 @@ class Controller(Thread):
         Q = q * np.array([[dt**3/3, 0, dt**2/2, 0], [0, dt**3/3, 0, dt**2/2],
                           [dt**2/2, 0, dt, 0], [0, dt**2/2, 0, dt]], float)
         H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]], float)
-        R = self._vds_kf_r * np.eye(2)
         x = F @ self._vds_x
         P = F @ self._vds_P @ F.T + Q
-        S = H @ P @ H.T + R
+        # --- per-axis glitch gate on the INTER-MEASUREMENT step (not the KF innovation) ---
+        # A textbook Mahalanobis gate (nu²/S, like _yawKFStep) goes BLIND here: q is kept high
+        # (=10, for low off-center lag — can't lower it), so S inflates until even a big jump
+        # scores d²<1, AND with q that high the filter's OWN predicted position is noisy enough
+        # that gating a fixed reference against nu clips normal frames. So gate the raw measured
+        # step instead: raw_rate = (z − z_prev)/dt is pure sensor motion, no filter-state
+        # contamination. |raw_rate| beyond √gate·gate_rate (gate_rate in normalized-centroid
+        # units/s, scale-free — no Z) is a detection/LK glitch → inflate that axis' R ∝ d²/gate
+        # so K→0 for the frame; a within-band frame is bit-identical to the pre-gate filter →
+        # zero added lag. Companion to the upstream FLOW_DS_MAX position ds-hold (which never
+        # touches the rate the KF differentiates). NB: this rejects glitch SPIKES only; the
+        # ~8× broadband s_dot_meas noise floor under real perception is a separate problem that
+        # a gate cannot fix (needs a better upstream signal or accepted smoothing lag).
+        r_eff = np.array([self._vds_kf_r, self._vds_kf_r], float)
+        if self._vds_z_prev is not None and dt > 1e-6 and self._vds_kf_gate > 0.0:
+            raw_rate = (z - self._vds_z_prev) / dt
+            for _j in range(2):
+                d2 = (raw_rate[_j] / max(self._vds_kf_gate_rate, 1e-6)) ** 2
+                self._vds_gate_calls += 1
+                self._vds_d2_max = max(self._vds_d2_max, d2)
+                if d2 > self._vds_kf_gate:
+                    r_eff[_j] = self._vds_kf_r * (d2 / self._vds_kf_gate)   # inflate R → K→0 for the spike
+                    self._vds_gate_hits += 1
+        self._vds_z_prev = z.copy()
+        S = H @ P @ H.T + np.diag(r_eff)
         K = P @ H.T @ np.linalg.inv(S)
         x = x + K @ (z - H @ x)
         P = (np.eye(4) - K @ H) @ P
@@ -3704,64 +3776,25 @@ class Controller(Thread):
             p_10_eff, theta_cone,
             dt_last, w_rp, self._cbf_state, radius=cbf_radius_phase2, h_z=_cbf_h_z,
             A_CAP=A_CAP, g=g)
-        # AZ VISIBILITY FILTER v2 (2026-08-24, user design -- REPLACES the 2026-08-23
-        # loom-margin-prediction approach entirely, not stacked on it). That approach used
-        # an indirect proxy (predicted FoV-margin erosion from a measured loom rate) for
-        # "is visibility at risk soon". This uses a direct one instead: dtheta =
-        # th_desired - th_safe is exactly how much LATERAL AUTHORITY the visibility CBF is
-        # suppressing RIGHT NOW (th_desired = the unconstrained tilt the SMC wanted;
-        # th_safe = what the FoV-box projection actually allowed) -- when the CBF is
-        # actively fighting the lateral controller, slow descent to buy the lateral loop
-        # time to converge instead of pressing on blind to the conflict. th_desired is
-        # None on the Phase-2 fallback (no projection ran -- "unmet demand" isn't a
-        # meaningful concept there), so dtheta=0 in that case: same "no data -> don't
-        # correct" philosophy the removed approach's no-data guard used. Scalar (norm),
-        # not per-axis, per user direction. MUST run here, right after cbf2_filter and
-        # BEFORE the theta_cap rescale below: theta_cap is a separate deliverability
-        # concern, not part of the visibility-conflict measurement dtheta captures. The
-        # adjustment lands in I_a[2] before the A_CAP magnitude-cap rescale further down,
-        # so that rescale's direction-consistency guarantee still covers the final value
-        # (see A_CAP's top-of-file comment for why an unprotected az adjustment can starve
-        # lateral authority once the combined thrust vector saturates).
-        _dtheta_gain = float(os.environ.get("PLASMC_DTHETA_AZ_GAIN", "10.0"))  # (m/s^2 of extra lift) per (rad of suppressed lateral demand); tunable, sign fixed by physics (more lift always slows descent), magnitude untuned
+        # AZ VISIBILITY FILTER -- REMOVED 2026-08-31. This was a downstream bolt-on:
+        # after cbf2_filter, it measured dtheta = ||th_desired - th_safe|| (the lateral
+        # tilt the FoV box had just suppressed) and did `I_a[2] -= gain*dtheta` to slow
+        # the descent "to buy the lateral loop time." Two problems: (1) it modified
+        # I_a[2] OUTSIDE the QP's own constraint set, so the final vector was no longer
+        # guaranteed FoV- or sphere-consistent; (2) it could pile unbounded lift on top
+        # of the loom-tracking z-SMC -> the terminal climb-away / fly-away (traced on a
+        # perception-mode landing 2026-08-31; earlier IC5 fly-aways too). The joint QP
+        # (CBF_JOINT_QP, default on) already solves for the full I_a including I_a[2],
+        # so the same "trade descent rate for lateral margin" now lives INSIDE that
+        # constrained solve as CBF_AZ_COST_GAIN (cbf_visibility.py) -- self-consistent
+        # output, and hard-clamped so it can only slow a descent toward hover, never
+        # reverse it into a climb. th_desired / dtheta stay logged as diagnostics.
         if self._theta_safe is not None and _th_desired is not None:
             _dtheta_norm = float(np.linalg.norm(_th_desired - self._theta_safe))
         else:
             _dtheta_norm = 0.0
         self._dtheta_az_log.append(_dtheta_norm)
         self._theta_desired_log.append(float(np.linalg.norm(_th_desired)) if _th_desired is not None else float("nan"))
-        # Crossfade (v3, see __init__ note): only active when PLASMC_DTHETA_HREF is on --
-        # bridges the several-cycle lag before h_ref_eff's SMC/LPF-mediated slowdown takes
-        # effect, then fades toward 0 as the encounter persists so this (self-defeating-loop-
-        # carrying) direct channel doesn't run at full strength indefinitely once the coherent
-        # h_ref channel has taken over. Off (weight=1 always): unchanged/backward-compatible.
-        if self._dtheta_href:
-            _dt_now = self._dt[-1] if (len(self._dt) > 0 and self._dt[-1] > 1e-6) else 0.008
-            if _dtheta_norm > 1e-3:
-                self._dtheta_active_t += _dt_now
-            else:
-                self._dtheta_active_t = 0.0
-            _xfade_w = float(np.exp(-self._dtheta_active_t / max(self._dtheta_xfade_tau, 1e-6)))
-        else:
-            _xfade_w = 1.0
-        self._dtheta_xfade_w_log.append(_xfade_w)
-        # CAP (2026-08-24, IC5 fly-away root cause -- see project_20260824_dtheta_ic5_flyaway_
-        # rootcause memory): the correction has no memory of what it already injected -- at ICs
-        # where dtheta stays active almost continuously (IC5: 65-98% of frames from t=0), the
-        # per-cycle term itself was observed GROWING (0.2->1.9 m/s^2 over 2s, gain=5) rather than
-        # settling, driving a real 3m->7-10m runaway climb + 20-28m lateral divergence within ~9s
-        # before TARGET_LOST. This is a SEPARATE defect from the th_curr self-defeating-loop
-        # (project_20260824_dtheta_az_filter_self_defeating_feedback): that one is about the QP
-        # granting LESS lateral authority over time (a slow degradation); this is about the
-        # correction's own OUTPUT being unbounded when its trigger persists (a stability/safety
-        # issue). Capping does NOT fix the self-defeating loop -- see PLASMC_DTHETA_HREF (v3) for
-        # that. This clamp is a guardrail so the correction can no longer diverge into a fly-away,
-        # nothing more.
-        _dtheta_correction = _dtheta_gain * _dtheta_norm * _xfade_w
-        _dtheta_cap = float(os.environ.get("PLASMC_DTHETA_AZ_CAP", "2.0"))   # m/s^2, max extra lift per cycle; ~median-to-p90 of the gain=10 uncapped distribution, clips the runaway tail
-        _dtheta_correction = float(np.clip(_dtheta_correction, 0.0, _dtheta_cap))
-        self._dtheta_correction_log.append(_dtheta_correction)
-        I_a[2] -= _dtheta_correction   # more negative I_a[2] = more lift = slower descent
         # JOINT A_Z DELIVERABILITY (2026-08-29, PLASMC_AZ_JOINT, default off, user design).
         # CORRECTED (2026-08-29, same day, after a real SITL failure): an earlier version
         # of this fully SKIPPED the angle clip below, relying only on the downstream
@@ -3818,7 +3851,22 @@ class Controller(Thread):
         _thrust_vec = I_a + np.array([0.0, 0.0, g])
         _thrust_mag = float(np.linalg.norm(_thrust_vec))
         _az_before_cap = float(I_a[2])
-        if _thrust_mag > A_CAP > 0.0:
+        if _TRUE_THRUST_SPHERE:
+            # CORRECT: I_a IS the thrust acceleration (hover I_a[2] = -g, see the
+            # z-upright guard above and the B_T mapping below), so the deliverable-thrust
+            # bound is |I_a| <= A_CAP. The legacy branch below shifts by +g and therefore
+            # bounds |a_vehicle| -- zero at hover -- which is not a thrust limit at all.
+            # This is the SAME bug as cbf_visibility.py's sphere and is gated on the SAME
+            # env var so the two can never diverge: fixing only the CBF leaves THIS site
+            # as the last gate before the command is used, and it is the one that matters
+            # most when the CBF is bypassed (Phase-2 decode-fail at touchdown, where every
+            # breach in the 2026-09-03 A/B occurred). Measured there: IC4 emitted
+            # I_a=[-2.85,11.08,-9.92], |I_a|=15.14 (11% over the 13.61 cap) while
+            # |I_a+g*e3|=11.44 sailed under the legacy threshold unclipped.
+            _true_mag = float(np.linalg.norm(I_a))
+            if _true_mag > A_CAP > 0.0:
+                I_a = I_a * (A_CAP / _true_mag)
+        elif _thrust_mag > A_CAP > 0.0:
             _thrust_vec *= A_CAP / _thrust_mag
             I_a = _thrust_vec - np.array([0.0, 0.0, g])
         self._az_joint_log[-1] = float(I_a[2] - _az_before_cap)   # how much this cap actually moved a_z this cycle (0 when it didn't bind)
@@ -4037,8 +4085,45 @@ class Controller(Thread):
     def getControlInput(self):
         return self._u[-1] if len(self._u) > 0 else np.zeros(N_DIM + 1)
 
+    # Env prefixes whose vars can change control behaviour. Used by getParams() so a saved
+    # rep records its own configuration (2026-09-03, user request): Control_Params.npy held
+    # only the 35 Table-1 gains, so every knob baked since ~June (HD_KR, CBF_AZ_COST_GAIN,
+    # CBF_JOINT_QP, CBF_SPHERE_TRUE_THRUST, ...) was invisible and a result could only be tied
+    # to its config via console banners in run_logs/ -- which are not kept per-rep.
+    _ENV_PREFIXES = ("PLASMC_", "CBF_", "CROSS_", "FLOW_", "MARKER_", "IMG_", "LANDING_",
+                     "DH_D_", "RING_", "VDS_", "CENTROID_", "WORLD", "MARKER_TYPE")
+
+    def _resolvedConfig(self):
+        """Everything needed to reproduce this rep's configuration, split by provenance.
+
+        `overrides` = what was explicitly set in the environment (non-default by definition).
+        `resolved`  = EFFECTIVE values actually in force, including ones left at their default,
+                      read from the live module constants / instance attributes rather than
+                      re-deriving the defaults here (which would silently drift).
+        """
+        overrides = {k: v for k, v in os.environ.items() if k.startswith(self._ENV_PREFIXES)}
+        resolved = {
+            # deliverability / attitude envelope
+            "A_CAP": A_CAP, "THRUST_MAX_N": THRUST_MAX_N, "THRUST_MARGIN": THRUST_MARGIN,
+            "mass": mass, "g": g,
+            "CBF_SPHERE_TRUE_THRUST": _TRUE_THRUST_SPHERE,
+            "THETA_CAP_DEG_DERIVED": THETA_CAP_DEG_DERIVED,
+            "theta_cap": float(self._theta_cap), "theta_floor": float(self._theta_floor),
+            # h_d construction
+            "HD_KR": float(self._hd_kr),
+            "HD_FUNNEL_REF": bool(self._hd_funnel_ref),
+            "HD_PASSIVE": bool(self._hd_passive),
+            # CBF knobs read inside cbf_visibility at call time -- mirrored here with the SAME
+            # defaults so the rep records them even when unset.
+            "CBF_JOINT_QP": os.environ.get("CBF_JOINT_QP", "1") == "1",
+            "CBF_AZ_COST_GAIN": float(os.environ.get("CBF_AZ_COST_GAIN", "5.0")),
+            "CBF_TAU": float(os.environ.get("CBF_TAU", "0.3")),
+        }
+        return {"overrides": overrides, "resolved": resolved}
+
     def getParams(self):
         return {
+            "Config": self._resolvedConfig(),
             "Des Img Feature Param": self._s_d,
             # Outer PID
             "p_10": self._p_10,
@@ -4135,6 +4220,9 @@ class Controller(Thread):
             "zeta(t)": self._zeta,
             "izeta(t)": self._izeta,
             "Fresh Gate Blocked N": self._fresh_gate_blocked_n,   # diag 2026-08-20, see _fresh_gate_integ
+            "VDS Gate Hits N": self._vds_gate_hits,               # diag 2026-08-31, VDS KF glitch gate: axis-frames down-weighted
+            "VDS Gate Calls N": self._vds_gate_calls,             # diag 2026-08-31, total axis-frames tested (hits/calls = glitch rate)
+            "VDS d2 Max": self._vds_d2_max,                       # diag 2026-08-31, worst inter-step centroid-rate d² (glitch severity)
             "CBF Overflow Diag Log": self._cbf_overflow_diag_log,  # diag 2026-08-24, see its own comment
             "G(t)": self._G,
             "theta(t)": self._theta,
@@ -4164,8 +4252,6 @@ class Controller(Thread):
             "dtheta_az(t)": self._dtheta_az_log,
             "theta_desired(t)": self._theta_desired_log,
             "dtheta_href_g(t)": self._dtheta_href_g_log,
-            "dtheta_xfade_w(t)": self._dtheta_xfade_w_log,
-            "dtheta_correction(t)": self._dtheta_correction_log,
             "az_joint_delta(t)": self._az_joint_log,
         }
 
