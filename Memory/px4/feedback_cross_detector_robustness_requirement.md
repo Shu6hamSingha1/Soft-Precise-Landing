@@ -154,3 +154,57 @@ that, because the pipeline is fitting real structure; it is fitting the WRONG re
 says the missing piece is a positive test that the two accepted strokes ARE the cross
 (mutually ~perpendicular, intersecting IN-frame, comparable length/width, junction consistent
 with both arms' inlier spans) rather than any two long edges that survived.
+## ⛔ STAGE 3 TRIED 2026-09-03 — DEAD END. The "NEXT (untried)" line above is SUPERSEDED.
+
+Both remaining pieces of the locked design were implemented and measured. Neither works,
+and the reasons are specific enough to redirect the whole thread.
+
+**Attempt 3 — candidate-mask ensemble** (`CROSS_GATE_MODE=ensemble`, `19a9ed62`, default OFF).
+Changes the SELECTION, not the thresholding rule: legacy V-gate first, and only if that
+yields no cross-shaped component, Otsu on Lab L/a/b in BOTH polarities, all scored by the
+SAME `_best_cross_component` shape test. Legacy-first makes it inert by construction where
+the detector already works (legacy short-circuits 73% of `base`, 90% of `col`, 1% of `inv`).
+Result: base/bright/darkbg unchanged; dim 100.0/81 -> 99.2/**86**; lowsun 100.0/97 ->
+98.4/**98**; col 62.4/83 -> 63.7/83; **inv 99.1/0 -> 42.6/0** (err 109.9 -> 78.1 px).
+⭐ It does NOT meet the `inv` bar, but it converts inv from a SILENT liar into a partly loud
+failure — 86 frames return `no_cross_shaped_component` and every band below 3 m refuses.
+⭐⭐ **Key finding: on `inv` the ensemble picks the RIGHT channel and polarity on 60% of
+frames (via `L+`), at fill 0.10-0.12 — genuinely cross-shaped. So segmentation is NO LONGER
+the binding constraint on `inv`.**
+
+**Attempt 4 — geometry-first confirm** (`CROSS_GEOM_CONFIRM=0|1|2`, `d371d744`, default OFF).
+A positive test that the two accepted strokes ARE a cross (perpendicular / junction inside
+both inlier spans / comparable width / comparable length).
+**It regressed the clean scene and fixed nothing**: base detOK 100.0 -> 80.1% (55 rejects,
+all `geom_not_perpendicular`) while base within-0.15 stayed 97% — it rejects ACCURATE
+detections. inv stayed 0% usable in every mode.
+
+⛔ **ROOT CAUSE — the perpendicularity premise is FALSE BY DESIGN for this marker.**
+|fitted angle − 90| on clean `base` is strictly BIMODAL: 58% <15°, and **41% in a 35-55°
+band centred on `STUB_REL_ANGLE_DEG = 45`**. The marker is a 3-armed cross WITH A 45° STUB,
+and in over a third of CORRECT detections `_best_pair` legitimately selects a **stub+arm**
+pair — which still gives the right junction, because the stub passes through the centre too.
+
+⚠ **NOT a frame-convention bug** (user hypothesis, tested — do not re-try): a physically-90°
+cross DOES skew in the RAW image plane under tilt, so the check arguably belongs in the
+gravity-levelled VIRTUAL plane. Re-fitting `det.line_points_i/j` through
+`_getVirtualPts` with each frame's own quaternion moves the distribution by **~0.1°** and
+leaves the bimodality intact (base VIRT p50 1.0, 35-55° 41%). Tilt is only ~21-29° here,
+which barely rotates a line DIRECTION near the image centre.
+
+⛔ **And it would not separate anyway.** On `inv`, where EVERY detection is wrong, 62-67% of
+frames are within 15° of perpendicular — **MORE cross-like than base's correct ones (58%)**.
+Width ratio overlaps too (base p90 2.41 vs inv p90 2.49). The wrong structure `inv` locks
+onto is geometrically a *better* cross than the real marker, so **no self-consistency test on
+the two lines' relative geometry can separate them** — the distinguishing information is not
+present in that comparison. Only sub-test 2 (junction inside both arms' spans) is sound and
+`CROSS_CENTROID_SPAN_RESCUE` already implements it.
+
+## Where that leaves `inv` — the hypothesis space has narrowed, not widened
+
+`inv` is **not** a segmentation failure (the ensemble picks the right channel/polarity) and
+**not** a geometry-confirm failure (its geometry is impeccable). Both stages of the locked
+design are now spent. The next hypothesis must come from OUTSIDE the two-line model — the
+open question is WHICH real structure the fit locks onto on a polarity-flipped scene and why
+it is more cross-like than the cross. That has not been visualised yet, and should be, before
+any fifth mechanism is written.

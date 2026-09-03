@@ -69,3 +69,36 @@ project measure. **Before trusting an n>=3 sweep's result** (not a quick smoke t
 confirm no concurrent SITL session was active during the run window; a sweep that comes
 back noisier than the mechanism predicts may be contaminated data, not a real negative
 result, and isn't fixable retroactively — it needs a clean, isolated re-run.
+
+## 2026-09-03 — the OTHER half: your own orphans. Cost ~2.5 h and 4 failed runs.
+
+The pre-launch check above was run, returned ZERO, and the run still collided — because the
+stale SITL was one **this session had orphaned**, and the check couldn't see it yet.
+
+**What happened.** A wrapper script (`sphere_ab.sh`) drove `run_ic_validation.sh`, which drives
+`run_aruco_landing_retry.sh`. Killing the wrapper with `pkill -f "sphere_ab.sh"` matched ONLY the
+wrapper — the child `run_ic_validation.sh` has a different command line, survived as an orphan,
+and kept launching reps **for 26 minutes**. Every subsequent run then fought it:
+`MicroXRCEAgent` is `setsid`'d so it survives a driver kill and holds `udp:8888` → the next run's
+rep 1 dies `bind error | port: 8888, errno: 98`; and each launcher's own cleanup SIGKILLs the
+other run's processes → `run_aruco_landing.sh: line 77: <pid> Killed`. Four consecutive A/B runs
+produced 0 usable reps and every summary read `landed=NO`, which looks exactly like "the change
+under test broke everything."
+
+**How to apply — three rules, each learned by breaking it:**
+1. **Kill the TREE, not the name.** `kill -9 -<PGID>` (process group), or match the harness
+   scripts BY NAME too — `run_ic_validation|run_aruco_landing|<wrapper>` — not just
+   `px4_sitl|gz sim|MicroXRCEAgent`. A name-matched `pkill` on the wrapper leaves the whole
+   child chain alive.
+2. **`grep -av grep` is load-bearing in every such check.** `ps -eo args | grep -acE 'run_ic_validation|...'`
+   counts its OWN command line and reports phantom competitors. Same self-match class as
+   `until ! pgrep -f "x.py"` waiting on itself forever (that one leaked 3 stuck shells the same
+   day). Any process check you write: ask whether it matches itself.
+3. **Verify with the SAME pattern you killed with.** Killing with a 7-pattern list and then
+   verifying with a 2-pattern list reports "residual: 0" while the agent still holds the port.
+   That exact mismatch caused run #2 of 4.
+
+**Also assert it, don't just check it:** put a `gate()` in the harness that ABORTS if `udp:8888`
+is bound or any harness/SITL process is alive. A silent collision costs a full run; a loud abort
+costs a second. And **always smoke-test ONE rep before launching a long sweep** — the first
+failure here burned 2 h / 40 reps before anyone looked at a summary.
