@@ -25,7 +25,12 @@ e3 = [0;0;1];
 %% Defining parameter bounds (from x500)
 w_max = [4.0;4.0;4.0];   % rad/s (roll, pitch, yaw)
 % w_max = [10.0;10.0;10.0];   % rad/s (roll, pitch, yaw)
-T_max = 60.0; T_min = 0.00;   % N
+% T_max PORTED FROM PX4 2026-09-03 (was 60.0 N = 2.89 g): PX4's measured x500 ceiling is
+% THRUST_MAX_N*THRUST_MARGIN = 33.85*0.85 = 28.7725 N (A_CAP = 13.610 m/s^2 = 1.389 g at m=2.114).
+% MATLAB had been modelling ~2.09x the real airframe's authority. NB this is a PLANT constant --
+% it applies to ALL FIVE controllers (PLASMC + the four baselines all clamp T against it), so the
+% full comparison must be regenerated. Revert to 60.0 to restore the pre-port airframe.
+T_max = 28.7725; T_min = 0.00;   % N
 
 tau_xy_max = 1.85;   % N·m
 tau_z_max  = 1.0;    % N·m

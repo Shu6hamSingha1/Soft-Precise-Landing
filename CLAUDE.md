@@ -54,12 +54,33 @@ MATLAB/                        — Phase 1: numerical simulation (done)
     kappa_a_Solver.m           — ASMC adaptive-gain ODE (yaw)
     smooth4.m, sat.m, moment.m, centered_moment.m, skew.m, init_robustness.m
   Multi_init_cond/
-    visualControl_IBVS_adaptive.m       — main PLASMC single-run (CANONICAL)
+    visualControl_IBVS_adaptive.m       — ⚠️ STALE (last touched 2026-06-25). Self-contained older
+                                          single-run; its inline `K_ctrl` gains and its
+                                          `h_d = s_dot_meas` are SUPERSEDED. Do NOT cite it as the
+                                          MATLAB source of truth (doing so produced a false
+                                          "manuscript disagrees with MATLAB" report, 2026-09-03).
+    run_simulation.m                    — ⭐ CANONICAL manuscript driver. Wraps MATLAB/VDF_ASMC/+blocks/*
+                                          and calls vdf_params() for ALL gains; packages the struct the
+                                          manuscript plotters read. Use THIS (+ vdf_params.m + the
+                                          blocks) whenever comparing the paper against MATLAB.
     visualControl_IBVS_adaptive_loop.m  — Monte-Carlo / parameter sweep
     InitVar.m, InitVar_loop.m           — local overrides
     multi_Init_Var.m, multi_speed_cond.m, Adapt_Control_Params.m, probe_lateCrash.m
     plotter_adaptive.m
     plotters/                  — figure generators
+  VDF_ASMC/                    — ⭐⭐ THE controller + SINGLE SOURCE OF TRUTH for every PLASMC gain.
+    vdf_params.m               — all locked gains (P.Gamma/N/Pleak/kappa0/E/chi_r/chi_z/Xi_r/Xi_h/
+                                 p_r0/p_rinf/p_h0/p_hinf/theta_cap/Omega_a/...). The manuscript's
+                                 Table `sup:control params` mirrors THIS file exactly (verified
+                                 2026-09-03, all rows). Inline comments carry each re-bake's history.
+    +blocks/                   — the control logic run by run_simulation.m AND Comparison ctrl-1:
+      flow_surface.m           — h_d (funnel-prescribed s_dot_presc + transport + descent) = tex
+                                 eq. `h_d final`; optic-flow funnel/barrier; sliding surface; c-term
+      position_funnel.m        — image-feature funnel, zeta_r, and s_dot_presc = p_10.*S_r.*dp_r
+      cbf_visibility.m         — camera-plane THETA-QP via cbf2_filter + P.theta_cap (= tex eq.
+                                 `cbf qp`). No joint-I_a QP / A_CAP sphere / a_z relief (those are
+                                 PX4-only divergences, not in the paper's results).
+      asmc.m, yaw_asmc.m, so3_tracker.m, image_features.m
   Comparison/
     visualControl_comparison.m — 5-controller comparison sim
     run_comparison.m           — entry: run_comparison(ctrl_id)
