@@ -542,6 +542,14 @@ class Controller(Thread):
         # divergence (cf chi_r=0.5, N_z=0.1). RULED OUT: K_R_YAW^ (worse), E_a v (no help
         # at Omega_a=0.5). Env PLASMC_YAW_OMEGA still overrides.
         self._Omega_a   = float(os.environ.get("PLASMC_YAW_OMEGA",  "0.1"))
+        # Gamma_a = 0.5 is the PX4 BASELINE (user decision 2026-09-03). MATLAB/the manuscript
+        # use 0.25 (vdf_params.m P.Gamma_a). Unlike Omega_a above, no PX4-lag derivation was ever
+        # recorded for this divergence -- it was flagged as "unjustified" during the 2026-09-03
+        # audit and the user resolved it by DECLARING the SITL value the reference rather than
+        # reconciling to MATLAB. So: do NOT "sync" this to 0.25, and do not treat the gap as a
+        # defect to explain. It remains a legitimate tuning target on its own merits (it has
+        # never been swept), and it is in the loop the Q8 turning-rover yaw work touches --
+        # any change there should A/B against 0.5, not against MATLAB.
         self._Gma_a     = float(os.environ.get("PLASMC_YAW_GAMMA",  "0.5"))
         self._n_a       = float(os.environ.get("PLASMC_YAW_N",      "1.0"))
         self._p_a       = float(os.environ.get("PLASMC_YAW_P",      "2.0"))

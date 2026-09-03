@@ -37,6 +37,17 @@ generates two seductive false patterns worth naming so they are not "rediscovere
   rate" statements are accurate. The `h_e = G_r^-1(ζ̇_r + k_r ζ_r)` identity is a property of
   the **PX4** law only.
 
+**⚠ MATLAB↔PX4 yaw-gain divergences are DELIBERATE — do not "sync" them.**
+- `Ω_a`: PX4 0.1 vs MATLAB 0.25 — derived, `controller.py` ~531-543: `u_a` is a yaw-RATE command
+  so the rate structure already integrates `e_a`; `Ω_a·ie_a` added a SECOND integrator with no
+  phase margin against PX4 inner-loop lag (K_R_YAW + rate loop + `tau_ua` LPF) that MATLAB does
+  not have. 0.1 removed the yaw limit cycle (ncross 5-6→2).
+- `Γ_a`: PX4 0.5 vs MATLAB 0.25 — **no derivation was ever recorded.** Flagged as unjustified in
+  the 2026-09-03 audit; **user resolved it by declaring the PX4 SITL value the BASELINE** rather
+  than reconciling to MATLAB. Do not change it toward 0.25 and do not treat the gap as a defect.
+  It has never been swept, so it stays a legitimate tuning target on its own merits — and it sits
+  in the loop the Q8 turning-rover yaw work touches, so any change there A/Bs against **0.5**.
+
 **Root cause of the 2026-09-03 error, worth generalising:** `CLAUDE.md`'s repository map did
 not list `MATLAB/VDF_ASMC/`, so the parameter file was never found and the nearest-looking
 file was used instead. Map now fixed. **Treat CLAUDE.md's directory listing as a starting
