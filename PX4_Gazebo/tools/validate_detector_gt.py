@@ -59,6 +59,11 @@ VARIANTS = {
     "geom1":      {"CROSS_GEOM_CONFIRM": "1"},
     "geom2":      {"CROSS_GEOM_CONFIRM": "2"},
     "ens_geom2":  {"CROSS_GATE_MODE": "ensemble", "CROSS_GEOM_CONFIRM": "2"},
+    # 2026-09-03 ring-transition confirm: a cross junction has arms RADIATING from
+    # it, a plate corner has two edges MEETING -> count mask crossings on a ring.
+    "ring":       {"CROSS_RING_CONFIRM": "1"},
+    "ring_t4":    {"CROSS_RING_CONFIRM": "1", "CROSS_RING_MIN_TRANSITIONS": "4"},
+    "ens_ring":   {"CROSS_GATE_MODE": "ensemble", "CROSS_RING_CONFIRM": "1"},
 }
 _GT_STRICT = os.environ.get("CROSS_GT_WINDOW_STRICT", "1") == "1"
 ALT_BANDS = [(4.0, 6.0), (3.0, 4.0), (2.0, 3.0), (1.3, 2.0), (0.7, 1.3)]
@@ -198,7 +203,8 @@ def main():
 
     for nm in names:
         for k in list(os.environ):
-            if k.startswith("CROSS_ADAPT") or k in ("CROSS_GATE_MODE", "CROSS_GEOM_CONFIRM"):
+            if (k.startswith("CROSS_ADAPT") or k.startswith("CROSS_RING_")
+                    or k in ("CROSS_GATE_MODE", "CROSS_GEOM_CONFIRM")):
                 del os.environ[k]   # GATE_MODE too, else it leaks into later variants
         os.environ.update(VARIANTS[nm])
         importlib.reload(cmd)

@@ -208,3 +208,74 @@ design are now spent. The next hypothesis must come from OUTSIDE the two-line mo
 open question is WHICH real structure the fit locks onto on a polarity-flipped scene and why
 it is more cross-like than the cross. That has not been visualised yet, and should be, before
 any fifth mechanism is written.
+
+## ⭐⭐⭐ 2026-09-03 — WHAT `inv` ACTUALLY LOCKS ONTO (visualised, and it retires 4 attempts)
+
+**The detector fits the PLATE'S OUTER EDGES and returns a plate CORNER as the junction.**
+Rendered overlay (legacy gate mask + both arms' inliers + detected centre + GT centre) on
+`inv` at 5/4/3/2 m: at 4 m the green arm lies along the plate's TOP edge, the blue along its
+LEFT edge, and the detected centre sits on the TOP-LEFT CORNER while GT is mid-plate. Same at
+3 m and 2 m. Only at 5 m -- plate still small, cross still dominant -- is the fit correct.
+
+⭐ **This explains every measurement in the thread at once:**
+
+| observation | why |
+|---|---|
+| 99.1% detOK, 0% usable | a corner is a perfectly legitimate intersection |
+| ~110 px error | a corner is half a plate-width from the centre |
+| perpendicularity non-discriminative | **a rectangle's corner is EXACTLY 90 deg** |
+| width ratio overlaps | both "arms" are mask-boundary edges -- identical width by construction |
+| span containment passes | the corner lies inside both edges' spans |
+| ensemble helps only at altitude | as the plate fills the frame its boundary overwhelms the cross |
+
+⛔ So all four stage-3 sub-tests pass on a plate corner BY CONSTRUCTION. Stage 3 could never
+have worked, and the reason my model kept failing is that I was testing the RELATIONSHIP
+BETWEEN THE TWO LINES when the discriminating information is in the NEIGHBOURHOOD of the
+junction. **LESSON: four mechanisms were reasoned from a mental model of this failure and two
+of those models were wrong when measured. A dozen annotated frames settled it in one pass --
+VISUALISE THE FAILURE BEFORE WRITING THE FIFTH MECHANISM.**
+
+## ✅ RING-TRANSITION CONFIRM — the first test in this thread that actually separates
+
+`CROSS_RING_CONFIRM=1` (DEFAULT OFF), `CROSS_RING_MIN_TRANSITIONS` (6), `_RING_R_FRAC` (0.30).
+    a cross junction has arms RADIATING from it;  a corner has two edges MEETING.
+Sample a ring around the candidate junction, count MASK BOUNDARY CROSSINGS. Real junction
+crosses every stroke twice (this marker: 4 arms + stub -> mode 10); a plate corner gives 2.
+Polarity-agnostic (counts boundaries, not levels), scale-free (radius = fraction of extent),
+no threshold of its own. Uses the CLOSE-STAGE mask deliberately -- the ring NEEDS the
+surrounding context, and shape-isolation has stripped exactly the plate boundary that reveals
+a corner. Skips (never vetoes) when the ring leaves the frame = the overfill regime.
+
+**Per-frame separation** (reject when transitions < T; `base` min is 6, mode 10; 46% of `inv` <=2):
+
+| T | base | bright | darkbg | dim | lowsun | col | **inv (catch)** |
+|---|---|---|---|---|---|---|---|
+| 4 | 0.0% | 1.2% | 0.0% | 0.3% | 0.0% | 1.7% | **45.8%** |
+| 6 | 0.0% | 5.2% | 1.0% | 4.2% | 0.0% | 10.4% | **72.0%** |
+
+**Full eval, detOK / within-0.15:**
+
+| variant | base | bright | col | darkbg | dim | **inv** | lowsun |
+|---|---|---|---|---|---|---|---|
+| baseline | 100/97 | 95.0/96 | 62.4/83 | 99.6/94 | 100/81 | **99.1/0** | 100/97 |
+| ring T=6 | 100/97 | 91.1/96 | 57.2/84 | 99.6/94 | 100/81 | **66.5/0** | 100/97 |
+| ring T=4 | 100/97 | 94.1/96 | 62.0/84 | 99.6/94 | 100/81 | **83.0/1** | 100/97 |
+| **ens_ring** | 100/97 | 94.1/96 | 61.7/84 | 99.6/94 | 99.2/**86** | **42.2/0** | 98.4/**98** |
+
+⭐ **`ens_ring` (ensemble + ring) is the best combination**: removes 57% of `inv`'s silent lies
+AND improves accuracy on `dim` (+5) and `lowsun` (+1), for <=1.6% detOK cost on good scenes.
+`base` and `darkbg` are bit-unchanged. Lift is ~14-70x vs stage 3's ~0.02.
+
+⛔ **BUT THE STATED PASS CRITERION IS STILL NOT MET.** `inv` within-0.15 stays **0%** under
+every variant. This REJECTS wrong detections; it does not make them right -- the survivors are
+still corners. The gain is converting `inv` from "99.1% detOK, silently wrong" into "mostly
+refused", so the controller is not fed poisoned measurements and TARGET_LOST engages honestly.
+**A failure-mode fix, not a detection fix. Judge it on that, and do not report it as solving
+`inv`.** All flags DEFAULT OFF; no SITL gate run yet (offline only).
+
+## Attempt scoreboard (all four in-tree, all DEFAULT OFF, each with its numbers)
+1. `CROSS_GATE_MODE=contrast` -- FAILED, regressed clean scenes (plate boundary is genuinely high-contrast).
+2. `CROSS_STROKE_VALIDATE=1` -- FAILED, `inv` 23->26%, error worsened.
+3. `CROSS_GATE_MODE=ensemble` -- PARTIAL, `inv` 99.1/0 -> 42.6/0; picks the right channel/polarity on 60% of `inv` frames, so segmentation is NO LONGER the constraint there.
+4. `CROSS_GEOM_CONFIRM=1|2` -- DEAD END, false by design (45 deg stub) and non-discriminative anyway.
+5. `CROSS_RING_CONFIRM=1` -- BEST SO FAR, real asymmetric separation, but fixes the failure MODE only.

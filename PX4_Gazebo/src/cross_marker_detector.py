@@ -438,6 +438,92 @@ MIN_CLUSTER_SUPPORT = 2   # min Hough segments in a cluster to trust it as a rea
 #   IMPLICATION: `inv` is not a segmentation failure (the ensemble already picks the
 #   right channel/polarity on 60% of its frames) and not a geometry-confirm failure.
 #   The next hypothesis has to come from OUTSIDE the two-line model.
+# ─────────────────────────────────────────────────────────────────────────────
+# RING-TRANSITION CONFIRM (2026-09-03).  CROSS_RING_CONFIRM=1
+#
+# The test that stage 3 should have been. Visualising what `inv` actually locks
+# onto (Memory/px4/feedback_cross_detector_robustness_requirement.md) showed the
+# detector fits the PLATE'S OUTER EDGES and returns a plate CORNER as the junction:
+# on a polarity-flipped scene inRange(V<=100) keeps the whole plate, Canny/Hough
+# find its outline, and two adjacent plate edges meet at a clean right angle.
+#
+# That is why every stage-3 sub-test failed. A rectangle's corner is EXACTLY 90 deg;
+# its two edges are mask boundaries of IDENTICAL width; and the corner lies INSIDE
+# both edges' spans. All four geometry criteria pass on a corner by construction.
+# The distinguishing information is not in the two lines' relative geometry at all --
+# it is in the NEIGHBOURHOOD of the junction:
+#
+#     a cross junction has arms RADIATING from it;  a corner has two edges MEETING.
+#
+# So: sample a ring around the candidate junction and count mask transitions.
+# A real junction crosses every stroke twice (this marker: 4 arms + stub = ~10);
+# a plate corner gives 2 (one contiguous inside-arc). Polarity-agnostic (counts
+# BOUNDARIES, not levels), scale-free (radius is a fraction of marker extent),
+# and needs no intensity threshold of its own.
+#
+# MEASURED on test_data/RobustnessFrameset (reject when transitions < T):
+#     T    base  bright  darkbg    dim  lowsun    col  ||   inv
+#     4    0.0%    1.2%    0.0%   0.3%    0.0%   1.7%  ||  45.8%
+#     6    0.0%    5.2%    1.0%   4.2%    0.0%  10.4%  ||  72.0%
+#          <-------- false-positive cost -------->     ||  catch
+# `base` never falls below 6 (min 6, mode 10 = 5 strokes x 2 edges); 46% of `inv`
+# sits at <=2. Default T=6: 72% of the wrong detections caught at 0% cost on
+# base/lowsun. For contrast, every stage-3 sub-test had a lift of ~0.02.
+#
+# ⚠ WHAT THIS DOES AND DOES NOT DO. It REJECTS wrong detections; it does not make
+# them right. `inv` within-0.15 stays 0% -- the survivors are still corners. The
+# gain is converting `inv` from "99.1% detOK, silently wrong" into "mostly refused",
+# so the controller is not fed poisoned measurements and TARGET_LOST engages
+# honestly. A failure-mode fix, not a detection fix. Judge it on that.
+#
+# Uses the CLOSE-STAGE mask deliberately (before blobby-reject / ROI / shape
+# isolation): the ring test NEEDS the surrounding context -- the plate boundary is
+# precisely the structure that reveals a corner -- and the isolated mask has had it
+# stripped out. Skips (never vetoes) when the ring falls outside the frame, which is
+# the overfill regime; "don't veto on ignorance" matches the rest of this module.
+RING_CONFIRM = os.environ.get("CROSS_RING_CONFIRM", "0") == "1"
+RING_MIN_TRANSITIONS = int(os.environ.get("CROSS_RING_MIN_TRANSITIONS", "6"))
+RING_R_FRAC = float(os.environ.get("CROSS_RING_R_FRAC", "0.30"))
+RING_NSAMP = int(os.environ.get("CROSS_RING_NSAMP", "180"))
+RING_MIN_COVER = float(os.environ.get("CROSS_RING_MIN_COVER", "0.75"))
+RING_CONFIRM_STATS = {"checked": 0, "pass": 0, "rejected": 0, "skipped_offframe": 0}
+
+
+def _ring_transitions(mask, cx, cy, R, nsamp=None):
+    """Mask boundary crossings around a ring at (cx, cy). None if too much of the
+    ring falls outside the frame to judge; 0 for an all-inside or all-outside ring."""
+    if nsamp is None:
+        nsamp = RING_NSAMP
+    th = np.linspace(0.0, 2.0 * np.pi, nsamp, endpoint=False)
+    xs = cx + R * np.cos(th)
+    ys = cy + R * np.sin(th)
+    h, w = mask.shape
+    ok = (xs >= 0) & (xs < w - 1) & (ys >= 0) & (ys < h - 1)
+    if ok.sum() < nsamp * RING_MIN_COVER:
+        return None
+    b = (mask[np.clip(ys.astype(int), 0, h - 1),
+              np.clip(xs.astype(int), 0, w - 1)] > 0).astype(np.int8)[ok]
+    if b.all() or not b.any():
+        return 0
+    return int(np.sum(b != np.roll(b, 1)))
+
+
+def _confirm_ring(mask_close, center, bbox):
+    """(ok, reason, n_transitions). See RING_CONFIRM at module top."""
+    bw, bh = bbox[2], bbox[3]
+    R = RING_R_FRAC * max(bw, bh, 1)
+    n = _ring_transitions(mask_close, float(center[0]), float(center[1]), R)
+    if n is None:
+        RING_CONFIRM_STATS["skipped_offframe"] += 1
+        return True, None, None
+    RING_CONFIRM_STATS["checked"] += 1
+    if n < RING_MIN_TRANSITIONS:
+        RING_CONFIRM_STATS["rejected"] += 1
+        return False, 'ring_not_a_junction', n
+    RING_CONFIRM_STATS["pass"] += 1
+    return True, None, n
+
+
 GEOM_CONFIRM = int(os.environ.get("CROSS_GEOM_CONFIRM", "0"))
 GEOM_PERP_TOL_DEG = float(os.environ.get("CROSS_GEOM_PERP_TOL_DEG", "35.0"))
 GEOM_SPAN_MARGIN = float(os.environ.get("CROSS_GEOM_SPAN_MARGIN", "0.25"))
@@ -1103,6 +1189,8 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     _px_raw = int(np.sum(mask > 0))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     _px_close = int(np.sum(mask > 0))
+    # Snapshot for the ring confirm, which needs the context the next stages strip.
+    _mask_close = mask.copy() if RING_CONFIRM else None
     mask = _reject_blobby_components(mask)
     _px_blobby = int(np.sum(mask > 0))
 
@@ -1399,6 +1487,11 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         _g_ok, _g_reason = _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center)
         if not _g_ok:
             return CrossMarkerDetection(None, None, False, bbox, fail_reason=_g_reason)
+
+    if RING_CONFIRM and _mask_close is not None:
+        _r_ok, _r_reason, _r_n = _confirm_ring(_mask_close, center, bbox)
+        if not _r_ok:
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_r_reason)
 
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())

@@ -3198,6 +3198,20 @@ class Controller(Thread):
         _w_max = float(os.environ.get("PLASMC_W_U_MAX", "2.0"))   # BAKED 1.0->2.0 2026-06-30 (see body-rate cap note below; same env)
         _psid_rate = float(os.environ.get("PLASMC_YAW_PSID_RATE", "1.0")) * _w_max   # 0.7->1.0: un-throttle psi_d to full W_U_MAX (converge large initial yaw, 2026-06-08)
         _ua_psid = float(np.clip(u_a, -_psid_rate, _psid_rate))
+        # ── Q8 PERFECT-KNOWLEDGE PROBE (PLASMC_YAW_WT_FF, rad/s, default 0.0 = exact no-op) ──
+        # Target yaw-rate FEEDFORWARD on the psi_d advance rate: psi_d_dot = w_t,z + u_a_ASMC.
+        # Deliberately applied to _ua_psid (the rate psi_d integrates at) and NOT to u_a, so it
+        # stays OUT of sigma_a / the kappa_a adaptation -- alpha is relative degree 1 w.r.t.
+        # psi_b_dot, so the existing surface is structurally right and adding a rate term to it
+        # would make kappa_a fight an acceleration.
+        # This knob is a DIAGNOSTIC: it hands the loop the exact injected PLASMC_GT_SPIN_WZ so
+        # we learn whether PERFECT knowledge of w_t,z even fixes the turning-rover ramp-windup
+        # ([[project_rover_turning_open]] mechanism 1) before building any estimator. If it does
+        # not, the whole measured-w_z line dies cheaply and the cause is more likely
+        # integrator/wrap/saturation. Replace with the measured-w_z path only after it passes.
+        _wt_ff = float(os.environ.get("PLASMC_YAW_WT_FF", "0.0"))
+        if _wt_ff != 0.0:
+            _ua_psid = float(np.clip(_ua_psid + _wt_ff, -_psid_rate, _psid_rate))
         # Store the rate psi_d actually advances at, for the optional inner-loop
         # yaw-rate feedforward Omega_d=[0;0;u_a] in _attCtrl (PLASMC_YAW_OMEGA_D_FF).
         # Zeroed during yaw-hold below (psi_d frozen -> no reference rate to track).
