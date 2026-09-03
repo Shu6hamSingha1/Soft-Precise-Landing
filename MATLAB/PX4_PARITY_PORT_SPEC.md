@@ -51,11 +51,25 @@ backup to diff against (the backed-up `Static_comparison.mat` only had controlle
 populated — an incomplete file, not a live-run problem).
 
 **Not done:** full regeneration of the comparison datasets (needed eventually — `run_comparison_all.m`
-+ `run_monte_carlo.m` + `multi_speed_comparison.m`), and the joint-QP's fixed-iteration
-non-convergence defect (found independently on PX4, ported faithfully into `cbf2_filter.m`)
-still has no residual/convergence check. A MATLAB batch-mode crash (`std::terminate()`,
-unrelated to any script content — happened after a script's own output had already printed)
-was observed once during this session; noted in case it recurs, not otherwise investigated.
++ `run_monte_carlo.m` + `multi_speed_comparison.m`). A MATLAB batch-mode crash
+(`std::terminate()`, unrelated to any script content — happened after a script's own output
+had already printed) was observed once during this session; noted in case it recurs, not
+otherwise investigated.
+
+**Joint-QP convergence diagnostic ADDED 2026-09-04.** `cbf2_filter.m`'s `jqp_on` branch now
+tracks `jqp_resid(outer) = ||Ia_lat_new - Ia_lat_prev||` per outer iterate and exposes
+`state.jqp_residual` (6-vector) and `state.jqp_converged` (residual on the last iterate <
+5% of the first, or < 1e-3 absolute) after the loop. This is purely additive/diagnostic — it
+does not feed back into `I_a`/`th`/`theta_cone`, and the loop still runs the same fixed 6×5
+budget regardless. Confirmed behavior-neutral: a spot check (IC5 Circular noiseless) gives
+`xy=0.0128, rel_vel=0.0767`, an exact match to the pre-diagnostic 50/50-gate value.
+
+This directly answers the gap `project_joint_qp_nonconvergence_kappa_ratchet.md` flagged as
+"the natural next step, not yet done" — a caller can now check `cs.cbf_state.jqp_converged`
+after any call. **Not yet done:** actually using it — checking whether it ever reports
+non-convergence on MATLAB's runs (the PX4 defect may or may not be reachable under MATLAB's
+idealized perception/plant), and whether non-convergence correlates with any of the harder
+IC×trajectory cells. That's the natural follow-up, not performed this session.
 
 ## STATUS (2026-09-03)
 
