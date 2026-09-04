@@ -349,3 +349,37 @@ Still DEFAULT OFF. What would make this bakeable: (a) re-run at higher n to firm
 rate and characterize the `on/5`-type residual failure, (b) an actual landing attempt (this
 test's IC/timeout wasn't tuned for descent-to-touchdown, only for "does it start descending"),
 (c) the same test on `cm_dim`/`cm_lowsun`/`cm_col`.
+
+## ✅ FIRM-UP: n=15/arm on `cm_inv`, combined across three batches (2026-09-04)
+
+Pooled the 2026-09-04 SITL flight test with two follow-up batches (5+10 more reps, same
+harness/IC/world). One batch ran mid-fix for a real concurrent-session-safety bug in the
+harness (see [[feedback_recurring_analysis_mistakes]]-adjacent note below) — the fix itself
+doesn't change flight physics, and results before/after look identical in character, so all
+valid reps are pooled.
+
+**min_h (lowest altitude reached), n=15/arm:**
+
+| | stuck at ~5m floor | breaks below floor |
+|---|---|---|
+| off (baseline) | **13/15 (87%)** | 2/15 — but into OTHER bad outcomes, not progress: one `TARGET_LOST` descending nearly blind to 0.004m while ending 5.1m off-target, one partial `NOT_LANDED` at 3.6m |
+| on (ens_ring) | 3/15 (20%) — reproduces baseline's floor exactly | **12/15 (80%)** — 5 moderate (3.2-3.8m), 4 substantial (1.5m), 3 near-touchdown (<0.12m) |
+
+Confirms the n=5 finding at 3x the sample: **baseline gets stuck 87% of the time; `ens_ring`
+breaks that in 80% of reps.** Neither arm landed in any rep across all 15.
+
+⛔⛔ **SEPARATE, SERIOUS FINDING mid-investigation: the A/B harness's concurrent-session
+guard was UNSAFE.** The guard checked ONCE before the loop; `ko()`, called before every one
+of the 10-20 reps in a run, did an unconditional `kill -9` on every px4/gz/MicroXRCEAgent
+process with NO re-check. If another session started SITL any time after the initial guard
+passed, `ko()` would have killed it SILENTLY — and there is no way to prove after the fact
+whether that happened (checked PX4's own boot logs for the original failure window: 13 boots,
+all under one instance-0 dir, consistent with this script's OWN retry logic, but that does
+NOT rule out a second session, since a second session's default launch hits the same
+instance-0 ports). **User caught this by direct challenge, not something I surfaced myself.**
+Fixed in all three harnesses (`cminv_ab.sh`/`loomr_ab.sh`/`ensring_ab.sh`, commit `9bd79574`):
+`ko()` now re-verifies after its own cleanup, and if SITL processes are STILL present — which
+cannot be something `ko()` itself spawned — the script ABORTS instead of killing again and
+launching on top of it. Applies to ALL future `*_ab.sh` harnesses of this shape.
+
+Still DEFAULT OFF.
