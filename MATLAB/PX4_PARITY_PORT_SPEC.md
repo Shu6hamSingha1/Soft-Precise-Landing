@@ -223,6 +223,52 @@ looks unambiguous (4/4 with good margin still hid a regression elsewhere). The f
 given (3) already shows a real, non-trivial regression needing a re-tune first — running the
 full sweep now would just enumerate more instances of the same root cause.
 
+**WHY these two, mechanistically (2026-09-04) — grounded in PX4's own prior tuning history, not
+just MATLAB's empirical isolation.** `Xi_r` and `Xi_h` are exponential funnel contraction rates,
+$p(t)=e^{-\Xi t}(p_0-p_\infty)+p_\infty$, and PX4 tunes them in OPPOSITE directions for two
+independently-documented reasons:
+
+- **`Xi_r` slow (0.10) is a validated PX4 fix, not an accident.** The controlling quantity is
+  the funnel "squeeze velocity" $\Xi_r(p_{r0}-p_{r\infty})$. `Memory/px4/
+  feedback_prinf_standing_condition.md` found fast contraction (`XIR=1.0`) is a **regression**
+  on PX4 itself: it snaps the funnel tight while error is still large, forcing $\zeta_r$ toward
+  its saturating edge → terminal breach — the SAME failure signature found here. PX4 landed on
+  0.10 (+ wide `p_r0=10`) specifically to keep $\zeta_r$ off that edge.
+- **`Xi_h` fast (→1.0) is a separately validated PX4 fix.** `Memory/px4/
+  feedback_flow_funnel_zetah_works.md`: at `Xi_h=0.2` the velocity barrier $\zeta_h$ was
+  **dormant** (~7% of $\sigma_{xy}$), so lateral-velocity correction barely engaged during
+  descent, leaving it to the terminal $1/Z$ zone where the geometric loom-amplification always
+  wins as $Z\to0$. PX4 tightened `Xi_h` (0.2→0.7→0.9→1.0) specifically to force early velocity
+  damping and lower that "safe floor" from ~1m to ~0.15m.
+
+So PX4's combination is two independently-justified fixes for two DIFFERENT PX4-specific
+failure modes (position edge-forcing; terminal lag-driven velocity blowup), neither tuned
+against a target that itself moves/curves fast enough to demand sustained tracking authority.
+Working hypothesis for the MATLAB failure (not instrumented/proven): weak, slow `Xi_r` supplies
+too little continuous inward drive to keep pace with Circular/Lissajous's continuous
+acceleration demand, while fast `Xi_h` adds an early, tight velocity constraint (tuned to
+suppress a lag-driven spike MATLAB's idealized plant doesn't have the same way) without
+addressing the growing *positional* gap. Static/Linear/Sinusoidal don't demand enough sustained
+curvature to expose it.
+
+**Is this the root cause of PX4 SITL/hardware failures too? Checked — no.** The closest real
+PX4 analog (rover / moving target) was root-caused to something else entirely:
+`Memory/px4/feedback_rover_flyaway_no_platform.md` — a missing landing-platform collision
+geometry (terminal $1/Z$ danger zone occurred in open air) + a chase-cam pose-index bug, NOT
+`Xi_r`/`Xi_h`. Once both were fixed, the SAME gain config (PX4's `Xi_r=0.10`/fast `Xi_h`) landed
+5/5 clean on the rover. Caveat: the rover's real motion is likely gentler than MATLAB's tight
+Circular figure (r=0.5m, ω=0.48 rad/s) — "no evidence this is a root cause on PX4" is accurate
+as stated, not "proven safe under equivalent curvature stress" (untested on PX4 at that point).
+
+**Ties to a standing principle from the OPPOSITE porting direction:** `Memory/px4/
+feedback_matlab_gains_not_portable.md` — porting MATLAB's lag-free gains (`chi_r=2.0`) INTO
+PX4 caused a catastrophic fly-away there too (IC1 flew 18m, $a_u$=2,000,000), root-caused to
+PX4's 38ms lag causing aggressive gains to over-react to a terminal residual. Standing
+conclusion recorded then: *"you cannot out-gain the lag... the gains are non-portable in BOTH
+directions."* Today's finding is the same principle from the other side — gain VALUES are
+plant-specific in both directions; STRUCTURAL ports (joint-QP, HD_KR, true-thrust sphere) still
+transfer, which is why this port kept those and only retuned the funnel-timing constants.
+
 **Cross-reference, checked and RULED OUT as the cause here:** `Memory/px4/
 project_joint_qp_nonconvergence_kappa_ratchet.md` (2026-09-04, independent PX4 session) found
 the joint-QP's fixed 6×5 iteration genuinely fails to converge near touchdown on real PX4 data
