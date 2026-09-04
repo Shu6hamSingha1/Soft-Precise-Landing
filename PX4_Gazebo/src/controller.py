@@ -578,6 +578,41 @@ class Controller(Thread):
         self._yaw_kf_x = None          # [yaw, yaw_rate] state (yaw unwrapped)
         self._yaw_kf_P = None          # 2×2 covariance
 
+        # ── NEW YAW-RATE LAW (2026-09-04, PLASMC_YAW_RATE_LAW, default 0 = OFF) ──
+        # Direct integrator on the MEASURED w_z = omega_t,z - psi_dot_b (self._w_i[-1][2],
+        # the calibrated flow-lstsq rotation component -- validated relation, real in both
+        # GT-feedback and perception-ON, NOT GT-only: gt_feedback.py, "-0.91 correlation
+        # with body yaw rate"). Replaces the ASMC+psi_d+e_R[2] round-trip for yaw ENTIRELY
+        # when enabled -- see _attCtrl for where it's applied and project_q8_omega_d_ff_
+        # fixes_ceiling / project_q8_yaw_ff_harmful_with_headroom memory for why.
+        #
+        # Derivation: e_a_dot = alpha_dot = -w_z EXACTLY (no differentiation of alpha
+        # needed -- w_z already IS that derivative, flow-measured). Choosing
+        # d(w_u[2])/dt = k_p*e_a - w_z - k_i*ie_a drives e_a_dot -> -k_p*e_a (clean
+        # exponential convergence), because w_u[2] IS the integrator that omega_t,z
+        # ⚠ SIGN (2026-09-04): this is k_p*e_a - w_z, NOT w_z - k_p*e_a as the manuscript-
+        # style derivation alone suggests -- the ACTUATION chain from w_u[2] to the achieved
+        # body yaw rate is INVERTED in this codebase (measured directly in SITL: commanding
+        # +2.0 rad/s achieved -2.03 rad/s). See the in-line comment at the computation site
+        # in _yawCtrl for the full evidence trail; verified by closed-loop simulation against
+        # the confirmed (not assumed) plant before redeploying.
+        # cancels inside of -- omega_t,z is never computed as a named quantity anywhere in
+        # this law, only w_z (measured) and this law's own prior output enter the update.
+        # Exactly ONE integrator (w_u[2] itself); nothing left to double-count against,
+        # unlike PLASMC_YAW_WT_FF which stacked an injected estimate on top of the ASMC's
+        # OWN separate ie_a integrator.
+        #
+        # k_i defaults to 0 (pure P+rate-cancellation, matching the clean derivation) --
+        # a light integral action is available for residual robustness against w_z
+        # calibration bias / inner-loop lag, NOT the full adaptive kappa_a machinery.
+        #
+        # Computed UNCONDITIONALLY (cheap; lets the ASMC path run alongside for offline
+        # comparison even when this law isn't driving the output) -- gate only the
+        # APPLICATION in _attCtrl.
+        self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
+        self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
+        self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
+
         # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
         # Defaults = 2× MATLAB (camera is 640×480 @ f=270 vs 320×240 @ f=135).
@@ -1991,6 +2026,12 @@ class Controller(Thread):
         self._kappa_a = [np.array(self._kappa_a_0)]
         self._u_a = []        # commanded yaw rate (rad/s)
 
+        # New yaw-rate law state (PLASMC_YAW_RATE_LAW) -- own integrator + own (light,
+        # optional) integral term, deliberately SEPARATE from _ie_a/_sigma_a/_kappa_a above
+        # so the ASMC path can keep running unmodified alongside it for comparison.
+        self._yaw_rl_cmd = []   # this law's own w_u[2] integrator state (rad/s)
+        self._yaw_rl_ie = []    # its own e_a integral, for the optional k_i robustness term
+
         # Attitude reference / SO(3) diagnostics
         # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
         # plotting; the active rate command comes from e_R, not Euler PD.
@@ -3220,6 +3261,47 @@ class Controller(Thread):
         # (anti-windup on ie_a, above). True while the slew is rate-limited.
         self._yaw_rate_saturated = bool(abs(u_a) > _psid_rate)
 
+        # ── NEW YAW-RATE LAW computation (see __init__ for the full derivation) ──
+        # Unconditional: runs alongside the ASMC above for offline comparison regardless
+        # of whether it's driving the output (gated in _attCtrl). Own integrator
+        # (self._yaw_rl_cmd), own light-optional integral (self._yaw_rl_ie, k_i=0 default),
+        # own anti-windup -- entirely independent of ie_a/sigma_a/kappa_a/u_a above.
+        #
+        # ⚠ SIGN, 2026-09-04: the increment is `k_p*e_a - w_z`, NOT `w_z - k_p*e_a` as first
+        # written. Measured directly in SITL (GT poses, independent of this law's own state):
+        # commanding w_u[2]=+2.0 (saturated) produced an ACTUAL drone yaw rate of -2.03 rad/s
+        # -- psi_dot_b_TRUE = -w_u2, not +w_u2. (The manuscript/gt_feedback.py w_z=omega_t-
+        # psi_dot_b relation itself is correct and unaffected -- confirmed independently via
+        # integration of e_a_dot=-w_z against an unrelated rep. Only the actuation-chain sign
+        # from w_u2 to the ACHIEVED rate was mis-assumed.) Substituting the confirmed relation
+        # gives w_z=omega_t,z+w_u2, i.e. a POSITIVE gain from w_u2 to w_z -- the ORIGINAL
+        # `w_z - k_p*e_a` form put w_u2 on the RHS of its own update with coefficient +1
+        # (dw_u2/dt = w_u2 + ...), an unstable ODE -- exactly the observed runaway-to-
+        # saturation. `k_p*e_a - w_z` is stable against the CONFIRMED plant; verified by
+        # closed-loop simulation before redeploying (steady e_a <0.05deg at 0.30/0.48/0.60
+        # rad/s and the stationary no-op, all against psi_dot_b=-w_u2).
+        _wz = float(self._w_i[-1][2]) if len(self._w_i) > 0 else 0.0
+        if len(self._yaw_rl_cmd) == 0:
+            self._yaw_rl_cmd.append(0.0)
+            self._yaw_rl_ie.append(0.0)
+        elif len(self._dt) > 0 and self._dt[-1] > 1e-6:
+            _rl_prev = self._yaw_rl_cmd[-1]
+            _rl_sat = abs(_rl_prev) >= _psid_rate - 1e-9
+            if _rl_sat:
+                self._yaw_rl_ie.append(self._yaw_rl_ie[-1])            # freeze — anti-windup
+            else:
+                self._yaw_rl_ie.append(self._yaw_rl_ie[-1]
+                                        + self._dt[-1] * 0.5 * (self._e_a[-1] + self._e_a[-2]))
+            if self._yaw_hold:
+                self._yaw_rl_cmd.append(_rl_prev)                      # frozen, same as psi_d below
+            else:
+                _rl_new = _rl_prev + self._dt[-1] * (
+                    self._yaw_rl_kp * e_a - _wz - self._yaw_rl_ki * self._yaw_rl_ie[-1])
+                self._yaw_rl_cmd.append(float(np.clip(_rl_new, -_psid_rate, _psid_rate)))
+        else:
+            self._yaw_rl_cmd.append(self._yaw_rl_cmd[-1])
+            self._yaw_rl_ie.append(self._yaw_rl_ie[-1])
+
         # Virtual-compass integrator (manuscript Eq. `psi d integrator`):
         #   psi_d(t+dt) = wrap[psi_d(t) + u_a * dt]   (u_a rate-limited, see above)
         # No external heading reference enters; psi_d evolves purely from
@@ -3941,6 +4023,13 @@ class Controller(Thread):
         #    from current body yaw (MATLAB line 127: psi_d = yaw_init).
         if self._psi_d is None:
             self._psi_d = float(yaw_c)
+        if self._yaw_rate_law:
+            # New yaw-rate law owns w_u[2] directly (below), not psi_d/e_R[2] -- but R_d
+            # still needs A heading reference to build a valid 3D rotation basis (rd1/rd2,
+            # the ROLL/PITCH reference). Track measured yaw_c directly so e_R[2] stays ~0
+            # and R_d's basis reflects the ACTUAL heading rather than a stale/unrelated
+            # integrator value.
+            self._psi_d = float(yaw_c)
 
         # 2. R_d construction (Eq. `R_d construction`):
         #      rd3 = -I_a / ||I_a||       (desired body-z opposes net force, NED)
@@ -4011,6 +4100,15 @@ class Controller(Thread):
         if os.environ.get("PLASMC_YAW_OMEGA_D_FF", "0") == "1":
             w_u = w_u.copy()
             w_u[2] += getattr(self, "_ua_psid_ff", 0.0)
+
+        # New yaw-rate law (PLASMC_YAW_RATE_LAW, default OFF) — REPLACES w_u[2] entirely
+        # (not additive; mutually exclusive with OMEGA_D_FF above, which this supersedes
+        # for yaw when active). Since psi_d := yaw_c above, -K_R_yaw@e_R[2] is already ~0
+        # here; overriding makes that explicit and removes any residual e_R[2] noise from
+        # the command. See __init__/_yawCtrl for the derivation and computation.
+        if self._yaw_rate_law:
+            w_u = w_u.copy()
+            w_u[2] = self._yaw_rl_cmd[-1] if len(self._yaw_rl_cmd) > 0 else 0.0
 
         # Hard clamp on body-rate command magnitude. LK optical flow has a
         # ~15 px tracking window; at our 540 px focal length and 60 Hz
@@ -4111,6 +4209,9 @@ class Controller(Thread):
             "theta_cap": float(self._theta_cap), "theta_floor": float(self._theta_floor),
             # h_d construction
             "HD_KR": float(self._hd_kr),
+            "YAW_RATE_LAW": self._yaw_rate_law,
+            "YAW_RL_KP": float(self._yaw_rl_kp),
+            "YAW_RL_KI": float(self._yaw_rl_ki),
             "HD_FUNNEL_REF": bool(self._hd_funnel_ref),
             "HD_PASSIVE": bool(self._hd_passive),
             # CBF knobs read inside cbf_visibility at call time -- mirrored here with the SAME
@@ -4233,6 +4334,8 @@ class Controller(Thread):
             "ie_a(t)": self._ie_a,
             "sigma_a(t)": self._sigma_a,
             "kappa_a(t)": self._kappa_a,
+            "yaw_rl_cmd(t)": self._yaw_rl_cmd,   # new yaw-rate law's own w_u[2] integrator (rad/s)
+            "yaw_rl_ie(t)": self._yaw_rl_ie,     # its (optional, default-0-gain) e_a integral
             "u_a(t)": self._u_a,
             # Attitude / output
             "a_v(t)": self._a_v,
