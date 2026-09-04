@@ -94,4 +94,4 @@ PX4_Gazebo/test_data/RobustnessFrameset/**
 # Q8_SpinFF (2026-09-03 perfect-ω_t-feedforward falsification): the finding lives in
 # Control_Data (e_R, w_u, u_a, e_a) + Ground_Truth + Control_Params; the 47 MB of Img_Data
 # frames are irrelevant to it. Same policy as DetectorFrameset -- bulk ignored, evidence tracked.
-PX4_Gazebo/test_data/Q8_SpinFF/*/Img_Data.npy
+PX4_Gazebo/test_data/Q8_SpinFF*/*/Img_Data.npy

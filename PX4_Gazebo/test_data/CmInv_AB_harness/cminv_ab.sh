@@ -33,9 +33,39 @@ if [ "${FORCE:-0}" != "1" ]; then
 fi
 RES="$SD/run_logs/cminv_${TAG}.tsv"
 printf "arm\trep\txy_err\tclass\tmin_h\tdetOK\tmax_lat\trec\n" > "$RES"
+SITL_PAT='px4_sitl_default/bin/px4|gz sim|gz-sim|ign gazebo|MicroXRCEAgent|parameter_bridge|mavsdk_server|QGroundControl|/opt/ros/humble|landing_test'
+# ⛔⛔ PER-REP FOREIGN-SESSION CHECK (added 2026-09-04, after a user challenge on the
+# 2026-09-03 cm_inv run's failure cause). The ORIGINAL guard at the top of this file
+# only runs ONCE, before the loop starts -- ko() itself, called before EVERY rep, did
+# an unconditional kill -9 with no re-check. If another session started SITL any time
+# after the initial guard passed, ko() would have killed it SILENTLY, with nothing
+# left behind to prove it happened either way (checked after the fact: inconclusive --
+# PX4 log-boot counts on 2026-09-03 were consistent with this script's OWN retry
+# logic, but could not rule out a second session, since a second session's default
+# launch uses the same instance-0 ports mine does). Whichever it was, the DESIGN was
+# unsafe regardless, and this fix stands on its own regardless of what actually
+# happened that day.
+#
+# PRINCIPLE: ko()'s job is to make the process table clean BY KILLING WHAT IT CAN
+# SEE. If, after its own best-effort kill, SITL processes are STILL present, that is
+# NOT something ko() itself spawned (it just killed everything it could see) -- it
+# means something else is populating the table IN REAL TIME. That is exactly the
+# foreign-live-session signal, and the correct response is to STOP, not kill again
+# and launch on top of it.
+foreign_check(){
+  local ctx="$1"
+  local p=$(ps -eo args | grep -aE "$SITL_PAT" | grep -av grep | head -3)
+  if [ -n "$p" ]; then
+    echo "REFUSING TO CONTINUE ($ctx): SITL processes survived our own cleanup --" >&2
+    echo "this can only mean something else is running them, not us:" >&2
+    echo "$p" | cut -c1-100 >&2
+    echo "Stopping rather than risk killing a live session. No further ko()/launch will run." >&2
+    exit 4
+  fi
+}
 ko(){
   for r in 1 2 3; do
-    pids=$(ps -eo pid,args|grep -aE 'px4_sitl_default/bin/px4|gz sim|gz-sim|ign gazebo|MicroXRCEAgent|parameter_bridge|mavsdk_server|QGroundControl|/opt/ros/humble|landing_test'|grep -av grep|awk '{print $1}')
+    pids=$(ps -eo pid,args|grep -aE "$SITL_PAT"|grep -av grep|awk '{print $1}')
     [ -z "$pids" ]&&break; for p in $pids; do kill -9 "$p" 2>/dev/null; done; sleep 2
   done
   for pat in gz-sim-server gz-sim-gui; do
@@ -43,17 +73,17 @@ ko(){
   done
   rm -f /dev/shm/fastrtps_* /dev/shm/sem.* 2>/dev/null
   for w in 1 2 3 4 5 6 7 8; do gz topic -l 2>/dev/null | grep -q '/clock' || break; sleep 2; done
-  # PORT-8888 HARD BACKSTOP (added 2026-09-04, live failure): the /clock check above
-  # doesn't verify MicroXRCEAgent's UDP port is actually released -- one stray
-  # gz-sim left over from a world-switch race ("Task already running") desynced
-  # port 8888 and cascaded 7 of 10 reps into bind-error/NO_NEW_REC. fuser-kill
-  # anything still bound to it and wait for it to clear before returning.
+  # PORT-8888 HARD BACKSTOP (2026-09-04): the /clock check above doesn't verify
+  # MicroXRCEAgent's UDP port is actually released. fuser-kill anything still bound
+  # and wait for it to clear.
   for w in 1 2 3 4 5; do
     hp=$(ss -ulpn 2>/dev/null | awk '/:8888 /{print}')
     [ -z "$hp" ] && break
     fuser -k 8888/udp 2>/dev/null; sleep 2
   done
   sleep 3
+  # After our own best effort, anything still alive is NOT ours -- see foreign_check.
+  foreign_check "post-cleanup, before next launch"
 }
 for rep in $(seq 1 "$N"); do
   for arm in off on; do
