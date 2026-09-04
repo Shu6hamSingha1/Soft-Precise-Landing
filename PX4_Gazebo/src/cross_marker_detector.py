@@ -1408,8 +1408,27 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     # all 7 scenes, and the result is insensitive to the exact penalty value (tested
     # 5.0-15.0, identical outcome) -- not a fragile hand-tune.
     PAIR_SUPPORT_PENALTY = float(os.environ.get("CROSS_PAIR_SUPPORT_PENALTY", "8.0"))
+    # Rollback switch (2026-09-04) -- kept permanently, matching this module's other
+    # escape-hatch knobs (RING_CONFIRM/GEOM_CONFIRM/etc are all off-by-default and
+    # always available). Reverts to the pre-fix hard two-phase gate for an A/B or a
+    # field rollback if the soft-penalty scoring ever misbehaves in a way this
+    # offline eval didn't catch. Default 0 = use the fix.
+    _LEGACY_PAIR_SELECT = os.environ.get("CROSS_LEGACY_PAIR_SELECT", "0") == "1"
 
     def _best_pair():
+        if _LEGACY_PAIR_SELECT:
+            def _legacy(require_support):
+                best, best_err = None, 1e9
+                for ii in range(len(clusters)):
+                    for jj in range(ii + 1, len(clusters)):
+                        if require_support and (len(clusters[ii]) < MIN_CLUSTER_SUPPORT
+                                                 or len(clusters[jj]) < MIN_CLUSTER_SUPPORT):
+                            continue
+                        err = abs(_circ_diff(np.mean(clusters[ii]), np.mean(clusters[jj])) - 90.0)
+                        if err < best_err:
+                            best_err, best = err, (ii, jj)
+                return best
+            return _legacy(require_support=True) or _legacy(require_support=False)
         best, best_score = None, 1e18
         for ii in range(len(clusters)):
             for jj in range(ii + 1, len(clusters)):

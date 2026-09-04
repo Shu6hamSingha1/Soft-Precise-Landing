@@ -470,3 +470,22 @@ combination -- none of these fix `inv`'s actual accuracy, only its honesty.
 ⛔ Still DEFAULT OFF (the confirm stage). The `_best_pair` fix is DEFAULT ON (unconditional).
 NOT yet SITL-flight-tested -- unlike ens_ring's must-not-regress gate, this matters MORE to
 validate live since it is now on by default on every flight, not opt-in.
+
+
+## ✅ SITL MUST-NOT-REGRESS GATE for the _best_pair fix (2026-09-05, n=5)
+
+`test_data/PairFix_AB_harness/pairfix_ab.sh`, interleaved, `WORLD=cross_marker
+MARKER_TYPE=cross` IC2 (2,2,5), fixed (new default) vs `CROSS_LEGACY_PAIR_SELECT=1`
+(exact pre-fix behavior, rollback switch added alongside the fix for this A/B).
+
+| arm | precise | median xy | detOK |
+|---|---|---|---|
+| fixed (default) | 4/5 | 0.061 | 100.0% (5/5) |
+| legacy (pre-fix) | 1/5 | 0.212 | 100.0% (5/5) |
+
+No regression -- the fix comes out ahead on this small sample (legacy's one `NOT_LANDED`,
+min_h 2.413, was a stall rather than a lateral miss). n=5 is too small to prove the fix is
+*better* (this platform's lateral outcome is known-stochastic at low n), but there is nothing
+here to hold the fix back on. `CROSS_LEGACY_PAIR_SELECT` kept as a permanent rollback switch
+(matches this module's other always-available knobs) in case the soft-penalty scoring
+misbehaves in a regime this offline eval + n=5 gate didn't cover.
