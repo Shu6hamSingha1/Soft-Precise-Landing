@@ -32,9 +32,35 @@ if [ "${FORCE:-0}" != "1" ]; then
 fi
 RES="$SD/run_logs/loomr_${TAG}.tsv"
 printf "arm\trep\txy_err\tclass\tmin_h\tvz_term\tballoon\tdetOK\tloommult\trec\n" > "$RES"
+SITL_PAT='px4_sitl_default/bin/px4|gz sim|gz-sim|ign gazebo|MicroXRCEAgent|parameter_bridge|mavsdk_server|QGroundControl|/opt/ros/humble|landing_test'
+# ⛔⛔ PER-REP FOREIGN-SESSION CHECK (added 2026-09-04, ported from CmInv_AB_harness
+# after a user challenge on the cm_inv run's failure cause -- see that harness's
+# comment for the full incident). The guard at the top of this file only runs ONCE,
+# before the loop starts -- ko() itself, called before EVERY rep, did an
+# unconditional kill -9 with no re-check. If another session started SITL any time
+# after the initial guard passed, ko() would have killed it SILENTLY, with nothing
+# left behind afterward to prove it either way. That is unsafe regardless of
+# whether it ever actually fired here.
+#
+# PRINCIPLE: ko()'s job is to make the process table clean BY KILLING WHAT IT CAN
+# SEE. If, after its own best-effort kill, SITL processes are STILL present, that is
+# NOT something ko() itself spawned -- it means something else is populating the
+# table IN REAL TIME. That is the foreign-live-session signal, and the correct
+# response is to STOP, not kill again and launch on top of it.
+foreign_check(){
+  local ctx="$1"
+  local p=$(ps -eo args | grep -aE "$SITL_PAT" | grep -av grep | head -3)
+  if [ -n "$p" ]; then
+    echo "REFUSING TO CONTINUE ($ctx): SITL processes survived our own cleanup --" >&2
+    echo "this can only mean something else is running them, not us:" >&2
+    echo "$p" | cut -c1-100 >&2
+    echo "Stopping rather than risk killing a live session. No further ko()/launch will run." >&2
+    exit 4
+  fi
+}
 ko(){
   for r in 1 2 3; do
-    pids=$(ps -eo pid,args|grep -aE 'px4_sitl_default/bin/px4|gz sim|gz-sim|ign gazebo|MicroXRCEAgent|parameter_bridge|mavsdk_server|QGroundControl|/opt/ros/humble|landing_test'|grep -av grep|awk '{print $1}')
+    pids=$(ps -eo pid,args|grep -aE "$SITL_PAT"|grep -av grep|awk '{print $1}')
     [ -z "$pids" ]&&break; for p in $pids; do kill -9 "$p" 2>/dev/null; done; sleep 2
   done
   for pat in gz-sim-server gz-sim-gui; do
@@ -43,6 +69,8 @@ ko(){
   rm -f /dev/shm/fastrtps_* /dev/shm/sem.* 2>/dev/null
   for w in 1 2 3 4 5 6 7 8; do gz topic -l 2>/dev/null | grep -q '/clock' || break; sleep 2; done
   sleep 3
+  # After our own best effort, anything still alive is NOT ours -- see foreign_check.
+  foreign_check "post-cleanup, before next launch"
 }
 for rep in $(seq 1 "$N"); do
   for arm in off on; do
