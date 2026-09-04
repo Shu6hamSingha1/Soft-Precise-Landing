@@ -524,6 +524,86 @@ def _confirm_ring(mask_close, center, bbox):
     return True, None, n
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# SPAN-BALANCE CONFIRM (2026-09-04, user-proposed).  CROSS_BALANCE_CONFIRM=1
+#
+# A second, independent answer to "is this really a cross junction, not a plate
+# corner" -- different information from the ring test (span geometry, not
+# neighbourhood topology), so the two are complementary rather than redundant.
+#
+# GEOMETRY: a true cross's centre sits INSIDE each arm's own point span --
+# points exist on both sides of it. A rectangle corner is the ENDPOINT of both
+# edges meeting there -- points sit almost entirely on ONE side. So: for a
+# matched line, find where the candidate centre falls along that line's OWN
+# fitted span (0 = one end, 0.5 = perfectly centred, 1 = other end); reject
+# when it sits too close to an end.
+#
+# ⚠ FIRST VERSION FAILED (measured, not guessed): scoring BOTH arms gave
+# 40%+ false-positive cost on the clean scene -- barely better than random.
+# CAUSE: this marker carries a STUB (a short third arm, see
+# STUB_REL_ANGLE_DEG=45) -- _best_pair sometimes legitimately matches that
+# short, GENUINE stub against a long arm, and a real arm that is short or
+# foreshortened has the exact same "centre near one end" signature as a
+# corner. Same trap stage 3's perpendicularity test fell into, via a
+# different test.
+#
+# FIX: score ONLY the LONGER (more-supported) of the two matched arms. A real
+# long arm's true centre sits mid-span even when its partner (the stub) is
+# short; a corner's long edge is STILL truncated at the vertex no matter how
+# long it runs. Verified this actually fixes it (RobustnessFrameset):
+#   both-arms:   base FP ~45%, inv catch ~72%  (unusable -- FP >= catch)
+#   longer-only: base/darkbg/lowsun FP 0-1%, dim/bright FP 1-4%, inv catch 48%
+#     col is the outlier (FP ~19%) -- most col detections bypass the line fit
+#     entirely (ROI/shape fallback), so this test is not well-matched there.
+# Combined with ring confirm (both independently reject): inv catch
+# 72.0% -> 76.3%, only ~4 points of overlap -- genuinely complementary, not
+# redundant, and still near-zero added cost on the clean scenes.
+#
+# Uses det.line_points_i/j -- the FINAL, robust-pruned per-arm point sets
+# (post _robust_fit_line, same points the actual line fit and alpha moment
+# consume) -- not the raw angle-gated set, so this judges the fit that was
+# actually used, not an earlier candidate.
+BALANCE_CONFIRM = os.environ.get("CROSS_BALANCE_CONFIRM", "0") == "1"
+BALANCE_MAX_DIST = float(os.environ.get("CROSS_BALANCE_MAX_DIST", "0.30"))
+BALANCE_CONFIRM_STATS = {"checked": 0, "pass": 0, "rejected": 0, "skipped_short": 0}
+
+
+def _arm_balance(pts, center):
+    """Where the candidate centre falls along this arm's own TLS-fitted span,
+    as a distance from 0.5 (perfectly centred); 0.5 = centre sits AT an
+    endpoint (the corner signature). None if too few points to fit."""
+    p = np.asarray(pts, dtype=np.float64)
+    if len(p) < 4:
+        return None
+    mu = p.mean(axis=0)
+    pc = p - mu
+    _, _, vt = np.linalg.svd(pc, full_matrices=False)
+    v = vt[0]
+    t = pc @ v
+    tc = float((np.asarray(center, dtype=np.float64) - mu) @ v)
+    lo, hi = float(t.min()), float(t.max())
+    if hi - lo < 1e-6:
+        return None
+    return abs((tc - lo) / (hi - lo) - 0.5)
+
+
+def _confirm_balance(pts_i, pts_j, center):
+    """(ok, reason, dist). See BALANCE_CONFIRM at module top -- scores only the
+    LONGER (more-supported) of the two arms; see the "first version failed"
+    note for why both-arms scoring doesn't work on a marker with a stub."""
+    longer = pts_i if len(pts_i) >= len(pts_j) else pts_j
+    d = _arm_balance(longer, center)
+    if d is None:
+        BALANCE_CONFIRM_STATS["skipped_short"] += 1
+        return True, None, None
+    BALANCE_CONFIRM_STATS["checked"] += 1
+    if d >= BALANCE_MAX_DIST:
+        BALANCE_CONFIRM_STATS["rejected"] += 1
+        return False, 'balance_not_centered', d
+    BALANCE_CONFIRM_STATS["pass"] += 1
+    return True, None, d
+
+
 GEOM_CONFIRM = int(os.environ.get("CROSS_GEOM_CONFIRM", "0"))
 GEOM_PERP_TOL_DEG = float(os.environ.get("CROSS_GEOM_PERP_TOL_DEG", "35.0"))
 GEOM_SPAN_MARGIN = float(os.environ.get("CROSS_GEOM_SPAN_MARGIN", "0.25"))
@@ -589,6 +669,12 @@ def _confirm_cross_geometry(pts_i, pts_j, line_i, line_j, center):
                            # (see the cross-arm pairing fix in detect() for why this exists)
 
 HOUGH_DIAG_LOG = []   # 2026-08-04 root-cause diagnostic, see detect()'s hough_lt2_lines path
+PAIR_SELECT_DIAG = []  # 2026-09-04: per-frame (picked pair, all candidate pairs + support)
+                        # diagnostic behind CROSS_DIAG_PAIR_SELECT=1 -- used to find and
+                        # verify the _best_pair support-priority fix (see its comment);
+                        # kept for future debugging of the OTHER stub-pick cause (no near-90
+                        # pair available that frame at all -- a Hough-recall problem, not a
+                        # selection-logic one, still open).
 
 # SUB-PIXEL JUNCTION REFINE (2026-08-31, s_dot_meas noise-floor investigation).
 # `center` is the analytic intersection of two per-frame Huber line fits
@@ -1287,26 +1373,68 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
     # picking PURELY by "closest to 90" let a pair of weak, spurious single-line
     # clusters (noise landing near exactly 90 apart by chance) beat a real,
     # strongly-supported arm cluster that was a few degrees off 90 because its true
-    # partner was mostly out of frame. Fix: gate on SUPPORT first (require both
-    # clusters in a candidate pair to have at least MIN_CLUSTER_SUPPORT Hough segments
-    # -- a real physical line gets re-detected as multiple overlapping segments, noise
-    # usually doesn't), then pick by closest-to-90 only among support-qualified pairs.
-    # Falls back to the unfiltered (all-pairs) search if nothing meets the support bar,
-    # so a generally weak-signal frame still degrades gracefully instead of returning
-    # nothing outright.
-    def _best_pair(require_support):
-        best, best_err = None, 1e9
+    # partner was mostly out of frame.
+    #
+    # ⛔ 2026-08-01's FIX for that was a HARD two-phase gate (support-required search,
+    # falling back to unfiltered only if NOTHING passes) -- and it had its own bug,
+    # found 2026-09-04 (user challenge on why a "longer arm only" balance-confirm
+    # heuristic was needed at all, traced back to HERE): a hard gate that returns the
+    # first support-passing pair, however bad its angle, NEVER compares it against a
+    # much-better pair that only narrowly missed the support bar. This marker is an X
+    # (two through-center diagonal arms, ~90 deg apart) plus a separate ONE-SIDED stub
+    # at 45 deg from each diagonal (STUB_REL_ANGLE_DEG) -- so whenever one diagonal's
+    # Hough segments happened to fall one below MIN_CLUSTER_SUPPORT, the hard gate
+    # would reject the near-perfect (|rel-90|~0.6 deg) diagonal pair and commit to a
+    # fully-supported but ~45 deg-wrong stub pair instead. Measured on clean `base`
+    # frames: happened in 12.5% of ALL frames (41.6% of a downstream balance-test's
+    # false positives were caused by exactly this).
+    #
+    # FIX: a single SOFT-PENALIZED search across every pair (no hard gate, no two-
+    # phase fallback) -- support becomes a tiebreaker, not a veto, so it can no longer
+    # override a much better angle fit, while still doing its original job of keeping
+    # a spurious near-90 noise pair from beating a real, mostly-off-frame arm.
+    # PAIR_SUPPORT_PENALTY (degrees-equivalent per missing support point below
+    # MIN_CLUSTER_SUPPORT, summed over both clusters) is deliberately between the two
+    # scales the two failure modes operate at: the stub-vs-diagonal gap is ~44-45 deg
+    # (so even a 2-point support deficit, ~2x penalty, must lose to it) while the
+    # original noise-pair problem's real arm was only "a few degrees" off 90 (so a
+    # 1-point deficit must still beat a fully-unsupported near-0 noise pair, whose
+    # own 2-point deficit costs twice as much). Verified offline (RobustnessFrameset,
+    # replaying every candidate pair captured per frame): eliminates the bug's
+    # stub-picks on 5/7 scenes entirely (base/bright/darkbg/lowsun 100%, dim/col/inv
+    # partially -- their residual stub-picks have NO near-90 pair available that
+    # frame at all, a Hough-recall problem this scoring change can't fix), ZERO
+    # regressions (no frame where a previously-good pick became a stub pick) across
+    # all 7 scenes, and the result is insensitive to the exact penalty value (tested
+    # 5.0-15.0, identical outcome) -- not a fragile hand-tune.
+    PAIR_SUPPORT_PENALTY = float(os.environ.get("CROSS_PAIR_SUPPORT_PENALTY", "8.0"))
+
+    def _best_pair():
+        best, best_score = None, 1e18
         for ii in range(len(clusters)):
             for jj in range(ii + 1, len(clusters)):
-                if require_support and (len(clusters[ii]) < MIN_CLUSTER_SUPPORT
-                                         or len(clusters[jj]) < MIN_CLUSTER_SUPPORT):
-                    continue
                 err = abs(_circ_diff(np.mean(clusters[ii]), np.mean(clusters[jj])) - 90.0)
-                if err < best_err:
-                    best_err, best = err, (ii, jj)
+                deficit = (max(0, MIN_CLUSTER_SUPPORT - len(clusters[ii]))
+                           + max(0, MIN_CLUSTER_SUPPORT - len(clusters[jj])))
+                score = err + PAIR_SUPPORT_PENALTY * deficit
+                if score < best_score:
+                    best_score, best = score, (ii, jj)
         return best
 
-    best_pair = _best_pair(require_support=True) or _best_pair(require_support=False)
+    best_pair = _best_pair()
+    if os.environ.get("CROSS_DIAG_PAIR_SELECT") == "1" and best_pair is not None:
+        _ii, _jj = best_pair
+        _ra = _circ_diff(np.mean(clusters[_ii]), np.mean(clusters[_jj]))
+        PAIR_SELECT_DIAG.append({
+            'picked_rel': float(_ra),
+            'n_clusters': len(clusters),
+            'cluster_means': [float(np.mean(c)) for c in clusters],
+            'cluster_support': [len(c) for c in clusters],
+            'all_pairs': [(float(np.mean(clusters[a])), float(np.mean(clusters[b])),
+                           float(_circ_diff(np.mean(clusters[a]), np.mean(clusters[b]))),
+                           len(clusters[a]), len(clusters[b]))
+                          for a in range(len(clusters)) for b in range(a+1, len(clusters))],
+        })
     if best_pair is None:
         return CrossMarkerDetection(None, None, False, bbox, fail_reason='no_pair_found')
     i, j = best_pair
@@ -1492,6 +1620,11 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         _r_ok, _r_reason, _r_n = _confirm_ring(_mask_close, center, bbox)
         if not _r_ok:
             return CrossMarkerDetection(None, None, False, bbox, fail_reason=_r_reason)
+
+    if BALANCE_CONFIRM:
+        _b_ok, _b_reason, _b_d = _confirm_balance(pts_i, pts_j, center)
+        if not _b_ok:
+            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_b_reason)
 
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())

@@ -383,3 +383,90 @@ cannot be something `ko()` itself spawned — the script ABORTS instead of killi
 launching on top of it. Applies to ALL future `*_ab.sh` harnesses of this shape.
 
 Still DEFAULT OFF.
+
+## ✅ FIFTH ATTEMPT: span-balance confirm + a REAL upstream bug found via user challenge (2026-09-04)
+
+User proposed a 4th discriminator: a cross's true centre sits INSIDE each matched arm's own
+point span (points on both sides); a plate corner is the ENDPOINT of both edges meeting there
+(points almost entirely on one side). Asked why not score BOTH matched arms, since all lines
+of a real cross intersect at the same centre.
+
+**First implementation (score both arms) genuinely failed**: 40%+ false-positive cost on
+clean `base` -- barely better than random. I (WRONGLY) attributed this to the marker's
+one-sided STUB (`STUB_REL_ANGLE_DEG=45`) getting matched against a long arm, "fixed" it by
+scoring only the longer/more-supported arm, and it worked (FP 0-4% on 5/6 scenes). **That
+explanation was checked with a FLAWED verification** (overlap against `det.stub_points` --
+which is `None` in EXACTLY the frames where the stub got consumed into the main pair, since
+the separate stub-ID step explicitly excludes `k in (i,j)` -- so the check silently
+undercounted). User challenged this directly ("why can't you score both, they all intersect
+at the same center") and was right to.
+
+⭐⭐⭐ **CORRECT ROOT CAUSE, found via the arms' fitted ANGLE instead**: 100% of the
+both-arms-scored false positives are frames where `_best_pair` matched the STUB as one of the
+two "main" arms (verified: rel_angle of the picked pair ~45deg, not ~90deg). And this is not
+rare: **41.6% of ALL clean-scene frames** have the stub picked into (i,j) instead of a real
+diagonal. Root cause in `_best_pair` itself (a pre-existing bug, 2026-08-01 code, unrelated to
+any of this session's work until now): a HARD two-phase gate --
+`_best_pair(require_support=True) or _best_pair(require_support=False)` -- requires BOTH
+clusters in a pair to individually clear `MIN_CLUSTER_SUPPORT`, and returns the FIRST
+support-passing pair found, however bad its angle, WITHOUT EVER comparing it against a much
+better pair that only narrowly missed the support bar. Quantified: **30.7% of stub-picks
+(12.5% of ALL frames) are this exact bug** -- a near-perfect diagonal pair (`|rel-90|~0.6deg`)
+exists but loses to a fully-supported stub pair (`|rel-90|~45deg`) purely because one
+diagonal's Hough segments landed one below the support floor. The other 69.3% genuinely have
+no near-90 pair available that frame (Hough missed a whole arm) -- a harder, separate,
+still-open problem (recall, not selection logic).
+
+## ✅ FIX LANDED, UNCONDITIONAL (not a flag -- a correctness bug, like the alpha_0/cell-ID fixes)
+
+`_best_pair` replaced with a single SOFT-PENALIZED search across every pair (no hard gate, no
+two-phase fallback): `score = |rel_angle-90| + PAIR_SUPPORT_PENALTY * support_deficit`
+(`CROSS_PAIR_SUPPORT_PENALTY`, default 8.0deg per missing support point). Support becomes a
+TIEBREAKER, not a veto -- preserves the original 2026-08-01 fix's intent (stop a spurious
+near-90 noise pair beating a real, under-supported arm) while no longer letting a support
+advantage override a vastly better angle fit.
+
+**Verified (RobustnessFrameset, replaying every captured candidate pair per frame):**
+- Eliminates the bug's stub-picks 100% on base/bright/darkbg/lowsun, partially on dim/col/inv
+  (residual = the genuinely-no-pair-available case, unfixable by scoring alone).
+- **ZERO regressions** across all 7 scenes -- no frame where a previously-good pick became a
+  stub pick.
+- Insensitive to the exact penalty value (tested 5.0-15.0, byte-identical outcome) -- not a
+  fragile hand-tune.
+- **Centroid position accuracy: FLAT** (base/etc within-0.15 unchanged to within 1pt). Traced
+  why: the stub ALSO passes through the true centre (it's a real feature of the marker), so
+  even the "wrong" pair intersects near the right point -- just less precisely-conditioned.
+  ⚠ Don't expect this fix to move accuracy% headlines.
+- **`heading_deg` (alpha/orientation) AVAILABILITY: the real, measured effect.** +11-13
+  points on every clean scene (base 45.6%->59.2%, darkbg 61.0%->72.8%, lowsun 41.2%->54.0%,
+  bright 45.4%->56.5%). Mechanism: `heading_deg` is the STUB's own direction, found by a
+  SEPARATE step that excludes whatever `(i,j)` already consumed -- so whenever the buggy
+  `_best_pair` ate the stub, heading became UNAVAILABLE entirely (not noisy), falling back to
+  hold-last-good. `col`/`inv` barely move (upstream, segmentation-level failures).
+- Diagnostic `CROSS_DIAG_PAIR_SELECT=1` -> `PAIR_SELECT_DIAG` kept in-tree (matches
+  `HOUGH_DIAG_LOG`'s pattern) for future debugging of the still-open 69.3% (Hough-recall) case.
+
+## ✅ SPAN-BALANCE CONFIRM landed too, `CROSS_BALANCE_CONFIRM=1` (DEFAULT OFF)
+
+Once corrected to score only the longer/more-supported arm (now a REASONABLE heuristic given
+the pair-select fix removes most stub-mismatches upstream, though not a substitute for fixing
+`_best_pair` itself -- both were landed): `CROSS_BALANCE_MAX_DIST=0.30` default.
+
+**Full eval, on top of the pair-select fix (detOK / within-0.15):**
+
+| variant | base | bright | col | darkbg | dim | **inv** | lowsun |
+|---|---|---|---|---|---|---|---|
+| baseline (fix only) | 100/97 | 95.0/96 | 63.0/82 | 99.6/94 | 100/82 | 99.1/0 | 100/97 |
+| balance | 100/97 | 95.0/96 | 51.3/84 | 99.6/96 | 99.2/83 | 41.3/0 | 100/97 |
+| ring+balance | 100/97 | 91.1/96 | 48.0/84 | 99.6/96 | 99.2/83 | 31.3/0 | 100/97 |
+| **ens_ring_balance** | 100/97 | 94.1/96 | 53.9/84 | 99.6/96 | **95.1/88** | 33.0/0 | 98.4/98 |
+
+⭐ Complementary to ring, not redundant (different information: span geometry vs neighbourhood
+topology) -- combined catches MORE of inv/col's silent lies (detOK down further, i.e. more
+honest refusals) with a real accuracy GAIN on `dim` (82->88, the only variant to move it) and
+no new cost on base/bright/darkbg/lowsun. `inv` within-0.15 is STILL 0% under every
+combination -- none of these fix `inv`'s actual accuracy, only its honesty.
+
+⛔ Still DEFAULT OFF (the confirm stage). The `_best_pair` fix is DEFAULT ON (unconditional).
+NOT yet SITL-flight-tested -- unlike ens_ring's must-not-regress gate, this matters MORE to
+validate live since it is now on by default on every flight, not opt-in.
