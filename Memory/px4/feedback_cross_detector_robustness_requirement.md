@@ -778,3 +778,44 @@ modest) reduction in worst-case detection severity on `col`, but the median/mean
 improvement claimed from n=5 does NOT hold up at n=15 -- report it as a mild, uncertain
 positive on `col`, not a clear win. The clean win remains the ORDINARY-scene must-not-regress
 result (untouched by this correction, that test wasn't re-run). Stays DEFAULT OFF.
+
+## 2026-09-05 — corrected metric: CROSS_FALLBACK_ADAPT_GATE must be judged by proximity-detection robustness, not SP/landing outcome
+
+⛔ Standing correction from user: "You can't judge CROSS_FALLBACK_ADAPT_GATE by SP. It is not
+meant for that. You need to check whether we are able to robustly detect the marker as we go
+near it." The n=15 cm_col SP/xy_err wash reported 2026-09-04 was the WRONG metric — landing
+outcome is confounded by control dynamics and the terminal-overfill wall, neither of which this
+perception-layer fix touches.
+
+**Correct analysis**: altitude-banded `Detection Status=='ok'` rate (same ALT_BANDS methodology
+as `validate_detector_gt.py`), computed offline from the Img_Data.npy/Ground_Truth.npy already
+on disk from the existing fallback SITL tests (`run_logs/fallback_cross_marker.tsv`,
+`fallback_cm_col_batch1.tsv`, `fallback_cm_col_batch2.tsv` → resolves to
+`test_data/Landing_Test/<ts>/`). No new SITL run needed.
+
+Ordinary `cross_marker` scene: flat 100% detOK both arms, every band down to 0.3m (mild ~95%
+floor 0-0.3m, both arms identically) — confirms no regression from the fallback on the easy
+scene, consistent with it rarely firing there.
+
+`cm_col` scene (n=15/arm pooled, off vs on):
+| band | off detOK | on detOK | off n | on n |
+|---|---|---|---|---|
+| 4-6m | 99.8% | 100.0% | 1686 | 2147 |
+| 3-4m | 88.9% | 100.0% | 81 | 57 |
+| 2-3m | 90.0% | 90.9% | 10 | 22 |
+| **1.3-2.0m** | **0.0%** | **94.4%** | **0** | **36** |
+| 0.7-1.3m | 0.0% | 0.0% | 0 | 4 |
+| 0.3-0.7m | 0.0% | 0.0% | 0 | 1 |
+
+**Key finding**: `off` has ZERO frames below 2.0m across all 15 flights — every off-arm flight
+loses the marker (fly-off or stall) before reaching 1.3-2.0m. `on` reaches that band (n=36
+across the 15 flights) and detects at 94.4% there. Below 1.3m both arms collapse to 0% — that's
+the terminal-overfill floor (control-side, already established out of scope for this fix).
+
+**Correct framing**: CROSS_FALLBACK_ADAPT_GATE doesn't raise detOK% within a band it can already
+see — it extends how close the vehicle survives-with-detection before losing the marker on the
+hard (col) scene. This is a real, band-specific robustness gain, distinct from and not
+contradicted by the SP/xy_err wash (that wash measures downstream control behavior after
+perception already did its job better — a different question). Still opt-in
+(CROSS_FALLBACK_ADAPT_GATE default OFF); this strengthens the case for eventual default-on but
+landing-outcome remains a wash pending a fix to the terminal-overfill wall itself.
