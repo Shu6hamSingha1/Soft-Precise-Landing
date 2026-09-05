@@ -745,3 +745,36 @@ the fix works on `col`, only that it doesn't regress and moves the right way.
 **Verdict**: real, positive first flight evidence, no regressions found. `CROSS_FALLBACK_ADAPT_GATE`
 stays DEFAULT OFF pending more data (higher n, and ideally a scene where `col`'s separate
 terminal-overfill confound doesn't mask whether landings actually improve).
+
+## ⚠ FIRMED UP TO n=15: the col effect is real but much more modest than n=5 suggested
+
+10 more reps run (`fallback_cm_col_batch2.tsv`), pooled with the original 5
+(`fallback_cm_col.tsv`) for n=15/arm. **Correcting the earlier n=5 read** — this project's own
+methodology says n=5 measures noise as much as signal, and the larger sample bears that out
+here: the effect shrank substantially, it did not hold at the earlier magnitude.
+
+| | n=15 | xy median | xy mean | detOK mean | detOK worst | #collapses(<80%) |
+|---|---|---|---|---|---|---|
+| off | | 2.105 | 1.947 | 90.6% | 33.5% | 2/15 |
+| on | | 1.879 | 1.938 | 95.7% | 66.0% | 2/15 |
+
+**Mean xy is essentially a wash** (1.947 vs 1.938, no longer the ~31% gap the n=5 snapshot
+showed). Paired rep-by-rep, `on` is tighter in only **9/15 (60%)** — a mild edge, not the
+near-universal win batch 1 implied. One clear bad outlier for `on` this batch: rep4 of batch2,
+xy=4.984, `TARGET_LOST`, detOK 69.5% — the kind of rep that didn't appear in the smaller
+sample and pulls directly against the earlier clean story.
+
+**What DOES hold up**: both arms show the SAME rate of severe detection collapse (2/15 each),
+but `on`'s collapses are consistently milder when they happen (66.0%/69.5% vs 33.5%/44.6%).
+This is the one part of the original finding that survives at n=15 -- a real, if modest,
+reduction in worst-case severity, matching the SAME pattern already found for the ring+balance
+rescue's own col re-test (severity reduced, not eliminated).
+
+**Neither arm landed in any of the 15 reps** -- the terminal-overfill confound remains fully in
+effect on this scene, unchanged from every earlier finding.
+
+**Verdict, revised**: `CROSS_FALLBACK_ADAPT_GATE` still shows no regression and a real (if
+modest) reduction in worst-case detection severity on `col`, but the median/mean landing-xy
+improvement claimed from n=5 does NOT hold up at n=15 -- report it as a mild, uncertain
+positive on `col`, not a clear win. The clean win remains the ORDINARY-scene must-not-regress
+result (untouched by this correction, that test wasn't re-run). Stays DEFAULT OFF.
