@@ -706,3 +706,42 @@ is a natural follow-on if hold-last-good's staleness ever shows up as a problem.
 NOT yet SITL-flight-tested. Offline/replay-verified only (both col GT-FB and rover
 DetectorFrameset), matching this thread's now-standard practice of full end-to-end code-path
 verification before any flight test.
+
+## ✅ FIRST SITL FLIGHT TEST of the innovation-gated adapt fallback (2026-09-05, n=5/scene)
+
+`test_data/FallbackAdapt_AB_harness/fallback_ab.sh`, interleaved, off vs
+`CROSS_FALLBACK_ADAPT_GATE=1`, IC2 (2,2,5), perception mode.
+
+**Ordinary `cross_marker` scene (must-not-regress) -- PASSED, with a bonus improvement:**
+
+| arm | precise | median xy | detOK |
+|---|---|---|---|
+| off (default) | 1/5 | 0.105 | 100.0% (5/5) |
+| on | 3/5 | 0.081 | 100.0% (5/5) |
+
+No detection collapse in either arm. `on` outperforms `off` even on the ordinary scene where
+the fallback should rarely need to trigger (baseline usually succeeds) -- a genuinely good
+sign, though n=5 doesn't prove it's not noise. This mattered more to check than for the
+confirm-stage flags (ring/balance/ensemble), since this fix is a real default-on candidate,
+not just an opt-in experiment.
+
+**`cm_col` (the target scene) -- neither arm landed, but `on` is measurably better where it
+matters:**
+
+| arm | median xy | detOK median | detOK worst |
+|---|---|---|---|
+| off | 2.314 | 99.4% | 33.5% (one severe collapse) |
+| on | 1.586 | 100.0% | 66.0% (no collapse as severe as off's worst) |
+
+Confirms the ALREADY-DOCUMENTED terminal-overfill stall affects both arms on this scene
+regardless of the detector fix (consistent with `SceneFix_AB_harness`'s earlier `cm_dim`/`col`
+findings) -- neither arm actually touches down. But comparing the two arms directly: `on`'s
+median xy is ~31% tighter, and its worst-case detection collapse is far less severe than
+`off`'s. Not every rep favoured `on` (rep4 roughly a wash; rep5 `on` reached much closer to
+the ground, min_h 0.570 vs `off`'s 5.015, before losing the target with a worse final xy).
+Direction matches the offline validation; n=5 with zero landings on either arm cannot prove
+the fix works on `col`, only that it doesn't regress and moves the right way.
+
+**Verdict**: real, positive first flight evidence, no regressions found. `CROSS_FALLBACK_ADAPT_GATE`
+stays DEFAULT OFF pending more data (higher n, and ideally a scene where `col`'s separate
+terminal-overfill confound doesn't mask whether landings actually improve).
