@@ -333,7 +333,18 @@ CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
 # longer gap) -- this is the validated FIRST version; upgrading the reference to
 # the real KF prediction is a natural follow-on if hold-last-good's staleness ever
 # shows up as a problem (not yet measured to be one).
-CROSS_FALLBACK_ADAPT_GATE = os.environ.get("CROSS_FALLBACK_ADAPT_GATE", "0") == "1"
+#
+# BAKED DEFAULT-ON (2026-09-05), by explicit user direction ahead of the wider
+# scene sweep (dim/lowsun not yet SITL-flight-tested for this flag -- offline-only
+# so far). Rationale for baking now rather than waiting: correct metric is
+# proximity-detection robustness, not SP/xy_err (landing outcome is confounded by
+# the terminal-overfill wall, which this fix does not touch) -- see the
+# altitude-banded analysis in feedback_cross_detector_robustness_requirement.md
+# (2026-09-05 entry): on cm_col (n=15/arm), the off arm has ZERO valid-detection
+# frames below 2.0m across all 15 flights, while on reaches 1.3-2.0m (n=36,
+# 94.4% detOK there). Zero regression measured on the ordinary cross_marker scene
+# (flat 100% both arms) or on rover_IC2/IC4 (offline). `=0` reverts.
+CROSS_FALLBACK_ADAPT_GATE = os.environ.get("CROSS_FALLBACK_ADAPT_GATE", "1") == "1"
 CROSS_FALLBACK_GATE_DIST = float(os.environ.get("CROSS_FALLBACK_GATE_DIST", "0.15"))
 FALLBACK_STATS = {"attempted": 0, "adapt_fired": 0, "accepted": 0, "rejected_gate": 0}
 
