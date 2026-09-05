@@ -566,6 +566,14 @@ def _confirm_ring(mask_close, center, bbox):
 BALANCE_CONFIRM = os.environ.get("CROSS_BALANCE_CONFIRM", "0") == "1"
 BALANCE_MAX_DIST = float(os.environ.get("CROSS_BALANCE_MAX_DIST", "0.30"))
 BALANCE_CONFIRM_STATS = {"checked": 0, "pass": 0, "rejected": 0, "skipped_short": 0}
+# Margin-gated rescue thresholds when RING_CONFIRM and BALANCE_CONFIRM run TOGETHER
+# -- see the rescue comment at the call site in _detect_core. RESCUE_MARGIN=0.5
+# means "50% headroom past the stage's own threshold", the measured breakpoint
+# where col's disagreement frames turn genuinely good (median GT err 0.019) vs
+# inv's, which stay bad even past this margin (median GT err 0.433).
+_RESCUE_MARGIN = float(os.environ.get("CROSS_RING_BALANCE_RESCUE_MARGIN", "0.5"))
+RING_RESCUE_N = RING_MIN_TRANSITIONS * (1.0 + _RESCUE_MARGIN)      # default 9.0
+BALANCE_RESCUE_D = BALANCE_MAX_DIST * (1.0 - _RESCUE_MARGIN)       # default 0.15
 
 
 def _arm_balance(pts, center):
@@ -1635,15 +1643,47 @@ def _detect_core(frame_bgr, lower=DEFAULT_LOWER, upper=DEFAULT_UPPER,
         if not _g_ok:
             return CrossMarkerDetection(None, None, False, bbox, fail_reason=_g_reason)
 
-    if RING_CONFIRM and _mask_close is not None:
+    if RING_CONFIRM and BALANCE_CONFIRM:
+        # BOTH stages together (2026-09-04/05): a MARGIN-GATED RESCUE instead of two
+        # independent hard gates. Measured why the independent (OR-reject: either
+        # stage alone can fail the frame) version cost `col` a real problem: of its
+        # disagreement frames (one stage rejects, the other passes), those where the
+        # PASSING stage passed only NARROWLY had median GT error 0.154 (borderline),
+        # but those where it passed COMFORTABLY (>=50% headroom past its own
+        # threshold) had median error 0.019-0.010 -- clearly genuine detections that
+        # only tripped one gate's precise cutoff. On a live SITL rep this
+        # (77.0%->88.1% detOK when rescued) is the plausible mechanism behind the
+        # ens_ring_balance 15.4 m fly-away: being over-eager to reject occasionally
+        # left NO usable measurement during a rough patch.
+        #
+        # ⚠ Checked this does NOT undo `inv`'s safety property before landing it:
+        # `inv`'s disagreement frames stay bad even at a comfortable margin (median
+        # error 0.433 at margin 0.5-1.0, vs col's 0.019) -- inv's wrong detections are
+        # confidently wrong in a way that both independent geometric tests correctly
+        # smell out, margin or not. within-0.15 on inv is 0.0% with or without the
+        # rescue (unaffected); detOK does rise some (35.9%->48.3%, smaller than the
+        # naive "require both to reject" version's 74.6% -- tested and rejected,
+        # too much of inv's honesty gain reverted). This margin-gated version is the
+        # smallest rescue that still fixes col.
         _r_ok, _r_reason, _r_n = _confirm_ring(_mask_close, center, bbox)
-        if not _r_ok:
-            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_r_reason)
-
-    if BALANCE_CONFIRM:
         _b_ok, _b_reason, _b_d = _confirm_balance(pts_i, pts_j, center)
-        if not _b_ok:
-            return CrossMarkerDetection(None, None, False, bbox, fail_reason=_b_reason)
+        if not (_r_ok and _b_ok):
+            _rescued = ((not _r_ok) and _b_ok and _b_d is not None and _b_d <= BALANCE_RESCUE_D
+                        or (not _b_ok) and _r_ok and _r_n is not None and _r_n >= RING_RESCUE_N)
+            if not _rescued:
+                _reason = _r_reason if not _r_ok else _b_reason
+                return CrossMarkerDetection(None, None, False, bbox,
+                                             fail_reason=_reason or 'ring_balance_disagree')
+    else:
+        if RING_CONFIRM and _mask_close is not None:
+            _r_ok, _r_reason, _r_n = _confirm_ring(_mask_close, center, bbox)
+            if not _r_ok:
+                return CrossMarkerDetection(None, None, False, bbox, fail_reason=_r_reason)
+
+        if BALANCE_CONFIRM:
+            _b_ok, _b_reason, _b_d = _confirm_balance(pts_i, pts_j, center)
+            if not _b_ok:
+                return CrossMarkerDetection(None, None, False, bbox, fail_reason=_b_reason)
 
     if in_fov:
         centroid_x, centroid_y = float(xs.mean()), float(ys.mean())

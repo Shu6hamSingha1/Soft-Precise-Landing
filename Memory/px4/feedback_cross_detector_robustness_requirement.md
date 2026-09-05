@@ -542,3 +542,43 @@ confound before re-testing there; (b) higher n on cm_col specifically to see whe
 the confirm stages can occasionally starve col of all detections during a bad patch -- a
 targeted fix for THAT failure mode (e.g. a rescue path when EVERY candidate gets rejected)
 might convert the median gain into a clean win without the current tail risk.
+
+## ✅ MARGIN-GATED RESCUE for ring+balance TOGETHER (2026-09-05) -- targets col's tail risk
+
+Direct follow-up to the SITL finding above: `on/2` col's fly-away recording (detOK 34%,
+xy=15.4m) showed `balance_not_centered` alone caused 106 of 657 total rejections that flight
+(the largest single new-stage contributor, more than `ring_not_a_junction`'s 26) -- and
+neither new stage had a rescue path, unlike the existing `centroid_mismatch` check
+(`CROSS_CENTROID_SPAN_RESCUE`).
+
+**Measured the mechanism precisely** (RobustnessFrameset, disagreement frames = one stage
+rejects, the other passes): on `col`, frames where the PASSING stage passed only narrowly had
+median GT error 0.154 (borderline); frames where it passed COMFORTABLY (>=50% headroom past
+its own threshold) had median error 0.019-0.010 -- genuine detections that only tripped one
+gate's precise cutoff, not corners. **Checked `inv` does NOT show the same pattern before
+landing anything**: `inv`'s disagreement frames stay bad even at a comfortable margin (median
+error 0.433 at margin 0.5-1.0, vs col's 0.019) -- `inv`'s wrong detections are confidently
+wrong in a way both independent geometric tests correctly smell out, margin or not.
+
+**Landed**: when RING_CONFIRM and BALANCE_CONFIRM run TOGETHER, replace independent hard
+gates with a margin-gated rescue -- if one stage rejects but the other passes with >=50%
+headroom past ITS OWN threshold (`CROSS_RING_BALANCE_RESCUE_MARGIN`, default 0.5), accept
+anyway. Single-flag mode (only one of the two enabled) is UNCHANGED -- verified byte-identical
+to before via the same offline eval.
+
+**Full eval (detOK / within-0.15):**
+
+| variant | col before -> after | inv before -> after | dim | bright | others |
+|---|---|---|---|---|---|
+| ring_balance | 48.0/84 -> 57.0/86 | 31.3/0 -> 37.8/0 | 99.2/83->99.6/83 | 91.1/96->95.0/96 | unchanged |
+| ens_ring_balance | 53.9/84 -> 59.1/84 | 33.0/0 -> 34.3/0 | 95.1/88->95.4/88 | 94.1/96->95.0/96 | unchanged |
+
+⭐ col detOK +9.0pts (ring_balance) / +5.2pts (ens_ring_balance), within-0.15 +2pt or flat --
+a real, targeted gain with no accuracy cost. ⚠ inv's `within-0.15` STAYS EXACTLY 0% either way
+(the safety property that matters is unaffected) but detOK does rise some (+6.5pt / +1.3pt) --
+a partial, measured give-back of inv's honesty gain, smaller than the naive "require both
+stages to reject" alternative (tested and rejected: that gave inv detOK 24.1%->74.6%, far too
+much reversion). This margin-gated version is the smallest rescue that still fixes col.
+
+**NEXT: re-run the col SITL A/B (5 reps, same design as the earlier flight test) to check
+whether the rescue actually resolves the 15.4m fly-away outlier live, not just offline.**
