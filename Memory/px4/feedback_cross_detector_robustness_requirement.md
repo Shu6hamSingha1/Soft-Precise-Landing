@@ -489,3 +489,56 @@ min_h 2.413, was a stall rather than a lateral miss). n=5 is too small to prove 
 here to hold the fix back on. `CROSS_LEGACY_PAIR_SELECT` kept as a permanent rollback switch
 (matches this module's other always-available knobs) in case the soft-penalty scoring
 misbehaves in a regime this offline eval + n=5 gate didn't cover.
+
+## ⚠ SITL FLIGHT TEST on the actual benefit scenes: cm_dim / cm_lowsun / cm_col (2026-09-05, n=5/arm)
+
+`test_data/SceneFix_AB_harness/scenefix_ab.sh`, PERCEPTION mode (detector actually flying),
+IC2 (2,2,5), off (baseline) vs `ens_ring_balance` (`CROSS_GATE_MODE=ensemble
+CROSS_RING_CONFIRM=1 CROSS_BALANCE_CONFIRM=1`, the single best offline combination). First
+live test of these confirm stages on the scenes they were actually built for -- only `cm_inv`
+had been flight-tested before this (project_20260903_cm_inv... entries above), `cm_dim`/
+`cm_lowsun`/`cm_col` were offline-only.
+
+**`cm_dim` -- INCONCLUSIVE, confounded by a SEPARATE issue.** 0/5 landed in EITHER arm.
+`min_h` scattered similarly in both arms (several near-zero, several not) -- looks like both
+arms hit the already-documented terminal-overfill control-side stall (project's #1 open
+blocker), which swamps whatever detector-side signal this test was meant to isolate. Two bad
+outliers: `on/3` TARGET_LOST xy=8.6 (lost the marker, dropped nearly to ground blind);
+`off/5` FAIL xy=12.1 (severe fly-away). Neither arm is clean here; this scene doesn't cleanly
+test the fix.
+
+**`cm_lowsun` -- NO MEANINGFUL DIFFERENCE, but corrects a misreading.** ⚠ Initially misread the
+`FAIL` classification (10/10 reps, both arms) as a systemic problem -- checked the raw log
+and it is NOT: impact detector fires normally (`|a|=58.4 > 50.0 -> LANDED=True`), 100% detOK
+both arms, real controlled landings. `FAIL` here means `xy_err` narrowly missed the strict
+`<=0.1m` PRECISE/SOFT threshold, nothing more.
+  xy_err  off: 0.147 0.191 0.239 0.136 1.244  (median 0.191, one outlier)
+          on:  0.385 0.167 0.129 0.396 0.335  (median 0.335, no outliers)
+Roughly a wash -- off's median is tighter but carries the only outlier; on is more consistent
+but typically looser. Both arms land reliably here, unlike cm_dim.
+
+**`cm_col` -- GENUINELY MIXED: real median gain, real tail-risk cost.**
+  xy_err  off: 1.094  3.657 1.285 1.991 2.145   (median 1.991)
+          on:  0.428 15.385 0.453 1.031 1.381   (median 1.031)
+  detOK   off: 97.2   58.1  98.9 100.0  95.0    (worst 58.1)
+          on:  97.4   34.0  97.7  98.3  89.3    (worst 34.0)
+`on` wins 3/5 reps clearly (median ~half of off's) but its WORST rep is a genuine outlier --
+15.4 m fly-away with detOK collapsing to 34%, meaningfully worse than off's worst (3.7 m,
+58%). Plausible mechanism: being MORE selective about rejecting bad detections can
+occasionally leave the pipeline with NO usable measurement during a rough patch, which is
+worse than a lower-quality-but-PRESENT measurement (open-loop drift vs noisy-but-closed-loop
+tracking). This is a real trade-off (typical-case accuracy vs tail-risk), not a clean win.
+
+## ⛔ VERDICT: none of the three scenes support flipping the confirm stages on by default
+
+`cm_dim` uninterpretable (confounded by a separate, already-known issue), `cm_lowsun` shows no
+benefit, `cm_col` shows a real accuracy gain in the typical case traded against a worse
+tail-risk failure -- a judgment call, not evidence to act on at n=5. `ens_ring_balance` (and
+its component flags) all remain DEFAULT OFF.
+
+**What would move this forward:** (a) fix or route around the cm_dim terminal-overfill
+confound before re-testing there; (b) higher n on cm_col specifically to see whether the
+15.4 m outlier is representative of a real tail-risk rate or a one-off; (c) investigate WHY
+the confirm stages can occasionally starve col of all detections during a bad patch -- a
+targeted fix for THAT failure mode (e.g. a rescue path when EVERY candidate gets rejected)
+might convert the median gain into a clean win without the current tail risk.
