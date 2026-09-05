@@ -650,3 +650,59 @@ rescue reliably improves what the detector reports; the earlier test showed a re
 reduction in closed-loop tail-risk severity. Together they support keeping the rescue landed
 (a893a77e) while `ens_ring_balance` overall stays DEFAULT OFF pending more
 closed-loop evidence.
+
+## ✅ INNOVATION-GATED ADAPT FALLBACK — Kalman-filter-style fusion (2026-09-05)
+
+User asked directly: "Can we fuse estimates from multiple approaches using a Kalman-filter
+method?" Distinguished two different things bundled under "multiple approaches": `ring`/
+`balance`/`geom` are GATES on the SAME estimate the primary pipeline produces (nothing to fuse,
+only a confidence weight -- already done via the ring+balance rescue above); `baseline`/`adapt`
+are genuinely INDEPENDENT front-ends (different pixels -> different Hough fit -> different
+center estimates) -- these are the real fusion candidates.
+
+**Measured**: `adapt` detects far more than baseline on `col` (90.5% vs 65.2% mean detOK) but
+is far less accurate when it fires (77.0% vs 83.4% within-0.15) -- two sensors with different
+bias/variance. A literal inverse-variance-weighted fusion on frames where BOTH fire does almost
+nothing (baseline's variance ~33x smaller, so the average is ~97% baseline by construction).
+Naively ACCEPTING adapt whenever baseline is silent is a WASH (3/5 col recordings less
+accurate, 2/5 more, as coverage rose ~30-40%).
+
+**Fix, mirroring the ring+balance rescue's own logic**: gate the fallback on agreement with a
+prediction, not accept-any-estimate. This is a Kalman innovation test in its simplest form --
+predict (hold-last-good leveled position), measure (adapt's candidate), gate on residual
+distance. At `CROSS_FALLBACK_GATE_DIST=0.15`, offline analysis showed EVERY one of 5
+independent col recordings improving simultaneously in BOTH coverage (+21-36%) and accuracy
+(+1.4 to +6.5pt) -- no tradeoff anywhere, unlike anything else measured this week.
+
+⚠⚠ **HONEST GAP between that idealized offline estimate and the verified shipped behavior.**
+The offline estimate assumed `adapt` runs CONTINUOUSLY (its own track_state warm every frame).
+The shipped fallback only invokes `adapt` SPORADICALLY (on primary misses), so its own ROI-
+tracking never locks on the way a continuously-run detector would. **Verified by driving the
+REAL `process_frame()` end-to-end** (not a standalone re-implementation) on the same 5
+recordings: pooled detOK 79.0%->82.2% (+3.2pt, +41% coverage) -- net positive, real, but 2 of 5
+reps mildly negative (-0.7, -1.8) against 3 clearly positive (+3.1, +9.4, +5.5). **Report the
+verified number, not the idealized one.**
+
+Also found and fixed a real bug during this verification: the FIRST implementation updated the
+held-reference from ANY accepted detection (primary or fallback), letting an accepted,
+less-accurate `adapt` estimate become next frame's gate reference -- compounding. One live test
+showed a real regression (78.2%->75.2%) the offline validation never had. Fixed by updating the
+held reference from the PRIMARY pipeline's own detections ONLY.
+
+**Generalization check (user asked): rover data.** Tested on `DetectorFrameset`'s
+`rover_IC2`/`rover_IC4` (oblique-view geometric clutter, a structurally different challenge
+from col's lighting/colour) via the same real `process_frame()` path. Both mildly positive,
+zero regressions: rover_IC2 within-0.15 75.5%->77.3% (n 159->176), rover_IC4 88.9%->89.5%
+(n 487->494). Smaller effect than col (rover's baseline detOK is already 87-99%, leaving less
+room), but the mechanism does not hurt on a structurally different failure mode.
+
+Landed as `CROSS_FALLBACK_ADAPT_GATE=1` (DEFAULT OFF), `CROSS_FALLBACK_GATE_DIST=0.15`.
+`_adapt_gate_override` context manager in `cross_marker_detector.py` lets the fallback force
+the adapt gate for one call without touching the primary pipeline's global config. Uses
+HOLD-LAST-GOOD, not a real velocity-aware KF prediction (the existing `_scen_kf_x` centroid KF
+would predict better across a longer gap) -- validated first version; upgrading the reference
+is a natural follow-on if hold-last-good's staleness ever shows up as a problem.
+
+NOT yet SITL-flight-tested. Offline/replay-verified only (both col GT-FB and rover
+DetectorFrameset), matching this thread's now-standard practice of full end-to-end code-path
+verification before any flight test.

@@ -64,6 +64,29 @@ DEFAULT_UPPER = np.array([180, 255, _COLOR_GATE_V_MAX])  # low-V gate: marker is
 # uniform region. CLAHE params match tools/validate_bgflow_corr.py's
 # GT-validated _clahe (clip 2.0, tile 8). CROSS_ADAPT_GATE=0 -> legacy inRange.
 _ADAPT_GATE       = os.environ.get("CROSS_ADAPT_GATE", "0") == "1"
+
+
+class _adapt_gate_override:
+    """Context manager: force the CLAHE+adaptiveThreshold gate for calls made inside
+    the block, regardless of the process's own CROSS_ADAPT_GATE/CROSS_GATE_MODE
+    settings, then restore exactly what was there before. Backs `CrossMarkerPerception`'s
+    innovation-gated adapt FALLBACK (2026-09-05, see its own module comment) -- a
+    fallback attempt on a miss frame needs the adapt path for THAT ONE extra detect()
+    call without permanently switching the primary pipeline's gate mode. Only
+    _ADAPT_GATE is touched (not _GATE_MODE) because _detect_core checks _GATE_MODE
+    first -- leaving it alone (at its default "legacy") means flipping _ADAPT_GATE
+    correctly falls through to the `elif _ADAPT_GATE:` branch. Not thread-safe (module
+    globals), but this pipeline's detect() calls are already single-threaded per node."""
+    def __enter__(self):
+        global _ADAPT_GATE
+        self._old = _ADAPT_GATE
+        _ADAPT_GATE = True
+        return self
+
+    def __exit__(self, *exc):
+        global _ADAPT_GATE
+        _ADAPT_GATE = self._old
+        return False
 _ADAPT_CLAHE_CLIP = float(os.environ.get("CROSS_ADAPT_CLAHE_CLIP", "2.0"))
 _ADAPT_CLAHE_TILE = int(os.environ.get("CROSS_ADAPT_CLAHE_TILE", "8"))
 _ADAPT_BLOCK      = int(os.environ.get("CROSS_ADAPT_BLOCK", "51"))       # local window (forced odd); > stroke width

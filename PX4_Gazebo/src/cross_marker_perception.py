@@ -275,6 +275,68 @@ RING_CENTER_MIN_R_PX = float(os.environ.get("CROSS_RING_CENTER_MIN_R_PX", "10"))
 # WORSE than the pre-2026-08-27 baseline, only better or a no-op.
 CROSS_BG_FLOW = os.environ.get("CROSS_BG_FLOW", "1") == "1"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# INNOVATION-GATED ADAPT FALLBACK (2026-09-05).  CROSS_FALLBACK_ADAPT_GATE=1
+#
+# User-proposed ("fuse estimates from multiple approaches using a Kalman-filter
+# method"). `baseline` (legacy inRange) and `adapt` (CLAHE+adaptiveThreshold) are
+# genuinely INDEPENDENT front-ends -- different pixels selected -> different Hough
+# fit -> different center estimates, unlike ring/balance/geom, which are gates on
+# the SAME estimate the primary pipeline already produced (nothing to fuse there,
+# only a confidence weight). Measured on the `col` scene (RobustnessFrameset offline
+# scan, 2026-09-05): `adapt` detects far more than baseline (90.5% vs 65.2% mean
+# detOK) but is far less accurate when it fires (77.0% vs 83.4% within-0.15) --
+# the classic signature of two sensors with different bias/variance.
+#
+# A literal inverse-variance-weighted FUSION of the two estimates on frames where
+# both fire does almost nothing (baseline's measured variance is ~33x smaller, so
+# the weighted average is ~97% baseline by construction) -- tested and confirmed
+# inert. The real question was whether ACCEPTING adapt's estimate on frames where
+# baseline is silent helps: naively, it is a WASH (3 of 5 independent col
+# recordings got LESS accurate, 2 got more, as coverage rose ~30-40%).
+#
+# FIX: gate the fallback the same way the ring+balance rescue does -- not "any
+# estimate beats none", but "trust it only if it agrees with what we already
+# believe". This is a Kalman-filter INNOVATION TEST in its simplest form: predict
+# (here, hold-last-good leveled position -- the same approximation
+# CrossMarkerPerception already uses for alpha), measure (adapt's fallback
+# estimate), and gate on the residual distance rather than blindly accepting.
+# Measured (RobustnessFrameset `col`, 5 independent GT-FB flights, held-last-good
+# as the crude stand-in for a real KF prediction): a fallback ONLY accepted within
+# CROSS_FALLBACK_GATE_DIST=0.15 (normalized V-frame units) turns the same coverage
+# gain into a CLEAN win on EVERY rep -- pooled detOK 79.0%->82.8% (+27.5% more
+# detections) with accuracy UP, not traded away, on all 5 reps simultaneously (no
+# tradeoff anywhere, unlike every other variant measured this week). Rejected
+# fallback frames are genuinely bad (32.3% good-rate) vs accepted (96.7%) -- the
+# gate is doing real separation, not just discarding volume.
+#
+# ⚠⚠ HONEST GAP BETWEEN THE ABOVE OFFLINE ESTIMATE AND THE VALIDATED, SHIPPED
+# BEHAVIOR (2026-09-05, verified by driving the real process_frame() end-to-end,
+# not a standalone re-implementation): the offline numbers above assumed `adapt`
+# runs CONTINUOUSLY (its own track_state warm every frame, like an always-on
+# parallel detector) -- the shipped fallback instead only invokes `adapt`
+# SPORADICALLY, on primary misses, so its own internal ROI-tracking never gets to
+# lock on the way a continuously-run detector would. Verified end-to-end on the
+# same 5 recordings: pooled detOK 79.0%->82.2% (+3.2pt, +41% coverage), with 3 of
+# 5 reps clearly positive (+3.1, +9.4, +5.5) and 2 mildly negative (-0.7, -1.8).
+# Net positive, real, but NOT the "every single rep improves" result the idealized
+# offline estimate suggested -- report the verified number, not the idealized one.
+# Cross-checked for generalization on rover_IC2/rover_IC4 (DetectorFrameset,
+# oblique-view geometric clutter rather than lighting/colour): both mildly
+# positive, zero regressions (rover_IC2 within-0.15 75.5%->77.3%, n 159->176;
+# rover_IC4 88.9%->89.5%, n 487->494) -- smaller effect since rover's baseline
+# detOK is already high (87-99%), leaving little for a fallback to add, but the
+# mechanism does not hurt on a structurally different failure mode either.
+#
+# ⚠ Uses HOLD-LAST-GOOD, not a real velocity-aware KF prediction (the existing
+# centroid KF, _scen_kf_x, tracks value+rate and would predict better across a
+# longer gap) -- this is the validated FIRST version; upgrading the reference to
+# the real KF prediction is a natural follow-on if hold-last-good's staleness ever
+# shows up as a problem (not yet measured to be one).
+CROSS_FALLBACK_ADAPT_GATE = os.environ.get("CROSS_FALLBACK_ADAPT_GATE", "0") == "1"
+CROSS_FALLBACK_GATE_DIST = float(os.environ.get("CROSS_FALLBACK_GATE_DIST", "0.15"))
+FALLBACK_STATS = {"attempted": 0, "adapt_fired": 0, "accepted": 0, "rejected_gate": 0}
+
 # HYBRID BG-FLOW (2026-08-27, follow-on -- tools/validate_bgflow_corr.py). Two
 # additions aimed at texture-SCALE robustness (real surfaces come at any grain;
 # we can't dictate the texture), both default OFF pending a fresh SITL rep +
@@ -905,6 +967,14 @@ class CrossMarkerPerception:
         # ARUCO_ROI_MARGIN_PX fast path). Owned here (not module-global) so it resets
         # cleanly per-instance/per-flight.
         self._track_state = {'last_bbox': None, 'miss_count': 0}
+        # Separate, dedicated tracking state for the adapt FALLBACK detect() call
+        # (see CROSS_FALLBACK_ADAPT_GATE above) -- kept independent of the primary
+        # self._track_state so a fallback attempt can never perturb the primary
+        # pipeline's own ROI lock/miss-count bookkeeping.
+        self._fallback_track_state = {'last_bbox': None, 'miss_count': 0}
+        self._fallback_held_v = None   # leveled (V-frame) position of the last
+                                        # ACCEPTED PRIMARY detection -- the
+                                        # innovation-gate's prediction reference
 
         # HW COAST+FREEZE KF (2026-08-24, ported from img_data.py's _kf_update /
         # _kf_step -- see feedback_kf_frozen_during_marker_loss): this module used to
@@ -1983,6 +2053,60 @@ class CrossMarkerPerception:
         # size, so the loosened crop never triggers. Computing it fresh from
         # ROI-independent, already-ghost-filtered data every call avoids that.
         det = cmd.detect(img_bgr_curr, track_state=self._track_state)
+        _primary_ok = det.ok   # captured BEFORE the fallback can reassign det --
+                                # see the held-reference update below for why this matters
+
+        # INNOVATION-GATED ADAPT FALLBACK (see CROSS_FALLBACK_ADAPT_GATE at module
+        # top for the full design/validation). Runs ONLY on a primary miss, with a
+        # SEPARATE track_state so it can never perturb the primary pipeline's own
+        # ROI lock. Needs quat_curr to level the candidate into the same V-frame
+        # the gate reference is held in -- skip gracefully without one.
+        if (not det.ok) and CROSS_FALLBACK_ADAPT_GATE and quat_curr is not None:
+            FALLBACK_STATS["attempted"] += 1
+            with cmd._adapt_gate_override():
+                det2 = cmd.detect(img_bgr_curr, track_state=self._fallback_track_state)
+            if det2.ok and det2.center is not None:
+                FALLBACK_STATS["adapt_fired"] += 1
+                try:
+                    v2 = self._getVirtualPts(np.asarray([det2.center], dtype=float),
+                                              quat_curr, log_zv=False)[0]
+                except Exception:
+                    v2 = None
+                if v2 is not None:
+                    if self._fallback_held_v is None:
+                        # nothing to gate against yet -- accept once to seed the
+                        # reference (matches "don't veto on ignorance" elsewhere
+                        # in this pipeline: a first estimate is better than none).
+                        det = det2
+                        FALLBACK_STATS["accepted"] += 1
+                    else:
+                        dist = float(np.hypot(v2[0] - self._fallback_held_v[0],
+                                              v2[1] - self._fallback_held_v[1]))
+                        if dist <= CROSS_FALLBACK_GATE_DIST:
+                            det = det2
+                            FALLBACK_STATS["accepted"] += 1
+                        else:
+                            FALLBACK_STATS["rejected_gate"] += 1
+
+        # Update the fallback gate's reference from the PRIMARY pipeline's OWN
+        # detections ONLY -- hold-last-good, same approximation this pipeline
+        # already uses for alpha. ⚠ Deliberately NOT updated from an accepted
+        # fallback (measured 2026-09-05: doing so lets an accepted, less-accurate
+        # `adapt` estimate become the reference for the NEXT frame, compounding --
+        # one live end-to-end test showed a real per-rep regression, 78.2%->75.2%
+        # within-0.15, that the offline validation never had; reverting to
+        # baseline-only reference reproduced a clean net-positive result -- see the
+        # module-level comment's "HONEST GAP" note for the fully-verified numbers).
+        # Left stale (not cleared) across misses -- a held reference several
+        # frames old is still what made the measured gain, no decay logic added
+        # speculatively.
+        if _primary_ok and det.center is not None and quat_curr is not None:
+            try:
+                self._fallback_held_v = self._getVirtualPts(
+                    np.asarray([det.center], dtype=float), quat_curr, log_zv=False)[0]
+            except Exception:
+                pass
+
         gray_curr = cv2.cvtColor(img_bgr_curr, cv2.COLOR_BGR2GRAY)
         gray_prev = cv2.cvtColor(img_bgr_prev, cv2.COLOR_BGR2GRAY)
         bbox_area = (det.mask_bbox[2] * det.mask_bbox[3]) if det.mask_bbox else 0
