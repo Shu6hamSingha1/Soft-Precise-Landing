@@ -582,3 +582,30 @@ much reversion). This margin-gated version is the smallest rescue that still fix
 
 **NEXT: re-run the col SITL A/B (5 reps, same design as the earlier flight test) to check
 whether the rescue actually resolves the 15.4m fly-away outlier live, not just offline.**
+
+## ⚠ SITL RE-TEST of col with the rescue: severity reduced, NOT eliminated (2026-09-05, n=5)
+
+`test_data/SceneFix_AB_harness/scenefix_cm_col_rescue.tsv` vs the earlier `scenefix_cm_col.tsv`
+(pre-rescue), same design (n=5 interleaved, off vs `ens_ring_balance`, IC2, perception mode).
+
+**Within this run** (the valid comparison -- off/on interleaved, temporal drift shared):
+off was clean throughout (detOK never below 98.7%, no `TARGET_LOST`); on still had one clear
+collapse (`on/2`: detOK 70.5%, xy 5.757) and one moderate dip (`on/5`: 84.3%). **The tendency
+for `on` to occasionally detect worse than `off` on this scene is still present.**
+
+**But severity dropped substantially** vs the pre-rescue run: worst-case detOK 34.0%->70.5%,
+worst-case xy 15.385m->5.757m -- roughly half as bad on both counts. Consistent with the
+rescue mechanism working as designed (catching SOME of the false-rejections that would
+otherwise cascade into total measurement blackout), just not all of them.
+
+⚠ **Honest confound**: `off`'s own results were also notably cleaner in this run than the
+earlier one (worst detOK 58.1%->99.1%, no TARGET_LOST at all this time) despite off's code
+being byte-identical between runs -- session/scene variability, not attributable to the fix.
+Part of the apparent improvement could be a generally easier run, not purely the rescue. The
+WITHIN-run interleaved comparison (which controls for this) still shows on > off risk, just
+less severely.
+
+**n=5 (effectively n=1 "bad" data point per arm per run) cannot resolve "reduced severity" from
+"noise."** Verdict: REAL, MEASURED, PARTIAL improvement -- not a fix. `ens_ring_balance` stays
+DEFAULT OFF. Would need a substantially larger n (10-15+) specifically targeting this collapse
+mode to say anything more precise about the residual rate/severity.
