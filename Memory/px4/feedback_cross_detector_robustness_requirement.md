@@ -819,3 +819,27 @@ contradicted by the SP/xy_err wash (that wash measures downstream control behavi
 perception already did its job better — a different question). Still opt-in
 (CROSS_FALLBACK_ADAPT_GATE default OFF); this strengthens the case for eventual default-on but
 landing-outcome remains a wash pending a fix to the terminal-overfill wall itself.
+
+## 2026-09-05 — CROSS_FALLBACK_ADAPT_GATE baked default ON
+
+By explicit user direction ("Bake it as default ON"), ahead of my own recommendation (which was
+to first live-flight-test `dim`/`lowsun` — only offline-checked for those). Baked in `f1e93c9a`:
+`src/cross_marker_perception.py:336` default flipped `"0"→"1"`, with an inline provenance
+comment summarizing the same evidence as above. `=0` reverts.
+
+**Full evidence trail at bake time:**
+- Ordinary `cross_marker` scene (n=5/arm, live SITL): flat 100% detOK both arms, every altitude
+  band — no regression.
+- `cm_col` scene (n=15/arm pooled, live SITL): off arm has ZERO valid-detection frames below
+  2.0m across all 15 flights; on arm reaches 1.3-2.0m (n=36, 94.4% detOK). Below 1.3m both
+  collapse to 0% (terminal-overfill wall, out of scope). SP/xy_err at n=15 was a wash — now
+  understood to be the wrong metric, not contradicting evidence (see the corrected-metric entry
+  above).
+- rover_IC2/IC4 (DetectorFrameset, offline only): both mildly positive, zero regression
+  (rover_IC2 within-0.15 75.5%→77.3% n159→176; rover_IC4 88.9%→89.5% n487→494).
+- `dim`/`lowsun`: **not yet SITL-flight-tested for this flag** — baked ahead of that coverage
+  gap per explicit user direction, not because the gap was closed. Worth a follow-up flight pass
+  if this flag is ever suspected in a future `dim`/`lowsun` regression.
+- Live end-to-end verification (not just offline replay) already caught and fixed one real bug
+  during development: the held-last-good reference must update from PRIMARY detections only, not
+  accepted fallback ones (else compounding drift) — landed before this bake, in `1c0fdeb6`.
