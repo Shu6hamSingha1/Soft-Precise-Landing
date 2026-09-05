@@ -609,3 +609,44 @@ less severely.
 "noise."** Verdict: REAL, MEASURED, PARTIAL improvement -- not a fix. `ens_ring_balance` stays
 DEFAULT OFF. Would need a substantially larger n (10-15+) specifically targeting this collapse
 mode to say anything more precise about the residual rate/severity.
+
+## ✅✅ MUCH STRONGER VALIDATION: 5 independent GT-FB flights, rescue improves EVERY SINGLE REP
+
+Addresses the confound in the perception-mode col SITL re-test above (small n, off's own
+results shifting between runs, closed-loop trajectory divergence muddying comparison). Under
+GT-feedback the trajectory is fixed by the reference regardless of what the detector sees, so
+every variant can be scored offline against the SAME real flight -- no closed-loop confound,
+and only N flights needed (not N x arms) since every variant is a deterministic re-score of
+the same recorded frames.
+
+`test_data/GtfbMulti_col/` -- 5 independent `PLASMC_GT_FEEDBACK=1` flights on `cm_col`, IC2
+(2,2,5), `CROSS_RING_OVERLAY_DBG=0` (clean frames), raw PNGs saved
+(`tools/GtfbMulti_col/record_col_gtfb_multi.sh`, pattern copied from
+`record_robustness_set.sh`). ~420-460 frames/rep, ~2200 frames total -- ~5x the single
+RobustnessFrameset `col` recording this whole thread has relied on until now.
+
+**detOK, no-rescue (`CROSS_RING_BALANCE_RESCUE_MARGIN=1.0`, unreachable thresholds) vs the
+landed default (margin=0.5), per independent flight:**
+
+| variant | rep1 | rep2 | rep3 | rep4 | rep5 | mean delta |
+|---|---|---|---|---|---|---|
+| ring_balance: no-rescue | 56.3 | 52.5 | 51.9 | 55.6 | 55.0 | |
+| ring_balance: rescued | 59.7 | 60.9 | 58.4 | 61.6 | 63.2 | **+6.5pt, every rep +** |
+| ens_ring_balance: no-rescue | 59.2 | 54.5 | 53.0 | 56.5 | 54.3 | |
+| ens_ring_balance: rescued | 62.1 | 61.2 | 57.9 | 61.4 | 58.7 | **+4.8pt, every rep +** |
+
+within-0.15 (accuracy): flat to +1pt mean on both variants, **no regression in any of the 10
+rep-comparisons** (5 reps x 2 variants).
+
+⭐⭐ **This is a materially stronger result than the perception-mode SITL A/B could give**: the
+rescue improves detection rate on EVERY SINGLE one of 5 independently-recorded flights, for
+both variant combinations, with zero accuracy cost anywhere. No outliers either direction --
+this is not noise. The margin-gated rescue design is validated.
+
+⚠ What this does NOT show: whether the improved detOK actually converts to better CLOSED-LOOP
+landing outcomes in perception mode (that's what the earlier small-n SITL A/B measured, with
+its own confounds). The two results are complementary, not contradictory: this shows the
+rescue reliably improves what the detector reports; the earlier test showed a real but partial
+reduction in closed-loop tail-risk severity. Together they support keeping the rescue landed
+(a893a77e) while `ens_ring_balance` overall stays DEFAULT OFF pending more
+closed-loop evidence.

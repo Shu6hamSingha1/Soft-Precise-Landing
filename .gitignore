@@ -91,6 +91,14 @@ PX4_Gazebo/test_data/DetectorFrameset/**
 PX4_Gazebo/test_data/RobustnessFrameset/**
 !PX4_Gazebo/test_data/RobustnessFrameset/MANIFEST.md
 
+# GtfbMulti_col: 5 independent GT-feedback flights on cm_col, recorded to
+# validate the ring+balance rescue at n=5 without the closed-loop confound of
+# a perception-mode SITL A/B. Same policy -- bulk npy+frames ignored
+# (regenerable via record_col_gtfb_multi.sh, ~145MB), manifest + script tracked.
+PX4_Gazebo/test_data/GtfbMulti_col/**
+!PX4_Gazebo/test_data/GtfbMulti_col/MANIFEST.md
+!PX4_Gazebo/test_data/GtfbMulti_col/record_col_gtfb_multi.sh
+
 # Q8_SpinFF (2026-09-03 perfect-ω_t-feedforward falsification): the finding lives in
 # Control_Data (e_R, w_u, u_a, e_a) + Ground_Truth + Control_Params; the 47 MB of Img_Data
 # frames are irrelevant to it. Same policy as DetectorFrameset -- bulk ignored, evidence tracked.
