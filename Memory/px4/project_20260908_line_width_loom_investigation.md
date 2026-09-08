@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T21:31:44.599Z
+  modified: 2026-09-08T21:34:03.262Z
 ---
 
 ## Context / goal
@@ -497,6 +497,32 @@ as a new, separate KF channel -- same machinery `_hw_kf_x`/`_hw_kf_P` already us
 (or standalone) channel. Validate the resulting rate against GT loom the same way every other
 candidate was validated this session (corr with `gt_optical_flow.py`'s `loom` field) before
 considering it for anything beyond shadow-mode logging.
+
+### ⛔ PURE line-width RATE (`"Width Loom Rate"` = `-d/dt ln(width)`, `_wloom_kf` Q=10/R=0.005) —
+### CONFIRMED NON-STARTER (2026-09-09, 18 real reps: the 2 Multi_IC gate bundles + 3 sanity reps)
+`width_perf.py` — corr with GT loom, per-rep mean / min / max over the 18 reps:
+
+| band | Width Loom Rate | (Scale Loom Rate, same reps) |
+|---|---|---|
+| whole descent | **0.31** / 0.15 / 0.45 | 0.49 / 0.33 / 0.58 |
+| >2m | **0.23** / 0.11 / 0.34 | 0.40 |
+| **.5-2m (the only usable band)** | **0.22** / −0.09 / 0.68 | **0.77** / 0.38 / 0.97 |
+| <0.5m | 0.32 / −0.84 / 0.88 (pure noise, wild swing) | 0.05 (noise) |
+
+- In the `.5-2m` band the affine-fit SLOPE of Width Loom Rate vs GT loom is **near zero on most
+  reps** (a = 0.004, 0.003, 0.02, 0.036, 0.061, 0.072, 0.116, ...) — the signal carries almost
+  no loom information there; the fit is all intercept (b ≈ −0.33, i.e. "predict the mean descent
+  rate"). Half the reps are flat-zero corr; a handful reach 0.4-0.68 — inconsistent, not usable.
+- The `<0.5m` "0.32 mean" is an artefact of huge per-rep spread (−0.84 to +0.88), not signal.
+- Matches the earlier finding (width-only `a=1` blend → mid-band 0.14). **The extent term is what
+  makes `"Scale Loom Rate"` work; the pure line-width rate does not track loom well enough for
+  anything.** The static line-width VALUE (0.89-1.00 corr with GT altitude) remains fine — it's
+  specifically the DERIVATIVE that fails, because `ln(width)`'s slow state-dependent drift
+  (residual autocorr 0.5-0.9) dominates its own time-derivative.
+
+**Whole line-width-loom-RATE thread is now closed NEGATIVE.** Static width value: good, unused.
+Pure width rate: doesn't track loom (~0.22 in-band, often 0). Extent-fused rate (`"Scale Loom
+Rate"`): tracks loom (0.77 in-band) but can't be fed into h_z (see the dead-end verdict below).
 
 ### ✅ RATE signal made usable via EXTENT FUSION (2026-09-09, next session) — SHADOW-MODE landed
 
