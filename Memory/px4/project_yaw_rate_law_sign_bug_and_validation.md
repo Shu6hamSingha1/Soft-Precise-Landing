@@ -1,8 +1,11 @@
 ---
 name: project-yaw-rate-law-sign-bug-and-validation
-description: PLASMC_YAW_RATE_LAW (new yaw control, direct integrator on w_z bypassing psi_d/e_R) — a real actuation-chain sign bug was found+fixed via measurement; GT-feedback validation is a clean win INCLUDING beyond the old sin(dpsi) ceiling; real-perception is NOT yet safe (w_z inherits terminal-overfill corruption) — needs a confidence gate next.
-metadata:
+description: "PLASMC_YAW_RATE_LAW (new yaw control, direct integrator on w_z bypassing psi_d/e_R) — a real actuation-chain sign bug was found+fixed via measurement; GT-feedback validation is a clean win INCLUDING beyond the old sin(dpsi) ceiling; real-perception is NOT yet safe (w_z inherits terminal-overfill corruption) — needs a confidence gate next."
+metadata: 
+  node_type: memory
   type: project
+  originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
+  modified: 2026-09-08T05:53:38.007Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -92,6 +95,88 @@ damped/adaptive structure reacts more slowly to one bad signal than a pure unfil
 **This is not a flaw in the sign fix or the design** — GT-feedback (exact `w_z`, no corruption
 possible) validates cleanly. It's that the new law has zero filtering and zero confidence gating
 on its one input, inheriting real perception's known failure mode directly.
+
+## Confidence gate BUILT + first SITL run (2026-09-07) — gate works, law still not viable on real perception
+
+`controller.py` `PLASMC_YAW_RL_GATE` (default ON when the law is on). Freezes `_yaw_rl_cmd` +
+`_yaw_rl_ie` when w_z is untrusted: either `|w_z| > PLASMC_YAW_RL_WZ_MAX` (0.9) OR overfill
+(`MARKER_EXTENT_PX` ≥ `EXT_FRAC`·running-max AND ≥ `EXT_ABS` px; defaults 0.9 / 280). Logs
+`yaw_rl_gated(t)`. Params in `_buildLogDict` (Control_Data), not Control_Params.npy.
+
+IC1-5 n=3 headless, real perception, `PLASMC_YAW_RATE_LAW=1` (`test_data/ICValidation/20260907-161500`):
+**15/15 land, 0 TL, `yaw_rl_cmd` never saturates (max ~1.7, no −2.0 runaway)** — the narrow goal
+(kill the saturation blow-up the pre-gate stationary check showed) is met. But NOT a pass:
+- xy_mean IC1 0.31 / IC2 0.21 / IC3 0.24 / IC4 0.77 / IC5 0.57; 0/15 precise|soft. Worse than the
+  baseline ASMC stationary gate (`20260831-144626`, IC2/3/4 ~0.10 m).
+- **`e_a` diverges to −50°…−110° BEFORE overfill** — at the frame the gate first fires, `e_a` is
+  already −58° to −96° (IC4 rep1 −96° @93% through; IC2 rep1 −58° @66%). The real-perception
+  failure is mostly UPSTREAM of the terminal corruption the gate targets: noisy/biased real w_z,
+  not just the extent-tracking blow-up. GT-FB (exact w_z) → e_a −0.5°; real → law never converges.
+- **Freeze semantics are wrong when the law is mid-correction**: it holds the last `_yaw_rl_cmd`,
+  which can be large (IC1 rep3 froze at 1.678 rad/s, IC5 rep3 at 0.375) → the drone keeps yawing
+  while frozen → `e_a` drifts further after the gate. Should ramp cmd→0 on gate, not hold.
+- Gate onset a touch late (ext ≈284 vs max ≈318; corruption starts ~250).
+
+**Verdict: gate is necessary but not sufficient. The blocker is now real-w_z quality during the
+approach, not the terminal overfill.**
+
+### 2026-09-08 — ROOT CAUSE of the pre-overfill spin-up: perception w_z has the OPPOSITE sign to the GT-FB w_z the law was validated against
+
+Checked `cross_marker_perception.py`'s `w_z` and `alpha` against GT body yaw rate
+(`ψ̇_b,ENU` from raw UAV quaternions, `test_data/ICValidation/20260907-161500`, pre-overfill
+window, sync p95 ≤8 ms). NEITHER perception signal has a sign bug in its own convention:
+- **`alpha` — correct.** `corr(alpha, +ψ_uav,ENU) = +0.95..+0.98`, slope `+1.1..+1.2`. Matches
+  its own `_unweighted_principal_angle` closed form (`alpha_dot = -ψ̇_NED = +ψ̇_ENU`) and the
+  2026-08-31 `_alpha_0` re-derivation (slope +1.0). The `e_a` → −50°…−110° is a CONSEQUENCE of
+  the spin (alpha aliases past ±180° after ~½ turn), not an alpha fault.
+- **`w_z` (calibrated `self._w_i[-1][2]`, lstsq col-5 `A[:,5]=[-y;x]`) — correct SIGN vs the
+  manuscript rotational-flow definition** `w_z = -ψ̇_b,NED = +ψ̇_b,ENU`: `corr(w_z_perc, +ψ̇_b,ENU)
+  = +0.66..+0.86` (6/7 reps; IC3 +0.20 = low yaw excitation). **But magnitude ~3× LOW: slope
+  +0.2..+0.38** (should be +1) — the documented structural under-observability of the yaw column
+  in the per-frame 6-DOF lstsq (`cross_marker_perception.py` ~L715-731); `s_wz=0.587` in
+  `_sensor_cal_hw` doesn't recover it.
+
+**The law breaks on a convention mismatch, not a perception bug.** Perception `w_z ≈ +0.3·ψ̇_b,ENU
+≈ +0.27·alpha_dot` — i.e. **same sign as `alpha_dot`**. The kinematic identity is therefore
+`e_a_dot = alpha_dot ≈ +w_z_perc`. The law `Δw_u2 = k_p·e_a − w_z` was derived/validated for
+`e_a_dot = −w_z`, which is what `gt_feedback.py` supplies: `w[2] = -_asign·d(ry)/dt` with
+default `PLASMC_GT_ALPHA_SIGN=+1` (the NON-perception alpha convention; `gt_feedback.py` L193-204
+spells this out) → GT-FB `w_z` is the **opposite sign** to perception `w_z`. So under perception
+the `−w_z` term becomes **positive feedback on `w_u2`** (`dw_u2/dt ≈ +c·w_u2 + …`, c>0) →
+continuous yaw ~0.5–1 rad/s → GT relative yaw reaches +200°…+420° (1–2 full turns) well before
+overfill → `e_a` aliases. Same class as the 2026-09-05 actuation-chain sign bug; GT-FB can't
+catch it because GT-FB overrides `w_z` with its own oppositely-signed construction. The working
+ASMC yaw loop never exposed it — it is pure `e_a`-SMC and does not consume `w_z` sign at all.
+
+**Fix APPLIED + VALIDATED 2026-09-08.** `controller.py`: `PLASMC_YAW_RL_WZ_SIGN`
+(default **−1** on perception → effective `+w_z`; auto **+1** under `PLASMC_GT_FEEDBACK=1`) and
+`PLASMC_YAW_RL_WZ_SCALE` (default 1.0). Law increment is now
+`k_p·e_a − (WZ_SIGN·WZ_SCALE·w_z)`; gate rate-guard still on raw `|w_z|`.
+
+IC1-5 n=3 headless, real perception, `PLASMC_YAW_RATE_LAW=1` (WZ_SIGN=−1 auto)
+`test_data/ICValidation/20260908-110746`:
+
+| IC | mean xy | max xy | mean vel | precise |
+|---|---|---|---|---|
+| IC1 | 0.031 | 0.047 | 0.49 | 2/3 |
+| IC2 | 0.096 | 0.212 | 0.59 | 2/3 |
+| IC3 | 0.106 | 0.145 | 0.57 | 1/3 |
+| IC4 | 0.126 | 0.172 | 0.37 | 1/3 |
+| IC5 | 0.129 | 0.208 | 0.52 | 2/3 |
+
+**15/15 land, 0 TL, 8/15 precise, all reps soft (rel_vel ≤0.76).** On par with / slightly better
+than the baseline ASMC stationary gate (`20260831-144626`). Mechanism confirmed fixed:
+GT yaw travel −8°…−24° (was +200°…+420°, 1–2 full turns); `yaw_rl_cmd` bounded ±0.23, no
+runaway; `e_a` final −11°…+18°.
+
+**Residual `e_a` ~10–22° (|mean last 20%|)** — the ~3× `w_z` magnitude deficit (weak
+rate-cancellation term) + `k_p=0.3` only. **NEXT: sweep `PLASMC_YAW_RL_WZ_SCALE` (~2–3) and/or
+`k_i`** to close it. Still open: n=5 + turning-target IC gate; ASMC/`psi_d` removal still deferred
+until that's done. WZ_SIGN/SCALE not yet in `Control_Params.npy` (the `_buildLogDict` param dict
+isn't that file — behaviour confirms it applied). Next levers, in order: (1) ramp `_yaw_rl_cmd`→0 on gate
+instead of freeze-hold; (2) fix/characterise real w_z bias+noise pre-terminal (this is the big
+one — filter, or bias-correct against alpha-rate); (3) earlier gate onset (EXT_ABS→250, WZ_MAX↓).
+Blend-to-ASMC is weak here: the ASMC `u_a` running alongside is itself saturated ±2 on IC4.
 
 ## Next step (not started)
 
