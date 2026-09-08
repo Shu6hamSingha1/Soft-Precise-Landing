@@ -603,7 +603,18 @@ def _wloom_scan_thickness(mask, p0, nrm):
 def _wloom_width_at_points(mask, pts_for_dir):
     """Width of ONE arm from its (pruned) detected points + the isolated mask.
     Returns None if fewer than _WLOOM_MIN_QUORUM stations land on-mask (caller
-    should hold last-good, not treat None as zero)."""
+    should hold last-good, not treat None as zero).
+
+    TRIED + REVERTED (2026-09-09, chasing the rate signal's weaker reps): a
+    metric-position (fixed fractions of the arm's span, nearest-point lookup)
+    station selection, to counter confirmed point-count churn (217-2290 in one
+    rep's steady mid-descent -- the same architecture-level point-identity-churn
+    fact as the origin_ratio investigation). Measured WORSE on the same 4-rep
+    validation (best mean 0.24 vs this rank-based method's already-committed
+    0.38) -- with hundreds-to-thousands of points, rank-based percentiles
+    apparently already track metric position well enough regardless of count
+    swings, so this wasn't the dominant driver of the residual gap after all.
+    Reverted; kept as a documented negative result, not a live TODO."""
     pts_for_dir = np.asarray(pts_for_dir, dtype=np.float64)
     if len(pts_for_dir) < 4:
         return None
