@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T21:24:35.046Z
+  modified: 2026-09-08T21:31:44.599Z
 ---
 
 ## Context / goal
@@ -499,6 +499,15 @@ candidate was validated this session (corr with `gt_optical_flow.py`'s `loom` fi
 considering it for anything beyond shadow-mode logging.
 
 ### ✅ RATE signal made usable via EXTENT FUSION (2026-09-09, next session) — SHADOW-MODE landed
+
+> ⚠ **NAMING CLARIFICATION: `"Scale Loom Rate"` is NOT a line-width signal — it is ~70%
+> `MARKER_EXTENT_PX`.** Line-width was the *starting hypothesis*; when tested alone (the separate
+> `"Width Loom Rate"` log channel = pure `-d/dt ln(width)`) it was WEAK — ~0.14 corr in the
+> mid-descent band. `MARKER_EXTENT_PX` (marker bbox size, a different observable) alone carried
+> ~0.73. So `scale_z = 0.3·ln(width) + 0.7·ln(MARKER_EXTENT_PX)` — extent-DOMINATED; the 0.3
+> width term is kept only for a small worst-rep robustness gain. Don't describe `"Scale Loom
+> Rate"` as "loom rate from line-width" — that's `"Width Loom Rate"`, which didn't pan out.
+
 Followed up the "needs a new idea" verdict. Re-diagnosed on the 7 OverfillCapture reps (real
 detector replay, FIXED `gt_optical_flow.py`), scripts in scratchpad `diag_wloom_{rate,drift,gray,v3,v4}.py`:
 - **Terminal loss is NOT lag** — GT-loom-shift sweep (τ=0..0.2s) shows corr *decreasing* with τ, flat.
