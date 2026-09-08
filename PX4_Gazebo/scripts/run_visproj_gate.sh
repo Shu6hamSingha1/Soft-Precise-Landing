@@ -48,6 +48,7 @@ run_arm() {  # $1 ic  $2 arm(new|old)  $3 rep
   local ic="$1" arm="$2" rep="$3" root ld
   [ "$arm" = new ] && root="$NEW_ROOT" || root="$OLD_ROOT"
   ld="$root/test_data/Landing_Test"
+  [ "$arm" = old ] && [ -z "$(ls -A "$ld" 2>/dev/null)" ] && ld="$NEW_ROOT/test_data/Landing_Test"  # worktree autosaves to the main tree (LANDING_OUT_BASE unset); fall back
   local before; before=$(ls -td "$ld/"*/ 2>/dev/null | head -1 || true)
   echo "=== $ic $arm rep=$rep  $(date +%H:%M:%S) ==="
   ( cd "$root" && env INITIAL_DRONE_ENU="${IC_ENU[$ic]}" LANDING_AUTOSAVE=1 MAX_ATTEMPTS=5 \
