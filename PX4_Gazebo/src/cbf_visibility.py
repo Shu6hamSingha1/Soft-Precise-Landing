@@ -373,14 +373,22 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     #   th_desired - P@(Ia_lat/_az0) == P@((I_a[:2]-Ia_lat)/_az0)
                     # -- exactly "lateral accel the box removed, over the original a_z".
                     #
-                    # ⛔ FAILED the IC2-5 cross-marker SITL A/B gate (2026-09-08,
-                    # test_data/JQP_ReliefRefAz0_AB/20260908-160523, n=5/arm/IC):
-                    # REF_AZ0=1 regressed mean xy_err at ALL FOUR ICs (off->on:
-                    # 0.58->0.97, 1.17->1.93, 1.88->2.34, 0.71->1.49 m) and nearly
-                    # DOUBLED target-loss (4 -> 7 TL total; worse or equal at every
-                    # IC). validate_cbf.py 17/17 was misleading -- same pattern as
-                    # Rz_p90b and CBF_MARGIN_RESERVE. MECHANISM (traced from the
-                    # bundle): the corrected relief is PROPORTIONAL + PERSISTENT, so
+                    # ⚠ PROVISIONALLY REJECTED by the IC2-5 cross-marker SITL A/B gate
+                    # (2026-09-08, test_data/JQP_ReliefRefAz0_AB/20260908-160523,
+                    # n=5/arm/IC): REF_AZ0=1 showed higher mean xy_err at all 4 ICs
+                    # (off->on: 0.58->0.97, 1.17->1.93, 1.88->2.34, 0.71->1.49 m) and
+                    # 4->7 TL total. ⚠ CONFOUND (flagged by the peer session
+                    # 2026-09-08): that gate ran on a base WITH commit c3a46d1a's
+                    # origin_ratio Tz-veto bug, which freezes/corrupts the off-center
+                    # control-path loom (h_z reads positive from t=0 on IC2/3/5) in
+                    # ~70% of the gate's reps -- BOTH arms, matched/interleaved, so the
+                    # direction may survive but the effect size is unreliable. FIXED
+                    # base is e173b05c (CROSS_TZ_VETO_R_MULT->1.0). NEEDS A CLEAN
+                    # RE-GATE before the rejection is settled. validate_cbf.py 17/17
+                    # was not evidence either way. MECHANISM (control-side, loom-
+                    # independent -- the I_a[2] pin at -g is specific to REF_AZ0=1,
+                    # off-arm pin fraction ~0): the corrected relief is
+                    # PROPORTIONAL + PERSISTENT, so
                     # at a tight off-center touchdown -- box binding EVERY frame -- it
                     # relieves every frame, pins I_a[2] at -g -> B_T->0 -> descent
                     # FREEZES for seconds at 0.4-1.5 m. The freeze doesn't fix the
@@ -391,8 +399,9 @@ def cbf2_filter(I_a, R, R33, yaw_c, corners, center, focal,
                     # dither that never deadlocks. A real fix must break the loop
                     # (cap cumulative relief DURATION, gate on lateral error actually
                     # shrinking, or back off the BOX not just the descent after N
-                    # bound frames); a "correct" per-cycle relief alone makes it
-                    # worse. LEFT default OFF as an A/B hatch; do NOT bake / re-try.
+                    # bound frames); a "correct" per-cycle relief alone is unlikely
+                    # to help. LEFT default OFF; re-gate on the e173b05c base before
+                    # baking OR before writing this off for good.
                     # See project_20260908_jqp_relief_refaz0_gate_failed.
                     _az_ref = _az0 if _relief_ref_az0 else _az_now
                     _th_safe_ref = P @ (Ia_lat / _az_ref)

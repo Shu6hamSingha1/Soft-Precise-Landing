@@ -1,6 +1,6 @@
 ---
 name: project_20260908_jqp_relief_refaz0_gate_failed
-description: "CBF_JQP_RELIEF_REF_AZ0 (joint-QP descent-rate-relief self-inflation fix, pdf open item #2) FAILED its IC2-5 cross-marker SITL A/B gate — regressed mean xy_err at all 4 ICs and nearly doubled target-loss. Left default OFF as an A/B hatch; do NOT re-try as an untested win. Separately, the per-outer-iterate joint-QP convergence residual instrumentation (commit 7b81ac1f) is committed and stands."
+description: "CBF_JQP_RELIEF_REF_AZ0 (joint-QP descent-rate-relief self-inflation fix, pdf open item #2) PROVISIONALLY rejected by an IC2-5 cross-marker SITL A/B gate — but that gate ran on a base with c3a46d1a's origin_ratio loom-veto bug (off-center h_z frozen/corrupted in ~70% of reps, both arms). Needs a clean re-gate on the e173b05c base. The control-side deadlock MECHANISM (relief pins I_a[2] at -g when the box binds every frame) is loom-independent and stands. Left default OFF. Per-outer-iterate joint-QP residual instrumentation (7b81ac1f) + test_joint_qp() (91c7e569) stand regardless."
 metadata:
   node_type: memory
   type: project
@@ -93,7 +93,31 @@ the reverted `Rz_p90b` / the reversed-direction `CBF_MARGIN_RESERVE`
   an IC2-5 cross-marker SITL A/B is. Three synthetic-clean CBF "fixes" have now
   regressed in SITL.
 
+## ⚠ CONFOUND — the gate ran on a loom-broken base (flagged by the peer session 2026-09-08)
+
+The `20260908-160523` gate ran on a base that **included `c3a46d1a`** (the origin_ratio
+Tz-veto bug: on off-center approaches `origin_ratio = M0/||norm_centroid||^2 < 1.0` from
+t=0 -> `r[2] *= 1e6` -> the control-path loom `h_z` freezes/corrupts positive -> unbraked
+descent) and **not** the fix `e173b05c` (`CROSS_TZ_VETO_R_MULT -> 1.0`). Checked the gate
+bundle directly: `h_z` reads positive in the first 15% of flight ("start+") in **~70% of
+reps across BOTH arms** — IC2 10/10, IC3 off 3/5 / on 4/5, IC5 off+on ~all, IC4 mostly ok
+(longer descent, veto intermittent). Two reps (IC5 off rep5, on rep4) fully frozen.
+
+It was matched + interleaved, so both arms carried the same broken loom — the *direction*
+of the arm difference may survive, but the **effect size (mean xy 1.08->1.68, TL 4->7) is
+unreliable** and the noise floor is far above a clean base. `IC4 rep3 on` (xy 8.50) was
+already noted as a separate `MARKER_EXTENT_PX`-stuck flake, not the relief.
+
+**Status: PROVISIONALLY rejected. Needs a clean re-gate on the `e173b05c` base** (queued,
+SITL lane held by the peer's WZ_SCALE re-gate ~2026-09-08 evening). Still likely to reject
+(the deadlock mechanism below is real and off-center ICs are where the box binds hardest),
+but "regressed every IC / do not re-try" is downgraded until the clean run.
+
 ## MECHANISM — box<->relief closed-loop DEADLOCK (traced 2026-09-08 from the bundle)
+
+This part is **loom-independent** and survives the confound: the `I_a[2]`-pinned-at-`-g`
+signature is specific to `relief_on` (off-arm terminal pin fraction ~0.00; on-arm up to
+0.71), i.e. it is the relief term doing it, not the frozen loom.
 
 Terminal-window (last 25-40%) trace of the regressed `relief_on` reps (IC2 rep2/rep3,
 IC3 rep2, IC5 rep2) vs their matched `relief_off` reps, from `Control_Data.npy`
