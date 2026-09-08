@@ -644,3 +644,28 @@ active to touchdown + IC5 terminal-1/Z stochastics.
 stationary win → whether a default-flip is justified).
 
 Also `7ecc29d0`: `_yaw_rate_law` now gated to `MARKER_TYPE=cross` (warns on ArUco).
+
+### 2026-09-09 — MATCHED A/B (new law vs ASMC, same HEAD) → EVEN TRADE, no default-flip
+
+`test_data/ICValidation/{20260909-030532 LAW=1, 20260909-033319 LAW=0/ASMC}`, IC1-5 n=5,
+`7ecc29d0` PX4 code, collision-clean. **Both 25/25 land, 0 TL.**
+| IC | NEW-LAW mean/prec | ASMC mean/prec |
+|---|---|---|
+| IC1 | 0.040 / 4p | 0.134 / 3p |
+| IC2 | 0.028 / 4p | 0.113 / 2p |
+| IC3 | 0.027 / 5p | 0.119 / 2p |
+| IC4 | 0.120 / 2p | **0.044 / 5p** |
+| IC5 | 0.082 / 3p | **0.062 / 4p** |
+| tot | **18/25 precise** | **16/25 precise** |
+
+New law markedly tighter IC1/2/3 (3-4× xy); ASMC tighter IC4 (7 m start) + IC5 (3 m). Precise
+near-tie. Likely: ~3× `w_z` deficit weakens the FF over IC4's long descent; IC5 spends more of its
+short descent in the terminal `alpha`-overfill zone.
+
+**DECISION: `PLASMC_YAW_RATE_LAW` stays DEFAULT OFF.** Not a clear stationary win (even trade). Its
+value is turning targets (validated), gated on B4 (turning-target lateral limit cycle,
+[[project_rover_turning_open]]). No default-flip until B4 lands turning targets.
+
+**Yaw controller = FINALIZED as a validated opt-in.** Config bundle `FLOW_KF_Q_WZ=1.0 +
+WZ_SCALE=2.5`, `MARKER_TYPE=cross` only. Remaining = separate threads: B4 lateral cycle,
+`WZ_SCALE` recal, `alpha` overfill, real rover turning gate, ASMC removal (keep as fallback).
