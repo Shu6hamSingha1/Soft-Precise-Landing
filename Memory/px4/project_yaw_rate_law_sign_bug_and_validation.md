@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T17:32:31.203Z
+  modified: 2026-09-08T18:10:12.165Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -304,6 +304,30 @@ off-center. NOT a clear win over the ASMC for stationary (residual e_a ~15°, IC
 Its value is turning targets — UNTESTED. Next real step for the thread = the turning-target gate,
 not the recal. (`8884f43d` visibility_projection.py = new CBF module, NOT wired into controller.py,
 inert — base stable.)
+
+### 2026-09-08 — TURNING-TARGET GATE: yaw-rate law wins the yaw channel decisively
+
+Adapted the IC gate: GT-FB + `PLASMC_GT_SPIN_WZ=0.48` (target rotates in place at 27°/s —
+`gt_feedback.py:111`; isolates yaw from the moving-rover translation blocker). A/B on
+`PLASMC_YAW_RATE_LAW`, IC1-5 n=3. Bundles `test_data/ICValidation/{20260908-230706 LAW=1,
+20260908-232039 ASMC}`.
+
+**YAW result — the core claim, CONFIRMED in the full landing loop:**
+| arm | `\|e_a\|` tail | `e_a` end | `yaw_cmd` peak |
+|---|---|---|---|
+| **LAW=1** | **1-4°** (IC5 11° once) | ±3-9° | 0.62 rad/s (ABOVE the ASMC 0.5 sin-ceiling) |
+| ASMC | 94-167° | −116° to −202° | 2.0 clamped, can't hold |
+
+ASMC does exactly what the Q8 sin(Δψ) analysis predicted: 60-80° lag → runaway to the ±180° alias.
+The new law holds yaw error to a few degrees at a spin rate no `e_R`-routed command can reach.
+**`PLASMC_YAW_RATE_LAW` is validated for turning targets on the yaw channel.**
+
+**LANDING xy — CONFOUNDED.** Both arms land poorly on IC2-5 (~2-17 m). Gate ran with
+`PLASMC_GT_ALPHA_SIGN=+1` (default); `gt_feedback.py:193-204` — `+ry` is "self-consistent at
+e_a≈0" (so yaw holds) but on a persistently rotating target "drives the loop through the inverted
+disturbance path", corrupting lateral coupling — IC1 (centered) survives, off-center flies off.
+`SIGN=-1` is the perception-matching convention for a rotating scene. Re-run in progress:
+`test_data/ICValidation/20260908-233929` + one more, `PLASMC_GT_ALPHA_SIGN=-1`.
 
 ## Next step (not started)
 
