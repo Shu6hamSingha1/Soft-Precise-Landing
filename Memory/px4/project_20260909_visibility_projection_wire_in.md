@@ -1,6 +1,6 @@
 ---
 name: project_20260909_visibility_projection_wire_in
-description: "The visibility CBF was rebuilt from clean requirements as src/visibility_projection.py (Tier-1 hard lean projection on the measured cross-marker CENTRE in the real camera plane + Tier-2 soft self-releasing descent ease) and wired into controller.py (82fa9c16), retiring cbf_visibility.py / cbf_visibility_aruco.py / the joint-QP / deliverability-sphere / descent-relief / two-phase-delta / rho_fov-cone machinery. IC2-5 n=5 A/B vs the old machinery (worktree @ d380901c): PASS -- both 20/20 land / 0 TL; NEW pooled mean xy 0.14 vs OLD 0.24, precise 11 vs 8, max rel_vel 1.47 vs 1.95. No regression, tighter + softer, ~half the code."
+description: "The visibility CBF was rebuilt from clean requirements as src/visibility_projection.py (Tier-1 hard lean projection on the measured cross-marker CENTRE in the real camera plane + Tier-2 soft self-releasing descent ease) and wired into controller.py (82fa9c16), retiring cbf_visibility.py / cbf_visibility_aruco.py / the joint-QP / deliverability-sphere / descent-relief / two-phase-delta / rho_fov-cone machinery. IC2-5 n=5 A/B vs the old machinery (worktree @ d380901c): PASS -- both 20/20 land / 0 TL; NEW pooled mean xy 0.14 vs OLD 0.24, precise 11 vs 8. WHY NEW>OLD (traced from the bundle): median is a WASH (CBF idle on clean approaches); NEW wins the TAIL because the old joint-solve/relief/pullback/theta_cone-floor stack THRASHED on marginal off-center approaches -- intervened when it shouldn't (OLD dtheta_az fired 4-5% of terminal frames vs NEW vis_active 0%; fought the SMC re-centering), chattered theta_cone 3-5x into the kappa ratchet (a_u 32-55 vs 5-6, kappa 0.5 vs 0.1), added descent-slowing pressure. All OLD tail failures end with s_e_n~0.9-1.0 (the unresolved off-center wall); NEW doesn't fix that wall, it stops the CBF from worsening it (NEW still hits it once, IC5r2)."
 metadata:
   node_type: memory
   type: project
@@ -82,6 +82,62 @@ NEW's worst IC5r2 0.76/1.47. Smoke IC2 NEW-arm: precise xy=0.040, `vis_active` 0
 
 **Verdict: no regression in landing rate or target-loss; NEW is tighter and softer
 at ~half the code.** buffer_frac=0.15 / descent-ease default-on stand.
+
+## WHY NEW beat OLD — mechanism (traced 2026-09-09 from the gate bundle)
+
+The pooled median is nearly identical (0.09 vs 0.12) — on a clean approach NEITHER
+CBF does anything (NEW `vis_active`=0%, OLD `dtheta_az`~0). **The entire difference
+is in the TAIL**: OLD had 3 bad reps (IC3r4 0.76/1.32, IC4r3 0.88/1.66/9s,
+IC4r4 0.68/1.95), NEW had 1 milder one (IC5r2 0.76/1.47).
+
+Terminal-window (last 30%) trace of the 3 bad OLD reps vs their matched NEW reps:
+
+| rep | arm | interv | θcone chatter (mean\|Δθ\|) | reliefT | a_u maxT | κ maxT | s_e_n end |
+|---|---|---|---|---|---|---|---|
+| IC3r4 | OLD | 0.04 | **0.047** | 0.09 | **55** | 0.5 | **0.99** |
+| IC3r4 | NEW | 0.00 | 0.015 | 0.03 | 6 | 0.1 | 0.10 |
+| IC4r4 | OLD | 0.05 | **0.056** | 0.08 | **32** | 0.5 | **0.90** |
+| IC4r4 | NEW | 0.00 | 0.012 | 0.03 | 5 | 0.1 | 0.09 |
+| IC4r3 | OLD | 0.00 | 0.004 | 0.00 | 1 | 0.2 | 0.24 (**alt +3.98 m, 8 s flight — never descended**) |
+| IC4r3 | NEW | 0.00 | 0.017 | 0.02 | 10 | 0.5 | 0.11 |
+
+**All the OLD tail failures end with `s_e_n ≈ 0.9-1.0`** (marker centroid pinned at
+the FoV edge) + `a_u` 30-55 + `κ` ratcheted to 0.5. That is the known, unresolved
+off-center lateral-convergence wall ([[project_20260824_crossmarker_offcenter_convergence_wall]],
+[[project_20260903_controller_population_analysis]]'s "control-bound residual, cause
+NOT identified"). **Neither CBF causes it and neither fixes it** — NEW still hits it
+once (IC5r2: NEW `s_e_n` end 0.95, `a_u` 77, OLD centered that rep). The rebuild did
+NOT solve the wall; it stopped the CBF from making it worse.
+
+**Three ways the OLD machinery was actively counterproductive on marginal-but-
+recoverable off-center approaches — exactly what IC2-5 stress:**
+
+1. **It intervened when it shouldn't.** OLD's `dtheta_az` fired 4-5% of terminal
+   frames in IC3r4 / IC4r4; NEW's `vis_active` was **0%** in all three. The OLD
+   joint QP + drift-off `p_10_eff` pullback + θ_cone floor modify the lateral
+   command the SMC is using to re-centre, and that modification is not cleanly
+   outward-only. NEW's alternating projection is provably minimal-intervention +
+   outward/tangential-free (validator checks 2, 3), so on a marginal approach it
+   stays out of the SMC's way and the vehicle converges (`s_e_n` end 0.10 vs 0.99).
+2. **θ_cone chatter 3-5×** (OLD 0.047-0.056 vs NEW 0.012-0.017 mean frame-to-frame).
+   The 6×5 joint solve with `a_z` in the loop does not converge frame-to-frame near
+   touchdown ([[project_joint_qp_nonconvergence_kappa_ratchet]]) → feeds `κ` a
+   non-settling `σ` → κ ratchets 0.5 vs 0.1 → `a_u` amplifies 32-55 vs 5-6. NEW's
+   single fixed-`a_z` alternating projection gives a smooth θ_cone, so κ settles.
+3. **Descent-relief terminal pressure.** OLD `reliefT` 0.08-0.09 vs NEW 0.02-0.03 in
+   the tail reps — not a full deadlock here, but the residual of the deadlock-prone
+   `CBF_AZ_COST_GAIN` mechanism, always in the "slow the descent while off-centre"
+   direction that prolongs edge exposure.
+
+**Bottom line:** the median wash confirms the two are equivalent when the CBF is
+idle (the common case). NEW wins the tail because the joint solve / relief / pullback
+/ θ_cone-floor stack THRASHED on exactly the tight off-centre approaches the gate
+targets — fighting the re-centring, chattering θ_cone into the κ ratchet, adding
+descent-slowing pressure — while the minimal outward-only projection got out of the
+way. Simplicity here is not just fewer lines; the removed machinery was net-negative
+on the hardest cases. (IC4r3 OLD's 8 s / 4 m-stuck flight is a separate descent /
+acquisition failure, plausibly SITL variance in a back-to-back interleaved run, not
+a traced CBF effect — but it counts in the tally.)
 
 ## Gotchas
 
