@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 12257c7c-a2c9-46f1-a6c7-d09063093486
-  modified: 2026-09-08T12:55:49.931Z
+  modified: 2026-09-08T13:28:07.137Z
 ---
 
 ## Context / goal
@@ -252,6 +252,50 @@ relative-drop/streak DETECTION logic is kept in the code (computed, logged via t
 (`CROSS_TZ_VETO_R_MULT>1`) without a fresh SITL gate covering BOTH a real off-center IC
 (IC2/IC3/IC5) AND a rep that reproduces something like the original centered collapse** --
 neither alone is sufficient, per the tension found above.
+
+### ⛔ Relative-drop/streak fix DECISIVELY FAILED on real off-center data -- do not re-attempt
+Peer session re-gated IC1-5 n=5 on the fixed (veto-off) base: 20/25 land clean (IC1/2/3/4),
+confirming the r_mult=1.0 revert works. Copied their off-center bundle
+(`test_data/ICValidation/20260908-182815/{IC2,IC3,IC4}_rep{1..5}`) and reconstructed
+`origin_ratio` frame-by-frame from `Flow Points Prev/Curr Px` + `Img_Params.txt` (same
+formula as the live code) to properly test the relative-drop/streak design against REAL
+(not synthetic) off-center data for the first time.
+
+**Confirms the regression mechanism quantitatively:** median origin_ratio is persistently
+0.40-0.91 across all 15 successful off-center reps (IC2 ~0.40-0.47, IC3 ~0.53-0.81, IC4
+~0.59-0.91), with 51-56% of ALL frames below the old absolute threshold of 1.0 -- during
+CLEAN, VALIDATED landings. The absolute-threshold bug would have vetoed roughly half of
+every off-center flight.
+
+**Decisively kills the relative-drop/streak fix, independent of tuning:** replayed the
+EXACT veto logic (EMA + consecutive-frame streak) against these real reps across a
+sweep -- drop_thresh in {0.15, 0.2, 0.3}, streak in {3, 8, 15} -- and false-veto rate
+never drops below ~24% of all frames, peaking near 36-45% at looser settings. Tried
+smoothing `origin_ratio` with a median-filter window (5/15/30 frames, up to ~0.6s) before
+the drop check: rate barely moves (26.1%->24.4%). **This proves the false-triggering
+isn't single-frame noise the streak/smoothing was designed to reject -- `origin_ratio`
+itself genuinely swings by large relative factors on sub-second timescales throughout
+ordinary off-center flight.** A "relative collapse from recent baseline" is not a rare,
+distinctive event for this signal off-center; it's routine. No parameter combination
+found in ~2 hours of testing (synthetic + 2 real datasets) makes this safe.
+
+**Separately, checked IC5's actual terminal blowup** (`h_z` spike to -7.22 at t~23s,
+IC5_rep1) as a candidate "reference-like collapse" for calibrating sensitivity: found
+`origin_ratio` does NOT show a clean decaying-drop signature there the way the original
+centered-IC1 case did (1.8->0.15) -- it's noisy and non-monotonic (0.06->0.16->0.51->NaN)
+right through the spike, with the ratio actually HIGHER right at the peak than
+immediately before it. This is consistent with the peer session's own framing that IC5
+is a SEPARATE, not-yet-understood terminal-loom blocker, not something origin_ratio-based
+vetoing was ever going to catch -- don't force-fit IC5 data into future origin_ratio work.
+
+**Verdict: `CROSS_TZ_VETO_R_MULT=1.0` (no-op) should be treated as the PERMANENT state for
+this mechanism, not a temporary holding pattern pending better tuning.** The underlying
+quantity (`M0/||c0||^2`) structurally conflates "off-center in frame" with "conditioning
+collapse" and no amount of gating on top of it separates them reliably. If Tz reliability
+needs a real fix beyond this, the width-loom direction (structurally origin/position-
+independent, already validated 0.89-1.00 corr with GT altitude) is the more promising
+path -- once its own open item (a usable rate signal, see below) is solved -- not further
+work on origin_ratio.
 
 ### Remaining genuinely open item (not started)
 Turning width into a CONTROL-READY RATE signal (`d(ln width)/dt`, Tz-like) -- decided to use a
