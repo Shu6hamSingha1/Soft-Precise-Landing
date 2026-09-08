@@ -128,3 +128,12 @@ PX4_Gazebo/test_data/OverfillCapture_IC2to5/**
 PX4_Gazebo/test_data/YawRLScale/**/rep*/
 !PX4_Gazebo/test_data/YawRLScale/**/summary.tsv
 !PX4_Gazebo/test_data/YawRLScale/**/*.log
+
+# YawRLKiSweep / YawRLQwzSweep (2026-09-09 yaw-rate-law k_i + FLOW_KF_Q_WZ sweeps):
+# bulk per-rep .npy ignored; sweep summaries + launch logs tracked.
+PX4_Gazebo/test_data/YawRLKiSweep/**/rep*/
+PX4_Gazebo/test_data/YawRLQwzSweep/**/rep*/
+!PX4_Gazebo/test_data/YawRLKiSweep/**/summary.tsv
+!PX4_Gazebo/test_data/YawRLQwzSweep/**/summary.tsv
+!PX4_Gazebo/test_data/YawRLKiSweep/**/*.log
+!PX4_Gazebo/test_data/YawRLQwzSweep/**/*.log
