@@ -385,3 +385,31 @@ reps (drone barely yaws → near-zero-variance regression, slopes came out −5.
 The residual is control-side: weak `−w_z` term (3× lstsq magnitude deficit) + `k_p=0.3` can't
 null the last 15° vs the 38 ms lag. Levers = `k_i` (0.0, untested) or larger effective `w_z`
 (recal / `WZ_SCALE`), NOT `alpha_0`.
+
+### 2026-09-09 — the ~15° residual is a GATE-FREEZE terminal artifact, NOT a steady-state control-gain limit
+
+⚠ CORRECTS the "control-side weak k_p / w_z deficit" framing above. Traced the per-%-flight `e_a`
+on `20260908-222553` (Q_wz=1.0+WZ_SCALE=2.5, perception-ON, stationary):
+- **Mid-descent (50-65% flight, alt ~0.8-1.8 m): `e_a` is a few degrees** — the yaw law converges
+  fine; `yaw_rl_cmd` is actively adjusting (−0.16..+0.11).
+- **At ~0.8-0.9 m the confidence gate fires** (MARKER_EXTENT_PX overfill 280→318) and FREEZES
+  `_yaw_rl_cmd` at its current small NON-ZERO value (~+0.04..+0.09 rad/s) AND freezes `_yaw_rl_ie`
+  (anti-windup).
+- **Last ~1-2 s to touchdown: `e_a` drifts to ±15-30°** — the frozen non-zero command keeps the
+  drone slowly yawing with no feedback to stop it (GT yaw ends +8-13° off), and `alpha` corrupts
+  as the marker overfills (the terminal ±334°/−143°/−155° jumps).
+- IC-dependent sign = sign of the frozen command at gate-fire time (approach geometry) + alpha's
+  terminal drift direction. IC1 +17°, offset ICs −10..−32°.
+
+**So `k_i` likely won't help the terminal residual** — the gate freezes `_yaw_rl_ie` too, so
+integral action is suspended in exactly the window where the residual accumulates. (KI sweep
+{0.0,0.1,0.3,0.6} IC1+IC2 n=3 running to confirm — `test_data/YawRLKiSweep/`.)
+
+**Real fix = ramp `_yaw_rl_cmd` → 0 on gate** (a frozen NON-ZERO command is what keeps yawing the
+drone), and/or gate later than `EXT_ABS=280` (fires at ~0.8 m, early). If xy is good (it is —
+24/25), a ±15° yaw error post-touchdown is largely cosmetic.
+
+**`w_z_eff` = `w_iz` reconciled**, not extra: `WZ_SIGN=-1` (perception `w_iz` = `+α̇` vs the GT-FB
+`w_z` = `−α̇` the law was built against) + `WZ_SCALE=2.5` (lstsq col-5≈Ty aliasing attenuates the
+estimate ~3×; `s_wz=0.587` bakes that in; scale restores the end-to-end gain — proper fix is the
+deferred recal).
