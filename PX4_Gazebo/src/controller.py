@@ -612,6 +612,50 @@ class Controller(Thread):
         self._yaw_rate_law = os.environ.get("PLASMC_YAW_RATE_LAW", "0") == "1"
         self._yaw_rl_kp = float(os.environ.get("PLASMC_YAW_RL_KP", "0.3"))
         self._yaw_rl_ki = float(os.environ.get("PLASMC_YAW_RL_KI", "0.0"))
+        # ── w_z SIGN + SCALE for the yaw-rate law (2026-09-08) ──────────────
+        # The law increment is `k_p*e_a - w_z_eff`, w_z_eff = WZ_SIGN*WZ_SCALE*w_z.
+        # It was DERIVED and GT-feedback-validated against the w_z that
+        # `gt_feedback.py` supplies: w[2] = -d(alpha)/dt (with PLASMC_GT_ALPHA_SIGN=+1,
+        # the non-perception alpha convention) -> e_a_dot = -w_z holds.
+        # REAL cross-marker perception's w_z (self._w_i[-1][2], lstsq col-5) is the
+        # manuscript rotational optic flow = -psi_dot_b,NED = +psi_dot_b,ENU
+        # ~= +alpha_dot -- verified against GT body yaw rate 2026-09-08
+        # (corr +0.66..+0.86, slope +0.2..+0.38 over 6 IC-val reps;
+        # project_yaw_rate_law_sign_bug_and_validation.md). That is the OPPOSITE
+        # sign to the GT-FB w_z, so on real perception the `-w_z` term became
+        # POSITIVE feedback on w_u[2] -> continuous yaw spin-up (1-2 full turns
+        # before overfill) -> alpha aliases -> e_a "diverges" to -50..-110 deg.
+        # Default: flip to +w_z for perception (WZ_SIGN=-1 so `-w_z_eff` = `+w_z`),
+        # restore the GT-FB convention automatically under PLASMC_GT_FEEDBACK=1
+        # (WZ_SIGN=+1). WZ_SCALE (default 1.0) is a separate lever for the ~3x
+        # magnitude deficit in the lstsq yaw column (structural under-observability,
+        # cross_marker_perception.py ~L715-731) -- sweep it once the sign is proven.
+        _gt_fb = os.environ.get("PLASMC_GT_FEEDBACK", "0") == "1"
+        self._yaw_rl_wz_sign = float(os.environ.get(
+            "PLASMC_YAW_RL_WZ_SIGN", "1.0" if _gt_fb else "-1.0"))
+        self._yaw_rl_wz_scale = float(os.environ.get("PLASMC_YAW_RL_WZ_SCALE", "1.0"))
+        # ── w_z CONFIDENCE GATE (2026-09-07, PLASMC_YAW_RL_GATE, default ON) ──
+        # Real perception-ON w_z inherits the terminal-overfill corruption: it
+        # tracks MARKER_EXTENT_PX almost exactly and grows monotonically past
+        # ~1 rad/s on a NON-rotating target once the marker saturates the frame
+        # (~318px span) and altitude drops below ~1 m -- see
+        # project_yaw_rate_law_sign_bug_and_validation.md ("Real perception: NOT
+        # yet safe"). GT-feedback w_z is exact and never triggers this. When w_z
+        # is judged untrustworthy the law FREEZES its own integrator (holds the
+        # last good yaw-rate command + freezes ie_a); the overfill window is the
+        # final <1 s and, if the law tracked during the approach, e_a is already
+        # small so a frozen near-zero rate is the correct terminal behaviour.
+        # (A blend toward the ASMC path is the alternative the memory notes;
+        # freeze is the lower-risk first cut.) Two independent triggers, OR'd:
+        #   (a) rate guard   -- |w_z| exceeds a plausible physical yaw rate
+        #   (b) overfill     -- MARKER_EXTENT_PX is BOTH near its running max AND
+        #                       large in absolute px (the "stable near-full-size"
+        #                       proximity signature already used in this file).
+        self._yaw_rl_gate = os.environ.get("PLASMC_YAW_RL_GATE", "1") == "1"
+        self._yaw_rl_wz_max = float(os.environ.get("PLASMC_YAW_RL_WZ_MAX", "0.9"))
+        self._yaw_rl_ext_frac = float(os.environ.get("PLASMC_YAW_RL_EXT_FRAC", "0.9"))
+        self._yaw_rl_ext_abs = float(os.environ.get("PLASMC_YAW_RL_EXT_ABS", "280.0"))
+        self._yaw_rl_ext_max = 0.0   # running max of MARKER_EXTENT_PX (gate-local)
 
         # ════ FoV-margin cone clamp  [manuscript: p₁₀, p₁∞, ξ₁, θ_cap] ════
         # Pixel envelopes per image axis (U/V), DIRECT values in px.
@@ -2031,6 +2075,7 @@ class Controller(Thread):
         # so the ASMC path can keep running unmodified alongside it for comparison.
         self._yaw_rl_cmd = []   # this law's own w_u[2] integrator state (rad/s)
         self._yaw_rl_ie = []    # its own e_a integral, for the optional k_i robustness term
+        self._yaw_rl_gated = [] # 1.0 while the w_z confidence gate is holding the integrator, else 0.0
 
         # Attitude reference / SO(3) diagnostics
         # euler_d stores (phi_d, theta_d, psi_d) for backward-compatible
@@ -3291,22 +3336,38 @@ class Controller(Thread):
         # closed-loop simulation before redeploying (steady e_a <0.05deg at 0.30/0.48/0.60
         # rad/s and the stationary no-op, all against psi_dot_b=-w_u2).
         _wz = float(self._w_i[-1][2]) if len(self._w_i) > 0 else 0.0
+        # Sign/scale-corrected value the law integrates against (see __init__).
+        # The gate below deliberately still guards on the RAW |_wz| (physical rate).
+        _wz_eff = self._yaw_rl_wz_sign * self._yaw_rl_wz_scale * _wz
+
+        # w_z confidence gate (see __init__). Evaluated every step so yaw_rl_gated(t)
+        # is a full-length diagnostic even when this law isn't driving the output.
+        _ext_now = float(self.MARKER_EXTENT_PX)
+        if _ext_now > self._yaw_rl_ext_max:
+            self._yaw_rl_ext_max = _ext_now
+        _wz_untrusted = self._yaw_rl_gate and (
+            abs(_wz) > self._yaw_rl_wz_max
+            or (self._yaw_rl_ext_max > 0.0
+                and _ext_now >= self._yaw_rl_ext_frac * self._yaw_rl_ext_max
+                and _ext_now >= self._yaw_rl_ext_abs))
+        self._yaw_rl_gated.append(1.0 if _wz_untrusted else 0.0)
+
         if len(self._yaw_rl_cmd) == 0:
             self._yaw_rl_cmd.append(0.0)
             self._yaw_rl_ie.append(0.0)
         elif len(self._dt) > 0 and self._dt[-1] > 1e-6:
             _rl_prev = self._yaw_rl_cmd[-1]
             _rl_sat = abs(_rl_prev) >= _psid_rate - 1e-9
-            if _rl_sat:
-                self._yaw_rl_ie.append(self._yaw_rl_ie[-1])            # freeze — anti-windup
+            if _rl_sat or _wz_untrusted:
+                self._yaw_rl_ie.append(self._yaw_rl_ie[-1])            # freeze — anti-windup / low w_z confidence
             else:
                 self._yaw_rl_ie.append(self._yaw_rl_ie[-1]
                                         + self._dt[-1] * 0.5 * (self._e_a[-1] + self._e_a[-2]))
-            if self._yaw_hold:
-                self._yaw_rl_cmd.append(_rl_prev)                      # frozen, same as psi_d below
+            if self._yaw_hold or _wz_untrusted:
+                self._yaw_rl_cmd.append(_rl_prev)                      # frozen (yaw-hold, or w_z untrusted)
             else:
                 _rl_new = _rl_prev + self._dt[-1] * (
-                    self._yaw_rl_kp * e_a - _wz - self._yaw_rl_ki * self._yaw_rl_ie[-1])
+                    self._yaw_rl_kp * e_a - _wz_eff - self._yaw_rl_ki * self._yaw_rl_ie[-1])
                 self._yaw_rl_cmd.append(float(np.clip(_rl_new, -_psid_rate, _psid_rate)))
         else:
             self._yaw_rl_cmd.append(self._yaw_rl_cmd[-1])
@@ -4235,6 +4296,12 @@ class Controller(Thread):
             "YAW_RATE_LAW": self._yaw_rate_law,
             "YAW_RL_KP": float(self._yaw_rl_kp),
             "YAW_RL_KI": float(self._yaw_rl_ki),
+            "YAW_RL_WZ_SIGN": float(self._yaw_rl_wz_sign),
+            "YAW_RL_WZ_SCALE": float(self._yaw_rl_wz_scale),
+            "YAW_RL_GATE": bool(self._yaw_rl_gate),
+            "YAW_RL_WZ_MAX": float(self._yaw_rl_wz_max),
+            "YAW_RL_EXT_FRAC": float(self._yaw_rl_ext_frac),
+            "YAW_RL_EXT_ABS": float(self._yaw_rl_ext_abs),
             "HD_FUNNEL_REF": bool(self._hd_funnel_ref),
             "HD_PASSIVE": bool(self._hd_passive),
             # CBF knobs read inside cbf_visibility at call time -- mirrored here with the SAME
@@ -4359,6 +4426,7 @@ class Controller(Thread):
             "kappa_a(t)": self._kappa_a,
             "yaw_rl_cmd(t)": self._yaw_rl_cmd,   # new yaw-rate law's own w_u[2] integrator (rad/s)
             "yaw_rl_ie(t)": self._yaw_rl_ie,     # its (optional, default-0-gain) e_a integral
+            "yaw_rl_gated(t)": self._yaw_rl_gated,  # 1.0 while the w_z confidence gate is holding the integrator
             "u_a(t)": self._u_a,
             # Attitude / output
             "a_v(t)": self._a_v,
