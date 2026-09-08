@@ -628,3 +628,19 @@ collision-clean:
 The off-center terminal residual needs the `alpha` channel protected from overfill (a perception
 job, same as `h_y`/`w_z`), NOT a yaw-controller fix. `PLASMC_YAW_RL_GATE_EXTENT=1` restores the old
 trigger if ever wanted.
+
+### 2026-09-09 — bake-prep: regression gate on current HEAD = IMPROVED (25/25, 18/25 precise)
+
+`7ecc29d0` (marker-type gate + companion-config doc). `PLASMC_YAW_RATE_LAW=1 FLOW_KF_Q_WZ=1.0
+WZ_SCALE=2.5`, IC1-5 n=5, `test_data/ICValidation/20260909-030532`, collision-clean:
+**25/25 land, 0 TL, 18/25 precise.** IC1 0.040/4p · IC2 0.028/4p · IC3 0.027/5p · IC4 0.120/2p ·
+IC5 0.082/3p (5/5 ≤0.13 m — no terminal-1/Z crash this run vs 1 at `222553`). All rel_vel ≤0.65.
+vs original `20260908-222553` (24/25, ~11-13 precise) — better across IC1/2/3/5; IC4 ~flat. Likely
+base improvements since (visproj CBF wins IC3/IC4; loom fixes) + `bcee431c` keeping the yaw law
+active to touchdown + IC5 terminal-1/Z stochastics.
+
+⚠ **Still no matched ASMC arm on this HEAD** — the 25/25 could be the base, not the law. Running
+`PLASMC_YAW_RATE_LAW=0` IC1-5 n=5 on `7ecc29d0` next (the A/B that decides whether the law is a
+stationary win → whether a default-flip is justified).
+
+Also `7ecc29d0`: `_yaw_rate_law` now gated to `MARKER_TYPE=cross` (warns on ArUco).
