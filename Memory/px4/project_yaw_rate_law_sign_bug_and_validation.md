@@ -413,3 +413,26 @@ drone), and/or gate later than `EXT_ABS=280` (fires at ~0.8 m, early). If xy is 
 `w_z` = `−α̇` the law was built against) + `WZ_SCALE=2.5` (lstsq col-5≈Ty aliasing attenuates the
 estimate ~3×; `s_wz=0.587` bakes that in; scale restores the end-to-end gain — proper fix is the
 deferred recal).
+
+### 2026-09-09 — k_i sweep: DEAD END, confirms the residual is gate-freeze not integral-deficiency
+
+`test_data/YawRLKiSweep/` (KI {0.0,0.1,0.3,0.6}, IC1+IC2 n=3, best config): `|e_a|` tail
+12.7°→13.9°→17.8°→**29.4°** — MONOTONICALLY WORSE (k_i=0.6 has a +91° windup outlier). xy
+unaffected (≤0.18). `ie_a|max|` grows 0.19→0.57 (integrator accumulates but is powerless):
+the gate freezes `_yaw_rl_ie` in exactly the terminal window where the residual forms, and
+in the approach k_i just adds lag to the 287 ms yaw loop → larger e_a at gate-fire → larger
+terminal residual. **Keep `PLASMC_YAW_RL_KI=0.0`.** The residual needs ramp-cmd→0-on-gate (or
+a later gate), not integral gain.
+
+### 2026-09-09 — WZ_SIGN=-1 is analytically forced, but belongs in gt_feedback.py not a knob
+
+Full chain: `α̇ = −ψ̇_b,NED` (Jabbari Asl eq 22, confirmed by the 2026-08-31 `_alpha_0` re-derive:
+`alpha ≈ +ψ_ENU`), and manuscript `w_z = −ψ̇_b,NED`, so **`e_a_dot = +w_z`** — NOT `−w_z`. The
+law's `−w_z` term comes from `gt_feedback.py:234` `w[2] = -_asign·d(ry)/dt = −α̇` (GT-FB's own
+construction). Perception `w_iz` IS correctly signed per the manuscript (`_fill_A = −L(s)` but
+the cal absorbs it — `s_wz = +0.587 > 0`; measured `corr(w_iz, +ψ̇_b,ENU) = +0.7..0.86`), i.e.
+`w_iz ≈ +w_z,manuscript`. So `WZ_SIGN=-1` = feeding `+w_z,manuscript` into a term that wants
+`−w_z,manuscript`. Analytically forced; SITL just surfaced it.
+**Clean fix (queued, needs own GT-FB re-validation): (1) `gt_feedback.py` `w[2] = +α̇` (drop the
+leading `−`); (2) re-derive the law's rate term from `e_a_dot = +w_z`; (3) re-validate GT-FB
+ceiling048/beyond060; (4) delete `WZ_SIGN`. `WZ_SCALE` stays (separate magnitude-deficit → recal).**
