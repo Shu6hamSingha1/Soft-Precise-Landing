@@ -5,7 +5,7 @@ metadata:
   node_type: memory
   type: project
   originSessionId: 0f4a1549-4ee5-4e61-9344-dfa2c3a8081c
-  modified: 2026-09-08T13:24:06.828Z
+  modified: 2026-09-08T13:53:06.315Z
 ---
 
 **STATE as of 2026-09-05: `PLASMC_YAW_RATE_LAW` exists in `controller.py`, default OFF, GT-feedback
@@ -232,11 +232,42 @@ documented "#1 open blocker" terminal-overfill mechanism (tuning-guide STATUS). 
 ±0.31, e_a ≤42° on every IC5 rep — yaw law is fine. IC5 = 3 m start = least runway before the
 terminal danger zone (memory: "IC5 fails = LARGEST normalized error + LEAST runway").
 
-**Still owed: WZ_SCALE=1.0 IC1-5 n=5 on the same fixed base** — the controlled A/B (1.0 vs 2.5)
-and the current default's own n=5 gate. Disambiguates whether IC5 also crashes at 1.0 (→ pre-
-existing terminal blocker, yaw law verdict = "works IC1-4") or lands at 1.0 (→ WZ_SCALE=2.5 eats
-IC5's terminal margin, reject 2.5). Off-center clean dataset (`182815/IC2,IC3,IC4`) handed to the
-loom session for tuning the relative-drop veto.
+### 2026-09-08 — WZ_SCALE 1.0 vs 2.5 A/B (n=5, fixed base) → WZ_SCALE=2.5 REJECTED, default 1.0 stands
+
+`test_data/ICValidation/20260908-185421` (WZ_SCALE=1.0) vs `20260908-182815` (2.5), both n=5, fixed
+loom base, collision-clean.
+
+| IC | WZ=1.0 mean/max/prec | WZ=2.5 mean/max/prec |
+|---|---|---|
+| IC1 | 0.05 / 0.09 / **5/5** | 0.05 / 0.09 / 4/5 |
+| IC2 | 0.21 / 0.49 / 3/5 | **0.10 / 0.21 / 2/5** |
+| IC3 | 0.15 / 0.38 / 2/5 | **0.04 / 0.06 / 4/5** |
+| IC4 | 0.09 / 0.16 / **3/5** | 0.15 / 0.30 / 2/5 |
+| IC5 | **1.59 / 4.24 / 3/5** (3/5 clean ≤0.09, 2/5 crash) | 11.64 / 34.07 / **0/5** |
+
+**WZ_SCALE=2.5 REJECTED.** It tightens IC2/IC3 precision but takes IC5 from 3/5 clean → **0/5
+catastrophic** and marginally hurts IC4. The 2.5× amplified w_z (with its ~R²0.5 noise) eats IC5's
+already-thin terminal margin (IC5 = 3 m start = least runway before the terminal-1/Z zone). The
+`yaw_rl_cmd` stayed bounded on every IC5 crash → not a yaw runaway, it's the extra terminal
+disturbance tipping a marginal case.
+
+**WZ_SCALE=1.0 (code default) stands.** IC1-4 land 5/5; IC5 3/5 clean + 2/5 crash — the 2/5 is the
+pre-existing terminal-1/Z overfill (#1 open blocker), NOT the yaw law.
+
+### VERDICT — the yaw-rate law (PLASMC_YAW_RATE_LAW=1, default OFF) WORKS as an opt-in on stationary
+
+Config: `WZ_SIGN=-1` (auto on perception), `WZ_GATE=1`, `WZ_SCALE=1.0`, `k_i=0`. IC1-5 n=5:
+21/25 acceptable landings (≤0.5 m), 16/25 precise, 0 TL — comparable to / better than the baseline
+ASMC stationary gate. Residual `e_a` ~15-20° (the 3× lstsq-w_z magnitude deficit) — NOT worth
+closing with WZ_SCALE (noise cost > precision gain, proven above).
+
+**Better lever for the deficit = per-channel `FLOW_KF_Q_WZ`** (committed infra `5796816d`): smooth
+w_z harder → then a larger effective scale is tolerable. Next experiment: GT-scored `FLOW_KF_Q_WZ`
+sweep + cross-marker cal re-derive (needs phased cal recordings — user-run).
+
+**Still open (thread):** (1) `FLOW_KF_Q_WZ` sweep + recal; (2) turning-target IC gate (the law's
+actual purpose — all validation so far is stationary); (3) IC5 terminal-1/Z overfill = separate
+blocker; (4) ASMC/`psi_d` removal — keep deferred until (1)+(2) done.
 
 ## Next step (not started)
 
